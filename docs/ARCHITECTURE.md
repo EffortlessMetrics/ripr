@@ -26,3 +26,9 @@ CLI / LSP / CI
 - Unknowns are first-class outcomes.
 - Findings must carry evidence and a recommended next step.
 - The first release stays syntax-first. Semantic enrichment comes later.
+
+See also:
+
+- [Charter](CHARTER.md)
+- [Static exposure model](STATIC_EXPOSURE_MODEL.md)
+- [Output schema](OUTPUT_SCHEMA.md)

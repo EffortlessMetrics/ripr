@@ -222,6 +222,16 @@ The `0.1.x` alpha line is intentionally narrow:
 The package is not split into `ripr-core`, `ripr-cli`, or `ripr-lsp`. Public
 crate boundaries can be added later if external consumers need them.
 
+## Supporting Docs
+
+- [Charter](docs/CHARTER.md): mission, vision, category, ecosystem role, and non-goals.
+- [Static exposure model](docs/STATIC_EXPOSURE_MODEL.md): probes, RIPR stages, oracle strength, and classifications.
+- [Output schema](docs/OUTPUT_SCHEMA.md): JSON output and context packet fields.
+- [Architecture](docs/ARCHITECTURE.md): package shape and internal modules.
+- [Testing](docs/TESTING.md): local test and package gates.
+- [Release](docs/RELEASE.md): publish checklist and crates.io gates.
+- [Agent instructions](AGENTS.md): repo-specific instructions for coding agents.
+
 ## Development
 
 ```bash

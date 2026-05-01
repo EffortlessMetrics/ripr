@@ -3,7 +3,11 @@
 Run everything:
 
 ```bash
+cargo fmt --check
+cargo check --workspace --all-targets
 cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo doc --workspace --no-deps
 cargo xtask ci-fast
 cargo xtask ci-full
 ```
