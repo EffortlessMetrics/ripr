@@ -3,19 +3,14 @@
 Preview VS Code extension for `ripr`, the static RIPR mutation-exposure analyzer
 for Rust/Cargo workspaces.
 
-The extension starts `ripr lsp` and surfaces static exposure diagnostics from
-the local `ripr` executable.
+The extension starts `ripr lsp --stdio` and surfaces static exposure diagnostics
+from a resolved `ripr` server.
 
 ## Requirements
 
-Install `ripr` first:
-
-```bash
-cargo install ripr
-```
-
-This extension requires `ripr 0.1.0` or newer on `PATH`, or a configured
-`ripr.server.path`.
+The extension can download and cache the matching `ripr` server binary from
+GitHub Releases on first activation. Manual installation is still supported for
+offline, pinned, or enterprise-controlled environments.
 
 ## What ripr Does
 
@@ -29,9 +24,15 @@ confirmation.
 
 ## Settings
 
-- `ripr.server.path`: path to the `ripr` executable. Defaults to `ripr`.
+- `ripr.server.path`: explicit path to the `ripr` executable. Empty by default.
 - `ripr.server.args`: arguments used to start the language server. Defaults to
-  `["lsp"]`.
+  `["lsp", "--stdio"]`.
+- `ripr.server.autoDownload`: download a matching server when needed. Defaults
+  to `true`.
+- `ripr.server.version`: pinned server version. Empty means match the extension
+  version.
+- `ripr.server.downloadBaseUrl`: override the manifest location for internal
+  mirrors.
 - `ripr.check.mode`: preferred editor check mode. Defaults to `instant`.
 - `ripr.baseRef`: Git base ref used by context commands. Defaults to
   `origin/main`.
@@ -46,5 +47,6 @@ confirmation.
 
 ## Preview Limitations
 
-The `0.1.x` extension is intentionally PATH-based. It does not bundle native
-server binaries, auto-install Rust tooling, or download release artifacts.
+The `0.2.x` extension uses a universal VSIX and downloads native server binaries
+when available. It does not auto-install Rust tooling. Bundled platform-specific
+VSIXs are planned after the downloader path is proven.

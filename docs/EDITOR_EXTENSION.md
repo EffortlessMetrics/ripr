@@ -13,8 +13,19 @@ Open VSX extension:
   EffortlessMetrics.ripr
 ```
 
-The `0.1.x` extension is a preview client that starts the `ripr` executable from
-`PATH` or from `ripr.server.path`. It does not bundle native `ripr` binaries.
+The `0.2.x` extension is a universal VSIX preview client. It resolves the
+server in this order:
+
+```text
+1. ripr.server.path
+2. bundled server binary, if present
+3. downloaded cached server binary
+4. verified first-run download from GitHub Releases
+5. ripr on PATH
+6. actionable error
+```
+
+It does not yet publish platform-specific VSIXs with bundled native binaries.
 
 ## Location
 
@@ -27,19 +38,24 @@ Code extension package, not a Rust package.
 
 ## Requirements
 
-Install the Rust CLI first:
+The extension can provision the matching server automatically. Manual install is
+still supported for offline or controlled environments:
 
 ```bash
 cargo install ripr
 ```
 
-The extension requires `ripr 0.1.0` or newer.
-
 ## Settings
 
-- `ripr.server.path`: path to the `ripr` executable. Defaults to `ripr`.
+- `ripr.server.path`: explicit path to the `ripr` executable. Empty by default.
 - `ripr.server.args`: arguments used to start the language server. Defaults to
-  `["lsp"]`.
+  `["lsp", "--stdio"]`.
+- `ripr.server.autoDownload`: automatically download a matching server when
+  needed. Defaults to `true`.
+- `ripr.server.version`: pinned server version. Empty means match the extension
+  version.
+- `ripr.server.downloadBaseUrl`: override the manifest base URL for internal
+  mirrors.
 - `ripr.check.mode`: preferred editor check mode. Defaults to `instant`.
 - `ripr.baseRef`: Git base ref used by context commands. Defaults to
   `origin/main`.
@@ -54,18 +70,20 @@ The extension requires `ripr 0.1.0` or newer.
 
 ## Missing Server Behavior
 
-If the executable is missing, the extension shows:
+If no usable server can be resolved, the extension shows:
 
 ```text
-ripr executable not found. Install with `cargo install ripr`, or set `ripr.server.path`.
+ripr server is not available. Enable automatic download, install with `cargo install ripr`, or set `ripr.server.path`.
 ```
 
 Actions:
 
 - Open Settings
 - Copy Install Command
+- Retry
 
-The extension does not auto-install Rust, Cargo, or `ripr`.
+The extension does not auto-install Rust or Cargo. It only downloads verified
+release archives when `ripr.server.autoDownload` is enabled.
 
 ## Local Gates
 
@@ -74,7 +92,7 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
-code --install-extension dist/ripr-0.1.0.vsix --force
+code --install-extension dist/ripr-0.2.0.vsix --force
 ```
 
 Manual smoke:
@@ -82,7 +100,7 @@ Manual smoke:
 ```text
 Open a Rust workspace with Cargo.toml.
 Confirm the extension activates.
-Confirm ripr lsp starts.
+Confirm ripr lsp --stdio starts.
 Confirm diagnostics can arrive from the server.
 Confirm missing ripr path gives a useful message.
 Confirm restart and output commands work.
@@ -93,8 +111,6 @@ Confirm restart and output commands work.
 The preview extension does not yet provide:
 
 - bundled native server binaries
-- automatic binary downloads
 - platform-specific VSIX packages
 - automatic Rust or Cargo installation
 - deep editor UI beyond LSP diagnostics and basic commands
-

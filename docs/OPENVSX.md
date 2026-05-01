@@ -45,7 +45,7 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
-npx ovsx publish dist/ripr-0.1.0.vsix -p "$OPEN_VSX_TOKEN"
+npx ovsx publish dist/ripr-0.2.0.vsix -p "$OPEN_VSX_TOKEN"
 ```
 
 ## Verification
@@ -56,6 +56,5 @@ After publish:
 Open VSX listing exists.
 Version matches editors/vscode/package.json.
 Install succeeds in an Open VSX-compatible editor.
-ripr starts from PATH or configured ripr.server.path.
+ripr starts from configured, bundled, downloaded, cached, or PATH fallback server.
 ```
-

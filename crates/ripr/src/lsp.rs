@@ -31,6 +31,7 @@ pub fn serve() -> Result<(), String> {
         {
             break;
         } else if message.contains("textDocument/didOpen")
+            || message.contains("textDocument/didChange")
             || message.contains("textDocument/didSave")
             || message.contains("ripr.refresh")
         {

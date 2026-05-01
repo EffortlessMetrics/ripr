@@ -9,13 +9,16 @@ import {
   Trace
 } from 'vscode-languageclient/node';
 import { getConfig, RiprConfig } from './config';
-
-const START_TIMEOUT_MS = 5000;
+import { resolveServer, ResolvedServer } from './serverResolver';
 
 export class RiprClientController {
   private client: LanguageClient | undefined;
+  private server: ResolvedServer | undefined;
 
-  constructor(private readonly output: vscode.OutputChannel) {}
+  constructor(
+    private readonly context: vscode.ExtensionContext,
+    private readonly output: vscode.OutputChannel
+  ) {}
 
   async start(): Promise<void> {
     if (this.client) {
@@ -23,14 +26,15 @@ export class RiprClientController {
     }
 
     const config = getConfig();
-    const probe = await probeExecutable(config.serverPath);
-    if (!probe.ok) {
-      await this.showMissingServerMessage(config.serverPath, probe.message);
+    const server = await resolveServer(this.context, config, this.output);
+    if (!('command' in server)) {
+      await this.showMissingServerMessage(server.message, server.detail);
       return;
     }
+    this.server = server;
 
     const serverOptions: ServerOptions = {
-      command: config.serverPath,
+      command: server.command,
       args: config.serverArgs,
       options: {
         cwd: firstWorkspaceFolder()
@@ -47,7 +51,8 @@ export class RiprClientController {
       }
     };
 
-    this.output.appendLine(`Starting ripr language server: ${config.serverPath} ${config.serverArgs.join(' ')}`);
+    this.output.appendLine(`Resolved ripr server from ${server.source}: ${server.detail}`);
+    this.output.appendLine(`Starting ripr language server: ${server.command} ${config.serverArgs.join(' ')}`);
     this.client = new LanguageClient('ripr', 'ripr', serverOptions, clientOptions);
     this.client.setTrace(traceFromConfig(config.traceServer));
     await this.client.start();
@@ -61,6 +66,7 @@ export class RiprClientController {
   async stop(): Promise<void> {
     const client = this.client;
     this.client = undefined;
+    this.server = undefined;
     if (client) {
       await client.stop();
     }
@@ -80,6 +86,10 @@ export class RiprClientController {
     }
 
     const config = getConfig();
+    const server = this.server ?? await this.resolveServerForCommand(config);
+    if (!server) {
+      return;
+    }
     const relativePath = path.relative(workspaceFolder.uri.fsPath, editor.document.uri.fsPath);
     const line = editor.selection.active.line + 1;
     const selector = `${relativePath}:${line}`;
@@ -95,7 +105,7 @@ export class RiprClientController {
     ];
 
     try {
-      const context = await runRipr(config.serverPath, args, workspaceFolder.uri.fsPath);
+      const context = await runRipr(server.command, args, workspaceFolder.uri.fsPath);
       await vscode.env.clipboard.writeText(context.trim());
       vscode.window.showInformationMessage('Copied ripr context to clipboard.');
     } catch (error) {
@@ -109,18 +119,31 @@ export class RiprClientController {
     this.output.show();
   }
 
-  private async showMissingServerMessage(serverPath: string, detail: string): Promise<void> {
-    this.output.appendLine(`ripr executable not found: ${serverPath}`);
+  private async resolveServerForCommand(config: RiprConfig): Promise<ResolvedServer | undefined> {
+    const server = await resolveServer(this.context, config, this.output);
+    if ('command' in server) {
+      this.server = server;
+      return server;
+    }
+    await this.showMissingServerMessage(server.message, server.detail);
+    return undefined;
+  }
+
+  private async showMissingServerMessage(summary: string, detail: string): Promise<void> {
+    this.output.appendLine(summary);
     this.output.appendLine(detail);
     const selection = await vscode.window.showErrorMessage(
-      'ripr executable not found. Install with `cargo install ripr`, or set `ripr.server.path`.',
+      'ripr server is not available. Enable automatic download, install with `cargo install ripr`, or set `ripr.server.path`.',
       'Open Settings',
-      'Copy Install Command'
+      'Copy Install Command',
+      'Retry'
     );
     if (selection === 'Open Settings') {
-      await vscode.commands.executeCommand('workbench.action.openSettings', 'ripr.server.path');
+      await vscode.commands.executeCommand('workbench.action.openSettings', 'ripr.server');
     } else if (selection === 'Copy Install Command') {
       await vscode.env.clipboard.writeText('cargo install ripr');
+    } else if (selection === 'Retry') {
+      await this.restart();
     }
   }
 }
@@ -139,30 +162,6 @@ function traceFromConfig(trace: RiprConfig['traceServer']): Trace {
 
 function firstWorkspaceFolder(): string | undefined {
   return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-}
-
-function probeExecutable(command: string): Promise<{ ok: true } | { ok: false; message: string }> {
-  return new Promise((resolve) => {
-    const child = cp.spawn(command, ['--version'], { shell: false });
-    const timer = setTimeout(() => {
-      child.kill();
-      resolve({ ok: false, message: `Timed out after ${START_TIMEOUT_MS}ms while running ${command} --version.` });
-    }, START_TIMEOUT_MS);
-
-    child.once('error', (error) => {
-      clearTimeout(timer);
-      resolve({ ok: false, message: error.message });
-    });
-
-    child.once('exit', (code) => {
-      clearTimeout(timer);
-      if (code === 0) {
-        resolve({ ok: true });
-      } else {
-        resolve({ ok: false, message: `${command} --version exited with code ${code}.` });
-      }
-    });
-  });
 }
 
 function runRipr(command: string, args: string[], cwd: string): Promise<string> {
