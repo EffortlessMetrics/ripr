@@ -40,6 +40,10 @@ package-lock.json
 
 Use `icon.png`, not SVG.
 
+The extension icon should be regenerated from the canonical brand asset at
+`assets/logo/ripr-icon-dark.svg`. The committed marketplace PNG derivative is
+kept at `assets/logo/ripr-icon-dark.png` and copied to `editors/vscode/icon.png`.
+
 ## Local Package Gates
 
 ```bash
