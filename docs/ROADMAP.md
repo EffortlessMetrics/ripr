@@ -1,38 +1,305 @@
 # Roadmap
 
-## 0.1
+This roadmap is the product plan for moving `ripr` from a published alpha to a
+live static exposure analyzer that developers and agents can rely on during a
+pull request.
 
-- Small-dependency publishable crate.
-- Syntax-first diff probe generation.
-- Test and oracle indexing.
-- Static RIPR classification.
-- Human, JSON, GitHub output.
-- Basic LSP sidecar.
+The goal state is this loop:
 
-## 0.1.1
+```text
+Developer changes Rust behavior
+-> ripr detects the changed behavior
+-> ripr identifies the missing or weak discriminator
+-> editor shows a precise diagnostic
+-> hover explains the evidence path
+-> code action emits agent-ready test intent
+-> human or agent adds a targeted test
+-> finding closes or downgrades
+-> real mutation confirms later when the PR is ready
+```
 
-- Replace manual CLI parsing with `clap` derive.
-- Convert JSON output rendering to serde output DTOs.
-- Add more fixture coverage for duplicate names, stacked attributes, and nested path layouts.
+`ripr` stays focused on static oracle-gap analysis for diff-derived mutation
+probes. It does not become a full mutation runner, a coverage dashboard, a proof
+system, a second rust-analyzer, or a generic test generator.
 
-## 0.2
+## Current Position
 
-- `ripr.toml` config loading.
-- SARIF output.
-- Better workspace topology detection.
-- Basic persistent cache.
-- Richer LSP diagnostics and code actions.
+The current alpha has the product shape in place:
 
-## 0.3
+- one published package: `ripr`
+- one CLI binary: `ripr`
+- one shared analysis engine
+- human, JSON, and GitHub output
+- an experimental LSP sidecar
+- extension-managed server provisioning
+- analysis modes that change indexing scope
 
-- rust-analyzer/HIR enrichment.
-- SQLite index and hot bitsets.
-- Per-test reachability cache.
-- cargo-mutants calibration import.
+Mode scope is intentionally cost-aware:
 
-## 0.4+
+| Mode | Current scope |
+| --- | --- |
+| `instant` | Changed Rust files only. |
+| `draft` | Rust files in packages touched by the diff. |
+| `fast` | Package-local scope for now. |
+| `deep` | Whole workspace. |
+| `ready` | Whole workspace static preflight before separate mutation confirmation. |
 
-- Deep mode with MIR/Charon-style summaries.
-- Proc-macro and feature-set awareness.
-- Learned oracle priors.
-- Test skeleton generation.
+The main bottleneck is now analyzer truth. The existing syntax-first scanner is
+good enough for alpha feedback, but not enough for trustworthy diagnostics,
+hover evidence, or agent-ready test briefs.
+
+## Strategic Sequence
+
+The load-bearing path is:
+
+```text
+fixture lab
+-> file facts
+-> syntax facts
+-> probe ownership
+-> probe generation
+-> local flow facts
+-> oracle facts
+-> activation/value facts
+-> evidence findings
+-> LSP evidence loop
+-> agent context
+-> repository config
+-> calibration
+-> cache
+```
+
+Do not skip ahead to MIR, Charon, a hard HIR dependency, SQLite-first storage,
+large dashboards, broad LSP features, or more probe families before the current
+probe families are grounded in better facts.
+
+## PR Queue
+
+| Order | PR | Purpose | Release target |
+| ---: | --- | --- | --- |
+| 0 | `planning-and-tracking-docs` | Put the product plan, metrics, and contribution rules in-repo. | `0.2.x` |
+| 1 | `verify-one-click-extension-install` | Verify the normal editor install path without requiring `cargo install ripr`. | `0.2.x` |
+| 2 | `fixture-laboratory` | Create golden fixtures and invariants before changing the analyzer. | `0.3.0` |
+| 3 | `file-facts-model` | Introduce a fact model while preserving current scanner behavior. | `0.3.0` |
+| 4 | `syntax-adapter-mvp` | Add a parser adapter boundary and syntax-backed file facts. | `0.3.0` |
+| 5 | `ast-test-oracle-extraction` | Extract tests and assertions from syntax nodes. | `0.3.0` |
+| 6 | `ast-probe-ownership` | Map diff spans to changed syntax nodes and stable owner symbols. | `0.3.0` |
+| 7 | `ast-probe-generation` | Generate predicate, return, error, field, and call probes from syntax. | `0.3.0` |
+| 8 | `oracle-strength-v2` | Distinguish exact, weak, smoke, snapshot, mock, and unknown oracles. | `0.4.0` |
+| 9 | `local-delta-flow-v1` | Name return, field, error, and effect sinks for changed behavior. | `0.4.0` |
+| 10 | `activation-value-modeling-v1` | Detect observed values and missing boundary or variant inputs. | `0.4.0` |
+| 11 | `evidence-first-output` | Make CLI output the reference explanation for each finding. | `0.4.0` |
+| 12 | `lsp-evidence-hover-actions` | Add finding-specific diagnostics, hover evidence, and code actions. | `0.5.0` |
+| 13 | `agent-context-v2` | Emit a compact test-writing brief from CLI and LSP. | `0.5.0` |
+| 14 | `ripr-config-v1` | Add topology, oracle, snapshot, mock, and external-boundary config. | `0.6.0` |
+| 15 | `suppression-v1` | Add reasoned, visible suppressions with optional expiry. | `0.6.0` |
+| 16 | `sarif-ci-policy` | Add SARIF and opt-in CI policy modes. | `0.6.0` |
+| 17 | `cargo-mutants-calibration-scaffold` | Import real mutation results for offline calibration. | `0.7.0` |
+| 18 | `persistent-cache-v1` | Cache stable facts after the fact model is worth caching. | `0.8.0` |
+
+## Release Frames
+
+### `0.3.0` - Evidence Foundation
+
+Ship:
+
+- fixture laboratory
+- stable output DTOs
+- file facts
+- parser adapter MVP
+- AST-backed test and oracle extraction
+- AST-backed probe ownership and generation
+
+Success condition:
+
+```text
+Existing sample findings come from fact objects instead of line-substring guesses.
+```
+
+### `0.4.0` - Exposure Truth
+
+Ship:
+
+- oracle strength v2
+- local delta flow
+- activation and value modeling
+- evidence-first human output
+
+Success condition:
+
+```text
+ripr can say what changed behavior appears to flow to and which discriminator is missing.
+```
+
+### `0.5.0` - Live Editor Loop
+
+Ship:
+
+- finding-specific diagnostics
+- evidence hovers
+- copy-context action
+- open-related-tests action
+- deep-check command
+- agent context v2
+
+Success condition:
+
+```text
+A developer can hover a diagnostic, understand the gap, and copy a test intent.
+```
+
+### `0.6.0` - Repository Adaptation
+
+Ship:
+
+- `ripr.toml` v1
+- custom oracle macros
+- snapshot, mock, and effect config
+- reasoned suppressions
+- SARIF and opt-in CI policy modes
+
+Success condition:
+
+```text
+Real repositories can teach ripr their testing idioms without hiding findings.
+```
+
+### `0.7.0` - Calibration
+
+Ship:
+
+- `cargo-mutants` import
+- static-vs-real mutation reports
+- family-specific precision measurements
+
+Success condition:
+
+```text
+ripr can compare static exposure classes with real mutation results when explicit mutation data is present.
+```
+
+### `0.8.0` - Hot Sidecar
+
+Ship:
+
+- incremental in-memory store
+- file-hash invalidation
+- warm fact reuse
+- persisted cache when needed
+
+Success condition:
+
+```text
+Common editor edits reclassify without rescanning the full workspace.
+```
+
+## Canonical Acceptance Scenario
+
+Use one case as the product-in-miniature:
+
+```rust
+if amount >= discount_threshold {
+    apply_discount(...)
+}
+```
+
+Existing tests:
+
+```rust
+#[test]
+fn premium_customer_gets_discount() {
+    let quote = price(10_000);
+    assert!(quote.total > Money::zero());
+}
+
+#[test]
+fn small_customer_gets_no_discount() {
+    let quote = price(50);
+    assert_eq!(quote.discount_applied, false);
+}
+```
+
+Expected diagnostic:
+
+```text
+Changed boundary has no detected equality-boundary test.
+```
+
+Expected hover:
+
+```text
+Static exposure: weakly_exposed
+
+Changed:
+  amount >= discount_threshold
+
+Evidence:
+  premium_customer_gets_discount reaches price
+  detected amount values: 50, 10_000
+  assertion: assert!(quote.total > Money::zero())
+  oracle strength: weak
+
+Missing:
+  amount == discount_threshold
+  exact assertion on discount_amount
+  exact assertion on total
+```
+
+Expected context packet:
+
+```json
+{
+  "task": "write_targeted_test",
+  "gap": "boundary_gap",
+  "arrange": "build input where amount == discount_threshold",
+  "act": "call price",
+  "assert": [
+    "discount_applied == true",
+    "discount_amount == expected_discount",
+    "total == expected_total"
+  ]
+}
+```
+
+Expected close condition:
+
+```text
+When a related test covers amount == discount_threshold and checks the changed
+outputs with exact assertions, the finding disappears or downgrades.
+```
+
+## Validation Gate Before Deeper Semantics
+
+Before investing in HIR, MIR, Charon, persistent storage, or wider probe
+families, the product should satisfy this suite:
+
+| Area | Required evidence |
+| --- | --- |
+| Distribution | Marketplace and Open VSX install paths work without requiring `cargo install ripr`. |
+| Distribution | Verified server download starts `ripr lsp --stdio`. |
+| Analyzer | Duplicate function names do not cross-link tests. |
+| Analyzer | Stacked test attributes are detected. |
+| Analyzer | Multi-line assertions are extracted. |
+| Analyzer | Boundary probes report missing equality values. |
+| Analyzer | Error-path probes distinguish broad error checks from exact variant checks. |
+| Analyzer | Return-value probes distinguish exact assertions from smoke assertions. |
+| Analyzer | Local flow names at least one sink or reports a stop reason. |
+| Output | Static output never uses mutation-runtime outcome language. |
+| Output | Unknowns carry stop reasons. |
+| LSP | Diagnostics include finding and probe metadata. |
+| LSP | Hover shows evidence path and missing discriminator. |
+| LSP | Code action copies the exact context packet. |
+| Agent | Context packet includes related tests, missing values, and suggested assertion shape. |
+| Calibration | Imported mutation results are shown only as explicit calibration data. |
+
+## Documentation Tracking
+
+Every significant PR should update the matching docs:
+
+- product behavior: [Static exposure model](STATIC_EXPOSURE_MODEL.md)
+- JSON or context shape: [Output schema](OUTPUT_SCHEMA.md)
+- architecture or module seams: [Architecture](ARCHITECTURE.md)
+- test strategy or gates: [Testing](TESTING.md)
+- roadmap status or sequencing: this file
+- decisions that should not be re-litigated: [ADR directory](adr/)
+- contributor learnings: [Learnings](LEARNINGS.md)

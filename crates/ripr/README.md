@@ -227,6 +227,23 @@ The current alpha line is intentionally narrow:
 The package is not split into `ripr-core`, `ripr-cli`, or `ripr-lsp`. Public
 crate boundaries can be added later if external consumers need them.
 
+## Current Capability Snapshot
+
+`ripr` is currently strongest as a fast, syntax-first draft signal. The next
+planned work is to make findings more grounded through fixtures, file facts,
+parser-backed syntax, stable probe ownership, richer oracle facts, local flow,
+and activation/value modeling.
+
+| Capability | Current state | Next checkpoint |
+| --- | --- | --- |
+| Distribution | Crate and extension packaging paths exist. | Verify one-click editor install from a fresh profile. |
+| Diff analysis | Syntax-first changed-line probes. | Parser-backed changed-node facts. |
+| Test discovery | Basic Rust test/assertion indexing. | AST-backed test and oracle extraction. |
+| Output | Human, JSON, GitHub annotation formats. | Golden fixture lab and stable DTOs. |
+| LSP | Experimental sidecar. | Evidence-aware diagnostics, hover, and context actions. |
+| Agent context | Compact context packet. | Test-writing brief with missing values and assertion shape. |
+| Calibration | Not yet connected to real mutation outcomes. | `cargo-mutants` import after static facts improve. |
+
 ## Development
 
 ```bash

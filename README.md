@@ -227,12 +227,51 @@ The current alpha line is intentionally narrow:
 The package is not split into `ripr-core`, `ripr-cli`, or `ripr-lsp`. Public
 crate boundaries can be added later if external consumers need them.
 
+## Current Capability Snapshot
+
+`ripr` is currently strongest as a fast, syntax-first draft signal. The next
+planned work is to make findings more grounded through fixtures, file facts,
+parser-backed syntax, stable probe ownership, richer oracle facts, local flow,
+and activation/value modeling.
+
+| Capability | Current state | Next checkpoint |
+| --- | --- | --- |
+| Distribution | Crate and extension packaging paths exist. | Verify one-click editor install from a fresh profile. |
+| Diff analysis | Syntax-first changed-line probes. | Parser-backed changed-node facts. |
+| Test discovery | Basic Rust test/assertion indexing. | AST-backed test and oracle extraction. |
+| Output | Human, JSON, GitHub annotation formats. | Golden fixture lab and stable DTOs. |
+| LSP | Experimental sidecar. | Evidence-aware diagnostics, hover, and context actions. |
+| Agent context | Compact context packet. | Test-writing brief with missing values and assertion shape. |
+| Calibration | Not yet connected to real mutation outcomes. | `cargo-mutants` import after static facts improve. |
+
+Important engineering metrics are tracked in [Metrics](docs/METRICS.md). The
+headline targets are:
+
+- reduce time from changed behavior to useful targeted test intent
+- increase fixture-backed capability coverage
+- keep unknowns explicit with stop reasons
+- prevent static output from claiming real mutation outcomes
+- drive `panic` / `unwrap` / `expect` usage in production and tests to zero
+- keep editor and CI feedback latency bounded by mode
+
 ## Supporting Docs
 
 - [Charter](docs/CHARTER.md): mission, vision, category, ecosystem role, and non-goals.
 - [Static exposure model](docs/STATIC_EXPOSURE_MODEL.md): probes, RIPR stages, oracle strength, and classifications.
 - [Output schema](docs/OUTPUT_SCHEMA.md): JSON output and context packet fields.
 - [Architecture](docs/ARCHITECTURE.md): package shape and internal modules.
+- [Roadmap](docs/ROADMAP.md): staged path from alpha to reliable live static exposure analysis.
+- [Implementation plan](docs/IMPLEMENTATION_PLAN.md): PR-by-PR checklist and acceptance gates.
+- [Specs](docs/specs/README.md): behavior contracts for spec-test-code traceability.
+- [ADRs](docs/adr/README.md): durable architecture and product decisions.
+- [Metrics](docs/METRICS.md): capability, quality, and engineering metrics.
+- [Engineering rules](docs/ENGINEERING.md): SRP, error-handling, output-language, and testing rules.
+- [Contributing](CONTRIBUTING.md): PR workflow, review checklist, and required gates.
+- [CI strategy](docs/CI.md): current gates, future CI policy, and merge criteria.
+- [Dogfooding](docs/DOGFOODING.md): using `ripr` on this repository without overfitting.
+- [Spec-test-code traceability](docs/SPEC_TEST_CODE.md): mapping behavior specs to tests and code.
+- [Documentation system](docs/DOCUMENTATION.md): Diataxis organization for user and contributor docs.
+- [Learnings](docs/LEARNINGS.md): repo knowledge captured as work proceeds.
 - [Testing](docs/TESTING.md): local test and package gates.
 - [Release](docs/RELEASE.md): publish checklist and crates.io gates.
 - [Editor extension](docs/EDITOR_EXTENSION.md): VS Code extension usage and local VSIX gates.
@@ -241,6 +280,8 @@ crate boundaries can be added later if external consumers need them.
 - [Marketplace release](docs/RELEASE_MARKETPLACE.md): VS Marketplace and Open VSX release checklist.
 - [Open VSX](docs/OPENVSX.md): namespace and token setup notes.
 - [Brand assets](assets/logo/README.md): logo sources and marketplace icon usage.
+- [Changelog](CHANGELOG.md): notable repository-level changes.
+- [Changelog policy](docs/CHANGELOG_POLICY.md): what belongs in the changelog.
 - [Agent instructions](AGENTS.md): repo-specific instructions for coding agents.
 
 ## Development
