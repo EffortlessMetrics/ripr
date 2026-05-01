@@ -23,6 +23,7 @@ Current how-to docs:
 - [Testing](TESTING.md)
 - [CI strategy](CI.md)
 - [Dogfooding](DOGFOODING.md)
+- [Agent workflows](AGENT_WORKFLOWS.md)
 - [Release](RELEASE.md)
 - [Publishing](PUBLISHING.md)
 - [Editor extension](EDITOR_EXTENSION.md)
@@ -42,6 +43,7 @@ Current reference docs:
 - [Spec-test-code traceability](SPEC_TEST_CODE.md)
 - [Engineering rules](ENGINEERING.md)
 - [Changelog policy](CHANGELOG_POLICY.md)
+- [Capability matrix](CAPABILITY_MATRIX.md)
 
 Planned reference docs:
 
@@ -65,9 +67,11 @@ Current explanation docs:
 - [Roadmap](ROADMAP.md)
 - [Implementation plan](IMPLEMENTATION_PLAN.md)
 - [Metrics](METRICS.md)
+- [Capability matrix](CAPABILITY_MATRIX.md)
 - [Learnings](LEARNINGS.md)
 - [ADRs](adr/)
 - [Specs](specs/)
+- [Agent workflows](AGENT_WORKFLOWS.md)
 
 ## README Rule
 

@@ -15,6 +15,8 @@ jobs:
       - run: cargo check --workspace --all-targets
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+      - run: cargo xtask check-static-language
+      - run: cargo xtask check-no-panic-family
       - run: cargo package -p ripr --list
       - run: cargo publish -p ripr --dry-run
 
