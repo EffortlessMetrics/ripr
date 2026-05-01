@@ -1,0 +1,40 @@
+name: Capability slice
+description: Add or improve one ripr capability
+title: "capability: "
+labels: ["scope:capability"]
+body:
+  - type: input
+    id: capability
+    attributes:
+      label: Capability
+      description: Name the capability this issue moves.
+      placeholder: "Predicate boundary activation values"
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: User-visible behavior
+      description: What should ripr now detect, explain, output, or avoid claiming?
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence package
+      value: |
+        - Spec:
+        - Fixture:
+        - Unit tests:
+        - Golden outputs:
+        - Metrics:
+        - Docs:
+    validations:
+      required: true
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: Non-goals
+      description: What should this issue not expand into?
+    validations:
+      required: true

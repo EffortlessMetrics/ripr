@@ -14,6 +14,26 @@ a discriminator that would notice if that behavior were wrong?
 Avoid broad infrastructure unless it makes that answer more precise, faster, or
 more actionable.
 
+## Scoped Evidence-Heavy PRs
+
+Optimize PRs for narrow production risk, not low line count.
+
+A good `ripr` PR changes one production behavior, public contract, or
+architectural seam and carries the full evidence package needed to review that
+change. Evidence can include specs, fixtures, tests, golden outputs, docs,
+metrics, ADRs, learnings, and traceability.
+
+This means a fixture-heavy or docs-heavy PR can be scoped even when it has many
+changed lines. It also means a small code diff can be unscoped if it changes
+multiple contracts or unrelated behaviors.
+
+Every behavior PR should identify:
+
+- production delta
+- evidence delta
+- one acceptance criterion
+- explicit non-goals
+
 ## Architecture
 
 Keep one published package:
@@ -59,6 +79,10 @@ Target rule:
 No panic, unwrap, expect, todo, or unimplemented in production or tests.
 ```
 
+This target allows ordinary test assertions such as `assert!` and `assert_eq!`.
+It forbids accidental panic paths, unwrap-style setup shortcuts, and
+panic-driven control flow.
+
 Use typed errors or `Result<_, String>` where the existing codebase has not yet
 introduced a richer error type. Tests should return `Result` and use explicit
 assertions instead of unwrap-style failure.
@@ -66,6 +90,10 @@ assertions instead of unwrap-style failure.
 Exceptions require a narrow comment explaining why failure is impossible and why
 the exception is better than propagating an error. The preferred long-term count
 is zero exceptions.
+
+Fixture projects may intentionally contain `unwrap`, `expect`, `panic!`, or
+`#[should_panic]` only when the fixture spec says that behavior is being
+analyzed as a smoke, panic, or weak-oracle shape.
 
 ## Modern Rust
 
@@ -91,6 +119,7 @@ Each behavior should have:
 - one or more tests that cite the spec ID or fixture name
 - implementation code in the matching module
 - golden output when user-visible output changes
+- a capability or quality metric when capability status changes
 
 ## Documentation
 

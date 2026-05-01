@@ -53,6 +53,31 @@ hover evidence, or agent-ready test briefs.
 The load-bearing path is:
 
 ```text
+quality rails
+-> traceability
+-> capability metrics
+-> fixture/golden tooling
+-> dogfooding checks
+-> install verification
+-> fixture lab
+-> file facts
+-> syntax facts
+-> probe ownership
+-> probe generation
+-> local flow facts
+-> oracle facts
+-> activation/value facts
+-> evidence findings
+-> LSP evidence loop
+-> agent context
+-> repository config
+-> calibration
+-> cache
+```
+
+The analyzer path is:
+
+```text
 fixture lab
 -> file facts
 -> syntax facts
@@ -73,29 +98,60 @@ Do not skip ahead to MIR, Charon, a hard HIR dependency, SQLite-first storage,
 large dashboards, broad LSP features, or more probe families before the current
 probe families are grounded in better facts.
 
+## Quality Rail Sequence
+
+Before large analyzer work, add the repo machinery that makes future PRs easy to
+write and review:
+
+| Order | PR | Purpose |
+| ---: | --- | --- |
+| Q1 | `engineering-doctrine-rails` | Scope PRs by production risk, separate production and evidence deltas, add issue templates, capability matrix, traceability seed, and first policy checks. |
+| Q2 | `xtask-policy-checks` | Expand executable checks for static language, panic-family debt, docs indexes, traceability, and metrics. |
+| Q3 | `fixture-golden-scaffolding` | Add fixture/golden conventions plus scaffold/check/bless commands. |
+| Q4 | `capability-metrics-report` | Generate capability and quality metrics artifacts from fixtures and traceability. |
+| Q5 | `architecture-boundary-check` | Add module-boundary checks that preserve one crate with strong internal seams. |
+| Q6 | `dogfood-report` | Add focused `ripr`-on-`ripr` reports as CI artifacts without blocking by default. |
+
+These PRs should remain narrow production changes. Most of their size may be
+evidence, docs, templates, allowlists, or generated scaffolding. That is
+intentional: future analyzer PRs should start with a clear spec, fixture,
+golden-output path, metric, and mechanical check.
+
+These rails are also agent-context infrastructure. Long-running agent work
+should not depend on a single chat transcript. Roadmap items, specs,
+traceability, capability status, metrics, ADRs, and learnings are the durable
+handoff surface that lets an agent resume, subset the next slice, and finish one
+reviewable PR without guessing.
+
 ## PR Queue
 
 | Order | PR | Purpose | Release target |
 | ---: | --- | --- | --- |
 | 0 | `planning-and-tracking-docs` | Put the product plan, metrics, and contribution rules in-repo. | `0.2.x` |
-| 1 | `verify-one-click-extension-install` | Verify the normal editor install path without requiring `cargo install ripr`. | `0.2.x` |
-| 2 | `fixture-laboratory` | Create golden fixtures and invariants before changing the analyzer. | `0.3.0` |
-| 3 | `file-facts-model` | Introduce a fact model while preserving current scanner behavior. | `0.3.0` |
-| 4 | `syntax-adapter-mvp` | Add a parser adapter boundary and syntax-backed file facts. | `0.3.0` |
-| 5 | `ast-test-oracle-extraction` | Extract tests and assertions from syntax nodes. | `0.3.0` |
-| 6 | `ast-probe-ownership` | Map diff spans to changed syntax nodes and stable owner symbols. | `0.3.0` |
-| 7 | `ast-probe-generation` | Generate predicate, return, error, field, and call probes from syntax. | `0.3.0` |
-| 8 | `oracle-strength-v2` | Distinguish exact, weak, smoke, snapshot, mock, and unknown oracles. | `0.4.0` |
-| 9 | `local-delta-flow-v1` | Name return, field, error, and effect sinks for changed behavior. | `0.4.0` |
-| 10 | `activation-value-modeling-v1` | Detect observed values and missing boundary or variant inputs. | `0.4.0` |
-| 11 | `evidence-first-output` | Make CLI output the reference explanation for each finding. | `0.4.0` |
-| 12 | `lsp-evidence-hover-actions` | Add finding-specific diagnostics, hover evidence, and code actions. | `0.5.0` |
-| 13 | `agent-context-v2` | Emit a compact test-writing brief from CLI and LSP. | `0.5.0` |
-| 14 | `ripr-config-v1` | Add topology, oracle, snapshot, mock, and external-boundary config. | `0.6.0` |
-| 15 | `suppression-v1` | Add reasoned, visible suppressions with optional expiry. | `0.6.0` |
-| 16 | `sarif-ci-policy` | Add SARIF and opt-in CI policy modes. | `0.6.0` |
-| 17 | `cargo-mutants-calibration-scaffold` | Import real mutation results for offline calibration. | `0.7.0` |
-| 18 | `persistent-cache-v1` | Cache stable facts after the fact model is worth caching. | `0.8.0` |
+| 1 | `engineering-doctrine-rails` | Make scoped evidence-heavy PRs mechanical with templates, traceability, capability status, and first policy checks. | `0.2.x` |
+| 2 | `verify-one-click-extension-install` | Verify the normal editor install path without requiring `cargo install ripr`. | `0.2.x` |
+| 3 | `xtask-policy-checks` | Expand repo policy checks for language, panic-family debt, docs indexes, traceability, and metrics. | `0.2.x` |
+| 4 | `fixture-golden-scaffolding` | Add fixture/golden structure, scaffold command, check command, and bless command. | `0.3.0` |
+| 5 | `fixture-laboratory` | Create golden fixtures and invariants before changing the analyzer. | `0.3.0` |
+| 6 | `capability-metrics-report` | Generate capability, quality, engineering, and latency metrics artifacts. | `0.3.0` |
+| 7 | `file-facts-model` | Introduce a fact model while preserving current scanner behavior. | `0.3.0` |
+| 8 | `syntax-adapter-mvp` | Add a parser adapter boundary and syntax-backed file facts. | `0.3.0` |
+| 9 | `ast-test-oracle-extraction` | Extract tests and assertions from syntax nodes. | `0.3.0` |
+| 10 | `ast-probe-ownership` | Map diff spans to changed syntax nodes and stable owner symbols. | `0.3.0` |
+| 11 | `ast-probe-generation` | Generate predicate, return, error, field, and call probes from syntax. | `0.3.0` |
+| 12 | `architecture-boundary-check` | Enforce internal module boundaries while keeping one published crate. | `0.3.x` |
+| 13 | `dogfood-report` | Emit focused `ripr`-on-`ripr` reports as non-blocking artifacts. | `0.3.x` |
+| 14 | `oracle-strength-v2` | Distinguish exact, weak, smoke, snapshot, mock, and unknown oracles. | `0.4.0` |
+| 15 | `local-delta-flow-v1` | Name return, field, error, and effect sinks for changed behavior. | `0.4.0` |
+| 16 | `activation-value-modeling-v1` | Detect observed values and missing boundary or variant inputs. | `0.4.0` |
+| 17 | `evidence-first-output` | Make CLI output the reference explanation for each finding. | `0.4.0` |
+| 18 | `lsp-evidence-hover-actions` | Add finding-specific diagnostics, hover evidence, and code actions. | `0.5.0` |
+| 19 | `agent-context-v2` | Emit a compact test-writing brief from CLI and LSP. | `0.5.0` |
+| 20 | `ripr-config-v1` | Add topology, oracle, snapshot, mock, and external-boundary config. | `0.6.0` |
+| 21 | `suppression-v1` | Add reasoned, visible suppressions with optional expiry. | `0.6.0` |
+| 22 | `sarif-ci-policy` | Add SARIF and opt-in CI policy modes. | `0.6.0` |
+| 23 | `cargo-mutants-calibration-scaffold` | Import real mutation results for offline calibration. | `0.7.0` |
+| 24 | `persistent-cache-v1` | Cache stable facts after the fact model is worth caching. | `0.8.0` |
 
 ## Release Frames
 
@@ -103,7 +159,9 @@ probe families are grounded in better facts.
 
 Ship:
 
+- fixture and golden scaffolding
 - fixture laboratory
+- capability metrics report
 - stable output DTOs
 - file facts
 - parser adapter MVP

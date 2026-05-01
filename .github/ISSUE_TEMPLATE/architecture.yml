@@ -1,0 +1,33 @@
+name: Architecture seam
+description: Add, move, or enforce one architectural boundary
+title: "architecture: "
+labels: ["scope:architecture"]
+body:
+  - type: textarea
+    id: seam
+    attributes:
+      label: Boundary
+      description: Which seam is moving and who owns it?
+    validations:
+      required: true
+  - type: textarea
+    id: direction
+    attributes:
+      label: Dependency direction
+      description: What imports are allowed? What imports are forbidden?
+    validations:
+      required: true
+  - type: textarea
+    id: enforcement
+    attributes:
+      label: Enforcement
+      description: What test, xtask, or CI check proves the seam?
+    validations:
+      required: true
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: Non-goals
+      description: What should this issue not expand into?
+    validations:
+      required: true

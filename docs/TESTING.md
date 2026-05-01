@@ -26,6 +26,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo doc --workspace --no-deps
 cargo xtask ci-fast
 cargo xtask ci-full
+cargo xtask check-static-language
+cargo xtask check-no-panic-family
 ```
 
 Package check:

@@ -20,3 +20,5 @@ how future PRs are scoped or reviewed.
   scaffolding so future PRs can keep design, tests, and implementation aligned.
 - Added contributor workflow, CI strategy, dogfooding, changelog policy, ADR
   template, and spec template docs.
+- Added scoped evidence-heavy PR doctrine and first policy-check commands for
+  static language and panic-family debt tracking.

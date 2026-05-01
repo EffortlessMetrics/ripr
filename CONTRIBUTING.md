@@ -1,7 +1,8 @@
 # Contributing
 
-`ripr` is built PR by PR. Each PR should be small enough to review, but complete
-enough to leave the repository in a better state than it found it.
+`ripr` is built PR by PR. Each PR should have a narrow production delta and a
+complete evidence package, so reviewers can evaluate behavior, risk, and
+traceability without reconstructing intent from chat history.
 
 ## Product Contract
 
@@ -27,11 +28,51 @@ Each PR should include:
 - changelog entry when behavior, workflow, or public docs change
 - traceability from spec to tests to code for behavior changes
 
+## Scoped Evidence-Heavy PRs
+
+PR size is measured by production risk, not line count.
+
+A scoped PR changes one production behavior, public contract, or architectural
+seam, then includes the complete evidence package needed to make that change
+reviewable: specs, fixtures, tests, golden outputs, docs, metrics, ADRs,
+learnings, and traceability.
+
+A large PR can be scoped when the production delta is narrow and most of the
+diff is supporting evidence. A small PR can still be too large when it mixes
+unrelated behaviors, changes multiple public contracts, or touches multiple
+architectural seams without one shared acceptance criterion.
+
+Every PR should make three things visible:
+
+- production delta: what behavior, contract, or seam changed
+- evidence delta: what specs, tests, fixtures, goldens, docs, metrics, ADRs, or
+  learnings support it
+- acceptance criterion: what single reviewable claim the PR proves
+
+Prefer:
+
+- narrow production delta
+- large evidence delta when needed
+- clear spec -> test -> code mapping
+- deterministic golden output
+- explicit metrics movement
+- documented non-goals
+
+Avoid:
+
+- unrelated production behavior changes
+- schema changes bundled with analyzer rewrites unless one acceptance criterion
+  requires both
+- LSP or UI changes bundled with classifier changes unless they share one
+  finding contract
+- cleanup mixed with behavior changes
+
 ## Review Checklist
 
 Before requesting review:
 
 - [ ] Scope matches one roadmap or implementation-plan item.
+- [ ] Production delta and evidence delta are both explicit.
 - [ ] New behavior has a spec entry or updates an existing spec.
 - [ ] Tests use BDD-shaped names or fixture names that explain the behavior.
 - [ ] Output changes update golden expectations and schema docs.
@@ -51,6 +92,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo doc --workspace --no-deps
 cargo package -p ripr --list
 cargo publish -p ripr --dry-run
+cargo xtask check-static-language
+cargo xtask check-no-panic-family
 ```
 
 When the worktree is intentionally dirty during local review, Cargo packaging

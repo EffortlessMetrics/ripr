@@ -26,6 +26,9 @@ Deliverables:
 - [x] Add dogfooding guidance.
 - [x] Add ADR and spec templates.
 - [x] Add changelog policy guidance.
+- [x] Add scoped evidence-heavy PR doctrine.
+- [x] Add first executable policy checks for static language and panic-family
+      debt.
 
 Acceptance:
 
@@ -35,6 +38,7 @@ Acceptance:
 - [x] The docs state that production and test code should avoid `panic`,
       `unwrap`, and `expect`, and that existing uses are tracked debt.
 - [x] The docs preserve the product contract and conservative static language.
+- [x] PRs are scoped by production risk rather than line count.
 
 ## PR 1: `verify-one-click-extension-install`
 
@@ -56,6 +60,26 @@ Tests and gates:
 - [ ] `cd editors/vscode && npm ci`
 - [ ] `cd editors/vscode && npm run compile`
 - [ ] `cd editors/vscode && npm run package`
+
+## PR 1A: `xtask-policy-checks`
+
+Purpose: expand the initial policy checks into a broader local and CI quality
+rail.
+
+Deliverables:
+
+- [ ] Move static language and panic-family checks into CI.
+- [ ] Add markdown local link check.
+- [ ] Add doc index check for README, docs, specs, and ADRs.
+- [ ] Add traceability manifest validation.
+- [ ] Add capability matrix validation.
+- [ ] Add PR-scope check for production delta and evidence delta.
+
+Acceptance:
+
+- [ ] `cargo xtask ci-fast` runs the core policy checks.
+- [ ] Existing debt is allowlisted with counts, and new debt fails the check.
+- [ ] Docs explain how to remove allowlist entries as debt is paid down.
 
 ## PR 2: `fixture-laboratory`
 

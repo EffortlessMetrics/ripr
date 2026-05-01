@@ -30,6 +30,11 @@ Each spec should include:
 - test mapping
 - implementation mapping
 
+Machine-readable mapping starts in `.ripr/traceability.toml`. Keep it aligned
+with spec files, fixtures, code modules, output contracts, and metrics. The
+manifest is intentionally lightweight now and will become stricter as xtask
+traceability checks land.
+
 ## Test Mapping
 
 Tests should make the behavior visible in names or comments.
@@ -73,6 +78,13 @@ For behavior changes, the PR should answer:
 - [ ] Which golden outputs changed?
 - [ ] Which conservative static-language rules were checked?
 - [ ] Which metrics should move?
+
+For long-context agent work, also answer:
+
+- [ ] What is the narrow production delta?
+- [ ] What is the supporting evidence delta?
+- [ ] What is the single acceptance criterion?
+- [ ] What is intentionally out of scope?
 
 ## Output Changes
 

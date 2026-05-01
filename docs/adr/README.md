@@ -11,3 +11,4 @@ PR. They should be short, dated, and focused on consequences.
 | [0002](0002-static-exposure-language.md) | accepted | Use conservative static exposure language. |
 | [0003](0003-fixtures-before-analyzer-rewrites.md) | accepted | Build fixture lab before parser and flow rewrites. |
 | [0004](0004-docs-as-planning-artifacts.md) | accepted | Track PR-by-PR implementation through docs, specs, and metrics. |
+| [0005](0005-scoped-evidence-heavy-prs.md) | accepted | Scope PRs by production risk, not line count. |

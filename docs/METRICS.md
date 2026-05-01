@@ -3,6 +3,9 @@
 `ripr` metrics exist to track whether static findings are becoming more useful,
 more truthful, and less noisy. They are not vanity counters.
 
+Capability status is tracked in [Capability matrix](CAPABILITY_MATRIX.md). This
+file defines the metric categories and how to interpret them.
+
 ## North Star
 
 The primary product metric is:
@@ -55,6 +58,8 @@ A useful targeted test intent names:
 | CI duration | Protects contribution loop. | Bounded |
 | Flaky test count | Protects trust in gates. | 0 |
 | Public dependency count | Keeps install and maintenance risk low. | Justified |
+| Production delta size | Helps distinguish risky code churn from support evidence. | Small and scoped |
+| Evidence delta completeness | Shows whether specs, tests, docs, goldens, metrics, and ADRs support behavior. | Up |
 
 ## Current Baseline
 
@@ -95,3 +100,8 @@ These are useful context but bad primary goals:
 - number of lines of code
 
 The product should optimize evidence quality, not raw output volume.
+
+Line count is especially misleading for `ripr` PRs. A large evidence-heavy PR
+can reduce risk when it supports one production behavior with fixtures, goldens,
+specs, docs, and metrics. A small PR can increase risk when it changes multiple
+contracts without a traceability chain.

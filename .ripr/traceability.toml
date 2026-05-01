@@ -1,0 +1,61 @@
+# Traceability manifest for long-context work.
+#
+# This file maps behavior specs to the tests, code, output contracts, and
+# metrics that prove or track them. It starts as a lightweight manifest and will
+# become mechanically checked as xtask traceability work lands.
+
+[[behavior]]
+id = "RIPR-SPEC-0001"
+name = "static exposure loop"
+spec = "docs/specs/RIPR-SPEC-0001-static-exposure-loop.md"
+tests = [
+  "crates/ripr/src/analysis/mod.rs",
+  "crates/ripr/tests/cli_smoke.rs"
+]
+code = [
+  "crates/ripr/src/domain.rs",
+  "crates/ripr/src/app.rs",
+  "crates/ripr/src/analysis",
+  "crates/ripr/src/output",
+  "crates/ripr/src/cli.rs",
+  "crates/ripr/src/lsp.rs"
+]
+outputs = [
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/STATIC_EXPOSURE_MODEL.md"
+]
+metrics = [
+  "fixture_pass_rate",
+  "oracle_kind_recognition_rate",
+  "unknowns_with_stop_reasons"
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0002"
+name = "fixture laboratory"
+spec = "docs/specs/RIPR-SPEC-0002-fixture-laboratory.md"
+tests = []
+code = []
+outputs = []
+metrics = [
+  "fixture_pass_rate",
+  "golden_output_drift_count"
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0003"
+name = "agent context packet"
+spec = "docs/specs/RIPR-SPEC-0003-agent-context.md"
+tests = []
+code = [
+  "crates/ripr/src/app.rs",
+  "crates/ripr/src/output/json.rs",
+  "crates/ripr/src/lsp.rs"
+]
+outputs = [
+  "docs/OUTPUT_SCHEMA.md"
+]
+metrics = [
+  "context_packets_with_missing_discriminator",
+  "context_packets_with_suggested_assertions"
+]

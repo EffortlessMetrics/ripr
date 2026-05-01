@@ -130,3 +130,38 @@ Prefer small, high-signal changes:
 
 Do not add deep semantic dependencies, persistent databases, or broad LSP
 features unless the basic CLI, schema, packaging, and tests remain green.
+
+## PR Scope Doctrine
+
+Do not optimize PRs for low line count. Optimize for narrow production risk and
+complete evidence.
+
+A large fixture, golden-output, spec, docs, ADR, metrics, or traceability diff
+is welcome when it makes one production behavior reviewable. A small code diff
+is not acceptable if it changes multiple contracts without a spec-test-code
+trail.
+
+Every material behavior change should preserve this chain:
+
+```text
+spec -> test or fixture -> code -> output contract -> metric
+```
+
+Make production delta, evidence delta, acceptance criterion, and non-goals
+explicit in PRs and planning docs.
+
+## Long-Context Agent Workflow
+
+This repo is intentionally organized so agents can resume long-running goals
+from repository artifacts instead of chat history.
+
+When picking up work:
+
+- start from `docs/ROADMAP.md` and `docs/IMPLEMENTATION_PLAN.md`
+- use `docs/CAPABILITY_MATRIX.md` to identify current capability status
+- use `docs/specs/` and `.ripr/traceability.toml` to map spec -> tests -> code
+- choose the smallest vertical slice with one production delta and one evidence
+  package
+- update `docs/LEARNINGS.md` when repo knowledge or blockers should survive
+
+See `docs/AGENT_WORKFLOWS.md` for the detailed handoff model.

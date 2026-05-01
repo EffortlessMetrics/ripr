@@ -265,10 +265,12 @@ headline targets are:
 - [Specs](docs/specs/README.md): behavior contracts for spec-test-code traceability.
 - [ADRs](docs/adr/README.md): durable architecture and product decisions.
 - [Metrics](docs/METRICS.md): capability, quality, and engineering metrics.
+- [Capability matrix](docs/CAPABILITY_MATRIX.md): capability status, evidence, next checkpoint, and metric.
 - [Engineering rules](docs/ENGINEERING.md): SRP, error-handling, output-language, and testing rules.
 - [Contributing](CONTRIBUTING.md): PR workflow, review checklist, and required gates.
 - [CI strategy](docs/CI.md): current gates, future CI policy, and merge criteria.
 - [Dogfooding](docs/DOGFOODING.md): using `ripr` on this repository without overfitting.
+- [Agent workflows](docs/AGENT_WORKFLOWS.md): long-context handoff, subsetting, and resume rules.
 - [Spec-test-code traceability](docs/SPEC_TEST_CODE.md): mapping behavior specs to tests and code.
 - [Documentation system](docs/DOCUMENTATION.md): Diataxis organization for user and contributor docs.
 - [Learnings](docs/LEARNINGS.md): repo knowledge captured as work proceeds.
