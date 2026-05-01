@@ -47,7 +47,7 @@ jobs:
           name: ripr-vsix
           path: editors/vscode/dist/*.vsix
 
-  publish:
+  publish-vs-marketplace:
     needs: package
     runs-on: ubuntu-latest
     steps:
@@ -65,13 +65,35 @@ jobs:
         env:
           VS_MARKETPLACE_TOKEN: ${{ secrets.VS_MARKETPLACE_TOKEN }}
 
+  publish-open-vsx:
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ripr-vsix
+          path: dist
+
       - name: Publish to Open VSX
         run: npx -y ovsx publish dist/*.vsix -p "$OPEN_VSX_TOKEN"
         env:
           OPEN_VSX_TOKEN: ${{ secrets.OPEN_VSX_TOKEN }}
 
+  attach-release-asset:
+    needs: package
+    if: ${{ github.ref_type == 'tag' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ripr-vsix
+          path: dist
+
       - name: Attach VSIX to GitHub Release
-        if: ${{ github.ref_type == 'tag' }}
         run: gh release upload "${{ github.ref_name }}" dist/*.vsix --clobber
         env:
           GH_TOKEN: ${{ github.token }}
