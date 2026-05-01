@@ -28,6 +28,9 @@ cargo xtask ci-fast
 cargo xtask ci-full
 cargo xtask check-static-language
 cargo xtask check-no-panic-family
+cargo xtask check-file-policy
+cargo xtask check-executable-files
+cargo xtask check-workflows
 ```
 
 Package check:

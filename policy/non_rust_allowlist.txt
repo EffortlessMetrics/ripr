@@ -1,0 +1,39 @@
+# Allowlisted non-Rust programming and declarative implementation surfaces.
+#
+# Format:
+# glob|kind|owner|reason
+#
+# Rust is the default implementation language for repo automation, production
+# logic, test harnesses, fixture runners, release checks, and policy checks.
+# New non-Rust programming files must match one of these entries or add a new
+# reviewed entry with an owner and reason.
+
+.github/workflows/*.yml|ci_declarative|release/ci|GitHub Actions workflow definitions.
+.github/workflows/*.yaml|ci_declarative|release/ci|GitHub Actions workflow definitions.
+.github/ISSUE_TEMPLATE/*.yml|github_template|repo-process|GitHub issue forms.
+.github/ISSUE_TEMPLATE/*.yaml|github_template|repo-process|GitHub issue forms.
+editors/vscode/**/*.ts|editor_extension|lsp/editor|VS Code extension client and tests.
+editors/vscode/package.json|editor_extension_manifest|lsp/editor|VS Code extension package manifest.
+editors/vscode/package-lock.json|editor_extension_lockfile|lsp/editor|Pinned npm dependency lockfile for the extension.
+editors/vscode/tsconfig.json|editor_extension_config|lsp/editor|VS Code TypeScript compiler config.
+editors/vscode/**/*.json|editor_extension_config|lsp/editor|VS Code extension config or generated metadata.
+fixtures/**|fixture_input|analysis-fixtures|Fixture workspaces may intentionally contain analyzed source files.
+crates/ripr/examples/**|fixture_input|analysis-fixtures|Packaged sample workspace and diff are analyzed inputs.
+assets/**|asset|brand/docs|Non-code assets.
+docs/**|documentation|docs|Documentation, examples, snippets, and reference material.
+*.md|documentation|docs|Root documentation.
+CHANGELOG.md|documentation|docs|Repository changelog.
+CONTRIBUTING.md|documentation|docs|Contribution guide.
+AGENTS.md|documentation|agents|Agent instructions.
+CURRENT_STATE.md|documentation|docs|Repository state notes.
+README.md|documentation|docs|Repository README.
+LICENSE-*|license|repo|License files.
+Cargo.toml|rust_manifest|rust|Cargo workspace manifest.
+Cargo.lock|rust_lockfile|rust|Cargo lockfile.
+crates/**/Cargo.toml|rust_manifest|rust|Cargo package manifests.
+xtask/Cargo.toml|rust_manifest|rust|xtask package manifest.
+ripr.toml.example|config_example|config|Example ripr configuration.
+.cargo/config.toml|cargo_config|rust|Cargo aliases for repository tooling.
+.gitignore|repo_config|repo|Git ignore rules.
+.ripr/*.txt|policy_metadata|repo-policy|Policy allowlists.
+.ripr/*.toml|policy_metadata|repo-policy|Traceability metadata.

@@ -81,6 +81,7 @@ Before requesting review:
 - [ ] No new `panic`, `unwrap`, `expect`, `todo`, or `unimplemented` in
       production or test code.
 - [ ] CI-relevant docs or workflows were updated when gates changed.
+- [ ] New non-Rust programming files are covered by the file policy allowlist.
 
 ## Required Rust Gates
 
@@ -94,6 +95,9 @@ cargo package -p ripr --list
 cargo publish -p ripr --dry-run
 cargo xtask check-static-language
 cargo xtask check-no-panic-family
+cargo xtask check-file-policy
+cargo xtask check-executable-files
+cargo xtask check-workflows
 ```
 
 When the worktree is intentionally dirty during local review, Cargo packaging

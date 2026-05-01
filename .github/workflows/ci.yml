@@ -17,6 +17,9 @@ jobs:
       - run: cargo test --workspace
       - run: cargo xtask check-static-language
       - run: cargo xtask check-no-panic-family
+      - run: cargo xtask check-file-policy
+      - run: cargo xtask check-executable-files
+      - run: cargo xtask check-workflows
       - run: cargo package -p ripr --list
       - run: cargo publish -p ripr --dry-run
 

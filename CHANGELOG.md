@@ -22,3 +22,5 @@ how future PRs are scoped or reviewed.
   template, and spec template docs.
 - Added scoped evidence-heavy PR doctrine and first policy-check commands for
   static language and panic-family debt tracking.
+- Added Rust-first file policy docs and checks for allowlisted non-Rust
+  programming files, executable bits, and workflow shell budgets.

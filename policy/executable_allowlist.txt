@@ -1,0 +1,6 @@
+# Checked-in executable file exceptions.
+#
+# Format:
+# path
+#
+# Empty by default. Prefer cargo xtask over checked-in executable scripts.

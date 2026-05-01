@@ -68,6 +68,20 @@ The current internal shape is:
 - Minimum Rust version: 1.92
 - Keep `unsafe_code = "forbid"`
 
+## Rust-First File Policy
+
+Rust is the default implementation language for repo automation, production
+logic, test harnesses, fixture runners, release checks, and policy checks.
+
+Do not add shell, Python, JavaScript, TypeScript, or other programming files
+outside approved surfaces. Prefer `cargo xtask` for repo automation. If a
+non-Rust file is necessary, update `policy/non_rust_allowlist.txt` and explain
+the exception in the PR.
+
+The VS Code extension, GitHub Actions declarations, fixture inputs,
+documentation examples, generated outputs, and assets are explicit exceptions
+when covered by policy metadata.
+
 ## Required Gates
 
 Run these before claiming the branch is ready:
@@ -80,6 +94,9 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo doc --workspace --no-deps
 cargo package -p ripr --list
 cargo publish -p ripr --dry-run
+cargo xtask check-file-policy
+cargo xtask check-executable-files
+cargo xtask check-workflows
 ```
 
 Useful runtime checks:

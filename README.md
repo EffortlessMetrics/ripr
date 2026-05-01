@@ -267,6 +267,7 @@ headline targets are:
 - [Metrics](docs/METRICS.md): capability, quality, and engineering metrics.
 - [Capability matrix](docs/CAPABILITY_MATRIX.md): capability status, evidence, next checkpoint, and metric.
 - [Engineering rules](docs/ENGINEERING.md): SRP, error-handling, output-language, and testing rules.
+- [File policy](docs/FILE_POLICY.md): Rust-first implementation and allowlisted non-Rust surfaces.
 - [Contributing](CONTRIBUTING.md): PR workflow, review checklist, and required gates.
 - [CI strategy](docs/CI.md): current gates, future CI policy, and merge criteria.
 - [Dogfooding](docs/DOGFOODING.md): using `ripr` on this repository without overfitting.
