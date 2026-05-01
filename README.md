@@ -235,6 +235,9 @@ crate boundaries can be added later if external consumers need them.
 - [Architecture](docs/ARCHITECTURE.md): package shape and internal modules.
 - [Testing](docs/TESTING.md): local test and package gates.
 - [Release](docs/RELEASE.md): publish checklist and crates.io gates.
+- [Editor extension](docs/EDITOR_EXTENSION.md): VS Code extension usage and local VSIX gates.
+- [Marketplace release](docs/RELEASE_MARKETPLACE.md): VS Marketplace and Open VSX release checklist.
+- [Open VSX](docs/OPENVSX.md): namespace and token setup notes.
 - [Agent instructions](AGENTS.md): repo-specific instructions for coding agents.
 
 ## Development

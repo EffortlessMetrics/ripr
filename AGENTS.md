@@ -93,6 +93,16 @@ cargo run -p ripr -- explain --diff crates/ripr/examples/sample/example.diff pro
 cargo run -p ripr -- context --diff crates/ripr/examples/sample/example.diff --at probe:crates_ripr_examples_sample_src_lib.rs:21:error_path --json
 ```
 
+Editor extension checks:
+
+```bash
+cd editors/vscode
+npm ci
+npm run compile
+npm run package
+code --install-extension dist/ripr-0.1.0.vsix --force
+```
+
 ## Implementation Bias
 
 Prefer small, high-signal changes:
@@ -106,4 +116,3 @@ Prefer small, high-signal changes:
 
 Do not add deep semantic dependencies, persistent databases, or broad LSP
 features unless the basic CLI, schema, packaging, and tests remain green.
-
