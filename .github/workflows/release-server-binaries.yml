@@ -130,6 +130,7 @@ jobs:
       - name: Upload release assets
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           RAW_VERSION: ${{ github.event.inputs.version || github.ref_name }}
         run: |
           version="${RAW_VERSION#v}"
