@@ -78,6 +78,14 @@ pub fn summarize_file(path: PathBuf, text: String) -> FileSummary {
             i += 1;
             continue;
         }
+        if pending_test && trimmed.starts_with("#[") {
+            i += 1;
+            continue;
+        }
+        if pending_test && trimmed.is_empty() {
+            i += 1;
+            continue;
+        }
 
         if let Some(name) = function_name(trimmed) {
             let start_line = i + 1;
@@ -114,7 +122,9 @@ pub fn summarize_file(path: PathBuf, text: String) -> FileSummary {
             continue;
         }
 
-        pending_test = false;
+        if !trimmed.is_empty() {
+            pending_test = false;
+        }
         i += 1;
     }
 
@@ -363,5 +373,39 @@ fn checks_error() {
         assert_eq!(file.tests.len(), 1);
         assert_eq!(file.tests[0].assertions.len(), 1);
         assert_eq!(file.tests[0].assertions[0].strength, OracleStrength::Smoke);
+    }
+
+    #[test]
+    fn preserves_test_marker_across_stacked_attributes() {
+        let file = summarize_file(
+            PathBuf::from("src/lib.rs"),
+            r#"
+#[test]
+#[should_panic]
+fn panics_on_bad_input() {}
+
+#[test]
+#[ignore]
+fn slow_but_real_test() {}
+
+#[test]
+#[cfg(feature = "foo")]
+fn feature_gated_test() {}
+"#
+            .to_string(),
+        );
+        let names = file
+            .tests
+            .iter()
+            .map(|test| test.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            vec![
+                "panics_on_bad_input",
+                "slow_but_real_test",
+                "feature_gated_test"
+            ]
+        );
     }
 }

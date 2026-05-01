@@ -2,12 +2,18 @@
 
 ## 0.1
 
-- Zero-dependency publishable crate.
+- Small-dependency publishable crate.
 - Syntax-first diff probe generation.
 - Test and oracle indexing.
 - Static RIPR classification.
 - Human, JSON, GitHub output.
 - Basic LSP sidecar.
+
+## 0.1.1
+
+- Replace manual CLI parsing with `clap` derive.
+- Convert JSON output rendering to serde output DTOs.
+- Add more fixture coverage for duplicate names, stacked attributes, and nested path layouts.
 
 ## 0.2
 

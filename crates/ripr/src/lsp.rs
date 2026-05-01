@@ -8,10 +8,7 @@ pub fn serve() -> Result<(), String> {
     let mut reader = BufReader::new(stdin.lock());
     let mut writer = stdout.lock();
 
-    loop {
-        let Some(message) = read_lsp_message(&mut reader)? else {
-            break;
-        };
+    while let Some(message) = read_lsp_message(&mut reader)? {
         if message.contains("\"method\":\"initialize\"")
             || message.contains("\"method\": \"initialize\"")
         {
@@ -91,12 +88,12 @@ fn publish_workspace_diagnostics(writer: &mut impl Write) -> Result<(), String> 
         for (idx, finding) in findings.iter().enumerate() {
             let line = finding.probe.location.line.saturating_sub(1);
             diagnostics.push_str(&format!(
-                r#"{{"range":{{"start":{{"line":{line},"character":0}},"end":{{"line":{line},"character":120}}}},"severity":2,"source":"ripr","code":"{}","message":"{}","data":{{"probeId":"{}","class":"{}","family":"{}","confidence":{:.2}}}}}"#,
-                finding.class.as_str(),
-                json_escape(&lsp_message(finding)),
-                json_escape(&finding.id),
-                finding.class.as_str(),
-                finding.probe.family.as_str(),
+                r#"{{"range":{{"start":{{"line":{line},"character":0}},"end":{{"line":{line},"character":120}}}},"severity":2,"source":"ripr","code":{},"message":{},"data":{{"probeId":{},"class":{},"family":{},"confidence":{:.2}}}}}"#,
+                json_string(finding.class.as_str()),
+                json_string(&lsp_message(finding)),
+                json_string(&finding.id),
+                json_string(finding.class.as_str()),
+                json_string(finding.probe.family.as_str()),
                 finding.confidence,
             ));
             if idx + 1 != findings.len() {
@@ -105,8 +102,8 @@ fn publish_workspace_diagnostics(writer: &mut impl Write) -> Result<(), String> 
         }
         diagnostics.push(']');
         let notif = format!(
-            r#"{{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{{"uri":"{}","diagnostics":{diagnostics}}}}}"#,
-            json_escape(&uri)
+            r#"{{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{{"uri":{},"diagnostics":{diagnostics}}}}}"#,
+            json_string(&uri)
         );
         write_lsp_message(writer, &notif)?;
     }
@@ -171,22 +168,29 @@ fn extract_id(message: &str) -> Option<String> {
     }
 }
 
-fn json_escape(value: &str) -> String {
-    let mut out = String::new();
-    for ch in value.chars() {
-        match ch {
-            '\\' => out.push_str("\\\\"),
-            '"' => out.push_str("\\\""),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c => out.push(c),
-        }
-    }
-    out
+fn json_string(value: &str) -> String {
+    serde_json::to_string(value).expect("serializing a string cannot fail")
 }
 
 #[allow(dead_code)]
 fn _render_json_for_debug(output: &crate::app::CheckOutput) -> String {
     output::json::render(output)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::json_string;
+
+    #[test]
+    fn json_string_escapes_lsp_control_characters() {
+        let value = "quote\" slash\\ newline\n tab\t control\u{0001}";
+        let encoded = json_string(value);
+        let decoded: String = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded, value);
+        assert!(encoded.contains("\\\""));
+        assert!(encoded.contains("\\\\"));
+        assert!(encoded.contains("\\n"));
+        assert!(encoded.contains("\\t"));
+        assert!(encoded.contains("\\u0001"));
+    }
 }

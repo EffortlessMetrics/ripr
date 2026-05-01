@@ -5,13 +5,12 @@ use crate::domain::*;
 use std::path::Path;
 
 pub fn classify_probe(probe: &Probe, index: &RustIndex) -> Finding {
-    let owner_name = probe
-        .owner
-        .as_ref()
-        .and_then(|id| id.0.rsplit("::").next().map(str::to_string));
-    let owner_fn = owner_name
-        .as_ref()
-        .and_then(|name| index.functions.iter().find(|f| &f.name == name));
+    let owner_fn = probe.owner.as_ref().and_then(|owner| {
+        index
+            .functions
+            .iter()
+            .find(|function| &function.id == owner)
+    });
 
     let related_tests = find_related_tests(probe, owner_fn, index);
     let reach = reach_evidence(&related_tests, owner_fn);
@@ -557,8 +556,14 @@ fn normalize_path(path: &Path) -> String {
 
 fn package_prefix(path: &Path) -> Option<String> {
     let normalized = normalize_path(path);
+    if let Some(rest) = normalized.strip_prefix("crates/")
+        && let Some((crate_name, crate_relative)) = rest.split_once('/')
+        && (crate_relative.starts_with("src/") || crate_relative.starts_with("tests/"))
+    {
+        return Some(format!("crates/{crate_name}/"));
+    }
     for marker in ["/src/", "/tests/"] {
-        if let Some(idx) = normalized.find(marker) {
+        if let Some(idx) = normalized.rfind(marker) {
             let prefix = &normalized[..idx];
             if prefix.is_empty() {
                 return None;
@@ -567,4 +572,103 @@ fn package_prefix(path: &Path) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analysis::rust_index::AssertionSummary;
+    use std::path::PathBuf;
+
+    #[test]
+    fn resolves_owner_by_full_symbol_identity() {
+        let crate_b_fn = function("crates/crate_b/src/lib.rs", "score");
+        let crate_a_fn = function("crates/crate_a/src/lib.rs", "score");
+        let index = RustIndex {
+            functions: vec![crate_b_fn, crate_a_fn],
+            tests: vec![
+                test(
+                    "crates/crate_b/tests/score.rs",
+                    "crate_b_score_test",
+                    "score(2)",
+                    "assert_eq!(score(2), 3);",
+                ),
+                test(
+                    "crates/crate_a/tests/score.rs",
+                    "crate_a_score_test",
+                    "score(1)",
+                    "assert_eq!(score(1), 2);",
+                ),
+            ],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:crate_a:score".to_string()),
+            location: SourceLocation::new("crates/crate_a/src/lib.rs", 2, 1),
+            owner: Some(SymbolId("crates/crate_a/src/lib.rs::score".to_string())),
+            family: ProbeFamily::ReturnValue,
+            delta: DeltaKind::Value,
+            before: None,
+            after: Some("score + 1".to_string()),
+            expression: "score + 1".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+
+        assert_eq!(finding.related_tests.len(), 1);
+        assert_eq!(finding.related_tests[0].name, "crate_a_score_test");
+    }
+
+    #[test]
+    fn package_prefix_handles_workspace_crates_and_nested_markers() {
+        assert_eq!(
+            package_prefix(Path::new("crates/foo/src/support/src/lib.rs")).as_deref(),
+            Some("crates/foo/")
+        );
+        assert_eq!(
+            package_prefix(Path::new("crates/foo/tests/support/tests/cases.rs")).as_deref(),
+            Some("crates/foo/")
+        );
+        assert_eq!(
+            package_prefix(Path::new("vendor/foo/src/support/src/lib.rs")).as_deref(),
+            Some("vendor/foo/src/support/")
+        );
+        assert_eq!(
+            package_prefix(Path::new("crates/ripr/examples/sample/src/lib.rs")).as_deref(),
+            Some("crates/ripr/examples/sample/")
+        );
+    }
+
+    fn function(file: &str, name: &str) -> FunctionSummary {
+        FunctionSummary {
+            id: SymbolId(format!("{file}::{name}")),
+            name: name.to_string(),
+            file: PathBuf::from(file),
+            start_line: 1,
+            end_line: 3,
+            body: format!("pub fn {name}(input: i32) -> i32 {{ input }}"),
+            calls: vec![],
+            is_test: false,
+        }
+    }
+
+    fn test(file: &str, name: &str, call: &str, assertion: &str) -> TestSummary {
+        TestSummary {
+            name: name.to_string(),
+            file: PathBuf::from(file),
+            start_line: 1,
+            end_line: 4,
+            body: format!("{call};\n{assertion}"),
+            calls: vec!["score".to_string()],
+            assertions: vec![AssertionSummary {
+                line: 2,
+                text: assertion.to_string(),
+                strength: OracleStrength::Strong,
+                observed_tokens: extract_identifier_tokens(assertion),
+            }],
+            literals: vec!["1".to_string()],
+        }
+    }
 }
