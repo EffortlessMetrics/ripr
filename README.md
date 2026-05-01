@@ -240,6 +240,7 @@ crate boundaries can be added later if external consumers need them.
 - [Server binary release](docs/RELEASE_BINARIES.md): GitHub Release assets for extension downloads.
 - [Marketplace release](docs/RELEASE_MARKETPLACE.md): VS Marketplace and Open VSX release checklist.
 - [Open VSX](docs/OPENVSX.md): namespace and token setup notes.
+- [Brand assets](assets/logo/README.md): logo sources and marketplace icon usage.
 - [Agent instructions](AGENTS.md): repo-specific instructions for coding agents.
 
 ## Development

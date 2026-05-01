@@ -1,0 +1,10 @@
+<svg width="320" height="96" viewBox="0 0 320 96" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">ripr rail mark</title>
+  <desc id="desc">Four connected nodes representing Reach, Infect, Propagate, and Reveal; the final reveal node is a ring with an amber center.</desc>
+  <path d="M44 48H276" stroke="currentColor" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="44" cy="48" r="18" fill="currentColor"/>
+  <circle cx="121.333" cy="48" r="18" fill="currentColor"/>
+  <circle cx="198.667" cy="48" r="18" fill="currentColor"/>
+  <circle cx="276" cy="48" r="24" fill="none" stroke="currentColor" stroke-width="12"/>
+  <circle cx="276" cy="48" r="8" fill="#F59E0B"/>
+</svg>
