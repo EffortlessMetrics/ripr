@@ -6,7 +6,7 @@ on:
     branches: [main, master]
 
 jobs:
-  test:
+  rust:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,3 +17,19 @@ jobs:
       - run: cargo test --workspace
       - run: cargo package -p ripr --list
       - run: cargo publish -p ripr --dry-run
+
+  vscode:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editors/vscode
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+      - run: npm ci
+      - run: npm run compile
+      - run: npm run package

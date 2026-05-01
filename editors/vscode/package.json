@@ -1,0 +1,123 @@
+{
+  "name": "ripr",
+  "displayName": "ripr: Static Mutation Exposure",
+  "description": "Static RIPR exposure diagnostics for Rust/Cargo workspaces.",
+  "version": "0.1.0",
+  "publisher": "EffortlessMetrics",
+  "preview": true,
+  "license": "MIT OR Apache-2.0",
+  "icon": "icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/EffortlessMetrics/ripr.git",
+    "directory": "editors/vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/EffortlessMetrics/ripr/issues"
+  },
+  "homepage": "https://github.com/EffortlessMetrics/ripr",
+  "categories": [
+    "Linters",
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "rust",
+    "testing",
+    "mutation-testing",
+    "ripr",
+    "lsp"
+  ],
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "extensionKind": [
+    "workspace"
+  ],
+  "activationEvents": [
+    "onLanguage:rust",
+    "workspaceContains:Cargo.toml",
+    "onCommand:ripr.restartServer"
+  ],
+  "main": "./out/extension.js",
+  "scripts": {
+    "compile": "tsc -p ./",
+    "package": "node -e \"require('fs').mkdirSync('dist', { recursive: true })\" && vsce package --out dist/ripr-0.1.0.vsix",
+    "test": "npm run compile"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/test-electron": "^2.4.1",
+    "@vscode/vsce": "^3.2.2",
+    "typescript": "^5.6.0"
+  },
+  "contributes": {
+    "configuration": {
+      "title": "ripr",
+      "properties": {
+        "ripr.server.path": {
+          "type": "string",
+          "default": "ripr",
+          "description": "Path to the ripr executable."
+        },
+        "ripr.server.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "lsp"
+          ],
+          "description": "Arguments used to start the ripr language server."
+        },
+        "ripr.check.mode": {
+          "type": "string",
+          "enum": [
+            "instant",
+            "fast",
+            "deep"
+          ],
+          "default": "instant",
+          "description": "Preferred ripr check mode for editor-triggered analysis."
+        },
+        "ripr.baseRef": {
+          "type": "string",
+          "default": "origin/main",
+          "description": "Git base ref used by ripr context commands."
+        },
+        "ripr.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Trace ripr language-server messages in the ripr output channel."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "ripr.restartServer",
+        "title": "ripr: Restart Server"
+      },
+      {
+        "command": "ripr.showOutput",
+        "title": "ripr: Show Output"
+      },
+      {
+        "command": "ripr.copyContext",
+        "title": "ripr: Copy Finding Context"
+      },
+      {
+        "command": "ripr.openSettings",
+        "title": "ripr: Open Settings"
+      }
+    ]
+  }
+}
