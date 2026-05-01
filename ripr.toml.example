@@ -1,0 +1,22 @@
+[analysis]
+default_mode = "draft"
+max_call_depth = 5
+max_reverse_call_depth = 4
+max_paths_per_probe = 20
+unknowns_are_warnings = false
+
+[oracles.snapshots]
+default = "medium"
+
+[oracles.mocks]
+patterns = [
+  { path = "MockPublisher::expect_publish", strength = "high", sink = "published_event" },
+  { path = "MockRepo::expect_save", strength = "high", sink = "persisted_state" }
+]
+
+[external_boundaries]
+patterns = [
+  { path = "*.save", kind = "persisted_state" },
+  { path = "*.publish", kind = "published_event" },
+  { path = "metrics.*", kind = "metric" }
+]
