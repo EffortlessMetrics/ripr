@@ -120,3 +120,4 @@ jobs:
           gh release upload "${{ github.ref_name }}" dist/*.vsix --clobber
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
