@@ -7,11 +7,21 @@ mod workspace;
 use crate::domain::{Finding, Summary};
 use std::path::PathBuf;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AnalysisMode {
+    Instant,
+    Draft,
+    Fast,
+    Deep,
+    Ready,
+}
+
 #[derive(Clone, Debug)]
 pub struct AnalysisOptions {
     pub root: PathBuf,
     pub base: Option<String>,
     pub diff_file: Option<PathBuf>,
+    pub mode: AnalysisMode,
     pub include_unchanged_tests: bool,
 }
 
@@ -28,8 +38,19 @@ pub fn run_analysis(options: &AnalysisOptions) -> Result<AnalysisResult, String>
         options.diff_file.as_ref(),
     )?;
     let changed_files = diff::parse_unified_diff(&diff_text);
+    let changed_rust_paths = changed_files
+        .iter()
+        .filter(|file| file.path.extension().and_then(|e| e.to_str()) == Some("rs"))
+        .map(|file| file.path.clone())
+        .collect::<Vec<_>>();
     let rust_files = workspace::discover_rust_files(&options.root)?;
-    let index = rust_index::build_index(&options.root, &rust_files)?;
+    let index_files = workspace::select_rust_files_for_mode(
+        &rust_files,
+        &changed_rust_paths,
+        options.mode,
+        options.include_unchanged_tests,
+    );
+    let index = rust_index::build_index(&options.root, &index_files)?;
 
     let mut findings = Vec::new();
     let mut changed_rust_files = 0usize;
@@ -138,6 +159,7 @@ index 0000000..1111111 100644
             root: root.clone(),
             base: None,
             diff_file: Some(root.join("diff.patch")),
+            mode: AnalysisMode::Draft,
             include_unchanged_tests: true,
         })
         .unwrap();
@@ -148,5 +170,18 @@ index 0000000..1111111 100644
                 .any(|f| f.class == crate::domain::ExposureClass::WeaklyExposed
                     || f.class == crate::domain::ExposureClass::InfectionUnknown)
         );
+
+        let instant = run_analysis(&AnalysisOptions {
+            root: root.clone(),
+            base: None,
+            diff_file: Some(root.join("diff.patch")),
+            mode: AnalysisMode::Instant,
+            include_unchanged_tests: true,
+        })
+        .unwrap();
+        assert!(instant.findings.iter().any(|finding| {
+            finding.class == crate::domain::ExposureClass::NoStaticPath
+                && finding.related_tests.is_empty()
+        }));
     }
 }

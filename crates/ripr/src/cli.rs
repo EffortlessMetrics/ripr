@@ -278,7 +278,7 @@ Options:
   --mode MODE              instant, draft, fast, deep, or ready. Defaults to draft.
   --format FORMAT          human, json, or github. Defaults to human.
   --json                   Shortcut for --format json.
-  --no-unchanged-tests     Reserved for future indexed mode.
+  --no-unchanged-tests     Limit the index to changed Rust files.
 "#
     );
 }
