@@ -2,7 +2,7 @@
   "name": "ripr",
   "displayName": "ripr: Static Mutation Exposure",
   "description": "Static RIPR exposure diagnostics for Rust/Cargo workspaces.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "EffortlessMetrics",
   "preview": true,
   "license": "MIT OR Apache-2.0",
@@ -19,7 +19,7 @@
   "categories": [
     "Linters",
     "Programming Languages",
-    "Other"
+    "Testing"
   ],
   "keywords": [
     "rust",
@@ -42,7 +42,7 @@
   "main": "./out/extension.js",
   "scripts": {
     "compile": "tsc -p ./",
-    "package": "node -e \"require('fs').mkdirSync('dist', { recursive: true })\" && vsce package --out dist/ripr-0.1.0.vsix",
+    "package": "node -e \"require('fs').mkdirSync('dist', { recursive: true })\" && vsce package --out dist/ripr-0.2.0.vsix",
     "test": "npm run compile"
   },
   "dependencies": {
@@ -61,8 +61,8 @@
       "properties": {
         "ripr.server.path": {
           "type": "string",
-          "default": "ripr",
-          "description": "Path to the ripr executable."
+          "default": "",
+          "description": "Absolute path to a ripr executable. Overrides bundled, downloaded, and PATH server resolution."
         },
         "ripr.server.args": {
           "type": "array",
@@ -70,9 +70,25 @@
             "type": "string"
           },
           "default": [
-            "lsp"
+            "lsp",
+            "--stdio"
           ],
           "description": "Arguments used to start the ripr language server."
+        },
+        "ripr.server.autoDownload": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically download the matching ripr server binary when no configured, bundled, or cached server is available."
+        },
+        "ripr.server.version": {
+          "type": "string",
+          "default": "",
+          "description": "Pinned ripr server version. Empty means match the extension version."
+        },
+        "ripr.server.downloadBaseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Override the server manifest base URL for internal mirrors. Empty uses GitHub Releases."
         },
         "ripr.check.mode": {
           "type": "string",

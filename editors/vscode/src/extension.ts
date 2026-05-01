@@ -5,7 +5,7 @@ let controller: RiprClientController | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel('ripr');
-  controller = new RiprClientController(output);
+  controller = new RiprClientController(context, output);
 
   context.subscriptions.push(
     output,

@@ -1,9 +1,16 @@
 # Changelog
 
-## 0.1.0
+## 0.2.0
 
-- Initial preview extension.
-- Starts `ripr lsp` from the configured `ripr.server.path`.
+- First self-provisioning preview extension.
+- Starts `ripr lsp --stdio` from a configured, bundled, downloaded, cached, or
+  PATH-discovered server.
+- Adds first-run server download and SHA-256 verification from GitHub Release
+  manifests.
 - Adds commands to restart the server, show the output channel, copy a finding
   context packet, and open settings.
-- Uses a PATH-based server model; install the CLI with `cargo install ripr`.
+- Keeps `cargo install ripr` as an offline/manual fallback.
+
+## 0.1.0
+
+- Initial PATH-based preview extension scaffold.

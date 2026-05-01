@@ -15,7 +15,7 @@ pub fn run(args: Vec<String>) -> Result<(), String> {
         Some("explain") => explain(&args[2..]),
         Some("context") => context(&args[2..]),
         Some("doctor") => doctor(&args[2..]),
-        Some("lsp") => crate::lsp::serve(),
+        Some("lsp") => lsp(&args[2..]),
         Some(command) => Err(format!("unknown command {command:?}. Run `ripr --help`.")),
     }
 }
@@ -197,6 +197,31 @@ fn doctor(args: &[String]) -> Result<(), String> {
     }
 }
 
+fn lsp(args: &[String]) -> Result<(), String> {
+    for arg in args {
+        match arg.as_str() {
+            "--stdio" => {}
+            "--version" | "-V" => {
+                println!("ripr-lsp {}", env!("CARGO_PKG_VERSION"));
+                return Ok(());
+            }
+            "--help" | "-h" => {
+                println!(
+                    r#"Usage: ripr lsp [--stdio] [--version]
+
+Options:
+  --stdio       Run the language server over stdio LSP framing. This is the default.
+  --version     Print the language server version.
+"#
+                );
+                return Ok(());
+            }
+            other => return Err(format!("unknown lsp argument {other:?}")),
+        }
+    }
+    crate::lsp::serve()
+}
+
 fn parse_mode(value: &str) -> Result<Mode, String> {
     match value {
         "instant" => Ok(Mode::Instant),
@@ -231,7 +256,7 @@ Usage:
   ripr check [--base origin/main] [--diff PATH] [--mode draft] [--format human|json|github]
   ripr explain [--base REV|--diff PATH] <finding-id|file:line>
   ripr context [--base REV|--diff PATH] --at <finding-id|file:line>
-  ripr lsp
+  ripr lsp [--stdio]
   ripr doctor
 
 What it does:

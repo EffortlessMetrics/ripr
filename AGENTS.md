@@ -100,8 +100,22 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
-code --install-extension dist/ripr-0.1.0.vsix --force
+code --install-extension dist/ripr-0.2.0.vsix --force
 ```
+
+The extension should resolve the server in this order:
+
+```text
+ripr.server.path
+bundled server binary
+downloaded cached server binary
+verified first-run download
+ripr on PATH
+actionable error
+```
+
+Do not make `cargo install ripr` a requirement for the normal editor install
+path. It is a fallback for offline, pinned, or controlled environments.
 
 ## Implementation Bias
 

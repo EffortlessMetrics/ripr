@@ -12,8 +12,8 @@ a discriminator that would notice if that behavior were wrong?
 `ripr` is alpha software. The current release is a syntax-first scanner that is
 useful for early feedback, not a proof system.
 
-This is the product repository for `ripr`. The `0.1.x` line is the first
-publishable alpha cut of the tool.
+This is the product repository for `ripr`. The `0.2.x` line keeps the analyzer
+scope narrow while adding extension-managed server provisioning.
 
 ## Mission
 
@@ -214,7 +214,7 @@ GitHub output emits workflow annotations.
 
 ## Current Scope
 
-The `0.1.x` alpha line is intentionally narrow:
+The current alpha line is intentionally narrow:
 
 - one published package: `ripr`
 - one CLI binary: `ripr`
@@ -236,6 +236,8 @@ crate boundaries can be added later if external consumers need them.
 - [Testing](docs/TESTING.md): local test and package gates.
 - [Release](docs/RELEASE.md): publish checklist and crates.io gates.
 - [Editor extension](docs/EDITOR_EXTENSION.md): VS Code extension usage and local VSIX gates.
+- [Server provisioning](docs/SERVER_PROVISIONING.md): extension-managed server resolution and download.
+- [Server binary release](docs/RELEASE_BINARIES.md): GitHub Release assets for extension downloads.
 - [Marketplace release](docs/RELEASE_MARKETPLACE.md): VS Marketplace and Open VSX release checklist.
 - [Open VSX](docs/OPENVSX.md): namespace and token setup notes.
 - [Agent instructions](AGENTS.md): repo-specific instructions for coding agents.

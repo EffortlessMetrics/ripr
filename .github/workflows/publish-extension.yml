@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version label for the VSIX artifact, for example 0.1.0"
+        description: "Version label for the VSIX artifact, for example 0.2.0"
         required: true
   push:
     tags:
@@ -47,8 +47,29 @@ jobs:
           name: ripr-vsix
           path: editors/vscode/dist/*.vsix
 
+  server-assets-ready:
+    runs-on: ubuntu-latest
+    env:
+      RAW_VERSION: ${{ github.event.inputs.version || github.ref_name }}
+    steps:
+      - name: Wait for server manifest
+        run: |
+          version="${RAW_VERSION#v}"
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/v${version}/ripr-server-manifest-v${version}.json"
+          for attempt in $(seq 1 90); do
+            status="$(curl -L -sS -o /dev/null -w "%{http_code}" "$url" || true)"
+            if [ "$status" = "200" ]; then
+              echo "Found $url"
+              exit 0
+            fi
+            echo "Waiting for $url (attempt $attempt/90, HTTP $status)"
+            sleep 20
+          done
+          echo "Server manifest was not available: $url" >&2
+          exit 1
+
   publish-vs-marketplace:
-    needs: package
+    needs: [package, server-assets-ready]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/setup-node@v4
@@ -66,7 +87,7 @@ jobs:
           VS_MARKETPLACE_TOKEN: ${{ secrets.VS_MARKETPLACE_TOKEN }}
 
   publish-open-vsx:
-    needs: package
+    needs: [package, server-assets-ready]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/setup-node@v4

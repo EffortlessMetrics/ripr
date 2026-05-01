@@ -17,16 +17,13 @@ The Rust crate release is documented separately in [RELEASE.md](RELEASE.md).
 Keep versions aligned:
 
 ```text
-ripr crate:      0.1.x
-VS extension:    0.1.x
-Open VSX:        0.1.x
+ripr crate:      0.2.x
+VS extension:    0.2.x
+Open VSX:        0.2.x
 ```
 
-For `0.1.x`, the extension requires `ripr 0.1.0` or newer installed separately:
-
-```bash
-cargo install ripr
-```
+For `0.2.x`, the universal extension can download the matching `ripr` server
+from GitHub Releases. `cargo install ripr` remains a manual fallback.
 
 ## Required Files
 
@@ -50,7 +47,7 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
-code --install-extension dist/ripr-0.1.0.vsix --force
+code --install-extension dist/ripr-0.2.0.vsix --force
 ```
 
 Also run the Rust gates from the repository root:
@@ -61,6 +58,10 @@ cargo check --workspace --all-targets
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 ```
+
+Before publishing a self-provisioning extension, confirm the matching server
+binary assets and manifest exist on the GitHub Release. See
+[RELEASE_BINARIES.md](RELEASE_BINARIES.md).
 
 ## Secrets
 
@@ -84,8 +85,8 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
-npx @vscode/vsce publish --packagePath dist/ripr-0.1.0.vsix --pat "$VS_MARKETPLACE_TOKEN"
-npx ovsx publish dist/ripr-0.1.0.vsix -p "$OPEN_VSX_TOKEN"
+npx @vscode/vsce publish --packagePath dist/ripr-0.2.0.vsix --pat "$VS_MARKETPLACE_TOKEN"
+npx ovsx publish dist/ripr-0.2.0.vsix -p "$OPEN_VSX_TOKEN"
 ```
 
 ## CI Publish
@@ -100,8 +101,8 @@ The workflow packages one VSIX, uploads it as an artifact, publishes that same
 VSIX to both registries, and attaches it to the GitHub Release when run from a
 tag.
 
-For the first extension release after the `v0.1.0` crate tag already exists,
-prefer manual `workflow_dispatch` or local publish using the packaged VSIX.
+For the first self-provisioning extension release, publish the server binary
+assets before publishing the marketplace VSIX.
 
 ## Post-Publish Verification
 
@@ -114,4 +115,3 @@ Installing from each registry works.
 The extension starts `ripr lsp`.
 Missing `ripr` executable shows the install/settings message.
 ```
-
