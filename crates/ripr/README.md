@@ -109,11 +109,16 @@ The goal is fast, honest oracle-gap feedback while code is still changing.
 
 ## Install
 
-Once `ripr` is published to crates.io:
+Install from crates.io:
 
 ```bash
 cargo install ripr
 ```
+
+Links:
+
+- crates.io: https://crates.io/crates/ripr
+- docs.rs: https://docs.rs/ripr
 
 For local development from this repository:
 
