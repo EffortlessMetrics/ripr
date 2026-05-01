@@ -15,6 +15,9 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo xtask check-static-language
 cargo xtask check-no-panic-family
+cargo xtask check-file-policy
+cargo xtask check-executable-files
+cargo xtask check-workflows
 cargo package -p ripr --list
 cargo publish -p ripr --dry-run
 ```
@@ -24,6 +27,9 @@ Local policy checks can also be run directly:
 ```bash
 cargo xtask check-static-language
 cargo xtask check-no-panic-family
+cargo xtask check-file-policy
+cargo xtask check-executable-files
+cargo xtask check-workflows
 ```
 
 The VS Code workflow currently runs:
@@ -45,6 +51,8 @@ Release workflows handle extension publishing and server binary releases.
 - Extension gates stay separate: Node setup should not slow Rust-only PRs.
 - Policy gates should be mechanical and allowlisted while existing debt is paid
   down.
+- Rust-first file policy keeps repo automation in `xtask` instead of ad hoc
+  scripts.
 - Blocking `ripr` findings are opt-in until SARIF policy, baselines, and
   calibration exist.
 - CI changes require documentation updates.
@@ -57,6 +65,8 @@ Planned CI work:
 - add fixture-golden tests once the fixture lab exists
 - add markdown/link checks for docs-heavy PRs
 - add traceability and capability-matrix checks
+- add generated-file, process, network, dependency, workspace-shape, and
+  architecture checks
 - add SARIF validation when SARIF output exists
 - add opt-in policy modes:
   - advisory

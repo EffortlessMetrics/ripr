@@ -105,6 +105,24 @@ When adding types, encode domain states directly instead of passing loosely
 typed strings through the analyzer. Keep fallible boundaries explicit with
 `Result`, and keep rendering concerns out of domain and analysis types.
 
+## Rust-First Implementation
+
+Rust is the default implementation language for repo automation, production
+logic, test harnesses, fixture runners, release checks, and policy checks.
+
+Non-Rust programming files are allowlisted exceptions. They are allowed only for
+approved surfaces such as the VS Code extension, GitHub Actions declarations,
+fixtures, generated outputs, documentation examples, or assets.
+
+If a contributor adds a non-Rust programming file, the PR must explain:
+
+- why Rust or `xtask` is not the right place
+- which approved surface owns the file
+- whether the file is production, test, fixture, generated, config, or docs
+- what CI check covers it
+
+See [File policy](FILE_POLICY.md).
+
 ## Testing Style
 
 Use BDD-shaped test names and fixtures:

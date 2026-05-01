@@ -50,6 +50,7 @@ Non-goals:
 
 - [ ] No new `panic`, `unwrap`, `expect`, `todo`, or `unimplemented` in production code.
 - [ ] No new `panic`, `unwrap`, `expect`, `todo`, or `unimplemented` in tests.
+- [ ] New non-Rust programming files are allowlisted with owner, surface, and reason.
 - [ ] Errors are reported with actionable context.
 - [ ] Public JSON/schema changes are documented.
 
@@ -64,6 +65,9 @@ Non-goals:
 - [ ] `cargo publish -p ripr --dry-run`
 - [ ] `cargo xtask check-static-language`
 - [ ] `cargo xtask check-no-panic-family`
+- [ ] `cargo xtask check-file-policy`
+- [ ] `cargo xtask check-executable-files`
+- [ ] `cargo xtask check-workflows`
 
 Extension changes:
 

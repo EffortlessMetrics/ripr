@@ -81,6 +81,43 @@ Acceptance:
 - [ ] Existing debt is allowlisted with counts, and new debt fails the check.
 - [ ] Docs explain how to remove allowlist entries as debt is paid down.
 
+## PR 1B: `rust-first-file-policy`
+
+Purpose: keep repo implementation and automation Rust-first by denying
+unapproved non-Rust programming files, checked-in executable scripts, and
+workflow shell sprawl.
+
+Deliverables:
+
+- [ ] Add Rust-first file policy docs.
+- [ ] Add non-Rust allowlist with owner, kind, and reason.
+- [ ] Add workflow shell-budget allowlist.
+- [ ] Add `cargo xtask check-file-policy`.
+- [ ] Add `cargo xtask check-executable-files`.
+- [ ] Add `cargo xtask check-workflows`.
+- [ ] Wire checks into `cargo xtask ci-fast`.
+- [ ] Wire checks into CI.
+
+Acceptance:
+
+- [ ] Rust is documented as the default implementation and automation language.
+- [ ] Existing VS Code, workflow, docs, fixture, asset, and config surfaces are
+      explicitly allowlisted.
+- [ ] New shell, Python, JavaScript, TypeScript, or other programming files
+      outside approved surfaces fail the file policy check.
+- [ ] Checked-in executable bits fail unless allowlisted.
+- [ ] Long workflow run blocks fail unless allowlisted.
+
+Future policy PRs:
+
+- [ ] generated-file policy
+- [ ] dependency-change policy
+- [ ] process-spawn policy
+- [ ] network policy
+- [ ] workspace-shape policy
+- [ ] architecture import guard
+- [ ] public API guard
+
 ## PR 2: `fixture-laboratory`
 
 Purpose: build the regression control bench before changing analyzer internals.

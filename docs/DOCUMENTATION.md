@@ -42,6 +42,7 @@ Current reference docs:
 - [Static exposure model](STATIC_EXPOSURE_MODEL.md)
 - [Spec-test-code traceability](SPEC_TEST_CODE.md)
 - [Engineering rules](ENGINEERING.md)
+- [File policy](FILE_POLICY.md)
 - [Changelog policy](CHANGELOG_POLICY.md)
 - [Capability matrix](CAPABILITY_MATRIX.md)
 

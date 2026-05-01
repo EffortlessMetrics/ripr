@@ -1,0 +1,12 @@
+# Workflow run-block exceptions.
+#
+# Format:
+# path|max_non_empty_lines|reason
+#
+# Workflows should orchestrate Cargo, xtask, npm, and release actions rather
+# than embed complex shell programs. This file allows known workflow blocks
+# while keeping the budget visible.
+
+.github/workflows/ci.yml|3|CI run blocks call direct Cargo or npm commands.
+.github/workflows/publish-extension.yml|20|Release workflow includes marketplace packaging and publishing orchestration.
+.github/workflows/release-server-binaries.yml|30|Release workflow packages platform server binaries.

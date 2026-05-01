@@ -5,6 +5,25 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
 
+#[derive(Debug)]
+struct GlobAllow {
+    glob: String,
+}
+
+#[derive(Debug)]
+struct WorkflowBudget {
+    path: String,
+    max_non_empty_lines: usize,
+    reason: String,
+}
+
+#[derive(Debug)]
+struct RunBlock {
+    line_number: usize,
+    non_empty_lines: usize,
+    text: String,
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let result = match args.get(1).map(|s| s.as_str()) {
@@ -12,6 +31,9 @@ fn main() {
         Some("ci-full") => ci_full(),
         Some("check-static-language") => check_static_language(),
         Some("check-no-panic-family") => check_no_panic_family(),
+        Some("check-file-policy") => check_file_policy(),
+        Some("check-executable-files") => check_executable_files(),
+        Some("check-workflows") => check_workflows(),
         Some("package") => run("cargo", &["package", "-p", "ripr", "--list"]).map(|_| ()),
         Some("publish-dry-run") => {
             run("cargo", &["publish", "-p", "ripr", "--dry-run"]).map(|_| ())
@@ -33,7 +55,10 @@ fn ci_fast() -> Result<(), String> {
     run("cargo", &["check", "--workspace", "--all-targets"])?;
     run("cargo", &["test", "--workspace"])?;
     check_static_language()?;
-    check_no_panic_family()
+    check_no_panic_family()?;
+    check_file_policy()?;
+    check_executable_files()?;
+    check_workflows()
 }
 
 fn ci_full() -> Result<(), String> {
@@ -69,7 +94,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  package\n  publish-dry-run"
+        "xtask commands:\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  package\n  publish-dry-run"
     );
 }
 
@@ -171,6 +196,108 @@ fn check_no_panic_family() -> Result<(), String> {
     }
 }
 
+fn check_file_policy() -> Result<(), String> {
+    let allowlist = read_glob_allowlist("policy/non_rust_allowlist.txt")?;
+    let mut violations = Vec::new();
+
+    for path in collect_files(Path::new("."))? {
+        let normalized = normalize_path(&path);
+        if !is_file_policy_candidate(&normalized) {
+            continue;
+        }
+        if normalized.ends_with(".rs") {
+            continue;
+        }
+        if !matches_any_glob(&allowlist, &normalized) {
+            violations.push(format!(
+                "unapproved non-Rust programming/declarative file: {normalized}\n  preferred: implement automation in Rust/xtask or add a policy allowlist entry with owner and reason"
+            ));
+        }
+    }
+
+    if violations.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "file policy check failed:\n{}",
+            violations.join("\n")
+        ))
+    }
+}
+
+fn check_executable_files() -> Result<(), String> {
+    let allowlist = read_path_allowlist_optional("policy/executable_allowlist.txt")?;
+    let output = run_output("git", &["ls-files", "--stage"])?;
+    let mut violations = Vec::new();
+
+    for line in output.lines() {
+        let Some((mode, path)) = parse_git_stage_line(line) else {
+            continue;
+        };
+        let normalized = normalize_slashes(path);
+        if mode == "100755" && !allowlist.contains(&normalized) {
+            violations.push(format!(
+                "checked-in executable file is not allowlisted: {normalized}\n  preferred: use cargo xtask instead of executable scripts"
+            ));
+        }
+    }
+
+    if violations.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "executable-file check failed:\n{}",
+            violations.join("\n")
+        ))
+    }
+}
+
+fn check_workflows() -> Result<(), String> {
+    let budgets = read_workflow_budgets("policy/workflow_allowlist.txt")?;
+    let mut violations = Vec::new();
+
+    for path in collect_files(Path::new(".github/workflows"))? {
+        let normalized = normalize_path(&path);
+        if !(normalized.ends_with(".yml") || normalized.ends_with(".yaml")) {
+            continue;
+        }
+        let budget = budgets.get(&normalized).ok_or_else(|| {
+            format!("missing workflow budget for {normalized} in policy/workflow_allowlist.txt")
+        })?;
+        let text = read_text_lossy(&path)?;
+        for block in extract_workflow_run_blocks(&text) {
+            if block.non_empty_lines > budget.max_non_empty_lines {
+                violations.push(format!(
+                    "{normalized}:{} run block has {} non-empty line(s), allowed {} ({})",
+                    block.line_number,
+                    block.non_empty_lines,
+                    budget.max_non_empty_lines,
+                    budget.reason
+                ));
+            }
+            let lower = block.text.to_ascii_lowercase();
+            if lower.contains("curl") && lower.contains("| sh") {
+                violations.push(format!(
+                    "{normalized}:{} run block contains curl piped to sh",
+                    block.line_number
+                ));
+            }
+            if lower.contains("curl") && lower.contains("| bash") {
+                violations.push(format!(
+                    "{normalized}:{} run block contains curl piped to bash",
+                    block.line_number
+                ));
+            }
+        }
+    }
+
+    if violations.is_empty() {
+        Ok(())
+    } else {
+        Err(format!("workflow check failed:\n{}", violations.join("\n")))
+    }
+}
+
 fn read_path_allowlist(path: &str) -> Result<BTreeSet<String>, String> {
     let mut allowed = BTreeSet::new();
     let text = read_text_lossy(Path::new(path))?;
@@ -210,6 +337,84 @@ fn read_count_allowlist(path: &str) -> Result<BTreeMap<(String, String), usize>,
     Ok(allowed)
 }
 
+fn read_glob_allowlist(path: &str) -> Result<Vec<GlobAllow>, String> {
+    let mut allowed = Vec::new();
+    let text = read_text_lossy(Path::new(path))?;
+    for (line_number, line) in text.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let parts = trimmed.split('|').collect::<Vec<_>>();
+        if parts.len() != 4 {
+            return Err(format!(
+                "{path}:{} expected glob|kind|owner|reason",
+                line_number + 1
+            ));
+        }
+        let entry = GlobAllow {
+            glob: normalize_slashes(parts[0]),
+        };
+        if entry.glob.is_empty()
+            || parts[1].trim().is_empty()
+            || parts[2].trim().is_empty()
+            || parts[3].trim().is_empty()
+        {
+            return Err(format!(
+                "{path}:{} allowlist entries require glob, kind, owner, and reason",
+                line_number + 1
+            ));
+        }
+        allowed.push(entry);
+    }
+    Ok(allowed)
+}
+
+fn read_workflow_budgets(path: &str) -> Result<BTreeMap<String, WorkflowBudget>, String> {
+    let mut budgets = BTreeMap::new();
+    let text = read_text_lossy(Path::new(path))?;
+    for (line_number, line) in text.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let parts = trimmed.split('|').collect::<Vec<_>>();
+        if parts.len() != 3 {
+            return Err(format!(
+                "{path}:{} expected path|max_non_empty_lines|reason",
+                line_number + 1
+            ));
+        }
+        let max_non_empty_lines = parts[1].parse::<usize>().map_err(|err| {
+            format!(
+                "{path}:{} invalid max_non_empty_lines: {err}",
+                line_number + 1
+            )
+        })?;
+        let budget = WorkflowBudget {
+            path: normalize_slashes(parts[0]),
+            max_non_empty_lines,
+            reason: parts[2].trim().to_string(),
+        };
+        if budget.reason.is_empty() {
+            return Err(format!(
+                "{path}:{} reason must not be empty",
+                line_number + 1
+            ));
+        }
+        budgets.insert(budget.path.clone(), budget);
+    }
+    Ok(budgets)
+}
+
+fn read_path_allowlist_optional(path: &str) -> Result<BTreeSet<String>, String> {
+    if Path::new(path).exists() {
+        read_path_allowlist(path)
+    } else {
+        Ok(BTreeSet::new())
+    }
+}
+
 fn collect_files(root: &Path) -> Result<Vec<PathBuf>, String> {
     let mut files = Vec::new();
     collect_files_inner(root, &mut files)?;
@@ -243,8 +448,12 @@ fn should_skip_path(path: &str) -> bool {
         || path.starts_with(".git/")
         || path == "target"
         || path.starts_with("target/")
+        || path == ".ripr/release"
+        || path.starts_with(".ripr/release/")
         || path.ends_with("/node_modules")
         || path.contains("/node_modules/")
+        || path.ends_with("/out")
+        || path.contains("/out/")
         || path.ends_with("/dist")
         || path.contains("/dist/")
 }
@@ -268,6 +477,134 @@ fn normalize_path(path: &Path) -> String {
 
 fn normalize_slashes(value: &str) -> String {
     value.replace('\\', "/")
+}
+
+fn is_file_policy_candidate(path: &str) -> bool {
+    let extensions = [
+        ".bash", ".c", ".cjs", ".cpp", ".cs", ".go", ".h", ".hpp", ".java", ".js", ".json", ".kt",
+        ".lua", ".mjs", ".php", ".pl", ".ps1", ".py", ".rb", ".sh", ".swift", ".toml", ".ts",
+        ".tsx", ".yaml", ".yml", ".zsh",
+    ];
+    extensions.iter().any(|extension| path.ends_with(extension))
+}
+
+fn matches_any_glob(allowlist: &[GlobAllow], path: &str) -> bool {
+    allowlist
+        .iter()
+        .any(|entry| glob_matches(&entry.glob, path))
+}
+
+fn glob_matches(pattern: &str, path: &str) -> bool {
+    let pattern_parts = pattern.split('/').collect::<Vec<_>>();
+    let path_parts = path.split('/').collect::<Vec<_>>();
+    glob_parts_match(&pattern_parts, &path_parts)
+}
+
+fn glob_parts_match(pattern: &[&str], path: &[&str]) -> bool {
+    if pattern.is_empty() {
+        return path.is_empty();
+    }
+    if pattern[0] == "**" {
+        return glob_parts_match(&pattern[1..], path)
+            || (!path.is_empty() && glob_parts_match(pattern, &path[1..]));
+    }
+    if path.is_empty() {
+        return false;
+    }
+    segment_matches(pattern[0], path[0]) && glob_parts_match(&pattern[1..], &path[1..])
+}
+
+fn segment_matches(pattern: &str, value: &str) -> bool {
+    let pattern_chars = pattern.chars().collect::<Vec<_>>();
+    let value_chars = value.chars().collect::<Vec<_>>();
+    segment_parts_match(&pattern_chars, &value_chars)
+}
+
+fn segment_parts_match(pattern: &[char], value: &[char]) -> bool {
+    if pattern.is_empty() {
+        return value.is_empty();
+    }
+    if pattern[0] == '*' {
+        return segment_parts_match(&pattern[1..], value)
+            || (!value.is_empty() && segment_parts_match(pattern, &value[1..]));
+    }
+    !value.is_empty() && pattern[0] == value[0] && segment_parts_match(&pattern[1..], &value[1..])
+}
+
+fn parse_git_stage_line(line: &str) -> Option<(&str, &str)> {
+    let mut parts = line.split_whitespace();
+    let mode = parts.next()?;
+    let _object_type = parts.next()?;
+    let _hash = parts.next()?;
+    let stage_and_path = line.split('\t').nth(1)?;
+    Some((mode, stage_and_path))
+}
+
+fn extract_workflow_run_blocks(text: &str) -> Vec<RunBlock> {
+    let lines = text.lines().collect::<Vec<_>>();
+    let mut blocks = Vec::new();
+    let mut idx = 0usize;
+    while idx < lines.len() {
+        let line = lines[idx];
+        let trimmed = line.trim_start();
+        if let Some(rest) = workflow_run_value(trimmed) {
+            let indent = line.len() - trimmed.len();
+            let run_value = rest.trim();
+            if run_value == "|" || run_value == ">" || run_value == "|-" || run_value == ">-" {
+                let mut block_lines = Vec::new();
+                let mut next_idx = idx + 1;
+                while next_idx < lines.len() {
+                    let next = lines[next_idx];
+                    let next_trimmed = next.trim_start();
+                    let next_indent = next.len() - next_trimmed.len();
+                    if !next_trimmed.is_empty() && next_indent <= indent {
+                        break;
+                    }
+                    block_lines.push(next_trimmed.to_string());
+                    next_idx += 1;
+                }
+                let non_empty_lines = block_lines
+                    .iter()
+                    .filter(|value| !value.trim().is_empty())
+                    .count();
+                blocks.push(RunBlock {
+                    line_number: idx + 1,
+                    non_empty_lines,
+                    text: block_lines.join("\n"),
+                });
+                idx = next_idx;
+                continue;
+            }
+            blocks.push(RunBlock {
+                line_number: idx + 1,
+                non_empty_lines: usize::from(!run_value.is_empty()),
+                text: run_value.to_string(),
+            });
+        }
+        idx += 1;
+    }
+    blocks
+}
+
+fn workflow_run_value(trimmed_line: &str) -> Option<&str> {
+    trimmed_line
+        .strip_prefix("run:")
+        .or_else(|| trimmed_line.strip_prefix("- run:"))
+}
+
+fn run_output(program: &str, args: &[&str]) -> Result<String, String> {
+    let output = Command::new(program)
+        .args(args)
+        .output()
+        .map_err(|err| format!("failed to run {program}: {err}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "{program} {} failed with {}",
+            args.join(" "),
+            output.status
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 fn forbidden_static_terms() -> Vec<String> {
@@ -309,4 +646,52 @@ fn is_word_char(value: Option<char>) -> bool {
     value
         .map(|ch| ch.is_ascii_alphanumeric() || ch == '_')
         .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{extract_workflow_run_blocks, glob_matches};
+
+    #[test]
+    fn glob_match_supports_recursive_segments_and_star_suffixes() {
+        assert!(glob_matches(
+            "editors/vscode/**/*.ts",
+            "editors/vscode/src/client.ts"
+        ));
+        assert!(glob_matches("*.md", "README.md"));
+        assert!(glob_matches(
+            "fixtures/**",
+            "fixtures/boundary_gap/input/src/lib.rs"
+        ));
+        assert!(!glob_matches(
+            "editors/vscode/**/*.ts",
+            "docs/examples/client.ts"
+        ));
+    }
+
+    #[test]
+    fn workflow_run_extraction_handles_step_shorthand_and_blocks() {
+        let workflow = r#"
+jobs:
+  test:
+    steps:
+      - run: cargo fmt --check
+      - name: block
+        run: |
+          cargo check
+          cargo test
+      - uses: actions/checkout@v4
+"#;
+
+        let blocks = extract_workflow_run_blocks(workflow);
+
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(blocks[0].line_number, 5);
+        assert_eq!(blocks[0].non_empty_lines, 1);
+        assert_eq!(blocks[0].text, "cargo fmt --check");
+        assert_eq!(blocks[1].line_number, 7);
+        assert_eq!(blocks[1].non_empty_lines, 2);
+        assert!(blocks[1].text.contains("cargo check"));
+        assert!(blocks[1].text.contains("cargo test"));
+    }
 }
