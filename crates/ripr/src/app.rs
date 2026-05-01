@@ -1,4 +1,4 @@
-use crate::analysis::{AnalysisOptions, run_analysis};
+use crate::analysis::{AnalysisMode, AnalysisOptions, run_analysis};
 use crate::domain::{Finding, Summary};
 use crate::output;
 use std::path::{Path, PathBuf};
@@ -45,6 +45,16 @@ impl Mode {
             Mode::Ready => "ready",
         }
     }
+
+    pub fn analysis_mode(&self) -> AnalysisMode {
+        match self {
+            Mode::Instant => AnalysisMode::Instant,
+            Mode::Draft => AnalysisMode::Draft,
+            Mode::Fast => AnalysisMode::Fast,
+            Mode::Deep => AnalysisMode::Deep,
+            Mode::Ready => AnalysisMode::Ready,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -70,6 +80,7 @@ pub fn check_workspace(input: CheckInput) -> Result<CheckOutput, String> {
         root: input.root.clone(),
         base: input.base.clone(),
         diff_file: input.diff_file.clone(),
+        mode: input.mode.analysis_mode(),
         include_unchanged_tests: input.include_unchanged_tests,
     };
     let analysis = run_analysis(&options)?;

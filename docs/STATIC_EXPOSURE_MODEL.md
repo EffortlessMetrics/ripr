@@ -75,6 +75,24 @@ static analysis should stop or escalate.
 | `propagation_unknown` | The changed behavior crosses an opaque propagation boundary. |
 | `static_unknown` | Syntax-first analysis cannot make a credible judgment. |
 
+## Analysis Modes
+
+Modes define how much static evidence `ripr` is allowed to gather before it
+classifies probes. They change scope and cost; they do not change the meaning of
+the exposure classes.
+
+| Mode | Scope in the current alpha | Intended use |
+| --- | --- | --- |
+| `instant` | Changed Rust files only. | Editor-safe, cheapest feedback. |
+| `draft` | Rust files in packages touched by the diff. | Default local scan. |
+| `fast` | Same package-local scope as `draft` for now. | Draft PR scan; future bounded graph work lands here. |
+| `deep` | All Rust files in the workspace. | Manual or CI scan when wider static evidence is acceptable. |
+| `ready` | All Rust files in the workspace. | Static preflight before real mutation confirmation. |
+
+`ready` mode still does not run mutants or report mutation outcomes. It remains
+static exposure analysis unless a future calibration or mutation adapter is
+explicitly invoked.
+
 ## Oracle Strength
 
 Strong oracle examples:
@@ -124,4 +142,3 @@ Escalate to real mutation testing when:
 - external state is involved
 - static evidence and human intuition disagree
 - the finding would block a release decision
-

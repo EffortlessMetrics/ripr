@@ -19,6 +19,18 @@ CLI / LSP / CI
 - `cli`: command-line entrypoint.
 - `lsp`: lightweight sidecar entrypoint.
 
+## Analysis scope
+
+The analysis engine selects Rust files according to mode before building its
+syntax-first index:
+
+- `instant`: changed Rust files only.
+- `draft` / `fast`: packages touched by the diff.
+- `deep` / `ready`: all Rust files in the workspace.
+
+This keeps live feedback narrow while preserving an explicit path to wider
+manual or CI scans.
+
 ## Design rules
 
 - Static objects are `Probe`s, not mutants.
