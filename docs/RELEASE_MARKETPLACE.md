@@ -68,7 +68,7 @@ binary assets and manifest exist on the GitHub Release. See
 Repository secrets:
 
 ```text
-VS_MARKETPLACE_TOKEN
+VSCE_PAT
 OPEN_VSX_TOKEN
 ```
 
@@ -85,8 +85,8 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
-npx @vscode/vsce publish --packagePath dist/ripr-0.2.0.vsix --pat "$VS_MARKETPLACE_TOKEN"
-npx ovsx publish dist/ripr-0.2.0.vsix -p "$OPEN_VSX_TOKEN"
+npx @vscode/vsce publish --packagePath dist/ripr-0.2.0.vsix --pat "$VSCE_PAT"
+npx ovsx publish dist/ripr-0.2.0.vsix -p "$OPEN_VSX_TOKEN" --skip-duplicate
 ```
 
 ## CI Publish

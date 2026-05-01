@@ -45,7 +45,7 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
-npx ovsx publish dist/ripr-0.2.0.vsix -p "$OPEN_VSX_TOKEN"
+npx ovsx publish dist/ripr-0.2.0.vsix -p "$OPEN_VSX_TOKEN" --skip-duplicate
 ```
 
 ## Verification
