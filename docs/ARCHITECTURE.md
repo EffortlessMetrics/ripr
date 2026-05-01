@@ -38,9 +38,16 @@ manual or CI scans.
 - Unknowns are first-class outcomes.
 - Findings must carry evidence and a recommended next step.
 - The first release stays syntax-first. Semantic enrichment comes later.
+- Behavior changes should preserve a spec-test-code trail so future humans and
+  agents can recover intent from repository artifacts.
+- Implementation modules should keep a single product responsibility: parsing,
+  fact extraction, probe generation, classification, orchestration, or
+  rendering.
 
 See also:
 
 - [Charter](CHARTER.md)
 - [Static exposure model](STATIC_EXPOSURE_MODEL.md)
 - [Output schema](OUTPUT_SCHEMA.md)
+- [Engineering rules](ENGINEERING.md)
+- [Spec-test-code traceability](SPEC_TEST_CODE.md)
