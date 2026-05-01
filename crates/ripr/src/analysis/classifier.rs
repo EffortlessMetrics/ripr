@@ -1,0 +1,570 @@
+use super::rust_index::{
+    FunctionSummary, RustIndex, TestSummary, extract_identifier_tokens, extract_literals,
+};
+use crate::domain::*;
+use std::path::Path;
+
+pub fn classify_probe(probe: &Probe, index: &RustIndex) -> Finding {
+    let owner_name = probe
+        .owner
+        .as_ref()
+        .and_then(|id| id.0.rsplit("::").next().map(str::to_string));
+    let owner_fn = owner_name
+        .as_ref()
+        .and_then(|name| index.functions.iter().find(|f| &f.name == name));
+
+    let related_tests = find_related_tests(probe, owner_fn, index);
+    let reach = reach_evidence(&related_tests, owner_fn);
+    let infect = infection_evidence(probe, &related_tests);
+    let propagate = propagation_evidence(probe, owner_fn);
+    let (observe, discriminate, related) = reveal_evidence(probe, &related_tests);
+
+    let ripr = RiprEvidence {
+        reach: reach.clone(),
+        infect: infect.clone(),
+        propagate: propagate.clone(),
+        reveal: RevealEvidence {
+            observe: observe.clone(),
+            discriminate: discriminate.clone(),
+        },
+    };
+
+    let class = classify(&reach, &infect, &propagate, &observe, &discriminate, probe);
+    let confidence = confidence_score(&reach, &infect, &propagate, &observe, &discriminate, &class);
+    let mut evidence = Vec::new();
+    evidence.push(reach.summary.clone());
+    if !infect.summary.is_empty() {
+        evidence.push(infect.summary.clone());
+    }
+    if !propagate.summary.is_empty() {
+        evidence.push(propagate.summary.clone());
+    }
+    if !observe.summary.is_empty() {
+        evidence.push(observe.summary.clone());
+    }
+    if !discriminate.summary.is_empty() {
+        evidence.push(discriminate.summary.clone());
+    }
+    evidence.sort();
+    evidence.dedup();
+
+    let missing = missing_evidence(probe, &class, &infect, &observe, &discriminate);
+    let stop_reasons = stop_reasons(probe, owner_fn, &related_tests);
+    let recommended_next_step = recommended_next_step(probe, &class);
+
+    Finding {
+        id: probe.id.0.clone(),
+        probe: probe.clone(),
+        class,
+        ripr,
+        confidence,
+        evidence,
+        missing,
+        stop_reasons,
+        related_tests: related,
+        recommended_next_step,
+    }
+}
+
+fn find_related_tests<'a>(
+    probe: &Probe,
+    owner_fn: Option<&FunctionSummary>,
+    index: &'a RustIndex,
+) -> Vec<&'a TestSummary> {
+    let mut related = Vec::new();
+    let owner_name = owner_fn.map(|f| f.name.as_str()).unwrap_or("");
+    let probe_tokens = extract_identifier_tokens(&probe.expression);
+    let file_name = probe
+        .location
+        .file
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
+    let package_prefix = owner_fn.and_then(|owner| package_prefix(&owner.file));
+
+    for test in &index.tests {
+        if let Some(prefix) = &package_prefix
+            && !normalize_path(&test.file).starts_with(prefix)
+        {
+            continue;
+        }
+        let calls_owner = !owner_name.is_empty()
+            && (test.calls.iter().any(|call| call == owner_name) || test.body.contains(owner_name));
+        let mentions_tokens = probe_tokens
+            .iter()
+            .any(|token| token.len() > 3 && test.body.contains(token));
+        let same_file_or_named = normalize_path(&test.file).contains(file_name)
+            || test
+                .name
+                .to_ascii_lowercase()
+                .contains(&owner_name.to_ascii_lowercase())
+            || probe_tokens.iter().any(|token| {
+                test.name
+                    .to_ascii_lowercase()
+                    .contains(&token.to_ascii_lowercase())
+            });
+
+        if calls_owner || mentions_tokens || same_file_or_named {
+            related.push(test);
+        }
+    }
+
+    related.sort_by(|a, b| a.name.cmp(&b.name));
+    related.dedup_by(|a, b| a.name == b.name && a.file == b.file);
+    related
+}
+
+fn reach_evidence(
+    related_tests: &[&TestSummary],
+    owner_fn: Option<&FunctionSummary>,
+) -> StageEvidence {
+    if related_tests.is_empty() {
+        StageEvidence::new(
+            StageState::No,
+            Confidence::Medium,
+            "No static test path found for the changed owner",
+        )
+    } else {
+        let target = owner_fn.map(|f| f.name.as_str()).unwrap_or("changed owner");
+        let names = related_tests
+            .iter()
+            .take(3)
+            .map(|t| t.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        StageEvidence::new(
+            StageState::Yes,
+            Confidence::Medium,
+            format!("Related tests appear to reach {target}: {names}"),
+        )
+    }
+}
+
+fn infection_evidence(probe: &Probe, related_tests: &[&TestSummary]) -> StageEvidence {
+    match probe.family {
+        ProbeFamily::Predicate => {
+            let probe_literals = extract_literals(&probe.expression);
+            let test_literals = related_tests
+                .iter()
+                .flat_map(|test| test.literals.iter().cloned())
+                .collect::<Vec<_>>();
+            if related_tests.is_empty() {
+                StageEvidence::new(
+                    StageState::Unknown,
+                    Confidence::Low,
+                    "No tests were found, so activation/infection cannot be estimated",
+                )
+            } else if probe_literals.is_empty() {
+                StageEvidence::new(
+                    StageState::Unknown,
+                    Confidence::Low,
+                    "Predicate changed, but no literal boundary was visible in the changed expression",
+                )
+            } else if probe_literals
+                .iter()
+                .any(|literal| test_literals.iter().any(|t| t == literal))
+            {
+                StageEvidence::new(
+                    StageState::Yes,
+                    Confidence::Medium,
+                    format!(
+                        "Detected test input literal matching changed boundary: {}",
+                        probe_literals.join(", ")
+                    ),
+                )
+            } else if !test_literals.is_empty() {
+                StageEvidence::new(
+                    StageState::Weak,
+                    Confidence::Medium,
+                    format!(
+                        "Tests have literals [{}], but no detected value matches changed boundary [{}]",
+                        test_literals.join(", "),
+                        probe_literals.join(", ")
+                    ),
+                )
+            } else {
+                StageEvidence::new(
+                    StageState::Unknown,
+                    Confidence::Low,
+                    "Related tests use opaque fixtures; activation/infection is unknown",
+                )
+            }
+        }
+        ProbeFamily::StaticUnknown => StageEvidence::new(
+            StageState::Unknown,
+            Confidence::Unknown,
+            "Changed syntax is not mapped to a high-confidence probe family",
+        ),
+        _ => {
+            if related_tests.is_empty() {
+                StageEvidence::new(
+                    StageState::Unknown,
+                    Confidence::Low,
+                    "No reachable tests were found, so infection cannot be established",
+                )
+            } else {
+                StageEvidence::new(
+                    StageState::Yes,
+                    Confidence::Medium,
+                    "Reachable tests can plausibly activate this changed behavior",
+                )
+            }
+        }
+    }
+}
+
+fn propagation_evidence(probe: &Probe, owner_fn: Option<&FunctionSummary>) -> StageEvidence {
+    if matches!(probe.family, ProbeFamily::StaticUnknown) {
+        return StageEvidence::new(
+            StageState::Unknown,
+            Confidence::Low,
+            "No propagation model is available for this changed syntax",
+        );
+    }
+    let body = owner_fn.map(|f| f.body.as_str()).unwrap_or("");
+    let expression = probe.expression.as_str();
+    if matches!(probe.delta, DeltaKind::Effect) {
+        StageEvidence::new(
+            StageState::Yes,
+            Confidence::Medium,
+            "Changed behavior reaches an effect boundary such as a call, write, publish, save, or send",
+        )
+    } else if expression.contains("return")
+        || expression.contains("Ok(")
+        || expression.contains("Err(")
+        || body.contains("return")
+    {
+        StageEvidence::new(
+            StageState::Yes,
+            Confidence::Medium,
+            "Changed behavior can propagate through a return or Result boundary",
+        )
+    } else if expression.contains(':') || body.contains("{") && body.contains('}') {
+        StageEvidence::new(
+            StageState::Weak,
+            Confidence::Medium,
+            "Changed behavior may propagate through a constructed value or field",
+        )
+    } else {
+        StageEvidence::new(
+            StageState::Unknown,
+            Confidence::Low,
+            "Propagation is not statically obvious from syntax-first analysis",
+        )
+    }
+}
+
+fn reveal_evidence(
+    probe: &Probe,
+    related_tests: &[&TestSummary],
+) -> (StageEvidence, StageEvidence, Vec<RelatedTest>) {
+    if related_tests.is_empty() {
+        return (
+            StageEvidence::new(
+                StageState::No,
+                Confidence::Medium,
+                "No reachable test oracle found",
+            ),
+            StageEvidence::new(
+                StageState::No,
+                Confidence::Medium,
+                "No assertion can discriminate the changed behavior without a reachable test",
+            ),
+            Vec::new(),
+        );
+    }
+
+    let probe_tokens = extract_identifier_tokens(&probe.expression);
+    let mut related = Vec::new();
+    let mut strongest = OracleStrength::None;
+    let mut matched_any = false;
+
+    for test in related_tests {
+        if test.assertions.is_empty() {
+            related.push(RelatedTest {
+                name: test.name.clone(),
+                file: test.file.clone(),
+                line: test.start_line,
+                oracle: None,
+                oracle_strength: OracleStrength::None,
+            });
+            continue;
+        }
+        for assertion in &test.assertions {
+            let token_match = probe_tokens
+                .iter()
+                .any(|token| token.len() > 3 && assertion.text.contains(token));
+            let family_match = oracle_matches_family(&probe.family, &assertion.text);
+            if token_match || family_match || test.assertions.len() == 1 {
+                matched_any = true;
+                if assertion.strength.rank() > strongest.rank() {
+                    strongest = assertion.strength.clone();
+                }
+                related.push(RelatedTest {
+                    name: test.name.clone(),
+                    file: test.file.clone(),
+                    line: test.start_line,
+                    oracle: Some(assertion.text.clone()),
+                    oracle_strength: assertion.strength.clone(),
+                });
+            }
+        }
+    }
+
+    related.sort_by(|a, b| a.name.cmp(&b.name).then(a.line.cmp(&b.line)));
+    related.dedup_by(|a, b| a.name == b.name && a.oracle == b.oracle);
+
+    let observe = if matched_any {
+        StageEvidence::new(
+            StageState::Yes,
+            Confidence::Medium,
+            "A related test observes a value or effect near the changed behavior",
+        )
+    } else {
+        StageEvidence::new(
+            StageState::No,
+            Confidence::Medium,
+            "Related tests were found, but no assertion appears to observe the changed value, error, field, or effect",
+        )
+    };
+
+    let discriminate = match strongest {
+        OracleStrength::Strong => StageEvidence::new(
+            StageState::Yes,
+            Confidence::Medium,
+            "Strong oracle found: exact equality, exact variant, or pattern assertion",
+        ),
+        OracleStrength::Medium => StageEvidence::new(
+            StageState::Weak,
+            Confidence::Medium,
+            "Medium oracle found: snapshot, property, or partial structural assertion",
+        ),
+        OracleStrength::Weak | OracleStrength::Smoke => StageEvidence::new(
+            StageState::Weak,
+            Confidence::High,
+            "Only weak or smoke oracle found, such as is_ok/is_err, unwrap/expect, broad relational assertion, or non-empty check",
+        ),
+        OracleStrength::None => StageEvidence::new(
+            StageState::No,
+            Confidence::Medium,
+            "No assertion found on related tests",
+        ),
+        OracleStrength::Unknown => StageEvidence::new(
+            StageState::Unknown,
+            Confidence::Low,
+            "Assertions exist, but oracle strength is unknown",
+        ),
+    };
+
+    (observe, discriminate, related)
+}
+
+fn oracle_matches_family(family: &ProbeFamily, assertion: &str) -> bool {
+    match family {
+        ProbeFamily::ErrorPath => {
+            assertion.contains("Err")
+                || assertion.contains("is_err")
+                || assertion.contains("Error::")
+        }
+        ProbeFamily::SideEffect => {
+            assertion.contains("expect")
+                || assertion.contains("mock")
+                || assertion.contains("saved")
+                || assertion.contains("published")
+        }
+        ProbeFamily::FieldConstruction => {
+            assertion.contains('.') || assertion.contains("assert_eq!")
+        }
+        ProbeFamily::Predicate => {
+            assertion.contains("assert_eq!")
+                || assertion.contains("assert!")
+                || assertion.contains("matches!")
+        }
+        ProbeFamily::ReturnValue => {
+            assertion.contains("assert_eq!")
+                || assertion.contains("assert!")
+                || assertion.contains("is_ok")
+        }
+        ProbeFamily::CallDeletion => assertion.contains("assert") || assertion.contains("expect"),
+        ProbeFamily::MatchArm => {
+            assertion.contains("matches!")
+                || assertion.contains("assert_matches!")
+                || assertion.contains("assert_eq!")
+        }
+        ProbeFamily::StaticUnknown => false,
+    }
+}
+
+fn classify(
+    reach: &StageEvidence,
+    infect: &StageEvidence,
+    propagate: &StageEvidence,
+    observe: &StageEvidence,
+    discriminate: &StageEvidence,
+    probe: &Probe,
+) -> ExposureClass {
+    if matches!(probe.family, ProbeFamily::StaticUnknown) {
+        return ExposureClass::StaticUnknown;
+    }
+    if reach.state == StageState::No {
+        return ExposureClass::NoStaticPath;
+    }
+    if infect.state == StageState::Unknown || infect.state == StageState::Opaque {
+        return ExposureClass::InfectionUnknown;
+    }
+    if propagate.state == StageState::Unknown || propagate.state == StageState::Opaque {
+        return ExposureClass::PropagationUnknown;
+    }
+    if observe.state == StageState::No {
+        return ExposureClass::ReachableUnrevealed;
+    }
+    if discriminate.state == StageState::Yes
+        && infect.state == StageState::Yes
+        && propagate.state == StageState::Yes
+    {
+        ExposureClass::Exposed
+    } else {
+        ExposureClass::WeaklyExposed
+    }
+}
+
+fn confidence_score(
+    reach: &StageEvidence,
+    infect: &StageEvidence,
+    propagate: &StageEvidence,
+    observe: &StageEvidence,
+    discriminate: &StageEvidence,
+    class: &ExposureClass,
+) -> f32 {
+    let states = [
+        &reach.state,
+        &infect.state,
+        &propagate.state,
+        &observe.state,
+        &discriminate.state,
+    ];
+    let mut score = 0.0;
+    for state in states {
+        score += match state {
+            StageState::Yes => 0.2,
+            StageState::Weak => 0.12,
+            StageState::Unknown => 0.07,
+            StageState::Opaque => 0.05,
+            StageState::No => 0.02,
+            StageState::NotApplicable => 0.1,
+        };
+    }
+    if matches!(
+        class,
+        ExposureClass::NoStaticPath | ExposureClass::ReachableUnrevealed
+    ) {
+        score = (score + 0.15_f32).min(0.95_f32);
+    }
+    (score * 100.0).round() / 100.0
+}
+
+fn missing_evidence(
+    probe: &Probe,
+    class: &ExposureClass,
+    infect: &StageEvidence,
+    observe: &StageEvidence,
+    discriminate: &StageEvidence,
+) -> Vec<String> {
+    let mut missing = Vec::new();
+    match class {
+        ExposureClass::Exposed => {}
+        ExposureClass::NoStaticPath => {
+            missing.push("No static test path reaches the changed owner".to_string())
+        }
+        ExposureClass::ReachableUnrevealed => missing.push(
+            "No detected assertion observes the changed value, error, field, or effect".to_string(),
+        ),
+        ExposureClass::InfectionUnknown => missing.push(infect.summary.clone()),
+        ExposureClass::PropagationUnknown => missing.push(
+            "No clear propagation path from changed behavior to an observable sink".to_string(),
+        ),
+        ExposureClass::StaticUnknown => missing.push(
+            "Syntax-first analysis cannot classify this change; use deep mode or real mutation"
+                .to_string(),
+        ),
+        ExposureClass::WeaklyExposed => {}
+    }
+    if matches!(probe.family, ProbeFamily::Predicate) && infect.state != StageState::Yes {
+        missing.push("No detected boundary input for the changed predicate".to_string());
+    }
+    if observe.state != StageState::Yes {
+        missing.push("No relevant oracle was detected".to_string());
+    }
+    if discriminate.state != StageState::Yes {
+        missing.push("No strong discriminator was detected".to_string());
+    }
+    missing.sort();
+    missing.dedup();
+    missing
+}
+
+fn stop_reasons(
+    probe: &Probe,
+    owner_fn: Option<&FunctionSummary>,
+    related_tests: &[&TestSummary],
+) -> Vec<StopReason> {
+    let mut reasons = Vec::new();
+    if owner_fn.is_none() {
+        reasons.push(StopReason::NoChangedRustLine);
+    }
+    if related_tests.iter().any(|test| {
+        test.body.contains("fixture") || test.body.contains("builder") || test.body.contains("arb_")
+    }) {
+        reasons.push(StopReason::FixtureOpaque);
+    }
+    if probe.expression.contains("async")
+        || probe.expression.contains("spawn")
+        || probe.expression.contains("await")
+    {
+        reasons.push(StopReason::AsyncBoundaryOpaque);
+    }
+    if probe.expression.contains("!") && !probe.expression.contains("!=") {
+        reasons.push(StopReason::ProcMacroOpaque);
+    }
+    reasons.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+    reasons.dedup_by(|a, b| a.as_str() == b.as_str());
+    reasons
+}
+
+fn recommended_next_step(probe: &Probe, class: &ExposureClass) -> Option<String> {
+    match class {
+        ExposureClass::Exposed => None,
+        ExposureClass::WeaklyExposed => Some(match probe.family {
+            ProbeFamily::Predicate => "Add boundary tests for below, equal, and above the changed threshold with exact assertions.".to_string(),
+            ProbeFamily::ErrorPath => "Assert the exact error variant or payload instead of only is_err().".to_string(),
+            ProbeFamily::SideEffect => "Add a mock expectation, event receiver assertion, persisted-state check, or metric assertion for the changed effect.".to_string(),
+            ProbeFamily::ReturnValue => "Replace broad assertions with exact equality or a property that constrains the changed returned value.".to_string(),
+            _ => "Strengthen the related assertion so it discriminates the changed behavior.".to_string(),
+        }),
+        ExposureClass::ReachableUnrevealed => Some("Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.".to_string()),
+        ExposureClass::NoStaticPath => Some("Add or identify a test path that reaches the changed owner, or run ready-mode mutation to confirm coverage.".to_string()),
+        ExposureClass::InfectionUnknown => Some("Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.".to_string()),
+        ExposureClass::PropagationUnknown | ExposureClass::StaticUnknown => Some("Escalate to real mutation testing or deep static analysis for this probe.".to_string()),
+    }
+}
+
+fn normalize_path(path: &Path) -> String {
+    path.to_string_lossy()
+        .replace('\\', "/")
+        .trim_start_matches("./")
+        .to_string()
+}
+
+fn package_prefix(path: &Path) -> Option<String> {
+    let normalized = normalize_path(path);
+    for marker in ["/src/", "/tests/"] {
+        if let Some(idx) = normalized.find(marker) {
+            let prefix = &normalized[..idx];
+            if prefix.is_empty() {
+                return None;
+            }
+            return Some(format!("{prefix}/"));
+        }
+    }
+    None
+}
