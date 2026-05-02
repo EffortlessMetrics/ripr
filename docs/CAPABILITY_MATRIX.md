@@ -27,7 +27,7 @@ Status values:
 | Golden human output | `planned` | `RIPR-SPEC-0002` | human output renderer, goldens check scaffold | `first-two-goldens` | golden output drift count |
 | Context packet v1 | `alpha` | `RIPR-SPEC-0003` | CLI context command | `agent-context-v2` | packet includes missing discriminator and related tests |
 | Agent context v2 | `planned` | `RIPR-SPEC-0003` | agent context spec | `agent-context-v2` | packet includes missing values and suggested assertions |
-| Analysis modes | `alpha` | `RIPR-SPEC-0001` | mode scope tests | capability metrics report | runtime and scope by mode |
+| Analysis modes | `alpha` | `RIPR-SPEC-0001` | mode scope tests | `capability-metrics-report` | runtime and scope by mode |
 | LSP diagnostics | `alpha` | `RIPR-SPEC-0001` | experimental sidecar | `lsp-evidence-hover-actions` | finding/probe metadata in diagnostics |
 | Parser-backed syntax facts | `planned` | future spec | roadmap | `syntax-adapter-mvp` | syntax extraction parity |
 | AST-backed test/oracle extraction | `planned` | future spec | roadmap | `ast-test-oracle-extraction` | oracle kind recognition rate |

@@ -40,6 +40,7 @@ Work items:
 | `output/output-contract-check` | done | Output contract registry checks exist. |
 | `docs/docs-index-checks` | done | Docs index checks exist. |
 | `docs/codex-goals-campaigns` | done | Clarify Codex Goals as multi-PR campaigns. |
+| `docs/readme-state-and-link-checks` | done | README state and repo-local Markdown links are checked. |
 | `fixtures/first-two-goldens` | ready | Add `boundary_gap` and `weak_error_oracle` fixtures. |
 | `testing/test-oracle-report` | ready | Report strength of `ripr`'s own test oracles. |
 | `dogfood/static-self-check` | ready | Produce focused `ripr`-on-`ripr` reports. |

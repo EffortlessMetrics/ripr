@@ -56,6 +56,12 @@ struct Capability {
     metric: Option<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct MarkdownLink {
+    line: usize,
+    target: String,
+}
+
 #[derive(Clone, Debug)]
 pub enum CheckStatus {
     Pass,
@@ -132,6 +138,8 @@ fn main() {
         Some("check-public-api") => check_public_api(),
         Some("check-output-contracts") => check_output_contracts(),
         Some("check-doc-index") => check_doc_index(),
+        Some("check-readme-state") => check_readme_state(),
+        Some("markdown-links") => markdown_links(),
         Some("check-pr-shape") => check_pr_shape(),
         Some("check-generated") => check_generated(),
         Some("check-dependencies") => check_dependencies(),
@@ -177,6 +185,8 @@ fn precommit() -> Result<(), String> {
     check_public_api()?;
     check_output_contracts()?;
     check_doc_index()?;
+    check_readme_state()?;
+    markdown_links()?;
     check_pr_shape()?;
     check_generated()?;
     let body = precommit_report_body();
@@ -218,6 +228,8 @@ fn run_policy_checks() -> Result<(), String> {
     check_public_api()?;
     check_output_contracts()?;
     check_doc_index()?;
+    check_readme_state()?;
+    markdown_links()?;
     check_pr_shape()?;
     check_generated()?;
     check_dependencies()?;
@@ -246,7 +258,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  metrics\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
+        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  metrics\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
     );
 }
 
@@ -278,7 +290,7 @@ fn check_pr_shape() -> Result<(), String> {
 }
 
 fn precommit_report_body() -> String {
-    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-public-api`\n- `cargo xtask check-output-contracts`\n- `cargo xtask check-doc-index`\n- `cargo xtask check-pr-shape`\n- `cargo xtask check-generated`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
+    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-public-api`\n- `cargo xtask check-output-contracts`\n- `cargo xtask check-doc-index`\n- `cargo xtask check-readme-state`\n- `cargo xtask markdown-links`\n- `cargo xtask check-pr-shape`\n- `cargo xtask check-generated`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
 }
 
 fn check_pr_report_body() -> String {
@@ -2208,6 +2220,244 @@ fn check_doc_index() -> Result<(), String> {
     )
 }
 
+fn check_readme_state() -> Result<(), String> {
+    let readme_path = Path::new("README.md");
+    let readme = read_text_lossy(readme_path)?;
+    let mut violations = Vec::new();
+
+    for heading in [
+        "# ripr",
+        "## Current Scope",
+        "## Current Capability Snapshot",
+        "## Supporting Docs",
+    ] {
+        if !has_markdown_heading(&readme, heading) {
+            violations.push(format!("README.md is missing `{heading}`"));
+        }
+    }
+
+    if !readme.contains("| Capability | Current state | Next checkpoint |") {
+        violations
+            .push("README.md capability snapshot is missing the expected table header".to_string());
+    }
+
+    for capability in [
+        "Distribution",
+        "Diff analysis",
+        "Test discovery",
+        "Output",
+        "LSP",
+        "Agent context",
+        "Calibration",
+    ] {
+        let marker = format!("| {capability} |");
+        if !readme.contains(&marker) {
+            violations.push(format!(
+                "README.md capability snapshot is missing `{capability}`"
+            ));
+        }
+    }
+
+    for required in [
+        "docs/METRICS.md",
+        "docs/CAPABILITY_MATRIX.md",
+        "docs/IMPLEMENTATION_CAMPAIGNS.md",
+        "docs/CODEX_GOALS.md",
+        "docs/SCOPED_PR_CONTRACT.md",
+        "docs/PR_AUTOMATION.md",
+        "docs/DOCUMENTATION.md",
+    ] {
+        if !readme.contains(required) {
+            violations.push(format!("README.md does not reference `{required}`"));
+        }
+    }
+
+    let capabilities_source = read_text_lossy(Path::new("metrics/capabilities.toml"))?;
+    let matrix = read_text_lossy(Path::new("docs/CAPABILITY_MATRIX.md"))?;
+    if !matrix.contains("metrics/capabilities.toml") {
+        violations.push(
+            "docs/CAPABILITY_MATRIX.md does not reference metrics/capabilities.toml".to_string(),
+        );
+    }
+    for status in ["planned", "alpha", "stable", "calibrated"] {
+        let marker = format!("`{status}`");
+        if !matrix.contains(&marker) {
+            violations.push(format!(
+                "docs/CAPABILITY_MATRIX.md does not describe status `{status}`"
+            ));
+        }
+    }
+    for checkpoint in next_checkpoints_from_capabilities(&capabilities_source)? {
+        if !checkpoint.trim().is_empty()
+            && !readme.contains(&checkpoint)
+            && !matrix.contains(&checkpoint)
+        {
+            violations.push(format!(
+                "capability next checkpoint `{checkpoint}` is missing from README.md and docs/CAPABILITY_MATRIX.md"
+            ));
+        }
+    }
+
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "readme-state.md",
+            check: "check-readme-state",
+            why_it_matters: "README is the front door for humans and Codex Goals state recovery; it should summarize current capability without drifting from metrics and campaign docs.",
+            fix_kind: FixKind::AuthorDecisionRequired,
+            recommended_fixes: &[
+                "Keep README.md linked to active planning, metrics, campaign, and automation docs.",
+                "Keep README's capability snapshot compact and aligned with docs/CAPABILITY_MATRIX.md.",
+                "Update metrics/capabilities.toml and docs/CAPABILITY_MATRIX.md when capability status or next checkpoints change.",
+            ],
+            rerun_command: "cargo xtask check-readme-state",
+            exception_template: None,
+        },
+        &violations,
+    )
+}
+
+fn markdown_links() -> Result<(), String> {
+    let mut violations = Vec::new();
+    for file in tracked_files()? {
+        if !file.ends_with(".md") {
+            continue;
+        }
+        if should_skip_path(&file) {
+            continue;
+        }
+        let path = Path::new(&file);
+        let text = read_text_lossy(path)?;
+        for link in markdown_links_in_text(&text) {
+            let Some(target_path) = local_markdown_target(&link.target) else {
+                continue;
+            };
+            let resolved = resolve_markdown_link(path, &target_path);
+            if !resolved.exists() {
+                violations.push(format!(
+                    "{file}:{} links to missing local target `{}`",
+                    link.line, link.target
+                ));
+            }
+        }
+    }
+
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "markdown-links.md",
+            check: "markdown-links",
+            why_it_matters: "Markdown links are repo state for humans and long-context agents; deleted or renamed docs should fail before review.",
+            fix_kind: FixKind::AuthorDecisionRequired,
+            recommended_fixes: &[
+                "Update links when docs are renamed or deleted.",
+                "Use relative links for repo-local Markdown targets.",
+                "Run cargo xtask markdown-links before opening docs-heavy PRs.",
+            ],
+            rerun_command: "cargo xtask markdown-links",
+            exception_template: None,
+        },
+        &violations,
+    )
+}
+
+fn next_checkpoints_from_capabilities(text: &str) -> Result<Vec<String>, String> {
+    let mut checkpoints = Vec::new();
+    for (line_number, line) in text.lines().enumerate() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with("next") {
+            continue;
+        }
+        let Some((_, value)) = trimmed.split_once('=') else {
+            return Err(format!(
+                "metrics/capabilities.toml:{} expected `next = \"...\"`",
+                line_number + 1
+            ));
+        };
+        checkpoints.push(parse_quoted_value(value.trim()).map_err(|message| {
+            format!("metrics/capabilities.toml:{} {message}", line_number + 1)
+        })?);
+    }
+    Ok(checkpoints)
+}
+
+fn markdown_links_in_text(text: &str) -> Vec<MarkdownLink> {
+    let mut links = Vec::new();
+    let mut in_fence = false;
+    for (index, line) in text.lines().enumerate() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence {
+            continue;
+        }
+        links.extend(markdown_links_in_line(line, index + 1));
+    }
+    links
+}
+
+fn markdown_links_in_line(line: &str, line_number: usize) -> Vec<MarkdownLink> {
+    let mut links = Vec::new();
+    let mut offset = 0usize;
+    while let Some(start) = line[offset..].find("](") {
+        let target_start = offset + start + 2;
+        let Some(end) = line[target_start..].find(')') else {
+            break;
+        };
+        let target = line[target_start..target_start + end].trim();
+        if !target.is_empty() {
+            links.push(MarkdownLink {
+                line: line_number,
+                target: target.to_string(),
+            });
+        }
+        offset = target_start + end + 1;
+    }
+    links
+}
+
+fn local_markdown_target(raw_target: &str) -> Option<String> {
+    let mut target = raw_target.trim();
+    if target.starts_with('<') {
+        let end = target.find('>')?;
+        target = &target[1..end];
+    } else if let Some((first, _)) = target.split_once(char::is_whitespace) {
+        target = first;
+    }
+    if target.is_empty() || target.starts_with('#') {
+        return None;
+    }
+    let lower = target.to_ascii_lowercase();
+    if lower.starts_with("http://")
+        || lower.starts_with("https://")
+        || lower.starts_with("mailto:")
+        || lower.starts_with("app://")
+        || lower.starts_with("plugin://")
+    {
+        return None;
+    }
+    let without_query = target.split('?').next().unwrap_or(target);
+    let without_anchor = without_query.split('#').next().unwrap_or(without_query);
+    let local = without_anchor.trim();
+    if local.is_empty() {
+        None
+    } else {
+        Some(local.trim_start_matches('/').to_string())
+    }
+}
+
+fn resolve_markdown_link(source: &Path, target: &str) -> PathBuf {
+    let target_path = Path::new(target);
+    if target_path.is_absolute() {
+        target_path.to_path_buf()
+    } else {
+        source
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(target_path)
+    }
+}
+
 fn require_index_mentions_files(
     index_path: &Path,
     directory: &Path,
@@ -3485,9 +3735,10 @@ fn is_word_char(value: Option<char>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        Capability, ChangedPath, extract_workflow_run_blocks, glob_matches,
+        Capability, ChangedPath, MarkdownLink, extract_workflow_run_blocks, glob_matches,
         is_dependency_surface_candidate, is_evidence_path, is_generated_candidate, is_policy_path,
-        is_production_path, is_snake_case_id, is_spec_id, json_escape, parse_inline_array,
+        is_production_path, is_snake_case_id, is_spec_id, json_escape, local_markdown_target,
+        markdown_links_in_text, next_checkpoints_from_capabilities, parse_inline_array,
         parse_reason, pr_shape_warnings, precommit_report_body, public_contract_rows,
         sorted_allowlist_content, spec_id_from_path,
     };
@@ -3704,5 +3955,53 @@ jobs:
         let json = super::capability_metrics_json(&[capability]);
         assert!(json.contains("\"id\": \"agent_context_v2\""));
         assert!(json.contains("\"schema_version\": \"0.1\""));
+    }
+
+    #[test]
+    fn markdown_link_helpers_skip_fences_and_external_targets() {
+        let text = "[Docs](docs/README.md#top)\n```md\n[Ignored](missing.md)\n```\n[External](https://example.com)\n[Anchor](#section)\n";
+
+        let links = markdown_links_in_text(text);
+
+        assert_eq!(
+            links,
+            vec![
+                MarkdownLink {
+                    line: 1,
+                    target: "docs/README.md#top".to_string()
+                },
+                MarkdownLink {
+                    line: 5,
+                    target: "https://example.com".to_string()
+                },
+                MarkdownLink {
+                    line: 6,
+                    target: "#section".to_string()
+                }
+            ]
+        );
+        assert_eq!(
+            local_markdown_target("docs/README.md#top"),
+            Some("docs/README.md".to_string())
+        );
+        assert_eq!(
+            local_markdown_target("<docs/My File.md>"),
+            Some("docs/My File.md".to_string())
+        );
+        assert_eq!(local_markdown_target("https://example.com"), None);
+        assert_eq!(local_markdown_target("#section"), None);
+    }
+
+    #[test]
+    fn capability_next_checkpoint_parser_reads_source_values() {
+        let source = "next = \"fixture-laboratory\"\nmetric = \"fixture pass rate\"\nnext = \"agent-context-v2\"\n";
+
+        assert_eq!(
+            next_checkpoints_from_capabilities(source),
+            Ok(vec![
+                "fixture-laboratory".to_string(),
+                "agent-context-v2".to_string()
+            ])
+        );
     }
 }
