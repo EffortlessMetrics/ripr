@@ -40,6 +40,7 @@ cargo xtask dogfood
 cargo xtask reports index
 cargo xtask receipts
 cargo xtask receipts check
+cargo xtask check-local-context
 cargo xtask ci-fast
 ```
 
@@ -106,11 +107,17 @@ and metrics runs. `receipts check` validates the required receipt files and
 writes `target/ripr/reports/receipts.md`. `check-pr` refreshes receipts before
 the final report index.
 
+`check-local-context` rejects committed local machine paths, Codex memory or
+sandbox references, uploaded-file/chat citation artifacts, and runtime/session
+state files. It writes `target/ripr/reports/local-context.md` and
+`target/ripr/reports/local-context.json`. Narrow generic examples must use
+`policy/local_context_allowlist.txt`.
+
 `ci-fast` is the current non-mutating local and CI check lane. It runs the Rust
 checks plus the existing policy checks for static language, panic-family usage,
-file policy, executable bits, workflow shell budgets, spec format, fixture
-contracts, generated files, dependencies, process spawning, and network policy.
-Those policy checks write Markdown pass/fail reports under
+local context leaks, file policy, executable bits, workflow shell budgets, spec
+format, fixture contracts, generated files, dependencies, process spawning, and
+network policy. Those policy checks write Markdown pass/fail reports under
 `target/ripr/reports`.
 
 ## Command Lanes
@@ -170,6 +177,7 @@ Current:
 cargo xtask ci-fast
 cargo xtask precommit
 cargo xtask check-pr
+cargo xtask check-local-context
 cargo xtask fixtures
 cargo xtask goldens check
 cargo xtask golden-drift
@@ -179,6 +187,7 @@ cargo xtask dogfood
 cargo xtask reports index
 cargo xtask receipts
 cargo xtask receipts check
+cargo xtask check-local-context
 cargo xtask check-traceability
 cargo xtask metrics
 cargo xtask check-capabilities
@@ -400,6 +409,8 @@ fix-pr.md
 pr-summary.md
 static-language.md
 no-panic-family.md
+local-context.md
+local-context.json
 file-policy.md
 executable-files.md
 workflows.md

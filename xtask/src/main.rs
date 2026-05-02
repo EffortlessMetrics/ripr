@@ -229,6 +229,22 @@ struct PolicyReportSpec<'a> {
     exception_template: Option<&'a str>,
 }
 
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct LocalContextFinding {
+    path: String,
+    line: Option<usize>,
+    pattern: String,
+    problem: String,
+}
+
+#[derive(Clone, Debug)]
+struct LocalContextAllow {
+    path: String,
+    pattern: String,
+    max_count: usize,
+    line: usize,
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let result = match args.get(1).map(|s| s.as_str()) {
@@ -250,6 +266,7 @@ fn main() {
         Some("ci-full") => ci_full(),
         Some("check-static-language") => check_static_language(),
         Some("check-no-panic-family") => check_no_panic_family(),
+        Some("check-local-context") => check_local_context(),
         Some("check-file-policy") => check_file_policy(),
         Some("check-executable-files") => check_executable_files(),
         Some("check-workflows") => check_workflows(),
@@ -300,6 +317,7 @@ fn precommit() -> Result<(), String> {
     run("cargo", &["fmt", "--check"])?;
     check_static_language()?;
     check_no_panic_family()?;
+    check_local_context()?;
     check_file_policy()?;
     check_executable_files()?;
     check_workflows()?;
@@ -347,6 +365,7 @@ fn check_pr() -> Result<(), String> {
 fn run_policy_checks() -> Result<(), String> {
     check_static_language()?;
     check_no_panic_family()?;
+    check_local_context()?;
     check_file_policy()?;
     check_executable_files()?;
     check_workflows()?;
@@ -390,7 +409,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  golden-drift\n  metrics\n  test-oracle-report\n  check-test-oracles\n  dogfood\n  goals status|next|report\n  reports index\n  receipts [check]\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
+        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  golden-drift\n  metrics\n  test-oracle-report\n  check-test-oracles\n  dogfood\n  goals status|next|report\n  reports index\n  receipts [check]\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-local-context\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
     );
 }
 
@@ -764,7 +783,7 @@ fn receipts_report_markdown(
 }
 
 fn precommit_report_body() -> String {
-    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-public-api`\n- `cargo xtask check-output-contracts`\n- `cargo xtask check-doc-index`\n- `cargo xtask check-readme-state`\n- `cargo xtask markdown-links`\n- `cargo xtask check-campaign`\n- `cargo xtask check-pr-shape`\n- `cargo xtask check-generated`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
+    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-local-context`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-public-api`\n- `cargo xtask check-output-contracts`\n- `cargo xtask check-doc-index`\n- `cargo xtask check-readme-state`\n- `cargo xtask markdown-links`\n- `cargo xtask check-campaign`\n- `cargo xtask check-pr-shape`\n- `cargo xtask check-generated`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
 }
 
 fn check_pr_report_body() -> String {
@@ -2014,6 +2033,69 @@ fn check_no_panic_family() -> Result<(), String> {
             rerun_command: "cargo xtask check-no-panic-family",
             exception_template: Some(
                 ".ripr/no-panic-allowlist.txt entry:\npath/to/file.rs|pattern|max_count|reason",
+            ),
+        },
+        &violations,
+    )
+}
+
+fn check_local_context() -> Result<(), String> {
+    let allowlist = read_local_context_allowlist("policy/local_context_allowlist.txt")?;
+    let mut violations = validate_local_context_allowlist(&allowlist);
+    let mut grouped = BTreeMap::<(String, String), (BTreeSet<String>, Vec<Option<usize>>)>::new();
+
+    for path in tracked_files()? {
+        let file_path = Path::new(&path);
+        if !file_path.exists() || path == "policy/local_context_allowlist.txt" {
+            continue;
+        }
+
+        for finding in local_context_findings_for_path(&path)? {
+            let entry = grouped
+                .entry((finding.path.clone(), finding.pattern.clone()))
+                .or_insert_with(|| (BTreeSet::new(), Vec::new()));
+            entry.0.insert(finding.problem);
+            entry.1.push(finding.line);
+        }
+    }
+
+    let allowed = allowlist
+        .iter()
+        .map(|entry| ((entry.path.clone(), entry.pattern.clone()), entry.max_count))
+        .collect::<BTreeMap<_, _>>();
+
+    for ((path, pattern), (problems, lines)) in grouped {
+        let actual = lines.len();
+        let allowed_count = allowed
+            .get(&(path.clone(), pattern.clone()))
+            .copied()
+            .unwrap_or(0);
+        if actual <= allowed_count {
+            continue;
+        }
+        let line_summary = local_context_line_summary(&lines);
+        violations.push(format!(
+            "Path: {path}\nProblem: {}\nPattern: {pattern}\nCount: {actual}, allowed: {allowed_count}\nLines: {line_summary}\nWhy this matters: Repository docs should contain durable project state, not local runtime/session state from one machine or Codex run.\nRecommended fixes:\n1. Delete runtime/session artifacts instead of committing them.\n2. Move durable learnings to docs/LEARNINGS.md.\n3. Move generated state to target/ripr/reports, target/ripr/receipts, or target/ripr/learning.",
+            problems.into_iter().collect::<Vec<_>>().join("; ")
+        ));
+    }
+
+    write_local_context_json(&violations)?;
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "local-context.md",
+            check: "check-local-context",
+            why_it_matters: "Repository state must be durable and portable. Machine paths, Codex memory paths, sandbox references, local transcripts, and session-state documents belong in generated artifacts or local notes, not committed repo knowledge.",
+            fix_kind: FixKind::AuthorDecisionRequired,
+            recommended_fixes: &[
+                "Delete committed runtime/session artifacts.",
+                "Move durable repo knowledge to docs/LEARNINGS.md or campaign/capability metadata.",
+                "Move generated state to target/ripr/reports, target/ripr/receipts, or target/ripr/learning.",
+                "Use policy/local_context_allowlist.txt only for narrow generic examples with a reason.",
+            ],
+            rerun_command: "cargo xtask check-local-context",
+            exception_template: Some(
+                "policy/local_context_allowlist.txt entry:\npath|pattern|max_count|reason",
             ),
         },
         &violations,
@@ -4908,6 +4990,7 @@ fn known_xtask_command(command: &str) -> bool {
             | "ci-full"
             | "check-static-language"
             | "check-no-panic-family"
+            | "check-local-context"
             | "check-file-policy"
             | "check-executable-files"
             | "check-workflows"
@@ -5710,6 +5793,7 @@ fn report_index_markdown(
         "fixtures.md",
         "goldens.md",
         "golden-drift.md",
+        "local-context.md",
         "test-oracles.md",
         "dogfood.md",
         "metrics.md",
@@ -6258,6 +6342,81 @@ fn read_count_policy_allowlist(path: &str) -> Result<BTreeMap<(String, String), 
     Ok(allowed)
 }
 
+fn read_local_context_allowlist(path: &str) -> Result<Vec<LocalContextAllow>, String> {
+    let mut allowed = Vec::new();
+    let text = read_text_lossy(Path::new(path))?;
+    for (line_number, line) in text.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let parts = trimmed.split('|').collect::<Vec<_>>();
+        if parts.len() != 4 {
+            return Err(format!(
+                "{path}:{} expected path|pattern|max_count|reason",
+                line_number + 1
+            ));
+        }
+        if parts[0].trim().is_empty() || parts[1].trim().is_empty() || parts[3].trim().is_empty() {
+            return Err(format!(
+                "{path}:{} allowlist entries require path, pattern, and reason",
+                line_number + 1
+            ));
+        }
+        let max_count = parts[2]
+            .parse::<usize>()
+            .map_err(|err| format!("{path}:{} invalid max_count: {err}", line_number + 1))?;
+        allowed.push(LocalContextAllow {
+            path: normalize_slashes(parts[0].trim()),
+            pattern: parts[1].trim().to_string(),
+            max_count,
+            line: line_number + 1,
+        });
+    }
+    Ok(allowed)
+}
+
+fn validate_local_context_allowlist(allowlist: &[LocalContextAllow]) -> Vec<String> {
+    let mut violations = Vec::new();
+    for entry in allowlist {
+        if !is_local_context_candidate(&entry.path) {
+            violations.push(format!(
+                "Path: policy/local_context_allowlist.txt\nProblem: local context allowlist entry targets a file type that is not scanned\nPattern: {}\nCount: 1, allowed: 0\nLines: {}\nWhy this matters: Local context exceptions should stay narrow and reviewable.\nRecommended fixes:\n1. Remove the stale exception.\n2. If the file should be scanned, add its extension to the checker intentionally.",
+                entry.pattern, entry.line
+            ));
+        }
+        if forbidden_local_context_allowlist_pattern(&entry.pattern) {
+            violations.push(format!(
+                "Path: policy/local_context_allowlist.txt\nProblem: local context allowlist tries to permit real machine or session state\nPattern: {}\nCount: 1, allowed: 0\nLines: {}\nWhy this matters: Real machine paths, Codex memory paths, and sandbox paths must be removed, not allowlisted.\nRecommended fixes:\n1. Delete the local context from the committed file.\n2. Keep only generic examples in durable docs.",
+                entry.pattern, entry.line
+            ));
+        }
+    }
+    violations
+}
+
+fn forbidden_local_context_allowlist_pattern(pattern: &str) -> bool {
+    let lower = pattern.to_ascii_lowercase();
+    if lower.contains(concat!(".", "codex"))
+        || lower.contains(concat!("memory", ".md"))
+        || lower.contains(concat!("sandbox:", "/mnt", "/data"))
+        || lower.contains(concat!("/mnt", "/data"))
+        || lower.contains(concat!("contentreference", "[oaicite"))
+    {
+        return true;
+    }
+    for token in windows_absolute_path_tokens(pattern) {
+        let generic_example = token
+            .to_ascii_lowercase()
+            .replace('/', "\\")
+            .contains(concat!(":\\", "path", "\\to\\"));
+        if !generic_example {
+            return true;
+        }
+    }
+    !unix_home_path_tokens(pattern).is_empty()
+}
+
 fn read_glob_allowlist(path: &str) -> Result<Vec<GlobAllow>, String> {
     let mut allowed = Vec::new();
     let text = read_text_lossy(Path::new(path))?;
@@ -6436,6 +6595,319 @@ fn read_text_lossy(path: &Path) -> Result<String, String> {
     let bytes =
         fs::read(path).map_err(|err| format!("failed to read {}: {err}", path.display()))?;
     Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+fn local_context_findings_for_path(path: &str) -> Result<Vec<LocalContextFinding>, String> {
+    let mut findings = Vec::new();
+    let Some(file_name) = path.rsplit('/').next() else {
+        return Ok(findings);
+    };
+
+    if suspicious_runtime_file_names()
+        .iter()
+        .any(|name| file_name.eq_ignore_ascii_case(name))
+    {
+        findings.push(LocalContextFinding {
+            path: path.to_string(),
+            line: None,
+            pattern: file_name.to_string(),
+            problem: "committed runtime/session artifact filename".to_string(),
+        });
+    }
+
+    if !is_local_context_candidate(path) {
+        return Ok(findings);
+    }
+
+    let text = read_text_lossy(Path::new(path))?;
+    for (line_index, line) in text.lines().enumerate() {
+        for (pattern, problem) in local_context_line_findings(line) {
+            findings.push(LocalContextFinding {
+                path: path.to_string(),
+                line: Some(line_index + 1),
+                pattern,
+                problem,
+            });
+        }
+    }
+    Ok(findings)
+}
+
+fn local_context_line_findings(line: &str) -> Vec<(String, String)> {
+    let mut findings = BTreeSet::<(String, String)>::new();
+
+    for token in windows_absolute_path_tokens(line) {
+        findings.insert((token, "local absolute Windows path".to_string()));
+    }
+    for token in unix_home_path_tokens(line) {
+        findings.insert((token, "local absolute Unix home path".to_string()));
+    }
+
+    let lower = line.to_ascii_lowercase();
+    for (marker, problem) in local_context_markers() {
+        if lower.contains(&marker.to_ascii_lowercase()) {
+            findings.insert((marker, problem));
+        }
+    }
+
+    if contains_recorded_date(line) {
+        findings.insert((
+            recorded_on_pattern().to_string(),
+            "session timestamp language".to_string(),
+        ));
+    }
+    if lower.contains(concat!("working tree", " is dirty before")) {
+        findings.insert((
+            concat!("working tree", " is dirty before").to_string(),
+            "transient local worktree state".to_string(),
+        ));
+    }
+    if lower.contains(concat!("before any", " codex edits")) {
+        findings.insert((
+            concat!("before any", " Codex edits").to_string(),
+            "transient Codex session state".to_string(),
+        ));
+    }
+    if lower.contains(concat!("current local", " state")) {
+        findings.insert((
+            concat!("current local", " state").to_string(),
+            "transient local state language".to_string(),
+        ));
+    }
+    if lower.contains(concat!("current", " branch:")) {
+        findings.insert((
+            concat!("Current", " branch:").to_string(),
+            "transient local branch state".to_string(),
+        ));
+    }
+
+    for token in file_reference_tokens(line) {
+        let problem = if token.starts_with("file_") {
+            "opaque uploaded file artifact reference"
+        } else {
+            "chat transcript file reference"
+        };
+        findings.insert((token, problem.to_string()));
+    }
+
+    findings.into_iter().collect()
+}
+
+fn local_context_markers() -> Vec<(String, String)> {
+    vec![
+        (
+            concat!(".", "codex").to_string(),
+            "Codex local memory path".to_string(),
+        ),
+        (
+            concat!("MEMORY", ".md").to_string(),
+            "Codex memory artifact".to_string(),
+        ),
+        (
+            concat!("sandbox:", "/mnt", "/data").to_string(),
+            "sandbox runtime path".to_string(),
+        ),
+        (
+            concat!("/mnt", "/data/").to_string(),
+            "sandbox runtime path".to_string(),
+        ),
+        (
+            concat!("contentReference", "[oaicite").to_string(),
+            "chat citation artifact".to_string(),
+        ),
+    ]
+}
+
+fn suspicious_runtime_file_names() -> Vec<String> {
+    vec![
+        concat!("CURRENT", "_STATE.md").to_string(),
+        concat!("SESSION", "_STATE.md").to_string(),
+        "SCRATCHPAD.md".to_string(),
+        concat!("NOTES", "_FROM", "_RUN.md").to_string(),
+        concat!("CODEX", "_STATE.md").to_string(),
+        concat!("codex", "-", "memory", ".md").to_string(),
+        "transcript.md".to_string(),
+        "chat.md".to_string(),
+    ]
+}
+
+fn windows_absolute_path_tokens(line: &str) -> Vec<String> {
+    let bytes = line.as_bytes();
+    let mut tokens = Vec::new();
+    let mut index = 0;
+    while index + 2 < bytes.len() {
+        let token_boundary = index == 0 || is_local_context_token_delimiter(bytes[index - 1]);
+        if token_boundary
+            && bytes[index].is_ascii_alphabetic()
+            && bytes[index + 1] == b':'
+            && (bytes[index + 2] == b'\\' || bytes[index + 2] == b'/')
+        {
+            let start = index;
+            index += 3;
+            while index < bytes.len() && !is_local_context_token_delimiter(bytes[index]) {
+                index += 1;
+            }
+            tokens.push(line[start..index].to_string());
+        } else {
+            index += 1;
+        }
+    }
+    tokens
+}
+
+fn unix_home_path_tokens(line: &str) -> Vec<String> {
+    ["/Users/", "/home/"]
+        .iter()
+        .flat_map(|prefix| absolute_path_tokens_with_prefix(line, prefix))
+        .collect()
+}
+
+fn absolute_path_tokens_with_prefix(line: &str, prefix: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut search_start = 0;
+    while let Some(offset) = line[search_start..].find(prefix) {
+        let start = search_start + offset;
+        let mut end = start + prefix.len();
+        let bytes = line.as_bytes();
+        let name_start = end;
+        while end < line.len()
+            && bytes[end] != b'/'
+            && !is_local_context_token_delimiter(bytes[end])
+        {
+            end += 1;
+        }
+        if end == name_start || end >= line.len() || bytes[end] != b'/' {
+            search_start = end.max(start + prefix.len());
+            continue;
+        }
+        end += 1;
+        while end < line.len() && !is_local_context_token_delimiter(bytes[end]) {
+            end += 1;
+        }
+        tokens.push(line[start..end].to_string());
+        search_start = end;
+    }
+    tokens
+}
+
+fn is_local_context_token_delimiter(byte: u8) -> bool {
+    byte.is_ascii_whitespace()
+        || matches!(
+            byte,
+            b'`' | b'"' | b'\'' | b')' | b']' | b'}' | b'<' | b'>' | b',' | b';'
+        )
+}
+
+fn contains_recorded_date(line: &str) -> bool {
+    let marker = recorded_on_marker();
+    let Some(offset) = line.find(marker) else {
+        return false;
+    };
+    let date = &line[offset + marker.len()..];
+    date.len() >= 10
+        && date.as_bytes()[0..4].iter().all(u8::is_ascii_digit)
+        && date.as_bytes()[4] == b'-'
+        && date.as_bytes()[5..7].iter().all(u8::is_ascii_digit)
+        && date.as_bytes()[7] == b'-'
+        && date.as_bytes()[8..10].iter().all(u8::is_ascii_digit)
+}
+
+fn recorded_on_marker() -> &'static str {
+    concat!("Recorded", " on ")
+}
+
+fn recorded_on_pattern() -> &'static str {
+    concat!("Recorded", " on <date>")
+}
+
+fn file_reference_tokens(line: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let bytes = line.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index..].starts_with(b"file_") {
+            let start = index;
+            index += "file_".len();
+            let hex_start = index;
+            while index < bytes.len() && bytes[index].is_ascii_hexdigit() {
+                index += 1;
+            }
+            if index - hex_start >= 8 {
+                tokens.push(line[start..index].to_string());
+            }
+            continue;
+        }
+        if bytes[index..].starts_with(b"turn") {
+            let start = index;
+            index += "turn".len();
+            let digit_start = index;
+            while index < bytes.len() && bytes[index].is_ascii_digit() {
+                index += 1;
+            }
+            if index > digit_start && bytes[index..].starts_with(b"file") {
+                index += "file".len();
+                let file_digit_start = index;
+                while index < bytes.len() && bytes[index].is_ascii_digit() {
+                    index += 1;
+                }
+                if index > file_digit_start {
+                    tokens.push(line[start..index].to_string());
+                    continue;
+                }
+            }
+            index = start + 1;
+            continue;
+        }
+        index += 1;
+    }
+    tokens
+}
+
+fn local_context_line_summary(lines: &[Option<usize>]) -> String {
+    let mut concrete = lines.iter().flatten().copied().collect::<Vec<_>>();
+    concrete.sort_unstable();
+    concrete.dedup();
+    if concrete.is_empty() {
+        "file name".to_string()
+    } else {
+        concrete
+            .into_iter()
+            .map(|line| line.to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
+fn is_local_context_candidate(path: &str) -> bool {
+    let extensions = [
+        ".md", ".rs", ".txt", ".json", ".toml", ".yml", ".yaml", ".ts", ".tsx",
+    ];
+    extensions.iter().any(|extension| path.ends_with(extension))
+}
+
+fn write_local_context_json(violations: &[String]) -> Result<(), String> {
+    let status = if violations.is_empty() {
+        "pass"
+    } else {
+        "fail"
+    };
+    let mut body = format!(
+        "{{\n  \"schema_version\": \"0.1\",\n  \"status\": \"{status}\",\n  \"violation_count\": {},\n  \"violations\": [",
+        violations.len()
+    );
+    for (index, violation) in violations.iter().enumerate() {
+        if index > 0 {
+            body.push(',');
+        }
+        body.push_str("\n    \"");
+        body.push_str(&json_escape(violation));
+        body.push('"');
+    }
+    if !violations.is_empty() {
+        body.push('\n');
+    }
+    body.push_str("  ]\n}\n");
+    write_report("local-context.json", &body)
 }
 
 fn normalize_path(path: &Path) -> String {
@@ -6739,20 +7211,22 @@ fn is_word_char(value: Option<char>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        CampaignManifest, Capability, ChangedPath, DogfoodRun, MarkdownLink, ReceiptRecord,
-        ReportIndexCampaign, ReportIndexEntry, TestOracleClass, dogfood_class_counts,
-        dogfood_report_json, dogfood_report_markdown, extract_workflow_run_blocks, glob_matches,
-        golden_drift_semantics, is_dependency_surface_candidate, is_evidence_path,
-        is_generated_candidate, is_known_campaign_command, is_policy_path, is_production_path,
-        is_receipt_status, is_snake_case_id, is_spec_id, json_escape, json_number_after,
-        json_string_values_for_key, known_xtask_command, local_markdown_target,
+        CampaignManifest, Capability, ChangedPath, DogfoodRun, LocalContextAllow, MarkdownLink,
+        ReceiptRecord, ReportIndexCampaign, ReportIndexEntry, TestOracleClass,
+        dogfood_class_counts, dogfood_report_json, dogfood_report_markdown,
+        extract_workflow_run_blocks, glob_matches, golden_drift_semantics,
+        is_dependency_surface_candidate, is_evidence_path, is_generated_candidate,
+        is_known_campaign_command, is_policy_path, is_production_path, is_receipt_status,
+        is_snake_case_id, is_spec_id, json_escape, json_number_after, json_string_values_for_key,
+        known_xtask_command, local_context_line_findings, local_markdown_target,
         markdown_links_in_text, next_checkpoints_from_capabilities, normalize_fixture_human_output,
         normalize_fixture_json_output, normalize_golden_text, parse_campaign_manifest,
         parse_inline_array, parse_reason, pr_shape_warnings, precommit_report_body,
         public_contract_rows, receipt_json, receipt_specs, receipt_status_from_reports,
         report_index_markdown, report_index_missing_expected, report_status_from_text,
-        sorted_allowlist_content, spec_id_from_path, status_for_report, test_oracle_report_json,
-        test_oracle_report_markdown, test_oracle_tests_in_text,
+        sorted_allowlist_content, spec_id_from_path, status_for_report,
+        suspicious_runtime_file_names, test_oracle_report_json, test_oracle_report_markdown,
+        test_oracle_tests_in_text, validate_local_context_allowlist, windows_absolute_path_tokens,
     };
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
@@ -6773,6 +7247,94 @@ mod tests {
             "editors/vscode/**/*.ts",
             "docs/examples/client.ts"
         ));
+    }
+
+    #[test]
+    fn local_context_detection_flags_machine_and_session_artifacts() {
+        let machine_path = concat!("H:", "\\Code\\Rust\\ripr");
+        let line = format!(
+            "{}2026-05-01 from `{machine_path}`.",
+            concat!("Recorded", " on ")
+        );
+
+        let findings = local_context_line_findings(&line);
+
+        assert!(findings.iter().any(|(pattern, _)| pattern == machine_path));
+        assert!(
+            findings
+                .iter()
+                .any(|(pattern, _)| pattern == concat!("Recorded", " on <date>"))
+        );
+    }
+
+    #[test]
+    fn local_context_detection_flags_codex_memory_and_chat_artifacts() {
+        let memory_path = format!(
+            "{}{}",
+            concat!("C:", "\\Users\\steven\\"),
+            concat!(".", "codex\\memories\\", "MEMORY", ".md")
+        );
+        let line = format!(
+            "See {memory_path}, {}, and {}.",
+            concat!("turn", "110", "file", "4"),
+            concat!("file_", "00000000abcdef")
+        );
+
+        let findings = local_context_line_findings(&line);
+
+        assert!(findings.iter().any(|(pattern, _)| pattern == &memory_path));
+        assert!(
+            findings
+                .iter()
+                .any(|(pattern, _)| pattern == concat!(".", "codex"))
+        );
+        assert!(
+            findings
+                .iter()
+                .any(|(pattern, _)| pattern == concat!("MEMORY", ".md"))
+        );
+        assert!(
+            findings
+                .iter()
+                .any(|(pattern, _)| pattern == concat!("turn", "110", "file", "4"))
+        );
+        assert!(
+            findings
+                .iter()
+                .any(|(pattern, _)| pattern == concat!("file_", "00000000abcdef"))
+        );
+    }
+
+    #[test]
+    fn local_context_allowlist_rejects_real_machine_paths() {
+        let allowlist = vec![LocalContextAllow {
+            path: "docs/example.md".to_string(),
+            pattern: concat!("H:", "\\Code\\Rust\\ripr").to_string(),
+            max_count: 1,
+            line: 7,
+        }];
+
+        let violations = validate_local_context_allowlist(&allowlist);
+
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].contains("real machine or session state"));
+    }
+
+    #[test]
+    fn suspicious_runtime_file_names_include_current_state_notes() {
+        assert!(
+            suspicious_runtime_file_names()
+                .iter()
+                .any(|name| name == concat!("CURRENT", "_STATE.md"))
+        );
+    }
+
+    #[test]
+    fn windows_absolute_path_tokens_find_tokens_without_trailing_punctuation() {
+        let path = concat!("C:", "\\path\\to\\ripr.exe");
+        let line = format!("Use `{path}`.");
+
+        assert_eq!(windows_absolute_path_tokens(&line), vec![path.to_string()]);
     }
 
     #[test]
