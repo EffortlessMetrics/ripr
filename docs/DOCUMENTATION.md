@@ -41,6 +41,8 @@ Current reference docs:
 - [Output schema](OUTPUT_SCHEMA.md)
 - [Static exposure model](STATIC_EXPOSURE_MODEL.md)
 - [Spec-test-code traceability](SPEC_TEST_CODE.md)
+- [Spec format](SPEC_FORMAT.md)
+- [Test taxonomy](TEST_TAXONOMY.md)
 - [Engineering rules](ENGINEERING.md)
 - [File policy](FILE_POLICY.md)
 - [Changelog policy](CHANGELOG_POLICY.md)

@@ -68,6 +68,8 @@ Non-goals:
 - [ ] `cargo xtask check-file-policy`
 - [ ] `cargo xtask check-executable-files`
 - [ ] `cargo xtask check-workflows`
+- [ ] `cargo xtask check-spec-format`
+- [ ] `cargo xtask check-fixture-contracts`
 
 Extension changes:
 

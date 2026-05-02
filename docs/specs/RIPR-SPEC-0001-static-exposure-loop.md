@@ -39,6 +39,21 @@ Each finding should carry:
 - recommended next step
 - stop reason for unknowns
 
+## Inputs
+
+- Rust/Cargo workspace root
+- Git base or explicit unified diff
+- analysis mode
+- optional repository configuration
+
+## Outputs
+
+- human findings
+- versioned JSON findings
+- GitHub annotations
+- LSP diagnostics and hover content when used through the editor
+- agent context packet for a selected finding
+
 ## Classifications
 
 Static findings may use only these exposure classes:
@@ -101,3 +116,11 @@ Current and planned modules:
 - `domain`: probes, RIPR evidence, oracle strength, exposure class
 - `output`: human, JSON, GitHub, future SARIF rendering
 - `lsp`: diagnostics, hover, actions
+
+## Metrics
+
+- fixture pass rate
+- unknowns with stop reasons
+- oracle kind recognition rate
+- flow sink identification rate
+- static runtime by mode

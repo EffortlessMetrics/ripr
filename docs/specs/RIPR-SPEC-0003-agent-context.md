@@ -28,7 +28,13 @@ The packet should include:
 - confidence
 - stop reasons
 
-## Example
+## Required Evidence
+
+The context packet should be grounded in a selected finding and include enough
+evidence for a human or agent to write one targeted test without broad repo
+guesswork.
+
+## Acceptance Examples
 
 ```json
 {
@@ -73,3 +79,10 @@ Planned modules:
 - `app` context use case
 - `output::json`
 - `lsp` code action bridge
+
+## Metrics
+
+- context packets with related tests
+- context packets with missing input values
+- context packets with suggested assertion shapes
+- context packets with stop reasons when unknown

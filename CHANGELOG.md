@@ -24,3 +24,5 @@ how future PRs are scoped or reviewed.
   static language and panic-family debt tracking.
 - Added Rust-first file policy docs and checks for allowlisted non-Rust
   programming files, executable bits, and workflow shell budgets.
+- Added spec format, fixture contract, and test taxonomy docs plus xtask checks
+  for spec and fixture evidence shape.
