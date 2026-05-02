@@ -827,6 +827,19 @@ mod tests {
     }
 
     #[test]
+    fn given_non_workspace_paths_when_extracting_package_prefix_then_returns_none() {
+        assert_eq!(package_prefix(Path::new("src/lib.rs")), None);
+        assert_eq!(package_prefix(Path::new("tests/basic.rs")), None);
+        assert_eq!(package_prefix(Path::new("README.md")), None);
+    }
+
+    #[test]
+    fn given_mixed_separator_path_when_normalizing_then_uses_workspace_relative_form() {
+        let normalized = normalize_path(Path::new("./crates\\ripr\\src\\lib.rs"));
+        assert_eq!(normalized, "crates/ripr/src/lib.rs");
+    }
+
+    #[test]
     fn given_infection_unknown_probe_when_classified_then_stop_reason_is_present() {
         let index = RustIndex {
             functions: vec![function("src/lib.rs", "price")],
