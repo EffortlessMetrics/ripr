@@ -220,7 +220,7 @@ The current alpha line is intentionally narrow:
 - one CLI binary: `ripr`
 - one shared analysis engine
 - syntax-first unified diff analysis
-- basic Rust function, test, and assertion indexing
+- parser-backed Rust function, test, and assertion indexing with lexical fallback
 - human, JSON, and GitHub outputs
 - experimental LSP sidecar
 
@@ -237,8 +237,8 @@ and activation/value modeling.
 | Capability | Current state | Next checkpoint |
 | --- | --- | --- |
 | Distribution | Crate and extension packaging paths exist. | Verify one-click editor install from a fresh profile. |
-| Diff analysis | Syntax-first changed-line probes. | Parser-backed changed-node facts. |
-| Test discovery | Basic Rust test/assertion indexing. | AST-backed test and oracle extraction. |
+| Diff analysis | Syntax-first changed-line probes. | Stable owner mapping from changed syntax nodes. |
+| Test discovery | Parser-backed test and assertion facts. | Probe-relative oracle strength. |
 | Output | Human, JSON, GitHub annotation formats. | Golden fixture lab and stable DTOs. |
 | LSP | Experimental sidecar. | Evidence-aware diagnostics, hover, and context actions. |
 | Agent context | Compact context packet. | Test-writing brief with missing values and assertion shape. |
