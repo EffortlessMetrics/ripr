@@ -137,6 +137,55 @@ mod tests {
     }
 
     #[test]
+    fn parses_removed_and_context_lines_across_multiple_hunks() {
+        let diff = "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -3,3 +3,3 @@\n old_keep\n-old_remove\n+new_add\n next_keep\n@@ -10,2 +10,3 @@\n-old_again\n+new_again\n+new_tail\n unchanged\n";
+
+        let files = parse_unified_diff(diff);
+
+        assert_eq!(files.len(), 1);
+        let file = &files[0];
+        assert_eq!(file.path, PathBuf::from("src/lib.rs"));
+        assert_eq!(file.removed_lines.len(), 2);
+        assert_eq!(file.removed_lines[0].line, 4);
+        assert_eq!(file.removed_lines[0].text, "old_remove");
+        assert_eq!(file.removed_lines[1].line, 10);
+        assert_eq!(file.removed_lines[1].text, "old_again");
+
+        assert_eq!(file.added_lines.len(), 3);
+        assert_eq!(file.added_lines[0].line, 4);
+        assert_eq!(file.added_lines[0].text, "new_add");
+        assert_eq!(file.added_lines[1].line, 10);
+        assert_eq!(file.added_lines[1].text, "new_again");
+        assert_eq!(file.added_lines[2].line, 11);
+        assert_eq!(file.added_lines[2].text, "new_tail");
+    }
+
+    #[test]
+    fn ignores_headers_without_valid_hunk_coordinates() {
+        let diff = "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ malformed header @@\n-removed\n+added\n";
+
+        let files = parse_unified_diff(diff);
+
+        assert_eq!(files.len(), 1);
+        let file = &files[0];
+        assert_eq!(file.removed_lines[0].line, 0);
+        assert_eq!(file.added_lines[0].line, 0);
+    }
+
+    #[test]
+    fn tracks_multiple_files_in_single_diff() {
+        let diff = "diff --git a/src/a.rs b/src/a.rs\n--- a/src/a.rs\n+++ b/src/a.rs\n@@ -1,1 +1,1 @@\n-a\n+b\ndiff --git a/src/b.rs b/src/b.rs\n--- a/src/b.rs\n+++ b/src/b.rs\n@@ -5,1 +5,2 @@\n-old\n+new\n+extra\n";
+
+        let files = parse_unified_diff(diff);
+
+        assert_eq!(files.len(), 2);
+        assert_eq!(files[0].path, PathBuf::from("src/a.rs"));
+        assert_eq!(files[0].added_lines.len(), 1);
+        assert_eq!(files[1].path, PathBuf::from("src/b.rs"));
+        assert_eq!(files[1].added_lines.len(), 2);
+    }
+
+    #[test]
     fn parser_is_robust_against_fuzz_like_inputs() {
         let mut seed = 0xC0FFEE_u64;
         for _case in 0..512 {
