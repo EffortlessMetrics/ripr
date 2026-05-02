@@ -1,17 +1,17 @@
 use crate::app::{CheckInput, OutputFormat, check_workspace};
-use crate::domain::{ExposureClass, Finding};
+use crate::domain::{ExposureClass, Finding, RelatedTest};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tower_lsp_server::jsonrpc::Result as LspResult;
 use tower_lsp_server::ls_types::{
     CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionProviderCapability,
-    CodeActionResponse, Command, Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams,
-    DidOpenTextDocumentParams, DidSaveTextDocumentParams, ExecuteCommandOptions,
-    ExecuteCommandParams, Hover, HoverContents, HoverParams, HoverProviderCapability,
-    InitializeParams, InitializeResult, LSPAny, MarkupContent, MarkupKind, MessageType,
-    NumberOrString, Position, Range, ServerCapabilities, ServerInfo, TextDocumentSyncCapability,
-    TextDocumentSyncKind, Uri,
+    CodeActionResponse, Command, Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity,
+    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
+    ExecuteCommandOptions, ExecuteCommandParams, Hover, HoverContents, HoverParams,
+    HoverProviderCapability, InitializeParams, InitializeResult, LSPAny, Location, MarkupContent,
+    MarkupKind, MessageType, NumberOrString, Position, Range, ServerCapabilities, ServerInfo,
+    TextDocumentSyncCapability, TextDocumentSyncKind, Uri,
 };
 use tower_lsp_server::{Client, LanguageServer, LspService, Server};
 
@@ -221,7 +221,7 @@ pub fn workspace_diagnostic_batches(root: &Path) -> Result<Vec<DiagnosticBatch>,
         grouped
             .entry(uri)
             .or_default()
-            .push(diagnostic_for_finding(finding));
+            .push(diagnostic_for_finding(&output.root, finding));
     }
     Ok(grouped
         .into_iter()
@@ -295,7 +295,7 @@ fn code_action_response() -> CodeActionResponse {
     ]
 }
 
-fn diagnostic_for_finding(finding: &Finding) -> Diagnostic {
+fn diagnostic_for_finding(root: &Path, finding: &Finding) -> Diagnostic {
     let line = finding.probe.location.line.saturating_sub(1) as u32;
     Diagnostic {
         range: Range {
@@ -310,7 +310,7 @@ fn diagnostic_for_finding(finding: &Finding) -> Diagnostic {
         code_description: None,
         source: Some("ripr".to_string()),
         message: lsp_message(finding),
-        related_information: None,
+        related_information: related_information_for_finding(root, finding),
         tags: None,
         data: Some(serde_json::json!({
             "schema_version": "0.1",
@@ -325,6 +325,55 @@ fn diagnostic_for_finding(finding: &Finding) -> Diagnostic {
                 "column": finding.probe.location.column,
             },
         })),
+    }
+}
+
+fn related_information_for_finding(
+    root: &Path,
+    finding: &Finding,
+) -> Option<Vec<DiagnosticRelatedInformation>> {
+    let related = finding
+        .related_tests
+        .iter()
+        .filter_map(|test| related_information_for_test(root, test))
+        .collect::<Vec<_>>();
+    if related.is_empty() {
+        None
+    } else {
+        Some(related)
+    }
+}
+
+fn related_information_for_test(
+    root: &Path,
+    test: &RelatedTest,
+) -> Option<DiagnosticRelatedInformation> {
+    let path = absolute_related_test_path(root, test);
+    let uri = file_uri_for_path(&path).ok()?;
+    let line = test.line.saturating_sub(1) as u32;
+    Some(DiagnosticRelatedInformation {
+        location: Location {
+            uri,
+            range: Range {
+                start: Position { line, character: 0 },
+                end: Position {
+                    line,
+                    character: 120,
+                },
+            },
+        },
+        message: related_test_message(test),
+    })
+}
+
+fn related_test_message(test: &RelatedTest) -> String {
+    let strength = test.oracle_strength.as_str();
+    match &test.oracle {
+        Some(oracle) => format!(
+            "Related test `{}` has {strength} oracle: {oracle}",
+            test.name
+        ),
+        None => format!("Related test `{}` has {strength} oracle", test.name),
     }
 }
 
@@ -352,6 +401,14 @@ fn absolute_finding_path(root: &Path, finding: &Finding) -> PathBuf {
         finding.probe.location.file.clone()
     } else {
         root.join(&finding.probe.location.file)
+    }
+}
+
+fn absolute_related_test_path(root: &Path, test: &RelatedTest) -> PathBuf {
+    if test.file.is_absolute() {
+        test.file.clone()
+    } else {
+        root.join(&test.file)
     }
 }
 
@@ -433,11 +490,11 @@ mod tests {
         root_from_initialize_params, take_all_uris,
     };
     use crate::domain::{
-        Confidence, DeltaKind, ExposureClass, Finding, Probe, ProbeFamily, ProbeId, RevealEvidence,
-        RiprEvidence, SourceLocation, StageEvidence, StageState,
+        Confidence, DeltaKind, ExposureClass, Finding, OracleStrength, Probe, ProbeFamily, ProbeId,
+        RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState,
     };
     use std::collections::BTreeSet;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use tower_lsp_server::LspService;
     use tower_lsp_server::ls_types::{
         CodeActionOrCommand, DiagnosticSeverity, HoverContents, HoverProviderCapability,
@@ -528,7 +585,7 @@ mod tests {
     #[test]
     fn diagnostic_for_finding_preserves_lsp_payload_shape() -> Result<(), String> {
         let finding = sample_finding();
-        let diagnostic = diagnostic_for_finding(&finding);
+        let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
 
         assert_eq!(diagnostic.range.start.line, 87);
         assert_eq!(diagnostic.severity, Some(DiagnosticSeverity::WARNING));
@@ -550,6 +607,35 @@ mod tests {
         assert_eq!(data["source_range"]["file"], "src/pricing.rs");
         assert_eq!(data["source_range"]["line"], 88);
         assert_eq!(data["source_range"]["column"], 1);
+        Ok(())
+    }
+
+    #[test]
+    fn diagnostic_for_finding_attaches_related_test_information() -> Result<(), String> {
+        let mut finding = sample_finding();
+        finding.related_tests.push(RelatedTest {
+            name: "discount_boundary_is_exact".to_string(),
+            file: PathBuf::from("tests/pricing.rs"),
+            line: 12,
+            oracle: Some("assert_eq!(total, expected)".to_string()),
+            oracle_strength: OracleStrength::Strong,
+        });
+
+        let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+        let Some(related) = diagnostic.related_information else {
+            return Err("expected related diagnostic information".to_string());
+        };
+
+        assert_eq!(related.len(), 1);
+        assert_eq!(
+            related[0].location.uri.as_str(),
+            "file:///workspace/tests/pricing.rs"
+        );
+        assert_eq!(related[0].location.range.start.line, 11);
+        assert_eq!(
+            related[0].message,
+            "Related test `discount_boundary_is_exact` has strong oracle: assert_eq!(total, expected)"
+        );
         Ok(())
     }
 
