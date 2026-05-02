@@ -33,6 +33,7 @@ pub(super) fn expect_value<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
@@ -134,5 +135,35 @@ mod tests {
             when_value_is_missing,
             Err("missing value for --diff".to_string())
         );
+    }
+
+    proptest! {
+        #[test]
+        fn given_arbitrary_non_mode_string_when_parse_mode_then_returns_unknown_mode(value in "\\PC*") {
+            prop_assume!(!matches!(value.as_str(), "instant" | "draft" | "fast" | "deep" | "ready"));
+            let actual = parse_mode(value.as_str());
+            prop_assert_eq!(actual, Err(format!("unknown mode {value:?}")));
+        }
+
+        #[test]
+        fn given_arbitrary_non_format_string_when_parse_format_then_returns_unknown_format(value in "\\PC*") {
+            prop_assume!(!matches!(value.as_str(), "human" | "text" | "json" | "github"));
+            let actual = parse_format(value.as_str());
+            prop_assert_eq!(actual, Err(format!("unknown format {value:?}")));
+        }
+
+        #[test]
+        fn given_argument_list_when_expect_value_then_index_behavior_matches_slice_get(
+            values in proptest::collection::vec("\\PC*", 0..12),
+            idx in 0usize..15,
+            flag in "\\PC*"
+        ) {
+            let actual = expect_value(&values, idx, flag.as_str());
+            let expected = values
+                .get(idx)
+                .map(|s| s.as_str())
+                .ok_or_else(|| format!("missing value for {}", flag));
+            prop_assert_eq!(actual, expected);
+        }
     }
 }
