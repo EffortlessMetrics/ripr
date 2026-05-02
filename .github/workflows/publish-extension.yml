@@ -30,7 +30,7 @@ jobs:
     env:
       EXTENSION_VERSION: ${{ github.event.inputs.version || github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: actions/setup-node@v4
         with:
