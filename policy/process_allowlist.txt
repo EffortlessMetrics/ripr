@@ -18,4 +18,4 @@ editors/vscode/src/downloader.ts|child_process|1|lsp/editor|Downloader extracts 
 editors/vscode/src/downloader.ts|cp.execFile|1|lsp/editor|Downloader invokes tar or PowerShell archive extraction without shell expansion.
 editors/vscode/src/serverResolver.ts|child_process|1|lsp/editor|Server resolver probes candidate ripr binaries.
 editors/vscode/src/serverResolver.ts|cp.spawn|1|lsp/editor|Server resolver runs ripr --version without shell expansion.
-xtask/src/main.rs|Command::new|4|repo-policy|xtask is the repository command runner for Cargo, git, and fixture execution.
+xtask/src/main.rs|Command::new|5|repo-policy|xtask is the repository command runner for Cargo, git, fixture execution, and supply-chain report capture.

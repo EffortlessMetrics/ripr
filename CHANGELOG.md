@@ -110,3 +110,5 @@ how future PRs are scoped or reviewed.
 - Added root README status/package/marketplace badges, reset manual VS
   Marketplace install badges to the first-launch `0 installs` seed, and added
   an advisory Codecov coverage workflow.
+- Added cargo-deny supply-chain policy, a security workflow with GitHub
+  Dependency Review, and `cargo xtask check-supply-chain`.

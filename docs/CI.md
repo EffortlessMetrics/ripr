@@ -114,6 +114,7 @@ cargo xtask check-campaign
 cargo xtask check-pr-shape
 cargo xtask check-generated
 cargo xtask check-dependencies
+cargo xtask check-supply-chain
 cargo xtask check-process-policy
 cargo xtask check-network-policy
 ```
@@ -149,6 +150,28 @@ cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
 It uploads `lcov.info` to Codecov with `fail_ci_if_error: false` while the
 coverage integration is being established.
 
+The security workflow currently runs:
+
+```bash
+cargo deny check advisories licenses bans sources
+```
+
+It uses `deny.toml` to enforce RustSec advisories, license policy, banned
+crates, and approved dependency sources. Duplicate dependency findings are
+warnings while the `ra_ap_syntax` dependency graph is being baselined.
+
+Pull requests also run GitHub Dependency Review for high-severity vulnerability
+alerts and denied license families. Dependency Review is advisory until GitHub
+Dependency Graph is enabled for the repository; after that setting is enabled,
+remove `continue-on-error` from the workflow to make dependency-review findings
+blocking.
+
+The same cargo-deny check can be run locally with:
+
+```bash
+cargo xtask check-supply-chain
+```
+
 Release workflows handle extension publishing and server binary releases.
 
 ## Principles
@@ -177,6 +200,8 @@ Planned CI work:
 - add README state and Markdown link checks
 - decide when Codecov upload failures should become blocking after the first
   successful coverage baseline
+- decide when duplicate dependency findings should become blocking after the
+  cargo-deny baseline is stable
 - add SARIF validation when SARIF output exists
 - add opt-in policy modes:
   - advisory

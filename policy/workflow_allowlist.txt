@@ -11,3 +11,4 @@
 .github/workflows/coverage.yml|1|Coverage workflow runs one cargo-llvm-cov command.
 .github/workflows/publish-extension.yml|20|Release workflow includes marketplace packaging and publishing orchestration.
 .github/workflows/release-server-binaries.yml|30|Release workflow packages platform server binaries.
+.github/workflows/security.yml|0|Security workflow uses standard cargo-deny and dependency-review actions without shell run blocks.
