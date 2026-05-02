@@ -12,8 +12,8 @@ mod tests {
     use super::{context_packet::render_context_packet, escape, render, report::finding_json};
     use crate::app::{CheckOutput, Mode};
     use crate::domain::{
-        Confidence, DeltaKind, ExposureClass, Finding, Probe, ProbeFamily, ProbeId,
-        RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState, Summary,
+        Confidence, DeltaKind, ExposureClass, Finding, Probe, ProbeFamily, ProbeId, RevealEvidence,
+        RiprEvidence, SourceLocation, StageEvidence, StageState, Summary,
     };
     use std::path::PathBuf;
 
