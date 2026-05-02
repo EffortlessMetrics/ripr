@@ -3256,6 +3256,22 @@ fn test_oracle_observation_for(
     }
 }
 
+fn is_bdd_test_name(name: &str) -> bool {
+    let compact = name.to_ascii_lowercase();
+    if !compact.starts_with("given_") {
+        return false;
+    }
+
+    let Some(when_index) = compact.find("_when_") else {
+        return false;
+    };
+    let Some(then_index) = compact.find("_then_") else {
+        return false;
+    };
+
+    when_index > "given_".len() && then_index > when_index + "_when_".len()
+}
+
 fn test_oracle_counts(tests: &[TestOracleTest]) -> BTreeMap<&'static str, usize> {
     let mut counts = BTreeMap::from([
         ("strong", 0usize),
@@ -3284,13 +3300,19 @@ fn test_oracle_report_status(tests: &[TestOracleTest]) -> &'static str {
 
 fn test_oracle_report_markdown(tests: &[TestOracleTest]) -> String {
     let counts = test_oracle_counts(tests);
+    let bdd_named = tests
+        .iter()
+        .filter(|test| is_bdd_test_name(&test.name))
+        .count();
     let mut body = format!(
-        "# ripr test oracle report\n\nStatus: {}\n\nMode: advisory\n\nThis report measures the apparent discriminator strength of `ripr`'s own Rust tests. It does not fail existing debt yet.\n\n## Summary\n\n- Strong: {}\n- Medium: {}\n- Weak: {}\n- Smoke: {}\n\n",
+        "# ripr test oracle report\n\nStatus: {}\n\nMode: advisory\n\nThis report measures the apparent discriminator strength of `ripr`'s own Rust tests. It does not fail existing debt yet.\n\n## Summary\n\n- Strong: {}\n- Medium: {}\n- Weak: {}\n- Smoke: {}\n- BDD-shaped names: {} / {}\n\n",
         test_oracle_report_status(tests),
         counts.get("strong").copied().unwrap_or(0),
         counts.get("medium").copied().unwrap_or(0),
         counts.get("weak").copied().unwrap_or(0),
-        counts.get("smoke").copied().unwrap_or(0)
+        counts.get("smoke").copied().unwrap_or(0),
+        bdd_named,
+        tests.len(),
     );
 
     body.push_str("## Weak Or Smoke Tests\n\n");
@@ -8007,16 +8029,16 @@ mod tests {
         dogfood_class_counts, dogfood_report_json, dogfood_report_markdown,
         extract_workflow_run_blocks, glob_matches, golden_changes_without_blessing,
         golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
-        is_dependency_surface_candidate, is_evidence_path, is_generated_candidate,
-        is_known_campaign_command, is_policy_path, is_production_path, is_receipt_status,
-        is_snake_case_id, is_spec_id, json_escape, json_number_after, json_string_values_for_key,
-        known_xtask_command, local_context_line_findings, local_markdown_target,
-        markdown_links_in_text, next_checkpoints_from_capabilities, normalize_fixture_human_output,
-        normalize_fixture_json_output, normalize_golden_text, parse_campaign_manifest,
-        parse_inline_array, parse_reason, pr_shape_warnings, precommit_report_body,
-        public_contract_rows, receipt_json, receipt_specs, receipt_status_from_reports,
-        report_index_markdown, report_index_missing_expected, report_status_from_text,
-        sorted_allowlist_content, spec_id_from_path, status_for_report,
+        is_bdd_test_name, is_dependency_surface_candidate, is_evidence_path,
+        is_generated_candidate, is_known_campaign_command, is_policy_path, is_production_path,
+        is_receipt_status, is_snake_case_id, is_spec_id, json_escape, json_number_after,
+        json_string_values_for_key, known_xtask_command, local_context_line_findings,
+        local_markdown_target, markdown_links_in_text, next_checkpoints_from_capabilities,
+        normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
+        parse_campaign_manifest, parse_inline_array, parse_reason, pr_shape_warnings,
+        precommit_report_body, public_contract_rows, receipt_json, receipt_specs,
+        receipt_status_from_reports, report_index_markdown, report_index_missing_expected,
+        report_status_from_text, sorted_allowlist_content, spec_id_from_path, status_for_report,
         suspicious_runtime_file_names, test_oracle_report_json, test_oracle_report_markdown,
         test_oracle_tests_in_text, validate_local_context_allowlist, windows_absolute_path_tokens,
         workflow_runtime_violations,
@@ -9010,8 +9032,26 @@ fn weak_contains() {
 
         assert!(markdown.contains("Status: warn"));
         assert!(markdown.contains("Weak Or Smoke Tests"));
+        assert!(markdown.contains("BDD-shaped names: 0 / 1"));
         assert!(json.contains("\"advisory\": true"));
         assert!(json.contains("\"weak\": 1"));
+    }
+
+    #[test]
+    fn bdd_name_helper_accepts_given_when_then_pattern() {
+        assert!(is_bdd_test_name(
+            "given_invalid_token_when_authenticate_then_returns_revoked_error"
+        ));
+        assert!(!is_bdd_test_name(
+            "given_invalid_token_then_returns_revoked_error_when_authenticate"
+        ));
+        assert!(!is_bdd_test_name(
+            "given__when_authenticate_then_returns_revoked_error"
+        ));
+        assert!(!is_bdd_test_name(
+            "given_invalid_token_when__then_returns_revoked_error"
+        ));
+        assert!(!is_bdd_test_name("authenticate_rejects_invalid_token"));
     }
 
     #[test]
