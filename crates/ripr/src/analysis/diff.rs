@@ -125,6 +125,7 @@ fn parse_start(segment: &str) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn parses_added_lines() {
@@ -134,5 +135,42 @@ mod tests {
         assert_eq!(files[0].path, PathBuf::from("src/lib.rs"));
         assert_eq!(files[0].added_lines[0].line, 1);
         assert_eq!(files[0].added_lines[0].text, "b");
+    }
+
+    proptest! {
+        #[test]
+        fn parse_unified_diff_never_panics_on_arbitrary_input(input in any::<String>()) {
+            let _ = parse_unified_diff(&input);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn parse_unified_diff_preserves_monotonic_added_line_numbers(
+            hunk_start in 1usize..2000,
+            additions in prop::collection::vec(".*", 1..20),
+        ) {
+            let mut diff = format!(
+                "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -{hunk_start},0 +{hunk_start},{} @@\n",
+                additions.len(),
+            );
+            for line in &additions {
+                diff.push('+');
+                diff.push_str(line);
+                diff.push('\n');
+            }
+
+            let parsed = parse_unified_diff(&diff);
+            prop_assert_eq!(parsed.len(), 1);
+            let added = &parsed[0].added_lines;
+            prop_assert_eq!(added.len(), additions.len());
+
+            for window in added.windows(2) {
+                prop_assert!(window[0].line <= window[1].line);
+            }
+            if let Some(first) = added.first() {
+                prop_assert_eq!(first.line, hunk_start);
+            }
+        }
     }
 }
