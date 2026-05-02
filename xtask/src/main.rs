@@ -62,6 +62,29 @@ struct MarkdownLink {
     target: String,
 }
 
+#[derive(Debug, Default)]
+struct CampaignManifest {
+    id: Option<String>,
+    title: Option<String>,
+    status: Option<String>,
+    end_state: Vec<String>,
+    work_items: Vec<CampaignWorkItem>,
+}
+
+#[derive(Debug, Default)]
+struct CampaignWorkItem {
+    line: usize,
+    id: Option<String>,
+    status: Option<String>,
+    branch: Option<String>,
+    stackable: Option<bool>,
+    requires_human_merge: Option<bool>,
+    acceptance: Option<String>,
+    commands: Vec<String>,
+    blocked_by: Vec<String>,
+    blocked_reason: Option<String>,
+}
+
 #[derive(Clone, Debug)]
 pub enum CheckStatus {
     Pass,
@@ -120,6 +143,7 @@ fn main() {
         Some("fixtures") => fixtures(args.get(2)),
         Some("goldens") => goldens(&args[2..]),
         Some("metrics") => metrics_report(),
+        Some("goals") => goals(&args[2..]),
         Some("ci-fast") => ci_fast(),
         Some("ci-full") => ci_full(),
         Some("check-static-language") => check_static_language(),
@@ -140,6 +164,7 @@ fn main() {
         Some("check-doc-index") => check_doc_index(),
         Some("check-readme-state") => check_readme_state(),
         Some("markdown-links") => markdown_links(),
+        Some("check-campaign") | Some("check-goals") => check_campaign(),
         Some("check-pr-shape") => check_pr_shape(),
         Some("check-generated") => check_generated(),
         Some("check-dependencies") => check_dependencies(),
@@ -187,6 +212,7 @@ fn precommit() -> Result<(), String> {
     check_doc_index()?;
     check_readme_state()?;
     markdown_links()?;
+    check_campaign()?;
     check_pr_shape()?;
     check_generated()?;
     let body = precommit_report_body();
@@ -230,6 +256,7 @@ fn run_policy_checks() -> Result<(), String> {
     check_doc_index()?;
     check_readme_state()?;
     markdown_links()?;
+    check_campaign()?;
     check_pr_shape()?;
     check_generated()?;
     check_dependencies()?;
@@ -258,7 +285,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  metrics\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
+        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  metrics\n  goals status|next|report\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
     );
 }
 
@@ -290,7 +317,7 @@ fn check_pr_shape() -> Result<(), String> {
 }
 
 fn precommit_report_body() -> String {
-    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-public-api`\n- `cargo xtask check-output-contracts`\n- `cargo xtask check-doc-index`\n- `cargo xtask check-readme-state`\n- `cargo xtask markdown-links`\n- `cargo xtask check-pr-shape`\n- `cargo xtask check-generated`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
+    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-public-api`\n- `cargo xtask check-output-contracts`\n- `cargo xtask check-doc-index`\n- `cargo xtask check-readme-state`\n- `cargo xtask markdown-links`\n- `cargo xtask check-campaign`\n- `cargo xtask check-pr-shape`\n- `cargo xtask check-generated`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
 }
 
 fn check_pr_report_body() -> String {
@@ -2458,6 +2485,620 @@ fn resolve_markdown_link(source: &Path, target: &str) -> PathBuf {
     }
 }
 
+fn goals(args: &[String]) -> Result<(), String> {
+    match args.first().map(String::as_str) {
+        Some("status") | Some("report") | None => goals_status(),
+        Some("next") => goals_next(),
+        Some(other) => Err(format!(
+            "unknown goals command `{other}`\nusage: cargo xtask goals status\n       cargo xtask goals next\n       cargo xtask goals report"
+        )),
+    }
+}
+
+fn check_campaign() -> Result<(), String> {
+    let mut violations = Vec::new();
+    let manifest_path = Path::new(".ripr/goals/active.toml");
+    if !manifest_path.exists() {
+        violations.push(".ripr/goals/active.toml is missing".to_string());
+        return finish_campaign_report(&violations);
+    }
+
+    let (manifest, parse_violations) = parse_campaign_manifest(manifest_path)?;
+    violations.extend(parse_violations);
+    validate_campaign_manifest(&manifest, &mut violations)?;
+    finish_campaign_report(&violations)
+}
+
+fn goals_status() -> Result<(), String> {
+    let manifest_path = Path::new(".ripr/goals/active.toml");
+    let (manifest, parse_violations) = parse_campaign_manifest(manifest_path)?;
+    let mut violations = parse_violations;
+    validate_campaign_manifest(&manifest, &mut violations)?;
+    let body = campaign_status_report_body(&manifest, &violations);
+    write_report("goals.md", &body)?;
+    println!("{body}");
+    if violations.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "goals status found campaign issues; see target/ripr/reports/goals.md\n{}",
+            violations.join("\n")
+        ))
+    }
+}
+
+fn goals_next() -> Result<(), String> {
+    let manifest_path = Path::new(".ripr/goals/active.toml");
+    let (manifest, parse_violations) = parse_campaign_manifest(manifest_path)?;
+    let mut violations = parse_violations;
+    validate_campaign_manifest(&manifest, &mut violations)?;
+    let body = campaign_next_report_body(&manifest, &violations);
+    write_report("goals-next.md", &body)?;
+    println!("{body}");
+    if violations.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "goals next found campaign issues; see target/ripr/reports/goals-next.md\n{}",
+            violations.join("\n")
+        ))
+    }
+}
+
+fn finish_campaign_report(violations: &[String]) -> Result<(), String> {
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "campaign.md",
+            check: "check-campaign",
+            why_it_matters: "Codex Goals use .ripr/goals/active.toml as the durable campaign queue; drift here sends agents toward the wrong work item.",
+            fix_kind: FixKind::AuthorDecisionRequired,
+            recommended_fixes: &[
+                "Keep .ripr/goals/active.toml synchronized with docs/IMPLEMENTATION_CAMPAIGNS.md.",
+                "Use only done, active, ready, or blocked work item statuses.",
+                "Give every non-blocked work item a branch, acceptance claim, and valid command list.",
+                "Use blocked_by or blocked_reason when a work item is blocked.",
+            ],
+            rerun_command: "cargo xtask check-campaign",
+            exception_template: None,
+        },
+        violations,
+    )
+}
+
+fn validate_campaign_manifest(
+    manifest: &CampaignManifest,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let docs = read_text_lossy(Path::new("docs/IMPLEMENTATION_CAMPAIGNS.md"))?;
+    let mut ids = BTreeSet::new();
+    let mut statuses_by_id = BTreeMap::new();
+
+    let Some(id) = manifest.id.as_ref() else {
+        violations.push(".ripr/goals/active.toml is missing campaign `id`".to_string());
+        return Ok(());
+    };
+    if !is_kebab_case_id(id) {
+        violations.push(format!("campaign id `{id}` must use kebab-case"));
+    }
+    if !docs.contains(id) {
+        violations.push(format!(
+            "docs/IMPLEMENTATION_CAMPAIGNS.md does not mention active campaign id `{id}`"
+        ));
+    }
+    match manifest.status.as_deref() {
+        Some("active") => {}
+        Some(status) => violations.push(format!("campaign has unsupported status `{status}`")),
+        None => violations.push("campaign is missing `status`".to_string()),
+    }
+    if manifest
+        .title
+        .as_ref()
+        .is_none_or(|value| value.trim().is_empty())
+    {
+        violations.push("campaign is missing non-empty `title`".to_string());
+    }
+    if manifest.end_state.is_empty() {
+        violations.push("campaign has no end_state entries".to_string());
+    }
+    if manifest.work_items.is_empty() {
+        violations.push("campaign has no [[work_item]] entries".to_string());
+    }
+
+    for item in &manifest.work_items {
+        let Some(item_id) = item.id.as_ref() else {
+            violations.push(format!("work item at line {} is missing `id`", item.line));
+            continue;
+        };
+        if !ids.insert(item_id.clone()) {
+            violations.push(format!("duplicate work item id `{item_id}`"));
+        }
+        if !is_work_item_id(item_id) {
+            violations.push(format!(
+                "work item id `{item_id}` must look like `scope/name`"
+            ));
+        }
+        if !docs.contains(&format!("`{item_id}`")) {
+            violations.push(format!(
+                "docs/IMPLEMENTATION_CAMPAIGNS.md does not list work item `{item_id}`"
+            ));
+        }
+
+        match item.status.as_deref() {
+            Some("done" | "active" | "ready" | "blocked") => {
+                if let Some(status) = item.status.as_ref() {
+                    statuses_by_id.insert(item_id.clone(), status.clone());
+                    let expected_row = format!("| `{item_id}` | {status} |");
+                    if !docs.contains(&expected_row) {
+                        violations.push(format!(
+                            "docs/IMPLEMENTATION_CAMPAIGNS.md does not show `{item_id}` as `{status}`"
+                        ));
+                    }
+                }
+            }
+            Some(status) => violations.push(format!(
+                "{item_id} has unsupported status `{status}`; use done, active, ready, or blocked"
+            )),
+            None => violations.push(format!("{item_id} is missing `status`")),
+        }
+
+        if item
+            .branch
+            .as_ref()
+            .is_none_or(|value| value.trim().is_empty())
+        {
+            violations.push(format!("{item_id} is missing `branch`"));
+        }
+        if item.stackable.is_none() {
+            violations.push(format!("{item_id} is missing `stackable`"));
+        }
+        if item.requires_human_merge.is_none() {
+            violations.push(format!("{item_id} is missing `requires_human_merge`"));
+        }
+        if item
+            .acceptance
+            .as_ref()
+            .is_none_or(|value| value.trim().is_empty())
+        {
+            violations.push(format!("{item_id} is missing `acceptance`"));
+        }
+        if item.status.as_deref() != Some("blocked") && item.commands.is_empty() {
+            violations.push(format!("{item_id} is missing command entries"));
+        }
+        for command in &item.commands {
+            if !is_known_campaign_command(command) {
+                violations.push(format!(
+                    "{item_id} lists unknown or unsupported command `{command}`"
+                ));
+            }
+        }
+        if item.status.as_deref() == Some("blocked")
+            && item.blocked_by.is_empty()
+            && item
+                .blocked_reason
+                .as_ref()
+                .is_none_or(|value| value.trim().is_empty())
+        {
+            violations.push(format!(
+                "{item_id} is blocked but has no blocked_by or blocked_reason"
+            ));
+        }
+    }
+
+    for item in &manifest.work_items {
+        let Some(item_id) = item.id.as_ref() else {
+            continue;
+        };
+        for dependency in &item.blocked_by {
+            match statuses_by_id.get(dependency) {
+                Some(status) if status == "done" => {}
+                Some(status) if item.status.as_deref() == Some("ready") => {
+                    violations.push(format!(
+                        "{item_id} is ready but dependency `{dependency}` is `{status}`"
+                    ));
+                }
+                Some(_) => {}
+                None => violations.push(format!(
+                    "{item_id} references missing blocked_by item `{dependency}`"
+                )),
+            }
+        }
+    }
+
+    let active_non_stackable = manifest
+        .work_items
+        .iter()
+        .filter(|item| item.status.as_deref() == Some("active") && item.stackable != Some(true))
+        .count();
+    if active_non_stackable > 1 {
+        violations.push(format!(
+            "campaign has {active_non_stackable} active non-stackable work items; use at most one"
+        ));
+    }
+
+    Ok(())
+}
+
+fn campaign_status_report_body(manifest: &CampaignManifest, violations: &[String]) -> String {
+    let status = if violations.is_empty() {
+        "pass"
+    } else {
+        "fail"
+    };
+    let mut body = format!("# ripr goals status\n\nStatus: {status}\n\n");
+    body.push_str("## Campaign\n\n");
+    body.push_str(&format!(
+        "- id: `{}`\n",
+        manifest.id.as_deref().unwrap_or("<missing>")
+    ));
+    body.push_str(&format!(
+        "- title: {}\n",
+        manifest.title.as_deref().unwrap_or("<missing>")
+    ));
+    body.push_str(&format!(
+        "- status: `{}`\n\n",
+        manifest.status.as_deref().unwrap_or("<missing>")
+    ));
+
+    body.push_str("## Work Items\n\n");
+    body.push_str("| Work item | Status | Branch | Stackable | Commands |\n");
+    body.push_str("| --- | --- | --- | --- | ---: |\n");
+    for item in &manifest.work_items {
+        body.push_str(&format!(
+            "| `{}` | `{}` | `{}` | `{}` | {} |\n",
+            item.id.as_deref().unwrap_or("<missing>"),
+            item.status.as_deref().unwrap_or("<missing>"),
+            item.branch.as_deref().unwrap_or("<missing>"),
+            item.stackable
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "<missing>".to_string()),
+            item.commands.len()
+        ));
+    }
+    body.push('\n');
+    write_violations_section(&mut body, violations);
+    body
+}
+
+fn campaign_next_report_body(manifest: &CampaignManifest, violations: &[String]) -> String {
+    let status = if violations.is_empty() {
+        "pass"
+    } else {
+        "fail"
+    };
+    let mut body = format!("# ripr goals next\n\nStatus: {status}\n\n");
+    body.push_str("## Ready Work Items\n\n");
+    let ready = manifest
+        .work_items
+        .iter()
+        .filter(|item| item.status.as_deref() == Some("ready"))
+        .collect::<Vec<_>>();
+    if ready.is_empty() {
+        body.push_str("No ready work items.\n\n");
+    } else {
+        for item in ready {
+            body.push_str(&format!(
+                "- `{}` on branch `{}`\n",
+                item.id.as_deref().unwrap_or("<missing>"),
+                item.branch.as_deref().unwrap_or("<missing>")
+            ));
+            if let Some(acceptance) = item.acceptance.as_ref() {
+                body.push_str(&format!("  acceptance: {acceptance}\n"));
+            }
+            if !item.commands.is_empty() {
+                body.push_str("  commands:\n");
+                for command in &item.commands {
+                    body.push_str(&format!("  - `{command}`\n"));
+                }
+            }
+        }
+        body.push('\n');
+    }
+    write_violations_section(&mut body, violations);
+    body
+}
+
+fn parse_campaign_manifest(path: &Path) -> Result<(CampaignManifest, Vec<String>), String> {
+    let text = read_text_lossy(path)?;
+    let mut manifest = CampaignManifest::default();
+    let mut violations = Vec::new();
+    let mut current: Option<CampaignWorkItem> = None;
+    let mut active_array: Option<(String, Vec<String>, usize)> = None;
+    let mut active_multiline: Option<(String, usize)> = None;
+
+    for (index, line) in text.lines().enumerate() {
+        let line_number = index + 1;
+        let trimmed = line.trim();
+        if let Some((key, _start_line)) = active_multiline.clone() {
+            if trimmed.contains("\"\"\"") {
+                active_multiline = None;
+            }
+            if key != "objective" {
+                violations.push(format!(
+                    "{}:{} unsupported multiline field `{key}`",
+                    normalize_path(path),
+                    line_number
+                ));
+            }
+            continue;
+        }
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if let Some((key, values, start_line)) = active_array.as_mut() {
+            if trimmed.starts_with(']') {
+                assign_campaign_array(&mut manifest, &mut current, key, values.clone());
+                active_array = None;
+                continue;
+            }
+            match parse_array_item(trimmed) {
+                Ok(Some(value)) => values.push(value),
+                Ok(None) => {}
+                Err(message) => {
+                    violations.push(format!("{}:{line_number} {message}", normalize_path(path)))
+                }
+            }
+            if line_number < *start_line {
+                violations.push(format!(
+                    "{}:{} invalid array state",
+                    normalize_path(path),
+                    line_number
+                ));
+            }
+            continue;
+        }
+        if trimmed == "[[work_item]]" {
+            if let Some(item) = current.take() {
+                manifest.work_items.push(item);
+            }
+            current = Some(CampaignWorkItem {
+                line: line_number,
+                ..CampaignWorkItem::default()
+            });
+            continue;
+        }
+        let Some((key, value)) = trimmed.split_once('=') else {
+            violations.push(format!(
+                "{}:{line_number} expected `key = value`",
+                normalize_path(path)
+            ));
+            continue;
+        };
+        let key = key.trim();
+        let value = value.trim();
+        if value.starts_with("\"\"\"") {
+            if !value.trim_start_matches("\"\"\"").contains("\"\"\"") {
+                active_multiline = Some((key.to_string(), line_number));
+            }
+            continue;
+        }
+        if value == "[" {
+            active_array = Some((key.to_string(), Vec::new(), line_number));
+            continue;
+        }
+        if value.starts_with('[') {
+            match parse_inline_array(value) {
+                Ok(values) => assign_campaign_array(&mut manifest, &mut current, key, values),
+                Err(message) => {
+                    violations.push(format!("{}:{line_number} {message}", normalize_path(path)))
+                }
+            }
+            continue;
+        }
+        assign_campaign_scalar(
+            &mut manifest,
+            &mut current,
+            key,
+            value,
+            line_number,
+            &mut violations,
+        );
+    }
+
+    if let Some((key, start_line)) = active_multiline {
+        violations.push(format!(
+            "{}:{start_line} multiline field `{key}` is missing closing triple quotes",
+            normalize_path(path)
+        ));
+    }
+    if let Some((key, _, start_line)) = active_array {
+        violations.push(format!(
+            "{}:{start_line} array `{key}` is missing closing `]`",
+            normalize_path(path)
+        ));
+    }
+    if let Some(item) = current {
+        manifest.work_items.push(item);
+    }
+    Ok((manifest, violations))
+}
+
+fn assign_campaign_array(
+    manifest: &mut CampaignManifest,
+    current: &mut Option<CampaignWorkItem>,
+    key: &str,
+    values: Vec<String>,
+) {
+    if let Some(item) = current.as_mut() {
+        match key {
+            "commands" => item.commands = values,
+            "blocked_by" => item.blocked_by = values,
+            _ => {}
+        }
+    } else if key == "end_state" {
+        manifest.end_state = values;
+    }
+}
+
+fn assign_campaign_scalar(
+    manifest: &mut CampaignManifest,
+    current: &mut Option<CampaignWorkItem>,
+    key: &str,
+    value: &str,
+    line_number: usize,
+    violations: &mut Vec<String>,
+) {
+    if let Some(item) = current.as_mut() {
+        match key {
+            "id" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
+                item.id = Some(parsed);
+            }),
+            "status" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
+                item.status = Some(parsed);
+            }),
+            "branch" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
+                item.branch = Some(parsed);
+            }),
+            "acceptance" => {
+                assign_quoted_campaign_value(value, line_number, violations, |parsed| {
+                    item.acceptance = Some(parsed);
+                })
+            }
+            "blocked_reason" => {
+                assign_quoted_campaign_value(value, line_number, violations, |parsed| {
+                    item.blocked_reason = Some(parsed);
+                });
+            }
+            "stackable" => item.stackable = parse_campaign_bool(value, line_number, violations),
+            "requires_human_merge" => {
+                item.requires_human_merge = parse_campaign_bool(value, line_number, violations);
+            }
+            _ => violations.push(format!(
+                "campaign manifest line {line_number} uses unsupported work_item field `{key}`"
+            )),
+        }
+    } else {
+        match key {
+            "id" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
+                manifest.id = Some(parsed);
+            }),
+            "title" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
+                manifest.title = Some(parsed);
+            }),
+            "status" => assign_quoted_campaign_value(value, line_number, violations, |parsed| {
+                manifest.status = Some(parsed);
+            }),
+            _ => violations.push(format!(
+                "campaign manifest line {line_number} uses unsupported campaign field `{key}`"
+            )),
+        }
+    }
+}
+
+fn assign_quoted_campaign_value(
+    value: &str,
+    line_number: usize,
+    violations: &mut Vec<String>,
+    assign: impl FnOnce(String),
+) {
+    match parse_quoted_value(value) {
+        Ok(parsed) => assign(parsed),
+        Err(message) => violations.push(format!("campaign manifest line {line_number}: {message}")),
+    }
+}
+
+fn parse_campaign_bool(
+    value: &str,
+    line_number: usize,
+    violations: &mut Vec<String>,
+) -> Option<bool> {
+    match value {
+        "true" => Some(true),
+        "false" => Some(false),
+        other => {
+            violations.push(format!(
+                "campaign manifest line {line_number}: expected boolean, got `{other}`"
+            ));
+            None
+        }
+    }
+}
+
+fn is_kebab_case_id(value: &str) -> bool {
+    let mut previous_dash = false;
+    let mut saw_char = false;
+    for byte in value.bytes() {
+        match byte {
+            b'a'..=b'z' | b'0'..=b'9' => {
+                saw_char = true;
+                previous_dash = false;
+            }
+            b'-' if saw_char && !previous_dash => previous_dash = true,
+            _ => return false,
+        }
+    }
+    saw_char && !previous_dash
+}
+
+fn is_work_item_id(value: &str) -> bool {
+    let Some((scope, name)) = value.split_once('/') else {
+        return false;
+    };
+    is_kebab_case_id(scope) && is_kebab_case_id(name)
+}
+
+fn is_known_campaign_command(command: &str) -> bool {
+    let trimmed = command.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    if let Some(rest) = trimmed.strip_prefix("cargo xtask ") {
+        let command_name = rest.split_whitespace().next().unwrap_or_default();
+        return known_xtask_command(command_name);
+    }
+    trimmed.starts_with("cargo fmt")
+        || trimmed.starts_with("cargo check")
+        || trimmed.starts_with("cargo test")
+        || trimmed.starts_with("cargo clippy")
+        || trimmed.starts_with("cargo doc")
+        || trimmed.starts_with("cargo package")
+        || trimmed.starts_with("cargo publish")
+        || trimmed.starts_with("npm ")
+}
+
+fn known_xtask_command(command: &str) -> bool {
+    matches!(
+        command,
+        "shape"
+            | "fix-pr"
+            | "pr-summary"
+            | "precommit"
+            | "check-pr"
+            | "fixtures"
+            | "goldens"
+            | "metrics"
+            | "goals"
+            | "ci-fast"
+            | "ci-full"
+            | "check-static-language"
+            | "check-no-panic-family"
+            | "check-file-policy"
+            | "check-executable-files"
+            | "check-workflows"
+            | "check-spec-format"
+            | "check-fixture-contracts"
+            | "check-traceability"
+            | "check-spec-ids"
+            | "check-behavior-manifest"
+            | "check-capabilities"
+            | "check-workspace-shape"
+            | "check-architecture"
+            | "check-public-api"
+            | "check-output-contracts"
+            | "check-doc-index"
+            | "check-readme-state"
+            | "markdown-links"
+            | "check-campaign"
+            | "check-goals"
+            | "check-pr-shape"
+            | "check-generated"
+            | "check-dependencies"
+            | "check-process-policy"
+            | "check-network-policy"
+            | "package"
+            | "publish-dry-run"
+    )
+}
+
 fn require_index_mentions_files(
     index_path: &Path,
     directory: &Path,
@@ -3735,14 +4376,16 @@ fn is_word_char(value: Option<char>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        Capability, ChangedPath, MarkdownLink, extract_workflow_run_blocks, glob_matches,
-        is_dependency_surface_candidate, is_evidence_path, is_generated_candidate, is_policy_path,
-        is_production_path, is_snake_case_id, is_spec_id, json_escape, local_markdown_target,
-        markdown_links_in_text, next_checkpoints_from_capabilities, parse_inline_array,
+        CampaignManifest, Capability, ChangedPath, MarkdownLink, extract_workflow_run_blocks,
+        glob_matches, is_dependency_surface_candidate, is_evidence_path, is_generated_candidate,
+        is_known_campaign_command, is_policy_path, is_production_path, is_snake_case_id,
+        is_spec_id, json_escape, local_markdown_target, markdown_links_in_text,
+        next_checkpoints_from_capabilities, parse_campaign_manifest, parse_inline_array,
         parse_reason, pr_shape_warnings, precommit_report_body, public_contract_rows,
         sorted_allowlist_content, spec_id_from_path,
     };
     use std::collections::BTreeSet;
+    use std::fs;
     use std::path::Path;
 
     #[test]
@@ -4003,5 +4646,64 @@ jobs:
                 "agent-context-v2".to_string()
             ])
         );
+    }
+
+    #[test]
+    fn campaign_manifest_parser_reads_work_items() -> Result<(), Box<dyn std::error::Error>> {
+        let path = std::env::temp_dir().join(format!(
+            "ripr-campaign-manifest-test-{}.toml",
+            std::process::id()
+        ));
+        let source = r#"id = "agentic-devex-foundation"
+title = "Agentic DevEx Foundation"
+status = "active"
+
+objective = """
+Build the repo operating system.
+"""
+
+end_state = [
+  "architecture guard exists"
+]
+
+[[work_item]]
+id = "fixtures/first-two-goldens"
+status = "ready"
+branch = "fixtures/first-two-goldens"
+stackable = false
+requires_human_merge = true
+acceptance = "fixtures pass"
+commands = [
+  "cargo xtask fixtures",
+  "cargo xtask check-pr"
+]
+"#;
+        fs::write(&path, source)?;
+
+        let parsed = parse_campaign_manifest(&path);
+        let _ = fs::remove_file(&path);
+        let (manifest, violations) = parsed?;
+
+        assert!(violations.is_empty());
+        assert_eq!(manifest.id, Some("agentic-devex-foundation".to_string()));
+        assert_eq!(manifest.work_items.len(), 1);
+        assert_eq!(
+            manifest.work_items[0].id,
+            Some("fixtures/first-two-goldens".to_string())
+        );
+        assert_eq!(manifest.work_items[0].commands.len(), 2);
+        Ok(())
+    }
+
+    #[test]
+    fn campaign_command_validator_accepts_known_repo_commands() {
+        assert!(is_known_campaign_command("cargo xtask check-pr"));
+        assert!(is_known_campaign_command("cargo xtask goals status"));
+        assert!(is_known_campaign_command("cargo test --workspace"));
+        assert!(!is_known_campaign_command("cargo xtask missing-command"));
+        assert!(!is_known_campaign_command(""));
+
+        let manifest = CampaignManifest::default();
+        assert!(manifest.work_items.is_empty());
     }
 }

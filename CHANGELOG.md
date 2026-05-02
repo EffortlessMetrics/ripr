@@ -56,3 +56,5 @@ how future PRs are scoped or reviewed.
   sets.
 - Added README state and repo-local Markdown link checks to keep documentation
   references and capability checkpoints aligned before review.
+- Added Codex Goals campaign manifest checks plus `goals status` and
+  `goals next` reports for `.ripr/goals/active.toml`.
