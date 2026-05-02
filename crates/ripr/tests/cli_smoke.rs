@@ -65,6 +65,34 @@ fn check_json_output_has_stable_contract_fields() {
     assert!(stdout.contains(r#""recommended_next_step""#));
 }
 
+
+#[test]
+fn unknown_command_exits_with_error_and_guidance() {
+    let output = run_ripr(&["unknown"]);
+    assert_eq!(output.status.code(), Some(2));
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("ripr: unknown command \"unknown\""));
+    assert!(stderr.contains("Run `ripr --help`."));
+}
+
+#[test]
+fn check_with_missing_diff_file_returns_exit_2_and_error_message() {
+    let root = workspace_root().display().to_string();
+    let output = run_ripr(&[
+        "check",
+        "--root",
+        &root,
+        "--diff",
+        "crates/ripr/examples/sample/does-not-exist.diff",
+    ]);
+    assert_eq!(output.status.code(), Some(2));
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("ripr:"));
+    assert!(stderr.contains("does-not-exist.diff"));
+}
+
 #[test]
 fn explain_returns_targeted_probe_details() {
     let root = workspace_root().display().to_string();
