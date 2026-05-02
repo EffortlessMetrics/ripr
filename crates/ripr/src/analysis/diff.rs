@@ -139,13 +139,12 @@ mod tests {
     #[test]
     fn parser_is_robust_against_fuzz_like_inputs() {
         let mut seed = 0xC0FFEE_u64;
-        for _case in 0..512 {
-            let len = (next_u64(&mut seed) % 512) as usize;
-            let mut bytes = Vec::with_capacity(len);
-            for _ in 0..len {
-                bytes.push((next_u64(&mut seed) & 0xFF) as u8);
-            }
-            let text = String::from_utf8_lossy(&bytes);
+        for case in 0..1024 {
+            let text = if case % 2 == 0 {
+                fuzz_random_bytes(&mut seed)
+            } else {
+                fuzz_diff_shaped_input(&mut seed)
+            };
             let files = parse_unified_diff(&text);
             for file in files {
                 assert!(!file.path.as_os_str().is_empty());
@@ -155,8 +154,55 @@ mod tests {
                         .windows(2)
                         .all(|w| w[0].line <= w[1].line)
                 );
+                assert!(file.added_lines.iter().all(|line| !line.text.contains('\n')));
+                assert!(
+                    file.removed_lines
+                        .iter()
+                        .all(|line| !line.text.contains('\n'))
+                );
             }
         }
+    }
+
+    fn fuzz_random_bytes(seed: &mut u64) -> String {
+        let len = (next_u64(seed) % 512) as usize;
+        let mut bytes = Vec::with_capacity(len);
+        for _ in 0..len {
+            bytes.push((next_u64(seed) & 0xFF) as u8);
+        }
+        String::from_utf8_lossy(&bytes).into_owned()
+    }
+
+    fn fuzz_diff_shaped_input(seed: &mut u64) -> String {
+        let file_id = next_u64(seed) as usize % 8;
+        let old_start = (next_u64(seed) as usize % 1000) + 1;
+        let new_start = (next_u64(seed) as usize % 1000) + 1;
+        let hunk_lines = (next_u64(seed) as usize % 64) + 1;
+
+        let mut text = format!(
+            "diff --git a/src/file_{file_id}.rs b/src/file_{file_id}.rs\n--- a/src/file_{file_id}.rs\n+++ b/src/file_{file_id}.rs\n@@ -{old_start},{} +{new_start},{} @@\n",
+            hunk_lines, hunk_lines
+        );
+
+        for _ in 0..hunk_lines {
+            match next_u64(seed) % 6 {
+                0 => text.push_str(&format!("+{}\n", random_atom(seed))),
+                1 => text.push_str(&format!("-{}\n", random_atom(seed))),
+                2 => text.push_str(&format!(" {}\n", random_atom(seed))),
+                3 => text.push_str("\n"),
+                4 => text.push_str("@@ malformed header @@\n"),
+                _ => text.push_str("diff --git a/x b/y\n"),
+            }
+        }
+
+        text
+    }
+
+    fn random_atom(seed: &mut u64) -> &'static str {
+        const TOKENS: &[&str] = &[
+            "let", "fn", "panic!", "match", "::", "=>", "{", "}", "[", "]", "\\0",
+        ];
+        TOKENS[(next_u64(seed) as usize) % TOKENS.len()]
     }
 
     fn next_u64(seed: &mut u64) -> u64 {
