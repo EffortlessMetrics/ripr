@@ -10,6 +10,7 @@ syntax adapter boundary without changing current analyzer behavior first.
 end_state = [
   "FileFacts model exists",
   "syntax adapter boundary exists",
+  "Rust parser substrate is recorded in an ADR",
   "tests and oracles are extracted from syntax-backed facts",
   "probes attach to stable owner symbols",
   "current probe families are generated from syntax facts"
@@ -45,6 +46,21 @@ commands = [
   "cargo xtask pr-summary",
   "cargo xtask fixtures",
   "cargo xtask goldens check"
+]
+
+[[work_item]]
+id = "design/rust-syntax-substrate"
+status = "done"
+branch = "design/rust-syntax-substrate"
+stackable = false
+requires_human_merge = true
+acceptance = "ADR 0006 selects ra_ap_syntax while keeping parser-specific types behind RustSyntaxAdapter"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask pr-summary",
+  "cargo xtask check-campaign"
 ]
 
 [[work_item]]
