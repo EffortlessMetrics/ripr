@@ -69,10 +69,43 @@ pub(crate) fn escape(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::escape;
+    use super::{array_field, escape, field, float_field, number_field};
 
     #[test]
     fn escapes_json() {
         assert_eq!(escape("a\"b\n"), "a\\\"b\\n");
+    }
+
+    #[test]
+    fn escapes_control_chars_as_unicode() {
+        assert_eq!(escape("ok\u{0001}end"), "ok\\u0001end");
+    }
+
+    #[test]
+    fn writes_string_and_numeric_fields() {
+        let mut out = String::new();
+        field(&mut out, 1, "name", "a\tb", true);
+        number_field(&mut out, 1, "count", 3, true);
+        float_field(&mut out, 1, "ratio", 1.234, false);
+
+        assert_eq!(
+            out,
+            "  \"name\": \"a\\tb\",\n  \"count\": 3,\n  \"ratio\": 1.23\n"
+        );
+    }
+
+    #[test]
+    fn writes_array_field_with_and_without_values() {
+        let mut out = String::new();
+        array_field(
+            &mut out,
+            0,
+            "items",
+            &["a\"b".to_string(), "c".to_string()],
+            true,
+        );
+        array_field(&mut out, 0, "empty", &[], false);
+
+        assert_eq!(out, "\"items\": [\"a\\\"b\", \"c\"],\n\"empty\": []\n");
     }
 }
