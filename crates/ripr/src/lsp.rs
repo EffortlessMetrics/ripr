@@ -7,11 +7,11 @@ use tower_lsp_server::jsonrpc::Result as LspResult;
 use tower_lsp_server::ls_types::{
     CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionProviderCapability,
     CodeActionResponse, Command, Diagnostic, DiagnosticRelatedInformation, DiagnosticSeverity,
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
-    ExecuteCommandOptions, ExecuteCommandParams, Hover, HoverContents, HoverParams,
-    HoverProviderCapability, InitializeParams, InitializeResult, LSPAny, Location, MarkupContent,
-    MarkupKind, MessageType, NumberOrString, Position, Range, ServerCapabilities, ServerInfo,
-    TextDocumentSyncCapability, TextDocumentSyncKind, Uri,
+    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    DidSaveTextDocumentParams, ExecuteCommandOptions, ExecuteCommandParams, Hover, HoverContents,
+    HoverParams, HoverProviderCapability, InitializeParams, InitializeResult, LSPAny, Location,
+    MarkupContent, MarkupKind, MessageType, NumberOrString, Position, Range, ServerCapabilities,
+    ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind, Uri,
 };
 use tower_lsp_server::{Client, LanguageServer, LspService, Server};
 
@@ -41,6 +41,7 @@ async fn serve_stdio() -> Result<(), String> {
 struct Backend {
     client: Client,
     root: Mutex<PathBuf>,
+    documents: Mutex<DocumentStore>,
     last_diagnostic_uris: Mutex<BTreeSet<Uri>>,
 }
 
@@ -49,6 +50,7 @@ impl Backend {
         Self {
             client,
             root: Mutex::new(root),
+            documents: Mutex::new(DocumentStore::default()),
             last_diagnostic_uris: Mutex::new(BTreeSet::new()),
         }
     }
@@ -124,6 +126,27 @@ impl Backend {
         };
         *current_root = root;
     }
+
+    fn open_document(&self, params: DidOpenTextDocumentParams) {
+        let Ok(mut documents) = self.documents.lock() else {
+            return;
+        };
+        documents.open(params);
+    }
+
+    fn change_document(&self, params: DidChangeTextDocumentParams) {
+        let Ok(mut documents) = self.documents.lock() else {
+            return;
+        };
+        documents.change(params);
+    }
+
+    fn close_document(&self, params: DidCloseTextDocumentParams) {
+        let Ok(mut documents) = self.documents.lock() else {
+            return;
+        };
+        documents.close(params);
+    }
 }
 
 impl LanguageServer for Backend {
@@ -139,11 +162,18 @@ impl LanguageServer for Backend {
         Ok(())
     }
 
-    async fn did_open(&self, _: DidOpenTextDocumentParams) {
+    async fn did_open(&self, params: DidOpenTextDocumentParams) {
+        self.open_document(params);
         self.refresh_diagnostics().await;
     }
 
-    async fn did_change(&self, _: DidChangeTextDocumentParams) {
+    async fn did_change(&self, params: DidChangeTextDocumentParams) {
+        self.change_document(params);
+        self.refresh_diagnostics().await;
+    }
+
+    async fn did_close(&self, params: DidCloseTextDocumentParams) {
+        self.close_document(params);
         self.refresh_diagnostics().await;
     }
 
@@ -173,6 +203,67 @@ impl LanguageServer for Backend {
 pub struct DiagnosticBatch {
     pub uri: Uri,
     pub diagnostics: Vec<Diagnostic>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct DocumentState {
+    uri: Uri,
+    path: PathBuf,
+    version: Option<i32>,
+    text: String,
+}
+
+#[derive(Default)]
+struct DocumentStore {
+    documents: BTreeMap<Uri, DocumentState>,
+}
+
+impl DocumentStore {
+    fn open(&mut self, params: DidOpenTextDocumentParams) {
+        let uri = params.text_document.uri;
+        let state = DocumentState {
+            path: document_path(&uri),
+            uri: uri.clone(),
+            version: Some(params.text_document.version),
+            text: params.text_document.text,
+        };
+        self.documents.insert(uri, state);
+    }
+
+    fn change(&mut self, params: DidChangeTextDocumentParams) {
+        let uri = params.text_document.uri;
+        let version = Some(params.text_document.version);
+        let text = params
+            .content_changes
+            .into_iter()
+            .last()
+            .map(|change| change.text);
+        if let Some(state) = self.documents.get_mut(&uri) {
+            state.version = version;
+            if let Some(text) = text {
+                state.text = text;
+            }
+            return;
+        }
+        let Some(text) = text else {
+            return;
+        };
+        let state = DocumentState {
+            path: document_path(&uri),
+            uri: uri.clone(),
+            version,
+            text,
+        };
+        self.documents.insert(uri, state);
+    }
+
+    fn close(&mut self, params: DidCloseTextDocumentParams) {
+        self.documents.remove(&params.text_document.uri);
+    }
+}
+
+fn document_path(uri: &Uri) -> PathBuf {
+    path_from_file_uri(uri).unwrap_or_else(|| PathBuf::from(uri.as_str()))
 }
 
 struct DiagnosticRefreshPlan {
@@ -484,10 +575,10 @@ fn encode_uri_path(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        Backend, COPY_CONTEXT_COMMAND, HOVER_TEXT, REFRESH_COMMAND, code_action_response,
-        diagnostic_for_finding, diagnostic_refresh_plan, diagnostic_severity_for_class,
-        encode_uri_path, file_uri_for_path, hover_response, initialize_result, path_from_file_uri,
-        root_from_initialize_params, take_all_uris,
+        Backend, COPY_CONTEXT_COMMAND, DocumentStore, HOVER_TEXT, REFRESH_COMMAND,
+        code_action_response, diagnostic_for_finding, diagnostic_refresh_plan,
+        diagnostic_severity_for_class, encode_uri_path, file_uri_for_path, hover_response,
+        initialize_result, path_from_file_uri, root_from_initialize_params, take_all_uris,
     };
     use crate::domain::{
         Confidence, DeltaKind, ExposureClass, Finding, OracleStrength, Probe, ProbeFamily, ProbeId,
@@ -497,9 +588,11 @@ mod tests {
     use std::path::{Path, PathBuf};
     use tower_lsp_server::LspService;
     use tower_lsp_server::ls_types::{
-        CodeActionOrCommand, DiagnosticSeverity, HoverContents, HoverProviderCapability,
-        InitializeParams, NumberOrString, TextDocumentSyncCapability, TextDocumentSyncKind,
-        WorkspaceFolder,
+        CodeActionOrCommand, DiagnosticSeverity, DidChangeTextDocumentParams,
+        DidCloseTextDocumentParams, DidOpenTextDocumentParams, HoverContents,
+        HoverProviderCapability, InitializeParams, NumberOrString, TextDocumentContentChangeEvent,
+        TextDocumentIdentifier, TextDocumentItem, TextDocumentSyncCapability, TextDocumentSyncKind,
+        VersionedTextDocumentIdentifier, WorkspaceFolder,
     };
 
     #[test]
@@ -728,6 +821,72 @@ mod tests {
             assert!(backend.clear_all_diagnostic_uris().is_empty());
             Ok(())
         })
+    }
+
+    #[test]
+    fn document_store_tracks_open_change_and_close() -> Result<(), String> {
+        let uri = test_uri("file:///workspace/src/lib.rs")?;
+        let mut store = DocumentStore::default();
+
+        store.open(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem::new(
+                uri.clone(),
+                "rust".to_string(),
+                1,
+                "fn old() {}".to_string(),
+            ),
+        });
+
+        let Some(opened) = store.documents.get(&uri) else {
+            return Err("expected opened document".to_string());
+        };
+        assert_eq!(opened.path, PathBuf::from("/workspace/src/lib.rs"));
+        assert_eq!(opened.version, Some(1));
+        assert_eq!(opened.text, "fn old() {}");
+
+        store.change(DidChangeTextDocumentParams {
+            text_document: VersionedTextDocumentIdentifier::new(uri.clone(), 2),
+            content_changes: vec![TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: "fn new() {}".to_string(),
+            }],
+        });
+
+        let Some(changed) = store.documents.get(&uri) else {
+            return Err("expected changed document".to_string());
+        };
+        assert_eq!(changed.version, Some(2));
+        assert_eq!(changed.text, "fn new() {}");
+
+        store.close(DidCloseTextDocumentParams {
+            text_document: TextDocumentIdentifier::new(uri.clone()),
+        });
+
+        assert!(!store.documents.contains_key(&uri));
+        Ok(())
+    }
+
+    #[test]
+    fn document_store_creates_document_from_full_change_when_missing() -> Result<(), String> {
+        let uri = test_uri("file:///workspace/src/lib.rs")?;
+        let mut store = DocumentStore::default();
+
+        store.change(DidChangeTextDocumentParams {
+            text_document: VersionedTextDocumentIdentifier::new(uri.clone(), 7),
+            content_changes: vec![TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: "fn discovered() {}".to_string(),
+            }],
+        });
+
+        let Some(document) = store.documents.get(&uri) else {
+            return Err("expected document from full change".to_string());
+        };
+        assert_eq!(document.version, Some(7));
+        assert_eq!(document.text, "fn discovered() {}");
+        Ok(())
     }
 
     #[test]
