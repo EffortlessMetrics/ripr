@@ -1,5 +1,19 @@
 # ripr
 
+[![CI](https://github.com/EffortlessMetrics/ripr/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/EffortlessMetrics/ripr/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/EffortlessMetrics/ripr/branch/main/graph/badge.svg)](https://codecov.io/gh/EffortlessMetrics/ripr)
+[![crates.io](https://img.shields.io/crates/v/ripr.svg)](https://crates.io/crates/ripr)
+[![crates.io downloads](https://img.shields.io/crates/d/ripr.svg)](https://crates.io/crates/ripr)
+[![docs.rs](https://docs.rs/ripr/badge.svg)](https://docs.rs/ripr)
+[![VS Marketplace](https://img.shields.io/badge/VS%20Marketplace-live%20listing-0078D4)](https://marketplace.visualstudio.com/items?itemName=EffortlessMetrics.ripr)
+[![VS Marketplace Installs (manual)](https://img.shields.io/badge/VS%20Marketplace-0%20installs-0078D4)](https://marketplace.visualstudio.com/items?itemName=EffortlessMetrics.ripr)
+[![Open VSX Version](https://img.shields.io/open-vsx/v/EffortlessMetrics/ripr?label=Open%20VSX)](https://open-vsx.org/extension/EffortlessMetrics/ripr)
+[![Open VSX Downloads](https://img.shields.io/open-vsx/dt/EffortlessMetrics/ripr?label=Open%20VSX%20downloads)](https://open-vsx.org/extension/EffortlessMetrics/ripr)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](Cargo.toml)
+[![MSRV](https://img.shields.io/badge/MSRV-1.92-blue)](https://www.rust-lang.org/)
+
+<!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-02 and intentionally seeded at 0 for first launch. Refresh from publisher metrics after publish. Do not use live VS Marketplace Shields routes. -->
+
 `ripr` helps Rust developers and coding agents answer a draft-time testing
 question:
 

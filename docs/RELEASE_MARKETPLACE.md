@@ -135,21 +135,28 @@ Missing `ripr` executable shows the install/settings message.
 
 VS Marketplace install-count badges are manually maintained.
 
-Do not use live VS Marketplace Shields routes for installs, downloads, or
-versions. They are intentionally not treated as a reliable source of truth for
+Do not use live VS Marketplace Shields routes for install, download, or version
+counts. They are intentionally not treated as a reliable source of truth for
 this repo.
 
-Use static badges instead:
+Use static VS Marketplace badges instead:
 
 ```text
 https://img.shields.io/badge/VS%20Marketplace-<count>%20installs-0078D4
+```
+
+Open VSX badges may use live Shields routes:
+
+```text
+https://img.shields.io/open-vsx/v/EffortlessMetrics/ripr
+https://img.shields.io/open-vsx/dt/EffortlessMetrics/ripr
 ```
 
 After each extension release:
 
 1. Open the VS Marketplace publisher metrics page.
 2. Record the current install count.
-3. Update the manual badge count in `editors/vscode/README.md`.
-4. Update `README.md` too if the root README carries marketplace badges.
-5. Update the hidden `Last checked: YYYY-MM-DD` comment near the badge.
-6. Leave Open VSX badges as live Shields badges.
+3. Update the manual badge count in `README.md` and
+   `editors/vscode/README.md`.
+4. Update the hidden `Last checked: YYYY-MM-DD` comment near each manual badge.
+5. Leave Open VSX badges as live Shields badges.
