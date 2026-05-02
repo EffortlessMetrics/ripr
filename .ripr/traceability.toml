@@ -68,7 +68,7 @@ spec = "docs/specs/RIPR-SPEC-0003-agent-context.md"
 tests = []
 code = [
   "crates/ripr/src/app.rs",
-  "crates/ripr/src/output/json.rs",
+  "crates/ripr/src/output/json/context_packet.rs",
   "crates/ripr/src/lsp.rs"
 ]
 outputs = [
