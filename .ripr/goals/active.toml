@@ -1,165 +1,113 @@
-id = "agentic-devex-foundation"
-title = "Make ripr ready for Codex Goals implementation"
+id = "syntax-backed-analyzer-foundation"
+title = "Move ripr from lexical facts to syntax-backed facts"
 status = "active"
 
 objective = """
-Build the repo operating system needed for Codex Goals and human contributors to
-work through ripr's implementation plan safely.
+Move the analyzer from line-oriented scanner facts to a stable fact model and
+syntax adapter boundary without changing current analyzer behavior first.
 """
 
 end_state = [
-  "architecture guard exists",
-  "output-contract checks exist",
-  "first behavior fixtures exist",
-  "docs-as-tests baseline exists",
-  "test-oracle report exists",
-  "dogfood report exists",
-  "Codex Goals campaign docs exist"
+  "FileFacts model exists",
+  "syntax adapter boundary exists",
+  "tests and oracles are extracted from syntax-backed facts",
+  "probes attach to stable owner symbols",
+  "current probe families are generated from syntax facts"
 ]
 
 [[work_item]]
-id = "policy/architecture-guard"
-status = "done"
-branch = "policy/architecture-guard"
+id = "analysis/file-facts-model"
+status = "ready"
+branch = "analysis/file-facts-model"
 stackable = false
 requires_human_merge = true
-acceptance = "workspace-shape, architecture, and public API checks pass"
-commands = [
-  "cargo xtask check-workspace-shape",
-  "cargo xtask check-architecture",
-  "cargo xtask check-public-api",
-  "cargo xtask check-pr"
-]
-
-[[work_item]]
-id = "output/output-contract-check"
-status = "done"
-branch = "policy/output-contract-check"
-stackable = false
-requires_human_merge = true
-acceptance = "cargo xtask check-output-contracts validates current output contract registries"
-commands = [
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-pr"
-]
-
-[[work_item]]
-id = "docs/docs-index-checks"
-status = "done"
-branch = "docs/doc-index-checks"
-stackable = true
-requires_human_merge = true
-acceptance = "docs index checks validate README, docs map, spec index, and ADR index"
-commands = [
-  "cargo xtask check-doc-index",
-  "cargo xtask check-pr"
-]
-
-[[work_item]]
-id = "docs/codex-goals-campaigns"
-status = "done"
-branch = "docs/codex-goals-campaigns"
-stackable = true
-requires_human_merge = true
-acceptance = "Codex Goals docs describe multi-PR campaign mode and PR-sized work item contracts"
+acceptance = "current scanner behavior is preserved while analysis consumes FileFacts DTOs"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
   "cargo xtask check-pr",
   "cargo xtask pr-summary",
-  "cargo xtask check-traceability",
-  "cargo xtask check-capabilities"
-]
-
-[[work_item]]
-id = "docs/readme-state-and-link-checks"
-status = "done"
-branch = "docs/readme-state-and-link-checks"
-stackable = true
-requires_human_merge = true
-acceptance = "README state and repo-local Markdown links are checked in precommit and ci-fast"
-commands = [
-  "cargo xtask check-readme-state",
-  "cargo xtask markdown-links",
-  "cargo xtask check-pr"
-]
-
-[[work_item]]
-id = "goals/manifest-check"
-status = "done"
-branch = "goals/manifest-check"
-stackable = true
-requires_human_merge = true
-acceptance = "active campaign manifest is validated and exposes status/next reports"
-commands = [
-  "cargo xtask check-campaign",
-  "cargo xtask goals status",
-  "cargo xtask goals next",
-  "cargo xtask check-pr"
-]
-
-[[work_item]]
-id = "fixtures/runner-comparison-v1"
-status = "done"
-branch = "fixtures/runner-comparison-v1"
-stackable = false
-requires_human_merge = true
-acceptance = "fixture and golden commands run ripr and compare actual outputs against expected outputs"
-commands = [
   "cargo xtask fixtures",
-  "cargo xtask goldens check",
-  "cargo xtask check-pr"
+  "cargo xtask goldens check"
 ]
 
 [[work_item]]
-id = "fixtures/first-two-goldens"
-status = "done"
-branch = "fixtures/first-two-goldens"
+id = "analysis/syntax-adapter-mvp"
+status = "blocked"
+branch = "analysis/syntax-adapter-mvp"
 stackable = false
 requires_human_merge = true
-acceptance = "boundary_gap and weak_error_oracle fixtures exist and pass fixture/golden checks"
+acceptance = "parser adapter boundary exists while the current lexical adapter remains behavior-compatible"
+blocked_by = [
+  "analysis/file-facts-model"
+]
+blocked_reason = "requires reviewed FileFacts DTOs"
 commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask pr-summary",
   "cargo xtask fixtures",
-  "cargo xtask goldens check",
-  "cargo xtask check-pr"
+  "cargo xtask goldens check"
 ]
 
 [[work_item]]
-id = "testing/test-oracle-report"
-status = "done"
-branch = "testing/test-oracle-report"
+id = "analysis/ast-test-oracle-extraction"
+status = "blocked"
+branch = "analysis/ast-test-oracle-extraction"
 stackable = false
 requires_human_merge = true
-acceptance = "ripr's own test oracle strength report is generated without changing analyzer behavior"
+acceptance = "syntax-backed facts identify tests and assertion/oracle shapes without output drift unless documented"
+blocked_by = [
+  "analysis/syntax-adapter-mvp"
+]
+blocked_reason = "requires syntax adapter boundary"
 commands = [
-  "cargo xtask test-oracle-report",
-  "cargo xtask check-test-oracles",
-  "cargo xtask metrics",
-  "cargo xtask check-pr"
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask pr-summary",
+  "cargo xtask fixtures",
+  "cargo xtask goldens check"
 ]
 
 [[work_item]]
-id = "dogfood/static-self-check"
-status = "done"
-branch = "dogfood/static-self-check"
+id = "analysis/ast-probe-ownership"
+status = "blocked"
+branch = "analysis/ast-probe-ownership"
 stackable = false
 requires_human_merge = true
-acceptance = "focused ripr-on-ripr report is generated as a non-blocking artifact"
+acceptance = "diff spans map to stable owner symbols without cross-linking duplicate names"
+blocked_by = [
+  "analysis/syntax-adapter-mvp"
+]
+blocked_reason = "requires syntax node and owner facts"
 commands = [
-  "cargo xtask dogfood",
-  "cargo xtask check-pr"
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask pr-summary",
+  "cargo xtask fixtures",
+  "cargo xtask goldens check"
 ]
 
 [[work_item]]
-id = "campaign/agentic-devex-closeout"
-status = "ready"
-branch = "campaign/agentic-devex-closeout"
+id = "analysis/ast-probe-generation"
+status = "blocked"
+branch = "analysis/ast-probe-generation"
 stackable = false
 requires_human_merge = true
-acceptance = "Campaign 1 is marked complete and Campaign 2 is activated"
+acceptance = "current probe families are generated from syntax facts with fixture-backed evidence"
+blocked_by = [
+  "analysis/ast-probe-ownership",
+  "analysis/ast-test-oracle-extraction"
+]
+blocked_reason = "requires ownership and syntax-backed oracle facts"
 commands = [
-  "cargo xtask check-campaign",
-  "cargo xtask goals status",
-  "cargo xtask goals next",
-  "cargo xtask check-pr"
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask pr-summary",
+  "cargo xtask fixtures",
+  "cargo xtask goldens check"
 ]

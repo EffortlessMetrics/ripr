@@ -19,7 +19,9 @@ through multiple work items in a campaign, but each work item should follow the
 | Editor and Agent Loop | Turn findings into editor actions and agent test-writing briefs. | `lsp/evidence-hover-actions`, `context/agent-context-v2`, `docs/how-to-use-agent-context` |
 | Adoption and Calibration | Make `ripr` practical in repositories, CI, and offline calibration loops. | `config/ripr-config-v1`, `ci/sarif-ci-policy`, `calibration/cargo-mutants-scaffold`, `cache/persistent-cache-v1` |
 
-The active machine-readable campaign is `.ripr/goals/active.toml`.
+The active machine-readable campaign is `.ripr/goals/active.toml`. Campaign 1
+is complete; the active queue now starts Campaign 2 with
+`analysis/file-facts-model`.
 
 ## PR 0: `planning-and-tracking-docs`
 

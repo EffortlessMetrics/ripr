@@ -12,6 +12,8 @@ The machine-readable active campaign is `.ripr/goals/active.toml`.
 
 Campaign ID: `agentic-devex-foundation`
 
+Status: complete
+
 Objective:
 
 ```text
@@ -48,7 +50,7 @@ Work items:
 | `fixtures/first-two-goldens` | done | `boundary_gap` and `weak_error_oracle` fixtures exist with JSON and human goldens. |
 | `testing/test-oracle-report` | done | Advisory report measures `ripr`'s own strong, medium, weak, and smoke test oracles. |
 | `dogfood/static-self-check` | done | Advisory `ripr`-on-`ripr` report runs stable fixture diffs and records current output. |
-| `campaign/agentic-devex-closeout` | ready | Mark Campaign 1 complete and activate Campaign 2. |
+| `campaign/agentic-devex-closeout` | done | Campaign 1 is complete and Campaign 2 is active. |
 
 Dependencies:
 
@@ -84,6 +86,10 @@ Work items should usually produce one scoped PR. Independent docs or reporting
 items may be stackable when the campaign manifest marks them that way.
 
 ## Campaign 2: Syntax-Backed Analyzer Foundation
+
+Campaign ID: `syntax-backed-analyzer-foundation`
+
+Status: active
 
 Objective:
 
