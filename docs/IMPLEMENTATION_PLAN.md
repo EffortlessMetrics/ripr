@@ -4,6 +4,23 @@ This is the working PR checklist for building `ripr` incrementally. It is more
 operational than the [roadmap](ROADMAP.md): each entry should become a scoped PR
 with clear artifacts, tests, documentation updates, and gates.
 
+The checklist is grouped into
+[implementation campaigns](IMPLEMENTATION_CAMPAIGNS.md). A Codex Goal may work
+through multiple work items in a campaign, but each work item should follow the
+[scoped PR contract](SCOPED_PR_CONTRACT.md).
+
+## Campaign Map
+
+| Campaign | Objective | Work items |
+| --- | --- | --- |
+| Agentic DevEx Foundation | Make the repo safe for Codex Goals and human review. | `policy/architecture-guard`, `output/output-contract-check`, `docs/codex-goals-campaigns`, `fixtures/first-two-goldens`, `testing/test-oracle-report`, `dogfood/static-self-check` |
+| Syntax-Backed Analyzer Foundation | Move the analyzer from lexical facts to syntax-backed facts. | `analysis/file-facts-model`, `analysis/syntax-adapter-mvp`, `analysis/ast-test-oracle-extraction`, `analysis/ast-probe-ownership`, `analysis/ast-probe-generation` |
+| Evidence Quality | Improve oracle strength, local flow, activation values, output evidence, and stop reasons. | `analysis/oracle-strength-v2`, `analysis/local-delta-flow-v1`, `analysis/activation-value-modeling-v1`, `output/evidence-first-output`, `output/unknown-stop-reason-invariant` |
+| Editor and Agent Loop | Turn findings into editor actions and agent test-writing briefs. | `lsp/evidence-hover-actions`, `context/agent-context-v2`, `docs/how-to-use-agent-context` |
+| Adoption and Calibration | Make `ripr` practical in repositories, CI, and offline calibration loops. | `config/ripr-config-v1`, `ci/sarif-ci-policy`, `calibration/cargo-mutants-scaffold`, `cache/persistent-cache-v1` |
+
+The active machine-readable campaign is `.ripr/goals/active.toml`.
+
 ## PR 0: `planning-and-tracking-docs`
 
 Purpose: put the plan, engineering rules, metrics, ADRs, specs, changelog, and
@@ -213,14 +230,15 @@ Acceptance:
 
 ## PR 1G: `automation-path-docs`
 
-Purpose: document the fix/check/guide operating model and the goal-mode handoff
-before the remaining automation and analyzer implementation work.
+Purpose: document the fix/check/guide operating model and the Codex Goals
+campaign handoff before the remaining automation and analyzer implementation
+work.
 
 Deliverables:
 
 - [x] Add a PR automation operating model.
 - [x] Document deterministic shaping, non-mutating checks, and repair briefs.
-- [x] Document the goal-mode task contract.
+- [x] Document the scoped PR contract.
 - [x] Record the remaining automation cutoff before analyzer mode.
 - [x] Link the new docs from the roadmap, documentation map, agent workflow,
       contributor docs, and README.

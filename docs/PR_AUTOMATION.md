@@ -15,6 +15,10 @@ Humans and coding agents should spend attention on behavior, evidence,
 exceptions, and public contracts. They should not spend attention on formatting,
 allowlist order, report directory setup, generated indexes, or gate ordering.
 
+Codex Goals consume this harness. The `/goal` loop may advance a multi-PR
+campaign, but each work item should still leave the same shaped PR, reports, and
+receipts described here.
+
 ## Current Commands
 
 The current repo automation surface is:
@@ -382,5 +386,6 @@ The remaining automation path is:
 | ---: | --- | --- |
 | 1 | `readme-state-and-link-checks` | Add README snapshot consistency and Markdown local-link checks. |
 
-After those are in place, analyzer work can move in goal mode with one scoped
-capability per PR.
+After those are in place, analyzer work can move through Codex Goals campaigns.
+Each campaign may span multiple PRs, while each work item should still follow
+the scoped PR contract.

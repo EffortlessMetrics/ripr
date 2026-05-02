@@ -2153,8 +2153,10 @@ fn check_doc_index() -> Result<(), String> {
 
     let documentation = read_text_lossy(Path::new("docs/DOCUMENTATION.md"))?;
     for required in [
+        "CODEX_GOALS.md",
+        "IMPLEMENTATION_CAMPAIGNS.md",
+        "SCOPED_PR_CONTRACT.md",
         "PR_AUTOMATION.md",
-        "GOAL_MODE.md",
         "CAPABILITY_MATRIX.md",
         "METRICS.md",
         "ROADMAP.md",
@@ -2174,8 +2176,10 @@ fn check_doc_index() -> Result<(), String> {
         "docs/DOCUMENTATION.md",
         "docs/ROADMAP.md",
         "docs/IMPLEMENTATION_PLAN.md",
+        "docs/IMPLEMENTATION_CAMPAIGNS.md",
+        "docs/CODEX_GOALS.md",
+        "docs/SCOPED_PR_CONTRACT.md",
         "docs/PR_AUTOMATION.md",
-        "docs/GOAL_MODE.md",
         "docs/specs/README.md",
         "docs/adr/README.md",
         "docs/METRICS.md",

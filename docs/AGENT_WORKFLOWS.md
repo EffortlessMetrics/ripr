@@ -10,9 +10,9 @@ objective -> roadmap slice -> implementation-plan item -> spec -> fixture/test
 -> code module -> output contract -> metric -> changelog/learning
 ```
 
-An agent should be able to resume from repository artifacts, choose a safe
-subset, implement one scoped PR, and leave enough evidence for the next agent to
-continue.
+An agent should be able to resume from repository artifacts, choose a safe work
+item, produce one scoped PR or blocked report for that item, and leave enough
+evidence for the next agent to continue.
 
 ## Why This Exists
 
@@ -36,12 +36,32 @@ expires, but repository artifacts remain.
 2. Read [Implementation plan](IMPLEMENTATION_PLAN.md) for the next scoped PR.
 3. Read [Capability matrix](CAPABILITY_MATRIX.md) for current status.
 4. Read [PR automation](PR_AUTOMATION.md) for the local shape/check/report loop.
-5. Read [Goal-mode execution](GOAL_MODE.md) when the task is part of a long
-   implementation queue.
-6. Read the relevant spec in [Specs](specs/README.md).
-7. Check [Spec-test-code traceability](SPEC_TEST_CODE.md) and
+5. Read [Codex Goals](CODEX_GOALS.md) and
+   [Implementation campaigns](IMPLEMENTATION_CAMPAIGNS.md) when the task is part
+   of a long implementation campaign.
+6. Read [Scoped PR contract](SCOPED_PR_CONTRACT.md) for the PR-sized work item
+   evidence bar.
+7. Read the relevant spec in [Specs](specs/README.md).
+8. Check [Spec-test-code traceability](SPEC_TEST_CODE.md) and
    `.ripr/traceability.toml`.
-8. Inspect existing tests, fixtures, and goldens before editing code.
+9. Inspect existing tests, fixtures, and goldens before editing code.
+
+## Codex Goals
+
+Codex Goals is the autonomous loop. The repository provides the harness.
+
+A Codex Goals run should:
+
+- recover state from repo artifacts, not chat history
+- read `.ripr/goals/active.toml`
+- pick the next unblocked implementation-campaign work item
+- produce one scoped PR, blocked report, or explicit planning update per work
+  item
+- run `cargo xtask shape`, `cargo xtask fix-pr`, `cargo xtask check-pr`, and
+  `cargo xtask pr-summary`
+- continue only to independent or explicitly stackable work items
+- stop on policy, architecture, credential, merge, or scope decisions
+- leave durable learnings only when future agents should not rediscover them
 
 ## Choosing A Subset
 

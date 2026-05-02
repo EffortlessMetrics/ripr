@@ -156,8 +156,10 @@ classifying changed paths from git diff and status.
 `cargo xtask fix-pr` currently runs safe shaping, refreshes `pr-summary`, and
 writes a local fix-pr report.
 
-Long-running implementation work should use the scoped task model in
-[Goal-mode execution](GOAL_MODE.md).
+Long-running Codex Goals work should use the multi-PR campaign model in
+[Codex Goals](CODEX_GOALS.md), the queue in
+[Implementation campaigns](IMPLEMENTATION_CAMPAIGNS.md), and the one-work-item
+evidence bar in [Scoped PR contract](SCOPED_PR_CONTRACT.md).
 
 ## Testing Style
 

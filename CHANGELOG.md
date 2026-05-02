@@ -32,8 +32,10 @@ how future PRs are scoped or reviewed.
   normalization and report generation.
 - Added `cargo xtask pr-summary` for local reviewer packet generation from git
   diff and status.
-- Added PR automation and goal-mode execution docs to pin down the remaining
-  shape/check/guide automation path before deeper analyzer implementation.
+- Added PR automation docs to pin down the remaining shape/check/guide
+  automation path before deeper analyzer implementation.
+- Added Codex Goals, implementation campaign, and scoped PR contract docs to
+  distinguish multi-PR campaign execution from PR-sized work items.
 - Added `cargo xtask precommit` and `cargo xtask check-pr` for cheap local
   guardrails and review-ready non-release checks.
 - Added Markdown pass/fail reports for existing policy checks under
