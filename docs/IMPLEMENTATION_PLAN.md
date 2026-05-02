@@ -384,6 +384,29 @@ Acceptance:
 - [x] Domain and analysis layers cannot accidentally depend on adapters.
 - [x] CLI, LSP, and output layers do not own exposure classification.
 
+## PR 1O: `readme-state-and-link-checks`
+
+Purpose: make README state and Markdown links part of the checked trust packet.
+
+Deliverables:
+
+- [x] Add `cargo xtask check-readme-state`.
+- [x] Add `cargo xtask markdown-links`.
+- [x] Check README front-door sections and headline capability snapshot shape.
+- [x] Check README/capability matrix checkpoint drift against
+      `metrics/capabilities.toml`.
+- [x] Check repo-local Markdown links in tracked `.md` files.
+- [x] Wire the checks into `precommit` and `ci-fast`.
+- [x] Update CI and PR automation docs.
+
+Acceptance:
+
+- [x] Deleted or renamed docs fail before review when still linked.
+- [x] README remains linked to active campaign, metrics, capability, and
+      automation docs.
+- [x] `cargo xtask check-readme-state` and `cargo xtask markdown-links` pass on
+      main.
+
 ## PR 2: `fixture-laboratory`
 
 Purpose: build the regression control bench before changing analyzer internals.

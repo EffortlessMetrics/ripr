@@ -141,14 +141,9 @@ cargo xtask check-architecture
 cargo xtask check-public-api
 cargo xtask check-output-contracts
 cargo xtask check-doc-index
-cargo xtask check-pr-shape
-```
-
-Planned:
-
-```bash
 cargo xtask check-readme-state
 cargo xtask markdown-links
+cargo xtask check-pr-shape
 ```
 
 Local tools may fix. CI verifies.
@@ -173,6 +168,8 @@ cargo xtask check-architecture
 cargo xtask check-public-api
 cargo xtask check-output-contracts
 cargo xtask check-doc-index
+cargo xtask check-readme-state
+cargo xtask markdown-links
 cargo xtask check-pr-shape
 ```
 
@@ -326,6 +323,8 @@ cargo xtask check-architecture
 cargo xtask check-public-api
 cargo xtask check-output-contracts
 cargo xtask check-doc-index
+cargo xtask check-readme-state
+cargo xtask markdown-links
 cargo xtask check-pr-shape
 cargo xtask check-generated
 ```
@@ -365,6 +364,8 @@ architecture.md
 public-api.md
 output-contracts.md
 doc-index.md
+readme-state.md
+markdown-links.md
 pr-shape.md
 fixtures.md
 goldens.md
@@ -380,11 +381,16 @@ safe deterministic changes so authors or agents can apply it locally.
 
 ## Future PR Sequence
 
-The remaining automation path is:
+The next automation path is trusted-change evidence:
 
 | Order | PR | Purpose |
 | ---: | --- | --- |
-| 1 | `readme-state-and-link-checks` | Add README snapshot consistency and Markdown local-link checks. |
+| 1 | `fixtures/first-two-goldens` | Add the first behavior fixtures and expected outputs. |
+| 2 | `testing/test-oracle-report` | Measure the strength of `ripr`'s own test oracles. |
+| 3 | `dogfood/static-self-check` | Generate focused `ripr`-on-`ripr` evidence reports. |
+| 4 | `automation/gate-receipts-v1` | Write machine-readable receipts for gate runs. |
+| 5 | `automation/critic-report` | Add an advisory adversarial review packet from existing reports. |
+| 6 | `automation/campaign-manifest-check` | Validate `.ripr/goals/active.toml` against campaign docs. |
 
 After those are in place, analyzer work can move through Codex Goals campaigns.
 Each campaign may span multiple PRs, while each work item should still follow

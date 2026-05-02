@@ -72,6 +72,19 @@ commands = [
 ]
 
 [[work_item]]
+id = "docs/readme-state-and-link-checks"
+status = "done"
+branch = "docs/readme-state-and-link-checks"
+stackable = true
+requires_human_merge = true
+acceptance = "README state and repo-local Markdown links are checked in precommit and ci-fast"
+commands = [
+  "cargo xtask check-readme-state",
+  "cargo xtask markdown-links",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
 id = "fixtures/first-two-goldens"
 status = "ready"
 branch = "fixtures/first-two-goldens"

@@ -54,3 +54,5 @@ how future PRs are scoped or reviewed.
   links.
 - Added advisory PR-shape warnings for likely missing evidence in changed-file
   sets.
+- Added README state and repo-local Markdown link checks to keep documentation
+  references and capability checkpoints aligned before review.
