@@ -143,6 +143,7 @@ cargo xtask check-output-contracts
 cargo xtask check-doc-index
 cargo xtask check-readme-state
 cargo xtask markdown-links
+cargo xtask check-campaign
 cargo xtask check-pr-shape
 ```
 
@@ -170,6 +171,7 @@ cargo xtask check-output-contracts
 cargo xtask check-doc-index
 cargo xtask check-readme-state
 cargo xtask markdown-links
+cargo xtask check-campaign
 cargo xtask check-pr-shape
 ```
 
@@ -325,6 +327,7 @@ cargo xtask check-output-contracts
 cargo xtask check-doc-index
 cargo xtask check-readme-state
 cargo xtask markdown-links
+cargo xtask check-campaign
 cargo xtask check-pr-shape
 cargo xtask check-generated
 ```
@@ -366,6 +369,9 @@ output-contracts.md
 doc-index.md
 readme-state.md
 markdown-links.md
+campaign.md
+goals.md
+goals-next.md
 pr-shape.md
 fixtures.md
 goldens.md
@@ -390,7 +396,8 @@ The next automation path is trusted-change evidence:
 | 3 | `dogfood/static-self-check` | Generate focused `ripr`-on-`ripr` evidence reports. |
 | 4 | `automation/gate-receipts-v1` | Write machine-readable receipts for gate runs. |
 | 5 | `automation/critic-report` | Add an advisory adversarial review packet from existing reports. |
-| 6 | `automation/campaign-manifest-check` | Validate `.ripr/goals/active.toml` against campaign docs. |
+| 6 | `devex/onboard-doctor` | Report whether the local checkout and toolchain are ready to work. |
+| 7 | `devex/install-hooks` | Generate local hooks without checking executable scripts into the repo. |
 
 After those are in place, analyzer work can move through Codex Goals campaigns.
 Each campaign may span multiple PRs, while each work item should still follow

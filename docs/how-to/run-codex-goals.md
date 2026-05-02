@@ -23,6 +23,8 @@ cargo xtask shape
 cargo xtask fix-pr
 cargo xtask check-pr
 cargo xtask pr-summary
+cargo xtask check-campaign
+cargo xtask goals next
 ```
 
 ## Prompt

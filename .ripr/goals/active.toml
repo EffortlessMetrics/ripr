@@ -85,6 +85,20 @@ commands = [
 ]
 
 [[work_item]]
+id = "goals/manifest-check"
+status = "done"
+branch = "goals/manifest-check"
+stackable = true
+requires_human_merge = true
+acceptance = "active campaign manifest is validated and exposes status/next reports"
+commands = [
+  "cargo xtask check-campaign",
+  "cargo xtask goals status",
+  "cargo xtask goals next",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
 id = "fixtures/first-two-goldens"
 status = "ready"
 branch = "fixtures/first-two-goldens"

@@ -123,14 +123,22 @@ It is the machine-readable pointer for campaign state. It names the active
 campaign, end state, work items, dependencies, stackability, and required
 commands.
 
-Future `xtask` goals commands should read this manifest:
+The current `xtask` goals commands read this manifest:
 
 ```bash
 cargo xtask goals status
 cargo xtask goals next
 cargo xtask goals report
-cargo xtask goals block <work-item-id> --reason "..."
 ```
 
-Those commands are planned. Until they exist, agents should read the manifest
-directly and preserve the same semantics.
+Validate the manifest with:
+
+```bash
+cargo xtask check-campaign
+```
+
+Blocking a work item through `xtask` is planned but not implemented yet:
+
+```bash
+cargo xtask goals block <work-item-id> --reason "..."
+```

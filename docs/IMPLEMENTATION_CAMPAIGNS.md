@@ -10,6 +10,8 @@ The machine-readable active campaign is `.ripr/goals/active.toml`.
 
 ## Campaign 1: Agentic DevEx Foundation
 
+Campaign ID: `agentic-devex-foundation`
+
 Objective:
 
 ```text
@@ -41,6 +43,7 @@ Work items:
 | `docs/docs-index-checks` | done | Docs index checks exist. |
 | `docs/codex-goals-campaigns` | done | Clarify Codex Goals as multi-PR campaigns. |
 | `docs/readme-state-and-link-checks` | done | README state and repo-local Markdown links are checked. |
+| `goals/manifest-check` | done | Active campaign manifest is validated and reportable. |
 | `fixtures/first-two-goldens` | ready | Add `boundary_gap` and `weak_error_oracle` fixtures. |
 | `testing/test-oracle-report` | ready | Report strength of `ripr`'s own test oracles. |
 | `dogfood/static-self-check` | ready | Produce focused `ripr`-on-`ripr` reports. |

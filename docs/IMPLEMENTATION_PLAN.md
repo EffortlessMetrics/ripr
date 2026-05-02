@@ -407,6 +407,29 @@ Acceptance:
 - [x] `cargo xtask check-readme-state` and `cargo xtask markdown-links` pass on
       main.
 
+## PR 1P: `campaign-manifest-check`
+
+Purpose: make the active Codex Goals campaign queue mechanically checkable and
+reportable.
+
+Deliverables:
+
+- [x] Add `cargo xtask check-campaign`.
+- [x] Add `cargo xtask check-goals` as an alias.
+- [x] Add `cargo xtask goals status`.
+- [x] Add `cargo xtask goals next`.
+- [x] Validate `.ripr/goals/active.toml` against
+      `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+- [x] Validate work item IDs, statuses, branch fields, acceptance claims,
+      stackability, merge boundaries, blocked dependencies, and command names.
+- [x] Wire the manifest check into `precommit` and `ci-fast`.
+
+Acceptance:
+
+- [x] `cargo xtask check-campaign` passes on main.
+- [x] `cargo xtask goals status` writes `target/ripr/reports/goals.md`.
+- [x] `cargo xtask goals next` writes `target/ripr/reports/goals-next.md`.
+
 ## PR 2: `fixture-laboratory`
 
 Purpose: build the regression control bench before changing analyzer internals.
