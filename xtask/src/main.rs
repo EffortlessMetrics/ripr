@@ -1074,12 +1074,18 @@ impl FixtureRun {
             .iter()
             .filter(|comparison| !comparison.matches)
             .map(|comparison| {
+                let difference_hint = comparison
+                    .first_difference
+                    .as_ref()
+                    .map(|hint| format!("\n  diff:    {hint}"))
+                    .unwrap_or_default();
                 format!(
-                    "{} drift for fixture `{}`\n  expected: {}\n  actual:   {}",
+                    "{} drift for fixture `{}`\n  expected: {}\n  actual:   {}{}",
                     comparison.surface,
                     self.name,
                     normalize_path(&comparison.expected),
-                    normalize_path(&comparison.actual)
+                    normalize_path(&comparison.actual),
+                    difference_hint
                 )
             })
             .collect()
@@ -1092,6 +1098,7 @@ struct GoldenComparison {
     expected: PathBuf,
     actual: PathBuf,
     matches: bool,
+    first_difference: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -1233,11 +1240,14 @@ fn compare_golden(
 ) -> Result<GoldenComparison, String> {
     let expected_text = read_text_lossy(expected)?;
     let actual_text = read_text_lossy(actual)?;
+    let normalized_expected = normalize_golden_text(&expected_text);
+    let normalized_actual = normalize_golden_text(&actual_text);
     Ok(GoldenComparison {
         surface,
         expected: expected.to_path_buf(),
         actual: actual.to_path_buf(),
-        matches: normalize_golden_text(&expected_text) == normalize_golden_text(&actual_text),
+        matches: normalized_expected == normalized_actual,
+        first_difference: first_line_difference(&normalized_expected, &normalized_actual),
     })
 }
 
@@ -1247,6 +1257,27 @@ fn normalize_golden_text(value: &str) -> String {
         .strip_suffix('\n')
         .unwrap_or(&normalized)
         .to_string()
+}
+
+fn first_line_difference(expected: &str, actual: &str) -> Option<String> {
+    let expected_lines: Vec<&str> = expected.split('\n').collect();
+    let actual_lines: Vec<&str> = actual.split('\n').collect();
+    let max_len = expected_lines.len().max(actual_lines.len());
+
+    for index in 0..max_len {
+        let expected_line = expected_lines.get(index).copied().unwrap_or("<missing>");
+        let actual_line = actual_lines.get(index).copied().unwrap_or("<missing>");
+        if expected_line != actual_line {
+            return Some(format!(
+                "line {} expected `{}` vs actual `{}`",
+                index + 1,
+                expected_line,
+                actual_line
+            ));
+        }
+    }
+
+    None
 }
 
 fn normalize_fixture_json_output(value: &str) -> String {
@@ -8032,6 +8063,7 @@ mod tests {
         ReceiptRecord, ReportIndexCampaign, ReportIndexEntry, TestOracleClass, critic_findings,
         dogfood_class_counts, dogfood_report_json, dogfood_report_markdown,
         extract_workflow_run_blocks, glob_matches, golden_changes_without_blessing,
+        first_line_difference,
         golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
         is_bdd_test_name, is_dependency_surface_candidate, is_evidence_path,
         is_generated_candidate, is_known_campaign_command, is_policy_path, is_production_path,
@@ -8431,6 +8463,19 @@ jobs:
             normalize_golden_text("one\ntwo\n\n"),
             normalize_golden_text("one\ntwo")
         );
+    }
+
+    #[test]
+    fn first_line_difference_reports_snapshot_context() {
+        assert_eq!(
+            first_line_difference("a\nb\nc", "a\nx\nc"),
+            Some("line 2 expected `b` vs actual `x`".to_string())
+        );
+        assert_eq!(
+            first_line_difference("a\nb", "a\nb\nc"),
+            Some("line 3 expected `<missing>` vs actual `c`".to_string())
+        );
+        assert_eq!(first_line_difference("a\nb", "a\nb"), None);
     }
 
     #[test]
