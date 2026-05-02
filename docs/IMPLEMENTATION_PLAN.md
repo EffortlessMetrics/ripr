@@ -624,18 +624,18 @@ Purpose: generate probes from syntax kind and ownership facts.
 
 Deliverables:
 
-- [ ] Predicate boundary probes.
-- [ ] Return value probes.
-- [ ] Error path probes.
-- [ ] Field construction probes.
-- [ ] Side-effect or call-change probes.
-- [ ] `static_unknown` fallback with reason.
+- [x] Predicate boundary probes.
+- [x] Return value probes.
+- [x] Error path probes.
+- [x] Field construction probes.
+- [x] Side-effect or call-change probes.
+- [x] `static_unknown` fallback with reason.
 
 Acceptance:
 
-- [ ] Multi-line predicate changes produce one useful probe.
-- [ ] Tail-expression return changes produce return probes.
-- [ ] `Err(Error::X)` changes produce error-path probes.
+- [x] Multi-line predicate changes produce one useful probe.
+- [x] Tail-expression return changes produce return probes.
+- [x] `Err(Error::X)` changes produce error-path probes.
 
 ## PR 8: `oracle-strength-v2`
 

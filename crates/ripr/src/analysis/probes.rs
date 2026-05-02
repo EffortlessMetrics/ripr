@@ -1,6 +1,9 @@
 use super::diff::ChangedFile;
 use super::rust_index::{
-    RustIndex, changed_nodes_for_lines, extract_identifier_tokens, find_owner_function,
+    PROBE_SHAPE_CALL_DELETION, PROBE_SHAPE_ERROR_PATH, PROBE_SHAPE_FIELD_CONSTRUCTION,
+    PROBE_SHAPE_MATCH_ARM, PROBE_SHAPE_PREDICATE, PROBE_SHAPE_RETURN_VALUE,
+    PROBE_SHAPE_SIDE_EFFECT, RustIndex, changed_nodes_for_lines, extract_identifier_tokens,
+    find_owner_function,
 };
 use crate::domain::{DeltaKind, Probe, ProbeFamily, ProbeId, SourceLocation};
 use std::path::Path;
@@ -18,7 +21,8 @@ pub fn probes_for_file(root: &Path, changed: &ChangedFile, index: &RustIndex) ->
         if should_ignore_changed_line(text) {
             continue;
         }
-        let families = classify_changed_line(text);
+        let families = classify_changed_syntax(index, &changed.path, added.line, text)
+            .unwrap_or_else(|| classify_changed_line(text));
         for family in families {
             let delta = delta_for_family(&family);
             let owner = changed_nodes
@@ -51,6 +55,56 @@ pub fn probes_for_file(root: &Path, changed: &ChangedFile, index: &RustIndex) ->
         }
     }
     probes
+}
+
+fn classify_changed_syntax(
+    index: &RustIndex,
+    file: &Path,
+    line: usize,
+    changed_text: &str,
+) -> Option<Vec<ProbeFamily>> {
+    let facts = index.files.get(file)?;
+    let mut families = facts
+        .probe_shapes
+        .iter()
+        .filter(|shape| {
+            shape.start_line <= line
+                && line <= shape.end_line
+                && shape_contains_changed_text(&shape.text, changed_text)
+        })
+        .filter_map(|shape| family_for_probe_shape(&shape.kind))
+        .collect::<Vec<_>>();
+    if families.is_empty() {
+        return None;
+    }
+    families.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+    families.dedup_by(|a, b| a.as_str() == b.as_str());
+    Some(families)
+}
+
+fn shape_contains_changed_text(shape_text: &str, changed_text: &str) -> bool {
+    let changed = changed_text
+        .trim()
+        .trim_end_matches(';')
+        .trim_end_matches(',');
+    if changed.is_empty() {
+        return false;
+    }
+    let shape = shape_text.trim();
+    shape.contains(changed) || changed.contains(shape)
+}
+
+fn family_for_probe_shape(kind: &str) -> Option<ProbeFamily> {
+    match kind {
+        PROBE_SHAPE_PREDICATE => Some(ProbeFamily::Predicate),
+        PROBE_SHAPE_RETURN_VALUE => Some(ProbeFamily::ReturnValue),
+        PROBE_SHAPE_ERROR_PATH => Some(ProbeFamily::ErrorPath),
+        PROBE_SHAPE_CALL_DELETION => Some(ProbeFamily::CallDeletion),
+        PROBE_SHAPE_FIELD_CONSTRUCTION => Some(ProbeFamily::FieldConstruction),
+        PROBE_SHAPE_SIDE_EFFECT => Some(ProbeFamily::SideEffect),
+        PROBE_SHAPE_MATCH_ARM => Some(ProbeFamily::MatchArm),
+        _ => None,
+    }
 }
 
 fn should_ignore_changed_line(text: &str) -> bool {
@@ -262,4 +316,121 @@ fn sanitize_path(path: &Path) -> String {
         .replace(['/', '\\', ':'], "_")
         .trim_matches('_')
         .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analysis::diff::ChangedLine;
+    use crate::analysis::rust_index::{RaRustSyntaxAdapter, RustSyntaxAdapter};
+    use std::path::PathBuf;
+
+    #[test]
+    fn syntax_probe_shapes_classify_multiline_side_effect_calls() -> Result<(), String> {
+        let source = r#"
+pub fn publish(service: &mut Service, event: Event) {
+    service
+        .publish(
+            event,
+        );
+}
+"#;
+        let adapter = RaRustSyntaxAdapter;
+        let facts = adapter.summarize_file(Path::new("src/lib.rs"), source)?;
+        let changed_line = line_containing(source, "event,")?;
+        let mut index = RustIndex::default();
+        index.files.insert(PathBuf::from("src/lib.rs"), facts);
+        let changed = ChangedFile {
+            path: PathBuf::from("src/lib.rs"),
+            added_lines: vec![ChangedLine {
+                line: changed_line,
+                text: "            event,".to_string(),
+            }],
+            removed_lines: Vec::new(),
+        };
+
+        let probes = probes_for_file(Path::new("."), &changed, &index);
+        let families = probes
+            .iter()
+            .map(|probe| probe.family.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(families.contains(&"call_deletion"));
+        assert!(families.contains(&"side_effect"));
+        assert!(!families.contains(&"static_unknown"));
+        Ok(())
+    }
+
+    #[test]
+    fn syntax_probe_shapes_classify_multiline_return_calls() -> Result<(), String> {
+        let source = r#"
+pub fn parse(value: i32) -> Result<i32, Error> {
+    return Ok(
+        value,
+    );
+}
+"#;
+        let adapter = RaRustSyntaxAdapter;
+        let facts = adapter.summarize_file(Path::new("src/lib.rs"), source)?;
+        let changed_line = line_containing(source, "value,")?;
+        let mut index = RustIndex::default();
+        index.files.insert(PathBuf::from("src/lib.rs"), facts);
+        let changed = ChangedFile {
+            path: PathBuf::from("src/lib.rs"),
+            added_lines: vec![ChangedLine {
+                line: changed_line,
+                text: "        value,".to_string(),
+            }],
+            removed_lines: Vec::new(),
+        };
+
+        let probes = probes_for_file(Path::new("."), &changed, &index);
+        let families = probes
+            .iter()
+            .map(|probe| probe.family.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(families.contains(&"call_deletion"));
+        assert!(families.contains(&"return_value"));
+        assert!(!families.contains(&"static_unknown"));
+        Ok(())
+    }
+
+    #[test]
+    fn syntax_probe_shapes_classify_tail_expression_returns() -> Result<(), String> {
+        let source = r#"
+pub fn total(amount: i32, fee: i32) -> i32 {
+    amount + fee
+}
+"#;
+        let adapter = RaRustSyntaxAdapter;
+        let facts = adapter.summarize_file(Path::new("src/lib.rs"), source)?;
+        let changed_line = line_containing(source, "amount + fee")?;
+        let mut index = RustIndex::default();
+        index.files.insert(PathBuf::from("src/lib.rs"), facts);
+        let changed = ChangedFile {
+            path: PathBuf::from("src/lib.rs"),
+            added_lines: vec![ChangedLine {
+                line: changed_line,
+                text: "    amount + fee".to_string(),
+            }],
+            removed_lines: Vec::new(),
+        };
+
+        let probes = probes_for_file(Path::new("."), &changed, &index);
+        let families = probes
+            .iter()
+            .map(|probe| probe.family.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(families, vec!["return_value"]);
+        Ok(())
+    }
+
+    fn line_containing(source: &str, needle: &str) -> Result<usize, String> {
+        match source.lines().position(|line| line.contains(needle)) {
+            Some(index) => Ok(index + 1),
+            None => Err(format!("missing line containing {needle}")),
+        }
+    }
 }

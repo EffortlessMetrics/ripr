@@ -6,6 +6,14 @@ use ra_ap_syntax::{
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+pub const PROBE_SHAPE_PREDICATE: &str = "predicate";
+pub const PROBE_SHAPE_RETURN_VALUE: &str = "return_value";
+pub const PROBE_SHAPE_ERROR_PATH: &str = "error_path";
+pub const PROBE_SHAPE_CALL_DELETION: &str = "call_deletion";
+pub const PROBE_SHAPE_FIELD_CONSTRUCTION: &str = "field_construction";
+pub const PROBE_SHAPE_SIDE_EFFECT: &str = "side_effect";
+pub const PROBE_SHAPE_MATCH_ARM: &str = "match_arm";
+
 #[derive(Clone, Debug, Default)]
 pub struct RustIndex {
     pub files: BTreeMap<PathBuf, FileFacts>,
@@ -21,6 +29,7 @@ pub struct FileFacts {
     pub calls: Vec<CallFact>,
     pub returns: Vec<ReturnFact>,
     pub literals: Vec<LiteralFact>,
+    pub probe_shapes: Vec<ProbeShapeFact>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -74,6 +83,14 @@ pub struct ReturnFact {
 pub struct LiteralFact {
     pub line: usize,
     pub value: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProbeShapeFact {
+    pub start_line: usize,
+    pub end_line: usize,
+    pub kind: String,
+    pub text: String,
 }
 
 pub type FunctionSummary = FunctionFact;
@@ -246,6 +263,7 @@ fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts {
         calls: file_calls,
         returns: file_returns,
         literals: file_literals,
+        probe_shapes: Vec::new(),
     }
 }
 
@@ -263,6 +281,7 @@ fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, Stri
     let mut file_calls = Vec::new();
     let mut file_returns = Vec::new();
     let mut file_literals = Vec::new();
+    let mut file_probe_shapes = Vec::new();
     let path_buf = path.to_path_buf();
 
     for function in source.syntax().descendants().filter_map(ast::Fn::cast) {
@@ -280,11 +299,13 @@ fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, Stri
         let calls = extract_call_facts(&body, start_line);
         let returns = extract_return_facts(&body, start_line);
         let literals = extract_literal_facts(&body, start_line);
+        let probe_shapes = extract_parser_probe_shapes(&function, text, &line_index);
         let is_test = has_test_attribute(&function);
 
         file_calls.extend(calls.clone());
         file_returns.extend(returns.clone());
         file_literals.extend(literals.clone());
+        file_probe_shapes.extend(probe_shapes);
 
         let function_fact = FunctionFact {
             id: parser_symbol_id(path, &function, &name),
@@ -323,6 +344,19 @@ fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, Stri
     file_returns.dedup_by(|a, b| a.line == b.line && a.text == b.text);
     file_literals.sort_by(|a, b| a.line.cmp(&b.line).then(a.value.cmp(&b.value)));
     file_literals.dedup_by(|a, b| a.line == b.line && a.value == b.value);
+    file_probe_shapes.sort_by(|a, b| {
+        a.start_line
+            .cmp(&b.start_line)
+            .then(a.end_line.cmp(&b.end_line))
+            .then(a.kind.cmp(&b.kind))
+            .then(a.text.cmp(&b.text))
+    });
+    file_probe_shapes.dedup_by(|a, b| {
+        a.start_line == b.start_line
+            && a.end_line == b.end_line
+            && a.kind == b.kind
+            && a.text == b.text
+    });
 
     Ok(FileFacts {
         path: path_buf,
@@ -331,6 +365,7 @@ fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, Stri
         calls: file_calls,
         returns: file_returns,
         literals: file_literals,
+        probe_shapes: file_probe_shapes,
     })
 }
 
@@ -413,6 +448,345 @@ fn has_test_attribute(function: &ast::Fn) -> bool {
             || compact.starts_with("#[tokio::test")
             || compact.starts_with("#[async_std::test")
     })
+}
+
+fn extract_parser_probe_shapes(
+    function: &ast::Fn,
+    text: &str,
+    line_index: &LineIndex,
+) -> Vec<ProbeShapeFact> {
+    let mut shapes = Vec::new();
+    for if_expr in function
+        .syntax()
+        .descendants()
+        .filter_map(ast::IfExpr::cast)
+    {
+        if let Some(condition) = if_expr.condition() {
+            push_probe_shape(
+                &mut shapes,
+                line_index,
+                text,
+                PROBE_SHAPE_PREDICATE,
+                condition.syntax().text_range().start(),
+                condition.syntax().text_range().end(),
+            );
+        }
+    }
+
+    for while_expr in function
+        .syntax()
+        .descendants()
+        .filter_map(ast::WhileExpr::cast)
+    {
+        if let Some(condition) = while_expr.condition() {
+            push_probe_shape(
+                &mut shapes,
+                line_index,
+                text,
+                PROBE_SHAPE_PREDICATE,
+                condition.syntax().text_range().start(),
+                condition.syntax().text_range().end(),
+            );
+        }
+    }
+
+    for bin_expr in function
+        .syntax()
+        .descendants()
+        .filter_map(ast::BinExpr::cast)
+    {
+        if bin_expr
+            .op_token()
+            .is_some_and(|token| is_predicate_operator(token.text()))
+        {
+            push_probe_shape(
+                &mut shapes,
+                line_index,
+                text,
+                PROBE_SHAPE_PREDICATE,
+                bin_expr.syntax().text_range().start(),
+                bin_expr.syntax().text_range().end(),
+            );
+        }
+    }
+
+    for return_expr in function
+        .syntax()
+        .descendants()
+        .filter_map(ast::ReturnExpr::cast)
+    {
+        let range = return_expr.syntax().text_range();
+        push_probe_shape(
+            &mut shapes,
+            line_index,
+            text,
+            PROBE_SHAPE_RETURN_VALUE,
+            range.start(),
+            range.end(),
+        );
+        let return_text = slice_text(text, range.start(), range.end());
+        if has_error_path_text(&return_text) {
+            push_probe_shape(
+                &mut shapes,
+                line_index,
+                text,
+                PROBE_SHAPE_ERROR_PATH,
+                range.start(),
+                range.end(),
+            );
+        }
+    }
+
+    if let Some(tail_expr) = function.body().and_then(|body| body.tail_expr()) {
+        let range = tail_expr.syntax().text_range();
+        let tail_text = slice_text(text, range.start(), range.end());
+        if is_tail_return_value_text(&tail_text) {
+            push_probe_shape(
+                &mut shapes,
+                line_index,
+                text,
+                PROBE_SHAPE_RETURN_VALUE,
+                range.start(),
+                range.end(),
+            );
+            if has_error_path_text(&tail_text) {
+                push_probe_shape(
+                    &mut shapes,
+                    line_index,
+                    text,
+                    PROBE_SHAPE_ERROR_PATH,
+                    range.start(),
+                    range.end(),
+                );
+            }
+        }
+    }
+
+    for call_expr in function
+        .syntax()
+        .descendants()
+        .filter_map(ast::CallExpr::cast)
+    {
+        let range = call_expr.syntax().text_range();
+        let call_text = slice_text(text, range.start(), range.end());
+        push_probe_shape(
+            &mut shapes,
+            line_index,
+            text,
+            PROBE_SHAPE_CALL_DELETION,
+            range.start(),
+            range.end(),
+        );
+        if has_return_value_text(&call_text) {
+            push_probe_shape(
+                &mut shapes,
+                line_index,
+                text,
+                PROBE_SHAPE_RETURN_VALUE,
+                range.start(),
+                range.end(),
+            );
+        }
+        if has_error_path_text(&call_text) {
+            push_probe_shape(
+                &mut shapes,
+                line_index,
+                text,
+                PROBE_SHAPE_ERROR_PATH,
+                range.start(),
+                range.end(),
+            );
+        }
+    }
+
+    for method_call in function
+        .syntax()
+        .descendants()
+        .filter_map(ast::MethodCallExpr::cast)
+    {
+        let range = method_call.syntax().text_range();
+        let method_text = slice_text(text, range.start(), range.end());
+        push_probe_shape(
+            &mut shapes,
+            line_index,
+            text,
+            PROBE_SHAPE_CALL_DELETION,
+            range.start(),
+            range.end(),
+        );
+        if method_call
+            .name_ref()
+            .is_some_and(|name| is_effect_call_name(&name.syntax().text().to_string()))
+            || has_effect_text(&method_text)
+        {
+            push_probe_shape(
+                &mut shapes,
+                line_index,
+                text,
+                PROBE_SHAPE_SIDE_EFFECT,
+                range.start(),
+                range.end(),
+            );
+        }
+    }
+
+    for field in function
+        .syntax()
+        .descendants()
+        .filter_map(ast::RecordExprField::cast)
+    {
+        let range = field.syntax().text_range();
+        push_probe_shape(
+            &mut shapes,
+            line_index,
+            text,
+            PROBE_SHAPE_FIELD_CONSTRUCTION,
+            range.start(),
+            range.end(),
+        );
+    }
+
+    for match_expr in function
+        .syntax()
+        .descendants()
+        .filter_map(ast::MatchExpr::cast)
+    {
+        if let Some(token) = match_expr.match_token() {
+            push_probe_shape(
+                &mut shapes,
+                line_index,
+                text,
+                PROBE_SHAPE_MATCH_ARM,
+                token.text_range().start(),
+                token.text_range().end(),
+            );
+        }
+    }
+
+    for arm in function
+        .syntax()
+        .descendants()
+        .filter_map(ast::MatchArm::cast)
+    {
+        if let Some(token) = arm.fat_arrow_token() {
+            push_probe_shape(
+                &mut shapes,
+                line_index,
+                text,
+                PROBE_SHAPE_MATCH_ARM,
+                token.text_range().start(),
+                token.text_range().end(),
+            );
+        }
+    }
+
+    shapes.sort_by(|a, b| {
+        a.start_line
+            .cmp(&b.start_line)
+            .then(a.end_line.cmp(&b.end_line))
+            .then(a.kind.cmp(&b.kind))
+            .then(a.text.cmp(&b.text))
+    });
+    shapes.dedup_by(|a, b| {
+        a.start_line == b.start_line
+            && a.end_line == b.end_line
+            && a.kind == b.kind
+            && a.text == b.text
+    });
+    shapes
+}
+
+fn push_probe_shape(
+    shapes: &mut Vec<ProbeShapeFact>,
+    line_index: &LineIndex,
+    text: &str,
+    kind: &str,
+    start: TextSize,
+    end: TextSize,
+) {
+    let snippet = slice_text(text, start, end)
+        .trim()
+        .trim_end_matches(';')
+        .to_string();
+    if snippet.is_empty() {
+        return;
+    }
+    shapes.push(ProbeShapeFact {
+        start_line: line_index.line(start),
+        end_line: line_index.line_for_range_end(end),
+        kind: kind.to_string(),
+        text: snippet,
+    });
+}
+
+fn is_predicate_operator(operator: &str) -> bool {
+    matches!(
+        operator,
+        "==" | "!=" | "<=" | ">=" | "<" | ">" | "&&" | "||"
+    )
+}
+
+fn has_return_value_text(text: &str) -> bool {
+    let trimmed = text.trim_start();
+    trimmed.starts_with("Ok(")
+        || trimmed.starts_with("Some(")
+        || trimmed.contains(" Ok(")
+        || trimmed.contains(" Some(")
+        || trimmed.contains("None")
+}
+
+fn is_tail_return_value_text(text: &str) -> bool {
+    let trimmed = text.trim_start();
+    !trimmed.is_empty()
+        && !trimmed.starts_with("if ")
+        && !trimmed.starts_with("match ")
+        && !trimmed.starts_with("while ")
+        && !trimmed.starts_with("for ")
+        && !trimmed.starts_with("loop ")
+}
+
+fn has_error_path_text(text: &str) -> bool {
+    text.contains("Err(")
+        || text.contains("Error::")
+        || text.contains("map_err")
+        || text.contains("bail!")
+        || text.contains("anyhow!")
+}
+
+fn has_effect_text(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    [
+        ".save(",
+        ".publish(",
+        ".send(",
+        ".write(",
+        ".insert(",
+        ".push(",
+        ".remove(",
+        ".delete(",
+        ".emit(",
+        ".increment(",
+        "metrics.",
+        "log::",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
+}
+
+fn is_effect_call_name(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "save"
+            | "publish"
+            | "send"
+            | "write"
+            | "insert"
+            | "push"
+            | "remove"
+            | "delete"
+            | "emit"
+            | "increment"
+    )
 }
 
 fn extract_parser_oracles(
@@ -950,6 +1324,11 @@ pub fn parse(input: &str) -> Result<i32, Error> {
         assert!(file.calls.iter().any(|call| call.name == "Ok"));
         assert!(file.returns.iter().any(|fact| fact.text.contains("Ok(42)")));
         assert!(file.literals.iter().any(|fact| fact.value == "42"));
+        assert!(
+            file.probe_shapes
+                .iter()
+                .any(|shape| shape.kind == PROBE_SHAPE_RETURN_VALUE)
+        );
     }
 
     #[test]
@@ -1101,6 +1480,45 @@ mod tests {
             nodes[0].owner.as_ref().map(|owner| owner.0.as_str()),
             Some("src/lib.rs::tests::checks_boundary")
         );
+        Ok(())
+    }
+
+    #[test]
+    fn parser_adapter_extracts_probe_shapes_from_syntax() -> Result<(), String> {
+        let adapter = RaRustSyntaxAdapter;
+        let facts = adapter.summarize_file(
+            Path::new("src/lib.rs"),
+            r#"
+pub fn classify(amount: i32, service: &mut Service) -> Result<Quote, Error> {
+    if amount >= 100 {
+        service.publish(
+            Event::Discounted,
+        );
+        return Ok(Quote {
+            total: 90,
+        });
+    }
+
+    match amount {
+        0 => Err(Error::Zero),
+        _ => Ok(Quote { total: amount }),
+    }
+}
+"#,
+        )?;
+        let kinds = facts
+            .probe_shapes
+            .iter()
+            .map(|shape| shape.kind.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(kinds.contains(&PROBE_SHAPE_PREDICATE));
+        assert!(kinds.contains(&PROBE_SHAPE_RETURN_VALUE));
+        assert!(kinds.contains(&PROBE_SHAPE_ERROR_PATH));
+        assert!(kinds.contains(&PROBE_SHAPE_CALL_DELETION));
+        assert!(kinds.contains(&PROBE_SHAPE_FIELD_CONSTRUCTION));
+        assert!(kinds.contains(&PROBE_SHAPE_SIDE_EFFECT));
+        assert!(kinds.contains(&PROBE_SHAPE_MATCH_ARM));
         Ok(())
     }
 
