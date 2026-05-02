@@ -766,7 +766,7 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
-    fn resolves_owner_by_full_symbol_identity() {
+    fn given_owner_symbol_when_resolving_owner_then_matches_full_identity() {
         let crate_b_fn = function("crates/crate_b/src/lib.rs", "score");
         let crate_a_fn = function("crates/crate_a/src/lib.rs", "score");
         let index = RustIndex {
@@ -807,7 +807,7 @@ mod tests {
     }
 
     #[test]
-    fn package_prefix_handles_workspace_crates_and_nested_markers() {
+    fn given_workspace_paths_when_extracting_package_prefix_then_handles_nested_markers() {
         assert_eq!(
             package_prefix(Path::new("crates/foo/src/support/src/lib.rs")).as_deref(),
             Some("crates/foo/")
@@ -827,7 +827,7 @@ mod tests {
     }
 
     #[test]
-    fn infection_unknown_findings_include_stop_reason() {
+    fn given_infection_unknown_probe_when_classified_then_stop_reason_is_present() {
         let index = RustIndex {
             functions: vec![function("src/lib.rs", "price")],
             tests: vec![test(
@@ -864,7 +864,7 @@ mod tests {
     }
 
     #[test]
-    fn propagation_unknown_findings_include_stop_reason() {
+    fn given_propagation_unknown_probe_when_classified_then_stop_reason_is_present() {
         let function = FunctionSummary {
             body: "value".to_string(),
             ..function("src/lib.rs", "score")
@@ -904,7 +904,7 @@ mod tests {
     }
 
     #[test]
-    fn static_unknown_findings_include_stop_reason() {
+    fn given_static_unknown_probe_when_classified_then_stop_reason_is_present() {
         let index = RustIndex {
             functions: vec![function("src/lib.rs", "score")],
             tests: vec![test(
@@ -1123,7 +1123,7 @@ mod tests {
     }
 
     #[test]
-    fn recommended_next_step_matches_probe_family_and_exposure_class() {
+    fn given_probe_family_and_exposure_class_when_recommending_next_step_then_guidance_matches() {
         let predicate_probe = probe(ProbeFamily::Predicate, DeltaKind::Control, "value > 10");
         let return_value_probe = probe(ProbeFamily::ReturnValue, DeltaKind::Value, "value + 1");
 
@@ -1168,7 +1168,7 @@ mod tests {
     }
 
     #[test]
-    fn stop_reasons_detect_macro_bang_without_treating_inequality_as_macro() {
+    fn given_macro_like_expression_when_collecting_stop_reasons_then_ignores_inequality_tokens() {
         let inequality = probe(
             ProbeFamily::StaticUnknown,
             DeltaKind::Unknown,
@@ -1190,7 +1190,7 @@ mod tests {
     }
 
     #[test]
-    fn stop_reasons_are_deduplicated_and_sorted() {
+    fn given_duplicate_stop_reasons_when_collecting_then_results_are_deduplicated_and_sorted() {
         let probe = probe(
             ProbeFamily::StaticUnknown,
             DeltaKind::Unknown,
