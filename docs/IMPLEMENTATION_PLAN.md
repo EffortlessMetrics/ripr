@@ -569,14 +569,15 @@ Purpose: create the parser boundary before relying on parser-specific details.
 
 Deliverables:
 
-- [ ] `RustSyntaxAdapter` trait or equivalent boundary.
+- [x] `RustSyntaxAdapter` trait or equivalent boundary.
+- [x] Lexical adapter `summarize_file` implementation.
+- [x] Changed range to syntax-node mapping.
+- [x] No public API commitment to a parser crate.
 - [ ] Parser-backed `summarize_file` implementation.
-- [ ] Changed range to syntax-node mapping.
-- [ ] No public API commitment to a parser crate.
 
 Acceptance:
 
-- [ ] Existing outputs remain stable or intentionally updated with fixture
+- [x] Existing outputs remain stable or intentionally updated with fixture
       evidence.
 - [ ] Parser errors produce `static_unknown` or structured diagnostics, not
       panics.

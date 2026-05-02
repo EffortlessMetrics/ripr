@@ -33,7 +33,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/syntax-adapter-mvp"
-status = "ready"
+status = "done"
 branch = "analysis/syntax-adapter-mvp"
 stackable = false
 requires_human_merge = true
@@ -49,15 +49,11 @@ commands = [
 
 [[work_item]]
 id = "analysis/ast-test-oracle-extraction"
-status = "blocked"
+status = "ready"
 branch = "analysis/ast-test-oracle-extraction"
 stackable = false
 requires_human_merge = true
 acceptance = "syntax-backed facts identify tests and assertion/oracle shapes without output drift unless documented"
-blocked_by = [
-  "analysis/syntax-adapter-mvp"
-]
-blocked_reason = "requires syntax adapter boundary"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",

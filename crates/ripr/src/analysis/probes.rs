@@ -1,10 +1,18 @@
 use super::diff::ChangedFile;
-use super::rust_index::{RustIndex, extract_identifier_tokens, find_owner_function};
+use super::rust_index::{
+    RustIndex, changed_nodes_for_lines, extract_identifier_tokens, find_owner_function,
+};
 use crate::domain::{DeltaKind, Probe, ProbeFamily, ProbeId, SourceLocation};
 use std::path::Path;
 
 pub fn probes_for_file(root: &Path, changed: &ChangedFile, index: &RustIndex) -> Vec<Probe> {
     let mut probes = Vec::new();
+    let changed_lines = changed
+        .added_lines
+        .iter()
+        .map(|line| line.line)
+        .collect::<Vec<_>>();
+    let changed_nodes = changed_nodes_for_lines(index, &changed.path, &changed_lines);
     for added in &changed.added_lines {
         let text = added.text.trim();
         if should_ignore_changed_line(text) {
@@ -13,7 +21,13 @@ pub fn probes_for_file(root: &Path, changed: &ChangedFile, index: &RustIndex) ->
         let families = classify_changed_line(text);
         for family in families {
             let delta = delta_for_family(&family);
-            let owner = find_owner_function(index, &changed.path, added.line).map(|f| f.id.clone());
+            let owner = changed_nodes
+                .iter()
+                .find(|node| node.start_line <= added.line && added.line <= node.end_line)
+                .and_then(|node| node.owner.clone())
+                .or_else(|| {
+                    find_owner_function(index, &changed.path, added.line).map(|f| f.id.clone())
+                });
             let id = ProbeId(format!(
                 "probe:{}:{}:{}",
                 sanitize_path(&changed.path),
