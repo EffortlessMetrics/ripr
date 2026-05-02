@@ -126,12 +126,15 @@ commands = [
 
 [[work_item]]
 id = "testing/test-oracle-report"
-status = "ready"
+status = "done"
 branch = "testing/test-oracle-report"
 stackable = false
 requires_human_merge = true
 acceptance = "ripr's own test oracle strength report is generated without changing analyzer behavior"
 commands = [
+  "cargo xtask test-oracle-report",
+  "cargo xtask check-test-oracles",
+  "cargo xtask metrics",
   "cargo xtask check-pr"
 ]
 
