@@ -74,6 +74,12 @@ impl Mode {
     }
 }
 
+impl std::fmt::Display for Mode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OutputFormat {
     /// Human-readable plain text report.
@@ -104,6 +110,11 @@ pub struct CheckOutput {
 }
 
 /// Runs the end-to-end static exposure analysis for a workspace.
+///
+/// # Errors
+///
+/// Returns an error string when diff collection, Rust indexing, probe
+/// generation, or static classification fails.
 pub fn check_workspace(input: CheckInput) -> Result<CheckOutput, String> {
     let options = AnalysisOptions {
         root: input.root.clone(),
@@ -125,6 +136,8 @@ pub fn check_workspace(input: CheckInput) -> Result<CheckOutput, String> {
 }
 
 /// Renders a previously computed [`CheckOutput`] in the requested format.
+///
+/// This function is pure and does not perform file-system or process I/O.
 pub fn render_check(output: &CheckOutput, format: &OutputFormat) -> String {
     match format {
         OutputFormat::Human => output::human::render(output),
@@ -137,6 +150,11 @@ pub fn render_check(output: &CheckOutput, format: &OutputFormat) -> String {
 ///
 /// The selector can be either a finding identifier (for example
 /// `probe:path_to_file.rs:42:family`) or a `file:line` location.
+///
+/// # Errors
+///
+/// Returns an error when analysis fails or when no finding matches the
+/// selector.
 pub fn explain_finding(root: &Path, selector: &str) -> Result<String, String> {
     explain_finding_with_input(
         CheckInput {
@@ -148,6 +166,11 @@ pub fn explain_finding(root: &Path, selector: &str) -> Result<String, String> {
 }
 
 /// Like [`explain_finding`] but allows overriding the full check input.
+///
+/// # Errors
+///
+/// Returns an error when analysis fails or when no finding matches the
+/// selector.
 pub fn explain_finding_with_input(input: CheckInput, selector: &str) -> Result<String, String> {
     let output = check_workspace(input)?;
     let selected = output
@@ -162,6 +185,11 @@ pub fn explain_finding_with_input(input: CheckInput, selector: &str) -> Result<S
 }
 
 /// Produces a compact JSON context packet for one selected finding.
+///
+/// # Errors
+///
+/// Returns an error when analysis fails or when no finding matches the
+/// selector.
 pub fn collect_context(
     root: &Path,
     selector: &str,
@@ -179,6 +207,11 @@ pub fn collect_context(
 }
 
 /// Like [`collect_context`] but allows overriding the full check input.
+///
+/// # Errors
+///
+/// Returns an error when analysis fails or when no finding matches the
+/// selector.
 pub fn collect_context_with_input(
     input: CheckInput,
     selector: &str,
