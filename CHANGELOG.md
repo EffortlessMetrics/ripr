@@ -9,7 +9,11 @@ are scoped or reviewed.
 
 ## Unreleased
 
-- Nothing yet.
+### Added
+
+- Added internal local flow sink facts for changed expressions, including
+  return values, error variants, struct fields, call effects, and match-arm
+  results.
 
 ## 0.3.0 - 2026-05-02
 

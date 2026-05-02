@@ -105,6 +105,48 @@ pub struct Probe {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FlowSinkKind {
+    ReturnValue,
+    ErrorVariant,
+    StructField,
+    CallEffect,
+    MatchArm,
+    Unknown,
+}
+
+impl FlowSinkKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            FlowSinkKind::ReturnValue => "return_value",
+            FlowSinkKind::ErrorVariant => "error_variant",
+            FlowSinkKind::StructField => "struct_field",
+            FlowSinkKind::CallEffect => "call_effect",
+            FlowSinkKind::MatchArm => "match_arm",
+            FlowSinkKind::Unknown => "unknown",
+        }
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            FlowSinkKind::ReturnValue => "returned value",
+            FlowSinkKind::ErrorVariant => "error variant",
+            FlowSinkKind::StructField => "constructed field",
+            FlowSinkKind::CallEffect => "call effect",
+            FlowSinkKind::MatchArm => "match arm result",
+            FlowSinkKind::Unknown => "unknown sink",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FlowSinkFact {
+    pub kind: FlowSinkKind,
+    pub text: String,
+    pub line: usize,
+    pub owner: Option<SymbolId>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RelatedTest {
     pub name: String,
     pub file: PathBuf,
@@ -122,6 +164,7 @@ pub struct Finding {
     pub confidence: f32,
     pub evidence: Vec<String>,
     pub missing: Vec<String>,
+    pub flow_sinks: Vec<FlowSinkFact>,
     pub stop_reasons: Vec<StopReason>,
     pub related_tests: Vec<RelatedTest>,
     pub recommended_next_step: Option<String>,
@@ -139,5 +182,42 @@ impl Finding {
         StopReason::for_unknown_class(&self.class)
             .into_iter()
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FlowSinkKind, StopReason};
+    use crate::domain::ExposureClass;
+
+    #[test]
+    fn flow_sink_kind_labels_are_stable_contract_terms() {
+        let cases = [
+            (FlowSinkKind::ReturnValue, "return_value", "returned value"),
+            (FlowSinkKind::ErrorVariant, "error_variant", "error variant"),
+            (
+                FlowSinkKind::StructField,
+                "struct_field",
+                "constructed field",
+            ),
+            (FlowSinkKind::CallEffect, "call_effect", "call effect"),
+            (FlowSinkKind::MatchArm, "match_arm", "match arm result"),
+            (FlowSinkKind::Unknown, "unknown", "unknown sink"),
+        ];
+
+        for (kind, value, label) in cases {
+            assert_eq!(kind.as_str(), value);
+            assert_eq!(kind.label(), label);
+        }
+    }
+
+    #[test]
+    fn stop_reason_for_unknown_class_matches_contract() {
+        assert_eq!(
+            StopReason::for_unknown_class(&ExposureClass::PropagationUnknown)
+                .map(|reason| reason.as_str()),
+            Some("propagation_evidence_unknown")
+        );
+        assert_eq!(StopReason::for_unknown_class(&ExposureClass::Exposed), None);
     }
 }

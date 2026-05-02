@@ -4316,8 +4316,8 @@ fn check_output_contracts() -> Result<(), String> {
                     &mut violations,
                 );
             }
-            "exposure_class" | "severity" | "probe_family" | "delta" | "stage_state"
-            | "confidence" | "oracle_strength" | "stop_reason" => {
+            "exposure_class" | "severity" | "probe_family" | "delta" | "flow_sink"
+            | "stage_state" | "confidence" | "oracle_strength" | "stop_reason" => {
                 require_contract_value(
                     "crates/ripr/src/domain/",
                     &domain,

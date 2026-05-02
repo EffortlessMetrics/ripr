@@ -243,7 +243,7 @@ Current capabilities:
 | Capability | Current state | Next checkpoint |
 | --- | --- | --- |
 | Distribution | Crate and extension packaging paths exist. | Verify one-click editor install from a fresh profile. |
-| Diff analysis | Syntax-backed changed-line probes with owner symbols, parser-backed probe facts, explicit stop reasons for unknowns, and probe-relative oracle strength. | Local flow and activation values. |
+| Diff analysis | Syntax-backed changed-line probes with owner symbols, parser-backed probe facts, explicit stop reasons for unknowns, probe-relative oracle strength, and local flow sink facts. | Activation values tied to local flow. |
 | Test discovery | Parser-backed test and assertion facts with exact, broad, relational, snapshot, mock, smoke, and unknown oracle kinds. | Activation values tied to changed behavior. |
 | Output | Human, JSON, context, and GitHub annotation formats include stop reasons for unknown findings. | Evidence-first output. |
 | LSP | Experimental `tower-lsp-server` sidecar with evidence-aware diagnostic metadata, related test links, targeted context actions, and diagnostic hovers. | Server-owned context packets, config propagation, and open-related-test actions. |
@@ -253,7 +253,6 @@ Current capabilities:
 The active product work is to make findings more evidence-first:
 
 ```text
-local flow
 activation/value modeling
 evidence-first output
 ```

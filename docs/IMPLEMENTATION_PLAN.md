@@ -669,17 +669,17 @@ Purpose: explain what changed behavior appears to flow to.
 
 Deliverables:
 
-- [ ] Changed expression to `let` binding flow.
-- [ ] Binding to return flow.
-- [ ] Binding to struct field flow.
-- [ ] Changed expression to `Ok` or `Err` flow.
-- [ ] Predicate branch to return or field construction flow.
-- [ ] Changed call to effect boundary candidate.
+- [x] Changed expression to `let` binding flow.
+- [x] Binding to return flow.
+- [x] Binding to struct field flow.
+- [x] Changed expression to `Ok` or `Err` flow.
+- [x] Predicate branch to return or field construction flow.
+- [x] Changed call to effect boundary candidate.
 
 Acceptance:
 
-- [ ] Findings can name at least one sink when locally visible.
-- [ ] `propagation_unknown` includes a concrete stop reason.
+- [x] Findings can name at least one sink when locally visible.
+- [x] `propagation_unknown` includes a concrete stop reason.
 
 ## PR 10: `activation-value-modeling-v1`
 

@@ -16,6 +16,12 @@ exposure_class|propagation_unknown|Static classification value.
 exposure_class|reachable_unrevealed|Static classification value.
 exposure_class|static_unknown|Static classification value.
 exposure_class|weakly_exposed|Static classification value.
+flow_sink|call_effect|Flow sink value.
+flow_sink|error_variant|Flow sink value.
+flow_sink|match_arm|Flow sink value.
+flow_sink|return_value|Flow sink value.
+flow_sink|struct_field|Flow sink value.
+flow_sink|unknown|Flow sink value.
 oracle_strength|medium|Oracle strength value.
 oracle_strength|none|Oracle strength value.
 oracle_strength|smoke|Oracle strength value.

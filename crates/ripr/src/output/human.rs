@@ -230,6 +230,7 @@ mod tests {
             confidence: 0.7,
             evidence: vec![],
             missing: vec!["missing strong oracle".to_string()],
+            flow_sinks: vec![],
             stop_reasons: vec![],
             related_tests: vec![RelatedTest {
                 name: "test_handles_disabled".to_string(),
@@ -270,6 +271,7 @@ mod tests {
             confidence: 0.2,
             evidence: vec![],
             missing: vec![],
+            flow_sinks: vec![],
             stop_reasons: vec![],
             related_tests: vec![],
             recommended_next_step: Some("Escalate to real mutation testing.".to_string()),

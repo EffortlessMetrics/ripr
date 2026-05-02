@@ -15,7 +15,7 @@ Changed behavior:
 RIPR:
   Reach:       yes — Related tests appear to reach authenticate: empty_token_is_rejected
   Infect:      yes — Reachable tests can plausibly activate this changed behavior
-  Propagate:   yes — Changed behavior reaches an effect boundary such as a call, write, publish, save, or send
+  Propagate:   yes — Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)
   Observe:     yes — A related test observes a value or effect near the changed behavior
   Discriminate: weak — Only broad error oracle found; it may not discriminate the changed behavior exactly
 
@@ -39,7 +39,7 @@ Changed behavior:
 RIPR:
   Reach:       yes — Related tests appear to reach authenticate: empty_token_is_rejected
   Infect:      yes — Reachable tests can plausibly activate this changed behavior
-  Propagate:   yes — Changed behavior can propagate through a return or Result boundary
+  Propagate:   yes — Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)
   Observe:     yes — A related test observes a value or effect near the changed behavior
   Discriminate: weak — Only broad error oracle found; is_err() does not discriminate exact error variants
 
@@ -63,7 +63,7 @@ Changed behavior:
 RIPR:
   Reach:       yes — Related tests appear to reach authenticate: empty_token_is_rejected
   Infect:      yes — Reachable tests can plausibly activate this changed behavior
-  Propagate:   yes — Changed behavior can propagate through a return or Result boundary
+  Propagate:   yes — Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)
   Observe:     yes — A related test observes a value or effect near the changed behavior
   Discriminate: weak — Only broad error oracle found; it may not discriminate the changed behavior exactly
 
