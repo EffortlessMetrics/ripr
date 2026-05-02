@@ -76,6 +76,10 @@ If a check asks for an exception, edit the named allowlist manually and include:
 - owner
 - reason
 
+Policy checks write Markdown reports under `target/ripr/reports`. Open the
+matching report first; it should include why the rule exists, the fix kind, a
+recommended repair, and an exception template when exceptions are valid.
+
 If a check reports a forbidden output-language claim, change the product output
 or move the wording into an explicitly allowlisted explanatory document.
 

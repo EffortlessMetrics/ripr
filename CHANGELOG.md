@@ -36,3 +36,5 @@ how future PRs are scoped or reviewed.
   shape/check/guide automation path before deeper analyzer implementation.
 - Added `cargo xtask precommit` and `cargo xtask check-pr` for cheap local
   guardrails and review-ready non-release checks.
+- Added Markdown pass/fail reports for existing policy checks under
+  `target/ripr/reports`.

@@ -57,6 +57,8 @@ release/package verification to `ci-full` or release-specific workflows.
 checks plus the existing policy checks for static language, panic-family usage,
 file policy, executable bits, workflow shell budgets, spec format, fixture
 contracts, generated files, dependencies, process spawning, and network policy.
+Those policy checks write Markdown pass/fail reports under
+`target/ripr/reports`.
 
 ## Command Lanes
 
@@ -138,6 +140,8 @@ Current:
 
 ```bash
 cargo xtask pr-summary
+cargo xtask precommit
+cargo xtask check-pr
 ```
 
 Planned:
@@ -300,9 +304,10 @@ shape.md
 fix-pr.md
 pr-summary.md
 static-language.md
-panic-family.md
+no-panic-family.md
 file-policy.md
-workflow-policy.md
+executable-files.md
+workflows.md
 generated.md
 dependencies.md
 process-policy.md
@@ -323,12 +328,11 @@ The remaining automation path is:
 
 | Order | PR | Purpose |
 | ---: | --- | --- |
-| 1 | `guided-check-reports` | Refactor existing checks to write Markdown repair briefs. |
-| 2 | `ci-report-artifacts` | Upload `target/ripr/reports` from CI. |
-| 3 | `fixture-golden-scaffolding` | Add fixture and golden command scaffolding. |
-| 4 | `traceability-spec-id-checks` | Validate behavior manifests, spec IDs, and drift warnings. |
-| 5 | `capability-metrics-report` | Generate metrics and capability reports from machine-readable sources. |
-| 6 | `architecture-guard` | Add workspace shape, module boundary, and public API checks. |
+| 1 | `ci-report-artifacts` | Upload `target/ripr/reports` from CI. |
+| 2 | `fixture-golden-scaffolding` | Add fixture and golden command scaffolding. |
+| 3 | `traceability-spec-id-checks` | Validate behavior manifests, spec IDs, and drift warnings. |
+| 4 | `capability-metrics-report` | Generate metrics and capability reports from machine-readable sources. |
+| 5 | `architecture-guard` | Add workspace shape, module boundary, and public API checks. |
 
 After those are in place, analyzer work can move in goal mode with one scoped
 capability per PR.
