@@ -31,6 +31,15 @@ jobs:
       - name: Generate ripr PR summary
         if: always()
         run: cargo xtask pr-summary || true
+      - name: Generate ripr report index
+        if: always()
+        run: cargo xtask reports index || true
+      - name: Write ripr report summary
+        if: always()
+        run: |
+          if [ -f target/ripr/reports/index.md ]; then
+            cat target/ripr/reports/index.md >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Upload ripr reports
         if: always()
         uses: actions/upload-artifact@v4
