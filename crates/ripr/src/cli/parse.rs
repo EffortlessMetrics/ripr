@@ -33,6 +33,7 @@ pub(super) fn expect_value<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
@@ -134,5 +135,41 @@ mod tests {
             when_value_is_missing,
             Err("missing value for --diff".to_string())
         );
+    }
+
+    proptest! {
+        #[test]
+        fn given_unknown_mode_when_parse_mode_then_returns_unknown_error(input in "\\PC*") {
+            prop_assume!(
+                input != "instant"
+                    && input != "draft"
+                    && input != "fast"
+                    && input != "deep"
+                    && input != "ready"
+            );
+
+            let actual = parse_mode(&input);
+            prop_assert_eq!(actual, Err(format!("unknown mode {input:?}")));
+        }
+
+        #[test]
+        fn given_unknown_format_when_parse_format_then_returns_unknown_error(input in "\\PC*") {
+            prop_assume!(input != "human" && input != "text" && input != "json" && input != "github");
+
+            let actual = parse_format(&input);
+            prop_assert_eq!(actual, Err(format!("unknown format {input:?}")));
+        }
+
+        #[test]
+        fn given_any_args_and_out_of_bounds_index_when_expect_value_then_returns_missing_error(
+            args in proptest::collection::vec("\\PC*", 0..16),
+            flag in "--[a-z]{1,16}",
+        ) {
+            let args: Vec<String> = args;
+            let out_of_bounds_idx = args.len();
+
+            let actual = expect_value(&args, out_of_bounds_idx, &flag);
+            prop_assert_eq!(actual, Err(format!("missing value for {flag}")));
+        }
     }
 }
