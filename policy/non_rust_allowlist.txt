@@ -39,4 +39,5 @@ editors/vscode/tsconfig.json|editor_extension_config|lsp/editor|VS Code TypeScri
 fixtures/**|fixture_input|analysis-fixtures|Fixture workspaces may intentionally contain analyzed source files.
 metrics/*.toml|policy_metadata|repo-policy|Machine-readable capability and metrics metadata.
 ripr.toml.example|config_example|config|Example ripr configuration.
+rust-toolchain.toml|rust_toolchain|rust|Pinned local Rust toolchain and components for repository development.
 xtask/Cargo.toml|rust_manifest|rust|xtask package manifest.

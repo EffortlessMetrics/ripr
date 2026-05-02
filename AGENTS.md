@@ -65,7 +65,7 @@ The current internal shape is:
 ## Rust Baseline
 
 - Edition: Rust 2024
-- Minimum Rust version: 1.92
+- Minimum Rust version: 1.93
 - Keep `unsafe_code = "forbid"`
 
 ## Rust-First File Policy

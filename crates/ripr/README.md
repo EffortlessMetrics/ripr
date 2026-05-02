@@ -126,7 +126,7 @@ For local development from this repository:
 cargo install --path crates/ripr
 ```
 
-`ripr` targets Rust 2024 and requires Rust `1.92` or newer.
+`ripr` targets Rust 2024 and requires Rust `1.93` or newer.
 
 ## Quick Start
 
