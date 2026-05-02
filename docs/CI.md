@@ -50,6 +50,7 @@ cargo xtask precommit
 cargo xtask check-pr
 cargo xtask fixtures
 cargo xtask goldens check
+cargo xtask golden-drift
 cargo xtask test-oracle-report
 cargo xtask dogfood
 cargo xtask reports index
@@ -64,10 +65,12 @@ runs `shape`, refreshes `pr-summary`, and writes a local fix-pr report.
 `precommit` is the cheap non-mutating local guardrail. `check-pr` is the
 review-ready local gate and intentionally does not run package or publish
 dry-run checks. `fixtures` and `goldens check` validate the current fixture and
-expected-output scaffolding without accepting output drift. `test-oracle-report`
-writes an advisory baseline for the strength of `ripr`'s own Rust test oracles.
-`dogfood` writes a non-blocking `ripr`-on-`ripr` report from stable fixture
-diffs. `reports index` writes a reviewer front door for generated reports.
+expected-output scaffolding without accepting output drift. `golden-drift`
+writes advisory Markdown and JSON summaries of semantic expected-output drift
+for reviewers. `test-oracle-report` writes an advisory baseline for the strength
+of `ripr`'s own Rust test oracles. `dogfood` writes a non-blocking
+`ripr`-on-`ripr` report from stable fixture diffs. `reports index` writes a
+reviewer front door for generated reports.
 `receipts` writes machine-readable gate evidence under `target/ripr/receipts`,
 and `receipts check` validates the receipt set.
 
@@ -116,6 +119,7 @@ Fixture and golden scaffolding checks can be run directly with:
 ```bash
 cargo xtask fixtures
 cargo xtask goldens check
+cargo xtask golden-drift
 cargo xtask test-oracle-report
 cargo xtask dogfood
 cargo xtask reports index

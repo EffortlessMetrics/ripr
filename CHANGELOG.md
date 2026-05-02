@@ -94,3 +94,5 @@ how future PRs are scoped or reviewed.
   machine-readable gate receipts under `target/ripr/receipts`.
 - Reworked the README as a problem-first front door that links deeper roadmap,
   automation, capability, and contributor docs instead of carrying the full map.
+- Added `cargo xtask golden-drift` and wired `goldens check` to write semantic
+  drift summaries for fixture expected-output review.

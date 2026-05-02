@@ -33,6 +33,7 @@ cargo xtask precommit
 cargo xtask check-pr
 cargo xtask fixtures
 cargo xtask goldens check
+cargo xtask golden-drift
 cargo xtask test-oracle-report
 cargo xtask check-test-oracles
 cargo xtask dogfood
@@ -74,9 +75,16 @@ directories when they exist, writes actual outputs under
 fixture directories exist yet.
 
 `goldens check` runs fixtures and fails on drift between actual and expected
-outputs without mutating checked-in files. `goldens bless <fixture> --reason
-<reason>` records an explicit blessing reason, updates expected JSON and human
-outputs, and appends the fixture expected-output changelog.
+outputs without mutating checked-in files. It also writes
+`target/ripr/reports/golden-drift.md` and
+`target/ripr/reports/golden-drift.json` so reviewers can inspect semantic drift
+before any blessing. `goldens bless <fixture> --reason <reason>` records an
+explicit blessing reason, updates expected JSON and human outputs, and appends
+the fixture expected-output changelog.
+
+`golden-drift` writes the same advisory drift reports without failing merely
+because output drift exists. It still reports fixture execution errors as
+command failures.
 
 `test-oracle-report` writes an advisory baseline of `ripr`'s own Rust test
 oracle strength to `target/ripr/reports/test-oracles.md` and
@@ -164,6 +172,7 @@ cargo xtask precommit
 cargo xtask check-pr
 cargo xtask fixtures
 cargo xtask goldens check
+cargo xtask golden-drift
 cargo xtask test-oracle-report
 cargo xtask check-test-oracles
 cargo xtask dogfood
@@ -199,6 +208,7 @@ cargo xtask precommit
 cargo xtask check-pr
 cargo xtask fixtures
 cargo xtask goldens check
+cargo xtask golden-drift
 cargo xtask test-oracle-report
 cargo xtask check-test-oracles
 cargo xtask dogfood
@@ -415,6 +425,8 @@ pr-shape.md
 fixtures.md
 goldens.md
 goldens-bless.md
+golden-drift.md
+golden-drift.json
 test-oracles.md
 test-oracles.json
 dogfood.md
@@ -440,10 +452,9 @@ evidence without delaying Campaign 3:
 
 | Order | PR | Purpose |
 | ---: | --- | --- |
-| 1 | `automation/golden-drift-summary` | Summarize semantic golden drift for output-review PRs. |
-| 2 | `automation/critic-report` | Add an advisory adversarial review packet from existing reports. |
-| 3 | `devex/onboard-doctor` | Report whether the local checkout and toolchain are ready to work. |
-| 4 | `devex/install-hooks` | Generate local hooks without checking executable scripts into the repo. |
+| 1 | `automation/critic-report` | Add an advisory adversarial review packet from existing reports. |
+| 2 | `devex/onboard-doctor` | Report whether the local checkout and toolchain are ready to work. |
+| 3 | `devex/install-hooks` | Generate local hooks without checking executable scripts into the repo. |
 
 Analyzer work can now move through Codex Goals campaigns. Each campaign may span
 multiple PRs, while each work item should still follow the scoped PR contract.
