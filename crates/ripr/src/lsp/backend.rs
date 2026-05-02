@@ -10,6 +10,7 @@ use super::state::DocumentStore;
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::sync::Mutex;
+use tokio::sync::Mutex as AsyncMutex;
 use tower_lsp_server::jsonrpc::Result as LspResult;
 use tower_lsp_server::ls_types::{
     CodeActionResponse, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
@@ -23,6 +24,8 @@ pub(super) struct Backend {
     root: Mutex<PathBuf>,
     documents: Mutex<DocumentStore>,
     last_diagnostic_uris: Mutex<BTreeSet<Uri>>,
+    refresh_generation: Mutex<u64>,
+    refresh_in_flight: AsyncMutex<()>,
 }
 
 impl Backend {
@@ -32,10 +35,19 @@ impl Backend {
             root: Mutex::new(root),
             documents: Mutex::new(DocumentStore::default()),
             last_diagnostic_uris: Mutex::new(BTreeSet::new()),
+            refresh_generation: Mutex::new(0),
+            refresh_in_flight: AsyncMutex::new(()),
         }
     }
 
-    async fn refresh_diagnostics(&self) {
+    pub(super) async fn refresh_diagnostics(&self) {
+        let Some(generation) = self.next_refresh_generation() else {
+            return;
+        };
+        let _refresh_guard = self.refresh_in_flight.lock().await;
+        if !self.is_current_refresh_generation(generation) {
+            return;
+        }
         let Some(root) = self.root() else {
             return;
         };
@@ -52,6 +64,9 @@ impl Backend {
                     return;
                 }
             };
+        if !self.is_current_refresh_generation(generation) {
+            return;
+        }
         let Some(refresh) = self.refresh_plan(batches) else {
             return;
         };
@@ -94,6 +109,21 @@ impl Backend {
             return Vec::new();
         };
         take_all_uris(&mut last_diagnostic_uris)
+    }
+
+    pub(super) fn next_refresh_generation(&self) -> Option<u64> {
+        let Ok(mut generation) = self.refresh_generation.lock() else {
+            return None;
+        };
+        *generation = generation.saturating_add(1);
+        Some(*generation)
+    }
+
+    pub(super) fn is_current_refresh_generation(&self, generation: u64) -> bool {
+        let Ok(current) = self.refresh_generation.lock() else {
+            return false;
+        };
+        *current == generation
     }
 
     fn root(&self) -> Option<PathBuf> {

@@ -252,6 +252,43 @@ fn refresh_failure_reports_and_clears_tracked_diagnostics() -> Result<(), String
 }
 
 #[test]
+fn refresh_generation_marks_older_requests_stale() -> Result<(), String> {
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+
+    let Some(first) = backend.next_refresh_generation() else {
+        return Err("expected first refresh generation".to_string());
+    };
+    assert!(backend.is_current_refresh_generation(first));
+
+    let Some(second) = backend.next_refresh_generation() else {
+        return Err("expected second refresh generation".to_string());
+    };
+
+    assert!(!backend.is_current_refresh_generation(first));
+    assert!(backend.is_current_refresh_generation(second));
+    Ok(())
+}
+
+#[test]
+fn refresh_diagnostics_advances_generation_before_analysis() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let (service, _socket) =
+            LspService::new(|client| Backend::new(client, PathBuf::from("Cargo.toml")));
+        let backend = service.inner();
+
+        backend.refresh_diagnostics().await;
+
+        assert!(backend.is_current_refresh_generation(1));
+        Ok(())
+    })
+}
+
+#[test]
 fn document_store_tracks_open_change_and_close() -> Result<(), String> {
     let uri = test_uri("file:///workspace/src/lib.rs")?;
     let mut store = DocumentStore::default();
