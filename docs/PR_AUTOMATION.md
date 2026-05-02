@@ -132,6 +132,9 @@ cargo xtask goldens check
 cargo xtask check-traceability
 cargo xtask metrics
 cargo xtask check-capabilities
+cargo xtask check-workspace-shape
+cargo xtask check-architecture
+cargo xtask check-public-api
 ```
 
 Planned:
@@ -139,7 +142,6 @@ Planned:
 ```bash
 cargo xtask check-doc-index
 cargo xtask check-output-contracts
-cargo xtask check-architecture
 cargo xtask check-pr-shape
 ```
 
@@ -160,6 +162,9 @@ cargo xtask goldens check
 cargo xtask check-traceability
 cargo xtask metrics
 cargo xtask check-capabilities
+cargo xtask check-workspace-shape
+cargo xtask check-architecture
+cargo xtask check-public-api
 ```
 
 Planned:
@@ -302,6 +307,9 @@ cargo xtask check-spec-format
 cargo xtask check-fixture-contracts
 cargo xtask check-traceability
 cargo xtask check-capabilities
+cargo xtask check-workspace-shape
+cargo xtask check-architecture
+cargo xtask check-public-api
 cargo xtask check-generated
 ```
 
@@ -335,6 +343,9 @@ spec-format.md
 fixture-contracts.md
 traceability.md
 capabilities.md
+workspace-shape.md
+architecture.md
+public-api.md
 fixtures.md
 goldens.md
 goldens-bless.md
@@ -354,7 +365,8 @@ The remaining automation path is:
 | Order | PR | Purpose |
 | ---: | --- | --- |
 | 1 | `traceability-drift-warnings` | Add changed-file evidence warnings to PR summaries. |
-| 2 | `architecture-guard` | Add workspace shape, module boundary, and public API checks. |
+| 2 | `output-contract-checks` | Add output-surface registry and consistency checks. |
+| 3 | `docs-index-checks` | Add docs/spec/ADR index freshness checks. |
 
 After those are in place, analyzer work can move in goal mode with one scoped
 capability per PR.

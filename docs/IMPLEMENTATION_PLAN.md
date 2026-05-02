@@ -354,17 +354,17 @@ Purpose: protect internal seams while keeping one published package.
 
 Deliverables:
 
-- [ ] Add `cargo xtask check-workspace-shape`.
-- [ ] Add `cargo xtask check-architecture`.
-- [ ] Add `cargo xtask check-public-api` or document why it is deferred.
-- [ ] Add policy metadata for allowed workspace packages and module-boundary
+- [x] Add `cargo xtask check-workspace-shape`.
+- [x] Add `cargo xtask check-architecture`.
+- [x] Add `cargo xtask check-public-api` or document why it is deferred.
+- [x] Add policy metadata for allowed workspace packages and module-boundary
       rules.
 
 Acceptance:
 
-- [ ] New workspace packages require an explicit approved policy entry.
-- [ ] Domain and analysis layers cannot accidentally depend on adapters.
-- [ ] CLI, LSP, and output layers do not own exposure classification.
+- [x] New workspace packages require an explicit approved policy entry.
+- [x] Domain and analysis layers cannot accidentally depend on adapters.
+- [x] CLI, LSP, and output layers do not own exposure classification.
 
 ## PR 2: `fixture-laboratory`
 

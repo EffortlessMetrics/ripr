@@ -168,6 +168,9 @@ cargo xtask check-spec-format
 cargo xtask check-fixture-contracts
 cargo xtask check-traceability
 cargo xtask check-capabilities
+cargo xtask check-workspace-shape
+cargo xtask check-architecture
+cargo xtask check-public-api
 cargo xtask check-generated
 cargo xtask check-dependencies
 cargo xtask check-process-policy

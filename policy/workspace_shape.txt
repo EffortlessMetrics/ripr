@@ -1,0 +1,8 @@
+# kind|path|reason
+
+cargo_manifest|Cargo.toml|workspace root
+cargo_manifest|crates/ripr/Cargo.toml|published package manifest
+cargo_manifest|fixtures/**/Cargo.toml|fixture input workspace manifests
+cargo_manifest|xtask/Cargo.toml|unpublished automation manifest
+workspace_member|crates/ripr|published product package
+workspace_member|xtask|unpublished Rust automation

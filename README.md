@@ -303,6 +303,9 @@ cargo xtask goldens check
 cargo xtask check-traceability
 cargo xtask metrics
 cargo xtask check-capabilities
+cargo xtask check-workspace-shape
+cargo xtask check-architecture
+cargo xtask check-public-api
 cargo fmt --check
 cargo check --workspace --all-targets
 cargo test --workspace
