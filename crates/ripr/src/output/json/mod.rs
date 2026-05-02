@@ -9,11 +9,13 @@ pub(crate) use formatter::{array_field, escape, field, float_field, number_field
 
 #[cfg(test)]
 mod tests {
-    use super::{context_packet::render_context_packet, escape, report::finding_json};
+    use super::{context_packet::render_context_packet, escape, render, report::finding_json};
+    use crate::app::{CheckOutput, Mode};
     use crate::domain::{
-        Confidence, DeltaKind, ExposureClass, Finding, Probe, ProbeFamily, ProbeId, RevealEvidence,
-        RiprEvidence, SourceLocation, StageEvidence, StageState,
+        Confidence, DeltaKind, ExposureClass, Finding, Probe, ProbeFamily, ProbeId,
+        RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState, Summary,
     };
+    use std::path::PathBuf;
 
     #[test]
     fn escapes_json() {
@@ -36,6 +38,22 @@ mod tests {
         let packet = render_context_packet(&finding, 5);
 
         assert!(packet.contains("\"stop_reasons\": [\"static_probe_unknown\"]"));
+    }
+
+    #[test]
+    fn render_omits_base_when_not_set() {
+        let output = sample_output(None);
+        let rendered = render(&output);
+
+        assert!(!rendered.contains("\"base\""));
+    }
+
+    #[test]
+    fn render_includes_base_when_set() {
+        let output = sample_output(Some("origin/main".to_string()));
+        let rendered = render(&output);
+
+        assert!(rendered.contains("\"base\": \"origin/main\""));
     }
 
     fn unknown_finding() -> Finding {
@@ -74,5 +92,17 @@ mod tests {
 
     fn stage(summary: &str) -> StageEvidence {
         StageEvidence::new(StageState::Unknown, Confidence::Low, summary)
+    }
+
+    fn sample_output(base: Option<String>) -> CheckOutput {
+        CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("."),
+            base,
+            summary: Summary::default(),
+            findings: vec![unknown_finding()],
+        }
     }
 }
