@@ -1,27 +1,9 @@
-mod help;
-use crate::app::{self, CheckInput, Mode, OutputFormat};
+use crate::app::{self, CheckInput, OutputFormat};
+use crate::cli::help;
+use crate::cli::parse::{expect_value, parse_format, parse_mode};
 use std::path::PathBuf;
 
-pub fn run(args: Vec<String>) -> Result<(), String> {
-    match args.get(1).map(|s| s.as_str()) {
-        None | Some("--help" | "-h") => {
-            help::print_help();
-            Ok(())
-        }
-        Some("--version" | "-V") => {
-            println!("ripr {}", env!("CARGO_PKG_VERSION"));
-            Ok(())
-        }
-        Some("check") => check(&args[2..]),
-        Some("explain") => explain(&args[2..]),
-        Some("context") => context(&args[2..]),
-        Some("doctor") => doctor(&args[2..]),
-        Some("lsp") => lsp(&args[2..]),
-        Some(command) => Err(format!("unknown command {command:?}. Run `ripr --help`.")),
-    }
-}
-
-fn check(args: &[String]) -> Result<(), String> {
+pub(super) fn check(args: &[String]) -> Result<(), String> {
     let mut input = CheckInput::default();
     let mut i = 0usize;
     while i < args.len() {
@@ -62,7 +44,7 @@ fn check(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn explain(args: &[String]) -> Result<(), String> {
+pub(super) fn explain(args: &[String]) -> Result<(), String> {
     let mut input = CheckInput::default();
     let mut selector: Option<String> = None;
     let mut i = 0usize;
@@ -81,9 +63,7 @@ fn explain(args: &[String]) -> Result<(), String> {
                 input.diff_file = Some(PathBuf::from(expect_value(args, i, "--diff")?));
             }
             "--help" | "-h" => {
-                println!(
-                    "Usage: ripr explain [--root PATH] [--base REV|--diff PATH] <finding-id|file:line>"
-                );
+                help::print_explain_help();
                 return Ok(());
             }
             value if selector.is_none() => selector = Some(value.to_string()),
@@ -96,7 +76,7 @@ fn explain(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn context(args: &[String]) -> Result<(), String> {
+pub(super) fn context(args: &[String]) -> Result<(), String> {
     let mut input = CheckInput {
         format: OutputFormat::Json,
         ..CheckInput::default()
@@ -134,9 +114,7 @@ fn context(args: &[String]) -> Result<(), String> {
             }
             "--json" => input.format = OutputFormat::Json,
             "--help" | "-h" => {
-                println!(
-                    "Usage: ripr context [--root PATH] [--base REV|--diff PATH] --at <finding-id|file:line> [--max-related-tests N] [--json]"
-                );
+                help::print_context_help();
                 return Ok(());
             }
             other => return Err(format!("unexpected context argument {other:?}")),
@@ -151,14 +129,18 @@ fn context(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn doctor(args: &[String]) -> Result<(), String> {
-    let root = if args.first().map(|s| s.as_str()) == Some("--root") {
-        args.get(1)
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("."))
-    } else {
-        PathBuf::from(".")
+pub(super) fn doctor(args: &[String]) -> Result<(), String> {
+    let root = match args {
+        [] => PathBuf::from("."),
+        [flag] if flag == "--help" || flag == "-h" => {
+            help::print_doctor_help();
+            return Ok(());
+        }
+        [flag] if flag == "--root" => return Err("missing value for --root".to_string()),
+        [flag, value] if flag == "--root" => PathBuf::from(value),
+        [other, ..] => return Err(format!("unknown doctor argument {other:?}")),
     };
+
     let mut ok = true;
     println!("ripr doctor");
     if root.join("Cargo.toml").exists() {
@@ -198,7 +180,7 @@ fn doctor(args: &[String]) -> Result<(), String> {
     }
 }
 
-fn lsp(args: &[String]) -> Result<(), String> {
+pub(super) fn lsp(args: &[String]) -> Result<(), String> {
     for arg in args {
         match arg.as_str() {
             "--stdio" => {}
@@ -207,14 +189,7 @@ fn lsp(args: &[String]) -> Result<(), String> {
                 return Ok(());
             }
             "--help" | "-h" => {
-                println!(
-                    r#"Usage: ripr lsp [--stdio] [--version]
-
-Options:
-  --stdio       Run the language server over stdio LSP framing. This is the default.
-  --version     Print the language server version.
-"#
-                );
+                help::print_lsp_help();
                 return Ok(());
             }
             other => return Err(format!("unknown lsp argument {other:?}")),
@@ -223,28 +198,79 @@ Options:
     crate::lsp::serve()
 }
 
-fn parse_mode(value: &str) -> Result<Mode, String> {
-    match value {
-        "instant" => Ok(Mode::Instant),
-        "draft" => Ok(Mode::Draft),
-        "fast" => Ok(Mode::Fast),
-        "deep" => Ok(Mode::Deep),
-        "ready" => Ok(Mode::Ready),
-        _ => Err(format!("unknown mode {value:?}")),
-    }
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-fn parse_format(value: &str) -> Result<OutputFormat, String> {
-    match value {
-        "human" | "text" => Ok(OutputFormat::Human),
-        "json" => Ok(OutputFormat::Json),
-        "github" => Ok(OutputFormat::Github),
-        _ => Err(format!("unknown format {value:?}")),
+    fn args(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| value.to_string()).collect()
     }
-}
 
-fn expect_value<'a>(args: &'a [String], idx: usize, flag: &str) -> Result<&'a str, String> {
-    args.get(idx)
-        .map(|s| s.as_str())
-        .ok_or_else(|| format!("missing value for {flag}"))
+    #[test]
+    fn check_requires_values_for_value_flags() {
+        assert_eq!(
+            check(&args(&["--diff"])),
+            Err("missing value for --diff".to_string())
+        );
+        assert_eq!(
+            check(&args(&["--mode"])),
+            Err("missing value for --mode".to_string())
+        );
+    }
+
+    #[test]
+    fn command_help_branches_return_ok() {
+        assert_eq!(check(&args(&["--help"])), Ok(()));
+        assert_eq!(explain(&args(&["--help"])), Ok(()));
+        assert_eq!(context(&args(&["--help"])), Ok(()));
+        assert_eq!(doctor(&args(&["--help"])), Ok(()));
+        assert_eq!(lsp(&args(&["--help"])), Ok(()));
+    }
+
+    #[test]
+    fn context_rejects_invalid_max_related_tests() {
+        let result = context(&args(&[
+            "--at",
+            "probe:file.rs:1:predicate",
+            "--max-related-tests",
+            "many",
+        ]));
+        assert!(
+            matches!(result, Err(message) if message.starts_with("invalid --max-related-tests:"))
+        );
+    }
+
+    #[test]
+    fn doctor_requires_root_value() {
+        assert_eq!(
+            doctor(&args(&["--root"])),
+            Err("missing value for --root".to_string())
+        );
+    }
+
+    #[test]
+    fn doctor_rejects_unknown_arguments() {
+        assert_eq!(
+            doctor(&args(&["--verbose"])),
+            Err("unknown doctor argument \"--verbose\"".to_string())
+        );
+    }
+
+    #[test]
+    fn doctor_accepts_default_root() {
+        assert_eq!(doctor(&args(&[])), Ok(()));
+    }
+
+    #[test]
+    fn lsp_version_returns_ok() {
+        assert_eq!(lsp(&args(&["--version"])), Ok(()));
+    }
+
+    #[test]
+    fn lsp_rejects_unknown_arguments() {
+        assert_eq!(
+            lsp(&args(&["--bad"])),
+            Err("unknown lsp argument \"--bad\"".to_string())
+        );
+    }
 }

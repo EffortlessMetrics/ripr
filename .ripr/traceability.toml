@@ -21,7 +21,7 @@ code = [
   "crates/ripr/src/app.rs",
   "crates/ripr/src/analysis",
   "crates/ripr/src/output",
-  "crates/ripr/src/cli.rs",
+  "crates/ripr/src/cli",
   "crates/ripr/src/lsp.rs"
 ]
 outputs = [
