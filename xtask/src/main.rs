@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
+use std::time::Instant;
 
 #[derive(Debug)]
 struct GlobAllow {
@@ -130,6 +131,26 @@ struct TestOracleTest {
     observations: Vec<TestOracleObservation>,
 }
 
+#[derive(Debug)]
+struct DogfoodScenario {
+    name: String,
+    root: PathBuf,
+    diff: PathBuf,
+}
+
+#[derive(Debug)]
+struct DogfoodRun {
+    name: String,
+    root: PathBuf,
+    diff: PathBuf,
+    actual_dir: PathBuf,
+    duration_ms: u128,
+    findings: usize,
+    class_counts: BTreeMap<String, usize>,
+    stop_reason_mentions: usize,
+    errors: Vec<String>,
+}
+
 #[derive(Clone, Debug)]
 pub enum CheckStatus {
     Pass,
@@ -189,6 +210,7 @@ fn main() {
         Some("goldens") => goldens(&args[2..]),
         Some("metrics") => metrics_report(),
         Some("test-oracle-report") | Some("check-test-oracles") => test_oracle_report(),
+        Some("dogfood") => dogfood(),
         Some("goals") => goals(&args[2..]),
         Some("ci-fast") => ci_fast(),
         Some("ci-full") => ci_full(),
@@ -331,7 +353,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  metrics\n  test-oracle-report\n  check-test-oracles\n  goals status|next|report\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
+        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  metrics\n  test-oracle-report\n  check-test-oracles\n  dogfood\n  goals status|next|report\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
     );
 }
 
@@ -2158,6 +2180,237 @@ fn test_oracle_report_json(tests: &[TestOracleTest]) -> String {
     body
 }
 
+fn dogfood() -> Result<(), String> {
+    let runs = dogfood_scenarios()
+        .into_iter()
+        .map(|scenario| dogfood_run(&scenario))
+        .collect::<Result<Vec<_>, _>>()?;
+    write_report("dogfood.md", &dogfood_report_markdown(&runs))?;
+    write_report("dogfood.json", &dogfood_report_json(&runs))
+}
+
+fn dogfood_scenarios() -> Vec<DogfoodScenario> {
+    ["boundary_gap".to_string(), "weak_error_oracle".to_string()]
+        .into_iter()
+        .map(|name| {
+            let base = Path::new("fixtures").join(&name);
+            DogfoodScenario {
+                name,
+                root: base.join("input"),
+                diff: base.join("diff.patch"),
+            }
+        })
+        .collect()
+}
+
+fn dogfood_run(scenario: &DogfoodScenario) -> Result<DogfoodRun, String> {
+    let started = Instant::now();
+    let actual_dir = Path::new("target")
+        .join("ripr")
+        .join("dogfood")
+        .join(&scenario.name);
+    fs::create_dir_all(&actual_dir).map_err(|err| {
+        format!(
+            "failed to create dogfood output directory {}: {err}",
+            normalize_path(&actual_dir)
+        )
+    })?;
+
+    let mut errors = Vec::new();
+    let mut findings = 0usize;
+    let mut class_counts = BTreeMap::new();
+    let mut stop_reason_mentions = 0usize;
+
+    if !scenario.root.exists() {
+        errors.push(format!(
+            "fixture root does not exist: {}",
+            normalize_path(&scenario.root)
+        ));
+    }
+    if !scenario.diff.exists() {
+        errors.push(format!(
+            "fixture diff does not exist: {}",
+            normalize_path(&scenario.diff)
+        ));
+    }
+
+    if errors.is_empty() {
+        let root = normalize_path(&scenario.root);
+        let diff = normalize_path(&scenario.diff);
+        match run_fixture_check(&root, &diff, true) {
+            Ok(json) => {
+                let normalized = normalize_fixture_json_output(&json);
+                findings = json_number_after(&normalized, "\"findings\":").unwrap_or(0);
+                class_counts = dogfood_class_counts(&normalized);
+                stop_reason_mentions = normalized.matches("\"stop_reasons\"").count();
+                let path = actual_dir.join("check.json");
+                fs::write(&path, normalized).map_err(|err| {
+                    format!(
+                        "failed to write dogfood JSON output {}: {err}",
+                        normalize_path(&path)
+                    )
+                })?;
+            }
+            Err(err) => errors.push(err),
+        }
+
+        match run_fixture_check(&root, &diff, false) {
+            Ok(human) => {
+                let normalized = normalize_fixture_human_output(&human);
+                let path = actual_dir.join("human.txt");
+                fs::write(&path, normalized).map_err(|err| {
+                    format!(
+                        "failed to write dogfood human output {}: {err}",
+                        normalize_path(&path)
+                    )
+                })?;
+            }
+            Err(err) => errors.push(err),
+        }
+    }
+
+    Ok(DogfoodRun {
+        name: scenario.name.clone(),
+        root: scenario.root.clone(),
+        diff: scenario.diff.clone(),
+        actual_dir,
+        duration_ms: started.elapsed().as_millis(),
+        findings,
+        class_counts,
+        stop_reason_mentions,
+        errors,
+    })
+}
+
+fn dogfood_class_counts(json: &str) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::new();
+    for class in [
+        "exposed",
+        "weakly_exposed",
+        "reachable_unrevealed",
+        "no_static_path",
+        "infection_unknown",
+        "propagation_unknown",
+        "static_unknown",
+    ] {
+        counts.insert(
+            class.to_string(),
+            json.matches(&format!("\"classification\": \"{class}\""))
+                .count(),
+        );
+    }
+    counts
+}
+
+fn json_number_after(text: &str, needle: &str) -> Option<usize> {
+    let start = text.find(needle)? + needle.len();
+    let digits = text[start..]
+        .chars()
+        .skip_while(|ch| ch.is_ascii_whitespace())
+        .take_while(|ch| ch.is_ascii_digit())
+        .collect::<String>();
+    if digits.is_empty() {
+        None
+    } else {
+        digits.parse::<usize>().ok()
+    }
+}
+
+fn dogfood_report_status(runs: &[DogfoodRun]) -> &'static str {
+    if runs.iter().any(|run| !run.errors.is_empty()) {
+        "warn"
+    } else {
+        "pass"
+    }
+}
+
+fn dogfood_report_markdown(runs: &[DogfoodRun]) -> String {
+    let mut body = format!(
+        "# ripr dogfood report\n\nStatus: {}\n\nMode: advisory\n\nThis report runs `ripr check --mode fast` against stable in-repo fixture diffs. It records current product output for review without making dogfood a blocking gate yet.\n\n## Summary\n\n",
+        dogfood_report_status(runs)
+    );
+    for run in runs {
+        body.push_str(&format!(
+            "- `{}`: {} finding(s), {} stop-reason field(s), {} ms\n",
+            run.name, run.findings, run.stop_reason_mentions, run.duration_ms
+        ));
+    }
+
+    body.push_str("\n## Runs\n\n");
+    for run in runs {
+        body.push_str(&format!("### `{}`\n\n", run.name));
+        body.push_str(&format!("- Root: `{}`\n", normalize_path(&run.root)));
+        body.push_str(&format!("- Diff: `{}`\n", normalize_path(&run.diff)));
+        body.push_str(&format!(
+            "- Actual outputs: `{}`\n",
+            normalize_path(&run.actual_dir)
+        ));
+        body.push_str(&format!("- Findings: {}\n", run.findings));
+        body.push_str("- Exposure classes:\n");
+        for (class, count) in &run.class_counts {
+            body.push_str(&format!("  - `{class}`: {count}\n"));
+        }
+        if run.errors.is_empty() {
+            body.push_str("- Errors: none\n\n");
+        } else {
+            body.push_str("- Errors:\n");
+            for error in &run.errors {
+                body.push_str(&format!("  - `{}`\n", markdown_cell(error)));
+            }
+            body.push('\n');
+        }
+    }
+    body
+}
+
+fn dogfood_report_json(runs: &[DogfoodRun]) -> String {
+    let mut body = format!(
+        "{{\n  \"schema_version\": \"0.1\",\n  \"status\": \"{}\",\n  \"advisory\": true,\n  \"runs\": [\n",
+        dogfood_report_status(runs)
+    );
+    for (index, run) in runs.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("    {\n");
+        body.push_str(&format!(
+            "      \"name\": \"{}\",\n",
+            json_escape(&run.name)
+        ));
+        body.push_str(&format!(
+            "      \"root\": \"{}\",\n",
+            json_escape(&normalize_path(&run.root))
+        ));
+        body.push_str(&format!(
+            "      \"diff\": \"{}\",\n",
+            json_escape(&normalize_path(&run.diff))
+        ));
+        body.push_str(&format!(
+            "      \"actual_dir\": \"{}\",\n",
+            json_escape(&normalize_path(&run.actual_dir))
+        ));
+        body.push_str(&format!("      \"duration_ms\": {},\n", run.duration_ms));
+        body.push_str(&format!("      \"findings\": {},\n", run.findings));
+        body.push_str(&format!(
+            "      \"stop_reason_mentions\": {},\n",
+            run.stop_reason_mentions
+        ));
+        body.push_str("      \"class_counts\": {");
+        for (class_index, (class, count)) in run.class_counts.iter().enumerate() {
+            if class_index > 0 {
+                body.push_str(", ");
+            }
+            body.push_str(&format!("\"{}\": {}", json_escape(class), count));
+        }
+        body.push_str("},\n");
+        body.push_str("      \"errors\": [");
+        write_json_string_array(&mut body, &run.errors);
+        body.push_str("]\n    }");
+    }
+    body.push_str("\n  ]\n}\n");
+    body
+}
+
 fn check_capabilities() -> Result<(), String> {
     let manifest = Path::new("metrics/capabilities.toml");
     let mut violations = Vec::new();
@@ -3722,6 +3975,7 @@ fn known_xtask_command(command: &str) -> bool {
             | "metrics"
             | "test-oracle-report"
             | "check-test-oracles"
+            | "dogfood"
             | "goals"
             | "ci-fast"
             | "ci-full"
@@ -5051,15 +5305,16 @@ fn is_word_char(value: Option<char>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        CampaignManifest, Capability, ChangedPath, MarkdownLink, TestOracleClass,
+        CampaignManifest, Capability, ChangedPath, DogfoodRun, MarkdownLink, TestOracleClass,
+        dogfood_class_counts, dogfood_report_json, dogfood_report_markdown,
         extract_workflow_run_blocks, glob_matches, is_dependency_surface_candidate,
         is_evidence_path, is_generated_candidate, is_known_campaign_command, is_policy_path,
-        is_production_path, is_snake_case_id, is_spec_id, json_escape, local_markdown_target,
-        markdown_links_in_text, next_checkpoints_from_capabilities, normalize_fixture_human_output,
-        normalize_fixture_json_output, normalize_golden_text, parse_campaign_manifest,
-        parse_inline_array, parse_reason, pr_shape_warnings, precommit_report_body,
-        public_contract_rows, sorted_allowlist_content, spec_id_from_path, test_oracle_report_json,
-        test_oracle_report_markdown, test_oracle_tests_in_text,
+        is_production_path, is_snake_case_id, is_spec_id, json_escape, json_number_after,
+        local_markdown_target, markdown_links_in_text, next_checkpoints_from_capabilities,
+        normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
+        parse_campaign_manifest, parse_inline_array, parse_reason, pr_shape_warnings,
+        precommit_report_body, public_contract_rows, sorted_allowlist_content, spec_id_from_path,
+        test_oracle_report_json, test_oracle_report_markdown, test_oracle_tests_in_text,
     };
     use std::collections::BTreeSet;
     use std::fs;
@@ -5404,6 +5659,7 @@ commands = [
         assert!(is_known_campaign_command("cargo xtask check-pr"));
         assert!(is_known_campaign_command("cargo xtask goals status"));
         assert!(is_known_campaign_command("cargo xtask test-oracle-report"));
+        assert!(is_known_campaign_command("cargo xtask dogfood"));
         assert!(is_known_campaign_command("cargo test --workspace"));
         assert!(!is_known_campaign_command("cargo xtask missing-command"));
         assert!(!is_known_campaign_command(""));
@@ -5458,5 +5714,46 @@ fn weak_contains() {
         assert!(markdown.contains("Weak Or Smoke Tests"));
         assert!(json.contains("\"advisory\": true"));
         assert!(json.contains("\"weak\": 1"));
+    }
+
+    #[test]
+    fn dogfood_helpers_summarize_json_output() {
+        let json = r#"{
+  "summary": {"findings":2},
+  "findings": [
+    {"classification": "weakly_exposed", "stop_reasons": []},
+    {"classification": "static_unknown", "stop_reasons": ["syntax unknown"]}
+  ]
+}"#;
+
+        let counts = dogfood_class_counts(json);
+
+        assert_eq!(json_number_after(json, "\"findings\":"), Some(2));
+        assert_eq!(counts.get("weakly_exposed").copied(), Some(1));
+        assert_eq!(counts.get("static_unknown").copied(), Some(1));
+    }
+
+    #[test]
+    fn dogfood_reports_are_advisory() {
+        let run = DogfoodRun {
+            name: "boundary_gap".to_string(),
+            root: Path::new("fixtures/boundary_gap/input").to_path_buf(),
+            diff: Path::new("fixtures/boundary_gap/diff.patch").to_path_buf(),
+            actual_dir: Path::new("target/ripr/dogfood/boundary_gap").to_path_buf(),
+            duration_ms: 10,
+            findings: 1,
+            class_counts: [("weakly_exposed".to_string(), 1usize)]
+                .into_iter()
+                .collect(),
+            stop_reason_mentions: 1,
+            errors: Vec::new(),
+        };
+
+        let markdown = dogfood_report_markdown(&[run]);
+        let json = dogfood_report_json(&[]);
+
+        assert!(markdown.contains("Mode: advisory"));
+        assert!(markdown.contains("boundary_gap"));
+        assert!(json.contains("\"advisory\": true"));
     }
 }

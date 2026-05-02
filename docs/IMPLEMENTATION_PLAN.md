@@ -515,6 +515,27 @@ Acceptance:
 - [x] `cargo xtask metrics`
 - [x] `cargo xtask check-pr`
 
+## PR 2B: `dogfood-static-self-check`
+
+Purpose: add a focused non-blocking `ripr`-on-`ripr` report.
+
+Deliverables:
+
+- [x] `cargo xtask dogfood` runs stable fixture diffs through
+      `ripr check --mode fast`.
+- [x] Actual dogfood JSON and human outputs are written under
+      `target/ripr/dogfood/<fixture>/`.
+- [x] `target/ripr/reports/dogfood.md` summarizes findings, exposure classes,
+      runtime, and errors.
+- [x] `target/ripr/reports/dogfood.json` provides the same advisory summary for
+      future machine readers.
+- [x] Dogfood is advisory and non-blocking.
+
+Acceptance:
+
+- [x] `cargo xtask dogfood`
+- [x] `cargo xtask check-pr`
+
 ## PR 3: `file-facts-model`
 
 Purpose: introduce an internal fact model while preserving current scanner

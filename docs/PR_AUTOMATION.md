@@ -33,6 +33,7 @@ cargo xtask fixtures
 cargo xtask goldens check
 cargo xtask test-oracle-report
 cargo xtask check-test-oracles
+cargo xtask dogfood
 cargo xtask ci-fast
 ```
 
@@ -76,6 +77,10 @@ outputs, and appends the fixture expected-output changelog.
 oracle strength to `target/ripr/reports/test-oracles.md` and
 `target/ripr/reports/test-oracles.json`. `check-test-oracles` is currently an
 alias that produces the same non-blocking report.
+
+`dogfood` runs `ripr check --mode fast` against stable in-repo fixture diffs,
+writes actual outputs under `target/ripr/dogfood/`, and writes advisory
+Markdown and JSON reports under `target/ripr/reports/`.
 
 `ci-fast` is the current non-mutating local and CI check lane. It runs the Rust
 checks plus the existing policy checks for static language, panic-family usage,
@@ -145,6 +150,7 @@ cargo xtask fixtures
 cargo xtask goldens check
 cargo xtask test-oracle-report
 cargo xtask check-test-oracles
+cargo xtask dogfood
 cargo xtask check-traceability
 cargo xtask metrics
 cargo xtask check-capabilities
@@ -175,6 +181,7 @@ cargo xtask fixtures
 cargo xtask goldens check
 cargo xtask test-oracle-report
 cargo xtask check-test-oracles
+cargo xtask dogfood
 cargo xtask check-traceability
 cargo xtask metrics
 cargo xtask check-capabilities
@@ -392,6 +399,8 @@ goldens.md
 goldens-bless.md
 test-oracles.md
 test-oracles.json
+dogfood.md
+dogfood.json
 pr-shape.md
 metrics.md
 metrics.json
@@ -407,7 +416,7 @@ The next automation path is trusted-change evidence:
 
 | Order | PR | Purpose |
 | ---: | --- | --- |
-| 1 | `dogfood/static-self-check` | Generate focused `ripr`-on-`ripr` evidence reports. |
+| 1 | `campaign/agentic-devex-closeout` | Mark Campaign 1 complete and activate Campaign 2. |
 | 2 | `automation/gate-receipts-v1` | Write machine-readable receipts for gate runs. |
 | 3 | `automation/critic-report` | Add an advisory adversarial review packet from existing reports. |
 | 4 | `devex/onboard-doctor` | Report whether the local checkout and toolchain are ready to work. |
