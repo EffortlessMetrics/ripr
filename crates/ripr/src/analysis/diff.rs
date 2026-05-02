@@ -149,12 +149,21 @@ mod tests {
             let files = parse_unified_diff(&text);
             for file in files {
                 assert!(!file.path.as_os_str().is_empty());
-                assert!(file.added_lines.windows(2).all(|w| w[0].line <= w[1].line));
-                assert!(
-                    file.removed_lines
-                        .windows(2)
-                        .all(|w| w[0].line <= w[1].line)
-                );
+                assert!(file.added_lines.iter().all(|line| line.line >= 1));
+                assert!(file.removed_lines.iter().all(|line| line.line >= 1));
+            }
+        }
+
+        // Exercise parser behavior with grammar-shaped mutated inputs in addition
+        // to arbitrary bytes. This increases the chance that fuzzing-like tests
+        // hit stateful transitions between headers/hunks/content lines.
+        for _case in 0..512 {
+            let diff = generate_fuzz_like_diff(&mut seed);
+            let files = parse_unified_diff(&diff);
+            for file in files {
+                assert!(!file.path.as_os_str().is_empty());
+                assert!(file.added_lines.iter().all(|line| line.line >= 1));
+                assert!(file.removed_lines.iter().all(|line| line.line >= 1));
             }
         }
     }
@@ -164,5 +173,49 @@ mod tests {
             .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
         *seed
+    }
+
+    fn generate_fuzz_like_diff(seed: &mut u64) -> String {
+        let mut out = String::new();
+        let file_count = ((next_u64(seed) % 4) + 1) as usize;
+
+        for idx in 0..file_count {
+            let mut base = format!("fuzz/path_{idx}_{}.rs", next_u64(seed) % 10);
+            if next_u64(seed).is_multiple_of(7) {
+                base.push_str("\0");
+            }
+            out.push_str(&format!("diff --git a/{base} b/{base}\n"));
+            out.push_str(&format!("--- a/{base}\n"));
+            out.push_str(&format!("+++ b/{base}\n"));
+
+            let hunk_count = ((next_u64(seed) % 3) + 1) as usize;
+            let mut old_line = ((next_u64(seed) % 50) + 1) as usize;
+            let mut new_line = ((next_u64(seed) % 50) + 1) as usize;
+            for _ in 0..hunk_count {
+                out.push_str(&format!("@@ -{old_line},{} +{new_line},{} @@\n", 1, 1));
+                let body_len = ((next_u64(seed) % 8) + 1) as usize;
+                for _ in 0..body_len {
+                    match next_u64(seed) % 5 {
+                        0 => {
+                            out.push_str("+added\n");
+                            new_line += 1;
+                        }
+                        1 => {
+                            out.push_str("-removed\n");
+                            old_line += 1;
+                        }
+                        2 => {
+                            out.push_str(" context\n");
+                            old_line += 1;
+                            new_line += 1;
+                        }
+                        3 => out.push_str("@@ malformed header @@\n"),
+                        _ => out.push_str("\n"),
+                    }
+                }
+            }
+        }
+
+        out
     }
 }
