@@ -4,6 +4,10 @@ This matrix tracks what `ripr` can currently do, which artifacts prove it, and
 which roadmap item should move it next. It is intentionally capability-focused:
 line count, warning count, and raw probe volume are not product success metrics.
 
+The machine-readable source is `metrics/capabilities.toml`. Run
+`cargo xtask metrics` for generated Markdown and JSON reports under
+`target/ripr/reports/`.
+
 Status values:
 
 - `planned`: designed but not implemented
@@ -18,9 +22,9 @@ Status values:
 | Error-path probes | `alpha` | `RIPR-SPEC-0001` | sample `error_path` explain/context command | `oracle-strength-v2` | broad error checks distinguished from exact variants |
 | Return-value probes | `alpha` | `RIPR-SPEC-0001` | syntax-first scanner | `ast-probe-generation` | exact vs smoke return oracle distinction |
 | Call-deletion probes | `alpha` | `RIPR-SPEC-0001` | syntax-first scanner | `ast-probe-generation` | side-effect or call boundary candidate named |
-| Fixture laboratory | `planned` | `RIPR-SPEC-0002` | fixture spec only | `fixture-golden-scaffolding` | fixture pass rate |
-| Golden JSON output | `planned` | `RIPR-SPEC-0002` | schema reference | `fixture-golden-scaffolding` | golden output drift count |
-| Golden human output | `planned` | `RIPR-SPEC-0002` | human output renderer | `fixture-golden-scaffolding` | golden output drift count |
+| Fixture laboratory | `planned` | `RIPR-SPEC-0002` | fixture spec, fixture/golden scaffold commands | `first-two-goldens` | fixture pass rate |
+| Golden JSON output | `planned` | `RIPR-SPEC-0002` | schema reference, goldens check scaffold | `first-two-goldens` | golden output drift count |
+| Golden human output | `planned` | `RIPR-SPEC-0002` | human output renderer, goldens check scaffold | `first-two-goldens` | golden output drift count |
 | Context packet v1 | `alpha` | `RIPR-SPEC-0003` | CLI context command | `agent-context-v2` | packet includes missing discriminator and related tests |
 | Agent context v2 | `planned` | `RIPR-SPEC-0003` | agent context spec | `agent-context-v2` | packet includes missing values and suggested assertions |
 | Analysis modes | `alpha` | `RIPR-SPEC-0001` | mode scope tests | capability metrics report | runtime and scope by mode |

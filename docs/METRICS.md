@@ -3,8 +3,10 @@
 `ripr` metrics exist to track whether static findings are becoming more useful,
 more truthful, and less noisy. They are not vanity counters.
 
-Capability status is tracked in [Capability matrix](CAPABILITY_MATRIX.md). This
-file defines the metric categories and how to interpret them.
+Capability status is sourced from `metrics/capabilities.toml`, summarized in
+[Capability matrix](CAPABILITY_MATRIX.md), and reported with
+`cargo xtask metrics`. This file defines the metric categories and how to
+interpret them.
 
 ## North Star
 
@@ -86,8 +88,8 @@ ADR/spec scaffolding:
   Added by PR 0.
 ```
 
-Future PRs should replace this prose baseline with generated or scripted counts
-once the fixture lab and metrics commands exist.
+Future PRs should replace more of this prose baseline with generated counts as
+the fixture lab and analyzer reports become executable.
 
 ## Anti-Metrics
 

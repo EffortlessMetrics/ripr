@@ -1,0 +1,150 @@
+# Machine-readable capability source for `cargo xtask metrics` and
+# `cargo xtask check-capabilities`.
+
+[[capability]]
+id = "static_exposure_loop"
+name = "Static exposure loop"
+status = "alpha"
+spec = "RIPR-SPEC-0001"
+evidence = [
+  "sample diff",
+  "current CLI tests"
+]
+fixtures = []
+next = "fixture-laboratory"
+metric = "findings include changed behavior, class, evidence, and next step"
+
+[[capability]]
+id = "predicate_probes"
+name = "Predicate probes"
+status = "alpha"
+spec = "RIPR-SPEC-0001"
+evidence = [
+  "syntax-first probe generation"
+]
+fixtures = []
+next = "fixture-laboratory"
+metric = "missing boundary discriminator detection"
+
+[[capability]]
+id = "error_path_probes"
+name = "Error-path probes"
+status = "alpha"
+spec = "RIPR-SPEC-0001"
+evidence = [
+  "sample error_path explain/context command"
+]
+fixtures = []
+next = "oracle-strength-v2"
+metric = "broad error checks distinguished from exact variants"
+
+[[capability]]
+id = "return_value_probes"
+name = "Return-value probes"
+status = "alpha"
+spec = "RIPR-SPEC-0001"
+evidence = [
+  "syntax-first scanner"
+]
+fixtures = []
+next = "ast-probe-generation"
+metric = "exact vs smoke return oracle distinction"
+
+[[capability]]
+id = "call_deletion_probes"
+name = "Call-deletion probes"
+status = "alpha"
+spec = "RIPR-SPEC-0001"
+evidence = [
+  "syntax-first scanner"
+]
+fixtures = []
+next = "ast-probe-generation"
+metric = "side-effect or call boundary candidate named"
+
+[[capability]]
+id = "fixture_laboratory"
+name = "Fixture laboratory"
+status = "planned"
+spec = "RIPR-SPEC-0002"
+evidence = [
+  "fixture spec",
+  "fixture/golden scaffold commands"
+]
+fixtures = []
+next = "first-two-goldens"
+metric = "fixture pass rate"
+
+[[capability]]
+id = "golden_json_output"
+name = "Golden JSON output"
+status = "planned"
+spec = "RIPR-SPEC-0002"
+evidence = [
+  "schema reference",
+  "goldens check scaffold"
+]
+fixtures = []
+next = "first-two-goldens"
+metric = "golden output drift count"
+
+[[capability]]
+id = "golden_human_output"
+name = "Golden human output"
+status = "planned"
+spec = "RIPR-SPEC-0002"
+evidence = [
+  "human output renderer",
+  "goldens check scaffold"
+]
+fixtures = []
+next = "first-two-goldens"
+metric = "golden output drift count"
+
+[[capability]]
+id = "context_packet_v1"
+name = "Context packet v1"
+status = "alpha"
+spec = "RIPR-SPEC-0003"
+evidence = [
+  "CLI context command"
+]
+fixtures = []
+next = "agent-context-v2"
+metric = "packet includes missing discriminator and related tests"
+
+[[capability]]
+id = "agent_context_v2"
+name = "Agent context v2"
+status = "planned"
+spec = "RIPR-SPEC-0003"
+evidence = [
+  "agent context spec"
+]
+fixtures = []
+next = "agent-context-v2"
+metric = "packet includes missing values and suggested assertions"
+
+[[capability]]
+id = "analysis_modes"
+name = "Analysis modes"
+status = "alpha"
+spec = "RIPR-SPEC-0001"
+evidence = [
+  "mode scope tests"
+]
+fixtures = []
+next = "capability-metrics-report"
+metric = "runtime and scope by mode"
+
+[[capability]]
+id = "lsp_diagnostics"
+name = "LSP diagnostics"
+status = "alpha"
+spec = "RIPR-SPEC-0001"
+evidence = [
+  "experimental sidecar"
+]
+fixtures = []
+next = "lsp-evidence-hover-actions"
+metric = "finding/probe metadata in diagnostics"

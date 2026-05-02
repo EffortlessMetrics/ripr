@@ -336,17 +336,17 @@ Purpose: make capability progress and automation debt visible.
 
 Deliverables:
 
-- [ ] Add or harden a machine-readable capability source.
-- [ ] Add `cargo xtask metrics`.
-- [ ] Add `cargo xtask check-capabilities`.
-- [ ] Write `target/ripr/reports/metrics.md` or `metrics.json`.
+- [x] Add or harden a machine-readable capability source.
+- [x] Add `cargo xtask metrics`.
+- [x] Add `cargo xtask check-capabilities`.
+- [x] Write `target/ripr/reports/metrics.md` or `metrics.json`.
 - [ ] Keep the README capability snapshot aligned with the capability source.
 
 Acceptance:
 
-- [ ] Capability statuses have valid values and required fields.
-- [ ] Stable or calibrated statuses require the evidence defined by policy.
-- [ ] Metrics reports are generated without changing product behavior.
+- [x] Capability statuses have valid values and required fields.
+- [x] Stable or calibrated statuses require the evidence defined by policy.
+- [x] Metrics reports are generated without changing product behavior.
 
 ## PR 1N: `architecture-guard`
 

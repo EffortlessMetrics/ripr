@@ -130,13 +130,14 @@ cargo xtask check-pr
 cargo xtask fixtures
 cargo xtask goldens check
 cargo xtask check-traceability
+cargo xtask metrics
+cargo xtask check-capabilities
 ```
 
 Planned:
 
 ```bash
 cargo xtask check-doc-index
-cargo xtask check-capabilities
 cargo xtask check-output-contracts
 cargo xtask check-architecture
 cargo xtask check-pr-shape
@@ -157,12 +158,13 @@ cargo xtask check-pr
 cargo xtask fixtures
 cargo xtask goldens check
 cargo xtask check-traceability
+cargo xtask metrics
+cargo xtask check-capabilities
 ```
 
 Planned:
 
 ```bash
-cargo xtask metrics
 cargo xtask dogfood
 ```
 
@@ -299,6 +301,7 @@ cargo xtask check-workflows
 cargo xtask check-spec-format
 cargo xtask check-fixture-contracts
 cargo xtask check-traceability
+cargo xtask check-capabilities
 cargo xtask check-generated
 ```
 
@@ -331,10 +334,12 @@ network-policy.md
 spec-format.md
 fixture-contracts.md
 traceability.md
+capabilities.md
 fixtures.md
 goldens.md
 goldens-bless.md
 pr-shape.md
+metrics.md
 metrics.json
 suggested-fixes.patch
 ```
@@ -349,8 +354,7 @@ The remaining automation path is:
 | Order | PR | Purpose |
 | ---: | --- | --- |
 | 1 | `traceability-drift-warnings` | Add changed-file evidence warnings to PR summaries. |
-| 2 | `capability-metrics-report` | Generate metrics and capability reports from machine-readable sources. |
-| 3 | `architecture-guard` | Add workspace shape, module boundary, and public API checks. |
+| 2 | `architecture-guard` | Add workspace shape, module boundary, and public API checks. |
 
 After those are in place, analyzer work can move in goal mode with one scoped
 capability per PR.
