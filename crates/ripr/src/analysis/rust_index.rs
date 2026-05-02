@@ -1170,7 +1170,14 @@ fn classify_assertion(line: &str) -> OracleClassification {
 fn is_snapshot_assertion(line: &str) -> bool {
     let expect_test_comparison = (line.contains("expect![[") || line.contains("expect_file!["))
         && line.contains(".assert_eq(");
-    line.contains("insta::assert") || line.contains("snapshot!") || expect_test_comparison
+    let generic_assert_snapshot = line.contains("assert_snapshot!")
+        || line.contains("assert_debug_snapshot!")
+        || line.contains("assert_yaml_snapshot!")
+        || line.contains("assert_json_snapshot!")
+        || line.contains("assert_toml_snapshot!")
+        || line.contains("assert_ron_snapshot!")
+        || line.contains("assert_csv_snapshot!");
+    line.contains("insta::assert") || generic_assert_snapshot || expect_test_comparison
 }
 
 fn is_exact_error_variant_assertion(line: &str) -> bool {
@@ -1381,7 +1388,9 @@ fn checks_error() {
         let snapshot_cases = [
             "insta::assert_snapshot!(rendered);",
             "insta::assert_yaml_snapshot!(payload);",
+            "insta::assert_debug_snapshot!(payload);",
             "assert_snapshot!(rendered);",
+            "assert_json_snapshot!(payload);",
             r##"expect![[r#"ok"#]].assert_eq(&rendered);"##,
             r#"expect_file!["snapshots/render.snap"].assert_eq(&rendered);"#,
         ];
@@ -1393,6 +1402,8 @@ fn checks_error() {
         }
 
         let bare_expect_file = classify_assertion(r#"let expected = expect_file!["render.snap"];"#);
+        let non_assert_snapshot_macro = classify_assertion("snapshot!(rendered);");
+        let non_assert_snapshot_name = classify_assertion("let snapshot = render();");
         let non_snapshot_method = classify_assertion("helper.assert_eq(&rendered);");
         let mock = classify_assertion("mock.expect_publish().times(1);");
         let relational = classify_assertion("assert!(total > 0);");
@@ -1400,6 +1411,8 @@ fn checks_error() {
         let unknown = classify_assertion("helper_records_observation();");
 
         assert_ne!(bare_expect_file.kind, OracleKind::Snapshot);
+        assert_ne!(non_assert_snapshot_macro.kind, OracleKind::Snapshot);
+        assert_ne!(non_assert_snapshot_name.kind, OracleKind::Snapshot);
         assert_ne!(non_snapshot_method.kind, OracleKind::Snapshot);
         assert_eq!(mock.kind, OracleKind::MockExpectation);
         assert_eq!(mock.strength, OracleStrength::Medium);
