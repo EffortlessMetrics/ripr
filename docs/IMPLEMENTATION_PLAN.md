@@ -493,6 +493,28 @@ Invariants:
 - [ ] Finding order is deterministic.
 - [ ] Context packets are parseable.
 
+## PR 2A: `testing-test-oracle-report`
+
+Purpose: measure `ripr`'s own test oracle strength before analyzer work expands.
+
+Deliverables:
+
+- [x] `cargo xtask test-oracle-report` writes
+      `target/ripr/reports/test-oracles.md`.
+- [x] `cargo xtask test-oracle-report` writes
+      `target/ripr/reports/test-oracles.json`.
+- [x] `cargo xtask check-test-oracles` aliases the same advisory report.
+- [x] The report classifies detected Rust tests as strong, medium, weak, or
+      smoke.
+- [x] Existing weak or smoke debt is advisory and non-blocking.
+
+Acceptance:
+
+- [x] `cargo xtask test-oracle-report`
+- [x] `cargo xtask check-test-oracles`
+- [x] `cargo xtask metrics`
+- [x] `cargo xtask check-pr`
+
 ## PR 3: `file-facts-model`
 
 Purpose: introduce an internal fact model while preserving current scanner

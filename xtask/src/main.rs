@@ -85,6 +85,51 @@ struct CampaignWorkItem {
     blocked_reason: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TestOracleClass {
+    Strong,
+    Medium,
+    Weak,
+    Smoke,
+}
+
+impl TestOracleClass {
+    fn as_str(self) -> &'static str {
+        match self {
+            TestOracleClass::Strong => "strong",
+            TestOracleClass::Medium => "medium",
+            TestOracleClass::Weak => "weak",
+            TestOracleClass::Smoke => "smoke",
+        }
+    }
+
+    fn rank(self) -> u8 {
+        match self {
+            TestOracleClass::Strong => 4,
+            TestOracleClass::Medium => 3,
+            TestOracleClass::Weak => 2,
+            TestOracleClass::Smoke => 1,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct TestOracleObservation {
+    line: usize,
+    class: TestOracleClass,
+    pattern: String,
+    detail: String,
+}
+
+#[derive(Clone, Debug)]
+struct TestOracleTest {
+    path: PathBuf,
+    name: String,
+    line: usize,
+    class: TestOracleClass,
+    observations: Vec<TestOracleObservation>,
+}
+
 #[derive(Clone, Debug)]
 pub enum CheckStatus {
     Pass,
@@ -143,6 +188,7 @@ fn main() {
         Some("fixtures") => fixtures(args.get(2)),
         Some("goldens") => goldens(&args[2..]),
         Some("metrics") => metrics_report(),
+        Some("test-oracle-report") | Some("check-test-oracles") => test_oracle_report(),
         Some("goals") => goals(&args[2..]),
         Some("ci-fast") => ci_fast(),
         Some("ci-full") => ci_full(),
@@ -285,7 +331,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  metrics\n  goals status|next|report\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
+        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  metrics\n  test-oracle-report\n  check-test-oracles\n  goals status|next|report\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
     );
 }
 
@@ -1736,6 +1782,380 @@ fn metrics_report() -> Result<(), String> {
     }
     write_report("metrics.md", &capability_metrics_markdown(&capabilities))?;
     write_report("metrics.json", &capability_metrics_json(&capabilities))
+}
+
+fn test_oracle_report() -> Result<(), String> {
+    let tests = collect_test_oracle_tests()?;
+    write_report("test-oracles.md", &test_oracle_report_markdown(&tests))?;
+    write_report("test-oracles.json", &test_oracle_report_json(&tests))
+}
+
+fn collect_test_oracle_tests() -> Result<Vec<TestOracleTest>, String> {
+    let mut tests = Vec::new();
+    for root in [
+        Path::new("crates/ripr/src"),
+        Path::new("crates/ripr/tests"),
+        Path::new("xtask/src"),
+    ] {
+        if !root.exists() {
+            continue;
+        }
+        for path in collect_files(root)? {
+            if path.extension().and_then(|value| value.to_str()) != Some("rs") {
+                continue;
+            }
+            let text = read_text_lossy(&path)?;
+            tests.extend(test_oracle_tests_in_text(&path, &text));
+        }
+    }
+    tests.sort_by(|left, right| {
+        normalize_path(&left.path)
+            .cmp(&normalize_path(&right.path))
+            .then(left.line.cmp(&right.line))
+            .then(left.name.cmp(&right.name))
+    });
+    Ok(tests)
+}
+
+fn test_oracle_tests_in_text(path: &Path, text: &str) -> Vec<TestOracleTest> {
+    let lines = text.lines().collect::<Vec<_>>();
+    let mut tests = Vec::new();
+    let mut pending_test_attr_line = None;
+    let mut index = 0usize;
+
+    while index < lines.len() {
+        let trimmed = lines[index].trim();
+        if is_test_attribute(trimmed) {
+            pending_test_attr_line = Some(index + 1);
+            index += 1;
+            continue;
+        }
+
+        if let Some(attr_line) = pending_test_attr_line {
+            if trimmed.is_empty() || trimmed.starts_with("#[") {
+                index += 1;
+                continue;
+            }
+
+            if let Some(name) = test_fn_name(trimmed) {
+                let end = test_function_end(&lines, index);
+                let observations = test_oracle_observations(&lines[index..=end], index + 1);
+                let class = observations
+                    .iter()
+                    .map(|observation| observation.class)
+                    .max_by_key(|class| class.rank())
+                    .unwrap_or(TestOracleClass::Smoke);
+                tests.push(TestOracleTest {
+                    path: path.to_path_buf(),
+                    name,
+                    line: attr_line,
+                    class,
+                    observations,
+                });
+                pending_test_attr_line = None;
+                index = end + 1;
+                continue;
+            }
+
+            if !trimmed.starts_with("//") {
+                pending_test_attr_line = None;
+            }
+        }
+
+        index += 1;
+    }
+
+    tests
+}
+
+fn is_test_attribute(trimmed: &str) -> bool {
+    let compact = trimmed.replace(' ', "");
+    if !compact.starts_with("#[") {
+        return false;
+    }
+    compact == "#[test]"
+        || compact.starts_with("#[tokio::test")
+        || compact.starts_with("#[async_std::test")
+        || compact.starts_with("#[rstest")
+}
+
+fn test_fn_name(trimmed: &str) -> Option<String> {
+    let fn_pos = trimmed.find("fn ")?;
+    let after_fn = &trimmed[fn_pos + 3..];
+    let name = after_fn
+        .chars()
+        .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
+        .collect::<String>();
+    if name.is_empty() { None } else { Some(name) }
+}
+
+fn test_function_end(lines: &[&str], start: usize) -> usize {
+    let mut depth = 0isize;
+    let mut saw_body = false;
+
+    for (offset, line) in lines[start..].iter().enumerate() {
+        for ch in line.chars() {
+            match ch {
+                '{' => {
+                    depth += 1;
+                    saw_body = true;
+                }
+                '}' if saw_body => depth -= 1,
+                _ => {}
+            }
+        }
+        if saw_body && depth <= 0 {
+            return start + offset;
+        }
+    }
+
+    lines.len().saturating_sub(1)
+}
+
+fn test_oracle_observations(lines: &[&str], first_line: usize) -> Vec<TestOracleObservation> {
+    let mut observations = Vec::new();
+    for (offset, line) in lines.iter().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("//") {
+            continue;
+        }
+        if let Some(observation) = test_oracle_observation(trimmed, first_line + offset) {
+            observations.push(observation);
+        }
+    }
+
+    if observations.is_empty() {
+        observations.push(TestOracleObservation {
+            line: first_line,
+            class: TestOracleClass::Smoke,
+            pattern: "no assertion".to_string(),
+            detail: "test body has no detected assertion-like oracle".to_string(),
+        });
+    }
+
+    observations
+}
+
+fn test_oracle_observation(trimmed: &str, line: usize) -> Option<TestOracleObservation> {
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if contains_any(trimmed, &["assert_eq!(", "assert_ne!(", "assert_matches!("]) {
+        return Some(test_oracle_observation_for(
+            line,
+            TestOracleClass::Strong,
+            "exact assertion",
+            "exact equality, inequality, or variant assertion",
+        ));
+    }
+    if trimmed.contains("matches!(") {
+        return Some(test_oracle_observation_for(
+            line,
+            TestOracleClass::Strong,
+            "matches!",
+            "pattern assertion can discriminate an exact variant or shape",
+        ));
+    }
+    if trimmed.contains("status.success()") {
+        return Some(test_oracle_observation_for(
+            line,
+            TestOracleClass::Smoke,
+            "status.success",
+            "exit-status check proves execution but little behavior",
+        ));
+    }
+    if contains_any(
+        trimmed,
+        &[
+            ".is_ok()",
+            ".is_err()",
+            ".is_some()",
+            ".is_none()",
+            ".is_empty()",
+            ".contains(",
+            "contains(",
+        ],
+    ) {
+        return Some(test_oracle_observation_for(
+            line,
+            TestOracleClass::Weak,
+            "broad predicate",
+            "broad predicate may miss changed behavior or exact discriminator drift",
+        ));
+    }
+    if trimmed.contains("assert!(") && contains_any(trimmed, &[" == ", " != ", " >= ", " <= "]) {
+        return Some(test_oracle_observation_for(
+            line,
+            TestOracleClass::Medium,
+            "boolean comparison",
+            "boolean comparison gives some discrimination without structured equality",
+        ));
+    }
+    if trimmed.contains("assert!(") {
+        return Some(test_oracle_observation_for(
+            line,
+            TestOracleClass::Weak,
+            "generic assert",
+            "generic boolean assertion needs review for discriminator strength",
+        ));
+    }
+
+    None
+}
+
+fn contains_any(value: &str, needles: &[&str]) -> bool {
+    needles.iter().any(|needle| value.contains(needle))
+}
+
+fn test_oracle_observation_for(
+    line: usize,
+    class: TestOracleClass,
+    pattern: &str,
+    detail: &str,
+) -> TestOracleObservation {
+    TestOracleObservation {
+        line,
+        class,
+        pattern: pattern.to_string(),
+        detail: detail.to_string(),
+    }
+}
+
+fn test_oracle_counts(tests: &[TestOracleTest]) -> BTreeMap<&'static str, usize> {
+    let mut counts = BTreeMap::from([
+        ("strong", 0usize),
+        ("medium", 0usize),
+        ("weak", 0usize),
+        ("smoke", 0usize),
+    ]);
+    for test in tests {
+        if let Some(count) = counts.get_mut(test.class.as_str()) {
+            *count += 1;
+        }
+    }
+    counts
+}
+
+fn test_oracle_report_status(tests: &[TestOracleTest]) -> &'static str {
+    if tests
+        .iter()
+        .any(|test| matches!(test.class, TestOracleClass::Weak | TestOracleClass::Smoke))
+    {
+        "warn"
+    } else {
+        "pass"
+    }
+}
+
+fn test_oracle_report_markdown(tests: &[TestOracleTest]) -> String {
+    let counts = test_oracle_counts(tests);
+    let mut body = format!(
+        "# ripr test oracle report\n\nStatus: {}\n\nMode: advisory\n\nThis report measures the apparent discriminator strength of `ripr`'s own Rust tests. It does not fail existing debt yet.\n\n## Summary\n\n- Strong: {}\n- Medium: {}\n- Weak: {}\n- Smoke: {}\n\n",
+        test_oracle_report_status(tests),
+        counts.get("strong").copied().unwrap_or(0),
+        counts.get("medium").copied().unwrap_or(0),
+        counts.get("weak").copied().unwrap_or(0),
+        counts.get("smoke").copied().unwrap_or(0)
+    );
+
+    body.push_str("## Weak Or Smoke Tests\n\n");
+    let weak_or_smoke = tests
+        .iter()
+        .filter(|test| matches!(test.class, TestOracleClass::Weak | TestOracleClass::Smoke))
+        .collect::<Vec<_>>();
+    if weak_or_smoke.is_empty() {
+        body.push_str("None detected.\n\n");
+    } else {
+        for test in weak_or_smoke {
+            body.push_str(&format!(
+                "- `{}`:{} `{}` classified `{}`\n",
+                normalize_path(&test.path),
+                test.line,
+                test.name,
+                test.class.as_str()
+            ));
+            for observation in &test.observations {
+                body.push_str(&format!(
+                    "  - line {}: `{}` - {}\n",
+                    observation.line, observation.pattern, observation.detail
+                ));
+            }
+        }
+        body.push('\n');
+    }
+
+    body.push_str("## All Tests\n\n| Test | Class | Evidence |\n| --- | --- | --- |\n");
+    for test in tests {
+        let evidence = test
+            .observations
+            .iter()
+            .map(|observation| format!("{}: {}", observation.line, observation.pattern))
+            .collect::<Vec<_>>()
+            .join("<br>");
+        body.push_str(&format!(
+            "| `{}`:{} `{}` | `{}` | {} |\n",
+            normalize_path(&test.path),
+            test.line,
+            markdown_cell(&test.name),
+            test.class.as_str(),
+            markdown_cell(&evidence)
+        ));
+    }
+    body
+}
+
+fn test_oracle_report_json(tests: &[TestOracleTest]) -> String {
+    let counts = test_oracle_counts(tests);
+    let mut body = format!(
+        "{{\n  \"schema_version\": \"0.1\",\n  \"status\": \"{}\",\n  \"advisory\": true,\n  \"counts\": {{\n    \"strong\": {},\n    \"medium\": {},\n    \"weak\": {},\n    \"smoke\": {}\n  }},\n  \"tests\": [\n",
+        test_oracle_report_status(tests),
+        counts.get("strong").copied().unwrap_or(0),
+        counts.get("medium").copied().unwrap_or(0),
+        counts.get("weak").copied().unwrap_or(0),
+        counts.get("smoke").copied().unwrap_or(0)
+    );
+
+    for (test_index, test) in tests.iter().enumerate() {
+        if test_index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("    {\n");
+        body.push_str(&format!(
+            "      \"path\": \"{}\",\n",
+            json_escape(&normalize_path(&test.path))
+        ));
+        body.push_str(&format!(
+            "      \"name\": \"{}\",\n",
+            json_escape(&test.name)
+        ));
+        body.push_str(&format!("      \"line\": {},\n", test.line));
+        body.push_str(&format!("      \"class\": \"{}\",\n", test.class.as_str()));
+        body.push_str("      \"observations\": [\n");
+        for (observation_index, observation) in test.observations.iter().enumerate() {
+            if observation_index > 0 {
+                body.push_str(",\n");
+            }
+            body.push_str("        {\n");
+            body.push_str(&format!("          \"line\": {},\n", observation.line));
+            body.push_str(&format!(
+                "          \"class\": \"{}\",\n",
+                observation.class.as_str()
+            ));
+            body.push_str(&format!(
+                "          \"pattern\": \"{}\",\n",
+                json_escape(&observation.pattern)
+            ));
+            body.push_str(&format!(
+                "          \"detail\": \"{}\"\n",
+                json_escape(&observation.detail)
+            ));
+            body.push_str("        }");
+        }
+        body.push_str("\n      ]\n    }");
+    }
+    body.push_str("\n  ]\n}\n");
+    body
 }
 
 fn check_capabilities() -> Result<(), String> {
@@ -3300,6 +3720,8 @@ fn known_xtask_command(command: &str) -> bool {
             | "fixtures"
             | "goldens"
             | "metrics"
+            | "test-oracle-report"
+            | "check-test-oracles"
             | "goals"
             | "ci-fast"
             | "ci-full"
@@ -4629,14 +5051,15 @@ fn is_word_char(value: Option<char>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        CampaignManifest, Capability, ChangedPath, MarkdownLink, extract_workflow_run_blocks,
-        glob_matches, is_dependency_surface_candidate, is_evidence_path, is_generated_candidate,
-        is_known_campaign_command, is_policy_path, is_production_path, is_snake_case_id,
-        is_spec_id, json_escape, local_markdown_target, markdown_links_in_text,
-        next_checkpoints_from_capabilities, normalize_fixture_human_output,
+        CampaignManifest, Capability, ChangedPath, MarkdownLink, TestOracleClass,
+        extract_workflow_run_blocks, glob_matches, is_dependency_surface_candidate,
+        is_evidence_path, is_generated_candidate, is_known_campaign_command, is_policy_path,
+        is_production_path, is_snake_case_id, is_spec_id, json_escape, local_markdown_target,
+        markdown_links_in_text, next_checkpoints_from_capabilities, normalize_fixture_human_output,
         normalize_fixture_json_output, normalize_golden_text, parse_campaign_manifest,
         parse_inline_array, parse_reason, pr_shape_warnings, precommit_report_body,
-        public_contract_rows, sorted_allowlist_content, spec_id_from_path,
+        public_contract_rows, sorted_allowlist_content, spec_id_from_path, test_oracle_report_json,
+        test_oracle_report_markdown, test_oracle_tests_in_text,
     };
     use std::collections::BTreeSet;
     use std::fs;
@@ -4980,11 +5403,60 @@ commands = [
     fn campaign_command_validator_accepts_known_repo_commands() {
         assert!(is_known_campaign_command("cargo xtask check-pr"));
         assert!(is_known_campaign_command("cargo xtask goals status"));
+        assert!(is_known_campaign_command("cargo xtask test-oracle-report"));
         assert!(is_known_campaign_command("cargo test --workspace"));
         assert!(!is_known_campaign_command("cargo xtask missing-command"));
         assert!(!is_known_campaign_command(""));
 
         let manifest = CampaignManifest::default();
         assert!(manifest.work_items.is_empty());
+    }
+
+    #[test]
+    fn test_oracle_parser_classifies_strong_weak_and_smoke_tests() {
+        let source = r#"
+#[test]
+fn exact_json_contract() {
+    assert_eq!(actual_json, expected_json);
+}
+
+#[test]
+fn weak_status_check() {
+    assert!(result.is_err());
+}
+
+#[test]
+fn smoke_command_runs() {
+    assert!(status.success());
+}
+"#;
+
+        let tests = test_oracle_tests_in_text(Path::new("crates/ripr/tests/example.rs"), source);
+
+        assert_eq!(tests.len(), 3);
+        assert_eq!(tests[0].name, "exact_json_contract");
+        assert_eq!(tests[0].class, TestOracleClass::Strong);
+        assert_eq!(tests[1].name, "weak_status_check");
+        assert_eq!(tests[1].class, TestOracleClass::Weak);
+        assert_eq!(tests[2].name, "smoke_command_runs");
+        assert_eq!(tests[2].class, TestOracleClass::Smoke);
+    }
+
+    #[test]
+    fn test_oracle_reports_include_advisory_debt() {
+        let source = r#"
+#[test]
+fn weak_contains() {
+    assert!(stdout.contains("warning"));
+}
+"#;
+        let tests = test_oracle_tests_in_text(Path::new("crates/ripr/tests/example.rs"), source);
+        let markdown = test_oracle_report_markdown(&tests);
+        let json = test_oracle_report_json(&tests);
+
+        assert!(markdown.contains("Status: warn"));
+        assert!(markdown.contains("Weak Or Smoke Tests"));
+        assert!(json.contains("\"advisory\": true"));
+        assert!(json.contains("\"weak\": 1"));
     }
 }

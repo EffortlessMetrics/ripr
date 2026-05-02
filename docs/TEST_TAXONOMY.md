@@ -62,3 +62,9 @@ Prefer exact assertions on:
 - related test evidence
 - oracle kind and strength
 - stop reasons
+
+`cargo xtask test-oracle-report` writes the current advisory baseline to
+`target/ripr/reports/test-oracles.md` and
+`target/ripr/reports/test-oracles.json`. The report classifies detected Rust
+tests as strong, medium, weak, or smoke so the repo can measure weak-oracle
+debt before making it a blocking policy.

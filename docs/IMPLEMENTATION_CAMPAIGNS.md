@@ -46,7 +46,7 @@ Work items:
 | `goals/manifest-check` | done | Active campaign manifest is validated and reportable. |
 | `fixtures/runner-comparison-v1` | done | Fixture and golden commands run `ripr` and compare actual outputs. |
 | `fixtures/first-two-goldens` | done | `boundary_gap` and `weak_error_oracle` fixtures exist with JSON and human goldens. |
-| `testing/test-oracle-report` | ready | Report strength of `ripr`'s own test oracles. |
+| `testing/test-oracle-report` | done | Advisory report measures `ripr`'s own strong, medium, weak, and smoke test oracles. |
 | `dogfood/static-self-check` | ready | Produce focused `ripr`-on-`ripr` reports. |
 
 Dependencies:
@@ -64,6 +64,7 @@ cargo xtask check-pr
 cargo xtask pr-summary
 cargo xtask fixtures
 cargo xtask goldens check
+cargo xtask test-oracle-report
 cargo xtask metrics
 ```
 

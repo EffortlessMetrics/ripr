@@ -63,3 +63,5 @@ how future PRs are scoped or reviewed.
   expected fixture goldens.
 - Added the first behavior fixtures, `boundary_gap` and `weak_error_oracle`,
   with checked JSON and human expected outputs.
+- Added advisory `cargo xtask test-oracle-report` and `check-test-oracles`
+  commands for measuring `ripr`'s own Rust test oracle strength.

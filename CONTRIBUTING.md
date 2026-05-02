@@ -136,6 +136,7 @@ Validate fixture and golden scaffolding with:
 ```bash
 cargo xtask fixtures
 cargo xtask goldens check
+cargo xtask test-oracle-report
 ```
 
 Long-running Codex Goals campaigns should follow
@@ -152,6 +153,7 @@ cargo xtask precommit
 cargo xtask check-pr
 cargo xtask fixtures
 cargo xtask goldens check
+cargo xtask test-oracle-report
 cargo xtask metrics
 cargo fmt --check
 cargo check --workspace --all-targets
