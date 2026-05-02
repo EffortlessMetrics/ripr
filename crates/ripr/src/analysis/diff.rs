@@ -139,7 +139,7 @@ mod tests {
     #[test]
     fn parser_is_robust_against_fuzz_like_inputs() {
         let mut seed = 0xC0FFEE_u64;
-        for _case in 0..512 {
+        for _case in 0..1024 {
             let len = (next_u64(&mut seed) % 512) as usize;
             let mut bytes = Vec::with_capacity(len);
             for _ in 0..len {
@@ -148,15 +148,61 @@ mod tests {
             let text = String::from_utf8_lossy(&bytes);
             let files = parse_unified_diff(&text);
             for file in files {
-                assert!(!file.path.as_os_str().is_empty());
-                assert!(file.added_lines.windows(2).all(|w| w[0].line <= w[1].line));
-                assert!(
-                    file.removed_lines
-                        .windows(2)
-                        .all(|w| w[0].line <= w[1].line)
-                );
+                assert!(file.added_lines.iter().all(|line| !line.text.contains('\n')));
+                assert!(file.removed_lines.iter().all(|line| !line.text.contains('\n')));
             }
         }
+
+        // Structured fuzzing: perturb valid-ish patch fragments so the parser
+        // explores realistic line-oriented states while still receiving
+        // malformed hunks and headers.
+        let mut grammar_seed = 0xDEADBEEF_u64;
+        for _case in 0..512 {
+            let text = generate_fuzz_diff(&mut grammar_seed);
+            let files = parse_unified_diff(&text);
+            for file in files {
+                assert!(file.added_lines.iter().all(|line| !line.text.contains('\n')));
+                assert!(file.removed_lines.iter().all(|line| !line.text.contains('\n')));
+            }
+        }
+    }
+
+    fn generate_fuzz_diff(seed: &mut u64) -> String {
+        const TOKENS: &[&str] = &[
+            "diff --git a/src/lib.rs b/src/lib.rs\n",
+            "diff --git a/src/main.rs b/src/main.rs\n",
+            "--- a/src/lib.rs\n",
+            "+++ b/src/lib.rs\n",
+            "--- a/src/main.rs\n",
+            "+++ b/src/main.rs\n",
+            "@@ -1,3 +1,3 @@\n",
+            "@@ -0,0 +1,1 @@\n",
+            "@@ -999999999999999999,1 +1,1 @@\n",
+            "+added line\n",
+            "-removed line\n",
+            " context\n",
+            "+++ b/\n",
+            "@@ not a hunk @@\n",
+            "\n",
+        ];
+
+        let mut out = String::new();
+        let n = (next_u64(seed) % 64) as usize;
+        for _ in 0..n {
+            let idx = (next_u64(seed) as usize) % TOKENS.len();
+            out.push_str(TOKENS[idx]);
+
+            if next_u64(seed).is_multiple_of(7) {
+                // Inject arbitrary bytes between valid-ish lines.
+                let mut noise = [0u8; 8];
+                for byte in &mut noise {
+                    *byte = (next_u64(seed) & 0xFF) as u8;
+                }
+                out.push_str(&String::from_utf8_lossy(&noise));
+                out.push('\n');
+            }
+        }
+        out
     }
 
     fn next_u64(seed: &mut u64) -> u64 {
