@@ -92,3 +92,5 @@ how future PRs are scoped or reviewed.
   report artifacts and surface it in CI job summaries.
 - Added `cargo xtask receipts` and `cargo xtask receipts check` for
   machine-readable gate receipts under `target/ripr/receipts`.
+- Reworked the README as a problem-first front door that links deeper roadmap,
+  automation, capability, and contributor docs instead of carrying the full map.

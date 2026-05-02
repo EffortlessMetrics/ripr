@@ -1,111 +1,96 @@
 # ripr
 
-`ripr` is a static RIPR mutation-exposure analyzer for Rust workspaces.
-
-It answers a draft-time testing question:
+`ripr` helps Rust developers and coding agents answer a draft-time testing
+question:
 
 ```text
 For the behavior changed in this diff, do the current tests appear to contain
 a discriminator that would notice if that behavior were wrong?
 ```
 
-`ripr` is alpha software. The current release is a syntax-first scanner that is
-useful for early feedback, not a proof system.
+`ripr` is a static **Reachability-Infection-Propagation-Revealability (RIPR)**
+exposure analyzer for Rust workspaces. It reads changed Rust code, builds
+mutation-shaped static probes, and reports whether existing tests appear to
+reach, affect, propagate, observe, and discriminate the changed behavior.
 
-This is the product repository for `ripr`. The `0.2.x` line keeps the analyzer
-scope narrow while adding extension-managed server provisioning.
+It is alpha software. The current release is useful for fast feedback while a
+pull request is moving. It is not a proof system, and it does not replace real
+mutation testing.
 
-## Mission
+## The Problem
 
-`ripr` helps Rust developers and coding agents write tests that actually notice
-changed behavior.
+Coverage can tell you that code executed.
 
-It performs static RIPR exposure analysis over changed Rust code, creates
-mutation-shaped probes, and reports whether existing tests appear to contain the
-discriminators needed to expose those changes.
+Mutation testing can tell you whether a concrete mutated version of the code was
+caught by the test suite.
 
-It is a fast draft-mode companion to real mutation testing: static guidance
-while the pull request is moving, real mutation confirmation when the change is
-ready.
-
-## Vision
-
-The vision for `ripr` is to become the live test-adequacy layer between coverage
-and mutation testing for Rust/Cargo workspaces.
-
-Coverage tells developers what executed. Mutation testing tells developers what
-survived. `ripr` tells developers, reviewers, and agents what changed behavior
-appears to lack a meaningful oracle before the expensive mutation run begins.
-
-The end state is an LSP-native sidecar that watches changed code, identifies
-missing discriminators, explains the evidence path, emits agent-ready test
-intent, and calibrates itself against real mutation outcomes.
-
-## Category
-
-`ripr` defines its category as:
+During everyday development, teams often need a cheaper question answered
+earlier:
 
 ```text
-Static Mutation Exposure Analysis
+This behavior changed. Do the nearby tests actually check the thing that changed?
 ```
 
-More specifically:
+That is what `ripr` is for.
 
-```text
-Static oracle-gap analysis for diff-derived mutation probes.
-```
+It is designed to find weak or missing test discriminators, such as:
 
-The tool is not trying to be a coverage dashboard, a full mutation engine, a
-proof system, a second rust-analyzer, or a generic LLM test generator. Its job is
-to shorten the path from "this behavior changed" to "this is the exact test
-oracle that should notice."
+- a boundary change without equality-boundary assertions
+- an error-path change checked only with `is_err()`
+- a return-value change covered only by a smoke assertion
+- a field construction change without field or object assertions
+- a side effect without a mock, event, state, persistence, or metric oracle
 
 ## What ripr Does
 
-`ripr` reads changed Rust code, creates mutation-shaped probes, and estimates
-whether related tests appear to reach, infect, propagate, observe, and
-discriminate the changed behavior.
+`ripr` analyzes a diff and classifies static exposure evidence for changed
+behavior.
 
-It looks for missing or weak test oracles such as:
+It looks for:
 
-- boundary changes without boundary-value assertions
-- error-path changes checked only with `is_err()`
-- return-value changes checked only with smoke assertions
-- field construction changes without field, object, or snapshot assertions
-- side effects without mock, event, state, persistence, or metric oracles
+```text
+Reachability:
+  can a related test reach the changed code?
+
+Infection:
+  could the changed expression alter local state or control?
+
+Propagation:
+  could that altered state reach a visible boundary?
+
+Revealability:
+  does a test oracle appear to observe the affected behavior?
+```
+
+Then it reports whether the current tests appear to expose the changed behavior
+to a meaningful discriminator.
 
 ## What ripr Does Not Do
 
 `ripr` does not run mutants.
 
-It does not report `killed` or `survived`, prove test adequacy, replace coverage,
-or replace real mutation testing. Use a real mutation runner, such as
-`cargo-mutants`, when the change is ready for confirmation.
+It does not report `killed` or `survived`, prove test adequacy, replace
+coverage, or replace real mutation testing.
 
-## Where It Fits
+Use `ripr` for fast, static, draft-time oracle-gap feedback. Use a real mutation
+runner, such as `cargo-mutants`, when the change is ready for execution-backed
+confirmation.
+
+## Where ripr Fits
 
 ```text
 coverage:
   did this code execute?
 
 ripr:
-  does changed behavior appear exposed to a meaningful oracle?
+  does changed behavior appear exposed to a meaningful test oracle?
 
 mutation testing:
   did tests fail when a concrete mutant was run?
 ```
 
-The goal is fast, honest oracle-gap feedback while code is still changing.
-
-## Ecosystem Positioning
-
-| Existing layer | What it answers | Gap |
-| --- | --- | --- |
-| `cargo-llvm-cov` | Did code execute? | Not oracle-aware |
-| selective retest tools | Which tests are impacted? | Not assertion-aware |
-| `cargo-mutants` | Did real mutants survive? | Too expensive for live draft feedback |
-| `rust-analyzer` | What does Rust code mean in the editor? | Does not rank mutation exposure |
-| `ripr` | Does changed behavior appear exposed to a meaningful oracle? | New middle layer |
+`ripr` is the middle layer: faster and more targeted than mutation testing, more
+oracle-aware than coverage.
 
 ## Install
 
@@ -117,8 +102,8 @@ cargo install ripr
 
 Links:
 
-- crates.io: https://crates.io/crates/ripr
-- docs.rs: https://docs.rs/ripr
+- crates.io: <https://crates.io/crates/ripr>
+- docs.rs: <https://docs.rs/ripr>
 
 For local development from this repository:
 
@@ -130,30 +115,52 @@ cargo install --path crates/ripr
 
 ## Quick Start
 
+Check local tooling and workspace shape:
+
 ```bash
-# Check local tooling and workspace shape
 ripr doctor
+```
 
-# Analyze the current Git diff against origin/main
+Check the current Git diff against `origin/main`:
+
+```bash
 ripr check --base origin/main
+```
 
-# Analyze an explicit unified diff
+Analyze an explicit unified diff:
+
+```bash
 ripr check --diff example.diff
+```
 
-# Emit stable JSON for tools and agents
+Emit JSON for tools, editors, CI, or agents:
+
+```bash
 ripr check --diff example.diff --json
+```
 
-# Emit GitHub Actions annotations
+Emit GitHub Actions annotations:
+
+```bash
 ripr check --diff example.diff --format github
+```
 
-# Explain one finding
+Explain a finding:
+
+```bash
 ripr explain --diff example.diff probe:src_lib.rs:88:predicate
+```
 
-# Emit an agent-ready context packet
+Emit an agent context packet:
+
+```bash
 ripr context --diff example.diff --at probe:src_lib.rs:88:predicate --json
+```
 
-# Start the experimental LSP sidecar
-ripr lsp
+Start the experimental language server:
+
+```bash
+ripr lsp --stdio
 ```
 
 ## Example Finding
@@ -161,44 +168,27 @@ ripr lsp
 ```text
 WARNING src/pricing.rs:88
 
-Static exposure: weakly_exposed (predicate, control)
+Static exposure: weakly_exposed
+Probe: predicate
 
 Changed behavior:
-  after:  if amount >= discount_threshold {
+  if amount >= discount_threshold {
 
-RIPR:
-  Reach:        yes
-  Infect:      weak
-  Propagate:   yes
-  Observe:     yes
-  Discriminate: weak
+Evidence:
+  Reachability:     related tests found
+  Infection:        changed predicate can alter branch behavior
+  Propagation:      branch appears to influence returned total
+  Revealability:    tests assert returned values, but no equality-boundary case was found
 
 Gap:
-  - No detected boundary input for the changed predicate
-  - No strong discriminator was detected
+  No detected test input for amount == discount_threshold.
 
 Recommended next step:
-  Add below, equal, and above threshold tests with exact assertions.
+  Add below, equal, and above-threshold tests with exact assertions.
 ```
 
-## Output Formats
-
-Human output is optimized for local use.
-
-JSON output is versioned and intended for editor integrations, CI, and coding
-agents:
-
-```json
-{
-  "schema_version": "0.1",
-  "tool": "ripr",
-  "mode": "draft",
-  "base": "origin/main",
-  "findings": []
-}
-```
-
-GitHub output emits workflow annotations.
+The wording is intentionally conservative. Static analysis can identify evidence
+and gaps; it should not claim real mutation outcomes.
 
 ## Classifications
 
@@ -210,7 +200,11 @@ GitHub output emits workflow annotations.
 | `no_static_path` | No static test path was found for the changed owner. |
 | `infection_unknown` | Reachability exists, but input or fixture evidence is opaque. |
 | `propagation_unknown` | The changed behavior crosses an opaque propagation boundary. |
-| `static_unknown` | Syntax-first analysis cannot make a credible judgment. |
+| `static_unknown` | Static analysis cannot make a credible judgment. |
+
+`ripr` should not use mutation-runtime outcome language such as `killed` or
+`survived` unless explicit real mutation data is being reported in a calibration
+context.
 
 ## Current Scope
 
@@ -219,8 +213,9 @@ The current alpha line is intentionally narrow:
 - one published package: `ripr`
 - one CLI binary: `ripr`
 - one shared analysis engine
-- syntax-first unified diff analysis
-- parser-backed Rust function, test, and assertion indexing with lexical fallback
+- syntax-backed unified diff analysis
+- parser-backed Rust function, test, assertion, owner, and probe facts with
+  lexical fallback
 - human, JSON, and GitHub outputs
 - experimental LSP sidecar
 
@@ -229,76 +224,67 @@ crate boundaries can be added later if external consumers need them.
 
 ## Current Capability Snapshot
 
-`ripr` is currently strongest as a fast, syntax-first draft signal. The active
-work is to make findings more evidence-first through unknown stop reasons,
-probe-relative oracle strength, local flow, and activation/value modeling.
+`ripr` is currently strongest as a fast, syntax-backed draft signal.
+
+Current capabilities:
 
 | Capability | Current state | Next checkpoint |
 | --- | --- | --- |
 | Distribution | Crate and extension packaging paths exist. | Verify one-click editor install from a fresh profile. |
-| Diff analysis | Syntax-first changed-line probes with module- and impl-qualified owner symbols plus parser-backed probe shape facts. | Unknown stop reasons, local flow, and activation values. |
+| Diff analysis | Syntax-backed changed-line probes with owner symbols and parser-backed probe facts. | Unknown stop reasons, local flow, and activation values. |
 | Test discovery | Parser-backed test and assertion facts. | Probe-relative oracle strength. |
-| Output | Human, JSON, GitHub annotation formats. | Evidence-first output with explicit unknown stop reasons. |
+| Output | Human, JSON, and GitHub annotation formats. | Evidence-first output with explicit unknown stop reasons. |
 | LSP | Experimental sidecar. | Evidence-aware diagnostics, hover, and context actions. |
 | Agent context | Compact context packet. | Test-writing brief with missing values and assertion shape. |
 | Calibration | Not yet connected to real mutation outcomes. | `cargo-mutants` import after static facts improve. |
 
-Important engineering metrics are tracked in [Metrics](docs/METRICS.md). The
-headline targets are:
+The active product work is to make findings more evidence-first:
 
-- reduce time from changed behavior to useful targeted test intent
-- increase fixture-backed capability coverage
-- keep unknowns explicit with stop reasons
-- prevent static output from claiming real mutation outcomes
-- drive `panic` / `unwrap` / `expect` usage in production and tests to zero
-- keep editor and CI feedback latency bounded by mode
+```text
+unknown stop reasons
+probe-relative oracle strength
+local flow
+activation/value modeling
+evidence-first output
+```
 
-## Supporting Docs
+Deeper capability state lives in [Capability matrix](docs/CAPABILITY_MATRIX.md)
+and [Metrics](docs/METRICS.md).
 
-- [Charter](docs/CHARTER.md): mission, vision, category, ecosystem role, and non-goals.
-- [Static exposure model](docs/STATIC_EXPOSURE_MODEL.md): probes, RIPR stages, oracle strength, and classifications.
-- [Output schema](docs/OUTPUT_SCHEMA.md): JSON output and context packet fields.
-- [Architecture](docs/ARCHITECTURE.md): package shape and internal modules.
-- [Roadmap](docs/ROADMAP.md): staged path from alpha to reliable live static exposure analysis.
-- [Implementation plan](docs/IMPLEMENTATION_PLAN.md): PR-by-PR checklist and acceptance gates.
-- [Implementation campaigns](docs/IMPLEMENTATION_CAMPAIGNS.md): campaign-level plan for Codex Goals.
-- [Codex Goals](docs/CODEX_GOALS.md): multi-PR autonomous campaign model.
-- [Scoped PR contract](docs/SCOPED_PR_CONTRACT.md): evidence bar for each work item PR.
-- [PR automation](docs/PR_AUTOMATION.md): shape/check/guide model for reviewable PRs.
-- [Specs](docs/specs/README.md): behavior contracts for spec-test-code traceability.
-- [ADRs](docs/adr/README.md): durable architecture and product decisions.
-- [Metrics](docs/METRICS.md): capability, quality, and engineering metrics.
-- [Capability matrix](docs/CAPABILITY_MATRIX.md): capability status, evidence, next checkpoint, and metric.
-- [Engineering rules](docs/ENGINEERING.md): SRP, error-handling, output-language, and testing rules.
-- [File policy](docs/FILE_POLICY.md): Rust-first implementation and allowlisted non-Rust surfaces.
-- [Spec format](docs/SPEC_FORMAT.md): required sections for behavior contracts.
-- [Test taxonomy](docs/TEST_TAXONOMY.md): proof levels for unit, fixture, golden, invariant, and dogfood tests.
-- [Contributing](CONTRIBUTING.md): PR workflow, review checklist, and required gates.
-- [CI strategy](docs/CI.md): current gates, future CI policy, and merge criteria.
-- [Dogfooding](docs/DOGFOODING.md): using `ripr` on this repository without overfitting.
-- [Agent workflows](docs/AGENT_WORKFLOWS.md): long-context handoff, subsetting, and resume rules.
-- [Spec-test-code traceability](docs/SPEC_TEST_CODE.md): mapping behavior specs to tests and code.
-- [Documentation system](docs/DOCUMENTATION.md): Diataxis organization for user and contributor docs.
-- [Learnings](docs/LEARNINGS.md): repo knowledge captured as work proceeds.
-- [Testing](docs/TESTING.md): local test and package gates.
-- [Release](docs/RELEASE.md): publish checklist and crates.io gates.
-- [Editor extension](docs/EDITOR_EXTENSION.md): VS Code extension usage and local VSIX gates.
-- [Server provisioning](docs/SERVER_PROVISIONING.md): extension-managed server resolution and download.
-- [Server binary release](docs/RELEASE_BINARIES.md): GitHub Release assets for extension downloads.
-- [Marketplace release](docs/RELEASE_MARKETPLACE.md): VS Marketplace and Open VSX release checklist.
-- [Open VSX](docs/OPENVSX.md): namespace and token setup notes.
-- [Brand assets](assets/logo/README.md): logo sources and marketplace icon usage.
-- [Changelog](CHANGELOG.md): notable repository-level changes.
-- [Changelog policy](docs/CHANGELOG_POLICY.md): what belongs in the changelog.
-- [Agent instructions](AGENTS.md): repo-specific instructions for coding agents.
+## Editor Extension
 
-## Development
+The VS Code extension starts `ripr lsp --stdio` and can resolve the server from:
+
+```text
+1. explicit ripr.server.path
+2. bundled server binary, if present
+3. downloaded cached server binary
+4. verified first-run GitHub Release download
+5. ripr on PATH
+6. actionable error
+```
+
+See:
+
+- [Editor extension](docs/EDITOR_EXTENSION.md)
+- [Server provisioning](docs/SERVER_PROVISIONING.md)
+- [Marketplace release](docs/RELEASE_MARKETPLACE.md)
+
+## For Contributors
+
+Most contributors should use the repo automation instead of remembering the gate
+order manually.
 
 ```bash
 cargo xtask shape
 cargo xtask fix-pr
-cargo xtask precommit
 cargo xtask check-pr
+cargo xtask pr-summary
+```
+
+Useful evidence commands:
+
+```bash
 cargo xtask fixtures
 cargo xtask goldens check
 cargo xtask test-oracle-report
@@ -306,20 +292,76 @@ cargo xtask dogfood
 cargo xtask reports index
 cargo xtask receipts
 cargo xtask receipts check
-cargo xtask check-traceability
 cargo xtask metrics
-cargo xtask check-capabilities
-cargo xtask check-workspace-shape
-cargo xtask check-architecture
-cargo xtask check-public-api
-cargo xtask check-output-contracts
-cargo xtask check-doc-index
-cargo xtask check-pr-shape
+```
+
+A good `ripr` PR is scoped by production risk, not line count:
+
+```text
+small production delta
+complete evidence package
+clear spec-test-code-output-metric trail
+```
+
+Large fixture, golden, spec, docs, metrics, or traceability diffs are welcome
+when they make one production behavior reviewable.
+
+See:
+
+- [Scoped PR contract](docs/SCOPED_PR_CONTRACT.md)
+- [PR automation](docs/PR_AUTOMATION.md)
+- [Engineering rules](docs/ENGINEERING.md)
+- [Agent workflows](docs/AGENT_WORKFLOWS.md)
+- [Codex Goals](docs/CODEX_GOALS.md)
+
+## Supporting Docs
+
+Start here:
+
+| Need | Doc |
+| --- | --- |
+| Understand the model | [Static exposure model](docs/STATIC_EXPOSURE_MODEL.md) |
+| Understand JSON/context output | [Output schema](docs/OUTPUT_SCHEMA.md) |
+| See current product direction | [Roadmap](docs/ROADMAP.md) |
+| See active campaigns | [Implementation campaigns](docs/IMPLEMENTATION_CAMPAIGNS.md) |
+| See implementation checkpoints | [Implementation plan](docs/IMPLEMENTATION_PLAN.md) |
+| Run Codex Goals | [Codex Goals](docs/CODEX_GOALS.md) |
+| See behavior contracts | [Specs](docs/specs/README.md) |
+| See design decisions | [ADRs](docs/adr/README.md) |
+| Add or review fixtures | [Testing](docs/TESTING.md) and [Test taxonomy](docs/TEST_TAXONOMY.md) |
+| Understand repo automation | [PR automation](docs/PR_AUTOMATION.md) |
+| Understand architecture | [Architecture](docs/ARCHITECTURE.md) |
+| Review capability state | [Capability matrix](docs/CAPABILITY_MATRIX.md) and [Metrics](docs/METRICS.md) |
+| Contribute a scoped PR | [Contributing](CONTRIBUTING.md) and [Scoped PR contract](docs/SCOPED_PR_CONTRACT.md) |
+| Understand CI | [CI strategy](docs/CI.md) |
+| Understand dogfooding | [Dogfooding](docs/DOGFOODING.md) |
+| Understand docs organization | [Documentation system](docs/DOCUMENTATION.md) |
+| Capture repo knowledge | [Learnings](docs/LEARNINGS.md) |
+| Release the crate or extension | [Release](docs/RELEASE.md), [Publishing](docs/PUBLISHING.md), and [Open VSX](docs/OPENVSX.md) |
+| Work on extension assets | [Brand assets](assets/logo/README.md) |
+| Find repo instructions for agents | [Agent instructions](AGENTS.md) |
+
+## Development
+
+Run the normal local gate:
+
+```bash
+cargo xtask check-pr
+```
+
+Run the full Rust checks directly:
+
+```bash
 cargo fmt --check
 cargo check --workspace --all-targets
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo doc --workspace --no-deps
+```
+
+Release/package checks:
+
+```bash
 cargo package -p ripr --list
 cargo publish -p ripr --dry-run
 ```
