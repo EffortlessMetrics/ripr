@@ -73,6 +73,8 @@ fn main() {
         Some("shape") => shape(),
         Some("fix-pr") => fix_pr(),
         Some("pr-summary") => pr_summary(),
+        Some("precommit") => precommit(),
+        Some("check-pr") => check_pr(),
         Some("ci-fast") => ci_fast(),
         Some("ci-full") => ci_full(),
         Some("check-static-language") => check_static_language(),
@@ -106,6 +108,45 @@ fn ci_fast() -> Result<(), String> {
     run("cargo", &["fmt", "--check"])?;
     run("cargo", &["check", "--workspace", "--all-targets"])?;
     run("cargo", &["test", "--workspace"])?;
+    run_policy_checks()
+}
+
+fn precommit() -> Result<(), String> {
+    ensure_reports_dir()?;
+    run("cargo", &["fmt", "--check"])?;
+    check_static_language()?;
+    check_no_panic_family()?;
+    check_file_policy()?;
+    check_executable_files()?;
+    check_workflows()?;
+    check_spec_format()?;
+    check_fixture_contracts()?;
+    check_generated()?;
+    let body = precommit_report_body();
+    write_report("precommit.md", &body)
+}
+
+fn check_pr() -> Result<(), String> {
+    ensure_reports_dir()?;
+    ci_fast()?;
+    run(
+        "cargo",
+        &[
+            "clippy",
+            "--workspace",
+            "--all-targets",
+            "--",
+            "-D",
+            "warnings",
+        ],
+    )?;
+    run("cargo", &["doc", "--workspace", "--no-deps"])?;
+    pr_summary()?;
+    let body = check_pr_report_body();
+    write_report("check-pr.md", &body)
+}
+
+fn run_policy_checks() -> Result<(), String> {
     check_static_language()?;
     check_no_panic_family()?;
     check_file_policy()?;
@@ -120,19 +161,7 @@ fn ci_fast() -> Result<(), String> {
 }
 
 fn ci_full() -> Result<(), String> {
-    ci_fast()?;
-    run(
-        "cargo",
-        &[
-            "clippy",
-            "--workspace",
-            "--all-targets",
-            "--",
-            "-D",
-            "warnings",
-        ],
-    )?;
-    run("cargo", &["doc", "--workspace", "--no-deps"])?;
+    check_pr()?;
     run("cargo", &["package", "-p", "ripr", "--list"])?;
     run("cargo", &["publish", "-p", "ripr", "--dry-run"]).map(|_| ())
 }
@@ -152,7 +181,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
+        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
     );
 }
 
@@ -167,7 +196,7 @@ fn shape() -> Result<(), String> {
 fn fix_pr() -> Result<(), String> {
     shape()?;
     pr_summary()?;
-    let body = "# ripr fix-pr report\n\nStatus: pass\n\nActions:\n\n- Ran `cargo xtask shape`.\n- Ran `cargo xtask pr-summary`.\n\nReports:\n\n- `target/ripr/reports/shape.md`\n- `target/ripr/reports/pr-summary.md`\n\nNext commands:\n\n```bash\ncargo xtask ci-fast\n```\n";
+    let body = "# ripr fix-pr report\n\nStatus: pass\n\nActions:\n\n- Ran `cargo xtask shape`.\n- Ran `cargo xtask pr-summary`.\n\nReports:\n\n- `target/ripr/reports/shape.md`\n- `target/ripr/reports/pr-summary.md`\n\nNext commands:\n\n```bash\ncargo xtask check-pr\n```\n";
     write_report("fix-pr.md", body)
 }
 
@@ -175,6 +204,14 @@ fn pr_summary() -> Result<(), String> {
     let changes = collect_pr_changes()?;
     let body = pr_summary_body(&changes);
     write_report("pr-summary.md", &body)
+}
+
+fn precommit_report_body() -> String {
+    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-generated`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
+}
+
+fn check_pr_report_body() -> String {
+    "# ripr check-pr report\n\nStatus: pass\n\nChecks:\n\n- `cargo xtask ci-fast`\n- `cargo clippy --workspace --all-targets -- -D warnings`\n- `cargo doc --workspace --no-deps`\n- `cargo xtask pr-summary`\n\nReports:\n\n- `target/ripr/reports/pr-summary.md`\n- `target/ripr/reports/check-pr.md`\n\nRelease/package gates are intentionally left to `cargo xtask ci-full` or release-specific workflows.\n".to_string()
 }
 
 fn check_static_language() -> Result<(), String> {
@@ -1590,7 +1627,7 @@ mod tests {
     use super::{
         ChangedPath, extract_workflow_run_blocks, glob_matches, is_dependency_surface_candidate,
         is_evidence_path, is_generated_candidate, is_policy_path, is_production_path,
-        public_contract_rows, sorted_allowlist_content,
+        precommit_report_body, public_contract_rows, sorted_allowlist_content,
     };
     use std::collections::BTreeSet;
 
@@ -1714,5 +1751,13 @@ jobs:
 
         assert_eq!(json, vec!["crates/ripr/src/output/json.rs (M)"]);
         assert_eq!(lsp, vec!["editors/vscode/src/client.ts (M)"]);
+    }
+
+    #[test]
+    fn precommit_report_points_to_review_ready_gate() {
+        let body = precommit_report_body();
+
+        assert!(body.contains("cargo fmt --check"));
+        assert!(body.contains("cargo xtask check-pr"));
     }
 }

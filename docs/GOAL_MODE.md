@@ -9,7 +9,7 @@ agent can run:
 
 ```bash
 cargo xtask fix-pr
-cargo xtask ci-fast
+cargo xtask check-pr
 cargo xtask pr-summary
 ```
 
@@ -52,7 +52,7 @@ Acceptance:
 Required commands:
 cargo xtask shape
 cargo xtask fix-pr
-cargo xtask ci-fast
+cargo xtask check-pr
 cargo xtask pr-summary
 git diff --check
 
@@ -99,7 +99,7 @@ repo should have the following commands available or intentionally scheduled:
 ```bash
 cargo xtask shape
 cargo xtask fix-pr
-cargo xtask ci-fast
+cargo xtask check-pr
 cargo xtask pr-summary
 cargo xtask fixtures
 cargo xtask goldens check

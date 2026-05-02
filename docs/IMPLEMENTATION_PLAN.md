@@ -239,17 +239,17 @@ readiness checks.
 
 Deliverables:
 
-- [ ] Add `cargo xtask precommit`.
-- [ ] Add `cargo xtask check-pr`.
-- [ ] Keep `precommit` cheap and non-mutating.
-- [ ] Make `check-pr` run the review-ready command set that exists today.
-- [ ] Update CI, contributor, and agent docs.
+- [x] Add `cargo xtask precommit`.
+- [x] Add `cargo xtask check-pr`.
+- [x] Keep `precommit` cheap and non-mutating.
+- [x] Make `check-pr` run the review-ready command set that exists today.
+- [x] Update CI, contributor, and agent docs.
 
 Acceptance:
 
-- [ ] `cargo xtask precommit` passes on main.
-- [ ] `cargo xtask check-pr` passes on main.
-- [ ] `check-pr` does not run release packaging unless the repo later adds a
+- [x] `cargo xtask precommit` passes on main.
+- [x] `cargo xtask check-pr` passes on main.
+- [x] `check-pr` does not run release packaging unless the repo later adds a
       path-aware release lane.
 
 ## PR 1I: `guided-check-reports`
