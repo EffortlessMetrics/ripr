@@ -101,3 +101,6 @@ how future PRs are scoped or reviewed.
 - Added high-signal workspace Clippy denies for `dbg_macro`, `todo`, and
   `unimplemented`, plus `cargo xtask check-allow-attributes` to prevent
   bypassing guarded lint families without reviewed allowlist entries.
+- Added static/manual VS Marketplace badges and live Open VSX badges to the
+  extension README, plus release-doc maintenance steps for refreshing the
+  manual Marketplace install count.
