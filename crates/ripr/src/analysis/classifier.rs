@@ -1201,6 +1201,26 @@ mod tests {
         assert_eq!(labels, vec!["async_boundary_opaque", "proc_macro_opaque"]);
     }
 
+    #[test]
+    fn stop_reasons_include_fixture_and_missing_owner_signals() {
+        let probe = probe(
+            ProbeFamily::CallDeletion,
+            DeltaKind::Effect,
+            "client.send(input)",
+        );
+        let fixture_test = test(
+            "tests/service.rs",
+            "service_uses_fixture",
+            "score(1)",
+            "let fixture = build_fixture(); assert_eq!(score(1), 2);",
+        );
+
+        let reasons = stop_reasons(&probe, None, &[&fixture_test]);
+        let labels: Vec<&str> = reasons.iter().map(StopReason::as_str).collect();
+
+        assert_eq!(labels, vec!["fixture_opaque", "no_changed_rust_line"]);
+    }
+
     fn stop_reason_labels(probe: &Probe) -> Vec<&str> {
         let owner = function("crates/ripr/src/lib.rs", "dummy");
         let reasons = stop_reasons(probe, Some(&owner), &[]);
