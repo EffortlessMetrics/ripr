@@ -44,7 +44,7 @@ For each work item:
 - keep the production delta narrow
 - add the required evidence package
 - run the repo shaping and verification commands
-- generate reports and receipts
+- generate reports, and receipts when the repo has receipt support
 - open or update the PR
 - continue only to the next independent or explicitly stackable work item
 

@@ -233,15 +233,16 @@ Acceptance:
 ## PR 1G: `automation-path-docs`
 
 Purpose: document the fix/check/guide operating model and the Codex Goals
-campaign handoff before the remaining automation and analyzer implementation
-work.
+campaign handoff so automation and analyzer implementation work share the same
+review contract.
 
 Deliverables:
 
 - [x] Add a PR automation operating model.
 - [x] Document deterministic shaping, non-mutating checks, and repair briefs.
 - [x] Document the scoped PR contract.
-- [x] Record the remaining automation cutoff before analyzer mode.
+- [x] Record the automation cutoff that made Campaign 1 safe to leave setup
+      mode.
 - [x] Link the new docs from the roadmap, documentation map, agent workflow,
       contributor docs, and README.
 
@@ -249,7 +250,8 @@ Acceptance:
 
 - [x] A contributor can identify which cleanup should be automated and which
       changes require explicit judgment.
-- [x] A coding agent can identify the next automation PRs before analyzer work.
+- [x] A coding agent can identify the next automation PRs without confusing
+      them with product campaign work.
 - [x] A coding agent can use a standard task template for the analyzer queue.
 
 ## PR 1H: `check-pr-precommit`
@@ -497,7 +499,7 @@ Invariants:
 
 ## PR 2A: `testing-test-oracle-report`
 
-Purpose: measure `ripr`'s own test oracle strength before analyzer work expands.
+Purpose: measure `ripr`'s own test oracle strength as analyzer work expands.
 
 Deliverables:
 
