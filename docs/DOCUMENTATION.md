@@ -94,3 +94,15 @@ The README is the front door. It should stay problem-first and include:
 - links to the deeper docs
 
 Avoid turning the README into the full roadmap or full schema reference.
+
+## Index Check
+
+Run:
+
+```bash
+cargo xtask check-doc-index
+```
+
+The check verifies that spec and ADR indexes list current files and that README
+and this documentation map still point at the active planning, metrics, spec,
+ADR, and PR automation docs.
