@@ -169,7 +169,6 @@ impl LanguageServer for Backend {
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         self.change_document(params);
-        self.refresh_diagnostics().await;
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
