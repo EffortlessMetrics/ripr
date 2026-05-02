@@ -1,5 +1,5 @@
 use crate::app::{CheckInput, OutputFormat, check_workspace};
-use crate::domain::Finding;
+use crate::domain::{ExposureClass, Finding};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -305,7 +305,7 @@ fn diagnostic_for_finding(finding: &Finding) -> Diagnostic {
                 character: 120,
             },
         },
-        severity: Some(DiagnosticSeverity::WARNING),
+        severity: Some(diagnostic_severity_for_class(&finding.class)),
         code: Some(NumberOrString::String(finding.class.as_str().to_string())),
         code_description: None,
         source: Some("ripr".to_string()),
@@ -313,11 +313,30 @@ fn diagnostic_for_finding(finding: &Finding) -> Diagnostic {
         related_information: None,
         tags: None,
         data: Some(serde_json::json!({
-            "probeId": finding.id,
-            "class": finding.class.as_str(),
-            "family": finding.probe.family.as_str(),
+            "schema_version": "0.1",
+            "finding_id": finding.id.as_str(),
+            "probe_id": finding.probe.id.to_string(),
+            "classification": finding.class.as_str(),
+            "probe_family": finding.probe.family.as_str(),
             "confidence": finding.confidence,
+            "source_range": {
+                "file": finding.probe.location.file.display().to_string(),
+                "line": finding.probe.location.line,
+                "column": finding.probe.location.column,
+            },
         })),
+    }
+}
+
+fn diagnostic_severity_for_class(class: &ExposureClass) -> DiagnosticSeverity {
+    match class {
+        ExposureClass::Exposed
+        | ExposureClass::PropagationUnknown
+        | ExposureClass::StaticUnknown => DiagnosticSeverity::INFORMATION,
+        ExposureClass::WeaklyExposed
+        | ExposureClass::ReachableUnrevealed
+        | ExposureClass::NoStaticPath
+        | ExposureClass::InfectionUnknown => DiagnosticSeverity::WARNING,
     }
 }
 
@@ -409,9 +428,9 @@ fn encode_uri_path(path: &str) -> String {
 mod tests {
     use super::{
         Backend, COPY_CONTEXT_COMMAND, HOVER_TEXT, REFRESH_COMMAND, code_action_response,
-        diagnostic_for_finding, diagnostic_refresh_plan, encode_uri_path, file_uri_for_path,
-        hover_response, initialize_result, path_from_file_uri, root_from_initialize_params,
-        take_all_uris,
+        diagnostic_for_finding, diagnostic_refresh_plan, diagnostic_severity_for_class,
+        encode_uri_path, file_uri_for_path, hover_response, initialize_result, path_from_file_uri,
+        root_from_initialize_params, take_all_uris,
     };
     use crate::domain::{
         Confidence, DeltaKind, ExposureClass, Finding, Probe, ProbeFamily, ProbeId, RevealEvidence,
@@ -522,11 +541,42 @@ mod tests {
         let Some(data) = diagnostic.data else {
             return Err("expected diagnostic data".to_string());
         };
-        assert_eq!(data["probeId"], "probe:pricing:88:predicate");
-        assert_eq!(data["class"], "weakly_exposed");
-        assert_eq!(data["family"], "predicate");
+        assert_eq!(data["schema_version"], "0.1");
+        assert_eq!(data["finding_id"], "probe:pricing:88:predicate");
+        assert_eq!(data["probe_id"], "probe:pricing:88:predicate");
+        assert_eq!(data["classification"], "weakly_exposed");
+        assert_eq!(data["probe_family"], "predicate");
         assert_eq!(data["confidence"], 0.75);
+        assert_eq!(data["source_range"]["file"], "src/pricing.rs");
+        assert_eq!(data["source_range"]["line"], 88);
+        assert_eq!(data["source_range"]["column"], 1);
         Ok(())
+    }
+
+    #[test]
+    fn diagnostic_severity_tracks_static_exposure_class() {
+        let cases = [
+            (ExposureClass::Exposed, DiagnosticSeverity::INFORMATION),
+            (ExposureClass::WeaklyExposed, DiagnosticSeverity::WARNING),
+            (
+                ExposureClass::ReachableUnrevealed,
+                DiagnosticSeverity::WARNING,
+            ),
+            (ExposureClass::NoStaticPath, DiagnosticSeverity::WARNING),
+            (ExposureClass::InfectionUnknown, DiagnosticSeverity::WARNING),
+            (
+                ExposureClass::PropagationUnknown,
+                DiagnosticSeverity::INFORMATION,
+            ),
+            (
+                ExposureClass::StaticUnknown,
+                DiagnosticSeverity::INFORMATION,
+            ),
+        ];
+
+        for (class, expected) in cases {
+            assert_eq!(diagnostic_severity_for_class(&class), expected);
+        }
     }
 
     #[test]

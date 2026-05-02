@@ -106,6 +106,30 @@ Confirm missing ripr path gives a useful message.
 Confirm restart and output commands work.
 ```
 
+## Diagnostic Data
+
+LSP diagnostics include a stable JSON `data` payload for editor commands:
+
+```json
+{
+  "schema_version": "0.1",
+  "finding_id": "probe:src/pricing.rs:88:predicate",
+  "probe_id": "probe:src/pricing.rs:88:predicate",
+  "classification": "weakly_exposed",
+  "probe_family": "predicate",
+  "confidence": 0.75,
+  "source_range": {
+    "file": "src/pricing.rs",
+    "line": 88,
+    "column": 1
+  }
+}
+```
+
+Diagnostics remain advisory. `exposed`, `propagation_unknown`, and
+`static_unknown` findings are informational; weak or missing exposure findings
+are warnings.
+
 ## Current Limitations
 
 The preview extension does not yet provide:
