@@ -98,7 +98,7 @@ export function requestedServerVersion(context: vscode.ExtensionContext, config:
     return configured.replace(/^v/, '');
   }
   const version = context.extension.packageJSON?.version;
-  return typeof version === 'string' ? version.replace(/^v/, '') : '0.2.0';
+  return typeof version === 'string' ? version.replace(/^v/, '') : '0.3.0';
 }
 
 function bundledServerPath(context: vscode.ExtensionContext, platform: RiprPlatform): string {

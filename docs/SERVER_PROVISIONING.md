@@ -48,10 +48,10 @@ The manifest shape is:
 
 ```json
 {
-  "version": "0.2.0",
+  "version": "0.3.0",
   "assets": {
     "x86_64-pc-windows-msvc": {
-      "url": "https://github.com/EffortlessMetrics/ripr/releases/download/v0.2.0/ripr-server-v0.2.0-x86_64-pc-windows-msvc.zip",
+      "url": "https://github.com/EffortlessMetrics/ripr/releases/download/v0.3.0/ripr-server-v0.3.0-x86_64-pc-windows-msvc.zip",
       "sha256": "..."
     }
   }

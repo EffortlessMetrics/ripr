@@ -17,12 +17,12 @@ The Rust crate release is documented separately in [RELEASE.md](RELEASE.md).
 Keep versions aligned:
 
 ```text
-ripr crate:      0.2.x
-VS extension:    0.2.x
-Open VSX:        0.2.x
+ripr crate:      0.3.x
+VS extension:    0.3.x
+Open VSX:        0.3.x
 ```
 
-For `0.2.x`, the universal extension can download the matching `ripr` server
+For `0.3.x`, the universal extension can download the matching `ripr` server
 from GitHub Releases. `cargo install ripr` remains a manual fallback.
 
 ## Required Files
@@ -51,7 +51,7 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
-code --install-extension dist/ripr-0.2.0.vsix --force
+code --install-extension dist/ripr-0.3.0.vsix --force
 ```
 
 Also run the Rust gates from the repository root:
@@ -89,8 +89,8 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
-npx @vscode/vsce publish --packagePath dist/ripr-0.2.0.vsix --pat "$VSCE_PAT"
-npx ovsx publish dist/ripr-0.2.0.vsix -p "$OVSX_PAT" --skip-duplicate
+npx @vscode/vsce publish --packagePath dist/ripr-0.3.0.vsix --pat "$VSCE_PAT"
+npx ovsx publish dist/ripr-0.3.0.vsix -p "$OVSX_PAT" --skip-duplicate
 ```
 
 ## CI Publish
@@ -109,13 +109,13 @@ To publish only Open VSX from a manual workflow run:
 
 ```bash
 gh workflow run publish-extension.yml \
-  --field version=0.2.0 \
+  --field version=0.3.0 \
   --field publish_vs_marketplace=false \
   --field publish_open_vsx=true
 ```
 
-For the first self-provisioning extension release, publish the server binary
-assets before publishing the marketplace VSIX.
+Publish the server binary assets before publishing the marketplace VSIX so the
+extension can download a matching `ripr` server on first activation.
 
 ## Post-Publish Verification
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0
+
+- Uses the `tower-lsp-server` sidecar from `ripr 0.3.0`.
+- Adds diagnostic-targeted context actions so `ripr: Copy Finding Context`
+  can use the selected finding location instead of only the active cursor.
+- Shows finding-specific hover details for current `ripr` diagnostics.
+- Improves diagnostic stability with workspace-root initialization, stale
+  diagnostic clearing, refresh failure logging, saved-workspace refresh
+  semantics, and serialized refresh generations.
+
 ## 0.2.0
 
 - First self-provisioning preview extension.

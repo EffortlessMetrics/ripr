@@ -1,9 +1,9 @@
 # ripr: Static Mutation Exposure
 
-[![VS Marketplace Installs (manual)](https://img.shields.io/badge/VS%20Marketplace-0%20installs-0078D4)](https://marketplace.visualstudio.com/items?itemName=EffortlessMetrics.ripr)
+[![VS Marketplace Installs (manual)](https://img.shields.io/badge/VS%20Marketplace-1%20install-0078D4)](https://marketplace.visualstudio.com/items?itemName=EffortlessMetrics.ripr)
 [![Open VSX Downloads](https://img.shields.io/open-vsx/dt/EffortlessMetrics/ripr?label=Open%20VSX%20downloads)](https://open-vsx.org/extension/EffortlessMetrics/ripr)
 
-<!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-02 and intentionally seeded at 0 for first launch. Refresh from publisher metrics after publish. Do not use live VS Marketplace Shields routes. -->
+<!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-02 from the public listing. Refresh from publisher metrics after publish. Do not use live VS Marketplace Shields routes. -->
 
 Preview VS Code extension for `ripr`, the static RIPR mutation-exposure analyzer
 for Rust/Cargo workspaces.
@@ -52,6 +52,6 @@ confirmation.
 
 ## Preview Limitations
 
-The `0.2.x` extension uses a universal VSIX and downloads native server binaries
+The `0.3.x` extension uses a universal VSIX and downloads native server binaries
 when available. It does not auto-install Rust tooling. Bundled platform-specific
 VSIXs are planned after the downloader path is proven.

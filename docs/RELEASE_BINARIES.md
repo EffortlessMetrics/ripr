@@ -14,7 +14,7 @@ Use:
 Manual dispatch:
 
 ```bash
-gh workflow run release-server-binaries.yml -f version=0.2.0
+gh workflow run release-server-binaries.yml -f version=0.3.0
 ```
 
 The workflow builds:
@@ -62,7 +62,7 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
-code --install-extension dist/ripr-0.2.0.vsix --force
+code --install-extension dist/ripr-0.3.0.vsix --force
 ```
 
 ## Notes

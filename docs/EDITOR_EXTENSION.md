@@ -13,7 +13,7 @@ Open VSX extension:
   EffortlessMetrics.ripr
 ```
 
-The `0.2.x` extension is a universal VSIX preview client. It resolves the
+The `0.3.x` extension is a universal VSIX preview client. It resolves the
 server in this order:
 
 ```text
@@ -92,7 +92,7 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
-code --install-extension dist/ripr-0.2.0.vsix --force
+code --install-extension dist/ripr-0.3.0.vsix --force
 ```
 
 Manual smoke:

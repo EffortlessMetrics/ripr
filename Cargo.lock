@@ -413,7 +413,7 @@ dependencies = [
 
 [[package]]
 name = "ripr"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ra_ap_syntax",
  "serde_json",

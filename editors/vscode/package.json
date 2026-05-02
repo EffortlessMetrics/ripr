@@ -2,7 +2,7 @@
   "name": "ripr",
   "displayName": "ripr: Static Mutation Exposure",
   "description": "Static RIPR exposure diagnostics for Rust/Cargo workspaces.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "EffortlessMetrics",
   "preview": true,
   "license": "MIT OR Apache-2.0",
@@ -42,7 +42,7 @@
   "main": "./out/extension.js",
   "scripts": {
     "compile": "tsc -p ./",
-    "package": "node -e \"require('fs').mkdirSync('dist', { recursive: true })\" && vsce package --out dist/ripr-0.2.0.vsix",
+    "package": "node -e \"require('fs').mkdirSync('dist', { recursive: true })\" && vsce package --out dist/ripr-0.3.0.vsix",
     "test": "npm run compile"
   },
   "dependencies": {
