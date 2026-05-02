@@ -130,6 +130,7 @@ fn main() {
         Some("check-workspace-shape") => check_workspace_shape(),
         Some("check-architecture") => check_architecture(),
         Some("check-public-api") => check_public_api(),
+        Some("check-output-contracts") => check_output_contracts(),
         Some("check-generated") => check_generated(),
         Some("check-dependencies") => check_dependencies(),
         Some("check-process-policy") => check_process_policy(),
@@ -172,6 +173,7 @@ fn precommit() -> Result<(), String> {
     check_workspace_shape()?;
     check_architecture()?;
     check_public_api()?;
+    check_output_contracts()?;
     check_generated()?;
     let body = precommit_report_body();
     write_report("precommit.md", &body)
@@ -210,6 +212,7 @@ fn run_policy_checks() -> Result<(), String> {
     check_workspace_shape()?;
     check_architecture()?;
     check_public_api()?;
+    check_output_contracts()?;
     check_generated()?;
     check_dependencies()?;
     check_process_policy()?;
@@ -237,7 +240,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  metrics\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
+        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  metrics\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
     );
 }
 
@@ -263,7 +266,7 @@ fn pr_summary() -> Result<(), String> {
 }
 
 fn precommit_report_body() -> String {
-    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-public-api`\n- `cargo xtask check-generated`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
+    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-public-api`\n- `cargo xtask check-output-contracts`\n- `cargo xtask check-generated`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
 }
 
 fn check_pr_report_body() -> String {
@@ -2016,6 +2019,109 @@ fn read_pipe_records(path: &str, field_count: usize) -> Result<Vec<Vec<String>>,
         records.push(fields);
     }
     Ok(records)
+}
+
+fn check_output_contracts() -> Result<(), String> {
+    let records = read_pipe_records("policy/output_contracts.txt", 3)?;
+    let domain = read_text_lossy(Path::new("crates/ripr/src/domain.rs"))?;
+    let app = read_text_lossy(Path::new("crates/ripr/src/app.rs"))?;
+    let json_output = read_text_lossy(Path::new("crates/ripr/src/output/json.rs"))?;
+    let schema = read_text_lossy(Path::new("docs/OUTPUT_SCHEMA.md"))?;
+    let mut violations = Vec::new();
+    let mut seen = BTreeSet::new();
+
+    for record in records {
+        let kind = &record[0];
+        let value = &record[1];
+        if !seen.insert(format!("{kind}|{value}")) {
+            violations.push(format!("duplicate output contract entry: {kind}|{value}"));
+        }
+        match kind.as_str() {
+            "schema_version" => {
+                require_contract_value(
+                    "crates/ripr/src/app.rs",
+                    &app,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+                require_contract_value(
+                    "docs/OUTPUT_SCHEMA.md",
+                    &schema,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+            }
+            "context_version" => {
+                require_contract_value(
+                    "crates/ripr/src/output/json.rs",
+                    &json_output,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+                require_contract_value(
+                    "docs/OUTPUT_SCHEMA.md",
+                    &schema,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+            }
+            "exposure_class" | "severity" | "probe_family" | "delta" | "stage_state"
+            | "confidence" | "oracle_strength" => {
+                require_contract_value(
+                    "crates/ripr/src/domain.rs",
+                    &domain,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+                require_contract_value(
+                    "docs/OUTPUT_SCHEMA.md",
+                    &schema,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+            }
+            other => violations.push(format!(
+                "policy/output_contracts.txt uses unsupported kind `{other}`"
+            )),
+        }
+    }
+
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "output-contracts.md",
+            check: "check-output-contracts",
+            why_it_matters: "Output enum values and schema versions are integration contracts for CLI JSON, LSP diagnostics, CI, and agents.",
+            fix_kind: FixKind::ReviewerDecisionRequired,
+            recommended_fixes: &[
+                "Update policy/output_contracts.txt when a new output enum value is intentionally added.",
+                "Update docs/OUTPUT_SCHEMA.md when output values or schema versions change.",
+                "Keep static output language within the registered conservative exposure classes.",
+            ],
+            rerun_command: "cargo xtask check-output-contracts",
+            exception_template: Some("kind|value|reason"),
+        },
+        &violations,
+    )
+}
+
+fn require_contract_value(
+    path: &str,
+    text: &str,
+    value: &str,
+    kind: &str,
+    violations: &mut Vec<String>,
+) {
+    if !text.contains(value) {
+        violations.push(format!(
+            "{path} does not mention {kind} contract value `{value}`"
+        ));
+    }
 }
 
 fn check_generated() -> Result<(), String> {

@@ -306,6 +306,7 @@ cargo xtask check-capabilities
 cargo xtask check-workspace-shape
 cargo xtask check-architecture
 cargo xtask check-public-api
+cargo xtask check-output-contracts
 cargo fmt --check
 cargo check --workspace --all-targets
 cargo test --workspace
