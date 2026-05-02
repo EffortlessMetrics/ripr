@@ -1,0 +1,42 @@
+# kind|value|reason
+
+confidence|high|Confidence value.
+confidence|low|Confidence value.
+confidence|medium|Confidence value.
+confidence|unknown|Confidence value.
+context_version|1.0|Current agent context packet version.
+delta|control|Delta kind value.
+delta|effect|Delta kind value.
+delta|unknown|Delta kind value.
+delta|value|Delta kind value.
+exposure_class|exposed|Static classification value.
+exposure_class|infection_unknown|Static classification value.
+exposure_class|no_static_path|Static classification value.
+exposure_class|propagation_unknown|Static classification value.
+exposure_class|reachable_unrevealed|Static classification value.
+exposure_class|static_unknown|Static classification value.
+exposure_class|weakly_exposed|Static classification value.
+oracle_strength|medium|Oracle strength value.
+oracle_strength|none|Oracle strength value.
+oracle_strength|smoke|Oracle strength value.
+oracle_strength|strong|Oracle strength value.
+oracle_strength|unknown|Oracle strength value.
+oracle_strength|weak|Oracle strength value.
+probe_family|call_deletion|Probe family value.
+probe_family|error_path|Probe family value.
+probe_family|field_construction|Probe family value.
+probe_family|match_arm|Probe family value.
+probe_family|predicate|Probe family value.
+probe_family|return_value|Probe family value.
+probe_family|side_effect|Probe family value.
+probe_family|static_unknown|Probe family value.
+schema_version|0.1|Current check JSON schema version.
+severity|info|Output and LSP severity value.
+severity|note|Output and LSP severity value.
+severity|warning|Output and LSP severity value.
+stage_state|not_applicable|RIPR stage state value.
+stage_state|no|RIPR stage state value.
+stage_state|opaque|RIPR stage state value.
+stage_state|unknown|RIPR stage state value.
+stage_state|weak|RIPR stage state value.
+stage_state|yes|RIPR stage state value.

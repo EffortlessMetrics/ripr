@@ -25,6 +25,7 @@ cargo xtask check-capabilities
 cargo xtask check-workspace-shape
 cargo xtask check-architecture
 cargo xtask check-public-api
+cargo xtask check-output-contracts
 cargo xtask check-generated
 cargo xtask check-dependencies
 cargo xtask check-process-policy
@@ -78,6 +79,7 @@ cargo xtask check-capabilities
 cargo xtask check-workspace-shape
 cargo xtask check-architecture
 cargo xtask check-public-api
+cargo xtask check-output-contracts
 cargo xtask check-generated
 cargo xtask check-dependencies
 cargo xtask check-process-policy
@@ -127,7 +129,7 @@ Planned CI work:
   behavior fixtures
 - add markdown/link checks for docs-heavy PRs
 - add README capability snapshot consistency checks
-- add docs-index, README state, output-contract, and PR-shape checks
+- add docs-index, README state, and PR-shape checks
 - add SARIF validation when SARIF output exists
 - add opt-in policy modes:
   - advisory

@@ -46,3 +46,5 @@ how future PRs are scoped or reviewed.
 - Added `metrics/capabilities.toml`, `cargo xtask metrics`, and
   `cargo xtask check-capabilities` for capability status reporting.
 - Added workspace-shape, architecture-boundary, and public API policy checks.
+- Added output contract registry checks for schema versions and public enum
+  strings.

@@ -186,10 +186,17 @@ for coding agents and editor commands.
 
 ## Stability Rules
 
+Output contract values are registered in `policy/output_contracts.txt`.
+
+Run:
+
+```bash
+cargo xtask check-output-contracts
+```
+
 Additive fields are allowed within the same schema version.
 
 Do not remove fields, rename fields, or change enum meanings without bumping the
 schema version.
 
 Do not emit mutation-runtime terms such as `killed` or `survived` in static JSON.
-
