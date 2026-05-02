@@ -1169,7 +1169,9 @@ fn classify_assertion(line: &str) -> OracleClassification {
 
 fn is_snapshot_assertion(line: &str) -> bool {
     let expect_test_comparison = (line.contains("expect![[") || line.contains("expect_file!["))
-        && line.contains(".assert_eq(");
+        && (line.contains(".assert_eq(")
+            || line.contains(".assert_debug_eq(")
+            || line.contains(".assert_json_eq("));
     line.contains("insta::assert") || line.contains("snapshot!") || expect_test_comparison
 }
 
@@ -1383,7 +1385,9 @@ fn checks_error() {
             "insta::assert_yaml_snapshot!(payload);",
             "assert_snapshot!(rendered);",
             r##"expect![[r#"ok"#]].assert_eq(&rendered);"##,
+            r##"expect![[r#"ok"#]].assert_debug_eq(&rendered);"##,
             r#"expect_file!["snapshots/render.snap"].assert_eq(&rendered);"#,
+            r#"expect_file!["snapshots/render.snap"].assert_debug_eq(&rendered);"#,
         ];
 
         for case in snapshot_cases {
