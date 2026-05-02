@@ -6,7 +6,7 @@ xtask policy checks.
 Files:
 
 - `traceability.toml`: maps specs to tests, code modules, output contracts, and
-  metrics.
+  metrics; validate it with `cargo xtask check-traceability`.
 - `no-panic-allowlist.txt`: tracks existing panic-family debt by path, pattern,
   and maximum count.
 - `static-language-allowlist.txt`: lists files that may mention prohibited

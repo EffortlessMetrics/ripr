@@ -129,13 +129,13 @@ cargo xtask precommit
 cargo xtask check-pr
 cargo xtask fixtures
 cargo xtask goldens check
+cargo xtask check-traceability
 ```
 
 Planned:
 
 ```bash
 cargo xtask check-doc-index
-cargo xtask check-traceability
 cargo xtask check-capabilities
 cargo xtask check-output-contracts
 cargo xtask check-architecture
@@ -156,6 +156,7 @@ cargo xtask precommit
 cargo xtask check-pr
 cargo xtask fixtures
 cargo xtask goldens check
+cargo xtask check-traceability
 ```
 
 Planned:
@@ -297,6 +298,7 @@ cargo xtask check-executable-files
 cargo xtask check-workflows
 cargo xtask check-spec-format
 cargo xtask check-fixture-contracts
+cargo xtask check-traceability
 cargo xtask check-generated
 ```
 
@@ -328,6 +330,7 @@ process-policy.md
 network-policy.md
 spec-format.md
 fixture-contracts.md
+traceability.md
 fixtures.md
 goldens.md
 goldens-bless.md
@@ -345,7 +348,7 @@ The remaining automation path is:
 
 | Order | PR | Purpose |
 | ---: | --- | --- |
-| 1 | `traceability-spec-id-checks` | Validate behavior manifests, spec IDs, and drift warnings. |
+| 1 | `traceability-drift-warnings` | Add changed-file evidence warnings to PR summaries. |
 | 2 | `capability-metrics-report` | Generate metrics and capability reports from machine-readable sources. |
 | 3 | `architecture-guard` | Add workspace shape, module boundary, and public API checks. |
 

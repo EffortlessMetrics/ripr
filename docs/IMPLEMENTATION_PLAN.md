@@ -317,17 +317,17 @@ Purpose: make spec IDs and behavior manifest entries checkable.
 
 Deliverables:
 
-- [ ] Harden `.ripr/traceability.toml`.
-- [ ] Add `cargo xtask check-spec-ids`.
-- [ ] Add `cargo xtask check-behavior-manifest`.
+- [x] Harden `.ripr/traceability.toml`.
+- [x] Add `cargo xtask check-spec-ids`.
+- [x] Add `cargo xtask check-behavior-manifest`.
 - [ ] Add warning-only drift checks for analysis, output, docs, fixture, and
       metric changes.
 
 Acceptance:
 
-- [ ] Accepted specs point to real docs and at least one test or fixture unless
+- [x] Accepted specs point to real docs and at least one test or fixture unless
       explicitly planned.
-- [ ] Fixture specs reference valid spec IDs.
+- [x] Fixture specs reference valid spec IDs.
 - [ ] Missing expected evidence appears in the PR summary.
 
 ## PR 1M: `capability-metrics-report`

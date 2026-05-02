@@ -41,3 +41,5 @@ how future PRs are scoped or reviewed.
 - Added CI upload of generated PR reports as `ripr-pr-reports` artifacts.
 - Added `cargo xtask fixtures` and `cargo xtask goldens check` scaffolding
   commands for validating fixture contracts and expected-output layout.
+- Added `cargo xtask check-traceability` with `check-spec-ids` and
+  `check-behavior-manifest` aliases for behavior manifest validation.
