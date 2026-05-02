@@ -173,6 +173,15 @@ struct ReceiptRecord {
     reports: Vec<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct CriticFinding {
+    id: &'static str,
+    severity: &'static str,
+    message: &'static str,
+    evidence: Vec<String>,
+    recommended_action: &'static str,
+}
+
 #[derive(Debug, Default)]
 struct ReportIndexCampaign {
     id: String,
@@ -258,6 +267,7 @@ fn main() {
         Some("metrics") => metrics_report(),
         Some("test-oracle-report") | Some("check-test-oracles") => test_oracle_report(),
         Some("dogfood") => dogfood(),
+        Some("critic") => critic(),
         Some("goals") => goals(&args[2..]),
         Some("reports") => reports(&args[2..]),
         Some("receipts") => receipts(&args[2..]),
@@ -413,7 +423,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  golden-drift\n  metrics\n  test-oracle-report\n  check-test-oracles\n  dogfood\n  goals status|next|report\n  reports index\n  receipts [check]\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-allow-attributes\n  check-local-context\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-supply-chain\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
+        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  golden-drift\n  metrics\n  test-oracle-report\n  check-test-oracles\n  dogfood\n  critic\n  goals status|next|report\n  reports index\n  receipts [check]\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-allow-attributes\n  check-local-context\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-supply-chain\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
     );
 }
 
@@ -442,6 +452,19 @@ fn check_pr_shape() -> Result<(), String> {
     let changes = collect_pr_changes()?;
     let warnings = pr_shape_warnings(&changes);
     write_report("pr-shape.md", &pr_shape_report_body(&warnings))
+}
+
+fn critic() -> Result<(), String> {
+    ensure_reports_dir()?;
+    let changes = collect_pr_changes()?;
+    let reports = report_index_entries()?;
+    let receipts = receipt_index_entries()?;
+    let findings = critic_findings(&changes, &reports, &receipts);
+    write_report(
+        "critic.md",
+        &critic_markdown(&findings, &reports, &receipts),
+    )?;
+    write_report("critic.json", &critic_json(&findings, &reports, &receipts))
 }
 
 fn reports(args: &[String]) -> Result<(), String> {
@@ -5085,6 +5108,7 @@ fn known_xtask_command(command: &str) -> bool {
             | "test-oracle-report"
             | "check-test-oracles"
             | "dogfood"
+            | "critic"
             | "goals"
             | "reports"
             | "receipts"
@@ -6188,6 +6212,357 @@ fn pr_shape_report_body(warnings: &[String]) -> String {
             body.push_str("\n```\n\n");
         }
     }
+    body
+}
+
+fn critic_findings(
+    changes: &[ChangedPath],
+    reports: &[ReportIndexEntry],
+    receipts: &[ReportIndexEntry],
+) -> Vec<CriticFinding> {
+    let mut findings = Vec::new();
+
+    let analysis_changed = changes.iter().any(|change| is_analysis_path(&change.path));
+    let analysis_evidence = changes.iter().any(|change| {
+        is_spec_path(&change.path)
+            || is_test_path(&change.path)
+            || is_fixture_path(&change.path)
+            || is_golden_path(&change.path)
+            || change.path.starts_with("metrics/")
+            || change.path == ".ripr/traceability.toml"
+    });
+    if analysis_changed && !analysis_evidence {
+        findings.push(CriticFinding {
+            id: "analysis_without_behavior_evidence",
+            severity: "warn",
+            message: "Analyzer code changed without spec, test, fixture, golden, metric, or traceability evidence.",
+            evidence: paths_matching(changes, is_analysis_path),
+            recommended_action:
+                "Add focused behavior evidence or document why this is a mechanical refactor.",
+        });
+    }
+    if analysis_changed && missing_or_bad_report(reports, "fixtures.md") {
+        findings.push(CriticFinding {
+            id: "analysis_missing_fixture_report",
+            severity: "warn",
+            message: "Analyzer code changed without a passing fixture report in target/ripr/reports.",
+            evidence: vec![format_report_status(reports, "fixtures.md")],
+            recommended_action: "Run `cargo xtask fixtures` before review.",
+        });
+    }
+    if analysis_changed && missing_or_bad_report(reports, "goldens.md") {
+        findings.push(CriticFinding {
+            id: "analysis_missing_golden_report",
+            severity: "warn",
+            message: "Analyzer code changed without a passing golden report in target/ripr/reports.",
+            evidence: vec![format_report_status(reports, "goldens.md")],
+            recommended_action: "Run `cargo xtask goldens check` before review.",
+        });
+    }
+
+    let output_changed = changes
+        .iter()
+        .any(|change| is_output_surface_path(&change.path));
+    let output_evidence = changes.iter().any(|change| {
+        change.path == "docs/OUTPUT_SCHEMA.md"
+            || change.path == "policy/output_contracts.txt"
+            || is_fixture_path(&change.path)
+            || is_golden_path(&change.path)
+    });
+    if output_changed && !output_evidence {
+        findings.push(CriticFinding {
+            id: "output_without_contract_or_golden_evidence",
+            severity: "warn",
+            message: "Output-facing code changed without output schema, contract, fixture, or golden evidence.",
+            evidence: paths_matching(changes, is_output_surface_path),
+            recommended_action:
+                "Add output-contract and fixture/golden evidence, or document why rendered output is unchanged.",
+        });
+    }
+    if output_changed && missing_or_bad_report(reports, "output-contracts.md") {
+        findings.push(CriticFinding {
+            id: "output_missing_contract_report",
+            severity: "warn",
+            message: "Output-facing code changed without a passing output-contract report.",
+            evidence: vec![format_report_status(reports, "output-contracts.md")],
+            recommended_action: "Run `cargo xtask check-output-contracts` before review.",
+        });
+    }
+    if output_changed && missing_or_bad_report(reports, "golden-drift.md") {
+        findings.push(CriticFinding {
+            id: "output_missing_golden_drift_report",
+            severity: "warn",
+            message: "Output-facing code changed without a semantic golden-drift report.",
+            evidence: vec![format_report_status(reports, "golden-drift.md")],
+            recommended_action: "Run `cargo xtask golden-drift` before review.",
+        });
+    }
+    if output_changed
+        && !changes
+            .iter()
+            .any(|change| change.path == "policy/output_contracts.txt")
+    {
+        findings.push(CriticFinding {
+            id: "public_output_terms_without_registry_update",
+            severity: "warn",
+            message: "Public output surface changed without an output contract registry update.",
+            evidence: paths_matching(changes, is_output_surface_path),
+            recommended_action:
+                "Confirm no public output terms changed, or update `policy/output_contracts.txt`.",
+        });
+    }
+
+    let capability_docs_changed = changes
+        .iter()
+        .any(|change| change.path == "docs/CAPABILITY_MATRIX.md");
+    let capability_metrics_changed = changes
+        .iter()
+        .any(|change| change.path == "metrics/capabilities.toml");
+    if capability_docs_changed && !capability_metrics_changed {
+        findings.push(CriticFinding {
+            id: "capability_docs_without_metrics",
+            severity: "warn",
+            message: "Capability matrix changed without machine-readable capability metrics.",
+            evidence: paths_matching(changes, |path| path == "docs/CAPABILITY_MATRIX.md"),
+            recommended_action:
+                "Update `metrics/capabilities.toml` or document why the change is prose-only.",
+        });
+    }
+    if (capability_docs_changed || capability_metrics_changed)
+        && missing_or_bad_report(reports, "capabilities.md")
+    {
+        findings.push(CriticFinding {
+            id: "capability_missing_report",
+            severity: "warn",
+            message: "Capability state changed without a passing capability report.",
+            evidence: vec![format_report_status(reports, "capabilities.md")],
+            recommended_action: "Run `cargo xtask check-capabilities` before review.",
+        });
+    }
+
+    let missing_blessings = golden_changes_without_blessing(changes);
+    if !missing_blessings.is_empty() {
+        findings.push(CriticFinding {
+            id: "golden_changed_without_blessing_reason",
+            severity: "warn",
+            message: "Fixture expected output changed without a matching blessing reason changelog.",
+            evidence: missing_blessings,
+            recommended_action:
+                "Record the intentional output change in the fixture expected-output changelog.",
+        });
+    }
+
+    let campaign_changed = changes.iter().any(|change| is_campaign_path(&change.path));
+    if campaign_changed && missing_or_bad_report(reports, "campaign.md") {
+        findings.push(CriticFinding {
+            id: "campaign_missing_check_report",
+            severity: "warn",
+            message: "Campaign state changed without a passing campaign report.",
+            evidence: vec![format_report_status(reports, "campaign.md")],
+            recommended_action: "Run `cargo xtask check-campaign` before review.",
+        });
+    }
+    if campaign_changed && missing_or_bad_report(reports, "goals-next.md") {
+        findings.push(CriticFinding {
+            id: "campaign_missing_goals_next_report",
+            severity: "warn",
+            message: "Campaign state changed without a goals-next report.",
+            evidence: vec![format_report_status(reports, "goals-next.md")],
+            recommended_action: "Run `cargo xtask goals next` before review.",
+        });
+    }
+
+    let policy_changed = changes.iter().any(|change| is_policy_path(&change.path));
+    let process_docs_changed = changes.iter().any(|change| {
+        matches!(
+            change.path.as_str(),
+            "AGENTS.md" | "CONTRIBUTING.md" | "README.md" | "docs/CI.md" | "docs/PR_AUTOMATION.md"
+        )
+    });
+    if policy_changed && !process_docs_changed {
+        findings.push(CriticFinding {
+            id: "policy_without_process_docs",
+            severity: "warn",
+            message: "Policy files or workflows changed without process documentation.",
+            evidence: paths_matching(changes, is_policy_path),
+            recommended_action:
+                "Update front-door process docs or document why behavior did not change.",
+        });
+    }
+
+    let extension_changed = changes
+        .iter()
+        .any(|change| change.path.starts_with("editors/vscode/"));
+    if extension_changed {
+        findings.push(CriticFinding {
+            id: "extension_requires_package_evidence",
+            severity: "warn",
+            message: "VS Code extension files changed; local xtask reports do not prove npm compile/package evidence.",
+            evidence: paths_matching(changes, |path| path.starts_with("editors/vscode/")),
+            recommended_action: "Verify `npm run compile` and `npm run package`, or inspect the CI vscode job.",
+        });
+    }
+
+    if missing_or_bad_report(reports, "pr-summary.md") {
+        findings.push(CriticFinding {
+            id: "missing_pr_summary",
+            severity: "warn",
+            message: "The reviewer packet is missing a PR summary report.",
+            evidence: vec![format_report_status(reports, "pr-summary.md")],
+            recommended_action: "Run `cargo xtask pr-summary` before review.",
+        });
+    }
+    if missing_or_bad_report(reports, "pr-shape.md") {
+        findings.push(CriticFinding {
+            id: "missing_pr_shape_report",
+            severity: "warn",
+            message: "The advisory PR shape report is missing or not passing.",
+            evidence: vec![format_report_status(reports, "pr-shape.md")],
+            recommended_action: "Run `cargo xtask check-pr-shape` before review.",
+        });
+    }
+    if receipts.is_empty() {
+        findings.push(CriticFinding {
+            id: "missing_receipts",
+            severity: "warn",
+            message: "No machine-readable receipts were found for this reviewer packet.",
+            evidence: vec!["target/ripr/receipts: missing or empty".to_string()],
+            recommended_action: "Run `cargo xtask receipts` and `cargo xtask receipts check`.",
+        });
+    }
+
+    findings
+}
+
+fn missing_or_bad_report(reports: &[ReportIndexEntry], file: &str) -> bool {
+    !matches!(
+        status_for_report(reports, file).as_str(),
+        "pass" | "present"
+    )
+}
+
+fn format_report_status(reports: &[ReportIndexEntry], file: &str) -> String {
+    format!(
+        "target/ripr/reports/{file}: {}",
+        status_for_report(reports, file)
+    )
+}
+
+fn golden_changes_without_blessing(changes: &[ChangedPath]) -> Vec<String> {
+    let changed_paths = changes
+        .iter()
+        .map(|change| change.path.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut missing = Vec::new();
+    for change in changes.iter().filter(|change| is_golden_path(&change.path)) {
+        let Some(fixture) = fixture_name_from_expected_output(&change.path) else {
+            continue;
+        };
+        let changelog = format!("fixtures/{fixture}/expected/CHANGELOG.md");
+        if !changed_paths.contains(changelog.as_str()) {
+            missing.push(format!(
+                "{} changed without `{changelog}`",
+                format_changed_path(change)
+            ));
+        }
+    }
+    missing.sort();
+    missing.dedup();
+    missing
+}
+
+fn fixture_name_from_expected_output(path: &str) -> Option<String> {
+    let rest = path.strip_prefix("fixtures/")?;
+    let (fixture, after_fixture) = rest.split_once('/')?;
+    if after_fixture.starts_with("expected/") && after_fixture != "expected/CHANGELOG.md" {
+        Some(fixture.to_string())
+    } else {
+        None
+    }
+}
+
+fn critic_markdown(
+    findings: &[CriticFinding],
+    reports: &[ReportIndexEntry],
+    receipts: &[ReportIndexEntry],
+) -> String {
+    let status = if findings.is_empty() { "pass" } else { "warn" };
+    let mut body = format!("# ripr critic report\n\nStatus: {status}\n\n");
+    body.push_str("Mode: advisory\n\n");
+    body.push_str("This report is a deterministic adversarial review packet. It flags likely missing evidence from the current diff, reports, and receipts. It does not block CI.\n\n");
+
+    body.push_str("## Findings\n\n");
+    if findings.is_empty() {
+        body.push_str("None detected.\n\n");
+    } else {
+        for finding in findings {
+            body.push_str(&format!(
+                "### {} ({})\n\n{}\n\n",
+                finding.id, finding.severity, finding.message
+            ));
+            body.push_str("Evidence:\n\n");
+            write_path_list(&mut body, &finding.evidence);
+            body.push_str("\nRecommended action:\n\n```text\n");
+            body.push_str(finding.recommended_action);
+            body.push_str("\n```\n\n");
+        }
+    }
+
+    body.push_str("## Inputs\n\n");
+    body.push_str(&format!("- reports available: {}\n", reports.len()));
+    body.push_str(&format!("- receipts available: {}\n\n", receipts.len()));
+    body.push_str("## Next Commands\n\n");
+    body.push_str("```bash\n");
+    body.push_str("cargo xtask pr-summary\n");
+    body.push_str("cargo xtask reports index\n");
+    body.push_str("cargo xtask receipts\n");
+    body.push_str("cargo xtask receipts check\n");
+    body.push_str("```\n");
+    body
+}
+
+fn critic_json(
+    findings: &[CriticFinding],
+    reports: &[ReportIndexEntry],
+    receipts: &[ReportIndexEntry],
+) -> String {
+    let status = if findings.is_empty() { "pass" } else { "warn" };
+    let mut body = String::new();
+    body.push_str("{\n");
+    body.push_str("  \"schema_version\": \"0.1\",\n");
+    body.push_str("  \"mode\": \"advisory\",\n");
+    body.push_str(&format!("  \"status\": \"{status}\",\n"));
+    body.push_str(&format!("  \"reports_available\": {},\n", reports.len()));
+    body.push_str(&format!("  \"receipts_available\": {},\n", receipts.len()));
+    body.push_str("  \"findings\": [\n");
+    for (index, finding) in findings.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("    {\n");
+        body.push_str(&format!("      \"id\": \"{}\",\n", json_escape(finding.id)));
+        body.push_str(&format!(
+            "      \"severity\": \"{}\",\n",
+            json_escape(finding.severity)
+        ));
+        body.push_str(&format!(
+            "      \"message\": \"{}\",\n",
+            json_escape(finding.message)
+        ));
+        body.push_str("      \"evidence\": [");
+        write_json_string_array(&mut body, &finding.evidence);
+        body.push_str("],\n");
+        body.push_str(&format!(
+            "      \"recommended_action\": \"{}\"\n",
+            json_escape(finding.recommended_action)
+        ));
+        body.push_str("    }");
+    }
+    if !findings.is_empty() {
+        body.push('\n');
+    }
+    body.push_str("  ]\n");
+    body.push_str("}\n");
     body
 }
 
@@ -7527,10 +7902,10 @@ fn is_word_char(value: Option<char>) -> bool {
 mod tests {
     use super::{
         CampaignManifest, Capability, ChangedPath, DogfoodRun, LocalContextAllow, MarkdownLink,
-        ReceiptRecord, ReportIndexCampaign, ReportIndexEntry, TestOracleClass,
+        ReceiptRecord, ReportIndexCampaign, ReportIndexEntry, TestOracleClass, critic_findings,
         dogfood_class_counts, dogfood_report_json, dogfood_report_markdown,
-        extract_workflow_run_blocks, glob_matches, golden_drift_semantics,
-        guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
+        extract_workflow_run_blocks, glob_matches, golden_changes_without_blessing,
+        golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
         is_dependency_surface_candidate, is_evidence_path, is_generated_candidate,
         is_known_campaign_command, is_policy_path, is_production_path, is_receipt_status,
         is_snake_case_id, is_spec_id, json_escape, json_number_after, json_string_values_for_key,
@@ -7842,6 +8217,89 @@ jobs:
             },
         ];
         assert!(pr_shape_warnings(&with_evidence).is_empty());
+    }
+
+    #[test]
+    fn critic_flags_analysis_without_fixture_or_golden_reports() {
+        let changes = vec![ChangedPath {
+            path: "crates/ripr/src/analysis/classifier.rs".to_string(),
+            statuses: BTreeSet::from(["M".to_string()]),
+        }];
+        let reports = vec![ReportIndexEntry {
+            file: "pr-summary.md".to_string(),
+            path: "target/ripr/reports/pr-summary.md".to_string(),
+            status: "pass".to_string(),
+        }];
+        let findings = critic_findings(&changes, &reports, &[]);
+
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.id == "analysis_without_behavior_evidence")
+        );
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.id == "analysis_missing_fixture_report")
+        );
+        assert!(
+            findings
+                .iter()
+                .any(|finding| finding.id == "missing_receipts")
+        );
+    }
+
+    #[test]
+    fn critic_accepts_analysis_with_evidence_reports_and_receipts() {
+        let changes = vec![
+            ChangedPath {
+                path: "crates/ripr/src/analysis/classifier.rs".to_string(),
+                statuses: BTreeSet::from(["M".to_string()]),
+            },
+            ChangedPath {
+                path: "fixtures/boundary_gap/SPEC.md".to_string(),
+                statuses: BTreeSet::from(["M".to_string()]),
+            },
+        ];
+        let reports = ["pr-summary.md", "pr-shape.md", "fixtures.md", "goldens.md"]
+            .into_iter()
+            .map(|file| ReportIndexEntry {
+                file: file.to_string(),
+                path: format!("target/ripr/reports/{file}"),
+                status: "pass".to_string(),
+            })
+            .collect::<Vec<_>>();
+        let receipts = vec![ReportIndexEntry {
+            file: "check-pr.json".to_string(),
+            path: "target/ripr/receipts/check-pr.json".to_string(),
+            status: "present".to_string(),
+        }];
+
+        let findings = critic_findings(&changes, &reports, &receipts);
+
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.id.starts_with("analysis_"))
+        );
+        assert!(
+            !findings
+                .iter()
+                .any(|finding| finding.id == "missing_receipts")
+        );
+    }
+
+    #[test]
+    fn critic_flags_golden_changes_without_blessing_reason() {
+        let changes = vec![ChangedPath {
+            path: "fixtures/boundary_gap/expected/check.json".to_string(),
+            statuses: BTreeSet::from(["M".to_string()]),
+        }];
+
+        let missing = golden_changes_without_blessing(&changes);
+
+        assert_eq!(missing.len(), 1);
+        assert!(missing[0].contains("fixtures/boundary_gap/expected/CHANGELOG.md"));
     }
 
     #[test]
