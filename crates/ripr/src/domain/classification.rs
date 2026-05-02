@@ -53,16 +53,10 @@ mod tests {
         let cases = [
             (ExposureClass::Exposed, "exposed"),
             (ExposureClass::WeaklyExposed, "weakly_exposed"),
-            (
-                ExposureClass::ReachableUnrevealed,
-                "reachable_unrevealed",
-            ),
+            (ExposureClass::ReachableUnrevealed, "reachable_unrevealed"),
             (ExposureClass::NoStaticPath, "no_static_path"),
             (ExposureClass::InfectionUnknown, "infection_unknown"),
-            (
-                ExposureClass::PropagationUnknown,
-                "propagation_unknown",
-            ),
+            (ExposureClass::PropagationUnknown, "propagation_unknown"),
             (ExposureClass::StaticUnknown, "static_unknown"),
         ];
 
