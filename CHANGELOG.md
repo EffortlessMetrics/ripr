@@ -65,3 +65,5 @@ how future PRs are scoped or reviewed.
   with checked JSON and human expected outputs.
 - Added advisory `cargo xtask test-oracle-report` and `check-test-oracles`
   commands for measuring `ripr`'s own Rust test oracle strength.
+- Added advisory `cargo xtask dogfood` reports that run `ripr` against stable
+  fixture diffs and record current self-check output.

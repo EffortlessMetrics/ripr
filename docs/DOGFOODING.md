@@ -6,6 +6,7 @@ should produce focused evidence, not broad self-analysis dashboards.
 ## Current Useful Commands
 
 ```bash
+cargo xtask dogfood
 cargo run -p ripr -- --version
 cargo run -p ripr -- doctor
 cargo run -p ripr -- check --diff crates/ripr/examples/sample/example.diff
@@ -13,6 +14,11 @@ cargo run -p ripr -- check --diff crates/ripr/examples/sample/example.diff --jso
 cargo run -p ripr -- explain --diff crates/ripr/examples/sample/example.diff probe:crates_ripr_examples_sample_src_lib.rs:21:error_path
 cargo run -p ripr -- context --diff crates/ripr/examples/sample/example.diff --at probe:crates_ripr_examples_sample_src_lib.rs:21:error_path --json
 ```
+
+`cargo xtask dogfood` is the stable advisory loop. It runs `ripr check --mode
+fast` against checked fixture diffs, writes actual outputs under
+`target/ripr/dogfood/`, and writes `target/ripr/reports/dogfood.md` plus
+`target/ripr/reports/dogfood.json`.
 
 ## Dogfooding Rules
 

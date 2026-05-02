@@ -47,7 +47,8 @@ Work items:
 | `fixtures/runner-comparison-v1` | done | Fixture and golden commands run `ripr` and compare actual outputs. |
 | `fixtures/first-two-goldens` | done | `boundary_gap` and `weak_error_oracle` fixtures exist with JSON and human goldens. |
 | `testing/test-oracle-report` | done | Advisory report measures `ripr`'s own strong, medium, weak, and smoke test oracles. |
-| `dogfood/static-self-check` | ready | Produce focused `ripr`-on-`ripr` reports. |
+| `dogfood/static-self-check` | done | Advisory `ripr`-on-`ripr` report runs stable fixture diffs and records current output. |
+| `campaign/agentic-devex-closeout` | ready | Mark Campaign 1 complete and activate Campaign 2. |
 
 Dependencies:
 
@@ -65,6 +66,7 @@ cargo xtask pr-summary
 cargo xtask fixtures
 cargo xtask goldens check
 cargo xtask test-oracle-report
+cargo xtask dogfood
 cargo xtask metrics
 ```
 

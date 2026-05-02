@@ -140,11 +140,26 @@ commands = [
 
 [[work_item]]
 id = "dogfood/static-self-check"
-status = "ready"
+status = "done"
 branch = "dogfood/static-self-check"
 stackable = false
 requires_human_merge = true
 acceptance = "focused ripr-on-ripr report is generated as a non-blocking artifact"
 commands = [
+  "cargo xtask dogfood",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "campaign/agentic-devex-closeout"
+status = "ready"
+branch = "campaign/agentic-devex-closeout"
+stackable = false
+requires_human_merge = true
+acceptance = "Campaign 1 is marked complete and Campaign 2 is activated"
+commands = [
+  "cargo xtask check-campaign",
+  "cargo xtask goals status",
+  "cargo xtask goals next",
   "cargo xtask check-pr"
 ]

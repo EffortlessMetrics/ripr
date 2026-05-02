@@ -51,6 +51,7 @@ cargo xtask check-pr
 cargo xtask fixtures
 cargo xtask goldens check
 cargo xtask test-oracle-report
+cargo xtask dogfood
 ```
 
 They are safe to run before checks. `shape` runs `cargo fmt`, sorts allowlists,
@@ -62,6 +63,8 @@ review-ready local gate and intentionally does not run package or publish
 dry-run checks. `fixtures` and `goldens check` validate the current fixture and
 expected-output scaffolding without accepting output drift. `test-oracle-report`
 writes an advisory baseline for the strength of `ripr`'s own Rust test oracles.
+`dogfood` writes a non-blocking `ripr`-on-`ripr` report from stable fixture
+diffs.
 
 The fuller automation model is documented in [PR automation](PR_AUTOMATION.md).
 Deterministic shaping should happen locally; CI should verify the committed
@@ -108,6 +111,7 @@ Fixture and golden scaffolding checks can be run directly with:
 cargo xtask fixtures
 cargo xtask goldens check
 cargo xtask test-oracle-report
+cargo xtask dogfood
 ```
 
 The VS Code workflow currently runs:
