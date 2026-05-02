@@ -72,3 +72,5 @@ how future PRs are scoped or reviewed.
   as the next ready work item.
 - Added the internal `FileFacts` model and related function, test, oracle,
   call, return, and literal facts while preserving current analyzer output.
+- Added the `RustSyntaxAdapter` boundary with a lexical adapter and changed-line
+  node facts while preserving fixture and golden output.

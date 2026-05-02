@@ -75,13 +75,51 @@ pub struct LiteralFact {
 pub type FunctionSummary = FunctionFact;
 pub type TestSummary = TestFact;
 
+pub trait RustSyntaxAdapter {
+    fn summarize_file(&self, path: &Path, text: &str) -> Result<FileFacts, String>;
+
+    fn changed_nodes(&self, facts: &FileFacts, ranges: &[TextRange]) -> Vec<SyntaxNodeFact>;
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct LexicalRustSyntaxAdapter;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TextRange {
+    pub start_line: usize,
+    pub start_column: usize,
+    pub end_line: usize,
+    pub end_column: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SyntaxNodeFact {
+    pub file: PathBuf,
+    pub kind: String,
+    pub start_line: usize,
+    pub end_line: usize,
+    pub text: String,
+    pub owner: Option<SymbolId>,
+}
+
+impl RustSyntaxAdapter for LexicalRustSyntaxAdapter {
+    fn summarize_file(&self, path: &Path, text: &str) -> Result<FileFacts, String> {
+        Ok(summarize_file(path.to_path_buf(), text.to_string()))
+    }
+
+    fn changed_nodes(&self, facts: &FileFacts, ranges: &[TextRange]) -> Vec<SyntaxNodeFact> {
+        lexical_changed_nodes(facts, ranges)
+    }
+}
+
 pub fn build_index(root: &Path, files: &[PathBuf]) -> Result<RustIndex, String> {
     let mut index = RustIndex::default();
+    let adapter = LexicalRustSyntaxAdapter;
     for file in files {
         let full = root.join(file);
         let text = std::fs::read_to_string(&full)
             .map_err(|err| format!("failed to read {}: {err}", full.display()))?;
-        let summary = summarize_file(file.clone(), text);
+        let summary = adapter.summarize_file(file, &text)?;
         index.tests.extend(summary.tests.clone());
         index.functions.extend(summary.functions.clone());
         index.files.insert(file.clone(), summary);
@@ -195,6 +233,72 @@ pub fn find_owner_function<'a>(
             .filter(|f| f.start_line <= line && line <= f.end_line)
             .max_by_key(|f| f.start_line)
     })
+}
+
+pub fn changed_nodes_for_lines(
+    index: &RustIndex,
+    file: &Path,
+    lines: &[usize],
+) -> Vec<SyntaxNodeFact> {
+    let Some(facts) = index.files.get(file) else {
+        return Vec::new();
+    };
+    let ranges = lines
+        .iter()
+        .map(|line| TextRange {
+            start_line: *line,
+            start_column: 1,
+            end_line: *line,
+            end_column: usize::MAX,
+        })
+        .collect::<Vec<_>>();
+    LexicalRustSyntaxAdapter.changed_nodes(facts, &ranges)
+}
+
+fn lexical_changed_nodes(facts: &FileFacts, ranges: &[TextRange]) -> Vec<SyntaxNodeFact> {
+    let mut nodes = Vec::new();
+    for range in ranges {
+        for function in &facts.functions {
+            if ranges_overlap(
+                range.start_line,
+                range.end_line,
+                function.start_line,
+                function.end_line,
+            ) {
+                nodes.push(SyntaxNodeFact {
+                    file: function.file.clone(),
+                    kind: if function.is_test {
+                        "test_function".to_string()
+                    } else {
+                        "function".to_string()
+                    },
+                    start_line: function.start_line,
+                    end_line: function.end_line,
+                    text: function.body.clone(),
+                    owner: Some(function.id.clone()),
+                });
+            }
+        }
+    }
+    nodes.sort_by(|left, right| {
+        left.file
+            .cmp(&right.file)
+            .then(left.start_line.cmp(&right.start_line))
+            .then(left.kind.cmp(&right.kind))
+    });
+    nodes.dedup_by(|left, right| {
+        left.file == right.file && left.start_line == right.start_line && left.kind == right.kind
+    });
+    nodes
+}
+
+fn ranges_overlap(
+    left_start: usize,
+    left_end: usize,
+    right_start: usize,
+    right_end: usize,
+) -> bool {
+    left_start <= right_end && right_start <= left_end
 }
 
 fn function_name(trimmed: &str) -> Option<String> {
@@ -498,6 +602,37 @@ pub fn parse(input: &str) -> Result<i32, Error> {
         assert!(file.calls.iter().any(|call| call.name == "Ok"));
         assert!(file.returns.iter().any(|fact| fact.text.contains("Ok(42)")));
         assert!(file.literals.iter().any(|fact| fact.value == "42"));
+    }
+
+    #[test]
+    fn lexical_adapter_exposes_syntax_boundary() -> Result<(), String> {
+        let adapter = LexicalRustSyntaxAdapter;
+        let facts = adapter.summarize_file(
+            Path::new("src/lib.rs"),
+            r#"
+pub fn price(amount: i32) -> i32 {
+    if amount > 10 { amount - 1 } else { amount }
+}
+"#,
+        )?;
+        let nodes = adapter.changed_nodes(
+            &facts,
+            &[TextRange {
+                start_line: 3,
+                start_column: 5,
+                end_line: 3,
+                end_column: 40,
+            }],
+        );
+
+        assert_eq!(facts.functions.len(), 1);
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].kind, "function");
+        assert_eq!(
+            nodes[0].owner.as_ref().map(|owner| owner.0.as_str()),
+            Some("src/lib.rs::price")
+        );
+        Ok(())
     }
 
     #[test]

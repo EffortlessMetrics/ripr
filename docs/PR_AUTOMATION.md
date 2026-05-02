@@ -416,7 +416,7 @@ The next automation path is trusted-change evidence:
 
 | Order | PR | Purpose |
 | ---: | --- | --- |
-| 1 | `analysis/syntax-adapter-mvp` | Add the parser adapter boundary while preserving lexical behavior. |
+| 1 | `analysis/ast-test-oracle-extraction` | Extract tests and oracle facts through the adapter boundary. |
 | 2 | `automation/gate-receipts-v1` | Write machine-readable receipts for gate runs. |
 | 3 | `automation/critic-report` | Add an advisory adversarial review packet from existing reports. |
 | 4 | `devex/onboard-doctor` | Report whether the local checkout and toolchain are ready to work. |

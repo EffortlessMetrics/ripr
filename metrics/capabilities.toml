@@ -11,13 +11,14 @@ evidence = [
   "current CLI tests",
   "boundary_gap fixture",
   "weak_error_oracle fixture",
-  "FileFacts DTOs"
+  "FileFacts DTOs",
+  "lexical syntax adapter boundary"
 ]
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "syntax-adapter-mvp"
+next = "ast-test-oracle-extraction"
 metric = "findings include changed behavior, class, evidence, and next step"
 
 [[capability]]
@@ -28,12 +29,13 @@ spec = "RIPR-SPEC-0001"
 evidence = [
   "syntax-first probe generation",
   "boundary_gap fixture",
-  "FileFacts DTOs"
+  "FileFacts DTOs",
+  "lexical syntax adapter boundary"
 ]
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "syntax-adapter-mvp"
+next = "ast-test-oracle-extraction"
 metric = "missing boundary discriminator detection"
 
 [[capability]]
@@ -91,13 +93,14 @@ evidence = [
   "fixture/golden runner commands",
   "boundary_gap fixture",
   "weak_error_oracle fixture",
-  "FileFacts DTOs"
+  "FileFacts DTOs",
+  "lexical syntax adapter boundary"
 ]
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "syntax-adapter-mvp"
+next = "ast-test-oracle-extraction"
 metric = "fixture pass rate"
 
 [[capability]]
