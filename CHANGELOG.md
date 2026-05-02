@@ -34,3 +34,5 @@ how future PRs are scoped or reviewed.
   diff and status.
 - Added PR automation and goal-mode execution docs to pin down the remaining
   shape/check/guide automation path before deeper analyzer implementation.
+- Added `cargo xtask precommit` and `cargo xtask check-pr` for cheap local
+  guardrails and review-ready non-release checks.

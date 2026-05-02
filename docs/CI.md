@@ -35,12 +35,17 @@ the worktree:
 cargo xtask shape
 cargo xtask fix-pr
 cargo xtask pr-summary
+cargo xtask precommit
+cargo xtask check-pr
 ```
 
 They are safe to run before checks. `shape` runs `cargo fmt`, sorts allowlists,
 ensures `target/ripr/reports`, and writes a local report. `fix-pr` currently
 runs `shape`, refreshes `pr-summary`, and writes a local fix-pr report.
 `pr-summary` writes `target/ripr/reports/pr-summary.md` from git diff/status.
+`precommit` is the cheap non-mutating local guardrail. `check-pr` is the
+review-ready local gate and intentionally does not run package or publish
+dry-run checks.
 
 The fuller automation model is documented in [PR automation](PR_AUTOMATION.md).
 Deterministic shaping should happen locally; CI should verify the committed
@@ -94,6 +99,8 @@ Planned CI work:
 - cache Cargo and npm dependencies without hiding stale-lockfile failures
 - add report uploads from `target/ripr/reports`
 - add guided Markdown repair reports for policy checks
+- decide whether CI should call `check-pr` directly or keep the current
+  explicit workflow steps
 - add fixture-golden tests once the fixture lab exists
 - add markdown/link checks for docs-heavy PRs
 - add traceability and capability-matrix checks

@@ -90,6 +90,8 @@ Run these before claiming the branch is ready:
 cargo xtask shape
 cargo xtask fix-pr
 cargo xtask pr-summary
+cargo xtask precommit
+cargo xtask check-pr
 cargo fmt --check
 cargo check --workspace --all-targets
 cargo test --workspace
@@ -114,6 +116,8 @@ cargo xtask check-network-policy
 policy allowlists, ensure `target/ripr/reports`, and write a shape report.
 `cargo xtask pr-summary` writes a local reviewer packet from git diff/status.
 `cargo xtask fix-pr` runs safe shaping and then refreshes the PR summary.
+`cargo xtask precommit` is the cheap non-mutating guardrail.
+`cargo xtask check-pr` is the review-ready non-release gate.
 
 See `docs/PR_AUTOMATION.md` for the shape/check/guide model and the planned
 repair-reporting lane.

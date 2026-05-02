@@ -119,6 +119,18 @@ cargo xtask pr-summary
 The summary classifies changed paths into production, evidence, policy,
 workflow, extension, and public-contract surfaces.
 
+Run the cheap local guardrail with:
+
+```bash
+cargo xtask precommit
+```
+
+Run the review-ready non-release gate with:
+
+```bash
+cargo xtask check-pr
+```
+
 Long-running implementation tasks should follow
 [Goal-mode execution](docs/GOAL_MODE.md).
 
@@ -128,6 +140,8 @@ Long-running implementation tasks should follow
 cargo xtask shape
 cargo xtask fix-pr
 cargo xtask pr-summary
+cargo xtask precommit
+cargo xtask check-pr
 cargo fmt --check
 cargo check --workspace --all-targets
 cargo test --workspace

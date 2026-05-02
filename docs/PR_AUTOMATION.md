@@ -23,6 +23,8 @@ The current repo automation surface is:
 cargo xtask shape
 cargo xtask fix-pr
 cargo xtask pr-summary
+cargo xtask precommit
+cargo xtask check-pr
 cargo xtask ci-fast
 ```
 
@@ -43,6 +45,13 @@ Current `shape` responsibilities:
 `pr-summary` writes `target/ripr/reports/pr-summary.md` from git diff and git
 status. It classifies changed paths into production, evidence, docs, policy,
 workflow, extension, and public-contract surfaces.
+
+`precommit` is the cheap non-mutating guardrail. It checks formatting and the
+policy surfaces that should fail quickly before review.
+
+`check-pr` is the review-ready local gate. It runs the current fast CI lane,
+then clippy, docs, and PR summary generation. It intentionally leaves
+release/package verification to `ci-full` or release-specific workflows.
 
 `ci-fast` is the current non-mutating local and CI check lane. It runs the Rust
 checks plus the existing policy checks for static language, panic-family usage,
@@ -104,13 +113,13 @@ Current:
 
 ```bash
 cargo xtask ci-fast
+cargo xtask precommit
+cargo xtask check-pr
 ```
 
 Planned:
 
 ```bash
-cargo xtask precommit
-cargo xtask check-pr
 cargo xtask check-doc-index
 cargo xtask check-traceability
 cargo xtask check-capabilities
@@ -259,6 +268,20 @@ file-surface checks, spec format, and fixture contract validation. It should not
 run release packaging, marketplace packaging, real mutation work, or slow
 full-matrix checks.
 
+The current `precommit` command runs:
+
+```bash
+cargo fmt --check
+cargo xtask check-static-language
+cargo xtask check-no-panic-family
+cargo xtask check-file-policy
+cargo xtask check-executable-files
+cargo xtask check-workflows
+cargo xtask check-spec-format
+cargo xtask check-fixture-contracts
+cargo xtask check-generated
+```
+
 The hooks themselves should be generated locally by a future
 `cargo xtask install-hooks` command instead of checked in as executable scripts.
 
@@ -300,13 +323,12 @@ The remaining automation path is:
 
 | Order | PR | Purpose |
 | ---: | --- | --- |
-| 1 | `check-pr-precommit` | Add `cargo xtask precommit` and `cargo xtask check-pr` as obvious local gates. |
-| 2 | `guided-check-reports` | Refactor existing checks to write Markdown repair briefs. |
-| 3 | `ci-report-artifacts` | Upload `target/ripr/reports` from CI. |
-| 4 | `fixture-golden-scaffolding` | Add fixture and golden command scaffolding. |
-| 5 | `traceability-spec-id-checks` | Validate behavior manifests, spec IDs, and drift warnings. |
-| 6 | `capability-metrics-report` | Generate metrics and capability reports from machine-readable sources. |
-| 7 | `architecture-guard` | Add workspace shape, module boundary, and public API checks. |
+| 1 | `guided-check-reports` | Refactor existing checks to write Markdown repair briefs. |
+| 2 | `ci-report-artifacts` | Upload `target/ripr/reports` from CI. |
+| 3 | `fixture-golden-scaffolding` | Add fixture and golden command scaffolding. |
+| 4 | `traceability-spec-id-checks` | Validate behavior manifests, spec IDs, and drift warnings. |
+| 5 | `capability-metrics-report` | Generate metrics and capability reports from machine-readable sources. |
+| 6 | `architecture-guard` | Add workspace shape, module boundary, and public API checks. |
 
 After those are in place, analyzer work can move in goal mode with one scoped
 capability per PR.

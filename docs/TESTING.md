@@ -21,7 +21,10 @@ Run everything:
 
 ```bash
 cargo xtask shape
+cargo xtask fix-pr
 cargo xtask pr-summary
+cargo xtask precommit
+cargo xtask check-pr
 cargo fmt --check
 cargo check --workspace --all-targets
 cargo test --workspace

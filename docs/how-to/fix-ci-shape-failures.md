@@ -20,8 +20,12 @@ This safely:
 Then run:
 
 ```bash
-cargo xtask ci-fast
+cargo xtask precommit
 ```
+
+`precommit` is the cheap non-mutating guardrail. It catches formatting, policy,
+spec, fixture, generated-file, and file-surface issues without running the full
+review-ready gate.
 
 ## Fix-PR Shortcut
 
@@ -33,6 +37,16 @@ cargo xtask fix-pr
 
 This runs `shape`, refreshes `target/ripr/reports/pr-summary.md`, and writes
 `target/ripr/reports/fix-pr.md`.
+
+After `fix-pr`, run:
+
+```bash
+cargo xtask check-pr
+```
+
+`check-pr` is the review-ready non-release gate. It runs the fast Rust and
+policy checks, clippy, docs, and PR summary generation. Release/package checks
+remain in `cargo xtask ci-full`.
 
 ## Reviewer Packet
 
