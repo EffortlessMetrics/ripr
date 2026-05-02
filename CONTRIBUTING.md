@@ -131,6 +131,13 @@ Run the review-ready non-release gate with:
 cargo xtask check-pr
 ```
 
+Validate fixture and golden scaffolding with:
+
+```bash
+cargo xtask fixtures
+cargo xtask goldens check
+```
+
 Long-running implementation tasks should follow
 [Goal-mode execution](docs/GOAL_MODE.md).
 
@@ -142,6 +149,8 @@ cargo xtask fix-pr
 cargo xtask pr-summary
 cargo xtask precommit
 cargo xtask check-pr
+cargo xtask fixtures
+cargo xtask goldens check
 cargo fmt --check
 cargo check --workspace --all-targets
 cargo test --workspace

@@ -25,6 +25,8 @@ cargo xtask fix-pr
 cargo xtask pr-summary
 cargo xtask precommit
 cargo xtask check-pr
+cargo xtask fixtures
+cargo xtask goldens check
 cargo xtask ci-fast
 ```
 
@@ -53,6 +55,14 @@ policy surfaces that should fail quickly before review.
 then clippy, docs, and PR summary generation. It intentionally leaves
 release/package verification to `ci-full` or release-specific workflows.
 
+`fixtures` validates fixture contract shape and writes
+`target/ripr/reports/fixtures.md`. It passes with a clear report when no
+fixture directories exist yet.
+
+`goldens check` validates the current golden scaffold and writes
+`target/ripr/reports/goldens.md`. `goldens bless <fixture> --reason <reason>`
+records an explicit blessing reason in the fixture expected-output changelog.
+
 `ci-fast` is the current non-mutating local and CI check lane. It runs the Rust
 checks plus the existing policy checks for static language, panic-family usage,
 file policy, executable bits, workflow shell budgets, spec format, fixture
@@ -74,6 +84,7 @@ Current:
 ```bash
 cargo xtask shape
 cargo xtask fix-pr
+cargo xtask goldens bless <fixture> --reason "..."
 ```
 
 Future:
@@ -82,7 +93,6 @@ Future:
 cargo xtask metrics --write
 cargo xtask docs-index --write
 cargo xtask capability-matrix --write
-cargo xtask goldens bless <fixture> --reason "..."
 ```
 
 Safe default mutations:
@@ -117,6 +127,8 @@ Current:
 cargo xtask ci-fast
 cargo xtask precommit
 cargo xtask check-pr
+cargo xtask fixtures
+cargo xtask goldens check
 ```
 
 Planned:
@@ -142,6 +154,8 @@ Current:
 cargo xtask pr-summary
 cargo xtask precommit
 cargo xtask check-pr
+cargo xtask fixtures
+cargo xtask goldens check
 ```
 
 Planned:
@@ -314,6 +328,9 @@ process-policy.md
 network-policy.md
 spec-format.md
 fixture-contracts.md
+fixtures.md
+goldens.md
+goldens-bless.md
 pr-shape.md
 metrics.json
 suggested-fixes.patch
@@ -328,10 +345,9 @@ The remaining automation path is:
 
 | Order | PR | Purpose |
 | ---: | --- | --- |
-| 1 | `fixture-golden-scaffolding` | Add fixture and golden command scaffolding. |
-| 2 | `traceability-spec-id-checks` | Validate behavior manifests, spec IDs, and drift warnings. |
-| 3 | `capability-metrics-report` | Generate metrics and capability reports from machine-readable sources. |
-| 4 | `architecture-guard` | Add workspace shape, module boundary, and public API checks. |
+| 1 | `traceability-spec-id-checks` | Validate behavior manifests, spec IDs, and drift warnings. |
+| 2 | `capability-metrics-report` | Generate metrics and capability reports from machine-readable sources. |
+| 3 | `architecture-guard` | Add workspace shape, module boundary, and public API checks. |
 
 After those are in place, analyzer work can move in goal mode with one scoped
 capability per PR.
