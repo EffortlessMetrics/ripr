@@ -132,6 +132,7 @@ fn main() {
         Some("check-public-api") => check_public_api(),
         Some("check-output-contracts") => check_output_contracts(),
         Some("check-doc-index") => check_doc_index(),
+        Some("check-pr-shape") => check_pr_shape(),
         Some("check-generated") => check_generated(),
         Some("check-dependencies") => check_dependencies(),
         Some("check-process-policy") => check_process_policy(),
@@ -176,6 +177,7 @@ fn precommit() -> Result<(), String> {
     check_public_api()?;
     check_output_contracts()?;
     check_doc_index()?;
+    check_pr_shape()?;
     check_generated()?;
     let body = precommit_report_body();
     write_report("precommit.md", &body)
@@ -216,6 +218,7 @@ fn run_policy_checks() -> Result<(), String> {
     check_public_api()?;
     check_output_contracts()?;
     check_doc_index()?;
+    check_pr_shape()?;
     check_generated()?;
     check_dependencies()?;
     check_process_policy()?;
@@ -243,7 +246,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  metrics\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
+        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  metrics\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
     );
 }
 
@@ -268,8 +271,14 @@ fn pr_summary() -> Result<(), String> {
     write_report("pr-summary.md", &body)
 }
 
+fn check_pr_shape() -> Result<(), String> {
+    let changes = collect_pr_changes()?;
+    let warnings = pr_shape_warnings(&changes);
+    write_report("pr-shape.md", &pr_shape_report_body(&warnings))
+}
+
 fn precommit_report_body() -> String {
-    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-public-api`\n- `cargo xtask check-output-contracts`\n- `cargo xtask check-doc-index`\n- `cargo xtask check-generated`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
+    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-public-api`\n- `cargo xtask check-output-contracts`\n- `cargo xtask check-doc-index`\n- `cargo xtask check-pr-shape`\n- `cargo xtask check-generated`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
 }
 
 fn check_pr_report_body() -> String {
@@ -2585,6 +2594,113 @@ fn pr_summary_body(changes: &[ChangedPath]) -> String {
     body
 }
 
+fn pr_shape_warnings(changes: &[ChangedPath]) -> Vec<String> {
+    let mut warnings = Vec::new();
+    let has_production = changes
+        .iter()
+        .any(|change| is_production_path(&change.path));
+    let has_evidence = changes
+        .iter()
+        .any(|change| is_evidence_path(&change.path) && !is_production_path(&change.path));
+    if has_production && !has_evidence {
+        warnings.push(
+            "Production code changed without an evidence/support file. Add or update a spec, test, fixture, golden, metric, or doc, or explain why this is a pure refactor."
+                .to_string(),
+        );
+    }
+
+    let analysis_changed = changes
+        .iter()
+        .any(|change| change.path.starts_with("crates/ripr/src/analysis/"));
+    let analysis_evidence = changes.iter().any(|change| {
+        is_spec_path(&change.path)
+            || is_test_path(&change.path)
+            || is_fixture_path(&change.path)
+            || change.path.starts_with("metrics/")
+            || change.path == ".ripr/traceability.toml"
+    });
+    if analysis_changed && !analysis_evidence {
+        warnings.push(
+            "Analysis code changed without spec/test/fixture/metric/traceability evidence. Analyzer PRs should carry behavior evidence unless this is a narrow mechanical refactor."
+                .to_string(),
+        );
+    }
+
+    let output_changed = changes.iter().any(|change| {
+        change.path.starts_with("crates/ripr/src/output/")
+            || change.path == "crates/ripr/src/domain.rs"
+            || change.path == "crates/ripr/src/lsp.rs"
+    });
+    let output_evidence = changes.iter().any(|change| {
+        change.path == "docs/OUTPUT_SCHEMA.md"
+            || change.path == "policy/output_contracts.txt"
+            || is_golden_path(&change.path)
+            || is_fixture_path(&change.path)
+    });
+    if output_changed && !output_evidence {
+        warnings.push(
+            "Output-facing code changed without output schema, contract registry, fixture, or golden evidence. Add the matching output evidence or explain why output is unchanged."
+                .to_string(),
+        );
+    }
+
+    let policy_changed = changes.iter().any(|change| is_policy_path(&change.path));
+    let policy_docs_changed = changes.iter().any(|change| {
+        matches!(
+            change.path.as_str(),
+            "AGENTS.md" | "CONTRIBUTING.md" | "README.md" | "docs/CI.md" | "docs/PR_AUTOMATION.md"
+        )
+    });
+    if policy_changed && !policy_docs_changed {
+        warnings.push(
+            "Policy metadata changed without front-door process docs. Update AGENTS, CONTRIBUTING, README, docs/CI.md, or docs/PR_AUTOMATION.md when policy behavior changes."
+                .to_string(),
+        );
+    }
+
+    let xtask_changed = changes
+        .iter()
+        .any(|change| change.path.starts_with("xtask/"));
+    let xtask_docs_changed = changes.iter().any(|change| {
+        matches!(
+            change.path.as_str(),
+            "AGENTS.md"
+                | "CONTRIBUTING.md"
+                | "README.md"
+                | "docs/CI.md"
+                | "docs/PR_AUTOMATION.md"
+                | "docs/TESTING.md"
+        )
+    });
+    if xtask_changed && !xtask_docs_changed {
+        warnings.push(
+            "xtask behavior changed without command/process docs. Update the relevant front-door docs or explain why the command surface is unchanged."
+                .to_string(),
+        );
+    }
+
+    warnings
+}
+
+fn pr_shape_report_body(warnings: &[String]) -> String {
+    let status = if warnings.is_empty() { "pass" } else { "warn" };
+    let mut body = format!("# ripr PR shape report\n\nStatus: {status}\n\n");
+    body.push_str(
+        "This report is advisory. It highlights likely missing evidence before review.\n\n",
+    );
+    body.push_str("## Warnings\n\n");
+    if warnings.is_empty() {
+        body.push_str("None detected.\n");
+    } else {
+        for warning in warnings {
+            body.push_str("```text\n");
+            body.push_str(warning);
+            body.push_str("\n```\n\n");
+        }
+    }
+    body
+}
+
 fn write_path_list(body: &mut String, paths: &[String]) {
     if paths.is_empty() {
         body.push_str("- None detected.\n");
@@ -3368,8 +3484,8 @@ mod tests {
         Capability, ChangedPath, extract_workflow_run_blocks, glob_matches,
         is_dependency_surface_candidate, is_evidence_path, is_generated_candidate, is_policy_path,
         is_production_path, is_snake_case_id, is_spec_id, json_escape, parse_inline_array,
-        parse_reason, precommit_report_body, public_contract_rows, sorted_allowlist_content,
-        spec_id_from_path,
+        parse_reason, pr_shape_warnings, precommit_report_body, public_contract_rows,
+        sorted_allowlist_content, spec_id_from_path,
     };
     use std::collections::BTreeSet;
     use std::path::Path;
@@ -3495,6 +3611,32 @@ jobs:
 
         assert_eq!(json, vec!["crates/ripr/src/output/json.rs (M)"]);
         assert_eq!(lsp, vec!["editors/vscode/src/client.ts (M)"]);
+    }
+
+    #[test]
+    fn pr_shape_warnings_flag_analysis_without_evidence() {
+        let changes = vec![ChangedPath {
+            path: "crates/ripr/src/analysis/classifier.rs".to_string(),
+            statuses: BTreeSet::from(["M".to_string()]),
+        }];
+        let warnings = pr_shape_warnings(&changes);
+        assert!(
+            warnings
+                .iter()
+                .any(|warning| warning.contains("Analysis code changed"))
+        );
+
+        let with_evidence = vec![
+            ChangedPath {
+                path: "crates/ripr/src/analysis/classifier.rs".to_string(),
+                statuses: BTreeSet::from(["M".to_string()]),
+            },
+            ChangedPath {
+                path: "docs/specs/RIPR-SPEC-0001-static-exposure-loop.md".to_string(),
+                statuses: BTreeSet::from(["M".to_string()]),
+            },
+        ];
+        assert!(pr_shape_warnings(&with_evidence).is_empty());
     }
 
     #[test]

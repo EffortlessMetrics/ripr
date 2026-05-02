@@ -50,3 +50,5 @@ how future PRs are scoped or reviewed.
   strings.
 - Added docs index checks for spec, ADR, README, and documentation front-door
   links.
+- Added advisory PR-shape warnings for likely missing evidence in changed-file
+  sets.
