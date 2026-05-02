@@ -29,6 +29,9 @@ Repository files:
 - `.github/workflows/security.yml`
 - `deny.toml`
 
+Routine Dependabot version-update PRs are limited to minor and patch updates.
+Major updates are handled as deliberate scoped PRs.
+
 ## Secret Scanning
 
 Expected state:
