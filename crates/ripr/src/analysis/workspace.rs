@@ -114,6 +114,7 @@ fn visit(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     fn files(paths: &[&str]) -> Vec<PathBuf> {
         paths.iter().map(PathBuf::from).collect()
@@ -169,5 +170,60 @@ mod tests {
         let selected =
             select_rust_files_for_mode(&all, &files(&["src/lib.rs"]), AnalysisMode::Deep, false);
         assert_eq!(selected, files(&["src/lib.rs"]));
+    }
+
+    proptest! {
+        #[test]
+        fn changed_existing_files_is_a_sorted_unique_subset(
+            all in prop::collection::vec("[a-z]{1,8}/[a-z]{1,8}\\.rs", 0..40),
+            changed in prop::collection::vec("[a-z]{1,8}/[a-z]{1,8}\\.rs", 0..40),
+        ) {
+            let all_files = all.iter().map(PathBuf::from).collect::<Vec<_>>();
+            let changed_files = changed.iter().map(PathBuf::from).collect::<Vec<_>>();
+
+            let selected = changed_existing_files(&all_files, &changed_files);
+
+            prop_assert!(selected.windows(2).all(|pair| pair[0] < pair[1]));
+            prop_assert!(selected.iter().all(|entry| all_files.iter().any(|file| file == entry)));
+            prop_assert!(selected.iter().all(|entry| changed_files.iter().any(|file| file == entry)));
+        }
+
+        #[test]
+        fn deep_and_ready_with_unchanged_tests_matches_all_files(
+            all in prop::collection::vec(
+                prop_oneof![
+                    Just("src/lib.rs".to_string()),
+                    Just("tests/smoke.rs".to_string()),
+                    Just("crates/app/src/lib.rs".to_string()),
+                    Just("crates/app/tests/smoke.rs".to_string()),
+                    Just("crates/core/src/lib.rs".to_string()),
+                    Just("crates/core/tests/smoke.rs".to_string()),
+                ],
+                0..40
+            ),
+            changed in prop::collection::vec(
+                prop_oneof![
+                    Just("src/lib.rs".to_string()),
+                    Just("tests/smoke.rs".to_string()),
+                    Just("crates/app/src/lib.rs".to_string()),
+                    Just("crates/app/tests/smoke.rs".to_string()),
+                    Just("crates/core/src/lib.rs".to_string()),
+                    Just("crates/core/tests/smoke.rs".to_string()),
+                ],
+                0..40
+            ),
+        ) {
+            let all_files = all.iter().map(PathBuf::from).collect::<Vec<_>>();
+            let changed_files = changed.iter().map(PathBuf::from).collect::<Vec<_>>();
+            let expected = sorted_unique(all_files.clone());
+
+            let deep_selected =
+                select_rust_files_for_mode(&all_files, &changed_files, AnalysisMode::Deep, true);
+            let ready_selected =
+                select_rust_files_for_mode(&all_files, &changed_files, AnalysisMode::Ready, true);
+
+            prop_assert_eq!(deep_selected, expected.clone());
+            prop_assert_eq!(ready_selected, expected);
+        }
     }
 }

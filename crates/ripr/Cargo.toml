@@ -31,5 +31,8 @@ path = "src/main.rs"
 ra_ap_syntax = "0.0.330"
 serde_json = "1"
 
+[dev-dependencies]
+proptest = "1.6"
+
 [lints]
 workspace = true
