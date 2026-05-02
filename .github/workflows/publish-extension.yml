@@ -32,7 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: npm
@@ -85,7 +85,7 @@ jobs:
       VSIX_FILE: dist/ripr-${{ github.event.inputs.version || github.ref_name }}.vsix
       VSCE_PAT: ${{ secrets.VSCE_PAT }}
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
 
@@ -123,7 +123,7 @@ jobs:
       VSIX_FILE: dist/ripr-${{ github.event.inputs.version || github.ref_name }}.vsix
       OVSX_PAT: ${{ secrets.OVSX_PAT }}
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
 
