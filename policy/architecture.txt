@@ -3,10 +3,10 @@
 crates/ripr/src/analysis/**|crate::cli|analysis must not import CLI adapters
 crates/ripr/src/analysis/**|crate::lsp|analysis must not import LSP adapters
 crates/ripr/src/analysis/**|crate::output|analysis must not render user output
-crates/ripr/src/domain.rs|crate::cli|domain must not import CLI adapters
-crates/ripr/src/domain.rs|crate::lsp|domain must not import LSP adapters
-crates/ripr/src/domain.rs|crate::output|domain must not import output renderers
-crates/ripr/src/domain.rs|serde_json|domain must not know JSON rendering
+crates/ripr/src/domain/**|crate::cli|domain must not import CLI adapters
+crates/ripr/src/domain/**|crate::lsp|domain must not import LSP adapters
+crates/ripr/src/domain/**|crate::output|domain must not import output renderers
+crates/ripr/src/domain/**|serde_json|domain must not know JSON rendering
 crates/ripr/src/output/**|check_workspace|output must not orchestrate analysis use cases
 crates/ripr/src/output/**|collect_context|output must not orchestrate context use cases
 crates/ripr/src/output/**|explain_finding|output must not orchestrate explain use cases
