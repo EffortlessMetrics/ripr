@@ -14,7 +14,7 @@ use tower_lsp_server::ls_types::{
 };
 use tower_lsp_server::{Client, LanguageServer, LspService, Server};
 
-const COLLECT_CONTEXT_COMMAND: &str = "ripr.collectContext";
+const COPY_CONTEXT_COMMAND: &str = "ripr.copyContext";
 const REFRESH_COMMAND: &str = "ripr.refresh";
 const HOVER_TEXT: &str = "ripr estimates static RIPR exposure for changed Rust behavior. Run `ripr check --format json` for current findings.";
 
@@ -139,10 +139,7 @@ fn initialize_result() -> InitializeResult {
             hover_provider: Some(HoverProviderCapability::Simple(true)),
             code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
             execute_command_provider: Some(ExecuteCommandOptions {
-                commands: vec![
-                    COLLECT_CONTEXT_COMMAND.to_string(),
-                    REFRESH_COMMAND.to_string(),
-                ],
+                commands: vec![REFRESH_COMMAND.to_string()],
                 ..ExecuteCommandOptions::default()
             }),
             ..ServerCapabilities::default()
@@ -171,8 +168,8 @@ fn code_action_response() -> CodeActionResponse {
             title: "Copy ripr context packet".to_string(),
             kind: Some(CodeActionKind::QUICKFIX),
             command: Some(Command {
-                title: "Collect ripr context".to_string(),
-                command: COLLECT_CONTEXT_COMMAND.to_string(),
+                title: "Copy ripr context".to_string(),
+                command: COPY_CONTEXT_COMMAND.to_string(),
                 arguments: Some(Vec::new()),
             }),
             ..CodeAction::default()
@@ -259,7 +256,7 @@ fn encode_uri_path(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        COLLECT_CONTEXT_COMMAND, HOVER_TEXT, REFRESH_COMMAND, code_action_response,
+        COPY_CONTEXT_COMMAND, HOVER_TEXT, REFRESH_COMMAND, code_action_response,
         diagnostic_for_finding, encode_uri_path, file_uri_for_path, hover_response,
         initialize_result,
     };
@@ -289,7 +286,7 @@ mod tests {
             return Err("expected execute command provider".to_string());
         };
         let commands = provider.commands;
-        assert_eq!(commands, vec![COLLECT_CONTEXT_COMMAND, REFRESH_COMMAND]);
+        assert_eq!(commands, vec![REFRESH_COMMAND]);
         Ok(())
     }
 
@@ -339,8 +336,8 @@ mod tests {
                 (
                     "Copy ripr context packet",
                     "quickfix",
-                    "Collect ripr context",
-                    COLLECT_CONTEXT_COMMAND,
+                    "Copy ripr context",
+                    COPY_CONTEXT_COMMAND,
                 ),
                 (
                     "Run ripr check",
