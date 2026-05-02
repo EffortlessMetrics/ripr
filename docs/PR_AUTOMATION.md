@@ -35,6 +35,7 @@ cargo xtask goldens check
 cargo xtask test-oracle-report
 cargo xtask check-test-oracles
 cargo xtask dogfood
+cargo xtask reports index
 cargo xtask ci-fast
 ```
 
@@ -82,6 +83,11 @@ alias that produces the same non-blocking report.
 `dogfood` runs `ripr check --mode fast` against stable in-repo fixture diffs,
 writes actual outputs under `target/ripr/dogfood/`, and writes advisory
 Markdown and JSON reports under `target/ripr/reports/`.
+
+`reports index` writes `target/ripr/reports/index.md` and
+`target/ripr/reports/index.json` as a reviewer front door. It summarizes the
+active campaign, available reports, missing expected reports for the changed
+surface, advisory reports, and suggested next commands.
 
 `ci-fast` is the current non-mutating local and CI check lane. It runs the Rust
 checks plus the existing policy checks for static language, panic-family usage,
@@ -152,6 +158,7 @@ cargo xtask goldens check
 cargo xtask test-oracle-report
 cargo xtask check-test-oracles
 cargo xtask dogfood
+cargo xtask reports index
 cargo xtask check-traceability
 cargo xtask metrics
 cargo xtask check-capabilities
@@ -183,6 +190,7 @@ cargo xtask goldens check
 cargo xtask test-oracle-report
 cargo xtask check-test-oracles
 cargo xtask dogfood
+cargo xtask reports index
 cargo xtask check-traceability
 cargo xtask metrics
 cargo xtask check-capabilities
@@ -295,7 +303,6 @@ Current summary fields:
 
 Next summary fields:
 
-- generated reports
 - machine-readable receipt links
 - warning-only drift checks
 
@@ -356,6 +363,9 @@ CI uploads review artifacts from the Rust workflow when reports are present:
 target/ripr/reports/
 ```
 
+CI also writes `target/ripr/reports/index.md` into the GitHub Actions job
+summary when the index exists.
+
 Expected reports as the automation matures:
 
 ```text
@@ -393,6 +403,8 @@ test-oracles.md
 test-oracles.json
 dogfood.md
 dogfood.json
+index.md
+index.json
 pr-shape.md
 metrics.md
 metrics.json
@@ -412,11 +424,10 @@ evidence without delaying Campaign 3:
 | Order | PR | Purpose |
 | ---: | --- | --- |
 | 1 | `automation/gate-receipts-v1` | Write machine-readable receipts for gate runs. |
-| 2 | `automation/report-index` | Give reviewers one front door for generated reports and receipt links. |
-| 3 | `automation/golden-drift-summary` | Summarize semantic golden drift for output-review PRs. |
-| 4 | `automation/critic-report` | Add an advisory adversarial review packet from existing reports. |
-| 5 | `devex/onboard-doctor` | Report whether the local checkout and toolchain are ready to work. |
-| 6 | `devex/install-hooks` | Generate local hooks without checking executable scripts into the repo. |
+| 2 | `automation/golden-drift-summary` | Summarize semantic golden drift for output-review PRs. |
+| 3 | `automation/critic-report` | Add an advisory adversarial review packet from existing reports. |
+| 4 | `devex/onboard-doctor` | Report whether the local checkout and toolchain are ready to work. |
+| 5 | `devex/install-hooks` | Generate local hooks without checking executable scripts into the repo. |
 
 Analyzer work can now move through Codex Goals campaigns. Each campaign may span
 multiple PRs, while each work item should still follow the scoped PR contract.

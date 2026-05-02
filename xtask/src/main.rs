@@ -152,6 +152,22 @@ struct DogfoodRun {
 }
 
 #[derive(Clone, Debug)]
+struct ReportIndexEntry {
+    file: String,
+    path: String,
+    status: String,
+}
+
+#[derive(Debug, Default)]
+struct ReportIndexCampaign {
+    id: String,
+    title: String,
+    status: String,
+    ready_work_items: Vec<String>,
+    issues: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
 pub enum CheckStatus {
     Pass,
     Warn,
@@ -212,6 +228,7 @@ fn main() {
         Some("test-oracle-report") | Some("check-test-oracles") => test_oracle_report(),
         Some("dogfood") => dogfood(),
         Some("goals") => goals(&args[2..]),
+        Some("reports") => reports(&args[2..]),
         Some("ci-fast") => ci_fast(),
         Some("ci-full") => ci_full(),
         Some("check-static-language") => check_static_language(),
@@ -304,7 +321,8 @@ fn check_pr() -> Result<(), String> {
     run("cargo", &["doc", "--workspace", "--no-deps"])?;
     pr_summary()?;
     let body = check_pr_report_body();
-    write_report("check-pr.md", &body)
+    write_report("check-pr.md", &body)?;
+    reports_index()
 }
 
 fn run_policy_checks() -> Result<(), String> {
@@ -353,7 +371,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  metrics\n  test-oracle-report\n  check-test-oracles\n  dogfood\n  goals status|next|report\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
+        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  metrics\n  test-oracle-report\n  check-test-oracles\n  dogfood\n  goals status|next|report\n  reports index\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
     );
 }
 
@@ -382,6 +400,45 @@ fn check_pr_shape() -> Result<(), String> {
     let changes = collect_pr_changes()?;
     let warnings = pr_shape_warnings(&changes);
     write_report("pr-shape.md", &pr_shape_report_body(&warnings))
+}
+
+fn reports(args: &[String]) -> Result<(), String> {
+    match args.first().map(String::as_str) {
+        Some("index") => reports_index(),
+        Some(other) => Err(format!(
+            "unknown reports command `{other}`\nusage: cargo xtask reports index"
+        )),
+        None => Err("missing reports command\nusage: cargo xtask reports index".to_string()),
+    }
+}
+
+fn reports_index() -> Result<(), String> {
+    let changes = collect_pr_changes()?;
+    let campaign = report_index_campaign();
+    let reports = report_index_entries()?;
+    let receipts = receipt_index_entries()?;
+    let missing = report_index_missing_expected(&reports, &changes);
+    let status = report_index_status(&reports, &missing, &campaign.issues);
+    let next_commands = report_index_next_commands(&missing);
+
+    let markdown = report_index_markdown(
+        status,
+        &campaign,
+        &reports,
+        &receipts,
+        &missing,
+        &next_commands,
+    );
+    let json = report_index_json(
+        status,
+        &campaign,
+        &reports,
+        &receipts,
+        &missing,
+        &next_commands,
+    );
+    write_report("index.md", &markdown)?;
+    write_report("index.json", &json)
 }
 
 fn precommit_report_body() -> String {
@@ -3977,6 +4034,7 @@ fn known_xtask_command(command: &str) -> bool {
             | "check-test-oracles"
             | "dogfood"
             | "goals"
+            | "reports"
             | "ci-fast"
             | "ci-full"
             | "check-static-language"
@@ -4288,6 +4346,285 @@ fn reports_dir() -> PathBuf {
     Path::new("target").join("ripr").join("reports")
 }
 
+fn receipts_dir() -> PathBuf {
+    Path::new("target").join("ripr").join("receipts")
+}
+
+fn report_index_campaign() -> ReportIndexCampaign {
+    let path = Path::new(".ripr/goals/active.toml");
+    match parse_campaign_manifest(path) {
+        Ok((manifest, violations)) => {
+            let ready_work_items = manifest
+                .work_items
+                .iter()
+                .filter(|item| item.status.as_deref() == Some("ready"))
+                .filter_map(|item| item.id.clone())
+                .collect::<Vec<_>>();
+            ReportIndexCampaign {
+                id: manifest.id.unwrap_or_else(|| "unknown".to_string()),
+                title: manifest.title.unwrap_or_else(|| "unknown".to_string()),
+                status: manifest.status.unwrap_or_else(|| "unknown".to_string()),
+                ready_work_items,
+                issues: violations,
+            }
+        }
+        Err(err) => ReportIndexCampaign {
+            id: "unknown".to_string(),
+            title: "unknown".to_string(),
+            status: "unknown".to_string(),
+            ready_work_items: Vec::new(),
+            issues: vec![err],
+        },
+    }
+}
+
+fn report_index_entries() -> Result<Vec<ReportIndexEntry>, String> {
+    file_index_entries(&reports_dir(), &["index.md", "index.json"])
+}
+
+fn receipt_index_entries() -> Result<Vec<ReportIndexEntry>, String> {
+    file_index_entries(&receipts_dir(), &[])
+}
+
+fn file_index_entries(dir: &Path, exclude_names: &[&str]) -> Result<Vec<ReportIndexEntry>, String> {
+    let mut entries = Vec::new();
+    if !dir.exists() {
+        return Ok(entries);
+    }
+    for entry in
+        fs::read_dir(dir).map_err(|err| format!("failed to read {}: {err}", normalize_path(dir)))?
+    {
+        let entry = entry
+            .map_err(|err| format!("failed to read entry under {}: {err}", normalize_path(dir)))?;
+        let file_type = entry.file_type().map_err(|err| {
+            format!(
+                "failed to read file type for {}: {err}",
+                normalize_path(&entry.path())
+            )
+        })?;
+        if !file_type.is_file() {
+            continue;
+        }
+        let file = entry.file_name().to_string_lossy().to_string();
+        if exclude_names.iter().any(|name| *name == file) {
+            continue;
+        }
+        let path = entry.path();
+        entries.push(ReportIndexEntry {
+            file,
+            path: normalize_path(&path),
+            status: report_entry_status(&path),
+        });
+    }
+    entries.sort_by(|left, right| left.file.cmp(&right.file));
+    Ok(entries)
+}
+
+fn report_entry_status(path: &Path) -> String {
+    if path.file_name().and_then(|value| value.to_str()) == Some("metrics.json") {
+        return "present".to_string();
+    }
+    match read_text_lossy(path) {
+        Ok(text) => report_status_from_text(&text).unwrap_or_else(|| "present".to_string()),
+        Err(_) => "unreadable".to_string(),
+    }
+}
+
+fn report_status_from_text(text: &str) -> Option<String> {
+    for line in text.lines().take(24) {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("Status:") {
+            return Some(normalize_report_status(rest));
+        }
+        if let Some((_, rest)) = trimmed.split_once("\"status\"")
+            && let Some((_, value)) = rest.split_once(':')
+        {
+            return Some(normalize_report_status(value));
+        }
+    }
+    None
+}
+
+fn normalize_report_status(value: &str) -> String {
+    let cleaned = value.trim().trim_matches(|ch| {
+        ch == '"'
+            || ch == '\''
+            || ch == '`'
+            || ch == ','
+            || ch == '{'
+            || ch == '}'
+            || ch == '['
+            || ch == ']'
+    });
+    let lower = cleaned.to_ascii_lowercase();
+    let mut token = String::new();
+    for ch in lower.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' {
+            token.push(ch);
+        } else {
+            break;
+        }
+    }
+    if token.is_empty() {
+        "present".to_string()
+    } else {
+        token
+    }
+}
+
+fn report_index_missing_expected(
+    reports: &[ReportIndexEntry],
+    changes: &[ChangedPath],
+) -> Vec<String> {
+    let existing = reports
+        .iter()
+        .map(|entry| entry.file.clone())
+        .collect::<BTreeSet<_>>();
+    let mut expected = BTreeSet::<String>::new();
+    expected.insert("pr-summary.md".to_string());
+    expected.insert("check-pr.md".to_string());
+
+    if changes.iter().any(|change| is_docs_path(&change.path)) {
+        expected.insert("doc-index.md".to_string());
+        expected.insert("markdown-links.md".to_string());
+    }
+    if changes
+        .iter()
+        .any(|change| change.path == "README.md" || change.path == "docs/CAPABILITY_MATRIX.md")
+    {
+        expected.insert("readme-state.md".to_string());
+    }
+    if changes.iter().any(|change| is_campaign_path(&change.path)) {
+        expected.insert("campaign.md".to_string());
+        expected.insert("goals-next.md".to_string());
+    }
+    if changes.iter().any(|change| is_analysis_path(&change.path)) {
+        expected.insert("pr-shape.md".to_string());
+        expected.insert("fixtures.md".to_string());
+        expected.insert("goldens.md".to_string());
+        expected.insert("capabilities.md".to_string());
+    }
+    if changes
+        .iter()
+        .any(|change| is_output_surface_path(&change.path))
+    {
+        expected.insert("output-contracts.md".to_string());
+        expected.insert("fixtures.md".to_string());
+        expected.insert("goldens.md".to_string());
+    }
+    if changes.iter().any(|change| is_fixture_path(&change.path)) {
+        expected.insert("fixtures.md".to_string());
+        expected.insert("goldens.md".to_string());
+    }
+    if changes.iter().any(|change| is_metrics_path(&change.path)) {
+        expected.insert("capabilities.md".to_string());
+        expected.insert("metrics.md".to_string());
+    }
+
+    expected
+        .into_iter()
+        .filter(|file| !existing.contains(file))
+        .map(|file| format!("target/ripr/reports/{file}"))
+        .collect()
+}
+
+fn is_docs_path(path: &str) -> bool {
+    path == "README.md"
+        || path == "AGENTS.md"
+        || path == "CONTRIBUTING.md"
+        || path == "CHANGELOG.md"
+        || path.starts_with("docs/")
+}
+
+fn is_campaign_path(path: &str) -> bool {
+    path == ".ripr/goals/active.toml"
+        || path == "docs/IMPLEMENTATION_CAMPAIGNS.md"
+        || path == "docs/IMPLEMENTATION_PLAN.md"
+}
+
+fn is_analysis_path(path: &str) -> bool {
+    path.starts_with("crates/ripr/src/analysis/")
+}
+
+fn is_output_surface_path(path: &str) -> bool {
+    path.starts_with("crates/ripr/src/output/")
+        || path == "crates/ripr/src/domain.rs"
+        || path == "crates/ripr/src/lsp.rs"
+        || path == "docs/OUTPUT_SCHEMA.md"
+        || path == "policy/output_contracts.txt"
+}
+
+fn is_metrics_path(path: &str) -> bool {
+    path.starts_with("metrics/") || path == "docs/CAPABILITY_MATRIX.md"
+}
+
+fn report_index_status(
+    reports: &[ReportIndexEntry],
+    missing: &[String],
+    campaign_issues: &[String],
+) -> &'static str {
+    if reports.iter().any(|entry| entry.status == "fail") {
+        return "fail";
+    }
+    if !missing.is_empty()
+        || !campaign_issues.is_empty()
+        || reports.iter().any(|entry| entry.status == "warn")
+    {
+        "warn"
+    } else {
+        "pass"
+    }
+}
+
+fn report_index_next_commands(missing: &[String]) -> Vec<String> {
+    let mut commands = BTreeSet::<String>::new();
+    if missing
+        .iter()
+        .any(|path| path.ends_with("/pr-summary.md") || path.ends_with("\\pr-summary.md"))
+    {
+        commands.insert("cargo xtask pr-summary".to_string());
+    }
+    if missing
+        .iter()
+        .any(|path| path.ends_with("/fixtures.md") || path.ends_with("\\fixtures.md"))
+    {
+        commands.insert("cargo xtask fixtures".to_string());
+    }
+    if missing
+        .iter()
+        .any(|path| path.ends_with("/goldens.md") || path.ends_with("\\goldens.md"))
+    {
+        commands.insert("cargo xtask goldens check".to_string());
+    }
+    if missing
+        .iter()
+        .any(|path| path.ends_with("/campaign.md") || path.ends_with("\\campaign.md"))
+    {
+        commands.insert("cargo xtask check-campaign".to_string());
+    }
+    if missing
+        .iter()
+        .any(|path| path.ends_with("/goals-next.md") || path.ends_with("\\goals-next.md"))
+    {
+        commands.insert("cargo xtask goals next".to_string());
+    }
+    if missing
+        .iter()
+        .any(|path| path.ends_with("/metrics.md") || path.ends_with("\\metrics.md"))
+    {
+        commands.insert("cargo xtask metrics".to_string());
+    }
+    if missing
+        .iter()
+        .any(|path| path.ends_with("/capabilities.md") || path.ends_with("\\capabilities.md"))
+    {
+        commands.insert("cargo xtask check-capabilities".to_string());
+    }
+    commands.insert("cargo xtask check-pr".to_string());
+    commands.insert("cargo xtask reports index".to_string());
+    commands.into_iter().collect()
+}
+
 fn collect_pr_changes() -> Result<Vec<ChangedPath>, String> {
     let mut changes = BTreeMap::<String, BTreeSet<String>>::new();
 
@@ -4397,6 +4734,194 @@ fn pr_summary_body(changes: &[ChangedPath]) -> String {
     body.push_str("- `cargo xtask check-pr`\n");
     body.push_str("- `cargo xtask pr-summary`\n");
     body
+}
+
+fn report_index_markdown(
+    status: &str,
+    campaign: &ReportIndexCampaign,
+    reports: &[ReportIndexEntry],
+    receipts: &[ReportIndexEntry],
+    missing: &[String],
+    next_commands: &[String],
+) -> String {
+    let mut body = format!("# ripr report index\n\nStatus: {status}\n\n");
+    body.push_str("This is the reviewer front door for generated `ripr` artifacts.\n\n");
+
+    body.push_str("## Campaign\n\n");
+    body.push_str(&format!("- id: `{}`\n", campaign.id));
+    body.push_str(&format!("- title: {}\n", campaign.title));
+    body.push_str(&format!("- status: `{}`\n", campaign.status));
+    body.push_str("- ready work items:\n");
+    if campaign.ready_work_items.is_empty() {
+        body.push_str("  - None detected.\n");
+    } else {
+        for item in &campaign.ready_work_items {
+            body.push_str(&format!("  - `{item}`\n"));
+        }
+    }
+    if !campaign.issues.is_empty() {
+        body.push_str("- campaign issues:\n");
+        for issue in &campaign.issues {
+            body.push_str(&format!("  - {issue}\n"));
+        }
+    }
+
+    body.push_str("\n## Summary\n\n");
+    body.push_str(&format!("- available reports: {}\n", reports.len()));
+    body.push_str(&format!("- available receipts: {}\n", receipts.len()));
+    body.push_str(&format!("- missing expected reports: {}\n", missing.len()));
+    body.push_str(&format!(
+        "- failed reports: {}\n",
+        reports
+            .iter()
+            .filter(|entry| entry.status == "fail")
+            .count()
+    ));
+    body.push_str(&format!(
+        "- warning reports: {}\n",
+        reports
+            .iter()
+            .filter(|entry| entry.status == "warn")
+            .count()
+    ));
+
+    body.push_str("\n## Suggested Reviewer Path\n\n");
+    body.push_str("1. Read `target/ripr/reports/pr-summary.md`.\n");
+    body.push_str("2. Read `target/ripr/reports/critic.md`, if present.\n");
+    body.push_str("3. Inspect `target/ripr/reports/fixtures.md` and `target/ripr/reports/goldens.md` when fixtures or output changed.\n");
+    body.push_str(
+        "4. Inspect `target/ripr/reports/golden-drift.md`, if present and output changed.\n",
+    );
+    body.push_str("5. Inspect `target/ripr/receipts/check-pr.json`, when receipts exist.\n");
+
+    body.push_str("\n## Key Report Status\n\n");
+    for file in [
+        "pr-summary.md",
+        "check-pr.md",
+        "pr-shape.md",
+        "fixtures.md",
+        "goldens.md",
+        "test-oracles.md",
+        "dogfood.md",
+        "metrics.md",
+        "campaign.md",
+        "goals-next.md",
+    ] {
+        body.push_str(&format!(
+            "- `{file}`: {}\n",
+            status_for_report(reports, file)
+        ));
+    }
+
+    body.push_str("\n## Available Reports\n\n");
+    if reports.is_empty() {
+        body.push_str("- None detected.\n");
+    } else {
+        body.push_str("| Report | Status |\n| --- | --- |\n");
+        for entry in reports {
+            body.push_str(&format!(
+                "| `{}` | `{}` |\n",
+                markdown_cell(&entry.path),
+                markdown_cell(&entry.status)
+            ));
+        }
+    }
+
+    body.push_str("\n## Missing Expected Reports\n\n");
+    write_path_list(&mut body, missing);
+
+    body.push_str("\n## Receipts\n\n");
+    if receipts.is_empty() {
+        body.push_str("- None detected.\n");
+    } else {
+        for receipt in receipts {
+            body.push_str(&format!("- `{}`\n", receipt.path));
+        }
+    }
+
+    body.push_str("\n## Suggested Next Commands\n\n");
+    for command in next_commands {
+        body.push_str(&format!("- `{command}`\n"));
+    }
+
+    body
+}
+
+fn report_index_json(
+    status: &str,
+    campaign: &ReportIndexCampaign,
+    reports: &[ReportIndexEntry],
+    receipts: &[ReportIndexEntry],
+    missing: &[String],
+    next_commands: &[String],
+) -> String {
+    let mut body = String::from("{\n");
+    body.push_str("  \"schema_version\": \"0.1\",\n");
+    body.push_str(&format!("  \"status\": \"{}\",\n", json_escape(status)));
+    body.push_str("  \"campaign\": {\n");
+    body.push_str(&format!("    \"id\": \"{}\",\n", json_escape(&campaign.id)));
+    body.push_str(&format!(
+        "    \"title\": \"{}\",\n",
+        json_escape(&campaign.title)
+    ));
+    body.push_str(&format!(
+        "    \"status\": \"{}\",\n",
+        json_escape(&campaign.status)
+    ));
+    body.push_str("    \"ready_work_items\": [");
+    write_json_string_array(&mut body, &campaign.ready_work_items);
+    body.push_str("],\n");
+    body.push_str("    \"issues\": [");
+    write_json_string_array(&mut body, &campaign.issues);
+    body.push_str("]\n");
+    body.push_str("  },\n");
+    body.push_str("  \"reports\": [\n");
+    write_report_index_entry_array(&mut body, reports);
+    body.push_str("  ],\n");
+    body.push_str("  \"receipts\": [\n");
+    write_report_index_entry_array(&mut body, receipts);
+    body.push_str("  ],\n");
+    body.push_str("  \"missing_expected_reports\": [");
+    write_json_string_array(&mut body, missing);
+    body.push_str("],\n");
+    body.push_str("  \"suggested_next_commands\": [");
+    write_json_string_array(&mut body, next_commands);
+    body.push_str("]\n");
+    body.push_str("}\n");
+    body
+}
+
+fn write_report_index_entry_array(body: &mut String, entries: &[ReportIndexEntry]) {
+    for (index, entry) in entries.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("    {\n");
+        body.push_str(&format!(
+            "      \"file\": \"{}\",\n",
+            json_escape(&entry.file)
+        ));
+        body.push_str(&format!(
+            "      \"path\": \"{}\",\n",
+            json_escape(&entry.path)
+        ));
+        body.push_str(&format!(
+            "      \"status\": \"{}\"\n",
+            json_escape(&entry.status)
+        ));
+        body.push_str("    }");
+    }
+    if !entries.is_empty() {
+        body.push('\n');
+    }
+}
+
+fn status_for_report(reports: &[ReportIndexEntry], file: &str) -> String {
+    reports
+        .iter()
+        .find(|entry| entry.file == file)
+        .map(|entry| entry.status.clone())
+        .unwrap_or_else(|| "missing".to_string())
 }
 
 fn pr_shape_warnings(changes: &[ChangedPath]) -> Vec<String> {
@@ -5305,15 +5830,17 @@ fn is_word_char(value: Option<char>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        CampaignManifest, Capability, ChangedPath, DogfoodRun, MarkdownLink, TestOracleClass,
-        dogfood_class_counts, dogfood_report_json, dogfood_report_markdown,
-        extract_workflow_run_blocks, glob_matches, is_dependency_surface_candidate,
-        is_evidence_path, is_generated_candidate, is_known_campaign_command, is_policy_path,
-        is_production_path, is_snake_case_id, is_spec_id, json_escape, json_number_after,
-        local_markdown_target, markdown_links_in_text, next_checkpoints_from_capabilities,
-        normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
-        parse_campaign_manifest, parse_inline_array, parse_reason, pr_shape_warnings,
-        precommit_report_body, public_contract_rows, sorted_allowlist_content, spec_id_from_path,
+        CampaignManifest, Capability, ChangedPath, DogfoodRun, MarkdownLink, ReportIndexCampaign,
+        ReportIndexEntry, TestOracleClass, dogfood_class_counts, dogfood_report_json,
+        dogfood_report_markdown, extract_workflow_run_blocks, glob_matches,
+        is_dependency_surface_candidate, is_evidence_path, is_generated_candidate,
+        is_known_campaign_command, is_policy_path, is_production_path, is_snake_case_id,
+        is_spec_id, json_escape, json_number_after, local_markdown_target, markdown_links_in_text,
+        next_checkpoints_from_capabilities, normalize_fixture_human_output,
+        normalize_fixture_json_output, normalize_golden_text, parse_campaign_manifest,
+        parse_inline_array, parse_reason, pr_shape_warnings, precommit_report_body,
+        public_contract_rows, report_index_markdown, report_index_missing_expected,
+        report_status_from_text, sorted_allowlist_content, spec_id_from_path, status_for_report,
         test_oracle_report_json, test_oracle_report_markdown, test_oracle_tests_in_text,
     };
     use std::collections::BTreeSet;
@@ -5505,6 +6032,81 @@ jobs:
     }
 
     #[test]
+    fn report_status_parser_reads_markdown_and_json() {
+        assert_eq!(
+            report_status_from_text("# Report\n\nStatus: warn\n\nBody"),
+            Some("warn".to_string())
+        );
+        assert_eq!(
+            report_status_from_text("{\n  \"status\": \"pass\"\n}"),
+            Some("pass".to_string())
+        );
+        assert_eq!(report_status_from_text("# Report\n\nBody"), None);
+    }
+
+    #[test]
+    fn report_index_missing_expected_tracks_changed_surfaces() {
+        let reports = vec![ReportIndexEntry {
+            file: "pr-summary.md".to_string(),
+            path: "target/ripr/reports/pr-summary.md".to_string(),
+            status: "pass".to_string(),
+        }];
+        let changes = vec![
+            ChangedPath {
+                path: "docs/PR_AUTOMATION.md".to_string(),
+                statuses: BTreeSet::from(["M".to_string()]),
+            },
+            ChangedPath {
+                path: ".ripr/goals/active.toml".to_string(),
+                statuses: BTreeSet::from(["M".to_string()]),
+            },
+        ];
+
+        let missing = report_index_missing_expected(&reports, &changes);
+
+        assert!(missing.contains(&"target/ripr/reports/check-pr.md".to_string()));
+        assert!(missing.contains(&"target/ripr/reports/doc-index.md".to_string()));
+        assert!(missing.contains(&"target/ripr/reports/markdown-links.md".to_string()));
+        assert!(missing.contains(&"target/ripr/reports/campaign.md".to_string()));
+        assert!(missing.contains(&"target/ripr/reports/goals-next.md".to_string()));
+    }
+
+    #[test]
+    fn report_index_markdown_includes_review_path_and_receipts() {
+        let campaign = ReportIndexCampaign {
+            id: "evidence-quality".to_string(),
+            title: "Make ripr findings evidence-first".to_string(),
+            status: "active".to_string(),
+            ready_work_items: vec!["output/unknown-stop-reason-invariant".to_string()],
+            issues: Vec::new(),
+        };
+        let reports = vec![ReportIndexEntry {
+            file: "pr-summary.md".to_string(),
+            path: "target/ripr/reports/pr-summary.md".to_string(),
+            status: "pass".to_string(),
+        }];
+        let receipts = vec![ReportIndexEntry {
+            file: "check-pr.json".to_string(),
+            path: "target/ripr/receipts/check-pr.json".to_string(),
+            status: "pass".to_string(),
+        }];
+        let body = report_index_markdown(
+            "pass",
+            &campaign,
+            &reports,
+            &receipts,
+            &[],
+            &["cargo xtask check-pr".to_string()],
+        );
+
+        assert!(body.contains("# ripr report index"));
+        assert!(body.contains("output/unknown-stop-reason-invariant"));
+        assert!(body.contains("Suggested Reviewer Path"));
+        assert_eq!(status_for_report(&reports, "pr-summary.md"), "pass");
+        assert_eq!(status_for_report(&reports, "missing.md"), "missing");
+    }
+
+    #[test]
     fn parse_reason_accepts_flag_forms() {
         let spaced = vec!["--reason".to_string(), "intentional update".to_string()];
         let equals = vec!["--reason=intentional update".to_string()];
@@ -5658,6 +6260,7 @@ commands = [
     fn campaign_command_validator_accepts_known_repo_commands() {
         assert!(is_known_campaign_command("cargo xtask check-pr"));
         assert!(is_known_campaign_command("cargo xtask goals status"));
+        assert!(is_known_campaign_command("cargo xtask reports index"));
         assert!(is_known_campaign_command("cargo xtask test-oracle-report"));
         assert!(is_known_campaign_command("cargo xtask dogfood"));
         assert!(is_known_campaign_command("cargo test --workspace"));

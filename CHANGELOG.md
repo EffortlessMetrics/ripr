@@ -88,3 +88,5 @@ how future PRs are scoped or reviewed.
 - Completed the Syntax-Backed Analyzer Foundation campaign and activated the
   Evidence Quality campaign with unknown stop reasons and oracle strength as
   the next ready work items.
+- Added `cargo xtask reports index` to write a reviewer front door for generated
+  report artifacts and surface it in CI job summaries.

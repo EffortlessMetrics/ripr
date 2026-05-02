@@ -303,6 +303,7 @@ cargo xtask fixtures
 cargo xtask goldens check
 cargo xtask test-oracle-report
 cargo xtask dogfood
+cargo xtask reports index
 cargo xtask check-traceability
 cargo xtask metrics
 cargo xtask check-capabilities
