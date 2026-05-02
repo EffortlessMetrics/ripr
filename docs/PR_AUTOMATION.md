@@ -137,12 +137,14 @@ cargo xtask check-architecture
 cargo xtask check-public-api
 cargo xtask check-output-contracts
 cargo xtask check-doc-index
+cargo xtask check-pr-shape
 ```
 
 Planned:
 
 ```bash
-cargo xtask check-pr-shape
+cargo xtask check-readme-state
+cargo xtask markdown-links
 ```
 
 Local tools may fix. CI verifies.
@@ -167,6 +169,7 @@ cargo xtask check-architecture
 cargo xtask check-public-api
 cargo xtask check-output-contracts
 cargo xtask check-doc-index
+cargo xtask check-pr-shape
 ```
 
 Planned:
@@ -179,6 +182,11 @@ Reports should be useful to both humans and agents. A failed check should name
 the path, explain why the rule exists, classify the fix kind, provide exact
 commands to rerun, and include an exception template when a policy exception is
 appropriate.
+
+`check-pr-shape` is advisory. It writes `target/ripr/reports/pr-shape.md` and
+warns when a diff shape suggests missing evidence, such as analyzer code
+without specs/tests/fixtures, output code without output contract evidence, or
+policy changes without process docs.
 
 ## Fix Kinds
 
@@ -314,6 +322,7 @@ cargo xtask check-architecture
 cargo xtask check-public-api
 cargo xtask check-output-contracts
 cargo xtask check-doc-index
+cargo xtask check-pr-shape
 cargo xtask check-generated
 ```
 
@@ -352,6 +361,7 @@ architecture.md
 public-api.md
 output-contracts.md
 doc-index.md
+pr-shape.md
 fixtures.md
 goldens.md
 goldens-bless.md
@@ -370,7 +380,7 @@ The remaining automation path is:
 
 | Order | PR | Purpose |
 | ---: | --- | --- |
-| 1 | `pr-shape-drift-warnings` | Add changed-file evidence and missing-support warnings to PR summaries. |
+| 1 | `readme-state-and-link-checks` | Add README snapshot consistency and Markdown local-link checks. |
 
 After those are in place, analyzer work can move in goal mode with one scoped
 capability per PR.
