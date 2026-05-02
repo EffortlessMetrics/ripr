@@ -83,3 +83,43 @@ fn explain_returns_targeted_probe_details() {
     assert!(stdout.contains("Static exposure: weakly_exposed (error_path, value)"));
     assert!(stdout.contains("No exact error variant discriminator was detected"));
 }
+
+#[test]
+fn context_json_returns_selected_finding_packet() {
+    let root = workspace_root().display().to_string();
+    let diff = sample_diff().display().to_string();
+    let output = run_ripr(&[
+        "context",
+        "--root",
+        &root,
+        "--diff",
+        &diff,
+        "--at",
+        "probe:crates_ripr_examples_sample_src_lib.rs:21:error_path",
+        "--json",
+    ]);
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains(r#""id": "probe:crates_ripr_examples_sample_src_lib.rs:21:error_path""#));
+    assert!(stdout.contains(r#""discriminate": "weak""#));
+    assert!(stdout.contains(r#""related_tests""#));
+}
+
+#[test]
+fn explain_with_unknown_selector_returns_failure() {
+    let root = workspace_root().display().to_string();
+    let diff = sample_diff().display().to_string();
+    let output = run_ripr(&[
+        "explain",
+        "--root",
+        &root,
+        "--diff",
+        &diff,
+        "probe:does_not_exist",
+    ]);
+    assert!(!output.status.success());
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("no finding matched"));
+}
