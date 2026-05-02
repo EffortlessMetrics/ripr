@@ -1,7 +1,8 @@
 use crate::app::{CheckInput, OutputFormat, check_workspace};
 use crate::domain::Finding;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use tower_lsp_server::jsonrpc::Result as LspResult;
 use tower_lsp_server::ls_types::{
     CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionProviderCapability,
@@ -40,11 +41,16 @@ async fn serve_stdio() -> Result<(), String> {
 struct Backend {
     client: Client,
     root: PathBuf,
+    last_diagnostic_uris: Mutex<BTreeSet<Uri>>,
 }
 
 impl Backend {
     fn new(client: Client, root: PathBuf) -> Self {
-        Self { client, root }
+        Self {
+            client,
+            root,
+            last_diagnostic_uris: Mutex::new(BTreeSet::new()),
+        }
     }
 
     async fn refresh_diagnostics(&self) {
@@ -54,11 +60,27 @@ impl Backend {
         else {
             return;
         };
-        for batch in batches {
+        let Some(refresh) = self.refresh_plan(batches) else {
+            return;
+        };
+
+        for batch in refresh.publish_batches {
             self.client
                 .publish_diagnostics(batch.uri, batch.diagnostics, None)
                 .await;
         }
+        for uri in refresh.clear_uris {
+            self.client.publish_diagnostics(uri, Vec::new(), None).await;
+        }
+    }
+
+    fn refresh_plan(&self, batches: Vec<DiagnosticBatch>) -> Option<DiagnosticRefreshPlan> {
+        let Ok(mut last_diagnostic_uris) = self.last_diagnostic_uris.lock() else {
+            return None;
+        };
+        let refresh = diagnostic_refresh_plan(&last_diagnostic_uris, batches);
+        *last_diagnostic_uris = refresh.current_uris.clone();
+        Some(refresh)
     }
 }
 
@@ -105,6 +127,31 @@ impl LanguageServer for Backend {
 pub struct DiagnosticBatch {
     pub uri: Uri,
     pub diagnostics: Vec<Diagnostic>,
+}
+
+struct DiagnosticRefreshPlan {
+    publish_batches: Vec<DiagnosticBatch>,
+    clear_uris: Vec<Uri>,
+    current_uris: BTreeSet<Uri>,
+}
+
+fn diagnostic_refresh_plan(
+    previous_uris: &BTreeSet<Uri>,
+    batches: Vec<DiagnosticBatch>,
+) -> DiagnosticRefreshPlan {
+    let current_uris = batches
+        .iter()
+        .map(|batch| batch.uri.clone())
+        .collect::<BTreeSet<_>>();
+    let clear_uris = previous_uris
+        .difference(&current_uris)
+        .cloned()
+        .collect::<Vec<_>>();
+    DiagnosticRefreshPlan {
+        publish_batches: batches,
+        clear_uris,
+        current_uris,
+    }
 }
 
 pub fn workspace_diagnostic_batches(root: &Path) -> Result<Vec<DiagnosticBatch>, String> {
@@ -257,13 +304,14 @@ fn encode_uri_path(path: &str) -> String {
 mod tests {
     use super::{
         COPY_CONTEXT_COMMAND, HOVER_TEXT, REFRESH_COMMAND, code_action_response,
-        diagnostic_for_finding, encode_uri_path, file_uri_for_path, hover_response,
-        initialize_result,
+        diagnostic_for_finding, diagnostic_refresh_plan, encode_uri_path, file_uri_for_path,
+        hover_response, initialize_result,
     };
     use crate::domain::{
         Confidence, DeltaKind, ExposureClass, Finding, Probe, ProbeFamily, ProbeId, RevealEvidence,
         RiprEvidence, SourceLocation, StageEvidence, StageState,
     };
+    use std::collections::BTreeSet;
     use std::path::PathBuf;
     use tower_lsp_server::ls_types::{
         CodeActionOrCommand, DiagnosticSeverity, HoverContents, HoverProviderCapability,
@@ -374,6 +422,29 @@ mod tests {
     }
 
     #[test]
+    fn diagnostic_refresh_plan_clears_stale_previous_uris() -> Result<(), String> {
+        let stale_uri = test_uri("file:///workspace/src/stale.rs")?;
+        let current_uri = test_uri("file:///workspace/src/current.rs")?;
+        let mut previous_uris = BTreeSet::new();
+        previous_uris.insert(stale_uri.clone());
+        previous_uris.insert(current_uri.clone());
+
+        let plan = diagnostic_refresh_plan(
+            &previous_uris,
+            vec![super::DiagnosticBatch {
+                uri: current_uri.clone(),
+                diagnostics: Vec::new(),
+            }],
+        );
+
+        assert_eq!(plan.publish_batches.len(), 1);
+        assert_eq!(plan.publish_batches[0].uri, current_uri);
+        assert_eq!(plan.clear_uris, vec![stale_uri]);
+        assert_eq!(plan.current_uris.len(), 1);
+        Ok(())
+    }
+
+    #[test]
     fn file_uri_for_path_uses_valid_encoded_file_uri() -> Result<(), String> {
         let uri = file_uri_for_path(&PathBuf::from("src lib.rs"))?;
 
@@ -387,6 +458,11 @@ mod tests {
             encode_uri_path("workspace/src lib.rs"),
             "workspace/src%20lib.rs"
         );
+    }
+
+    fn test_uri(uri: &str) -> Result<tower_lsp_server::ls_types::Uri, String> {
+        uri.parse::<tower_lsp_server::ls_types::Uri>()
+            .map_err(|err| format!("failed to parse test URI: {err}"))
     }
 
     fn sample_finding() -> Finding {
