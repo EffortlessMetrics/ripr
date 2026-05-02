@@ -131,6 +131,7 @@ fn main() {
         Some("check-architecture") => check_architecture(),
         Some("check-public-api") => check_public_api(),
         Some("check-output-contracts") => check_output_contracts(),
+        Some("check-doc-index") => check_doc_index(),
         Some("check-generated") => check_generated(),
         Some("check-dependencies") => check_dependencies(),
         Some("check-process-policy") => check_process_policy(),
@@ -174,6 +175,7 @@ fn precommit() -> Result<(), String> {
     check_architecture()?;
     check_public_api()?;
     check_output_contracts()?;
+    check_doc_index()?;
     check_generated()?;
     let body = precommit_report_body();
     write_report("precommit.md", &body)
@@ -213,6 +215,7 @@ fn run_policy_checks() -> Result<(), String> {
     check_architecture()?;
     check_public_api()?;
     check_output_contracts()?;
+    check_doc_index()?;
     check_generated()?;
     check_dependencies()?;
     check_process_policy()?;
@@ -240,7 +243,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  metrics\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
+        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  metrics\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
     );
 }
 
@@ -266,7 +269,7 @@ fn pr_summary() -> Result<(), String> {
 }
 
 fn precommit_report_body() -> String {
-    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-public-api`\n- `cargo xtask check-output-contracts`\n- `cargo xtask check-generated`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
+    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-public-api`\n- `cargo xtask check-output-contracts`\n- `cargo xtask check-doc-index`\n- `cargo xtask check-generated`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
 }
 
 fn check_pr_report_body() -> String {
@@ -2122,6 +2125,102 @@ fn require_contract_value(
             "{path} does not mention {kind} contract value `{value}`"
         ));
     }
+}
+
+fn check_doc_index() -> Result<(), String> {
+    let mut violations = Vec::new();
+    require_index_mentions_files(
+        Path::new("docs/adr/README.md"),
+        Path::new("docs/adr"),
+        &["README.md"],
+        &mut violations,
+    )?;
+    require_index_mentions_files(
+        Path::new("docs/specs/README.md"),
+        Path::new("docs/specs"),
+        &["README.md"],
+        &mut violations,
+    )?;
+
+    let documentation = read_text_lossy(Path::new("docs/DOCUMENTATION.md"))?;
+    for required in [
+        "PR_AUTOMATION.md",
+        "GOAL_MODE.md",
+        "CAPABILITY_MATRIX.md",
+        "METRICS.md",
+        "ROADMAP.md",
+        "IMPLEMENTATION_PLAN.md",
+        "adr/",
+        "specs/",
+    ] {
+        if !documentation.contains(required) {
+            violations.push(format!(
+                "docs/DOCUMENTATION.md does not reference `{required}`"
+            ));
+        }
+    }
+
+    let readme = read_text_lossy(Path::new("README.md"))?;
+    for required in [
+        "docs/DOCUMENTATION.md",
+        "docs/ROADMAP.md",
+        "docs/IMPLEMENTATION_PLAN.md",
+        "docs/PR_AUTOMATION.md",
+        "docs/GOAL_MODE.md",
+        "docs/specs/README.md",
+        "docs/adr/README.md",
+        "docs/METRICS.md",
+        "docs/CAPABILITY_MATRIX.md",
+    ] {
+        if !readme.contains(required) {
+            violations.push(format!("README.md does not reference `{required}`"));
+        }
+    }
+
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "doc-index.md",
+            check: "check-doc-index",
+            why_it_matters: "Docs are the durable context for humans and long-context agents; indexes must expose current specs, ADRs, and front-door process docs.",
+            fix_kind: FixKind::AuthorDecisionRequired,
+            recommended_fixes: &[
+                "Update docs/adr/README.md when adding or removing ADRs.",
+                "Update docs/specs/README.md when adding or removing specs.",
+                "Keep README.md and docs/DOCUMENTATION.md linked to the active planning, automation, metrics, ADR, and spec docs.",
+            ],
+            rerun_command: "cargo xtask check-doc-index",
+            exception_template: None,
+        },
+        &violations,
+    )
+}
+
+fn require_index_mentions_files(
+    index_path: &Path,
+    directory: &Path,
+    excluded_names: &[&str],
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let index = read_text_lossy(index_path)?;
+    for path in collect_files(directory)? {
+        if path.extension().and_then(|value| value.to_str()) != Some("md") {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        if excluded_names.contains(&name) {
+            continue;
+        }
+        if !index.contains(name) {
+            violations.push(format!(
+                "{} does not index {}",
+                normalize_path(index_path),
+                normalize_path(&path)
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn check_generated() -> Result<(), String> {

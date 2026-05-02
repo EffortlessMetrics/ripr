@@ -48,3 +48,5 @@ how future PRs are scoped or reviewed.
 - Added workspace-shape, architecture-boundary, and public API policy checks.
 - Added output contract registry checks for schema versions and public enum
   strings.
+- Added docs index checks for spec, ADR, README, and documentation front-door
+  links.

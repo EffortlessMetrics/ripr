@@ -47,6 +47,7 @@ cargo xtask check-workspace-shape
 cargo xtask check-architecture
 cargo xtask check-public-api
 cargo xtask check-output-contracts
+cargo xtask check-doc-index
 cargo xtask check-generated
 cargo xtask check-dependencies
 cargo xtask check-process-policy
