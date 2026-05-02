@@ -97,6 +97,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo doc --workspace --no-deps
 cargo package -p ripr --list
 cargo publish -p ripr --dry-run
+cargo xtask check-static-language
+cargo xtask check-no-panic-family
 cargo xtask check-file-policy
 cargo xtask check-executable-files
 cargo xtask check-workflows
@@ -112,6 +114,9 @@ cargo xtask check-network-policy
 policy allowlists, ensure `target/ripr/reports`, and write a shape report.
 `cargo xtask pr-summary` writes a local reviewer packet from git diff/status.
 `cargo xtask fix-pr` runs safe shaping and then refreshes the PR summary.
+
+See `docs/PR_AUTOMATION.md` for the shape/check/guide model and the planned
+repair-reporting lane.
 
 Useful runtime checks:
 
@@ -190,6 +195,8 @@ When picking up work:
 
 - start from `docs/ROADMAP.md` and `docs/IMPLEMENTATION_PLAN.md`
 - use `docs/CAPABILITY_MATRIX.md` to identify current capability status
+- use `docs/PR_AUTOMATION.md` to understand local shaping and PR reports
+- use `docs/GOAL_MODE.md` when working through a long implementation queue
 - use `docs/specs/` and `.ripr/traceability.toml` to map spec -> tests -> code
 - choose the smallest vertical slice with one production delta and one evidence
   package

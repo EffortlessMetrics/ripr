@@ -42,6 +42,10 @@ ensures `target/ripr/reports`, and writes a local report. `fix-pr` currently
 runs `shape`, refreshes `pr-summary`, and writes a local fix-pr report.
 `pr-summary` writes `target/ripr/reports/pr-summary.md` from git diff/status.
 
+The fuller automation model is documented in [PR automation](PR_AUTOMATION.md).
+Deterministic shaping should happen locally; CI should verify the committed
+tree and upload reports when available.
+
 Local policy checks can also be run directly:
 
 ```bash
@@ -88,7 +92,8 @@ Release workflows handle extension publishing and server binary releases.
 Planned CI work:
 
 - cache Cargo and npm dependencies without hiding stale-lockfile failures
-- add report uploads
+- add report uploads from `target/ripr/reports`
+- add guided Markdown repair reports for policy checks
 - add fixture-golden tests once the fixture lab exists
 - add markdown/link checks for docs-heavy PRs
 - add traceability and capability-matrix checks

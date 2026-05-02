@@ -262,6 +262,8 @@ headline targets are:
 - [Architecture](docs/ARCHITECTURE.md): package shape and internal modules.
 - [Roadmap](docs/ROADMAP.md): staged path from alpha to reliable live static exposure analysis.
 - [Implementation plan](docs/IMPLEMENTATION_PLAN.md): PR-by-PR checklist and acceptance gates.
+- [PR automation](docs/PR_AUTOMATION.md): shape/check/guide model for reviewable PRs.
+- [Goal-mode execution](docs/GOAL_MODE.md): scoped long-context implementation task model.
 - [Specs](docs/specs/README.md): behavior contracts for spec-test-code traceability.
 - [ADRs](docs/adr/README.md): durable architecture and product decisions.
 - [Metrics](docs/METRICS.md): capability, quality, and engineering metrics.

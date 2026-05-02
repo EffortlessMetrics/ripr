@@ -131,6 +131,15 @@ Repo automation has three responsibilities:
 - check: enforce non-negotiable rules
 - guide: report exact repair steps when judgment is required
 
+The operating model is documented in [PR automation](PR_AUTOMATION.md). The
+short version is:
+
+```text
+deterministic cleanup -> automated shaping
+non-negotiable rules -> check failures
+judgment-required exceptions -> repair briefs
+```
+
 `cargo xtask shape` is allowed to mutate only safe local artifacts:
 
 - run `cargo fmt`
@@ -146,6 +155,9 @@ classifying changed paths from git diff and status.
 
 `cargo xtask fix-pr` currently runs safe shaping, refreshes `pr-summary`, and
 writes a local fix-pr report.
+
+Long-running implementation work should use the scoped task model in
+[Goal-mode execution](GOAL_MODE.md).
 
 ## Testing Style
 

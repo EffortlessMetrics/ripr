@@ -112,11 +112,13 @@ write and review:
 | Q5 | `shape-fix-pr` | Add safe local PR normalization and report writing through `cargo xtask shape` and `cargo xtask fix-pr`. |
 | Q6 | `pr-summary` | Generate a reviewer packet from changed paths, policy exceptions, and suggested focus areas. |
 | Q7 | `check-pr-precommit` | Add obvious local gates for cheap pre-commit checks and review readiness checks. |
-| Q8 | `fixture-golden-scaffolding` | Add fixture/golden conventions plus scaffold/check/bless commands. |
-| Q9 | `xtask-policy-checks` | Expand executable checks for docs indexes, traceability, metrics, workspace shape, and architecture. |
-| Q10 | `capability-metrics-report` | Generate capability and quality metrics artifacts from fixtures and traceability. |
-| Q11 | `architecture-boundary-check` | Add workspace-shape, public API, and module-boundary checks that preserve one crate with strong internal seams. |
-| Q12 | `dogfood-report` | Add focused `ripr`-on-`ripr` reports as CI artifacts without blocking by default. |
+| Q8 | `guided-check-reports` | Make policy checks emit repair briefs with fix kind, why-it-matters text, commands, and exception templates. |
+| Q9 | `ci-report-artifacts` | Upload `target/ripr/reports` from CI so failed runs still produce reviewer guidance. |
+| Q10 | `fixture-golden-scaffolding` | Add fixture/golden conventions plus scaffold/check/bless commands. |
+| Q11 | `traceability-spec-id-checks` | Validate behavior manifests, spec IDs, fixture links, and drift warnings. |
+| Q12 | `capability-metrics-report` | Generate capability and quality metrics artifacts from fixtures and traceability. |
+| Q13 | `architecture-boundary-check` | Add workspace-shape, public API, and module-boundary checks that preserve one crate with strong internal seams. |
+| Q14 | `dogfood-report` | Add focused `ripr`-on-`ripr` reports as CI artifacts without blocking by default. |
 
 These PRs should remain narrow production changes. Most of their size may be
 evidence, docs, templates, allowlists, or generated scaffolding. That is
@@ -129,6 +131,38 @@ traceability, capability status, metrics, ADRs, and learnings are the durable
 handoff surface that lets an agent resume, subset the next slice, and finish one
 reviewable PR without guessing.
 
+The operating model for those rails is documented in
+[PR automation](PR_AUTOMATION.md): deterministic cleanup is shaped locally,
+non-negotiable rules are checked, and judgment-required issues produce repair
+briefs. Goal-mode implementation work is documented in
+[Goal-mode execution](GOAL_MODE.md).
+
+## Operating-System Cutoff
+
+Do not wait for perfect automation before analyzer work. The cutoff is enough
+repo machinery that a future analyzer PR is pushed toward one production delta,
+one evidence package, and an actionable PR summary.
+
+Required before deeper analyzer mode:
+
+- PR summary and reviewer packet
+- `precommit` and `check-pr` command surface
+- guided reports for existing policy checks
+- CI report artifacts
+- fixture and golden command scaffolding
+- behavior manifest and spec ID checks
+- capability metrics report
+- architecture and workspace-shape guard
+
+Nice later, not blocking:
+
+- test-oracle quality report
+- full docs-as-tests suite
+- auto-labeling
+- learning-required triggers
+- public API compatibility checker
+- local hook polish
+
 ## PR Queue
 
 | Order | PR | Purpose | Release target |
@@ -140,30 +174,33 @@ reviewable PR without guessing.
 | 4 | `automation-guardrails` | Require allowlisted generated files, dependency surfaces, process spawning, and network behavior. | `0.2.x` |
 | 5 | `shape-fix-pr` | Add safe local PR normalization and report writing through `cargo xtask shape` and `cargo xtask fix-pr`. | `0.2.x` |
 | 6 | `pr-summary` | Generate a reviewer packet from changed paths, policy exceptions, and suggested focus areas. | `0.2.x` |
-| 7 | `check-pr-precommit` | Add `cargo xtask precommit` and `cargo xtask check-pr` as the obvious local gates. | `0.2.x` |
-| 8 | `verify-one-click-extension-install` | Verify the normal editor install path without requiring `cargo install ripr`. | `0.2.x` |
-| 9 | `xtask-policy-checks` | Expand repo policy checks for docs indexes, traceability, metrics, workspace shape, and architecture. | `0.2.x` |
-| 10 | `fixture-golden-scaffolding` | Add fixture/golden structure, scaffold command, check command, and bless command. | `0.3.0` |
-| 11 | `fixture-laboratory` | Create golden fixtures and invariants before changing the analyzer. | `0.3.0` |
-| 12 | `capability-metrics-report` | Generate capability, quality, engineering, and latency metrics artifacts. | `0.3.0` |
-| 13 | `file-facts-model` | Introduce a fact model while preserving current scanner behavior. | `0.3.0` |
-| 14 | `syntax-adapter-mvp` | Add a parser adapter boundary and syntax-backed file facts. | `0.3.0` |
-| 15 | `ast-test-oracle-extraction` | Extract tests and assertions from syntax nodes. | `0.3.0` |
-| 16 | `ast-probe-ownership` | Map diff spans to changed syntax nodes and stable owner symbols. | `0.3.0` |
-| 17 | `ast-probe-generation` | Generate predicate, return, error, field, and call probes from syntax. | `0.3.0` |
-| 18 | `architecture-boundary-check` | Enforce internal module boundaries while keeping one published crate. | `0.3.x` |
-| 19 | `dogfood-report` | Emit focused `ripr`-on-`ripr` reports as non-blocking artifacts. | `0.3.x` |
-| 20 | `oracle-strength-v2` | Distinguish exact, weak, smoke, snapshot, mock, and unknown oracles. | `0.4.0` |
-| 21 | `local-delta-flow-v1` | Name return, field, error, and effect sinks for changed behavior. | `0.4.0` |
-| 22 | `activation-value-modeling-v1` | Detect observed values and missing boundary or variant inputs. | `0.4.0` |
-| 23 | `evidence-first-output` | Make CLI output the reference explanation for each finding. | `0.4.0` |
-| 24 | `lsp-evidence-hover-actions` | Add finding-specific diagnostics, hover evidence, and code actions. | `0.5.0` |
-| 25 | `agent-context-v2` | Emit a compact test-writing brief from CLI and LSP. | `0.5.0` |
-| 26 | `ripr-config-v1` | Add topology, oracle, snapshot, mock, and external-boundary config. | `0.6.0` |
-| 27 | `suppression-v1` | Add reasoned, visible suppressions with optional expiry. | `0.6.0` |
-| 28 | `sarif-ci-policy` | Add SARIF and opt-in CI policy modes. | `0.6.0` |
-| 29 | `cargo-mutants-calibration-scaffold` | Import real mutation results for offline calibration. | `0.7.0` |
-| 30 | `persistent-cache-v1` | Cache stable facts after the fact model is worth caching. | `0.8.0` |
+| 7 | `automation-path-docs` | Document the fix/check/guide model and goal-mode handoff before the remaining rails. | `0.2.x` |
+| 8 | `check-pr-precommit` | Add `cargo xtask precommit` and `cargo xtask check-pr` as the obvious local gates. | `0.2.x` |
+| 9 | `guided-check-reports` | Make existing policy checks write actionable Markdown repair briefs. | `0.2.x` |
+| 10 | `ci-report-artifacts` | Upload generated PR reports from CI. | `0.2.x` |
+| 11 | `verify-one-click-extension-install` | Verify the normal editor install path without requiring `cargo install ripr`. | `0.2.x` |
+| 12 | `fixture-golden-scaffolding` | Add fixture/golden structure, scaffold command, check command, and bless command. | `0.3.0` |
+| 13 | `traceability-spec-id-checks` | Validate spec IDs, behavior manifests, fixture links, and drift warnings. | `0.3.0` |
+| 14 | `fixture-laboratory` | Create golden fixtures and invariants before changing the analyzer. | `0.3.0` |
+| 15 | `capability-metrics-report` | Generate capability, quality, engineering, and latency metrics artifacts. | `0.3.0` |
+| 16 | `architecture-boundary-check` | Enforce internal module boundaries while keeping one published crate. | `0.3.x` |
+| 17 | `dogfood-report` | Emit focused `ripr`-on-`ripr` reports as non-blocking artifacts. | `0.3.x` |
+| 18 | `file-facts-model` | Introduce a fact model while preserving current scanner behavior. | `0.3.0` |
+| 19 | `syntax-adapter-mvp` | Add a parser adapter boundary and syntax-backed file facts. | `0.3.0` |
+| 20 | `ast-test-oracle-extraction` | Extract tests and assertions from syntax nodes. | `0.3.0` |
+| 21 | `ast-probe-ownership` | Map diff spans to changed syntax nodes and stable owner symbols. | `0.3.0` |
+| 22 | `ast-probe-generation` | Generate predicate, return, error, field, and call probes from syntax. | `0.3.0` |
+| 23 | `oracle-strength-v2` | Distinguish exact, weak, smoke, snapshot, mock, and unknown oracles. | `0.4.0` |
+| 24 | `local-delta-flow-v1` | Name return, field, error, and effect sinks for changed behavior. | `0.4.0` |
+| 25 | `activation-value-modeling-v1` | Detect observed values and missing boundary or variant inputs. | `0.4.0` |
+| 26 | `evidence-first-output` | Make CLI output the reference explanation for each finding. | `0.4.0` |
+| 27 | `lsp-evidence-hover-actions` | Add finding-specific diagnostics, hover evidence, and code actions. | `0.5.0` |
+| 28 | `agent-context-v2` | Emit a compact test-writing brief from CLI and LSP. | `0.5.0` |
+| 29 | `ripr-config-v1` | Add topology, oracle, snapshot, mock, and external-boundary config. | `0.6.0` |
+| 30 | `suppression-v1` | Add reasoned, visible suppressions with optional expiry. | `0.6.0` |
+| 31 | `sarif-ci-policy` | Add SARIF and opt-in CI policy modes. | `0.6.0` |
+| 32 | `cargo-mutants-calibration-scaffold` | Import real mutation results for offline calibration. | `0.7.0` |
+| 33 | `persistent-cache-v1` | Cache stable facts after the fact model is worth caching. | `0.8.0` |
 
 ## Release Frames
 

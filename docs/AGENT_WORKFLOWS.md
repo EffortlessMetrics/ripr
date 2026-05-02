@@ -35,10 +35,13 @@ expires, but repository artifacts remain.
 1. Read [Roadmap](ROADMAP.md) for sequence.
 2. Read [Implementation plan](IMPLEMENTATION_PLAN.md) for the next scoped PR.
 3. Read [Capability matrix](CAPABILITY_MATRIX.md) for current status.
-4. Read the relevant spec in [Specs](specs/README.md).
-5. Check [Spec-test-code traceability](SPEC_TEST_CODE.md) and
+4. Read [PR automation](PR_AUTOMATION.md) for the local shape/check/report loop.
+5. Read [Goal-mode execution](GOAL_MODE.md) when the task is part of a long
+   implementation queue.
+6. Read the relevant spec in [Specs](specs/README.md).
+7. Check [Spec-test-code traceability](SPEC_TEST_CODE.md) and
    `.ripr/traceability.toml`.
-6. Inspect existing tests, fixtures, and goldens before editing code.
+8. Inspect existing tests, fixtures, and goldens before editing code.
 
 ## Choosing A Subset
 
@@ -83,6 +86,9 @@ Before opening a PR, update the durable artifacts:
 Then run:
 
 ```bash
+cargo xtask shape
+cargo xtask fix-pr
+cargo xtask pr-summary
 cargo fmt --check
 cargo check --workspace --all-targets
 cargo test --workspace

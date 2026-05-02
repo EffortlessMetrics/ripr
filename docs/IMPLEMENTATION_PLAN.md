@@ -211,6 +211,161 @@ Acceptance:
 - [ ] `target/ripr/reports/pr-summary.md` exists after the command.
 - [ ] `cargo xtask fix-pr` refreshes shape, PR summary, and fix-pr reports.
 
+## PR 1G: `automation-path-docs`
+
+Purpose: document the fix/check/guide operating model and the goal-mode handoff
+before the remaining automation and analyzer implementation work.
+
+Deliverables:
+
+- [x] Add a PR automation operating model.
+- [x] Document deterministic shaping, non-mutating checks, and repair briefs.
+- [x] Document the goal-mode task contract.
+- [x] Record the remaining automation cutoff before analyzer mode.
+- [x] Link the new docs from the roadmap, documentation map, agent workflow,
+      contributor docs, and README.
+
+Acceptance:
+
+- [x] A contributor can identify which cleanup should be automated and which
+      changes require explicit judgment.
+- [x] A coding agent can identify the next automation PRs before analyzer work.
+- [x] A coding agent can use a standard task template for the analyzer queue.
+
+## PR 1H: `check-pr-precommit`
+
+Purpose: add obvious local gates for cheap pre-commit checks and review
+readiness checks.
+
+Deliverables:
+
+- [ ] Add `cargo xtask precommit`.
+- [ ] Add `cargo xtask check-pr`.
+- [ ] Keep `precommit` cheap and non-mutating.
+- [ ] Make `check-pr` run the review-ready command set that exists today.
+- [ ] Update CI, contributor, and agent docs.
+
+Acceptance:
+
+- [ ] `cargo xtask precommit` passes on main.
+- [ ] `cargo xtask check-pr` passes on main.
+- [ ] `check-pr` does not run release packaging unless the repo later adds a
+      path-aware release lane.
+
+## PR 1I: `guided-check-reports`
+
+Purpose: make existing policy checks emit repair briefs instead of only command
+failure text.
+
+Deliverables:
+
+- [ ] Add a shared report model or helper for Markdown check reports.
+- [ ] Upgrade static-language, panic-family, file-policy, executable-file,
+      workflow, spec-format, fixture-contract, generated, dependency, process,
+      and network checks to write reports under `target/ripr/reports`.
+- [ ] Classify failures as auto-fixable, author decision, reviewer decision, or
+      policy exception.
+- [ ] Include exact rerun commands and exception templates where useful.
+
+Acceptance:
+
+- [ ] Each upgraded check writes a useful report on failure.
+- [ ] Successful checks either write a pass report or are summarized by
+      `pr-summary`.
+- [ ] Report generation does not hide the non-zero exit status of failed checks.
+
+## PR 1J: `ci-report-artifacts`
+
+Purpose: make CI upload review artifacts even when a check fails.
+
+Deliverables:
+
+- [ ] Run `cargo xtask pr-summary` where possible in CI.
+- [ ] Run metrics/report generation where available.
+- [ ] Upload `target/ripr/reports` with an always step.
+- [ ] Document report artifact names and expected contents.
+
+Acceptance:
+
+- [ ] CI artifacts include the PR summary and any check reports that were
+      generated before failure.
+- [ ] CI remains non-mutating.
+
+## PR 1K: `fixture-golden-scaffolding`
+
+Purpose: add the command surface for fixture execution and golden comparison
+before analyzer internals change.
+
+Deliverables:
+
+- [ ] Add `cargo xtask fixtures`.
+- [ ] Add `cargo xtask fixtures <name>`.
+- [ ] Add `cargo xtask goldens check`.
+- [ ] Add `cargo xtask goldens bless <name> --reason "..."`.
+- [ ] Document the fixture and golden directory conventions.
+
+Acceptance:
+
+- [ ] Fixture commands pass with a clear "no fixtures found" message if no
+      executable fixtures exist yet.
+- [ ] Existing fixture contract checks still pass.
+- [ ] Golden blessing requires an explicit reason.
+
+## PR 1L: `traceability-spec-id-checks`
+
+Purpose: make spec IDs and behavior manifest entries checkable.
+
+Deliverables:
+
+- [ ] Harden `.ripr/traceability.toml`.
+- [ ] Add `cargo xtask check-spec-ids`.
+- [ ] Add `cargo xtask check-behavior-manifest`.
+- [ ] Add warning-only drift checks for analysis, output, docs, fixture, and
+      metric changes.
+
+Acceptance:
+
+- [ ] Accepted specs point to real docs and at least one test or fixture unless
+      explicitly planned.
+- [ ] Fixture specs reference valid spec IDs.
+- [ ] Missing expected evidence appears in the PR summary.
+
+## PR 1M: `capability-metrics-report`
+
+Purpose: make capability progress and automation debt visible.
+
+Deliverables:
+
+- [ ] Add or harden a machine-readable capability source.
+- [ ] Add `cargo xtask metrics`.
+- [ ] Add `cargo xtask check-capabilities`.
+- [ ] Write `target/ripr/reports/metrics.md` or `metrics.json`.
+- [ ] Keep the README capability snapshot aligned with the capability source.
+
+Acceptance:
+
+- [ ] Capability statuses have valid values and required fields.
+- [ ] Stable or calibrated statuses require the evidence defined by policy.
+- [ ] Metrics reports are generated without changing product behavior.
+
+## PR 1N: `architecture-guard`
+
+Purpose: protect internal seams while keeping one published package.
+
+Deliverables:
+
+- [ ] Add `cargo xtask check-workspace-shape`.
+- [ ] Add `cargo xtask check-architecture`.
+- [ ] Add `cargo xtask check-public-api` or document why it is deferred.
+- [ ] Add policy metadata for allowed workspace packages and module-boundary
+      rules.
+
+Acceptance:
+
+- [ ] New workspace packages require an explicit approved policy entry.
+- [ ] Domain and analysis layers cannot accidentally depend on adapters.
+- [ ] CLI, LSP, and output layers do not own exposure classification.
+
 ## PR 2: `fixture-laboratory`
 
 Purpose: build the regression control bench before changing analyzer internals.
