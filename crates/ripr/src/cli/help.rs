@@ -32,3 +32,28 @@ Options:
 "#
     );
 }
+
+pub(super) fn print_explain_help() {
+    println!("Usage: ripr explain [--root PATH] [--base REV|--diff PATH] <finding-id|file:line>");
+}
+
+pub(super) fn print_context_help() {
+    println!(
+        "Usage: ripr context [--root PATH] [--base REV|--diff PATH] --at <finding-id|file:line> [--max-related-tests N] [--json]"
+    );
+}
+
+pub(super) fn print_doctor_help() {
+    println!("Usage: ripr doctor [--root PATH]");
+}
+
+pub(super) fn print_lsp_help() {
+    println!(
+        r#"Usage: ripr lsp [--stdio] [--version]
+
+Options:
+  --stdio       Run the language server over stdio LSP framing. This is the default.
+  --version     Print the language server version.
+"#
+    );
+}

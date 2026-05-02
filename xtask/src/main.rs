@@ -6265,7 +6265,8 @@ fn public_contract_rows(changes: &[ChangedPath]) -> Vec<(&'static str, Vec<Strin
         (
             "CLI",
             paths_matching(changes, |path| {
-                matches!(path, "crates/ripr/src/cli.rs" | "crates/ripr/src/main.rs")
+                path.starts_with("crates/ripr/src/cli/")
+                    || path == "crates/ripr/src/main.rs"
                     || path.starts_with("docs/reference/cli")
             }),
         ),
