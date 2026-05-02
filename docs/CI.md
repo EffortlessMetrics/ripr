@@ -20,6 +20,7 @@ cargo xtask check-executable-files
 cargo xtask check-workflows
 cargo xtask check-spec-format
 cargo xtask check-fixture-contracts
+cargo xtask check-traceability
 cargo xtask check-generated
 cargo xtask check-dependencies
 cargo xtask check-process-policy
@@ -68,6 +69,7 @@ cargo xtask check-executable-files
 cargo xtask check-workflows
 cargo xtask check-spec-format
 cargo xtask check-fixture-contracts
+cargo xtask check-traceability
 cargo xtask check-generated
 cargo xtask check-dependencies
 cargo xtask check-process-policy
@@ -116,7 +118,7 @@ Planned CI work:
 - wire fixture and golden checks into CI once the fixture lab has executable
   behavior fixtures
 - add markdown/link checks for docs-heavy PRs
-- add traceability and capability-matrix checks
+- add capability-matrix checks
 - add workspace-shape, architecture, public API, docs-index, and PR-summary
   checks
 - add SARIF validation when SARIF output exists

@@ -30,6 +30,19 @@ struct ChangedPath {
     statuses: BTreeSet<String>,
 }
 
+#[derive(Debug, Default)]
+struct TraceBehavior {
+    line: usize,
+    id: Option<String>,
+    name: Option<String>,
+    spec: Option<String>,
+    tests: Vec<String>,
+    fixtures: Vec<String>,
+    code: Vec<String>,
+    outputs: Vec<String>,
+    metrics: Vec<String>,
+}
+
 #[derive(Clone, Debug)]
 pub enum CheckStatus {
     Pass,
@@ -96,6 +109,9 @@ fn main() {
         Some("check-workflows") => check_workflows(),
         Some("check-spec-format") => check_spec_format(),
         Some("check-fixture-contracts") => check_fixture_contracts(),
+        Some("check-traceability") | Some("check-spec-ids") | Some("check-behavior-manifest") => {
+            check_traceability()
+        }
         Some("check-generated") => check_generated(),
         Some("check-dependencies") => check_dependencies(),
         Some("check-process-policy") => check_process_policy(),
@@ -133,6 +149,7 @@ fn precommit() -> Result<(), String> {
     check_workflows()?;
     check_spec_format()?;
     check_fixture_contracts()?;
+    check_traceability()?;
     check_generated()?;
     let body = precommit_report_body();
     write_report("precommit.md", &body)
@@ -166,6 +183,7 @@ fn run_policy_checks() -> Result<(), String> {
     check_workflows()?;
     check_spec_format()?;
     check_fixture_contracts()?;
+    check_traceability()?;
     check_generated()?;
     check_dependencies()?;
     check_process_policy()?;
@@ -193,7 +211,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
+        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
     );
 }
 
@@ -219,7 +237,7 @@ fn pr_summary() -> Result<(), String> {
 }
 
 fn precommit_report_body() -> String {
-    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-generated`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
+    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-generated`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
 }
 
 fn check_pr_report_body() -> String {
@@ -967,6 +985,429 @@ fn check_fixture_contracts() -> Result<(), String> {
         },
         &violations,
     )
+}
+
+fn check_traceability() -> Result<(), String> {
+    let manifest = Path::new(".ripr/traceability.toml");
+    let mut violations = Vec::new();
+    if !manifest.exists() {
+        violations.push(".ripr/traceability.toml is missing".to_string());
+        return finish_traceability_report(&violations);
+    }
+
+    let (behaviors, parse_violations) = parse_traceability_manifest(manifest)?;
+    violations.extend(parse_violations);
+    if behaviors.is_empty() {
+        violations.push(".ripr/traceability.toml has no [[behavior]] entries".to_string());
+    }
+
+    let specs = collect_spec_statuses()?;
+    let mut behavior_ids = BTreeSet::new();
+    for behavior in &behaviors {
+        validate_trace_behavior(behavior, &mut behavior_ids, &mut violations)?;
+    }
+
+    for spec_id in specs.keys() {
+        if !behavior_ids.contains(spec_id) {
+            violations.push(format!(
+                "{spec_id} exists in docs/specs but is missing from .ripr/traceability.toml"
+            ));
+        }
+    }
+
+    validate_fixture_spec_references(&specs, &mut violations)?;
+    finish_traceability_report(&violations)
+}
+
+fn finish_traceability_report(violations: &[String]) -> Result<(), String> {
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "traceability.md",
+            check: "check-traceability",
+            why_it_matters: "Traceability keeps behavior specs, tests, fixtures, code, outputs, and metrics discoverable for long-context human and agent work.",
+            fix_kind: FixKind::AuthorDecisionRequired,
+            recommended_fixes: &[
+                "Add or update the matching [[behavior]] entry in .ripr/traceability.toml.",
+                "Keep every docs/specs/RIPR-SPEC-*.md file represented in the manifest.",
+                "Use valid RIPR-SPEC-NNNN IDs in specs, fixtures, and manifest entries.",
+                "List only paths that exist, or leave planned fields empty until the artifact exists.",
+            ],
+            rerun_command: "cargo xtask check-traceability",
+            exception_template: None,
+        },
+        violations,
+    )
+}
+
+fn validate_trace_behavior(
+    behavior: &TraceBehavior,
+    behavior_ids: &mut BTreeSet<String>,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let Some(id) = behavior.id.as_ref() else {
+        violations.push(format!(
+            "behavior at line {} is missing `id`",
+            behavior.line
+        ));
+        return Ok(());
+    };
+    if !is_spec_id(id) {
+        violations.push(format!(
+            "behavior at line {} has invalid spec id `{id}`",
+            behavior.line
+        ));
+    }
+    if !behavior_ids.insert(id.clone()) {
+        violations.push(format!("duplicate traceability behavior id `{id}`"));
+    }
+    if behavior
+        .name
+        .as_ref()
+        .is_none_or(|value| value.trim().is_empty())
+    {
+        violations.push(format!("{id} is missing a non-empty `name`"));
+    }
+
+    let spec_status = match behavior.spec.as_ref() {
+        Some(spec) => validate_behavior_spec_path(id, spec, violations)?,
+        None => {
+            violations.push(format!("{id} is missing `spec`"));
+            None
+        }
+    };
+
+    validate_trace_paths(id, "tests", &behavior.tests, violations);
+    validate_trace_paths(id, "fixtures", &behavior.fixtures, violations);
+    validate_trace_paths(id, "code", &behavior.code, violations);
+    validate_trace_paths(id, "outputs", &behavior.outputs, violations);
+
+    if behavior.metrics.is_empty() {
+        violations.push(format!("{id} has no metrics"));
+    }
+    for metric in &behavior.metrics {
+        if metric.trim().is_empty() {
+            violations.push(format!("{id} has an empty metric entry"));
+        }
+    }
+
+    if spec_status.as_deref() == Some("accepted")
+        && behavior.tests.is_empty()
+        && behavior.fixtures.is_empty()
+    {
+        violations.push(format!(
+            "{id} is accepted but has no current test or fixture mapping"
+        ));
+    }
+
+    Ok(())
+}
+
+fn validate_behavior_spec_path(
+    id: &str,
+    spec: &str,
+    violations: &mut Vec<String>,
+) -> Result<Option<String>, String> {
+    let path = Path::new(spec);
+    if !path.exists() {
+        violations.push(format!("{id} spec path does not exist: {spec}"));
+        return Ok(None);
+    }
+    match spec_id_from_path(path) {
+        Some(spec_id) if spec_id == id => {}
+        Some(spec_id) => violations.push(format!(
+            "{id} points at spec path with mismatched id {spec_id}: {spec}"
+        )),
+        None => violations.push(format!(
+            "{id} spec path does not use RIPR-SPEC-NNNN filename: {spec}"
+        )),
+    }
+    match spec_status_from_file(path)? {
+        Some(status) => Ok(Some(status)),
+        None => {
+            violations.push(format!("{id} spec is missing `Status: ...`: {spec}"));
+            Ok(None)
+        }
+    }
+}
+
+fn validate_trace_paths(id: &str, field: &str, values: &[String], violations: &mut Vec<String>) {
+    for value in values {
+        let path_text = trace_path_part(value);
+        if path_text.trim().is_empty() {
+            violations.push(format!("{id} has an empty `{field}` path"));
+            continue;
+        }
+        if !Path::new(path_text).exists() {
+            violations.push(format!("{id} `{field}` path does not exist: {path_text}"));
+        }
+    }
+}
+
+fn trace_path_part(value: &str) -> &str {
+    match value.split_once("::") {
+        Some((path, _)) => path,
+        None => value,
+    }
+}
+
+fn validate_fixture_spec_references(
+    specs: &BTreeMap<String, String>,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    for fixture in fixture_dirs()? {
+        let spec_path = fixture.join("SPEC.md");
+        if !spec_path.exists() {
+            continue;
+        }
+        let text = read_text_lossy(&spec_path)?;
+        for line in text.lines() {
+            let Some(value) = line.strip_prefix("Spec:") else {
+                continue;
+            };
+            let spec_id = value.trim();
+            if !is_spec_id(spec_id) {
+                violations.push(format!(
+                    "{} references invalid spec id `{spec_id}`",
+                    normalize_path(&spec_path)
+                ));
+            } else if !specs.contains_key(spec_id) {
+                violations.push(format!(
+                    "{} references unknown spec id `{spec_id}`",
+                    normalize_path(&spec_path)
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn collect_spec_statuses() -> Result<BTreeMap<String, String>, String> {
+    let specs_dir = Path::new("docs/specs");
+    let mut specs = BTreeMap::new();
+    if !specs_dir.exists() {
+        return Ok(specs);
+    }
+    for path in collect_files(specs_dir)? {
+        if path.extension().and_then(|value| value.to_str()) != Some("md") {
+            continue;
+        }
+        let Some(spec_id) = spec_id_from_path(&path) else {
+            continue;
+        };
+        let status = spec_status_from_file(&path)?.unwrap_or_else(|| "missing".to_string());
+        specs.insert(spec_id, status);
+    }
+    Ok(specs)
+}
+
+fn spec_status_from_file(path: &Path) -> Result<Option<String>, String> {
+    let text = read_text_lossy(path)?;
+    for line in text.lines() {
+        let Some(value) = line.strip_prefix("Status:") else {
+            continue;
+        };
+        return Ok(Some(value.trim().to_string()));
+    }
+    Ok(None)
+}
+
+fn spec_id_from_path(path: &Path) -> Option<String> {
+    let stem = path.file_stem()?.to_string_lossy();
+    let mut parts = stem.split('-');
+    let first = parts.next()?;
+    let second = parts.next()?;
+    let third = parts.next()?;
+    if first == "RIPR" && second == "SPEC" && third.len() == 4 && is_ascii_digits(third) {
+        Some(format!("RIPR-SPEC-{third}"))
+    } else {
+        None
+    }
+}
+
+fn is_spec_id(value: &str) -> bool {
+    let Some(suffix) = value.strip_prefix("RIPR-SPEC-") else {
+        return false;
+    };
+    suffix.len() == 4 && is_ascii_digits(suffix)
+}
+
+fn is_ascii_digits(value: &str) -> bool {
+    value.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+fn parse_traceability_manifest(path: &Path) -> Result<(Vec<TraceBehavior>, Vec<String>), String> {
+    let text = read_text_lossy(path)?;
+    let mut behaviors = Vec::new();
+    let mut violations = Vec::new();
+    let mut current: Option<TraceBehavior> = None;
+    let mut active_array: Option<(String, Vec<String>, usize)> = None;
+
+    for (index, line) in text.lines().enumerate() {
+        let line_number = index + 1;
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if let Some((key, values, start_line)) = active_array.as_mut() {
+            if trimmed.starts_with(']') {
+                let Some(mut behavior) = current.take() else {
+                    violations.push(format!(
+                        "{}:{} array `{key}` is outside a behavior entry",
+                        normalize_path(path),
+                        start_line
+                    ));
+                    active_array = None;
+                    continue;
+                };
+                assign_trace_array(
+                    &mut behavior,
+                    key,
+                    values.clone(),
+                    *start_line,
+                    &mut violations,
+                );
+                current = Some(behavior);
+                active_array = None;
+                continue;
+            }
+            match parse_array_item(trimmed) {
+                Ok(Some(value)) => values.push(value),
+                Ok(None) => {}
+                Err(message) => {
+                    violations.push(format!("{}:{line_number} {message}", normalize_path(path)))
+                }
+            }
+            continue;
+        }
+        if trimmed == "[[behavior]]" {
+            if let Some(behavior) = current.take() {
+                behaviors.push(behavior);
+            }
+            current = Some(TraceBehavior {
+                line: line_number,
+                ..TraceBehavior::default()
+            });
+            continue;
+        }
+        let Some((key, value)) = trimmed.split_once('=') else {
+            violations.push(format!(
+                "{}:{line_number} expected `key = value`",
+                normalize_path(path)
+            ));
+            continue;
+        };
+        let key = key.trim();
+        let value = value.trim();
+        let Some(behavior) = current.as_mut() else {
+            violations.push(format!(
+                "{}:{line_number} `{key}` appears outside a [[behavior]] entry",
+                normalize_path(path)
+            ));
+            continue;
+        };
+        if value == "[" {
+            active_array = Some((key.to_string(), Vec::new(), line_number));
+            continue;
+        }
+        if value.starts_with('[') {
+            match parse_inline_array(value) {
+                Ok(values) => {
+                    assign_trace_array(behavior, key, values, line_number, &mut violations)
+                }
+                Err(message) => {
+                    violations.push(format!("{}:{line_number} {message}", normalize_path(path)))
+                }
+            }
+            continue;
+        }
+        match parse_quoted_value(value) {
+            Ok(parsed) => assign_trace_string(behavior, key, parsed, line_number, &mut violations),
+            Err(message) => {
+                violations.push(format!("{}:{line_number} {message}", normalize_path(path)))
+            }
+        }
+    }
+
+    if let Some((key, _, start_line)) = active_array {
+        violations.push(format!(
+            "{}:{start_line} array `{key}` is missing closing `]`",
+            normalize_path(path)
+        ));
+    }
+    if let Some(behavior) = current {
+        behaviors.push(behavior);
+    }
+    Ok((behaviors, violations))
+}
+
+fn assign_trace_string(
+    behavior: &mut TraceBehavior,
+    key: &str,
+    value: String,
+    line_number: usize,
+    violations: &mut Vec<String>,
+) {
+    match key {
+        "id" => behavior.id = Some(value),
+        "name" => behavior.name = Some(value),
+        "spec" => behavior.spec = Some(value),
+        _ => violations.push(format!(
+            "traceability line {line_number} uses unsupported string field `{key}`"
+        )),
+    }
+}
+
+fn assign_trace_array(
+    behavior: &mut TraceBehavior,
+    key: &str,
+    values: Vec<String>,
+    line_number: usize,
+    violations: &mut Vec<String>,
+) {
+    match key {
+        "tests" => behavior.tests = values,
+        "fixtures" => behavior.fixtures = values,
+        "code" => behavior.code = values,
+        "outputs" => behavior.outputs = values,
+        "metrics" => behavior.metrics = values,
+        _ => violations.push(format!(
+            "traceability line {line_number} uses unsupported array field `{key}`"
+        )),
+    }
+}
+
+fn parse_inline_array(value: &str) -> Result<Vec<String>, String> {
+    let trimmed = value.trim();
+    if !trimmed.starts_with('[') || !trimmed.ends_with(']') {
+        return Err("expected string array".to_string());
+    }
+    let inner = &trimmed[1..trimmed.len() - 1];
+    let mut values = Vec::new();
+    for item in inner.split(',') {
+        let item = item.trim();
+        if item.is_empty() {
+            continue;
+        }
+        values.push(parse_quoted_value(item)?);
+    }
+    Ok(values)
+}
+
+fn parse_array_item(value: &str) -> Result<Option<String>, String> {
+    let trimmed = value.trim().trim_end_matches(',').trim();
+    if trimmed.is_empty() || trimmed.starts_with('#') {
+        Ok(None)
+    } else {
+        parse_quoted_value(trimmed).map(Some)
+    }
+}
+
+fn parse_quoted_value(value: &str) -> Result<String, String> {
+    let trimmed = value.trim();
+    if trimmed.len() < 2 || !trimmed.starts_with('"') || !trimmed.ends_with('"') {
+        return Err(format!("expected quoted string, got `{trimmed}`"));
+    }
+    Ok(trimmed[1..trimmed.len() - 1].to_string())
 }
 
 fn check_generated() -> Result<(), String> {
@@ -2111,10 +2552,12 @@ fn is_word_char(value: Option<char>) -> bool {
 mod tests {
     use super::{
         ChangedPath, extract_workflow_run_blocks, glob_matches, is_dependency_surface_candidate,
-        is_evidence_path, is_generated_candidate, is_policy_path, is_production_path, parse_reason,
-        precommit_report_body, public_contract_rows, sorted_allowlist_content,
+        is_evidence_path, is_generated_candidate, is_policy_path, is_production_path, is_spec_id,
+        parse_inline_array, parse_reason, precommit_report_body, public_contract_rows,
+        sorted_allowlist_content, spec_id_from_path,
     };
     use std::collections::BTreeSet;
+    use std::path::Path;
 
     #[test]
     fn glob_match_supports_recursive_segments_and_star_suffixes() {
@@ -2254,5 +2697,27 @@ jobs:
         assert_eq!(parse_reason(&spaced), Ok("intentional update".to_string()));
         assert_eq!(parse_reason(&equals), Ok("intentional update".to_string()));
         assert!(parse_reason(&[]).is_err());
+    }
+
+    #[test]
+    fn spec_id_helpers_accept_only_ripr_spec_ids() {
+        assert!(is_spec_id("RIPR-SPEC-0001"));
+        assert!(!is_spec_id("RIPR-SPEC-001"));
+        assert!(!is_spec_id("SPEC-0001"));
+        assert_eq!(
+            spec_id_from_path(Path::new("docs/specs/RIPR-SPEC-0004-predicate-boundary.md")),
+            Some("RIPR-SPEC-0004".to_string())
+        );
+        assert_eq!(spec_id_from_path(Path::new("docs/specs/README.md")), None);
+    }
+
+    #[test]
+    fn traceability_array_parser_reads_inline_values() {
+        assert_eq!(
+            parse_inline_array("[\"one\", \"two\"]"),
+            Ok(vec!["one".to_string(), "two".to_string()])
+        );
+        assert_eq!(parse_inline_array("[]"), Ok(Vec::new()));
+        assert!(parse_inline_array("[one]").is_err());
     }
 }
