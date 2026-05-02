@@ -88,6 +88,9 @@ Before requesting review:
 
 ## PR Shaping Commands
 
+The shape/check/guide model is documented in
+[PR automation](docs/PR_AUTOMATION.md).
+
 Use `shape` when the tree needs safe normalization:
 
 ```bash
@@ -103,8 +106,9 @@ Use `fix-pr` as the current safe repair entrypoint:
 cargo xtask fix-pr
 ```
 
-It runs `shape` and writes `target/ripr/reports/fix-pr.md`. Future automation
-also refreshes `target/ripr/reports/pr-summary.md`.
+It runs `shape`, refreshes `target/ripr/reports/pr-summary.md`, and writes
+`target/ripr/reports/fix-pr.md`. Future automation also expands the repair
+brief for judgment-required issues.
 
 Generate the reviewer packet directly with:
 
@@ -114,6 +118,9 @@ cargo xtask pr-summary
 
 The summary classifies changed paths into production, evidence, policy,
 workflow, extension, and public-contract surfaces.
+
+Long-running implementation tasks should follow
+[Goal-mode execution](docs/GOAL_MODE.md).
 
 ## Required Rust Gates
 

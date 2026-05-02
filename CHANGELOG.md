@@ -32,3 +32,5 @@ how future PRs are scoped or reviewed.
   normalization and report generation.
 - Added `cargo xtask pr-summary` for local reviewer packet generation from git
   diff and status.
+- Added PR automation and goal-mode execution docs to pin down the remaining
+  shape/check/guide automation path before deeper analyzer implementation.
