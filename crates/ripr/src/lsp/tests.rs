@@ -19,10 +19,10 @@ use tower_lsp_server::LspService;
 use tower_lsp_server::ls_types::{
     CodeActionContext, CodeActionOrCommand, CodeActionParams, DiagnosticSeverity,
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    HoverContents, HoverProviderCapability, InitializeParams, NumberOrString, Position, Range,
-    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
-    TextDocumentSyncCapability, TextDocumentSyncKind, VersionedTextDocumentIdentifier,
-    WorkspaceFolder,
+    HoverContents, HoverParams, HoverProviderCapability, InitializeParams, NumberOrString,
+    Position, Range, TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
+    TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind,
+    VersionedTextDocumentIdentifier, WorkspaceFolder,
 };
 
 #[test]
@@ -52,6 +52,39 @@ fn hover_response_keeps_current_guidance_text() -> Result<(), String> {
     match hover.contents {
         HoverContents::Markup(markup) => {
             assert_eq!(markup.value, HOVER_TEXT);
+            Ok(())
+        }
+        _ => Err("expected markup hover".to_string()),
+    }
+}
+
+#[test]
+fn hover_for_position_uses_latest_matching_diagnostic() -> Result<(), String> {
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    let finding = sample_finding();
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let Some(_) = backend.refresh_plan(vec![DiagnosticBatch {
+        uri: uri.clone(),
+        diagnostics: vec![diagnostic],
+    }]) else {
+        return Err("expected refresh plan".to_string());
+    };
+
+    let Some(hover) = backend.hover_for_position(&hover_params(uri, 87, 1)) else {
+        return Err("expected diagnostic hover".to_string());
+    };
+
+    match hover.contents {
+        HoverContents::Markup(markup) => {
+            assert!(markup.value.contains("**ripr** `weakly_exposed`"));
+            assert!(markup.value.contains("Add an exact boundary assertion."));
+            assert!(
+                markup
+                    .value
+                    .contains("Finding: `probe:pricing:88:predicate`")
+            );
             Ok(())
         }
         _ => Err("expected markup hover".to_string()),
@@ -483,6 +516,16 @@ fn code_action_params(
         work_done_progress_params: Default::default(),
         partial_result_params: Default::default(),
     })
+}
+
+fn hover_params(uri: tower_lsp_server::ls_types::Uri, line: u32, character: u32) -> HoverParams {
+    HoverParams {
+        text_document_position_params: TextDocumentPositionParams {
+            text_document: TextDocumentIdentifier::new(uri),
+            position: Position { line, character },
+        },
+        work_done_progress_params: Default::default(),
+    }
 }
 
 #[allow(deprecated)]

@@ -5,17 +5,18 @@ use super::diagnostics::{
     DiagnosticBatch, DiagnosticRefreshPlan, diagnostic_refresh_plan, take_all_uris,
     workspace_diagnostic_batches,
 };
-use super::hover::hover_response;
+use super::hover::{diagnostic_at_position, diagnostic_hover_response, hover_response};
 use super::state::DocumentStore;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use tokio::sync::Mutex as AsyncMutex;
 use tower_lsp_server::jsonrpc::Result as LspResult;
 use tower_lsp_server::ls_types::{
-    CodeActionParams, CodeActionResponse, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, DidSaveTextDocumentParams, ExecuteCommandParams, Hover, HoverParams,
-    InitializeParams, InitializeResult, LSPAny, MessageType, Uri,
+    CodeActionParams, CodeActionResponse, Diagnostic, DidChangeTextDocumentParams,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
+    ExecuteCommandParams, Hover, HoverParams, InitializeParams, InitializeResult, LSPAny,
+    MessageType, Uri,
 };
 use tower_lsp_server::{Client, LanguageServer};
 
@@ -24,6 +25,7 @@ pub(super) struct Backend {
     root: Mutex<PathBuf>,
     documents: Mutex<DocumentStore>,
     last_diagnostic_uris: Mutex<BTreeSet<Uri>>,
+    last_diagnostics: Mutex<BTreeMap<Uri, Vec<Diagnostic>>>,
     refresh_generation: Mutex<u64>,
     refresh_in_flight: AsyncMutex<()>,
 }
@@ -35,6 +37,7 @@ impl Backend {
             root: Mutex::new(root),
             documents: Mutex::new(DocumentStore::default()),
             last_diagnostic_uris: Mutex::new(BTreeSet::new()),
+            last_diagnostics: Mutex::new(BTreeMap::new()),
             refresh_generation: Mutex::new(0),
             refresh_in_flight: AsyncMutex::new(()),
         }
@@ -99,7 +102,15 @@ impl Backend {
         let Ok(mut last_diagnostic_uris) = self.last_diagnostic_uris.lock() else {
             return None;
         };
+        let Ok(mut last_diagnostics) = self.last_diagnostics.lock() else {
+            return None;
+        };
         let refresh = diagnostic_refresh_plan(&last_diagnostic_uris, batches);
+        *last_diagnostics = refresh
+            .publish_batches
+            .iter()
+            .map(|batch| (batch.uri.clone(), batch.diagnostics.clone()))
+            .collect();
         *last_diagnostic_uris = refresh.current_uris.clone();
         Some(refresh)
     }
@@ -108,6 +119,9 @@ impl Backend {
         let Ok(mut last_diagnostic_uris) = self.last_diagnostic_uris.lock() else {
             return Vec::new();
         };
+        if let Ok(mut last_diagnostics) = self.last_diagnostics.lock() {
+            last_diagnostics.clear();
+        }
         take_all_uris(&mut last_diagnostic_uris)
     }
 
@@ -160,6 +174,16 @@ impl Backend {
         };
         documents.close(params);
     }
+
+    pub(super) fn hover_for_position(&self, params: &HoverParams) -> Option<Hover> {
+        let Ok(last_diagnostics) = self.last_diagnostics.lock() else {
+            return None;
+        };
+        let diagnostics =
+            last_diagnostics.get(&params.text_document_position_params.text_document.uri)?;
+        diagnostic_at_position(diagnostics, &params.text_document_position_params.position)
+            .map(diagnostic_hover_response)
+    }
 }
 
 impl LanguageServer for Backend {
@@ -193,8 +217,11 @@ impl LanguageServer for Backend {
         self.refresh_diagnostics().await;
     }
 
-    async fn hover(&self, _: HoverParams) -> LspResult<Option<Hover>> {
-        Ok(Some(hover_response()))
+    async fn hover(&self, params: HoverParams) -> LspResult<Option<Hover>> {
+        Ok(Some(
+            self.hover_for_position(&params)
+                .unwrap_or_else(hover_response),
+        ))
     }
 
     async fn code_action(&self, params: CodeActionParams) -> LspResult<Option<CodeActionResponse>> {
