@@ -17,6 +17,8 @@ jobs:
       - run: cargo test --workspace
       - run: cargo xtask check-static-language
       - run: cargo xtask check-no-panic-family
+      - run: cargo xtask check-allow-attributes
+      - run: cargo xtask check-local-context
       - run: cargo xtask check-file-policy
       - run: cargo xtask check-executable-files
       - run: cargo xtask check-workflows

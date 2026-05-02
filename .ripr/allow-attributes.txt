@@ -1,0 +1,8 @@
+# Allowlisted Rust lint suppressions.
+#
+# Format:
+# path|attribute|max_count|reason
+#
+# Suppressions for guarded lints should be rare and temporary. Prefer fixing
+# the underlying warning. Do not use this file to normalize panic-family,
+# unsafe, dead-code, or broad warning suppressions.

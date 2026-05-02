@@ -1,5 +1,4 @@
 use crate::app::{CheckInput, OutputFormat, check_workspace};
-use crate::output;
 use std::io::{BufRead, BufReader, Write};
 
 pub fn serve() -> Result<(), String> {
@@ -171,11 +170,6 @@ fn extract_id(message: &str) -> Option<String> {
 
 fn json_string(value: &str) -> String {
     serde_json::to_string(value).expect("serializing a string cannot fail")
-}
-
-#[allow(dead_code)]
-fn _render_json_for_debug(output: &crate::app::CheckOutput) -> String {
-    output::json::render(output)
 }
 
 #[cfg(test)]

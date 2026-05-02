@@ -15,6 +15,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo xtask check-static-language
 cargo xtask check-no-panic-family
+cargo xtask check-allow-attributes
 cargo xtask check-local-context
 cargo xtask check-file-policy
 cargo xtask check-executable-files
@@ -93,6 +94,7 @@ Local policy checks can also be run directly:
 ```bash
 cargo xtask check-static-language
 cargo xtask check-no-panic-family
+cargo xtask check-allow-attributes
 cargo xtask check-local-context
 cargo xtask check-file-policy
 cargo xtask check-executable-files

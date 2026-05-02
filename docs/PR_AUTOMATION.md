@@ -40,6 +40,7 @@ cargo xtask dogfood
 cargo xtask reports index
 cargo xtask receipts
 cargo xtask receipts check
+cargo xtask check-allow-attributes
 cargo xtask check-local-context
 cargo xtask ci-fast
 ```
@@ -107,6 +108,12 @@ and metrics runs. `receipts check` validates the required receipt files and
 writes `target/ripr/reports/receipts.md`. `check-pr` refreshes receipts before
 the final report index.
 
+`check-allow-attributes` rejects guarded Rust lint suppressions such as
+panic-family, unsafe-code, dead-code, unused-code, and broad warning
+suppression attributes unless they are narrowly allowlisted in
+`.ripr/allow-attributes.txt`. It writes
+`target/ripr/reports/allow-attributes.md`.
+
 `check-local-context` rejects committed local machine paths, Codex memory or
 sandbox references, uploaded-file/chat citation artifacts, and runtime/session
 state files. It writes `target/ripr/reports/local-context.md` and
@@ -115,10 +122,10 @@ state files. It writes `target/ripr/reports/local-context.md` and
 
 `ci-fast` is the current non-mutating local and CI check lane. It runs the Rust
 checks plus the existing policy checks for static language, panic-family usage,
-local context leaks, file policy, executable bits, workflow shell budgets, spec
-format, fixture contracts, generated files, dependencies, process spawning, and
-network policy. Those policy checks write Markdown pass/fail reports under
-`target/ripr/reports`.
+lint-suppression bypasses, local context leaks, file policy, executable bits,
+workflow shell budgets, spec format, fixture contracts, generated files,
+dependencies, process spawning, and network policy. Those policy checks write
+Markdown pass/fail reports under `target/ripr/reports`.
 
 ## Command Lanes
 
@@ -177,6 +184,7 @@ Current:
 cargo xtask ci-fast
 cargo xtask precommit
 cargo xtask check-pr
+cargo xtask check-allow-attributes
 cargo xtask check-local-context
 cargo xtask fixtures
 cargo xtask goldens check
@@ -187,6 +195,7 @@ cargo xtask dogfood
 cargo xtask reports index
 cargo xtask receipts
 cargo xtask receipts check
+cargo xtask check-allow-attributes
 cargo xtask check-local-context
 cargo xtask check-traceability
 cargo xtask metrics
@@ -366,6 +375,8 @@ The current `precommit` command runs:
 cargo fmt --check
 cargo xtask check-static-language
 cargo xtask check-no-panic-family
+cargo xtask check-allow-attributes
+cargo xtask check-local-context
 cargo xtask check-file-policy
 cargo xtask check-executable-files
 cargo xtask check-workflows
@@ -409,6 +420,7 @@ fix-pr.md
 pr-summary.md
 static-language.md
 no-panic-family.md
+allow-attributes.md
 local-context.md
 local-context.json
 file-policy.md
