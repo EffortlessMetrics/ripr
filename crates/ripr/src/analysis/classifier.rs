@@ -285,6 +285,26 @@ fn reveal_evidence(
         );
     }
 
+    let analysis = analyze_related_assertions(probe, related_tests);
+    let related = finalize_related_tests(analysis.related);
+    let observe = build_observe_evidence(analysis.matched_any);
+    let discriminate =
+        build_discriminate_evidence(&analysis.strongest, &analysis.strongest_kind, &probe.family);
+
+    (observe, discriminate, related)
+}
+
+struct RevealAssertionAnalysis {
+    related: Vec<RelatedTest>,
+    strongest: OracleStrength,
+    strongest_kind: OracleKind,
+    matched_any: bool,
+}
+
+fn analyze_related_assertions(
+    probe: &Probe,
+    related_tests: &[&TestSummary],
+) -> RevealAssertionAnalysis {
     let probe_tokens = extract_identifier_tokens(&probe.expression);
     let mut related = Vec::new();
     let mut strongest = OracleStrength::None;
@@ -303,11 +323,12 @@ fn reveal_evidence(
             continue;
         }
         for assertion in &test.assertions {
-            let token_match = probe_tokens
-                .iter()
-                .any(|token| token.len() > 3 && assertion.text.contains(token));
-            let family_match = oracle_matches_family(&probe.family, assertion);
-            if token_match || family_match || test.assertions.len() == 1 {
+            if assertion_matches_probe(
+                &probe_tokens,
+                &probe.family,
+                assertion,
+                test.assertions.len(),
+            ) {
                 matched_any = true;
                 let relative_strength = probe_relative_oracle_strength(&probe.family, assertion);
                 if relative_strength.rank() > strongest.rank() {
@@ -325,10 +346,35 @@ fn reveal_evidence(
         }
     }
 
+    RevealAssertionAnalysis {
+        related,
+        strongest,
+        strongest_kind,
+        matched_any,
+    }
+}
+
+fn assertion_matches_probe(
+    probe_tokens: &[String],
+    family: &ProbeFamily,
+    assertion: &OracleFact,
+    assertion_count: usize,
+) -> bool {
+    let token_match = probe_tokens
+        .iter()
+        .any(|token| token.len() > 3 && assertion.text.contains(token));
+    let family_match = oracle_matches_family(family, assertion);
+    token_match || family_match || assertion_count == 1
+}
+
+fn finalize_related_tests(mut related: Vec<RelatedTest>) -> Vec<RelatedTest> {
     related.sort_by(|a, b| a.name.cmp(&b.name).then(a.line.cmp(&b.line)));
     related.dedup_by(|a, b| a.name == b.name && a.oracle == b.oracle);
+    related
+}
 
-    let observe = if matched_any {
+fn build_observe_evidence(matched_any: bool) -> StageEvidence {
+    if matched_any {
         StageEvidence::new(
             StageState::Yes,
             Confidence::Medium,
@@ -340,9 +386,15 @@ fn reveal_evidence(
             Confidence::Medium,
             "Related tests were found, but no assertion appears to observe the changed value, error, field, or effect",
         )
-    };
+    }
+}
 
-    let discriminate = match strongest {
+fn build_discriminate_evidence(
+    strongest: &OracleStrength,
+    strongest_kind: &OracleKind,
+    family: &ProbeFamily,
+) -> StageEvidence {
+    match strongest {
         OracleStrength::Strong => StageEvidence::new(
             StageState::Yes,
             Confidence::Medium,
@@ -372,7 +424,7 @@ fn reveal_evidence(
         OracleStrength::Weak => StageEvidence::new(
             StageState::Weak,
             Confidence::High,
-            match (&strongest_kind, &probe.family) {
+            match (strongest_kind, family) {
                 (OracleKind::BroadError, ProbeFamily::ErrorPath) => {
                     "Only broad error oracle found; is_err() does not discriminate exact error variants"
                 }
@@ -402,9 +454,7 @@ fn reveal_evidence(
             Confidence::Low,
             "Assertions exist, but oracle strength is unknown",
         ),
-    };
-
-    (observe, discriminate, related)
+    }
 }
 
 fn oracle_matches_family(family: &ProbeFamily, assertion: &OracleFact) -> bool {
