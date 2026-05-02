@@ -96,3 +96,5 @@ how future PRs are scoped or reviewed.
   automation, capability, and contributor docs instead of carrying the full map.
 - Added `cargo xtask golden-drift` and wired `goldens check` to write semantic
   drift summaries for fixture expected-output review.
+- Added `cargo xtask check-local-context` to reject committed local machine
+  paths, session-state artifacts, and chat/runtime references before review.

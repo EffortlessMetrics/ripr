@@ -78,6 +78,16 @@ ripr on PATH
 actionable error
 ```
 
+## 2026-05-02: Runtime State Is Not Repo State
+
+Durable repo knowledge belongs in reviewed docs, campaign manifests,
+capability metadata, traceability, specs, and fixtures. Runtime/session state
+belongs under generated artifact directories such as reports, receipts, or
+learning output.
+
+Do not commit local checkout notes, machine-specific paths, chat transcript
+artifacts, or one-run command transcripts as repository state.
+
 ## 2026-05-01: Engineering Debt to Track
 
 The repository currently contains `unwrap`/`expect` usage in code and tests.

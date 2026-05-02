@@ -21,7 +21,6 @@
 AGENTS.md|documentation|agents|Agent instructions.
 CHANGELOG.md|documentation|docs|Repository changelog.
 CONTRIBUTING.md|documentation|docs|Contribution guide.
-CURRENT_STATE.md|documentation|docs|Repository state notes.
 Cargo.lock|rust_lockfile|rust|Cargo lockfile.
 Cargo.toml|rust_manifest|rust|Cargo workspace manifest.
 LICENSE-*|license|repo|License files.

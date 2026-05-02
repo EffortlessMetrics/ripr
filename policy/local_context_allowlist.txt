@@ -1,0 +1,8 @@
+# Allowlisted local-context examples.
+#
+# Format:
+# path|pattern|max_count|reason
+#
+# This policy is for narrow generic examples only. Real machine paths, Codex
+# memory paths, sandbox paths, uploaded-file references, and session transcripts
+# should be removed instead of allowlisted.
