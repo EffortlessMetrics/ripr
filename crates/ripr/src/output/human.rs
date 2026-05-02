@@ -114,3 +114,91 @@ pub fn render_finding(finding: &Finding) -> String {
 
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{render, render_finding};
+    use crate::app::{CheckOutput, Mode};
+    use crate::domain::{
+        Confidence, DeltaKind, ExposureClass, Finding, OracleStrength, Probe, ProbeFamily, ProbeId,
+        RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState,
+        Summary,
+    };
+    use std::path::PathBuf;
+
+    fn sample_finding() -> Finding {
+        Finding {
+            id: "probe:src_lib_rs:10:predicate".to_string(),
+            probe: Probe {
+                id: ProbeId("probe:src_lib_rs:10:predicate".to_string()),
+                location: SourceLocation::new("src/lib.rs", 10, 5),
+                owner: None,
+                family: ProbeFamily::Predicate,
+                delta: DeltaKind::Control,
+                before: Some("x > 0".to_string()),
+                after: Some("x >= 0".to_string()),
+                expression: "x >= 0".to_string(),
+                expected_sinks: vec![],
+                required_oracles: vec![],
+            },
+            class: ExposureClass::WeaklyExposed,
+            ripr: RiprEvidence {
+                reach: StageEvidence::new(StageState::Yes, Confidence::High, "changed path is reachable"),
+                infect: StageEvidence::new(StageState::Weak, Confidence::Medium, "infection may be weak"),
+                propagate: StageEvidence::new(StageState::Yes, Confidence::High, "propagates to return value"),
+                reveal: RevealEvidence {
+                    observe: StageEvidence::new(StageState::Yes, Confidence::High, "test observes output"),
+                    discriminate: StageEvidence::new(
+                        StageState::Weak,
+                        Confidence::Medium,
+                        "oracle is weak around boundary value",
+                    ),
+                },
+            },
+            confidence: 0.7,
+            evidence: vec![],
+            missing: vec!["No boundary assertion around x == 0".to_string()],
+            stop_reasons: vec![],
+            related_tests: vec![RelatedTest {
+                name: "boundary_case".to_string(),
+                file: PathBuf::from("tests/lib_tests.rs"),
+                line: 42,
+                oracle: Some("assert!(is_positive(1))".to_string()),
+                oracle_strength: OracleStrength::Weak,
+            }],
+            recommended_next_step: Some(
+                "Add assertion for x == 0 and expected predicate behavior.".to_string(),
+            ),
+        }
+    }
+
+    #[test]
+    fn render_reports_empty_findings_message() {
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("."),
+            base: Some("origin/main".to_string()),
+            summary: Summary {
+                probes: 0,
+                ..Summary::default()
+            },
+            findings: vec![],
+        };
+
+        let text = render(&output);
+        assert!(text.contains("No diff-derived mutation exposure probes found."));
+    }
+
+    #[test]
+    fn render_finding_includes_gap_and_recommendation_sections() {
+        let finding = sample_finding();
+
+        let text = render_finding(&finding);
+        assert!(text.contains("Static exposure: weakly_exposed (predicate, control)"));
+        assert!(text.contains("Related tests / oracles:"));
+        assert!(text.contains("Gap:"));
+        assert!(text.contains("Recommended next step:"));
+    }
+}
