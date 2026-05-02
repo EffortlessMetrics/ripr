@@ -106,6 +106,17 @@ Confirm missing ripr path gives a useful message.
 Confirm restart and output commands work.
 ```
 
+## Diagnostic Refresh Model
+
+The preview LSP server currently analyzes the saved workspace diff. It stores
+open document text for future hover/actions work, but unsaved edits are not yet
+used as analyzer overlays.
+
+Diagnostics refresh when a document opens, when a document is saved, or when the
+`ripr.refresh` LSP command runs. Text changes update server document state but
+do not trigger full workspace analysis until the change is saved or refreshed
+explicitly.
+
 ## Diagnostic Data
 
 LSP diagnostics include a stable JSON `data` payload for editor commands:
