@@ -30,6 +30,22 @@
 //! and [`ExposureClass::WeaklyExposed`]. Findings can also remain unknown when
 //! static evidence is incomplete. These results are intended to guide targeted
 //! test intent, not to claim runtime mutation outcomes.
+//!
+//! # Quick start
+//!
+//! ```no_run
+//! use ripr::{CheckInput, check_workspace};
+//! use std::path::PathBuf;
+//!
+//! let report = check_workspace(CheckInput {
+//!     root: PathBuf::from("."),
+//!     ..CheckInput::default()
+//! })?;
+//!
+//! println!("findings: {}", report.findings.len());
+//! # Ok::<(), String>(())
+//! ```
+//!
 
 /// Static analysis pipeline: diff loading, syntax indexing, probe generation,
 /// and finding classification.
