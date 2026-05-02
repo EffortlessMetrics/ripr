@@ -288,6 +288,7 @@ fn main() {
         Some("check-pr-shape") => check_pr_shape(),
         Some("check-generated") => check_generated(),
         Some("check-dependencies") => check_dependencies(),
+        Some("check-supply-chain") => check_supply_chain(),
         Some("check-process-policy") => check_process_policy(),
         Some("check-network-policy") => check_network_policy(),
         Some("package") => run("cargo", &["package", "-p", "ripr", "--list"]).map(|_| ()),
@@ -412,7 +413,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  golden-drift\n  metrics\n  test-oracle-report\n  check-test-oracles\n  dogfood\n  goals status|next|report\n  reports index\n  receipts [check]\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-allow-attributes\n  check-local-context\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
+        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  golden-drift\n  metrics\n  test-oracle-report\n  check-test-oracles\n  dogfood\n  goals status|next|report\n  reports index\n  receipts [check]\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-allow-attributes\n  check-local-context\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-supply-chain\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
     );
 }
 
@@ -5094,6 +5095,7 @@ fn known_xtask_command(command: &str) -> bool {
             | "check-pr-shape"
             | "check-generated"
             | "check-dependencies"
+            | "check-supply-chain"
             | "check-process-policy"
             | "check-network-policy"
             | "package"
@@ -5197,6 +5199,68 @@ fn check_dependencies() -> Result<(), String> {
         },
         &violations,
     )
+}
+
+fn check_supply_chain() -> Result<(), String> {
+    ensure_reports_dir()?;
+
+    let args = ["deny", "check", "advisories", "licenses", "bans", "sources"];
+    eprintln!("$ cargo {}", args.join(" "));
+    let output = Command::new("cargo")
+        .args(args)
+        .output()
+        .map_err(|err| format!("failed to run cargo deny: {err}"))?;
+
+    let status = if output.status.success() {
+        "pass"
+    } else {
+        "fail"
+    };
+    let stdout = redact_current_dir(&String::from_utf8_lossy(&output.stdout));
+    let stderr = redact_current_dir(&String::from_utf8_lossy(&output.stderr));
+    let mut body = format!(
+        "# ripr supply-chain report\n\nStatus: {status}\n\nCommand:\n\n```bash\ncargo deny check advisories licenses bans sources\n```\n\n"
+    );
+    body.push_str("Policy:\n\n");
+    body.push_str(
+        "- advisories, licenses, bans, and source registries are checked by `cargo-deny`.\n",
+    );
+    body.push_str(
+        "- duplicate dependency findings are warnings in `deny.toml` during baseline setup.\n\n",
+    );
+    body.push_str("Output:\n\n```text\n");
+    if stdout.is_empty() && stderr.is_empty() {
+        body.push_str("<no output>\n");
+    } else {
+        body.push_str(&stdout);
+        if !stdout.ends_with('\n') && !stdout.is_empty() {
+            body.push('\n');
+        }
+        body.push_str(&stderr);
+        if !stderr.ends_with('\n') && !stderr.is_empty() {
+            body.push('\n');
+        }
+    }
+    body.push_str("```\n");
+    write_report("supply-chain.md", &body)?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "cargo deny check advisories licenses bans sources failed with {}",
+            output.status
+        ))
+    }
+}
+
+fn redact_current_dir(text: &str) -> String {
+    let Ok(current_dir) = std::env::current_dir() else {
+        return text.to_string();
+    };
+    let current_dir = current_dir.display().to_string();
+    let slash_dir = current_dir.replace('\\', "/");
+    text.replace(&current_dir, ".").replace(&slash_dir, ".")
 }
 
 fn check_process_policy() -> Result<(), String> {

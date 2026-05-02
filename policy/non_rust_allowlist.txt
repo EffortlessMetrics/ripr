@@ -28,6 +28,7 @@ README.md|documentation|docs|Repository README.
 assets/**|asset|brand/docs|Non-code assets.
 crates/**/Cargo.toml|rust_manifest|rust|Cargo package manifests.
 crates/ripr/examples/**|fixture_input|analysis-fixtures|Packaged sample workspace and diff are analyzed inputs.
+deny.toml|supply_chain_policy|security|Cargo-deny policy for advisories, licenses, bans, and source registries.
 docs/**|documentation|docs|Documentation, examples, snippets, and reference material.
 editors/vscode/**/*.json|editor_extension_config|lsp/editor|VS Code extension config or generated metadata.
 editors/vscode/**/*.ts|editor_extension|lsp/editor|VS Code extension client and tests.

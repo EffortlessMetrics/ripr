@@ -42,6 +42,7 @@ cargo xtask receipts
 cargo xtask receipts check
 cargo xtask check-allow-attributes
 cargo xtask check-local-context
+cargo xtask check-supply-chain
 cargo xtask ci-fast
 ```
 
@@ -119,6 +120,11 @@ sandbox references, uploaded-file/chat citation artifacts, and runtime/session
 state files. It writes `target/ripr/reports/local-context.md` and
 `target/ripr/reports/local-context.json`. Narrow generic examples must use
 `policy/local_context_allowlist.txt`.
+
+`check-supply-chain` runs `cargo deny check advisories licenses bans sources`
+using `deny.toml` and writes `target/ripr/reports/supply-chain.md`. It is a
+local and CI security preflight; duplicate dependency findings are warnings
+until the dependency graph baseline is stable.
 
 `ci-fast` is the current non-mutating local and CI check lane. It runs the Rust
 checks plus the existing policy checks for static language, panic-family usage,
@@ -209,6 +215,7 @@ cargo xtask check-readme-state
 cargo xtask markdown-links
 cargo xtask check-campaign
 cargo xtask check-pr-shape
+cargo xtask check-supply-chain
 ```
 
 Local tools may fix. CI verifies.
@@ -245,6 +252,7 @@ cargo xtask check-readme-state
 cargo xtask markdown-links
 cargo xtask check-campaign
 cargo xtask check-pr-shape
+cargo xtask check-supply-chain
 ```
 
 Reports should be useful to both humans and agents. A failed check should name
