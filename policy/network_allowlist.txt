@@ -1,0 +1,10 @@
+# Allowlisted network surfaces.
+#
+# Format:
+# path|pattern|max_count|owner|reason
+#
+# Network behavior must stay in explicit adapter or release surfaces. Unit tests
+# and domain logic should not acquire hidden network dependencies.
+
+editors/vscode/src/downloader.ts|https.get|1|lsp/editor|VS Code extension downloads verified server assets from the configured release source.
+.github/workflows/publish-extension.yml|curl|1|release/ci|Release workflow polls GitHub Releases for the server manifest before publishing extension packages.

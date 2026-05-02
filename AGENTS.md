@@ -99,6 +99,10 @@ cargo xtask check-executable-files
 cargo xtask check-workflows
 cargo xtask check-spec-format
 cargo xtask check-fixture-contracts
+cargo xtask check-generated
+cargo xtask check-dependencies
+cargo xtask check-process-policy
+cargo xtask check-network-policy
 ```
 
 Useful runtime checks:

@@ -26,3 +26,5 @@ how future PRs are scoped or reviewed.
   programming files, executable bits, and workflow shell budgets.
 - Added spec format, fixture contract, and test taxonomy docs plus xtask checks
   for spec and fixture evidence shape.
+- Added policy checks for generated files, dependency surfaces, process spawning,
+  and network behavior.

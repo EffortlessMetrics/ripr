@@ -82,6 +82,8 @@ Before requesting review:
       production or test code.
 - [ ] CI-relevant docs or workflows were updated when gates changed.
 - [ ] New non-Rust programming files are covered by the file policy allowlist.
+- [ ] New generated files, dependency surfaces, process spawning, and network
+      behavior are covered by policy allowlists.
 
 ## Required Rust Gates
 
@@ -100,6 +102,10 @@ cargo xtask check-executable-files
 cargo xtask check-workflows
 cargo xtask check-spec-format
 cargo xtask check-fixture-contracts
+cargo xtask check-generated
+cargo xtask check-dependencies
+cargo xtask check-process-policy
+cargo xtask check-network-policy
 ```
 
 When the worktree is intentionally dirty during local review, Cargo packaging

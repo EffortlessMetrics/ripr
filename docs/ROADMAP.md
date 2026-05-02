@@ -108,11 +108,12 @@ write and review:
 | Q1 | `engineering-doctrine-rails` | Scope PRs by production risk, separate production and evidence deltas, add issue templates, capability matrix, traceability seed, and first policy checks. |
 | Q2 | `rust-first-file-policy` | Deny unapproved non-Rust programming files, executable bits, and workflow shell sprawl through allowlisted policy checks. |
 | Q3 | `spec-fixture-contracts` | Require agent-readable spec sections and BDD fixture contracts before fixture/golden work expands. |
-| Q4 | `xtask-policy-checks` | Expand executable checks for docs indexes, traceability, metrics, generated files, dependencies, process spawning, and network behavior. |
+| Q4 | `automation-guardrails` | Require allowlisted generated files, dependency surfaces, process spawning, and network behavior. |
 | Q5 | `fixture-golden-scaffolding` | Add fixture/golden conventions plus scaffold/check/bless commands. |
-| Q6 | `capability-metrics-report` | Generate capability and quality metrics artifacts from fixtures and traceability. |
-| Q7 | `architecture-boundary-check` | Add workspace-shape, public API, and module-boundary checks that preserve one crate with strong internal seams. |
-| Q8 | `dogfood-report` | Add focused `ripr`-on-`ripr` reports as CI artifacts without blocking by default. |
+| Q6 | `xtask-policy-checks` | Expand executable checks for docs indexes, traceability, metrics, workspace shape, and architecture. |
+| Q7 | `capability-metrics-report` | Generate capability and quality metrics artifacts from fixtures and traceability. |
+| Q8 | `architecture-boundary-check` | Add workspace-shape, public API, and module-boundary checks that preserve one crate with strong internal seams. |
+| Q9 | `dogfood-report` | Add focused `ripr`-on-`ripr` reports as CI artifacts without blocking by default. |
 
 These PRs should remain narrow production changes. Most of their size may be
 evidence, docs, templates, allowlists, or generated scaffolding. That is
@@ -133,29 +134,30 @@ reviewable PR without guessing.
 | 1 | `engineering-doctrine-rails` | Make scoped evidence-heavy PRs mechanical with templates, traceability, capability status, and first policy checks. | `0.2.x` |
 | 2 | `rust-first-file-policy` | Keep implementation and automation Rust-first by allowlisting non-Rust programming surfaces and checking workflow shell budgets. | `0.2.x` |
 | 3 | `spec-fixture-contracts` | Make specs and fixtures mechanically checkable with required sections and BDD fixture contracts. | `0.2.x` |
-| 4 | `verify-one-click-extension-install` | Verify the normal editor install path without requiring `cargo install ripr`. | `0.2.x` |
-| 5 | `xtask-policy-checks` | Expand repo policy checks for docs indexes, traceability, metrics, generated files, dependencies, process spawning, and network behavior. | `0.2.x` |
-| 6 | `fixture-golden-scaffolding` | Add fixture/golden structure, scaffold command, check command, and bless command. | `0.3.0` |
-| 7 | `fixture-laboratory` | Create golden fixtures and invariants before changing the analyzer. | `0.3.0` |
-| 8 | `capability-metrics-report` | Generate capability, quality, engineering, and latency metrics artifacts. | `0.3.0` |
-| 9 | `file-facts-model` | Introduce a fact model while preserving current scanner behavior. | `0.3.0` |
-| 10 | `syntax-adapter-mvp` | Add a parser adapter boundary and syntax-backed file facts. | `0.3.0` |
-| 11 | `ast-test-oracle-extraction` | Extract tests and assertions from syntax nodes. | `0.3.0` |
-| 12 | `ast-probe-ownership` | Map diff spans to changed syntax nodes and stable owner symbols. | `0.3.0` |
-| 13 | `ast-probe-generation` | Generate predicate, return, error, field, and call probes from syntax. | `0.3.0` |
-| 14 | `architecture-boundary-check` | Enforce internal module boundaries while keeping one published crate. | `0.3.x` |
-| 15 | `dogfood-report` | Emit focused `ripr`-on-`ripr` reports as non-blocking artifacts. | `0.3.x` |
-| 16 | `oracle-strength-v2` | Distinguish exact, weak, smoke, snapshot, mock, and unknown oracles. | `0.4.0` |
-| 17 | `local-delta-flow-v1` | Name return, field, error, and effect sinks for changed behavior. | `0.4.0` |
-| 18 | `activation-value-modeling-v1` | Detect observed values and missing boundary or variant inputs. | `0.4.0` |
-| 19 | `evidence-first-output` | Make CLI output the reference explanation for each finding. | `0.4.0` |
-| 20 | `lsp-evidence-hover-actions` | Add finding-specific diagnostics, hover evidence, and code actions. | `0.5.0` |
-| 21 | `agent-context-v2` | Emit a compact test-writing brief from CLI and LSP. | `0.5.0` |
-| 22 | `ripr-config-v1` | Add topology, oracle, snapshot, mock, and external-boundary config. | `0.6.0` |
-| 23 | `suppression-v1` | Add reasoned, visible suppressions with optional expiry. | `0.6.0` |
-| 24 | `sarif-ci-policy` | Add SARIF and opt-in CI policy modes. | `0.6.0` |
-| 25 | `cargo-mutants-calibration-scaffold` | Import real mutation results for offline calibration. | `0.7.0` |
-| 26 | `persistent-cache-v1` | Cache stable facts after the fact model is worth caching. | `0.8.0` |
+| 4 | `automation-guardrails` | Require allowlisted generated files, dependency surfaces, process spawning, and network behavior. | `0.2.x` |
+| 5 | `verify-one-click-extension-install` | Verify the normal editor install path without requiring `cargo install ripr`. | `0.2.x` |
+| 6 | `xtask-policy-checks` | Expand repo policy checks for docs indexes, traceability, metrics, workspace shape, and architecture. | `0.2.x` |
+| 7 | `fixture-golden-scaffolding` | Add fixture/golden structure, scaffold command, check command, and bless command. | `0.3.0` |
+| 8 | `fixture-laboratory` | Create golden fixtures and invariants before changing the analyzer. | `0.3.0` |
+| 9 | `capability-metrics-report` | Generate capability, quality, engineering, and latency metrics artifacts. | `0.3.0` |
+| 10 | `file-facts-model` | Introduce a fact model while preserving current scanner behavior. | `0.3.0` |
+| 11 | `syntax-adapter-mvp` | Add a parser adapter boundary and syntax-backed file facts. | `0.3.0` |
+| 12 | `ast-test-oracle-extraction` | Extract tests and assertions from syntax nodes. | `0.3.0` |
+| 13 | `ast-probe-ownership` | Map diff spans to changed syntax nodes and stable owner symbols. | `0.3.0` |
+| 14 | `ast-probe-generation` | Generate predicate, return, error, field, and call probes from syntax. | `0.3.0` |
+| 15 | `architecture-boundary-check` | Enforce internal module boundaries while keeping one published crate. | `0.3.x` |
+| 16 | `dogfood-report` | Emit focused `ripr`-on-`ripr` reports as non-blocking artifacts. | `0.3.x` |
+| 17 | `oracle-strength-v2` | Distinguish exact, weak, smoke, snapshot, mock, and unknown oracles. | `0.4.0` |
+| 18 | `local-delta-flow-v1` | Name return, field, error, and effect sinks for changed behavior. | `0.4.0` |
+| 19 | `activation-value-modeling-v1` | Detect observed values and missing boundary or variant inputs. | `0.4.0` |
+| 20 | `evidence-first-output` | Make CLI output the reference explanation for each finding. | `0.4.0` |
+| 21 | `lsp-evidence-hover-actions` | Add finding-specific diagnostics, hover evidence, and code actions. | `0.5.0` |
+| 22 | `agent-context-v2` | Emit a compact test-writing brief from CLI and LSP. | `0.5.0` |
+| 23 | `ripr-config-v1` | Add topology, oracle, snapshot, mock, and external-boundary config. | `0.6.0` |
+| 24 | `suppression-v1` | Add reasoned, visible suppressions with optional expiry. | `0.6.0` |
+| 25 | `sarif-ci-policy` | Add SARIF and opt-in CI policy modes. | `0.6.0` |
+| 26 | `cargo-mutants-calibration-scaffold` | Import real mutation results for offline calibration. | `0.7.0` |
+| 27 | `persistent-cache-v1` | Cache stable facts after the fact model is worth caching. | `0.8.0` |
 
 ## Release Frames
 

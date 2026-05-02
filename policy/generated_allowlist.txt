@@ -1,0 +1,12 @@
+# Allowlisted tracked generated files.
+#
+# Format:
+# glob|kind|owner|reason
+#
+# Generated build output, downloaded release assets, archives, and packaged
+# extension files should not be checked in. Lockfiles and fixture goldens are
+# intentional generated artifacts and must stay explicitly owned.
+
+Cargo.lock|rust_lockfile|rust|Pinned Cargo dependency graph.
+editors/vscode/package-lock.json|editor_extension_lockfile|lsp/editor|Pinned npm dependency graph for the VS Code extension.
+fixtures/**/expected/**|fixture_golden|analysis-fixtures|Fixture expected outputs are intentional golden artifacts.

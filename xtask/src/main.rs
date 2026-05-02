@@ -36,6 +36,10 @@ fn main() {
         Some("check-workflows") => check_workflows(),
         Some("check-spec-format") => check_spec_format(),
         Some("check-fixture-contracts") => check_fixture_contracts(),
+        Some("check-generated") => check_generated(),
+        Some("check-dependencies") => check_dependencies(),
+        Some("check-process-policy") => check_process_policy(),
+        Some("check-network-policy") => check_network_policy(),
         Some("package") => run("cargo", &["package", "-p", "ripr", "--list"]).map(|_| ()),
         Some("publish-dry-run") => {
             run("cargo", &["publish", "-p", "ripr", "--dry-run"]).map(|_| ())
@@ -62,7 +66,11 @@ fn ci_fast() -> Result<(), String> {
     check_executable_files()?;
     check_workflows()?;
     check_spec_format()?;
-    check_fixture_contracts()
+    check_fixture_contracts()?;
+    check_generated()?;
+    check_dependencies()?;
+    check_process_policy()?;
+    check_network_policy()
 }
 
 fn ci_full() -> Result<(), String> {
@@ -98,7 +106,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  package\n  publish-dry-run"
+        "xtask commands:\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
     );
 }
 
@@ -280,15 +288,15 @@ fn check_workflows() -> Result<(), String> {
                 ));
             }
             let lower = block.text.to_ascii_lowercase();
-            if lower.contains("curl") && lower.contains("| sh") {
+            if lower.contains(shell_fetch_tool_name()) && lower.contains("| sh") {
                 violations.push(format!(
-                    "{normalized}:{} run block contains curl piped to sh",
+                    "{normalized}:{} run block contains network fetch piped to sh",
                     block.line_number
                 ));
             }
-            if lower.contains("curl") && lower.contains("| bash") {
+            if lower.contains(shell_fetch_tool_name()) && lower.contains("| bash") {
                 violations.push(format!(
-                    "{normalized}:{} run block contains curl piped to bash",
+                    "{normalized}:{} run block contains network fetch piped to bash",
                     block.line_number
                 ));
             }
@@ -410,6 +418,116 @@ fn check_fixture_contracts() -> Result<(), String> {
     }
 }
 
+fn check_generated() -> Result<(), String> {
+    let allowlist = read_glob_allowlist("policy/generated_allowlist.txt")?;
+    let mut violations = Vec::new();
+
+    for normalized in tracked_files()? {
+        if !is_generated_candidate(&normalized) {
+            continue;
+        }
+        if !matches_any_glob(&allowlist, &normalized) {
+            violations.push(format!(
+                "tracked generated output is not allowlisted: {normalized}\n  preferred: keep generated outputs out of git unless they are an intentional lockfile or fixture golden"
+            ));
+        }
+    }
+
+    if violations.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "generated-file check failed:\n{}",
+            violations.join("\n")
+        ))
+    }
+}
+
+fn check_dependencies() -> Result<(), String> {
+    let allowlist = read_glob_allowlist("policy/dependency_allowlist.txt")?;
+    let mut violations = Vec::new();
+
+    for normalized in tracked_files()? {
+        if !is_dependency_surface_candidate(&normalized) {
+            continue;
+        }
+        if !matches_any_glob(&allowlist, &normalized) {
+            violations.push(format!(
+                "dependency surface is not allowlisted: {normalized}\n  preferred: keep dependency managers scoped to approved Cargo, VS Code, or fixture surfaces"
+            ));
+        }
+    }
+
+    if violations.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "dependency policy check failed:\n{}",
+            violations.join("\n")
+        ))
+    }
+}
+
+fn check_process_policy() -> Result<(), String> {
+    check_count_policy(
+        "process policy",
+        "policy/process_allowlist.txt",
+        &process_policy_patterns(),
+        is_process_policy_candidate,
+    )
+}
+
+fn check_network_policy() -> Result<(), String> {
+    check_count_policy(
+        "network policy",
+        "policy/network_allowlist.txt",
+        &network_policy_patterns(),
+        is_network_policy_candidate,
+    )
+}
+
+fn check_count_policy(
+    label: &str,
+    allowlist_path: &str,
+    patterns: &[String],
+    is_candidate: fn(&str) -> bool,
+) -> Result<(), String> {
+    let allowlist = read_count_policy_allowlist(allowlist_path)?;
+    let mut counts = BTreeMap::<(String, String), usize>::new();
+
+    for normalized in tracked_files()? {
+        if !is_candidate(&normalized) {
+            continue;
+        }
+        let text = read_text_lossy(Path::new(&normalized))?;
+        for pattern in patterns {
+            let count = text.matches(pattern).count();
+            if count > 0 {
+                counts.insert((normalized.clone(), pattern.clone()), count);
+            }
+        }
+    }
+
+    let mut violations = Vec::new();
+    for ((path, pattern), count) in &counts {
+        let allowed = allowlist
+            .get(&(path.clone(), pattern.clone()))
+            .copied()
+            .unwrap_or(0);
+        if *count > allowed {
+            violations.push(format!(
+                "{path} contains `{pattern}` {count} time(s), allowed {allowed}"
+            ));
+        }
+    }
+
+    if violations.is_empty() {
+        Ok(())
+    } else {
+        Err(format!("{label} check failed:\n{}", violations.join("\n")))
+    }
+}
+
 fn read_path_allowlist(path: &str) -> Result<BTreeSet<String>, String> {
     let mut allowed = BTreeSet::new();
     let text = read_text_lossy(Path::new(path))?;
@@ -435,6 +553,42 @@ fn read_count_allowlist(path: &str) -> Result<BTreeMap<(String, String), usize>,
         if parts.len() != 4 {
             return Err(format!(
                 "{path}:{} expected path|pattern|max_count|reason",
+                line_number + 1
+            ));
+        }
+        let max_count = parts[2]
+            .parse::<usize>()
+            .map_err(|err| format!("{path}:{} invalid max_count: {err}", line_number + 1))?;
+        allowed.insert(
+            (normalize_slashes(parts[0]), parts[1].to_string()),
+            max_count,
+        );
+    }
+    Ok(allowed)
+}
+
+fn read_count_policy_allowlist(path: &str) -> Result<BTreeMap<(String, String), usize>, String> {
+    let mut allowed = BTreeMap::new();
+    let text = read_text_lossy(Path::new(path))?;
+    for (line_number, line) in text.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let parts = trimmed.split('|').collect::<Vec<_>>();
+        if parts.len() != 5 {
+            return Err(format!(
+                "{path}:{} expected path|pattern|max_count|owner|reason",
+                line_number + 1
+            ));
+        }
+        if parts[0].trim().is_empty()
+            || parts[1].trim().is_empty()
+            || parts[3].trim().is_empty()
+            || parts[4].trim().is_empty()
+        {
+            return Err(format!(
+                "{path}:{} allowlist entries require path, pattern, owner, and reason",
                 line_number + 1
             ));
         }
@@ -594,6 +748,15 @@ fn collect_files_inner(path: &Path, files: &mut Vec<PathBuf>) -> Result<(), Stri
     Ok(())
 }
 
+fn tracked_files() -> Result<Vec<String>, String> {
+    let output = run_output("git", &["ls-files"])?;
+    Ok(output
+        .lines()
+        .map(normalize_slashes)
+        .filter(|path| !path.is_empty())
+        .collect())
+}
+
 fn should_skip_path(path: &str) -> bool {
     path == ".git"
         || path.starts_with(".git/")
@@ -637,6 +800,94 @@ fn is_file_policy_candidate(path: &str) -> bool {
         ".tsx", ".yaml", ".yml", ".zsh",
     ];
     extensions.iter().any(|extension| path.ends_with(extension))
+}
+
+fn is_generated_candidate(path: &str) -> bool {
+    path == "Cargo.lock"
+        || path.ends_with("/package-lock.json")
+        || path == "package-lock.json"
+        || path.starts_with("target/")
+        || path.contains("/target/")
+        || path.starts_with(".ripr/release/")
+        || path.starts_with("dist/")
+        || path.contains("/dist/")
+        || path.ends_with(".vsix")
+        || path.ends_with(".zip")
+        || path.ends_with(".tar.gz")
+        || path.ends_with(".sha256")
+}
+
+fn is_dependency_surface_candidate(path: &str) -> bool {
+    let Some(file_name) = path.rsplit('/').next() else {
+        return false;
+    };
+    matches!(
+        file_name,
+        "Cargo.toml"
+            | "Cargo.lock"
+            | "package.json"
+            | "package-lock.json"
+            | "npm-shrinkwrap.json"
+            | "pnpm-lock.yaml"
+            | "yarn.lock"
+            | "requirements.txt"
+            | "pyproject.toml"
+            | "poetry.lock"
+            | "Pipfile"
+            | "Pipfile.lock"
+            | "go.mod"
+            | "go.sum"
+            | "pom.xml"
+            | "build.gradle"
+            | "settings.gradle"
+            | "gradle.lockfile"
+            | "Gemfile"
+            | "Gemfile.lock"
+    )
+}
+
+fn is_process_policy_candidate(path: &str) -> bool {
+    path.ends_with(".rs") || path.ends_with(".ts")
+}
+
+fn is_network_policy_candidate(path: &str) -> bool {
+    path.ends_with(".rs")
+        || path.ends_with(".ts")
+        || path.ends_with(".yml")
+        || path.ends_with(".yaml")
+}
+
+fn process_policy_patterns() -> Vec<String> {
+    [
+        concat!("use std::process::", "Command"),
+        concat!("Command", "::new"),
+        concat!("child", "_process"),
+        concat!("cp.", "spawn"),
+        concat!("cp.", "exec("),
+        concat!("cp.", "execFile"),
+    ]
+    .iter()
+    .map(|value| value.to_string())
+    .collect()
+}
+
+fn network_policy_patterns() -> Vec<String> {
+    [
+        concat!("https", ".get"),
+        concat!("fetch", "("),
+        concat!("req", "west"),
+        concat!("u", "req"),
+        concat!("Tcp", "Stream"),
+        concat!("cu", "rl"),
+        concat!("w", "get"),
+    ]
+    .iter()
+    .map(|value| value.to_string())
+    .collect()
+}
+
+fn shell_fetch_tool_name() -> &'static str {
+    concat!("cu", "rl")
 }
 
 fn matches_any_glob(allowlist: &[GlobAllow], path: &str) -> bool {
@@ -801,7 +1052,10 @@ fn is_word_char(value: Option<char>) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{extract_workflow_run_blocks, glob_matches};
+    use super::{
+        extract_workflow_run_blocks, glob_matches, is_dependency_surface_candidate,
+        is_generated_candidate,
+    };
 
     #[test]
     fn glob_match_supports_recursive_segments_and_star_suffixes() {
@@ -844,5 +1098,30 @@ jobs:
         assert_eq!(blocks[1].non_empty_lines, 2);
         assert!(blocks[1].text.contains("cargo check"));
         assert!(blocks[1].text.contains("cargo test"));
+    }
+
+    #[test]
+    fn generated_policy_detects_lockfiles_and_release_artifacts() {
+        assert!(is_generated_candidate("Cargo.lock"));
+        assert!(is_generated_candidate("editors/vscode/package-lock.json"));
+        assert!(is_generated_candidate("editors/vscode/dist/ripr.vsix"));
+        assert!(is_generated_candidate(".ripr/release/ripr.zip"));
+        assert!(!is_generated_candidate("assets/logo/ripr-icon-dark.png"));
+    }
+
+    #[test]
+    fn dependency_policy_detects_package_manager_surfaces() {
+        assert!(is_dependency_surface_candidate("Cargo.toml"));
+        assert!(is_dependency_surface_candidate("xtask/Cargo.toml"));
+        assert!(is_dependency_surface_candidate(
+            "editors/vscode/package.json"
+        ));
+        assert!(is_dependency_surface_candidate(
+            "fixtures/example/input/Cargo.toml"
+        ));
+        assert!(is_dependency_surface_candidate(
+            "tools/example/requirements.txt"
+        ));
+        assert!(!is_dependency_surface_candidate("docs/DEPENDENCIES.md"));
     }
 }
