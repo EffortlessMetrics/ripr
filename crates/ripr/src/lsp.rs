@@ -226,6 +226,9 @@ mod tests {
         let mut writer = Cursor::new(Vec::new());
         write_lsp_message(&mut writer, body).unwrap();
         let wire = String::from_utf8(writer.into_inner()).unwrap();
-        assert_eq!(wire, format!("Content-Length: {}\r\n\r\n{body}", body.len()));
+        assert_eq!(
+            wire,
+            format!("Content-Length: {}\r\n\r\n{body}", body.len())
+        );
     }
 }
