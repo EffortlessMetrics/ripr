@@ -37,6 +37,7 @@
           "oracle": "assert!(authenticate(\"\").is_err());"
         }
       ],
+      "stop_reasons": [],
       "recommended_next_step": "Strengthen the related assertion so it discriminates the changed behavior."
     },
     {
@@ -70,6 +71,7 @@
           "oracle": "assert!(authenticate(\"\").is_err());"
         }
       ],
+      "stop_reasons": [],
       "recommended_next_step": "Assert the exact error variant or payload instead of only is_err()."
     },
     {
@@ -103,6 +105,7 @@
           "oracle": "assert!(authenticate(\"\").is_err());"
         }
       ],
+      "stop_reasons": [],
       "recommended_next_step": "Replace broad assertions with exact equality or a property that constrains the changed returned value."
     }
   ]

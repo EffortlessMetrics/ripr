@@ -21,7 +21,7 @@ through multiple work items in a campaign, but each work item should follow the
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaign 1
 and Campaign 2 are complete; the active queue now starts Campaign 3 with
-`output/unknown-stop-reason-invariant` and `analysis/oracle-strength-v2`.
+`analysis/oracle-strength-v2`.
 
 ## PR 0: `planning-and-tracking-docs`
 

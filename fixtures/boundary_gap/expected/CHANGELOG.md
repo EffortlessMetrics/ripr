@@ -11,3 +11,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0001: unknown findings must include stop reasons
+
+Command:
+`cargo xtask goldens bless boundary_gap --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

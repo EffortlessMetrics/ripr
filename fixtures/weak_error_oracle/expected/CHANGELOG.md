@@ -11,3 +11,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0001: JSON findings expose stop_reasons for every finding
+
+Command:
+`cargo xtask goldens bless weak_error_oracle --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

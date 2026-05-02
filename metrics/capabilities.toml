@@ -15,25 +15,32 @@ evidence = [
   "lexical syntax adapter boundary",
   "ra_ap_syntax parser-backed test/oracle extraction",
   "module-qualified and impl-qualified owner symbols",
-  "parser-backed probe shape facts"
+  "parser-backed probe shape facts",
+  "unknown stop reason invariant"
 ]
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "unknown-stop-reason-invariant"
+next = "oracle-strength-v2"
 metric = "findings include changed behavior, class, evidence, and next step"
 
 [[capability]]
 id = "unknown_stop_reasons"
 name = "Unknown stop reasons"
-status = "planned"
+status = "alpha"
 spec = "RIPR-SPEC-0001"
 evidence = [
-  "Campaign 3 manifest"
+  "Campaign 3 manifest",
+  "domain unknown stop reason invariant",
+  "JSON stop_reasons output",
+  "human stop reasons output",
+  "boundary_gap fixture"
 ]
-fixtures = []
-next = "unknown-stop-reason-invariant"
+fixtures = [
+  "fixtures/boundary_gap"
+]
+next = "oracle-strength-v2"
 metric = "unknown findings include explicit stop reasons"
 
 [[capability]]

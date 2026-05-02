@@ -40,3 +40,14 @@ stage_state|opaque|RIPR stage state value.
 stage_state|unknown|RIPR stage state value.
 stage_state|weak|RIPR stage state value.
 stage_state|yes|RIPR stage state value.
+stop_reason|async_boundary_opaque|Static analysis stop reason value.
+stop_reason|dynamic_dispatch_unresolved|Static analysis stop reason value.
+stop_reason|external_crate_boundary|Static analysis stop reason value.
+stop_reason|feature_unknown|Static analysis stop reason value.
+stop_reason|fixture_opaque|Static analysis stop reason value.
+stop_reason|infection_evidence_unknown|Static analysis stop reason value.
+stop_reason|max_depth_reached|Static analysis stop reason value.
+stop_reason|no_changed_rust_line|Static analysis stop reason value.
+stop_reason|proc_macro_opaque|Static analysis stop reason value.
+stop_reason|propagation_evidence_unknown|Static analysis stop reason value.
+stop_reason|static_probe_unknown|Static analysis stop reason value.

@@ -48,7 +48,8 @@ pub fn classify_probe(probe: &Probe, index: &RustIndex) -> Finding {
     evidence.dedup();
 
     let missing = missing_evidence(probe, &class, &infect, &observe, &discriminate);
-    let stop_reasons = stop_reasons(probe, owner_fn, &related_tests);
+    let mut stop_reasons = stop_reasons(probe, owner_fn, &related_tests);
+    ensure_unknown_stop_reason(&class, &mut stop_reasons);
     let recommended_next_step = recommended_next_step(probe, &class);
 
     Finding {
@@ -62,6 +63,15 @@ pub fn classify_probe(probe: &Probe, index: &RustIndex) -> Finding {
         stop_reasons,
         related_tests: related,
         recommended_next_step,
+    }
+}
+
+fn ensure_unknown_stop_reason(class: &ExposureClass, stop_reasons: &mut Vec<StopReason>) {
+    if class.requires_stop_reason()
+        && stop_reasons.is_empty()
+        && let Some(reason) = StopReason::for_unknown_class(class)
+    {
+        stop_reasons.push(reason);
     }
 }
 
@@ -639,6 +649,120 @@ mod tests {
         assert_eq!(
             package_prefix(Path::new("crates/ripr/examples/sample/src/lib.rs")).as_deref(),
             Some("crates/ripr/examples/sample/")
+        );
+    }
+
+    #[test]
+    fn infection_unknown_findings_include_stop_reason() {
+        let index = RustIndex {
+            functions: vec![function("src/lib.rs", "price")],
+            tests: vec![test(
+                "tests/pricing.rs",
+                "price_test",
+                "price(1)",
+                "assert_eq!(price(1), 2);",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:2:predicate".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId("src/lib.rs::price".to_string())),
+            family: ProbeFamily::Predicate,
+            delta: DeltaKind::Control,
+            before: None,
+            after: Some("amount >= threshold".to_string()),
+            expression: "amount >= threshold".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+
+        assert_eq!(finding.class, ExposureClass::InfectionUnknown);
+        assert!(finding.unknown_has_stop_reason());
+        assert!(
+            finding
+                .stop_reasons
+                .iter()
+                .any(|reason| { reason.as_str() == StopReason::InfectionEvidenceUnknown.as_str() })
+        );
+    }
+
+    #[test]
+    fn propagation_unknown_findings_include_stop_reason() {
+        let function = FunctionSummary {
+            body: "value".to_string(),
+            ..function("src/lib.rs", "score")
+        };
+        let index = RustIndex {
+            functions: vec![function],
+            tests: vec![test(
+                "tests/score.rs",
+                "score_test",
+                "score(1)",
+                "assert_eq!(score(1), 2);",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:2:return_value".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId("src/lib.rs::score".to_string())),
+            family: ProbeFamily::ReturnValue,
+            delta: DeltaKind::Value,
+            before: None,
+            after: Some("value".to_string()),
+            expression: "value".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+
+        assert_eq!(finding.class, ExposureClass::PropagationUnknown);
+        assert!(finding.unknown_has_stop_reason());
+        assert!(
+            finding.stop_reasons.iter().any(|reason| {
+                reason.as_str() == StopReason::PropagationEvidenceUnknown.as_str()
+            })
+        );
+    }
+
+    #[test]
+    fn static_unknown_findings_include_stop_reason() {
+        let index = RustIndex {
+            functions: vec![function("src/lib.rs", "score")],
+            tests: vec![test(
+                "tests/score.rs",
+                "score_test",
+                "score(1)",
+                "assert_eq!(score(1), 2);",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:2:static_unknown".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId("src/lib.rs::score".to_string())),
+            family: ProbeFamily::StaticUnknown,
+            delta: DeltaKind::Unknown,
+            before: None,
+            after: Some("score!(1)".to_string()),
+            expression: "score".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+
+        assert_eq!(finding.class, ExposureClass::StaticUnknown);
+        assert!(finding.unknown_has_stop_reason());
+        assert!(
+            finding
+                .stop_reasons
+                .iter()
+                .any(|reason| { reason.as_str() == StopReason::StaticProbeUnknown.as_str() })
         );
     }
 

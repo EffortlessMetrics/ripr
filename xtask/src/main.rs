@@ -4116,7 +4116,7 @@ fn check_output_contracts() -> Result<(), String> {
                 );
             }
             "exposure_class" | "severity" | "probe_family" | "delta" | "stage_state"
-            | "confidence" | "oracle_strength" => {
+            | "confidence" | "oracle_strength" | "stop_reason" => {
                 require_contract_value(
                     "crates/ripr/src/domain.rs",
                     &domain,

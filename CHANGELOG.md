@@ -112,3 +112,5 @@ how future PRs are scoped or reviewed.
   an advisory Codecov coverage workflow.
 - Added cargo-deny supply-chain policy, a security workflow with GitHub
   Dependency Review, and `cargo xtask check-supply-chain`.
+- Added the unknown stop-reason invariant so unknown findings surface explicit
+  stop reasons across domain, JSON/context, GitHub annotation, and human output.

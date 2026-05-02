@@ -87,6 +87,7 @@ A finding contains:
   "evidence": [],
   "missing": [],
   "related_tests": [],
+  "stop_reasons": [],
   "recommended_next_step": "Add boundary tests with exact assertions."
 }
 ```
@@ -152,6 +153,20 @@ A finding contains:
 - `none`
 - `unknown`
 
+`stop_reason` values:
+
+- `max_depth_reached`
+- `external_crate_boundary`
+- `dynamic_dispatch_unresolved`
+- `proc_macro_opaque`
+- `fixture_opaque`
+- `feature_unknown`
+- `async_boundary_opaque`
+- `no_changed_rust_line`
+- `infection_evidence_unknown`
+- `propagation_evidence_unknown`
+- `static_probe_unknown`
+
 ## Context Packet
 
 `ripr context --json` emits compact test intent for agents:
@@ -177,6 +192,7 @@ A finding contains:
   },
   "related_tests": [],
   "missing": [],
+  "stop_reasons": [],
   "recommended_next_step": "Add below, equal, and above threshold tests."
 }
 ```
