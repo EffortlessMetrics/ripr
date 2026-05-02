@@ -9,8 +9,8 @@ use tower_lsp_server::ls_types::{
     CodeActionResponse, Command, Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams,
     DidOpenTextDocumentParams, DidSaveTextDocumentParams, ExecuteCommandOptions,
     ExecuteCommandParams, Hover, HoverContents, HoverParams, HoverProviderCapability,
-    InitializeParams, InitializeResult, LSPAny, MarkupContent, MarkupKind, NumberOrString,
-    Position, Range, ServerCapabilities, ServerInfo, TextDocumentSyncCapability,
+    InitializeParams, InitializeResult, LSPAny, MarkupContent, MarkupKind, MessageType,
+    NumberOrString, Position, Range, ServerCapabilities, ServerInfo, TextDocumentSyncCapability,
     TextDocumentSyncKind, Uri,
 };
 use tower_lsp_server::{Client, LanguageServer, LspService, Server};
@@ -57,21 +57,40 @@ impl Backend {
         let Some(root) = self.root() else {
             return;
         };
-        let Ok(Ok(batches)) =
-            tokio::task::spawn_blocking(move || workspace_diagnostic_batches(&root)).await
-        else {
-            return;
-        };
+        let batches =
+            match tokio::task::spawn_blocking(move || workspace_diagnostic_batches(&root)).await {
+                Ok(Ok(batches)) => batches,
+                Ok(Err(err)) => {
+                    self.report_refresh_failure(err).await;
+                    return;
+                }
+                Err(err) => {
+                    self.report_refresh_failure(format!("analysis task failed: {err}"))
+                        .await;
+                    return;
+                }
+            };
         let Some(refresh) = self.refresh_plan(batches) else {
             return;
         };
-
         for batch in refresh.publish_batches {
             self.client
                 .publish_diagnostics(batch.uri, batch.diagnostics, None)
                 .await;
         }
         for uri in refresh.clear_uris {
+            self.client.publish_diagnostics(uri, Vec::new(), None).await;
+        }
+    }
+
+    async fn report_refresh_failure(&self, message: String) {
+        self.client
+            .log_message(
+                MessageType::WARNING,
+                format!("ripr analysis refresh failed: {message}"),
+            )
+            .await;
+        for uri in self.clear_all_diagnostic_uris() {
             self.client.publish_diagnostics(uri, Vec::new(), None).await;
         }
     }
@@ -83,6 +102,13 @@ impl Backend {
         let refresh = diagnostic_refresh_plan(&last_diagnostic_uris, batches);
         *last_diagnostic_uris = refresh.current_uris.clone();
         Some(refresh)
+    }
+
+    fn clear_all_diagnostic_uris(&self) -> Vec<Uri> {
+        let Ok(mut last_diagnostic_uris) = self.last_diagnostic_uris.lock() else {
+            return Vec::new();
+        };
+        take_all_uris(&mut last_diagnostic_uris)
     }
 
     fn root(&self) -> Option<PathBuf> {
@@ -174,16 +200,20 @@ fn diagnostic_refresh_plan(
     }
 }
 
+fn take_all_uris(uris: &mut BTreeSet<Uri>) -> Vec<Uri> {
+    let cleared = uris.iter().cloned().collect::<Vec<_>>();
+    uris.clear();
+    cleared
+}
+
 pub fn workspace_diagnostic_batches(root: &Path) -> Result<Vec<DiagnosticBatch>, String> {
     let input = CheckInput {
         root: root.to_path_buf(),
         format: OutputFormat::Json,
         ..CheckInput::default()
     };
-    let output = match check_workspace(input) {
-        Ok(output) => output,
-        Err(_) => return Ok(Vec::new()),
-    };
+    let output =
+        check_workspace(input).map_err(|err| format!("workspace analysis failed: {err}"))?;
     let mut grouped = BTreeMap::<Uri, Vec<Diagnostic>>::new();
     for finding in &output.findings {
         let path = absolute_finding_path(&output.root, finding);
@@ -378,9 +408,10 @@ fn encode_uri_path(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        COPY_CONTEXT_COMMAND, HOVER_TEXT, REFRESH_COMMAND, code_action_response,
+        Backend, COPY_CONTEXT_COMMAND, HOVER_TEXT, REFRESH_COMMAND, code_action_response,
         diagnostic_for_finding, diagnostic_refresh_plan, encode_uri_path, file_uri_for_path,
         hover_response, initialize_result, path_from_file_uri, root_from_initialize_params,
+        take_all_uris,
     };
     use crate::domain::{
         Confidence, DeltaKind, ExposureClass, Finding, Probe, ProbeFamily, ProbeId, RevealEvidence,
@@ -388,6 +419,7 @@ mod tests {
     };
     use std::collections::BTreeSet;
     use std::path::PathBuf;
+    use tower_lsp_server::LspService;
     use tower_lsp_server::ls_types::{
         CodeActionOrCommand, DiagnosticSeverity, HoverContents, HoverProviderCapability,
         InitializeParams, NumberOrString, TextDocumentSyncCapability, TextDocumentSyncKind,
@@ -518,6 +550,48 @@ mod tests {
         assert_eq!(plan.clear_uris, vec![stale_uri]);
         assert_eq!(plan.current_uris.len(), 1);
         Ok(())
+    }
+
+    #[test]
+    fn take_all_uris_returns_and_clears_previous_diagnostic_uris() -> Result<(), String> {
+        let first_uri = test_uri("file:///workspace/src/first.rs")?;
+        let second_uri = test_uri("file:///workspace/src/second.rs")?;
+        let mut uris = BTreeSet::new();
+        uris.insert(first_uri.clone());
+        uris.insert(second_uri.clone());
+
+        let cleared = take_all_uris(&mut uris);
+
+        assert_eq!(cleared, vec![first_uri, second_uri]);
+        assert!(uris.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn refresh_failure_reports_and_clears_tracked_diagnostics() -> Result<(), String> {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|err| format!("failed to start test runtime: {err}"))?;
+        runtime.block_on(async {
+            let (service, _socket) =
+                LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+            let backend = service.inner();
+            let tracked_uri = test_uri("file:///workspace/src/stale.rs")?;
+            let Some(_) = backend.refresh_plan(vec![super::DiagnosticBatch {
+                uri: tracked_uri.clone(),
+                diagnostics: Vec::new(),
+            }]) else {
+                return Err("expected refresh plan".to_string());
+            };
+
+            backend
+                .report_refresh_failure("simulated analysis failure".to_string())
+                .await;
+
+            assert!(backend.clear_all_diagnostic_uris().is_empty());
+            Ok(())
+        })
     }
 
     #[test]
