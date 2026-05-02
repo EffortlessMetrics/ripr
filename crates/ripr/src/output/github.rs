@@ -121,6 +121,7 @@ mod tests {
                 confidence: 0.2,
                 evidence: vec![],
                 missing: vec![],
+                flow_sinks: vec![],
                 stop_reasons: vec![],
                 related_tests: vec![],
                 recommended_next_step: Some(

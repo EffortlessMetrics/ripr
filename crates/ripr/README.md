@@ -229,17 +229,16 @@ crate boundaries can be added later if external consumers need them.
 
 ## Current Capability Snapshot
 
-`ripr` is currently strongest as a fast, syntax-first draft signal. The next
-planned work is to make findings more grounded through fixtures, file facts,
-parser-backed syntax, stable probe ownership, richer oracle facts, local flow,
-and activation/value modeling.
+`ripr` is currently strongest as a fast, syntax-backed draft signal. The next
+planned work is to make findings more grounded through activation/value modeling
+and evidence-first output.
 
 | Capability | Current state | Next checkpoint |
 | --- | --- | --- |
 | Distribution | Crate and extension packaging paths exist. | Verify one-click editor install from a fresh profile. |
-| Diff analysis | Syntax-first changed-line probes. | Parser-backed changed-node facts. |
-| Test discovery | Basic Rust test/assertion indexing. | AST-backed test and oracle extraction. |
-| Output | Human, JSON, GitHub annotation formats. | Golden fixture lab and stable DTOs. |
+| Diff analysis | Syntax-backed changed-line probes with owner symbols, parser-backed probe facts, explicit stop reasons for unknowns, probe-relative oracle strength, and local flow sink facts. | Activation values tied to local flow. |
+| Test discovery | Parser-backed test and assertion facts with exact, broad, relational, snapshot, mock, smoke, and unknown oracle kinds. | Activation values tied to changed behavior. |
+| Output | Human, JSON, context, and GitHub annotation formats include stop reasons for unknown findings. | Evidence-first output. |
 | LSP | Experimental `tower-lsp-server` sidecar with evidence-aware diagnostic metadata, related test links, targeted context actions, and diagnostic hovers. | Server-owned context packets, config propagation, and open-related-test actions. |
 | Agent context | Compact context packet. | Test-writing brief with missing values and assertion shape. |
 | Calibration | Not yet connected to real mutation outcomes. | `cargo-mutants` import after static facts improve. |

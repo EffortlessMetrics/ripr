@@ -128,6 +128,19 @@ A finding contains:
 - `effect`
 - `unknown`
 
+Reserved `flow_sink` values:
+
+- `return_value`
+- `error_variant`
+- `struct_field`
+- `call_effect`
+- `match_arm`
+- `unknown`
+
+These labels are internal analysis terms in schema `0.1`. They are documented
+now so future evidence-first output can expose them without inventing new
+contract language.
+
 `state` values:
 
 - `yes`

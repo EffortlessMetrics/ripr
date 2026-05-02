@@ -283,6 +283,7 @@ mod tests {
             confidence: 0.5,
             evidence: vec!["changed test".to_string()],
             missing: vec!["strong oracle".to_string()],
+            flow_sinks: Vec::new(),
             stop_reasons: vec![StopReason::NoChangedRustLine],
             related_tests: vec![RelatedTest {
                 name: "sample_test".to_string(),

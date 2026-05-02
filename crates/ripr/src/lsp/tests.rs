@@ -588,6 +588,7 @@ fn sample_finding() -> Finding {
         confidence: 0.75,
         evidence: Vec::new(),
         missing: Vec::new(),
+        flow_sinks: Vec::new(),
         stop_reasons: Vec::new(),
         related_tests: Vec::new(),
         recommended_next_step: Some("Add an exact boundary assertion.".to_string()),

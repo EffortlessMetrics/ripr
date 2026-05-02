@@ -8,6 +8,8 @@ pub use classification::ExposureClass;
 pub use evidence::{
     Confidence, OracleKind, OracleStrength, RevealEvidence, RiprEvidence, StageEvidence, StageState,
 };
-pub use probe::{DeltaKind, Finding, Probe, ProbeFamily, RelatedTest, StopReason};
+pub use probe::{
+    DeltaKind, Finding, FlowSinkFact, FlowSinkKind, Probe, ProbeFamily, RelatedTest, StopReason,
+};
 pub use summary::Summary;
 pub use support::{ProbeId, SourceLocation, SymbolId};

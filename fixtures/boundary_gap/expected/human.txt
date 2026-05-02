@@ -15,7 +15,7 @@ Changed behavior:
 RIPR:
   Reach:       yes — Related tests appear to reach discounted_total: below_threshold_has_no_discount, far_above_threshold_discounts
   Infect:      unknown — Predicate changed, but no literal boundary was visible in the changed expression
-  Propagate:   weak — Changed behavior may propagate through a constructed value or field
+  Propagate:   yes — Changed behavior appears to influence returned value: amount - 10
   Observe:     yes — A related test observes a value or effect near the changed behavior
   Discriminate: yes — Strong oracle found: exact value or pattern assertion
 

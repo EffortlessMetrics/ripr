@@ -16,7 +16,8 @@ pub fn classify_probe(probe: &Probe, index: &RustIndex) -> Finding {
     let related_tests = find_related_tests(probe, owner_fn, index);
     let reach = reach_evidence(&related_tests, owner_fn);
     let infect = infection_evidence(probe, &related_tests);
-    let propagate = propagation_evidence(probe, owner_fn);
+    let flow_sinks = local_flow_sinks(probe, owner_fn);
+    let propagate = propagation_evidence(probe, &flow_sinks);
     let (observe, discriminate, related) = reveal_evidence(probe, &related_tests);
 
     let ripr = RiprEvidence {
@@ -61,6 +62,7 @@ pub fn classify_probe(probe: &Probe, index: &RustIndex) -> Finding {
         confidence,
         evidence,
         missing,
+        flow_sinks,
         stop_reasons,
         related_tests: related,
         recommended_next_step,
@@ -224,7 +226,7 @@ fn infection_evidence(probe: &Probe, related_tests: &[&TestSummary]) -> StageEvi
     }
 }
 
-fn propagation_evidence(probe: &Probe, owner_fn: Option<&FunctionSummary>) -> StageEvidence {
+fn propagation_evidence(probe: &Probe, flow_sinks: &[FlowSinkFact]) -> StageEvidence {
     if matches!(probe.family, ProbeFamily::StaticUnknown) {
         return StageEvidence::new(
             StageState::Unknown,
@@ -232,29 +234,19 @@ fn propagation_evidence(probe: &Probe, owner_fn: Option<&FunctionSummary>) -> St
             "No propagation model is available for this changed syntax",
         );
     }
-    let body = owner_fn.map(|f| f.body.as_str()).unwrap_or("");
-    let expression = probe.expression.as_str();
-    if matches!(probe.delta, DeltaKind::Effect) {
-        StageEvidence::new(
-            StageState::Yes,
-            Confidence::Medium,
-            "Changed behavior reaches an effect boundary such as a call, write, publish, save, or send",
-        )
-    } else if expression.contains("return")
-        || expression.contains("Ok(")
-        || expression.contains("Err(")
-        || body.contains("return")
+
+    if let Some(sink) = flow_sinks
+        .iter()
+        .find(|sink| sink.kind != FlowSinkKind::Unknown)
     {
         StageEvidence::new(
             StageState::Yes,
             Confidence::Medium,
-            "Changed behavior can propagate through a return or Result boundary",
-        )
-    } else if expression.contains(':') || body.contains("{") && body.contains('}') {
-        StageEvidence::new(
-            StageState::Weak,
-            Confidence::Medium,
-            "Changed behavior may propagate through a constructed value or field",
+            format!(
+                "Changed behavior appears to influence {}: {}",
+                sink.kind.label(),
+                sink.text
+            ),
         )
     } else {
         StageEvidence::new(
@@ -263,6 +255,353 @@ fn propagation_evidence(probe: &Probe, owner_fn: Option<&FunctionSummary>) -> St
             "Propagation is not statically obvious from syntax-first analysis",
         )
     }
+}
+
+fn local_flow_sinks(probe: &Probe, owner_fn: Option<&FunctionSummary>) -> Vec<FlowSinkFact> {
+    let owner = owner_fn.map(|function| function.id.clone());
+    let mut sinks = match probe.family {
+        ProbeFamily::StaticUnknown => vec![flow_sink(
+            FlowSinkKind::Unknown,
+            "unknown sink",
+            probe.location.line,
+            owner.clone(),
+        )],
+        ProbeFamily::ErrorPath => vec![flow_sink(
+            FlowSinkKind::ErrorVariant,
+            result_error_text(&probe.expression),
+            probe.location.line,
+            owner.clone(),
+        )],
+        ProbeFamily::SideEffect | ProbeFamily::CallDeletion => {
+            if probe.expression.contains("Err(") {
+                vec![flow_sink(
+                    FlowSinkKind::ErrorVariant,
+                    result_error_text(&probe.expression),
+                    probe.location.line,
+                    owner.clone(),
+                )]
+            } else if probe.expression.starts_with("return ")
+                || probe.expression.contains("Ok(")
+                || probe.expression.contains("Some(")
+            {
+                vec![flow_sink(
+                    FlowSinkKind::ReturnValue,
+                    return_sink_text(&probe.expression),
+                    probe.location.line,
+                    owner.clone(),
+                )]
+            } else {
+                vec![flow_sink(
+                    FlowSinkKind::CallEffect,
+                    call_effect_text(&probe.expression),
+                    probe.location.line,
+                    owner.clone(),
+                )]
+            }
+        }
+        ProbeFamily::FieldConstruction => vec![flow_sink(
+            FlowSinkKind::StructField,
+            field_sink_text(&probe.expression),
+            probe.location.line,
+            owner.clone(),
+        )],
+        ProbeFamily::MatchArm => vec![match_arm_sink(probe, owner.clone())],
+        ProbeFamily::ReturnValue => vec![return_value_sink(probe, owner_fn, owner.clone())],
+        ProbeFamily::Predicate => predicate_flow_sinks(probe, owner_fn, owner.clone()),
+    };
+
+    sinks.sort_by(|a, b| {
+        a.kind
+            .as_str()
+            .cmp(b.kind.as_str())
+            .then(a.line.cmp(&b.line))
+            .then(a.text.cmp(&b.text))
+    });
+    sinks.dedup_by(|a, b| a.kind == b.kind && a.line == b.line && a.text == b.text);
+    sinks
+}
+
+fn predicate_flow_sinks(
+    probe: &Probe,
+    owner_fn: Option<&FunctionSummary>,
+    owner: Option<SymbolId>,
+) -> Vec<FlowSinkFact> {
+    if let Some(error) = first_error_return(owner_fn, probe.location.line) {
+        return vec![flow_sink(
+            FlowSinkKind::ErrorVariant,
+            result_error_text(&error.text),
+            error.line,
+            owner,
+        )];
+    }
+    if let Some(return_fact) = nearest_return(owner_fn, probe.location.line) {
+        return vec![flow_sink(
+            FlowSinkKind::ReturnValue,
+            return_sink_text(&return_fact.text),
+            return_fact.line,
+            owner,
+        )];
+    }
+    if let Some(field) = first_field_construction(owner_fn, probe.location.line) {
+        return vec![flow_sink(
+            FlowSinkKind::StructField,
+            field_sink_text(&field.text),
+            field.line,
+            owner,
+        )];
+    }
+    if let Some(branch) = next_branch_value(owner_fn, probe.location.line) {
+        return vec![flow_sink(
+            FlowSinkKind::ReturnValue,
+            branch.text,
+            branch.line,
+            owner,
+        )];
+    }
+    Vec::new()
+}
+
+fn return_value_sink(
+    probe: &Probe,
+    owner_fn: Option<&FunctionSummary>,
+    owner: Option<SymbolId>,
+) -> FlowSinkFact {
+    if probe.expression.contains("Err(") {
+        return flow_sink(
+            FlowSinkKind::ErrorVariant,
+            result_error_text(&probe.expression),
+            probe.location.line,
+            owner,
+        );
+    }
+    if let Some(return_fact) = nearest_return(owner_fn, probe.location.line) {
+        return flow_sink(
+            FlowSinkKind::ReturnValue,
+            return_sink_text(&return_fact.text),
+            return_fact.line,
+            owner,
+        );
+    }
+    if !is_obvious_return_expression(&probe.expression) {
+        return flow_sink(
+            FlowSinkKind::Unknown,
+            "unknown sink",
+            probe.location.line,
+            owner,
+        );
+    }
+    flow_sink(
+        FlowSinkKind::ReturnValue,
+        return_sink_text(&probe.expression),
+        probe.location.line,
+        owner,
+    )
+}
+
+fn match_arm_sink(probe: &Probe, owner: Option<SymbolId>) -> FlowSinkFact {
+    let arm_result = probe
+        .expression
+        .split_once("=>")
+        .map(|(_, result)| result.trim().trim_end_matches(',').to_string())
+        .filter(|text| !text.is_empty())
+        .unwrap_or_else(|| probe.expression.clone());
+
+    if arm_result.contains("Err(") {
+        flow_sink(
+            FlowSinkKind::ErrorVariant,
+            result_error_text(&arm_result),
+            probe.location.line,
+            owner,
+        )
+    } else {
+        flow_sink(
+            FlowSinkKind::MatchArm,
+            arm_result,
+            probe.location.line,
+            owner,
+        )
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct LocalTextFact {
+    line: usize,
+    text: String,
+}
+
+fn first_error_return(
+    owner_fn: Option<&FunctionSummary>,
+    probe_line: usize,
+) -> Option<LocalTextFact> {
+    owner_fn.and_then(|function| {
+        function
+            .returns
+            .iter()
+            .find(|return_fact| return_fact.line >= probe_line && return_fact.text.contains("Err("))
+            .map(|return_fact| LocalTextFact {
+                line: return_fact.line,
+                text: return_fact.text.clone(),
+            })
+    })
+}
+
+fn nearest_return(owner_fn: Option<&FunctionSummary>, probe_line: usize) -> Option<LocalTextFact> {
+    owner_fn.and_then(|function| {
+        function
+            .returns
+            .iter()
+            .filter(|return_fact| return_fact.line >= probe_line)
+            .min_by_key(|return_fact| return_fact.line - probe_line)
+            .map(|return_fact| LocalTextFact {
+                line: return_fact.line,
+                text: return_fact.text.clone(),
+            })
+    })
+}
+
+fn next_branch_value(
+    owner_fn: Option<&FunctionSummary>,
+    probe_line: usize,
+) -> Option<LocalTextFact> {
+    let function = owner_fn?;
+    let start_index = probe_line.saturating_sub(function.start_line);
+    function
+        .body
+        .lines()
+        .enumerate()
+        .skip(start_index + 1)
+        .find_map(|(offset, line)| {
+            let text = line.trim().trim_end_matches(',').to_string();
+            if !looks_like_branch_tail_expression(&text) {
+                return None;
+            }
+            Some(LocalTextFact {
+                line: function.start_line + offset,
+                text,
+            })
+        })
+}
+
+fn first_field_construction(
+    owner_fn: Option<&FunctionSummary>,
+    probe_line: usize,
+) -> Option<LocalTextFact> {
+    owner_fn.and_then(|function| {
+        function
+            .body
+            .lines()
+            .enumerate()
+            .skip(probe_line.saturating_sub(function.start_line))
+            .find_map(|(offset, line)| {
+                let text = line.trim().trim_end_matches(',').to_string();
+                if looks_like_field_assignment(&text) {
+                    Some(LocalTextFact {
+                        line: function.start_line + offset,
+                        text,
+                    })
+                } else {
+                    None
+                }
+            })
+    })
+}
+
+fn flow_sink(
+    kind: FlowSinkKind,
+    text: impl Into<String>,
+    line: usize,
+    owner: Option<SymbolId>,
+) -> FlowSinkFact {
+    FlowSinkFact {
+        kind,
+        text: text.into(),
+        line,
+        owner,
+    }
+}
+
+fn result_error_text(text: &str) -> String {
+    if let Some(start) = text.find("Err(") {
+        let error = text[start..]
+            .trim()
+            .trim_start_matches("return ")
+            .trim_end_matches(';')
+            .trim_end_matches(',')
+            .to_string();
+        return format!("Result::{error}");
+    }
+    return_sink_text(text)
+}
+
+fn return_sink_text(text: &str) -> String {
+    text.trim()
+        .trim_start_matches("return ")
+        .trim_end_matches(';')
+        .trim_end_matches(',')
+        .trim()
+        .to_string()
+}
+
+fn call_effect_text(text: &str) -> String {
+    return_sink_text(text)
+}
+
+fn field_sink_text(text: &str) -> String {
+    return_sink_text(text)
+}
+
+fn looks_like_field_assignment(text: &str) -> bool {
+    let Some((field, _)) = text.split_once(':') else {
+        return false;
+    };
+    if text.contains("::") {
+        return false;
+    }
+    let field = field.trim();
+    !field.is_empty()
+        && field
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+        && field
+            .chars()
+            .next()
+            .is_some_and(|ch| ch == '_' || ch.is_ascii_alphabetic())
+}
+
+fn looks_like_branch_tail_expression(text: &str) -> bool {
+    if text.is_empty()
+        || text == "{"
+        || text == "}"
+        || text.starts_with("else")
+        || text.starts_with("//")
+        || text.starts_with("let ")
+        || text.ends_with(';')
+    {
+        return false;
+    }
+    if text.contains(" = ")
+        || text.contains(" += ")
+        || text.contains(" -= ")
+        || text.contains(" *= ")
+        || text.contains(" /= ")
+    {
+        return false;
+    }
+    is_obvious_return_expression(text)
+}
+
+fn is_obvious_return_expression(text: &str) -> bool {
+    let trimmed = text.trim();
+    trimmed.starts_with("return ")
+        || trimmed.starts_with("Ok(")
+        || trimmed.starts_with("Some(")
+        || trimmed.contains("Err(")
+        || trimmed.contains('(')
+        || trimmed.contains('"')
+        || trimmed.chars().any(|ch| ch.is_ascii_digit())
+        || [" + ", " - ", " * ", " / ", " % "]
+            .iter()
+            .any(|operator| trimmed.contains(operator))
 }
 
 fn reveal_evidence(
@@ -762,7 +1101,7 @@ fn package_prefix(path: &Path) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::analysis::rust_index::{CallFact, LiteralFact, OracleFact};
+    use crate::analysis::rust_index::{CallFact, LiteralFact, OracleFact, ReturnFact};
     use std::path::PathBuf;
 
     #[test]
@@ -1132,6 +1471,591 @@ mod tests {
                 .missing
                 .iter()
                 .any(|missing| { missing == "No exact error variant discriminator was detected" })
+        );
+    }
+
+    #[test]
+    fn given_changed_predicate_when_branch_returns_value_then_flow_sink_is_return_value() {
+        let function = FunctionSummary {
+            body: r#"pub fn score(amount: i32, threshold: i32) -> i32 {
+    if amount >= threshold {
+        amount - 10
+    } else {
+        amount
+    }
+}"#
+            .to_string(),
+            start_line: 1,
+            end_line: 7,
+            ..function("src/lib.rs", "score")
+        };
+        let index = RustIndex {
+            functions: vec![function],
+            tests: vec![test(
+                "tests/score.rs",
+                "score_threshold",
+                "score(100, 50)",
+                "assert_eq!(score(100, 50), 90);",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:2:predicate".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId("src/lib.rs::score".to_string())),
+            family: ProbeFamily::Predicate,
+            delta: DeltaKind::Control,
+            before: None,
+            after: Some("amount >= threshold".to_string()),
+            expression: "amount >= threshold".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+
+        assert_eq!(finding.flow_sinks.len(), 1);
+        assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::ReturnValue);
+        assert_eq!(finding.flow_sinks[0].text, "amount - 10");
+        assert_eq!(finding.flow_sinks[0].line, 3);
+        assert_eq!(
+            finding.ripr.propagate.summary,
+            "Changed behavior appears to influence returned value: amount - 10"
+        );
+    }
+
+    #[test]
+    fn given_changed_error_variant_when_result_err_is_returned_then_flow_sink_is_error_variant() {
+        let index = RustIndex {
+            functions: vec![function("src/lib.rs", "score")],
+            tests: vec![test_with_oracle(
+                "tests/errors.rs",
+                "revoked_token_is_broad",
+                "score(\"\")",
+                oracle_fact(
+                    "assert!(score(\"\").is_err());",
+                    OracleKind::BroadError,
+                    OracleStrength::Weak,
+                ),
+            )],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:2:error_path".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId("src/lib.rs::score".to_string())),
+            family: ProbeFamily::ErrorPath,
+            delta: DeltaKind::Value,
+            before: None,
+            after: Some("return Err(AuthError::RevokedToken);".to_string()),
+            expression: "return Err(AuthError::RevokedToken);".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+
+        assert_eq!(finding.flow_sinks.len(), 1);
+        assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::ErrorVariant);
+        assert_eq!(
+            finding.flow_sinks[0].text,
+            "Result::Err(AuthError::RevokedToken)"
+        );
+    }
+
+    #[test]
+    fn given_changed_side_effect_call_when_effect_method_is_called_then_flow_sink_is_call_effect() {
+        let index = RustIndex {
+            functions: vec![function("src/lib.rs", "score")],
+            tests: vec![test(
+                "tests/score.rs",
+                "score_publishes",
+                "score(1)",
+                "assert_eq!(score(1), 2);",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:2:side_effect".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId("src/lib.rs::score".to_string())),
+            family: ProbeFamily::SideEffect,
+            delta: DeltaKind::Effect,
+            before: None,
+            after: Some("events.publish(score)".to_string()),
+            expression: "events.publish(score)".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+
+        assert_eq!(finding.flow_sinks.len(), 1);
+        assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::CallEffect);
+        assert_eq!(finding.flow_sinks[0].text, "events.publish(score)");
+    }
+
+    #[test]
+    fn given_changed_field_construction_when_field_is_assigned_then_flow_sink_is_struct_field() {
+        let index = RustIndex {
+            functions: vec![function("src/lib.rs", "score")],
+            tests: vec![test(
+                "tests/score.rs",
+                "score_builds_field",
+                "score(1)",
+                "assert_eq!(score(1).total, 2);",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:2:field_construction".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId("src/lib.rs::score".to_string())),
+            family: ProbeFamily::FieldConstruction,
+            delta: DeltaKind::Value,
+            before: None,
+            after: Some("total: computed_total".to_string()),
+            expression: "total: computed_total".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+
+        assert_eq!(finding.flow_sinks.len(), 1);
+        assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::StructField);
+        assert_eq!(finding.flow_sinks[0].text, "total: computed_total");
+    }
+
+    #[test]
+    fn given_changed_match_arm_when_arm_returns_value_then_flow_sink_is_match_arm_return() {
+        let index = RustIndex {
+            functions: vec![function("src/lib.rs", "score")],
+            tests: vec![test(
+                "tests/score.rs",
+                "score_matches",
+                "score(1)",
+                "assert_eq!(score(1), 2);",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:2:match_arm".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId("src/lib.rs::score".to_string())),
+            family: ProbeFamily::MatchArm,
+            delta: DeltaKind::Control,
+            before: None,
+            after: Some("Some(value) => value + 1,".to_string()),
+            expression: "Some(value) => value + 1,".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+
+        assert_eq!(finding.flow_sinks.len(), 1);
+        assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::MatchArm);
+        assert_eq!(finding.flow_sinks[0].text, "value + 1");
+    }
+
+    #[test]
+    fn given_changed_return_binding_when_function_returns_ok_then_flow_sink_is_return_value() {
+        let function = FunctionSummary {
+            body: "pub fn score(input: i32) -> Result<i32, Error> { let value = input + 1; Ok(value) }"
+                .to_string(),
+            returns: vec![ReturnFact {
+                line: 1,
+                text: "Ok(value)".to_string(),
+            }],
+            ..function("src/lib.rs", "score")
+        };
+        let index = RustIndex {
+            functions: vec![function],
+            tests: vec![test(
+                "tests/score.rs",
+                "score_returns_value",
+                "score(1)",
+                "assert_eq!(score(1), Ok(2));",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:1:return_value".to_string()),
+            location: SourceLocation::new("src/lib.rs", 1, 1),
+            owner: Some(SymbolId("src/lib.rs::score".to_string())),
+            family: ProbeFamily::ReturnValue,
+            delta: DeltaKind::Value,
+            before: None,
+            after: Some("let value = input + 1".to_string()),
+            expression: "let value = input + 1".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+
+        assert_eq!(finding.flow_sinks.len(), 1);
+        assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::ReturnValue);
+        assert_eq!(finding.flow_sinks[0].text, "Ok(value)");
+    }
+
+    #[test]
+    fn given_changed_predicate_when_branch_returns_error_then_flow_sink_is_error_variant() {
+        let function = FunctionSummary {
+            body: r#"pub fn authenticate(token: &str) -> Result<User, AuthError> {
+    if token.is_empty() {
+        return Err(AuthError::RevokedToken);
+    }
+    Ok(User)
+}"#
+            .to_string(),
+            start_line: 1,
+            end_line: 6,
+            returns: vec![
+                ReturnFact {
+                    line: 3,
+                    text: "return Err(AuthError::RevokedToken);".to_string(),
+                },
+                ReturnFact {
+                    line: 5,
+                    text: "Ok(User)".to_string(),
+                },
+            ],
+            ..function("src/lib.rs", "authenticate")
+        };
+        let index = RustIndex {
+            functions: vec![function],
+            tests: vec![test_with_oracle(
+                "tests/auth.rs",
+                "empty_token_is_rejected",
+                "authenticate(\"\")",
+                oracle_fact(
+                    "assert!(authenticate(\"\").is_err());",
+                    OracleKind::BroadError,
+                    OracleStrength::Weak,
+                ),
+            )],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:2:predicate".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId("src/lib.rs::authenticate".to_string())),
+            family: ProbeFamily::Predicate,
+            delta: DeltaKind::Control,
+            before: None,
+            after: Some("token.is_empty()".to_string()),
+            expression: "token.is_empty()".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+
+        assert_eq!(finding.flow_sinks.len(), 1);
+        assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::ErrorVariant);
+        assert_eq!(
+            finding.flow_sinks[0].text,
+            "Result::Err(AuthError::RevokedToken)"
+        );
+    }
+
+    #[test]
+    fn given_changed_predicate_when_branch_constructs_field_then_flow_sink_is_struct_field() {
+        let function = FunctionSummary {
+            body: r#"pub fn quote(amount: i32) -> Quote {
+    if amount > 0 {
+        Quote {
+            total: amount - 10,
+        }
+    } else {
+        Quote {
+            total: amount,
+        }
+    }
+}"#
+            .to_string(),
+            start_line: 1,
+            end_line: 11,
+            ..function("src/lib.rs", "quote")
+        };
+        let index = RustIndex {
+            functions: vec![function],
+            tests: vec![test(
+                "tests/quote.rs",
+                "positive_quote_has_total",
+                "quote(100)",
+                "assert_eq!(quote(100).total, 90);",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:2:predicate".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId("src/lib.rs::quote".to_string())),
+            family: ProbeFamily::Predicate,
+            delta: DeltaKind::Control,
+            before: None,
+            after: Some("amount > 0".to_string()),
+            expression: "amount > 0".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+
+        assert_eq!(finding.flow_sinks.len(), 1);
+        assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::StructField);
+        assert_eq!(finding.flow_sinks[0].text, "total: amount - 10");
+    }
+
+    #[test]
+    fn given_changed_predicate_when_return_contains_colon_in_string_then_flow_sink_is_return_value()
+    {
+        let function = FunctionSummary {
+            body: r#"pub fn message(code: i32) -> String {
+    if code > 0 {
+        format!("error:{code}")
+    } else {
+        "ok".to_string()
+    }
+}"#
+            .to_string(),
+            start_line: 1,
+            end_line: 7,
+            ..function("src/lib.rs", "message")
+        };
+        let index = RustIndex {
+            functions: vec![function],
+            tests: vec![test(
+                "tests/message.rs",
+                "message_returns_error_code",
+                "message(1)",
+                "assert_eq!(message(1), \"error:1\");",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:2:predicate".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId("src/lib.rs::message".to_string())),
+            family: ProbeFamily::Predicate,
+            delta: DeltaKind::Control,
+            before: None,
+            after: Some("code > 0".to_string()),
+            expression: "code > 0".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+
+        assert_eq!(finding.flow_sinks.len(), 1);
+        assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::ReturnValue);
+        assert_eq!(finding.flow_sinks[0].text, "format!(\"error:{code}\")");
+    }
+
+    #[test]
+    fn given_changed_predicate_when_next_line_is_assignment_then_flow_sink_stays_unknown() {
+        let function = FunctionSummary {
+            body: r#"pub fn score(amount: i32, threshold: i32) -> i32 {
+    if amount >= threshold {
+        let discounted = amount - 10;
+        discounted
+    } else {
+        amount
+    }
+}"#
+            .to_string(),
+            start_line: 1,
+            end_line: 8,
+            ..function("src/lib.rs", "score")
+        };
+        let index = RustIndex {
+            functions: vec![function],
+            tests: vec![test(
+                "tests/score.rs",
+                "score_threshold",
+                "score(100, 50)",
+                "assert_eq!(score(100, 50), 90);",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:2:predicate".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId("src/lib.rs::score".to_string())),
+            family: ProbeFamily::Predicate,
+            delta: DeltaKind::Control,
+            before: None,
+            after: Some("amount >= threshold".to_string()),
+            expression: "amount >= threshold".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+
+        assert!(finding.flow_sinks.is_empty());
+        assert_eq!(finding.ripr.propagate.state, StageState::Unknown);
+    }
+
+    #[test]
+    fn given_changed_return_after_early_return_when_no_downstream_return_exists_then_sink_is_unknown()
+     {
+        let function = FunctionSummary {
+            body: r#"pub fn score(amount: i32) -> i32 {
+    if amount < 0 {
+        return 0;
+    }
+    let adjusted = amount;
+    adjusted
+}"#
+            .to_string(),
+            start_line: 1,
+            end_line: 7,
+            returns: vec![ReturnFact {
+                line: 3,
+                text: "return 0;".to_string(),
+            }],
+            ..function("src/lib.rs", "score")
+        };
+        let index = RustIndex {
+            functions: vec![function],
+            tests: vec![test(
+                "tests/score.rs",
+                "score_positive",
+                "score(1)",
+                "assert_eq!(score(1), 1);",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:5:return_value".to_string()),
+            location: SourceLocation::new("src/lib.rs", 5, 1),
+            owner: Some(SymbolId("src/lib.rs::score".to_string())),
+            family: ProbeFamily::ReturnValue,
+            delta: DeltaKind::Value,
+            before: None,
+            after: Some("adjusted".to_string()),
+            expression: "adjusted".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+
+        assert_eq!(finding.flow_sinks.len(), 1);
+        assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::Unknown);
+        assert_eq!(finding.ripr.propagate.state, StageState::Unknown);
+    }
+
+    #[test]
+    fn given_changed_call_deletion_when_result_ok_is_returned_then_flow_sink_is_return_value() {
+        let index = RustIndex {
+            functions: vec![function("src/lib.rs", "score")],
+            tests: vec![test(
+                "tests/score.rs",
+                "score_returns_value",
+                "score(1)",
+                "assert_eq!(score(1), Ok(2));",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:2:call".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId("src/lib.rs::score".to_string())),
+            family: ProbeFamily::CallDeletion,
+            delta: DeltaKind::Effect,
+            before: None,
+            after: Some("Ok(total)".to_string()),
+            expression: "Ok(total)".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+
+        assert_eq!(finding.flow_sinks.len(), 1);
+        assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::ReturnValue);
+        assert_eq!(finding.flow_sinks[0].text, "Ok(total)");
+    }
+
+    #[test]
+    fn given_changed_match_arm_when_arm_returns_error_then_flow_sink_is_error_variant() {
+        let index = RustIndex {
+            functions: vec![function("src/lib.rs", "authenticate")],
+            tests: vec![test_with_oracle(
+                "tests/auth.rs",
+                "revoked_token_is_exact",
+                "authenticate(\"\")",
+                oracle_fact(
+                    "assert_matches!(authenticate(\"\"), Err(AuthError::RevokedToken));",
+                    OracleKind::ExactErrorVariant,
+                    OracleStrength::Strong,
+                ),
+            )],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:2:match_arm".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId("src/lib.rs::authenticate".to_string())),
+            family: ProbeFamily::MatchArm,
+            delta: DeltaKind::Control,
+            before: None,
+            after: Some("None => Err(AuthError::RevokedToken),".to_string()),
+            expression: "None => Err(AuthError::RevokedToken),".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+
+        assert_eq!(finding.flow_sinks.len(), 1);
+        assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::ErrorVariant);
+        assert_eq!(
+            finding.flow_sinks[0].text,
+            "Result::Err(AuthError::RevokedToken)"
+        );
+    }
+
+    #[test]
+    fn given_changed_opaque_return_expression_when_no_sink_is_obvious_then_propagation_is_unknown()
+    {
+        let index = RustIndex {
+            functions: vec![function("src/lib.rs", "score")],
+            tests: vec![test(
+                "tests/score.rs",
+                "score_returns_value",
+                "score(1)",
+                "assert_eq!(score(1), 2);",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:2:return_value".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId("src/lib.rs::score".to_string())),
+            family: ProbeFamily::ReturnValue,
+            delta: DeltaKind::Value,
+            before: None,
+            after: Some("value".to_string()),
+            expression: "value".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+
+        assert_eq!(finding.flow_sinks.len(), 1);
+        assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::Unknown);
+        assert_eq!(finding.ripr.propagate.state, StageState::Unknown);
+        assert_eq!(
+            finding.ripr.propagate.summary,
+            "Propagation is not statically obvious from syntax-first analysis"
         );
     }
 
