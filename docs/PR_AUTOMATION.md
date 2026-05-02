@@ -291,7 +291,7 @@ The hooks themselves should be generated locally by a future
 
 ## CI Reports
 
-CI should upload review artifacts from:
+CI uploads review artifacts from the Rust workflow when reports are present:
 
 ```text
 target/ripr/reports/
@@ -328,11 +328,10 @@ The remaining automation path is:
 
 | Order | PR | Purpose |
 | ---: | --- | --- |
-| 1 | `ci-report-artifacts` | Upload `target/ripr/reports` from CI. |
-| 2 | `fixture-golden-scaffolding` | Add fixture and golden command scaffolding. |
-| 3 | `traceability-spec-id-checks` | Validate behavior manifests, spec IDs, and drift warnings. |
-| 4 | `capability-metrics-report` | Generate metrics and capability reports from machine-readable sources. |
-| 5 | `architecture-guard` | Add workspace shape, module boundary, and public API checks. |
+| 1 | `fixture-golden-scaffolding` | Add fixture and golden command scaffolding. |
+| 2 | `traceability-spec-id-checks` | Validate behavior manifests, spec IDs, and drift warnings. |
+| 3 | `capability-metrics-report` | Generate metrics and capability reports from machine-readable sources. |
+| 4 | `architecture-guard` | Add workspace shape, module boundary, and public API checks. |
 
 After those are in place, analyzer work can move in goal mode with one scoped
 capability per PR.

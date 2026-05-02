@@ -280,16 +280,16 @@ Purpose: make CI upload review artifacts even when a check fails.
 
 Deliverables:
 
-- [ ] Run `cargo xtask pr-summary` where possible in CI.
-- [ ] Run metrics/report generation where available.
-- [ ] Upload `target/ripr/reports` with an always step.
-- [ ] Document report artifact names and expected contents.
+- [x] Run `cargo xtask pr-summary` where possible in CI.
+- [x] Defer metrics report generation until `cargo xtask metrics` exists.
+- [x] Upload `target/ripr/reports` with an always step.
+- [x] Document report artifact names and expected contents.
 
 Acceptance:
 
-- [ ] CI artifacts include the PR summary and any check reports that were
+- [x] CI artifacts include the PR summary and any check reports that were
       generated before failure.
-- [ ] CI remains non-mutating.
+- [x] CI remains non-mutating.
 
 ## PR 1K: `fixture-golden-scaffolding`
 

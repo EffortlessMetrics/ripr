@@ -38,3 +38,4 @@ how future PRs are scoped or reviewed.
   guardrails and review-ready non-release checks.
 - Added Markdown pass/fail reports for existing policy checks under
   `target/ripr/reports`.
+- Added CI upload of generated PR reports as `ripr-pr-reports` artifacts.

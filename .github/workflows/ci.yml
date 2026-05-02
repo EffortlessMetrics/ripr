@@ -28,6 +28,16 @@ jobs:
       - run: cargo xtask check-network-policy
       - run: cargo package -p ripr --list
       - run: cargo publish -p ripr --dry-run
+      - name: Generate ripr PR summary
+        if: always()
+        run: cargo xtask pr-summary || true
+      - name: Upload ripr reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ripr-pr-reports
+          path: target/ripr/reports/
+          if-no-files-found: ignore
 
   vscode:
     runs-on: ubuntu-latest
