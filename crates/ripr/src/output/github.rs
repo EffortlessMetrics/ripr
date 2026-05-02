@@ -4,10 +4,21 @@ pub fn render(output: &CheckOutput) -> String {
     let mut out = String::new();
     for finding in &output.findings {
         let title = format!("ripr {}", finding.class.as_str());
-        let message = finding
+        let mut message = finding
             .recommended_next_step
             .as_deref()
-            .unwrap_or("Static RIPR exposure finding");
+            .unwrap_or("Static RIPR exposure finding")
+            .to_string();
+        let stop_reasons = finding.effective_stop_reasons();
+        if !stop_reasons.is_empty() {
+            let reasons = stop_reasons
+                .iter()
+                .map(|reason| reason.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            message.push_str(" Stop reason: ");
+            message.push_str(&reasons);
+        }
         let annotation_level = match finding.class.severity() {
             "info" => "notice",
             "note" => "notice",
@@ -18,7 +29,7 @@ pub fn render(output: &CheckOutput) -> String {
             finding.probe.location.file.display(),
             finding.probe.location.line,
             escape_cmd(&title),
-            escape_cmd(message)
+            escape_cmd(&message)
         ));
     }
     if output.findings.is_empty() {

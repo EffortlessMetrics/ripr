@@ -179,7 +179,7 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `output/unknown-stop-reason-invariant` | ready | Add the invariant that unknown classifications explain stop reasons. |
+| `output/unknown-stop-reason-invariant` | done | Unknown classifications carry stop reasons across domain, JSON, context, GitHub annotations, and human output. |
 | `analysis/oracle-strength-v2` | ready | Make oracle kind and strength probe-relative. |
 | `analysis/local-delta-flow-v1` | blocked | Depends on probe-relative oracle strength. |
 | `analysis/activation-value-modeling-v1` | blocked | Depends on local flow evidence. |

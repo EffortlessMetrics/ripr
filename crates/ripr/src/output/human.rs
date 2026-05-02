@@ -107,10 +107,73 @@ pub fn render_finding(finding: &Finding) -> String {
         }
     }
 
+    let stop_reasons = finding.effective_stop_reasons();
+    if !stop_reasons.is_empty() {
+        out.push_str("\nStop reasons:\n");
+        for reason in &stop_reasons {
+            out.push_str(&format!("  - {}\n", reason.as_str()));
+        }
+    }
+
     if let Some(step) = &finding.recommended_next_step {
         out.push_str("\nRecommended next step:\n");
         out.push_str(&format!("  {step}\n"));
     }
 
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::render_finding;
+    use crate::domain::{
+        Confidence, DeltaKind, ExposureClass, Finding, Probe, ProbeFamily, ProbeId, RevealEvidence,
+        RiprEvidence, SourceLocation, StageEvidence, StageState,
+    };
+
+    #[test]
+    fn human_output_includes_effective_stop_reasons_for_unknowns() {
+        let output = render_finding(&unknown_finding());
+
+        assert!(output.contains("Stop reasons:"));
+        assert!(output.contains("  - static_probe_unknown"));
+    }
+
+    fn unknown_finding() -> Finding {
+        Finding {
+            id: "probe:src_lib_rs:1:static_unknown".to_string(),
+            probe: Probe {
+                id: ProbeId("probe:src_lib_rs:1:static_unknown".to_string()),
+                location: SourceLocation::new("src/lib.rs", 1, 1),
+                owner: None,
+                family: ProbeFamily::StaticUnknown,
+                delta: DeltaKind::Unknown,
+                before: None,
+                after: None,
+                expression: "unknown syntax".to_string(),
+                expected_sinks: vec![],
+                required_oracles: vec![],
+            },
+            class: ExposureClass::StaticUnknown,
+            ripr: RiprEvidence {
+                reach: stage("No stable syntax owner"),
+                infect: stage("Changed syntax is not mapped to a probe"),
+                propagate: stage("No propagation model is available"),
+                reveal: RevealEvidence {
+                    observe: stage("No observation model is available"),
+                    discriminate: stage("No discriminator model is available"),
+                },
+            },
+            confidence: 0.2,
+            evidence: vec![],
+            missing: vec![],
+            stop_reasons: vec![],
+            related_tests: vec![],
+            recommended_next_step: Some("Escalate to real mutation testing.".to_string()),
+        }
+    }
+
+    fn stage(summary: &str) -> StageEvidence {
+        StageEvidence::new(StageState::Unknown, Confidence::Low, summary)
+    }
 }

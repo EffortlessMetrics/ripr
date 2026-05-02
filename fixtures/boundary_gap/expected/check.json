@@ -44,6 +44,7 @@
           "oracle": "assert_eq!(discounted_total(10_000, 100), 9_990);"
         }
       ],
+      "stop_reasons": ["infection_evidence_unknown"],
       "recommended_next_step": "Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml."
     }
   ]

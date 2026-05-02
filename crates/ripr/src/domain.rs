@@ -224,6 +224,15 @@ impl ExposureClass {
             ExposureClass::StaticUnknown => "note",
         }
     }
+
+    pub fn requires_stop_reason(&self) -> bool {
+        matches!(
+            self,
+            ExposureClass::InfectionUnknown
+                | ExposureClass::PropagationUnknown
+                | ExposureClass::StaticUnknown
+        )
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -236,6 +245,9 @@ pub enum StopReason {
     FeatureUnknown,
     AsyncBoundaryOpaque,
     NoChangedRustLine,
+    InfectionEvidenceUnknown,
+    PropagationEvidenceUnknown,
+    StaticProbeUnknown,
 }
 
 impl StopReason {
@@ -249,6 +261,18 @@ impl StopReason {
             StopReason::FeatureUnknown => "feature_unknown",
             StopReason::AsyncBoundaryOpaque => "async_boundary_opaque",
             StopReason::NoChangedRustLine => "no_changed_rust_line",
+            StopReason::InfectionEvidenceUnknown => "infection_evidence_unknown",
+            StopReason::PropagationEvidenceUnknown => "propagation_evidence_unknown",
+            StopReason::StaticProbeUnknown => "static_probe_unknown",
+        }
+    }
+
+    pub fn for_unknown_class(class: &ExposureClass) -> Option<Self> {
+        match class {
+            ExposureClass::InfectionUnknown => Some(StopReason::InfectionEvidenceUnknown),
+            ExposureClass::PropagationUnknown => Some(StopReason::PropagationEvidenceUnknown),
+            ExposureClass::StaticUnknown => Some(StopReason::StaticProbeUnknown),
+            _ => None,
         }
     }
 }
@@ -288,6 +312,21 @@ pub struct Finding {
     pub stop_reasons: Vec<StopReason>,
     pub related_tests: Vec<RelatedTest>,
     pub recommended_next_step: Option<String>,
+}
+
+impl Finding {
+    pub fn unknown_has_stop_reason(&self) -> bool {
+        !self.class.requires_stop_reason() || !self.stop_reasons.is_empty()
+    }
+
+    pub fn effective_stop_reasons(&self) -> Vec<StopReason> {
+        if self.unknown_has_stop_reason() {
+            return self.stop_reasons.clone();
+        }
+        StopReason::for_unknown_class(&self.class)
+            .into_iter()
+            .collect()
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

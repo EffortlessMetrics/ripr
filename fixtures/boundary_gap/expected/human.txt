@@ -27,5 +27,8 @@ Gap:
   - No detected boundary input for the changed predicate
   - Predicate changed, but no literal boundary was visible in the changed expression
 
+Stop reasons:
+  - infection_evidence_unknown
+
 Recommended next step:
   Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.

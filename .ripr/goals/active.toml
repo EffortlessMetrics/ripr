@@ -17,7 +17,7 @@ end_state = [
 
 [[work_item]]
 id = "output/unknown-stop-reason-invariant"
-status = "ready"
+status = "done"
 branch = "output/unknown-stop-reason-invariant"
 stackable = false
 requires_human_merge = true
