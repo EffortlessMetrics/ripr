@@ -15,13 +15,13 @@ through multiple work items in a campaign, but each work item should follow the
 | --- | --- | --- |
 | Agentic DevEx Foundation | Make the repo safe for Codex Goals and human review. | `policy/architecture-guard`, `output/output-contract-check`, `docs/codex-goals-campaigns`, `fixtures/runner-comparison-v1`, `fixtures/first-two-goldens`, `testing/test-oracle-report`, `dogfood/static-self-check` |
 | Syntax-Backed Analyzer Foundation | Move the analyzer from lexical facts to syntax-backed facts. | `analysis/file-facts-model`, `analysis/syntax-adapter-mvp`, `design/rust-syntax-substrate`, `analysis/ast-test-oracle-extraction`, `analysis/ast-probe-ownership`, `analysis/ast-probe-generation` |
-| Evidence Quality | Improve oracle strength, local flow, activation values, output evidence, and stop reasons. | `analysis/oracle-strength-v2`, `analysis/local-delta-flow-v1`, `analysis/activation-value-modeling-v1`, `output/evidence-first-output`, `output/unknown-stop-reason-invariant` |
+| Evidence Quality | Improve oracle strength, local flow, activation values, output evidence, and stop reasons. | `output/unknown-stop-reason-invariant`, `analysis/oracle-strength-v2`, `analysis/local-delta-flow-v1`, `analysis/activation-value-modeling-v1`, `output/evidence-first-output`, `fixtures/negative-metamorphic-baseline` |
 | Editor and Agent Loop | Turn findings into editor actions and agent test-writing briefs. | `lsp/evidence-hover-actions`, `context/agent-context-v2`, `docs/how-to-use-agent-context` |
 | Adoption and Calibration | Make `ripr` practical in repositories, CI, and offline calibration loops. | `config/ripr-config-v1`, `ci/sarif-ci-policy`, `calibration/cargo-mutants-scaffold`, `cache/persistent-cache-v1` |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaign 1
-is complete; the active queue now starts Campaign 2 with
-`analysis/file-facts-model`.
+and Campaign 2 are complete; the active queue now starts Campaign 3 with
+`output/unknown-stop-reason-invariant` and `analysis/oracle-strength-v2`.
 
 ## PR 0: `planning-and-tracking-docs`
 

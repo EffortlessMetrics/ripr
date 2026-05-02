@@ -21,8 +21,20 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "oracle-strength-v2"
+next = "unknown-stop-reason-invariant"
 metric = "findings include changed behavior, class, evidence, and next step"
+
+[[capability]]
+id = "unknown_stop_reasons"
+name = "Unknown stop reasons"
+status = "planned"
+spec = "RIPR-SPEC-0001"
+evidence = [
+  "Campaign 3 manifest"
+]
+fixtures = []
+next = "unknown-stop-reason-invariant"
+metric = "unknown findings include explicit stop reasons"
 
 [[capability]]
 id = "predicate_probes"
