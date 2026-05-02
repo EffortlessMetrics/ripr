@@ -1203,7 +1203,11 @@ mod tests {
 
     #[test]
     fn stop_reasons_include_fixture_and_missing_owner_signals() {
-        let probe = probe(ProbeFamily::CallDeletion, DeltaKind::Effect, "client.send(input)");
+        let probe = probe(
+            ProbeFamily::CallDeletion,
+            DeltaKind::Effect,
+            "client.send(input)",
+        );
         let fixture_test = test(
             "tests/service.rs",
             "service_uses_fixture",
