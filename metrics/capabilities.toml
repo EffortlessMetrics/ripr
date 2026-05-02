@@ -10,13 +10,14 @@ evidence = [
   "sample diff",
   "current CLI tests",
   "boundary_gap fixture",
-  "weak_error_oracle fixture"
+  "weak_error_oracle fixture",
+  "FileFacts DTOs"
 ]
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "file-facts-model"
+next = "syntax-adapter-mvp"
 metric = "findings include changed behavior, class, evidence, and next step"
 
 [[capability]]
@@ -26,12 +27,13 @@ status = "alpha"
 spec = "RIPR-SPEC-0001"
 evidence = [
   "syntax-first probe generation",
-  "boundary_gap fixture"
+  "boundary_gap fixture",
+  "FileFacts DTOs"
 ]
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "file-facts-model"
+next = "syntax-adapter-mvp"
 metric = "missing boundary discriminator detection"
 
 [[capability]]
@@ -88,13 +90,14 @@ evidence = [
   "fixture spec",
   "fixture/golden runner commands",
   "boundary_gap fixture",
-  "weak_error_oracle fixture"
+  "weak_error_oracle fixture",
+  "FileFacts DTOs"
 ]
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "file-facts-model"
+next = "syntax-adapter-mvp"
 metric = "fixture pass rate"
 
 [[capability]]
