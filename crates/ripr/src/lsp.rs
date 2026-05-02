@@ -174,7 +174,8 @@ fn json_string(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::json_string;
+    use super::{extract_id, json_string, read_lsp_message, write_lsp_message};
+    use std::io::Cursor;
 
     #[test]
     fn json_string_escapes_lsp_control_characters() {
@@ -187,5 +188,44 @@ mod tests {
         assert!(encoded.contains("\\n"));
         assert!(encoded.contains("\\t"));
         assert!(encoded.contains("\\u0001"));
+    }
+
+    #[test]
+    fn extract_id_supports_numeric_and_string_ids() {
+        assert_eq!(
+            extract_id(r#"{"jsonrpc":"2.0","id":7,"method":"initialize"}"#),
+            Some("7".to_string())
+        );
+        assert_eq!(
+            extract_id(r#"{"jsonrpc":"2.0","id":"req-42","method":"hover"}"#),
+            Some("\"req-42\"".to_string())
+        );
+    }
+
+    #[test]
+    fn read_lsp_message_parses_single_framed_payload() {
+        let body = r#"{"jsonrpc":"2.0","id":1,"method":"shutdown"}"#;
+        let wire = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
+        let mut reader = Cursor::new(wire.into_bytes());
+
+        let message = read_lsp_message(&mut reader).unwrap();
+
+        assert_eq!(message.as_deref(), Some(body));
+    }
+
+    #[test]
+    fn read_lsp_message_requires_content_length_header() {
+        let mut reader = Cursor::new(b"\r\n{}".to_vec());
+        let err = read_lsp_message(&mut reader).unwrap_err();
+        assert!(err.contains("missing Content-Length"));
+    }
+
+    #[test]
+    fn write_lsp_message_emits_valid_length_prefixed_frame() {
+        let body = r#"{"ok":true}"#;
+        let mut writer = Cursor::new(Vec::new());
+        write_lsp_message(&mut writer, body).unwrap();
+        let wire = String::from_utf8(writer.into_inner()).unwrap();
+        assert_eq!(wire, format!("Content-Length: {}\r\n\r\n{body}", body.len()));
     }
 }
