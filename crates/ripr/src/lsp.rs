@@ -40,7 +40,7 @@ async fn serve_stdio() -> Result<(), String> {
 
 struct Backend {
     client: Client,
-    root: PathBuf,
+    root: Mutex<PathBuf>,
     last_diagnostic_uris: Mutex<BTreeSet<Uri>>,
 }
 
@@ -48,13 +48,15 @@ impl Backend {
     fn new(client: Client, root: PathBuf) -> Self {
         Self {
             client,
-            root,
+            root: Mutex::new(root),
             last_diagnostic_uris: Mutex::new(BTreeSet::new()),
         }
     }
 
     async fn refresh_diagnostics(&self) {
-        let root = self.root.clone();
+        let Some(root) = self.root() else {
+            return;
+        };
         let Ok(Ok(batches)) =
             tokio::task::spawn_blocking(move || workspace_diagnostic_batches(&root)).await
         else {
@@ -82,10 +84,28 @@ impl Backend {
         *last_diagnostic_uris = refresh.current_uris.clone();
         Some(refresh)
     }
+
+    fn root(&self) -> Option<PathBuf> {
+        let Ok(root) = self.root.lock() else {
+            return None;
+        };
+        Some(root.clone())
+    }
+
+    fn set_root(&self, root: PathBuf) {
+        let Ok(mut current_root) = self.root.lock() else {
+            return;
+        };
+        *current_root = root;
+    }
 }
 
 impl LanguageServer for Backend {
-    async fn initialize(&self, _: InitializeParams) -> LspResult<InitializeResult> {
+    async fn initialize(&self, params: InitializeParams) -> LspResult<InitializeResult> {
+        let fallback_root = self
+            .root()
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        self.set_root(root_from_initialize_params(&params, &fallback_root));
         Ok(initialize_result())
     }
 
@@ -199,6 +219,17 @@ fn initialize_result() -> InitializeResult {
     }
 }
 
+#[allow(deprecated)]
+fn root_from_initialize_params(params: &InitializeParams, fallback_root: &Path) -> PathBuf {
+    params
+        .workspace_folders
+        .as_ref()
+        .and_then(|folders| folders.first())
+        .and_then(|folder| path_from_file_uri(&folder.uri))
+        .or_else(|| params.root_uri.as_ref().and_then(path_from_file_uri))
+        .unwrap_or_else(|| fallback_root.to_path_buf())
+}
+
 fn hover_response() -> Hover {
     Hover {
         contents: HoverContents::Markup(MarkupContent {
@@ -287,6 +318,50 @@ fn file_uri_for_path(path: &Path) -> Result<Uri, String> {
         .map_err(|err| format!("failed to build LSP file URI for {}: {err}", path.display()))
 }
 
+fn path_from_file_uri(uri: &Uri) -> Option<PathBuf> {
+    let raw = uri.as_str();
+    let path = raw.strip_prefix("file://")?;
+    let decoded = percent_decode_uri_path(path)?;
+    let path = if is_windows_drive_uri_path(&decoded) {
+        decoded[1..].to_string()
+    } else {
+        decoded
+    };
+    Some(PathBuf::from(path))
+}
+
+fn is_windows_drive_uri_path(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    bytes.len() >= 3 && bytes[0] == b'/' && bytes[2] == b':' && bytes[1].is_ascii_alphabetic()
+}
+
+fn percent_decode_uri_path(path: &str) -> Option<String> {
+    let bytes = path.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            let high = hex_value(*bytes.get(index + 1)?)?;
+            let low = hex_value(*bytes.get(index + 2)?)?;
+            decoded.push((high << 4) | low);
+            index += 3;
+        } else {
+            decoded.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(decoded).ok()
+}
+
+fn hex_value(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
 fn encode_uri_path(path: &str) -> String {
     let mut encoded = String::new();
     for byte in path.bytes() {
@@ -305,7 +380,7 @@ mod tests {
     use super::{
         COPY_CONTEXT_COMMAND, HOVER_TEXT, REFRESH_COMMAND, code_action_response,
         diagnostic_for_finding, diagnostic_refresh_plan, encode_uri_path, file_uri_for_path,
-        hover_response, initialize_result,
+        hover_response, initialize_result, path_from_file_uri, root_from_initialize_params,
     };
     use crate::domain::{
         Confidence, DeltaKind, ExposureClass, Finding, Probe, ProbeFamily, ProbeId, RevealEvidence,
@@ -315,7 +390,8 @@ mod tests {
     use std::path::PathBuf;
     use tower_lsp_server::ls_types::{
         CodeActionOrCommand, DiagnosticSeverity, HoverContents, HoverProviderCapability,
-        NumberOrString, TextDocumentSyncCapability, TextDocumentSyncKind,
+        InitializeParams, NumberOrString, TextDocumentSyncCapability, TextDocumentSyncKind,
+        WorkspaceFolder,
     };
 
     #[test]
@@ -445,6 +521,65 @@ mod tests {
     }
 
     #[test]
+    fn initialize_root_prefers_first_workspace_folder() -> Result<(), String> {
+        let fallback = PathBuf::from("/fallback");
+        let params = initialize_params(
+            Some(vec![
+                WorkspaceFolder {
+                    uri: test_uri("file:///workspace/main")?,
+                    name: "main".to_string(),
+                },
+                WorkspaceFolder {
+                    uri: test_uri("file:///workspace/other")?,
+                    name: "other".to_string(),
+                },
+            ]),
+            Some(test_uri("file:///workspace/root-uri")?),
+        );
+
+        let root = root_from_initialize_params(&params, &fallback);
+
+        assert_eq!(root, PathBuf::from("/workspace/main"));
+        Ok(())
+    }
+
+    #[test]
+    fn initialize_root_uses_root_uri_when_workspace_folders_are_missing() -> Result<(), String> {
+        let fallback = PathBuf::from("/fallback");
+        let params = initialize_params(None, Some(test_uri("file:///workspace/root-uri")?));
+
+        let root = root_from_initialize_params(&params, &fallback);
+
+        assert_eq!(root, PathBuf::from("/workspace/root-uri"));
+        Ok(())
+    }
+
+    #[test]
+    fn initialize_root_falls_back_to_process_cwd_when_no_lsp_root_exists() {
+        let fallback = PathBuf::from("/fallback");
+        let params = initialize_params(None, None);
+
+        let root = root_from_initialize_params(&params, &fallback);
+
+        assert_eq!(root, fallback);
+    }
+
+    #[test]
+    fn file_uri_to_path_decodes_spaces_and_windows_drive_prefix() -> Result<(), String> {
+        let uri = test_uri(&format!("file:///{}{}", "C%3A", "/path/to/ripr%20repo"))?;
+
+        let Some(path) = path_from_file_uri(&uri) else {
+            return Err("expected path from file URI".to_string());
+        };
+
+        assert_eq!(
+            path,
+            PathBuf::from(format!("{}{}", "C:", "/path/to/ripr repo"))
+        );
+        Ok(())
+    }
+
+    #[test]
     fn file_uri_for_path_uses_valid_encoded_file_uri() -> Result<(), String> {
         let uri = file_uri_for_path(&PathBuf::from("src lib.rs"))?;
 
@@ -463,6 +598,18 @@ mod tests {
     fn test_uri(uri: &str) -> Result<tower_lsp_server::ls_types::Uri, String> {
         uri.parse::<tower_lsp_server::ls_types::Uri>()
             .map_err(|err| format!("failed to parse test URI: {err}"))
+    }
+
+    #[allow(deprecated)]
+    fn initialize_params(
+        workspace_folders: Option<Vec<WorkspaceFolder>>,
+        root_uri: Option<tower_lsp_server::ls_types::Uri>,
+    ) -> InitializeParams {
+        InitializeParams {
+            workspace_folders,
+            root_uri,
+            ..InitializeParams::default()
+        }
     }
 
     fn sample_finding() -> Finding {
