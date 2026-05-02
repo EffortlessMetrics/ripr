@@ -4071,7 +4071,16 @@ fn check_output_contracts() -> Result<(), String> {
     let records = read_pipe_records("policy/output_contracts.txt", 3)?;
     let domain = read_text_lossy(Path::new("crates/ripr/src/domain.rs"))?;
     let app = read_text_lossy(Path::new("crates/ripr/src/app.rs"))?;
-    let json_output = read_text_lossy(Path::new("crates/ripr/src/output/json.rs"))?;
+    let mut json_output = String::new();
+    for path in [
+        "crates/ripr/src/output/json/mod.rs",
+        "crates/ripr/src/output/json/context_packet.rs",
+        "crates/ripr/src/output/json/formatter.rs",
+        "crates/ripr/src/output/json/report.rs",
+    ] {
+        json_output.push_str(&read_text_lossy(Path::new(path))?);
+        json_output.push('\n');
+    }
     let schema = read_text_lossy(Path::new("docs/OUTPUT_SCHEMA.md"))?;
     let mut violations = Vec::new();
     let mut seen = BTreeSet::new();
@@ -4101,7 +4110,7 @@ fn check_output_contracts() -> Result<(), String> {
             }
             "context_version" => {
                 require_contract_value(
-                    "crates/ripr/src/output/json.rs",
+                    "crates/ripr/src/output/json/",
                     &json_output,
                     value,
                     kind,
@@ -6252,7 +6261,9 @@ fn public_contract_rows(changes: &[ChangedPath]) -> Vec<(&'static str, Vec<Strin
         (
             "JSON",
             paths_matching(changes, |path| {
-                path == "crates/ripr/src/output/json.rs" || path == "docs/OUTPUT_SCHEMA.md"
+                path == "crates/ripr/src/output/json.rs"
+                    || path.starts_with("crates/ripr/src/output/json/")
+                    || path == "docs/OUTPUT_SCHEMA.md"
             }),
         ),
         (
@@ -7770,7 +7781,7 @@ jobs:
     fn public_contract_rows_detect_json_and_lsp_surfaces() {
         let changes = vec![
             ChangedPath {
-                path: "crates/ripr/src/output/json.rs".to_string(),
+                path: "crates/ripr/src/output/json/report.rs".to_string(),
                 statuses: BTreeSet::from(["M".to_string()]),
             },
             ChangedPath {
@@ -7791,7 +7802,7 @@ jobs:
             .map(|(_, paths)| paths.clone())
             .unwrap_or_default();
 
-        assert_eq!(json, vec!["crates/ripr/src/output/json.rs (M)"]);
+        assert_eq!(json, vec!["crates/ripr/src/output/json/report.rs (M)"]);
         assert_eq!(lsp, vec!["editors/vscode/src/client.ts (M)"]);
     }
 
