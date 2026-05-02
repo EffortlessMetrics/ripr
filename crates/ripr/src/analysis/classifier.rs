@@ -533,12 +533,29 @@ fn stop_reasons(
     {
         reasons.push(StopReason::AsyncBoundaryOpaque);
     }
-    if probe.expression.contains("!") && !probe.expression.contains("!=") {
+    if contains_macro_invocation(&probe.expression) {
         reasons.push(StopReason::ProcMacroOpaque);
     }
     reasons.sort_by(|a, b| a.as_str().cmp(b.as_str()));
     reasons.dedup_by(|a, b| a.as_str() == b.as_str());
     reasons
+}
+
+fn contains_macro_invocation(expression: &str) -> bool {
+    for (idx, ch) in expression.char_indices() {
+        if ch != '!' || expression[idx + 1..].starts_with('=') {
+            continue;
+        }
+        let before_bang = expression[..idx].trim_end();
+        if before_bang
+            .chars()
+            .last()
+            .is_some_and(|ch| ch == '_' || ch == ')' || ch.is_ascii_alphanumeric())
+        {
+            return true;
+        }
+    }
+    false
 }
 
 fn recommended_next_step(probe: &Probe, class: &ExposureClass) -> Option<String> {
@@ -764,6 +781,107 @@ mod tests {
                 .iter()
                 .any(|reason| { reason.as_str() == StopReason::StaticProbeUnknown.as_str() })
         );
+    }
+
+    #[test]
+    fn recommended_next_step_matches_probe_family_and_exposure_class() {
+        let predicate_probe = probe(ProbeFamily::Predicate, DeltaKind::Control, "value > 10");
+        let return_value_probe = probe(ProbeFamily::ReturnValue, DeltaKind::Value, "value + 1");
+
+        assert_eq!(
+            recommended_next_step(&predicate_probe, &ExposureClass::Exposed),
+            None
+        );
+        assert_eq!(
+            recommended_next_step(&predicate_probe, &ExposureClass::WeaklyExposed).as_deref(),
+            Some(
+                "Add boundary tests for below, equal, and above the changed threshold with exact assertions."
+            )
+        );
+        assert_eq!(
+            recommended_next_step(&return_value_probe, &ExposureClass::WeaklyExposed).as_deref(),
+            Some(
+                "Replace broad assertions with exact equality or a property that constrains the changed returned value."
+            )
+        );
+        assert_eq!(
+            recommended_next_step(&predicate_probe, &ExposureClass::ReachableUnrevealed).as_deref(),
+            Some(
+                "Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect."
+            )
+        );
+        assert_eq!(
+            recommended_next_step(&predicate_probe, &ExposureClass::NoStaticPath).as_deref(),
+            Some(
+                "Add or identify a test path that reaches the changed owner, or run ready-mode mutation to confirm coverage."
+            )
+        );
+        assert_eq!(
+            recommended_next_step(&predicate_probe, &ExposureClass::InfectionUnknown).as_deref(),
+            Some(
+                "Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml."
+            )
+        );
+        assert_eq!(
+            recommended_next_step(&predicate_probe, &ExposureClass::StaticUnknown).as_deref(),
+            Some("Escalate to real mutation testing or deep static analysis for this probe.")
+        );
+    }
+
+    #[test]
+    fn stop_reasons_detect_macro_bang_without_treating_inequality_as_macro() {
+        let inequality = probe(
+            ProbeFamily::StaticUnknown,
+            DeltaKind::Unknown,
+            "value != threshold",
+        );
+        let unary_not = probe(ProbeFamily::StaticUnknown, DeltaKind::Unknown, "!enabled");
+        let macro_with_inequality = probe(
+            ProbeFamily::StaticUnknown,
+            DeltaKind::Unknown,
+            "value != threshold && trace!(value)",
+        );
+
+        assert_eq!(stop_reason_labels(&inequality), Vec::<&str>::new());
+        assert_eq!(stop_reason_labels(&unary_not), Vec::<&str>::new());
+        assert_eq!(
+            stop_reason_labels(&macro_with_inequality),
+            vec!["proc_macro_opaque"]
+        );
+    }
+
+    #[test]
+    fn stop_reasons_are_deduplicated_and_sorted() {
+        let probe = probe(
+            ProbeFamily::StaticUnknown,
+            DeltaKind::Unknown,
+            "async move { spawn(task).await; trace!(task); }",
+        );
+
+        let labels = stop_reason_labels(&probe);
+        assert_eq!(labels, vec!["async_boundary_opaque", "proc_macro_opaque"]);
+    }
+
+    fn stop_reason_labels(probe: &Probe) -> Vec<&str> {
+        let owner = function("crates/ripr/src/lib.rs", "dummy");
+        let reasons = stop_reasons(probe, Some(&owner), &[]);
+        let labels: Vec<&str> = reasons.iter().map(StopReason::as_str).collect();
+        labels
+    }
+
+    fn probe(family: ProbeFamily, delta: DeltaKind, expression: &str) -> Probe {
+        Probe {
+            id: ProbeId("probe:test".to_string()),
+            location: SourceLocation::new("crates/ripr/src/lib.rs", 1, 1),
+            owner: None,
+            family,
+            delta,
+            before: None,
+            after: None,
+            expression: expression.to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        }
     }
 
     fn function(file: &str, name: &str) -> FunctionSummary {
