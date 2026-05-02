@@ -41,6 +41,15 @@ cargo package -p ripr --list
 cargo publish -p ripr --dry-run
 ```
 
+The CI workflow also has an explicit MSRV job that pins Rust `1.93.1` and runs:
+
+```bash
+cargo check --workspace --all-targets
+```
+
+The main Rust job stays on `stable` so routine CI also proves the current stable
+toolchain, while the MSRV job proves the declared workspace baseline.
+
 Local shaping commands are intentionally separate from CI because they mutate
 the worktree:
 

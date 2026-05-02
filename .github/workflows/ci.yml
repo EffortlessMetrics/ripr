@@ -58,6 +58,13 @@ jobs:
             target/ripr/receipts/
           if-no-files-found: ignore
 
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.93.1
+      - run: cargo check --workspace --all-targets
+
   vscode:
     runs-on: ubuntu-latest
     defaults:

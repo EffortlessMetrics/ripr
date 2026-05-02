@@ -6,12 +6,14 @@ resolver = "2"
 [workspace.package]
 edition = "2024"
 license = "MIT OR Apache-2.0"
-rust-version = "1.92"
+rust-version = "1.93"
 repository = "https://github.com/EffortlessMetrics/ripr/"
 homepage = "https://github.com/EffortlessMetrics/ripr/"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
+const_item_interior_mutations = "deny"
+function_casts_as_integer = "deny"
 
 [workspace.lints.clippy]
 dbg_macro = "deny"

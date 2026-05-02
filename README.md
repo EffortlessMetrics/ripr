@@ -8,7 +8,7 @@
 [![VS Marketplace Installs (manual)](https://img.shields.io/badge/VS%20Marketplace-0%20installs-0078D4)](https://marketplace.visualstudio.com/items?itemName=EffortlessMetrics.ripr)
 [![Open VSX Downloads](https://img.shields.io/open-vsx/dt/EffortlessMetrics/ripr?label=Open%20VSX%20downloads)](https://open-vsx.org/extension/EffortlessMetrics/ripr)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](Cargo.toml)
-[![MSRV](https://img.shields.io/badge/MSRV-1.92-blue)](https://www.rust-lang.org/)
+[![MSRV](https://img.shields.io/badge/MSRV-1.93-blue)](https://www.rust-lang.org/)
 
 <!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-02 and intentionally seeded at 0 for first launch. Refresh from publisher metrics after publish. Do not use live VS Marketplace Shields routes. -->
 
@@ -123,7 +123,7 @@ For local development from this repository:
 cargo install --path crates/ripr
 ```
 
-`ripr` targets Rust 2024 and requires Rust `1.92` or newer.
+`ripr` targets Rust 2024 and requires Rust `1.93` or newer.
 
 ## Quick Start
 

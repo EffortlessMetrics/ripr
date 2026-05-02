@@ -7,7 +7,7 @@ This document is the release checklist for publishing `ripr`.
 - The release branch has been reviewed and merged.
 - The version in `crates/ripr/Cargo.toml` is correct.
 - The root workspace uses Rust edition `2024`.
-- The root workspace `rust-version` is `1.92`.
+- The root workspace `rust-version` is `1.93`.
 - `repository` and `homepage` point at `https://github.com/EffortlessMetrics/ripr/`.
 - The README says `ripr` is alpha software and does not claim mutation execution.
 
@@ -79,4 +79,3 @@ git push origin v0.1.0
 ```
 
 Update docs or release notes if the install command or package metadata changed.
-
