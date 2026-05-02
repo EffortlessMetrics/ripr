@@ -24,6 +24,12 @@ struct RunBlock {
     text: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ChangedPath {
+    path: String,
+    statuses: BTreeSet<String>,
+}
+
 #[derive(Clone, Debug)]
 pub enum CheckStatus {
     Pass,
@@ -66,6 +72,7 @@ fn main() {
     let result = match args.get(1).map(|s| s.as_str()) {
         Some("shape") => shape(),
         Some("fix-pr") => fix_pr(),
+        Some("pr-summary") => pr_summary(),
         Some("ci-fast") => ci_fast(),
         Some("ci-full") => ci_full(),
         Some("check-static-language") => check_static_language(),
@@ -145,7 +152,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  shape\n  fix-pr\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
+        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
     );
 }
 
@@ -159,8 +166,15 @@ fn shape() -> Result<(), String> {
 
 fn fix_pr() -> Result<(), String> {
     shape()?;
-    let body = "# ripr fix-pr report\n\nStatus: pass\n\nActions:\n\n- Ran `cargo xtask shape`.\n- Full PR surface classification is intentionally deferred to the upcoming `cargo xtask pr-summary` command.\n\nNext commands:\n\n```bash\ncargo xtask ci-fast\n```\n";
+    pr_summary()?;
+    let body = "# ripr fix-pr report\n\nStatus: pass\n\nActions:\n\n- Ran `cargo xtask shape`.\n- Ran `cargo xtask pr-summary`.\n\nReports:\n\n- `target/ripr/reports/shape.md`\n- `target/ripr/reports/pr-summary.md`\n\nNext commands:\n\n```bash\ncargo xtask ci-fast\n```\n";
     write_report("fix-pr.md", body)
+}
+
+fn pr_summary() -> Result<(), String> {
+    let changes = collect_pr_changes()?;
+    let body = pr_summary_body(&changes);
+    write_report("pr-summary.md", &body)
 }
 
 fn check_static_language() -> Result<(), String> {
@@ -684,6 +698,359 @@ fn reports_dir() -> PathBuf {
     Path::new("target").join("ripr").join("reports")
 }
 
+fn collect_pr_changes() -> Result<Vec<ChangedPath>, String> {
+    let mut changes = BTreeMap::<String, BTreeSet<String>>::new();
+
+    add_name_status_output(
+        &mut changes,
+        &run_output_optional("git", &["diff", "--name-status", "origin/main...HEAD"])?,
+    );
+    add_name_status_output(
+        &mut changes,
+        &run_output("git", &["diff", "--name-status"])?,
+    );
+    add_name_status_output(
+        &mut changes,
+        &run_output("git", &["diff", "--cached", "--name-status"])?,
+    );
+    add_short_status_output(&mut changes, &run_output("git", &["status", "--short"])?);
+
+    Ok(changes
+        .into_iter()
+        .map(|(path, statuses)| ChangedPath { path, statuses })
+        .collect())
+}
+
+fn add_name_status_output(changes: &mut BTreeMap<String, BTreeSet<String>>, output: &str) {
+    for line in output.lines() {
+        let parts = line.split('\t').collect::<Vec<_>>();
+        if parts.len() < 2 {
+            continue;
+        }
+        let status = parts[0].trim();
+        let Some(path) = parts.last() else {
+            continue;
+        };
+        add_changed_path(changes, path, status);
+    }
+}
+
+fn add_short_status_output(changes: &mut BTreeMap<String, BTreeSet<String>>, output: &str) {
+    for line in output.lines() {
+        if line.len() < 4 {
+            continue;
+        }
+        let status = line[..2].trim();
+        let mut path = line[3..].trim();
+        if let Some((_, new_path)) = path.split_once(" -> ") {
+            path = new_path.trim();
+        }
+        if status.is_empty() {
+            continue;
+        }
+        add_changed_path(changes, path, status);
+    }
+}
+
+fn add_changed_path(changes: &mut BTreeMap<String, BTreeSet<String>>, path: &str, status: &str) {
+    let normalized = normalize_slashes(path.trim().trim_matches('"'));
+    if normalized.is_empty() {
+        return;
+    }
+    changes
+        .entry(normalized)
+        .or_default()
+        .insert(status.to_string());
+}
+
+fn pr_summary_body(changes: &[ChangedPath]) -> String {
+    let mut body = String::from("# ripr PR readiness summary\n\n");
+    body.push_str("## Scope\n\n");
+    body.push_str("Production delta:\n");
+    write_path_list(&mut body, &paths_matching(changes, is_production_path));
+    body.push_str("\nEvidence/support delta:\n");
+    write_path_list(&mut body, &paths_matching(changes, is_evidence_path));
+
+    body.push_str("\n## Detected Surfaces\n\n");
+    for (label, paths) in detected_surface_rows(changes) {
+        body.push_str(&format!("{label}:\n"));
+        write_path_list(&mut body, &paths);
+        body.push('\n');
+    }
+
+    body.push_str("## Public Contracts Touched\n\n");
+    for (label, paths) in public_contract_rows(changes) {
+        body.push_str(&format!("{label}:\n"));
+        write_path_list(&mut body, &paths);
+        body.push('\n');
+    }
+
+    body.push_str("## Policy Exceptions\n\n");
+    for (label, paths) in policy_exception_rows(changes) {
+        body.push_str(&format!("{label}:\n"));
+        write_path_list(&mut body, &paths);
+        body.push('\n');
+    }
+
+    body.push_str("## Suggested Reviewer Focus\n\n");
+    let focus = reviewer_focus(changes);
+    if focus.is_empty() {
+        body.push_str("- No changed files detected.\n");
+    } else {
+        for (index, path) in focus.iter().enumerate() {
+            body.push_str(&format!("{}. `{path}`\n", index + 1));
+        }
+    }
+
+    body.push_str("\n## Commands\n\n");
+    body.push_str("- `cargo xtask fix-pr`\n");
+    body.push_str("- `cargo xtask ci-fast`\n");
+    body.push_str("- `cargo xtask pr-summary`\n");
+    body
+}
+
+fn write_path_list(body: &mut String, paths: &[String]) {
+    if paths.is_empty() {
+        body.push_str("- None detected.\n");
+        return;
+    }
+    for path in paths {
+        body.push_str(&format!("- `{path}`\n"));
+    }
+}
+
+fn paths_matching(changes: &[ChangedPath], predicate: fn(&str) -> bool) -> Vec<String> {
+    changes
+        .iter()
+        .filter(|change| predicate(&change.path))
+        .map(format_changed_path)
+        .collect()
+}
+
+fn detected_surface_rows(changes: &[ChangedPath]) -> Vec<(&'static str, Vec<String>)> {
+    vec![
+        (
+            "Rust product code",
+            paths_matching(changes, |path| path.starts_with("crates/ripr/src/")),
+        ),
+        (
+            "Rust tests",
+            paths_matching(changes, |path| path.starts_with("crates/ripr/tests/")),
+        ),
+        (
+            "Automation/tooling",
+            paths_matching(changes, |path| path.starts_with("xtask/")),
+        ),
+        (
+            "Fixtures",
+            paths_matching(changes, |path| path.starts_with("fixtures/")),
+        ),
+        (
+            "Goldens",
+            paths_matching(changes, |path| {
+                path.contains("/expected/") || path.contains("/golden")
+            }),
+        ),
+        (
+            "Docs",
+            paths_matching(changes, |path| {
+                path.starts_with("docs/")
+                    || matches!(
+                        path,
+                        "README.md" | "AGENTS.md" | "CONTRIBUTING.md" | "CHANGELOG.md"
+                    )
+            }),
+        ),
+        (
+            "Policies",
+            paths_matching(changes, |path| {
+                path.starts_with("policy/") || path.starts_with(".ripr/")
+            }),
+        ),
+        (
+            "Workflows",
+            paths_matching(changes, |path| path.starts_with(".github/")),
+        ),
+        (
+            "Extension",
+            paths_matching(changes, |path| path.starts_with("editors/vscode/")),
+        ),
+    ]
+}
+
+fn public_contract_rows(changes: &[ChangedPath]) -> Vec<(&'static str, Vec<String>)> {
+    vec![
+        (
+            "CLI",
+            paths_matching(changes, |path| {
+                matches!(path, "crates/ripr/src/cli.rs" | "crates/ripr/src/main.rs")
+                    || path.starts_with("docs/reference/cli")
+            }),
+        ),
+        (
+            "JSON",
+            paths_matching(changes, |path| {
+                path == "crates/ripr/src/output/json.rs" || path == "docs/OUTPUT_SCHEMA.md"
+            }),
+        ),
+        (
+            "Human output",
+            paths_matching(changes, |path| path == "crates/ripr/src/output/human.rs"),
+        ),
+        (
+            "LSP",
+            paths_matching(changes, |path| {
+                path == "crates/ripr/src/lsp.rs" || path.starts_with("editors/vscode/")
+            }),
+        ),
+        (
+            "GitHub/SARIF",
+            paths_matching(changes, |path| {
+                path == "crates/ripr/src/output/github.rs"
+                    || path.to_ascii_lowercase().contains("sarif")
+            }),
+        ),
+        (
+            "Config",
+            paths_matching(changes, |path| {
+                path == "ripr.toml.example" || path.contains("config") || path.contains("ripr-toml")
+            }),
+        ),
+        (
+            "Docs",
+            paths_matching(changes, |path| {
+                path.starts_with("docs/")
+                    || matches!(
+                        path,
+                        "README.md" | "AGENTS.md" | "CONTRIBUTING.md" | "CHANGELOG.md"
+                    )
+            }),
+        ),
+    ]
+}
+
+fn policy_exception_rows(changes: &[ChangedPath]) -> Vec<(&'static str, Vec<String>)> {
+    vec![
+        (
+            "Non-Rust files",
+            paths_matching(changes, |path| {
+                is_file_policy_candidate(path) && !path.ends_with(".rs")
+            }),
+        ),
+        (
+            "Executable files",
+            paths_matching(changes, |path| path == "policy/executable_allowlist.txt"),
+        ),
+        (
+            "Panic-family allowlist",
+            paths_matching(changes, |path| path == ".ripr/no-panic-allowlist.txt"),
+        ),
+        (
+            "Static-language allowlist",
+            paths_matching(changes, |path| {
+                path == ".ripr/static-language-allowlist.txt"
+            }),
+        ),
+        (
+            "Workflow budget",
+            paths_matching(changes, |path| path == "policy/workflow_allowlist.txt"),
+        ),
+        (
+            "Dependencies",
+            paths_matching(changes, |path| {
+                path == "policy/dependency_allowlist.txt" || is_dependency_surface_candidate(path)
+            }),
+        ),
+    ]
+}
+
+fn reviewer_focus(changes: &[ChangedPath]) -> Vec<String> {
+    let mut focus = Vec::new();
+    for predicate in [
+        is_production_path as fn(&str) -> bool,
+        is_test_path,
+        is_spec_path,
+        is_fixture_path,
+        is_golden_path,
+        is_automation_path,
+        is_policy_path,
+    ] {
+        for path in paths_matching(changes, predicate) {
+            let raw_path = strip_status_suffix(&path).to_string();
+            if !focus.contains(&raw_path) {
+                focus.push(raw_path);
+            }
+            if focus.len() >= 8 {
+                return focus;
+            }
+        }
+    }
+    focus
+}
+
+fn is_production_path(path: &str) -> bool {
+    path.starts_with("crates/ripr/src/") || path.starts_with("editors/vscode/src/")
+}
+
+fn is_evidence_path(path: &str) -> bool {
+    is_test_path(path)
+        || is_spec_path(path)
+        || is_fixture_path(path)
+        || is_golden_path(path)
+        || is_automation_path(path)
+        || is_policy_path(path)
+        || path.starts_with("docs/")
+        || matches!(
+            path,
+            "README.md" | "AGENTS.md" | "CONTRIBUTING.md" | "CHANGELOG.md"
+        )
+}
+
+fn is_test_path(path: &str) -> bool {
+    path.starts_with("crates/ripr/tests/") || path.contains("/tests/")
+}
+
+fn is_spec_path(path: &str) -> bool {
+    path.starts_with("docs/specs/") || path == "docs/SPEC_FORMAT.md"
+}
+
+fn is_fixture_path(path: &str) -> bool {
+    path.starts_with("fixtures/")
+}
+
+fn is_golden_path(path: &str) -> bool {
+    path.contains("/expected/") || path.contains("/golden")
+}
+
+fn is_automation_path(path: &str) -> bool {
+    path.starts_with("xtask/")
+}
+
+fn is_policy_path(path: &str) -> bool {
+    path.starts_with("policy/") || path.starts_with(".ripr/") || path.starts_with(".github/")
+}
+
+fn format_changed_path(change: &ChangedPath) -> String {
+    let status = change
+        .statuses
+        .iter()
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(",");
+    if status.is_empty() {
+        change.path.clone()
+    } else {
+        format!("{} ({status})", change.path)
+    }
+}
+
+fn strip_status_suffix(path: &str) -> &str {
+    match path.rsplit_once(" (") {
+        Some((raw_path, _)) => raw_path,
+        None => path,
+    }
+}
+
 fn read_path_allowlist(path: &str) -> Result<BTreeSet<String>, String> {
     let mut allowed = BTreeSet::new();
     let text = read_text_lossy(Path::new(path))?;
@@ -1165,6 +1532,18 @@ fn run_output(program: &str, args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
+fn run_output_optional(program: &str, args: &[&str]) -> Result<String, String> {
+    let output = Command::new(program)
+        .args(args)
+        .output()
+        .map_err(|err| format!("failed to run {program}: {err}"))?;
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    } else {
+        Ok(String::new())
+    }
+}
+
 fn forbidden_static_terms() -> Vec<String> {
     ["killed", "survived", "untested", "proven", "adequate"]
         .iter()
@@ -1209,9 +1588,11 @@ fn is_word_char(value: Option<char>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        extract_workflow_run_blocks, glob_matches, is_dependency_surface_candidate,
-        is_generated_candidate, sorted_allowlist_content,
+        ChangedPath, extract_workflow_run_blocks, glob_matches, is_dependency_surface_candidate,
+        is_evidence_path, is_generated_candidate, is_policy_path, is_production_path,
+        public_contract_rows, sorted_allowlist_content,
     };
+    use std::collections::BTreeSet;
 
     #[test]
     fn glob_match_supports_recursive_segments_and_star_suffixes() {
@@ -1290,5 +1671,48 @@ jobs:
             sorted,
             "# Header\n# More\n\na|kind|owner|reason\nz|kind|owner|reason\n"
         );
+    }
+
+    #[test]
+    fn path_classification_separates_production_evidence_and_policy() {
+        assert!(is_production_path("crates/ripr/src/analysis/mod.rs"));
+        assert!(is_production_path("editors/vscode/src/client.ts"));
+        assert!(is_evidence_path(
+            "docs/specs/RIPR-SPEC-0001-static-exposure-loop.md"
+        ));
+        assert!(is_evidence_path("fixtures/boundary_gap/SPEC.md"));
+        assert!(is_evidence_path("xtask/src/main.rs"));
+        assert!(is_policy_path(".github/workflows/ci.yml"));
+        assert!(is_policy_path("policy/non_rust_allowlist.txt"));
+        assert!(!is_production_path("docs/ENGINEERING.md"));
+    }
+
+    #[test]
+    fn public_contract_rows_detect_json_and_lsp_surfaces() {
+        let changes = vec![
+            ChangedPath {
+                path: "crates/ripr/src/output/json.rs".to_string(),
+                statuses: BTreeSet::from(["M".to_string()]),
+            },
+            ChangedPath {
+                path: "editors/vscode/src/client.ts".to_string(),
+                statuses: BTreeSet::from(["M".to_string()]),
+            },
+        ];
+
+        let rows = public_contract_rows(&changes);
+        let json = rows
+            .iter()
+            .find(|(label, _)| *label == "JSON")
+            .map(|(_, paths)| paths.clone())
+            .unwrap_or_default();
+        let lsp = rows
+            .iter()
+            .find(|(label, _)| *label == "LSP")
+            .map(|(_, paths)| paths.clone())
+            .unwrap_or_default();
+
+        assert_eq!(json, vec!["crates/ripr/src/output/json.rs (M)"]);
+        assert_eq!(lsp, vec!["editors/vscode/src/client.ts (M)"]);
     }
 }

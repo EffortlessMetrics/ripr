@@ -30,3 +30,5 @@ how future PRs are scoped or reviewed.
   and network behavior.
 - Added `cargo xtask shape` and `cargo xtask fix-pr` for safe local PR
   normalization and report generation.
+- Added `cargo xtask pr-summary` for local reviewer packet generation from git
+  diff and status.

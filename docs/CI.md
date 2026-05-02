@@ -34,11 +34,13 @@ the worktree:
 ```bash
 cargo xtask shape
 cargo xtask fix-pr
+cargo xtask pr-summary
 ```
 
 They are safe to run before checks. `shape` runs `cargo fmt`, sorts allowlists,
 ensures `target/ripr/reports`, and writes a local report. `fix-pr` currently
-runs `shape` and writes a local fix-pr report.
+runs `shape`, refreshes `pr-summary`, and writes a local fix-pr report.
+`pr-summary` writes `target/ripr/reports/pr-summary.md` from git diff/status.
 
 Local policy checks can also be run directly:
 
@@ -86,7 +88,7 @@ Release workflows handle extension publishing and server binary releases.
 Planned CI work:
 
 - cache Cargo and npm dependencies without hiding stale-lockfile failures
-- add full `cargo xtask pr-summary` and report uploads
+- add report uploads
 - add fixture-golden tests once the fixture lab exists
 - add markdown/link checks for docs-heavy PRs
 - add traceability and capability-matrix checks

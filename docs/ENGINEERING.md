@@ -141,9 +141,11 @@ Repo automation has three responsibilities:
 It must not bless goldens, add policy exceptions, change schema versions, add
 dependencies, or accept public output drift.
 
-`cargo xtask fix-pr` currently runs the same safe shaping and writes a local
-fix-pr report. The planned `cargo xtask pr-summary` command will add reviewer
-surface classification in a later PR.
+`cargo xtask pr-summary` writes `target/ripr/reports/pr-summary.md` by
+classifying changed paths from git diff and status.
+
+`cargo xtask fix-pr` currently runs safe shaping, refreshes `pr-summary`, and
+writes a local fix-pr report.
 
 ## Testing Style
 
