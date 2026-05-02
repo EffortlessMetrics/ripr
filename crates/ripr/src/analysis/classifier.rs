@@ -763,6 +763,7 @@ fn package_prefix(path: &Path) -> Option<String> {
 mod tests {
     use super::*;
     use crate::analysis::rust_index::{CallFact, LiteralFact, OracleFact};
+    use proptest::prelude::*;
     use std::path::PathBuf;
 
     #[test]
@@ -1199,6 +1200,30 @@ mod tests {
 
         let labels = stop_reason_labels(&probe);
         assert_eq!(labels, vec!["async_boundary_opaque", "proc_macro_opaque"]);
+    }
+
+    proptest! {
+        #[test]
+        fn property_macro_detection_yields_one_proc_macro_reason_per_expression(
+            prefix in "[A-Za-z0-9_!=\\s]{0,32}",
+            macro_name in "[a-z_]{1,12}",
+            suffix in "[A-Za-z0-9_!=\\s]{0,32}",
+        ) {
+            let expression = format!("{prefix}{macro_name}!({suffix})");
+            let probe = probe(ProbeFamily::StaticUnknown, DeltaKind::Unknown, &expression);
+            let labels = stop_reason_labels(&probe);
+
+            prop_assert_eq!(
+                labels.iter().filter(|&&label| label == "proc_macro_opaque").count(),
+                1
+            );
+            let mut sorted = labels.clone();
+            sorted.sort_unstable();
+            sorted.dedup();
+            prop_assert_eq!(labels, {
+                sorted
+            });
+        }
     }
 
     fn stop_reason_labels(probe: &Probe) -> Vec<&str> {
