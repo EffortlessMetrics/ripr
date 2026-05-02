@@ -30,11 +30,11 @@ jobs:
     env:
       EXTENSION_VERSION: ${{ github.event.inputs.version || github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
           cache-dependency-path: editors/vscode/package-lock.json
 
@@ -50,7 +50,7 @@ jobs:
           npx @vscode/vsce package --out "dist/ripr-${EXTENSION_VERSION}.vsix"
 
       - name: Upload VSIX artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ripr-vsix
           path: editors/vscode/dist/*.vsix
@@ -85,11 +85,11 @@ jobs:
       VSIX_FILE: dist/ripr-${{ github.event.inputs.version || github.ref_name }}.vsix
       VSCE_PAT: ${{ secrets.VSCE_PAT }}
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: ripr-vsix
           path: dist
@@ -123,11 +123,11 @@ jobs:
       VSIX_FILE: dist/ripr-${{ github.event.inputs.version || github.ref_name }}.vsix
       OVSX_PAT: ${{ secrets.OVSX_PAT }}
     steps:
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: ripr-vsix
           path: dist
@@ -147,7 +147,7 @@ jobs:
     if: ${{ github.ref_type == 'tag' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: ripr-vsix
           path: dist

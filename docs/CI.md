@@ -153,6 +153,10 @@ npm run compile
 npm run package
 ```
 
+The VS Code extension build and extension publish workflows use Node 24. This
+is separate from the VS Code extension-host compatibility declared in
+`editors/vscode/package.json`.
+
 The coverage workflow currently runs:
 
 ```bash
@@ -175,6 +179,18 @@ warnings while the `ra_ap_syntax` dependency graph is being baselined.
 Pull requests also run GitHub Dependency Review for high-severity vulnerability
 alerts and denied license families. Dependency Graph is enabled for the
 repository, so Dependency Review is a blocking security gate.
+
+## GitHub Actions Runtime Policy
+
+GitHub-hosted action majors should use Node-24-backed releases where official
+releases exist. `cargo xtask check-workflows` rejects old action refs such as
+`actions/checkout@v4`, `actions/setup-node@v4`, artifact v4 actions, and
+`codecov/codecov-action@v4`.
+
+`actions/dependency-review-action@v4` is temporarily allowlisted in
+`policy/workflow_action_runtime_allowlist.txt` because the official Dependency
+Review action still declares a Node 20 runtime and no Node-24-backed major is
+available. Keep Dependency Review enabled until a supported replacement exists.
 
 The same cargo-deny check can be run locally with:
 
