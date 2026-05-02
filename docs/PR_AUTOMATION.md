@@ -416,12 +416,11 @@ The next automation path is trusted-change evidence:
 
 | Order | PR | Purpose |
 | ---: | --- | --- |
-| 1 | `campaign/agentic-devex-closeout` | Mark Campaign 1 complete and activate Campaign 2. |
+| 1 | `analysis/file-facts-model` | Begin Campaign 2 by introducing fact DTOs without behavior drift. |
 | 2 | `automation/gate-receipts-v1` | Write machine-readable receipts for gate runs. |
 | 3 | `automation/critic-report` | Add an advisory adversarial review packet from existing reports. |
 | 4 | `devex/onboard-doctor` | Report whether the local checkout and toolchain are ready to work. |
 | 5 | `devex/install-hooks` | Generate local hooks without checking executable scripts into the repo. |
 
-After those are in place, analyzer work can move through Codex Goals campaigns.
-Each campaign may span multiple PRs, while each work item should still follow
-the scoped PR contract.
+Analyzer work can now move through Codex Goals campaigns. Each campaign may span
+multiple PRs, while each work item should still follow the scoped PR contract.

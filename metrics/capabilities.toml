@@ -16,7 +16,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "fixture-laboratory"
+next = "file-facts-model"
 metric = "findings include changed behavior, class, evidence, and next step"
 
 [[capability]]
@@ -31,7 +31,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "fixture-laboratory"
+next = "file-facts-model"
 metric = "missing boundary discriminator detection"
 
 [[capability]]
@@ -94,7 +94,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "fixture-laboratory"
+next = "file-facts-model"
 metric = "fixture pass rate"
 
 [[capability]]

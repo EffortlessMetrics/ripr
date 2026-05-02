@@ -67,3 +67,6 @@ how future PRs are scoped or reviewed.
   commands for measuring `ripr`'s own Rust test oracle strength.
 - Added advisory `cargo xtask dogfood` reports that run `ripr` against stable
   fixture diffs and record current self-check output.
+- Completed the Agentic DevEx Foundation campaign and activated the
+  Syntax-Backed Analyzer Foundation campaign with `analysis/file-facts-model`
+  as the next ready work item.
