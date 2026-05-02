@@ -1,266 +1,448 @@
 use crate::app::{CheckInput, OutputFormat, check_workspace};
-use std::io::{BufRead, BufReader, Write};
+use crate::domain::Finding;
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use tower_lsp_server::jsonrpc::Result as LspResult;
+use tower_lsp_server::ls_types::{
+    CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionProviderCapability,
+    CodeActionResponse, Command, Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams,
+    DidOpenTextDocumentParams, DidSaveTextDocumentParams, ExecuteCommandOptions,
+    ExecuteCommandParams, Hover, HoverContents, HoverParams, HoverProviderCapability,
+    InitializeParams, InitializeResult, LSPAny, MarkupContent, MarkupKind, NumberOrString,
+    Position, Range, ServerCapabilities, ServerInfo, TextDocumentSyncCapability,
+    TextDocumentSyncKind, Uri,
+};
+use tower_lsp_server::{Client, LanguageServer, LspService, Server};
+
+const COLLECT_CONTEXT_COMMAND: &str = "ripr.collectContext";
+const REFRESH_COMMAND: &str = "ripr.refresh";
+const HOVER_TEXT: &str = "ripr estimates static RIPR exposure for changed Rust behavior. Run `ripr check --format json` for current findings.";
 
 pub fn serve() -> Result<(), String> {
-    let stdin = std::io::stdin();
-    let stdout = std::io::stdout();
-    let mut reader = BufReader::new(stdin.lock());
-    let mut writer = stdout.lock();
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start LSP runtime: {err}"))?;
+    runtime.block_on(serve_stdio())
+}
 
-    while let Some(message) = read_lsp_message(&mut reader)? {
-        if message.contains("\"method\":\"initialize\"")
-            || message.contains("\"method\": \"initialize\"")
-        {
-            let id = extract_id(&message).unwrap_or_else(|| "1".to_string());
-            let response = format!(
-                r#"{{"jsonrpc":"2.0","id":{id},"result":{{"capabilities":{{"textDocumentSync":1,"hoverProvider":true,"codeActionProvider":true,"executeCommandProvider":{{"commands":["ripr.collectContext","ripr.refresh"]}}}},"serverInfo":{{"name":"ripr","version":"{}"}}}}}}"#,
-                env!("CARGO_PKG_VERSION")
-            );
-            write_lsp_message(&mut writer, &response)?;
-        } else if message.contains("\"method\":\"shutdown\"")
-            || message.contains("\"method\": \"shutdown\"")
-        {
-            let id = extract_id(&message).unwrap_or_else(|| "1".to_string());
-            write_lsp_message(
-                &mut writer,
-                &format!(r#"{{"jsonrpc":"2.0","id":{id},"result":null}}"#),
-            )?;
-        } else if message.contains("\"method\":\"exit\"")
-            || message.contains("\"method\": \"exit\"")
-        {
-            break;
-        } else if message.contains("textDocument/didOpen")
-            || message.contains("textDocument/didChange")
-            || message.contains("textDocument/didSave")
-            || message.contains("ripr.refresh")
-        {
-            publish_workspace_diagnostics(&mut writer)?;
-        } else if message.contains("\"method\":\"textDocument/hover\"")
-            || message.contains("\"method\": \"textDocument/hover\"")
-        {
-            let id = extract_id(&message).unwrap_or_else(|| "1".to_string());
-            let response = format!(
-                r#"{{"jsonrpc":"2.0","id":{id},"result":{{"contents":{{"kind":"markdown","value":"ripr estimates static RIPR exposure for changed Rust behavior. Run `ripr check --format json` for current findings."}}}}}}"#
-            );
-            write_lsp_message(&mut writer, &response)?;
-        } else if message.contains("\"method\":\"textDocument/codeAction\"")
-            || message.contains("\"method\": \"textDocument/codeAction\"")
-        {
-            let id = extract_id(&message).unwrap_or_else(|| "1".to_string());
-            let response = format!(
-                r#"{{"jsonrpc":"2.0","id":{id},"result":[{{"title":"Copy ripr context packet","kind":"quickfix","command":{{"title":"Collect ripr context","command":"ripr.collectContext","arguments":[]}}}},{{"title":"Run ripr check","kind":"source","command":{{"title":"Refresh ripr analysis","command":"ripr.refresh","arguments":[]}}}}]}}"#
-            );
-            write_lsp_message(&mut writer, &response)?;
-        } else if let Some(id) = extract_id(&message) {
-            write_lsp_message(
-                &mut writer,
-                &format!(r#"{{"jsonrpc":"2.0","id":{id},"result":null}}"#),
-            )?;
-        }
-    }
+async fn serve_stdio() -> Result<(), String> {
+    let root =
+        std::env::current_dir().map_err(|err| format!("failed to get current dir: {err}"))?;
+    let stdin = tokio::io::stdin();
+    let stdout = tokio::io::stdout();
+    let (service, socket) = LspService::new(|client| Backend::new(client, root.clone()));
 
+    Server::new(stdin, stdout, socket).serve(service).await;
     Ok(())
 }
 
-fn publish_workspace_diagnostics(writer: &mut impl Write) -> Result<(), String> {
+struct Backend {
+    client: Client,
+    root: PathBuf,
+}
+
+impl Backend {
+    fn new(client: Client, root: PathBuf) -> Self {
+        Self { client, root }
+    }
+
+    async fn refresh_diagnostics(&self) {
+        let root = self.root.clone();
+        let Ok(Ok(batches)) =
+            tokio::task::spawn_blocking(move || workspace_diagnostic_batches(&root)).await
+        else {
+            return;
+        };
+        for batch in batches {
+            self.client
+                .publish_diagnostics(batch.uri, batch.diagnostics, None)
+                .await;
+        }
+    }
+}
+
+impl LanguageServer for Backend {
+    async fn initialize(&self, _: InitializeParams) -> LspResult<InitializeResult> {
+        Ok(initialize_result())
+    }
+
+    async fn shutdown(&self) -> LspResult<()> {
+        Ok(())
+    }
+
+    async fn did_open(&self, _: DidOpenTextDocumentParams) {
+        self.refresh_diagnostics().await;
+    }
+
+    async fn did_change(&self, _: DidChangeTextDocumentParams) {
+        self.refresh_diagnostics().await;
+    }
+
+    async fn did_save(&self, _: DidSaveTextDocumentParams) {
+        self.refresh_diagnostics().await;
+    }
+
+    async fn hover(&self, _: HoverParams) -> LspResult<Option<Hover>> {
+        Ok(Some(hover_response()))
+    }
+
+    async fn code_action(
+        &self,
+        _: tower_lsp_server::ls_types::CodeActionParams,
+    ) -> LspResult<Option<CodeActionResponse>> {
+        Ok(Some(code_action_response()))
+    }
+
+    async fn execute_command(&self, params: ExecuteCommandParams) -> LspResult<Option<LSPAny>> {
+        if params.command == REFRESH_COMMAND {
+            self.refresh_diagnostics().await;
+        }
+        Ok(None)
+    }
+}
+
+pub struct DiagnosticBatch {
+    pub uri: Uri,
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+pub fn workspace_diagnostic_batches(root: &Path) -> Result<Vec<DiagnosticBatch>, String> {
     let input = CheckInput {
-        root: std::env::current_dir().map_err(|err| format!("failed to get current dir: {err}"))?,
+        root: root.to_path_buf(),
         format: OutputFormat::Json,
         ..CheckInput::default()
     };
     let output = match check_workspace(input) {
         Ok(output) => output,
-        Err(_) => return Ok(()),
+        Err(_) => return Ok(Vec::new()),
     };
-    // Minimal LSP diagnostics: group by file and include finding text. The JSON is
-    // intentionally simple; richer code actions use the CLI/context path for now.
-    let mut grouped: std::collections::BTreeMap<String, Vec<&crate::domain::Finding>> =
-        std::collections::BTreeMap::new();
+    let mut grouped = BTreeMap::<Uri, Vec<Diagnostic>>::new();
     for finding in &output.findings {
+        let path = absolute_finding_path(&output.root, finding);
+        let uri = file_uri_for_path(&path)?;
         grouped
-            .entry(format!("file://{}", finding.probe.location.file.display()))
+            .entry(uri)
             .or_default()
-            .push(finding);
+            .push(diagnostic_for_finding(finding));
     }
-    for (uri, findings) in grouped {
-        let mut diagnostics = String::new();
-        diagnostics.push('[');
-        for (idx, finding) in findings.iter().enumerate() {
-            let line = finding.probe.location.line.saturating_sub(1);
-            diagnostics.push_str(&format!(
-                r#"{{"range":{{"start":{{"line":{line},"character":0}},"end":{{"line":{line},"character":120}}}},"severity":2,"source":"ripr","code":{},"message":{},"data":{{"probeId":{},"class":{},"family":{},"confidence":{:.2}}}}}"#,
-                json_string(finding.class.as_str()),
-                json_string(&lsp_message(finding)),
-                json_string(&finding.id),
-                json_string(finding.class.as_str()),
-                json_string(finding.probe.family.as_str()),
-                finding.confidence,
-            ));
-            if idx + 1 != findings.len() {
-                diagnostics.push(',');
-            }
-        }
-        diagnostics.push(']');
-        let notif = format!(
-            r#"{{"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{{"uri":{},"diagnostics":{diagnostics}}}}}"#,
-            json_string(&uri)
-        );
-        write_lsp_message(writer, &notif)?;
-    }
-    Ok(())
+    Ok(grouped
+        .into_iter()
+        .map(|(uri, diagnostics)| DiagnosticBatch { uri, diagnostics })
+        .collect())
 }
 
-fn lsp_message(finding: &crate::domain::Finding) -> String {
+fn initialize_result() -> InitializeResult {
+    InitializeResult {
+        capabilities: ServerCapabilities {
+            text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
+            hover_provider: Some(HoverProviderCapability::Simple(true)),
+            code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
+            execute_command_provider: Some(ExecuteCommandOptions {
+                commands: vec![
+                    COLLECT_CONTEXT_COMMAND.to_string(),
+                    REFRESH_COMMAND.to_string(),
+                ],
+                ..ExecuteCommandOptions::default()
+            }),
+            ..ServerCapabilities::default()
+        },
+        server_info: Some(ServerInfo {
+            name: "ripr".to_string(),
+            version: Some(env!("CARGO_PKG_VERSION").to_string()),
+        }),
+        offset_encoding: None,
+    }
+}
+
+fn hover_response() -> Hover {
+    Hover {
+        contents: HoverContents::Markup(MarkupContent {
+            kind: MarkupKind::Markdown,
+            value: HOVER_TEXT.to_string(),
+        }),
+        range: None,
+    }
+}
+
+fn code_action_response() -> CodeActionResponse {
+    vec![
+        CodeActionOrCommand::CodeAction(CodeAction {
+            title: "Copy ripr context packet".to_string(),
+            kind: Some(CodeActionKind::QUICKFIX),
+            command: Some(Command {
+                title: "Collect ripr context".to_string(),
+                command: COLLECT_CONTEXT_COMMAND.to_string(),
+                arguments: Some(Vec::new()),
+            }),
+            ..CodeAction::default()
+        }),
+        CodeActionOrCommand::CodeAction(CodeAction {
+            title: "Run ripr check".to_string(),
+            kind: Some(CodeActionKind::SOURCE),
+            command: Some(Command {
+                title: "Refresh ripr analysis".to_string(),
+                command: REFRESH_COMMAND.to_string(),
+                arguments: Some(Vec::new()),
+            }),
+            ..CodeAction::default()
+        }),
+    ]
+}
+
+fn diagnostic_for_finding(finding: &Finding) -> Diagnostic {
+    let line = finding.probe.location.line.saturating_sub(1) as u32;
+    Diagnostic {
+        range: Range {
+            start: Position { line, character: 0 },
+            end: Position {
+                line,
+                character: 120,
+            },
+        },
+        severity: Some(DiagnosticSeverity::WARNING),
+        code: Some(NumberOrString::String(finding.class.as_str().to_string())),
+        code_description: None,
+        source: Some("ripr".to_string()),
+        message: lsp_message(finding),
+        related_information: None,
+        tags: None,
+        data: Some(serde_json::json!({
+            "probeId": finding.id,
+            "class": finding.class.as_str(),
+            "family": finding.probe.family.as_str(),
+            "confidence": finding.confidence,
+        })),
+    }
+}
+
+fn lsp_message(finding: &Finding) -> String {
     finding
         .recommended_next_step
         .clone()
         .unwrap_or_else(|| format!("{} static RIPR exposure", finding.class.as_str()))
 }
 
-fn read_lsp_message(reader: &mut impl BufRead) -> Result<Option<String>, String> {
-    let mut content_length = None::<usize>;
-    loop {
-        let mut line = String::new();
-        let bytes = reader
-            .read_line(&mut line)
-            .map_err(|err| format!("failed to read LSP header: {err}"))?;
-        if bytes == 0 {
-            return Ok(None);
-        }
-        let trimmed = line.trim_end_matches(&['\r', '\n'][..]);
-        if trimmed.is_empty() {
-            break;
-        }
-        if let Some(value) = trimmed.strip_prefix("Content-Length:") {
-            content_length = Some(
-                value
-                    .trim()
-                    .parse::<usize>()
-                    .map_err(|err| format!("invalid Content-Length: {err}"))?,
-            );
-        }
-    }
-    let len = content_length.ok_or_else(|| "missing Content-Length".to_string())?;
-    let mut buf = vec![0u8; len];
-    reader
-        .read_exact(&mut buf)
-        .map_err(|err| format!("failed to read LSP body: {err}"))?;
-    Ok(Some(String::from_utf8_lossy(&buf).into_owned()))
-}
-
-fn write_lsp_message(writer: &mut impl Write, body: &str) -> Result<(), String> {
-    write!(writer, "Content-Length: {}\r\n\r\n{}", body.len(), body)
-        .and_then(|_| writer.flush())
-        .map_err(|err| format!("failed to write LSP message: {err}"))
-}
-
-fn extract_id(message: &str) -> Option<String> {
-    let idx = message.find("\"id\"")?;
-    let after = &message[idx + 4..];
-    let colon = after.find(':')?;
-    let rest = after[colon + 1..].trim_start();
-    if let Some(stripped) = rest.strip_prefix('"') {
-        let end = stripped.find('"')?;
-        Some(format!("\"{}\"", &stripped[..end]))
+fn absolute_finding_path(root: &Path, finding: &Finding) -> PathBuf {
+    if finding.probe.location.file.is_absolute() {
+        finding.probe.location.file.clone()
     } else {
-        let end = rest.find([',', '}']).unwrap_or(rest.len());
-        Some(rest[..end].trim().to_string())
+        root.join(&finding.probe.location.file)
     }
 }
 
-fn json_string(value: &str) -> String {
-    serde_json::to_string(value).expect("serializing a string cannot fail")
+fn file_uri_for_path(path: &Path) -> Result<Uri, String> {
+    let normalized = path.to_string_lossy().replace('\\', "/");
+    let encoded = encode_uri_path(&normalized);
+    let uri = if encoded.starts_with('/') {
+        format!("file://{encoded}")
+    } else {
+        format!("file:///{encoded}")
+    };
+    uri.parse()
+        .map_err(|err| format!("failed to build LSP file URI for {}: {err}", path.display()))
+}
+
+fn encode_uri_path(path: &str) -> String {
+    let mut encoded = String::new();
+    for byte in path.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' | b':' => {
+                encoded.push(byte as char)
+            }
+            _ => encoded.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    encoded
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{extract_id, json_string, read_lsp_message, write_lsp_message};
-    use std::io::Cursor;
+    use super::{
+        COLLECT_CONTEXT_COMMAND, HOVER_TEXT, REFRESH_COMMAND, code_action_response,
+        diagnostic_for_finding, encode_uri_path, file_uri_for_path, hover_response,
+        initialize_result,
+    };
+    use crate::domain::{
+        Confidence, DeltaKind, ExposureClass, Finding, Probe, ProbeFamily, ProbeId, RevealEvidence,
+        RiprEvidence, SourceLocation, StageEvidence, StageState,
+    };
+    use std::path::PathBuf;
+    use tower_lsp_server::ls_types::{
+        CodeActionOrCommand, DiagnosticSeverity, HoverContents, HoverProviderCapability,
+        NumberOrString, TextDocumentSyncCapability, TextDocumentSyncKind,
+    };
 
     #[test]
-    fn json_string_escapes_lsp_control_characters() {
-        let value = "quote\" slash\\ newline\n tab\t control\u{0001}";
-        let encoded = json_string(value);
-        let decoded: String = serde_json::from_str(&encoded).unwrap();
-        assert_eq!(decoded, value);
-        assert!(encoded.contains("\\\""));
-        assert!(encoded.contains("\\\\"));
-        assert!(encoded.contains("\\n"));
-        assert!(encoded.contains("\\t"));
-        assert!(encoded.contains("\\u0001"));
-    }
+    fn initialize_result_exposes_existing_lsp_capabilities() -> Result<(), String> {
+        let result = initialize_result();
 
-    #[test]
-    fn extract_id_supports_numeric_and_string_ids() {
         assert_eq!(
-            extract_id(r#"{"jsonrpc":"2.0","id":7,"method":"initialize"}"#),
-            Some("7".to_string())
-        );
-        assert_eq!(
-            extract_id(r#"{"jsonrpc":"2.0","id":"req-42","method":"hover"}"#),
-            Some("\"req-42\"".to_string())
+            result.capabilities.text_document_sync,
+            Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL))
         );
         assert_eq!(
-            extract_id(r#"{"jsonrpc":"2.0","method":"hover","params":{},"id":9}"#),
-            Some("9".to_string())
+            result.capabilities.hover_provider,
+            Some(HoverProviderCapability::Simple(true))
         );
-        assert_eq!(
-            extract_id(r#"{"jsonrpc":"2.0","method":"initialized","params":{}}"#),
-            None
-        );
-    }
-
-    #[test]
-    fn read_lsp_message_parses_single_framed_payload() -> Result<(), String> {
-        let body = r#"{"jsonrpc":"2.0","id":1,"method":"shutdown"}"#;
-        let wire = format!("Content-Length: {}\r\n\r\n{}", body.len(), body);
-        let mut reader = Cursor::new(wire.into_bytes());
-
-        let message = read_lsp_message(&mut reader)?;
-
-        assert_eq!(message.as_deref(), Some(body));
-        Ok(())
-    }
-
-    #[test]
-    fn read_lsp_message_parses_multiple_framed_payloads() -> Result<(), String> {
-        let first = r#"{"jsonrpc":"2.0","id":1,"method":"shutdown"}"#;
-        let second = r#"{"jsonrpc":"2.0","id":2,"method":"exit"}"#;
-        let wire = format!(
-            "Content-Length: {}\r\n\r\n{}Content-Length: {}\r\n\r\n{}",
-            first.len(),
-            first,
-            second.len(),
-            second
-        );
-        let mut reader = Cursor::new(wire.into_bytes());
-
-        assert_eq!(read_lsp_message(&mut reader)?.as_deref(), Some(first));
-        assert_eq!(read_lsp_message(&mut reader)?.as_deref(), Some(second));
-        Ok(())
-    }
-
-    #[test]
-    fn read_lsp_message_requires_content_length_header() -> Result<(), String> {
-        let mut reader = Cursor::new(b"\r\n{}".to_vec());
-        let err = match read_lsp_message(&mut reader) {
-            Ok(_) => return Err("expected missing Content-Length error".to_string()),
-            Err(err) => err,
+        let Some(provider) = result.capabilities.execute_command_provider else {
+            return Err("expected execute command provider".to_string());
         };
-        assert!(err.contains("missing Content-Length"));
+        let commands = provider.commands;
+        assert_eq!(commands, vec![COLLECT_CONTEXT_COMMAND, REFRESH_COMMAND]);
         Ok(())
     }
 
     #[test]
-    fn write_lsp_message_emits_valid_length_prefixed_frame() -> Result<(), String> {
-        let body = r#"{"ok":true}"#;
-        let mut writer = Cursor::new(Vec::new());
-        write_lsp_message(&mut writer, body)?;
-        let wire = String::from_utf8(writer.into_inner()).map_err(|err| err.to_string())?;
+    fn hover_response_keeps_current_guidance_text() -> Result<(), String> {
+        let hover = hover_response();
+
+        match hover.contents {
+            HoverContents::Markup(markup) => {
+                assert_eq!(markup.value, HOVER_TEXT);
+                Ok(())
+            }
+            _ => Err("expected markup hover".to_string()),
+        }
+    }
+
+    #[test]
+    fn code_action_response_keeps_current_commands() -> Result<(), String> {
+        let actions = code_action_response();
+
+        let mut titles_kinds_and_commands = Vec::new();
+        for action in &actions {
+            match action {
+                CodeActionOrCommand::CodeAction(action) => {
+                    let Some(command) = &action.command else {
+                        return Err("expected code action command".to_string());
+                    };
+                    let Some(kind) = &action.kind else {
+                        return Err("expected code action kind".to_string());
+                    };
+                    titles_kinds_and_commands.push((
+                        action.title.as_str(),
+                        kind.as_str(),
+                        command.title.as_str(),
+                        command.command.as_str(),
+                    ));
+                }
+                CodeActionOrCommand::Command(_) => {
+                    return Err("expected code action".to_string());
+                }
+            }
+        }
+
         assert_eq!(
-            wire,
-            format!("Content-Length: {}\r\n\r\n{body}", body.len())
+            titles_kinds_and_commands,
+            vec![
+                (
+                    "Copy ripr context packet",
+                    "quickfix",
+                    "Collect ripr context",
+                    COLLECT_CONTEXT_COMMAND,
+                ),
+                (
+                    "Run ripr check",
+                    "source",
+                    "Refresh ripr analysis",
+                    REFRESH_COMMAND,
+                ),
+            ]
         );
         Ok(())
+    }
+
+    #[test]
+    fn diagnostic_for_finding_preserves_lsp_payload_shape() -> Result<(), String> {
+        let finding = sample_finding();
+        let diagnostic = diagnostic_for_finding(&finding);
+
+        assert_eq!(diagnostic.range.start.line, 87);
+        assert_eq!(diagnostic.severity, Some(DiagnosticSeverity::WARNING));
+        assert_eq!(
+            diagnostic.code,
+            Some(NumberOrString::String("weakly_exposed".to_string()))
+        );
+        assert_eq!(diagnostic.source.as_deref(), Some("ripr"));
+        assert_eq!(diagnostic.message, "Add an exact boundary assertion.");
+        let Some(data) = diagnostic.data else {
+            return Err("expected diagnostic data".to_string());
+        };
+        assert_eq!(data["probeId"], "probe:pricing:88:predicate");
+        assert_eq!(data["class"], "weakly_exposed");
+        assert_eq!(data["family"], "predicate");
+        assert_eq!(data["confidence"], 0.75);
+        Ok(())
+    }
+
+    #[test]
+    fn file_uri_for_path_uses_valid_encoded_file_uri() -> Result<(), String> {
+        let uri = file_uri_for_path(&PathBuf::from("src lib.rs"))?;
+
+        assert_eq!(uri.as_str(), "file:///src%20lib.rs");
+        Ok(())
+    }
+
+    #[test]
+    fn uri_path_encoding_preserves_path_syntax_and_escapes_spaces() {
+        assert_eq!(
+            encode_uri_path("workspace/src lib.rs"),
+            "workspace/src%20lib.rs"
+        );
+    }
+
+    fn sample_finding() -> Finding {
+        Finding {
+            id: "probe:pricing:88:predicate".to_string(),
+            probe: Probe {
+                id: ProbeId("probe:pricing:88:predicate".to_string()),
+                location: SourceLocation {
+                    file: PathBuf::from("src/pricing.rs"),
+                    line: 88,
+                    column: 1,
+                },
+                owner: None,
+                family: ProbeFamily::Predicate,
+                delta: DeltaKind::Control,
+                before: None,
+                after: None,
+                expression: "amount >= threshold".to_string(),
+                expected_sinks: Vec::new(),
+                required_oracles: Vec::new(),
+            },
+            class: ExposureClass::WeaklyExposed,
+            ripr: RiprEvidence {
+                reach: StageEvidence::new(StageState::Yes, Confidence::High, "related tests found"),
+                infect: StageEvidence::new(
+                    StageState::Yes,
+                    Confidence::High,
+                    "predicate can alter branch behavior",
+                ),
+                propagate: StageEvidence::new(
+                    StageState::Yes,
+                    Confidence::Medium,
+                    "branch influences return value",
+                ),
+                reveal: RevealEvidence {
+                    observe: StageEvidence::new(
+                        StageState::Weak,
+                        Confidence::Medium,
+                        "return value asserted",
+                    ),
+                    discriminate: StageEvidence::new(
+                        StageState::Weak,
+                        Confidence::Medium,
+                        "boundary value missing",
+                    ),
+                },
+            },
+            confidence: 0.75,
+            evidence: Vec::new(),
+            missing: Vec::new(),
+            stop_reasons: Vec::new(),
+            related_tests: Vec::new(),
+            recommended_next_step: Some("Add an exact boundary assertion.".to_string()),
+        }
     }
 }

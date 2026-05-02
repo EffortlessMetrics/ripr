@@ -17,7 +17,7 @@ CLI / LSP / CI
 - `analysis`: diff loading, syntax indexing, probe generation, classification.
 - `output`: human, JSON, and GitHub annotation rendering.
 - `cli`: command-line entrypoint.
-- `lsp`: lightweight sidecar entrypoint.
+- `lsp`: experimental `tower-lsp-server` sidecar entrypoint.
 
 ## Analysis scope
 
