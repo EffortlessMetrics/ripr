@@ -12,13 +12,14 @@ evidence = [
   "boundary_gap fixture",
   "weak_error_oracle fixture",
   "FileFacts DTOs",
-  "lexical syntax adapter boundary"
+  "lexical syntax adapter boundary",
+  "ra_ap_syntax parser-backed test/oracle extraction"
 ]
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "ast-test-oracle-extraction"
+next = "ast-probe-ownership"
 metric = "findings include changed behavior, class, evidence, and next step"
 
 [[capability]]
@@ -30,12 +31,13 @@ evidence = [
   "syntax-first probe generation",
   "boundary_gap fixture",
   "FileFacts DTOs",
-  "lexical syntax adapter boundary"
+  "lexical syntax adapter boundary",
+  "ra_ap_syntax parser-backed test/oracle extraction"
 ]
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "ast-test-oracle-extraction"
+next = "ast-probe-ownership"
 metric = "missing boundary discriminator detection"
 
 [[capability]]
@@ -94,13 +96,14 @@ evidence = [
   "boundary_gap fixture",
   "weak_error_oracle fixture",
   "FileFacts DTOs",
-  "lexical syntax adapter boundary"
+  "lexical syntax adapter boundary",
+  "ra_ap_syntax parser-backed test/oracle extraction"
 ]
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "ast-test-oracle-extraction"
+next = "ast-probe-ownership"
 metric = "fixture pass rate"
 
 [[capability]]
@@ -186,3 +189,39 @@ evidence = [
 fixtures = []
 next = "lsp-evidence-hover-actions"
 metric = "finding/probe metadata in diagnostics"
+
+[[capability]]
+id = "parser_backed_syntax_facts"
+name = "Parser-backed syntax facts"
+status = "alpha"
+spec = "RIPR-SPEC-0001"
+evidence = [
+  "ADR 0006",
+  "ra_ap_syntax dependency",
+  "RustSyntaxAdapter parser adapter",
+  "fixture/golden output stability"
+]
+fixtures = [
+  "fixtures/boundary_gap",
+  "fixtures/weak_error_oracle"
+]
+next = "ast-probe-ownership"
+metric = "syntax extraction parity"
+
+[[capability]]
+id = "ast_backed_test_oracle_extraction"
+name = "AST-backed test/oracle extraction"
+status = "alpha"
+spec = "RIPR-SPEC-0001"
+evidence = [
+  "ra_ap_syntax function extraction",
+  "parser-backed assertion macro extraction",
+  "unwrap/expect smoke-oracle tests",
+  "fixture/golden output stability"
+]
+fixtures = [
+  "fixtures/boundary_gap",
+  "fixtures/weak_error_oracle"
+]
+next = "ast-probe-ownership"
+metric = "oracle kind recognition rate"

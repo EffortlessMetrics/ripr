@@ -17,20 +17,20 @@ Status values:
 
 | Capability | Status | Spec | Current evidence | Next checkpoint | Metric |
 | --- | --- | --- | --- | --- | --- |
-| Static exposure loop | `alpha` | `RIPR-SPEC-0001` | sample diff, current CLI tests, boundary_gap fixture, weak_error_oracle fixture, FileFacts DTOs, lexical syntax adapter boundary | `ast-test-oracle-extraction` | findings include changed behavior, class, evidence, and next step |
-| Predicate probes | `alpha` | `RIPR-SPEC-0001` | syntax-first probe generation, boundary_gap fixture, FileFacts DTOs, lexical syntax adapter boundary | `ast-test-oracle-extraction` | missing boundary discriminator detection |
+| Static exposure loop | `alpha` | `RIPR-SPEC-0001` | sample diff, current CLI tests, boundary_gap fixture, weak_error_oracle fixture, FileFacts DTOs, lexical syntax adapter boundary, ra_ap_syntax parser-backed test/oracle extraction | `ast-probe-ownership` | findings include changed behavior, class, evidence, and next step |
+| Predicate probes | `alpha` | `RIPR-SPEC-0001` | syntax-first probe generation, boundary_gap fixture, FileFacts DTOs, lexical syntax adapter boundary, ra_ap_syntax parser-backed test/oracle extraction | `ast-probe-ownership` | missing boundary discriminator detection |
 | Error-path probes | `alpha` | `RIPR-SPEC-0001` | sample error_path explain/context command, weak_error_oracle fixture | `oracle-strength-v2` | broad error checks distinguished from exact variants |
 | Return-value probes | `alpha` | `RIPR-SPEC-0001` | syntax-first scanner, weak_error_oracle fixture | `ast-probe-generation` | exact vs smoke return oracle distinction |
 | Call-deletion probes | `alpha` | `RIPR-SPEC-0001` | syntax-first scanner, weak_error_oracle fixture | `ast-probe-generation` | side-effect or call boundary candidate named |
-| Fixture laboratory | `alpha` | `RIPR-SPEC-0002` | fixture spec, fixture/golden runner commands, boundary_gap fixture, weak_error_oracle fixture, FileFacts DTOs, lexical syntax adapter boundary | `ast-test-oracle-extraction` | fixture pass rate |
+| Fixture laboratory | `alpha` | `RIPR-SPEC-0002` | fixture spec, fixture/golden runner commands, boundary_gap fixture, weak_error_oracle fixture, FileFacts DTOs, lexical syntax adapter boundary, ra_ap_syntax parser-backed test/oracle extraction | `ast-probe-ownership` | fixture pass rate |
 | Golden JSON output | `alpha` | `RIPR-SPEC-0002` | schema reference, goldens check runner, boundary_gap check.json, weak_error_oracle check.json | `output-contract-matrix` | golden output drift count |
 | Golden human output | `alpha` | `RIPR-SPEC-0002` | human output renderer, goldens check runner, boundary_gap human.txt, weak_error_oracle human.txt | `output-contract-matrix` | golden output drift count |
 | Context packet v1 | `alpha` | `RIPR-SPEC-0003` | CLI context command | `agent-context-v2` | packet includes missing discriminator and related tests |
 | Agent context v2 | `planned` | `RIPR-SPEC-0003` | agent context spec | `agent-context-v2` | packet includes missing values and suggested assertions |
 | Analysis modes | `alpha` | `RIPR-SPEC-0001` | mode scope tests | `capability-metrics-report` | runtime and scope by mode |
 | LSP diagnostics | `alpha` | `RIPR-SPEC-0001` | experimental sidecar | `lsp-evidence-hover-actions` | finding/probe metadata in diagnostics |
-| Parser-backed syntax facts | `planned` | future spec | roadmap | `syntax-adapter-mvp` | syntax extraction parity |
-| AST-backed test/oracle extraction | `planned` | future spec | roadmap | `ast-test-oracle-extraction` | oracle kind recognition rate |
+| Parser-backed syntax facts | `alpha` | `RIPR-SPEC-0001` | ADR 0006, ra_ap_syntax dependency, RustSyntaxAdapter parser adapter, fixture/golden output stability | `ast-probe-ownership` | syntax extraction parity |
+| AST-backed test/oracle extraction | `alpha` | `RIPR-SPEC-0001` | ra_ap_syntax function extraction, parser-backed assertion macro extraction, unwrap/expect smoke-oracle tests, fixture/golden output stability | `ast-probe-ownership` | oracle kind recognition rate |
 | AST-backed probe ownership | `planned` | future spec | roadmap | `ast-probe-ownership` | duplicate symbols do not cross-link tests |
 | Local delta flow | `planned` | future spec | roadmap | `local-delta-flow-v1` | flow sink identification rate |
 | Activation/value modeling | `planned` | future spec | roadmap | `activation-value-modeling-v1` | detected and missing value facts |

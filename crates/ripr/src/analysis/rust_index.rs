@@ -1,4 +1,8 @@
 use crate::domain::{OracleStrength, SymbolId};
+use ra_ap_syntax::{
+    AstNode, Edition, SourceFile, TextSize,
+    ast::{self, HasAttrs, HasName},
+};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -84,6 +88,9 @@ pub trait RustSyntaxAdapter {
 #[derive(Clone, Debug, Default)]
 pub struct LexicalRustSyntaxAdapter;
 
+#[derive(Clone, Debug, Default)]
+pub struct RaRustSyntaxAdapter;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TextRange {
     pub start_line: usize,
@@ -104,7 +111,20 @@ pub struct SyntaxNodeFact {
 
 impl RustSyntaxAdapter for LexicalRustSyntaxAdapter {
     fn summarize_file(&self, path: &Path, text: &str) -> Result<FileFacts, String> {
-        Ok(summarize_file(path.to_path_buf(), text.to_string()))
+        Ok(summarize_file_lexically(
+            path.to_path_buf(),
+            text.to_string(),
+        ))
+    }
+
+    fn changed_nodes(&self, facts: &FileFacts, ranges: &[TextRange]) -> Vec<SyntaxNodeFact> {
+        lexical_changed_nodes(facts, ranges)
+    }
+}
+
+impl RustSyntaxAdapter for RaRustSyntaxAdapter {
+    fn summarize_file(&self, path: &Path, text: &str) -> Result<FileFacts, String> {
+        summarize_file_with_parser(path, text)
     }
 
     fn changed_nodes(&self, facts: &FileFacts, ranges: &[TextRange]) -> Vec<SyntaxNodeFact> {
@@ -114,12 +134,15 @@ impl RustSyntaxAdapter for LexicalRustSyntaxAdapter {
 
 pub fn build_index(root: &Path, files: &[PathBuf]) -> Result<RustIndex, String> {
     let mut index = RustIndex::default();
-    let adapter = LexicalRustSyntaxAdapter;
+    let adapter = RaRustSyntaxAdapter;
+    let fallback = LexicalRustSyntaxAdapter;
     for file in files {
         let full = root.join(file);
         let text = std::fs::read_to_string(&full)
             .map_err(|err| format!("failed to read {}: {err}", full.display()))?;
-        let summary = adapter.summarize_file(file, &text)?;
+        let summary = adapter
+            .summarize_file(file, &text)
+            .or_else(|_| fallback.summarize_file(file, &text))?;
         index.tests.extend(summary.tests.clone());
         index.functions.extend(summary.functions.clone());
         index.files.insert(file.clone(), summary);
@@ -127,7 +150,15 @@ pub fn build_index(root: &Path, files: &[PathBuf]) -> Result<RustIndex, String> 
     Ok(index)
 }
 
-pub fn summarize_file(path: PathBuf, text: String) -> FileFacts {
+#[cfg(test)]
+fn summarize_file(path: PathBuf, text: String) -> FileFacts {
+    match RaRustSyntaxAdapter.summarize_file(&path, &text) {
+        Ok(facts) => facts,
+        Err(_) => summarize_file_lexically(path, text),
+    }
+}
+
+fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts {
     let lines: Vec<&str> = text.lines().collect();
     let mut functions = Vec::new();
     let mut tests = Vec::new();
@@ -177,10 +208,7 @@ pub fn summarize_file(path: PathBuf, text: String) -> FileFacts {
                 literals: literals.clone(),
                 is_test: pending_test,
             };
-            if pending_test
-                || path.starts_with("tests")
-                || path.to_string_lossy().contains("/tests/")
-            {
+            if pending_test || is_test_file(&path) {
                 tests.push(TestFact {
                     name: name.clone(),
                     file: path.clone(),
@@ -219,6 +247,172 @@ pub fn summarize_file(path: PathBuf, text: String) -> FileFacts {
         returns: file_returns,
         literals: file_literals,
     }
+}
+
+fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, String> {
+    let parse = SourceFile::parse(text, Edition::CURRENT);
+    let errors = parse.errors();
+    if !errors.is_empty() {
+        return Err(format!("parser reported {} syntax errors", errors.len()));
+    }
+
+    let source = parse.tree();
+    let line_index = LineIndex::new(text);
+    let mut functions = Vec::new();
+    let mut tests = Vec::new();
+    let mut file_calls = Vec::new();
+    let mut file_returns = Vec::new();
+    let mut file_literals = Vec::new();
+    let path_buf = path.to_path_buf();
+
+    for function in source.syntax().descendants().filter_map(ast::Fn::cast) {
+        let Some(name) = function.name().map(|name| name.text().to_string()) else {
+            continue;
+        };
+        let fn_start = function
+            .fn_token()
+            .map(|token| token.text_range().start())
+            .unwrap_or_else(|| function.syntax().text_range().start());
+        let fn_end = function.syntax().text_range().end();
+        let start_line = line_index.line(fn_start);
+        let end_line = line_index.line_for_range_end(fn_end);
+        let body = slice_text(text, fn_start, fn_end);
+        let calls = extract_call_facts(&body, start_line);
+        let returns = extract_return_facts(&body, start_line);
+        let literals = extract_literal_facts(&body, start_line);
+        let is_test = has_test_attribute(&function);
+
+        file_calls.extend(calls.clone());
+        file_returns.extend(returns.clone());
+        file_literals.extend(literals.clone());
+
+        let function_fact = FunctionFact {
+            id: SymbolId(format!("{}::{name}", path.display())),
+            name: name.clone(),
+            file: path_buf.clone(),
+            start_line,
+            end_line,
+            body: body.clone(),
+            calls: calls.clone(),
+            returns: returns.clone(),
+            literals: literals.clone(),
+            is_test,
+        };
+
+        if is_test || is_test_file(path) {
+            tests.push(TestFact {
+                name,
+                file: path_buf.clone(),
+                start_line,
+                end_line,
+                body,
+                calls,
+                assertions: extract_parser_oracles(&function, text, &line_index),
+                literals,
+            });
+        }
+
+        functions.push(function_fact);
+    }
+
+    file_calls.sort_by(|a, b| a.line.cmp(&b.line).then(a.name.cmp(&b.name)));
+    file_calls.dedup_by(|a, b| a.line == b.line && a.name == b.name && a.text == b.text);
+    file_returns.sort_by(|a, b| a.line.cmp(&b.line).then(a.text.cmp(&b.text)));
+    file_returns.dedup_by(|a, b| a.line == b.line && a.text == b.text);
+    file_literals.sort_by(|a, b| a.line.cmp(&b.line).then(a.value.cmp(&b.value)));
+    file_literals.dedup_by(|a, b| a.line == b.line && a.value == b.value);
+
+    Ok(FileFacts {
+        path: path_buf,
+        functions,
+        tests,
+        calls: file_calls,
+        returns: file_returns,
+        literals: file_literals,
+    })
+}
+
+fn has_test_attribute(function: &ast::Fn) -> bool {
+    function.attrs().any(|attr| {
+        let compact = attr
+            .syntax()
+            .text()
+            .to_string()
+            .chars()
+            .filter(|ch| !ch.is_whitespace())
+            .collect::<String>();
+        compact == "#[test]"
+            || compact.starts_with("#[tokio::test")
+            || compact.starts_with("#[async_std::test")
+    })
+}
+
+fn extract_parser_oracles(
+    function: &ast::Fn,
+    text: &str,
+    line_index: &LineIndex,
+) -> Vec<OracleFact> {
+    let mut assertions = Vec::new();
+    for macro_call in function
+        .syntax()
+        .descendants()
+        .filter_map(ast::MacroCall::cast)
+    {
+        let Some(path) = macro_call.path() else {
+            continue;
+        };
+        let macro_name = path.syntax().text().to_string().replace(' ', "");
+        if !is_assertion_macro(&macro_name) {
+            continue;
+        }
+        let range = macro_call.syntax().text_range();
+        let assertion_text = slice_macro_call_text(text, range.start(), range.end());
+        assertions.push(OracleFact {
+            line: line_index.line(range.start()),
+            strength: classify_assertion(&assertion_text),
+            observed_tokens: extract_identifier_tokens(&assertion_text),
+            text: assertion_text,
+        });
+    }
+
+    for method_call in function
+        .syntax()
+        .descendants()
+        .filter_map(ast::MethodCallExpr::cast)
+    {
+        let Some(name) = method_call
+            .name_ref()
+            .map(|name| name.syntax().text().to_string())
+        else {
+            continue;
+        };
+        if name != "unwrap" && name != "expect" {
+            continue;
+        }
+        let range = method_call.syntax().text_range();
+        let text = slice_text(text, range.start(), range.end())
+            .trim()
+            .trim_end_matches(';')
+            .to_string();
+        assertions.push(OracleFact {
+            line: line_index.line(range.start()),
+            strength: OracleStrength::Smoke,
+            observed_tokens: extract_identifier_tokens(&text),
+            text,
+        });
+    }
+
+    assertions.sort_by(|a, b| a.line.cmp(&b.line).then(a.text.cmp(&b.text)));
+    assertions.dedup_by(|a, b| a.line == b.line && a.text == b.text);
+    assertions
+}
+
+fn is_assertion_macro(macro_name: &str) -> bool {
+    matches!(
+        macro_name,
+        "assert" | "assert_eq" | "assert_ne" | "assert_matches" | "matches"
+    ) || macro_name.starts_with("insta::assert")
+        || macro_name.contains("snapshot")
 }
 
 pub fn find_owner_function<'a>(
@@ -321,6 +515,71 @@ fn function_name(trimmed: &str) -> Option<String> {
         }
     }
     if name.is_empty() { None } else { Some(name) }
+}
+
+fn is_test_file(path: &Path) -> bool {
+    path.starts_with("tests")
+        || path
+            .to_string_lossy()
+            .replace('\\', "/")
+            .contains("/tests/")
+}
+
+#[derive(Clone, Debug)]
+struct LineIndex {
+    starts: Vec<usize>,
+}
+
+impl LineIndex {
+    fn new(text: &str) -> Self {
+        let mut starts = vec![0];
+        for (index, byte) in text.bytes().enumerate() {
+            if byte == b'\n' {
+                starts.push(index + 1);
+            }
+        }
+        Self { starts }
+    }
+
+    fn line(&self, offset: TextSize) -> usize {
+        self.line_from_offset(text_size_to_usize(offset))
+    }
+
+    fn line_for_range_end(&self, offset: TextSize) -> usize {
+        self.line_from_offset(text_size_to_usize(offset).saturating_sub(1))
+    }
+
+    fn line_from_offset(&self, offset: usize) -> usize {
+        match self.starts.binary_search(&offset) {
+            Ok(index) => index + 1,
+            Err(index) => index.max(1),
+        }
+    }
+}
+
+fn text_size_to_usize(offset: TextSize) -> usize {
+    let value: u32 = offset.into();
+    value as usize
+}
+
+fn slice_text(text: &str, start: TextSize, end: TextSize) -> String {
+    let start = text_size_to_usize(start);
+    let end = text_size_to_usize(end);
+    text.get(start..end).unwrap_or("").to_string()
+}
+
+fn slice_macro_call_text(text: &str, start: TextSize, end: TextSize) -> String {
+    let start = text_size_to_usize(start);
+    let mut end = text_size_to_usize(end);
+    let bytes = text.as_bytes();
+    let mut cursor = end;
+    while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() && bytes[cursor] != b'\n' {
+        cursor += 1;
+    }
+    if bytes.get(cursor) == Some(&b';') {
+        end = cursor + 1;
+    }
+    text.get(start..end).unwrap_or("").trim().to_string()
 }
 
 fn collect_function_body(lines: &[&str], start: usize) -> (usize, String) {
@@ -631,6 +890,77 @@ pub fn price(amount: i32) -> i32 {
         assert_eq!(
             nodes[0].owner.as_ref().map(|owner| owner.0.as_str()),
             Some("src/lib.rs::price")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parser_adapter_extracts_multiline_assertion_macro() -> Result<(), String> {
+        let adapter = RaRustSyntaxAdapter;
+        let facts = adapter.summarize_file(
+            Path::new("tests/pricing.rs"),
+            r#"
+use fixture::discounted_total;
+
+#[test]
+#[cfg_attr(feature = "slow", ignore)]
+fn exact_boundary_value_is_checked() {
+    assert_eq!(
+        discounted_total(100, 100),
+        90
+    );
+}
+"#,
+        )?;
+
+        assert_eq!(facts.tests.len(), 1);
+        assert_eq!(facts.tests[0].name, "exact_boundary_value_is_checked");
+        assert_eq!(facts.tests[0].start_line, 6);
+        assert_eq!(facts.tests[0].assertions.len(), 1);
+        assert_eq!(facts.tests[0].assertions[0].line, 7);
+        assert_eq!(
+            facts.tests[0].assertions[0].strength,
+            OracleStrength::Strong
+        );
+        assert!(facts.tests[0].assertions[0].text.contains("assert_eq!"));
+        assert!(
+            facts.tests[0].assertions[0]
+                .text
+                .contains("discounted_total(100, 100)")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parser_adapter_treats_unwrap_and_expect_as_smoke_oracles() -> Result<(), String> {
+        let adapter = RaRustSyntaxAdapter;
+        let expect_call = format!(r#"    parse("").{}("parse succeeds");"#, "expect");
+        let unwrap_call = format!(r#"    parse("42").{}();"#, "unwrap");
+        let source = [
+            "",
+            "#[test]",
+            "fn only_smoke_checks_error_path() {",
+            expect_call.as_str(),
+            unwrap_call.as_str(),
+            "}",
+            "",
+        ]
+        .join("\n");
+        let facts = adapter.summarize_file(Path::new("tests/errors.rs"), &source)?;
+
+        let assertions = &facts.tests[0].assertions;
+        assert_eq!(assertions.len(), 2);
+        assert_eq!(assertions[0].strength, OracleStrength::Smoke);
+        assert_eq!(assertions[1].strength, OracleStrength::Smoke);
+        assert!(
+            assertions
+                .iter()
+                .any(|assertion| assertion.text.contains("expect"))
+        );
+        assert!(
+            assertions
+                .iter()
+                .any(|assertion| assertion.text.contains("unwrap"))
         );
         Ok(())
     }

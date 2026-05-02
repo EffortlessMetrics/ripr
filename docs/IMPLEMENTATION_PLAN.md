@@ -575,7 +575,7 @@ Deliverables:
 - [x] No public API commitment to a parser crate.
 - [x] Parser substrate decision recorded in
       [ADR 0006](adr/0006-rust-syntax-substrate.md).
-- [ ] Parser-backed `summarize_file` implementation.
+- [x] Parser-backed `summarize_file` implementation.
 
 Acceptance:
 
@@ -590,17 +590,17 @@ Purpose: extract tests and oracles from syntax nodes instead of line substrings.
 
 Deliverables:
 
-- [ ] `#[test]` function extraction.
-- [ ] Stacked attribute preservation.
-- [ ] Multi-line assertion macro extraction.
-- [ ] `assert!`, `assert_eq!`, `assert_ne!`, `assert_matches!`, and `matches!`
+- [x] `#[test]` function extraction.
+- [x] Stacked attribute preservation.
+- [x] Multi-line assertion macro extraction.
+- [x] `assert!`, `assert_eq!`, `assert_ne!`, `assert_matches!`, and `matches!`
       handling.
-- [ ] `unwrap` and `expect` smoke-oracle handling.
+- [x] `unwrap` and `expect` smoke-oracle handling.
 
 Acceptance:
 
-- [ ] Fixture output remains deterministic.
-- [ ] Line scanning is fallback only.
+- [x] Fixture output remains deterministic.
+- [x] Line scanning is fallback only.
 
 ## PR 6: `ast-probe-ownership`
 

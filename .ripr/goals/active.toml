@@ -65,7 +65,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/ast-test-oracle-extraction"
-status = "ready"
+status = "done"
 branch = "analysis/ast-test-oracle-extraction"
 stackable = false
 requires_human_merge = true
@@ -81,15 +81,11 @@ commands = [
 
 [[work_item]]
 id = "analysis/ast-probe-ownership"
-status = "blocked"
+status = "ready"
 branch = "analysis/ast-probe-ownership"
 stackable = false
 requires_human_merge = true
 acceptance = "diff spans map to stable owner symbols without cross-linking duplicate names"
-blocked_by = [
-  "analysis/syntax-adapter-mvp"
-]
-blocked_reason = "requires syntax node and owner facts"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",

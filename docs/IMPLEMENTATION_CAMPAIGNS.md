@@ -118,8 +118,8 @@ Work items:
 | `analysis/file-facts-model` | done | FileFacts DTOs exist and the lexical scanner fills them without output drift. |
 | `analysis/syntax-adapter-mvp` | done | RustSyntaxAdapter boundary exists with lexical adapter compatibility. |
 | `design/rust-syntax-substrate` | done | ADR 0006 selects `ra_ap_syntax` behind the adapter and keeps parser types internal. |
-| `analysis/ast-test-oracle-extraction` | ready | Extract tests and assertion/oracle shapes through the adapter boundary. |
-| `analysis/ast-probe-ownership` | blocked | Depends on syntax node and owner facts. |
+| `analysis/ast-test-oracle-extraction` | done | Parser-backed facts identify test functions, assertion macros, and unwrap/expect smoke oracles. |
+| `analysis/ast-probe-ownership` | ready | Map diff spans to stable owner symbols. |
 | `analysis/ast-probe-generation` | blocked | Depends on ownership and syntax-backed facts. |
 
 Dependencies:

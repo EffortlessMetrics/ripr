@@ -76,3 +76,6 @@ how future PRs are scoped or reviewed.
   node facts while preserving fixture and golden output.
 - Added ADR 0006 to select `ra_ap_syntax` as the Campaign 2 Rust parser
   substrate while keeping parser-specific types behind the syntax adapter.
+- Added parser-backed test and oracle extraction through `RustSyntaxAdapter`,
+  including stacked test attributes, multi-line assertion macros, and
+  unwrap/expect smoke-oracle facts without fixture output drift.
