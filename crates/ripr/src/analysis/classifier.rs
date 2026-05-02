@@ -1,5 +1,6 @@
 use super::rust_index::{
-    FunctionSummary, RustIndex, TestSummary, extract_identifier_tokens, extract_literals,
+    FunctionSummary, OracleFact, RustIndex, TestSummary, extract_identifier_tokens,
+    extract_literals,
 };
 use crate::domain::*;
 use std::path::Path;
@@ -287,6 +288,7 @@ fn reveal_evidence(
     let probe_tokens = extract_identifier_tokens(&probe.expression);
     let mut related = Vec::new();
     let mut strongest = OracleStrength::None;
+    let mut strongest_kind = OracleKind::Unknown;
     let mut matched_any = false;
 
     for test in related_tests {
@@ -304,18 +306,20 @@ fn reveal_evidence(
             let token_match = probe_tokens
                 .iter()
                 .any(|token| token.len() > 3 && assertion.text.contains(token));
-            let family_match = oracle_matches_family(&probe.family, &assertion.text);
+            let family_match = oracle_matches_family(&probe.family, assertion);
             if token_match || family_match || test.assertions.len() == 1 {
                 matched_any = true;
-                if assertion.strength.rank() > strongest.rank() {
-                    strongest = assertion.strength.clone();
+                let relative_strength = probe_relative_oracle_strength(&probe.family, assertion);
+                if relative_strength.rank() > strongest.rank() {
+                    strongest = relative_strength.clone();
+                    strongest_kind = assertion.kind.clone();
                 }
                 related.push(RelatedTest {
                     name: test.name.clone(),
                     file: test.file.clone(),
                     line: test.start_line,
                     oracle: Some(assertion.text.clone()),
-                    oracle_strength: assertion.strength.clone(),
+                    oracle_strength: relative_strength,
                 });
             }
         }
@@ -342,17 +346,51 @@ fn reveal_evidence(
         OracleStrength::Strong => StageEvidence::new(
             StageState::Yes,
             Confidence::Medium,
-            "Strong oracle found: exact equality, exact variant, or pattern assertion",
+            match strongest_kind {
+                OracleKind::ExactErrorVariant => {
+                    "Strong oracle found: exact error variant assertion"
+                }
+                OracleKind::WholeObjectEquality => {
+                    "Strong oracle found: whole-object equality assertion"
+                }
+                _ => "Strong oracle found: exact value or pattern assertion",
+            },
         ),
         OracleStrength::Medium => StageEvidence::new(
             StageState::Weak,
             Confidence::Medium,
-            "Medium oracle found: snapshot, property, or partial structural assertion",
+            match strongest_kind {
+                OracleKind::Snapshot => {
+                    "Medium oracle found: snapshot assertion observes the changed behavior"
+                }
+                OracleKind::MockExpectation => {
+                    "Medium oracle found: mock or expectation observes the changed behavior"
+                }
+                _ => "Medium oracle found: property or partial structural assertion",
+            },
         ),
-        OracleStrength::Weak | OracleStrength::Smoke => StageEvidence::new(
+        OracleStrength::Weak => StageEvidence::new(
             StageState::Weak,
             Confidence::High,
-            "Only weak or smoke oracle found, such as is_ok/is_err, unwrap/expect, broad relational assertion, or non-empty check",
+            match (&strongest_kind, &probe.family) {
+                (OracleKind::BroadError, ProbeFamily::ErrorPath) => {
+                    "Only broad error oracle found; is_err() does not discriminate exact error variants"
+                }
+                (OracleKind::BroadError, _) => {
+                    "Only broad error oracle found; it may not discriminate the changed behavior exactly"
+                }
+                (OracleKind::RelationalCheck, _) => {
+                    "Only relational oracle found; it may not discriminate the changed value exactly"
+                }
+                _ => {
+                    "Only weak oracle found, such as a broad relational assertion or non-empty check"
+                }
+            },
+        ),
+        OracleStrength::Smoke => StageEvidence::new(
+            StageState::Weak,
+            Confidence::High,
+            "Only smoke oracle found, such as unwrap/expect or execution without a discriminator",
         ),
         OracleStrength::None => StageEvidence::new(
             StageState::No,
@@ -369,39 +407,104 @@ fn reveal_evidence(
     (observe, discriminate, related)
 }
 
-fn oracle_matches_family(family: &ProbeFamily, assertion: &str) -> bool {
+fn oracle_matches_family(family: &ProbeFamily, assertion: &OracleFact) -> bool {
+    let text = assertion.text.as_str();
     match family {
         ProbeFamily::ErrorPath => {
-            assertion.contains("Err")
-                || assertion.contains("is_err")
-                || assertion.contains("Error::")
+            matches!(
+                assertion.kind,
+                OracleKind::ExactErrorVariant | OracleKind::BroadError
+            ) || text.contains("Err")
+                || text.contains("Error::")
         }
         ProbeFamily::SideEffect => {
-            assertion.contains("expect")
-                || assertion.contains("mock")
-                || assertion.contains("saved")
-                || assertion.contains("published")
+            matches!(assertion.kind, OracleKind::MockExpectation)
+                || text.contains("expect")
+                || text.contains("mock")
+                || text.contains("saved")
+                || text.contains("published")
         }
         ProbeFamily::FieldConstruction => {
-            assertion.contains('.') || assertion.contains("assert_eq!")
+            matches!(
+                assertion.kind,
+                OracleKind::ExactValue
+                    | OracleKind::WholeObjectEquality
+                    | OracleKind::RelationalCheck
+                    | OracleKind::Snapshot
+            ) || text.contains('.')
         }
         ProbeFamily::Predicate => {
-            assertion.contains("assert_eq!")
-                || assertion.contains("assert!")
-                || assertion.contains("matches!")
+            matches!(
+                assertion.kind,
+                OracleKind::ExactValue
+                    | OracleKind::RelationalCheck
+                    | OracleKind::ExactErrorVariant
+                    | OracleKind::Snapshot
+            )
         }
         ProbeFamily::ReturnValue => {
-            assertion.contains("assert_eq!")
-                || assertion.contains("assert!")
-                || assertion.contains("is_ok")
+            matches!(
+                assertion.kind,
+                OracleKind::ExactValue
+                    | OracleKind::WholeObjectEquality
+                    | OracleKind::RelationalCheck
+                    | OracleKind::Snapshot
+                    | OracleKind::SmokeOnly
+            )
         }
-        ProbeFamily::CallDeletion => assertion.contains("assert") || assertion.contains("expect"),
+        ProbeFamily::CallDeletion => {
+            matches!(
+                assertion.kind,
+                OracleKind::MockExpectation
+                    | OracleKind::ExactValue
+                    | OracleKind::RelationalCheck
+                    | OracleKind::SmokeOnly
+            ) || text.contains("assert")
+                || text.contains("expect")
+        }
         ProbeFamily::MatchArm => {
-            assertion.contains("matches!")
-                || assertion.contains("assert_matches!")
-                || assertion.contains("assert_eq!")
+            matches!(
+                assertion.kind,
+                OracleKind::ExactErrorVariant
+                    | OracleKind::ExactValue
+                    | OracleKind::RelationalCheck
+                    | OracleKind::Snapshot
+            )
         }
         ProbeFamily::StaticUnknown => false,
+    }
+}
+
+fn probe_relative_oracle_strength(family: &ProbeFamily, assertion: &OracleFact) -> OracleStrength {
+    match family {
+        ProbeFamily::ErrorPath => match assertion.kind {
+            OracleKind::ExactErrorVariant => OracleStrength::Strong,
+            OracleKind::BroadError => OracleStrength::Weak,
+            OracleKind::SmokeOnly => OracleStrength::Smoke,
+            _ => assertion.strength.clone(),
+        },
+        ProbeFamily::ReturnValue
+        | ProbeFamily::Predicate
+        | ProbeFamily::FieldConstruction
+        | ProbeFamily::MatchArm => match assertion.kind {
+            OracleKind::ExactValue
+            | OracleKind::ExactErrorVariant
+            | OracleKind::WholeObjectEquality => OracleStrength::Strong,
+            OracleKind::Snapshot | OracleKind::MockExpectation => OracleStrength::Medium,
+            OracleKind::RelationalCheck | OracleKind::BroadError => OracleStrength::Weak,
+            OracleKind::SmokeOnly => OracleStrength::Smoke,
+            OracleKind::Unknown => OracleStrength::Unknown,
+        },
+        ProbeFamily::SideEffect | ProbeFamily::CallDeletion => match assertion.kind {
+            OracleKind::MockExpectation => OracleStrength::Medium,
+            OracleKind::ExactValue | OracleKind::WholeObjectEquality => OracleStrength::Strong,
+            OracleKind::RelationalCheck | OracleKind::BroadError => OracleStrength::Weak,
+            OracleKind::SmokeOnly => OracleStrength::Smoke,
+            OracleKind::ExactErrorVariant => OracleStrength::Medium,
+            OracleKind::Snapshot => OracleStrength::Medium,
+            OracleKind::Unknown => OracleStrength::Unknown,
+        },
+        ProbeFamily::StaticUnknown => OracleStrength::Unknown,
     }
 }
 
@@ -506,7 +609,11 @@ fn missing_evidence(
         missing.push("No relevant oracle was detected".to_string());
     }
     if discriminate.state != StageState::Yes {
-        missing.push("No strong discriminator was detected".to_string());
+        if matches!(probe.family, ProbeFamily::ErrorPath) {
+            missing.push("No exact error variant discriminator was detected".to_string());
+        } else {
+            missing.push("No strong discriminator was detected".to_string());
+        }
     }
     missing.sort();
     missing.dedup();
@@ -784,6 +891,188 @@ mod tests {
     }
 
     #[test]
+    fn given_exact_error_variant_assertion_when_error_path_probe_changes_then_oracle_is_strong() {
+        let index = RustIndex {
+            functions: vec![function("src/lib.rs", "score")],
+            tests: vec![test_with_oracle(
+                "tests/errors.rs",
+                "revoked_token_is_exact",
+                "score(\"\")",
+                oracle_fact(
+                    "assert_matches!(score(\"\"), Err(AuthError::RevokedToken));",
+                    OracleKind::ExactErrorVariant,
+                    OracleStrength::Strong,
+                ),
+            )],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:2:error_path".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId("src/lib.rs::score".to_string())),
+            family: ProbeFamily::ErrorPath,
+            delta: DeltaKind::Control,
+            before: None,
+            after: Some("Err(AuthError::RevokedToken)".to_string()),
+            expression: "Err(AuthError::RevokedToken)".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+
+        assert_eq!(finding.ripr.reveal.discriminate.state, StageState::Yes);
+        assert_eq!(
+            finding.ripr.reveal.discriminate.summary,
+            "Strong oracle found: exact error variant assertion"
+        );
+        assert_eq!(
+            finding.related_tests[0].oracle_strength,
+            OracleStrength::Strong
+        );
+    }
+
+    #[test]
+    fn given_broad_is_err_assertion_when_error_variant_changes_then_oracle_is_weak() {
+        let index = RustIndex {
+            functions: vec![function("src/lib.rs", "score")],
+            tests: vec![test_with_oracle(
+                "tests/errors.rs",
+                "revoked_token_is_broad",
+                "score(\"\")",
+                oracle_fact(
+                    "assert!(score(\"\").is_err());",
+                    OracleKind::BroadError,
+                    OracleStrength::Weak,
+                ),
+            )],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:2:error_path".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId("src/lib.rs::score".to_string())),
+            family: ProbeFamily::ErrorPath,
+            delta: DeltaKind::Control,
+            before: None,
+            after: Some("Err(AuthError::RevokedToken)".to_string()),
+            expression: "Err(AuthError::RevokedToken)".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+
+        assert_eq!(finding.ripr.reveal.discriminate.state, StageState::Weak);
+        assert_eq!(
+            finding.ripr.reveal.discriminate.summary,
+            "Only broad error oracle found; is_err() does not discriminate exact error variants"
+        );
+        assert_eq!(
+            finding.related_tests[0].oracle_strength,
+            OracleStrength::Weak
+        );
+        assert!(
+            finding
+                .missing
+                .iter()
+                .any(|missing| { missing == "No exact error variant discriminator was detected" })
+        );
+    }
+
+    #[test]
+    fn given_unwrap_only_test_when_return_value_probe_changes_then_oracle_is_smoke() {
+        let unwrap_only = format!("score(1).{}();", "unwrap");
+        let index = RustIndex {
+            functions: vec![FunctionSummary {
+                body: "pub fn score(input: i32) -> Result<i32, Error> { Ok(input) }".to_string(),
+                ..function("src/lib.rs", "score")
+            }],
+            tests: vec![test_with_oracle(
+                "tests/score.rs",
+                "score_smoke",
+                "score(1)",
+                oracle_fact(&unwrap_only, OracleKind::SmokeOnly, OracleStrength::Smoke),
+            )],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:2:return_value".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId("src/lib.rs::score".to_string())),
+            family: ProbeFamily::ReturnValue,
+            delta: DeltaKind::Value,
+            before: None,
+            after: Some("return Ok(input + 1)".to_string()),
+            expression: "return Ok(input + 1)".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+
+        assert_eq!(finding.ripr.reveal.discriminate.state, StageState::Weak);
+        assert_eq!(
+            finding.ripr.reveal.discriminate.summary,
+            "Only smoke oracle found, such as unwrap/expect or execution without a discriminator"
+        );
+        assert_eq!(
+            finding.related_tests[0].oracle_strength,
+            OracleStrength::Smoke
+        );
+    }
+
+    #[test]
+    fn given_broad_error_assertion_when_non_error_probe_changes_then_gap_stays_generic() {
+        let index = RustIndex {
+            functions: vec![function("src/lib.rs", "score")],
+            tests: vec![test_with_oracle(
+                "tests/score.rs",
+                "score_call_is_broad",
+                "score(1)",
+                oracle_fact(
+                    "assert!(score(1).is_err());",
+                    OracleKind::BroadError,
+                    OracleStrength::Weak,
+                ),
+            )],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:2:call_deletion".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId("src/lib.rs::score".to_string())),
+            family: ProbeFamily::CallDeletion,
+            delta: DeltaKind::Effect,
+            before: None,
+            after: Some("client.send(input)".to_string()),
+            expression: "client.send(input)".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+
+        assert_eq!(finding.ripr.reveal.discriminate.state, StageState::Weak);
+        assert_eq!(
+            finding.ripr.reveal.discriminate.summary,
+            "Only broad error oracle found; it may not discriminate the changed behavior exactly"
+        );
+        assert!(
+            finding
+                .missing
+                .iter()
+                .any(|missing| { missing == "No strong discriminator was detected" })
+        );
+        assert!(
+            !finding
+                .missing
+                .iter()
+                .any(|missing| { missing == "No exact error variant discriminator was detected" })
+        );
+    }
+
+    #[test]
     fn recommended_next_step_matches_probe_family_and_exposure_class() {
         let predicate_probe = probe(ProbeFamily::Predicate, DeltaKind::Control, "value > 10");
         let return_value_probe = probe(ProbeFamily::ReturnValue, DeltaKind::Value, "value + 1");
@@ -900,27 +1189,42 @@ mod tests {
     }
 
     fn test(file: &str, name: &str, call: &str, assertion: &str) -> TestSummary {
+        test_with_oracle(
+            file,
+            name,
+            call,
+            oracle_fact(assertion, OracleKind::ExactValue, OracleStrength::Strong),
+        )
+    }
+
+    fn test_with_oracle(file: &str, name: &str, call: &str, oracle: OracleFact) -> TestSummary {
+        let body = format!("{call};\n{}", oracle.text.as_str());
         TestSummary {
             name: name.to_string(),
             file: PathBuf::from(file),
             start_line: 1,
             end_line: 4,
-            body: format!("{call};\n{assertion}"),
+            body,
             calls: vec![CallFact {
                 line: 1,
                 name: "score".to_string(),
                 text: call.to_string(),
             }],
-            assertions: vec![OracleFact {
-                line: 2,
-                text: assertion.to_string(),
-                strength: OracleStrength::Strong,
-                observed_tokens: extract_identifier_tokens(assertion),
-            }],
+            assertions: vec![oracle],
             literals: vec![LiteralFact {
                 line: 1,
                 value: "1".to_string(),
             }],
+        }
+    }
+
+    fn oracle_fact(assertion: &str, kind: OracleKind, strength: OracleStrength) -> OracleFact {
+        OracleFact {
+            line: 2,
+            text: assertion.to_string(),
+            kind,
+            strength,
+            observed_tokens: extract_identifier_tokens(assertion),
         }
     }
 }

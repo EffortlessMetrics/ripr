@@ -114,3 +114,7 @@ how future PRs are scoped or reviewed.
   Dependency Review, and `cargo xtask check-supply-chain`.
 - Added the unknown stop-reason invariant so unknown findings surface explicit
   stop reasons across domain, JSON/context, GitHub annotation, and human output.
+- Added probe-relative oracle kind and strength classification so exact error
+  variants, exact values, broad errors, relational checks, snapshots, mock
+  expectations, smoke-only checks, and unknown oracles are ranked by the changed
+  probe family.

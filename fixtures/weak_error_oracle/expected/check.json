@@ -24,16 +24,16 @@
         "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
         "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior reaches an effect boundary such as a call, write, publish, save, or send"},
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
-        "discriminate": {"state":"weak","confidence":"high","summary":"Only weak or smoke oracle found, such as is_ok/is_err, unwrap/expect, broad relational assertion, or non-empty check"}
+        "discriminate": {"state":"weak","confidence":"high","summary":"Only broad error oracle found; it may not discriminate the changed behavior exactly"}
        },
-      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior reaches an effect boundary such as a call, write, publish, save, or send", "Only weak or smoke oracle found, such as is_ok/is_err, unwrap/expect, broad relational assertion, or non-empty check", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach authenticate: empty_token_is_rejected"],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior reaches an effect boundary such as a call, write, publish, save, or send", "Only broad error oracle found; it may not discriminate the changed behavior exactly", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach authenticate: empty_token_is_rejected"],
       "missing": ["No strong discriminator was detected"],
       "related_tests": [
         {
           "name": "empty_token_is_rejected",
           "file": "tests/errors.rs",
           "line": 4,
-          "oracle_strength": "smoke",
+          "oracle_strength": "weak",
           "oracle": "assert!(authenticate(\"\").is_err());"
         }
       ],
@@ -58,16 +58,16 @@
         "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
         "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior can propagate through a return or Result boundary"},
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
-        "discriminate": {"state":"weak","confidence":"high","summary":"Only weak or smoke oracle found, such as is_ok/is_err, unwrap/expect, broad relational assertion, or non-empty check"}
+        "discriminate": {"state":"weak","confidence":"high","summary":"Only broad error oracle found; is_err() does not discriminate exact error variants"}
        },
-      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior can propagate through a return or Result boundary", "Only weak or smoke oracle found, such as is_ok/is_err, unwrap/expect, broad relational assertion, or non-empty check", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach authenticate: empty_token_is_rejected"],
-      "missing": ["No strong discriminator was detected"],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior can propagate through a return or Result boundary", "Only broad error oracle found; is_err() does not discriminate exact error variants", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach authenticate: empty_token_is_rejected"],
+      "missing": ["No exact error variant discriminator was detected"],
       "related_tests": [
         {
           "name": "empty_token_is_rejected",
           "file": "tests/errors.rs",
           "line": 4,
-          "oracle_strength": "smoke",
+          "oracle_strength": "weak",
           "oracle": "assert!(authenticate(\"\").is_err());"
         }
       ],
@@ -92,16 +92,16 @@
         "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
         "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior can propagate through a return or Result boundary"},
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
-        "discriminate": {"state":"weak","confidence":"high","summary":"Only weak or smoke oracle found, such as is_ok/is_err, unwrap/expect, broad relational assertion, or non-empty check"}
+        "discriminate": {"state":"weak","confidence":"high","summary":"Only broad error oracle found; it may not discriminate the changed behavior exactly"}
        },
-      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior can propagate through a return or Result boundary", "Only weak or smoke oracle found, such as is_ok/is_err, unwrap/expect, broad relational assertion, or non-empty check", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach authenticate: empty_token_is_rejected"],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior can propagate through a return or Result boundary", "Only broad error oracle found; it may not discriminate the changed behavior exactly", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach authenticate: empty_token_is_rejected"],
       "missing": ["No strong discriminator was detected"],
       "related_tests": [
         {
           "name": "empty_token_is_rejected",
           "file": "tests/errors.rs",
           "line": 4,
-          "oracle_strength": "smoke",
+          "oracle_strength": "weak",
           "oracle": "assert!(authenticate(\"\").is_err());"
         }
       ],

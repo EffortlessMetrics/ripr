@@ -1,4 +1,33 @@
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum OracleKind {
+    ExactValue,
+    ExactErrorVariant,
+    WholeObjectEquality,
+    Snapshot,
+    RelationalCheck,
+    BroadError,
+    SmokeOnly,
+    MockExpectation,
+    Unknown,
+}
+
+impl OracleKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            OracleKind::ExactValue => "exact_value",
+            OracleKind::ExactErrorVariant => "exact_error_variant",
+            OracleKind::WholeObjectEquality => "whole_object_equality",
+            OracleKind::Snapshot => "snapshot",
+            OracleKind::RelationalCheck => "relational_check",
+            OracleKind::BroadError => "broad_error",
+            OracleKind::SmokeOnly => "smoke_only",
+            OracleKind::MockExpectation => "mock_expectation",
+            OracleKind::Unknown => "unknown",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OracleStrength {
     Strong,
     Medium,
@@ -103,4 +132,28 @@ pub struct RiprEvidence {
     pub infect: StageEvidence,
     pub propagate: StageEvidence,
     pub reveal: RevealEvidence,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::OracleKind;
+
+    #[test]
+    fn oracle_kind_labels_are_stable_contract_terms() {
+        let cases = [
+            (OracleKind::ExactValue, "exact_value"),
+            (OracleKind::ExactErrorVariant, "exact_error_variant"),
+            (OracleKind::WholeObjectEquality, "whole_object_equality"),
+            (OracleKind::Snapshot, "snapshot"),
+            (OracleKind::RelationalCheck, "relational_check"),
+            (OracleKind::BroadError, "broad_error"),
+            (OracleKind::SmokeOnly, "smoke_only"),
+            (OracleKind::MockExpectation, "mock_expectation"),
+            (OracleKind::Unknown, "unknown"),
+        ];
+
+        for (kind, label) in cases {
+            assert_eq!(kind.as_str(), label);
+        }
+    }
 }

@@ -6,7 +6,7 @@ mod support;
 
 pub use classification::ExposureClass;
 pub use evidence::{
-    Confidence, OracleStrength, RevealEvidence, RiprEvidence, StageEvidence, StageState,
+    Confidence, OracleKind, OracleStrength, RevealEvidence, RiprEvidence, StageEvidence, StageState,
 };
 pub use probe::{DeltaKind, Finding, Probe, ProbeFamily, RelatedTest, StopReason};
 pub use summary::Summary;

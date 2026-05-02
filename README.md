@@ -243,8 +243,8 @@ Current capabilities:
 | Capability | Current state | Next checkpoint |
 | --- | --- | --- |
 | Distribution | Crate and extension packaging paths exist. | Verify one-click editor install from a fresh profile. |
-| Diff analysis | Syntax-backed changed-line probes with owner symbols, parser-backed probe facts, and explicit stop reasons for unknowns. | Local flow and activation values. |
-| Test discovery | Parser-backed test and assertion facts. | Probe-relative oracle strength. |
+| Diff analysis | Syntax-backed changed-line probes with owner symbols, parser-backed probe facts, explicit stop reasons for unknowns, and probe-relative oracle strength. | Local flow and activation values. |
+| Test discovery | Parser-backed test and assertion facts with exact, broad, relational, snapshot, mock, smoke, and unknown oracle kinds. | Activation values tied to changed behavior. |
 | Output | Human, JSON, context, and GitHub annotation formats include stop reasons for unknown findings. | Evidence-first output. |
 | LSP | Experimental sidecar. | Evidence-aware diagnostics, hover, and context actions. |
 | Agent context | Compact context packet. | Test-writing brief with missing values and assertion shape. |
@@ -253,7 +253,6 @@ Current capabilities:
 The active product work is to make findings more evidence-first:
 
 ```text
-probe-relative oracle strength
 local flow
 activation/value modeling
 evidence-first output
