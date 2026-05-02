@@ -1,4 +1,5 @@
 mod commands;
+mod doctor;
 mod help;
 mod parse;
 
