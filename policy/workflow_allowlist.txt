@@ -8,5 +8,6 @@
 # while keeping the budget visible.
 
 .github/workflows/ci.yml|3|CI run blocks call direct Cargo or npm commands.
+.github/workflows/coverage.yml|1|Coverage workflow runs one cargo-llvm-cov command.
 .github/workflows/publish-extension.yml|20|Release workflow includes marketplace packaging and publishing orchestration.
 .github/workflows/release-server-binaries.yml|30|Release workflow packages platform server binaries.

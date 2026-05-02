@@ -140,6 +140,15 @@ npm run compile
 npm run package
 ```
 
+The coverage workflow currently runs:
+
+```bash
+cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
+```
+
+It uploads `lcov.info` to Codecov with `fail_ci_if_error: false` while the
+coverage integration is being established.
+
 Release workflows handle extension publishing and server binary releases.
 
 ## Principles
@@ -163,11 +172,11 @@ Planned CI work:
 - cache Cargo and npm dependencies without hiding stale-lockfile failures
 - decide whether CI should call `check-pr` directly or keep the current
   explicit workflow steps
-- wire fixture and golden checks into CI once the fixture lab has executable
-  behavior fixtures
 - add markdown/link checks for docs-heavy PRs
 - add README capability snapshot consistency checks
 - add README state and Markdown link checks
+- decide when Codecov upload failures should become blocking after the first
+  successful coverage baseline
 - add SARIF validation when SARIF output exists
 - add opt-in policy modes:
   - advisory

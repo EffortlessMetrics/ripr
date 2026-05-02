@@ -107,3 +107,6 @@ how future PRs are scoped or reviewed.
 - Switched Open VSX release workflow and docs to the `OVSX_PAT` repository
   secret and added manual workflow switches for registry-specific extension
   publishing.
+- Added root README status/package/marketplace badges, reset manual VS
+  Marketplace install badges to the first-launch `0 installs` seed, and added
+  an advisory Codecov coverage workflow.
