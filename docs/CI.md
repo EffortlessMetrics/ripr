@@ -171,9 +171,11 @@ cargo xtask check-supply-chain
 ```
 
 Dependabot is configured in `.github/dependabot.yml` for Cargo dependencies,
-the VS Code extension npm package, and GitHub Actions. Dependabot PRs are not
-auto-merged; they must pass the normal CI, coverage, security, and `xtask`
-checks before merge.
+the VS Code extension npm package, and GitHub Actions. Routine version-update
+PRs are limited to minor and patch updates. Major updates should be deliberate,
+scoped PRs because they often change toolchain, release, or runtime behavior.
+Dependabot PRs are not auto-merged; they must pass the normal CI, coverage,
+security, and `xtask` checks before merge.
 
 GitHub-hosted security settings are tracked in
 [Repository settings](REPO_SETTINGS.md). Dependency Graph, Dependabot alerts,
