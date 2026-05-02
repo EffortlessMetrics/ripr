@@ -1,0 +1,21 @@
+# Allowlisted process-spawn surfaces.
+#
+# Format:
+# path|pattern|max_count|owner|reason
+#
+# Process spawning belongs in adapters, smoke tests, and xtask. New occurrences
+# must name the owner and reason instead of drifting into domain or analysis
+# logic unnoticed.
+
+crates/ripr/src/analysis/diff.rs|use std::process::Command|1|analysis/diff|Git diff adapter imports Command for the git fallback.
+crates/ripr/src/analysis/diff.rs|Command::new|1|analysis/diff|Git diff adapter shells out to git.
+crates/ripr/src/cli.rs|Command::new|2|cli/doctor|Doctor command probes git and cargo availability.
+crates/ripr/tests/cli_smoke.rs|use std::process::Command|1|cli-tests|Smoke tests run the built CLI binary.
+crates/ripr/tests/cli_smoke.rs|Command::new|2|cli-tests|Smoke tests run version and help commands.
+xtask/src/main.rs|Command::new|2|repo-policy|xtask is the repository command runner for Cargo and git.
+editors/vscode/src/client.ts|child_process|1|lsp/editor|VS Code client invokes ripr context through the resolved server command.
+editors/vscode/src/client.ts|cp.execFile|1|lsp/editor|VS Code client invokes ripr context without shell expansion.
+editors/vscode/src/downloader.ts|child_process|1|lsp/editor|Downloader extracts archives with platform tools.
+editors/vscode/src/downloader.ts|cp.execFile|1|lsp/editor|Downloader invokes tar or PowerShell archive extraction without shell expansion.
+editors/vscode/src/serverResolver.ts|child_process|1|lsp/editor|Server resolver probes candidate ripr binaries.
+editors/vscode/src/serverResolver.ts|cp.spawn|1|lsp/editor|Server resolver runs ripr --version without shell expansion.

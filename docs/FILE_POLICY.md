@@ -90,6 +90,40 @@ Executable exceptions are listed in
 [executable_allowlist.txt](../policy/executable_allowlist.txt). The list should
 usually stay empty.
 
+## Generated Files
+
+Generated build output, downloaded release assets, archives, packaged VSIX
+files, and local cache output should not be checked in.
+
+Intentional generated artifacts must be allowlisted:
+
+- Cargo and npm lockfiles
+- fixture golden outputs
+- future generated schema or metrics artifacts with explicit owners
+
+Generated-file exceptions are listed in
+[generated_allowlist.txt](../policy/generated_allowlist.txt).
+
+## Dependency Surfaces
+
+Dependency managers are approved only on explicit surfaces:
+
+- Cargo workspace and package manifests
+- the VS Code extension npm manifest and lockfile
+- fixture input manifests used as analyzer inputs
+
+New dependency manager files must be allowlisted with owner and reason. The
+allowlist lives in [dependency_allowlist.txt](../policy/dependency_allowlist.txt).
+
+## Process And Network Surfaces
+
+Process spawning and network access belong in explicit adapter, tooling, release,
+or extension surfaces.
+
+Allowlisted process-spawn surfaces live in
+[process_allowlist.txt](../policy/process_allowlist.txt). Allowlisted network
+surfaces live in [network_allowlist.txt](../policy/network_allowlist.txt).
+
 ## Checks
 
 Run:
@@ -98,6 +132,10 @@ Run:
 cargo xtask check-file-policy
 cargo xtask check-executable-files
 cargo xtask check-workflows
+cargo xtask check-generated
+cargo xtask check-dependencies
+cargo xtask check-process-policy
+cargo xtask check-network-policy
 ```
 
 These checks are also included in `cargo xtask ci-fast` and CI.

@@ -110,10 +110,10 @@ Acceptance:
 
 Future policy PRs:
 
-- [ ] generated-file policy
-- [ ] dependency-change policy
-- [ ] process-spawn policy
-- [ ] network policy
+- [x] generated-file policy
+- [x] dependency-surface policy
+- [x] process-spawn policy
+- [x] network policy
 - [ ] workspace-shape policy
 - [ ] architecture import guard
 - [ ] public API guard
@@ -142,6 +142,30 @@ Acceptance:
 - [ ] Future fixture directories must include `SPEC.md`, `diff.patch`, and
       `expected/check.json`.
 - [ ] Fixture `SPEC.md` files must include Given/When/Then/Must Not sections.
+
+## PR 1D: `automation-guardrails`
+
+Purpose: finish the first Rust-first policy family by making generated files,
+dependency surfaces, process spawning, and network behavior explicit.
+
+Deliverables:
+
+- [ ] Add generated-file allowlist and `cargo xtask check-generated`.
+- [ ] Add dependency-surface allowlist and `cargo xtask check-dependencies`.
+- [ ] Add process-spawn allowlist and `cargo xtask check-process-policy`.
+- [ ] Add network allowlist and `cargo xtask check-network-policy`.
+- [ ] Wire checks into `cargo xtask ci-fast`.
+- [ ] Wire checks into CI.
+- [ ] Update the file policy, CI docs, contributor docs, and PR template.
+
+Acceptance:
+
+- [ ] Tracked generated lockfiles and future fixture goldens require explicit
+      allowlist entries.
+- [ ] New dependency manager files fail unless they belong to approved Cargo,
+      VS Code, or fixture surfaces.
+- [ ] New process spawning fails unless allowlisted with a reason.
+- [ ] New network behavior fails unless allowlisted with a reason.
 
 ## PR 2: `fixture-laboratory`
 

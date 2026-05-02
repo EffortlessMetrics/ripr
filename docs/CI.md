@@ -20,6 +20,10 @@ cargo xtask check-executable-files
 cargo xtask check-workflows
 cargo xtask check-spec-format
 cargo xtask check-fixture-contracts
+cargo xtask check-generated
+cargo xtask check-dependencies
+cargo xtask check-process-policy
+cargo xtask check-network-policy
 cargo package -p ripr --list
 cargo publish -p ripr --dry-run
 ```
@@ -34,6 +38,10 @@ cargo xtask check-executable-files
 cargo xtask check-workflows
 cargo xtask check-spec-format
 cargo xtask check-fixture-contracts
+cargo xtask check-generated
+cargo xtask check-dependencies
+cargo xtask check-process-policy
+cargo xtask check-network-policy
 ```
 
 The VS Code workflow currently runs:
@@ -69,8 +77,8 @@ Planned CI work:
 - add fixture-golden tests once the fixture lab exists
 - add markdown/link checks for docs-heavy PRs
 - add traceability and capability-matrix checks
-- add generated-file, process, network, dependency, workspace-shape, and
-  architecture checks
+- add workspace-shape, architecture, public API, docs-index, and PR-summary
+  checks
 - add SARIF validation when SARIF output exists
 - add opt-in policy modes:
   - advisory
