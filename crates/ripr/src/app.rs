@@ -209,3 +209,97 @@ fn selector_matches_location(selector: &str, finding: &Finding) -> bool {
     selector == format!("{file}:{line}")
         || selector.ends_with(&format!(":{line}")) && selector.contains(file.as_ref())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{Mode, selector_matches_location};
+    use crate::analysis::AnalysisMode;
+    use crate::domain::{
+        Confidence, ExposureClass, Finding, OracleStrength, Probe, ProbeFamily, ProbeId,
+        RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState,
+        StopReason, Summary,
+    };
+
+    #[test]
+    fn mode_labels_match_public_contract() {
+        assert_eq!(Mode::Instant.as_str(), "instant");
+        assert_eq!(Mode::Draft.as_str(), "draft");
+        assert_eq!(Mode::Fast.as_str(), "fast");
+        assert_eq!(Mode::Deep.as_str(), "deep");
+        assert_eq!(Mode::Ready.as_str(), "ready");
+    }
+
+    #[test]
+    fn mode_maps_to_internal_profiles() {
+        assert_eq!(Mode::Instant.analysis_mode(), AnalysisMode::Instant);
+        assert_eq!(Mode::Draft.analysis_mode(), AnalysisMode::Draft);
+        assert_eq!(Mode::Fast.analysis_mode(), AnalysisMode::Fast);
+        assert_eq!(Mode::Deep.analysis_mode(), AnalysisMode::Deep);
+        assert_eq!(Mode::Ready.analysis_mode(), AnalysisMode::Ready);
+    }
+
+    #[test]
+    fn selector_matches_exact_and_suffix_file_locations() {
+        let finding = sample_finding("src/lib.rs", 42);
+
+        assert!(selector_matches_location("src/lib.rs:42", &finding));
+        assert!(selector_matches_location(
+            "crates/ripr/src/lib.rs:42",
+            &finding
+        ));
+        assert!(!selector_matches_location("src/lib.rs:41", &finding));
+        assert!(!selector_matches_location("src/main.rs:42", &finding));
+    }
+
+    fn sample_finding(file: &str, line: usize) -> Finding {
+        Finding {
+            id: "probe:src_lib_rs:42:error_path".to_string(),
+            probe: Probe {
+                id: ProbeId("probe:src_lib_rs:42:error_path".to_string()),
+                family: ProbeFamily::ErrorPath,
+                location: SourceLocation::new(file, line, 1),
+                owner: None,
+                delta: crate::domain::DeltaKind::Control,
+                before: None,
+                after: None,
+                expression: "sample_expr".to_string(),
+                expected_sinks: Vec::new(),
+                required_oracles: Vec::new(),
+            },
+            class: ExposureClass::WeaklyExposed,
+            ripr: RiprEvidence {
+                reach: StageEvidence::new(StageState::Yes, Confidence::Medium, "reached"),
+                infect: StageEvidence::new(StageState::Weak, Confidence::Low, "infected"),
+                propagate: StageEvidence::new(StageState::No, Confidence::Medium, "not propagated"),
+                reveal: RevealEvidence {
+                    observe: StageEvidence::new(StageState::Weak, Confidence::Low, "observed"),
+                    discriminate: StageEvidence::new(
+                        StageState::No,
+                        Confidence::Medium,
+                        "no discriminator",
+                    ),
+                },
+            },
+            confidence: 0.5,
+            evidence: vec!["changed test".to_string()],
+            missing: vec!["strong oracle".to_string()],
+            stop_reasons: vec![StopReason::NoChangedRustLine],
+            related_tests: vec![RelatedTest {
+                name: "sample_test".to_string(),
+                file: "tests/sample.rs".into(),
+                line: 10,
+                oracle: None,
+                oracle_strength: OracleStrength::Weak,
+            }],
+            recommended_next_step: Some("add stronger assertion".to_string()),
+        }
+    }
+
+    #[test]
+    fn summary_default_is_empty() {
+        let summary = Summary::default();
+        assert_eq!(summary.findings, 0);
+        assert_eq!(summary.exposed, 0);
+        assert_eq!(summary.weakly_exposed, 0);
+    }
+}
