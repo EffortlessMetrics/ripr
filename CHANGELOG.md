@@ -122,3 +122,8 @@ how future PRs are scoped or reviewed.
   variants, exact values, broad errors, relational checks, snapshots, mock
   expectations, smoke-only checks, and unknown oracles are ranked by the changed
   probe family.
+- Adopted `tower-lsp-server` for the experimental LSP sidecar, replacing
+  hand-rolled JSON-RPC framing with typed async LSP handlers while preserving
+  current diagnostics, hover, and code action behavior.
+- Added `MIT-0` to the cargo-deny license allowlist for the `tower-lsp-server`
+  dependency graph.

@@ -13,3 +13,4 @@ PR. They should be short, dated, and focused on consequences.
 | [0004](0004-docs-as-planning-artifacts.md) | accepted | Track PR-by-PR implementation through docs, specs, and metrics. |
 | [0005](0005-scoped-evidence-heavy-prs.md) | accepted | Scope PRs by production risk, not line count. |
 | [0006](0006-rust-syntax-substrate.md) | accepted | Use `ra_ap_syntax` behind the syntax adapter for Campaign 2. |
+| [0007](0007-lsp-server-framework.md) | accepted | Use `tower-lsp-server` for the LSP sidecar. |

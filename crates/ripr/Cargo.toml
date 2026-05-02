@@ -30,6 +30,8 @@ path = "src/main.rs"
 [dependencies]
 ra_ap_syntax = "0.0.330"
 serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "io-std", "time"] }
+tower-lsp-server = "0.23.0"
 
 [lints]
 workspace = true
