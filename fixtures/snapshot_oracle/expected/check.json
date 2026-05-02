@@ -1,0 +1,44 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/snapshot_oracle/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:2:predicate",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.76,
+      "probe": {
+        "id": "probe:src_lib.rs:2:predicate",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/snapshot_oracle/input/src/lib.rs",
+        "line": 2,
+        "expression": "if code <= 299 {"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach render_status: renders_error_status_snapshot"},
+        "infect": {"state":"weak","confidence":"medium","summary":"Tests have literals [404], but no detected value matches changed boundary [299]"},
+        "propagate": {"state":"weak","confidence":"medium","summary":"Changed behavior may propagate through a constructed value or field"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Medium oracle found: snapshot assertion observes the changed behavior"}
+       },
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior may propagate through a constructed value or field", "Medium oracle found: snapshot assertion observes the changed behavior", "Related tests appear to reach render_status: renders_error_status_snapshot", "Tests have literals [404], but no detected value matches changed boundary [299]"],
+      "missing": ["No detected boundary input for the changed predicate", "No strong discriminator was detected"],
+      "related_tests": [
+        {
+          "name": "renders_error_status_snapshot",
+          "file": "tests/rendering.rs",
+          "line": 4,
+          "oracle_strength": "medium",
+          "oracle": "insta::assert_snapshot!(rendered);"
+        }
+      ],
+      "stop_reasons": [],
+      "recommended_next_step": "Add boundary tests for below, equal, and above the changed threshold with exact assertions."
+    }
+  ]
+}
