@@ -1,8 +1,6 @@
 # ripr: Static Mutation Exposure
 
-[![VS Marketplace](https://img.shields.io/badge/VS%20Marketplace-live%20listing-0078D4)](https://marketplace.visualstudio.com/items?itemName=EffortlessMetrics.ripr)
 [![VS Marketplace Installs (manual)](https://img.shields.io/badge/VS%20Marketplace-0%20installs-0078D4)](https://marketplace.visualstudio.com/items?itemName=EffortlessMetrics.ripr)
-[![Open VSX Version](https://img.shields.io/open-vsx/v/EffortlessMetrics/ripr?label=Open%20VSX)](https://open-vsx.org/extension/EffortlessMetrics/ripr)
 [![Open VSX Downloads](https://img.shields.io/open-vsx/dt/EffortlessMetrics/ripr?label=Open%20VSX%20downloads)](https://open-vsx.org/extension/EffortlessMetrics/ripr)
 
 <!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-02 and intentionally seeded at 0 for first launch. Refresh from publisher metrics after publish. Do not use live VS Marketplace Shields routes. -->
