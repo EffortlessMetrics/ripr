@@ -43,3 +43,5 @@ how future PRs are scoped or reviewed.
   commands for validating fixture contracts and expected-output layout.
 - Added `cargo xtask check-traceability` with `check-spec-ids` and
   `check-behavior-manifest` aliases for behavior manifest validation.
+- Added `metrics/capabilities.toml`, `cargo xtask metrics`, and
+  `cargo xtask check-capabilities` for capability status reporting.

@@ -35,5 +35,6 @@ editors/vscode/package-lock.json|editor_extension_lockfile|lsp/editor|Pinned npm
 editors/vscode/package.json|editor_extension_manifest|lsp/editor|VS Code extension package manifest.
 editors/vscode/tsconfig.json|editor_extension_config|lsp/editor|VS Code TypeScript compiler config.
 fixtures/**|fixture_input|analysis-fixtures|Fixture workspaces may intentionally contain analyzed source files.
+metrics/*.toml|policy_metadata|repo-policy|Machine-readable capability and metrics metadata.
 ripr.toml.example|config_example|config|Example ripr configuration.
 xtask/Cargo.toml|rust_manifest|rust|xtask package manifest.

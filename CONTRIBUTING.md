@@ -151,6 +151,7 @@ cargo xtask precommit
 cargo xtask check-pr
 cargo xtask fixtures
 cargo xtask goldens check
+cargo xtask metrics
 cargo fmt --check
 cargo check --workspace --all-targets
 cargo test --workspace
@@ -166,6 +167,7 @@ cargo xtask check-workflows
 cargo xtask check-spec-format
 cargo xtask check-fixture-contracts
 cargo xtask check-traceability
+cargo xtask check-capabilities
 cargo xtask check-generated
 cargo xtask check-dependencies
 cargo xtask check-process-policy

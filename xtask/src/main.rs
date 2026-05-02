@@ -43,6 +43,19 @@ struct TraceBehavior {
     metrics: Vec<String>,
 }
 
+#[derive(Debug, Default)]
+struct Capability {
+    line: usize,
+    id: Option<String>,
+    name: Option<String>,
+    status: Option<String>,
+    spec: Option<String>,
+    evidence: Vec<String>,
+    fixtures: Vec<String>,
+    next: Option<String>,
+    metric: Option<String>,
+}
+
 #[derive(Clone, Debug)]
 pub enum CheckStatus {
     Pass,
@@ -100,6 +113,7 @@ fn main() {
         Some("check-pr") => check_pr(),
         Some("fixtures") => fixtures(args.get(2)),
         Some("goldens") => goldens(&args[2..]),
+        Some("metrics") => metrics_report(),
         Some("ci-fast") => ci_fast(),
         Some("ci-full") => ci_full(),
         Some("check-static-language") => check_static_language(),
@@ -112,6 +126,7 @@ fn main() {
         Some("check-traceability") | Some("check-spec-ids") | Some("check-behavior-manifest") => {
             check_traceability()
         }
+        Some("check-capabilities") => check_capabilities(),
         Some("check-generated") => check_generated(),
         Some("check-dependencies") => check_dependencies(),
         Some("check-process-policy") => check_process_policy(),
@@ -150,6 +165,7 @@ fn precommit() -> Result<(), String> {
     check_spec_format()?;
     check_fixture_contracts()?;
     check_traceability()?;
+    check_capabilities()?;
     check_generated()?;
     let body = precommit_report_body();
     write_report("precommit.md", &body)
@@ -184,6 +200,7 @@ fn run_policy_checks() -> Result<(), String> {
     check_spec_format()?;
     check_fixture_contracts()?;
     check_traceability()?;
+    check_capabilities()?;
     check_generated()?;
     check_dependencies()?;
     check_process_policy()?;
@@ -211,7 +228,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
+        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  metrics\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
     );
 }
 
@@ -237,7 +254,7 @@ fn pr_summary() -> Result<(), String> {
 }
 
 fn precommit_report_body() -> String {
-    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-generated`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
+    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-generated`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
 }
 
 fn check_pr_report_body() -> String {
@@ -1410,6 +1427,381 @@ fn parse_quoted_value(value: &str) -> Result<String, String> {
     Ok(trimmed[1..trimmed.len() - 1].to_string())
 }
 
+fn metrics_report() -> Result<(), String> {
+    let (capabilities, violations) =
+        parse_capabilities_manifest(Path::new("metrics/capabilities.toml"))?;
+    if !violations.is_empty() {
+        finish_capabilities_report(&violations)?;
+        return Err(format!(
+            "metrics source is invalid; see target/ripr/reports/capabilities.md\n{}",
+            violations.join("\n")
+        ));
+    }
+    write_report("metrics.md", &capability_metrics_markdown(&capabilities))?;
+    write_report("metrics.json", &capability_metrics_json(&capabilities))
+}
+
+fn check_capabilities() -> Result<(), String> {
+    let manifest = Path::new("metrics/capabilities.toml");
+    let mut violations = Vec::new();
+    if !manifest.exists() {
+        violations.push("metrics/capabilities.toml is missing".to_string());
+        return finish_capabilities_report(&violations);
+    }
+    let (capabilities, parse_violations) = parse_capabilities_manifest(manifest)?;
+    violations.extend(parse_violations);
+    validate_capabilities(&capabilities, &mut violations)?;
+    finish_capabilities_report(&violations)
+}
+
+fn finish_capabilities_report(violations: &[String]) -> Result<(), String> {
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "capabilities.md",
+            check: "check-capabilities",
+            why_it_matters: "Capability status should be a checked source of truth, not README prose that can drift from specs and fixtures.",
+            fix_kind: FixKind::AuthorDecisionRequired,
+            recommended_fixes: &[
+                "Update metrics/capabilities.toml with status, spec, next checkpoint, and metric fields.",
+                "Keep capability statuses to planned, alpha, stable, or calibrated.",
+                "Reference only specs that exist in docs/specs.",
+                "Use cargo xtask metrics to regenerate target/ripr/reports/metrics.md and metrics.json.",
+            ],
+            rerun_command: "cargo xtask check-capabilities",
+            exception_template: None,
+        },
+        violations,
+    )
+}
+
+fn validate_capabilities(
+    capabilities: &[Capability],
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let specs = collect_spec_statuses()?;
+    let mut ids = BTreeSet::new();
+    if capabilities.is_empty() {
+        violations.push("metrics/capabilities.toml has no [[capability]] entries".to_string());
+    }
+    for capability in capabilities {
+        let Some(id) = capability.id.as_ref() else {
+            violations.push(format!(
+                "capability at line {} is missing `id`",
+                capability.line
+            ));
+            continue;
+        };
+        if !is_snake_case_id(id) {
+            violations.push(format!(
+                "capability at line {} has invalid id `{id}`; use snake_case",
+                capability.line
+            ));
+        }
+        if !ids.insert(id.clone()) {
+            violations.push(format!("duplicate capability id `{id}`"));
+        }
+        if capability
+            .name
+            .as_ref()
+            .is_none_or(|value| value.trim().is_empty())
+        {
+            violations.push(format!("{id} is missing a non-empty `name`"));
+        }
+        match capability.status.as_deref() {
+            Some("planned" | "alpha" | "stable" | "calibrated") => {}
+            Some(status) => violations.push(format!("{id} has unsupported status `{status}`")),
+            None => violations.push(format!("{id} is missing `status`")),
+        }
+        match capability.spec.as_ref() {
+            Some(spec) if is_spec_id(spec) && specs.contains_key(spec) => {}
+            Some(spec) if is_spec_id(spec) => {
+                violations.push(format!("{id} references missing spec `{spec}`"));
+            }
+            Some(spec) => violations.push(format!("{id} has invalid spec id `{spec}`")),
+            None => violations.push(format!("{id} is missing `spec`")),
+        }
+        if capability
+            .next
+            .as_ref()
+            .is_none_or(|value| value.trim().is_empty())
+        {
+            violations.push(format!("{id} is missing `next`"));
+        }
+        if capability
+            .metric
+            .as_ref()
+            .is_none_or(|value| value.trim().is_empty())
+        {
+            violations.push(format!("{id} is missing `metric`"));
+        }
+        if capability.status.as_deref() != Some("planned") && capability.evidence.is_empty() {
+            violations.push(format!("{id} is not planned but has no evidence entries"));
+        }
+        for fixture in &capability.fixtures {
+            if !fixture.trim().is_empty() && !Path::new(fixture).exists() {
+                violations.push(format!("{id} fixture path does not exist: {fixture}"));
+            }
+        }
+        if capability.status.as_deref() == Some("stable") && capability.fixtures.is_empty() {
+            violations.push(format!("{id} is stable but has no fixture entries"));
+        }
+        if capability.status.as_deref() == Some("calibrated")
+            && !capability
+                .evidence
+                .iter()
+                .any(|value| value.contains("calibration"))
+        {
+            violations.push(format!(
+                "{id} is calibrated but has no calibration evidence entry"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn parse_capabilities_manifest(path: &Path) -> Result<(Vec<Capability>, Vec<String>), String> {
+    let text = read_text_lossy(path)?;
+    let mut capabilities = Vec::new();
+    let mut violations = Vec::new();
+    let mut current: Option<Capability> = None;
+    let mut active_array: Option<(String, Vec<String>, usize)> = None;
+
+    for (index, line) in text.lines().enumerate() {
+        let line_number = index + 1;
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if let Some((key, values, start_line)) = active_array.as_mut() {
+            if trimmed.starts_with(']') {
+                let Some(mut capability) = current.take() else {
+                    violations.push(format!(
+                        "{}:{} array `{key}` is outside a capability entry",
+                        normalize_path(path),
+                        start_line
+                    ));
+                    active_array = None;
+                    continue;
+                };
+                assign_capability_array(
+                    &mut capability,
+                    key,
+                    values.clone(),
+                    *start_line,
+                    &mut violations,
+                );
+                current = Some(capability);
+                active_array = None;
+                continue;
+            }
+            match parse_array_item(trimmed) {
+                Ok(Some(value)) => values.push(value),
+                Ok(None) => {}
+                Err(message) => {
+                    violations.push(format!("{}:{line_number} {message}", normalize_path(path)))
+                }
+            }
+            continue;
+        }
+        if trimmed == "[[capability]]" {
+            if let Some(capability) = current.take() {
+                capabilities.push(capability);
+            }
+            current = Some(Capability {
+                line: line_number,
+                ..Capability::default()
+            });
+            continue;
+        }
+        let Some((key, value)) = trimmed.split_once('=') else {
+            violations.push(format!(
+                "{}:{line_number} expected `key = value`",
+                normalize_path(path)
+            ));
+            continue;
+        };
+        let key = key.trim();
+        let value = value.trim();
+        let Some(capability) = current.as_mut() else {
+            violations.push(format!(
+                "{}:{line_number} `{key}` appears outside a [[capability]] entry",
+                normalize_path(path)
+            ));
+            continue;
+        };
+        if value == "[" {
+            active_array = Some((key.to_string(), Vec::new(), line_number));
+            continue;
+        }
+        if value.starts_with('[') {
+            match parse_inline_array(value) {
+                Ok(values) => {
+                    assign_capability_array(capability, key, values, line_number, &mut violations);
+                }
+                Err(message) => {
+                    violations.push(format!("{}:{line_number} {message}", normalize_path(path)))
+                }
+            }
+            continue;
+        }
+        match parse_quoted_value(value) {
+            Ok(parsed) => {
+                assign_capability_string(capability, key, parsed, line_number, &mut violations);
+            }
+            Err(message) => {
+                violations.push(format!("{}:{line_number} {message}", normalize_path(path)))
+            }
+        }
+    }
+
+    if let Some((key, _, start_line)) = active_array {
+        violations.push(format!(
+            "{}:{start_line} array `{key}` is missing closing `]`",
+            normalize_path(path)
+        ));
+    }
+    if let Some(capability) = current {
+        capabilities.push(capability);
+    }
+    Ok((capabilities, violations))
+}
+
+fn assign_capability_string(
+    capability: &mut Capability,
+    key: &str,
+    value: String,
+    line_number: usize,
+    violations: &mut Vec<String>,
+) {
+    match key {
+        "id" => capability.id = Some(value),
+        "name" => capability.name = Some(value),
+        "status" => capability.status = Some(value),
+        "spec" => capability.spec = Some(value),
+        "next" => capability.next = Some(value),
+        "metric" => capability.metric = Some(value),
+        _ => violations.push(format!(
+            "capability line {line_number} uses unsupported string field `{key}`"
+        )),
+    }
+}
+
+fn assign_capability_array(
+    capability: &mut Capability,
+    key: &str,
+    values: Vec<String>,
+    line_number: usize,
+    violations: &mut Vec<String>,
+) {
+    match key {
+        "evidence" => capability.evidence = values,
+        "fixtures" => capability.fixtures = values,
+        _ => violations.push(format!(
+            "capability line {line_number} uses unsupported array field `{key}`"
+        )),
+    }
+}
+
+fn capability_metrics_markdown(capabilities: &[Capability]) -> String {
+    let mut body = "# ripr capability metrics\n\n".to_string();
+    body.push_str("| Capability | Status | Spec | Evidence | Next | Metric |\n");
+    body.push_str("| --- | --- | --- | --- | --- | --- |\n");
+    for capability in capabilities {
+        body.push_str(&format!(
+            "| {} | `{}` | `{}` | {} | `{}` | {} |\n",
+            markdown_cell(capability.name.as_deref().unwrap_or("")),
+            markdown_cell(capability.status.as_deref().unwrap_or("")),
+            markdown_cell(capability.spec.as_deref().unwrap_or("")),
+            markdown_cell(&capability.evidence.join(", ")),
+            markdown_cell(capability.next.as_deref().unwrap_or("")),
+            markdown_cell(capability.metric.as_deref().unwrap_or(""))
+        ));
+    }
+    body
+}
+
+fn capability_metrics_json(capabilities: &[Capability]) -> String {
+    let mut body = "{\n  \"schema_version\": \"0.1\",\n  \"capabilities\": [\n".to_string();
+    for (index, capability) in capabilities.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("    {\n");
+        body.push_str(&format!(
+            "      \"id\": \"{}\",\n",
+            json_escape(capability.id.as_deref().unwrap_or(""))
+        ));
+        body.push_str(&format!(
+            "      \"name\": \"{}\",\n",
+            json_escape(capability.name.as_deref().unwrap_or(""))
+        ));
+        body.push_str(&format!(
+            "      \"status\": \"{}\",\n",
+            json_escape(capability.status.as_deref().unwrap_or(""))
+        ));
+        body.push_str(&format!(
+            "      \"spec\": \"{}\",\n",
+            json_escape(capability.spec.as_deref().unwrap_or(""))
+        ));
+        body.push_str(&format!(
+            "      \"next\": \"{}\",\n",
+            json_escape(capability.next.as_deref().unwrap_or(""))
+        ));
+        body.push_str(&format!(
+            "      \"metric\": \"{}\",\n",
+            json_escape(capability.metric.as_deref().unwrap_or(""))
+        ));
+        body.push_str("      \"evidence\": [");
+        write_json_string_array(&mut body, &capability.evidence);
+        body.push_str("],\n");
+        body.push_str("      \"fixtures\": [");
+        write_json_string_array(&mut body, &capability.fixtures);
+        body.push_str("]\n    }");
+    }
+    body.push_str("\n  ]\n}\n");
+    body
+}
+
+fn write_json_string_array(body: &mut String, values: &[String]) {
+    for (index, value) in values.iter().enumerate() {
+        if index > 0 {
+            body.push_str(", ");
+        }
+        body.push('"');
+        body.push_str(&json_escape(value));
+        body.push('"');
+    }
+}
+
+fn markdown_cell(value: &str) -> String {
+    value.replace('|', "\\|")
+}
+
+fn json_escape(value: &str) -> String {
+    let mut escaped = String::new();
+    for ch in value.chars() {
+        match ch {
+            '"' => escaped.push_str("\\\""),
+            '\\' => escaped.push_str("\\\\"),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            other => escaped.push(other),
+        }
+    }
+    escaped
+}
+
+fn is_snake_case_id(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+        && !value.starts_with('_')
+        && !value.ends_with('_')
+        && !value.contains("__")
+}
+
 fn check_generated() -> Result<(), String> {
     let allowlist = read_glob_allowlist("policy/generated_allowlist.txt")?;
     let mut violations = Vec::new();
@@ -1963,6 +2355,7 @@ fn is_evidence_path(path: &str) -> bool {
         || is_automation_path(path)
         || is_policy_path(path)
         || path.starts_with("docs/")
+        || path.starts_with("metrics/")
         || matches!(
             path,
             "README.md" | "AGENTS.md" | "CONTRIBUTING.md" | "CHANGELOG.md"
@@ -2551,10 +2944,11 @@ fn is_word_char(value: Option<char>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        ChangedPath, extract_workflow_run_blocks, glob_matches, is_dependency_surface_candidate,
-        is_evidence_path, is_generated_candidate, is_policy_path, is_production_path, is_spec_id,
-        parse_inline_array, parse_reason, precommit_report_body, public_contract_rows,
-        sorted_allowlist_content, spec_id_from_path,
+        Capability, ChangedPath, extract_workflow_run_blocks, glob_matches,
+        is_dependency_surface_candidate, is_evidence_path, is_generated_candidate, is_policy_path,
+        is_production_path, is_snake_case_id, is_spec_id, json_escape, parse_inline_array,
+        parse_reason, precommit_report_body, public_contract_rows, sorted_allowlist_content,
+        spec_id_from_path,
     };
     use std::collections::BTreeSet;
     use std::path::Path;
@@ -2646,6 +3040,7 @@ jobs:
             "docs/specs/RIPR-SPEC-0001-static-exposure-loop.md"
         ));
         assert!(is_evidence_path("fixtures/boundary_gap/SPEC.md"));
+        assert!(is_evidence_path("metrics/capabilities.toml"));
         assert!(is_evidence_path("xtask/src/main.rs"));
         assert!(is_policy_path(".github/workflows/ci.yml"));
         assert!(is_policy_path("policy/non_rust_allowlist.txt"));
@@ -2719,5 +3114,28 @@ jobs:
         );
         assert_eq!(parse_inline_array("[]"), Ok(Vec::new()));
         assert!(parse_inline_array("[one]").is_err());
+    }
+
+    #[test]
+    fn capability_helpers_validate_ids_and_escape_json() {
+        assert!(is_snake_case_id("agent_context_v2"));
+        assert!(!is_snake_case_id("AgentContextV2"));
+        assert!(!is_snake_case_id("agent__context"));
+        assert_eq!(json_escape("a\"b\\c\n"), "a\\\"b\\\\c\\n");
+
+        let capability = Capability {
+            id: Some("agent_context_v2".to_string()),
+            name: Some("Agent context v2".to_string()),
+            status: Some("planned".to_string()),
+            spec: Some("RIPR-SPEC-0003".to_string()),
+            evidence: vec!["agent context spec".to_string()],
+            fixtures: Vec::new(),
+            next: Some("agent-context-v2".to_string()),
+            metric: Some("context packets with suggested assertions".to_string()),
+            line: 1,
+        };
+        let json = super::capability_metrics_json(&[capability]);
+        assert!(json.contains("\"id\": \"agent_context_v2\""));
+        assert!(json.contains("\"schema_version\": \"0.1\""));
     }
 }
