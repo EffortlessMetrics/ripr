@@ -17,11 +17,12 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use tower_lsp_server::LspService;
 use tower_lsp_server::ls_types::{
-    CodeActionOrCommand, DiagnosticSeverity, DidChangeTextDocumentParams,
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, HoverContents, HoverProviderCapability,
-    InitializeParams, NumberOrString, TextDocumentContentChangeEvent, TextDocumentIdentifier,
-    TextDocumentItem, TextDocumentSyncCapability, TextDocumentSyncKind,
-    VersionedTextDocumentIdentifier, WorkspaceFolder,
+    CodeActionContext, CodeActionOrCommand, CodeActionParams, DiagnosticSeverity,
+    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    HoverContents, HoverProviderCapability, InitializeParams, NumberOrString, Position, Range,
+    TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
+    TextDocumentSyncCapability, TextDocumentSyncKind, VersionedTextDocumentIdentifier,
+    WorkspaceFolder,
 };
 
 #[test]
@@ -59,9 +60,13 @@ fn hover_response_keeps_current_guidance_text() -> Result<(), String> {
 
 #[test]
 fn code_action_response_keeps_current_commands() -> Result<(), String> {
-    let actions = code_action_response();
+    let mut finding = sample_finding();
+    finding.related_tests.clear();
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    let actions = code_action_response(&code_action_params(vec![diagnostic])?);
 
     let mut titles_kinds_and_commands = Vec::new();
+    let mut command_arguments = Vec::new();
     for action in &actions {
         match action {
             CodeActionOrCommand::CodeAction(action) => {
@@ -77,6 +82,7 @@ fn code_action_response_keeps_current_commands() -> Result<(), String> {
                     command.title.as_str(),
                     command.command.as_str(),
                 ));
+                command_arguments.push(command.arguments.clone());
             }
             CodeActionOrCommand::Command(_) => {
                 return Err("expected code action".to_string());
@@ -101,6 +107,26 @@ fn code_action_response_keeps_current_commands() -> Result<(), String> {
             ),
         ]
     );
+    let Some(Some(arguments)) = command_arguments.first() else {
+        return Err("expected copy context arguments".to_string());
+    };
+    assert_eq!(arguments[0]["uri"], "file:///workspace/src/pricing.rs");
+    assert_eq!(arguments[0]["line"], 88);
+    Ok(())
+}
+
+#[test]
+fn code_action_response_omits_context_action_without_ripr_diagnostic() -> Result<(), String> {
+    let actions = code_action_response(&code_action_params(Vec::new())?);
+
+    assert_eq!(actions.len(), 1);
+    let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
+        return Err("expected code action".to_string());
+    };
+    let Some(command) = &action.command else {
+        return Err("expected refresh command".to_string());
+    };
+    assert_eq!(command.command, REFRESH_COMMAND);
     Ok(())
 }
 
@@ -432,6 +458,31 @@ fn uri_path_encoding_preserves_path_syntax_and_escapes_spaces() {
 fn test_uri(uri: &str) -> Result<tower_lsp_server::ls_types::Uri, String> {
     uri.parse::<tower_lsp_server::ls_types::Uri>()
         .map_err(|err| format!("failed to parse test URI: {err}"))
+}
+
+fn code_action_params(
+    diagnostics: Vec<tower_lsp_server::ls_types::Diagnostic>,
+) -> Result<CodeActionParams, String> {
+    Ok(CodeActionParams {
+        text_document: TextDocumentIdentifier::new(test_uri("file:///workspace/src/pricing.rs")?),
+        range: Range {
+            start: Position {
+                line: 87,
+                character: 0,
+            },
+            end: Position {
+                line: 87,
+                character: 120,
+            },
+        },
+        context: CodeActionContext {
+            diagnostics,
+            only: None,
+            trigger_kind: None,
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+    })
 }
 
 #[allow(deprecated)]

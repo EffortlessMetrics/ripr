@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { RiprClientController } from './client';
+import { RiprClientController, RiprContextTarget } from './client';
 
 let controller: RiprClientController | undefined;
 
@@ -11,7 +11,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     output,
     vscode.commands.registerCommand('ripr.restartServer', async () => controller?.restart()),
     vscode.commands.registerCommand('ripr.showOutput', () => controller?.showOutput()),
-    vscode.commands.registerCommand('ripr.copyContext', async () => controller?.copyContext()),
+    vscode.commands.registerCommand('ripr.copyContext', async (target?: RiprContextTarget) =>
+      controller?.copyContext(target)
+    ),
     vscode.commands.registerCommand('ripr.openSettings', async () => {
       await vscode.commands.executeCommand('workbench.action.openSettings', 'ripr');
     }),
