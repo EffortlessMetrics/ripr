@@ -170,4 +170,53 @@ mod tests {
             select_rust_files_for_mode(&all, &files(&["src/lib.rs"]), AnalysisMode::Deep, false);
         assert_eq!(selected, files(&["src/lib.rs"]));
     }
+
+    #[test]
+    fn draft_and_fast_selection_is_stable_and_subset_of_workspace() {
+        let corpus = [
+            "src/lib.rs",
+            "src/main.rs",
+            "tests/root.rs",
+            "examples/root.rs",
+            "crates/alpha/src/lib.rs",
+            "crates/alpha/tests/alpha.rs",
+            "crates/beta/src/lib.rs",
+            "crates/beta/tests/beta.rs",
+            "crates/gamma/src/lib.rs",
+            "crates/gamma/tests/gamma.rs",
+            "tools/helper/src/lib.rs",
+            "tools/helper/tests/helper.rs",
+        ];
+        let all = files(&corpus);
+
+        let mut seed = 0x5EED_u64;
+        for _case in 0..256 {
+            let mut changed = Vec::new();
+            for path in &all {
+                if next_u64(&mut seed) & 1 == 0 {
+                    changed.push(path.clone());
+                }
+            }
+
+            for mode in [AnalysisMode::Draft, AnalysisMode::Fast] {
+                let selected = select_rust_files_for_mode(&all, &changed, mode, true);
+
+                assert!(selected.windows(2).all(|w| w[0] < w[1]));
+                assert!(selected.iter().all(|path| all.contains(path)));
+                assert!(
+                    changed
+                        .iter()
+                        .filter(|path| all.contains(path))
+                        .all(|path| selected.contains(path))
+                );
+            }
+        }
+    }
+
+    fn next_u64(seed: &mut u64) -> u64 {
+        *seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        *seed
+    }
 }
