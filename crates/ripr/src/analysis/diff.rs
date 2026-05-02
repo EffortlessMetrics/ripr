@@ -125,6 +125,7 @@ fn parse_start(segment: &str) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn parses_added_lines() {
@@ -134,5 +135,28 @@ mod tests {
         assert_eq!(files[0].path, PathBuf::from("src/lib.rs"));
         assert_eq!(files[0].added_lines[0].line, 1);
         assert_eq!(files[0].added_lines[0].text, "b");
+    }
+
+    proptest! {
+        #[test]
+        fn parse_unified_diff_never_panics_for_arbitrary_text(input in any::<String>()) {
+            let _ = parse_unified_diff(&input);
+        }
+
+        #[test]
+        fn added_and_removed_lines_preserve_non_empty_positive_line_numbers(
+            input in any::<String>()
+        ) {
+            let files = parse_unified_diff(&input);
+
+            for file in files {
+                for line in &file.added_lines {
+                    prop_assert!(line.line > 0);
+                }
+                for line in &file.removed_lines {
+                    prop_assert!(line.line > 0);
+                }
+            }
+        }
     }
 }
