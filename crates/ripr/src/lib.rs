@@ -10,12 +10,26 @@
 //! Most integrations should start with [`check_workspace`] to analyze a unified
 //! diff and obtain structured findings.
 //!
+//! # Typical integration flow
+//!
+//! 1. Build a [`CheckInput`] with repository root, target diff, and options.
+//! 2. Call [`check_workspace`] to produce a [`CheckOutput`] report.
+//! 3. For a specific probe id, call [`explain_finding`] to inspect evidence.
+//! 4. Use [`collect_context`] when you need neighboring source context for UX.
+//!
 //! - Use [`check_workspace`] for end-to-end analysis.
 //! - Use [`explain_finding`] to retrieve focused evidence for one probe.
 //! - Use [`collect_context`] to retrieve neighboring context around a probe.
 //!
 //! The CLI wraps these same APIs and renders the resulting model in human,
 //! JSON, and annotation formats.
+//!
+//! # Exposure language
+//!
+//! `ripr` reports static exposure estimates such as [`ExposureClass::Exposed`]
+//! and [`ExposureClass::WeaklyExposed`]. Findings can also remain unknown when
+//! static evidence is incomplete. These results are intended to guide targeted
+//! test intent, not to claim runtime mutation outcomes.
 
 /// Static analysis pipeline: diff loading, syntax indexing, probe generation,
 /// and finding classification.
