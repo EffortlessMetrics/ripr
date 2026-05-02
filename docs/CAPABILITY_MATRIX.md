@@ -17,14 +17,14 @@ Status values:
 
 | Capability | Status | Spec | Current evidence | Next checkpoint | Metric |
 | --- | --- | --- | --- | --- | --- |
-| Static exposure loop | `alpha` | `RIPR-SPEC-0001` | sample diff, current CLI tests | fixture laboratory | findings include changed behavior, class, evidence, and next step |
-| Predicate probes | `alpha` | `RIPR-SPEC-0001` | syntax-first probe generation | `fixture-laboratory`, `ast-probe-generation` | missing boundary discriminator detection |
-| Error-path probes | `alpha` | `RIPR-SPEC-0001` | sample `error_path` explain/context command | `oracle-strength-v2` | broad error checks distinguished from exact variants |
-| Return-value probes | `alpha` | `RIPR-SPEC-0001` | syntax-first scanner | `ast-probe-generation` | exact vs smoke return oracle distinction |
-| Call-deletion probes | `alpha` | `RIPR-SPEC-0001` | syntax-first scanner | `ast-probe-generation` | side-effect or call boundary candidate named |
-| Fixture laboratory | `planned` | `RIPR-SPEC-0002` | fixture spec, fixture/golden scaffold commands | `first-two-goldens` | fixture pass rate |
-| Golden JSON output | `planned` | `RIPR-SPEC-0002` | schema reference, goldens check scaffold | `first-two-goldens` | golden output drift count |
-| Golden human output | `planned` | `RIPR-SPEC-0002` | human output renderer, goldens check scaffold | `first-two-goldens` | golden output drift count |
+| Static exposure loop | `alpha` | `RIPR-SPEC-0001` | sample diff, current CLI tests, boundary_gap fixture, weak_error_oracle fixture | fixture laboratory | findings include changed behavior, class, evidence, and next step |
+| Predicate probes | `alpha` | `RIPR-SPEC-0001` | syntax-first probe generation, boundary_gap fixture | `fixture-laboratory` | missing boundary discriminator detection |
+| Error-path probes | `alpha` | `RIPR-SPEC-0001` | sample error_path explain/context command, weak_error_oracle fixture | `oracle-strength-v2` | broad error checks distinguished from exact variants |
+| Return-value probes | `alpha` | `RIPR-SPEC-0001` | syntax-first scanner, weak_error_oracle fixture | `ast-probe-generation` | exact vs smoke return oracle distinction |
+| Call-deletion probes | `alpha` | `RIPR-SPEC-0001` | syntax-first scanner, weak_error_oracle fixture | `ast-probe-generation` | side-effect or call boundary candidate named |
+| Fixture laboratory | `alpha` | `RIPR-SPEC-0002` | fixture spec, fixture/golden runner commands, boundary_gap fixture, weak_error_oracle fixture | `fixture-laboratory` | fixture pass rate |
+| Golden JSON output | `alpha` | `RIPR-SPEC-0002` | schema reference, goldens check runner, boundary_gap check.json, weak_error_oracle check.json | `output-contract-matrix` | golden output drift count |
+| Golden human output | `alpha` | `RIPR-SPEC-0002` | human output renderer, goldens check runner, boundary_gap human.txt, weak_error_oracle human.txt | `output-contract-matrix` | golden output drift count |
 | Context packet v1 | `alpha` | `RIPR-SPEC-0003` | CLI context command | `agent-context-v2` | packet includes missing discriminator and related tests |
 | Agent context v2 | `planned` | `RIPR-SPEC-0003` | agent context spec | `agent-context-v2` | packet includes missing values and suggested assertions |
 | Analysis modes | `alpha` | `RIPR-SPEC-0001` | mode scope tests | `capability-metrics-report` | runtime and scope by mode |

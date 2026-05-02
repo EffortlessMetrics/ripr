@@ -1,0 +1,77 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/weak_error_oracle/input
+
+Summary: 3 probe(s), 0 exposed, 3 weak, 0 unrevealed, 0 no path, 0 unknown
+
+WARNING fixtures/weak_error_oracle/input/src/lib.rs:7
+
+Static exposure: weakly_exposed (call_deletion, effect)
+
+Changed behavior:
+  before: return Err(AuthError::EmptyToken);
+  after:  return Err(AuthError::RevokedToken);
+
+RIPR:
+  Reach:       yes — Related tests appear to reach authenticate: empty_token_is_rejected
+  Infect:      yes — Reachable tests can plausibly activate this changed behavior
+  Propagate:   yes — Changed behavior reaches an effect boundary such as a call, write, publish, save, or send
+  Observe:     yes — A related test observes a value or effect near the changed behavior
+  Discriminate:weak — Only weak or smoke oracle found, such as is_ok/is_err, unwrap/expect, broad relational assertion, or non-empty check
+
+Related tests / oracles:
+  - tests/errors.rs:4 empty_token_is_rejected [smoke] — assert!(authenticate("").is_err());
+
+Gap:
+  - No strong discriminator was detected
+
+Recommended next step:
+  Strengthen the related assertion so it discriminates the changed behavior.
+
+WARNING fixtures/weak_error_oracle/input/src/lib.rs:7
+
+Static exposure: weakly_exposed (error_path, value)
+
+Changed behavior:
+  before: return Err(AuthError::EmptyToken);
+  after:  return Err(AuthError::RevokedToken);
+
+RIPR:
+  Reach:       yes — Related tests appear to reach authenticate: empty_token_is_rejected
+  Infect:      yes — Reachable tests can plausibly activate this changed behavior
+  Propagate:   yes — Changed behavior can propagate through a return or Result boundary
+  Observe:     yes — A related test observes a value or effect near the changed behavior
+  Discriminate:weak — Only weak or smoke oracle found, such as is_ok/is_err, unwrap/expect, broad relational assertion, or non-empty check
+
+Related tests / oracles:
+  - tests/errors.rs:4 empty_token_is_rejected [smoke] — assert!(authenticate("").is_err());
+
+Gap:
+  - No strong discriminator was detected
+
+Recommended next step:
+  Assert the exact error variant or payload instead of only is_err().
+
+WARNING fixtures/weak_error_oracle/input/src/lib.rs:7
+
+Static exposure: weakly_exposed (return_value, value)
+
+Changed behavior:
+  before: return Err(AuthError::EmptyToken);
+  after:  return Err(AuthError::RevokedToken);
+
+RIPR:
+  Reach:       yes — Related tests appear to reach authenticate: empty_token_is_rejected
+  Infect:      yes — Reachable tests can plausibly activate this changed behavior
+  Propagate:   yes — Changed behavior can propagate through a return or Result boundary
+  Observe:     yes — A related test observes a value or effect near the changed behavior
+  Discriminate:weak — Only weak or smoke oracle found, such as is_ok/is_err, unwrap/expect, broad relational assertion, or non-empty check
+
+Related tests / oracles:
+  - tests/errors.rs:4 empty_token_is_rejected [smoke] — assert!(authenticate("").is_err());
+
+Gap:
+  - No strong discriminator was detected
+
+Recommended next step:
+  Replace broad assertions with exact equality or a property that constrains the changed returned value.

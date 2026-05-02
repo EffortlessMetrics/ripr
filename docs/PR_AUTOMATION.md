@@ -394,13 +394,12 @@ The next automation path is trusted-change evidence:
 
 | Order | PR | Purpose |
 | ---: | --- | --- |
-| 1 | `fixtures/first-two-goldens` | Add the first behavior fixtures and expected outputs. |
-| 2 | `testing/test-oracle-report` | Measure the strength of `ripr`'s own test oracles. |
-| 3 | `dogfood/static-self-check` | Generate focused `ripr`-on-`ripr` evidence reports. |
-| 4 | `automation/gate-receipts-v1` | Write machine-readable receipts for gate runs. |
-| 5 | `automation/critic-report` | Add an advisory adversarial review packet from existing reports. |
-| 6 | `devex/onboard-doctor` | Report whether the local checkout and toolchain are ready to work. |
-| 7 | `devex/install-hooks` | Generate local hooks without checking executable scripts into the repo. |
+| 1 | `testing/test-oracle-report` | Measure the strength of `ripr`'s own test oracles. |
+| 2 | `dogfood/static-self-check` | Generate focused `ripr`-on-`ripr` evidence reports. |
+| 3 | `automation/gate-receipts-v1` | Write machine-readable receipts for gate runs. |
+| 4 | `automation/critic-report` | Add an advisory adversarial review packet from existing reports. |
+| 5 | `devex/onboard-doctor` | Report whether the local checkout and toolchain are ready to work. |
+| 6 | `devex/install-hooks` | Generate local hooks without checking executable scripts into the repo. |
 
 After those are in place, analyzer work can move through Codex Goals campaigns.
 Each campaign may span multiple PRs, while each work item should still follow

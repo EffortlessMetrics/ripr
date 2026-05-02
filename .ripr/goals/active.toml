@@ -113,7 +113,7 @@ commands = [
 
 [[work_item]]
 id = "fixtures/first-two-goldens"
-status = "ready"
+status = "done"
 branch = "fixtures/first-two-goldens"
 stackable = false
 requires_human_merge = true
