@@ -35,3 +35,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0001: oracle-strength-v2 distinguishes exact, broad, and smoke oracles
+
+Command:
+`cargo xtask goldens bless weak_error_oracle --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

@@ -9,6 +9,8 @@ id = "RIPR-SPEC-0001"
 name = "static exposure loop"
 spec = "docs/specs/RIPR-SPEC-0001-static-exposure-loop.md"
 tests = [
+  "crates/ripr/src/analysis/classifier.rs",
+  "crates/ripr/src/analysis/rust_index.rs",
   "crates/ripr/src/analysis/mod.rs",
   "crates/ripr/tests/cli_smoke.rs"
 ]

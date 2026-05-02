@@ -16,13 +16,14 @@ evidence = [
   "ra_ap_syntax parser-backed test/oracle extraction",
   "module-qualified and impl-qualified owner symbols",
   "parser-backed probe shape facts",
-  "unknown stop reason invariant"
+  "unknown stop reason invariant",
+  "probe-relative oracle kind and strength"
 ]
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "oracle-strength-v2"
+next = "local-delta-flow-v1"
 metric = "findings include changed behavior, class, evidence, and next step"
 
 [[capability]]
@@ -40,7 +41,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "oracle-strength-v2"
+next = "evidence-first-output"
 metric = "unknown findings include explicit stop reasons"
 
 [[capability]]
@@ -71,12 +72,13 @@ spec = "RIPR-SPEC-0001"
 evidence = [
   "sample error_path explain/context command",
   "weak_error_oracle fixture",
-  "parser-backed error-path probe shape facts"
+  "parser-backed error-path probe shape facts",
+  "probe-relative exact error variant vs broad error oracle classification"
 ]
 fixtures = [
   "fixtures/weak_error_oracle"
 ]
-next = "oracle-strength-v2"
+next = "local-delta-flow-v1"
 metric = "broad error checks distinguished from exact variants"
 
 [[capability]]
@@ -87,12 +89,13 @@ spec = "RIPR-SPEC-0001"
 evidence = [
   "syntax-first scanner",
   "weak_error_oracle fixture",
-  "parser-backed return and tail-expression probe shape facts"
+  "parser-backed return and tail-expression probe shape facts",
+  "probe-relative exact value vs smoke oracle classification"
 ]
 fixtures = [
   "fixtures/weak_error_oracle"
 ]
-next = "oracle-strength-v2"
+next = "local-delta-flow-v1"
 metric = "exact vs smoke return oracle distinction"
 
 [[capability]]
@@ -125,13 +128,14 @@ evidence = [
   "lexical syntax adapter boundary",
   "ra_ap_syntax parser-backed test/oracle extraction",
   "module-qualified and impl-qualified owner symbols",
-  "parser-backed probe shape facts"
+  "parser-backed probe shape facts",
+  "oracle-strength-v2 golden blessings"
 ]
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "oracle-strength-v2"
+next = "negative-metamorphic-baseline"
 metric = "fixture pass rate"
 
 [[capability]]
@@ -229,13 +233,14 @@ evidence = [
   "RustSyntaxAdapter parser adapter",
   "fixture/golden output stability",
   "module-qualified and impl-qualified owner symbols",
-  "parser-backed probe shape facts"
+  "parser-backed probe shape facts",
+  "probe-relative oracle kind and strength"
 ]
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "oracle-strength-v2"
+next = "local-delta-flow-v1"
 metric = "syntax extraction parity"
 
 [[capability]]
@@ -247,13 +252,14 @@ evidence = [
   "ra_ap_syntax function extraction",
   "parser-backed assertion macro extraction",
   "unwrap/expect smoke-oracle tests",
+  "probe-relative OracleKind classification",
   "fixture/golden output stability"
 ]
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "oracle-strength-v2"
+next = "local-delta-flow-v1"
 metric = "oracle kind recognition rate"
 
 [[capability]]
@@ -284,11 +290,12 @@ evidence = [
   "parser-backed return and tail-expression probe shape facts",
   "parser-backed error-path probe shape facts",
   "parser-backed call, side-effect, field, and match probe shape facts",
-  "fixture/golden output stability"
+  "fixture/golden output stability",
+  "probe-relative oracle kind and strength"
 ]
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "oracle-strength-v2"
+next = "local-delta-flow-v1"
 metric = "syntax facts generate current probe families"

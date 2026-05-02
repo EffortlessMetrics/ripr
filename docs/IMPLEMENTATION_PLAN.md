@@ -20,8 +20,8 @@ through multiple work items in a campaign, but each work item should follow the
 | Adoption and Calibration | Make `ripr` practical in repositories, CI, and offline calibration loops. | `config/ripr-config-v1`, `ci/sarif-ci-policy`, `calibration/cargo-mutants-scaffold`, `cache/persistent-cache-v1` |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaign 1
-and Campaign 2 are complete; the active queue now starts Campaign 3 with
-`analysis/oracle-strength-v2`.
+and Campaign 2 are complete; the active Campaign 3 queue now continues with
+`analysis/local-delta-flow-v1`.
 
 ## PR 0: `planning-and-tracking-docs`
 
@@ -645,21 +645,23 @@ Purpose: make oracle kind and strength explicit and probe-relative.
 
 Deliverables:
 
-- [ ] Exact value oracle.
-- [ ] Exact error variant oracle.
+- [x] Exact value oracle.
+- [x] Exact error variant oracle.
+- [x] Broad error oracle.
 - [ ] Whole-object equality oracle.
-- [ ] Snapshot oracle.
-- [ ] Mock expectation oracle.
-- [ ] Relational check oracle.
+- [x] Snapshot oracle.
+- [x] Mock expectation oracle.
+- [x] Relational check oracle.
 - [ ] Shape-only oracle.
-- [ ] Smoke-only oracle.
-- [ ] Unknown oracle with stop reason where applicable.
+- [x] Smoke-only oracle.
+- [x] Unknown oracle kind.
 
 Acceptance:
 
-- [ ] `is_err()` differs from exact error variant assertions.
-- [ ] `unwrap()` differs from exact return assertions.
-- [ ] JSON and context include oracle kind and strength.
+- [x] `is_err()` differs from exact error variant assertions.
+- [x] `unwrap()` differs from exact return assertions.
+- [x] JSON and human output keep the stable schema while rendering
+  probe-relative oracle strength.
 
 ## PR 9: `local-delta-flow-v1`
 

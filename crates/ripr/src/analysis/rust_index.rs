@@ -1,4 +1,4 @@
-use crate::domain::{OracleStrength, SymbolId};
+use crate::domain::{OracleKind, OracleStrength, SymbolId};
 use ra_ap_syntax::{
     AstNode, Edition, SourceFile, TextSize,
     ast::{self, HasAttrs, HasName},
@@ -62,6 +62,7 @@ pub struct TestFact {
 pub struct OracleFact {
     pub line: usize,
     pub text: String,
+    pub kind: OracleKind,
     pub strength: OracleStrength,
     pub observed_tokens: Vec<String>,
 }
@@ -809,9 +810,11 @@ fn extract_parser_oracles(
         }
         let range = macro_call.syntax().text_range();
         let assertion_text = slice_macro_call_text(text, range.start(), range.end());
+        let classification = classify_assertion(&assertion_text);
         assertions.push(OracleFact {
             line: line_index.line(range.start()),
-            strength: classify_assertion(&assertion_text),
+            kind: classification.kind,
+            strength: classification.strength,
             observed_tokens: extract_identifier_tokens(&assertion_text),
             text: assertion_text,
         });
@@ -838,6 +841,7 @@ fn extract_parser_oracles(
             .to_string();
         assertions.push(OracleFact {
             line: line_index.line(range.start()),
+            kind: OracleKind::SmokeOnly,
             strength: OracleStrength::Smoke,
             observed_tokens: extract_identifier_tokens(&text),
             text,
@@ -1076,11 +1080,12 @@ fn extract_assertions(body: &str, start_line: usize) -> Vec<OracleFact> {
     for (offset, line) in body.lines().enumerate() {
         let trimmed = line.trim();
         if is_assertion_line(trimmed) {
-            let strength = classify_assertion(trimmed);
+            let classification = classify_assertion(trimmed);
             out.push(OracleFact {
                 line: start_line + offset,
                 text: trimmed.to_string(),
-                strength,
+                kind: classification.kind,
+                strength: classification.strength,
                 observed_tokens: extract_identifier_tokens(trimmed),
             });
         }
@@ -1102,23 +1107,48 @@ fn is_assertion_line(line: &str) -> bool {
         || line.contains("should_panic")
 }
 
-fn classify_assertion(line: &str) -> OracleStrength {
-    if line.contains("assert_eq!")
-        || line.contains("assert_ne!")
-        || line.contains("assert_matches!")
-        || line.contains("matches!") && line.contains("Err(")
-    {
-        OracleStrength::Strong
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct OracleClassification {
+    kind: OracleKind,
+    strength: OracleStrength,
+}
+
+fn classify_assertion(line: &str) -> OracleClassification {
+    if is_exact_error_variant_assertion(line) {
+        OracleClassification {
+            kind: OracleKind::ExactErrorVariant,
+            strength: OracleStrength::Strong,
+        }
+    } else if is_broad_error_assertion(line) {
+        OracleClassification {
+            kind: OracleKind::BroadError,
+            strength: OracleStrength::Weak,
+        }
+    } else if is_exact_value_assertion(line) {
+        OracleClassification {
+            kind: OracleKind::ExactValue,
+            strength: OracleStrength::Strong,
+        }
     } else if line.contains("insta::assert") || line.contains("snapshot!") {
-        OracleStrength::Medium
-    } else if line.contains("is_ok")
-        || line.contains("is_err")
+        OracleClassification {
+            kind: OracleKind::Snapshot,
+            strength: OracleStrength::Medium,
+        }
+    } else if line.contains(".unwrap(")
+        || line.contains(".expect(")
+        || line.contains("is_ok")
         || line.contains("is_some")
         || line.contains("is_none")
-        || line.contains(".unwrap(")
-        || line.contains(".expect(")
     {
-        OracleStrength::Smoke
+        OracleClassification {
+            kind: OracleKind::SmokeOnly,
+            strength: OracleStrength::Smoke,
+        }
+    } else if line.contains("expect_") || line.contains("mock") {
+        OracleClassification {
+            kind: OracleKind::MockExpectation,
+            strength: OracleStrength::Medium,
+        }
     } else if line.contains("> 0")
         || line.contains("<")
         || line.contains(">")
@@ -1126,10 +1156,33 @@ fn classify_assertion(line: &str) -> OracleStrength {
         || line.contains("contains")
         || line.contains("assert!")
     {
-        OracleStrength::Weak
+        OracleClassification {
+            kind: OracleKind::RelationalCheck,
+            strength: OracleStrength::Weak,
+        }
     } else {
-        OracleStrength::Unknown
+        OracleClassification {
+            kind: OracleKind::Unknown,
+            strength: OracleStrength::Unknown,
+        }
     }
+}
+
+fn is_exact_error_variant_assertion(line: &str) -> bool {
+    (line.contains("assert_matches!") || line.contains("matches!") || line.contains("assert_eq!"))
+        && line.contains("Err(")
+        && !line.contains("Err(_")
+}
+
+fn is_broad_error_assertion(line: &str) -> bool {
+    line.contains("is_err") || line.contains("Err(_)")
+}
+
+fn is_exact_value_assertion(line: &str) -> bool {
+    line.contains("assert_eq!")
+        || line.contains("assert_ne!")
+        || line.contains("assert_matches!")
+        || line.contains("matches!")
 }
 
 fn extract_call_facts(body: &str, start_line: usize) -> Vec<CallFact> {
@@ -1300,7 +1353,42 @@ fn checks_error() {
         );
         assert_eq!(file.tests.len(), 1);
         assert_eq!(file.tests[0].assertions.len(), 1);
-        assert_eq!(file.tests[0].assertions[0].strength, OracleStrength::Smoke);
+        assert_eq!(file.tests[0].assertions[0].kind, OracleKind::BroadError);
+        assert_eq!(file.tests[0].assertions[0].strength, OracleStrength::Weak);
+    }
+
+    #[test]
+    fn classifies_exact_error_variants_separately_from_broad_error_shapes() {
+        let exact = classify_assertion("assert_matches!(result, Err(AuthError::RevokedToken));");
+        let broad = classify_assertion("assert_matches!(result, Err(_));");
+        let ok_pattern = classify_assertion("assert_matches!(result, Ok(Value::Ready));");
+
+        assert_eq!(exact.kind, OracleKind::ExactErrorVariant);
+        assert_eq!(exact.strength, OracleStrength::Strong);
+        assert_eq!(broad.kind, OracleKind::BroadError);
+        assert_eq!(broad.strength, OracleStrength::Weak);
+        assert_eq!(ok_pattern.kind, OracleKind::ExactValue);
+        assert_eq!(ok_pattern.strength, OracleStrength::Strong);
+    }
+
+    #[test]
+    fn classifies_snapshot_mock_relational_smoke_and_unknown_oracles() {
+        let snapshot = classify_assertion("insta::assert_snapshot!(rendered);");
+        let mock = classify_assertion("mock.expect_publish().times(1);");
+        let relational = classify_assertion("assert!(total > 0);");
+        let smoke = classify_assertion("assert!(result.is_ok());");
+        let unknown = classify_assertion("helper_records_observation();");
+
+        assert_eq!(snapshot.kind, OracleKind::Snapshot);
+        assert_eq!(snapshot.strength, OracleStrength::Medium);
+        assert_eq!(mock.kind, OracleKind::MockExpectation);
+        assert_eq!(mock.strength, OracleStrength::Medium);
+        assert_eq!(relational.kind, OracleKind::RelationalCheck);
+        assert_eq!(relational.strength, OracleStrength::Weak);
+        assert_eq!(smoke.kind, OracleKind::SmokeOnly);
+        assert_eq!(smoke.strength, OracleStrength::Smoke);
+        assert_eq!(unknown.kind, OracleKind::Unknown);
+        assert_eq!(unknown.strength, OracleStrength::Unknown);
     }
 
     #[test]
@@ -1550,6 +1638,7 @@ fn exact_boundary_value_is_checked() {
             facts.tests[0].assertions[0].strength,
             OracleStrength::Strong
         );
+        assert_eq!(facts.tests[0].assertions[0].kind, OracleKind::ExactValue);
         assert!(facts.tests[0].assertions[0].text.contains("assert_eq!"));
         assert!(
             facts.tests[0].assertions[0]
@@ -1578,7 +1667,9 @@ fn exact_boundary_value_is_checked() {
 
         let assertions = &facts.tests[0].assertions;
         assert_eq!(assertions.len(), 2);
+        assert_eq!(assertions[0].kind, OracleKind::SmokeOnly);
         assert_eq!(assertions[0].strength, OracleStrength::Smoke);
+        assert_eq!(assertions[1].kind, OracleKind::SmokeOnly);
         assert_eq!(assertions[1].strength, OracleStrength::Smoke);
         assert!(
             assertions

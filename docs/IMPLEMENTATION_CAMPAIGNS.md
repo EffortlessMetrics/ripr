@@ -180,8 +180,8 @@ Work items:
 | Work item | Status | Notes |
 | --- | --- | --- |
 | `output/unknown-stop-reason-invariant` | done | Unknown classifications carry stop reasons across domain, JSON, context, GitHub annotations, and human output. |
-| `analysis/oracle-strength-v2` | ready | Make oracle kind and strength probe-relative. |
-| `analysis/local-delta-flow-v1` | blocked | Depends on probe-relative oracle strength. |
+| `analysis/oracle-strength-v2` | done | Oracle kind and strength distinguish exact error variants, exact values, broad errors, smoke-only checks, snapshots, relational checks, and mock expectations. |
+| `analysis/local-delta-flow-v1` | ready | Name visible return, error, field, or effect sinks affected by changed expressions. |
 | `analysis/activation-value-modeling-v1` | blocked | Depends on local flow evidence. |
 | `output/evidence-first-output` | blocked | Depends on oracle, flow, and activation evidence fields. |
 | `fixtures/negative-metamorphic-baseline` | blocked | Depends on evidence-first output expectations. |
@@ -190,8 +190,6 @@ Dependencies:
 
 - `output/unknown-stop-reason-invariant` should land before deeper unknown
   evidence grows so silent unknowns do not become accepted output.
-- `analysis/oracle-strength-v2` should land before local flow so later evidence
-  can distinguish exact discriminators from broad or smoke checks.
 - `analysis/local-delta-flow-v1` should land before activation/value modeling.
 - `output/evidence-first-output` should wait until oracle, flow, and activation
   fields are stable enough to expose.

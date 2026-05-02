@@ -34,7 +34,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/oracle-strength-v2"
-status = "ready"
+status = "done"
 branch = "analysis/oracle-strength-v2"
 stackable = false
 requires_human_merge = true
@@ -52,13 +52,21 @@ commands = [
 
 [[work_item]]
 id = "analysis/local-delta-flow-v1"
-status = "blocked"
+status = "ready"
 branch = "analysis/local-delta-flow-v1"
 stackable = false
 requires_human_merge = true
 acceptance = "changed expressions map to visible return, error, field, or effect sinks"
-blocked_by = ["analysis/oracle-strength-v2"]
-blocked_reason = "requires probe-relative oracle strength before flow evidence can be ranked"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask pr-summary",
+  "cargo xtask fixtures",
+  "cargo xtask goldens check",
+  "cargo xtask golden-drift",
+  "cargo xtask check-output-contracts"
+]
 
 [[work_item]]
 id = "analysis/activation-value-modeling-v1"
