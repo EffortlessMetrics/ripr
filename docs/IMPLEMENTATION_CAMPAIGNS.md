@@ -44,6 +44,7 @@ Work items:
 | `docs/codex-goals-campaigns` | done | Clarify Codex Goals as multi-PR campaigns. |
 | `docs/readme-state-and-link-checks` | done | README state and repo-local Markdown links are checked. |
 | `goals/manifest-check` | done | Active campaign manifest is validated and reportable. |
+| `fixtures/runner-comparison-v1` | done | Fixture and golden commands run `ripr` and compare actual outputs. |
 | `fixtures/first-two-goldens` | ready | Add `boundary_gap` and `weak_error_oracle` fixtures. |
 | `testing/test-oracle-report` | ready | Report strength of `ripr`'s own test oracles. |
 | `dogfood/static-self-check` | ready | Produce focused `ripr`-on-`ripr` reports. |

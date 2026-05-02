@@ -58,3 +58,6 @@ how future PRs are scoped or reviewed.
   references and capability checkpoints aligned before review.
 - Added Codex Goals campaign manifest checks plus `goals status` and
   `goals next` reports for `.ripr/goals/active.toml`.
+- Added fixture/golden runner comparison so `cargo xtask fixtures` and
+  `cargo xtask goldens check` execute `ripr` and compare actual outputs against
+  expected fixture goldens.

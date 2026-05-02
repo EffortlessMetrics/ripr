@@ -331,6 +331,7 @@ fn fixtures(name: Option<&String>) -> Result<(), String> {
         None => fixture_dirs,
     };
     let mut violations = Vec::new();
+    let mut runs = Vec::new();
     for path in &selected {
         if !path.exists() {
             violations.push(format!("fixture does not exist: {}", normalize_path(path)));
@@ -343,10 +344,21 @@ fn fixtures(name: Option<&String>) -> Result<(), String> {
             ));
             continue;
         }
-        violations.extend(fixture_contract_violations(path)?);
+        let contract_violations = fixture_contract_violations(path)?;
+        if contract_violations.is_empty() {
+            match run_fixture(path) {
+                Ok(run) => {
+                    violations.extend(run.comparison_violations());
+                    runs.push(run);
+                }
+                Err(err) => violations.push(err),
+            }
+        } else {
+            violations.extend(contract_violations);
+        }
     }
 
-    let body = fixture_report_body(name.map(String::as_str), &selected, &violations);
+    let body = fixture_report_body(name.map(String::as_str), &selected, &runs, &violations);
     write_report("fixtures.md", &body)?;
 
     if violations.is_empty() {
@@ -385,28 +397,22 @@ fn goldens(args: &[String]) -> Result<(), String> {
 fn goldens_check() -> Result<(), String> {
     let fixture_dirs = fixture_dirs()?;
     let mut violations = Vec::new();
-    let mut golden_files = Vec::new();
+    let mut runs = Vec::new();
     for fixture in &fixture_dirs {
-        let expected = fixture.join("expected");
-        if !expected.exists() {
-            violations.push(format!("{} is missing expected/", normalize_path(fixture)));
+        let contract_violations = fixture_contract_violations(fixture)?;
+        if !contract_violations.is_empty() {
+            violations.extend(contract_violations);
             continue;
         }
-        golden_files.extend(
-            collect_files(&expected)?
-                .into_iter()
-                .map(|path| normalize_path(&path)),
-        );
-        let check_json = expected.join("check.json");
-        if !check_json.exists() {
-            violations.push(format!(
-                "{} is missing expected/check.json",
-                normalize_path(fixture)
-            ));
+        match run_fixture(fixture) {
+            Ok(run) => {
+                violations.extend(run.comparison_violations());
+                runs.push(run);
+            }
+            Err(err) => violations.push(err),
         }
     }
-    golden_files.sort();
-    let body = goldens_check_report_body(&fixture_dirs, &golden_files, &violations);
+    let body = goldens_check_report_body(&fixture_dirs, &runs, &violations);
     write_report("goldens.md", &body)?;
     if violations.is_empty() {
         Ok(())
@@ -426,16 +432,27 @@ fn goldens_bless(name: &str, reason: &str) -> Result<(), String> {
             normalize_path(&fixture)
         ));
     }
+    let run = run_fixture_outputs(&fixture)?;
     let expected = fixture.join("expected");
-    if !expected.exists() {
-        return Err(format!(
-            "fixture is missing expected/: {}",
-            normalize_path(&fixture)
-        ));
-    }
+    fs::create_dir_all(&expected)
+        .map_err(|err| format!("failed to create {}: {err}", normalize_path(&expected)))?;
+    fs::copy(&run.check_json, expected.join("check.json")).map_err(|err| {
+        format!(
+            "failed to update {} from {}: {err}",
+            normalize_path(&expected.join("check.json")),
+            normalize_path(&run.check_json)
+        )
+    })?;
+    fs::copy(&run.human_txt, expected.join("human.txt")).map_err(|err| {
+        format!(
+            "failed to update {} from {}: {err}",
+            normalize_path(&expected.join("human.txt")),
+            normalize_path(&run.human_txt)
+        )
+    })?;
     let changelog = expected.join("CHANGELOG.md");
     let entry = format!(
-        "\n## Pending\n\nReason:\n{reason}\n\nCommand:\n`cargo xtask goldens bless {name} --reason \"...\"`\n"
+        "\n## Pending\n\nReason:\n{reason}\n\nCommand:\n`cargo xtask goldens bless {name} --reason \"...\"`\n\nUpdated:\n- `expected/check.json`\n- `expected/human.txt`\n"
     );
     let mut text = if changelog.exists() {
         read_text_lossy(&changelog)?
@@ -446,8 +463,12 @@ fn goldens_bless(name: &str, reason: &str) -> Result<(), String> {
     fs::write(&changelog, text)
         .map_err(|err| format!("failed to write {}: {err}", normalize_path(&changelog)))?;
     let body = format!(
-        "# ripr goldens bless report\n\nStatus: pass\n\nFixture:\n- `{}`\n\nReason:\n```text\n{reason}\n```\n\nUpdated:\n- `{}`\n",
+        "# ripr goldens bless report\n\nStatus: pass\n\nFixture:\n- `{}`\n\nReason:\n```text\n{reason}\n```\n\nActual outputs:\n- `{}`\n- `{}`\n\nUpdated:\n- `{}`\n- `{}`\n- `{}`\n",
         normalize_path(&fixture),
+        normalize_path(&run.check_json),
+        normalize_path(&run.human_txt),
+        normalize_path(&expected.join("check.json")),
+        normalize_path(&expected.join("human.txt")),
         normalize_path(&changelog)
     );
     write_report("goldens-bless.md", &body)
@@ -515,7 +536,175 @@ fn fixture_contract_violations(path: &Path) -> Result<Vec<String>, String> {
     Ok(violations)
 }
 
-fn fixture_report_body(name: Option<&str>, selected: &[PathBuf], violations: &[String]) -> String {
+#[derive(Debug)]
+struct FixtureRun {
+    name: String,
+    actual_dir: PathBuf,
+    check_json: PathBuf,
+    human_txt: PathBuf,
+    comparisons: Vec<GoldenComparison>,
+}
+
+impl FixtureRun {
+    fn comparison_violations(&self) -> Vec<String> {
+        self.comparisons
+            .iter()
+            .filter(|comparison| !comparison.matches)
+            .map(|comparison| {
+                format!(
+                    "{} drift for fixture `{}`\n  expected: {}\n  actual:   {}",
+                    comparison.surface,
+                    self.name,
+                    normalize_path(&comparison.expected),
+                    normalize_path(&comparison.actual)
+                )
+            })
+            .collect()
+    }
+}
+
+#[derive(Debug)]
+struct GoldenComparison {
+    surface: &'static str,
+    expected: PathBuf,
+    actual: PathBuf,
+    matches: bool,
+}
+
+fn run_fixture(path: &Path) -> Result<FixtureRun, String> {
+    let run = run_fixture_outputs(path)?;
+    let expected = path.join("expected");
+    let comparisons = fixture_golden_comparisons(&expected, &run.check_json, &run.human_txt)?;
+    Ok(FixtureRun { comparisons, ..run })
+}
+
+fn run_fixture_outputs(path: &Path) -> Result<FixtureRun, String> {
+    let name = fixture_name(path)?;
+    let diff = path.join("diff.patch");
+    let input = path.join("input");
+    if !diff.exists() {
+        return Err(format!("{} is missing diff.patch", normalize_path(path)));
+    }
+    if !input.exists() {
+        return Err(format!(
+            "{} is missing input/ fixture workspace",
+            normalize_path(path)
+        ));
+    }
+
+    let actual_dir = Path::new("target")
+        .join("ripr")
+        .join("fixtures")
+        .join(&name);
+    fs::create_dir_all(&actual_dir).map_err(|err| {
+        format!(
+            "failed to create actual fixture output directory {}: {err}",
+            normalize_path(&actual_dir)
+        )
+    })?;
+
+    let check_json = actual_dir.join("check.json");
+    let human_txt = actual_dir.join("human.txt");
+    let root = normalize_path(&input);
+    let diff_file = normalize_path(&diff);
+
+    let json = run_fixture_check(&root, &diff_file, true)?;
+    fs::write(&check_json, json).map_err(|err| {
+        format!(
+            "failed to write actual fixture output {}: {err}",
+            normalize_path(&check_json)
+        )
+    })?;
+
+    let human = run_fixture_check(&root, &diff_file, false)?;
+    fs::write(&human_txt, human).map_err(|err| {
+        format!(
+            "failed to write actual fixture output {}: {err}",
+            normalize_path(&human_txt)
+        )
+    })?;
+
+    Ok(FixtureRun {
+        name,
+        actual_dir,
+        check_json,
+        human_txt,
+        comparisons: Vec::new(),
+    })
+}
+
+fn run_fixture_check(root: &str, diff_file: &str, json: bool) -> Result<String, String> {
+    let mut args = vec![
+        "run".to_string(),
+        "-p".to_string(),
+        "ripr".to_string(),
+        "--".to_string(),
+        "check".to_string(),
+        "--root".to_string(),
+        root.to_string(),
+        "--diff".to_string(),
+        diff_file.to_string(),
+        "--mode".to_string(),
+        "fast".to_string(),
+    ];
+    if json {
+        args.push("--json".to_string());
+    }
+    run_output_owned("cargo", &args)
+}
+
+fn fixture_golden_comparisons(
+    expected: &Path,
+    check_json: &Path,
+    human_txt: &Path,
+) -> Result<Vec<GoldenComparison>, String> {
+    let mut comparisons = Vec::new();
+    comparisons.push(compare_golden(
+        "check.json",
+        &expected.join("check.json"),
+        check_json,
+    )?);
+
+    let expected_human = expected.join("human.txt");
+    if expected_human.exists() {
+        comparisons.push(compare_golden("human.txt", &expected_human, human_txt)?);
+    }
+    Ok(comparisons)
+}
+
+fn compare_golden(
+    surface: &'static str,
+    expected: &Path,
+    actual: &Path,
+) -> Result<GoldenComparison, String> {
+    let expected_text = read_text_lossy(expected)?;
+    let actual_text = read_text_lossy(actual)?;
+    Ok(GoldenComparison {
+        surface,
+        expected: expected.to_path_buf(),
+        actual: actual.to_path_buf(),
+        matches: normalize_golden_text(&expected_text) == normalize_golden_text(&actual_text),
+    })
+}
+
+fn normalize_golden_text(value: &str) -> String {
+    value.replace("\r\n", "\n")
+}
+
+fn fixture_name(path: &Path) -> Result<String, String> {
+    path.file_name()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| format!("invalid fixture path {}", normalize_path(path)))
+}
+
+fn fixture_report_body(
+    name: Option<&str>,
+    selected: &[PathBuf],
+    runs: &[FixtureRun],
+    violations: &[String],
+) -> String {
     let status = if violations.is_empty() {
         "pass"
     } else {
@@ -535,13 +724,14 @@ fn fixture_report_body(name: Option<&str>, selected: &[PathBuf], violations: &[S
         }
         body.push('\n');
     }
+    write_fixture_runs_section(&mut body, runs);
     write_violations_section(&mut body, violations);
     body
 }
 
 fn goldens_check_report_body(
     fixtures: &[PathBuf],
-    golden_files: &[String],
+    runs: &[FixtureRun],
     violations: &[String],
 ) -> String {
     let status = if violations.is_empty() {
@@ -559,17 +749,49 @@ fn goldens_check_report_body(
         }
         body.push('\n');
     }
-    body.push_str("## Golden Files\n\n");
-    if golden_files.is_empty() {
-        body.push_str("No golden files found.\n\n");
-    } else {
-        for path in golden_files {
-            body.push_str(&format!("- `{path}`\n"));
-        }
-        body.push('\n');
-    }
+    write_fixture_runs_section(&mut body, runs);
     write_violations_section(&mut body, violations);
     body
+}
+
+fn write_fixture_runs_section(body: &mut String, runs: &[FixtureRun]) {
+    body.push_str("## Actual Outputs\n\n");
+    if runs.is_empty() {
+        body.push_str("No fixture outputs generated.\n\n");
+        return;
+    }
+    for run in runs {
+        body.push_str(&format!(
+            "- `{}` -> `{}`\n",
+            run.name,
+            normalize_path(&run.actual_dir)
+        ));
+        body.push_str(&format!("  - `{}`\n", normalize_path(&run.check_json)));
+        body.push_str(&format!("  - `{}`\n", normalize_path(&run.human_txt)));
+    }
+    body.push('\n');
+
+    body.push_str("## Golden Comparisons\n\n");
+    for run in runs {
+        if run.comparisons.is_empty() {
+            body.push_str(&format!(
+                "- `{}`: no expected outputs compared.\n",
+                run.name
+            ));
+            continue;
+        }
+        for comparison in &run.comparisons {
+            let status = if comparison.matches { "pass" } else { "fail" };
+            body.push_str(&format!(
+                "- `{}` `{}`: {status}\n  - expected: `{}`\n  - actual: `{}`\n",
+                run.name,
+                comparison.surface,
+                normalize_path(&comparison.expected),
+                normalize_path(&comparison.actual)
+            ));
+        }
+    }
+    body.push('\n');
 }
 
 fn write_violations_section(body: &mut String, violations: &[String]) {
@@ -4320,6 +4542,25 @@ fn run_output(program: &str, args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
+fn run_output_owned(program: &str, args: &[String]) -> Result<String, String> {
+    let output = Command::new(program)
+        .args(args)
+        .output()
+        .map_err(|err| format!("failed to run {program}: {err}"))?;
+    if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "{program} {} failed with {}\nstdout:\n{}\nstderr:\n{}",
+            args.join(" "),
+            output.status,
+            stdout.trim(),
+            stderr.trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
 fn run_output_optional(program: &str, args: &[&str]) -> Result<String, String> {
     let output = Command::new(program)
         .args(args)
@@ -4380,9 +4621,9 @@ mod tests {
         glob_matches, is_dependency_surface_candidate, is_evidence_path, is_generated_candidate,
         is_known_campaign_command, is_policy_path, is_production_path, is_snake_case_id,
         is_spec_id, json_escape, local_markdown_target, markdown_links_in_text,
-        next_checkpoints_from_capabilities, parse_campaign_manifest, parse_inline_array,
-        parse_reason, pr_shape_warnings, precommit_report_body, public_contract_rows,
-        sorted_allowlist_content, spec_id_from_path,
+        next_checkpoints_from_capabilities, normalize_golden_text, parse_campaign_manifest,
+        parse_inline_array, parse_reason, pr_shape_warnings, precommit_report_body,
+        public_contract_rows, sorted_allowlist_content, spec_id_from_path,
     };
     use std::collections::BTreeSet;
     use std::fs;
@@ -4464,6 +4705,18 @@ jobs:
         assert_eq!(
             sorted,
             "# Header\n# More\n\na|kind|owner|reason\nz|kind|owner|reason\n"
+        );
+    }
+
+    #[test]
+    fn golden_text_comparison_normalizes_line_endings_only() {
+        assert_eq!(
+            normalize_golden_text("one\r\ntwo\r\n"),
+            normalize_golden_text("one\ntwo\n")
+        );
+        assert_ne!(
+            normalize_golden_text("one\ntwo\n"),
+            normalize_golden_text("one\ntwo")
         );
     }
 

@@ -59,13 +59,16 @@ policy surfaces that should fail quickly before review.
 then clippy, docs, and PR summary generation. It intentionally leaves
 release/package verification to `ci-full` or release-specific workflows.
 
-`fixtures` validates fixture contract shape and writes
+`fixtures` validates fixture contract shape, runs `ripr check` for fixture
+directories when they exist, writes actual outputs under
+`target/ripr/fixtures/<name>/`, compares stable expected outputs, and writes
 `target/ripr/reports/fixtures.md`. It passes with a clear report when no
 fixture directories exist yet.
 
-`goldens check` validates the current golden scaffold and writes
-`target/ripr/reports/goldens.md`. `goldens bless <fixture> --reason <reason>`
-records an explicit blessing reason in the fixture expected-output changelog.
+`goldens check` runs fixtures and fails on drift between actual and expected
+outputs without mutating checked-in files. `goldens bless <fixture> --reason
+<reason>` records an explicit blessing reason, updates expected JSON and human
+outputs, and appends the fixture expected-output changelog.
 
 `ci-fast` is the current non-mutating local and CI check lane. It runs the Rust
 checks plus the existing policy checks for static language, panic-family usage,
