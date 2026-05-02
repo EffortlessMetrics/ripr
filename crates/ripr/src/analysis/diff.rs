@@ -125,6 +125,7 @@ fn parse_start(segment: &str) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn parses_added_lines() {
@@ -134,5 +135,24 @@ mod tests {
         assert_eq!(files[0].path, PathBuf::from("src/lib.rs"));
         assert_eq!(files[0].added_lines[0].line, 1);
         assert_eq!(files[0].added_lines[0].text, "b");
+    }
+
+    proptest! {
+        #[test]
+        fn parses_hunk_headers_for_positive_line_numbers(
+            old_start in 1usize..10_000,
+            old_count in 0usize..128,
+            new_start in 1usize..10_000,
+            new_count in 0usize..128,
+        ) {
+            let header = format!("@@ -{old_start},{old_count} +{new_start},{new_count} @@ fn example");
+            prop_assert_eq!(parse_hunk_header(&header), Some((old_start, new_start)));
+        }
+
+        #[test]
+        fn parse_start_extracts_first_segment_before_comma(start in 1usize..100_000, tail in "\\PC*") {
+            let segment = format!("{start},{tail}");
+            prop_assert_eq!(parse_start(&segment), Some(start));
+        }
     }
 }
