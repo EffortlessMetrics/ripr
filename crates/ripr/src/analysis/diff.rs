@@ -135,4 +135,34 @@ mod tests {
         assert_eq!(files[0].added_lines[0].line, 1);
         assert_eq!(files[0].added_lines[0].text, "b");
     }
+
+    #[test]
+    fn parser_is_robust_against_fuzz_like_inputs() {
+        let mut seed = 0xC0FFEE_u64;
+        for _case in 0..512 {
+            let len = (next_u64(&mut seed) % 512) as usize;
+            let mut bytes = Vec::with_capacity(len);
+            for _ in 0..len {
+                bytes.push((next_u64(&mut seed) & 0xFF) as u8);
+            }
+            let text = String::from_utf8_lossy(&bytes);
+            let files = parse_unified_diff(&text);
+            for file in files {
+                assert!(!file.path.as_os_str().is_empty());
+                assert!(file.added_lines.windows(2).all(|w| w[0].line <= w[1].line));
+                assert!(
+                    file.removed_lines
+                        .windows(2)
+                        .all(|w| w[0].line <= w[1].line)
+                );
+            }
+        }
+    }
+
+    fn next_u64(seed: &mut u64) -> u64 {
+        *seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        *seed
+    }
 }
