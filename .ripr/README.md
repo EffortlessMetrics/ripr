@@ -7,6 +7,8 @@ Files:
 
 - `traceability.toml`: maps specs to tests, code modules, output contracts, and
   metrics; validate it with `cargo xtask check-traceability`.
+- `goals/active.toml`: describes the active Codex Goals campaign, work items,
+  dependencies, stackability, and acceptance commands.
 - `no-panic-allowlist.txt`: tracks existing panic-family debt by path, pattern,
   and maximum count.
 - `static-language-allowlist.txt`: lists files that may mention prohibited

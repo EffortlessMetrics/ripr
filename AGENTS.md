@@ -209,9 +209,12 @@ from repository artifacts instead of chat history.
 When picking up work:
 
 - start from `docs/ROADMAP.md` and `docs/IMPLEMENTATION_PLAN.md`
+- use `docs/IMPLEMENTATION_CAMPAIGNS.md` and `.ripr/goals/active.toml` when
+  working through a Codex Goals campaign
 - use `docs/CAPABILITY_MATRIX.md` to identify current capability status
 - use `docs/PR_AUTOMATION.md` to understand local shaping and PR reports
-- use `docs/GOAL_MODE.md` when working through a long implementation queue
+- use `docs/CODEX_GOALS.md` for the multi-PR campaign model
+- use `docs/SCOPED_PR_CONTRACT.md` for one work item's PR-sized evidence bar
 - use `docs/specs/` and `.ripr/traceability.toml` to map spec -> tests -> code
 - choose the smallest vertical slice with one production delta and one evidence
   package

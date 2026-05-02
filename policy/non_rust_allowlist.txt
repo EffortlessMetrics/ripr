@@ -17,6 +17,7 @@
 .gitignore|repo_config|repo|Git ignore rules.
 .ripr/*.toml|policy_metadata|repo-policy|Traceability metadata.
 .ripr/*.txt|policy_metadata|repo-policy|Policy allowlists.
+.ripr/goals/*.toml|policy_metadata|repo-policy|Codex Goals campaign metadata.
 AGENTS.md|documentation|agents|Agent instructions.
 CHANGELOG.md|documentation|docs|Repository changelog.
 CONTRIBUTING.md|documentation|docs|Contribution guide.

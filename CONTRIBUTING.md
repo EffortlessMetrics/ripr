@@ -138,8 +138,9 @@ cargo xtask fixtures
 cargo xtask goldens check
 ```
 
-Long-running implementation tasks should follow
-[Goal-mode execution](docs/GOAL_MODE.md).
+Long-running Codex Goals campaigns should follow
+[Codex Goals](docs/CODEX_GOALS.md), [Implementation campaigns](docs/IMPLEMENTATION_CAMPAIGNS.md),
+and the [Scoped PR contract](docs/SCOPED_PR_CONTRACT.md).
 
 ## Required Rust Gates
 

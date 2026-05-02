@@ -134,8 +134,9 @@ reviewable PR without guessing.
 The operating model for those rails is documented in
 [PR automation](PR_AUTOMATION.md): deterministic cleanup is shaped locally,
 non-negotiable rules are checked, and judgment-required issues produce repair
-briefs. Goal-mode implementation work is documented in
-[Goal-mode execution](GOAL_MODE.md).
+briefs. Codex Goals campaign work is documented in
+[Codex Goals](CODEX_GOALS.md), [Implementation campaigns](IMPLEMENTATION_CAMPAIGNS.md),
+and [Scoped PR contract](SCOPED_PR_CONTRACT.md).
 
 ## Operating-System Cutoff
 
@@ -174,7 +175,7 @@ Nice later, not blocking:
 | 4 | `automation-guardrails` | Require allowlisted generated files, dependency surfaces, process spawning, and network behavior. | `0.2.x` |
 | 5 | `shape-fix-pr` | Add safe local PR normalization and report writing through `cargo xtask shape` and `cargo xtask fix-pr`. | `0.2.x` |
 | 6 | `pr-summary` | Generate a reviewer packet from changed paths, policy exceptions, and suggested focus areas. | `0.2.x` |
-| 7 | `automation-path-docs` | Document the fix/check/guide model and goal-mode handoff before the remaining rails. | `0.2.x` |
+| 7 | `automation-path-docs` | Document the fix/check/guide model and Codex Goals campaign handoff before the remaining rails. | `0.2.x` |
 | 8 | `check-pr-precommit` | Add `cargo xtask precommit` and `cargo xtask check-pr` as the obvious local gates. | `0.2.x` |
 | 9 | `guided-check-reports` | Make existing policy checks write actionable Markdown repair briefs. | `0.2.x` |
 | 10 | `ci-report-artifacts` | Upload generated PR reports from CI. | `0.2.x` |

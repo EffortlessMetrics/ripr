@@ -62,6 +62,10 @@ The fuller automation model is documented in [PR automation](PR_AUTOMATION.md).
 Deterministic shaping should happen locally; CI should verify the committed
 tree and upload reports when available.
 
+Codex Goals runs should treat CI artifacts as campaign receipts. A campaign can
+advance through multiple work items, but each scoped PR should leave the same
+shape/check/report artifacts that CI uploads for human review.
+
 Current policy checks write Markdown reports to `target/ripr/reports` when they
 run. The Rust workflow uploads that directory as the `ripr-pr-reports`
 artifact when reports are present.
