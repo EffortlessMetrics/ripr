@@ -1,6 +1,6 @@
 # RIPR-SPEC-0002: Fixture Laboratory
 
-Status: planned
+Status: accepted
 
 ## Problem
 
@@ -76,8 +76,8 @@ strong exact variant discriminator.
 
 ## Initial Fixture Set
 
-- `boundary_gap`
-- `weak_error_oracle`
+- `boundary_gap` (baseline)
+- `weak_error_oracle` (baseline)
 - `field_not_asserted`
 - `side_effect_unobserved`
 - `smoke_assertion_only`
@@ -101,10 +101,10 @@ strong exact variant discriminator.
 
 ## Test Mapping
 
-Planned tests:
+Current and planned tests:
 
-- golden JSON fixture tests
-- golden human fixture tests
+- golden JSON fixture tests for `boundary_gap` and `weak_error_oracle`
+- golden human fixture tests for `boundary_gap` and `weak_error_oracle`
 - context-packet fixture tests
 - invariant tests for static language and unknown stop reasons
 

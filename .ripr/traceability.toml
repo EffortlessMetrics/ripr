@@ -12,6 +12,10 @@ tests = [
   "crates/ripr/src/analysis/mod.rs",
   "crates/ripr/tests/cli_smoke.rs"
 ]
+fixtures = [
+  "fixtures/boundary_gap",
+  "fixtures/weak_error_oracle"
+]
 code = [
   "crates/ripr/src/domain.rs",
   "crates/ripr/src/app.rs",
@@ -22,7 +26,11 @@ code = [
 ]
 outputs = [
   "docs/OUTPUT_SCHEMA.md",
-  "docs/STATIC_EXPOSURE_MODEL.md"
+  "docs/STATIC_EXPOSURE_MODEL.md",
+  "fixtures/boundary_gap/expected/check.json",
+  "fixtures/boundary_gap/expected/human.txt",
+  "fixtures/weak_error_oracle/expected/check.json",
+  "fixtures/weak_error_oracle/expected/human.txt"
 ]
 metrics = [
   "fixture_pass_rate",
@@ -35,8 +43,19 @@ id = "RIPR-SPEC-0002"
 name = "fixture laboratory"
 spec = "docs/specs/RIPR-SPEC-0002-fixture-laboratory.md"
 tests = []
-code = []
-outputs = []
+fixtures = [
+  "fixtures/boundary_gap",
+  "fixtures/weak_error_oracle"
+]
+code = [
+  "xtask/src/main.rs"
+]
+outputs = [
+  "fixtures/boundary_gap/expected/check.json",
+  "fixtures/boundary_gap/expected/human.txt",
+  "fixtures/weak_error_oracle/expected/check.json",
+  "fixtures/weak_error_oracle/expected/human.txt"
+]
 metrics = [
   "fixture_pass_rate",
   "golden_output_drift_count"

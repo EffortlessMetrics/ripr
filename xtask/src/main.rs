@@ -608,7 +608,7 @@ fn run_fixture_outputs(path: &Path) -> Result<FixtureRun, String> {
     let root = normalize_path(&input);
     let diff_file = normalize_path(&diff);
 
-    let json = run_fixture_check(&root, &diff_file, true)?;
+    let json = normalize_fixture_json_output(&run_fixture_check(&root, &diff_file, true)?);
     fs::write(&check_json, json).map_err(|err| {
         format!(
             "failed to write actual fixture output {}: {err}",
@@ -616,7 +616,7 @@ fn run_fixture_outputs(path: &Path) -> Result<FixtureRun, String> {
         )
     })?;
 
-    let human = run_fixture_check(&root, &diff_file, false)?;
+    let human = normalize_fixture_human_output(&run_fixture_check(&root, &diff_file, false)?);
     fs::write(&human_txt, human).map_err(|err| {
         format!(
             "failed to write actual fixture output {}: {err}",
@@ -689,6 +689,18 @@ fn compare_golden(
 
 fn normalize_golden_text(value: &str) -> String {
     value.replace("\r\n", "\n")
+}
+
+fn normalize_fixture_json_output(value: &str) -> String {
+    value.replace("\\\\", "/")
+}
+
+fn normalize_fixture_human_output(value: &str) -> String {
+    let normalized = value.replace('\\', "/");
+    let trimmed = normalized.trim_end_matches(['\r', '\n']);
+    let mut output = trimmed.to_string();
+    output.push('\n');
+    output
 }
 
 fn fixture_name(path: &Path) -> Result<String, String> {
@@ -4621,7 +4633,8 @@ mod tests {
         glob_matches, is_dependency_surface_candidate, is_evidence_path, is_generated_candidate,
         is_known_campaign_command, is_policy_path, is_production_path, is_snake_case_id,
         is_spec_id, json_escape, local_markdown_target, markdown_links_in_text,
-        next_checkpoints_from_capabilities, normalize_golden_text, parse_campaign_manifest,
+        next_checkpoints_from_capabilities, normalize_fixture_human_output,
+        normalize_fixture_json_output, normalize_golden_text, parse_campaign_manifest,
         parse_inline_array, parse_reason, pr_shape_warnings, precommit_report_body,
         public_contract_rows, sorted_allowlist_content, spec_id_from_path,
     };
@@ -4717,6 +4730,21 @@ jobs:
         assert_ne!(
             normalize_golden_text("one\ntwo\n"),
             normalize_golden_text("one\ntwo")
+        );
+    }
+
+    #[test]
+    fn fixture_output_normalization_keeps_json_escapes_readable() {
+        let json =
+            r#"{"file":"fixtures/example/input\\src/lib.rs","oracle":"assert!(value == \"x\")"}"#;
+
+        assert_eq!(
+            normalize_fixture_json_output(json),
+            r#"{"file":"fixtures/example/input/src/lib.rs","oracle":"assert!(value == \"x\")"}"#
+        );
+        assert_eq!(
+            normalize_fixture_human_output("fixtures\\example\\input\\src/lib.rs"),
+            "fixtures/example/input/src/lib.rs\n"
         );
     }
 

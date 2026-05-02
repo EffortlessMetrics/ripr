@@ -12,5 +12,5 @@ observable behavior.
 | Spec | Status | Topic |
 | --- | --- | --- |
 | [RIPR-SPEC-0001](RIPR-SPEC-0001-static-exposure-loop.md) | accepted | Static exposure loop |
-| [RIPR-SPEC-0002](RIPR-SPEC-0002-fixture-laboratory.md) | planned | Fixture laboratory |
+| [RIPR-SPEC-0002](RIPR-SPEC-0002-fixture-laboratory.md) | accepted | Fixture laboratory |
 | [RIPR-SPEC-0003](RIPR-SPEC-0003-agent-context.md) | planned | Agent context packet |

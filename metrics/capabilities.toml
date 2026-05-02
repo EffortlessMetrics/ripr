@@ -8,9 +8,14 @@ status = "alpha"
 spec = "RIPR-SPEC-0001"
 evidence = [
   "sample diff",
-  "current CLI tests"
+  "current CLI tests",
+  "boundary_gap fixture",
+  "weak_error_oracle fixture"
 ]
-fixtures = []
+fixtures = [
+  "fixtures/boundary_gap",
+  "fixtures/weak_error_oracle"
+]
 next = "fixture-laboratory"
 metric = "findings include changed behavior, class, evidence, and next step"
 
@@ -20,9 +25,12 @@ name = "Predicate probes"
 status = "alpha"
 spec = "RIPR-SPEC-0001"
 evidence = [
-  "syntax-first probe generation"
+  "syntax-first probe generation",
+  "boundary_gap fixture"
 ]
-fixtures = []
+fixtures = [
+  "fixtures/boundary_gap"
+]
 next = "fixture-laboratory"
 metric = "missing boundary discriminator detection"
 
@@ -32,9 +40,12 @@ name = "Error-path probes"
 status = "alpha"
 spec = "RIPR-SPEC-0001"
 evidence = [
-  "sample error_path explain/context command"
+  "sample error_path explain/context command",
+  "weak_error_oracle fixture"
 ]
-fixtures = []
+fixtures = [
+  "fixtures/weak_error_oracle"
+]
 next = "oracle-strength-v2"
 metric = "broad error checks distinguished from exact variants"
 
@@ -44,9 +55,12 @@ name = "Return-value probes"
 status = "alpha"
 spec = "RIPR-SPEC-0001"
 evidence = [
-  "syntax-first scanner"
+  "syntax-first scanner",
+  "weak_error_oracle fixture"
 ]
-fixtures = []
+fixtures = [
+  "fixtures/weak_error_oracle"
+]
 next = "ast-probe-generation"
 metric = "exact vs smoke return oracle distinction"
 
@@ -56,49 +70,67 @@ name = "Call-deletion probes"
 status = "alpha"
 spec = "RIPR-SPEC-0001"
 evidence = [
-  "syntax-first scanner"
+  "syntax-first scanner",
+  "weak_error_oracle fixture"
 ]
-fixtures = []
+fixtures = [
+  "fixtures/weak_error_oracle"
+]
 next = "ast-probe-generation"
 metric = "side-effect or call boundary candidate named"
 
 [[capability]]
 id = "fixture_laboratory"
 name = "Fixture laboratory"
-status = "planned"
+status = "alpha"
 spec = "RIPR-SPEC-0002"
 evidence = [
   "fixture spec",
-  "fixture/golden scaffold commands"
+  "fixture/golden runner commands",
+  "boundary_gap fixture",
+  "weak_error_oracle fixture"
 ]
-fixtures = []
-next = "first-two-goldens"
+fixtures = [
+  "fixtures/boundary_gap",
+  "fixtures/weak_error_oracle"
+]
+next = "fixture-laboratory"
 metric = "fixture pass rate"
 
 [[capability]]
 id = "golden_json_output"
 name = "Golden JSON output"
-status = "planned"
+status = "alpha"
 spec = "RIPR-SPEC-0002"
 evidence = [
   "schema reference",
-  "goldens check scaffold"
+  "goldens check runner",
+  "boundary_gap check.json",
+  "weak_error_oracle check.json"
 ]
-fixtures = []
-next = "first-two-goldens"
+fixtures = [
+  "fixtures/boundary_gap",
+  "fixtures/weak_error_oracle"
+]
+next = "output-contract-matrix"
 metric = "golden output drift count"
 
 [[capability]]
 id = "golden_human_output"
 name = "Golden human output"
-status = "planned"
+status = "alpha"
 spec = "RIPR-SPEC-0002"
 evidence = [
   "human output renderer",
-  "goldens check scaffold"
+  "goldens check runner",
+  "boundary_gap human.txt",
+  "weak_error_oracle human.txt"
 ]
-fixtures = []
-next = "first-two-goldens"
+fixtures = [
+  "fixtures/boundary_gap",
+  "fixtures/weak_error_oracle"
+]
+next = "output-contract-matrix"
 metric = "golden output drift count"
 
 [[capability]]

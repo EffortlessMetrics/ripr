@@ -1,0 +1,31 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/boundary_gap/input
+
+Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
+
+WARNING fixtures/boundary_gap/input/src/lib.rs:2
+
+Static exposure: infection_unknown (predicate, control)
+
+Changed behavior:
+  before: if amount > discount_threshold {
+  after:  if amount >= discount_threshold {
+
+RIPR:
+  Reach:       yes — Related tests appear to reach discounted_total: below_threshold_has_no_discount, far_above_threshold_discounts
+  Infect:      unknown — Predicate changed, but no literal boundary was visible in the changed expression
+  Propagate:   weak — Changed behavior may propagate through a constructed value or field
+  Observe:     yes — A related test observes a value or effect near the changed behavior
+  Discriminate:yes — Strong oracle found: exact equality, exact variant, or pattern assertion
+
+Related tests / oracles:
+  - tests/pricing.rs:4 below_threshold_has_no_discount [strong] — assert_eq!(discounted_total(50, 100), 50);
+  - tests/pricing.rs:9 far_above_threshold_discounts [strong] — assert_eq!(discounted_total(10_000, 100), 9_990);
+
+Gap:
+  - No detected boundary input for the changed predicate
+  - Predicate changed, but no literal boundary was visible in the changed expression
+
+Recommended next step:
+  Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.

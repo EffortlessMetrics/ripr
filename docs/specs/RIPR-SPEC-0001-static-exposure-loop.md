@@ -101,10 +101,10 @@ from an exact variant assertion.
 
 ## Test Mapping
 
-Planned fixture coverage:
+Fixture coverage:
 
-- `fixtures/boundary_gap`
-- `fixtures/weak_error_oracle`
+- `fixtures/boundary_gap` (baseline)
+- `fixtures/weak_error_oracle` (baseline)
 - `fixtures/smoke_assertion_only`
 - `fixtures/no_static_path`
 

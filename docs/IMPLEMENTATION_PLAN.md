@@ -461,8 +461,8 @@ Purpose: build the regression control bench before changing analyzer internals.
 
 Deliverables:
 
-- [ ] `fixtures/boundary_gap`
-- [ ] `fixtures/weak_error_oracle`
+- [x] `fixtures/boundary_gap`
+- [x] `fixtures/weak_error_oracle`
 - [ ] `fixtures/field_not_asserted`
 - [ ] `fixtures/side_effect_unobserved`
 - [ ] `fixtures/smoke_assertion_only`
@@ -478,10 +478,10 @@ Deliverables:
 
 Each fixture should include:
 
-- [ ] source and tests
-- [ ] `diff.patch`
-- [ ] expected JSON output
-- [ ] expected human output
+- [x] source and tests
+- [x] `diff.patch`
+- [x] expected JSON output
+- [x] expected human output
 - [ ] expected context packet
 - [ ] expected LSP diagnostic shape when relevant
 

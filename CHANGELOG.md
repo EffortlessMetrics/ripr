@@ -61,3 +61,5 @@ how future PRs are scoped or reviewed.
 - Added fixture/golden runner comparison so `cargo xtask fixtures` and
   `cargo xtask goldens check` execute `ripr` and compare actual outputs against
   expected fixture goldens.
+- Added the first behavior fixtures, `boundary_gap` and `weak_error_oracle`,
+  with checked JSON and human expected outputs.
