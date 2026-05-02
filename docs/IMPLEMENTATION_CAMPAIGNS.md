@@ -89,7 +89,7 @@ items may be stackable when the campaign manifest marks them that way.
 
 Campaign ID: `syntax-backed-analyzer-foundation`
 
-Status: active
+Status: complete
 
 Objective:
 
@@ -156,6 +156,10 @@ status changes, and a clear non-goal list.
 
 ## Campaign 3: Evidence Quality
 
+Campaign ID: `evidence-quality`
+
+Status: active
+
 Objective:
 
 ```text
@@ -175,11 +179,46 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `analysis/oracle-strength-v2` | blocked | Depends on syntax-backed oracle extraction. |
-| `analysis/local-delta-flow-v1` | blocked | Depends on owner and syntax facts. |
-| `analysis/activation-value-modeling-v1` | blocked | Depends on value facts and fixture coverage. |
-| `output/evidence-first-output` | blocked | Depends on stable evidence fields. |
-| `output/unknown-stop-reason-invariant` | ready | Can start once output-contract expectations exist. |
+| `output/unknown-stop-reason-invariant` | ready | Add the invariant that unknown classifications explain stop reasons. |
+| `analysis/oracle-strength-v2` | ready | Make oracle kind and strength probe-relative. |
+| `analysis/local-delta-flow-v1` | blocked | Depends on probe-relative oracle strength. |
+| `analysis/activation-value-modeling-v1` | blocked | Depends on local flow evidence. |
+| `output/evidence-first-output` | blocked | Depends on oracle, flow, and activation evidence fields. |
+| `fixtures/negative-metamorphic-baseline` | blocked | Depends on evidence-first output expectations. |
+
+Dependencies:
+
+- `output/unknown-stop-reason-invariant` should land before deeper unknown
+  evidence grows so silent unknowns do not become accepted output.
+- `analysis/oracle-strength-v2` should land before local flow so later evidence
+  can distinguish exact discriminators from broad or smoke checks.
+- `analysis/local-delta-flow-v1` should land before activation/value modeling.
+- `output/evidence-first-output` should wait until oracle, flow, and activation
+  fields are stable enough to expose.
+
+Commands:
+
+```bash
+cargo xtask shape
+cargo xtask fix-pr
+cargo xtask check-pr
+cargo xtask fixtures
+cargo xtask goldens check
+cargo xtask check-output-contracts
+cargo xtask pr-summary
+```
+
+Blocking conditions:
+
+- unknown classification without a stop reason
+- output drift without golden evidence
+- schema change required outside the scoped PR
+- fixture expansion before evidence fields are stable
+
+Review policy:
+
+Campaign 3 work should improve evidence precision without claiming real mutation
+outcomes. Unknown is acceptable, but it must be explicit and actionable.
 
 ## Campaign 4: Editor and Agent Loop
 

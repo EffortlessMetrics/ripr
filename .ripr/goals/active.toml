@@ -1,112 +1,95 @@
-id = "syntax-backed-analyzer-foundation"
-title = "Move ripr from lexical facts to syntax-backed facts"
+id = "evidence-quality"
+title = "Make ripr findings evidence-first"
 status = "active"
 
 objective = """
-Move the analyzer from line-oriented scanner facts to a stable fact model and
-syntax adapter boundary without changing current analyzer behavior first.
+Make findings explain changed behavior, oracle strength, propagation,
+activation, and unknown stop reasons with enough precision to guide test work.
 """
 
 end_state = [
-  "FileFacts model exists",
-  "syntax adapter boundary exists",
-  "Rust parser substrate is recorded in an ADR",
-  "tests and oracles are extracted from syntax-backed facts",
-  "probes attach to stable owner symbols",
-  "current probe families are generated from syntax facts"
+  "oracle kind and strength are probe-relative",
+  "local delta flow can name visible sinks",
+  "activation modeling can name observed and missing discriminator values",
+  "output is evidence-first",
+  "unknown findings include stop reasons across surfaces"
 ]
 
 [[work_item]]
-id = "analysis/file-facts-model"
-status = "done"
-branch = "analysis/file-facts-model"
+id = "output/unknown-stop-reason-invariant"
+status = "ready"
+branch = "output/unknown-stop-reason-invariant"
 stackable = false
 requires_human_merge = true
-acceptance = "current scanner behavior is preserved while analysis consumes FileFacts DTOs"
+acceptance = "unknown findings include at least one stop reason across JSON and human output"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
   "cargo xtask check-pr",
   "cargo xtask pr-summary",
   "cargo xtask fixtures",
-  "cargo xtask goldens check"
+  "cargo xtask goldens check",
+  "cargo xtask check-output-contracts"
 ]
 
 [[work_item]]
-id = "analysis/syntax-adapter-mvp"
-status = "done"
-branch = "analysis/syntax-adapter-mvp"
+id = "analysis/oracle-strength-v2"
+status = "ready"
+branch = "analysis/oracle-strength-v2"
 stackable = false
 requires_human_merge = true
-acceptance = "parser adapter boundary exists while the current lexical adapter remains behavior-compatible"
+acceptance = "oracle strength distinguishes exact discriminators from broad or smoke checks"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
   "cargo xtask check-pr",
   "cargo xtask pr-summary",
   "cargo xtask fixtures",
-  "cargo xtask goldens check"
+  "cargo xtask goldens check",
+  "cargo xtask check-output-contracts",
+  "cargo xtask test-oracle-report"
 ]
 
 [[work_item]]
-id = "design/rust-syntax-substrate"
-status = "done"
-branch = "design/rust-syntax-substrate"
+id = "analysis/local-delta-flow-v1"
+status = "blocked"
+branch = "analysis/local-delta-flow-v1"
 stackable = false
 requires_human_merge = true
-acceptance = "ADR 0006 selects ra_ap_syntax while keeping parser-specific types behind RustSyntaxAdapter"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask pr-summary",
-  "cargo xtask check-campaign"
-]
+acceptance = "changed expressions map to visible return, error, field, or effect sinks"
+blocked_by = ["analysis/oracle-strength-v2"]
+blocked_reason = "requires probe-relative oracle strength before flow evidence can be ranked"
 
 [[work_item]]
-id = "analysis/ast-test-oracle-extraction"
-status = "done"
-branch = "analysis/ast-test-oracle-extraction"
+id = "analysis/activation-value-modeling-v1"
+status = "blocked"
+branch = "analysis/activation-value-modeling-v1"
 stackable = false
 requires_human_merge = true
-acceptance = "syntax-backed facts identify tests and assertion/oracle shapes without output drift unless documented"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask pr-summary",
-  "cargo xtask fixtures",
-  "cargo xtask goldens check"
-]
+acceptance = "observed and missing discriminator values are tied to local flow evidence"
+blocked_by = ["analysis/local-delta-flow-v1"]
+blocked_reason = "requires local flow before observed and missing values can be tied to changed behavior"
 
 [[work_item]]
-id = "analysis/ast-probe-ownership"
-status = "done"
-branch = "analysis/ast-probe-ownership"
+id = "output/evidence-first-output"
+status = "blocked"
+branch = "output/evidence-first-output"
 stackable = false
 requires_human_merge = true
-acceptance = "diff spans map to stable owner symbols without cross-linking duplicate names"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask pr-summary",
-  "cargo xtask fixtures",
-  "cargo xtask goldens check"
+acceptance = "human and JSON output explain changed behavior, evidence path, weakness, and next action"
+blocked_by = [
+  "analysis/oracle-strength-v2",
+  "analysis/local-delta-flow-v1",
+  "analysis/activation-value-modeling-v1"
 ]
+blocked_reason = "requires stable oracle, flow, and activation evidence fields before output reshaping"
 
 [[work_item]]
-id = "analysis/ast-probe-generation"
-status = "done"
-branch = "analysis/ast-probe-generation"
+id = "fixtures/negative-metamorphic-baseline"
+status = "blocked"
+branch = "fixtures/negative-metamorphic-baseline"
 stackable = false
 requires_human_merge = true
-acceptance = "current probe families are generated from syntax facts with fixture-backed evidence"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask pr-summary",
-  "cargo xtask fixtures",
-  "cargo xtask goldens check"
-]
+acceptance = "negative and metamorphic fixtures protect evidence-first output from noise and syntax brittleness"
+blocked_by = ["output/evidence-first-output"]
+blocked_reason = "requires evidence-first output expectations before expanding negative and metamorphic fixtures"

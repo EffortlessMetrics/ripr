@@ -229,17 +229,16 @@ crate boundaries can be added later if external consumers need them.
 
 ## Current Capability Snapshot
 
-`ripr` is currently strongest as a fast, syntax-first draft signal. The next
-planned work is to make findings more grounded through fixtures, file facts,
-parser-backed syntax, richer oracle facts, local flow, and activation/value
-modeling.
+`ripr` is currently strongest as a fast, syntax-first draft signal. The active
+work is to make findings more evidence-first through unknown stop reasons,
+probe-relative oracle strength, local flow, and activation/value modeling.
 
 | Capability | Current state | Next checkpoint |
 | --- | --- | --- |
 | Distribution | Crate and extension packaging paths exist. | Verify one-click editor install from a fresh profile. |
-| Diff analysis | Syntax-first changed-line probes with module- and impl-qualified owner symbols plus parser-backed probe shape facts. | Local flow and activation values. |
+| Diff analysis | Syntax-first changed-line probes with module- and impl-qualified owner symbols plus parser-backed probe shape facts. | Unknown stop reasons, local flow, and activation values. |
 | Test discovery | Parser-backed test and assertion facts. | Probe-relative oracle strength. |
-| Output | Human, JSON, GitHub annotation formats. | Golden fixture lab and stable DTOs. |
+| Output | Human, JSON, GitHub annotation formats. | Evidence-first output with explicit unknown stop reasons. |
 | LSP | Experimental sidecar. | Evidence-aware diagnostics, hover, and context actions. |
 | Agent context | Compact context packet. | Test-writing brief with missing values and assertion shape. |
 | Calibration | Not yet connected to real mutation outcomes. | `cargo-mutants` import after static facts improve. |

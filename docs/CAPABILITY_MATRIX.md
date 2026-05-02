@@ -17,7 +17,8 @@ Status values:
 
 | Capability | Status | Spec | Current evidence | Next checkpoint | Metric |
 | --- | --- | --- | --- | --- | --- |
-| Static exposure loop | `alpha` | `RIPR-SPEC-0001` | sample diff, current CLI tests, boundary_gap fixture, weak_error_oracle fixture, FileFacts DTOs, lexical syntax adapter boundary, ra_ap_syntax parser-backed test/oracle extraction, module-qualified and impl-qualified owner symbols, parser-backed probe shape facts | `oracle-strength-v2` | findings include changed behavior, class, evidence, and next step |
+| Static exposure loop | `alpha` | `RIPR-SPEC-0001` | sample diff, current CLI tests, boundary_gap fixture, weak_error_oracle fixture, FileFacts DTOs, lexical syntax adapter boundary, ra_ap_syntax parser-backed test/oracle extraction, module-qualified and impl-qualified owner symbols, parser-backed probe shape facts | `unknown-stop-reason-invariant` | findings include changed behavior, class, evidence, and next step |
+| Unknown stop reasons | `planned` | `RIPR-SPEC-0001` | Campaign 3 manifest | `unknown-stop-reason-invariant` | unknown findings include explicit stop reasons |
 | Predicate probes | `alpha` | `RIPR-SPEC-0001` | syntax-first probe generation, boundary_gap fixture, FileFacts DTOs, lexical syntax adapter boundary, ra_ap_syntax parser-backed test/oracle extraction, module-qualified and impl-qualified owner symbols, parser-backed predicate probe shape facts | `local-delta-flow-v1` | missing boundary discriminator detection |
 | Error-path probes | `alpha` | `RIPR-SPEC-0001` | sample error_path explain/context command, weak_error_oracle fixture, parser-backed error-path probe shape facts | `oracle-strength-v2` | broad error checks distinguished from exact variants |
 | Return-value probes | `alpha` | `RIPR-SPEC-0001` | syntax-first scanner, weak_error_oracle fixture, parser-backed return and tail-expression probe shape facts | `oracle-strength-v2` | exact vs smoke return oracle distinction |
