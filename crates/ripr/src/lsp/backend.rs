@@ -13,7 +13,7 @@ use std::sync::Mutex;
 use tokio::sync::Mutex as AsyncMutex;
 use tower_lsp_server::jsonrpc::Result as LspResult;
 use tower_lsp_server::ls_types::{
-    CodeActionResponse, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
+    CodeActionParams, CodeActionResponse, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
     DidOpenTextDocumentParams, DidSaveTextDocumentParams, ExecuteCommandParams, Hover, HoverParams,
     InitializeParams, InitializeResult, LSPAny, MessageType, Uri,
 };
@@ -197,11 +197,8 @@ impl LanguageServer for Backend {
         Ok(Some(hover_response()))
     }
 
-    async fn code_action(
-        &self,
-        _: tower_lsp_server::ls_types::CodeActionParams,
-    ) -> LspResult<Option<CodeActionResponse>> {
-        Ok(Some(code_action_response()))
+    async fn code_action(&self, params: CodeActionParams) -> LspResult<Option<CodeActionResponse>> {
+        Ok(Some(code_action_response(&params)))
     }
 
     async fn execute_command(&self, params: ExecuteCommandParams) -> LspResult<Option<LSPAny>> {

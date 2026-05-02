@@ -11,6 +11,11 @@ import {
 import { getConfig, RiprConfig } from './config';
 import { resolveServer, ResolvedServer } from './serverResolver';
 
+export interface RiprContextTarget {
+  uri?: string;
+  line?: number;
+}
+
 export class RiprClientController {
   private client: LanguageClient | undefined;
   private server: ResolvedServer | undefined;
@@ -72,14 +77,16 @@ export class RiprClientController {
     }
   }
 
-  async copyContext(): Promise<void> {
+  async copyContext(target?: RiprContextTarget): Promise<void> {
+    const targetUri = uriFromTarget(target);
     const editor = vscode.window.activeTextEditor;
-    if (!editor) {
+    const documentUri = targetUri ?? editor?.document.uri;
+    if (!documentUri) {
       vscode.window.showInformationMessage('Open a Rust file before copying ripr context.');
       return;
     }
 
-    const workspaceFolder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(documentUri);
     if (!workspaceFolder) {
       vscode.window.showInformationMessage('ripr context requires a workspace folder.');
       return;
@@ -90,8 +97,9 @@ export class RiprClientController {
     if (!server) {
       return;
     }
-    const relativePath = path.relative(workspaceFolder.uri.fsPath, editor.document.uri.fsPath);
-    const line = editor.selection.active.line + 1;
+    const relativePath = path.relative(workspaceFolder.uri.fsPath, documentUri.fsPath);
+    const activeLine = editor ? editor.selection.active.line + 1 : undefined;
+    const line = lineFromTarget(target) ?? activeLine ?? 1;
     const selector = `${relativePath}:${line}`;
     const args = [
       'context',
@@ -146,6 +154,24 @@ export class RiprClientController {
       await this.restart();
     }
   }
+}
+
+function uriFromTarget(target: RiprContextTarget | undefined): vscode.Uri | undefined {
+  if (!target?.uri) {
+    return undefined;
+  }
+  try {
+    return vscode.Uri.parse(target.uri);
+  } catch {
+    return undefined;
+  }
+}
+
+function lineFromTarget(target: RiprContextTarget | undefined): number | undefined {
+  if (typeof target?.line !== 'number' || !Number.isFinite(target.line) || target.line < 1) {
+    return undefined;
+  }
+  return Math.floor(target.line);
 }
 
 function traceFromConfig(trace: RiprConfig['traceServer']): Trace {
