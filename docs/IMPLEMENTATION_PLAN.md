@@ -13,7 +13,7 @@ through multiple work items in a campaign, but each work item should follow the
 
 | Campaign | Objective | Work items |
 | --- | --- | --- |
-| Agentic DevEx Foundation | Make the repo safe for Codex Goals and human review. | `policy/architecture-guard`, `output/output-contract-check`, `docs/codex-goals-campaigns`, `fixtures/first-two-goldens`, `testing/test-oracle-report`, `dogfood/static-self-check` |
+| Agentic DevEx Foundation | Make the repo safe for Codex Goals and human review. | `policy/architecture-guard`, `output/output-contract-check`, `docs/codex-goals-campaigns`, `fixtures/runner-comparison-v1`, `fixtures/first-two-goldens`, `testing/test-oracle-report`, `dogfood/static-self-check` |
 | Syntax-Backed Analyzer Foundation | Move the analyzer from lexical facts to syntax-backed facts. | `analysis/file-facts-model`, `analysis/syntax-adapter-mvp`, `analysis/ast-test-oracle-extraction`, `analysis/ast-probe-ownership`, `analysis/ast-probe-generation` |
 | Evidence Quality | Improve oracle strength, local flow, activation values, output evidence, and stop reasons. | `analysis/oracle-strength-v2`, `analysis/local-delta-flow-v1`, `analysis/activation-value-modeling-v1`, `output/evidence-first-output`, `output/unknown-stop-reason-invariant` |
 | Editor and Agent Loop | Turn findings into editor actions and agent test-writing briefs. | `lsp/evidence-hover-actions`, `context/agent-context-v2`, `docs/how-to-use-agent-context` |
@@ -429,6 +429,31 @@ Acceptance:
 - [x] `cargo xtask check-campaign` passes on main.
 - [x] `cargo xtask goals status` writes `target/ripr/reports/goals.md`.
 - [x] `cargo xtask goals next` writes `target/ripr/reports/goals-next.md`.
+
+## PR 1Q: `fixtures-runner-comparison-v1`
+
+Purpose: make fixture and golden commands execute the current product and
+compare actual output against checked-in expected output.
+
+Deliverables:
+
+- [x] `cargo xtask fixtures` runs all fixtures when fixture directories exist.
+- [x] `cargo xtask fixtures <name>` runs one fixture.
+- [x] Actual JSON and human outputs are written under
+      `target/ripr/fixtures/<name>/`.
+- [x] `cargo xtask goldens check` compares actual `check.json` and optional
+      `human.txt` outputs against `fixtures/<name>/expected/`.
+- [x] `cargo xtask goldens bless <name> --reason "..."` requires a reason,
+      updates `expected/check.json` and `expected/human.txt`, and appends the
+      fixture changelog.
+
+Acceptance:
+
+- [x] Fixture commands still pass with a clear report when no fixture
+      directories exist.
+- [x] Golden checks fail on drift without mutating expected outputs.
+- [x] Golden blessing remains explicit and does not run from `shape` or
+      `fix-pr`.
 
 ## PR 2: `fixture-laboratory`
 

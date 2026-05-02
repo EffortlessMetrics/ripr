@@ -53,6 +53,18 @@ cargo xtask goldens check
 cargo xtask goldens bless <name> --reason "RIPR-SPEC-NNNN: explain change"
 ```
 
+`cargo xtask fixtures` and `cargo xtask goldens check` run `ripr check` against
+each fixture workspace, write actual JSON and human outputs under
+`target/ripr/fixtures/<name>/`, and compare stable expected files. The checked
+surfaces are:
+
+- `expected/check.json`
+- `expected/human.txt`, when present
+
+`cargo xtask goldens bless <name> --reason "..."` is the only command that
+updates expected output. It requires an explicit reason and appends
+`expected/CHANGELOG.md`.
+
 The first fixture-laboratory PR will add concrete fixture directories. Until
-then, this README defines the contract and the check passes when no fixture
+then, the command surface passes with a clear report when no fixture
 directories exist.

@@ -99,6 +99,19 @@ commands = [
 ]
 
 [[work_item]]
+id = "fixtures/runner-comparison-v1"
+status = "done"
+branch = "fixtures/runner-comparison-v1"
+stackable = false
+requires_human_merge = true
+acceptance = "fixture and golden commands run ripr and compare actual outputs against expected outputs"
+commands = [
+  "cargo xtask fixtures",
+  "cargo xtask goldens check",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
 id = "fixtures/first-two-goldens"
 status = "ready"
 branch = "fixtures/first-two-goldens"
