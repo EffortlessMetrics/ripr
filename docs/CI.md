@@ -51,6 +51,9 @@ The fuller automation model is documented in [PR automation](PR_AUTOMATION.md).
 Deterministic shaping should happen locally; CI should verify the committed
 tree and upload reports when available.
 
+Current policy checks write Markdown reports to `target/ripr/reports` when they
+run. The next CI rail is uploading those reports from workflow runs.
+
 Local policy checks can also be run directly:
 
 ```bash
@@ -98,7 +101,6 @@ Planned CI work:
 
 - cache Cargo and npm dependencies without hiding stale-lockfile failures
 - add report uploads from `target/ripr/reports`
-- add guided Markdown repair reports for policy checks
 - decide whether CI should call `check-pr` directly or keep the current
   explicit workflow steps
 - add fixture-golden tests once the fixture lab exists

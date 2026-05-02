@@ -259,20 +259,20 @@ failure text.
 
 Deliverables:
 
-- [ ] Add a shared report model or helper for Markdown check reports.
-- [ ] Upgrade static-language, panic-family, file-policy, executable-file,
+- [x] Add a shared report model or helper for Markdown check reports.
+- [x] Upgrade static-language, panic-family, file-policy, executable-file,
       workflow, spec-format, fixture-contract, generated, dependency, process,
       and network checks to write reports under `target/ripr/reports`.
-- [ ] Classify failures as auto-fixable, author decision, reviewer decision, or
+- [x] Classify failures as auto-fixable, author decision, reviewer decision, or
       policy exception.
-- [ ] Include exact rerun commands and exception templates where useful.
+- [x] Include exact rerun commands and exception templates where useful.
 
 Acceptance:
 
-- [ ] Each upgraded check writes a useful report on failure.
-- [ ] Successful checks either write a pass report or are summarized by
+- [x] Each upgraded check writes a useful report on failure.
+- [x] Successful checks either write a pass report or are summarized by
       `pr-summary`.
-- [ ] Report generation does not hide the non-zero exit status of failed checks.
+- [x] Report generation does not hide the non-zero exit status of failed checks.
 
 ## PR 1J: `ci-report-artifacts`
 

@@ -67,6 +67,16 @@ pub struct CheckReport {
     pub violations: Vec<CheckViolation>,
 }
 
+struct PolicyReportSpec<'a> {
+    report_file: &'a str,
+    check: &'a str,
+    why_it_matters: &'a str,
+    fix_kind: FixKind,
+    recommended_fixes: &'a [&'a str],
+    rerun_command: &'a str,
+    exception_template: Option<&'a str>,
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let result = match args.get(1).map(|s| s.as_str()) {
@@ -214,6 +224,73 @@ fn check_pr_report_body() -> String {
     "# ripr check-pr report\n\nStatus: pass\n\nChecks:\n\n- `cargo xtask ci-fast`\n- `cargo clippy --workspace --all-targets -- -D warnings`\n- `cargo doc --workspace --no-deps`\n- `cargo xtask pr-summary`\n\nReports:\n\n- `target/ripr/reports/pr-summary.md`\n- `target/ripr/reports/check-pr.md`\n\nRelease/package gates are intentionally left to `cargo xtask ci-full` or release-specific workflows.\n".to_string()
 }
 
+fn finish_policy_report(spec: PolicyReportSpec<'_>, violations: &[String]) -> Result<(), String> {
+    let status = if violations.is_empty() {
+        "pass"
+    } else {
+        "fail"
+    };
+    let mut body = format!("# {}\n\nStatus: {status}\n\n", spec.check);
+    body.push_str("## Why This Matters\n\n");
+    body.push_str(spec.why_it_matters);
+    body.push_str("\n\n");
+
+    if violations.is_empty() {
+        body.push_str("## Violations\n\nNone detected.\n\n");
+    } else {
+        body.push_str("## Violations\n\n");
+        for violation in violations {
+            body.push_str("```text\n");
+            body.push_str(violation);
+            body.push_str("\n```\n\n");
+        }
+    }
+
+    if !violations.is_empty() {
+        body.push_str("## Fix Kind\n\n```text\n");
+        body.push_str(fix_kind_name(&spec.fix_kind));
+        body.push_str("\n```\n\n");
+
+        body.push_str("## Recommended Fixes\n\n");
+        for (index, fix) in spec.recommended_fixes.iter().enumerate() {
+            body.push_str(&format!("{}. {fix}\n", index + 1));
+        }
+        body.push('\n');
+
+        if let Some(template) = spec.exception_template {
+            body.push_str("## Exception Template\n\n```text\n");
+            body.push_str(template);
+            body.push_str("\n```\n\n");
+        }
+    }
+
+    body.push_str("## Rerun\n\n```bash\n");
+    body.push_str(spec.rerun_command);
+    body.push_str("\n```\n");
+
+    write_report(spec.report_file, &body)?;
+
+    if violations.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "{} failed; see target/ripr/reports/{}\n{}",
+            spec.check,
+            spec.report_file,
+            violations.join("\n")
+        ))
+    }
+}
+
+fn fix_kind_name(fix_kind: &FixKind) -> &'static str {
+    match fix_kind {
+        FixKind::AutoFixable => "auto_fixable",
+        FixKind::AuthorDecisionRequired => "author_decision_required",
+        FixKind::ReviewerDecisionRequired => "reviewer_decision_required",
+        FixKind::PolicyExceptionRequired => "policy_exception_required",
+    }
+}
+
 fn check_static_language() -> Result<(), String> {
     let allowed = read_path_allowlist(".ripr/static-language-allowlist.txt")?;
     let forbidden = forbidden_static_terms();
@@ -238,14 +315,21 @@ fn check_static_language() -> Result<(), String> {
         }
     }
 
-    if violations.is_empty() {
-        Ok(())
-    } else {
-        Err(format!(
-            "static language check failed:\n{}",
-            violations.join("\n")
-        ))
-    }
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "static-language.md",
+            check: "check-static-language",
+            why_it_matters: "Static output must preserve the boundary between draft exposure evidence and real mutation results.",
+            fix_kind: FixKind::ReviewerDecisionRequired,
+            recommended_fixes: &[
+                "Rewrite static product output to use the approved exposure vocabulary.",
+                "If this is explanatory documentation, add a narrow allowlist entry with a reason.",
+            ],
+            rerun_command: "cargo xtask check-static-language",
+            exception_template: Some(".ripr/static-language-allowlist.txt entry:\npath/to/file.md"),
+        },
+        &violations,
+    )
 }
 
 fn check_no_panic_family() -> Result<(), String> {
@@ -302,14 +386,24 @@ fn check_no_panic_family() -> Result<(), String> {
         }
     }
 
-    if violations.is_empty() {
-        Ok(())
-    } else {
-        Err(format!(
-            "panic-family check failed:\n{}",
-            violations.join("\n")
-        ))
-    }
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "no-panic-family.md",
+            check: "check-no-panic-family",
+            why_it_matters: "Product and test code should surface failures explicitly instead of relying on panic-family shortcuts.",
+            fix_kind: FixKind::PolicyExceptionRequired,
+            recommended_fixes: &[
+                "Return `Result` and propagate setup or IO failures.",
+                "Pattern-match `Option` values and return explicit errors in tests.",
+                "Use an allowlist entry only for reviewed legacy debt or intentional string detection.",
+            ],
+            rerun_command: "cargo xtask check-no-panic-family",
+            exception_template: Some(
+                ".ripr/no-panic-allowlist.txt entry:\npath/to/file.rs|pattern|max_count|reason",
+            ),
+        },
+        &violations,
+    )
 }
 
 fn check_file_policy() -> Result<(), String> {
@@ -331,14 +425,23 @@ fn check_file_policy() -> Result<(), String> {
         }
     }
 
-    if violations.is_empty() {
-        Ok(())
-    } else {
-        Err(format!(
-            "file policy check failed:\n{}",
-            violations.join("\n")
-        ))
-    }
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "file-policy.md",
+            check: "check-file-policy",
+            why_it_matters: "Rust and xtask are the default implementation surface so repo automation stays typed, tested, and reviewable.",
+            fix_kind: FixKind::PolicyExceptionRequired,
+            recommended_fixes: &[
+                "Move implementation or automation logic into Rust/xtask.",
+                "If the file belongs to an approved surface, add an allowlist entry with owner and reason.",
+            ],
+            rerun_command: "cargo xtask check-file-policy",
+            exception_template: Some(
+                "policy/non_rust_allowlist.txt entry:\nglob|kind|owner|reason",
+            ),
+        },
+        &violations,
+    )
 }
 
 fn check_executable_files() -> Result<(), String> {
@@ -358,14 +461,22 @@ fn check_executable_files() -> Result<(), String> {
         }
     }
 
-    if violations.is_empty() {
-        Ok(())
-    } else {
-        Err(format!(
-            "executable-file check failed:\n{}",
-            violations.join("\n")
-        ))
-    }
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "executable-files.md",
+            check: "check-executable-files",
+            why_it_matters: "Checked-in executable scripts make automation drift away from the Rust-first xtask surface.",
+            fix_kind: FixKind::PolicyExceptionRequired,
+            recommended_fixes: &[
+                "Remove the executable bit from ordinary files.",
+                "Move script behavior into xtask.",
+                "If an executable file is truly required, add a reviewed allowlist entry.",
+            ],
+            rerun_command: "cargo xtask check-executable-files",
+            exception_template: Some("policy/executable_allowlist.txt entry:\npath/to/file"),
+        },
+        &violations,
+    )
 }
 
 fn check_workflows() -> Result<(), String> {
@@ -377,9 +488,12 @@ fn check_workflows() -> Result<(), String> {
         if !(normalized.ends_with(".yml") || normalized.ends_with(".yaml")) {
             continue;
         }
-        let budget = budgets.get(&normalized).ok_or_else(|| {
-            format!("missing workflow budget for {normalized} in policy/workflow_allowlist.txt")
-        })?;
+        let Some(budget) = budgets.get(&normalized) else {
+            violations.push(format!(
+                "missing workflow budget for {normalized} in policy/workflow_allowlist.txt"
+            ));
+            continue;
+        };
         let text = read_text_lossy(&path)?;
         for block in extract_workflow_run_blocks(&text) {
             if block.non_empty_lines > budget.max_non_empty_lines {
@@ -407,11 +521,24 @@ fn check_workflows() -> Result<(), String> {
         }
     }
 
-    if violations.is_empty() {
-        Ok(())
-    } else {
-        Err(format!("workflow check failed:\n{}", violations.join("\n")))
-    }
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "workflows.md",
+            check: "check-workflows",
+            why_it_matters: "GitHub Actions should orchestrate xtask, Cargo, and npm commands instead of hiding complex shell logic in workflow YAML.",
+            fix_kind: FixKind::PolicyExceptionRequired,
+            recommended_fixes: &[
+                "Move complex workflow logic into xtask or an npm script owned by the extension surface.",
+                "Keep workflow run blocks under the documented line budget.",
+                "Add or adjust a workflow budget entry only when the workflow surface is intentionally larger.",
+            ],
+            rerun_command: "cargo xtask check-workflows",
+            exception_template: Some(
+                "policy/workflow_allowlist.txt entry:\n.github/workflows/name.yml|max_non_empty_lines|reason",
+            ),
+        },
+        &violations,
+    )
 }
 
 fn check_spec_format() -> Result<(), String> {
@@ -454,20 +581,42 @@ fn check_spec_format() -> Result<(), String> {
         }
     }
 
-    if violations.is_empty() {
-        Ok(())
-    } else {
-        Err(format!(
-            "spec format check failed:\n{}",
-            violations.join("\n")
-        ))
-    }
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "spec-format.md",
+            check: "check-spec-format",
+            why_it_matters: "Specs are the behavior contracts that let humans and agents trace intent to tests, code, outputs, and metrics.",
+            fix_kind: FixKind::AuthorDecisionRequired,
+            recommended_fixes: &[
+                "Update the spec to match docs/SPEC_FORMAT.md.",
+                "Use docs/templates/SPEC_TEMPLATE.md for new behavior specs.",
+                "Keep planned specs explicit when implementation mapping is not available yet.",
+            ],
+            rerun_command: "cargo xtask check-spec-format",
+            exception_template: None,
+        },
+        &violations,
+    )
 }
 
 fn check_fixture_contracts() -> Result<(), String> {
     let fixtures_dir = Path::new("fixtures");
     if !fixtures_dir.exists() {
-        return Ok(());
+        return finish_policy_report(
+            PolicyReportSpec {
+                report_file: "fixture-contracts.md",
+                check: "check-fixture-contracts",
+                why_it_matters: "Fixtures are the BDD control bench for analyzer behavior and output contracts.",
+                fix_kind: FixKind::AuthorDecisionRequired,
+                recommended_fixes: &[
+                    "Add fixture directories only with SPEC.md, diff.patch, and expected/check.json.",
+                    "Use Given/When/Then/Must Not sections for agent-readable fixture intent.",
+                ],
+                rerun_command: "cargo xtask check-fixture-contracts",
+                exception_template: None,
+            },
+            &[],
+        );
     }
 
     let mut violations = Vec::new();
@@ -512,14 +661,22 @@ fn check_fixture_contracts() -> Result<(), String> {
         }
     }
 
-    if violations.is_empty() {
-        Ok(())
-    } else {
-        Err(format!(
-            "fixture contract check failed:\n{}",
-            violations.join("\n")
-        ))
-    }
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "fixture-contracts.md",
+            check: "check-fixture-contracts",
+            why_it_matters: "Fixtures are the BDD control bench for analyzer behavior and output contracts.",
+            fix_kind: FixKind::AuthorDecisionRequired,
+            recommended_fixes: &[
+                "Add missing fixture contract files.",
+                "Use Given/When/Then/Must Not sections in fixture SPEC.md.",
+                "Keep expected output files aligned with the fixture behavior.",
+            ],
+            rerun_command: "cargo xtask check-fixture-contracts",
+            exception_template: None,
+        },
+        &violations,
+    )
 }
 
 fn check_generated() -> Result<(), String> {
@@ -537,14 +694,24 @@ fn check_generated() -> Result<(), String> {
         }
     }
 
-    if violations.is_empty() {
-        Ok(())
-    } else {
-        Err(format!(
-            "generated-file check failed:\n{}",
-            violations.join("\n")
-        ))
-    }
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "generated.md",
+            check: "check-generated",
+            why_it_matters: "Generated files should be reproducible and intentionally checked in only for approved surfaces such as lockfiles or fixture goldens.",
+            fix_kind: FixKind::PolicyExceptionRequired,
+            recommended_fixes: &[
+                "Remove accidental build artifacts from git.",
+                "Regenerate approved outputs from their source command.",
+                "Add an allowlist entry only when the generated file is an intentional repository artifact.",
+            ],
+            rerun_command: "cargo xtask check-generated",
+            exception_template: Some(
+                "policy/generated_allowlist.txt entry:\nglob|kind|owner|reason",
+            ),
+        },
+        &violations,
+    )
 }
 
 fn check_dependencies() -> Result<(), String> {
@@ -562,14 +729,24 @@ fn check_dependencies() -> Result<(), String> {
         }
     }
 
-    if violations.is_empty() {
-        Ok(())
-    } else {
-        Err(format!(
-            "dependency policy check failed:\n{}",
-            violations.join("\n")
-        ))
-    }
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "dependencies.md",
+            check: "check-dependencies",
+            why_it_matters: "Dependency manager surfaces change build and supply-chain behavior, so they need an explicit owner and reason.",
+            fix_kind: FixKind::PolicyExceptionRequired,
+            recommended_fixes: &[
+                "Keep dependency files inside approved Cargo, VS Code, or fixture surfaces.",
+                "Explain new dependency surfaces in the PR.",
+                "Add an allowlist entry only when the surface is intentional.",
+            ],
+            rerun_command: "cargo xtask check-dependencies",
+            exception_template: Some(
+                "policy/dependency_allowlist.txt entry:\nglob|kind|owner|reason",
+            ),
+        },
+        &violations,
+    )
 }
 
 fn check_process_policy() -> Result<(), String> {
@@ -625,11 +802,29 @@ fn check_count_policy(
         }
     }
 
-    if violations.is_empty() {
-        Ok(())
-    } else {
-        Err(format!("{label} check failed:\n{}", violations.join("\n")))
-    }
+    let report_file = format!("{}.md", label.replace(' ', "-"));
+    let why = format!(
+        "{label} entries are explicit because hidden side effects make automation and analyzer behavior harder to review."
+    );
+    let template = format!("{allowlist_path} entry:\npath|pattern|max_count|owner|reason");
+    let check = format!("check-{}", label.replace(' ', "-"));
+    let rerun_command = format!("cargo xtask {check}");
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: &report_file,
+            check: &check,
+            why_it_matters: &why,
+            fix_kind: FixKind::PolicyExceptionRequired,
+            recommended_fixes: &[
+                "Move the behavior to the approved adapter or automation surface.",
+                "Reduce the process or network usage when it is not required.",
+                "Add an allowlist entry only when the behavior is intentional and owned.",
+            ],
+            rerun_command: &rerun_command,
+            exception_template: Some(&template),
+        },
+        &violations,
+    )
 }
 
 fn sort_allowlist_files() -> Result<Vec<String>, String> {
@@ -841,7 +1036,7 @@ fn pr_summary_body(changes: &[ChangedPath]) -> String {
 
     body.push_str("\n## Commands\n\n");
     body.push_str("- `cargo xtask fix-pr`\n");
-    body.push_str("- `cargo xtask ci-fast`\n");
+    body.push_str("- `cargo xtask check-pr`\n");
     body.push_str("- `cargo xtask pr-summary`\n");
     body
 }
