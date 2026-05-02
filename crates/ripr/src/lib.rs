@@ -10,6 +10,15 @@
 //! Most integrations should start with [`check_workspace`] to analyze a unified
 //! diff and obtain structured findings.
 //!
+//! # Output interpretation
+//!
+//! `ripr` reports static exposure evidence, not dynamic mutation outcomes.
+//! Integrations should treat [`ExposureClass`] values as conservative draft-mode
+//! signals (`exposed`, `weakly_exposed`, `reachable_unrevealed`,
+//! `no_static_path`, and `static_unknown`) that guide targeted test intent.
+//! Downstream automation should avoid mapping these classes to definitive terms
+//! like "killed" or "survived" without a real mutation-testing pass.
+//!
 //! - Use [`check_workspace`] for end-to-end analysis.
 //! - Use [`explain_finding`] to retrieve focused evidence for one probe.
 //! - Use [`collect_context`] to retrieve neighboring context around a probe.
