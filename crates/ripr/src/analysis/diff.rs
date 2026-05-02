@@ -135,4 +135,65 @@ mod tests {
         assert_eq!(files[0].added_lines[0].line, 1);
         assert_eq!(files[0].added_lines[0].text, "b");
     }
+
+    #[test]
+    fn tolerates_malformed_hunk_headers() {
+        let diff = "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ malformed hunk @@\n+added\n-context\n";
+        let files = parse_unified_diff(diff);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, PathBuf::from("src/lib.rs"));
+        assert_eq!(files[0].added_lines.len(), 1);
+        assert_eq!(files[0].removed_lines.len(), 1);
+    }
+
+    #[test]
+    fn pseudo_fuzz_diff_parser_does_not_panic() {
+        let mut state = 0xC0FFEEu64;
+        for _ in 0..512 {
+            let candidate = pseudo_random_diff_candidate(&mut state);
+            let _ = parse_unified_diff(&candidate);
+        }
+    }
+
+    fn pseudo_random_diff_candidate(state: &mut u64) -> String {
+        let mut out = String::new();
+        out.push_str("diff --git a/src/lib.rs b/src/lib.rs\n");
+        out.push_str("--- a/src/lib.rs\n");
+        out.push_str("+++ b/src/lib.rs\n");
+
+        let hunk_count = (next_u32(state) % 4) + 1;
+        for _ in 0..hunk_count {
+            let old = (next_u32(state) % 30) + 1;
+            let new = (next_u32(state) % 30) + 1;
+            out.push_str(&format!("@@ -{old},{} +{new},{} @@\n", (next_u32(state) % 4) + 1, (next_u32(state) % 4) + 1));
+
+            let body_lines = (next_u32(state) % 12) + 1;
+            for _ in 0..body_lines {
+                let line_kind = next_u32(state) % 5;
+                let prefix = match line_kind {
+                    0 => '+',
+                    1 => '-',
+                    2 => ' ',
+                    3 => '@',
+                    _ => '\0',
+                };
+                if prefix != '\0' {
+                    out.push(prefix);
+                }
+                let len = (next_u32(state) % 20) as usize;
+                for _ in 0..len {
+                    let byte = 32 + (next_u32(state) % 95) as u8;
+                    out.push(char::from(byte));
+                }
+                out.push('\n');
+            }
+        }
+
+        out
+    }
+
+    fn next_u32(state: &mut u64) -> u32 {
+        *state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+        (*state >> 32) as u32
+    }
 }
