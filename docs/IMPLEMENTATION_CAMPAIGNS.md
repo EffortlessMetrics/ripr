@@ -114,8 +114,8 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `analysis/file-facts-model` | ready | Introduce fact DTOs while preserving scanner behavior. |
-| `analysis/syntax-adapter-mvp` | blocked | Depends on reviewed fact model. |
+| `analysis/file-facts-model` | done | FileFacts DTOs exist and the lexical scanner fills them without output drift. |
+| `analysis/syntax-adapter-mvp` | ready | Add the parser adapter boundary while preserving lexical behavior. |
 | `analysis/ast-test-oracle-extraction` | blocked | Depends on syntax adapter boundary. |
 | `analysis/ast-probe-ownership` | blocked | Depends on syntax node and owner facts. |
 | `analysis/ast-probe-generation` | blocked | Depends on ownership and syntax-backed facts. |

@@ -545,23 +545,23 @@ behavior.
 
 Deliverables:
 
-- [ ] `FileFacts`
-- [ ] `FunctionFact`
-- [ ] `TestFact`
-- [ ] `OracleFact`
-- [ ] `CallFact`
-- [ ] `ReturnFact`
+- [x] `FileFacts`
+- [x] `FunctionFact`
+- [x] `TestFact`
+- [x] `OracleFact`
+- [x] `CallFact`
+- [x] `ReturnFact`
 - [ ] `StructConstructionFact`
 - [ ] `EnumConstructionFact`
-- [ ] `LiteralFact`
+- [x] `LiteralFact`
 - [ ] `BuilderChainFact`
 - [ ] `EffectFact`
 
 Acceptance:
 
-- [ ] Existing sample findings are unchanged.
-- [ ] Analysis consumes facts rather than ad hoc scanner structures.
-- [ ] Scanner behavior remains available as the fallback.
+- [x] Existing sample findings are unchanged.
+- [x] Analysis consumes facts rather than ad hoc scanner structures.
+- [x] Scanner behavior remains available as the fallback.
 
 ## PR 4: `syntax-adapter-mvp`
 

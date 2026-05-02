@@ -70,3 +70,5 @@ how future PRs are scoped or reviewed.
 - Completed the Agentic DevEx Foundation campaign and activated the
   Syntax-Backed Analyzer Foundation campaign with `analysis/file-facts-model`
   as the next ready work item.
+- Added the internal `FileFacts` model and related function, test, oracle,
+  call, return, and literal facts while preserving current analyzer output.

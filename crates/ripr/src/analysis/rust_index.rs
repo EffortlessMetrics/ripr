@@ -4,48 +4,76 @@ use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug, Default)]
 pub struct RustIndex {
-    pub files: BTreeMap<PathBuf, FileSummary>,
-    pub tests: Vec<TestSummary>,
-    pub functions: Vec<FunctionSummary>,
+    pub files: BTreeMap<PathBuf, FileFacts>,
+    pub tests: Vec<TestFact>,
+    pub functions: Vec<FunctionFact>,
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct FileSummary {
-    pub functions: Vec<FunctionSummary>,
-    pub tests: Vec<TestSummary>,
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FileFacts {
+    pub path: PathBuf,
+    pub functions: Vec<FunctionFact>,
+    pub tests: Vec<TestFact>,
+    pub calls: Vec<CallFact>,
+    pub returns: Vec<ReturnFact>,
+    pub literals: Vec<LiteralFact>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FunctionSummary {
+pub struct FunctionFact {
     pub id: SymbolId,
     pub name: String,
     pub file: PathBuf,
     pub start_line: usize,
     pub end_line: usize,
     pub body: String,
-    pub calls: Vec<String>,
+    pub calls: Vec<CallFact>,
+    pub returns: Vec<ReturnFact>,
+    pub literals: Vec<LiteralFact>,
     pub is_test: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct TestSummary {
+pub struct TestFact {
     pub name: String,
     pub file: PathBuf,
     pub start_line: usize,
     pub end_line: usize,
     pub body: String,
-    pub calls: Vec<String>,
-    pub assertions: Vec<AssertionSummary>,
-    pub literals: Vec<String>,
+    pub calls: Vec<CallFact>,
+    pub assertions: Vec<OracleFact>,
+    pub literals: Vec<LiteralFact>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AssertionSummary {
+pub struct OracleFact {
     pub line: usize,
     pub text: String,
     pub strength: OracleStrength,
     pub observed_tokens: Vec<String>,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CallFact {
+    pub line: usize,
+    pub name: String,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReturnFact {
+    pub line: usize,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LiteralFact {
+    pub line: usize,
+    pub value: String,
+}
+
+pub type FunctionSummary = FunctionFact;
+pub type TestSummary = TestFact;
 
 pub fn build_index(root: &Path, files: &[PathBuf]) -> Result<RustIndex, String> {
     let mut index = RustIndex::default();
@@ -61,10 +89,13 @@ pub fn build_index(root: &Path, files: &[PathBuf]) -> Result<RustIndex, String> 
     Ok(index)
 }
 
-pub fn summarize_file(path: PathBuf, text: String) -> FileSummary {
+pub fn summarize_file(path: PathBuf, text: String) -> FileFacts {
     let lines: Vec<&str> = text.lines().collect();
     let mut functions = Vec::new();
     let mut tests = Vec::new();
+    let mut file_calls = Vec::new();
+    let mut file_returns = Vec::new();
+    let mut file_literals = Vec::new();
     let mut pending_test = false;
     let mut i = 0usize;
 
@@ -90,8 +121,13 @@ pub fn summarize_file(path: PathBuf, text: String) -> FileSummary {
         if let Some(name) = function_name(trimmed) {
             let start_line = i + 1;
             let (end_line, body) = collect_function_body(&lines, i);
-            let calls = extract_calls(&body);
-            let function = FunctionSummary {
+            let calls = extract_call_facts(&body, start_line);
+            let returns = extract_return_facts(&body, start_line);
+            let literals = extract_literal_facts(&body, start_line);
+            file_calls.extend(calls.clone());
+            file_returns.extend(returns.clone());
+            file_literals.extend(literals.clone());
+            let function = FunctionFact {
                 id: SymbolId(format!("{}::{name}", path.display())),
                 name: name.clone(),
                 file: path.clone(),
@@ -99,13 +135,15 @@ pub fn summarize_file(path: PathBuf, text: String) -> FileSummary {
                 end_line,
                 body: body.clone(),
                 calls: calls.clone(),
+                returns: returns.clone(),
+                literals: literals.clone(),
                 is_test: pending_test,
             };
             if pending_test
                 || path.starts_with("tests")
                 || path.to_string_lossy().contains("/tests/")
             {
-                tests.push(TestSummary {
+                tests.push(TestFact {
                     name: name.clone(),
                     file: path.clone(),
                     start_line,
@@ -113,7 +151,7 @@ pub fn summarize_file(path: PathBuf, text: String) -> FileSummary {
                     body: body.clone(),
                     calls,
                     assertions: extract_assertions(&body, start_line),
-                    literals: extract_literals(&body),
+                    literals,
                 });
             }
             functions.push(function);
@@ -128,7 +166,21 @@ pub fn summarize_file(path: PathBuf, text: String) -> FileSummary {
         i += 1;
     }
 
-    FileSummary { functions, tests }
+    file_calls.sort_by(|a, b| a.line.cmp(&b.line).then(a.name.cmp(&b.name)));
+    file_calls.dedup_by(|a, b| a.line == b.line && a.name == b.name && a.text == b.text);
+    file_returns.sort_by(|a, b| a.line.cmp(&b.line).then(a.text.cmp(&b.text)));
+    file_returns.dedup_by(|a, b| a.line == b.line && a.text == b.text);
+    file_literals.sort_by(|a, b| a.line.cmp(&b.line).then(a.value.cmp(&b.value)));
+    file_literals.dedup_by(|a, b| a.line == b.line && a.value == b.value);
+
+    FileFacts {
+        path,
+        functions,
+        tests,
+        calls: file_calls,
+        returns: file_returns,
+        literals: file_literals,
+    }
 }
 
 pub fn find_owner_function<'a>(
@@ -193,13 +245,13 @@ fn collect_function_body(lines: &[&str], start: usize) -> (usize, String) {
     (end, body)
 }
 
-fn extract_assertions(body: &str, start_line: usize) -> Vec<AssertionSummary> {
+fn extract_assertions(body: &str, start_line: usize) -> Vec<OracleFact> {
     let mut out = Vec::new();
     for (offset, line) in body.lines().enumerate() {
         let trimmed = line.trim();
         if is_assertion_line(trimmed) {
             let strength = classify_assertion(trimmed);
-            out.push(AssertionSummary {
+            out.push(OracleFact {
                 line: start_line + offset,
                 text: trimmed.to_string(),
                 strength,
@@ -254,38 +306,70 @@ fn classify_assertion(line: &str) -> OracleStrength {
     }
 }
 
-pub fn extract_calls(body: &str) -> Vec<String> {
+fn extract_call_facts(body: &str, start_line: usize) -> Vec<CallFact> {
     let mut calls = Vec::new();
-    let bytes = body.as_bytes();
-    let mut i = 0usize;
-    while i < bytes.len() {
-        if bytes[i] == b'(' {
-            let mut j = i;
-            while j > 0 && (bytes[j - 1].is_ascii_alphanumeric() || bytes[j - 1] == b'_') {
-                j -= 1;
-            }
-            if j < i {
-                let name = &body[j..i];
-                if !matches!(
-                    name,
-                    "if" | "while"
-                        | "match"
-                        | "for"
-                        | "loop"
-                        | "assert"
-                        | "assert_eq"
-                        | "assert_ne"
-                        | "assert_matches"
-                ) {
-                    calls.push(name.to_string());
+    for (offset, line) in body.lines().enumerate() {
+        let bytes = line.as_bytes();
+        let mut i = 0usize;
+        while i < bytes.len() {
+            if bytes[i] == b'(' {
+                let mut j = i;
+                while j > 0 && (bytes[j - 1].is_ascii_alphanumeric() || bytes[j - 1] == b'_') {
+                    j -= 1;
+                }
+                if j < i {
+                    let name = &line[j..i];
+                    if is_call_name(name) {
+                        calls.push(CallFact {
+                            line: start_line + offset,
+                            name: name.to_string(),
+                            text: line.trim().to_string(),
+                        });
+                    }
                 }
             }
+            i += 1;
         }
-        i += 1;
     }
-    calls.sort();
-    calls.dedup();
+    calls.sort_by(|a, b| a.line.cmp(&b.line).then(a.name.cmp(&b.name)));
+    calls.dedup_by(|a, b| a.line == b.line && a.name == b.name && a.text == b.text);
     calls
+}
+
+fn is_call_name(name: &str) -> bool {
+    !matches!(
+        name,
+        "if" | "while"
+            | "match"
+            | "for"
+            | "loop"
+            | "assert"
+            | "assert_eq"
+            | "assert_ne"
+            | "assert_matches"
+    )
+}
+
+fn extract_return_facts(body: &str, start_line: usize) -> Vec<ReturnFact> {
+    let mut returns = Vec::new();
+    for (offset, line) in body.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("return ")
+            || trimmed.contains(" return ")
+            || trimmed.contains("Ok(")
+            || trimmed.contains("Err(")
+            || trimmed.contains("Some(")
+            || trimmed.contains("None")
+        {
+            returns.push(ReturnFact {
+                line: start_line + offset,
+                text: trimmed.to_string(),
+            });
+        }
+    }
+    returns.sort_by(|a, b| a.line.cmp(&b.line).then(a.text.cmp(&b.text)));
+    returns.dedup_by(|a, b| a.line == b.line && a.text == b.text);
+    returns
 }
 
 pub fn extract_identifier_tokens(text: &str) -> Vec<String> {
@@ -333,23 +417,41 @@ fn is_interesting_token(token: &str) -> bool {
 }
 
 pub fn extract_literals(body: &str) -> Vec<String> {
-    let mut literals = Vec::new();
-    let mut current = String::new();
-    for ch in body.chars() {
-        if ch.is_ascii_digit() || (ch == '-' && current.is_empty()) {
-            current.push(ch);
-        } else if !current.is_empty() {
-            if current != "-" {
-                literals.push(current.clone());
-            }
-            current.clear();
-        }
-    }
-    if !current.is_empty() && current != "-" {
-        literals.push(current);
-    }
+    let mut literals = extract_literal_facts(body, 1)
+        .into_iter()
+        .map(|literal| literal.value)
+        .collect::<Vec<_>>();
     literals.sort();
     literals.dedup();
+    literals
+}
+
+fn extract_literal_facts(body: &str, start_line: usize) -> Vec<LiteralFact> {
+    let mut literals = Vec::new();
+    for (offset, line) in body.lines().enumerate() {
+        let mut current = String::new();
+        for ch in line.chars() {
+            if ch.is_ascii_digit() || (ch == '-' && current.is_empty()) {
+                current.push(ch);
+            } else if !current.is_empty() {
+                if current != "-" {
+                    literals.push(LiteralFact {
+                        line: start_line + offset,
+                        value: current.clone(),
+                    });
+                }
+                current.clear();
+            }
+        }
+        if !current.is_empty() && current != "-" {
+            literals.push(LiteralFact {
+                line: start_line + offset,
+                value: current,
+            });
+        }
+    }
+    literals.sort_by(|a, b| a.line.cmp(&b.line).then(a.value.cmp(&b.value)));
+    literals.dedup_by(|a, b| a.line == b.line && a.value == b.value);
     literals
 }
 
@@ -373,6 +475,29 @@ fn checks_error() {
         assert_eq!(file.tests.len(), 1);
         assert_eq!(file.tests[0].assertions.len(), 1);
         assert_eq!(file.tests[0].assertions[0].strength, OracleStrength::Smoke);
+    }
+
+    #[test]
+    fn summarize_file_emits_file_facts() {
+        let file = summarize_file(
+            PathBuf::from("src/lib.rs"),
+            r#"
+pub fn parse(input: &str) -> Result<i32, Error> {
+    if input == "42" {
+        return Ok(42);
+    }
+    Err(Error::Bad)
+}
+"#
+            .to_string(),
+        );
+
+        assert_eq!(file.path, PathBuf::from("src/lib.rs"));
+        assert_eq!(file.functions.len(), 1);
+        assert_eq!(file.functions[0].name, "parse");
+        assert!(file.calls.iter().any(|call| call.name == "Ok"));
+        assert!(file.returns.iter().any(|fact| fact.text.contains("Ok(42)")));
+        assert!(file.literals.iter().any(|fact| fact.value == "42"));
     }
 
     #[test]

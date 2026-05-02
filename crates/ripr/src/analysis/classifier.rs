@@ -88,7 +88,8 @@ fn find_related_tests<'a>(
             continue;
         }
         let calls_owner = !owner_name.is_empty()
-            && (test.calls.iter().any(|call| call == owner_name) || test.body.contains(owner_name));
+            && (test.calls.iter().any(|call| call.name == owner_name)
+                || test.body.contains(owner_name));
         let mentions_tokens = probe_tokens
             .iter()
             .any(|token| token.len() > 3 && test.body.contains(token));
@@ -145,7 +146,7 @@ fn infection_evidence(probe: &Probe, related_tests: &[&TestSummary]) -> StageEvi
             let probe_literals = extract_literals(&probe.expression);
             let test_literals = related_tests
                 .iter()
-                .flat_map(|test| test.literals.iter().cloned())
+                .flat_map(|test| test.literals.iter().map(|literal| literal.value.clone()))
                 .collect::<Vec<_>>();
             if related_tests.is_empty() {
                 StageEvidence::new(
@@ -577,7 +578,7 @@ fn package_prefix(path: &Path) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::analysis::rust_index::AssertionSummary;
+    use crate::analysis::rust_index::{CallFact, LiteralFact, OracleFact};
     use std::path::PathBuf;
 
     #[test]
@@ -650,6 +651,8 @@ mod tests {
             end_line: 3,
             body: format!("pub fn {name}(input: i32) -> i32 {{ input }}"),
             calls: vec![],
+            returns: vec![],
+            literals: vec![],
             is_test: false,
         }
     }
@@ -661,14 +664,21 @@ mod tests {
             start_line: 1,
             end_line: 4,
             body: format!("{call};\n{assertion}"),
-            calls: vec!["score".to_string()],
-            assertions: vec![AssertionSummary {
+            calls: vec![CallFact {
+                line: 1,
+                name: "score".to_string(),
+                text: call.to_string(),
+            }],
+            assertions: vec![OracleFact {
                 line: 2,
                 text: assertion.to_string(),
                 strength: OracleStrength::Strong,
                 observed_tokens: extract_identifier_tokens(assertion),
             }],
-            literals: vec!["1".to_string()],
+            literals: vec![LiteralFact {
+                line: 1,
+                value: "1".to_string(),
+            }],
         }
     }
 }

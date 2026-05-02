@@ -17,7 +17,7 @@ end_state = [
 
 [[work_item]]
 id = "analysis/file-facts-model"
-status = "ready"
+status = "done"
 branch = "analysis/file-facts-model"
 stackable = false
 requires_human_merge = true
@@ -33,15 +33,11 @@ commands = [
 
 [[work_item]]
 id = "analysis/syntax-adapter-mvp"
-status = "blocked"
+status = "ready"
 branch = "analysis/syntax-adapter-mvp"
 stackable = false
 requires_human_merge = true
 acceptance = "parser adapter boundary exists while the current lexical adapter remains behavior-compatible"
-blocked_by = [
-  "analysis/file-facts-model"
-]
-blocked_reason = "requires reviewed FileFacts DTOs"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
