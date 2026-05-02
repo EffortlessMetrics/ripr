@@ -4,12 +4,19 @@ use crate::output;
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug)]
+/// Input options for a `ripr` workspace check.
 pub struct CheckInput {
+    /// Repository root or workspace root to analyze.
     pub root: PathBuf,
+    /// Base git reference used when `diff_file` is not provided.
     pub base: Option<String>,
+    /// Optional path to a unified diff file.
     pub diff_file: Option<PathBuf>,
+    /// Analysis depth and speed profile.
     pub mode: Mode,
+    /// Output renderer to use for the final report.
     pub format: OutputFormat,
+    /// Whether unchanged tests may be considered as supporting evidence.
     pub include_unchanged_tests: bool,
 }
 
@@ -27,15 +34,22 @@ impl Default for CheckInput {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+/// User-facing analysis profile.
 pub enum Mode {
+    /// Prioritize immediate feedback over deeper evidence.
     Instant,
+    /// Default draft-mode pass for static exposure evidence.
     Draft,
+    /// Faster analysis profile with moderate evidence depth.
     Fast,
+    /// Deeper static analysis intended for stronger review confidence.
     Deep,
+    /// Most complete local static pass before review handoff.
     Ready,
 }
 
 impl Mode {
+    /// Returns the canonical lowercase CLI/API spelling of this mode.
     pub fn as_str(&self) -> &'static str {
         match self {
             Mode::Instant => "instant",
@@ -46,6 +60,7 @@ impl Mode {
         }
     }
 
+    /// Maps the user-facing mode to the internal analysis mode.
     pub fn analysis_mode(&self) -> AnalysisMode {
         match self {
             Mode::Instant => AnalysisMode::Instant,
@@ -58,23 +73,36 @@ impl Mode {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+/// Output renderer selection for `check` results.
 pub enum OutputFormat {
+    /// Human-readable text report.
     Human,
+    /// Stable JSON output contract.
     Json,
+    /// GitHub annotation-style text.
     Github,
 }
 
 #[derive(Clone, Debug)]
+/// Full result packet produced by [`check_workspace`].
 pub struct CheckOutput {
+    /// Output schema version for machine consumers.
     pub schema_version: String,
+    /// Tool identifier (currently `ripr`).
     pub tool: String,
+    /// Effective mode used for analysis.
     pub mode: Mode,
+    /// Workspace root that was analyzed.
     pub root: PathBuf,
+    /// Base git reference used when diffing against VCS.
     pub base: Option<String>,
+    /// Aggregated finding counts and class totals.
     pub summary: Summary,
+    /// Per-probe findings with RIPR evidence.
     pub findings: Vec<Finding>,
 }
 
+/// Runs static analysis for the provided workspace input and returns findings.
 pub fn check_workspace(input: CheckInput) -> Result<CheckOutput, String> {
     let options = AnalysisOptions {
         root: input.root.clone(),
@@ -95,6 +123,7 @@ pub fn check_workspace(input: CheckInput) -> Result<CheckOutput, String> {
     })
 }
 
+/// Renders a [`CheckOutput`] using the requested [`OutputFormat`].
 pub fn render_check(output: &CheckOutput, format: &OutputFormat) -> String {
     match format {
         OutputFormat::Human => output::human::render(output),
@@ -103,6 +132,7 @@ pub fn render_check(output: &CheckOutput, format: &OutputFormat) -> String {
     }
 }
 
+/// Explains a single finding selected by id or `path:line` selector.
 pub fn explain_finding(root: &Path, selector: &str) -> Result<String, String> {
     explain_finding_with_input(
         CheckInput {
@@ -113,6 +143,7 @@ pub fn explain_finding(root: &Path, selector: &str) -> Result<String, String> {
     )
 }
 
+/// Explains a single finding using fully customized [`CheckInput`].
 pub fn explain_finding_with_input(input: CheckInput, selector: &str) -> Result<String, String> {
     let output = check_workspace(input)?;
     let selected = output
@@ -126,6 +157,7 @@ pub fn explain_finding_with_input(input: CheckInput, selector: &str) -> Result<S
     }
 }
 
+/// Builds a JSON context packet for one finding from workspace defaults.
 pub fn collect_context(
     root: &Path,
     selector: &str,
@@ -142,6 +174,7 @@ pub fn collect_context(
     )
 }
 
+/// Builds a JSON context packet for one finding using custom input options.
 pub fn collect_context_with_input(
     input: CheckInput,
     selector: &str,

@@ -12,5 +12,9 @@ pub mod domain;
 pub mod lsp;
 pub mod output;
 
+/// Runs static RIPR analysis for a workspace using [`CheckInput`] options.
+///
+/// This is the main library entrypoint used by the CLI and editor adapters.
 pub use app::{CheckInput, CheckOutput, check_workspace, collect_context, explain_finding};
+/// Common domain types for exposure findings and evidence rendering.
 pub use domain::{ExposureClass, Finding, Probe, ProbeFamily, RiprEvidence};
