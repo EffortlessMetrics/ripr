@@ -89,16 +89,16 @@ pub fn parse_unified_diff(input: &str) -> Vec<ChangedFile> {
                 line: new_line,
                 text: text.to_string(),
             });
-            new_line += 1;
+            new_line = new_line.saturating_add(1);
         } else if let Some(text) = raw.strip_prefix('-') {
             file.removed_lines.push(ChangedLine {
                 line: old_line,
                 text: text.to_string(),
             });
-            old_line += 1;
+            old_line = old_line.saturating_add(1);
         } else if raw.starts_with(' ') || raw.is_empty() {
-            old_line += 1;
-            new_line += 1;
+            old_line = old_line.saturating_add(1);
+            new_line = new_line.saturating_add(1);
         }
     }
 
@@ -157,6 +157,18 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn parser_handles_hunk_line_numbers_near_usize_max() {
+        let diff = "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -18446744073709551615,2 +18446744073709551615,2 @@\n-a\n+b\n c\n";
+        let files = parse_unified_diff(diff);
+        assert_eq!(files.len(), 1);
+        let file = &files[0];
+        assert_eq!(file.added_lines.len(), 1);
+        assert_eq!(file.removed_lines.len(), 1);
+        assert_eq!(file.added_lines[0].line, usize::MAX);
+        assert_eq!(file.removed_lines[0].line, usize::MAX);
     }
 
     fn next_u64(seed: &mut u64) -> u64 {
