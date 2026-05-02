@@ -34,6 +34,8 @@ fn main() {
         Some("check-file-policy") => check_file_policy(),
         Some("check-executable-files") => check_executable_files(),
         Some("check-workflows") => check_workflows(),
+        Some("check-spec-format") => check_spec_format(),
+        Some("check-fixture-contracts") => check_fixture_contracts(),
         Some("package") => run("cargo", &["package", "-p", "ripr", "--list"]).map(|_| ()),
         Some("publish-dry-run") => {
             run("cargo", &["publish", "-p", "ripr", "--dry-run"]).map(|_| ())
@@ -58,7 +60,9 @@ fn ci_fast() -> Result<(), String> {
     check_no_panic_family()?;
     check_file_policy()?;
     check_executable_files()?;
-    check_workflows()
+    check_workflows()?;
+    check_spec_format()?;
+    check_fixture_contracts()
 }
 
 fn ci_full() -> Result<(), String> {
@@ -94,7 +98,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  package\n  publish-dry-run"
+        "xtask commands:\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  package\n  publish-dry-run"
     );
 }
 
@@ -298,6 +302,114 @@ fn check_workflows() -> Result<(), String> {
     }
 }
 
+fn check_spec_format() -> Result<(), String> {
+    let mut violations = Vec::new();
+    let spec_dir = Path::new("docs/specs");
+    for path in collect_files(spec_dir)? {
+        let normalized = normalize_path(&path);
+        let Some(file_name) = path.file_name().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        if !file_name.starts_with("RIPR-SPEC-") || !file_name.ends_with(".md") {
+            continue;
+        }
+        let Some(spec_id) = spec_id_from_file_name(file_name) else {
+            violations.push(format!("{normalized} has invalid RIPR-SPEC filename"));
+            continue;
+        };
+        let text = read_text_lossy(&path)?;
+        let first_line = text.lines().next().unwrap_or_default();
+        if !first_line.starts_with(&format!("# {spec_id}: ")) {
+            violations.push(format!(
+                "{normalized}:1 title must start with `# {spec_id}: `"
+            ));
+        }
+        let status = spec_status(&text);
+        match status.as_deref() {
+            Some("proposed" | "planned" | "accepted" | "deprecated") => {}
+            Some(value) => violations.push(format!("{normalized} has invalid status `{value}`")),
+            None => violations.push(format!("{normalized} is missing `Status: ...`")),
+        }
+        for heading in required_spec_headings() {
+            if !has_markdown_heading(&text, heading) {
+                violations.push(format!("{normalized} is missing `{heading}`"));
+            }
+        }
+        if text.contains("- \n") {
+            violations.push(format!(
+                "{normalized} contains empty placeholder list items"
+            ));
+        }
+    }
+
+    if violations.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "spec format check failed:\n{}",
+            violations.join("\n")
+        ))
+    }
+}
+
+fn check_fixture_contracts() -> Result<(), String> {
+    let fixtures_dir = Path::new("fixtures");
+    if !fixtures_dir.exists() {
+        return Ok(());
+    }
+
+    let mut violations = Vec::new();
+    for entry in
+        fs::read_dir(fixtures_dir).map_err(|err| format!("failed to read fixtures: {err}"))?
+    {
+        let entry = entry.map_err(|err| format!("failed to read fixtures: {err}"))?;
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let normalized = normalize_path(&path);
+        let spec = path.join("SPEC.md");
+        let diff = path.join("diff.patch");
+        let expected_check = path.join("expected/check.json");
+
+        if !spec.exists() {
+            violations.push(format!("{normalized} is missing SPEC.md"));
+            continue;
+        }
+        if !diff.exists() {
+            violations.push(format!("{normalized} is missing diff.patch"));
+        }
+        if !expected_check.exists() {
+            violations.push(format!("{normalized} is missing expected/check.json"));
+        }
+
+        let text = read_text_lossy(&spec)?;
+        if !text
+            .lines()
+            .any(|line| line.starts_with("Spec: RIPR-SPEC-"))
+        {
+            violations.push(format!(
+                "{} is missing `Spec: RIPR-SPEC-NNNN`",
+                normalize_path(&spec)
+            ));
+        }
+        for heading in ["## Given", "## When", "## Then", "## Must Not"] {
+            if !has_markdown_heading(&text, heading) {
+                violations.push(format!("{} is missing `{heading}`", normalize_path(&spec)));
+            }
+        }
+    }
+
+    if violations.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "fixture contract check failed:\n{}",
+            violations.join("\n")
+        ))
+    }
+}
+
 fn read_path_allowlist(path: &str) -> Result<BTreeSet<String>, String> {
     let mut allowed = BTreeSet::new();
     let text = read_text_lossy(Path::new(path))?;
@@ -413,6 +525,45 @@ fn read_path_allowlist_optional(path: &str) -> Result<BTreeSet<String>, String> 
     } else {
         Ok(BTreeSet::new())
     }
+}
+
+fn spec_id_from_file_name(file_name: &str) -> Option<String> {
+    let mut parts = file_name.split('-');
+    let prefix = parts.next()?;
+    let kind = parts.next()?;
+    let number = parts.next()?;
+    if prefix == "RIPR"
+        && kind == "SPEC"
+        && number.len() == 4
+        && number.chars().all(|value| value.is_ascii_digit())
+    {
+        Some(format!("{prefix}-{kind}-{number}"))
+    } else {
+        None
+    }
+}
+
+fn spec_status(text: &str) -> Option<String> {
+    text.lines()
+        .find_map(|line| line.strip_prefix("Status: "))
+        .map(|value| value.trim().to_string())
+}
+
+fn required_spec_headings() -> Vec<&'static str> {
+    vec![
+        "## Problem",
+        "## Behavior",
+        "## Required Evidence",
+        "## Non-Goals",
+        "## Acceptance Examples",
+        "## Test Mapping",
+        "## Implementation Mapping",
+        "## Metrics",
+    ]
+}
+
+fn has_markdown_heading(text: &str, heading: &str) -> bool {
+    text.lines().any(|line| line.trim_end() == heading)
 }
 
 fn collect_files(root: &Path) -> Result<Vec<PathBuf>, String> {

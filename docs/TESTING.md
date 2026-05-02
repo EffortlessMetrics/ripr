@@ -15,6 +15,7 @@ spec -> test -> code
 ```
 
 See [Spec-test-code traceability](SPEC_TEST_CODE.md) for the expected mapping.
+See [Test taxonomy](TEST_TAXONOMY.md) for required proof levels by change type.
 
 Run everything:
 
@@ -31,6 +32,8 @@ cargo xtask check-no-panic-family
 cargo xtask check-file-policy
 cargo xtask check-executable-files
 cargo xtask check-workflows
+cargo xtask check-spec-format
+cargo xtask check-fixture-contracts
 ```
 
 Package check:

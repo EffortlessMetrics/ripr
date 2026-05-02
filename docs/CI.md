@@ -18,6 +18,8 @@ cargo xtask check-no-panic-family
 cargo xtask check-file-policy
 cargo xtask check-executable-files
 cargo xtask check-workflows
+cargo xtask check-spec-format
+cargo xtask check-fixture-contracts
 cargo package -p ripr --list
 cargo publish -p ripr --dry-run
 ```
@@ -30,6 +32,8 @@ cargo xtask check-no-panic-family
 cargo xtask check-file-policy
 cargo xtask check-executable-files
 cargo xtask check-workflows
+cargo xtask check-spec-format
+cargo xtask check-fixture-contracts
 ```
 
 The VS Code workflow currently runs:

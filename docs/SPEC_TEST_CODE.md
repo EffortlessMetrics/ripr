@@ -29,6 +29,9 @@ Each spec should include:
 - acceptance examples
 - test mapping
 - implementation mapping
+- metrics
+
+See [Spec format](SPEC_FORMAT.md) for the mechanically checked section format.
 
 Machine-readable mapping starts in `.ripr/traceability.toml`. Keep it aligned
 with spec files, fixtures, code modules, output contracts, and metrics. The

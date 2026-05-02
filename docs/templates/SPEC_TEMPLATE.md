@@ -14,6 +14,14 @@ What should `ripr` do?
 
 What data, output, or diagnostics must be present?
 
+## Inputs
+
+-
+
+## Outputs
+
+-
+
 ## Non-Goals
 
 What is intentionally out of scope?
@@ -24,8 +32,12 @@ Show the smallest examples that prove the behavior.
 
 ## Test Mapping
 
-- 
+-
 
 ## Implementation Mapping
 
-- 
+-
+
+## Metrics
+
+-

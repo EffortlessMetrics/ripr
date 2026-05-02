@@ -20,6 +20,20 @@ Given this changed behavior and these tests, what static exposure evidence
 should ripr report?
 ```
 
+## Required Evidence
+
+Each fixture should provide enough evidence to prove one analyzer behavior or
+output contract without relying on chat history.
+
+Required evidence starts with:
+
+- BDD fixture `SPEC.md`
+- input workspace
+- changed behavior diff
+- expected JSON output
+- expected human, context, LSP, or GitHub output when the fixture covers those
+  surfaces
+
 ## Required Fixture Shape
 
 Each fixture should include:
@@ -31,6 +45,34 @@ Each fixture should include:
 - expected human output
 - expected context packet when applicable
 - expected LSP diagnostic shape when applicable
+
+## Non-Goals
+
+This spec does not require:
+
+- a complete fixture suite in the first fixture PR
+- real mutation execution
+- generated test code
+- a second DSL or Gherkin runner
+- accepting output drift without a golden reason
+
+## Acceptance Examples
+
+Boundary fixture:
+
+```text
+Given a predicate boundary change and related tests that miss the equality value,
+when ripr analyzes the diff, then it reports weak exposure and names the missing
+boundary discriminator.
+```
+
+Weak error oracle fixture:
+
+```text
+Given an exact error variant change and a related test that only checks is_err(),
+when ripr analyzes the diff, then it reports weak oracle evidence rather than a
+strong exact variant discriminator.
+```
 
 ## Initial Fixture Set
 
@@ -74,3 +116,11 @@ Planned modules:
 - `output::json`
 - `output::human`
 - `app` command orchestration
+
+## Metrics
+
+- fixture pass rate
+- golden output drift count
+- fixtures with JSON goldens
+- fixtures with human goldens
+- fixtures with context goldens

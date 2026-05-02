@@ -118,6 +118,31 @@ Future policy PRs:
 - [ ] architecture import guard
 - [ ] public API guard
 
+## PR 1C: `spec-fixture-contracts`
+
+Purpose: make specs and fixtures agent-readable and mechanically checkable
+before fixture and golden output work expands.
+
+Deliverables:
+
+- [ ] Add spec format reference.
+- [ ] Add test taxonomy reference.
+- [ ] Add fixture contract README.
+- [ ] Update existing specs to the checked format.
+- [ ] Add `cargo xtask check-spec-format`.
+- [ ] Add `cargo xtask check-fixture-contracts`.
+- [ ] Wire checks into `cargo xtask ci-fast`.
+- [ ] Wire checks into CI.
+
+Acceptance:
+
+- [ ] Every `docs/specs/RIPR-SPEC-*.md` has required sections and a valid
+      status.
+- [ ] Spec filename IDs match title IDs.
+- [ ] Future fixture directories must include `SPEC.md`, `diff.patch`, and
+      `expected/check.json`.
+- [ ] Fixture `SPEC.md` files must include Given/When/Then/Must Not sections.
+
 ## PR 2: `fixture-laboratory`
 
 Purpose: build the regression control bench before changing analyzer internals.
