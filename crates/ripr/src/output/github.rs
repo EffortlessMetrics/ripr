@@ -46,3 +46,84 @@ fn escape_cmd(value: &str) -> String {
         .replace(',', "%2C")
         .replace(':', "%3A")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::render;
+    use crate::app::{CheckOutput, Mode};
+    use crate::domain::{
+        Confidence, DeltaKind, ExposureClass, Finding, Probe, ProbeFamily, ProbeId, RevealEvidence,
+        RiprEvidence, SourceLocation, StageEvidence, StageState, StopReason, Summary,
+    };
+    use std::path::PathBuf;
+
+    #[test]
+    fn render_emits_notice_when_findings_are_empty() {
+        let output = empty_output();
+
+        assert_eq!(
+            render(&output),
+            "::notice title=ripr::No static mutation exposure findings found\n"
+        );
+    }
+
+    #[test]
+    fn render_escapes_title_and_message_and_joins_stop_reasons() {
+        let finding = Finding {
+            id: "probe:crate_src_lib.rs:21:error_path".to_string(),
+            probe: Probe {
+                id: ProbeId("probe:crate_src_lib.rs:21:error_path".to_string()),
+                location: SourceLocation::new("crate/src/lib.rs", 21, 1),
+                owner: None,
+                family: ProbeFamily::ErrorPath,
+                delta: DeltaKind::Control,
+                before: None,
+                after: None,
+                expression: "check()".to_string(),
+                expected_sinks: vec![],
+                required_oracles: vec![],
+            },
+            class: ExposureClass::PropagationUnknown,
+            ripr: unknown_ripr(),
+            confidence: 0.5,
+            evidence: vec![],
+            missing: vec![],
+            stop_reasons: vec![StopReason::PropagationEvidenceUnknown],
+            related_tests: vec![],
+            recommended_next_step: Some("check 100%: this,\nnext line".to_string()),
+        };
+
+        let mut output = empty_output();
+        output.findings.push(finding);
+
+        assert_eq!(
+            render(&output),
+            "::notice file=crate/src/lib.rs,line=21,title=ripr propagation_unknown::check 100%25%3A this%2C%0Anext line Stop reason%3A propagation_evidence_unknown\n"
+        );
+    }
+
+    fn empty_output() -> CheckOutput {
+        CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("."),
+            base: Some("origin/main".to_string()),
+            summary: Summary::default(),
+            findings: vec![],
+        }
+    }
+
+    fn unknown_ripr() -> RiprEvidence {
+        let stage = StageEvidence::new(StageState::Unknown, Confidence::Unknown, "unknown");
+        RiprEvidence {
+            reach: stage.clone(),
+            infect: stage.clone(),
+            propagate: stage.clone(),
+            reveal: RevealEvidence {
+                observe: stage.clone(),
+                discriminate: stage,
+            },
+        }
+    }
+}
