@@ -4,25 +4,25 @@
 # Static product output, goldens, and examples should not use these terms unless
 # real mutation data is explicitly present.
 
-AGENTS.md
-CONTRIBUTING.md
 .github/pull_request_template.md
-docs/ENGINEERING.md
+AGENTS.md
+CHANGELOG.md
+CONTRIBUTING.md
+README.md
+crates/ripr/README.md
 docs/ARCHITECTURE.md
-docs/STATIC_EXPOSURE_MODEL.md
-docs/OUTPUT_SCHEMA.md
-docs/CHARTER.md
-docs/TESTING.md
-docs/METRICS.md
-docs/LEARNINGS.md
-docs/IMPLEMENTATION_PLAN.md
-docs/ROADMAP.md
 docs/CHANGELOG_POLICY.md
+docs/CHARTER.md
+docs/ENGINEERING.md
+docs/IMPLEMENTATION_PLAN.md
+docs/LEARNINGS.md
+docs/METRICS.md
+docs/OUTPUT_SCHEMA.md
+docs/ROADMAP.md
+docs/STATIC_EXPOSURE_MODEL.md
+docs/TESTING.md
 docs/adr/0002-static-exposure-language.md
 docs/specs/RIPR-SPEC-0001-static-exposure-loop.md
 docs/specs/RIPR-SPEC-0002-fixture-laboratory.md
-README.md
-crates/ripr/README.md
 editors/vscode/README.md
-CHANGELOG.md
 xtask/src/main.rs

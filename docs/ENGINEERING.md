@@ -123,6 +123,28 @@ If a contributor adds a non-Rust programming file, the PR must explain:
 
 See [File policy](FILE_POLICY.md).
 
+## PR Shaping Automation
+
+Repo automation has three responsibilities:
+
+- shape: safely normalize files where no judgment is required
+- check: enforce non-negotiable rules
+- guide: report exact repair steps when judgment is required
+
+`cargo xtask shape` is allowed to mutate only safe local artifacts:
+
+- run `cargo fmt`
+- sort `.ripr/*.txt` and `policy/*.txt` allowlist entries
+- ensure `target/ripr/reports`
+- write `target/ripr/reports/shape.md`
+
+It must not bless goldens, add policy exceptions, change schema versions, add
+dependencies, or accept public output drift.
+
+`cargo xtask fix-pr` currently runs the same safe shaping and writes a local
+fix-pr report. The planned `cargo xtask pr-summary` command will add reviewer
+surface classification in a later PR.
+
 ## Testing Style
 
 Use BDD-shaped test names and fixtures:

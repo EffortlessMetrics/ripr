@@ -22,6 +22,7 @@ Current how-to docs:
 - [Contributing](../CONTRIBUTING.md)
 - [Testing](TESTING.md)
 - [CI strategy](CI.md)
+- [Fix CI shape failures](how-to/fix-ci-shape-failures.md)
 - [Dogfooding](DOGFOODING.md)
 - [Agent workflows](AGENT_WORKFLOWS.md)
 - [Release](RELEASE.md)

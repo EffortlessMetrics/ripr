@@ -28,3 +28,5 @@ how future PRs are scoped or reviewed.
   for spec and fixture evidence shape.
 - Added policy checks for generated files, dependency surfaces, process spawning,
   and network behavior.
+- Added `cargo xtask shape` and `cargo xtask fix-pr` for safe local PR
+  normalization and report generation.
