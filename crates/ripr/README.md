@@ -12,8 +12,8 @@ a discriminator that would notice if that behavior were wrong?
 `ripr` is alpha software. The current release is a syntax-first scanner that is
 useful for early feedback, not a proof system.
 
-This is the product repository for `ripr`. The `0.2.x` line keeps the analyzer
-scope narrow while adding extension-managed server provisioning.
+This is the product repository for `ripr`. The `0.3.x` line keeps the analyzer
+scope narrow while strengthening syntax-backed evidence and the editor loop.
 
 ## Mission
 
@@ -240,7 +240,7 @@ and activation/value modeling.
 | Diff analysis | Syntax-first changed-line probes. | Parser-backed changed-node facts. |
 | Test discovery | Basic Rust test/assertion indexing. | AST-backed test and oracle extraction. |
 | Output | Human, JSON, GitHub annotation formats. | Golden fixture lab and stable DTOs. |
-| LSP | Experimental sidecar. | Evidence-aware diagnostics, hover, and context actions. |
+| LSP | Experimental `tower-lsp-server` sidecar with evidence-aware diagnostic metadata, related test links, targeted context actions, and diagnostic hovers. | Server-owned context packets, config propagation, and open-related-test actions. |
 | Agent context | Compact context packet. | Test-writing brief with missing values and assertion shape. |
 | Calibration | Not yet connected to real mutation outcomes. | `cargo-mutants` import after static facts improve. |
 

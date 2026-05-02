@@ -153,7 +153,7 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
-code --install-extension dist/ripr-0.2.0.vsix --force
+code --install-extension dist/ripr-0.3.0.vsix --force
 ```
 
 The extension should resolve the server in this order:

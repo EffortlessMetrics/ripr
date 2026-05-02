@@ -45,7 +45,7 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
-npx ovsx publish dist/ripr-0.2.0.vsix -p "$OVSX_PAT" --skip-duplicate
+npx ovsx publish dist/ripr-0.3.0.vsix -p "$OVSX_PAT" --skip-duplicate
 ```
 
 The GitHub release workflow uses the same `OVSX_PAT` secret for Open VSX

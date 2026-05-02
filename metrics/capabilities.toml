@@ -216,11 +216,16 @@ name = "LSP diagnostics"
 status = "alpha"
 spec = "RIPR-SPEC-0001"
 evidence = [
-  "experimental sidecar"
+  "tower-lsp-server sidecar",
+  "stable diagnostic data payload",
+  "related test diagnostic information",
+  "diagnostic-targeted context action",
+  "diagnostic hover details",
+  "serialized refresh generations"
 ]
 fixtures = []
-next = "lsp-evidence-hover-actions"
-metric = "finding/probe metadata in diagnostics"
+next = "lsp-context-command-v1"
+metric = "diagnostics carry finding/probe metadata and editor actions target the selected finding"
 
 [[capability]]
 id = "parser_backed_syntax_facts"

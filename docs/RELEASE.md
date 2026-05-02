@@ -74,8 +74,8 @@ ripr doctor
 Tag the release:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
 Update docs or release notes if the install command or package metadata changed.
