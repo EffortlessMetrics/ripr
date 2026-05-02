@@ -53,6 +53,8 @@ cargo xtask goldens check
 cargo xtask test-oracle-report
 cargo xtask dogfood
 cargo xtask reports index
+cargo xtask receipts
+cargo xtask receipts check
 ```
 
 They are safe to run before checks. `shape` runs `cargo fmt`, sorts allowlists,
@@ -66,6 +68,8 @@ expected-output scaffolding without accepting output drift. `test-oracle-report`
 writes an advisory baseline for the strength of `ripr`'s own Rust test oracles.
 `dogfood` writes a non-blocking `ripr`-on-`ripr` report from stable fixture
 diffs. `reports index` writes a reviewer front door for generated reports.
+`receipts` writes machine-readable gate evidence under `target/ripr/receipts`,
+and `receipts check` validates the receipt set.
 
 The fuller automation model is documented in [PR automation](PR_AUTOMATION.md).
 Deterministic shaping should happen locally; CI should verify the committed
@@ -77,8 +81,8 @@ shape/check/report artifacts that CI uploads for human review.
 
 Current policy checks write Markdown reports to `target/ripr/reports` when they
 run. The Rust workflow generates `target/ripr/reports/index.md`, writes it to
-the GitHub Actions job summary when present, and uploads the report directory
-as the `ripr-pr-reports` artifact.
+the GitHub Actions job summary when present, and uploads the report and receipt
+directories as the `ripr-pr-reports` artifact.
 
 Local policy checks can also be run directly:
 
@@ -115,6 +119,8 @@ cargo xtask goldens check
 cargo xtask test-oracle-report
 cargo xtask dogfood
 cargo xtask reports index
+cargo xtask receipts
+cargo xtask receipts check
 ```
 
 The VS Code workflow currently runs:

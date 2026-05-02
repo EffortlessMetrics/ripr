@@ -158,6 +158,21 @@ struct ReportIndexEntry {
     status: String,
 }
 
+#[derive(Clone, Debug)]
+struct ReceiptSpec {
+    file: &'static str,
+    command: &'static str,
+    reports: &'static [&'static str],
+}
+
+#[derive(Clone, Debug)]
+struct ReceiptRecord {
+    file: String,
+    command: String,
+    status: String,
+    reports: Vec<String>,
+}
+
 #[derive(Debug, Default)]
 struct ReportIndexCampaign {
     id: String,
@@ -229,6 +244,7 @@ fn main() {
         Some("dogfood") => dogfood(),
         Some("goals") => goals(&args[2..]),
         Some("reports") => reports(&args[2..]),
+        Some("receipts") => receipts(&args[2..]),
         Some("ci-fast") => ci_fast(),
         Some("ci-full") => ci_full(),
         Some("check-static-language") => check_static_language(),
@@ -322,6 +338,8 @@ fn check_pr() -> Result<(), String> {
     pr_summary()?;
     let body = check_pr_report_body();
     write_report("check-pr.md", &body)?;
+    receipts_write()?;
+    pr_summary()?;
     reports_index()
 }
 
@@ -371,7 +389,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  metrics\n  test-oracle-report\n  check-test-oracles\n  dogfood\n  goals status|next|report\n  reports index\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
+        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  metrics\n  test-oracle-report\n  check-test-oracles\n  dogfood\n  goals status|next|report\n  reports index\n  receipts [check]\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
     );
 }
 
@@ -412,6 +430,16 @@ fn reports(args: &[String]) -> Result<(), String> {
     }
 }
 
+fn receipts(args: &[String]) -> Result<(), String> {
+    match args.first().map(String::as_str) {
+        None => receipts_write(),
+        Some("check") => receipts_check(),
+        Some(other) => Err(format!(
+            "unknown receipts command `{other}`\nusage: cargo xtask receipts\n       cargo xtask receipts check"
+        )),
+    }
+}
+
 fn reports_index() -> Result<(), String> {
     let changes = collect_pr_changes()?;
     let campaign = report_index_campaign();
@@ -439,6 +467,299 @@ fn reports_index() -> Result<(), String> {
     );
     write_report("index.md", &markdown)?;
     write_report("index.json", &json)
+}
+
+fn receipts_write() -> Result<(), String> {
+    ensure_receipts_dir()?;
+    let git = receipt_git_metadata();
+    let mut records = Vec::new();
+    for spec in receipt_specs() {
+        let reports = spec
+            .reports
+            .iter()
+            .map(|report| format!("target/ripr/reports/{report}"))
+            .collect::<Vec<_>>();
+        let status = receipt_status_from_reports(&reports);
+        let record = ReceiptRecord {
+            file: spec.file.to_string(),
+            command: spec.command.to_string(),
+            status,
+            reports,
+        };
+        write_receipt(spec.file, &receipt_json(&record, &git))?;
+        records.push(record);
+    }
+    write_report(
+        "receipts.md",
+        &receipts_report_markdown("pass", &records, &[]),
+    )
+}
+
+fn receipts_check() -> Result<(), String> {
+    let violations = receipts_check_violations()?;
+    let records = read_receipt_records();
+    let status = if violations.is_empty() {
+        "pass"
+    } else {
+        "fail"
+    };
+    write_report(
+        "receipts.md",
+        &receipts_report_markdown(status, &records, &violations),
+    )?;
+    if violations.is_empty() {
+        Ok(())
+    } else {
+        Err("receipt validation failed; see target/ripr/reports/receipts.md".to_string())
+    }
+}
+
+fn receipt_specs() -> Vec<ReceiptSpec> {
+    vec![
+        ReceiptSpec {
+            file: "shape.json",
+            command: "cargo xtask shape",
+            reports: &["shape.md"],
+        },
+        ReceiptSpec {
+            file: "fix-pr.json",
+            command: "cargo xtask fix-pr",
+            reports: &["fix-pr.md", "shape.md", "pr-summary.md"],
+        },
+        ReceiptSpec {
+            file: "ci-fast.json",
+            command: "cargo xtask ci-fast",
+            reports: &[
+                "static-language.md",
+                "no-panic-family.md",
+                "file-policy.md",
+                "executable-files.md",
+                "workflows.md",
+                "spec-format.md",
+                "fixture-contracts.md",
+                "traceability.md",
+                "capabilities.md",
+                "workspace-shape.md",
+                "architecture.md",
+                "public-api.md",
+                "output-contracts.md",
+                "doc-index.md",
+                "readme-state.md",
+                "markdown-links.md",
+                "campaign.md",
+                "pr-shape.md",
+                "generated.md",
+                "dependencies.md",
+                "process-policy.md",
+                "network-policy.md",
+            ],
+        },
+        ReceiptSpec {
+            file: "check-pr.json",
+            command: "cargo xtask check-pr",
+            reports: &["check-pr.md", "pr-summary.md"],
+        },
+        ReceiptSpec {
+            file: "fixtures.json",
+            command: "cargo xtask fixtures",
+            reports: &["fixtures.md"],
+        },
+        ReceiptSpec {
+            file: "goldens.json",
+            command: "cargo xtask goldens check",
+            reports: &["goldens.md"],
+        },
+        ReceiptSpec {
+            file: "test-oracles.json",
+            command: "cargo xtask test-oracle-report",
+            reports: &["test-oracles.md", "test-oracles.json"],
+        },
+        ReceiptSpec {
+            file: "dogfood.json",
+            command: "cargo xtask dogfood",
+            reports: &["dogfood.md", "dogfood.json"],
+        },
+        ReceiptSpec {
+            file: "metrics.json",
+            command: "cargo xtask metrics",
+            reports: &["metrics.md", "metrics.json"],
+        },
+    ]
+}
+
+fn receipt_status_from_reports(reports: &[String]) -> String {
+    let mut saw_report = false;
+    let mut saw_warn = false;
+    for report in reports {
+        let path = Path::new(report);
+        if !path.exists() {
+            continue;
+        }
+        saw_report = true;
+        match report_entry_status(path).as_str() {
+            "fail" | "failed" => return "failed".to_string(),
+            "warn" | "warning" => saw_warn = true,
+            _ => {}
+        }
+    }
+    if !saw_report {
+        "missing".to_string()
+    } else if saw_warn {
+        "warn".to_string()
+    } else {
+        "passed".to_string()
+    }
+}
+
+fn receipt_git_metadata() -> BTreeMap<String, String> {
+    let mut values = BTreeMap::new();
+    values.insert(
+        "branch".to_string(),
+        git_value(&["rev-parse", "--abbrev-ref", "HEAD"]),
+    );
+    values.insert("commit".to_string(), git_value(&["rev-parse", "HEAD"]));
+    values
+}
+
+fn git_value(args: &[&str]) -> String {
+    let value = run_output_optional("git", args).unwrap_or_default();
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        "unknown".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn receipt_json(record: &ReceiptRecord, git: &BTreeMap<String, String>) -> String {
+    let branch = git.get("branch").map(String::as_str).unwrap_or("unknown");
+    let commit = git.get("commit").map(String::as_str).unwrap_or("unknown");
+    let mut body = String::from("{\n");
+    body.push_str("  \"schema_version\": \"0.1\",\n");
+    body.push_str(&format!(
+        "  \"command\": \"{}\",\n",
+        json_escape(&record.command)
+    ));
+    body.push_str(&format!(
+        "  \"status\": \"{}\",\n",
+        json_escape(&record.status)
+    ));
+    body.push_str("  \"duration_ms\": 0,\n");
+    body.push_str("  \"git\": {\n");
+    body.push_str(&format!("    \"branch\": \"{}\",\n", json_escape(branch)));
+    body.push_str(&format!("    \"commit\": \"{}\"\n", json_escape(commit)));
+    body.push_str("  },\n");
+    body.push_str("  \"reports\": [");
+    write_json_string_array(&mut body, &record.reports);
+    body.push_str("]\n");
+    body.push_str("}\n");
+    body
+}
+
+fn receipts_check_violations() -> Result<Vec<String>, String> {
+    let mut violations = Vec::new();
+    for spec in receipt_specs() {
+        let path = receipts_dir().join(spec.file);
+        if !path.exists() {
+            violations.push(format!("missing receipt `{}`", normalize_path(&path)));
+            continue;
+        }
+        let text = read_text_lossy(&path)?;
+        if !text.contains("\"schema_version\": \"0.1\"") {
+            violations.push(format!(
+                "`{}` is missing schema_version 0.1",
+                normalize_path(&path)
+            ));
+        }
+        if !text.contains("\"command\"") {
+            violations.push(format!("`{}` is missing command", normalize_path(&path)));
+        }
+        if !text.contains("\"status\"") {
+            violations.push(format!("`{}` is missing status", normalize_path(&path)));
+        }
+        if !text.contains("\"git\"") {
+            violations.push(format!(
+                "`{}` is missing git metadata",
+                normalize_path(&path)
+            ));
+        }
+        if !text.contains("\"reports\"") {
+            violations.push(format!(
+                "`{}` is missing report paths",
+                normalize_path(&path)
+            ));
+        }
+        if let Some(status) = report_status_from_text(&text) {
+            if !is_receipt_status(&status) {
+                violations.push(format!(
+                    "`{}` has unknown status `{status}`",
+                    normalize_path(&path)
+                ));
+            }
+        } else {
+            violations.push(format!(
+                "`{}` has no parseable status",
+                normalize_path(&path)
+            ));
+        }
+    }
+    Ok(violations)
+}
+
+fn is_receipt_status(status: &str) -> bool {
+    matches!(status, "passed" | "warn" | "failed" | "missing")
+}
+
+fn read_receipt_records() -> Vec<ReceiptRecord> {
+    let mut records = Vec::new();
+    for spec in receipt_specs() {
+        let path = receipts_dir().join(spec.file);
+        let status = if path.exists() {
+            report_entry_status(&path)
+        } else {
+            "missing".to_string()
+        };
+        let reports = spec
+            .reports
+            .iter()
+            .map(|report| format!("target/ripr/reports/{report}"))
+            .collect::<Vec<_>>();
+        records.push(ReceiptRecord {
+            file: spec.file.to_string(),
+            command: spec.command.to_string(),
+            status,
+            reports,
+        });
+    }
+    records
+}
+
+fn receipts_report_markdown(
+    status: &str,
+    records: &[ReceiptRecord],
+    violations: &[String],
+) -> String {
+    let mut body = format!("# ripr receipts report\n\nStatus: {status}\n\n");
+    body.push_str("Receipts are machine-readable evidence for gate and report runs.\n\n");
+    body.push_str("## Receipts\n\n");
+    body.push_str("| Receipt | Command | Status |\n| --- | --- | --- |\n");
+    for record in records {
+        body.push_str(&format!(
+            "| `{}` | `{}` | `{}` |\n",
+            markdown_cell(&format!("target/ripr/receipts/{}", record.file)),
+            markdown_cell(&record.command),
+            markdown_cell(&record.status)
+        ));
+    }
+    body.push_str("\n## Validation\n\n");
+    if violations.is_empty() {
+        body.push_str("- All required receipts are present and structurally valid.\n");
+    } else {
+        for violation in violations {
+            body.push_str(&format!("- {violation}\n"));
+        }
+    }
+    body
 }
 
 fn precommit_report_body() -> String {
@@ -4035,6 +4356,7 @@ fn known_xtask_command(command: &str) -> bool {
             | "dogfood"
             | "goals"
             | "reports"
+            | "receipts"
             | "ci-fast"
             | "ci-full"
             | "check-static-language"
@@ -4331,12 +4653,32 @@ fn ensure_reports_dir() -> Result<(), String> {
     })
 }
 
+fn ensure_receipts_dir() -> Result<(), String> {
+    fs::create_dir_all(receipts_dir()).map_err(|err| {
+        format!(
+            "failed to create {}: {err}\nrerun with `cargo xtask receipts` after fixing directory permissions",
+            receipts_dir().display()
+        )
+    })
+}
+
 fn write_report(file_name: &str, body: &str) -> Result<(), String> {
     ensure_reports_dir()?;
     let path = reports_dir().join(file_name);
     fs::write(&path, body).map_err(|err| {
         format!(
             "failed to write {}: {err}\nrerun with `cargo xtask shape` after fixing file permissions",
+            path.display()
+        )
+    })
+}
+
+fn write_receipt(file_name: &str, body: &str) -> Result<(), String> {
+    ensure_receipts_dir()?;
+    let path = receipts_dir().join(file_name);
+    fs::write(&path, body).map_err(|err| {
+        format!(
+            "failed to write {}: {err}\nrerun with `cargo xtask receipts` after fixing file permissions",
             path.display()
         )
     })
@@ -4421,7 +4763,7 @@ fn file_index_entries(dir: &Path, exclude_names: &[&str]) -> Result<Vec<ReportIn
 }
 
 fn report_entry_status(path: &Path) -> String {
-    if path.file_name().and_then(|value| value.to_str()) == Some("metrics.json") {
+    if normalize_path(path).ends_with("target/ripr/reports/metrics.json") {
         return "present".to_string();
     }
     match read_text_lossy(path) {
@@ -4733,6 +5075,17 @@ fn pr_summary_body(changes: &[ChangedPath]) -> String {
     body.push_str("- `cargo xtask fix-pr`\n");
     body.push_str("- `cargo xtask check-pr`\n");
     body.push_str("- `cargo xtask pr-summary`\n");
+
+    body.push_str("\n## Receipts\n\n");
+    for spec in receipt_specs() {
+        let path = receipts_dir().join(spec.file);
+        let status = if path.exists() {
+            report_entry_status(&path)
+        } else {
+            "missing".to_string()
+        };
+        body.push_str(&format!("- `{}`: {status}\n", normalize_path(&path)));
+    }
     body
 }
 
@@ -5830,20 +6183,21 @@ fn is_word_char(value: Option<char>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        CampaignManifest, Capability, ChangedPath, DogfoodRun, MarkdownLink, ReportIndexCampaign,
-        ReportIndexEntry, TestOracleClass, dogfood_class_counts, dogfood_report_json,
-        dogfood_report_markdown, extract_workflow_run_blocks, glob_matches,
+        CampaignManifest, Capability, ChangedPath, DogfoodRun, MarkdownLink, ReceiptRecord,
+        ReportIndexCampaign, ReportIndexEntry, TestOracleClass, dogfood_class_counts,
+        dogfood_report_json, dogfood_report_markdown, extract_workflow_run_blocks, glob_matches,
         is_dependency_surface_candidate, is_evidence_path, is_generated_candidate,
-        is_known_campaign_command, is_policy_path, is_production_path, is_snake_case_id,
-        is_spec_id, json_escape, json_number_after, local_markdown_target, markdown_links_in_text,
-        next_checkpoints_from_capabilities, normalize_fixture_human_output,
-        normalize_fixture_json_output, normalize_golden_text, parse_campaign_manifest,
-        parse_inline_array, parse_reason, pr_shape_warnings, precommit_report_body,
-        public_contract_rows, report_index_markdown, report_index_missing_expected,
+        is_known_campaign_command, is_policy_path, is_production_path, is_receipt_status,
+        is_snake_case_id, is_spec_id, json_escape, json_number_after, known_xtask_command,
+        local_markdown_target, markdown_links_in_text, next_checkpoints_from_capabilities,
+        normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
+        parse_campaign_manifest, parse_inline_array, parse_reason, pr_shape_warnings,
+        precommit_report_body, public_contract_rows, receipt_json, receipt_specs,
+        receipt_status_from_reports, report_index_markdown, report_index_missing_expected,
         report_status_from_text, sorted_allowlist_content, spec_id_from_path, status_for_report,
         test_oracle_report_json, test_oracle_report_markdown, test_oracle_tests_in_text,
     };
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
     use std::path::Path;
 
@@ -6107,6 +6461,61 @@ jobs:
     }
 
     #[test]
+    fn receipt_status_aggregates_report_statuses() {
+        assert_eq!(receipt_status_from_reports(&[]), "missing");
+        assert_eq!(
+            receipt_status_from_reports(&["target/ripr/reports/not-present.md".to_string()]),
+            "missing"
+        );
+
+        let pass = ReceiptRecord {
+            file: "check-pr.json".to_string(),
+            command: "cargo xtask check-pr".to_string(),
+            status: "passed".to_string(),
+            reports: vec!["target/ripr/reports/check-pr.md".to_string()],
+        };
+        let git = BTreeMap::from([
+            ("branch".to_string(), "test-branch".to_string()),
+            ("commit".to_string(), "abc123".to_string()),
+        ]);
+        let json = receipt_json(&pass, &git);
+
+        assert!(json.contains("\"schema_version\": \"0.1\""));
+        assert!(json.contains("\"command\": \"cargo xtask check-pr\""));
+        assert!(json.contains("\"status\": \"passed\""));
+        assert!(json.contains("\"branch\": \"test-branch\""));
+        assert!(json.contains("target/ripr/reports/check-pr.md"));
+    }
+
+    #[test]
+    fn receipt_statuses_accept_expected_values() {
+        assert!(is_receipt_status("passed"));
+        assert!(is_receipt_status("warn"));
+        assert!(is_receipt_status("failed"));
+        assert!(is_receipt_status("missing"));
+        assert!(!is_receipt_status("unknown"));
+    }
+
+    #[test]
+    fn receipt_specs_cover_required_gates() {
+        let files = receipt_specs()
+            .into_iter()
+            .map(|spec| spec.file.to_string())
+            .collect::<BTreeSet<_>>();
+
+        assert!(files.contains("shape.json"));
+        assert!(files.contains("fix-pr.json"));
+        assert!(files.contains("ci-fast.json"));
+        assert!(files.contains("check-pr.json"));
+        assert!(files.contains("fixtures.json"));
+        assert!(files.contains("goldens.json"));
+        assert!(files.contains("test-oracles.json"));
+        assert!(files.contains("dogfood.json"));
+        assert!(files.contains("metrics.json"));
+        assert!(known_xtask_command("receipts"));
+    }
+
+    #[test]
     fn parse_reason_accepts_flag_forms() {
         let spaced = vec!["--reason".to_string(), "intentional update".to_string()];
         let equals = vec!["--reason=intentional update".to_string()];
@@ -6261,6 +6670,7 @@ commands = [
         assert!(is_known_campaign_command("cargo xtask check-pr"));
         assert!(is_known_campaign_command("cargo xtask goals status"));
         assert!(is_known_campaign_command("cargo xtask reports index"));
+        assert!(is_known_campaign_command("cargo xtask receipts check"));
         assert!(is_known_campaign_command("cargo xtask test-oracle-report"));
         assert!(is_known_campaign_command("cargo xtask dogfood"));
         assert!(is_known_campaign_command("cargo test --workspace"));

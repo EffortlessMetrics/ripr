@@ -23,6 +23,8 @@ cargo xtask shape
 cargo xtask fix-pr
 cargo xtask check-pr
 cargo xtask pr-summary
+cargo xtask receipts
+cargo xtask receipts check
 cargo xtask check-campaign
 cargo xtask goals next
 ```
@@ -44,7 +46,7 @@ For each work item:
 - keep the production delta narrow
 - add the required evidence package
 - run the repo shaping and verification commands
-- generate reports, and receipts when the repo has receipt support
+- generate reports and receipts
 - open or update the PR
 - continue only to the next independent or explicitly stackable work item
 

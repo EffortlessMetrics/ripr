@@ -34,6 +34,12 @@ jobs:
       - name: Generate ripr report index
         if: always()
         run: cargo xtask reports index || true
+      - name: Generate ripr receipts
+        if: always()
+        run: cargo xtask receipts || true
+      - name: Refresh ripr report index
+        if: always()
+        run: cargo xtask reports index || true
       - name: Write ripr report summary
         if: always()
         run: |
@@ -45,7 +51,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ripr-pr-reports
-          path: target/ripr/reports/
+          path: |
+            target/ripr/reports/
+            target/ripr/receipts/
           if-no-files-found: ignore
 
   vscode:
