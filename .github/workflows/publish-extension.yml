@@ -6,6 +6,14 @@ on:
       version:
         description: "Version label for the VSIX artifact, for example 0.2.0"
         required: true
+      publish_vs_marketplace:
+        description: "Publish to VS Marketplace"
+        required: false
+        default: "true"
+      publish_open_vsx:
+        description: "Publish to Open VSX"
+        required: false
+        default: "true"
   push:
     tags:
       - "v*"
@@ -70,6 +78,7 @@ jobs:
 
   publish-vs-marketplace:
     needs: [package, server-assets-ready]
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.publish_vs_marketplace != 'false' }}
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ github.event.inputs.version || github.ref_name }}
@@ -107,10 +116,12 @@ jobs:
 
   publish-open-vsx:
     needs: [package, server-assets-ready]
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.publish_open_vsx != 'false' }}
     runs-on: ubuntu-latest
     env:
       VERSION: ${{ github.event.inputs.version || github.ref_name }}
       VSIX_FILE: dist/ripr-${{ github.event.inputs.version || github.ref_name }}.vsix
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
     steps:
       - uses: actions/setup-node@v4
         with:
@@ -121,10 +132,15 @@ jobs:
           name: ripr-vsix
           path: dist
 
+      - name: Require OVSX_PAT
+        if: ${{ env.OVSX_PAT == '' }}
+        run: |
+          echo "::error::OVSX_PAT is not configured; Open VSX publish cannot run."
+          exit 1
+
       - name: Publish to Open VSX
-        run: npx -y ovsx publish "$VSIX_FILE" -p "$OPEN_VSX_TOKEN" --skip-duplicate
-        env:
-          OPEN_VSX_TOKEN: ${{ secrets.OPEN_VSX_TOKEN }}
+        if: ${{ env.OVSX_PAT != '' }}
+        run: npx -y ovsx publish "$VSIX_FILE" -p "$OVSX_PAT" --skip-duplicate
 
   attach-release-asset:
     needs: package

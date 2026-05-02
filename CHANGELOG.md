@@ -104,3 +104,6 @@ how future PRs are scoped or reviewed.
 - Added static/manual VS Marketplace badges and live Open VSX badges to the
   extension README, plus release-doc maintenance steps for refreshing the
   manual Marketplace install count.
+- Switched Open VSX release workflow and docs to the `OVSX_PAT` repository
+  secret and added manual workflow switches for registry-specific extension
+  publishing.
