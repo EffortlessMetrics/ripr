@@ -13,13 +13,14 @@ evidence = [
   "weak_error_oracle fixture",
   "FileFacts DTOs",
   "lexical syntax adapter boundary",
-  "ra_ap_syntax parser-backed test/oracle extraction"
+  "ra_ap_syntax parser-backed test/oracle extraction",
+  "module-qualified and impl-qualified owner symbols"
 ]
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "ast-probe-ownership"
+next = "ast-probe-generation"
 metric = "findings include changed behavior, class, evidence, and next step"
 
 [[capability]]
@@ -32,12 +33,13 @@ evidence = [
   "boundary_gap fixture",
   "FileFacts DTOs",
   "lexical syntax adapter boundary",
-  "ra_ap_syntax parser-backed test/oracle extraction"
+  "ra_ap_syntax parser-backed test/oracle extraction",
+  "module-qualified and impl-qualified owner symbols"
 ]
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "ast-probe-ownership"
+next = "ast-probe-generation"
 metric = "missing boundary discriminator detection"
 
 [[capability]]
@@ -97,13 +99,14 @@ evidence = [
   "weak_error_oracle fixture",
   "FileFacts DTOs",
   "lexical syntax adapter boundary",
-  "ra_ap_syntax parser-backed test/oracle extraction"
+  "ra_ap_syntax parser-backed test/oracle extraction",
+  "module-qualified and impl-qualified owner symbols"
 ]
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "ast-probe-ownership"
+next = "ast-probe-generation"
 metric = "fixture pass rate"
 
 [[capability]]
@@ -199,13 +202,14 @@ evidence = [
   "ADR 0006",
   "ra_ap_syntax dependency",
   "RustSyntaxAdapter parser adapter",
-  "fixture/golden output stability"
+  "fixture/golden output stability",
+  "module-qualified and impl-qualified owner symbols"
 ]
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "ast-probe-ownership"
+next = "ast-probe-generation"
 metric = "syntax extraction parity"
 
 [[capability]]
@@ -223,5 +227,23 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "ast-probe-ownership"
+next = "oracle-strength-v2"
 metric = "oracle kind recognition rate"
+
+[[capability]]
+id = "ast_backed_probe_ownership"
+name = "AST-backed probe ownership"
+status = "alpha"
+spec = "RIPR-SPEC-0001"
+evidence = [
+  "module-qualified owner SymbolId tests",
+  "impl-qualified owner SymbolId tests",
+  "changed-line owner resolution tests",
+  "fixture/golden output stability"
+]
+fixtures = [
+  "fixtures/boundary_gap",
+  "fixtures/weak_error_oracle"
+]
+next = "ast-probe-generation"
+metric = "duplicate symbols do not cross-link tests"

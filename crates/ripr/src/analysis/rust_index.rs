@@ -118,7 +118,7 @@ impl RustSyntaxAdapter for LexicalRustSyntaxAdapter {
     }
 
     fn changed_nodes(&self, facts: &FileFacts, ranges: &[TextRange]) -> Vec<SyntaxNodeFact> {
-        lexical_changed_nodes(facts, ranges)
+        owner_changed_nodes(facts, ranges)
     }
 }
 
@@ -128,7 +128,7 @@ impl RustSyntaxAdapter for RaRustSyntaxAdapter {
     }
 
     fn changed_nodes(&self, facts: &FileFacts, ranges: &[TextRange]) -> Vec<SyntaxNodeFact> {
-        lexical_changed_nodes(facts, ranges)
+        owner_changed_nodes(facts, ranges)
     }
 }
 
@@ -287,7 +287,7 @@ fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, Stri
         file_literals.extend(literals.clone());
 
         let function_fact = FunctionFact {
-            id: SymbolId(format!("{}::{name}", path.display())),
+            id: parser_symbol_id(path, &function, &name),
             name: name.clone(),
             file: path_buf.clone(),
             start_line,
@@ -315,6 +315,8 @@ fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, Stri
         functions.push(function_fact);
     }
 
+    disambiguate_duplicate_symbol_ids(&mut functions);
+
     file_calls.sort_by(|a, b| a.line.cmp(&b.line).then(a.name.cmp(&b.name)));
     file_calls.dedup_by(|a, b| a.line == b.line && a.name == b.name && a.text == b.text);
     file_returns.sort_by(|a, b| a.line.cmp(&b.line).then(a.text.cmp(&b.text)));
@@ -330,6 +332,72 @@ fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, Stri
         returns: file_returns,
         literals: file_literals,
     })
+}
+
+fn parser_symbol_id(path: &Path, function: &ast::Fn, name: &str) -> SymbolId {
+    let mut segments = vec![path.display().to_string()];
+
+    let mut modules = function
+        .syntax()
+        .ancestors()
+        .skip(1)
+        .filter_map(ast::Module::cast)
+        .filter_map(|module| {
+            module
+                .name()
+                .map(|module_name| module_name.text().to_string())
+        })
+        .collect::<Vec<_>>();
+    modules.reverse();
+    segments.extend(modules);
+
+    if let Some(impl_block) = function
+        .syntax()
+        .ancestors()
+        .skip(1)
+        .find_map(ast::Impl::cast)
+    {
+        segments.push(impl_owner_segment(&impl_block));
+    }
+
+    segments.push(name.to_string());
+    SymbolId(segments.join("::"))
+}
+
+fn impl_owner_segment(impl_block: &ast::Impl) -> String {
+    let self_ty = match impl_block.self_ty() {
+        Some(ty) => compact_syntax_text(ty.syntax().text().to_string()),
+        None => "unknown".to_string(),
+    };
+    match impl_block.trait_() {
+        Some(trait_ty) => format!(
+            "impl {} for {self_ty}",
+            compact_syntax_text(trait_ty.syntax().text().to_string())
+        ),
+        None => format!("impl {self_ty}"),
+    }
+}
+
+fn compact_syntax_text(text: String) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn disambiguate_duplicate_symbol_ids(functions: &mut [FunctionFact]) {
+    let mut totals = BTreeMap::new();
+    for function in functions.iter() {
+        let entry = totals.entry(function.id.0.clone()).or_insert(0usize);
+        *entry += 1;
+    }
+
+    for function in functions.iter_mut() {
+        let total = match totals.get(&function.id.0) {
+            Some(total) => *total,
+            None => 0,
+        };
+        if total > 1 {
+            function.id.0 = format!("{}#L{}", function.id.0, function.start_line);
+        }
+    }
 }
 
 fn has_test_attribute(function: &ast::Fn) -> bool {
@@ -446,44 +514,65 @@ pub fn changed_nodes_for_lines(
             end_column: usize::MAX,
         })
         .collect::<Vec<_>>();
-    LexicalRustSyntaxAdapter.changed_nodes(facts, &ranges)
+    RaRustSyntaxAdapter.changed_nodes(facts, &ranges)
 }
 
-fn lexical_changed_nodes(facts: &FileFacts, ranges: &[TextRange]) -> Vec<SyntaxNodeFact> {
+fn owner_changed_nodes(facts: &FileFacts, ranges: &[TextRange]) -> Vec<SyntaxNodeFact> {
     let mut nodes = Vec::new();
     for range in ranges {
-        for function in &facts.functions {
-            if ranges_overlap(
-                range.start_line,
-                range.end_line,
-                function.start_line,
-                function.end_line,
-            ) {
-                nodes.push(SyntaxNodeFact {
-                    file: function.file.clone(),
-                    kind: if function.is_test {
-                        "test_function".to_string()
-                    } else {
-                        "function".to_string()
-                    },
-                    start_line: function.start_line,
-                    end_line: function.end_line,
-                    text: function.body.clone(),
-                    owner: Some(function.id.clone()),
-                });
-            }
+        let mut owners = facts
+            .functions
+            .iter()
+            .filter(|function| {
+                ranges_overlap(
+                    range.start_line,
+                    range.end_line,
+                    function.start_line,
+                    function.end_line,
+                )
+            })
+            .collect::<Vec<_>>();
+        owners.sort_by(|left, right| {
+            function_span(left)
+                .cmp(&function_span(right))
+                .then(right.start_line.cmp(&left.start_line))
+                .then(left.id.0.cmp(&right.id.0))
+        });
+        if let Some(function) = owners.first() {
+            nodes.push(SyntaxNodeFact {
+                file: function.file.clone(),
+                kind: if function.is_test {
+                    "test_function".to_string()
+                } else {
+                    "function".to_string()
+                },
+                start_line: function.start_line,
+                end_line: function.end_line,
+                text: function.body.clone(),
+                owner: Some(function.id.clone()),
+            });
         }
     }
     nodes.sort_by(|left, right| {
         left.file
             .cmp(&right.file)
             .then(left.start_line.cmp(&right.start_line))
+            .then(left.end_line.cmp(&right.end_line))
             .then(left.kind.cmp(&right.kind))
+            .then(left.owner.cmp(&right.owner))
     });
     nodes.dedup_by(|left, right| {
-        left.file == right.file && left.start_line == right.start_line && left.kind == right.kind
+        left.file == right.file
+            && left.start_line == right.start_line
+            && left.end_line == right.end_line
+            && left.kind == right.kind
+            && left.owner == right.owner
     });
     nodes
+}
+
+fn function_span(function: &FunctionFact) -> usize {
+    function.end_line.saturating_sub(function.start_line)
 }
 
 fn ranges_overlap(
@@ -895,6 +984,127 @@ pub fn price(amount: i32) -> i32 {
     }
 
     #[test]
+    fn parser_owner_symbols_include_module_paths() -> Result<(), String> {
+        let adapter = RaRustSyntaxAdapter;
+        let facts = adapter.summarize_file(
+            Path::new("src/lib.rs"),
+            r#"
+mod pricing {
+    pub fn score(amount: i32) -> i32 {
+        amount + 1
+    }
+}
+
+mod reporting {
+    pub fn score(amount: i32) -> i32 {
+        amount + 2
+    }
+}
+"#,
+        )?;
+        let ids = facts
+            .functions
+            .iter()
+            .map(|function| function.id.0.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(ids.contains(&"src/lib.rs::pricing::score"));
+        assert!(ids.contains(&"src/lib.rs::reporting::score"));
+        Ok(())
+    }
+
+    #[test]
+    fn parser_owner_symbols_include_impl_targets() -> Result<(), String> {
+        let adapter = RaRustSyntaxAdapter;
+        let facts = adapter.summarize_file(
+            Path::new("src/lib.rs"),
+            r#"
+struct Discount;
+
+impl Discount {
+    pub fn score(&self, amount: i32) -> i32 {
+        amount + 1
+    }
+}
+
+struct Tax;
+
+impl Tax {
+    pub fn score(&self, amount: i32) -> i32 {
+        amount + 2
+    }
+}
+"#,
+        )?;
+        let ids = facts
+            .functions
+            .iter()
+            .map(|function| function.id.0.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(ids.contains(&"src/lib.rs::impl Discount::score"));
+        assert!(ids.contains(&"src/lib.rs::impl Tax::score"));
+        Ok(())
+    }
+
+    #[test]
+    fn changed_nodes_use_module_qualified_owner() -> Result<(), String> {
+        let adapter = RaRustSyntaxAdapter;
+        let source = r#"
+mod pricing {
+    pub fn score(amount: i32) -> i32 {
+        if amount >= 100 { 90 } else { 100 }
+    }
+}
+
+mod reporting {
+    pub fn score(amount: i32) -> i32 {
+        amount + 2
+    }
+}
+"#;
+        let facts = adapter.summarize_file(Path::new("src/lib.rs"), source)?;
+        let changed_line = line_containing(source, "amount >= 100")?;
+        let mut index = RustIndex::default();
+        index.files.insert(PathBuf::from("src/lib.rs"), facts);
+        let nodes = changed_nodes_for_lines(&index, Path::new("src/lib.rs"), &[changed_line]);
+
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(
+            nodes[0].owner.as_ref().map(|owner| owner.0.as_str()),
+            Some("src/lib.rs::pricing::score")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn changed_nodes_preserve_test_owner_under_cfg_module() -> Result<(), String> {
+        let adapter = RaRustSyntaxAdapter;
+        let source = r#"
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn checks_boundary() {
+        assert_eq!(discounted_total(100), 90);
+    }
+}
+"#;
+        let facts = adapter.summarize_file(Path::new("src/lib.rs"), source)?;
+        let changed_line = line_containing(source, "discounted_total")?;
+        let mut index = RustIndex::default();
+        index.files.insert(PathBuf::from("src/lib.rs"), facts);
+        let nodes = changed_nodes_for_lines(&index, Path::new("src/lib.rs"), &[changed_line]);
+
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].kind, "test_function");
+        assert_eq!(
+            nodes[0].owner.as_ref().map(|owner| owner.0.as_str()),
+            Some("src/lib.rs::tests::checks_boundary")
+        );
+        Ok(())
+    }
+
+    #[test]
     fn parser_adapter_extracts_multiline_assertion_macro() -> Result<(), String> {
         let adapter = RaRustSyntaxAdapter;
         let facts = adapter.summarize_file(
@@ -997,5 +1207,12 @@ fn feature_gated_test() {}
                 "feature_gated_test"
             ]
         );
+    }
+
+    fn line_containing(source: &str, needle: &str) -> Result<usize, String> {
+        match source.lines().position(|line| line.contains(needle)) {
+            Some(index) => Ok(index + 1),
+            None => Err(format!("missing line containing {needle}")),
+        }
     }
 }

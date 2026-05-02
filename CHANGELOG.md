@@ -79,3 +79,6 @@ how future PRs are scoped or reviewed.
 - Added parser-backed test and oracle extraction through `RustSyntaxAdapter`,
   including stacked test attributes, multi-line assertion macros, and
   unwrap/expect smoke-oracle facts without fixture output drift.
+- Added module- and impl-qualified parser-backed owner symbols so changed-line
+  probes attach to stable function and method owners without fixture output
+  drift.
