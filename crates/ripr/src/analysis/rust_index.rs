@@ -1099,8 +1099,7 @@ fn is_assertion_line(line: &str) -> bool {
         || line.contains("assert_ne!")
         || line.contains("assert_matches!")
         || line.contains("matches!")
-        || line.contains("insta::assert")
-        || line.contains("snapshot!")
+        || is_snapshot_assertion(line)
         || line.contains("expect_")
         || line.contains(".expect(")
         || line.contains(".unwrap(")
@@ -1129,7 +1128,7 @@ fn classify_assertion(line: &str) -> OracleClassification {
             kind: OracleKind::ExactValue,
             strength: OracleStrength::Strong,
         }
-    } else if line.contains("insta::assert") || line.contains("snapshot!") {
+    } else if is_snapshot_assertion(line) {
         OracleClassification {
             kind: OracleKind::Snapshot,
             strength: OracleStrength::Medium,
@@ -1166,6 +1165,12 @@ fn classify_assertion(line: &str) -> OracleClassification {
             strength: OracleStrength::Unknown,
         }
     }
+}
+
+fn is_snapshot_assertion(line: &str) -> bool {
+    let expect_test_comparison = (line.contains("expect![[") || line.contains("expect_file!["))
+        && line.contains(".assert_eq(");
+    line.contains("insta::assert") || line.contains("snapshot!") || expect_test_comparison
 }
 
 fn is_exact_error_variant_assertion(line: &str) -> bool {
@@ -1374,13 +1379,24 @@ fn checks_error() {
     #[test]
     fn classifies_snapshot_mock_relational_smoke_and_unknown_oracles() {
         let snapshot = classify_assertion("insta::assert_snapshot!(rendered);");
+        let expect_snapshot = classify_assertion(r##"expect![[r#"ok"#]].assert_eq(&rendered);"##);
+        let expect_file_snapshot =
+            classify_assertion(r#"expect_file!["snapshots/render.snap"].assert_eq(&rendered);"#);
+        let bare_expect_file = classify_assertion(r#"let expected = expect_file!["render.snap"];"#);
+        let non_snapshot_method = classify_assertion("helper.assert_eq(&rendered);");
         let mock = classify_assertion("mock.expect_publish().times(1);");
         let relational = classify_assertion("assert!(total > 0);");
         let smoke = classify_assertion("assert!(result.is_ok());");
         let unknown = classify_assertion("helper_records_observation();");
 
         assert_eq!(snapshot.kind, OracleKind::Snapshot);
+        assert_eq!(expect_snapshot.kind, OracleKind::Snapshot);
+        assert_eq!(expect_file_snapshot.kind, OracleKind::Snapshot);
+        assert_ne!(bare_expect_file.kind, OracleKind::Snapshot);
+        assert_ne!(non_snapshot_method.kind, OracleKind::Snapshot);
         assert_eq!(snapshot.strength, OracleStrength::Medium);
+        assert_eq!(expect_snapshot.strength, OracleStrength::Medium);
+        assert_eq!(expect_file_snapshot.strength, OracleStrength::Medium);
         assert_eq!(mock.kind, OracleKind::MockExpectation);
         assert_eq!(mock.strength, OracleStrength::Medium);
         assert_eq!(relational.kind, OracleKind::RelationalCheck);
