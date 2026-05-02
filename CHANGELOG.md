@@ -45,3 +45,4 @@ how future PRs are scoped or reviewed.
   `check-behavior-manifest` aliases for behavior manifest validation.
 - Added `metrics/capabilities.toml`, `cargo xtask metrics`, and
   `cargo xtask check-capabilities` for capability status reporting.
+- Added workspace-shape, architecture-boundary, and public API policy checks.

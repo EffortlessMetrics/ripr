@@ -44,6 +44,20 @@ manual or CI scans.
   fact extraction, probe generation, classification, orchestration, or
   rendering.
 
+## Mechanical Guards
+
+Run:
+
+```bash
+cargo xtask check-workspace-shape
+cargo xtask check-architecture
+cargo xtask check-public-api
+```
+
+These checks use policy metadata in `policy/workspace_shape.txt`,
+`policy/architecture.txt`, and `policy/public_api.txt` to preserve the
+one-package public surface and internal module boundaries.
+
 See also:
 
 - [Charter](CHARTER.md)

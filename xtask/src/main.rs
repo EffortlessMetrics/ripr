@@ -127,6 +127,9 @@ fn main() {
             check_traceability()
         }
         Some("check-capabilities") => check_capabilities(),
+        Some("check-workspace-shape") => check_workspace_shape(),
+        Some("check-architecture") => check_architecture(),
+        Some("check-public-api") => check_public_api(),
         Some("check-generated") => check_generated(),
         Some("check-dependencies") => check_dependencies(),
         Some("check-process-policy") => check_process_policy(),
@@ -166,6 +169,9 @@ fn precommit() -> Result<(), String> {
     check_fixture_contracts()?;
     check_traceability()?;
     check_capabilities()?;
+    check_workspace_shape()?;
+    check_architecture()?;
+    check_public_api()?;
     check_generated()?;
     let body = precommit_report_body();
     write_report("precommit.md", &body)
@@ -201,6 +207,9 @@ fn run_policy_checks() -> Result<(), String> {
     check_fixture_contracts()?;
     check_traceability()?;
     check_capabilities()?;
+    check_workspace_shape()?;
+    check_architecture()?;
+    check_public_api()?;
     check_generated()?;
     check_dependencies()?;
     check_process_policy()?;
@@ -228,7 +237,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  metrics\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
+        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  metrics\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
     );
 }
 
@@ -254,7 +263,7 @@ fn pr_summary() -> Result<(), String> {
 }
 
 fn precommit_report_body() -> String {
-    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-generated`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
+    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-public-api`\n- `cargo xtask check-generated`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
 }
 
 fn check_pr_report_body() -> String {
@@ -1800,6 +1809,213 @@ fn is_snake_case_id(value: &str) -> bool {
         && !value.starts_with('_')
         && !value.ends_with('_')
         && !value.contains("__")
+}
+
+fn check_workspace_shape() -> Result<(), String> {
+    let records = read_pipe_records("policy/workspace_shape.txt", 3)?;
+    let mut allowed_members = BTreeSet::new();
+    let mut allowed_manifests = Vec::new();
+    let mut violations = Vec::new();
+
+    for record in records {
+        match record[0].as_str() {
+            "workspace_member" => {
+                allowed_members.insert(record[1].clone());
+            }
+            "cargo_manifest" => allowed_manifests.push(GlobAllow {
+                glob: record[1].clone(),
+            }),
+            other => violations.push(format!(
+                "policy/workspace_shape.txt uses unsupported kind `{other}`"
+            )),
+        }
+    }
+
+    for member in workspace_members()? {
+        if !allowed_members.contains(&member) {
+            violations.push(format!(
+                "workspace member is not allowlisted: {member}\n  preferred: keep one published `crates/ripr` package and `xtask` automation unless an ADR approves a new package"
+            ));
+        }
+    }
+    for member in &allowed_members {
+        if !Path::new(member).exists() {
+            violations.push(format!(
+                "allowlisted workspace member does not exist: {member}"
+            ));
+        }
+    }
+    for file in tracked_files()? {
+        if !file.ends_with("Cargo.toml") {
+            continue;
+        }
+        if !matches_any_glob(&allowed_manifests, &file) {
+            violations.push(format!(
+                "Cargo manifest is not allowlisted by workspace shape policy: {file}"
+            ));
+        }
+    }
+
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "workspace-shape.md",
+            check: "check-workspace-shape",
+            why_it_matters: "ripr intentionally stays one published package with internal module seams; new packages need explicit review.",
+            fix_kind: FixKind::PolicyExceptionRequired,
+            recommended_fixes: &[
+                "Keep product code inside crates/ripr unless an ADR approves a new package.",
+                "Keep repo automation inside xtask.",
+                "If a new Cargo manifest is truly needed, add a workspace-shape policy entry with owner and reason.",
+            ],
+            rerun_command: "cargo xtask check-workspace-shape",
+            exception_template: Some("kind|path|reason"),
+        },
+        &violations,
+    )
+}
+
+fn check_architecture() -> Result<(), String> {
+    let rules = read_pipe_records("policy/architecture.txt", 3)?;
+    let files = tracked_files()?;
+    let mut violations = Vec::new();
+    for rule in rules {
+        let glob = &rule[0];
+        let forbidden = &rule[1];
+        let reason = &rule[2];
+        for file in &files {
+            if !glob_matches(glob, file) {
+                continue;
+            }
+            let text = read_text_lossy(Path::new(file))?;
+            if text.contains(forbidden) {
+                violations.push(format!(
+                    "{file} contains forbidden architecture pattern `{forbidden}`\n  reason: {reason}"
+                ));
+            }
+        }
+    }
+
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "architecture.md",
+            check: "check-architecture",
+            why_it_matters: "Internal module seams replace premature crate splits, so dependency direction has to be checked mechanically.",
+            fix_kind: FixKind::AuthorDecisionRequired,
+            recommended_fixes: &[
+                "Move rendering logic into output modules.",
+                "Keep domain model types independent from CLI, LSP, output, and JSON adapters.",
+                "Keep analysis logic out of CLI, LSP, and output adapters.",
+                "Update policy/architecture.txt only when the architecture rule itself changes.",
+            ],
+            rerun_command: "cargo xtask check-architecture",
+            exception_template: Some("glob|forbidden_pattern|reason"),
+        },
+        &violations,
+    )
+}
+
+fn check_public_api() -> Result<(), String> {
+    let allowed = read_public_api_allowlist("policy/public_api.txt")?;
+    let actual = public_api_exports(Path::new("crates/ripr/src/lib.rs"))?;
+    let allowed_set = allowed.iter().cloned().collect::<BTreeSet<_>>();
+    let actual_set = actual.iter().cloned().collect::<BTreeSet<_>>();
+    let mut violations = Vec::new();
+
+    for line in &actual {
+        if !allowed_set.contains(line) {
+            violations.push(format!(
+                "public API export is not allowlisted: {line}\n  update policy/public_api.txt only when this is an intentional public contract"
+            ));
+        }
+    }
+    for line in &allowed {
+        if !actual_set.contains(line) {
+            violations.push(format!(
+                "public API allowlist entry is missing from crates/ripr/src/lib.rs: {line}"
+            ));
+        }
+    }
+
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "public-api.md",
+            check: "check-public-api",
+            why_it_matters: "The crate is the published product surface, so accidental public exports create compatibility expectations.",
+            fix_kind: FixKind::ReviewerDecisionRequired,
+            recommended_fixes: &[
+                "Keep new implementation modules private unless they are part of the crate contract.",
+                "If the public export is intentional, update policy/public_api.txt and explain the contract in the PR.",
+                "Prefer output DTOs and app APIs over exposing internal analyzer structures directly.",
+            ],
+            rerun_command: "cargo xtask check-public-api",
+            exception_template: Some("pub mod example;"),
+        },
+        &violations,
+    )
+}
+
+fn workspace_members() -> Result<Vec<String>, String> {
+    let text = read_text_lossy(Path::new("Cargo.toml"))?;
+    for line in text.lines() {
+        let trimmed = line.trim();
+        let Some(value) = trimmed.strip_prefix("members") else {
+            continue;
+        };
+        let Some((_, raw_array)) = value.split_once('=') else {
+            continue;
+        };
+        return parse_inline_array(raw_array);
+    }
+    Ok(Vec::new())
+}
+
+fn read_public_api_allowlist(path: &str) -> Result<Vec<String>, String> {
+    let mut entries = Vec::new();
+    let text = read_text_lossy(Path::new(path))?;
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        entries.push(trimmed.to_string());
+    }
+    Ok(entries)
+}
+
+fn public_api_exports(path: &Path) -> Result<Vec<String>, String> {
+    let text = read_text_lossy(path)?;
+    let mut exports = Vec::new();
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("pub mod ") || trimmed.starts_with("pub use ") {
+            exports.push(trimmed.to_string());
+        }
+    }
+    Ok(exports)
+}
+
+fn read_pipe_records(path: &str, field_count: usize) -> Result<Vec<Vec<String>>, String> {
+    let text = read_text_lossy(Path::new(path))?;
+    let mut records = Vec::new();
+    for (index, line) in text.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let fields = trimmed
+            .split('|')
+            .map(|field| field.trim().to_string())
+            .collect::<Vec<_>>();
+        if fields.len() != field_count || fields.iter().any(|field| field.is_empty()) {
+            return Err(format!(
+                "{}:{} expected {field_count} non-empty pipe-separated fields",
+                path,
+                index + 1
+            ));
+        }
+        records.push(fields);
+    }
+    Ok(records)
 }
 
 fn check_generated() -> Result<(), String> {

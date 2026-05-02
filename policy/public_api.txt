@@ -1,0 +1,10 @@
+# Public exports allowed from crates/ripr/src/lib.rs.
+
+pub mod analysis;
+pub mod app;
+pub mod cli;
+pub mod domain;
+pub mod lsp;
+pub mod output;
+pub use app::{CheckInput, CheckOutput, check_workspace, collect_context, explain_finding};
+pub use domain::{ExposureClass, Finding, Probe, ProbeFamily, RiprEvidence};
