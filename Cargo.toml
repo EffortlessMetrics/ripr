@@ -13,6 +13,11 @@ homepage = "https://github.com/EffortlessMetrics/ripr/"
 [workspace.lints.rust]
 unsafe_code = "forbid"
 
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+
 [profile.release]
 lto = true
 strip = true

@@ -66,6 +66,8 @@ Non-goals:
 - [ ] `cargo publish -p ripr --dry-run`
 - [ ] `cargo xtask check-static-language`
 - [ ] `cargo xtask check-no-panic-family`
+- [ ] `cargo xtask check-allow-attributes`
+- [ ] `cargo xtask check-local-context`
 - [ ] `cargo xtask check-file-policy`
 - [ ] `cargo xtask check-executable-files`
 - [ ] `cargo xtask check-workflows`

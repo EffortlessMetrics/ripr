@@ -266,6 +266,7 @@ fn main() {
         Some("ci-full") => ci_full(),
         Some("check-static-language") => check_static_language(),
         Some("check-no-panic-family") => check_no_panic_family(),
+        Some("check-allow-attributes") => check_allow_attributes(),
         Some("check-local-context") => check_local_context(),
         Some("check-file-policy") => check_file_policy(),
         Some("check-executable-files") => check_executable_files(),
@@ -317,6 +318,7 @@ fn precommit() -> Result<(), String> {
     run("cargo", &["fmt", "--check"])?;
     check_static_language()?;
     check_no_panic_family()?;
+    check_allow_attributes()?;
     check_local_context()?;
     check_file_policy()?;
     check_executable_files()?;
@@ -365,6 +367,7 @@ fn check_pr() -> Result<(), String> {
 fn run_policy_checks() -> Result<(), String> {
     check_static_language()?;
     check_no_panic_family()?;
+    check_allow_attributes()?;
     check_local_context()?;
     check_file_policy()?;
     check_executable_files()?;
@@ -409,7 +412,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  golden-drift\n  metrics\n  test-oracle-report\n  check-test-oracles\n  dogfood\n  goals status|next|report\n  reports index\n  receipts [check]\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-local-context\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
+        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  golden-drift\n  metrics\n  test-oracle-report\n  check-test-oracles\n  dogfood\n  goals status|next|report\n  reports index\n  receipts [check]\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-allow-attributes\n  check-local-context\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
     );
 }
 
@@ -552,6 +555,9 @@ fn receipt_specs() -> Vec<ReceiptSpec> {
             reports: &[
                 "static-language.md",
                 "no-panic-family.md",
+                "allow-attributes.md",
+                "local-context.md",
+                "local-context.json",
                 "file-policy.md",
                 "executable-files.md",
                 "workflows.md",
@@ -783,7 +789,7 @@ fn receipts_report_markdown(
 }
 
 fn precommit_report_body() -> String {
-    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-local-context`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-public-api`\n- `cargo xtask check-output-contracts`\n- `cargo xtask check-doc-index`\n- `cargo xtask check-readme-state`\n- `cargo xtask markdown-links`\n- `cargo xtask check-campaign`\n- `cargo xtask check-pr-shape`\n- `cargo xtask check-generated`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
+    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-allow-attributes`\n- `cargo xtask check-local-context`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-public-api`\n- `cargo xtask check-output-contracts`\n- `cargo xtask check-doc-index`\n- `cargo xtask check-readme-state`\n- `cargo xtask markdown-links`\n- `cargo xtask check-campaign`\n- `cargo xtask check-pr-shape`\n- `cargo xtask check-generated`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
 }
 
 fn check_pr_report_body() -> String {
@@ -2033,6 +2039,81 @@ fn check_no_panic_family() -> Result<(), String> {
             rerun_command: "cargo xtask check-no-panic-family",
             exception_template: Some(
                 ".ripr/no-panic-allowlist.txt entry:\npath/to/file.rs|pattern|max_count|reason",
+            ),
+        },
+        &violations,
+    )
+}
+
+fn check_allow_attributes() -> Result<(), String> {
+    let allowlist = read_count_allowlist(".ripr/allow-attributes.txt")?;
+    let guarded = guarded_allow_attribute_lints();
+    let mut counts = BTreeMap::<(String, String), Vec<usize>>::new();
+
+    for path in tracked_files()? {
+        if !path.ends_with(".rs") {
+            continue;
+        }
+        let file_path = Path::new(&path);
+        if !file_path.exists() {
+            continue;
+        }
+        let text = read_text_lossy(file_path)?;
+        for (line, attribute) in guarded_allow_attributes_in_text(&text, &guarded) {
+            counts
+                .entry((path.clone(), attribute))
+                .or_default()
+                .push(line);
+        }
+    }
+
+    let mut violations = Vec::new();
+    for ((path, attribute), lines) in &counts {
+        let allowed = allowlist
+            .get(&(path.clone(), attribute.clone()))
+            .copied()
+            .unwrap_or(0);
+        if lines.len() > allowed {
+            violations.push(format!(
+                "{path}:{} contains `{attribute}` {} time(s), allowed {allowed}\n  preferred: fix the lint or add a narrow allowlist entry with a reason",
+                allow_attribute_line_summary(lines),
+                lines.len()
+            ));
+        }
+    }
+
+    for ((path, attribute), allowed) in &allowlist {
+        if !guarded.contains(attribute_lint_name(attribute).unwrap_or(attribute)) {
+            violations.push(format!(
+                ".ripr/allow-attributes.txt contains unsupported guarded attribute `{attribute}` for {path}; remove stale or out-of-scope exceptions"
+            ));
+            continue;
+        }
+        let actual = counts
+            .get(&(path.clone(), attribute.clone()))
+            .map(Vec::len)
+            .unwrap_or(0);
+        if actual > *allowed {
+            violations.push(format!(
+                "{path} contains `{attribute}` {actual} time(s), allowed {allowed}"
+            ));
+        }
+    }
+
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "allow-attributes.md",
+            check: "check-allow-attributes",
+            why_it_matters: "Lint suppressions should not be used to hide repo guardrails. If a suppression is unavoidable, it needs a narrow reviewed exception with a reason.",
+            fix_kind: FixKind::PolicyExceptionRequired,
+            recommended_fixes: &[
+                "Remove the lint suppression and fix the underlying warning.",
+                "If the suppression is temporary and intentional, add a narrow allowlist entry with a reason.",
+                "Do not allowlist panic-family, unsafe, or broad warning suppressions unless the PR explicitly owns that exception.",
+            ],
+            rerun_command: "cargo xtask check-allow-attributes",
+            exception_template: Some(
+                ".ripr/allow-attributes.txt entry:\npath/to/file.rs|allow(clippy::unwrap_used)|1|reason",
             ),
         },
         &violations,
@@ -4990,6 +5071,7 @@ fn known_xtask_command(command: &str) -> bool {
             | "ci-full"
             | "check-static-language"
             | "check-no-panic-family"
+            | "check-allow-attributes"
             | "check-local-context"
             | "check-file-policy"
             | "check-executable-files"
@@ -5793,6 +5875,7 @@ fn report_index_markdown(
         "fixtures.md",
         "goldens.md",
         "golden-drift.md",
+        "allow-attributes.md",
         "local-context.md",
         "test-oracles.md",
         "dogfood.md",
@@ -6597,6 +6680,151 @@ fn read_text_lossy(path: &Path) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
+fn guarded_allow_attribute_lints() -> BTreeSet<&'static str> {
+    [
+        "clippy::unwrap_used",
+        "clippy::expect_used",
+        "clippy::panic",
+        "clippy::todo",
+        "clippy::unimplemented",
+        "clippy::dbg_macro",
+        "unwrap_used",
+        "expect_used",
+        "panic",
+        "todo",
+        "unimplemented",
+        "dbg_macro",
+        "unsafe_code",
+        "dead_code",
+        "unused_imports",
+        "unused_variables",
+        "warnings",
+    ]
+    .into_iter()
+    .collect()
+}
+
+fn guarded_allow_attributes_in_text(
+    text: &str,
+    guarded: &BTreeSet<&'static str>,
+) -> Vec<(usize, String)> {
+    let bytes = text.as_bytes();
+    let mut findings = Vec::new();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] != b'#' {
+            index += 1;
+            continue;
+        }
+
+        let line = byte_line_number(text, index);
+        let mut cursor = index + 1;
+        if cursor < bytes.len() && bytes[cursor] == b'!' {
+            cursor += 1;
+        }
+        cursor = skip_ascii_whitespace(bytes, cursor);
+        if cursor >= bytes.len() || bytes[cursor] != b'[' {
+            index += 1;
+            continue;
+        }
+        cursor += 1;
+        cursor = skip_ascii_whitespace(bytes, cursor);
+
+        let ident_start = cursor;
+        while cursor < bytes.len() && (bytes[cursor].is_ascii_alphabetic() || bytes[cursor] == b'_')
+        {
+            cursor += 1;
+        }
+        let kind = &text[ident_start..cursor];
+        if kind != "allow" && kind != "expect" {
+            index += 1;
+            continue;
+        }
+        cursor = skip_ascii_whitespace(bytes, cursor);
+        if cursor >= bytes.len() || bytes[cursor] != b'(' {
+            index += 1;
+            continue;
+        }
+
+        let Some((content_start, content_end, next_index)) = attribute_paren_span(bytes, cursor)
+        else {
+            index += 1;
+            continue;
+        };
+        for lint in attribute_lints(&text[content_start..content_end]) {
+            if guarded.contains(lint.as_str()) {
+                findings.push((line, format!("{kind}({lint})")));
+            }
+        }
+        index = next_index;
+    }
+    findings
+}
+
+fn attribute_paren_span(bytes: &[u8], open: usize) -> Option<(usize, usize, usize)> {
+    let mut depth = 0usize;
+    let mut index = open;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'(' => depth += 1,
+            b')' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some((open + 1, index, index + 1));
+                }
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+    None
+}
+
+fn attribute_lints(content: &str) -> Vec<String> {
+    content
+        .split(',')
+        .filter_map(|part| {
+            let lint = part.trim();
+            if lint.is_empty() || lint.contains('=') {
+                None
+            } else {
+                Some(lint.to_string())
+            }
+        })
+        .collect()
+}
+
+fn attribute_lint_name(attribute: &str) -> Option<&str> {
+    let (_, rest) = attribute.split_once('(')?;
+    Some(rest.strip_suffix(')').unwrap_or(rest).trim())
+}
+
+fn skip_ascii_whitespace(bytes: &[u8], mut index: usize) -> usize {
+    while index < bytes.len() && bytes[index].is_ascii_whitespace() {
+        index += 1;
+    }
+    index
+}
+
+fn byte_line_number(text: &str, byte_index: usize) -> usize {
+    text.as_bytes()[..byte_index]
+        .iter()
+        .filter(|byte| **byte == b'\n')
+        .count()
+        + 1
+}
+
+fn allow_attribute_line_summary(lines: &[usize]) -> String {
+    let mut unique = lines.to_vec();
+    unique.sort_unstable();
+    unique.dedup();
+    unique
+        .into_iter()
+        .map(|line| line.to_string())
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
 fn local_context_findings_for_path(path: &str) -> Result<Vec<LocalContextFinding>, String> {
     let mut findings = Vec::new();
     let Some(file_name) = path.rsplit('/').next() else {
@@ -7215,6 +7443,7 @@ mod tests {
         ReceiptRecord, ReportIndexCampaign, ReportIndexEntry, TestOracleClass,
         dogfood_class_counts, dogfood_report_json, dogfood_report_markdown,
         extract_workflow_run_blocks, glob_matches, golden_drift_semantics,
+        guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
         is_dependency_surface_candidate, is_evidence_path, is_generated_candidate,
         is_known_campaign_command, is_policy_path, is_production_path, is_receipt_status,
         is_snake_case_id, is_spec_id, json_escape, json_number_after, json_string_values_for_key,
@@ -7247,6 +7476,38 @@ mod tests {
             "editors/vscode/**/*.ts",
             "docs/examples/client.ts"
         ));
+    }
+
+    #[test]
+    fn allow_attribute_detection_flags_guarded_lint_suppressions() {
+        let text = format!(
+            "{}\nfn f() {{}}\n{}",
+            concat!("#[", "allow", "(clippy::unwrap_used, dead_code)]"),
+            concat!("#![", "expect", "(warnings, reason = \"temporary\")]")
+        );
+
+        let findings = guarded_allow_attributes_in_text(&text, &guarded_allow_attribute_lints());
+
+        assert_eq!(
+            findings,
+            vec![
+                (1, "allow(clippy::unwrap_used)".to_string()),
+                (1, "allow(dead_code)".to_string()),
+                (3, concat!("expect", "(warnings)").to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn allow_attribute_detection_ignores_untracked_lints() {
+        let text = format!(
+            "{}\nfn f() {{}}\n",
+            concat!("#[", "allow", "(clippy::module_name_repetitions)]")
+        );
+
+        let findings = guarded_allow_attributes_in_text(&text, &guarded_allow_attribute_lints());
+
+        assert!(findings.is_empty());
     }
 
     #[test]
@@ -7882,6 +8143,9 @@ commands = [
         assert!(is_known_campaign_command("cargo xtask reports index"));
         assert!(is_known_campaign_command("cargo xtask receipts check"));
         assert!(is_known_campaign_command("cargo xtask golden-drift"));
+        assert!(is_known_campaign_command(
+            "cargo xtask check-allow-attributes"
+        ));
         assert!(is_known_campaign_command("cargo xtask test-oracle-report"));
         assert!(is_known_campaign_command("cargo xtask dogfood"));
         assert!(is_known_campaign_command("cargo test --workspace"));

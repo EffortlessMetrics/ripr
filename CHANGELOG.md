@@ -98,3 +98,6 @@ how future PRs are scoped or reviewed.
   drift summaries for fixture expected-output review.
 - Added `cargo xtask check-local-context` to reject committed local machine
   paths, session-state artifacts, and chat/runtime references before review.
+- Added high-signal workspace Clippy denies for `dbg_macro`, `todo`, and
+  `unimplemented`, plus `cargo xtask check-allow-attributes` to prevent
+  bypassing guarded lint families without reviewed allowlist entries.
