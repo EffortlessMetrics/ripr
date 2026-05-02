@@ -17,7 +17,8 @@ allowlist order, report directory setup, generated indexes, or gate ordering.
 
 Codex Goals consume this harness. The `/goal` loop may advance a multi-PR
 campaign, but each work item should still leave the same shaped PR, reports, and
-receipts described here.
+review artifacts described here. Machine-readable receipts are the next planned
+trust artifact.
 
 ## Current Commands
 
@@ -196,12 +197,6 @@ cargo xtask check-campaign
 cargo xtask check-pr-shape
 ```
 
-Planned:
-
-```bash
-cargo xtask dogfood
-```
-
 Reports should be useful to both humans and agents. A failed check should name
 the path, explain why the rule exists, classify the fix kind, provide exact
 commands to rerun, and include an exception template when a policy exception is
@@ -298,13 +293,10 @@ Current summary fields:
 - suggested reviewer focus
 - follow-up commands
 
-Future summary fields:
+Next summary fields:
 
-- likely missing evidence
-- changed spec IDs
-- fixture and golden changes
-- capability status movement
 - generated reports
+- machine-readable receipt links
 - warning-only drift checks
 
 The summary should classify large evidence-heavy PRs correctly. A large fixture,
@@ -410,17 +402,21 @@ suggested-fixes.patch
 For untrusted PRs, CI should not push fixes. It may upload a suggested patch for
 safe deterministic changes so authors or agents can apply it locally.
 
-## Future PR Sequence
+## Current Automation Queue
 
-The next automation path is trusted-change evidence:
+Campaign 1 and Campaign 2 are complete. Campaign 3 is active, and
+`.ripr/goals/active.toml` plus `cargo xtask goals next` are the source of truth
+for product work. The next automation path should improve trusted-change
+evidence without delaying Campaign 3:
 
 | Order | PR | Purpose |
 | ---: | --- | --- |
-| 1 | `analysis/ast-test-oracle-extraction` | Extract tests and oracle facts through the adapter boundary. |
-| 2 | `automation/gate-receipts-v1` | Write machine-readable receipts for gate runs. |
-| 3 | `automation/critic-report` | Add an advisory adversarial review packet from existing reports. |
-| 4 | `devex/onboard-doctor` | Report whether the local checkout and toolchain are ready to work. |
-| 5 | `devex/install-hooks` | Generate local hooks without checking executable scripts into the repo. |
+| 1 | `automation/gate-receipts-v1` | Write machine-readable receipts for gate runs. |
+| 2 | `automation/report-index` | Give reviewers one front door for generated reports and receipt links. |
+| 3 | `automation/golden-drift-summary` | Summarize semantic golden drift for output-review PRs. |
+| 4 | `automation/critic-report` | Add an advisory adversarial review packet from existing reports. |
+| 5 | `devex/onboard-doctor` | Report whether the local checkout and toolchain are ready to work. |
+| 6 | `devex/install-hooks` | Generate local hooks without checking executable scripts into the repo. |
 
 Analyzer work can now move through Codex Goals campaigns. Each campaign may span
 multiple PRs, while each work item should still follow the scoped PR contract.

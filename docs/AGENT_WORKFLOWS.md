@@ -39,12 +39,14 @@ expires, but repository artifacts remain.
 5. Read [Codex Goals](CODEX_GOALS.md) and
    [Implementation campaigns](IMPLEMENTATION_CAMPAIGNS.md) when the task is part
    of a long implementation campaign.
-6. Read [Scoped PR contract](SCOPED_PR_CONTRACT.md) for the PR-sized work item
+6. Run `cargo xtask goals next` when choosing campaign work; the active
+   manifest is the source of truth for current ready items.
+7. Read [Scoped PR contract](SCOPED_PR_CONTRACT.md) for the PR-sized work item
    evidence bar.
-7. Read the relevant spec in [Specs](specs/README.md).
-8. Check [Spec-test-code traceability](SPEC_TEST_CODE.md) and
+8. Read the relevant spec in [Specs](specs/README.md).
+9. Check [Spec-test-code traceability](SPEC_TEST_CODE.md) and
    `.ripr/traceability.toml`.
-9. Inspect existing tests, fixtures, and goldens before editing code.
+10. Inspect existing tests, fixtures, and goldens before editing code.
 
 ## Codex Goals
 
@@ -54,7 +56,8 @@ A Codex Goals run should:
 
 - recover state from repo artifacts, not chat history
 - read `.ripr/goals/active.toml`
-- pick the next unblocked implementation-campaign work item
+- run `cargo xtask goals next` and pick the next unblocked
+  implementation-campaign work item from that report
 - produce one scoped PR, blocked report, or explicit planning update per work
   item
 - run `cargo xtask shape`, `cargo xtask fix-pr`, `cargo xtask check-pr`, and
