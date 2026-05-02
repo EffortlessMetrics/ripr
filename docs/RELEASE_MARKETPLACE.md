@@ -124,7 +124,7 @@ VS Code Marketplace listing is live.
 Open VSX listing is live.
 Both listings show the same version.
 VS Marketplace manual install badge count was refreshed.
-Open VSX badges render.
+Open VSX download badge renders.
 GitHub Release has the VSIX attached.
 Installing from each registry works.
 The extension starts `ripr lsp`.
@@ -145,10 +145,9 @@ Use static VS Marketplace badges instead:
 https://img.shields.io/badge/VS%20Marketplace-<count>%20installs-0078D4
 ```
 
-Open VSX badges may use live Shields routes:
+Open VSX download badges may use live Shields routes:
 
 ```text
-https://img.shields.io/open-vsx/v/EffortlessMetrics/ripr
 https://img.shields.io/open-vsx/dt/EffortlessMetrics/ripr
 ```
 
@@ -159,4 +158,4 @@ After each extension release:
 3. Update the manual badge count in `README.md` and
    `editors/vscode/README.md`.
 4. Update the hidden `Last checked: YYYY-MM-DD` comment near each manual badge.
-5. Leave Open VSX badges as live Shields badges.
+5. Leave Open VSX download badges as live Shields badges.
