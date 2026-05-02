@@ -27,6 +27,7 @@ cargo xtask precommit
 cargo xtask check-pr
 cargo xtask fixtures
 cargo xtask goldens check
+cargo xtask golden-drift
 cargo fmt --check
 cargo check --workspace --all-targets
 cargo test --workspace

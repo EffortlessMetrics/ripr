@@ -245,6 +245,7 @@ fn main() {
         Some("goals") => goals(&args[2..]),
         Some("reports") => reports(&args[2..]),
         Some("receipts") => receipts(&args[2..]),
+        Some("golden-drift") => golden_drift(),
         Some("ci-fast") => ci_fast(),
         Some("ci-full") => ci_full(),
         Some("check-static-language") => check_static_language(),
@@ -389,7 +390,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  metrics\n  test-oracle-report\n  check-test-oracles\n  dogfood\n  goals status|next|report\n  reports index\n  receipts [check]\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
+        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  golden-drift\n  metrics\n  test-oracle-report\n  check-test-oracles\n  dogfood\n  goals status|next|report\n  reports index\n  receipts [check]\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
     );
 }
 
@@ -841,6 +842,38 @@ fn goldens(args: &[String]) -> Result<(), String> {
 }
 
 fn goldens_check() -> Result<(), String> {
+    let run_set = collect_golden_runs()?;
+    write_golden_drift_reports(&run_set.runs, &run_set.violations)?;
+    let body = goldens_check_report_body(&run_set.fixtures, &run_set.runs, &run_set.violations);
+    write_report("goldens.md", &body)?;
+    if run_set.violations.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "goldens check failed; see target/ripr/reports/goldens.md\n{}",
+            run_set.violations.join("\n")
+        ))
+    }
+}
+
+fn golden_drift() -> Result<(), String> {
+    let run_set = collect_golden_runs()?;
+    write_golden_drift_reports(&run_set.runs, &run_set.violations)?;
+    if run_set
+        .violations
+        .iter()
+        .any(|violation| !violation.contains("drift for fixture"))
+    {
+        Err(format!(
+            "golden drift report had fixture errors; see target/ripr/reports/golden-drift.md\n{}",
+            run_set.violations.join("\n")
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn collect_golden_runs() -> Result<GoldenRunSet, String> {
     let fixture_dirs = fixture_dirs()?;
     let mut violations = Vec::new();
     let mut runs = Vec::new();
@@ -858,16 +891,11 @@ fn goldens_check() -> Result<(), String> {
             Err(err) => violations.push(err),
         }
     }
-    let body = goldens_check_report_body(&fixture_dirs, &runs, &violations);
-    write_report("goldens.md", &body)?;
-    if violations.is_empty() {
-        Ok(())
-    } else {
-        Err(format!(
-            "goldens check failed; see target/ripr/reports/goldens.md\n{}",
-            violations.join("\n")
-        ))
-    }
+    Ok(GoldenRunSet {
+        fixtures: fixture_dirs,
+        runs,
+        violations,
+    })
 }
 
 fn goldens_bless(name: &str, reason: &str) -> Result<(), String> {
@@ -1015,6 +1043,37 @@ struct GoldenComparison {
     expected: PathBuf,
     actual: PathBuf,
     matches: bool,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct GoldenDriftSemantics {
+    added_finding_ids: Vec<String>,
+    removed_finding_ids: Vec<String>,
+    changed_exposure_classes: Vec<String>,
+    changed_probe_families: Vec<String>,
+    changed_oracle_strengths: Vec<String>,
+    changed_stop_reasons: Vec<String>,
+    changed_recommendations: Vec<String>,
+    static_language_terms: Vec<String>,
+    changed_line_count: usize,
+}
+
+#[derive(Clone, Debug)]
+struct GoldenDriftEntry {
+    fixture: String,
+    surface: String,
+    expected: String,
+    actual: String,
+    blessing_reason_required: bool,
+    blessing_reason_present: bool,
+    semantics: GoldenDriftSemantics,
+}
+
+#[derive(Debug)]
+struct GoldenRunSet {
+    fixtures: Vec<PathBuf>,
+    runs: Vec<FixtureRun>,
+    violations: Vec<String>,
 }
 
 fn run_fixture(path: &Path) -> Result<FixtureRun, String> {
@@ -1212,6 +1271,302 @@ fn goldens_check_report_body(
     body
 }
 
+fn write_golden_drift_reports(runs: &[FixtureRun], violations: &[String]) -> Result<(), String> {
+    let changed_paths = collect_changed_paths_set().unwrap_or_default();
+    let entries = golden_drift_entries(runs, &changed_paths)?;
+    let markdown = golden_drift_markdown(&entries, violations);
+    let json = golden_drift_json(&entries, violations);
+    write_report("golden-drift.md", &markdown)?;
+    write_report("golden-drift.json", &json)
+}
+
+fn golden_drift_entries(
+    runs: &[FixtureRun],
+    changed_paths: &BTreeSet<String>,
+) -> Result<Vec<GoldenDriftEntry>, String> {
+    let mut entries = Vec::new();
+    for run in runs {
+        let changelog = Path::new("fixtures")
+            .join(&run.name)
+            .join("expected")
+            .join("CHANGELOG.md");
+        let blessing_reason_present = changed_paths.contains(&normalize_path(&changelog));
+        for comparison in &run.comparisons {
+            if comparison.matches {
+                continue;
+            }
+            let expected = read_text_lossy(&comparison.expected)?;
+            let actual = read_text_lossy(&comparison.actual)?;
+            entries.push(GoldenDriftEntry {
+                fixture: run.name.clone(),
+                surface: comparison.surface.to_string(),
+                expected: normalize_path(&comparison.expected),
+                actual: normalize_path(&comparison.actual),
+                blessing_reason_required: true,
+                blessing_reason_present,
+                semantics: golden_drift_semantics(comparison.surface, &expected, &actual),
+            });
+        }
+    }
+    Ok(entries)
+}
+
+fn golden_drift_semantics(surface: &str, expected: &str, actual: &str) -> GoldenDriftSemantics {
+    let changed_line_count = changed_line_count(expected, actual);
+    let static_language_terms = static_language_terms(expected, actual);
+    if surface == "check.json" {
+        let expected_ids = json_string_values_for_key(expected, "id")
+            .into_iter()
+            .filter(|value| value.starts_with("probe:"))
+            .collect::<BTreeSet<_>>();
+        let actual_ids = json_string_values_for_key(actual, "id")
+            .into_iter()
+            .filter(|value| value.starts_with("probe:"))
+            .collect::<BTreeSet<_>>();
+        let expected_classes = json_string_values_for_key(expected, "classification");
+        let actual_classes = json_string_values_for_key(actual, "classification");
+        let expected_families = json_string_values_for_key(expected, "family");
+        let actual_families = json_string_values_for_key(actual, "family");
+        let expected_oracles = json_string_values_for_key(expected, "oracle_strength");
+        let actual_oracles = json_string_values_for_key(actual, "oracle_strength");
+        let expected_stop_reasons = json_stop_reason_values(expected);
+        let actual_stop_reasons = json_stop_reason_values(actual);
+        let expected_recommendations =
+            json_string_values_for_key(expected, "recommended_next_step");
+        let actual_recommendations = json_string_values_for_key(actual, "recommended_next_step");
+
+        GoldenDriftSemantics {
+            added_finding_ids: set_difference(&actual_ids, &expected_ids),
+            removed_finding_ids: set_difference(&expected_ids, &actual_ids),
+            changed_exposure_classes: set_change_summary(&expected_classes, &actual_classes),
+            changed_probe_families: set_change_summary(&expected_families, &actual_families),
+            changed_oracle_strengths: set_change_summary(&expected_oracles, &actual_oracles),
+            changed_stop_reasons: set_change_summary(&expected_stop_reasons, &actual_stop_reasons),
+            changed_recommendations: set_change_summary(
+                &expected_recommendations,
+                &actual_recommendations,
+            ),
+            static_language_terms,
+            changed_line_count,
+        }
+    } else {
+        let expected_recommendations = human_recommended_next_steps(expected);
+        let actual_recommendations = human_recommended_next_steps(actual);
+        let expected_stop_reasons = human_stop_reason_lines(expected);
+        let actual_stop_reasons = human_stop_reason_lines(actual);
+        GoldenDriftSemantics {
+            changed_stop_reasons: set_change_summary(&expected_stop_reasons, &actual_stop_reasons),
+            changed_recommendations: set_change_summary(
+                &expected_recommendations,
+                &actual_recommendations,
+            ),
+            static_language_terms,
+            changed_line_count,
+            ..GoldenDriftSemantics::default()
+        }
+    }
+}
+
+fn golden_drift_markdown(entries: &[GoldenDriftEntry], violations: &[String]) -> String {
+    let status = if violations
+        .iter()
+        .any(|violation| !violation.contains("drift for fixture"))
+    {
+        "fail"
+    } else if entries.is_empty() {
+        "pass"
+    } else {
+        "warn"
+    };
+    let mut body = format!("# ripr golden drift report\n\nStatus: {status}\n\n");
+    body.push_str("This report summarizes expected-output drift for reviewer inspection. It never blesses goldens.\n\n");
+    body.push_str("## Summary\n\n");
+    body.push_str(&format!("- drift entries: {}\n", entries.len()));
+    body.push_str(&format!(
+        "- fixture errors: {}\n",
+        fixture_error_count(violations)
+    ));
+    body.push_str("\n## Drift\n\n");
+    if entries.is_empty() {
+        body.push_str("None detected.\n\n");
+    } else {
+        for entry in entries {
+            body.push_str(&format!("### `{}` `{}`\n\n", entry.fixture, entry.surface));
+            body.push_str(&format!("- expected: `{}`\n", entry.expected));
+            body.push_str(&format!("- actual: `{}`\n", entry.actual));
+            body.push_str(&format!(
+                "- changed lines: {}\n",
+                entry.semantics.changed_line_count
+            ));
+            write_optional_list(
+                &mut body,
+                "added finding IDs",
+                &entry.semantics.added_finding_ids,
+            );
+            write_optional_list(
+                &mut body,
+                "removed finding IDs",
+                &entry.semantics.removed_finding_ids,
+            );
+            write_optional_list(
+                &mut body,
+                "changed exposure classes",
+                &entry.semantics.changed_exposure_classes,
+            );
+            write_optional_list(
+                &mut body,
+                "changed probe families",
+                &entry.semantics.changed_probe_families,
+            );
+            write_optional_list(
+                &mut body,
+                "changed oracle strengths",
+                &entry.semantics.changed_oracle_strengths,
+            );
+            write_optional_list(
+                &mut body,
+                "changed stop reasons",
+                &entry.semantics.changed_stop_reasons,
+            );
+            write_optional_list(
+                &mut body,
+                "changed recommended next steps",
+                &entry.semantics.changed_recommendations,
+            );
+            if entry.semantics.static_language_terms.is_empty() {
+                body.push_str("- static-language boundary: pass\n");
+            } else {
+                body.push_str("- static-language boundary: fail\n");
+                write_optional_list(
+                    &mut body,
+                    "static-language terms",
+                    &entry.semantics.static_language_terms,
+                );
+            }
+            body.push_str(&format!(
+                "- blessing reason required: {}\n",
+                yes_no(entry.blessing_reason_required)
+            ));
+            body.push_str(&format!(
+                "- blessing reason present in PR: {}\n\n",
+                yes_no(entry.blessing_reason_present)
+            ));
+        }
+    }
+    if !violations.is_empty() {
+        body.push_str("## Fixture / Golden Violations\n\n");
+        write_violations_section(&mut body, violations);
+    }
+    body
+}
+
+fn golden_drift_json(entries: &[GoldenDriftEntry], violations: &[String]) -> String {
+    let status = if violations
+        .iter()
+        .any(|violation| !violation.contains("drift for fixture"))
+    {
+        "fail"
+    } else if entries.is_empty() {
+        "pass"
+    } else {
+        "warn"
+    };
+    let mut body = String::from("{\n");
+    body.push_str("  \"schema_version\": \"0.1\",\n");
+    body.push_str(&format!("  \"status\": \"{}\",\n", json_escape(status)));
+    body.push_str(&format!("  \"drift_count\": {},\n", entries.len()));
+    body.push_str("  \"entries\": [\n");
+    for (index, entry) in entries.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("    {\n");
+        body.push_str(&format!(
+            "      \"fixture\": \"{}\",\n",
+            json_escape(&entry.fixture)
+        ));
+        body.push_str(&format!(
+            "      \"surface\": \"{}\",\n",
+            json_escape(&entry.surface)
+        ));
+        body.push_str(&format!(
+            "      \"expected\": \"{}\",\n",
+            json_escape(&entry.expected)
+        ));
+        body.push_str(&format!(
+            "      \"actual\": \"{}\",\n",
+            json_escape(&entry.actual)
+        ));
+        body.push_str(&format!(
+            "      \"changed_line_count\": {},\n",
+            entry.semantics.changed_line_count
+        ));
+        body.push_str(&format!(
+            "      \"blessing_reason_required\": {},\n",
+            entry.blessing_reason_required
+        ));
+        body.push_str(&format!(
+            "      \"blessing_reason_present\": {},\n",
+            entry.blessing_reason_present
+        ));
+        write_json_field_array(
+            &mut body,
+            "added_finding_ids",
+            &entry.semantics.added_finding_ids,
+            true,
+        );
+        write_json_field_array(
+            &mut body,
+            "removed_finding_ids",
+            &entry.semantics.removed_finding_ids,
+            true,
+        );
+        write_json_field_array(
+            &mut body,
+            "changed_exposure_classes",
+            &entry.semantics.changed_exposure_classes,
+            true,
+        );
+        write_json_field_array(
+            &mut body,
+            "changed_probe_families",
+            &entry.semantics.changed_probe_families,
+            true,
+        );
+        write_json_field_array(
+            &mut body,
+            "changed_oracle_strengths",
+            &entry.semantics.changed_oracle_strengths,
+            true,
+        );
+        write_json_field_array(
+            &mut body,
+            "changed_stop_reasons",
+            &entry.semantics.changed_stop_reasons,
+            true,
+        );
+        write_json_field_array(
+            &mut body,
+            "changed_recommendations",
+            &entry.semantics.changed_recommendations,
+            true,
+        );
+        write_json_field_array(
+            &mut body,
+            "static_language_terms",
+            &entry.semantics.static_language_terms,
+            false,
+        );
+        body.push_str("\n    }");
+    }
+    body.push_str("\n  ],\n");
+    body.push_str("  \"violations\": [");
+    write_json_string_array(&mut body, violations);
+    body.push_str("]\n");
+    body.push_str("}\n");
+    body
+}
+
 fn write_fixture_runs_section(body: &mut String, runs: &[FixtureRun]) {
     body.push_str("## Actual Outputs\n\n");
     if runs.is_empty() {
@@ -1250,6 +1605,197 @@ fn write_fixture_runs_section(body: &mut String, runs: &[FixtureRun]) {
         }
     }
     body.push('\n');
+}
+
+fn write_optional_list(body: &mut String, label: &str, values: &[String]) {
+    if values.is_empty() {
+        return;
+    }
+    body.push_str(&format!("- {label}:\n"));
+    for value in values {
+        body.push_str(&format!("  - `{}`\n", markdown_cell(value)));
+    }
+}
+
+fn write_json_field_array(body: &mut String, key: &str, values: &[String], trailing_comma: bool) {
+    body.push_str(&format!("      \"{}\": [", json_escape(key)));
+    write_json_string_array(body, values);
+    body.push(']');
+    if trailing_comma {
+        body.push(',');
+    }
+    body.push('\n');
+}
+
+fn yes_no(value: bool) -> &'static str {
+    if value { "yes" } else { "no" }
+}
+
+fn fixture_error_count(violations: &[String]) -> usize {
+    violations
+        .iter()
+        .filter(|violation| !violation.contains("drift for fixture"))
+        .count()
+}
+
+fn changed_line_count(expected: &str, actual: &str) -> usize {
+    let expected_lines = normalize_golden_text(expected)
+        .lines()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    let actual_lines = normalize_golden_text(actual)
+        .lines()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    let max_len = expected_lines.len().max(actual_lines.len());
+    let mut changed = 0usize;
+    for index in 0..max_len {
+        if expected_lines.get(index) != actual_lines.get(index) {
+            changed += 1;
+        }
+    }
+    changed
+}
+
+fn static_language_terms(expected: &str, actual: &str) -> Vec<String> {
+    let combined = format!("{expected}\n{actual}").to_ascii_lowercase();
+    forbidden_static_terms()
+        .into_iter()
+        .filter(|term| contains_word(&combined, term))
+        .collect()
+}
+
+fn set_difference(left: &BTreeSet<String>, right: &BTreeSet<String>) -> Vec<String> {
+    left.difference(right).cloned().collect()
+}
+
+fn set_change_summary(expected: &BTreeSet<String>, actual: &BTreeSet<String>) -> Vec<String> {
+    if expected == actual {
+        Vec::new()
+    } else {
+        vec![format!(
+            "expected [{}] -> actual [{}]",
+            expected.iter().cloned().collect::<Vec<_>>().join(", "),
+            actual.iter().cloned().collect::<Vec<_>>().join(", ")
+        )]
+    }
+}
+
+fn json_stop_reason_values(text: &str) -> BTreeSet<String> {
+    let mut values = json_string_values_for_key(text, "stop_reason");
+    values.extend(json_string_values_for_key(text, "stop_reasons"));
+    values
+}
+
+fn json_string_values_for_key(text: &str, key: &str) -> BTreeSet<String> {
+    let needle = format!("\"{key}\"");
+    let mut values = BTreeSet::new();
+    let mut multiline = String::new();
+    let mut collecting = false;
+    for line in text.lines() {
+        if collecting {
+            multiline.push(' ');
+            multiline.push_str(line.trim());
+            if line.contains(']') {
+                values.extend(json_strings_in_fragment(&multiline));
+                multiline.clear();
+                collecting = false;
+            }
+            continue;
+        }
+        let Some((_, rest)) = line.split_once(&needle) else {
+            continue;
+        };
+        let Some((_, value)) = rest.split_once(':') else {
+            continue;
+        };
+        let trimmed = value.trim();
+        if trimmed.starts_with('[') && !trimmed.contains(']') {
+            multiline.push_str(trimmed);
+            collecting = true;
+        } else {
+            values.extend(json_strings_in_fragment(trimmed));
+        }
+    }
+    values
+}
+
+fn json_strings_in_fragment(value: &str) -> Vec<String> {
+    let mut strings = Vec::new();
+    let mut chars = value.char_indices().peekable();
+    while let Some((_, ch)) = chars.next() {
+        if ch != '"' {
+            continue;
+        }
+        let mut current = String::new();
+        let mut escaped = false;
+        for (_, next) in chars.by_ref() {
+            if escaped {
+                current.push(match next {
+                    '"' => '"',
+                    '\\' => '\\',
+                    'n' => '\n',
+                    'r' => '\r',
+                    't' => '\t',
+                    other => other,
+                });
+                escaped = false;
+                continue;
+            }
+            if next == '\\' {
+                escaped = true;
+                continue;
+            }
+            if next == '"' {
+                strings.push(current);
+                break;
+            }
+            current.push(next);
+        }
+    }
+    strings
+}
+
+fn human_recommended_next_steps(text: &str) -> BTreeSet<String> {
+    human_section_lines(text, "Recommended next step:")
+}
+
+fn human_stop_reason_lines(text: &str) -> BTreeSet<String> {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| {
+            let lower = line.to_ascii_lowercase();
+            lower.contains("stop reason") || lower.contains("stop:")
+        })
+        .map(str::to_string)
+        .collect()
+}
+
+fn human_section_lines(text: &str, heading: &str) -> BTreeSet<String> {
+    let mut values = BTreeSet::new();
+    let mut capture = false;
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if capture {
+            if trimmed.is_empty() {
+                capture = false;
+            } else {
+                values.insert(trimmed.to_string());
+            }
+            continue;
+        }
+        if trimmed == heading {
+            capture = true;
+        }
+    }
+    values
+}
+
+fn collect_changed_paths_set() -> Result<BTreeSet<String>, String> {
+    Ok(collect_pr_changes()?
+        .into_iter()
+        .map(|change| change.path)
+        .collect())
 }
 
 fn write_violations_section(body: &mut String, violations: &[String]) {
@@ -4350,6 +4896,7 @@ fn known_xtask_command(command: &str) -> bool {
             | "check-pr"
             | "fixtures"
             | "goldens"
+            | "golden-drift"
             | "metrics"
             | "test-oracle-report"
             | "check-test-oracles"
@@ -4853,10 +5400,12 @@ fn report_index_missing_expected(
         expected.insert("output-contracts.md".to_string());
         expected.insert("fixtures.md".to_string());
         expected.insert("goldens.md".to_string());
+        expected.insert("golden-drift.md".to_string());
     }
     if changes.iter().any(|change| is_fixture_path(&change.path)) {
         expected.insert("fixtures.md".to_string());
         expected.insert("goldens.md".to_string());
+        expected.insert("golden-drift.md".to_string());
     }
     if changes.iter().any(|change| is_metrics_path(&change.path)) {
         expected.insert("capabilities.md".to_string());
@@ -4937,6 +5486,12 @@ fn report_index_next_commands(missing: &[String]) -> Vec<String> {
         .any(|path| path.ends_with("/goldens.md") || path.ends_with("\\goldens.md"))
     {
         commands.insert("cargo xtask goldens check".to_string());
+    }
+    if missing
+        .iter()
+        .any(|path| path.ends_with("/golden-drift.md") || path.ends_with("\\golden-drift.md"))
+    {
+        commands.insert("cargo xtask golden-drift".to_string());
     }
     if missing
         .iter()
@@ -5154,6 +5709,7 @@ fn report_index_markdown(
         "pr-shape.md",
         "fixtures.md",
         "goldens.md",
+        "golden-drift.md",
         "test-oracles.md",
         "dogfood.md",
         "metrics.md",
@@ -6186,16 +6742,17 @@ mod tests {
         CampaignManifest, Capability, ChangedPath, DogfoodRun, MarkdownLink, ReceiptRecord,
         ReportIndexCampaign, ReportIndexEntry, TestOracleClass, dogfood_class_counts,
         dogfood_report_json, dogfood_report_markdown, extract_workflow_run_blocks, glob_matches,
-        is_dependency_surface_candidate, is_evidence_path, is_generated_candidate,
-        is_known_campaign_command, is_policy_path, is_production_path, is_receipt_status,
-        is_snake_case_id, is_spec_id, json_escape, json_number_after, known_xtask_command,
-        local_markdown_target, markdown_links_in_text, next_checkpoints_from_capabilities,
-        normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
-        parse_campaign_manifest, parse_inline_array, parse_reason, pr_shape_warnings,
-        precommit_report_body, public_contract_rows, receipt_json, receipt_specs,
-        receipt_status_from_reports, report_index_markdown, report_index_missing_expected,
-        report_status_from_text, sorted_allowlist_content, spec_id_from_path, status_for_report,
-        test_oracle_report_json, test_oracle_report_markdown, test_oracle_tests_in_text,
+        golden_drift_semantics, is_dependency_surface_candidate, is_evidence_path,
+        is_generated_candidate, is_known_campaign_command, is_policy_path, is_production_path,
+        is_receipt_status, is_snake_case_id, is_spec_id, json_escape, json_number_after,
+        json_string_values_for_key, known_xtask_command, local_markdown_target,
+        markdown_links_in_text, next_checkpoints_from_capabilities, normalize_fixture_human_output,
+        normalize_fixture_json_output, normalize_golden_text, parse_campaign_manifest,
+        parse_inline_array, parse_reason, pr_shape_warnings, precommit_report_body,
+        public_contract_rows, receipt_json, receipt_specs, receipt_status_from_reports,
+        report_index_markdown, report_index_missing_expected, report_status_from_text,
+        sorted_allowlist_content, spec_id_from_path, status_for_report, test_oracle_report_json,
+        test_oracle_report_markdown, test_oracle_tests_in_text,
     };
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
@@ -6426,6 +6983,30 @@ jobs:
     }
 
     #[test]
+    fn report_index_expects_golden_drift_for_output_changes() {
+        let reports = vec![
+            ReportIndexEntry {
+                file: "pr-summary.md".to_string(),
+                path: "target/ripr/reports/pr-summary.md".to_string(),
+                status: "pass".to_string(),
+            },
+            ReportIndexEntry {
+                file: "check-pr.md".to_string(),
+                path: "target/ripr/reports/check-pr.md".to_string(),
+                status: "pass".to_string(),
+            },
+        ];
+        let changes = vec![ChangedPath {
+            path: "crates/ripr/src/output/human.rs".to_string(),
+            statuses: BTreeSet::from(["M".to_string()]),
+        }];
+
+        let missing = report_index_missing_expected(&reports, &changes);
+
+        assert!(missing.contains(&"target/ripr/reports/golden-drift.md".to_string()));
+    }
+
+    #[test]
     fn report_index_markdown_includes_review_path_and_receipts() {
         let campaign = ReportIndexCampaign {
             id: "evidence-quality".to_string(),
@@ -6513,6 +7094,73 @@ jobs:
         assert!(files.contains("dogfood.json"));
         assert!(files.contains("metrics.json"));
         assert!(known_xtask_command("receipts"));
+    }
+
+    #[test]
+    fn golden_drift_semantics_summarize_json_changes() {
+        let expected = r#"{
+  "findings": [
+    {"id":"probe:src_lib.rs:1:predicate","classification":"infection_unknown","probe":{"family":"predicate"},"related_tests":[{"oracle_strength":"strong"}],"recommended_next_step":"Add a boundary test"}
+  ]
+}"#;
+        let actual = r#"{
+  "findings": [
+    {"id":"probe:src_lib.rs:1:predicate","classification":"weakly_exposed","probe":{"family":"predicate"},"related_tests":[{"oracle_strength":"smoke"}],"stop_reasons":["opaque fixture"],"recommended_next_step":"Assert the exact variant"},
+    {"id":"probe:src_lib.rs:2:error_path","classification":"weakly_exposed","probe":{"family":"error_path"},"related_tests":[{"oracle_strength":"smoke"}],"recommended_next_step":"Assert the exact variant"}
+  ]
+}"#;
+
+        let semantics = golden_drift_semantics("check.json", expected, actual);
+
+        assert!(
+            semantics
+                .added_finding_ids
+                .contains(&"probe:src_lib.rs:2:error_path".to_string())
+        );
+        assert!(semantics.changed_exposure_classes.iter().any(|value| {
+            value.contains("infection_unknown") && value.contains("weakly_exposed")
+        }));
+        assert!(
+            semantics
+                .changed_probe_families
+                .iter()
+                .any(|value| value.contains("error_path"))
+        );
+        assert!(
+            semantics
+                .changed_oracle_strengths
+                .iter()
+                .any(|value| value.contains("smoke"))
+        );
+        assert!(
+            semantics
+                .changed_stop_reasons
+                .iter()
+                .any(|value| value.contains("opaque fixture"))
+        );
+        assert!(
+            semantics
+                .changed_recommendations
+                .iter()
+                .any(|value| value.contains("Assert the exact variant"))
+        );
+    }
+
+    #[test]
+    fn json_string_values_for_key_reads_multiline_arrays() {
+        let text = r#"{
+  "stop_reasons": [
+    "opaque fixture",
+    "missing owner"
+  ]
+}"#;
+
+        let values = json_string_values_for_key(text, "stop_reasons");
+
+        assert_eq!(
+            values,
+            BTreeSet::from(["missing owner".to_string(), "opaque fixture".to_string()])
+        );
     }
 
     #[test]
@@ -6671,6 +7319,7 @@ commands = [
         assert!(is_known_campaign_command("cargo xtask goals status"));
         assert!(is_known_campaign_command("cargo xtask reports index"));
         assert!(is_known_campaign_command("cargo xtask receipts check"));
+        assert!(is_known_campaign_command("cargo xtask golden-drift"));
         assert!(is_known_campaign_command("cargo xtask test-oracle-report"));
         assert!(is_known_campaign_command("cargo xtask dogfood"));
         assert!(is_known_campaign_command("cargo test --workspace"));

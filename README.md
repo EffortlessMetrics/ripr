@@ -287,6 +287,7 @@ Useful evidence commands:
 ```bash
 cargo xtask fixtures
 cargo xtask goldens check
+cargo xtask golden-drift
 cargo xtask test-oracle-report
 cargo xtask dogfood
 cargo xtask reports index
