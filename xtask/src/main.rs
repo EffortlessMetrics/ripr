@@ -2282,6 +2282,7 @@ fn check_executable_files() -> Result<(), String> {
 
 fn check_workflows() -> Result<(), String> {
     let budgets = read_workflow_budgets("policy/workflow_allowlist.txt")?;
+    let runtime_allowlist = read_count_allowlist("policy/workflow_action_runtime_allowlist.txt")?;
     let mut violations = Vec::new();
 
     for path in collect_files(Path::new(".github/workflows"))? {
@@ -2296,6 +2297,11 @@ fn check_workflows() -> Result<(), String> {
             continue;
         };
         let text = read_text_lossy(&path)?;
+        violations.extend(workflow_runtime_violations(
+            &normalized,
+            &text,
+            &runtime_allowlist,
+        ));
         for block in extract_workflow_run_blocks(&text) {
             if block.non_empty_lines > budget.max_non_empty_lines {
                 violations.push(format!(
@@ -2331,14 +2337,109 @@ fn check_workflows() -> Result<(), String> {
             recommended_fixes: &[
                 "Move complex workflow logic into xtask or an npm script owned by the extension surface.",
                 "Keep workflow run blocks under the documented line budget.",
+                "Use Node-24-backed action majors where official releases exist.",
+                "Use Node 24 for VS Code extension build and publish workflows.",
                 "Add or adjust a workflow budget entry only when the workflow surface is intentionally larger.",
             ],
             rerun_command: "cargo xtask check-workflows",
             exception_template: Some(
-                "policy/workflow_allowlist.txt entry:\n.github/workflows/name.yml|max_non_empty_lines|reason",
+                "policy/workflow_allowlist.txt entry:\n.github/workflows/name.yml|max_non_empty_lines|reason\n\npolicy/workflow_action_runtime_allowlist.txt entry:\n.github/workflows/name.yml|action/ref|max_count|reason",
             ),
         },
         &violations,
+    )
+}
+
+fn workflow_runtime_violations(
+    path: &str,
+    text: &str,
+    allowlist: &BTreeMap<(String, String), usize>,
+) -> Vec<String> {
+    let mut violations = Vec::new();
+    for (old_ref, new_ref) in deprecated_workflow_action_refs() {
+        let count = text.matches(old_ref).count();
+        if count > 0 {
+            violations.push(format!(
+                "{path} uses deprecated action runtime ref `{old_ref}` {count} time(s); use `{new_ref}`"
+            ));
+        }
+    }
+
+    if is_extension_node_workflow(path) {
+        for (line_number, line) in text.lines().enumerate() {
+            let trimmed = line.trim();
+            if matches!(
+                trimmed,
+                "node-version: 20" | "node-version: '20'" | "node-version: \"20\""
+            ) {
+                violations.push(format!(
+                    "{path}:{} uses Node 20 for extension tooling; use Node 24",
+                    line_number + 1
+                ));
+            }
+        }
+    }
+
+    for pattern in workflow_runtime_exception_patterns() {
+        let count = text.matches(pattern).count();
+        if count == 0 {
+            continue;
+        }
+        let allowed = allowlist
+            .get(&(path.to_string(), pattern.to_string()))
+            .copied()
+            .unwrap_or(0);
+        if count > allowed {
+            violations.push(format!(
+                "{path} uses `{pattern}` {count} time(s), allowed {allowed}; add a reviewed workflow action runtime exception or upgrade the action"
+            ));
+        }
+    }
+
+    for ((allowed_path, pattern), allowed) in allowlist {
+        if allowed_path != path {
+            continue;
+        }
+        if !workflow_runtime_exception_patterns().contains(&pattern.as_str()) {
+            violations.push(format!(
+                "policy/workflow_action_runtime_allowlist.txt has unsupported exception `{pattern}` for {allowed_path}"
+            ));
+            continue;
+        }
+        let count = text.matches(pattern).count();
+        if count > *allowed {
+            violations.push(format!(
+                "{path} uses `{pattern}` {count} time(s), allowed {allowed}"
+            ));
+        }
+    }
+
+    violations.sort();
+    violations.dedup();
+    violations
+}
+
+fn deprecated_workflow_action_refs() -> &'static [(&'static str, &'static str)] {
+    &[
+        ("actions/checkout@v4", "actions/checkout@v6"),
+        ("actions/setup-node@v4", "actions/setup-node@v6"),
+        ("actions/upload-artifact@v4", "actions/upload-artifact@v7"),
+        (
+            "actions/download-artifact@v4",
+            "actions/download-artifact@v8",
+        ),
+        ("codecov/codecov-action@v4", "codecov/codecov-action@v6"),
+    ]
+}
+
+fn workflow_runtime_exception_patterns() -> &'static [&'static str] {
+    &["actions/dependency-review-action@v4"]
+}
+
+fn is_extension_node_workflow(path: &str) -> bool {
+    matches!(
+        path,
+        ".github/workflows/ci.yml" | ".github/workflows/publish-extension.yml"
     )
 }
 
@@ -7918,6 +8019,7 @@ mod tests {
         sorted_allowlist_content, spec_id_from_path, status_for_report,
         suspicious_runtime_file_names, test_oracle_report_json, test_oracle_report_markdown,
         test_oracle_tests_in_text, validate_local_context_allowlist, windows_absolute_path_tokens,
+        workflow_runtime_violations,
     };
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
@@ -8084,6 +8186,169 @@ jobs:
         assert_eq!(blocks[1].non_empty_lines, 2);
         assert!(blocks[1].text.contains("cargo check"));
         assert!(blocks[1].text.contains("cargo test"));
+    }
+
+    #[test]
+    fn workflow_runtime_policy_flags_old_action_refs_and_node20_extension_builds() {
+        let workflow = r#"
+jobs:
+  vscode:
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/upload-artifact@v4
+"#;
+        let violations =
+            workflow_runtime_violations(".github/workflows/ci.yml", workflow, &BTreeMap::new());
+
+        assert!(violations.iter().any(|violation| {
+            violation.contains("actions/checkout@v4") && violation.contains("actions/checkout@v6")
+        }));
+        assert!(violations.iter().any(|violation| {
+            violation.contains("actions/setup-node@v4")
+                && violation.contains("actions/setup-node@v6")
+        }));
+        assert!(violations.iter().any(|violation| {
+            violation.contains("actions/upload-artifact@v4")
+                && violation.contains("actions/upload-artifact@v7")
+        }));
+        assert!(
+            violations
+                .iter()
+                .any(|violation| { violation.contains("uses Node 20 for extension tooling") })
+        );
+    }
+
+    #[test]
+    fn workflow_runtime_policy_allows_documented_dependency_review_exception() {
+        let workflow = r#"
+jobs:
+  dependency-review:
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/dependency-review-action@v4
+"#;
+        let mut allowlist = BTreeMap::new();
+        allowlist.insert(
+            (
+                ".github/workflows/security.yml".to_string(),
+                "actions/dependency-review-action@v4".to_string(),
+            ),
+            1,
+        );
+
+        assert!(
+            workflow_runtime_violations(".github/workflows/security.yml", workflow, &allowlist,)
+                .is_empty()
+        );
+        assert!(
+            !workflow_runtime_violations(
+                ".github/workflows/security.yml",
+                workflow,
+                &BTreeMap::new(),
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn workflow_runtime_policy_flags_remaining_old_action_refs() {
+        let workflow = r#"
+jobs:
+  release:
+    steps:
+      - uses: actions/download-artifact@v4
+      - uses: codecov/codecov-action@v4
+"#;
+        let violations = workflow_runtime_violations(
+            ".github/workflows/release-server-binaries.yml",
+            workflow,
+            &BTreeMap::new(),
+        );
+
+        assert!(violations.iter().any(|violation| {
+            violation.contains("actions/download-artifact@v4")
+                && violation.contains("actions/download-artifact@v8")
+        }));
+        assert!(violations.iter().any(|violation| {
+            violation.contains("codecov/codecov-action@v4")
+                && violation.contains("codecov/codecov-action@v6")
+        }));
+    }
+
+    #[test]
+    fn workflow_runtime_policy_ignores_node20_outside_extension_workflows() {
+        let workflow = r#"
+jobs:
+  coverage:
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+"#;
+
+        assert!(
+            workflow_runtime_violations(
+                ".github/workflows/coverage.yml",
+                workflow,
+                &BTreeMap::new(),
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn workflow_runtime_policy_rejects_unsupported_allowlist_patterns() {
+        let workflow = r#"
+jobs:
+  security:
+    steps:
+      - uses: actions/checkout@v6
+"#;
+        let mut allowlist = BTreeMap::new();
+        allowlist.insert(
+            (
+                ".github/workflows/security.yml".to_string(),
+                "actions/unknown-action@v1".to_string(),
+            ),
+            1,
+        );
+
+        let violations =
+            workflow_runtime_violations(".github/workflows/security.yml", workflow, &allowlist);
+
+        assert!(violations.iter().any(|violation| {
+            violation.contains("unsupported exception")
+                && violation.contains("actions/unknown-action@v1")
+        }));
+    }
+
+    #[test]
+    fn workflow_runtime_policy_rejects_dependency_review_over_allowlisted_count() {
+        let workflow = r#"
+jobs:
+  dependency-review:
+    steps:
+      - uses: actions/dependency-review-action@v4
+      - uses: actions/dependency-review-action@v4
+"#;
+        let mut allowlist = BTreeMap::new();
+        allowlist.insert(
+            (
+                ".github/workflows/security.yml".to_string(),
+                "actions/dependency-review-action@v4".to_string(),
+            ),
+            1,
+        );
+
+        let violations =
+            workflow_runtime_violations(".github/workflows/security.yml", workflow, &allowlist);
+
+        assert!(violations.iter().any(|violation| {
+            violation.contains("uses `actions/dependency-review-action@v4` 2 time(s), allowed 1")
+        }));
     }
 
     #[test]

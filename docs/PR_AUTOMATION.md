@@ -139,8 +139,10 @@ until the dependency graph baseline is stable.
 `ci-fast` is the current non-mutating local and CI check lane. It runs the Rust
 checks plus the existing policy checks for static language, panic-family usage,
 lint-suppression bypasses, local context leaks, file policy, executable bits,
-workflow shell budgets, spec format, fixture contracts, generated files,
-dependencies, process spawning, and network policy. Those policy checks write
+workflow shell budgets and action runtime policy, spec format, fixture
+contracts, generated files, dependencies, process spawning, and network policy.
+The workflow check rejects avoidable Node-20-backed action majors and requires
+Node 24 for extension build and publish workflows. Those policy checks write
 Markdown pass/fail reports under `target/ripr/reports`.
 
 ## Command Lanes

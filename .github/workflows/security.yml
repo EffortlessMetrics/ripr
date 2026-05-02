@@ -13,7 +13,7 @@ jobs:
     name: cargo-deny
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
@@ -27,8 +27,10 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
+      # TODO: upgrade when GitHub publishes a Node-24-backed Dependency Review
+      # release. v4 remains the official hard security gate for dependency diffs.
       - uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: high

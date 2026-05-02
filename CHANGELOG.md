@@ -112,6 +112,10 @@ how future PRs are scoped or reviewed.
   an advisory Codecov coverage workflow.
 - Added cargo-deny supply-chain policy, a security workflow with GitHub
   Dependency Review, and `cargo xtask check-supply-chain`.
+- Moved GitHub workflow actions to Node-24-backed majors where available,
+  moved extension build and publish workflows to Node 24, updated extension
+  Node typings, and added workflow runtime policy checks with a documented
+  Dependency Review action exception.
 - Added the unknown stop-reason invariant so unknown findings surface explicit
   stop reasons across domain, JSON/context, GitHub annotation, and human output.
 - Added probe-relative oracle kind and strength classification so exact error
