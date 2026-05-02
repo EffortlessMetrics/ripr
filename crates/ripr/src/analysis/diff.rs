@@ -125,6 +125,7 @@ fn parse_start(segment: &str) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn parses_added_lines() {
@@ -134,5 +135,45 @@ mod tests {
         assert_eq!(files[0].path, PathBuf::from("src/lib.rs"));
         assert_eq!(files[0].added_lines[0].line, 1);
         assert_eq!(files[0].added_lines[0].text, "b");
+    }
+
+    proptest! {
+        #[test]
+        fn parse_unified_diff_preserves_added_line_numbers(
+            start in 1usize..200,
+            prefixes in proptest::collection::vec(any::<bool>(), 0..50),
+            suffixes in proptest::collection::vec(any::<bool>(), 0..50),
+        ) {
+            let mut diff = String::from(
+                "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n",
+            );
+            diff.push_str(&format!("@@ -{start},1 +{start},1 @@\n"));
+
+            let mut expected_line = start;
+            for is_blank in &prefixes {
+                if *is_blank {
+                    diff.push('\n');
+                } else {
+                    diff.push_str(" context\n");
+                }
+                expected_line += 1;
+            }
+
+            diff.push_str("+mutated\n");
+
+            for is_blank in &suffixes {
+                if *is_blank {
+                    diff.push('\n');
+                } else {
+                    diff.push_str(" context\n");
+                }
+            }
+
+            let files = parse_unified_diff(&diff);
+            prop_assert_eq!(files.len(), 1);
+            prop_assert_eq!(files[0].added_lines.len(), 1);
+            prop_assert_eq!(files[0].added_lines[0].line, expected_line);
+            prop_assert_eq!(files[0].added_lines[0].text.as_str(), "mutated");
+        }
     }
 }
