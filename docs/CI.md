@@ -64,6 +64,7 @@ cargo xtask goldens check
 cargo xtask golden-drift
 cargo xtask test-oracle-report
 cargo xtask dogfood
+cargo xtask critic
 cargo xtask reports index
 cargo xtask receipts
 cargo xtask receipts check
@@ -80,8 +81,9 @@ expected-output scaffolding without accepting output drift. `golden-drift`
 writes advisory Markdown and JSON summaries of semantic expected-output drift
 for reviewers. `test-oracle-report` writes an advisory baseline for the strength
 of `ripr`'s own Rust test oracles. `dogfood` writes a non-blocking
-`ripr`-on-`ripr` report from stable fixture diffs. `reports index` writes a
-reviewer front door for generated reports.
+`ripr`-on-`ripr` report from stable fixture diffs. `critic` writes an advisory
+adversarial review packet from the current diff, reports, and receipts.
+`reports index` writes a reviewer front door for generated reports.
 `receipts` writes machine-readable gate evidence under `target/ripr/receipts`,
 and `receipts check` validates the receipt set.
 
@@ -136,6 +138,7 @@ cargo xtask goldens check
 cargo xtask golden-drift
 cargo xtask test-oracle-report
 cargo xtask dogfood
+cargo xtask critic
 cargo xtask reports index
 cargo xtask receipts
 cargo xtask receipts check

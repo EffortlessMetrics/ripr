@@ -37,6 +37,7 @@ cargo xtask golden-drift
 cargo xtask test-oracle-report
 cargo xtask check-test-oracles
 cargo xtask dogfood
+cargo xtask critic
 cargo xtask reports index
 cargo xtask receipts
 cargo xtask receipts check
@@ -97,6 +98,15 @@ alias that produces the same non-blocking report.
 `dogfood` runs `ripr check --mode fast` against stable in-repo fixture diffs,
 writes actual outputs under `target/ripr/dogfood/`, and writes advisory
 Markdown and JSON reports under `target/ripr/reports/`.
+
+`critic` writes an advisory adversarial review packet to
+`target/ripr/reports/critic.md` and `target/ripr/reports/critic.json`. It reads
+the current diff plus generated reports and receipts, then flags likely missing
+evidence such as analyzer changes without fixture/golden evidence, output
+changes without output-contract evidence, campaign movement without campaign
+reports, fixture output drift without blessing reasons, policy changes without
+process docs, and extension changes that still need npm compile/package proof.
+It does not fail CI.
 
 `reports index` writes `target/ripr/reports/index.md` and
 `target/ripr/reports/index.json` as a reviewer front door. It summarizes the
@@ -198,6 +208,7 @@ cargo xtask golden-drift
 cargo xtask test-oracle-report
 cargo xtask check-test-oracles
 cargo xtask dogfood
+cargo xtask critic
 cargo xtask reports index
 cargo xtask receipts
 cargo xtask receipts check
@@ -237,6 +248,7 @@ cargo xtask golden-drift
 cargo xtask test-oracle-report
 cargo xtask check-test-oracles
 cargo xtask dogfood
+cargo xtask critic
 cargo xtask reports index
 cargo xtask receipts
 cargo xtask receipts check
@@ -462,6 +474,8 @@ test-oracles.md
 test-oracles.json
 dogfood.md
 dogfood.json
+critic.md
+critic.json
 index.md
 index.json
 receipts.md
@@ -483,9 +497,9 @@ evidence without delaying Campaign 3:
 
 | Order | PR | Purpose |
 | ---: | --- | --- |
-| 1 | `automation/critic-report` | Add an advisory adversarial review packet from existing reports. |
-| 2 | `devex/onboard-doctor` | Report whether the local checkout and toolchain are ready to work. |
-| 3 | `devex/install-hooks` | Generate local hooks without checking executable scripts into the repo. |
+| 1 | `devex/onboard-doctor` | Report whether the local checkout and toolchain are ready to work. |
+| 2 | `devex/install-hooks` | Generate local hooks without checking executable scripts into the repo. |
+| 3 | `xtask/command-registry` | Make the growing command surface self-describing. |
 
 Analyzer work can now move through Codex Goals campaigns. Each campaign may span
 multiple PRs, while each work item should still follow the scoped PR contract.
