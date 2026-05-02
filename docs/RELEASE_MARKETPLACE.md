@@ -114,8 +114,33 @@ assets before publishing the marketplace VSIX.
 VS Code Marketplace listing is live.
 Open VSX listing is live.
 Both listings show the same version.
+VS Marketplace manual install badge count was refreshed.
+Open VSX badges render.
 GitHub Release has the VSIX attached.
 Installing from each registry works.
 The extension starts `ripr lsp`.
 Missing `ripr` executable shows the install/settings message.
 ```
+
+## Marketplace Badge Maintenance
+
+VS Marketplace install-count badges are manually maintained.
+
+Do not use live VS Marketplace Shields routes for installs, downloads, or
+versions. They are intentionally not treated as a reliable source of truth for
+this repo.
+
+Use static badges instead:
+
+```text
+https://img.shields.io/badge/VS%20Marketplace-<count>%20installs-0078D4
+```
+
+After each extension release:
+
+1. Open the VS Marketplace publisher metrics page.
+2. Record the current install count.
+3. Update the manual badge count in `editors/vscode/README.md`.
+4. Update `README.md` too if the root README carries marketplace badges.
+5. Update the hidden `Last checked: YYYY-MM-DD` comment near the badge.
+6. Leave Open VSX badges as live Shields badges.
