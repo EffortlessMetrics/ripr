@@ -12,6 +12,7 @@
 .cargo/config.toml|cargo_config|rust|Cargo aliases for repository tooling.
 .github/ISSUE_TEMPLATE/*.yaml|github_template|repo-process|GitHub issue forms.
 .github/ISSUE_TEMPLATE/*.yml|github_template|repo-process|GitHub issue forms.
+.github/dependabot.yml|github_dependency_automation|security|Dependabot update configuration for Cargo, npm, and GitHub Actions.
 .github/workflows/*.yaml|ci_declarative|release/ci|GitHub Actions workflow definitions.
 .github/workflows/*.yml|ci_declarative|release/ci|GitHub Actions workflow definitions.
 .gitignore|repo_config|repo|Git ignore rules.

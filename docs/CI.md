@@ -161,16 +161,25 @@ crates, and approved dependency sources. Duplicate dependency findings are
 warnings while the `ra_ap_syntax` dependency graph is being baselined.
 
 Pull requests also run GitHub Dependency Review for high-severity vulnerability
-alerts and denied license families. Dependency Review is advisory until GitHub
-Dependency Graph is enabled for the repository; after that setting is enabled,
-remove `continue-on-error` from the workflow to make dependency-review findings
-blocking.
+alerts and denied license families. Dependency Graph is enabled for the
+repository, so Dependency Review is a blocking security gate.
 
 The same cargo-deny check can be run locally with:
 
 ```bash
 cargo xtask check-supply-chain
 ```
+
+Dependabot is configured in `.github/dependabot.yml` for Cargo dependencies,
+the VS Code extension npm package, and GitHub Actions. Dependabot PRs are not
+auto-merged; they must pass the normal CI, coverage, security, and `xtask`
+checks before merge.
+
+GitHub-hosted security settings are tracked in
+[Repository settings](REPO_SETTINGS.md). Dependency Graph, Dependabot alerts,
+Dependabot security updates, secret scanning, push protection, and private
+vulnerability reporting are settings, not workflow files. Keep that document
+updated when repository settings change.
 
 Release workflows handle extension publishing and server binary releases.
 
