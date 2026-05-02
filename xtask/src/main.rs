@@ -24,9 +24,48 @@ struct RunBlock {
     text: String,
 }
 
+#[derive(Clone, Debug)]
+pub enum CheckStatus {
+    Pass,
+    Warn,
+    Fail,
+}
+
+#[derive(Clone, Debug)]
+pub enum FixKind {
+    AutoFixable,
+    AuthorDecisionRequired,
+    ReviewerDecisionRequired,
+    PolicyExceptionRequired,
+}
+
+#[derive(Clone, Debug)]
+pub struct CheckViolation {
+    pub check: String,
+    pub path: Option<PathBuf>,
+    pub line: Option<usize>,
+    pub severity: CheckStatus,
+    pub category: String,
+    pub message: String,
+    pub why_it_matters: String,
+    pub fix_kind: FixKind,
+    pub suggested_commands: Vec<String>,
+    pub suggested_patch: Option<String>,
+    pub exception_template: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct CheckReport {
+    pub check: String,
+    pub status: CheckStatus,
+    pub violations: Vec<CheckViolation>,
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let result = match args.get(1).map(|s| s.as_str()) {
+        Some("shape") => shape(),
+        Some("fix-pr") => fix_pr(),
         Some("ci-fast") => ci_fast(),
         Some("ci-full") => ci_full(),
         Some("check-static-language") => check_static_language(),
@@ -106,8 +145,22 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
+        "xtask commands:\n  shape\n  fix-pr\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
     );
+}
+
+fn shape() -> Result<(), String> {
+    ensure_reports_dir()?;
+    run("cargo", &["fmt"])?;
+    let sorted = sort_allowlist_files()?;
+    let body = shape_report_body(&sorted);
+    write_report("shape.md", &body)
+}
+
+fn fix_pr() -> Result<(), String> {
+    shape()?;
+    let body = "# ripr fix-pr report\n\nStatus: pass\n\nActions:\n\n- Ran `cargo xtask shape`.\n- Full PR surface classification is intentionally deferred to the upcoming `cargo xtask pr-summary` command.\n\nNext commands:\n\n```bash\ncargo xtask ci-fast\n```\n";
+    write_report("fix-pr.md", body)
 }
 
 fn check_static_language() -> Result<(), String> {
@@ -526,6 +579,109 @@ fn check_count_policy(
     } else {
         Err(format!("{label} check failed:\n{}", violations.join("\n")))
     }
+}
+
+fn sort_allowlist_files() -> Result<Vec<String>, String> {
+    let mut changed = Vec::new();
+    for root in [Path::new(".ripr"), Path::new("policy")] {
+        if !root.exists() {
+            continue;
+        }
+        for path in collect_files(root)? {
+            if path.extension().and_then(|value| value.to_str()) != Some("txt") {
+                continue;
+            }
+            let original = read_text_lossy(&path)?;
+            let sorted = sorted_allowlist_content(&original);
+            if sorted != original {
+                fs::write(&path, sorted).map_err(|err| {
+                    format!(
+                        "failed to write sorted allowlist {}: {err}\nrerun with `cargo xtask shape` after fixing file permissions",
+                        path.display()
+                    )
+                })?;
+                changed.push(normalize_path(&path));
+            }
+        }
+    }
+    changed.sort();
+    Ok(changed)
+}
+
+fn sorted_allowlist_content(text: &str) -> String {
+    let mut prefix = Vec::new();
+    let mut entries = Vec::new();
+    let mut saw_entry = false;
+
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if !saw_entry && (trimmed.is_empty() || trimmed.starts_with('#')) {
+            prefix.push(line.trim_end().to_string());
+            continue;
+        }
+        saw_entry = true;
+        if !trimmed.is_empty() && !trimmed.starts_with('#') {
+            entries.push(trimmed.to_string());
+        }
+    }
+
+    entries.sort();
+    let mut output = String::new();
+    if !prefix.is_empty() {
+        output.push_str(&prefix.join("\n"));
+        output.push('\n');
+    }
+    if !entries.is_empty() {
+        if !output.ends_with("\n\n") {
+            output.push('\n');
+        }
+        output.push_str(&entries.join("\n"));
+        output.push('\n');
+    }
+    if output.is_empty() {
+        output.push('\n');
+    }
+    output
+}
+
+fn shape_report_body(sorted: &[String]) -> String {
+    let mut body = String::from(
+        "# ripr shape report\n\nStatus: pass\n\nActions:\n\n- Ran `cargo fmt`.\n- Ensured `target/ripr/reports` exists.\n",
+    );
+    if sorted.is_empty() {
+        body.push_str("- Allowlist files were already sorted.\n");
+    } else {
+        body.push_str("- Sorted allowlist files:\n");
+        for path in sorted {
+            body.push_str(&format!("  - `{path}`\n"));
+        }
+    }
+    body.push_str("\nNext commands:\n\n```bash\ncargo xtask ci-fast\n```\n");
+    body
+}
+
+fn ensure_reports_dir() -> Result<(), String> {
+    fs::create_dir_all(reports_dir()).map_err(|err| {
+        format!(
+            "failed to create {}: {err}\nrerun with `cargo xtask shape` after fixing directory permissions",
+            reports_dir().display()
+        )
+    })
+}
+
+fn write_report(file_name: &str, body: &str) -> Result<(), String> {
+    ensure_reports_dir()?;
+    let path = reports_dir().join(file_name);
+    fs::write(&path, body).map_err(|err| {
+        format!(
+            "failed to write {}: {err}\nrerun with `cargo xtask shape` after fixing file permissions",
+            path.display()
+        )
+    })
+}
+
+fn reports_dir() -> PathBuf {
+    Path::new("target").join("ripr").join("reports")
 }
 
 fn read_path_allowlist(path: &str) -> Result<BTreeSet<String>, String> {
@@ -1054,7 +1210,7 @@ fn is_word_char(value: Option<char>) -> bool {
 mod tests {
     use super::{
         extract_workflow_run_blocks, glob_matches, is_dependency_surface_candidate,
-        is_generated_candidate,
+        is_generated_candidate, sorted_allowlist_content,
     };
 
     #[test]
@@ -1123,5 +1279,16 @@ jobs:
             "tools/example/requirements.txt"
         ));
         assert!(!is_dependency_surface_candidate("docs/DEPENDENCIES.md"));
+    }
+
+    #[test]
+    fn sorted_allowlist_content_preserves_header_and_sorts_entries() {
+        let input = "# Header\n# More\n\nz|kind|owner|reason\na|kind|owner|reason\n";
+        let sorted = sorted_allowlist_content(input);
+
+        assert_eq!(
+            sorted,
+            "# Header\n# More\n\na|kind|owner|reason\nz|kind|owner|reason\n"
+        );
     }
 }

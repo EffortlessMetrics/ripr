@@ -20,6 +20,7 @@ See [Test taxonomy](TEST_TAXONOMY.md) for required proof levels by change type.
 Run everything:
 
 ```bash
+cargo xtask shape
 cargo fmt --check
 cargo check --workspace --all-targets
 cargo test --workspace

@@ -7,10 +7,10 @@
 # owner and reason. Keep dependency surfaces scoped to Cargo, the VS Code
 # extension, and fixture input workspaces.
 
-Cargo.toml|rust_workspace_manifest|rust|Root Cargo workspace manifest.
 Cargo.lock|rust_workspace_lockfile|rust|Pinned Cargo dependency graph.
+Cargo.toml|rust_workspace_manifest|rust|Root Cargo workspace manifest.
 crates/**/Cargo.toml|rust_package_manifest|rust|Cargo package manifests.
-xtask/Cargo.toml|rust_tool_manifest|repo-policy|xtask package manifest.
-editors/vscode/package.json|editor_extension_manifest|lsp/editor|VS Code extension package manifest.
 editors/vscode/package-lock.json|editor_extension_lockfile|lsp/editor|Pinned npm dependency graph for the VS Code extension.
+editors/vscode/package.json|editor_extension_manifest|lsp/editor|VS Code extension package manifest.
 fixtures/**/Cargo.toml|fixture_input|analysis-fixtures|Fixture workspaces may contain Cargo manifests as analyzed inputs.
+xtask/Cargo.toml|rust_tool_manifest|repo-policy|xtask package manifest.

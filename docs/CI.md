@@ -28,6 +28,18 @@ cargo package -p ripr --list
 cargo publish -p ripr --dry-run
 ```
 
+Local shaping commands are intentionally separate from CI because they mutate
+the worktree:
+
+```bash
+cargo xtask shape
+cargo xtask fix-pr
+```
+
+They are safe to run before checks. `shape` runs `cargo fmt`, sorts allowlists,
+ensures `target/ripr/reports`, and writes a local report. `fix-pr` currently
+runs `shape` and writes a local fix-pr report.
+
 Local policy checks can also be run directly:
 
 ```bash
@@ -74,6 +86,7 @@ Release workflows handle extension publishing and server binary releases.
 Planned CI work:
 
 - cache Cargo and npm dependencies without hiding stale-lockfile failures
+- add full `cargo xtask pr-summary` and report uploads
 - add fixture-golden tests once the fixture lab exists
 - add markdown/link checks for docs-heavy PRs
 - add traceability and capability-matrix checks

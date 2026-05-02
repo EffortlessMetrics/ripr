@@ -167,6 +167,29 @@ Acceptance:
 - [ ] New process spawning fails unless allowlisted with a reason.
 - [ ] New network behavior fails unless allowlisted with a reason.
 
+## PR 1E: `shape-fix-pr`
+
+Purpose: add the first mutating PR-shaping commands without changing existing
+policy semantics.
+
+Deliverables:
+
+- [ ] Add `cargo xtask shape`.
+- [ ] Add `cargo xtask fix-pr`.
+- [ ] Run `cargo fmt` through `shape`.
+- [ ] Sort `.ripr/*.txt` and `policy/*.txt` allowlists through `shape`.
+- [ ] Ensure `target/ripr/reports` exists.
+- [ ] Write `target/ripr/reports/shape.md`.
+- [ ] Write `target/ripr/reports/fix-pr.md`.
+- [ ] Document safe mutations and repair guidance.
+
+Acceptance:
+
+- [ ] `cargo xtask shape` passes.
+- [ ] `cargo xtask fix-pr` passes.
+- [ ] `cargo xtask ci-fast` passes after shaping.
+- [ ] Shaping does not add policy exceptions or bless output drift.
+
 ## PR 2: `fixture-laboratory`
 
 Purpose: build the regression control bench before changing analyzer internals.

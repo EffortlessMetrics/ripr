@@ -84,10 +84,33 @@ Before requesting review:
 - [ ] New non-Rust programming files are covered by the file policy allowlist.
 - [ ] New generated files, dependency surfaces, process spawning, and network
       behavior are covered by policy allowlists.
+- [ ] `cargo xtask shape` or `cargo xtask fix-pr` was run before final checks.
+
+## PR Shaping Commands
+
+Use `shape` when the tree needs safe normalization:
+
+```bash
+cargo xtask shape
+```
+
+It can run `cargo fmt`, sort policy allowlists, create
+`target/ripr/reports`, and write `target/ripr/reports/shape.md`.
+
+Use `fix-pr` as the current safe repair entrypoint:
+
+```bash
+cargo xtask fix-pr
+```
+
+It runs `shape` and writes `target/ripr/reports/fix-pr.md`. Future automation
+will add a full reviewer packet through `cargo xtask pr-summary`.
 
 ## Required Rust Gates
 
 ```bash
+cargo xtask shape
+cargo xtask fix-pr
 cargo fmt --check
 cargo check --workspace --all-targets
 cargo test --workspace

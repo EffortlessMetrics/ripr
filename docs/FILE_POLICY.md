@@ -126,6 +126,15 @@ surfaces live in [network_allowlist.txt](../policy/network_allowlist.txt).
 
 ## Checks
 
+Safe normalization:
+
+```bash
+cargo xtask shape
+```
+
+This sorts allowlist entries while preserving their headers. It does not add
+exceptions or make policy decisions.
+
 Run:
 
 ```bash

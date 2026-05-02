@@ -4,9 +4,9 @@
 # New production or test code should not add entries here unless the exception
 # is reviewed. The preferred direction is to remove entries.
 
-crates/ripr/src/lsp.rs|expect(|1|existing production debt tracked in docs/METRICS.md
-crates/ripr/tests/cli_smoke.rs|unwrap(|2|existing test debt tracked in docs/METRICS.md
 crates/ripr/src/analysis/mod.rs|unwrap(|10|existing test debt tracked in docs/METRICS.md
-crates/ripr/src/lsp.rs|unwrap(|1|existing test debt tracked in docs/METRICS.md
-crates/ripr/src/analysis/rust_index.rs|unwrap(|2|string pattern detects analyzed user code, not a call site
 crates/ripr/src/analysis/rust_index.rs|expect(|2|string pattern detects analyzed user code, not a call site
+crates/ripr/src/analysis/rust_index.rs|unwrap(|2|string pattern detects analyzed user code, not a call site
+crates/ripr/src/lsp.rs|expect(|1|existing production debt tracked in docs/METRICS.md
+crates/ripr/src/lsp.rs|unwrap(|1|existing test debt tracked in docs/METRICS.md
+crates/ripr/tests/cli_smoke.rs|unwrap(|2|existing test debt tracked in docs/METRICS.md
