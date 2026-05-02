@@ -74,3 +74,5 @@ how future PRs are scoped or reviewed.
   call, return, and literal facts while preserving current analyzer output.
 - Added the `RustSyntaxAdapter` boundary with a lexical adapter and changed-line
   node facts while preserving fixture and golden output.
+- Added ADR 0006 to select `ra_ap_syntax` as the Campaign 2 Rust parser
+  substrate while keeping parser-specific types behind the syntax adapter.

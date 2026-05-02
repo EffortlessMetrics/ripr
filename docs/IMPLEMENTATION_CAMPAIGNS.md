@@ -106,6 +106,7 @@ End state:
 
 - `FileFacts` model exists
 - syntax adapter boundary exists
+- Rust parser substrate is recorded in an ADR
 - tests and oracles are extracted from syntax-backed facts
 - probes attach to stable owner symbols
 - current probe families are generated from syntax facts
@@ -116,6 +117,7 @@ Work items:
 | --- | --- | --- |
 | `analysis/file-facts-model` | done | FileFacts DTOs exist and the lexical scanner fills them without output drift. |
 | `analysis/syntax-adapter-mvp` | done | RustSyntaxAdapter boundary exists with lexical adapter compatibility. |
+| `design/rust-syntax-substrate` | done | ADR 0006 selects `ra_ap_syntax` behind the adapter and keeps parser types internal. |
 | `analysis/ast-test-oracle-extraction` | ready | Extract tests and assertion/oracle shapes through the adapter boundary. |
 | `analysis/ast-probe-ownership` | blocked | Depends on syntax node and owner facts. |
 | `analysis/ast-probe-generation` | blocked | Depends on ownership and syntax-backed facts. |
@@ -123,6 +125,8 @@ Work items:
 Dependencies:
 
 - `analysis/file-facts-model` should merge before syntax adapter work.
+- Parser-backed extraction should use the substrate decision in
+  [ADR 0006](adr/0006-rust-syntax-substrate.md).
 - Analyzer work items are non-stackable unless the manifest explicitly says
   otherwise.
 
@@ -140,7 +144,7 @@ cargo xtask pr-summary
 Blocking conditions:
 
 - output drift without golden evidence
-- parser dependency requiring scope expansion
+- parser-specific types leaking outside the syntax adapter
 - architecture exception required
 - missing stop reason for new unknowns
 

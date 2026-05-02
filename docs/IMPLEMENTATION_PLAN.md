@@ -14,7 +14,7 @@ through multiple work items in a campaign, but each work item should follow the
 | Campaign | Objective | Work items |
 | --- | --- | --- |
 | Agentic DevEx Foundation | Make the repo safe for Codex Goals and human review. | `policy/architecture-guard`, `output/output-contract-check`, `docs/codex-goals-campaigns`, `fixtures/runner-comparison-v1`, `fixtures/first-two-goldens`, `testing/test-oracle-report`, `dogfood/static-self-check` |
-| Syntax-Backed Analyzer Foundation | Move the analyzer from lexical facts to syntax-backed facts. | `analysis/file-facts-model`, `analysis/syntax-adapter-mvp`, `analysis/ast-test-oracle-extraction`, `analysis/ast-probe-ownership`, `analysis/ast-probe-generation` |
+| Syntax-Backed Analyzer Foundation | Move the analyzer from lexical facts to syntax-backed facts. | `analysis/file-facts-model`, `analysis/syntax-adapter-mvp`, `design/rust-syntax-substrate`, `analysis/ast-test-oracle-extraction`, `analysis/ast-probe-ownership`, `analysis/ast-probe-generation` |
 | Evidence Quality | Improve oracle strength, local flow, activation values, output evidence, and stop reasons. | `analysis/oracle-strength-v2`, `analysis/local-delta-flow-v1`, `analysis/activation-value-modeling-v1`, `output/evidence-first-output`, `output/unknown-stop-reason-invariant` |
 | Editor and Agent Loop | Turn findings into editor actions and agent test-writing briefs. | `lsp/evidence-hover-actions`, `context/agent-context-v2`, `docs/how-to-use-agent-context` |
 | Adoption and Calibration | Make `ripr` practical in repositories, CI, and offline calibration loops. | `config/ripr-config-v1`, `ci/sarif-ci-policy`, `calibration/cargo-mutants-scaffold`, `cache/persistent-cache-v1` |
@@ -573,6 +573,8 @@ Deliverables:
 - [x] Lexical adapter `summarize_file` implementation.
 - [x] Changed range to syntax-node mapping.
 - [x] No public API commitment to a parser crate.
+- [x] Parser substrate decision recorded in
+      [ADR 0006](adr/0006-rust-syntax-substrate.md).
 - [ ] Parser-backed `summarize_file` implementation.
 
 Acceptance:
