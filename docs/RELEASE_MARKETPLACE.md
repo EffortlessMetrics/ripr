@@ -73,16 +73,16 @@ Repository secrets:
 
 ```text
 VSCE_PAT
-OPEN_VSX_TOKEN
+OVSX_PAT
 ```
 
 The Open VSX namespace must exist before publish:
 
 ```bash
-npx ovsx create-namespace EffortlessMetrics -p "$OPEN_VSX_TOKEN"
+npx ovsx create-namespace EffortlessMetrics -p "$OVSX_PAT"
 ```
 
-## Manual Marketplace Publish
+## Manual Registry Publish
 
 ```bash
 cd editors/vscode
@@ -90,7 +90,7 @@ npm ci
 npm run compile
 npm run package
 npx @vscode/vsce publish --packagePath dist/ripr-0.2.0.vsix --pat "$VSCE_PAT"
-npx ovsx publish dist/ripr-0.2.0.vsix -p "$OPEN_VSX_TOKEN" --skip-duplicate
+npx ovsx publish dist/ripr-0.2.0.vsix -p "$OVSX_PAT" --skip-duplicate
 ```
 
 ## CI Publish
@@ -104,6 +104,15 @@ Use:
 The workflow packages one VSIX, uploads it as an artifact, publishes that same
 VSIX to both registries, and attaches it to the GitHub Release when run from a
 tag.
+
+To publish only Open VSX from a manual workflow run:
+
+```bash
+gh workflow run publish-extension.yml \
+  --field version=0.2.0 \
+  --field publish_vs_marketplace=false \
+  --field publish_open_vsx=true
+```
 
 For the first self-provisioning extension release, publish the server binary
 assets before publishing the marketplace VSIX.

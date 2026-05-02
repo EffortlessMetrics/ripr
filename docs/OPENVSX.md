@@ -21,13 +21,13 @@ namespace. The namespace must exist before publishing.
 6. Add the repository secret:
 
 ```text
-OPEN_VSX_TOKEN
+OVSX_PAT
 ```
 
 7. Create the namespace once:
 
 ```bash
-npx ovsx create-namespace EffortlessMetrics -p "$OPEN_VSX_TOKEN"
+npx ovsx create-namespace EffortlessMetrics -p "$OVSX_PAT"
 ```
 
 If this step is skipped, publishing can fail with:
@@ -45,8 +45,11 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
-npx ovsx publish dist/ripr-0.2.0.vsix -p "$OPEN_VSX_TOKEN" --skip-duplicate
+npx ovsx publish dist/ripr-0.2.0.vsix -p "$OVSX_PAT" --skip-duplicate
 ```
+
+The GitHub release workflow uses the same `OVSX_PAT` secret for Open VSX
+publishing.
 
 ## Verification
 
