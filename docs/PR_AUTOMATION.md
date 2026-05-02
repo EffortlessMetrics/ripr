@@ -17,8 +17,9 @@ allowlist order, report directory setup, generated indexes, or gate ordering.
 
 Codex Goals consume this harness. The `/goal` loop may advance a multi-PR
 campaign, but each work item should still leave the same shaped PR, reports, and
-review artifacts described here. Machine-readable receipts are the next planned
-trust artifact.
+review artifacts described here. Machine-readable receipts record which gates
+and report commands ran so agents and reviewers can inspect evidence without
+reading raw logs.
 
 ## Current Commands
 
@@ -36,6 +37,8 @@ cargo xtask test-oracle-report
 cargo xtask check-test-oracles
 cargo xtask dogfood
 cargo xtask reports index
+cargo xtask receipts
+cargo xtask receipts check
 cargo xtask ci-fast
 ```
 
@@ -88,6 +91,12 @@ Markdown and JSON reports under `target/ripr/reports/`.
 `target/ripr/reports/index.json` as a reviewer front door. It summarizes the
 active campaign, available reports, missing expected reports for the changed
 surface, advisory reports, and suggested next commands.
+
+`receipts` writes machine-readable gate receipts under `target/ripr/receipts/`
+for shape, fix-pr, ci-fast, check-pr, fixtures, goldens, test-oracle, dogfood,
+and metrics runs. `receipts check` validates the required receipt files and
+writes `target/ripr/reports/receipts.md`. `check-pr` refreshes receipts before
+the final report index.
 
 `ci-fast` is the current non-mutating local and CI check lane. It runs the Rust
 checks plus the existing policy checks for static language, panic-family usage,
@@ -159,6 +168,8 @@ cargo xtask test-oracle-report
 cargo xtask check-test-oracles
 cargo xtask dogfood
 cargo xtask reports index
+cargo xtask receipts
+cargo xtask receipts check
 cargo xtask check-traceability
 cargo xtask metrics
 cargo xtask check-capabilities
@@ -177,7 +188,8 @@ Local tools may fix. CI verifies.
 
 ### Reporting Commands
 
-Reporting commands produce review artifacts under `target/ripr/reports`.
+Reporting commands produce review artifacts under `target/ripr/reports` and
+machine-readable receipts under `target/ripr/receipts`.
 
 Current:
 
@@ -191,6 +203,8 @@ cargo xtask test-oracle-report
 cargo xtask check-test-oracles
 cargo xtask dogfood
 cargo xtask reports index
+cargo xtask receipts
+cargo xtask receipts check
 cargo xtask check-traceability
 cargo xtask metrics
 cargo xtask check-capabilities
@@ -361,10 +375,12 @@ CI uploads review artifacts from the Rust workflow when reports are present:
 
 ```text
 target/ripr/reports/
+target/ripr/receipts/
 ```
 
 CI also writes `target/ripr/reports/index.md` into the GitHub Actions job
-summary when the index exists.
+summary when the index exists. The report index lists available receipts when
+`target/ripr/receipts/` has been generated.
 
 Expected reports as the automation matures:
 
@@ -405,6 +421,7 @@ dogfood.md
 dogfood.json
 index.md
 index.json
+receipts.md
 pr-shape.md
 metrics.md
 metrics.json
@@ -423,11 +440,10 @@ evidence without delaying Campaign 3:
 
 | Order | PR | Purpose |
 | ---: | --- | --- |
-| 1 | `automation/gate-receipts-v1` | Write machine-readable receipts for gate runs. |
-| 2 | `automation/golden-drift-summary` | Summarize semantic golden drift for output-review PRs. |
-| 3 | `automation/critic-report` | Add an advisory adversarial review packet from existing reports. |
-| 4 | `devex/onboard-doctor` | Report whether the local checkout and toolchain are ready to work. |
-| 5 | `devex/install-hooks` | Generate local hooks without checking executable scripts into the repo. |
+| 1 | `automation/golden-drift-summary` | Summarize semantic golden drift for output-review PRs. |
+| 2 | `automation/critic-report` | Add an advisory adversarial review packet from existing reports. |
+| 3 | `devex/onboard-doctor` | Report whether the local checkout and toolchain are ready to work. |
+| 4 | `devex/install-hooks` | Generate local hooks without checking executable scripts into the repo. |
 
 Analyzer work can now move through Codex Goals campaigns. Each campaign may span
 multiple PRs, while each work item should still follow the scoped PR contract.

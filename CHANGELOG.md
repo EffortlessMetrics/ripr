@@ -90,3 +90,5 @@ how future PRs are scoped or reviewed.
   the next ready work items.
 - Added `cargo xtask reports index` to write a reviewer front door for generated
   report artifacts and surface it in CI job summaries.
+- Added `cargo xtask receipts` and `cargo xtask receipts check` for
+  machine-readable gate receipts under `target/ripr/receipts`.
