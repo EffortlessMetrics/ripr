@@ -38,34 +38,100 @@ mod tests {
         values.iter().map(|value| value.to_string()).collect()
     }
 
-    #[test]
-    fn parses_modes() {
-        assert_eq!(parse_mode("instant"), Ok(Mode::Instant));
-        assert_eq!(parse_mode("draft"), Ok(Mode::Draft));
-        assert_eq!(parse_mode("fast"), Ok(Mode::Fast));
-        assert_eq!(parse_mode("deep"), Ok(Mode::Deep));
-        assert_eq!(parse_mode("ready"), Ok(Mode::Ready));
-        assert_eq!(parse_mode("slow"), Err("unknown mode \"slow\"".to_string()));
+    struct ModeScenario {
+        given_mode: &'static str,
+        then_result: Result<Mode, String>,
+    }
+
+    struct FormatScenario {
+        given_format: &'static str,
+        then_result: Result<OutputFormat, String>,
     }
 
     #[test]
-    fn parses_output_formats() {
-        assert_eq!(parse_format("human"), Ok(OutputFormat::Human));
-        assert_eq!(parse_format("text"), Ok(OutputFormat::Human));
-        assert_eq!(parse_format("json"), Ok(OutputFormat::Json));
-        assert_eq!(parse_format("github"), Ok(OutputFormat::Github));
-        assert_eq!(
-            parse_format("xml"),
-            Err("unknown format \"xml\"".to_string())
-        );
+    fn given_mode_strings_when_parse_mode_then_returns_expected_result() {
+        let scenarios = [
+            ModeScenario {
+                given_mode: "instant",
+                then_result: Ok(Mode::Instant),
+            },
+            ModeScenario {
+                given_mode: "draft",
+                then_result: Ok(Mode::Draft),
+            },
+            ModeScenario {
+                given_mode: "fast",
+                then_result: Ok(Mode::Fast),
+            },
+            ModeScenario {
+                given_mode: "deep",
+                then_result: Ok(Mode::Deep),
+            },
+            ModeScenario {
+                given_mode: "ready",
+                then_result: Ok(Mode::Ready),
+            },
+            ModeScenario {
+                given_mode: "slow",
+                then_result: Err("unknown mode \"slow\"".to_string()),
+            },
+        ];
+
+        for scenario in scenarios {
+            let actual = parse_mode(scenario.given_mode);
+            assert_eq!(
+                actual, scenario.then_result,
+                "mode scenario failed for given={:?}",
+                scenario.given_mode
+            );
+        }
     }
 
     #[test]
-    fn expects_value_at_index() {
+    fn given_format_strings_when_parse_format_then_returns_expected_result() {
+        let scenarios = [
+            FormatScenario {
+                given_format: "human",
+                then_result: Ok(OutputFormat::Human),
+            },
+            FormatScenario {
+                given_format: "text",
+                then_result: Ok(OutputFormat::Human),
+            },
+            FormatScenario {
+                given_format: "json",
+                then_result: Ok(OutputFormat::Json),
+            },
+            FormatScenario {
+                given_format: "github",
+                then_result: Ok(OutputFormat::Github),
+            },
+            FormatScenario {
+                given_format: "xml",
+                then_result: Err("unknown format \"xml\"".to_string()),
+            },
+        ];
+
+        for scenario in scenarios {
+            let actual = parse_format(scenario.given_format);
+            assert_eq!(
+                actual, scenario.then_result,
+                "format scenario failed for given={:?}",
+                scenario.given_format
+            );
+        }
+    }
+
+    #[test]
+    fn given_args_and_index_when_expect_value_then_returns_value_or_missing_error() {
         let values = args(&["--diff", "sample.diff"]);
-        assert_eq!(expect_value(&values, 1, "--diff"), Ok("sample.diff"));
+
+        let when_value_is_present = expect_value(&values, 1, "--diff");
+        assert_eq!(when_value_is_present, Ok("sample.diff"));
+
+        let when_value_is_missing = expect_value(&values, 2, "--diff");
         assert_eq!(
-            expect_value(&values, 2, "--diff"),
+            when_value_is_missing,
             Err("missing value for --diff".to_string())
         );
     }
