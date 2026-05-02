@@ -4069,7 +4069,18 @@ fn read_pipe_records(path: &str, field_count: usize) -> Result<Vec<Vec<String>>,
 
 fn check_output_contracts() -> Result<(), String> {
     let records = read_pipe_records("policy/output_contracts.txt", 3)?;
-    let domain = read_text_lossy(Path::new("crates/ripr/src/domain.rs"))?;
+    let mut domain = String::new();
+    for path in [
+        "crates/ripr/src/domain/mod.rs",
+        "crates/ripr/src/domain/classification.rs",
+        "crates/ripr/src/domain/evidence.rs",
+        "crates/ripr/src/domain/probe.rs",
+        "crates/ripr/src/domain/summary.rs",
+        "crates/ripr/src/domain/support.rs",
+    ] {
+        domain.push_str(&read_text_lossy(Path::new(path))?);
+        domain.push('\n');
+    }
     let app = read_text_lossy(Path::new("crates/ripr/src/app.rs"))?;
     let mut json_output = String::new();
     for path in [
@@ -4127,7 +4138,7 @@ fn check_output_contracts() -> Result<(), String> {
             "exposure_class" | "severity" | "probe_family" | "delta" | "stage_state"
             | "confidence" | "oracle_strength" | "stop_reason" => {
                 require_contract_value(
-                    "crates/ripr/src/domain.rs",
+                    "crates/ripr/src/domain/",
                     &domain,
                     value,
                     kind,
@@ -5677,7 +5688,7 @@ fn is_analysis_path(path: &str) -> bool {
 
 fn is_output_surface_path(path: &str) -> bool {
     path.starts_with("crates/ripr/src/output/")
-        || path == "crates/ripr/src/domain.rs"
+        || path.starts_with("crates/ripr/src/domain/")
         || path == "crates/ripr/src/lsp.rs"
         || path == "docs/OUTPUT_SCHEMA.md"
         || path == "policy/output_contracts.txt"
@@ -6107,7 +6118,7 @@ fn pr_shape_warnings(changes: &[ChangedPath]) -> Vec<String> {
 
     let output_changed = changes.iter().any(|change| {
         change.path.starts_with("crates/ripr/src/output/")
-            || change.path == "crates/ripr/src/domain.rs"
+            || change.path.starts_with("crates/ripr/src/domain/")
             || change.path == "crates/ripr/src/lsp.rs"
     });
     let output_evidence = changes.iter().any(|change| {

@@ -17,7 +17,7 @@ fixtures = [
   "fixtures/weak_error_oracle"
 ]
 code = [
-  "crates/ripr/src/domain.rs",
+  "crates/ripr/src/domain",
   "crates/ripr/src/app.rs",
   "crates/ripr/src/analysis",
   "crates/ripr/src/output",
