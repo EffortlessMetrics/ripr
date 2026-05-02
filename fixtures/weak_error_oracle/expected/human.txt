@@ -17,7 +17,7 @@ RIPR:
   Infect:      yes — Reachable tests can plausibly activate this changed behavior
   Propagate:   yes — Changed behavior reaches an effect boundary such as a call, write, publish, save, or send
   Observe:     yes — A related test observes a value or effect near the changed behavior
-  Discriminate:weak — Only weak or smoke oracle found, such as is_ok/is_err, unwrap/expect, broad relational assertion, or non-empty check
+  Discriminate: weak — Only weak or smoke oracle found, such as is_ok/is_err, unwrap/expect, broad relational assertion, or non-empty check
 
 Related tests / oracles:
   - tests/errors.rs:4 empty_token_is_rejected [smoke] — assert!(authenticate("").is_err());
@@ -41,7 +41,7 @@ RIPR:
   Infect:      yes — Reachable tests can plausibly activate this changed behavior
   Propagate:   yes — Changed behavior can propagate through a return or Result boundary
   Observe:     yes — A related test observes a value or effect near the changed behavior
-  Discriminate:weak — Only weak or smoke oracle found, such as is_ok/is_err, unwrap/expect, broad relational assertion, or non-empty check
+  Discriminate: weak — Only weak or smoke oracle found, such as is_ok/is_err, unwrap/expect, broad relational assertion, or non-empty check
 
 Related tests / oracles:
   - tests/errors.rs:4 empty_token_is_rejected [smoke] — assert!(authenticate("").is_err());
@@ -65,7 +65,7 @@ RIPR:
   Infect:      yes — Reachable tests can plausibly activate this changed behavior
   Propagate:   yes — Changed behavior can propagate through a return or Result boundary
   Observe:     yes — A related test observes a value or effect near the changed behavior
-  Discriminate:weak — Only weak or smoke oracle found, such as is_ok/is_err, unwrap/expect, broad relational assertion, or non-empty check
+  Discriminate: weak — Only weak or smoke oracle found, such as is_ok/is_err, unwrap/expect, broad relational assertion, or non-empty check
 
 Related tests / oracles:
   - tests/errors.rs:4 empty_token_is_rejected [smoke] — assert!(authenticate("").is_err());
