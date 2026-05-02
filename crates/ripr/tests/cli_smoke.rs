@@ -110,7 +110,9 @@ fn context_json_returns_probe_and_discriminator_guidance() {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""id": "probe:crates_ripr_examples_sample_src_lib.rs:21:error_path""#));
+    assert!(
+        stdout.contains(r#""id": "probe:crates_ripr_examples_sample_src_lib.rs:21:error_path""#)
+    );
     assert!(stdout.contains(r#""discriminate": "weak""#));
     assert!(stdout.contains(r#""missing""#));
 }
