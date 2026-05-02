@@ -14,13 +14,14 @@ evidence = [
   "FileFacts DTOs",
   "lexical syntax adapter boundary",
   "ra_ap_syntax parser-backed test/oracle extraction",
-  "module-qualified and impl-qualified owner symbols"
+  "module-qualified and impl-qualified owner symbols",
+  "parser-backed probe shape facts"
 ]
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "ast-probe-generation"
+next = "oracle-strength-v2"
 metric = "findings include changed behavior, class, evidence, and next step"
 
 [[capability]]
@@ -34,12 +35,13 @@ evidence = [
   "FileFacts DTOs",
   "lexical syntax adapter boundary",
   "ra_ap_syntax parser-backed test/oracle extraction",
-  "module-qualified and impl-qualified owner symbols"
+  "module-qualified and impl-qualified owner symbols",
+  "parser-backed predicate probe shape facts"
 ]
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "ast-probe-generation"
+next = "local-delta-flow-v1"
 metric = "missing boundary discriminator detection"
 
 [[capability]]
@@ -49,7 +51,8 @@ status = "alpha"
 spec = "RIPR-SPEC-0001"
 evidence = [
   "sample error_path explain/context command",
-  "weak_error_oracle fixture"
+  "weak_error_oracle fixture",
+  "parser-backed error-path probe shape facts"
 ]
 fixtures = [
   "fixtures/weak_error_oracle"
@@ -64,12 +67,13 @@ status = "alpha"
 spec = "RIPR-SPEC-0001"
 evidence = [
   "syntax-first scanner",
-  "weak_error_oracle fixture"
+  "weak_error_oracle fixture",
+  "parser-backed return and tail-expression probe shape facts"
 ]
 fixtures = [
   "fixtures/weak_error_oracle"
 ]
-next = "ast-probe-generation"
+next = "oracle-strength-v2"
 metric = "exact vs smoke return oracle distinction"
 
 [[capability]]
@@ -79,12 +83,13 @@ status = "alpha"
 spec = "RIPR-SPEC-0001"
 evidence = [
   "syntax-first scanner",
-  "weak_error_oracle fixture"
+  "weak_error_oracle fixture",
+  "parser-backed call and side-effect probe shape facts"
 ]
 fixtures = [
   "fixtures/weak_error_oracle"
 ]
-next = "ast-probe-generation"
+next = "local-delta-flow-v1"
 metric = "side-effect or call boundary candidate named"
 
 [[capability]]
@@ -100,13 +105,14 @@ evidence = [
   "FileFacts DTOs",
   "lexical syntax adapter boundary",
   "ra_ap_syntax parser-backed test/oracle extraction",
-  "module-qualified and impl-qualified owner symbols"
+  "module-qualified and impl-qualified owner symbols",
+  "parser-backed probe shape facts"
 ]
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "ast-probe-generation"
+next = "oracle-strength-v2"
 metric = "fixture pass rate"
 
 [[capability]]
@@ -203,13 +209,14 @@ evidence = [
   "ra_ap_syntax dependency",
   "RustSyntaxAdapter parser adapter",
   "fixture/golden output stability",
-  "module-qualified and impl-qualified owner symbols"
+  "module-qualified and impl-qualified owner symbols",
+  "parser-backed probe shape facts"
 ]
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "ast-probe-generation"
+next = "oracle-strength-v2"
 metric = "syntax extraction parity"
 
 [[capability]]
@@ -245,5 +252,24 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "ast-probe-generation"
+next = "local-delta-flow-v1"
 metric = "duplicate symbols do not cross-link tests"
+
+[[capability]]
+id = "ast_backed_probe_generation"
+name = "AST-backed probe generation"
+status = "alpha"
+spec = "RIPR-SPEC-0001"
+evidence = [
+  "parser-backed predicate probe shape facts",
+  "parser-backed return and tail-expression probe shape facts",
+  "parser-backed error-path probe shape facts",
+  "parser-backed call, side-effect, field, and match probe shape facts",
+  "fixture/golden output stability"
+]
+fixtures = [
+  "fixtures/boundary_gap",
+  "fixtures/weak_error_oracle"
+]
+next = "oracle-strength-v2"
+metric = "syntax facts generate current probe families"

@@ -97,7 +97,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/ast-probe-generation"
-status = "ready"
+status = "done"
 branch = "analysis/ast-probe-generation"
 stackable = false
 requires_human_merge = true

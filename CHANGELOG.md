@@ -82,3 +82,6 @@ how future PRs are scoped or reviewed.
 - Added module- and impl-qualified parser-backed owner symbols so changed-line
   probes attach to stable function and method owners without fixture output
   drift.
+- Added parser-backed probe shape facts so current predicate, return, error,
+  field, match, side-effect, and call probes can be generated from syntax facts
+  with lexical fallback and stable fixture output.
