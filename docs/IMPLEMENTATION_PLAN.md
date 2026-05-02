@@ -190,6 +190,27 @@ Acceptance:
 - [ ] `cargo xtask ci-fast` passes after shaping.
 - [ ] Shaping does not add policy exceptions or bless output drift.
 
+## PR 1F: `pr-summary`
+
+Purpose: generate a reviewer packet before human review without mutating source
+files.
+
+Deliverables:
+
+- [ ] Add `cargo xtask pr-summary`.
+- [ ] Read changed paths from git diff and git status.
+- [ ] Write `target/ripr/reports/pr-summary.md`.
+- [ ] Classify production delta and evidence/support delta.
+- [ ] Classify detected surfaces, public contracts, and policy exceptions.
+- [ ] Suggest reviewer focus files.
+- [ ] Update `cargo xtask fix-pr` to refresh the PR summary after shaping.
+
+Acceptance:
+
+- [ ] `cargo xtask pr-summary` passes.
+- [ ] `target/ripr/reports/pr-summary.md` exists after the command.
+- [ ] `cargo xtask fix-pr` refreshes shape, PR summary, and fix-pr reports.
+
 ## PR 2: `fixture-laboratory`
 
 Purpose: build the regression control bench before changing analyzer internals.

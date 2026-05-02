@@ -104,13 +104,23 @@ cargo xtask fix-pr
 ```
 
 It runs `shape` and writes `target/ripr/reports/fix-pr.md`. Future automation
-will add a full reviewer packet through `cargo xtask pr-summary`.
+also refreshes `target/ripr/reports/pr-summary.md`.
+
+Generate the reviewer packet directly with:
+
+```bash
+cargo xtask pr-summary
+```
+
+The summary classifies changed paths into production, evidence, policy,
+workflow, extension, and public-contract surfaces.
 
 ## Required Rust Gates
 
 ```bash
 cargo xtask shape
 cargo xtask fix-pr
+cargo xtask pr-summary
 cargo fmt --check
 cargo check --workspace --all-targets
 cargo test --workspace

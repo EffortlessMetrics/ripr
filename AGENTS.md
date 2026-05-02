@@ -89,6 +89,7 @@ Run these before claiming the branch is ready:
 ```bash
 cargo xtask shape
 cargo xtask fix-pr
+cargo xtask pr-summary
 cargo fmt --check
 cargo check --workspace --all-targets
 cargo test --workspace
@@ -109,8 +110,8 @@ cargo xtask check-network-policy
 
 `cargo xtask shape` is allowed to make safe local edits: run `cargo fmt`, sort
 policy allowlists, ensure `target/ripr/reports`, and write a shape report.
-`cargo xtask fix-pr` currently runs the same safe shaping and writes a local
-fix-pr report; full PR summary generation is a separate planned command.
+`cargo xtask pr-summary` writes a local reviewer packet from git diff/status.
+`cargo xtask fix-pr` runs safe shaping and then refreshes the PR summary.
 
 Useful runtime checks:
 

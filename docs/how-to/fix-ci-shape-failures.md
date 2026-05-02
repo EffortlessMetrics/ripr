@@ -31,8 +31,25 @@ Run:
 cargo xtask fix-pr
 ```
 
-This currently runs `shape` and writes `target/ripr/reports/fix-pr.md`.
-Full PR summary generation is planned as the next automation slice.
+This runs `shape`, refreshes `target/ripr/reports/pr-summary.md`, and writes
+`target/ripr/reports/fix-pr.md`.
+
+## Reviewer Packet
+
+Run:
+
+```bash
+cargo xtask pr-summary
+```
+
+This writes `target/ripr/reports/pr-summary.md` with:
+
+- production delta
+- evidence/support delta
+- detected surfaces
+- public contracts touched
+- policy exception surfaces
+- suggested reviewer focus
 
 ## When Shape Cannot Fix It
 
