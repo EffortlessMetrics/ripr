@@ -1378,10 +1378,20 @@ fn checks_error() {
 
     #[test]
     fn classifies_snapshot_mock_relational_smoke_and_unknown_oracles() {
-        let snapshot = classify_assertion("insta::assert_snapshot!(rendered);");
-        let expect_snapshot = classify_assertion(r##"expect![[r#"ok"#]].assert_eq(&rendered);"##);
-        let expect_file_snapshot =
-            classify_assertion(r#"expect_file!["snapshots/render.snap"].assert_eq(&rendered);"#);
+        let snapshot_cases = [
+            "insta::assert_snapshot!(rendered);",
+            "insta::assert_yaml_snapshot!(payload);",
+            "assert_snapshot!(rendered);",
+            r##"expect![[r#"ok"#]].assert_eq(&rendered);"##,
+            r#"expect_file!["snapshots/render.snap"].assert_eq(&rendered);"#,
+        ];
+
+        for case in snapshot_cases {
+            let snapshot = classify_assertion(case);
+            assert_eq!(snapshot.kind, OracleKind::Snapshot, "case: {case}");
+            assert_eq!(snapshot.strength, OracleStrength::Medium, "case: {case}");
+        }
+
         let bare_expect_file = classify_assertion(r#"let expected = expect_file!["render.snap"];"#);
         let non_snapshot_method = classify_assertion("helper.assert_eq(&rendered);");
         let mock = classify_assertion("mock.expect_publish().times(1);");
@@ -1389,14 +1399,8 @@ fn checks_error() {
         let smoke = classify_assertion("assert!(result.is_ok());");
         let unknown = classify_assertion("helper_records_observation();");
 
-        assert_eq!(snapshot.kind, OracleKind::Snapshot);
-        assert_eq!(expect_snapshot.kind, OracleKind::Snapshot);
-        assert_eq!(expect_file_snapshot.kind, OracleKind::Snapshot);
         assert_ne!(bare_expect_file.kind, OracleKind::Snapshot);
         assert_ne!(non_snapshot_method.kind, OracleKind::Snapshot);
-        assert_eq!(snapshot.strength, OracleStrength::Medium);
-        assert_eq!(expect_snapshot.strength, OracleStrength::Medium);
-        assert_eq!(expect_file_snapshot.strength, OracleStrength::Medium);
         assert_eq!(mock.kind, OracleKind::MockExpectation);
         assert_eq!(mock.strength, OracleStrength::Medium);
         assert_eq!(relational.kind, OracleKind::RelationalCheck);
