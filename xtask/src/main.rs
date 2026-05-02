@@ -1243,7 +1243,10 @@ fn compare_golden(
 
 fn normalize_golden_text(value: &str) -> String {
     let normalized = value.replace("\r\n", "\n");
-    normalized.trim_end_matches(['\r', '\n']).to_string()
+    normalized
+        .strip_suffix('\n')
+        .unwrap_or(&normalized)
+        .to_string()
 }
 
 fn normalize_fixture_json_output(value: &str) -> String {
@@ -8400,7 +8403,11 @@ jobs:
         );
         assert_ne!(
             normalize_golden_text("one\ntwo\n\n"),
-            normalize_golden_text("one\ntwo\n\nthree")
+            normalize_golden_text("one\ntwo\n")
+        );
+        assert_ne!(
+            normalize_golden_text("one\ntwo\n\n"),
+            normalize_golden_text("one\ntwo")
         );
     }
 
