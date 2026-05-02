@@ -39,3 +39,5 @@ how future PRs are scoped or reviewed.
 - Added Markdown pass/fail reports for existing policy checks under
   `target/ripr/reports`.
 - Added CI upload of generated PR reports as `ripr-pr-reports` artifacts.
+- Added `cargo xtask fixtures` and `cargo xtask goldens check` scaffolding
+  commands for validating fixture contracts and expected-output layout.

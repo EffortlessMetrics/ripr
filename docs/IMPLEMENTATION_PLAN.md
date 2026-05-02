@@ -298,18 +298,18 @@ before analyzer internals change.
 
 Deliverables:
 
-- [ ] Add `cargo xtask fixtures`.
-- [ ] Add `cargo xtask fixtures <name>`.
-- [ ] Add `cargo xtask goldens check`.
-- [ ] Add `cargo xtask goldens bless <name> --reason "..."`.
-- [ ] Document the fixture and golden directory conventions.
+- [x] Add `cargo xtask fixtures`.
+- [x] Add `cargo xtask fixtures <name>`.
+- [x] Add `cargo xtask goldens check`.
+- [x] Add `cargo xtask goldens bless <name> --reason "..."`.
+- [x] Document the fixture and golden directory conventions.
 
 Acceptance:
 
-- [ ] Fixture commands pass with a clear "no fixtures found" message if no
+- [x] Fixture commands pass with a clear "no fixtures found" message if no
       executable fixtures exist yet.
-- [ ] Existing fixture contract checks still pass.
-- [ ] Golden blessing requires an explicit reason.
+- [x] Existing fixture contract checks still pass.
+- [x] Golden blessing requires an explicit reason.
 
 ## PR 1L: `traceability-spec-id-checks`
 

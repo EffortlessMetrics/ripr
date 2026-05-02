@@ -298,6 +298,8 @@ cargo xtask shape
 cargo xtask fix-pr
 cargo xtask precommit
 cargo xtask check-pr
+cargo xtask fixtures
+cargo xtask goldens check
 cargo fmt --check
 cargo check --workspace --all-targets
 cargo test --workspace

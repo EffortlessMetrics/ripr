@@ -47,6 +47,10 @@ Run:
 
 ```bash
 cargo xtask check-fixture-contracts
+cargo xtask fixtures
+cargo xtask fixtures <name>
+cargo xtask goldens check
+cargo xtask goldens bless <name> --reason "RIPR-SPEC-NNNN: explain change"
 ```
 
 The first fixture-laboratory PR will add concrete fixture directories. Until

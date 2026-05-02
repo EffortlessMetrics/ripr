@@ -37,6 +37,8 @@ cargo xtask fix-pr
 cargo xtask pr-summary
 cargo xtask precommit
 cargo xtask check-pr
+cargo xtask fixtures
+cargo xtask goldens check
 ```
 
 They are safe to run before checks. `shape` runs `cargo fmt`, sorts allowlists,
@@ -45,7 +47,8 @@ runs `shape`, refreshes `pr-summary`, and writes a local fix-pr report.
 `pr-summary` writes `target/ripr/reports/pr-summary.md` from git diff/status.
 `precommit` is the cheap non-mutating local guardrail. `check-pr` is the
 review-ready local gate and intentionally does not run package or publish
-dry-run checks.
+dry-run checks. `fixtures` and `goldens check` validate the current fixture and
+expected-output scaffolding without accepting output drift.
 
 The fuller automation model is documented in [PR automation](PR_AUTOMATION.md).
 Deterministic shaping should happen locally; CI should verify the committed
@@ -69,6 +72,13 @@ cargo xtask check-generated
 cargo xtask check-dependencies
 cargo xtask check-process-policy
 cargo xtask check-network-policy
+```
+
+Fixture and golden scaffolding checks can be run directly with:
+
+```bash
+cargo xtask fixtures
+cargo xtask goldens check
 ```
 
 The VS Code workflow currently runs:
@@ -103,7 +113,8 @@ Planned CI work:
 - cache Cargo and npm dependencies without hiding stale-lockfile failures
 - decide whether CI should call `check-pr` directly or keep the current
   explicit workflow steps
-- add fixture-golden tests once the fixture lab exists
+- wire fixture and golden checks into CI once the fixture lab has executable
+  behavior fixtures
 - add markdown/link checks for docs-heavy PRs
 - add traceability and capability-matrix checks
 - add workspace-shape, architecture, public API, docs-index, and PR-summary

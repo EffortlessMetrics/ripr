@@ -85,6 +85,8 @@ fn main() {
         Some("pr-summary") => pr_summary(),
         Some("precommit") => precommit(),
         Some("check-pr") => check_pr(),
+        Some("fixtures") => fixtures(args.get(2)),
+        Some("goldens") => goldens(&args[2..]),
         Some("ci-fast") => ci_fast(),
         Some("ci-full") => ci_full(),
         Some("check-static-language") => check_static_language(),
@@ -191,7 +193,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
+        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-generated\n  check-dependencies\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
     );
 }
 
@@ -222,6 +224,294 @@ fn precommit_report_body() -> String {
 
 fn check_pr_report_body() -> String {
     "# ripr check-pr report\n\nStatus: pass\n\nChecks:\n\n- `cargo xtask ci-fast`\n- `cargo clippy --workspace --all-targets -- -D warnings`\n- `cargo doc --workspace --no-deps`\n- `cargo xtask pr-summary`\n\nReports:\n\n- `target/ripr/reports/pr-summary.md`\n- `target/ripr/reports/check-pr.md`\n\nRelease/package gates are intentionally left to `cargo xtask ci-full` or release-specific workflows.\n".to_string()
+}
+
+fn fixtures(name: Option<&String>) -> Result<(), String> {
+    let fixture_dirs = fixture_dirs()?;
+    let selected = match name {
+        Some(value) => vec![fixture_dir_for_name(value)?],
+        None => fixture_dirs,
+    };
+    let mut violations = Vec::new();
+    for path in &selected {
+        if !path.exists() {
+            violations.push(format!("fixture does not exist: {}", normalize_path(path)));
+            continue;
+        }
+        if !path.is_dir() {
+            violations.push(format!(
+                "fixture is not a directory: {}",
+                normalize_path(path)
+            ));
+            continue;
+        }
+        violations.extend(fixture_contract_violations(path)?);
+    }
+
+    let body = fixture_report_body(name.map(String::as_str), &selected, &violations);
+    write_report("fixtures.md", &body)?;
+
+    if violations.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "fixture command failed; see target/ripr/reports/fixtures.md\n{}",
+            violations.join("\n")
+        ))
+    }
+}
+
+fn goldens(args: &[String]) -> Result<(), String> {
+    match args.first().map(String::as_str) {
+        Some("check") => goldens_check(),
+        Some("bless") => {
+            let Some(name) = args.get(1) else {
+                return Err(
+                    "goldens bless requires a fixture name\nusage: cargo xtask goldens bless <name> --reason <reason>"
+                        .to_string(),
+                );
+            };
+            let reason = parse_reason(&args[2..])?;
+            goldens_bless(name, &reason)
+        }
+        Some(other) => Err(format!(
+            "unknown goldens command `{other}`\nusage: cargo xtask goldens check\n       cargo xtask goldens bless <name> --reason <reason>"
+        )),
+        None => Err(
+            "missing goldens command\nusage: cargo xtask goldens check\n       cargo xtask goldens bless <name> --reason <reason>"
+                .to_string(),
+        ),
+    }
+}
+
+fn goldens_check() -> Result<(), String> {
+    let fixture_dirs = fixture_dirs()?;
+    let mut violations = Vec::new();
+    let mut golden_files = Vec::new();
+    for fixture in &fixture_dirs {
+        let expected = fixture.join("expected");
+        if !expected.exists() {
+            violations.push(format!("{} is missing expected/", normalize_path(fixture)));
+            continue;
+        }
+        golden_files.extend(
+            collect_files(&expected)?
+                .into_iter()
+                .map(|path| normalize_path(&path)),
+        );
+        let check_json = expected.join("check.json");
+        if !check_json.exists() {
+            violations.push(format!(
+                "{} is missing expected/check.json",
+                normalize_path(fixture)
+            ));
+        }
+    }
+    golden_files.sort();
+    let body = goldens_check_report_body(&fixture_dirs, &golden_files, &violations);
+    write_report("goldens.md", &body)?;
+    if violations.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "goldens check failed; see target/ripr/reports/goldens.md\n{}",
+            violations.join("\n")
+        ))
+    }
+}
+
+fn goldens_bless(name: &str, reason: &str) -> Result<(), String> {
+    let fixture = fixture_dir_for_name(name)?;
+    if !fixture.exists() {
+        return Err(format!(
+            "fixture does not exist: {}",
+            normalize_path(&fixture)
+        ));
+    }
+    let expected = fixture.join("expected");
+    if !expected.exists() {
+        return Err(format!(
+            "fixture is missing expected/: {}",
+            normalize_path(&fixture)
+        ));
+    }
+    let changelog = expected.join("CHANGELOG.md");
+    let entry = format!(
+        "\n## Pending\n\nReason:\n{reason}\n\nCommand:\n`cargo xtask goldens bless {name} --reason \"...\"`\n"
+    );
+    let mut text = if changelog.exists() {
+        read_text_lossy(&changelog)?
+    } else {
+        "# Golden Output Changes\n".to_string()
+    };
+    text.push_str(&entry);
+    fs::write(&changelog, text)
+        .map_err(|err| format!("failed to write {}: {err}", normalize_path(&changelog)))?;
+    let body = format!(
+        "# ripr goldens bless report\n\nStatus: pass\n\nFixture:\n- `{}`\n\nReason:\n```text\n{reason}\n```\n\nUpdated:\n- `{}`\n",
+        normalize_path(&fixture),
+        normalize_path(&changelog)
+    );
+    write_report("goldens-bless.md", &body)
+}
+
+fn fixture_dirs() -> Result<Vec<PathBuf>, String> {
+    let fixtures_dir = Path::new("fixtures");
+    if !fixtures_dir.exists() {
+        return Ok(Vec::new());
+    }
+    let mut fixtures = Vec::new();
+    for entry in
+        fs::read_dir(fixtures_dir).map_err(|err| format!("failed to read fixtures: {err}"))?
+    {
+        let entry = entry.map_err(|err| format!("failed to read fixtures: {err}"))?;
+        let path = entry.path();
+        if path.is_dir() {
+            fixtures.push(path);
+        }
+    }
+    fixtures.sort();
+    Ok(fixtures)
+}
+
+fn fixture_dir_for_name(name: &str) -> Result<PathBuf, String> {
+    if name.is_empty() || name.contains('/') || name.contains('\\') || name == "." || name == ".." {
+        return Err(format!("invalid fixture name `{name}`"));
+    }
+    Ok(Path::new("fixtures").join(name))
+}
+
+fn fixture_contract_violations(path: &Path) -> Result<Vec<String>, String> {
+    let mut violations = Vec::new();
+    let normalized = normalize_path(path);
+    let spec = path.join("SPEC.md");
+    let diff = path.join("diff.patch");
+    let expected_check = path.join("expected/check.json");
+
+    if !spec.exists() {
+        violations.push(format!("{normalized} is missing SPEC.md"));
+        return Ok(violations);
+    }
+    if !diff.exists() {
+        violations.push(format!("{normalized} is missing diff.patch"));
+    }
+    if !expected_check.exists() {
+        violations.push(format!("{normalized} is missing expected/check.json"));
+    }
+
+    let text = read_text_lossy(&spec)?;
+    if !text
+        .lines()
+        .any(|line| line.starts_with("Spec: RIPR-SPEC-"))
+    {
+        violations.push(format!(
+            "{} is missing `Spec: RIPR-SPEC-NNNN`",
+            normalize_path(&spec)
+        ));
+    }
+    for heading in ["## Given", "## When", "## Then", "## Must Not"] {
+        if !has_markdown_heading(&text, heading) {
+            violations.push(format!("{} is missing `{heading}`", normalize_path(&spec)));
+        }
+    }
+    Ok(violations)
+}
+
+fn fixture_report_body(name: Option<&str>, selected: &[PathBuf], violations: &[String]) -> String {
+    let status = if violations.is_empty() {
+        "pass"
+    } else {
+        "fail"
+    };
+    let mut body = format!("# ripr fixtures report\n\nStatus: {status}\n\n");
+    match name {
+        Some(value) => body.push_str(&format!("Requested fixture: `{value}`\n\n")),
+        None => body.push_str("Requested fixture: all fixtures\n\n"),
+    }
+    body.push_str("## Fixtures\n\n");
+    if selected.is_empty() {
+        body.push_str("No fixture directories found.\n\n");
+    } else {
+        for path in selected {
+            body.push_str(&format!("- `{}`\n", normalize_path(path)));
+        }
+        body.push('\n');
+    }
+    write_violations_section(&mut body, violations);
+    body
+}
+
+fn goldens_check_report_body(
+    fixtures: &[PathBuf],
+    golden_files: &[String],
+    violations: &[String],
+) -> String {
+    let status = if violations.is_empty() {
+        "pass"
+    } else {
+        "fail"
+    };
+    let mut body = format!("# ripr goldens report\n\nStatus: {status}\n\n");
+    body.push_str("## Fixtures\n\n");
+    if fixtures.is_empty() {
+        body.push_str("No fixture directories found.\n\n");
+    } else {
+        for fixture in fixtures {
+            body.push_str(&format!("- `{}`\n", normalize_path(fixture)));
+        }
+        body.push('\n');
+    }
+    body.push_str("## Golden Files\n\n");
+    if golden_files.is_empty() {
+        body.push_str("No golden files found.\n\n");
+    } else {
+        for path in golden_files {
+            body.push_str(&format!("- `{path}`\n"));
+        }
+        body.push('\n');
+    }
+    write_violations_section(&mut body, violations);
+    body
+}
+
+fn write_violations_section(body: &mut String, violations: &[String]) {
+    body.push_str("## Violations\n\n");
+    if violations.is_empty() {
+        body.push_str("None detected.\n");
+    } else {
+        for violation in violations {
+            body.push_str("```text\n");
+            body.push_str(violation);
+            body.push_str("\n```\n\n");
+        }
+    }
+}
+
+fn parse_reason(args: &[String]) -> Result<String, String> {
+    let mut index = 0;
+    while index < args.len() {
+        let value = &args[index];
+        if let Some(reason) = value.strip_prefix("--reason=") {
+            return non_empty_reason(reason);
+        }
+        if value == "--reason" {
+            let Some(reason) = args.get(index + 1) else {
+                return Err("--reason requires a value".to_string());
+            };
+            return non_empty_reason(reason);
+        }
+        index += 1;
+    }
+    Err("goldens bless requires --reason <reason>".to_string())
+}
+
+fn non_empty_reason(value: &str) -> Result<String, String> {
+    let reason = value.trim();
+    if reason.is_empty() {
+        Err("--reason must not be empty".to_string())
+    } else {
+        Ok(reason.to_string())
+    }
 }
 
 fn finish_policy_report(spec: PolicyReportSpec<'_>, violations: &[String]) -> Result<(), String> {
@@ -1821,7 +2111,7 @@ fn is_word_char(value: Option<char>) -> bool {
 mod tests {
     use super::{
         ChangedPath, extract_workflow_run_blocks, glob_matches, is_dependency_surface_candidate,
-        is_evidence_path, is_generated_candidate, is_policy_path, is_production_path,
+        is_evidence_path, is_generated_candidate, is_policy_path, is_production_path, parse_reason,
         precommit_report_body, public_contract_rows, sorted_allowlist_content,
     };
     use std::collections::BTreeSet;
@@ -1954,5 +2244,15 @@ jobs:
 
         assert!(body.contains("cargo fmt --check"));
         assert!(body.contains("cargo xtask check-pr"));
+    }
+
+    #[test]
+    fn parse_reason_accepts_flag_forms() {
+        let spaced = vec!["--reason".to_string(), "intentional update".to_string()];
+        let equals = vec!["--reason=intentional update".to_string()];
+
+        assert_eq!(parse_reason(&spaced), Ok("intentional update".to_string()));
+        assert_eq!(parse_reason(&equals), Ok("intentional update".to_string()));
+        assert!(parse_reason(&[]).is_err());
     }
 }
