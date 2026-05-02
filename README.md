@@ -231,13 +231,13 @@ crate boundaries can be added later if external consumers need them.
 
 `ripr` is currently strongest as a fast, syntax-first draft signal. The next
 planned work is to make findings more grounded through fixtures, file facts,
-parser-backed syntax, stable probe ownership, richer oracle facts, local flow,
-and activation/value modeling.
+parser-backed syntax, syntax-backed probe generation, richer oracle facts,
+local flow, and activation/value modeling.
 
 | Capability | Current state | Next checkpoint |
 | --- | --- | --- |
 | Distribution | Crate and extension packaging paths exist. | Verify one-click editor install from a fresh profile. |
-| Diff analysis | Syntax-first changed-line probes. | Stable owner mapping from changed syntax nodes. |
+| Diff analysis | Syntax-first changed-line probes with module- and impl-qualified owner symbols. | Syntax-backed probe generation. |
 | Test discovery | Parser-backed test and assertion facts. | Probe-relative oracle strength. |
 | Output | Human, JSON, GitHub annotation formats. | Golden fixture lab and stable DTOs. |
 | LSP | Experimental sidecar. | Evidence-aware diagnostics, hover, and context actions. |

@@ -608,15 +608,15 @@ Purpose: attach probes to stable owner symbols.
 
 Deliverables:
 
-- [ ] Diff hunk to changed text range.
-- [ ] Changed range to syntax node.
-- [ ] Syntax node to enclosing function, method, or module.
-- [ ] Stable `SymbolId`.
+- [x] Diff hunk to changed text range.
+- [x] Changed range to syntax-backed owner node.
+- [x] Syntax node to enclosing function, method, or module.
+- [x] Stable `SymbolId`.
 
 Acceptance:
 
-- [ ] Duplicate function names across modules or crates do not cross-link tests.
-- [ ] Probe IDs remain stable enough for `explain` and `context`.
+- [x] Duplicate function names across modules or crates do not cross-link tests.
+- [x] Probe IDs remain stable enough for `explain` and `context`.
 
 ## PR 7: `ast-probe-generation`
 

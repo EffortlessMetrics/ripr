@@ -119,8 +119,8 @@ Work items:
 | `analysis/syntax-adapter-mvp` | done | RustSyntaxAdapter boundary exists with lexical adapter compatibility. |
 | `design/rust-syntax-substrate` | done | ADR 0006 selects `ra_ap_syntax` behind the adapter and keeps parser types internal. |
 | `analysis/ast-test-oracle-extraction` | done | Parser-backed facts identify test functions, assertion macros, and unwrap/expect smoke oracles. |
-| `analysis/ast-probe-ownership` | ready | Map diff spans to stable owner symbols. |
-| `analysis/ast-probe-generation` | blocked | Depends on ownership and syntax-backed facts. |
+| `analysis/ast-probe-ownership` | done | Changed lines map to module- and impl-qualified owner symbols without cross-linking duplicate names. |
+| `analysis/ast-probe-generation` | ready | Generate current probe families from syntax facts. |
 
 Dependencies:
 
