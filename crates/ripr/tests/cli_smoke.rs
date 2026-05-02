@@ -83,3 +83,38 @@ fn explain_returns_targeted_probe_details() {
     assert!(stdout.contains("Static exposure: weakly_exposed (error_path, value)"));
     assert!(stdout.contains("No exact error variant discriminator was detected"));
 }
+
+#[test]
+fn context_json_output_includes_probe_and_related_tests() {
+    let root = workspace_root().display().to_string();
+    let diff = sample_diff().display().to_string();
+    let output = run_ripr(&[
+        "context",
+        "--root",
+        &root,
+        "--diff",
+        &diff,
+        "--at",
+        "probe:crates_ripr_examples_sample_src_lib.rs:21:error_path",
+        "--json",
+        "--max-related-tests",
+        "2",
+    ]);
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains(r#""version": "1.0""#));
+    assert!(stdout.contains(r#""id": "probe:crates_ripr_examples_sample_src_lib.rs:21:error_path""#));
+    assert!(stdout.contains(r#""related_tests": ["#));
+}
+
+#[test]
+fn doctor_runs_for_workspace_root() {
+    let root = workspace_root().display().to_string();
+    let output = run_ripr(&["doctor", "--root", &root]);
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("ripr doctor"));
+    assert!(stdout.contains("Cargo.toml"));
+}
