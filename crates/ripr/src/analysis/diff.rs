@@ -186,6 +186,41 @@ mod tests {
     }
 
     #[test]
+    fn ignores_diff_metadata_lines_that_start_with_pluses_or_dashes() {
+        let diff = "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,1 +1,1 @@\n-legacy\n+current\n";
+
+        let files = parse_unified_diff(diff);
+        assert_eq!(files.len(), 1);
+        assert_eq!(
+            files[0].added_lines,
+            vec![ChangedLine {
+                line: 1,
+                text: "current".to_string()
+            }]
+        );
+        assert_eq!(
+            files[0].removed_lines,
+            vec![ChangedLine {
+                line: 1,
+                text: "legacy".to_string()
+            }]
+        );
+    }
+
+    #[test]
+    fn parses_new_file_diff_with_dev_null_source() {
+        let diff = "diff --git a/src/new.rs b/src/new.rs\nnew file mode 100644\n--- /dev/null\n+++ b/src/new.rs\n@@ -0,0 +1,2 @@\n+pub fn answer() -> u32 {\n+    42\n";
+
+        let files = parse_unified_diff(diff);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, PathBuf::from("src/new.rs"));
+        assert_eq!(files[0].removed_lines.len(), 0);
+        assert_eq!(files[0].added_lines.len(), 2);
+        assert_eq!(files[0].added_lines[0].line, 1);
+        assert_eq!(files[0].added_lines[1].line, 2);
+    }
+
+    #[test]
     fn parser_is_robust_against_fuzz_like_inputs() {
         let mut seed = 0xC0FFEE_u64;
         for _case in 0..512 {
