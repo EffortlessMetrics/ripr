@@ -183,8 +183,8 @@ Work items:
 | `analysis/oracle-strength-v2` | done | Oracle kind and strength distinguish exact error variants, exact values, broad errors, smoke-only checks, snapshots, relational checks, and mock expectations. |
 | `analysis/local-delta-flow-v1` | done | Findings carry typed local flow sinks for visible return, error, field, match-arm, and effect boundaries. |
 | `analysis/activation-value-modeling-v1` | done | Findings carry observed value facts and missing discriminator facts tied to local flow evidence. |
-| `output/evidence-first-output` | ready | Render the stable oracle, flow, and activation evidence fields as the primary explanation. |
-| `fixtures/negative-metamorphic-baseline` | blocked | Depends on evidence-first output expectations. |
+| `output/evidence-first-output` | done | Human and JSON output render changed behavior, evidence path, weakness, stop reasons, and next action as first-class finding evidence. |
+| `fixtures/negative-metamorphic-baseline` | ready | Evidence-first output expectations are available for negative and metamorphic fixture coverage. |
 
 Dependencies:
 
@@ -192,6 +192,8 @@ Dependencies:
   evidence grows so silent unknowns do not become accepted output.
 - `analysis/local-delta-flow-v1` landed before activation/value modeling.
 - `analysis/activation-value-modeling-v1` landed before evidence-first output.
+- `output/evidence-first-output` landed before negative/metamorphic fixture
+  expansion.
 
 Commands:
 

@@ -55,10 +55,11 @@ fn check_human_output_reports_sample_findings() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Summary: 5 probe(s)"));
-    assert!(stdout.contains("Static exposure: weakly_exposed"));
-    assert!(stdout.contains("Activation evidence:"));
-    assert!(stdout.contains("Missing discriminator value"));
-    assert!(stdout.contains("Recommended next step:"));
+    assert!(stdout.contains("Static exposure\n  weakly_exposed"));
+    assert!(stdout.contains("Evidence\n"));
+    assert!(stdout.contains("observed function argument value"));
+    assert!(stdout.contains("missing discriminator"));
+    assert!(stdout.contains("Next step\n"));
 }
 
 #[test]
@@ -71,9 +72,13 @@ fn check_json_output_has_stable_contract_fields() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains(r#""schema_version": "0.1""#));
     assert!(stdout.contains(r#""classification": "weakly_exposed""#));
+    assert!(stdout.contains(r#""evidence_path""#));
+    assert!(stdout.contains(r#""flow_sinks""#));
     assert!(stdout.contains(r#""activation""#));
     assert!(stdout.contains(r#""missing_discriminators""#));
+    assert!(stdout.contains(r#""oracle_kind""#));
     assert!(stdout.contains(r#""recommended_next_step""#));
+    assert!(stdout.contains(r#""suggested_next_action""#));
 }
 
 #[test]
@@ -91,7 +96,9 @@ fn explain_returns_targeted_probe_details() {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Static exposure: weakly_exposed (error_path, value)"));
+    assert!(stdout.contains("family: error_path"));
+    assert!(stdout.contains("delta:  value"));
+    assert!(stdout.contains("Static exposure\n  weakly_exposed"));
     assert!(stdout.contains("No exact error variant discriminator was detected"));
 }
 

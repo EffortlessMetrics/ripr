@@ -706,18 +706,20 @@ Purpose: make CLI output the reference explanation.
 
 Deliverables:
 
-- [ ] Changed behavior section.
-- [ ] RIPR stage evidence section.
-- [ ] Related tests section.
-- [ ] Oracle evidence section.
-- [ ] Missing discriminator section.
-- [ ] Next step section.
-- [ ] Stop reason section for unknowns.
+- [x] Changed behavior section.
+- [x] RIPR stage evidence section.
+- [x] Related tests section.
+- [x] Oracle evidence section.
+- [x] Missing discriminator section.
+- [x] Next step section.
+- [x] Stop reason section for unknowns.
 
 Acceptance:
 
-- [ ] Golden human output covers each finding class.
-- [ ] Static language remains conservative.
+- [x] Golden human and JSON output cover current Campaign 3 fixtures.
+- [x] Static language remains conservative.
+- [ ] Negative and metamorphic fixtures cover noise-only and syntax-variant
+      cases.
 
 ## PR 12: `lsp-evidence-hover-actions`
 

@@ -88,7 +88,7 @@ commands = [
 
 [[work_item]]
 id = "output/evidence-first-output"
-status = "ready"
+status = "done"
 branch = "output/evidence-first-output"
 stackable = false
 requires_human_merge = true
@@ -107,10 +107,18 @@ commands = [
 
 [[work_item]]
 id = "fixtures/negative-metamorphic-baseline"
-status = "blocked"
+status = "ready"
 branch = "fixtures/negative-metamorphic-baseline"
 stackable = false
 requires_human_merge = true
 acceptance = "negative and metamorphic fixtures protect evidence-first output from noise and syntax brittleness"
-blocked_by = ["output/evidence-first-output"]
-blocked_reason = "requires evidence-first output expectations before expanding negative and metamorphic fixtures"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask pr-summary",
+  "cargo xtask fixtures",
+  "cargo xtask goldens check",
+  "cargo xtask golden-drift",
+  "cargo xtask check-output-contracts"
+]

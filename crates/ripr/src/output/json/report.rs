@@ -112,9 +112,27 @@ pub(super) fn finding_json(out: &mut String, finding: &Finding, indent: usize) {
         false,
     );
     out.push_str(&format!("{} }},\n", "  ".repeat(indent + 1)));
+    let evidence_path = evidence_path_values(finding);
+    array_field(out, indent + 1, "evidence_path", &evidence_path, true);
+    flow_sinks_json(out, finding, indent + 1);
+    out.push_str(",\n");
     array_field(out, indent + 1, "evidence", &finding.evidence, true);
     array_field(out, indent + 1, "missing", &finding.missing, true);
     activation_json(out, finding, indent + 1);
+    out.push_str(",\n");
+    value_facts_array_json(
+        out,
+        "observed_values",
+        &finding.activation.observed_values,
+        indent + 1,
+    );
+    out.push_str(",\n");
+    missing_discriminators_array_json(
+        out,
+        "missing_discriminators",
+        &finding.activation.missing_discriminators,
+        indent + 1,
+    );
     out.push_str(",\n");
     out.push_str(&format!(
         "{}\"related_tests\": [\n",
@@ -130,44 +148,193 @@ pub(super) fn finding_json(out: &mut String, finding: &Finding, indent: usize) {
     out.push_str(&format!("{}],\n", "  ".repeat(indent + 1)));
     let stop_reasons = stop_reason_values(finding);
     array_field(out, indent + 1, "stop_reasons", &stop_reasons, true);
+    let strongest = strongest_related_test(finding);
+    field(
+        out,
+        indent + 1,
+        "oracle_kind",
+        strongest
+            .map(|test| test.oracle_kind.as_str())
+            .unwrap_or("unknown"),
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "oracle_strength",
+        strongest
+            .map(|test| test.oracle_strength.as_str())
+            .unwrap_or("none"),
+        true,
+    );
     field(
         out,
         indent + 1,
         "recommended_next_step",
+        finding.recommended_next_step.as_deref().unwrap_or(""),
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "suggested_next_action",
         finding.recommended_next_step.as_deref().unwrap_or(""),
         false,
     );
     out.push_str(&format!("{sp}}}"));
 }
 
+fn evidence_path_values(finding: &Finding) -> Vec<String> {
+    let mut values = vec![
+        format!(
+            "reach {}: {}",
+            finding.ripr.reach.state.as_str(),
+            finding.ripr.reach.summary
+        ),
+        format!(
+            "infection {}: {}",
+            finding.ripr.infect.state.as_str(),
+            finding.ripr.infect.summary
+        ),
+        format!(
+            "propagation {}: {}",
+            finding.ripr.propagate.state.as_str(),
+            finding.ripr.propagate.summary
+        ),
+        format!(
+            "observation {}: {}",
+            finding.ripr.reveal.observe.state.as_str(),
+            finding.ripr.reveal.observe.summary
+        ),
+        format!(
+            "discriminator {}: {}",
+            finding.ripr.reveal.discriminate.state.as_str(),
+            finding.ripr.reveal.discriminate.summary
+        ),
+    ];
+
+    values.extend(finding.flow_sinks.iter().map(|sink| {
+        format!(
+            "local flow reaches {}: {} (line {})",
+            sink.kind.label(),
+            sink.text,
+            sink.line
+        )
+    }));
+
+    values.extend(finding.related_tests.iter().take(5).map(|test| {
+        let oracle_kind = display_label(test.oracle_kind.as_str());
+        let mut value = format!(
+            "related test {}:{} {} uses {} {} oracle",
+            test.file.display(),
+            test.line,
+            test.name,
+            test.oracle_strength.as_str(),
+            oracle_kind
+        );
+        if let Some(oracle) = &test.oracle {
+            value.push_str(&format!(": {oracle}"));
+        }
+        value
+    }));
+
+    values.extend(
+        finding
+            .activation
+            .observed_values
+            .iter()
+            .take(8)
+            .map(|fact| {
+                let context = display_label(fact.context.as_str());
+                format!(
+                    "observed {} value {} at line {}",
+                    context, fact.value, fact.line
+                )
+            }),
+    );
+
+    values.extend(
+        finding
+            .activation
+            .missing_discriminators
+            .iter()
+            .map(|fact| format!("missing discriminator {}: {}", fact.value, fact.reason)),
+    );
+
+    values
+}
+
+fn display_label(value: &str) -> String {
+    value.replace('_', " ")
+}
+
+fn strongest_related_test(finding: &Finding) -> Option<&RelatedTest> {
+    finding
+        .related_tests
+        .iter()
+        .max_by_key(|test| test.oracle_strength.rank())
+}
+
 fn activation_json(out: &mut String, finding: &Finding, indent: usize) {
     let sp = "  ".repeat(indent);
     out.push_str(&format!("{sp}\"activation\": {{\n"));
-    out.push_str(&format!(
-        "{}\"observed_values\": [\n",
-        "  ".repeat(indent + 1)
-    ));
-    for (idx, value) in finding.activation.observed_values.iter().enumerate() {
-        value_fact_json(out, value, indent + 2);
-        if idx + 1 != finding.activation.observed_values.len() {
-            out.push(',');
-        }
-        out.push('\n');
-    }
-    out.push_str(&format!("{}],\n", "  ".repeat(indent + 1)));
-    out.push_str(&format!(
-        "{}\"missing_discriminators\": [\n",
-        "  ".repeat(indent + 1)
-    ));
-    for (idx, discriminator) in finding.activation.missing_discriminators.iter().enumerate() {
-        missing_discriminator_json(out, discriminator, indent + 2);
-        if idx + 1 != finding.activation.missing_discriminators.len() {
-            out.push(',');
-        }
-        out.push('\n');
-    }
-    out.push_str(&format!("{}]\n", "  ".repeat(indent + 1)));
+    value_facts_array_json(
+        out,
+        "observed_values",
+        &finding.activation.observed_values,
+        indent + 1,
+    );
+    out.push_str(",\n");
+    missing_discriminators_array_json(
+        out,
+        "missing_discriminators",
+        &finding.activation.missing_discriminators,
+        indent + 1,
+    );
+    out.push('\n');
     out.push_str(&format!("{sp}}}"));
+}
+
+fn flow_sinks_json(out: &mut String, finding: &Finding, indent: usize) {
+    out.push_str(&format!("{}\"flow_sinks\": [\n", "  ".repeat(indent)));
+    for (idx, sink) in finding.flow_sinks.iter().enumerate() {
+        out.push_str(&"  ".repeat(indent + 1));
+        flow_sink_json(out, sink);
+        if idx + 1 != finding.flow_sinks.len() {
+            out.push(',');
+        }
+        out.push('\n');
+    }
+    out.push_str(&format!("{}]", "  ".repeat(indent)));
+}
+
+fn value_facts_array_json(out: &mut String, name: &str, facts: &[ValueFact], indent: usize) {
+    out.push_str(&format!("{}\"{name}\": [\n", "  ".repeat(indent)));
+    for (idx, value) in facts.iter().enumerate() {
+        value_fact_json(out, value, indent + 1);
+        if idx + 1 != facts.len() {
+            out.push(',');
+        }
+        out.push('\n');
+    }
+    out.push_str(&format!("{}]", "  ".repeat(indent)));
+}
+
+fn missing_discriminators_array_json(
+    out: &mut String,
+    name: &str,
+    facts: &[MissingDiscriminatorFact],
+    indent: usize,
+) {
+    out.push_str(&format!("{}\"{name}\": [\n", "  ".repeat(indent)));
+    for (idx, discriminator) in facts.iter().enumerate() {
+        missing_discriminator_json(out, discriminator, indent + 1);
+        if idx + 1 != facts.len() {
+            out.push(',');
+        }
+        out.push('\n');
+    }
+    out.push_str(&format!("{}]", "  ".repeat(indent)));
 }
 
 fn value_fact_json(out: &mut String, fact: &ValueFact, indent: usize) {
@@ -240,6 +407,13 @@ pub(super) fn related_test_json(out: &mut String, test: &RelatedTest, indent: us
         indent + 1,
         "oracle_strength",
         test.oracle_strength.as_str(),
+        true,
+    );
+    field(
+        out,
+        indent + 1,
+        "oracle_kind",
+        test.oracle_kind.as_str(),
         true,
     );
     field(

@@ -22,6 +22,15 @@ flow_sink|match_arm|Flow sink value.
 flow_sink|return_value|Flow sink value.
 flow_sink|struct_field|Flow sink value.
 flow_sink|unknown|Flow sink value.
+oracle_kind|broad_error|Oracle kind value.
+oracle_kind|exact_error_variant|Oracle kind value.
+oracle_kind|exact_value|Oracle kind value.
+oracle_kind|mock_expectation|Oracle kind value.
+oracle_kind|relational_check|Oracle kind value.
+oracle_kind|smoke_only|Oracle kind value.
+oracle_kind|snapshot|Oracle kind value.
+oracle_kind|unknown|Oracle kind value.
+oracle_kind|whole_object_equality|Oracle kind value.
 oracle_strength|medium|Oracle strength value.
 oracle_strength|none|Oracle strength value.
 oracle_strength|smoke|Oracle strength value.
