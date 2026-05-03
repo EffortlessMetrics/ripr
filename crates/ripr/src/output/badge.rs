@@ -6,31 +6,38 @@
 //! [`docs/BADGE_POLICY.md`](../../../../../docs/BADGE_POLICY.md) for the
 //! locked semantics, color thresholds, and JSON shape.
 //!
-//! The current implementation supports only the `ripr` badge (exposure-gap
-//! counts). Test-efficiency, intent, suppressions, and the `ripr+` shape
-//! are intentionally absent and will arrive in their own scoped PRs.
+//! Both `ripr` (exposure-gap count) and `ripr+` (exposure + actionable
+//! test-efficiency, minus declared intent) badge formats are supported.
+//! Suppressions, CI artifacts, and the published Shields endpoint live
+//! in their own scoped PRs.
 
 use crate::app::CheckOutput;
 use crate::domain::ExposureClass;
 use crate::output::json::escape as json_escape;
+use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BadgeKind {
     /// Counts unsuppressed static exposure gaps only.
     Ripr,
+    /// Counts unsuppressed exposure gaps plus unsuppressed actionable
+    /// test-efficiency findings (excluding declared intent).
+    RiprPlus,
 }
 
 impl BadgeKind {
     pub fn as_str(self) -> &'static str {
         match self {
             BadgeKind::Ripr => "ripr",
+            BadgeKind::RiprPlus => "ripr_plus",
         }
     }
 
     pub fn label(self) -> &'static str {
         match self {
             BadgeKind::Ripr => "ripr",
+            BadgeKind::RiprPlus => "ripr+",
         }
     }
 }
@@ -192,6 +199,176 @@ fn badge_status_color(count: usize, fail_on_nonzero: bool) -> (BadgeStatus, &'st
     }
 }
 
+/// Test-efficiency contribution to the `ripr+` badge. Built by parsing
+/// `target/ripr/reports/test-efficiency.json`; the per-test ledger is
+/// the source of truth because `declared_intent` exclusion is per-test
+/// and cannot be derived from aggregate `class_counts` alone.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct TestEfficiencyBadgeSummary {
+    pub unsuppressed_test_efficiency_findings: usize,
+    pub intentional_test_efficiency_findings: usize,
+    pub unknowns_test_efficiency: usize,
+    pub analyzed_tests: usize,
+    pub reason_counts: BTreeMap<&'static str, usize>,
+}
+
+/// The test-efficiency `class` strings that contribute to `ripr+` when not
+/// covered by `declared_intent`. Mirrors the locked vocabulary in
+/// `docs/BADGE_POLICY.md`. `strong_discriminator` and `useful_but_broad`
+/// never count by default; `opaque` flows into `unknowns_test_efficiency`
+/// rather than the headline.
+const ACTIONABLE_TE_CLASSES: &[&str] = &[
+    "likely_vacuous",
+    "possibly_circular",
+    "smoke_only",
+    "duplicative",
+];
+
+const NON_ACTIONABLE_TE_CLASSES: &[&str] = &["strong_discriminator", "useful_but_broad"];
+
+/// Parses `target/ripr/reports/test-efficiency.json` into the
+/// `ripr+`-shaped summary. Validates the schema_version, requires the
+/// per-test ledger, and rejects unknown class strings so a class name
+/// drift in the emitter surfaces as a parse error rather than a silent
+/// undercount.
+pub fn parse_test_efficiency_badge_summary(
+    text: &str,
+) -> Result<TestEfficiencyBadgeSummary, String> {
+    let value: Value = serde_json::from_str(text)
+        .map_err(|err| format!("test-efficiency.json is not valid JSON: {err}"))?;
+
+    let schema_version = value
+        .get("schema_version")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "test-efficiency.json is missing `schema_version`".to_string())?;
+    if schema_version != "0.1" {
+        return Err(format!(
+            "test-efficiency.json schema_version `{schema_version}` is not supported (expected `0.1`)"
+        ));
+    }
+
+    let tests = value
+        .get("tests")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "test-efficiency.json is missing the `tests` array".to_string())?;
+
+    let mut unsuppressed = 0usize;
+    let mut intentional = 0usize;
+    let mut unknowns_te = 0usize;
+
+    for entry in tests {
+        let class = entry
+            .get("class")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "test-efficiency entry is missing `class`".to_string())?;
+        let has_intent = entry.get("declared_intent").is_some();
+
+        if ACTIONABLE_TE_CLASSES.contains(&class) {
+            if has_intent {
+                intentional += 1;
+            } else {
+                unsuppressed += 1;
+            }
+        } else if class == "opaque" {
+            unknowns_te += 1;
+        } else if NON_ACTIONABLE_TE_CLASSES.contains(&class) {
+            // strong_discriminator / useful_but_broad: visible only.
+        } else {
+            return Err(format!(
+                "test-efficiency entry has unknown class `{class}`; recognized classes are {}",
+                [
+                    ACTIONABLE_TE_CLASSES,
+                    NON_ACTIONABLE_TE_CLASSES,
+                    &["opaque"],
+                ]
+                .concat()
+                .join(", ")
+            ));
+        }
+    }
+
+    let analyzed_tests = value
+        .get("metrics")
+        .and_then(|m| m.get("tests_scanned"))
+        .and_then(Value::as_u64)
+        .ok_or_else(|| "test-efficiency.json is missing `metrics.tests_scanned`".to_string())?
+        as usize;
+
+    let mut reason_counts: BTreeMap<&'static str, usize> = BTreeMap::new();
+    for key in BADGE_REASON_KEYS {
+        reason_counts.insert(key, 0);
+    }
+    if let Some(counts) = value
+        .get("metrics")
+        .and_then(|m| m.get("reason_counts"))
+        .and_then(Value::as_object)
+    {
+        for (key, value) in counts {
+            if let Some(known) = BADGE_REASON_KEYS
+                .iter()
+                .find(|known| **known == key.as_str())
+                && let Some(count) = value.as_u64()
+            {
+                reason_counts.insert(*known, count as usize);
+            }
+        }
+    }
+
+    Ok(TestEfficiencyBadgeSummary {
+        unsuppressed_test_efficiency_findings: unsuppressed,
+        intentional_test_efficiency_findings: intentional,
+        unknowns_test_efficiency: unknowns_te,
+        analyzed_tests,
+        reason_counts,
+    })
+}
+
+/// Builds the `ripr+` badge summary from a `CheckOutput` plus a parsed
+/// test-efficiency contribution. Reuses the exposure-counting logic from
+/// `ripr_badge_summary` so the two badges stay perfectly aligned on
+/// exposure semantics; the only difference at the headline is the
+/// addition of unsuppressed actionable test-efficiency findings.
+pub fn ripr_plus_badge_summary(
+    output: &CheckOutput,
+    test_efficiency: TestEfficiencyBadgeSummary,
+    policy: BadgePolicy,
+) -> BadgeSummary {
+    let exposure = ripr_badge_summary(output, policy.clone());
+
+    let counts = BadgeCounts {
+        unsuppressed_exposure_gaps: exposure.counts.unsuppressed_exposure_gaps,
+        unsuppressed_test_efficiency_findings: test_efficiency
+            .unsuppressed_test_efficiency_findings,
+        intentional_test_efficiency_findings: test_efficiency.intentional_test_efficiency_findings,
+        suppressed_exposure_gaps: 0,
+        suppressed_test_efficiency_findings: 0,
+        unknowns: exposure.counts.unknowns,
+        unknowns_test_efficiency: test_efficiency.unknowns_test_efficiency,
+        analyzed_findings: exposure.counts.analyzed_findings,
+        analyzed_tests: test_efficiency.analyzed_tests,
+    };
+
+    let unknown_contribution = if policy.include_unknowns {
+        counts.unknowns + counts.unknowns_test_efficiency
+    } else {
+        0
+    };
+    let headline = counts.unsuppressed_exposure_gaps
+        + counts.unsuppressed_test_efficiency_findings
+        + unknown_contribution;
+    let (status, color) = badge_status_color(headline, policy.fail_on_nonzero);
+
+    BadgeSummary {
+        kind: BadgeKind::RiprPlus,
+        message: headline.to_string(),
+        status,
+        color,
+        counts,
+        reason_counts: test_efficiency.reason_counts,
+        policy,
+    }
+}
+
 /// Renders the native badge JSON (snake_case, full counts/reasons/policy).
 pub fn render_native_json(summary: &BadgeSummary) -> String {
     let mut out = String::new();
@@ -304,8 +481,9 @@ pub fn render_shields_json(summary: &BadgeSummary) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        BADGE_REASON_KEYS, BadgePolicy, BadgeStatus, badge_status_color, render_native_json,
-        render_shields_json, ripr_badge_summary,
+        BADGE_REASON_KEYS, BadgePolicy, BadgeStatus, TestEfficiencyBadgeSummary,
+        badge_status_color, parse_test_efficiency_badge_summary, render_native_json,
+        render_shields_json, ripr_badge_summary, ripr_plus_badge_summary,
     };
     use crate::app::{CheckInput, CheckOutput, Mode};
     use crate::domain::{
@@ -634,5 +812,302 @@ mod tests {
         assert_eq!(summary.counts.suppressed_test_efficiency_findings, 0);
         assert_eq!(summary.counts.suppressed_exposure_gaps, 0);
         assert_eq!(summary.counts.unknowns_test_efficiency, 0);
+    }
+
+    // -------- ripr+ test-efficiency parser --------
+
+    fn te_json(tests_json: &str, reason_counts: &str) -> String {
+        format!(
+            r#"{{
+  "schema_version": "0.1",
+  "tests": [{tests_json}],
+  "metrics": {{
+    "tests_scanned": 42,
+    "reason_counts": {{{reason_counts}}}
+  }}
+}}"#
+        )
+    }
+
+    fn entry_json(class: &str, with_intent: bool) -> String {
+        let intent = if with_intent {
+            r#","declared_intent":{"intent":"smoke","owner":"x","reason":"y","source":".ripr/test_intent.toml"}"#
+        } else {
+            ""
+        };
+        format!(r#"{{"class":"{class}"{intent}}}"#)
+    }
+
+    #[test]
+    fn badge_plus_parses_test_efficiency_metrics() -> Result<(), String> {
+        let json = te_json(&entry_json("strong_discriminator", false), "");
+        let summary = parse_test_efficiency_badge_summary(&json)?;
+
+        assert_eq!(summary.analyzed_tests, 42);
+        assert_eq!(summary.unsuppressed_test_efficiency_findings, 0);
+        assert_eq!(summary.intentional_test_efficiency_findings, 0);
+        assert_eq!(summary.unknowns_test_efficiency, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn badge_plus_counts_actionable_classes() -> Result<(), String> {
+        for class in [
+            "likely_vacuous",
+            "possibly_circular",
+            "smoke_only",
+            "duplicative",
+        ] {
+            let json = te_json(&entry_json(class, false), "");
+            let summary = parse_test_efficiency_badge_summary(&json)?;
+            assert_eq!(
+                summary.unsuppressed_test_efficiency_findings, 1,
+                "class `{class}` must count as actionable"
+            );
+            assert_eq!(summary.intentional_test_efficiency_findings, 0);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn badge_plus_does_not_count_strong_discriminator_or_useful_but_broad() -> Result<(), String> {
+        for class in ["strong_discriminator", "useful_but_broad"] {
+            let json = te_json(&entry_json(class, false), "");
+            let summary = parse_test_efficiency_badge_summary(&json)?;
+            assert_eq!(
+                summary.unsuppressed_test_efficiency_findings, 0,
+                "class `{class}` must not count"
+            );
+            assert_eq!(summary.intentional_test_efficiency_findings, 0);
+            assert_eq!(summary.unknowns_test_efficiency, 0);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn badge_plus_reports_opaque_as_unknowns_test_efficiency() -> Result<(), String> {
+        let json = te_json(&entry_json("opaque", false), "");
+        let summary = parse_test_efficiency_badge_summary(&json)?;
+
+        assert_eq!(summary.unsuppressed_test_efficiency_findings, 0);
+        assert_eq!(summary.unknowns_test_efficiency, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn badge_plus_declared_intent_excludes_actionable_finding() -> Result<(), String> {
+        let json = te_json(&entry_json("smoke_only", true), "");
+        let summary = parse_test_efficiency_badge_summary(&json)?;
+
+        assert_eq!(
+            summary.unsuppressed_test_efficiency_findings, 0,
+            "declared intent must exclude the finding from unsuppressed"
+        );
+        assert_eq!(
+            summary.intentional_test_efficiency_findings, 1,
+            "declared intent must increment intentional count"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn badge_plus_reason_counts_default_missing_keys_to_zero() -> Result<(), String> {
+        let json = te_json(&entry_json("strong_discriminator", false), "");
+        let summary = parse_test_efficiency_badge_summary(&json)?;
+
+        for key in BADGE_REASON_KEYS {
+            assert_eq!(
+                summary.reason_counts.get(*key).copied(),
+                Some(0),
+                "reason `{key}` should default to 0"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn badge_plus_reason_counts_propagate_known_keys() -> Result<(), String> {
+        let reasons =
+            r#""smoke_oracle_only":4,"duplicate_activation_and_oracle_shape":2,"unrecognized":99"#;
+        let json = te_json(&entry_json("strong_discriminator", false), reasons);
+        let summary = parse_test_efficiency_badge_summary(&json)?;
+
+        assert_eq!(
+            summary.reason_counts.get("smoke_oracle_only").copied(),
+            Some(4)
+        );
+        assert_eq!(
+            summary
+                .reason_counts
+                .get("duplicate_activation_and_oracle_shape")
+                .copied(),
+            Some(2)
+        );
+        // Unknown reason names are silently dropped — they're not part of the
+        // badge contract, only the nine allow-listed keys are.
+        assert!(!summary.reason_counts.contains_key("unrecognized"));
+        Ok(())
+    }
+
+    #[test]
+    fn badge_plus_rejects_unknown_class_string() {
+        let json = te_json(r#"{"class":"vibe_only"}"#, "");
+        let result = parse_test_efficiency_badge_summary(&json);
+
+        assert!(result.is_err(), "unknown class must fail parse");
+        let err = result.err().unwrap_or_default();
+        assert!(err.contains("vibe_only"));
+    }
+
+    #[test]
+    fn badge_plus_rejects_unsupported_schema_version() {
+        let json = r#"{"schema_version":"2.0","tests":[],"metrics":{"tests_scanned":0,"reason_counts":{}}}"#;
+        let result = parse_test_efficiency_badge_summary(json);
+
+        assert!(result.is_err());
+        let err = result.err().unwrap_or_default();
+        assert!(err.contains("schema_version"));
+    }
+
+    #[test]
+    fn badge_plus_rejects_missing_metrics_tests_scanned() {
+        let json = r#"{"schema_version":"0.1","tests":[],"metrics":{}}"#;
+        let result = parse_test_efficiency_badge_summary(json);
+
+        assert!(result.is_err());
+        let err = result.err().unwrap_or_default();
+        assert!(err.contains("metrics.tests_scanned"));
+    }
+
+    // -------- ripr+ summary builder + renderers --------
+
+    #[test]
+    fn ripr_plus_native_json_has_kind_ripr_plus_and_label_ripr_plus() {
+        let summary = ripr_plus_badge_summary(
+            &check_output(Vec::new()),
+            TestEfficiencyBadgeSummary {
+                unsuppressed_test_efficiency_findings: 0,
+                intentional_test_efficiency_findings: 0,
+                unknowns_test_efficiency: 0,
+                analyzed_tests: 12,
+                reason_counts: {
+                    let mut m = std::collections::BTreeMap::new();
+                    for k in BADGE_REASON_KEYS {
+                        m.insert(*k, 0);
+                    }
+                    m
+                },
+            },
+            BadgePolicy::default(),
+        );
+        let json = render_native_json(&summary);
+
+        assert!(json.contains("\"kind\": \"ripr_plus\""));
+        assert!(json.contains("\"label\": \"ripr+\""));
+        assert!(json.contains("\"analyzed_tests\": 12"));
+        assert!(json.contains("\"message\": \"0\""));
+    }
+
+    #[test]
+    fn ripr_plus_message_sums_exposure_and_unsuppressed_test_efficiency() {
+        // 1 weakly_exposed + 1 reachable_unrevealed = 2 exposure gaps.
+        // 3 unsuppressed test-efficiency findings.
+        // 2 declared intent (NOT in headline). Total: 2 + 3 = 5.
+        let summary = ripr_plus_badge_summary(
+            &check_output(vec![
+                finding(ExposureClass::WeaklyExposed, vec![]),
+                finding(ExposureClass::ReachableUnrevealed, vec![]),
+                finding(ExposureClass::Exposed, vec![]),
+            ]),
+            TestEfficiencyBadgeSummary {
+                unsuppressed_test_efficiency_findings: 3,
+                intentional_test_efficiency_findings: 2,
+                unknowns_test_efficiency: 1,
+                analyzed_tests: 0,
+                reason_counts: std::collections::BTreeMap::new(),
+            },
+            BadgePolicy::default(),
+        );
+
+        assert_eq!(summary.message, "5");
+        assert_eq!(summary.counts.unsuppressed_exposure_gaps, 2);
+        assert_eq!(summary.counts.unsuppressed_test_efficiency_findings, 3);
+        assert_eq!(summary.counts.intentional_test_efficiency_findings, 2);
+        assert_eq!(summary.counts.unknowns_test_efficiency, 1);
+    }
+
+    #[test]
+    fn ripr_plus_shields_projection_has_exactly_four_fields_with_ripr_plus_label() {
+        let summary = ripr_plus_badge_summary(
+            &check_output(vec![finding(ExposureClass::WeaklyExposed, vec![])]),
+            TestEfficiencyBadgeSummary::default(),
+            BadgePolicy::default(),
+        );
+        let shields = render_shields_json(&summary);
+
+        assert!(shields.contains("\"schemaVersion\": 1"));
+        assert!(shields.contains("\"label\": \"ripr+\""));
+        assert!(shields.contains("\"message\": \"1\""));
+        assert!(shields.contains("\"color\":"));
+
+        let top_level_quoted_keys = shields
+            .lines()
+            .filter(|line| line.starts_with("  \""))
+            .count();
+        assert_eq!(top_level_quoted_keys, 4);
+        for forbidden in ["counts", "reason_counts", "policy", "kind", "status"] {
+            assert!(
+                !shields.contains(&format!("\"{forbidden}\":")),
+                "ripr+ Shields projection must not contain `{forbidden}`"
+            );
+        }
+    }
+
+    #[test]
+    fn ripr_plus_message_has_no_denominator_or_coverage_framing() {
+        let summary = ripr_plus_badge_summary(
+            &check_output(vec![
+                finding(ExposureClass::WeaklyExposed, vec![]),
+                finding(ExposureClass::Exposed, vec![]),
+            ]),
+            TestEfficiencyBadgeSummary {
+                unsuppressed_test_efficiency_findings: 4,
+                ..TestEfficiencyBadgeSummary::default()
+            },
+            BadgePolicy::default(),
+        );
+        let json = render_native_json(&summary);
+        let shields = render_shields_json(&summary);
+
+        for body in [&json, &shields] {
+            let lower = body.to_ascii_lowercase();
+            assert!(!lower.contains("coverage"));
+            assert!(!lower.contains("uncovered"));
+        }
+        assert_eq!(summary.message, "5");
+        assert!(!summary.message.contains('/'));
+    }
+
+    #[test]
+    fn ripr_plus_include_unknowns_policy_adds_both_unknown_axes_to_headline() {
+        let policy = BadgePolicy {
+            include_unknowns: true,
+            ..BadgePolicy::default()
+        };
+        let summary = ripr_plus_badge_summary(
+            &check_output(vec![
+                finding(ExposureClass::WeaklyExposed, vec![]), // 1 gap
+                finding(ExposureClass::InfectionUnknown, vec![]), // 1 unknown
+            ]),
+            TestEfficiencyBadgeSummary {
+                unsuppressed_test_efficiency_findings: 2,
+                unknowns_test_efficiency: 3,
+                ..TestEfficiencyBadgeSummary::default()
+            },
+            policy,
+        );
+
+        // 1 + 2 + 1 + 3 = 7
+        assert_eq!(summary.message, "7");
     }
 }

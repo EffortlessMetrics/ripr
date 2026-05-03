@@ -156,11 +156,11 @@ commands = [
 
 [[work_item]]
 id = "badge/ripr-plus-count-v1"
-status = "ready"
+status = "done"
 branch = "badge/ripr-plus-count-v1"
 stackable = false
 requires_human_merge = true
-acceptance = "ripr check --format badge-plus-json and --format badge-plus-shields sum unsuppressed exposure gaps and unsuppressed actionable test-efficiency findings (excluding declared intent); intentional findings are reported in counts.intentional_test_efficiency_findings"
+acceptance = "ripr check --format badge-plus-json and --format badge-plus-shields read target/ripr/reports/test-efficiency.json (relative to --root), sum unsuppressed exposure gaps and unsuppressed actionable test-efficiency findings, exclude entries with declared_intent metadata, and report opaque entries as unknowns_test_efficiency; missing report fails clearly with a regenerator hint; existing ripr badge formats remain unchanged; suppressed counts stay 0 until suppressions/v1"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
@@ -173,12 +173,10 @@ commands = [
 
 [[work_item]]
 id = "suppressions/v1"
-status = "blocked"
+status = "ready"
 branch = "suppressions/v1"
 stackable = false
 requires_human_merge = true
-blocked_by = ["badge/ripr-plus-count-v1"]
-blocked_reason = "needs the ripr+ counter before suppressions can affect a published badge number"
 acceptance = ".ripr/suppressions.toml loader; reason and owner required; expiry encouraged; suppressed findings remain visible in reports; badge counts.suppressed_* reflect the count"
 commands = [
   "cargo xtask shape",

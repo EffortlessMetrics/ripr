@@ -325,6 +325,13 @@ ripr check --base origin/main --format badge-plus-json
 ripr check --base origin/main --format badge-plus-shields
 ```
 
+The `badge-plus-*` formats read `target/ripr/reports/test-efficiency.json`
+(relative to `--root`). If the report is missing, the command fails with a
+clear error pointing at `cargo xtask test-efficiency-report`. CI artifact
+wiring (`ci/badge-artifacts`) will eventually generate the report as part
+of the badge pipeline; until then, callers must regenerate the report
+explicitly when test-efficiency state changes.
+
 Reasoning. The current top-level commands are `check`, `explain`, `context`,
 `doctor`, `lsp`. Each is a distinct *operation*. A badge is the same
 operation as `check` rendered differently. Keeping it as a `--format` choice:
@@ -434,8 +441,8 @@ Tracked alongside Campaign 4A in
 | Private `BadgeSummary` model and renderer | done | `badge/summary-renderer-v1` |
 | `ripr check --format badge-json` / `badge-shields` | done | `badge/ripr-count-v1` |
 | `.ripr/test_intent.toml` loader | done | `test-intent/v1` |
-| `ripr check --format badge-plus-*` | ready | `badge/ripr-plus-count-v1` |
-| `.ripr/suppressions.toml` loader | not started | `suppressions/v1` |
+| `ripr check --format badge-plus-*` | done | `badge/ripr-plus-count-v1` |
+| `.ripr/suppressions.toml` loader | ready | `suppressions/v1` |
 | CI badge artifacts | not started | `ci/badge-artifacts` |
 | Published Shields endpoint from `main` | not started | `badge/publish-main-endpoint` |
 

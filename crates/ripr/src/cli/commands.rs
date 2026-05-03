@@ -40,7 +40,7 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     }
     let format = input.format.clone();
     let output = app::check_workspace(input)?;
-    print!("{}", app::render_check(&output, &format));
+    print!("{}", app::render_check(&output, &format)?);
     Ok(())
 }
 
