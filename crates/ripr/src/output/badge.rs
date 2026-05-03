@@ -10,11 +10,11 @@
 //! counts). Test-efficiency, intent, suppressions, and the `ripr+` shape
 //! are intentionally absent and will arrive in their own scoped PRs.
 //!
-//! The module-level `#![allow(dead_code)]` exists because `badge/ripr-count-v1`
+//! The module-level lint suppression below exists because `badge/ripr-count-v1`
 //! is the consumer that wires this renderer into `ripr check --format`; until
 //! that PR lands, the renderer is exercised only by the unit tests in this
-//! file. The allow attribute is registered in `.ripr/allow-attributes.txt`
-//! and should be removed when the consumer lands.
+//! file. The suppression is registered in `.ripr/allow-attributes.txt` and
+//! should be removed when the consumer lands.
 #![allow(dead_code)]
 
 use crate::app::CheckOutput;
