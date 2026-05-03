@@ -389,6 +389,7 @@ fn main() {
         Some("metrics") => metrics_report(),
         Some("test-oracle-report") | Some("check-test-oracles") => test_oracle_report(),
         Some("test-efficiency-report") => test_efficiency_report(),
+        Some("badge-artifacts") => badge_artifacts(),
         Some("dogfood") => dogfood(),
         Some("critic") => critic(),
         Some("goals") => goals(&args[2..]),
@@ -746,6 +747,17 @@ fn receipt_specs() -> Vec<ReceiptSpec> {
             file: "test-oracles.json",
             command: "cargo xtask test-oracle-report",
             reports: &["test-oracles.md", "test-oracles.json"],
+        },
+        ReceiptSpec {
+            file: "badge-artifacts.json",
+            command: "cargo xtask badge-artifacts",
+            reports: &[
+                "ripr-badge.json",
+                "ripr-badge-shields.json",
+                "ripr-plus-badge.json",
+                "ripr-plus-badge-shields.json",
+                "ripr-badges.md",
+            ],
         },
         ReceiptSpec {
             file: "dogfood.json",
@@ -5085,6 +5097,232 @@ fn test_efficiency_report_json(
     ));
     body.push_str("  }\n}\n");
     body
+}
+
+fn badge_artifacts() -> Result<(), String> {
+    let badge_dir = Path::new("target").join("ripr");
+    fs::create_dir_all(&badge_dir).map_err(|err| {
+        format!(
+            "failed to create badge directory {}: {err}",
+            normalize_path(&badge_dir)
+        )
+    })?;
+
+    let badge_input_path = badge_dir.join("badge-input.diff");
+    let diff_output = run_output_optional("git", &["diff", "origin/main...HEAD"])?;
+    fs::write(&badge_input_path, &diff_output).map_err(|err| {
+        format!(
+            "failed to write badge input diff {}: {err}",
+            normalize_path(&badge_input_path)
+        )
+    })?;
+
+    let mut ripr_native_json = String::new();
+    let mut ripr_plus_native_json = String::new();
+
+    for job in badge_artifact_jobs() {
+        let args = badge_artifact_command_args(job.format);
+        let output = run_output_owned("cargo", &args)?;
+        write_report(job.output_file, &output)?;
+        match badge_artifact_native_slot(job.format) {
+            Some(BadgeNativeSlot::Ripr) => ripr_native_json = output,
+            Some(BadgeNativeSlot::RiprPlus) => ripr_plus_native_json = output,
+            None => {}
+        }
+    }
+
+    let summary = badge_artifacts_summary_markdown(&ripr_native_json, &ripr_plus_native_json);
+    write_report("ripr-badges.md", &summary)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct BadgeArtifactJob {
+    format: &'static str,
+    output_file: &'static str,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum BadgeNativeSlot {
+    Ripr,
+    RiprPlus,
+}
+
+fn badge_artifact_jobs() -> Vec<BadgeArtifactJob> {
+    vec![
+        BadgeArtifactJob {
+            format: "badge-json",
+            output_file: "ripr-badge.json",
+        },
+        BadgeArtifactJob {
+            format: "badge-shields",
+            output_file: "ripr-badge-shields.json",
+        },
+        BadgeArtifactJob {
+            format: "badge-plus-json",
+            output_file: "ripr-plus-badge.json",
+        },
+        BadgeArtifactJob {
+            format: "badge-plus-shields",
+            output_file: "ripr-plus-badge-shields.json",
+        },
+    ]
+}
+
+fn badge_artifact_command_args(format: &str) -> Vec<String> {
+    vec![
+        "run".to_string(),
+        "-p".to_string(),
+        "ripr".to_string(),
+        "--quiet".to_string(),
+        "--".to_string(),
+        "check".to_string(),
+        "--root".to_string(),
+        ".".to_string(),
+        "--diff".to_string(),
+        "target/ripr/badge-input.diff".to_string(),
+        "--format".to_string(),
+        format.to_string(),
+    ]
+}
+
+fn badge_artifact_native_slot(format: &str) -> Option<BadgeNativeSlot> {
+    match format {
+        "badge-json" => Some(BadgeNativeSlot::Ripr),
+        "badge-plus-json" => Some(BadgeNativeSlot::RiprPlus),
+        _ => None,
+    }
+}
+
+fn badge_artifacts_summary_markdown(ripr_native_json: &str, ripr_plus_native_json: &str) -> String {
+    let mut markdown = String::from("# ripr badges\n\n");
+    append_badge_section(&mut markdown, "ripr", ripr_native_json);
+    append_badge_section(&mut markdown, "ripr+", ripr_plus_native_json);
+    markdown.push_str("## Artifacts\n\n");
+    markdown.push_str("- `ripr-badge.json` — native ripr badge\n");
+    markdown.push_str("- `ripr-badge-shields.json` — Shields projection of ripr badge\n");
+    markdown.push_str("- `ripr-plus-badge.json` — native ripr+ badge\n");
+    markdown.push_str("- `ripr-plus-badge-shields.json` — Shields projection of ripr+ badge\n");
+    markdown
+}
+
+fn append_badge_section(markdown: &mut String, heading: &str, native_json: &str) {
+    let message = extract_json_string(native_json, "\"message\":").unwrap_or_default();
+    let color = extract_json_string(native_json, "\"color\":").unwrap_or_default();
+    let counts = extract_json_object_usize_map(native_json, "\"counts\":");
+    let reason_counts = extract_json_object_usize_map(native_json, "\"reason_counts\":");
+    let warnings = extract_json_warnings(native_json);
+
+    markdown.push_str(&format!("## {heading}\n\n"));
+    markdown.push_str(&format!("- message: {message}\n"));
+    markdown.push_str(&format!("- color: {color}\n"));
+    markdown.push_str("- counts:\n");
+    for (key, value) in &counts {
+        markdown.push_str(&format!("  - {key}: {value}\n"));
+    }
+    markdown.push_str("- reason_counts:\n");
+    for (key, value) in &reason_counts {
+        markdown.push_str(&format!("  - {key}: {value}\n"));
+    }
+    if warnings.is_empty() {
+        markdown.push_str("- warnings: none\n\n");
+    } else {
+        markdown.push_str("- warnings:\n");
+        for warning in &warnings {
+            markdown.push_str(&format!("  - {warning}\n"));
+        }
+        markdown.push('\n');
+    }
+}
+
+fn extract_json_string(json: &str, key: &str) -> Option<String> {
+    let start = json.find(key)? + key.len();
+    let remaining = &json[start..];
+    let quote_start = remaining.find('"')?;
+    let quote_end = remaining[quote_start + 1..].find('"')?;
+    Some(remaining[quote_start + 1..quote_start + 1 + quote_end].to_string())
+}
+
+fn extract_json_object_usize_map(json: &str, key: &str) -> BTreeMap<String, usize> {
+    let mut entries = BTreeMap::new();
+    let object_start = match json.find(key) {
+        Some(pos) => {
+            let after_key = pos + key.len();
+            let remaining = &json[after_key..];
+            let brace_pos = remaining.find('{').unwrap_or(0);
+            after_key + brace_pos + 1
+        }
+        None => return entries,
+    };
+
+    let object_slice = &json[object_start..];
+    let object_end = match object_slice.find('}') {
+        Some(pos) => pos,
+        None => return entries,
+    };
+
+    let object_text = &object_slice[..object_end];
+    for part in object_text.split(',') {
+        if let Some(colon_pos) = part.find(':') {
+            let key_part = part[..colon_pos].trim();
+            let value_part = part[colon_pos + 1..].trim();
+
+            if key_part.starts_with('"') && key_part.ends_with('"') {
+                let entry_key = key_part[1..key_part.len() - 1].to_string();
+                if let Ok(value) = value_part.parse::<usize>() {
+                    entries.insert(entry_key, value);
+                }
+            }
+        }
+    }
+    entries
+}
+
+fn extract_json_warnings(json: &str) -> Vec<String> {
+    let mut warnings = Vec::new();
+    let needle = "\"warnings\":";
+    let warnings_start = match json.find(needle) {
+        Some(pos) => {
+            let after_colon = pos + needle.len();
+            let remaining = &json[after_colon..];
+            let bracket_pos = remaining.find('[').unwrap_or(0);
+            after_colon + bracket_pos + 1
+        }
+        None => return warnings,
+    };
+
+    let remaining = &json[warnings_start..];
+    let end_bracket_pos = match remaining.find(']') {
+        Some(pos) => pos,
+        None => return warnings,
+    };
+
+    let warnings_content = &remaining[..end_bracket_pos];
+
+    let mut i = 0;
+    let chars: Vec<char> = warnings_content.chars().collect();
+
+    while i < chars.len() {
+        if chars[i] == '"' {
+            i += 1;
+            let mut warning_chars = Vec::new();
+
+            while i < chars.len() && chars[i] != '"' {
+                if chars[i] == '\\' && i + 1 < chars.len() {
+                    i += 1;
+                }
+                warning_chars.push(chars[i]);
+                i += 1;
+            }
+
+            if i < chars.len() && chars[i] == '"' {
+                let warning: String = warning_chars.into_iter().collect();
+                warnings.push(warning);
+            }
+        }
+        i += 1;
+    }
+
+    warnings
 }
 
 fn dogfood() -> Result<(), String> {
@@ -10068,10 +10306,13 @@ fn is_word_char(value: Option<char>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        CampaignManifest, Capability, ChangedPath, DogfoodRun, LocalContextAllow, MarkdownLink,
-        ReceiptRecord, ReportIndexCampaign, ReportIndexEntry, StaticLanguageAllowEntry,
-        StaticLanguageMatcher, TestOracleClass, critic_findings, dogfood_class_counts,
-        dogfood_report_json, dogfood_report_markdown, extract_workflow_run_blocks,
+        BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, DogfoodRun,
+        LocalContextAllow, MarkdownLink, ReceiptRecord, ReportIndexCampaign, ReportIndexEntry,
+        StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass,
+        badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
+        badge_artifacts_summary_markdown, critic_findings, dogfood_class_counts,
+        dogfood_report_json, dogfood_report_markdown, extract_json_object_usize_map,
+        extract_json_string, extract_json_warnings, extract_workflow_run_blocks,
         first_line_difference, glob_matches, golden_changes_without_blessing,
         golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
         is_bdd_test_name, is_dependency_surface_candidate, is_evidence_path,
@@ -13102,5 +13343,477 @@ reason = "second"
             reason: "y".to_string(),
             source: ".ripr/test_intent.toml".to_string(),
         };
+    }
+
+    const STUB_RIPR_NATIVE_JSON: &str = r#"{
+  "schema_version": "0.1",
+  "kind": "ripr",
+  "label": "ripr",
+  "message": "3",
+  "status": "warn",
+  "color": "yellow",
+  "counts": {
+    "unsuppressed_exposure_gaps": 3,
+    "unsuppressed_test_efficiency_findings": 0,
+    "intentional_test_efficiency_findings": 0,
+    "suppressed_exposure_gaps": 1,
+    "suppressed_test_efficiency_findings": 0,
+    "unknowns": 0,
+    "unknowns_test_efficiency": 0,
+    "analyzed_findings": 4,
+    "analyzed_tests": 0
+  },
+  "reason_counts": {
+    "no_assertion_detected": 0,
+    "smoke_oracle_only": 0,
+    "relational_oracle": 0,
+    "broad_oracle": 0,
+    "assertion_may_not_match_detected_owner": 0,
+    "opaque_helper_or_fixture_boundary": 0,
+    "no_activation_literal_detected": 0,
+    "expected_value_computed_from_detected_owner_path": 0,
+    "duplicate_activation_and_oracle_shape": 0
+  },
+  "policy": {
+    "include_unknowns": false,
+    "fail_on_nonzero": false,
+    "test_intent_path": ".ripr/test_intent.toml",
+    "suppressions_path": ".ripr/suppressions.toml"
+  },
+  "warnings": ["first warning", "second warning"]
+}"#;
+
+    const STUB_RIPR_PLUS_NATIVE_JSON: &str = r#"{
+  "schema_version": "0.1",
+  "kind": "ripr_plus",
+  "label": "ripr+",
+  "message": "7",
+  "status": "warn",
+  "color": "orange",
+  "counts": {
+    "unsuppressed_exposure_gaps": 0,
+    "unsuppressed_test_efficiency_findings": 7,
+    "intentional_test_efficiency_findings": 2,
+    "suppressed_exposure_gaps": 0,
+    "suppressed_test_efficiency_findings": 1,
+    "unknowns": 0,
+    "unknowns_test_efficiency": 3,
+    "analyzed_findings": 0,
+    "analyzed_tests": 308
+  },
+  "reason_counts": {
+    "no_assertion_detected": 1,
+    "smoke_oracle_only": 1,
+    "relational_oracle": 1,
+    "broad_oracle": 4,
+    "assertion_may_not_match_detected_owner": 0,
+    "opaque_helper_or_fixture_boundary": 3,
+    "no_activation_literal_detected": 3,
+    "expected_value_computed_from_detected_owner_path": 0,
+    "duplicate_activation_and_oracle_shape": 1
+  },
+  "policy": {
+    "include_unknowns": false,
+    "fail_on_nonzero": false,
+    "test_intent_path": ".ripr/test_intent.toml",
+    "suppressions_path": ".ripr/suppressions.toml"
+  },
+  "warnings": []
+}"#;
+
+    #[test]
+    fn badge_artifacts_summary_markdown_includes_counts_and_warnings() -> Result<(), String> {
+        let markdown =
+            badge_artifacts_summary_markdown(STUB_RIPR_NATIVE_JSON, STUB_RIPR_PLUS_NATIVE_JSON);
+
+        let expectations = [
+            "## ripr",
+            "## ripr+",
+            "- message: 3",
+            "- message: 7",
+            "- color: yellow",
+            "- color: orange",
+            "  - unsuppressed_exposure_gaps: 3",
+            "  - unsuppressed_test_efficiency_findings: 7",
+            "  - broad_oracle: 4",
+            "  - first warning",
+            "  - second warning",
+        ];
+        for expected in expectations {
+            if !markdown.contains(expected) {
+                return Err(format!(
+                    "expected '{expected}' in markdown, got:\n{markdown}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn badge_artifacts_summary_markdown_omits_forbidden_terms() -> Result<(), String> {
+        let markdown =
+            badge_artifacts_summary_markdown(STUB_RIPR_NATIVE_JSON, STUB_RIPR_PLUS_NATIVE_JSON);
+
+        let forbidden = ["/", "coverage", "uncovered", "killed", "proven", "adequate"];
+        let lower = markdown.to_lowercase();
+        for term in forbidden {
+            if lower.contains(&term.to_lowercase()) {
+                return Err(format!(
+                    "forbidden term '{term}' found in markdown:\n{markdown}"
+                ));
+            }
+        }
+        // The "survived" check is intentionally substring-strict: the badge
+        // schema's `unsuppressed_*` keys legitimately contain neither
+        // "killed" nor "survived", but a future schema change could add
+        // mutation-runtime language. Guard with a word-boundary heuristic
+        // by requiring the leading character to be alphabetic-or-start.
+        for forbidden_word in ["survived", "untested"] {
+            for window in lower.split(|c: char| !c.is_alphanumeric() && c != '_') {
+                if window == forbidden_word {
+                    return Err(format!(
+                        "forbidden word '{forbidden_word}' found in markdown:\n{markdown}"
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn badge_artifacts_summary_markdown_is_deterministic_with_sorted_keys() -> Result<(), String> {
+        let unsorted_ripr = r#"{
+  "label": "ripr",
+  "message": "0",
+  "color": "brightgreen",
+  "counts": {
+    "unsuppressed_test_efficiency_findings": 0,
+    "analyzed_tests": 0,
+    "unsuppressed_exposure_gaps": 0,
+    "intentional_test_efficiency_findings": 0,
+    "suppressed_exposure_gaps": 0,
+    "unknowns": 0,
+    "analyzed_findings": 0,
+    "suppressed_test_efficiency_findings": 0,
+    "unknowns_test_efficiency": 0
+  },
+  "reason_counts": {
+    "smoke_oracle_only": 0,
+    "no_assertion_detected": 0,
+    "broad_oracle": 0,
+    "relational_oracle": 0
+  },
+  "warnings": []
+}"#;
+        let unsorted_ripr_plus = r#"{
+  "label": "ripr+",
+  "message": "0",
+  "color": "brightgreen",
+  "counts": {
+    "analyzed_tests": 308,
+    "unsuppressed_test_efficiency_findings": 0,
+    "unknowns_test_efficiency": 0,
+    "analyzed_findings": 0,
+    "suppressed_test_efficiency_findings": 0,
+    "unsuppressed_exposure_gaps": 0,
+    "unknowns": 0,
+    "intentional_test_efficiency_findings": 0,
+    "suppressed_exposure_gaps": 0
+  },
+  "reason_counts": {
+    "smoke_oracle_only": 0,
+    "broad_oracle": 0,
+    "no_assertion_detected": 0,
+    "relational_oracle": 0
+  },
+  "warnings": []
+}"#;
+
+        let markdown_a = badge_artifacts_summary_markdown(unsorted_ripr, unsorted_ripr_plus);
+        let markdown_b = badge_artifacts_summary_markdown(unsorted_ripr, unsorted_ripr_plus);
+        if markdown_a != markdown_b {
+            return Err(format!(
+                "markdown not deterministic across calls:\nA:\n{markdown_a}\nB:\n{markdown_b}"
+            ));
+        }
+
+        // Within each `counts:` and `reason_counts:` block, bullet lines
+        // (those starting with "  - ") must appear in lexicographic order.
+        let mut in_block = false;
+        let mut prev: Option<String> = None;
+        for line in markdown_a.lines() {
+            if line.starts_with("- counts:") || line.starts_with("- reason_counts:") {
+                in_block = true;
+                prev = None;
+                continue;
+            }
+            if line.starts_with("- ") {
+                in_block = false;
+                prev = None;
+                continue;
+            }
+            if in_block && line.starts_with("  - ") {
+                let curr = line.to_string();
+                if let Some(prior) = &prev
+                    && prior > &curr
+                {
+                    return Err(format!(
+                        "block keys not lexicographically sorted:\n{prior}\n{curr}"
+                    ));
+                }
+                prev = Some(curr);
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn extract_json_string_returns_value_for_present_key() -> Result<(), String> {
+        let json = r#"{"label": "ripr", "color": "brightgreen"}"#;
+        match extract_json_string(json, "\"color\":") {
+            Some(value) if value == "brightgreen" => Ok(()),
+            other => Err(format!("expected Some(\"brightgreen\"), got {other:?}")),
+        }
+    }
+
+    #[test]
+    fn extract_json_string_returns_none_for_missing_key() -> Result<(), String> {
+        let json = r#"{"label": "ripr"}"#;
+        match extract_json_string(json, "\"color\":") {
+            None => Ok(()),
+            other => Err(format!("expected None, got {other:?}")),
+        }
+    }
+
+    #[test]
+    fn extract_json_string_returns_none_for_unterminated_value() -> Result<(), String> {
+        let json = r#"{"label": "ripr"#;
+        match extract_json_string(json, "\"label\":") {
+            None => Ok(()),
+            other => Err(format!(
+                "expected None for unterminated value, got {other:?}"
+            )),
+        }
+    }
+
+    #[test]
+    fn extract_json_object_usize_map_reads_flat_object() -> Result<(), String> {
+        let json = r#"{"counts": {"a": 1, "b": 2, "c": 3}}"#;
+        let map = extract_json_object_usize_map(json, "\"counts\":");
+        let expected: std::collections::BTreeMap<String, usize> = [("a", 1), ("b", 2), ("c", 3)]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect();
+        if map == expected {
+            Ok(())
+        } else {
+            Err(format!("expected {expected:?}, got {map:?}"))
+        }
+    }
+
+    #[test]
+    fn extract_json_object_usize_map_returns_empty_for_missing_key() -> Result<(), String> {
+        let json = r#"{"label": "ripr"}"#;
+        let map = extract_json_object_usize_map(json, "\"counts\":");
+        if map.is_empty() {
+            Ok(())
+        } else {
+            Err(format!("expected empty map, got {map:?}"))
+        }
+    }
+
+    #[test]
+    fn extract_json_object_usize_map_skips_non_numeric_values() -> Result<(), String> {
+        let json = r#"{"counts": {"a": 1, "b": "two", "c": 3}}"#;
+        let map = extract_json_object_usize_map(json, "\"counts\":");
+        if map.contains_key("b") {
+            return Err(format!(
+                "non-numeric value 'two' should be skipped: {map:?}"
+            ));
+        }
+        if map.get("a") != Some(&1) || map.get("c") != Some(&3) {
+            return Err(format!("expected a=1 and c=3, got {map:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn extract_json_object_usize_map_orders_keys_lexicographically() -> Result<(), String> {
+        let json = r#"{"counts": {"zeta": 1, "alpha": 2, "mu": 3}}"#;
+        let map = extract_json_object_usize_map(json, "\"counts\":");
+        let keys: Vec<String> = map.keys().cloned().collect();
+        let expected = vec!["alpha".to_string(), "mu".to_string(), "zeta".to_string()];
+        if keys == expected {
+            Ok(())
+        } else {
+            Err(format!(
+                "expected lexicographic order {expected:?}, got {keys:?}"
+            ))
+        }
+    }
+
+    #[test]
+    fn extract_json_warnings_returns_empty_for_empty_array() -> Result<(), String> {
+        let json = r#"{"warnings": []}"#;
+        let warnings = extract_json_warnings(json);
+        if warnings.is_empty() {
+            Ok(())
+        } else {
+            Err(format!("expected empty Vec, got {warnings:?}"))
+        }
+    }
+
+    #[test]
+    fn extract_json_warnings_returns_empty_for_missing_key() -> Result<(), String> {
+        let json = r#"{"label": "ripr"}"#;
+        let warnings = extract_json_warnings(json);
+        if warnings.is_empty() {
+            Ok(())
+        } else {
+            Err(format!("expected empty Vec, got {warnings:?}"))
+        }
+    }
+
+    #[test]
+    fn extract_json_warnings_returns_all_entries() -> Result<(), String> {
+        let json = r#"{"warnings": ["first", "second", "third"]}"#;
+        let warnings = extract_json_warnings(json);
+        let expected = vec![
+            "first".to_string(),
+            "second".to_string(),
+            "third".to_string(),
+        ];
+        if warnings == expected {
+            Ok(())
+        } else {
+            Err(format!("expected {expected:?}, got {warnings:?}"))
+        }
+    }
+
+    #[test]
+    fn extract_json_warnings_unescapes_backslash_pairs() -> Result<(), String> {
+        // The substring extractor consumes the backslash-escape and keeps the
+        // following character — so `\"` becomes a literal quote inside the
+        // captured warning, and `\\` becomes a single backslash.
+        let json = r#"{"warnings": ["with \"quote\"", "with \\path"]}"#;
+        let warnings = extract_json_warnings(json);
+        let expected = vec!["with \"quote\"".to_string(), "with \\path".to_string()];
+        if warnings == expected {
+            Ok(())
+        } else {
+            Err(format!("expected {expected:?}, got {warnings:?}"))
+        }
+    }
+
+    #[test]
+    fn badge_artifact_jobs_has_exactly_four_entries_in_documented_order() -> Result<(), String> {
+        let jobs = badge_artifact_jobs();
+        let expected = vec![
+            BadgeArtifactJob {
+                format: "badge-json",
+                output_file: "ripr-badge.json",
+            },
+            BadgeArtifactJob {
+                format: "badge-shields",
+                output_file: "ripr-badge-shields.json",
+            },
+            BadgeArtifactJob {
+                format: "badge-plus-json",
+                output_file: "ripr-plus-badge.json",
+            },
+            BadgeArtifactJob {
+                format: "badge-plus-shields",
+                output_file: "ripr-plus-badge-shields.json",
+            },
+        ];
+        if jobs == expected {
+            Ok(())
+        } else {
+            Err(format!("expected {expected:?}, got {jobs:?}"))
+        }
+    }
+
+    #[test]
+    fn badge_artifact_command_args_matches_documented_invocation() -> Result<(), String> {
+        let args = badge_artifact_command_args("badge-plus-json");
+        let expected: Vec<String> = [
+            "run",
+            "-p",
+            "ripr",
+            "--quiet",
+            "--",
+            "check",
+            "--root",
+            ".",
+            "--diff",
+            "target/ripr/badge-input.diff",
+            "--format",
+            "badge-plus-json",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        if args == expected {
+            Ok(())
+        } else {
+            Err(format!("expected {expected:?}, got {args:?}"))
+        }
+    }
+
+    #[test]
+    fn badge_artifact_command_args_substitutes_format_only() -> Result<(), String> {
+        for format in ["badge-json", "badge-shields", "badge-plus-shields"] {
+            let args = badge_artifact_command_args(format);
+            let last = args.last().cloned().unwrap_or_default();
+            if last != format {
+                return Err(format!(
+                    "expected last arg to be {format:?}, got {last:?} (full args: {args:?})"
+                ));
+            }
+            // The static prefix must be byte-identical across formats.
+            let prefix = &args[..args.len() - 1];
+            let expected_prefix: Vec<String> = [
+                "run",
+                "-p",
+                "ripr",
+                "--quiet",
+                "--",
+                "check",
+                "--root",
+                ".",
+                "--diff",
+                "target/ripr/badge-input.diff",
+                "--format",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+            if prefix != expected_prefix.as_slice() {
+                return Err(format!(
+                    "static arg prefix changed for {format:?}: expected {expected_prefix:?}, got {prefix:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn badge_artifact_native_slot_maps_native_formats_only() -> Result<(), String> {
+        let cases = [
+            ("badge-json", Some(BadgeNativeSlot::Ripr)),
+            ("badge-plus-json", Some(BadgeNativeSlot::RiprPlus)),
+            ("badge-shields", None),
+            ("badge-plus-shields", None),
+            ("garbage", None),
+        ];
+        for (format, expected) in cases {
+            let actual = badge_artifact_native_slot(format);
+            if actual != expected {
+                return Err(format!(
+                    "for format {format:?} expected {expected:?}, got {actual:?}"
+                ));
+            }
+        }
+        Ok(())
     }
 }

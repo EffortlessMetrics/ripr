@@ -443,8 +443,8 @@ Tracked alongside Campaign 4A in
 | `.ripr/test_intent.toml` loader | done | `test-intent/v1` |
 | `ripr check --format badge-plus-*` | done | `badge/ripr-plus-count-v1` |
 | `.ripr/suppressions.toml` loader | done | `suppressions/v1` |
-| CI badge artifacts | ready | `ci/badge-artifacts` |
-| Published Shields endpoint from `main` | not started | `badge/publish-main-endpoint` |
+| CI badge artifacts | done | `ci/badge-artifacts` |
+| Published Shields endpoint from `main` | ready | `badge/publish-main-endpoint` |
 
 ## See also
 

@@ -189,7 +189,7 @@ commands = [
 
 [[work_item]]
 id = "ci/badge-artifacts"
-status = "ready"
+status = "done"
 branch = "ci/badge-artifacts"
 stackable = false
 requires_human_merge = true
@@ -206,12 +206,10 @@ commands = [
 
 [[work_item]]
 id = "badge/publish-main-endpoint"
-status = "blocked"
+status = "ready"
 branch = "badge/publish-main-endpoint"
 stackable = false
 requires_human_merge = true
-blocked_by = ["ci/badge-artifacts"]
-blocked_reason = "publishing a Shields endpoint from main requires stable badge artifacts and a network-allowlist entry"
 acceptance = "Shields-compatible badge JSON published from main only; README references the endpoint; policy/network_allowlist.txt updated; PR workflows do not publish"
 commands = [
   "cargo xtask shape",
