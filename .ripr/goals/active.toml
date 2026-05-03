@@ -17,12 +17,13 @@ end_state = [
 
 [[work_item]]
 id = "test-efficiency/test-fact-ledger"
-status = "ready"
+status = "done"
 branch = "test-efficiency/test-fact-ledger"
 stackable = false
 requires_human_merge = true
 acceptance = "advisory per-test ledger reports each test's reachable owners, oracle kind/strength, observed values, and static limitations"
 commands = [
+  "cargo xtask test-efficiency-report",
   "cargo xtask shape",
   "cargo xtask fix-pr",
   "cargo xtask check-pr",
@@ -35,12 +36,10 @@ commands = [
 
 [[work_item]]
 id = "test-efficiency/vacuous-signal-v1"
-status = "blocked"
+status = "ready"
 branch = "test-efficiency/vacuous-signal-v1"
 stackable = false
 requires_human_merge = true
-blocked_by = ["test-efficiency/test-fact-ledger"]
-blocked_reason = "needs per-test ledger shape before classifying vacuity signals"
 acceptance = "advisory findings classify smoke-only, broad-oracle, disconnected, opaque, circular, and likely-vacuous test signals with reasons"
 commands = [
   "cargo xtask shape",

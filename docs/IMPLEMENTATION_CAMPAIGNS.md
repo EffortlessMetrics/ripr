@@ -248,8 +248,8 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `test-efficiency/test-fact-ledger` | ready | Create advisory per-test evidence ledgers from existing test, oracle, value, and owner facts. |
-| `test-efficiency/vacuous-signal-v1` | blocked | Depends on the ledger; classify smoke-only, broad-oracle, disconnected, opaque, circular, and likely-vacuous signals with reasons. |
+| `test-efficiency/test-fact-ledger` | done | `cargo xtask test-efficiency-report` writes advisory per-test ledgers with reached owners, oracle kind/strength, observed values, and static limitations. |
+| `test-efficiency/vacuous-signal-v1` | ready | Classify smoke-only, broad-oracle, disconnected, opaque, circular, and likely-vacuous signals with reasons. |
 | `test-efficiency/duplicate-discriminator-v1` | blocked | Depends on first vacuity signals; group tests with the same owner, activation values, oracle shape, and sink evidence. |
 | `test-efficiency/report-and-metrics` | blocked | Depends on vacuity and duplicate signals; summarize counts and trends without blocking CI. |
 

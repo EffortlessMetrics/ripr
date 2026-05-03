@@ -107,6 +107,8 @@ groups them as duplicative without recommending deletion.
 
 Current and planned tests:
 
+- `xtask/src/main.rs::test_efficiency_ledger_records_owner_oracle_values_and_limitations`
+- `xtask/src/main.rs::test_efficiency_reports_are_advisory`
 - existing oracle-strength and activation-value BDD tests
 - existing `cargo xtask test-oracle-report`
 - planned unit tests for test-efficiency classification reasons
@@ -117,8 +119,8 @@ Current and planned tests:
 
 Planned modules:
 
-- `analysis` test, oracle, owner, value, and flow facts
-- `xtask` report command
+- `xtask` report command for the advisory per-test ledger
+- future `analysis` test, oracle, owner, value, and flow facts
 - future `output` rendering if the report becomes a product output surface
 
 ## Metrics

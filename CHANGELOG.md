@@ -26,6 +26,9 @@ are scoped or reviewed.
 - Closed Campaign 3 and added the advisory Test Efficiency and Vacuity Signals
   lane for per-test evidence ledgers, likely-vacuity signals, and duplicate
   discriminator reports.
+- Added `cargo xtask test-efficiency-report`, an advisory per-test evidence
+  ledger that reports apparent owner calls, oracle kind/strength, observed
+  literal values, and static limitations.
 - Passed VS Code `ripr.check.mode` and `ripr.baseRef` settings into LSP
   workspace diagnostics.
 - Stored the latest LSP analysis snapshot alongside diagnostics so future
