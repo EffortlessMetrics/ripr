@@ -57,6 +57,46 @@ pub fn probes_for_file(root: &Path, changed: &ChangedFile, index: &RustIndex) ->
     probes
 }
 
+pub fn probes_for_repo_file(root: &Path, path: &Path, index: &RustIndex) -> Vec<Probe> {
+    let mut probes = Vec::new();
+    let Some(facts) = index.files.get(path) else {
+        return probes;
+    };
+
+    for shape in &facts.probe_shapes {
+        let Some(family) = family_for_probe_shape(&shape.kind) else {
+            continue;
+        };
+
+        let owner = find_owner_function(index, path, shape.start_line).map(|f| f.id.clone());
+
+        let id = ProbeId(format!(
+            "repo-probe:{}:{}:{}",
+            sanitize_path(path),
+            shape.start_line,
+            family.as_str()
+        ));
+
+        let expected_sinks = expected_sinks(&shape.text, &family);
+        let required_oracles = required_oracles(&shape.text, &family);
+
+        probes.push(Probe {
+            id,
+            location: SourceLocation::new(root.join(path), shape.start_line, 1),
+            owner,
+            family,
+            delta: DeltaKind::Unknown,
+            before: None,
+            after: Some(shape.text.clone()),
+            expression: shape.text.clone(),
+            expected_sinks,
+            required_oracles,
+        });
+    }
+
+    probes
+}
+
 fn classify_changed_syntax(
     index: &RustIndex,
     file: &Path,
@@ -432,5 +472,51 @@ pub fn total(amount: i32, fee: i32) -> i32 {
             Some(index) => Ok(index + 1),
             None => Err(format!("missing line containing {needle}")),
         }
+    }
+
+    #[test]
+    fn probes_for_repo_file_uses_repo_probe_id_prefix() -> Result<(), String> {
+        let source = r#"
+pub fn check(x: i32) -> bool {
+    x > 5
+}
+"#;
+        let adapter = RaRustSyntaxAdapter;
+        let facts = adapter.summarize_file(std::path::Path::new("src/lib.rs"), source)?;
+        let mut index = RustIndex::default();
+        index.files.insert(PathBuf::from("src/lib.rs"), facts);
+
+        let probes = probes_for_repo_file(
+            std::path::Path::new("."),
+            std::path::Path::new("src/lib.rs"),
+            &index,
+        );
+
+        if probes.is_empty() {
+            return Err("expected at least one probe from probes_for_repo_file".to_string());
+        }
+        for probe in &probes {
+            if !probe.id.0.starts_with("repo-probe:") {
+                return Err(format!(
+                    "expected probe id to start with 'repo-probe:' but got {}",
+                    probe.id.0
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn probes_for_repo_file_returns_empty_for_unknown_path() -> Result<(), String> {
+        let index = RustIndex::default();
+        let probes = probes_for_repo_file(
+            std::path::Path::new("."),
+            std::path::Path::new("src/unknown.rs"),
+            &index,
+        );
+        if !probes.is_empty() {
+            return Err("expected empty vec for unknown path, but got probes".to_string());
+        }
+        Ok(())
     }
 }

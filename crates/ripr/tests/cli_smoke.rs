@@ -97,8 +97,9 @@ fn check_badge_json_output_has_native_badge_shape() {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.1""#));
+    assert!(stdout.contains(r#""schema_version": "0.2""#));
     assert!(stdout.contains(r#""kind": "ripr""#));
+    assert!(stdout.contains(r#""scope": "diff""#));
     assert!(stdout.contains(r#""label": "ripr""#));
     assert!(stdout.contains(r#""counts""#));
     assert!(stdout.contains(r#""reason_counts""#));
@@ -176,6 +177,44 @@ fn fixture_test_efficiency_report() -> &'static str {
 
 fn make_temp_workspace(report: Option<&str>) -> Result<PathBuf, String> {
     make_temp_workspace_with_suppressions(report, None)
+}
+
+fn make_temp_workspace_with_production_seam() -> Result<PathBuf, String> {
+    make_temp_workspace_with_production_seam_and_report_opt(None)
+}
+
+fn make_temp_workspace_with_production_seam_and_report(report: &str) -> Result<PathBuf, String> {
+    make_temp_workspace_with_production_seam_and_report_opt(Some(report))
+}
+
+fn make_temp_workspace_with_production_seam_and_report_opt(
+    report: Option<&str>,
+) -> Result<PathBuf, String> {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let pid = std::process::id();
+    let dir = std::env::temp_dir().join(format!("ripr-repo-badge-{stamp}-{pid}"));
+    std::fs::create_dir_all(&dir).map_err(|e| format!("create_dir_all: {e}"))?;
+    std::fs::write(
+        dir.join("Cargo.toml"),
+        "[package]\nname=\"ripr-repo-badge-fixture\"\nversion=\"0.1.0\"\nedition=\"2024\"\n",
+    )
+    .map_err(|e| format!("write Cargo.toml: {e}"))?;
+    std::fs::create_dir_all(dir.join("src")).map_err(|e| format!("create src: {e}"))?;
+    std::fs::write(
+        dir.join("src/lib.rs"),
+        "pub fn over_threshold(amount: i32, threshold: i32) -> bool {\n    amount >= threshold\n}\n",
+    )
+    .map_err(|e| format!("write src/lib.rs: {e}"))?;
+    if let Some(text) = report {
+        let reports = dir.join("target/ripr/reports");
+        std::fs::create_dir_all(&reports).map_err(|e| format!("create reports dir: {e}"))?;
+        std::fs::write(reports.join("test-efficiency.json"), text)
+            .map_err(|e| format!("write report: {e}"))?;
+    }
+    Ok(dir)
 }
 
 fn make_temp_workspace_with_suppressions(
@@ -257,8 +296,9 @@ fn check_badge_plus_json_emits_native_shape_with_fixture_report() -> Result<(), 
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.1""#));
+    assert!(stdout.contains(r#""schema_version": "0.2""#));
     assert!(stdout.contains(r#""kind": "ripr_plus""#));
+    assert!(stdout.contains(r#""scope": "diff""#));
     assert!(stdout.contains(r#""label": "ripr+""#));
     assert!(stdout.contains(r#""counts""#));
     assert!(stdout.contains(r#""reason_counts""#));
@@ -335,6 +375,159 @@ fn check_badge_plus_command_exits_zero_by_default_even_with_nonzero_count() -> R
         "badge-plus-json",
     ]);
     assert_success(&output);
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn check_repo_badge_json_emits_repo_scope_metadata() -> Result<(), String> {
+    // Repo scope must NOT consume `--diff`; it analyzes the workspace
+    // baseline through run_repo_analysis. A no-diff invocation that would
+    // produce empty findings under diff scope still produces a real
+    // repo-scoped count under repo scope.
+    let workspace = make_temp_workspace_with_production_seam()?;
+    let root = workspace.display().to_string();
+    let output = run_ripr(&["check", "--root", &root, "--format", "repo-badge-json"]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains(r#""schema_version": "0.2""#));
+    assert!(stdout.contains(r#""kind": "ripr""#));
+    assert!(stdout.contains(r#""scope": "repo""#));
+    assert!(
+        !stdout.contains(r#""scope": "diff""#),
+        "repo scope output must not also carry diff scope: {stdout}"
+    );
+    assert!(stdout.contains(r#""label": "ripr""#));
+    assert!(stdout.contains(r#""counts""#));
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn check_repo_badge_shields_keeps_four_fields_without_scope_leak() -> Result<(), String> {
+    let workspace = make_temp_workspace_with_production_seam()?;
+    let root = workspace.display().to_string();
+    let output = run_ripr(&["check", "--root", &root, "--format", "repo-badge-shields"]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains(r#""schemaVersion": 1"#));
+    assert!(stdout.contains(r#""label": "ripr""#));
+    assert!(stdout.contains(r#""color""#));
+    // Scope is native-only metadata; Shields stays exactly four fields.
+    assert!(
+        !stdout.contains(r#""scope""#),
+        "repo Shields projection must not include scope: {stdout}"
+    );
+    for forbidden in [
+        r#""counts""#,
+        r#""reason_counts""#,
+        r#""policy""#,
+        r#""kind""#,
+        r#""status""#,
+        r#""schema_version""#,
+    ] {
+        assert!(
+            !stdout.contains(forbidden),
+            "repo Shields projection must not contain `{forbidden}`: {stdout}"
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn check_repo_badge_plus_json_emits_repo_scope_metadata() -> Result<(), String> {
+    let workspace =
+        make_temp_workspace_with_production_seam_and_report(fixture_test_efficiency_report())?;
+    let root = workspace.display().to_string();
+    let output = run_ripr(&["check", "--root", &root, "--format", "repo-badge-plus-json"]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains(r#""schema_version": "0.2""#));
+    assert!(stdout.contains(r#""kind": "ripr_plus""#));
+    assert!(stdout.contains(r#""scope": "repo""#));
+    assert!(stdout.contains(r#""label": "ripr+""#));
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn check_repo_badge_plus_shields_keeps_four_fields() -> Result<(), String> {
+    let workspace =
+        make_temp_workspace_with_production_seam_and_report(fixture_test_efficiency_report())?;
+    let root = workspace.display().to_string();
+    let output = run_ripr(&[
+        "check",
+        "--root",
+        &root,
+        "--format",
+        "repo-badge-plus-shields",
+    ]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains(r#""schemaVersion": 1"#));
+    assert!(stdout.contains(r#""label": "ripr+""#));
+    assert!(!stdout.contains(r#""scope""#));
+    let top_level_keys = stdout
+        .lines()
+        .filter(|line| line.starts_with("  \""))
+        .count();
+    assert_eq!(
+        top_level_keys, 4,
+        "expected exactly 4 top-level Shields fields, got: {stdout}"
+    );
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn check_repo_badge_does_not_consult_diff_arg_when_supplied() -> Result<(), String> {
+    // Pin: even if `--diff` is passed, repo formats analyze the repo
+    // baseline. The diff arg is silently ignored under repo scope rather
+    // than mistakenly mixed into the analysis. This is the regression that
+    // unblocks badge/publish-main-endpoint.
+    let workspace = make_temp_workspace_with_production_seam()?;
+    let root = workspace.display().to_string();
+    let empty_diff = workspace.join("empty.patch");
+    std::fs::write(
+        &empty_diff,
+        r#"diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+"#,
+    )
+    .map_err(|e| format!("write empty.patch: {e}"))?;
+
+    let output = run_ripr(&[
+        "check",
+        "--root",
+        &root,
+        "--diff",
+        &empty_diff.display().to_string(),
+        "--format",
+        "repo-badge-json",
+    ]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains(r#""scope": "repo""#));
+    // The temp workspace has a probeable predicate; repo analysis seeds
+    // probes from production syntax shapes so analyzed_findings > 0
+    // even when the diff is empty.
+    assert!(
+        stdout.contains(r#""analyzed_findings""#),
+        "repo native JSON must include analyzed_findings: {stdout}"
+    );
 
     let _ = std::fs::remove_dir_all(&workspace);
     Ok(())

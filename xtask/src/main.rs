@@ -390,6 +390,7 @@ fn main() {
         Some("test-oracle-report") | Some("check-test-oracles") => test_oracle_report(),
         Some("test-efficiency-report") => test_efficiency_report(),
         Some("badge-artifacts") => badge_artifacts(),
+        Some("repo-badge-artifacts") => repo_badge_artifacts(),
         Some("dogfood") => dogfood(),
         Some("critic") => critic(),
         Some("goals") => goals(&args[2..]),
@@ -757,6 +758,17 @@ fn receipt_specs() -> Vec<ReceiptSpec> {
                 "ripr-plus-badge.json",
                 "ripr-plus-badge-shields.json",
                 "ripr-badges.md",
+            ],
+        },
+        ReceiptSpec {
+            file: "repo-badge-artifacts.json",
+            command: "cargo xtask repo-badge-artifacts",
+            reports: &[
+                "repo-ripr-badge.json",
+                "repo-ripr-badge-shields.json",
+                "repo-ripr-plus-badge.json",
+                "repo-ripr-plus-badge-shields.json",
+                "repo-ripr-badges.md",
             ],
         },
         ReceiptSpec {
@@ -5187,8 +5199,8 @@ fn badge_artifact_command_args(format: &str) -> Vec<String> {
 
 fn badge_artifact_native_slot(format: &str) -> Option<BadgeNativeSlot> {
     match format {
-        "badge-json" => Some(BadgeNativeSlot::Ripr),
-        "badge-plus-json" => Some(BadgeNativeSlot::RiprPlus),
+        "badge-json" | "repo-badge-json" => Some(BadgeNativeSlot::Ripr),
+        "badge-plus-json" | "repo-badge-plus-json" => Some(BadgeNativeSlot::RiprPlus),
         _ => None,
     }
 }
@@ -5202,6 +5214,105 @@ fn badge_artifacts_summary_markdown(ripr_native_json: &str, ripr_plus_native_jso
     markdown.push_str("- `ripr-badge-shields.json` — Shields projection of ripr badge\n");
     markdown.push_str("- `ripr-plus-badge.json` — native ripr+ badge\n");
     markdown.push_str("- `ripr-plus-badge-shields.json` — Shields projection of ripr+ badge\n");
+    markdown
+}
+
+fn repo_badge_artifacts() -> Result<(), String> {
+    let badge_dir = Path::new("target").join("ripr");
+    fs::create_dir_all(&badge_dir).map_err(|err| {
+        format!(
+            "failed to create badge directory {}: {err}",
+            normalize_path(&badge_dir)
+        )
+    })?;
+
+    // Repo scope is intentionally diff-free: the analysis comes from
+    // run_repo_analysis (every probeable production syntax shape) rather
+    // than `git diff origin/main...HEAD`. Capturing a diff would silently
+    // make the artifact dependent on branch state.
+    let mut ripr_native_json = String::new();
+    let mut ripr_plus_native_json = String::new();
+
+    for job in repo_badge_artifact_jobs() {
+        let args = repo_badge_artifact_command_args(job.format);
+        let output = run_output_owned("cargo", &args)?;
+        write_report(job.output_file, &output)?;
+        match badge_artifact_native_slot(job.format) {
+            Some(BadgeNativeSlot::Ripr) => ripr_native_json = output,
+            Some(BadgeNativeSlot::RiprPlus) => ripr_plus_native_json = output,
+            None => {}
+        }
+    }
+
+    let summary = repo_badge_artifacts_summary_markdown(&ripr_native_json, &ripr_plus_native_json);
+    write_report("repo-ripr-badges.md", &summary)
+}
+
+fn repo_badge_artifact_jobs() -> Vec<BadgeArtifactJob> {
+    vec![
+        BadgeArtifactJob {
+            format: "repo-badge-json",
+            output_file: "repo-ripr-badge.json",
+        },
+        BadgeArtifactJob {
+            format: "repo-badge-shields",
+            output_file: "repo-ripr-badge-shields.json",
+        },
+        BadgeArtifactJob {
+            format: "repo-badge-plus-json",
+            output_file: "repo-ripr-plus-badge.json",
+        },
+        BadgeArtifactJob {
+            format: "repo-badge-plus-shields",
+            output_file: "repo-ripr-plus-badge-shields.json",
+        },
+    ]
+}
+
+fn repo_badge_artifact_command_args(format: &str) -> Vec<String> {
+    // Intentionally omits any `--diff` / `--base` argument: repo scope must
+    // not consult `git diff origin/main...HEAD`. The regression test
+    // `repo_badge_artifact_command_args_does_not_use_git_diff` pins this
+    // contract.
+    vec![
+        "run".to_string(),
+        "-p".to_string(),
+        "ripr".to_string(),
+        "--quiet".to_string(),
+        "--".to_string(),
+        "check".to_string(),
+        "--root".to_string(),
+        ".".to_string(),
+        "--format".to_string(),
+        format.to_string(),
+    ]
+}
+
+fn repo_badge_artifacts_summary_markdown(
+    ripr_native_json: &str,
+    ripr_plus_native_json: &str,
+) -> String {
+    let mut markdown = String::from("# ripr repo badges\n\n");
+    markdown.push_str(
+        "Repo-scoped artifacts: rendered against the currently-probeable repo \
+baseline (every production syntax shape `ripr` knows how to probe under \
+the current analyzer), not against `git diff origin/main...HEAD`. Counts \
+reflect unresolved exposure gaps and unsuppressed actionable \
+test-efficiency findings under the configured policy. They are not a \
+proof of mutation adequacy; full seam inventory and discriminator \
+classification are tracked as later work.\n\n",
+    );
+    append_badge_section(&mut markdown, "ripr", ripr_native_json);
+    append_badge_section(&mut markdown, "ripr+", ripr_plus_native_json);
+    markdown.push_str("## Artifacts\n\n");
+    markdown.push_str("- `repo-ripr-badge.json` — native repo-scoped ripr badge\n");
+    markdown.push_str(
+        "- `repo-ripr-badge-shields.json` — Shields projection of repo-scoped ripr badge\n",
+    );
+    markdown.push_str("- `repo-ripr-plus-badge.json` — native repo-scoped ripr+ badge\n");
+    markdown.push_str(
+        "- `repo-ripr-plus-badge-shields.json` — Shields projection of repo-scoped ripr+ badge\n",
+    );
     markdown
 }
 
@@ -10323,7 +10434,8 @@ mod tests {
         normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
         parse_campaign_manifest, parse_inline_array, parse_reason, parse_static_language_allowlist,
         pr_shape_warnings, precommit_report_body, public_contract_rows, receipt_json,
-        receipt_specs, receipt_status_from_reports, report_index_markdown,
+        receipt_specs, receipt_status_from_reports, repo_badge_artifact_command_args,
+        repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown, report_index_markdown,
         report_index_missing_expected, report_status_from_text, should_scan_static_language_path,
         sorted_allowlist_content, spec_id_from_path, static_language_allowlist_covers,
         status_for_report, suspicious_runtime_file_names, test_efficiency_entry,
@@ -13812,6 +13924,175 @@ reason = "second"
                 return Err(format!(
                     "for format {format:?} expected {expected:?}, got {actual:?}"
                 ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn repo_badge_artifact_jobs_has_exactly_four_entries_with_repo_prefix() -> Result<(), String> {
+        let jobs = repo_badge_artifact_jobs();
+        let expected = vec![
+            BadgeArtifactJob {
+                format: "repo-badge-json",
+                output_file: "repo-ripr-badge.json",
+            },
+            BadgeArtifactJob {
+                format: "repo-badge-shields",
+                output_file: "repo-ripr-badge-shields.json",
+            },
+            BadgeArtifactJob {
+                format: "repo-badge-plus-json",
+                output_file: "repo-ripr-plus-badge.json",
+            },
+            BadgeArtifactJob {
+                format: "repo-badge-plus-shields",
+                output_file: "repo-ripr-plus-badge-shields.json",
+            },
+        ];
+        if jobs == expected {
+            Ok(())
+        } else {
+            Err(format!("expected {expected:?}, got {jobs:?}"))
+        }
+    }
+
+    #[test]
+    fn repo_badge_artifact_command_args_does_not_use_git_diff() -> Result<(), String> {
+        // Load-bearing regression: repo-scope artifacts MUST NOT depend on
+        // `git diff origin/main...HEAD`. On `main`, that diff is empty, so a
+        // diff-driven repo badge would always report 0 regardless of repo
+        // state. badge_artifacts_summary_markdown_includes the diff in
+        // diff-scope, so this test pins the absence here.
+        for format in [
+            "repo-badge-json",
+            "repo-badge-shields",
+            "repo-badge-plus-json",
+            "repo-badge-plus-shields",
+        ] {
+            let args = repo_badge_artifact_command_args(format);
+            for arg in &args {
+                if arg == "--diff" || arg == "--base" {
+                    return Err(format!(
+                        "repo-scope command args must not contain `--diff` or `--base` for {format:?}: {args:?}"
+                    ));
+                }
+                if arg.contains("origin/main") || arg.contains("badge-input.diff") {
+                    return Err(format!(
+                        "repo-scope command args must not reference origin/main or the diff input for {format:?}: {args:?}"
+                    ));
+                }
+            }
+            if args.last().map(String::as_str) != Some(format) {
+                return Err(format!(
+                    "expected last arg to be {format:?}, got {:?}",
+                    args.last()
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn diff_badge_artifact_command_args_still_use_git_diff_input() -> Result<(), String> {
+        // Companion to the repo regression: the diff-scope contract is that
+        // the args DO consult `git diff origin/main...HEAD` (captured to
+        // target/ripr/badge-input.diff before render). Pinning this here
+        // catches any accidental drift to a unified scope path.
+        for format in [
+            "badge-json",
+            "badge-shields",
+            "badge-plus-json",
+            "badge-plus-shields",
+        ] {
+            let args = badge_artifact_command_args(format);
+            if !args.iter().any(|arg| arg == "--diff") {
+                return Err(format!(
+                    "diff-scope command args must contain `--diff` for {format:?}: {args:?}"
+                ));
+            }
+            if !args.iter().any(|arg| arg.contains("badge-input.diff")) {
+                return Err(format!(
+                    "diff-scope command args must reference badge-input.diff for {format:?}: {args:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn repo_badge_artifact_native_slot_reuses_diff_mapping() -> Result<(), String> {
+        // The native-slot mapping is keyed on the format's `*-json` suffix,
+        // not on diff-vs-repo prefix; repo formats reuse it so badge_artifacts
+        // / repo_badge_artifacts share the same slotting helper.
+        let cases = [
+            ("repo-badge-json", Some(BadgeNativeSlot::Ripr)),
+            ("repo-badge-plus-json", Some(BadgeNativeSlot::RiprPlus)),
+            ("repo-badge-shields", None),
+            ("repo-badge-plus-shields", None),
+        ];
+        for (format, expected) in cases {
+            let actual = badge_artifact_native_slot(format);
+            if actual != expected {
+                return Err(format!(
+                    "for format {format:?} expected {expected:?}, got {actual:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn repo_badge_artifacts_summary_markdown_carries_baseline_disclaimer() -> Result<(), String> {
+        let markdown = repo_badge_artifacts_summary_markdown(
+            STUB_RIPR_NATIVE_JSON,
+            STUB_RIPR_PLUS_NATIVE_JSON,
+        );
+
+        let must_contain = [
+            "# ripr repo badges",
+            "currently-probeable repo baseline",
+            "not against `git diff origin/main...HEAD`",
+            "## ripr",
+            "## ripr+",
+            "- `repo-ripr-badge.json`",
+            "- `repo-ripr-plus-badge-shields.json`",
+        ];
+        for expected in must_contain {
+            if !markdown.contains(expected) {
+                return Err(format!(
+                    "expected '{expected}' in repo markdown, got:\n{markdown}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn repo_badge_artifacts_summary_markdown_omits_forbidden_terms() -> Result<(), String> {
+        let markdown = repo_badge_artifacts_summary_markdown(
+            STUB_RIPR_NATIVE_JSON,
+            STUB_RIPR_PLUS_NATIVE_JSON,
+        );
+
+        // Repo badge output is public-facing: it must not borrow runtime
+        // mutation language ("killed", "survived", "proven", "adequate")
+        // and must not pretend to be a coverage metric.
+        let lower = markdown.to_lowercase();
+        for term in ["coverage", "uncovered", "killed", "proven", "adequate"] {
+            if lower.contains(term) {
+                return Err(format!(
+                    "forbidden term '{term}' found in repo markdown:\n{markdown}"
+                ));
+            }
+        }
+        for forbidden_word in ["survived", "untested"] {
+            for window in lower.split(|c: char| !c.is_alphanumeric() && c != '_') {
+                if window == forbidden_word {
+                    return Err(format!(
+                        "forbidden word '{forbidden_word}' found in repo markdown:\n{markdown}"
+                    ));
+                }
             }
         }
         Ok(())
