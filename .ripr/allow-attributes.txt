@@ -6,3 +6,4 @@
 # Suppressions for guarded lints should be rare and temporary. Prefer fixing
 # the underlying warning. Do not use this file to normalize panic-family,
 # unsafe, dead-code, or broad warning suppressions.
+crates/ripr/src/output/badge.rs|allow(dead_code)|1|private badge renderer staged for badge/ripr-count-v1; remove when the consumer wires render_native_json/render_shields_json into ripr check --format

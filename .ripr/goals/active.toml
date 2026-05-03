@@ -106,11 +106,11 @@ commands = [
 
 [[work_item]]
 id = "badge/summary-renderer-v1"
-status = "ready"
+status = "done"
 branch = "badge/summary-renderer-v1"
 stackable = false
 requires_human_merge = true
-acceptance = "private BadgeSummary types in output::badge render badge-json and badge-shields projections from CheckOutput; cargo xtask check-public-api stays green"
+acceptance = "private BadgeSummary types in output::badge render badge-json and badge-shields projections from CheckOutput; module is pub(crate) and lib.rs public exports are unchanged; cargo xtask check-public-api stays green"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
@@ -122,12 +122,10 @@ commands = [
 
 [[work_item]]
 id = "badge/ripr-count-v1"
-status = "blocked"
+status = "ready"
 branch = "badge/ripr-count-v1"
 stackable = false
 requires_human_merge = true
-blocked_by = ["badge/summary-renderer-v1"]
-blocked_reason = "needs the private BadgeSummary renderer before exposing the badge formats on ripr check"
 acceptance = "ripr check --format badge-json and --format badge-shields emit a single source-of-truth schema with snake_case fields and a mechanical Shields projection; counts include unsuppressed_exposure_gaps, suppressed_exposure_gaps, unknowns, analyzed_findings, analyzed_tests"
 commands = [
   "cargo xtask shape",
