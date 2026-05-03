@@ -9,13 +9,14 @@ shape of the `ripr.toml` file. It pairs with:
 
 ## What can be configured today
 
-`ripr` currently reads configuration from three surfaces:
+`ripr` currently reads configuration from four surfaces:
 
 1. **CLI flags** on the `ripr` binary.
 2. **LSP `initializationOptions`** sent by an LSP client (e.g. the VS Code extension) on `initialize`.
 3. **VS Code extension settings** under the `ripr.*` namespace, which the extension translates into server arguments and LSP options.
+4. **Repo policy files** under `.ripr/`, currently just the static-language allowlist; planned narrow files for test intent and suppressions land before any general loader.
 
-There is **no** `ripr.toml` loader in the current alpha. The
+There is **no** general `ripr.toml` loader in the current alpha. The
 [`ripr.toml.example`](../ripr.toml.example) file at the repo root is a
 forward-looking sketch of the planned config format; nothing in the binary
 parses it yet. The "Planned: `ripr.toml`" section below documents the intended
@@ -169,6 +170,66 @@ The extension contributes:
 
 These are not configured directly; they are surfaced through the command
 palette.
+
+## Repo policy files
+
+Narrow, durable policy files live under `.ripr/`. They are not suppression
+mechanisms in the runtime sense — they are reasoned exceptions to repo-wide
+checks, and `cargo xtask check-pr` enforces that every entry has a named
+owner and a written reason.
+
+### `.ripr/static-language-allowlist.toml`
+
+Files allowed to mention prohibited mutation-runtime vocabulary because they
+define the language boundary, document calibration plans, or describe agent
+rules. Validated by `cargo xtask check-static-language`. Source of truth for
+the prohibited terms themselves is `forbidden_static_terms` in
+[`xtask/src/main.rs`](../xtask/src/main.rs).
+
+Schema (parsed by `parse_static_language_allowlist` in
+[`xtask/src/main.rs`](../xtask/src/main.rs)):
+
+```toml
+schema_version = 1
+
+[[allow]]
+path = "AGENTS.md"
+owner = "maintainers"
+reason = "Agent instructions define the static-language boundary and must quote the prohibited terms verbatim."
+
+[[allow]]
+glob = "docs/**/*.md"
+owner = "docs"
+reason = "Nested documentation specs and ADRs may describe static-language policy and future calibration vocabulary."
+```
+
+Validation rules (all enforced; violations fail `check-static-language`):
+
+| Rule | Behavior |
+| --- | --- |
+| `schema_version = 1` required | Missing or other values fail. |
+| Exactly one of `path` or `glob` per `[[allow]]` | Both or neither fail. |
+| `owner` required, non-blank | Missing or whitespace-only fails. |
+| `reason` required, non-blank | Missing or whitespace-only fails. |
+| Duplicate matchers | Two entries with the same `path` or `glob` fail. |
+| Absolute paths | Entries starting with `/` or matching `<letter>:` fail. |
+| Backslash paths | Entries containing `\` fail; use `/` separators. |
+| Glob entries scoped | Currently only `docs/*.md` and `docs/**/*.md` are accepted; broader globs like `*.md` or `**/*.md` fail. |
+| Exact paths must exist | `path = "..."` entries that don't exist on disk fail at load time. |
+
+A legacy `.ripr/static-language-allowlist.txt` file is explicitly rejected;
+the loader fails with a clear migration message if both files are present.
+
+### Planned policy files
+
+These narrow files land before any general `ripr.toml`:
+
+- `.ripr/test_intent.toml` — positive declarations for intentionally smoke,
+  duplicative, or opaque tests, so `ripr+` excludes them from its count
+  without hiding them from reports. See [Badge policy](BADGE_POLICY.md).
+- `.ripr/suppressions.toml` — exceptions for exposure gaps and remaining
+  test-efficiency findings that aren't covered by intent. Reason and owner
+  required; expiry encouraged.
 
 ## Analysis modes
 

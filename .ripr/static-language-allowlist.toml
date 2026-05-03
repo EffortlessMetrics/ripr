@@ -1,0 +1,74 @@
+# Static-language allowlist.
+#
+# Files allowed to mention prohibited mutation-runtime vocabulary because they
+# define the language boundary, document calibration plans, or describe agent
+# rules. The exact prohibited term list lives in `forbidden_static_terms` in
+# `xtask/src/main.rs`.
+#
+# Static product output, goldens, examples, generated reports, and source code
+# should never use the prohibited vocabulary unless real mutation data is
+# explicitly present. Adding an entry here is a reviewer-decision exception,
+# not a default escape hatch — every entry must name an owner and a durable
+# reason.
+#
+# Validated by `cargo xtask check-static-language` via
+# `parse_static_language_allowlist` in `xtask/src/main.rs`. Glob entries are
+# currently restricted to `docs/*.md` and `docs/**/*.md`; broader Markdown
+# patterns are rejected.
+
+schema_version = 1
+
+[[allow]]
+path = ".github/pull_request_template.md"
+owner = "maintainers"
+reason = "PR template teaches contributors not to use mutation-runtime outcome language unless real mutation data is present."
+
+[[allow]]
+path = "AGENTS.md"
+owner = "maintainers"
+reason = "Agent instructions define the static-language boundary and must quote the prohibited terms verbatim."
+
+[[allow]]
+path = "CHANGELOG.md"
+owner = "maintainers"
+reason = "Release notes may reference historical policy language or migration wording when the language boundary itself moves."
+
+[[allow]]
+path = "CLAUDE.md"
+owner = "maintainers"
+reason = "Claude Code instructions mirror AGENTS.md and must quote the prohibited terms so future agents do not reintroduce them."
+
+[[allow]]
+path = "CONTRIBUTING.md"
+owner = "maintainers"
+reason = "Contributor guidance documents the language policy and review expectations."
+
+[[allow]]
+path = "README.md"
+owner = "maintainers"
+reason = "Product-facing README compares ripr against runtime mutation testing; the prohibited terms must be named to draw that contrast."
+
+[[allow]]
+path = "crates/ripr/README.md"
+owner = "maintainers"
+reason = "Published crate README needs the same product-language boundary as the root README."
+
+[[allow]]
+glob = "docs/*.md"
+owner = "docs"
+reason = "Top-level reference documentation may describe static-language policy, badge vocabulary, specs, and calibration caveats."
+
+[[allow]]
+glob = "docs/**/*.md"
+owner = "docs"
+reason = "Nested documentation specs and ADRs may describe static-language policy and future calibration vocabulary."
+
+[[allow]]
+path = "editors/vscode/README.md"
+owner = "extension"
+reason = "Store-facing extension README explains what ripr does and does not claim, which requires naming the prohibited outcome terms."
+
+[[allow]]
+path = "xtask/src/main.rs"
+owner = "devtools"
+reason = "The static-language checker implementation contains the literal prohibited term list and the regression tests that exercise it."

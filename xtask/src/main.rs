@@ -2030,7 +2030,25 @@ fn fix_kind_name(fix_kind: &FixKind) -> &'static str {
 }
 
 fn check_static_language() -> Result<(), String> {
-    let allowed = read_path_allowlist(".ripr/static-language-allowlist.txt")?;
+    let report_spec = PolicyReportSpec {
+        report_file: "static-language.md",
+        check: "check-static-language",
+        why_it_matters: "Static output must preserve the boundary between draft exposure evidence and real mutation results.",
+        fix_kind: FixKind::ReviewerDecisionRequired,
+        recommended_fixes: &[
+            "Rewrite static product output to use the approved exposure vocabulary.",
+            "If this is explanatory documentation, add a reasoned `[[allow]]` entry to the static-language allowlist.",
+        ],
+        rerun_command: "cargo xtask check-static-language",
+        exception_template: Some(
+            ".ripr/static-language-allowlist.toml entry:\n[[allow]]\npath = \"path/to/file.md\"\nowner = \"team\"\nreason = \"why this file may quote prohibited vocabulary\"",
+        ),
+    };
+
+    let allowed = match load_static_language_allowlist() {
+        Ok(entries) => entries,
+        Err(violations) => return finish_policy_report(report_spec, &violations),
+    };
     let forbidden = forbidden_static_terms();
     let mut violations = Vec::new();
 
@@ -2053,21 +2071,7 @@ fn check_static_language() -> Result<(), String> {
         }
     }
 
-    finish_policy_report(
-        PolicyReportSpec {
-            report_file: "static-language.md",
-            check: "check-static-language",
-            why_it_matters: "Static output must preserve the boundary between draft exposure evidence and real mutation results.",
-            fix_kind: FixKind::ReviewerDecisionRequired,
-            recommended_fixes: &[
-                "Rewrite static product output to use the approved exposure vocabulary.",
-                "If this is explanatory documentation, add a narrow allowlist entry with a reason.",
-            ],
-            rerun_command: "cargo xtask check-static-language",
-            exception_template: Some(".ripr/static-language-allowlist.txt entry:\npath/to/file.md"),
-        },
-        &violations,
-    )
+    finish_policy_report(report_spec, &violations)
 }
 
 fn check_no_panic_family() -> Result<(), String> {
@@ -7554,7 +7558,8 @@ fn policy_exception_rows(changes: &[ChangedPath]) -> Vec<(&'static str, Vec<Stri
         (
             "Static-language allowlist",
             paths_matching(changes, |path| {
-                path == ".ripr/static-language-allowlist.txt"
+                path == STATIC_LANGUAGE_ALLOWLIST_PATH
+                    || path == STATIC_LANGUAGE_ALLOWLIST_LEGACY_PATH
             }),
         ),
         (
@@ -8565,17 +8570,371 @@ fn glob_matches(pattern: &str, path: &str) -> bool {
     glob_parts_match(&pattern_parts, &path_parts)
 }
 
-fn static_language_allowlist_covers(allowlist: &BTreeSet<String>, path: &str) -> bool {
-    allowlist.iter().any(|entry| {
-        if entry.contains('*') {
-            glob_matches(entry, path)
-        } else {
-            entry == path
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum StaticLanguageMatcher {
+    Path(String),
+    Glob(String),
+}
+
+impl StaticLanguageMatcher {
+    fn as_str(&self) -> &str {
+        match self {
+            StaticLanguageMatcher::Path(value) | StaticLanguageMatcher::Glob(value) => value,
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct StaticLanguageAllowEntry {
+    matcher: StaticLanguageMatcher,
+    owner: String,
+    reason: String,
+}
+
+#[cfg(test)]
+impl StaticLanguageAllowEntry {
+    fn new_path(
+        path: impl Into<String>,
+        owner: impl Into<String>,
+        reason: impl Into<String>,
+    ) -> Self {
+        Self {
+            matcher: StaticLanguageMatcher::Path(path.into()),
+            owner: owner.into(),
+            reason: reason.into(),
+        }
+    }
+
+    fn new_glob(
+        glob: impl Into<String>,
+        owner: impl Into<String>,
+        reason: impl Into<String>,
+    ) -> Self {
+        Self {
+            matcher: StaticLanguageMatcher::Glob(glob.into()),
+            owner: owner.into(),
+            reason: reason.into(),
+        }
+    }
+}
+
+const STATIC_LANGUAGE_ALLOWLIST_PATH: &str = ".ripr/static-language-allowlist.toml";
+const STATIC_LANGUAGE_ALLOWLIST_LEGACY_PATH: &str = ".ripr/static-language-allowlist.txt";
+const STATIC_LANGUAGE_ALLOWED_GLOBS: &[&str] = &["docs/*.md", "docs/**/*.md"];
+
+fn parse_static_language_allowlist(text: &str) -> (Vec<StaticLanguageAllowEntry>, Vec<String>) {
+    let mut entries: Vec<StaticLanguageAllowEntry> = Vec::new();
+    let mut violations = Vec::new();
+    let mut schema_seen = false;
+    let mut current: Option<PendingAllowEntry> = None;
+
+    for (index, line) in text.lines().enumerate() {
+        let line_number = index + 1;
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if trimmed == "[[allow]]" {
+            if let Some(pending) = current.take() {
+                finalize_static_language_entry(pending, &mut entries, &mut violations);
+            }
+            current = Some(PendingAllowEntry::new(line_number));
+            continue;
+        }
+        let Some((key, raw_value)) = trimmed.split_once('=') else {
+            violations.push(format!(
+                "{STATIC_LANGUAGE_ALLOWLIST_PATH}:{line_number} expected `key = value`"
+            ));
+            continue;
+        };
+        let key = key.trim();
+        let raw_value = raw_value.trim();
+        if let Some(pending) = current.as_mut() {
+            match key {
+                "path" => assign_static_language_field(
+                    raw_value,
+                    line_number,
+                    &mut violations,
+                    |parsed| pending.path = Some((parsed, line_number)),
+                ),
+                "glob" => assign_static_language_field(
+                    raw_value,
+                    line_number,
+                    &mut violations,
+                    |parsed| pending.glob = Some((parsed, line_number)),
+                ),
+                "owner" => assign_static_language_field(
+                    raw_value,
+                    line_number,
+                    &mut violations,
+                    |parsed| pending.owner = Some((parsed, line_number)),
+                ),
+                "reason" => assign_static_language_field(
+                    raw_value,
+                    line_number,
+                    &mut violations,
+                    |parsed| pending.reason = Some((parsed, line_number)),
+                ),
+                _ => violations.push(format!(
+                    "{STATIC_LANGUAGE_ALLOWLIST_PATH}:{line_number} unsupported `[[allow]]` field `{key}`"
+                )),
+            }
+        } else if key == "schema_version" {
+            schema_seen = true;
+            match raw_value.parse::<u32>() {
+                Ok(1) => {}
+                Ok(other) => violations.push(format!(
+                    "{STATIC_LANGUAGE_ALLOWLIST_PATH}:{line_number} schema_version = {other} is not supported (expected 1)"
+                )),
+                Err(_) => violations.push(format!(
+                    "{STATIC_LANGUAGE_ALLOWLIST_PATH}:{line_number} schema_version must be an integer literal"
+                )),
+            }
+        } else {
+            violations.push(format!(
+                "{STATIC_LANGUAGE_ALLOWLIST_PATH}:{line_number} unsupported top-level field `{key}`"
+            ));
+        }
+    }
+
+    if let Some(pending) = current.take() {
+        finalize_static_language_entry(pending, &mut entries, &mut violations);
+    }
+
+    if !schema_seen {
+        violations.push(format!(
+            "{STATIC_LANGUAGE_ALLOWLIST_PATH} is missing required `schema_version = 1` header"
+        ));
+    }
+
+    let mut seen_matchers: BTreeMap<&str, usize> = BTreeMap::new();
+    for entry in &entries {
+        let matcher = entry.matcher.as_str();
+        if let Some(&first) = seen_matchers.get(matcher) {
+            violations.push(format!(
+                "{STATIC_LANGUAGE_ALLOWLIST_PATH} matcher `{matcher}` is duplicated (first declared near line {first})"
+            ));
+        } else {
+            seen_matchers.insert(matcher, 0);
+        }
+    }
+
+    (entries, violations)
+}
+
+struct PendingAllowEntry {
+    block_line: usize,
+    path: Option<(String, usize)>,
+    glob: Option<(String, usize)>,
+    owner: Option<(String, usize)>,
+    reason: Option<(String, usize)>,
+}
+
+impl PendingAllowEntry {
+    fn new(block_line: usize) -> Self {
+        Self {
+            block_line,
+            path: None,
+            glob: None,
+            owner: None,
+            reason: None,
+        }
+    }
+}
+
+fn assign_static_language_field<F>(
+    raw_value: &str,
+    line_number: usize,
+    violations: &mut Vec<String>,
+    mut assign: F,
+) where
+    F: FnMut(String),
+{
+    match parse_quoted_value(raw_value) {
+        Ok(parsed) => assign(parsed),
+        Err(message) => violations.push(format!(
+            "{STATIC_LANGUAGE_ALLOWLIST_PATH}:{line_number} {message}"
+        )),
+    }
+}
+
+fn finalize_static_language_entry(
+    pending: PendingAllowEntry,
+    entries: &mut Vec<StaticLanguageAllowEntry>,
+    violations: &mut Vec<String>,
+) {
+    let block_line = pending.block_line;
+    let path_value = pending.path;
+    let glob_value = pending.glob;
+    let owner_value = pending.owner;
+    let reason_value = pending.reason;
+
+    let matcher = match (path_value, glob_value) {
+        (Some((path, line)), None) => match validate_static_language_path(&path, line) {
+            Ok(()) => Some(StaticLanguageMatcher::Path(path)),
+            Err(message) => {
+                violations.push(message);
+                None
+            }
+        },
+        (None, Some((glob, line))) => match validate_static_language_glob(&glob, line) {
+            Ok(()) => Some(StaticLanguageMatcher::Glob(glob)),
+            Err(message) => {
+                violations.push(message);
+                None
+            }
+        },
+        (Some(_), Some(_)) => {
+            violations.push(format!(
+                "{STATIC_LANGUAGE_ALLOWLIST_PATH}:{block_line} `[[allow]]` entry has both `path` and `glob`; declare exactly one"
+            ));
+            None
+        }
+        (None, None) => {
+            violations.push(format!(
+                "{STATIC_LANGUAGE_ALLOWLIST_PATH}:{block_line} `[[allow]]` entry must declare either `path` or `glob`"
+            ));
+            None
+        }
+    };
+
+    let owner = match owner_value {
+        Some((value, line)) => {
+            if value.trim().is_empty() {
+                violations.push(format!(
+                    "{STATIC_LANGUAGE_ALLOWLIST_PATH}:{line} `owner` is blank; name a responsible team or maintainer"
+                ));
+                None
+            } else {
+                Some(value)
+            }
+        }
+        None => {
+            violations.push(format!(
+                "{STATIC_LANGUAGE_ALLOWLIST_PATH}:{block_line} `[[allow]]` entry is missing required `owner`"
+            ));
+            None
+        }
+    };
+
+    let reason = match reason_value {
+        Some((value, line)) => {
+            if value.trim().is_empty() {
+                violations.push(format!(
+                    "{STATIC_LANGUAGE_ALLOWLIST_PATH}:{line} `reason` is blank; explain why this matcher is exempt"
+                ));
+                None
+            } else {
+                Some(value)
+            }
+        }
+        None => {
+            violations.push(format!(
+                "{STATIC_LANGUAGE_ALLOWLIST_PATH}:{block_line} `[[allow]]` entry is missing required `reason`"
+            ));
+            None
+        }
+    };
+
+    if let (Some(matcher), Some(owner), Some(reason)) = (matcher, owner, reason) {
+        entries.push(StaticLanguageAllowEntry {
+            matcher,
+            owner,
+            reason,
+        });
+    }
+}
+
+fn validate_static_language_path(path: &str, line_number: usize) -> Result<(), String> {
+    if path.is_empty() {
+        return Err(format!(
+            "{STATIC_LANGUAGE_ALLOWLIST_PATH}:{line_number} `path` is empty"
+        ));
+    }
+    if path.contains('\\') {
+        return Err(format!(
+            "{STATIC_LANGUAGE_ALLOWLIST_PATH}:{line_number} `path` `{path}` uses backslashes; use `/` separators"
+        ));
+    }
+    if is_absolute_path_like(path) {
+        return Err(format!(
+            "{STATIC_LANGUAGE_ALLOWLIST_PATH}:{line_number} `path` `{path}` is absolute; entries must be repository-relative"
+        ));
+    }
+    if path.contains('*') || path.contains('?') {
+        return Err(format!(
+            "{STATIC_LANGUAGE_ALLOWLIST_PATH}:{line_number} `path` `{path}` contains glob characters; use `glob = ...` instead"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_static_language_glob(glob: &str, line_number: usize) -> Result<(), String> {
+    if glob.is_empty() {
+        return Err(format!(
+            "{STATIC_LANGUAGE_ALLOWLIST_PATH}:{line_number} `glob` is empty"
+        ));
+    }
+    if glob.contains('\\') {
+        return Err(format!(
+            "{STATIC_LANGUAGE_ALLOWLIST_PATH}:{line_number} `glob` `{glob}` uses backslashes; use `/` separators"
+        ));
+    }
+    if is_absolute_path_like(glob) {
+        return Err(format!(
+            "{STATIC_LANGUAGE_ALLOWLIST_PATH}:{line_number} `glob` `{glob}` is absolute; entries must be repository-relative"
+        ));
+    }
+    if !STATIC_LANGUAGE_ALLOWED_GLOBS.contains(&glob) {
+        return Err(format!(
+            "{STATIC_LANGUAGE_ALLOWLIST_PATH}:{line_number} `glob` `{glob}` is not in the scoped set; current allowed globs: {}",
+            STATIC_LANGUAGE_ALLOWED_GLOBS.join(", ")
+        ));
+    }
+    Ok(())
+}
+
+fn is_absolute_path_like(value: &str) -> bool {
+    if value.starts_with('/') {
+        return true;
+    }
+    let bytes = value.as_bytes();
+    bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic()
+}
+
+fn load_static_language_allowlist() -> Result<Vec<StaticLanguageAllowEntry>, Vec<String>> {
+    if Path::new(STATIC_LANGUAGE_ALLOWLIST_LEGACY_PATH).exists() {
+        return Err(vec![format!(
+            "{STATIC_LANGUAGE_ALLOWLIST_LEGACY_PATH} still exists; the static-language allowlist moved to {STATIC_LANGUAGE_ALLOWLIST_PATH}. Delete the legacy `.txt` file to avoid split-brain policy."
+        )]);
+    }
+    let path = Path::new(STATIC_LANGUAGE_ALLOWLIST_PATH);
+    let text = read_text_lossy(path).map_err(|err| vec![err])?;
+    let (entries, mut violations) = parse_static_language_allowlist(&text);
+    for entry in &entries {
+        if let StaticLanguageMatcher::Path(value) = &entry.matcher
+            && !Path::new(value).exists()
+        {
+            violations.push(format!(
+                "{STATIC_LANGUAGE_ALLOWLIST_PATH} matcher `{value}` does not exist on disk"
+            ));
+        }
+    }
+    if violations.is_empty() {
+        Ok(entries)
+    } else {
+        Err(violations)
+    }
+}
+
+fn static_language_allowlist_covers(allowlist: &[StaticLanguageAllowEntry], path: &str) -> bool {
+    allowlist.iter().any(|entry| match &entry.matcher {
+        StaticLanguageMatcher::Path(value) => value == path,
+        StaticLanguageMatcher::Glob(value) => glob_matches(value, path),
     })
 }
 
-fn should_scan_static_language_path(allowlist: &BTreeSet<String>, path: &str) -> bool {
+fn should_scan_static_language_path(allowlist: &[StaticLanguageAllowEntry], path: &str) -> bool {
     is_static_language_candidate(path) && !static_language_allowlist_covers(allowlist, path)
 }
 
@@ -8762,26 +9121,26 @@ fn is_word_char(value: Option<char>) -> bool {
 mod tests {
     use super::{
         CampaignManifest, Capability, ChangedPath, DogfoodRun, LocalContextAllow, MarkdownLink,
-        ReceiptRecord, ReportIndexCampaign, ReportIndexEntry, TestOracleClass, critic_findings,
-        dogfood_class_counts, dogfood_report_json, dogfood_report_markdown,
-        extract_workflow_run_blocks, first_line_difference, glob_matches,
-        golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
-        guarded_allow_attributes_in_text, is_bdd_test_name, is_dependency_surface_candidate,
-        is_evidence_path, is_generated_candidate, is_known_campaign_command, is_policy_path,
-        is_production_path, is_receipt_status, is_snake_case_id, is_spec_id, json_escape,
-        json_number_after, json_string_values_for_key, known_xtask_command,
-        local_context_line_findings, local_markdown_target, markdown_links_in_text,
-        next_checkpoints_from_capabilities, normalize_fixture_human_output,
-        normalize_fixture_json_output, normalize_golden_text, parse_campaign_manifest,
-        parse_inline_array, parse_reason, pr_shape_warnings, precommit_report_body,
-        public_contract_rows, receipt_json, receipt_specs, receipt_status_from_reports,
-        report_index_markdown, report_index_missing_expected, report_status_from_text,
-        should_scan_static_language_path, sorted_allowlist_content, spec_id_from_path,
-        static_language_allowlist_covers, status_for_report, suspicious_runtime_file_names,
-        test_efficiency_entry, test_efficiency_report_json, test_efficiency_report_markdown,
-        test_oracle_report_json, test_oracle_report_markdown, test_oracle_tests_in_text,
-        validate_local_context_allowlist, windows_absolute_path_tokens,
-        workflow_runtime_violations,
+        ReceiptRecord, ReportIndexCampaign, ReportIndexEntry, StaticLanguageAllowEntry,
+        StaticLanguageMatcher, TestOracleClass, critic_findings, dogfood_class_counts,
+        dogfood_report_json, dogfood_report_markdown, extract_workflow_run_blocks,
+        first_line_difference, glob_matches, golden_changes_without_blessing,
+        golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
+        is_bdd_test_name, is_dependency_surface_candidate, is_evidence_path,
+        is_generated_candidate, is_known_campaign_command, is_policy_path, is_production_path,
+        is_receipt_status, is_snake_case_id, is_spec_id, json_escape, json_number_after,
+        json_string_values_for_key, known_xtask_command, local_context_line_findings,
+        local_markdown_target, markdown_links_in_text, next_checkpoints_from_capabilities,
+        normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
+        parse_campaign_manifest, parse_inline_array, parse_reason, parse_static_language_allowlist,
+        pr_shape_warnings, precommit_report_body, public_contract_rows, receipt_json,
+        receipt_specs, receipt_status_from_reports, report_index_markdown,
+        report_index_missing_expected, report_status_from_text, should_scan_static_language_path,
+        sorted_allowlist_content, spec_id_from_path, static_language_allowlist_covers,
+        status_for_report, suspicious_runtime_file_names, test_efficiency_entry,
+        test_efficiency_report_json, test_efficiency_report_markdown, test_oracle_report_json,
+        test_oracle_report_markdown, test_oracle_tests_in_text, validate_local_context_allowlist,
+        windows_absolute_path_tokens, workflow_runtime_violations,
     };
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
@@ -8804,12 +9163,17 @@ mod tests {
         ));
     }
 
+    fn allowlist_with_docs_markdown_globs() -> Vec<StaticLanguageAllowEntry> {
+        vec![
+            StaticLanguageAllowEntry::new_path("AGENTS.md", "test", "test fixture"),
+            StaticLanguageAllowEntry::new_glob("docs/*.md", "test", "test fixture"),
+            StaticLanguageAllowEntry::new_glob("docs/**/*.md", "test", "test fixture"),
+        ]
+    }
+
     #[test]
     fn static_language_allowlist_covers_exact_paths_and_scoped_doc_globs() {
-        let mut allowlist = BTreeSet::new();
-        allowlist.insert("AGENTS.md".to_string());
-        allowlist.insert("docs/*.md".to_string());
-        allowlist.insert("docs/**/*.md".to_string());
+        let allowlist = allowlist_with_docs_markdown_globs();
 
         assert!(static_language_allowlist_covers(&allowlist, "AGENTS.md"));
         assert!(static_language_allowlist_covers(
@@ -8836,10 +9200,7 @@ mod tests {
 
     #[test]
     fn should_scan_static_language_path_combines_candidate_check_and_allowlist() {
-        let mut allowlist = BTreeSet::new();
-        allowlist.insert("AGENTS.md".to_string());
-        allowlist.insert("docs/*.md".to_string());
-        allowlist.insert("docs/**/*.md".to_string());
+        let allowlist = allowlist_with_docs_markdown_globs();
 
         // Non-candidate files (not in the watched extensions list) are never
         // scanned, regardless of allowlist contents.
@@ -8911,13 +9272,16 @@ mod tests {
     #[test]
     fn static_language_allowlist_covers_handles_empty_and_glob_only_lists() {
         // An empty allowlist covers nothing.
-        let empty: BTreeSet<String> = BTreeSet::new();
+        let empty: Vec<StaticLanguageAllowEntry> = Vec::new();
         assert!(!static_language_allowlist_covers(&empty, "AGENTS.md"));
         assert!(!static_language_allowlist_covers(&empty, "docs/X.md"));
 
         // Glob-only allowlist: only paths matching the glob are covered.
-        let mut globs_only = BTreeSet::new();
-        globs_only.insert("docs/**/*.md".to_string());
+        let globs_only = vec![StaticLanguageAllowEntry::new_glob(
+            "docs/**/*.md",
+            "test",
+            "test fixture",
+        )];
         assert!(static_language_allowlist_covers(
             &globs_only,
             "docs/specs/X.md"
@@ -8933,15 +9297,272 @@ mod tests {
         ));
 
         // Exact-only allowlist: no glob behavior applied to non-glob entries.
-        let mut exact_only = BTreeSet::new();
-        exact_only.insert("AGENTS.md".to_string());
-        exact_only.insert("README.md".to_string());
+        let exact_only = vec![
+            StaticLanguageAllowEntry::new_path("AGENTS.md", "test", "test fixture"),
+            StaticLanguageAllowEntry::new_path("README.md", "test", "test fixture"),
+        ];
         assert!(static_language_allowlist_covers(&exact_only, "AGENTS.md"));
         assert!(!static_language_allowlist_covers(
             &exact_only,
             "docs/AGENTS.md"
         ));
         assert!(!static_language_allowlist_covers(&exact_only, "docs/X.md"));
+    }
+
+    #[test]
+    fn static_language_allowlist_parses_reasoned_entries() {
+        let text = r#"
+schema_version = 1
+
+[[allow]]
+path = "AGENTS.md"
+owner = "maintainers"
+reason = "Agent instructions define the static-language boundary."
+
+[[allow]]
+glob = "docs/**/*.md"
+owner = "docs"
+reason = "Nested documentation may describe policy vocabulary."
+"#;
+        let (entries, violations) = parse_static_language_allowlist(text);
+        assert!(
+            violations.is_empty(),
+            "unexpected violations: {violations:?}"
+        );
+        assert_eq!(entries.len(), 2);
+        assert_eq!(
+            entries[0].matcher,
+            StaticLanguageMatcher::Path("AGENTS.md".to_string())
+        );
+        assert_eq!(entries[0].owner, "maintainers");
+        assert_eq!(
+            entries[1].matcher,
+            StaticLanguageMatcher::Glob("docs/**/*.md".to_string())
+        );
+        assert_eq!(entries[1].owner, "docs");
+    }
+
+    #[test]
+    fn static_language_allowlist_requires_schema_version() {
+        let text = r#"
+[[allow]]
+path = "AGENTS.md"
+owner = "maintainers"
+reason = "Agent instructions describe policy vocabulary."
+"#;
+        let (_, violations) = parse_static_language_allowlist(text);
+        assert!(
+            violations.iter().any(|v| v.contains("schema_version = 1")),
+            "expected schema_version violation, got {violations:?}"
+        );
+    }
+
+    #[test]
+    fn static_language_allowlist_requires_reason() {
+        let text = r#"
+schema_version = 1
+
+[[allow]]
+path = "AGENTS.md"
+owner = "maintainers"
+"#;
+        let (entries, violations) = parse_static_language_allowlist(text);
+        assert!(entries.is_empty());
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("missing required `reason`")),
+            "expected missing-reason violation, got {violations:?}"
+        );
+    }
+
+    #[test]
+    fn static_language_allowlist_requires_owner() {
+        let text = r#"
+schema_version = 1
+
+[[allow]]
+path = "AGENTS.md"
+reason = "Agent instructions describe policy vocabulary."
+"#;
+        let (entries, violations) = parse_static_language_allowlist(text);
+        assert!(entries.is_empty());
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("missing required `owner`")),
+            "expected missing-owner violation, got {violations:?}"
+        );
+    }
+
+    #[test]
+    fn static_language_allowlist_rejects_blank_reason() {
+        let text = r#"
+schema_version = 1
+
+[[allow]]
+path = "AGENTS.md"
+owner = "maintainers"
+reason = "   "
+"#;
+        let (entries, violations) = parse_static_language_allowlist(text);
+        assert!(entries.is_empty());
+        assert!(
+            violations.iter().any(|v| v.contains("`reason` is blank")),
+            "expected blank-reason violation, got {violations:?}"
+        );
+    }
+
+    #[test]
+    fn static_language_allowlist_rejects_path_and_glob_together() {
+        let text = r#"
+schema_version = 1
+
+[[allow]]
+path = "AGENTS.md"
+glob = "docs/*.md"
+owner = "maintainers"
+reason = "Mixed entry should be rejected."
+"#;
+        let (entries, violations) = parse_static_language_allowlist(text);
+        assert!(entries.is_empty());
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("both `path` and `glob`")),
+            "expected path+glob violation, got {violations:?}"
+        );
+    }
+
+    #[test]
+    fn static_language_allowlist_rejects_missing_path_and_glob() {
+        let text = r#"
+schema_version = 1
+
+[[allow]]
+owner = "maintainers"
+reason = "Entry without a matcher is meaningless."
+"#;
+        let (entries, violations) = parse_static_language_allowlist(text);
+        assert!(entries.is_empty());
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("must declare either `path` or `glob`")),
+            "expected missing-matcher violation, got {violations:?}"
+        );
+    }
+
+    #[test]
+    fn static_language_allowlist_rejects_duplicate_matcher() {
+        let text = r#"
+schema_version = 1
+
+[[allow]]
+path = "AGENTS.md"
+owner = "maintainers"
+reason = "First declaration."
+
+[[allow]]
+path = "AGENTS.md"
+owner = "maintainers"
+reason = "Second declaration."
+"#;
+        let (entries, violations) = parse_static_language_allowlist(text);
+        assert_eq!(entries.len(), 2, "both entries should still parse");
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("`AGENTS.md` is duplicated")),
+            "expected duplicate violation, got {violations:?}"
+        );
+    }
+
+    #[test]
+    fn static_language_allowlist_rejects_absolute_path() {
+        let unix = r#"
+schema_version = 1
+
+[[allow]]
+path = "/abs/path.md"
+owner = "maintainers"
+reason = "Absolute path attempt."
+"#;
+        let (entries, violations) = parse_static_language_allowlist(unix);
+        assert!(entries.is_empty());
+        assert!(
+            violations.iter().any(|v| v.contains("is absolute")),
+            "expected absolute-path violation, got {violations:?}"
+        );
+
+        // Windows drive letter form is also rejected. The drive prefix is
+        // assembled at runtime so the literal pattern never appears in this
+        // source file (`cargo xtask check-local-context` flags `<alpha>:/`).
+        let drive = "Z";
+        let sep = ":/";
+        let win = format!(
+            r#"
+schema_version = 1
+
+[[allow]]
+path = "{drive}{sep}abs/path.md"
+owner = "maintainers"
+reason = "Windows absolute path attempt."
+"#
+        );
+        let (entries, violations) = parse_static_language_allowlist(&win);
+        assert!(entries.is_empty());
+        assert!(
+            violations.iter().any(|v| v.contains("is absolute")),
+            "expected windows-absolute-path violation, got {violations:?}"
+        );
+    }
+
+    #[test]
+    fn static_language_allowlist_rejects_backslash_path() {
+        let text = r#"
+schema_version = 1
+
+[[allow]]
+path = "docs\\BADGE_POLICY.md"
+owner = "maintainers"
+reason = "Backslash path attempt."
+"#;
+        let (entries, violations) = parse_static_language_allowlist(text);
+        assert!(entries.is_empty());
+        assert!(
+            violations.iter().any(|v| v.contains("backslashes")),
+            "expected backslash-path violation, got {violations:?}"
+        );
+    }
+
+    #[test]
+    fn static_language_allowlist_rejects_repo_wide_markdown_glob() {
+        let cases = [
+            ("*.md", "repo-wide single-segment markdown glob"),
+            ("**/*.md", "repo-wide recursive markdown glob"),
+            ("crates/**/*.md", "non-docs glob outside the scoped set"),
+        ];
+        for (glob, label) in cases {
+            let text = format!(
+                r#"
+schema_version = 1
+
+[[allow]]
+glob = "{glob}"
+owner = "maintainers"
+reason = "{label}"
+"#
+            );
+            let (entries, violations) = parse_static_language_allowlist(&text);
+            assert!(entries.is_empty(), "glob `{glob}` should not parse");
+            assert!(
+                violations
+                    .iter()
+                    .any(|v| v.contains("not in the scoped set")),
+                "expected scoped-glob violation for `{glob}`, got {violations:?}"
+            );
+        }
     }
 
     #[test]
