@@ -1,0 +1,238 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/strong_error_oracle/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":3,"findings":3,"exposed":2,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:7:call_deletion",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:7:call_deletion",
+        "family": "call_deletion",
+        "delta": "effect",
+        "file": "fixtures/strong_error_oracle/input/src/lib.rs",
+        "line": 7,
+        "expression": "return Err(AuthError::RevokedToken);"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach authenticate: empty_token_rejects_with_revoked_token"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Medium oracle found: property or partial structural assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach authenticate: empty_token_rejects_with_revoked_token", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Medium oracle found: property or partial structural assertion", "local flow reaches error variant: Result::Err(AuthError::RevokedToken) (line 7)", "related test tests/errors.rs:4 empty_token_rejects_with_revoked_token uses medium exact error variant oracle: assert!(matches!(authenticate(\"\"), Err(AuthError::RevokedToken)));", "observed enum variant value AuthError::RevokedToken at line 5", "observed function argument value token = \"\" at line 5"],
+      "flow_sinks": [
+        {"kind":"error_variant","text":"Result::Err(AuthError::RevokedToken)","line":7}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)", "Medium oracle found: property or partial structural assertion", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach authenticate: empty_token_rejects_with_revoked_token"],
+      "missing": ["No strong discriminator was detected"],
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "text": "assert!(matches!(authenticate(\"\"), Err(AuthError::RevokedToken)));",
+            "value": "AuthError::RevokedToken",
+            "context": "enum_variant"
+          },
+          {
+            "line": 5,
+            "text": "assert!(matches!(authenticate(\"\"), Err(AuthError::RevokedToken)));",
+            "value": "token = \"\"",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "text": "assert!(matches!(authenticate(\"\"), Err(AuthError::RevokedToken)));",
+          "value": "AuthError::RevokedToken",
+          "context": "enum_variant"
+        },
+        {
+          "line": 5,
+          "text": "assert!(matches!(authenticate(\"\"), Err(AuthError::RevokedToken)));",
+          "value": "token = \"\"",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "empty_token_rejects_with_revoked_token",
+          "file": "tests/errors.rs",
+          "line": 4,
+          "oracle_strength": "medium",
+          "oracle_kind": "exact_error_variant",
+          "oracle": "assert!(matches!(authenticate(\"\"), Err(AuthError::RevokedToken)));"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_error_variant",
+      "oracle_strength": "medium",
+      "recommended_next_step": "Strengthen the related assertion so it discriminates the changed behavior.",
+      "suggested_next_action": "Strengthen the related assertion so it discriminates the changed behavior."
+    },
+    {
+      "id": "probe:src_lib.rs:7:error_path",
+      "classification": "exposed",
+      "severity": "info",
+      "confidence": 1.00,
+      "probe": {
+        "id": "probe:src_lib.rs:7:error_path",
+        "family": "error_path",
+        "delta": "value",
+        "file": "fixtures/strong_error_oracle/input/src/lib.rs",
+        "line": 7,
+        "expression": "return Err(AuthError::RevokedToken);"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach authenticate: empty_token_rejects_with_revoked_token"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact error variant assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach authenticate: empty_token_rejects_with_revoked_token", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact error variant assertion", "local flow reaches error variant: Result::Err(AuthError::RevokedToken) (line 7)", "related test tests/errors.rs:4 empty_token_rejects_with_revoked_token uses strong exact error variant oracle: assert!(matches!(authenticate(\"\"), Err(AuthError::RevokedToken)));", "observed enum variant value AuthError::RevokedToken at line 5", "observed function argument value token = \"\" at line 5"],
+      "flow_sinks": [
+        {"kind":"error_variant","text":"Result::Err(AuthError::RevokedToken)","line":7}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach authenticate: empty_token_rejects_with_revoked_token", "Strong oracle found: exact error variant assertion"],
+      "missing": [],
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "text": "assert!(matches!(authenticate(\"\"), Err(AuthError::RevokedToken)));",
+            "value": "AuthError::RevokedToken",
+            "context": "enum_variant"
+          },
+          {
+            "line": 5,
+            "text": "assert!(matches!(authenticate(\"\"), Err(AuthError::RevokedToken)));",
+            "value": "token = \"\"",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "text": "assert!(matches!(authenticate(\"\"), Err(AuthError::RevokedToken)));",
+          "value": "AuthError::RevokedToken",
+          "context": "enum_variant"
+        },
+        {
+          "line": 5,
+          "text": "assert!(matches!(authenticate(\"\"), Err(AuthError::RevokedToken)));",
+          "value": "token = \"\"",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "empty_token_rejects_with_revoked_token",
+          "file": "tests/errors.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_error_variant",
+          "oracle": "assert!(matches!(authenticate(\"\"), Err(AuthError::RevokedToken)));"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_error_variant",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": ""
+    },
+    {
+      "id": "probe:src_lib.rs:7:return_value",
+      "classification": "exposed",
+      "severity": "info",
+      "confidence": 1.00,
+      "probe": {
+        "id": "probe:src_lib.rs:7:return_value",
+        "family": "return_value",
+        "delta": "value",
+        "file": "fixtures/strong_error_oracle/input/src/lib.rs",
+        "line": 7,
+        "expression": "return Err(AuthError::RevokedToken);"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach authenticate: empty_token_rejects_with_revoked_token"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact error variant assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach authenticate: empty_token_rejects_with_revoked_token", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact error variant assertion", "local flow reaches error variant: Result::Err(AuthError::RevokedToken) (line 7)", "related test tests/errors.rs:4 empty_token_rejects_with_revoked_token uses strong exact error variant oracle: assert!(matches!(authenticate(\"\"), Err(AuthError::RevokedToken)));", "observed enum variant value AuthError::RevokedToken at line 5", "observed function argument value token = \"\" at line 5"],
+      "flow_sinks": [
+        {"kind":"error_variant","text":"Result::Err(AuthError::RevokedToken)","line":7}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach authenticate: empty_token_rejects_with_revoked_token", "Strong oracle found: exact error variant assertion"],
+      "missing": [],
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "text": "assert!(matches!(authenticate(\"\"), Err(AuthError::RevokedToken)));",
+            "value": "AuthError::RevokedToken",
+            "context": "enum_variant"
+          },
+          {
+            "line": 5,
+            "text": "assert!(matches!(authenticate(\"\"), Err(AuthError::RevokedToken)));",
+            "value": "token = \"\"",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "text": "assert!(matches!(authenticate(\"\"), Err(AuthError::RevokedToken)));",
+          "value": "AuthError::RevokedToken",
+          "context": "enum_variant"
+        },
+        {
+          "line": 5,
+          "text": "assert!(matches!(authenticate(\"\"), Err(AuthError::RevokedToken)));",
+          "value": "token = \"\"",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "empty_token_rejects_with_revoked_token",
+          "file": "tests/errors.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_error_variant",
+          "oracle": "assert!(matches!(authenticate(\"\"), Err(AuthError::RevokedToken)));"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_error_variant",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": ""
+    }
+  ]
+}

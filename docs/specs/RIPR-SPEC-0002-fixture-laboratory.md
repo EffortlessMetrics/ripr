@@ -74,10 +74,43 @@ when ripr analyzes the diff, then it reports weak oracle evidence rather than a
 strong exact variant discriminator.
 ```
 
+Negative fixture:
+
+```text
+Given a formatting, comment, import, or unrelated-test text change, when ripr
+analyzes the diff, then it avoids treating non-behavioral or unrelated text as
+evidence that a changed behavior is discriminated.
+```
+
+Metamorphic fixture:
+
+```text
+Given equivalent test intent with multiline assertions, nested tests, reordered
+tests, or assert_matches-style exact error checks, when ripr analyzes the diff,
+then it preserves the same evidence-first classification or documents the
+intentional difference.
+```
+
 ## Initial Fixture Set
 
-- `boundary_gap` (baseline)
-- `weak_error_oracle` (baseline)
+Current baseline:
+
+- `boundary_gap`
+- `weak_error_oracle`
+- `snapshot_oracle`
+- `format_only_diff`
+- `comment_only_diff`
+- `import_only_diff`
+- `unrelated_test_mentions_token`
+- `strong_boundary_oracle`
+- `strong_error_oracle`
+- `boundary_gap_multiline_assert`
+- `boundary_gap_nested_tests`
+- `boundary_gap_reordered_tests`
+- `weak_error_oracle_assert_matches`
+
+Planned expansion:
+
 - `field_not_asserted`
 - `side_effect_unobserved`
 - `smoke_assertion_only`
@@ -88,7 +121,6 @@ strong exact variant discriminator.
 - `stacked_test_attrs`
 - `nested_src_tests_layout`
 - `macro_unknown`
-- `snapshot_oracle`
 - `mock_effect`
 
 ## Invariants
@@ -103,8 +135,8 @@ strong exact variant discriminator.
 
 Current and planned tests:
 
-- golden JSON fixture tests for `boundary_gap` and `weak_error_oracle`
-- golden human fixture tests for `boundary_gap` and `weak_error_oracle`
+- golden JSON fixture tests for the current fixture baseline
+- golden human fixture tests for the current fixture baseline
 - context-packet fixture tests
 - invariant tests for static language and unknown stop reasons
 

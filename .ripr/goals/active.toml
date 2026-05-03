@@ -12,7 +12,8 @@ end_state = [
   "local delta flow can name visible sinks",
   "activation modeling can name observed and missing discriminator values",
   "output is evidence-first",
-  "unknown findings include stop reasons across surfaces"
+  "unknown findings include stop reasons across surfaces",
+  "negative and metamorphic fixtures protect evidence-first output"
 ]
 
 [[work_item]]
@@ -107,7 +108,7 @@ commands = [
 
 [[work_item]]
 id = "fixtures/negative-metamorphic-baseline"
-status = "ready"
+status = "done"
 branch = "fixtures/negative-metamorphic-baseline"
 stackable = false
 requires_human_merge = true
@@ -121,4 +122,20 @@ commands = [
   "cargo xtask goldens check",
   "cargo xtask golden-drift",
   "cargo xtask check-output-contracts"
+]
+
+[[work_item]]
+id = "campaign/evidence-quality-closeout"
+status = "ready"
+branch = "campaign/evidence-quality-closeout"
+stackable = false
+requires_human_merge = true
+acceptance = "Campaign 3 is closed and Campaign 4 becomes active with agent-context-v2 ready"
+commands = [
+  "cargo xtask check-campaign",
+  "cargo xtask goals status",
+  "cargo xtask goals next",
+  "cargo xtask metrics",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-pr"
 ]

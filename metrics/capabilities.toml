@@ -21,13 +21,25 @@ evidence = [
   "typed local flow sink facts",
   "observed activation value facts",
   "missing discriminator facts",
-  "evidence-first human and JSON finding output"
+  "evidence-first human and JSON finding output",
+  "negative and metamorphic fixture baseline"
 ]
 fixtures = [
   "fixtures/boundary_gap",
-  "fixtures/weak_error_oracle"
+  "fixtures/boundary_gap_multiline_assert",
+  "fixtures/boundary_gap_nested_tests",
+  "fixtures/boundary_gap_reordered_tests",
+  "fixtures/comment_only_diff",
+  "fixtures/format_only_diff",
+  "fixtures/import_only_diff",
+  "fixtures/snapshot_oracle",
+  "fixtures/strong_boundary_oracle",
+  "fixtures/strong_error_oracle",
+  "fixtures/unrelated_test_mentions_token",
+  "fixtures/weak_error_oracle",
+  "fixtures/weak_error_oracle_assert_matches"
 ]
-next = "negative-metamorphic-baseline"
+next = "campaign-evidence-quality-closeout"
 metric = "findings include changed behavior, class, evidence, and next step"
 
 [[capability]]
@@ -46,7 +58,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "negative-metamorphic-baseline"
+next = "campaign-evidence-quality-closeout"
 metric = "unknown findings include explicit stop reasons"
 
 [[capability]]
@@ -64,12 +76,18 @@ evidence = [
   "parser-backed predicate probe shape facts",
   "predicate branch to return-value flow tests",
   "missing equality discriminator facts",
-  "evidence-first boundary gap output"
+  "evidence-first boundary gap output",
+  "negative and metamorphic predicate fixtures"
 ]
 fixtures = [
-  "fixtures/boundary_gap"
+  "fixtures/boundary_gap",
+  "fixtures/boundary_gap_multiline_assert",
+  "fixtures/boundary_gap_nested_tests",
+  "fixtures/boundary_gap_reordered_tests",
+  "fixtures/strong_boundary_oracle",
+  "fixtures/unrelated_test_mentions_token"
 ]
-next = "negative-metamorphic-baseline"
+next = "campaign-evidence-quality-closeout"
 metric = "missing boundary discriminator detection"
 
 [[capability]]
@@ -84,12 +102,15 @@ evidence = [
   "probe-relative exact error variant vs broad error oracle classification",
   "error variant flow sink tests",
   "missing exact error variant discriminator facts",
-  "evidence-first weak error oracle output"
+  "evidence-first weak error oracle output",
+  "strong and assert_matches exact error fixtures"
 ]
 fixtures = [
-  "fixtures/weak_error_oracle"
+  "fixtures/strong_error_oracle",
+  "fixtures/weak_error_oracle",
+  "fixtures/weak_error_oracle_assert_matches"
 ]
-next = "negative-metamorphic-baseline"
+next = "campaign-evidence-quality-closeout"
 metric = "broad error checks distinguished from exact variants"
 
 [[capability]]
@@ -107,7 +128,7 @@ evidence = [
 fixtures = [
   "fixtures/weak_error_oracle"
 ]
-next = "negative-metamorphic-baseline"
+next = "campaign-evidence-quality-closeout"
 metric = "exact vs smoke return oracle distinction"
 
 [[capability]]
@@ -124,7 +145,7 @@ evidence = [
 fixtures = [
   "fixtures/weak_error_oracle"
 ]
-next = "negative-metamorphic-baseline"
+next = "campaign-evidence-quality-closeout"
 metric = "side-effect or call boundary candidate named"
 
 [[capability]]
@@ -137,6 +158,8 @@ evidence = [
   "fixture/golden runner commands",
   "boundary_gap fixture",
   "weak_error_oracle fixture",
+  "negative fixture baseline",
+  "metamorphic fixture baseline",
   "FileFacts DTOs",
   "lexical syntax adapter boundary",
   "ra_ap_syntax parser-backed test/oracle extraction",
@@ -146,9 +169,20 @@ evidence = [
 ]
 fixtures = [
   "fixtures/boundary_gap",
-  "fixtures/weak_error_oracle"
+  "fixtures/boundary_gap_multiline_assert",
+  "fixtures/boundary_gap_nested_tests",
+  "fixtures/boundary_gap_reordered_tests",
+  "fixtures/comment_only_diff",
+  "fixtures/format_only_diff",
+  "fixtures/import_only_diff",
+  "fixtures/snapshot_oracle",
+  "fixtures/strong_boundary_oracle",
+  "fixtures/strong_error_oracle",
+  "fixtures/unrelated_test_mentions_token",
+  "fixtures/weak_error_oracle",
+  "fixtures/weak_error_oracle_assert_matches"
 ]
-next = "negative-metamorphic-baseline"
+next = "campaign-evidence-quality-closeout"
 metric = "fixture pass rate"
 
 [[capability]]
@@ -161,11 +195,23 @@ evidence = [
   "goldens check runner",
   "boundary_gap check.json",
   "weak_error_oracle check.json",
-  "evidence-first finding fields in check JSON"
+  "evidence-first finding fields in check JSON",
+  "negative and metamorphic fixture check.json goldens"
 ]
 fixtures = [
   "fixtures/boundary_gap",
-  "fixtures/weak_error_oracle"
+  "fixtures/boundary_gap_multiline_assert",
+  "fixtures/boundary_gap_nested_tests",
+  "fixtures/boundary_gap_reordered_tests",
+  "fixtures/comment_only_diff",
+  "fixtures/format_only_diff",
+  "fixtures/import_only_diff",
+  "fixtures/snapshot_oracle",
+  "fixtures/strong_boundary_oracle",
+  "fixtures/strong_error_oracle",
+  "fixtures/unrelated_test_mentions_token",
+  "fixtures/weak_error_oracle",
+  "fixtures/weak_error_oracle_assert_matches"
 ]
 next = "output-contract-matrix"
 metric = "golden output drift count"
@@ -180,11 +226,23 @@ evidence = [
   "goldens check runner",
   "boundary_gap human.txt",
   "weak_error_oracle human.txt",
-  "evidence-first human finding sections"
+  "evidence-first human finding sections",
+  "negative and metamorphic fixture human.txt goldens"
 ]
 fixtures = [
   "fixtures/boundary_gap",
-  "fixtures/weak_error_oracle"
+  "fixtures/boundary_gap_multiline_assert",
+  "fixtures/boundary_gap_nested_tests",
+  "fixtures/boundary_gap_reordered_tests",
+  "fixtures/comment_only_diff",
+  "fixtures/format_only_diff",
+  "fixtures/import_only_diff",
+  "fixtures/snapshot_oracle",
+  "fixtures/strong_boundary_oracle",
+  "fixtures/strong_error_oracle",
+  "fixtures/unrelated_test_mentions_token",
+  "fixtures/weak_error_oracle",
+  "fixtures/weak_error_oracle_assert_matches"
 ]
 next = "output-contract-matrix"
 metric = "golden output drift count"
@@ -263,7 +321,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "negative-metamorphic-baseline"
+next = "campaign-evidence-quality-closeout"
 metric = "syntax extraction parity"
 
 [[capability]]
@@ -283,7 +341,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "negative-metamorphic-baseline"
+next = "campaign-evidence-quality-closeout"
 metric = "oracle kind recognition rate"
 
 [[capability]]
@@ -302,7 +360,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "negative-metamorphic-baseline"
+next = "campaign-evidence-quality-closeout"
 metric = "duplicate symbols do not cross-link tests"
 
 [[capability]]
@@ -325,7 +383,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "negative-metamorphic-baseline"
+next = "campaign-evidence-quality-closeout"
 metric = "syntax facts generate current probe families"
 
 [[capability]]
@@ -349,7 +407,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "negative-metamorphic-baseline"
+next = "campaign-evidence-quality-closeout"
 metric = "flow sink identification rate"
 
 [[capability]]
@@ -373,5 +431,5 @@ fixtures = [
   "fixtures/weak_error_oracle",
   "fixtures/snapshot_oracle"
 ]
-next = "negative-metamorphic-baseline"
+next = "campaign-evidence-quality-closeout"
 metric = "detected and missing value facts"

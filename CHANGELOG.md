@@ -20,6 +20,9 @@ are scoped or reviewed.
 - Added evidence-first human and JSON finding output that promotes changed
   behavior evidence paths, local flow sinks, observed values, missing
   discriminators, oracle kind/strength, and suggested next actions.
+- Added negative and metamorphic fixture coverage for whitespace/comment/import
+  noise, unrelated token mentions, strong boundary/error oracles, and equivalent
+  assertion/test-layout variants.
 - Passed VS Code `ripr.check.mode` and `ripr.baseRef` settings into LSP
   workspace diagnostics.
 - Stored the latest LSP analysis snapshot alongside diagnostics so future

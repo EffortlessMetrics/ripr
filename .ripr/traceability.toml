@@ -18,8 +18,18 @@ tests = [
 ]
 fixtures = [
   "fixtures/boundary_gap",
+  "fixtures/boundary_gap_multiline_assert",
+  "fixtures/boundary_gap_nested_tests",
+  "fixtures/boundary_gap_reordered_tests",
+  "fixtures/comment_only_diff",
+  "fixtures/format_only_diff",
+  "fixtures/import_only_diff",
   "fixtures/snapshot_oracle",
-  "fixtures/weak_error_oracle"
+  "fixtures/strong_boundary_oracle",
+  "fixtures/strong_error_oracle",
+  "fixtures/unrelated_test_mentions_token",
+  "fixtures/weak_error_oracle",
+  "fixtures/weak_error_oracle_assert_matches"
 ]
 code = [
   "crates/ripr/src/domain",
@@ -34,10 +44,30 @@ outputs = [
   "docs/STATIC_EXPOSURE_MODEL.md",
   "fixtures/boundary_gap/expected/check.json",
   "fixtures/boundary_gap/expected/human.txt",
+  "fixtures/boundary_gap_multiline_assert/expected/check.json",
+  "fixtures/boundary_gap_multiline_assert/expected/human.txt",
+  "fixtures/boundary_gap_nested_tests/expected/check.json",
+  "fixtures/boundary_gap_nested_tests/expected/human.txt",
+  "fixtures/boundary_gap_reordered_tests/expected/check.json",
+  "fixtures/boundary_gap_reordered_tests/expected/human.txt",
+  "fixtures/comment_only_diff/expected/check.json",
+  "fixtures/comment_only_diff/expected/human.txt",
+  "fixtures/format_only_diff/expected/check.json",
+  "fixtures/format_only_diff/expected/human.txt",
+  "fixtures/import_only_diff/expected/check.json",
+  "fixtures/import_only_diff/expected/human.txt",
   "fixtures/snapshot_oracle/expected/check.json",
   "fixtures/snapshot_oracle/expected/human.txt",
+  "fixtures/strong_boundary_oracle/expected/check.json",
+  "fixtures/strong_boundary_oracle/expected/human.txt",
+  "fixtures/strong_error_oracle/expected/check.json",
+  "fixtures/strong_error_oracle/expected/human.txt",
+  "fixtures/unrelated_test_mentions_token/expected/check.json",
+  "fixtures/unrelated_test_mentions_token/expected/human.txt",
   "fixtures/weak_error_oracle/expected/check.json",
-  "fixtures/weak_error_oracle/expected/human.txt"
+  "fixtures/weak_error_oracle/expected/human.txt",
+  "fixtures/weak_error_oracle_assert_matches/expected/check.json",
+  "fixtures/weak_error_oracle_assert_matches/expected/human.txt"
 ]
 metrics = [
   "fixture_pass_rate",
@@ -53,8 +83,18 @@ spec = "docs/specs/RIPR-SPEC-0002-fixture-laboratory.md"
 tests = []
 fixtures = [
   "fixtures/boundary_gap",
+  "fixtures/boundary_gap_multiline_assert",
+  "fixtures/boundary_gap_nested_tests",
+  "fixtures/boundary_gap_reordered_tests",
+  "fixtures/comment_only_diff",
+  "fixtures/format_only_diff",
+  "fixtures/import_only_diff",
   "fixtures/snapshot_oracle",
-  "fixtures/weak_error_oracle"
+  "fixtures/strong_boundary_oracle",
+  "fixtures/strong_error_oracle",
+  "fixtures/unrelated_test_mentions_token",
+  "fixtures/weak_error_oracle",
+  "fixtures/weak_error_oracle_assert_matches"
 ]
 code = [
   "xtask/src/main.rs"
@@ -62,10 +102,30 @@ code = [
 outputs = [
   "fixtures/boundary_gap/expected/check.json",
   "fixtures/boundary_gap/expected/human.txt",
+  "fixtures/boundary_gap_multiline_assert/expected/check.json",
+  "fixtures/boundary_gap_multiline_assert/expected/human.txt",
+  "fixtures/boundary_gap_nested_tests/expected/check.json",
+  "fixtures/boundary_gap_nested_tests/expected/human.txt",
+  "fixtures/boundary_gap_reordered_tests/expected/check.json",
+  "fixtures/boundary_gap_reordered_tests/expected/human.txt",
+  "fixtures/comment_only_diff/expected/check.json",
+  "fixtures/comment_only_diff/expected/human.txt",
+  "fixtures/format_only_diff/expected/check.json",
+  "fixtures/format_only_diff/expected/human.txt",
+  "fixtures/import_only_diff/expected/check.json",
+  "fixtures/import_only_diff/expected/human.txt",
   "fixtures/snapshot_oracle/expected/check.json",
   "fixtures/snapshot_oracle/expected/human.txt",
+  "fixtures/strong_boundary_oracle/expected/check.json",
+  "fixtures/strong_boundary_oracle/expected/human.txt",
+  "fixtures/strong_error_oracle/expected/check.json",
+  "fixtures/strong_error_oracle/expected/human.txt",
+  "fixtures/unrelated_test_mentions_token/expected/check.json",
+  "fixtures/unrelated_test_mentions_token/expected/human.txt",
   "fixtures/weak_error_oracle/expected/check.json",
-  "fixtures/weak_error_oracle/expected/human.txt"
+  "fixtures/weak_error_oracle/expected/human.txt",
+  "fixtures/weak_error_oracle_assert_matches/expected/check.json",
+  "fixtures/weak_error_oracle_assert_matches/expected/human.txt"
 ]
 metrics = [
   "fixture_pass_rate",

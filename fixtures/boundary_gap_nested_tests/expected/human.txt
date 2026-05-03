@@ -1,0 +1,41 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/boundary_gap_nested_tests/input
+
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+
+WARNING fixtures/boundary_gap_nested_tests/input/src/lib.rs:2
+
+Changed
+  before: if amount > discount_threshold {
+  after:  if amount >= discount_threshold {
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  src/lib.rs::discounted_total
+
+Static exposure
+  weakly_exposed (warning, confidence 0.92)
+
+Evidence
+  - reach yes: Related tests appear to reach discounted_total: below_threshold_has_no_discount, far_above_threshold_discounts
+  - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
+  - propagation yes: Changed behavior appears to influence returned value: amount - 10
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator yes: Strong oracle found: exact value or pattern assertion
+  - local flow reaches returned value: amount - 10 (line 3)
+  - related test src/lib.rs:14 below_threshold_has_no_discount uses strong exact value oracle: assert_eq!(discounted_total(50, 100), 50);
+  - related test src/lib.rs:19 far_above_threshold_discounts uses strong exact value oracle: assert_eq!(discounted_total(10_000, 100), 9_990);
+  - observed assertion argument value 50 at line 15
+  - observed function argument value amount = 50 at line 15
+  - observed function argument value discount_threshold = 100 at line 15
+  - observed assertion argument value 9_990 at line 20
+  - observed function argument value amount = 10_000 at line 20
+  - observed function argument value discount_threshold = 100 at line 20
+
+Weakness
+  - missing discriminator amount == discount_threshold: No related test call uses amount equal to discount_threshold; observed amount values: 10_000, 50; observed discount_threshold values: 100
+
+Next step
+  Add boundary tests for below, equal, and above the changed threshold with exact assertions.

@@ -174,6 +174,7 @@ End state:
 - activation modeling can name observed and missing discriminator values
 - output is evidence-first
 - unknown findings include stop reasons across surfaces
+- negative and metamorphic fixtures protect evidence-first output
 
 Work items:
 
@@ -184,7 +185,8 @@ Work items:
 | `analysis/local-delta-flow-v1` | done | Findings carry typed local flow sinks for visible return, error, field, match-arm, and effect boundaries. |
 | `analysis/activation-value-modeling-v1` | done | Findings carry observed value facts and missing discriminator facts tied to local flow evidence. |
 | `output/evidence-first-output` | done | Human and JSON output render changed behavior, evidence path, weakness, stop reasons, and next action as first-class finding evidence. |
-| `fixtures/negative-metamorphic-baseline` | ready | Evidence-first output expectations are available for negative and metamorphic fixture coverage. |
+| `fixtures/negative-metamorphic-baseline` | done | Negative and metamorphic fixtures cover whitespace/comment/import noise, unrelated token mentions, strong boundary/error oracles, and syntax variants. |
+| `campaign/evidence-quality-closeout` | ready | Close Campaign 3 and activate Campaign 4 once the new fixture baseline is merged. |
 
 Dependencies:
 
@@ -194,6 +196,8 @@ Dependencies:
 - `analysis/activation-value-modeling-v1` landed before evidence-first output.
 - `output/evidence-first-output` landed before negative/metamorphic fixture
   expansion.
+- `fixtures/negative-metamorphic-baseline` should land before Campaign 3
+  closeout so the evidence-first output has negative and metamorphic guardrails.
 
 Commands:
 
