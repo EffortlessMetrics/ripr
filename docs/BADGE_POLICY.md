@@ -39,6 +39,46 @@ actionable test-efficiency findings.
 `cargo xtask test-efficiency-report` to the count. A passing `ripr+` is
 strictly stronger than a passing `ripr`.
 
+## Scope: diff vs repo
+
+The same badge label renders at two different **scopes** depending on
+input. The two scopes have different audiences and different meanings,
+and conflating them produces misleading public signal.
+
+### Diff scope (`scope: diff`)
+
+The badge counts findings within the diff under analysis — typically
+`origin/main...HEAD` for a PR. This is what `ripr check` produces by
+default and what `cargo xtask badge-artifacts` writes for PR step
+summaries.
+
+- **Audience**: PR reviewers, CI step summary, PR artifact uploads.
+- **Meaning**: "this PR's changed behavior has N unresolved
+  findings under policy."
+- **Not** a meaningful README / marketplace / store badge. On `main`
+  itself the diff vs `origin/main` is empty, so a diff-scoped pure
+  `ripr` badge always reports `0`. That is "nothing changed," not
+  "the repo is clean."
+
+### Repo scope (`scope: repo`)
+
+The badge counts findings across the entire repo baseline. This is
+the only scope that should be published as a public README, crate
+page, or extension store badge.
+
+- **Audience**: anyone reading the repo cold from outside.
+- **Meaning**: "the current repo baseline has N unresolved findings
+  under policy."
+- `ripr+` is already partly repo-scoped because
+  `cargo xtask test-efficiency-report` scans the whole test suite.
+  Pure `ripr` requires an explicit repo-baseline mode that analyzes
+  every probeable production owner — tracked as
+  `badge/repo-scope-artifacts` in Campaign 4A.
+
+Until repo-scoped pure `ripr` exists, **public README / store badges
+must not be derived from `cargo xtask badge-artifacts`** — that task
+generates diff-scoped artifacts only.
+
 ### What neither badge proves
 
 A green badge does **not** mean:
@@ -269,6 +309,31 @@ otherwise identical so consumers can parse one shape.
 gate on a single version. Bumping it is a public-contract change and must be
 called out in the PR.
 
+### Scope metadata (planned, native only)
+
+A `scope` field is required before public README/store badges go live.
+`badge/repo-scope-artifacts` introduces it on a `schema_version` bump:
+
+```json
+{
+  "schema_version": "0.2",
+  "kind": "ripr",
+  "scope": "diff",
+  "base": "origin/main",
+  "head": "HEAD",
+  "label": "ripr",
+  "message": "3",
+  "...": "..."
+}
+```
+
+- `"scope": "diff"` — diff-scoped (PR artifacts). Native JSON SHOULD
+  also record `base` and `head` git refs so consumers can reproduce.
+- `"scope": "repo"` — repo-scoped (README / main endpoint).
+
+The Shields projection remains exactly four fields. Scope metadata
+lives only in native JSON, docs, and consumer tooling.
+
 ### Shields projection (`--format badge-shields`)
 
 ```json
@@ -410,21 +475,47 @@ have to be "suppressed" merely for being intentional.
 
 ## CI policy
 
-Advisory by default.
+Advisory by default. PR runs and `main` runs render different surfaces.
+
+### PR runs — diff-scoped
+
+`cargo xtask badge-artifacts` invokes `ripr check` with the per-PR diff
+(`git diff origin/main...HEAD`) and writes diff-scoped artifacts:
 
 ```bash
-ripr check --base origin/main --format badge-json     > target/ripr/reports/ripr-badge.json
-ripr check --base origin/main --format badge-shields  > target/ripr/reports/ripr-badge-shields.json
-ripr check --base origin/main --format badge-plus-json    > target/ripr/reports/ripr-plus-badge.json
-ripr check --base origin/main --format badge-plus-shields > target/ripr/reports/ripr-plus-badge-shields.json
+cargo xtask badge-artifacts
+# writes target/ripr/reports/ripr-badge.json (scope: diff, planned)
+# writes target/ripr/reports/ripr-badge-shields.json
+# writes target/ripr/reports/ripr-plus-badge.json
+# writes target/ripr/reports/ripr-plus-badge-shields.json
+# writes target/ripr/reports/ripr-badges.md
 ```
 
-CI uploads these as artifacts and links them from
-`target/ripr/reports/index.md`. CI does **not** fail on a nonzero badge
-count unless a workflow explicitly passes `--fail-on-nonzero`. Trunk-only
-publication of Shields endpoints (`badge/publish-main-endpoint`) requires a
-`policy/network_allowlist.txt` entry and runs only from `main`, not from PR
-workflows.
+Used for the PR step summary and uploaded as the `ripr-pr-reports`
+artifact. CI does **not** fail on a nonzero badge count unless a
+workflow explicitly passes `--fail-on-nonzero`. **These artifacts are
+not safe to publish as README badges** — see "Scope: diff vs repo."
+
+### `main` runs — repo-scoped (planned)
+
+`cargo xtask repo-badge-artifacts` (planned, `badge/repo-scope-artifacts`)
+will analyze the full repo baseline rather than a diff and write repo-
+scoped artifacts:
+
+```bash
+cargo xtask repo-badge-artifacts
+# writes target/ripr/reports/repo-ripr-badge.json (scope: repo)
+# writes target/ripr/reports/repo-ripr-badge-shields.json
+# writes target/ripr/reports/repo-ripr-plus-badge.json
+# writes target/ripr/reports/repo-ripr-plus-badge-shields.json
+# writes target/ripr/reports/repo-ripr-badges.md
+```
+
+Trunk-only publication of Shields endpoints
+(`badge/publish-main-endpoint`) requires a `policy/network_allowlist.txt`
+entry, runs only from `main` (never from PR workflows), and consumes
+**repo-scoped** artifacts only. README and store-facing docs reference
+the published repo-scoped endpoint; they never embed PR-artifact URLs.
 
 ## Implementation status
 
@@ -443,8 +534,9 @@ Tracked alongside Campaign 4A in
 | `.ripr/test_intent.toml` loader | done | `test-intent/v1` |
 | `ripr check --format badge-plus-*` | done | `badge/ripr-plus-count-v1` |
 | `.ripr/suppressions.toml` loader | done | `suppressions/v1` |
-| CI badge artifacts | done | `ci/badge-artifacts` |
-| Published Shields endpoint from `main` | ready | `badge/publish-main-endpoint` |
+| CI badge artifacts (diff-scoped, PR) | done | `ci/badge-artifacts` |
+| Repo-scoped badge artifacts | not started | `badge/repo-scope-artifacts` |
+| Published Shields endpoint from `main` | blocked | `badge/publish-main-endpoint` (blocked on `badge/repo-scope-artifacts`) |
 
 ## See also
 
