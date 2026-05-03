@@ -109,9 +109,10 @@ Current and planned tests:
 
 - `xtask/src/main.rs::test_efficiency_ledger_records_owner_oracle_values_and_limitations`
 - `xtask/src/main.rs::test_efficiency_reports_are_advisory`
+- `xtask/src/main.rs::test_efficiency_signals_likely_vacuous_and_possibly_circular_tests`
 - existing oracle-strength and activation-value BDD tests
 - existing `cargo xtask test-oracle-report`
-- planned unit tests for test-efficiency classification reasons
+- planned unit tests for duplicate-discriminator grouping
 - planned fixture coverage for smoke-only, broad-error, duplicate-boundary, and
   opaque-helper cases
 

@@ -22,7 +22,7 @@ through multiple work items in a campaign, but each work item should follow the
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaign 1
 through Campaign 3 are complete; the active Campaign 4A queue now starts with
-`test-efficiency/vacuous-signal-v1`.
+`test-efficiency/duplicate-discriminator-v1`.
 
 ## PR 0: `planning-and-tracking-docs`
 

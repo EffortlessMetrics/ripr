@@ -36,12 +36,13 @@ commands = [
 
 [[work_item]]
 id = "test-efficiency/vacuous-signal-v1"
-status = "ready"
+status = "done"
 branch = "test-efficiency/vacuous-signal-v1"
 stackable = false
 requires_human_merge = true
 acceptance = "advisory findings classify smoke-only, broad-oracle, disconnected, opaque, circular, and likely-vacuous test signals with reasons"
 commands = [
+  "cargo xtask test-efficiency-report",
   "cargo xtask shape",
   "cargo xtask fix-pr",
   "cargo xtask check-pr",
@@ -53,12 +54,10 @@ commands = [
 
 [[work_item]]
 id = "test-efficiency/duplicate-discriminator-v1"
-status = "blocked"
+status = "ready"
 branch = "test-efficiency/duplicate-discriminator-v1"
 stackable = false
 requires_human_merge = true
-blocked_by = ["test-efficiency/vacuous-signal-v1"]
-blocked_reason = "needs stable test-efficiency reasons before grouping duplicate discriminators"
 acceptance = "advisory duplicate-discriminator groups name tests with the same owner, activation values, oracle shape, and sink evidence"
 commands = [
   "cargo xtask shape",
