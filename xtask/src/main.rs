@@ -154,6 +154,74 @@ struct TestEfficiencyEntry {
     reasons: Vec<String>,
     static_limitations: Vec<String>,
     duplicate_group_id: Option<String>,
+    declared_intent: Option<DeclaredIntent>,
+}
+
+/// Intent declaration attached to a test-efficiency entry. The base
+/// `class` and `reasons` are preserved; this is purely additive metadata
+/// describing the author's stated reason for the test's shape.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct DeclaredIntent {
+    intent: TestIntentKind,
+    owner: String,
+    reason: String,
+    source: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TestIntentKind {
+    Smoke,
+    BusinessCaseDuplicate,
+    OpaqueExternalOracle,
+    IntegrationContract,
+    PerformanceGuard,
+    DocumentationExample,
+}
+
+impl TestIntentKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            TestIntentKind::Smoke => "smoke",
+            TestIntentKind::BusinessCaseDuplicate => "business_case_duplicate",
+            TestIntentKind::OpaqueExternalOracle => "opaque_external_oracle",
+            TestIntentKind::IntegrationContract => "integration_contract",
+            TestIntentKind::PerformanceGuard => "performance_guard",
+            TestIntentKind::DocumentationExample => "documentation_example",
+        }
+    }
+
+    fn from_str(value: &str) -> Option<Self> {
+        match value {
+            "smoke" => Some(Self::Smoke),
+            "business_case_duplicate" => Some(Self::BusinessCaseDuplicate),
+            "opaque_external_oracle" => Some(Self::OpaqueExternalOracle),
+            "integration_contract" => Some(Self::IntegrationContract),
+            "performance_guard" => Some(Self::PerformanceGuard),
+            "documentation_example" => Some(Self::DocumentationExample),
+            _ => None,
+        }
+    }
+
+    fn supported() -> &'static [&'static str] {
+        &[
+            "smoke",
+            "business_case_duplicate",
+            "opaque_external_oracle",
+            "integration_contract",
+            "performance_guard",
+            "documentation_example",
+        ]
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct TestIntentDeclaration {
+    test: String,
+    path: Option<String>,
+    intent: TestIntentKind,
+    owner: String,
+    reason: String,
+    block_line: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -3529,13 +3597,38 @@ fn test_efficiency_report() -> Result<(), String> {
     let tests = collect_test_oracle_tests()?;
     let mut entries = tests.iter().map(test_efficiency_entry).collect::<Vec<_>>();
     let duplicate_groups = apply_duplicate_discriminator_groups(&mut entries);
+    let test_intent_summary = match load_test_intent_manifest() {
+        Ok(declarations) => {
+            let mut violations = validate_test_intent_paths_on_disk(&declarations);
+            violations.extend(apply_test_intent_to_entries(&mut entries, &declarations));
+            if !violations.is_empty() {
+                return Err(format!(
+                    "{TEST_INTENT_PATH} validation failed:\n{}",
+                    violations.join("\n")
+                ));
+            }
+            TestIntentReportSummary {
+                declared: declarations.len(),
+                matched: entries
+                    .iter()
+                    .filter(|e| e.declared_intent.is_some())
+                    .count(),
+            }
+        }
+        Err(violations) => {
+            return Err(format!(
+                "{TEST_INTENT_PATH} parse failed:\n{}",
+                violations.join("\n")
+            ));
+        }
+    };
     write_report(
         "test-efficiency.md",
-        &test_efficiency_report_markdown(&entries, &duplicate_groups),
+        &test_efficiency_report_markdown(&entries, &duplicate_groups, &test_intent_summary),
     )?;
     write_report(
         "test-efficiency.json",
-        &test_efficiency_report_json(&entries, &duplicate_groups),
+        &test_efficiency_report_json(&entries, &duplicate_groups, &test_intent_summary),
     )
 }
 
@@ -3566,6 +3659,7 @@ fn test_efficiency_entry(test: &TestOracleTest) -> TestEfficiencyEntry {
         reasons,
         static_limitations,
         duplicate_group_id: None,
+        declared_intent: None,
     }
 }
 
@@ -3701,6 +3795,391 @@ struct DuplicateGroupKey {
     oracle_kind: String,
     oracle_strength: &'static str,
     activation_signature: Vec<(&'static str, String)>,
+}
+
+const TEST_INTENT_PATH: &str = ".ripr/test_intent.toml";
+
+/// Top-level summary of the test-intent layer rendered in both Markdown
+/// and JSON. Always emitted, even when no manifest exists, so consumers
+/// get a stable shape.
+#[derive(Clone, Debug, Default)]
+struct TestIntentReportSummary {
+    declared: usize,
+    matched: usize,
+}
+
+/// Parses the `.ripr/test_intent.toml` manifest text into declarations.
+/// Returns the parsed declarations alongside any structural violations.
+/// The parser is pure (no I/O) so it can be unit-tested directly.
+fn parse_test_intent_manifest(text: &str) -> (Vec<TestIntentDeclaration>, Vec<String>) {
+    let mut entries: Vec<TestIntentDeclaration> = Vec::new();
+    let mut violations = Vec::new();
+    let mut schema_seen = false;
+    let mut current: Option<PendingTestIntent> = None;
+
+    for (index, line) in text.lines().enumerate() {
+        let line_number = index + 1;
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if trimmed == "[[test_intent]]" {
+            if let Some(pending) = current.take() {
+                finalize_test_intent_entry(pending, &mut entries, &mut violations);
+            }
+            current = Some(PendingTestIntent::new(line_number));
+            continue;
+        }
+        let Some((key, raw_value)) = trimmed.split_once('=') else {
+            violations.push(format!(
+                "{TEST_INTENT_PATH}:{line_number} expected `key = value`"
+            ));
+            continue;
+        };
+        let key = key.trim();
+        let raw_value = raw_value.trim();
+        if let Some(pending) = current.as_mut() {
+            match key {
+                "test" => {
+                    assign_test_intent_field(raw_value, line_number, &mut violations, |parsed| {
+                        pending.test = Some((parsed, line_number))
+                    })
+                }
+                "path" => {
+                    assign_test_intent_field(raw_value, line_number, &mut violations, |parsed| {
+                        pending.path = Some((parsed, line_number))
+                    })
+                }
+                "intent" => {
+                    assign_test_intent_field(raw_value, line_number, &mut violations, |parsed| {
+                        pending.intent = Some((parsed, line_number))
+                    })
+                }
+                "owner" => {
+                    assign_test_intent_field(raw_value, line_number, &mut violations, |parsed| {
+                        pending.owner = Some((parsed, line_number))
+                    })
+                }
+                "reason" => {
+                    assign_test_intent_field(raw_value, line_number, &mut violations, |parsed| {
+                        pending.reason = Some((parsed, line_number))
+                    })
+                }
+                _ => violations.push(format!(
+                    "{TEST_INTENT_PATH}:{line_number} unsupported `[[test_intent]]` field `{key}`"
+                )),
+            }
+        } else if key == "schema_version" {
+            schema_seen = true;
+            match raw_value.parse::<u32>() {
+                Ok(1) => {}
+                Ok(other) => violations.push(format!(
+                    "{TEST_INTENT_PATH}:{line_number} schema_version = {other} is not supported (expected 1)"
+                )),
+                Err(_) => violations.push(format!(
+                    "{TEST_INTENT_PATH}:{line_number} schema_version must be an integer literal"
+                )),
+            }
+        } else {
+            violations.push(format!(
+                "{TEST_INTENT_PATH}:{line_number} unsupported top-level field `{key}`"
+            ));
+        }
+    }
+
+    if let Some(pending) = current.take() {
+        finalize_test_intent_entry(pending, &mut entries, &mut violations);
+    }
+
+    if !schema_seen {
+        violations.push(format!(
+            "{TEST_INTENT_PATH} is missing required `schema_version = 1` header"
+        ));
+    }
+
+    let mut seen: BTreeMap<(String, Option<String>), usize> = BTreeMap::new();
+    for entry in &entries {
+        let key = (entry.test.clone(), entry.path.clone());
+        if let Some(&first) = seen.get(&key) {
+            let location = match &entry.path {
+                Some(path) => format!("`{}` at `{}`", entry.test, path),
+                None => format!("`{}`", entry.test),
+            };
+            violations.push(format!(
+                "{TEST_INTENT_PATH} duplicate selector {location} (first declared near line {first})"
+            ));
+        } else {
+            seen.insert(key, entry.block_line);
+        }
+    }
+
+    (entries, violations)
+}
+
+struct PendingTestIntent {
+    block_line: usize,
+    test: Option<(String, usize)>,
+    path: Option<(String, usize)>,
+    intent: Option<(String, usize)>,
+    owner: Option<(String, usize)>,
+    reason: Option<(String, usize)>,
+}
+
+impl PendingTestIntent {
+    fn new(block_line: usize) -> Self {
+        Self {
+            block_line,
+            test: None,
+            path: None,
+            intent: None,
+            owner: None,
+            reason: None,
+        }
+    }
+}
+
+fn assign_test_intent_field<F>(
+    raw_value: &str,
+    line_number: usize,
+    violations: &mut Vec<String>,
+    mut assign: F,
+) where
+    F: FnMut(String),
+{
+    match parse_quoted_value(raw_value) {
+        Ok(parsed) => assign(parsed),
+        Err(message) => violations.push(format!("{TEST_INTENT_PATH}:{line_number} {message}")),
+    }
+}
+
+fn finalize_test_intent_entry(
+    pending: PendingTestIntent,
+    entries: &mut Vec<TestIntentDeclaration>,
+    violations: &mut Vec<String>,
+) {
+    let block_line = pending.block_line;
+
+    let test = match pending.test {
+        Some((value, line)) => {
+            if value.trim().is_empty() {
+                violations.push(format!("{TEST_INTENT_PATH}:{line} `test` is blank"));
+                None
+            } else {
+                Some(value)
+            }
+        }
+        None => {
+            violations.push(format!(
+                "{TEST_INTENT_PATH}:{block_line} `[[test_intent]]` entry is missing required `test`"
+            ));
+            None
+        }
+    };
+
+    let path = match pending.path {
+        Some((value, line)) => {
+            if value.trim().is_empty() {
+                violations.push(format!("{TEST_INTENT_PATH}:{line} `path` is empty"));
+                None
+            } else if value.contains('\\') {
+                violations.push(format!(
+                    "{TEST_INTENT_PATH}:{line} `path` `{value}` uses backslashes; use `/` separators"
+                ));
+                None
+            } else if is_absolute_path_like(&value) {
+                violations.push(format!(
+                    "{TEST_INTENT_PATH}:{line} `path` `{value}` is absolute; entries must be repository-relative"
+                ));
+                None
+            } else {
+                Some(value)
+            }
+        }
+        None => None,
+    };
+
+    let intent = match pending.intent {
+        Some((value, line)) => match TestIntentKind::from_str(&value) {
+            Some(kind) => Some(kind),
+            None => {
+                violations.push(format!(
+                    "{TEST_INTENT_PATH}:{line} unsupported intent `{value}`; supported: {}",
+                    TestIntentKind::supported().join(", ")
+                ));
+                None
+            }
+        },
+        None => {
+            violations.push(format!(
+                "{TEST_INTENT_PATH}:{block_line} `[[test_intent]]` entry is missing required `intent`"
+            ));
+            None
+        }
+    };
+
+    let owner = match pending.owner {
+        Some((value, line)) => {
+            if value.trim().is_empty() {
+                violations.push(format!(
+                    "{TEST_INTENT_PATH}:{line} `owner` is blank; name a responsible team or maintainer"
+                ));
+                None
+            } else {
+                Some(value)
+            }
+        }
+        None => {
+            violations.push(format!(
+                "{TEST_INTENT_PATH}:{block_line} `[[test_intent]]` entry is missing required `owner`"
+            ));
+            None
+        }
+    };
+
+    let reason = match pending.reason {
+        Some((value, line)) => {
+            if value.trim().is_empty() {
+                violations.push(format!(
+                    "{TEST_INTENT_PATH}:{line} `reason` is blank; explain why this declaration exists"
+                ));
+                None
+            } else {
+                Some(value)
+            }
+        }
+        None => {
+            violations.push(format!(
+                "{TEST_INTENT_PATH}:{block_line} `[[test_intent]]` entry is missing required `reason`"
+            ));
+            None
+        }
+    };
+
+    if let (Some(test), Some(intent), Some(owner), Some(reason)) = (test, intent, owner, reason) {
+        entries.push(TestIntentDeclaration {
+            test,
+            path,
+            intent,
+            owner,
+            reason,
+            block_line,
+        });
+    }
+}
+
+/// Loads the test-intent manifest from disk. Returns an empty list when
+/// the file does not exist (this is a normal state — most projects will
+/// have no declarations). Parse and validation violations are returned as
+/// `Err` so the caller can surface them through the policy report.
+fn load_test_intent_manifest() -> Result<Vec<TestIntentDeclaration>, Vec<String>> {
+    let path = Path::new(TEST_INTENT_PATH);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let text = read_text_lossy(path).map_err(|err| vec![err])?;
+    let (entries, violations) = parse_test_intent_manifest(&text);
+    if violations.is_empty() {
+        Ok(entries)
+    } else {
+        Err(violations)
+    }
+}
+
+/// Path-existence guard for `path = "..."` declarations. Kept separate
+/// from `apply_test_intent_to_entries` so the matcher stays hermetic for
+/// unit tests; this function is the I/O-aware companion the orchestrator
+/// runs against real declarations.
+fn validate_test_intent_paths_on_disk(declarations: &[TestIntentDeclaration]) -> Vec<String> {
+    declarations
+        .iter()
+        .filter_map(|declaration| {
+            declaration.path.as_ref().and_then(|path| {
+                if Path::new(path).exists() {
+                    None
+                } else {
+                    Some(format!(
+                        "{TEST_INTENT_PATH}:{} `path` `{}` does not exist on disk",
+                        declaration.block_line, path
+                    ))
+                }
+            })
+        })
+        .collect()
+}
+
+/// Applies test-intent declarations to a slice of entries, attaching
+/// `declared_intent` metadata when a declaration matches a single entry.
+/// Returns violations for unmatched declarations and ambiguous name-only
+/// selectors. Path-existence is **not** checked here — see
+/// `validate_test_intent_paths_on_disk` for the I/O-aware companion.
+fn apply_test_intent_to_entries(
+    entries: &mut [TestEfficiencyEntry],
+    declarations: &[TestIntentDeclaration],
+) -> Vec<String> {
+    let mut violations = Vec::new();
+    for declaration in declarations {
+        let matches: Vec<usize> = entries
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| {
+                entry.name == declaration.test
+                    && declaration
+                        .path
+                        .as_ref()
+                        .map(|path| normalize_path(&entry.path) == *path)
+                        .unwrap_or(true)
+            })
+            .map(|(index, _)| index)
+            .collect();
+
+        match matches.len() {
+            0 => {
+                let location = match &declaration.path {
+                    Some(path) => format!("`{}` at `{}`", declaration.test, path),
+                    None => format!("`{}`", declaration.test),
+                };
+                violations.push(format!(
+                    "{TEST_INTENT_PATH}:{} test intent selector {location} did not match any test",
+                    declaration.block_line
+                ));
+            }
+            1 => {
+                let index = matches[0];
+                entries[index].declared_intent = Some(DeclaredIntent {
+                    intent: declaration.intent,
+                    owner: declaration.owner.clone(),
+                    reason: declaration.reason.clone(),
+                    source: TEST_INTENT_PATH.to_string(),
+                });
+            }
+            _ if declaration.path.is_none() => {
+                let candidates = matches
+                    .iter()
+                    .map(|&i| normalize_path(&entries[i].path))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                violations.push(format!(
+                    "{TEST_INTENT_PATH}:{} test intent selector `{}` matched multiple tests; add `path` to disambiguate (candidates: {candidates})",
+                    declaration.block_line, declaration.test
+                ));
+            }
+            _ => {
+                // Multiple matches WITH path; attach to all of them so a
+                // genuinely-shared name across files behaves predictably.
+                // (In practice the path narrows to one file, so this is
+                // rare; we still want determinism if it happens.)
+                for &index in &matches {
+                    entries[index].declared_intent = Some(DeclaredIntent {
+                        intent: declaration.intent,
+                        owner: declaration.owner.clone(),
+                        reason: declaration.reason.clone(),
+                        source: TEST_INTENT_PATH.to_string(),
+                    });
+                }
+            }
+        }
+    }
+    violations
 }
 
 fn test_efficiency_class(
@@ -4170,6 +4649,7 @@ fn test_efficiency_report_status(entries: &[TestEfficiencyEntry]) -> &'static st
 fn test_efficiency_report_markdown(
     entries: &[TestEfficiencyEntry],
     duplicate_groups: &[DuplicateDiscriminatorGroup],
+    test_intent: &TestIntentReportSummary,
 ) -> String {
     let metrics = test_efficiency_metrics(entries, duplicate_groups);
     let counts = &metrics.class_counts;
@@ -4251,6 +4731,35 @@ fn test_efficiency_report_markdown(
             ));
             for limitation in &entry.static_limitations {
                 body.push_str(&format!("  - {limitation}\n"));
+            }
+        }
+        body.push('\n');
+    }
+
+    body.push_str("## Declared Test Intent\n\n");
+    body.push_str(&format!(
+        "Source: `{TEST_INTENT_PATH}` · declared: {} · matched: {}\n\n",
+        test_intent.declared, test_intent.matched
+    ));
+    let declared_entries = entries
+        .iter()
+        .filter(|entry| entry.declared_intent.is_some())
+        .collect::<Vec<_>>();
+    if declared_entries.is_empty() {
+        body.push_str("None declared.\n\n");
+    } else {
+        body.push_str("| Test | Intent | Owner | Reason |\n| --- | --- | --- | --- |\n");
+        for entry in declared_entries {
+            if let Some(intent) = &entry.declared_intent {
+                body.push_str(&format!(
+                    "| `{}`:{} `{}` | `{}` | `{}` | {} |\n",
+                    normalize_path(&entry.path),
+                    entry.line,
+                    markdown_cell(&entry.name),
+                    intent.intent.as_str(),
+                    markdown_cell(&intent.owner),
+                    markdown_cell(&intent.reason)
+                ));
             }
         }
         body.push('\n');
@@ -4341,6 +4850,7 @@ fn test_efficiency_report_markdown(
 fn test_efficiency_report_json(
     entries: &[TestEfficiencyEntry],
     duplicate_groups: &[DuplicateDiscriminatorGroup],
+    test_intent: &TestIntentReportSummary,
 ) -> String {
     let metrics = test_efficiency_metrics(entries, duplicate_groups);
     let counts = &metrics.class_counts;
@@ -4423,6 +4933,26 @@ fn test_efficiency_report_json(
                 json_escape(group_id)
             ));
         }
+        if let Some(intent) = &entry.declared_intent {
+            body.push_str(",\n      \"declared_intent\": {\n");
+            body.push_str(&format!(
+                "        \"intent\": \"{}\",\n",
+                intent.intent.as_str()
+            ));
+            body.push_str(&format!(
+                "        \"owner\": \"{}\",\n",
+                json_escape(&intent.owner)
+            ));
+            body.push_str(&format!(
+                "        \"reason\": \"{}\",\n",
+                json_escape(&intent.reason)
+            ));
+            body.push_str(&format!(
+                "        \"source\": \"{}\"\n",
+                json_escape(&intent.source)
+            ));
+            body.push_str("      }");
+        }
         body.push_str("\n    }");
     }
     body.push_str("\n  ],\n  \"duplicate_groups\": [");
@@ -4495,6 +5025,14 @@ fn test_efficiency_report_json(
         }
         body.push_str("\n  ]");
     }
+    body.push_str(",\n  \"test_intent\": {\n");
+    body.push_str(&format!(
+        "    \"path\": \"{}\",\n",
+        json_escape(TEST_INTENT_PATH)
+    ));
+    body.push_str(&format!("    \"declared\": {},\n", test_intent.declared));
+    body.push_str(&format!("    \"matched\": {}\n", test_intent.matched));
+    body.push_str("  }");
     body.push_str(",\n  \"metrics\": {\n");
     body.push_str(&format!(
         "    \"tests_scanned\": {},\n",
@@ -9553,8 +10091,9 @@ mod tests {
         windows_absolute_path_tokens, workflow_runtime_violations,
     };
     use super::{
-        TestEfficiencyEntry, TestEfficiencyValue, apply_duplicate_discriminator_groups,
-        test_efficiency_metrics,
+        DeclaredIntent, TestEfficiencyEntry, TestEfficiencyValue, TestIntentDeclaration,
+        TestIntentKind, TestIntentReportSummary, apply_duplicate_discriminator_groups,
+        apply_test_intent_to_entries, parse_test_intent_manifest, test_efficiency_metrics,
     };
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
@@ -11036,8 +11575,16 @@ fn smoke_status_check() {
 "#;
         let tests = test_oracle_tests_in_text(Path::new("crates/ripr/tests/example.rs"), source);
         let entry = test_efficiency_entry(&tests[0]);
-        let markdown = test_efficiency_report_markdown(std::slice::from_ref(&entry), &[]);
-        let json = test_efficiency_report_json(std::slice::from_ref(&entry), &[]);
+        let markdown = test_efficiency_report_markdown(
+            std::slice::from_ref(&entry),
+            &[],
+            &TestIntentReportSummary::default(),
+        );
+        let json = test_efficiency_report_json(
+            std::slice::from_ref(&entry),
+            &[],
+            &TestIntentReportSummary::default(),
+        );
 
         assert_eq!(entry.class, "smoke_only");
         assert!(entry.reasons.contains(&"smoke_oracle_only".to_string()));
@@ -11063,7 +11610,11 @@ fn expected_uses_same_owner_path() {
         let tests = test_oracle_tests_in_text(Path::new("crates/ripr/tests/example.rs"), source);
         let vacuous = test_efficiency_entry(&tests[0]);
         let circular = test_efficiency_entry(&tests[1]);
-        let json = test_efficiency_report_json(&[vacuous.clone(), circular.clone()], &[]);
+        let json = test_efficiency_report_json(
+            &[vacuous.clone(), circular.clone()],
+            &[],
+            &TestIntentReportSummary::default(),
+        );
 
         assert_eq!(vacuous.class, "likely_vacuous");
         assert!(
@@ -11189,6 +11740,7 @@ fn exact_owner_call_has_external_expected_value() {
             reasons: Vec::new(),
             static_limitations: Vec::new(),
             duplicate_group_id: None,
+            declared_intent: None,
         }
     }
 
@@ -11681,7 +12233,8 @@ fn exact_owner_call_has_external_expected_value() {
             ),
         ];
         let groups = apply_duplicate_discriminator_groups(&mut entries);
-        let json = test_efficiency_report_json(&entries, &groups);
+        let json =
+            test_efficiency_report_json(&entries, &groups, &TestIntentReportSummary::default());
 
         assert!(json.contains("\"duplicate_group_id\": \"duplicate_group_1\""));
         assert!(json.contains("\"duplicate_groups\": ["));
@@ -11713,7 +12266,8 @@ fn exact_owner_call_has_external_expected_value() {
             ),
         ];
         let groups = apply_duplicate_discriminator_groups(&mut entries);
-        let markdown = test_efficiency_report_markdown(&entries, &groups);
+        let markdown =
+            test_efficiency_report_markdown(&entries, &groups, &TestIntentReportSummary::default());
 
         assert!(markdown.contains("## Duplicate Discriminator Groups"));
         assert!(markdown.contains("duplicate_group_1"));
@@ -11862,7 +12416,7 @@ fn exact_owner_call_has_external_expected_value() {
             &["pricing::p"],
             &[("function_argument", "1")],
         )];
-        let json = test_efficiency_report_json(&entries, &[]);
+        let json = test_efficiency_report_json(&entries, &[], &TestIntentReportSummary::default());
 
         assert!(json.contains("\"metrics\": {"));
         assert!(json.contains("\"tests_scanned\": 1"));
@@ -11897,7 +12451,7 @@ fn exact_owner_call_has_external_expected_value() {
             &[("function_argument", "1")],
         );
         entry.reasons.push("broad_oracle".to_string());
-        let json = test_efficiency_report_json(&[entry], &[]);
+        let json = test_efficiency_report_json(&[entry], &[], &TestIntentReportSummary::default());
 
         // Existing top-level surfaces must remain for backward compatibility.
         assert!(json.contains("\"counts\": {"));
@@ -11935,7 +12489,8 @@ fn exact_owner_call_has_external_expected_value() {
             ),
         ];
         let groups = apply_duplicate_discriminator_groups(&mut entries);
-        let markdown = test_efficiency_report_markdown(&entries, &groups);
+        let markdown =
+            test_efficiency_report_markdown(&entries, &groups, &TestIntentReportSummary::default());
 
         assert!(markdown.contains("## Metrics"));
         assert!(markdown.contains("| Metric | Value |"));
@@ -11958,7 +12513,7 @@ fn exact_owner_call_has_external_expected_value() {
             &["pricing::p"],
             &[("function_argument", "1")],
         )];
-        let json = test_efficiency_report_json(&entries, &[]);
+        let json = test_efficiency_report_json(&entries, &[], &TestIntentReportSummary::default());
 
         // Aliases that must NOT appear in the metrics surface — ensures we
         // do not introduce a parallel vocabulary.
@@ -11989,8 +12544,9 @@ fn exact_owner_call_has_external_expected_value() {
             &["pricing::p"],
             &[("function_argument", "1")],
         )];
-        let markdown = test_efficiency_report_markdown(&entries, &[]);
-        let json = test_efficiency_report_json(&entries, &[]);
+        let markdown =
+            test_efficiency_report_markdown(&entries, &[], &TestIntentReportSummary::default());
+        let json = test_efficiency_report_json(&entries, &[], &TestIntentReportSummary::default());
 
         for body in [&markdown, &json] {
             let lower = body.to_ascii_lowercase();
@@ -12004,5 +12560,547 @@ fn exact_owner_call_has_external_expected_value() {
                 "test-efficiency report must not use uncovered framing"
             );
         }
+    }
+
+    // -------- test-intent v1 --------
+
+    fn intent_entry(
+        name: &str,
+        path: &str,
+        line: usize,
+        class: &'static str,
+    ) -> TestEfficiencyEntry {
+        TestEfficiencyEntry {
+            path: Path::new(path).to_path_buf(),
+            name: name.to_string(),
+            line,
+            class,
+            oracle_kind: "exact assertion".to_string(),
+            oracle_strength: "strong",
+            reached_owners: Vec::new(),
+            observed_values: Vec::new(),
+            reasons: Vec::new(),
+            static_limitations: Vec::new(),
+            duplicate_group_id: None,
+            declared_intent: None,
+        }
+    }
+
+    fn declaration(
+        test: &str,
+        path: Option<&str>,
+        intent: TestIntentKind,
+    ) -> TestIntentDeclaration {
+        TestIntentDeclaration {
+            test: test.to_string(),
+            path: path.map(|p| p.to_string()),
+            intent,
+            owner: "team".to_string(),
+            reason: "stated reason".to_string(),
+            block_line: 10,
+        }
+    }
+
+    #[test]
+    fn test_intent_parses_valid_reasoned_entries() {
+        let text = r#"
+schema_version = 1
+
+[[test_intent]]
+test = "cli_prints_help"
+intent = "smoke"
+reason = "CLI startup and help text smoke test."
+owner = "devtools"
+
+[[test_intent]]
+test = "escapes_json"
+path = "crates/ripr/src/output/json/mod.rs"
+intent = "business_case_duplicate"
+reason = "These duplicate-looking tests document distinct escaping cases."
+owner = "output"
+"#;
+        let (entries, violations) = parse_test_intent_manifest(text);
+        assert!(
+            violations.is_empty(),
+            "unexpected violations: {violations:?}"
+        );
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].test, "cli_prints_help");
+        assert_eq!(entries[0].intent, TestIntentKind::Smoke);
+        assert_eq!(entries[0].owner, "devtools");
+        assert!(entries[0].path.is_none());
+        assert_eq!(entries[1].intent, TestIntentKind::BusinessCaseDuplicate);
+        assert_eq!(
+            entries[1].path.as_deref(),
+            Some("crates/ripr/src/output/json/mod.rs")
+        );
+    }
+
+    #[test]
+    fn test_intent_requires_schema_version() {
+        let text = r#"
+[[test_intent]]
+test = "cli_prints_help"
+intent = "smoke"
+reason = "CLI startup and help text smoke test."
+owner = "devtools"
+"#;
+        let (_, violations) = parse_test_intent_manifest(text);
+        assert!(
+            violations.iter().any(|v| v.contains("schema_version = 1")),
+            "expected schema_version violation, got {violations:?}"
+        );
+    }
+
+    #[test]
+    fn test_intent_requires_test_field() {
+        let text = r#"
+schema_version = 1
+
+[[test_intent]]
+intent = "smoke"
+reason = "..."
+owner = "devtools"
+"#;
+        let (entries, violations) = parse_test_intent_manifest(text);
+        assert!(entries.is_empty());
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("missing required `test`")),
+            "expected missing-test violation, got {violations:?}"
+        );
+    }
+
+    #[test]
+    fn test_intent_requires_intent_field() {
+        let text = r#"
+schema_version = 1
+
+[[test_intent]]
+test = "x"
+reason = "y"
+owner = "z"
+"#;
+        let (entries, violations) = parse_test_intent_manifest(text);
+        assert!(entries.is_empty());
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("missing required `intent`")),
+            "expected missing-intent violation, got {violations:?}"
+        );
+    }
+
+    #[test]
+    fn test_intent_requires_owner_and_reason() {
+        let missing_owner = r#"
+schema_version = 1
+
+[[test_intent]]
+test = "x"
+intent = "smoke"
+reason = "y"
+"#;
+        let (entries, violations) = parse_test_intent_manifest(missing_owner);
+        assert!(entries.is_empty());
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("missing required `owner`")),
+            "expected missing-owner violation, got {violations:?}"
+        );
+
+        let missing_reason = r#"
+schema_version = 1
+
+[[test_intent]]
+test = "x"
+intent = "smoke"
+owner = "z"
+"#;
+        let (entries, violations) = parse_test_intent_manifest(missing_reason);
+        assert!(entries.is_empty());
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("missing required `reason`")),
+            "expected missing-reason violation, got {violations:?}"
+        );
+    }
+
+    #[test]
+    fn test_intent_rejects_blank_owner_or_reason() {
+        let text = r#"
+schema_version = 1
+
+[[test_intent]]
+test = "x"
+intent = "smoke"
+owner = "  "
+reason = "  "
+"#;
+        let (entries, violations) = parse_test_intent_manifest(text);
+        assert!(entries.is_empty());
+        assert!(violations.iter().any(|v| v.contains("`owner` is blank")));
+        assert!(violations.iter().any(|v| v.contains("`reason` is blank")));
+    }
+
+    #[test]
+    fn test_intent_rejects_unknown_intent_value() {
+        let text = r#"
+schema_version = 1
+
+[[test_intent]]
+test = "x"
+intent = "vibe_check"
+owner = "z"
+reason = "y"
+"#;
+        let (entries, violations) = parse_test_intent_manifest(text);
+        assert!(entries.is_empty());
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("unsupported intent `vibe_check`")),
+            "expected unsupported-intent violation, got {violations:?}"
+        );
+    }
+
+    #[test]
+    fn test_intent_rejects_unknown_fields() {
+        let text = r#"
+schema_version = 1
+
+[[test_intent]]
+test = "x"
+intent = "smoke"
+owner = "z"
+reason = "y"
+priority = "high"
+"#;
+        let (_, violations) = parse_test_intent_manifest(text);
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("unsupported `[[test_intent]]` field `priority`")),
+            "expected unknown-field violation, got {violations:?}"
+        );
+    }
+
+    #[test]
+    fn test_intent_rejects_absolute_and_backslash_paths() {
+        let abs_unix = r#"
+schema_version = 1
+
+[[test_intent]]
+test = "x"
+path = "/abs/path.rs"
+intent = "smoke"
+owner = "z"
+reason = "y"
+"#;
+        let (_, violations) = parse_test_intent_manifest(abs_unix);
+        assert!(
+            violations.iter().any(|v| v.contains("is absolute")),
+            "expected absolute-path violation, got {violations:?}"
+        );
+
+        let drive = "Z";
+        let sep = ":/";
+        let win = format!(
+            r#"
+schema_version = 1
+
+[[test_intent]]
+test = "x"
+path = "{drive}{sep}abs/path.rs"
+intent = "smoke"
+owner = "z"
+reason = "y"
+"#
+        );
+        let (_, violations) = parse_test_intent_manifest(&win);
+        assert!(violations.iter().any(|v| v.contains("is absolute")));
+
+        let backslash = r#"
+schema_version = 1
+
+[[test_intent]]
+test = "x"
+path = "crates\\ripr\\src\\lib.rs"
+intent = "smoke"
+owner = "z"
+reason = "y"
+"#;
+        let (_, violations) = parse_test_intent_manifest(backslash);
+        assert!(
+            violations.iter().any(|v| v.contains("backslashes")),
+            "expected backslash-path violation, got {violations:?}"
+        );
+    }
+
+    #[test]
+    fn test_intent_rejects_duplicate_selector() {
+        let text = r#"
+schema_version = 1
+
+[[test_intent]]
+test = "cli_prints_help"
+intent = "smoke"
+owner = "devtools"
+reason = "first"
+
+[[test_intent]]
+test = "cli_prints_help"
+intent = "smoke"
+owner = "devtools"
+reason = "second"
+"#;
+        let (_, violations) = parse_test_intent_manifest(text);
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("duplicate selector `cli_prints_help`")),
+            "expected duplicate-selector violation, got {violations:?}"
+        );
+    }
+
+    #[test]
+    fn test_intent_matches_by_test_name_when_unique() {
+        let mut entries = vec![intent_entry(
+            "cli_prints_help",
+            "tests/cli.rs",
+            12,
+            "smoke_only",
+        )];
+        let decls = vec![declaration("cli_prints_help", None, TestIntentKind::Smoke)];
+
+        let violations = apply_test_intent_to_entries(&mut entries, &decls);
+
+        assert!(
+            violations.is_empty(),
+            "unexpected violations: {violations:?}"
+        );
+        assert_eq!(
+            entries[0].declared_intent.as_ref().map(|i| i.intent),
+            Some(TestIntentKind::Smoke)
+        );
+        assert_eq!(
+            entries[0]
+                .declared_intent
+                .as_ref()
+                .map(|i| i.source.as_str()),
+            Some(".ripr/test_intent.toml")
+        );
+    }
+
+    #[test]
+    fn test_intent_matches_by_test_name_and_path() {
+        let mut entries = vec![
+            intent_entry(
+                "escapes_json",
+                "crates/ripr/src/output/json/mod.rs",
+                22,
+                "useful_but_broad",
+            ),
+            intent_entry(
+                "escapes_json",
+                "crates/ripr/src/output/json/formatter.rs",
+                74,
+                "useful_but_broad",
+            ),
+        ];
+        let decls = vec![declaration(
+            "escapes_json",
+            Some("crates/ripr/src/output/json/formatter.rs"),
+            TestIntentKind::BusinessCaseDuplicate,
+        )];
+
+        let violations = apply_test_intent_to_entries(&mut entries, &decls);
+
+        assert!(
+            violations.is_empty(),
+            "unexpected violations: {violations:?}"
+        );
+        assert!(entries[0].declared_intent.is_none());
+        assert_eq!(
+            entries[1].declared_intent.as_ref().map(|i| i.intent),
+            Some(TestIntentKind::BusinessCaseDuplicate)
+        );
+    }
+
+    #[test]
+    fn test_intent_rejects_unmatched_selector() {
+        let mut entries = vec![intent_entry("real_test", "tests/a.rs", 1, "smoke_only")];
+        let decls = vec![declaration(
+            "test_that_does_not_exist",
+            None,
+            TestIntentKind::Smoke,
+        )];
+
+        let violations = apply_test_intent_to_entries(&mut entries, &decls);
+
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].contains("did not match any test"));
+        assert!(entries[0].declared_intent.is_none());
+    }
+
+    #[test]
+    fn test_intent_rejects_ambiguous_name_only_selector() {
+        let mut entries = vec![
+            intent_entry("escapes_json", "crates/a/mod.rs", 1, "useful_but_broad"),
+            intent_entry("escapes_json", "crates/b/mod.rs", 1, "useful_but_broad"),
+        ];
+        let decls = vec![declaration(
+            "escapes_json",
+            None,
+            TestIntentKind::BusinessCaseDuplicate,
+        )];
+
+        let violations = apply_test_intent_to_entries(&mut entries, &decls);
+
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].contains("matched multiple tests"));
+        assert!(violations[0].contains("add `path`"));
+        assert!(violations[0].contains("crates/a/mod.rs"));
+        assert!(violations[0].contains("crates/b/mod.rs"));
+        assert!(entries[0].declared_intent.is_none());
+        assert!(entries[1].declared_intent.is_none());
+    }
+
+    #[test]
+    fn test_intent_keeps_declared_tests_visible_with_original_class() {
+        let mut entries = vec![intent_entry(
+            "cli_prints_help",
+            "tests/cli.rs",
+            12,
+            "smoke_only",
+        )];
+        let decls = vec![declaration("cli_prints_help", None, TestIntentKind::Smoke)];
+
+        let violations = apply_test_intent_to_entries(&mut entries, &decls);
+        assert!(violations.is_empty());
+
+        // Class is preserved — intent is additive metadata, not a replacement.
+        assert_eq!(entries[0].class, "smoke_only");
+        assert!(entries[0].declared_intent.is_some());
+    }
+
+    #[test]
+    fn test_intent_json_marks_declared_test_with_full_metadata() {
+        let mut entries = vec![intent_entry(
+            "cli_prints_help",
+            "tests/cli.rs",
+            12,
+            "smoke_only",
+        )];
+        let decls = vec![declaration("cli_prints_help", None, TestIntentKind::Smoke)];
+        let violations = apply_test_intent_to_entries(&mut entries, &decls);
+        assert!(violations.is_empty());
+
+        let json = test_efficiency_report_json(
+            &entries,
+            &[],
+            &TestIntentReportSummary {
+                declared: 1,
+                matched: 1,
+            },
+        );
+
+        assert!(json.contains("\"declared_intent\":"));
+        assert!(json.contains("\"intent\": \"smoke\""));
+        assert!(json.contains("\"owner\": \"team\""));
+        assert!(json.contains("\"reason\": \"stated reason\""));
+        assert!(json.contains("\"source\": \".ripr/test_intent.toml\""));
+        assert!(json.contains("\"test_intent\":"));
+        assert!(json.contains("\"declared\": 1"));
+        assert!(json.contains("\"matched\": 1"));
+        // Original class is preserved.
+        assert!(json.contains("\"class\": \"smoke_only\""));
+    }
+
+    #[test]
+    fn test_intent_markdown_lists_declared_intent_section() {
+        let mut entries = vec![intent_entry(
+            "cli_prints_help",
+            "tests/cli.rs",
+            12,
+            "smoke_only",
+        )];
+        let decls = vec![declaration("cli_prints_help", None, TestIntentKind::Smoke)];
+        let _ = apply_test_intent_to_entries(&mut entries, &decls);
+
+        let markdown = test_efficiency_report_markdown(
+            &entries,
+            &[],
+            &TestIntentReportSummary {
+                declared: 1,
+                matched: 1,
+            },
+        );
+
+        assert!(markdown.contains("## Declared Test Intent"));
+        assert!(markdown.contains("declared: 1 \u{00b7} matched: 1"));
+        assert!(markdown.contains("`cli_prints_help`"));
+        assert!(markdown.contains("`smoke`"));
+        assert!(markdown.contains("`team`"));
+        assert!(markdown.contains("stated reason"));
+    }
+
+    #[test]
+    fn test_intent_report_with_no_file_has_zero_declared_summary() {
+        let entries: Vec<TestEfficiencyEntry> = Vec::new();
+        let summary = TestIntentReportSummary::default();
+        assert_eq!(summary.declared, 0);
+        assert_eq!(summary.matched, 0);
+
+        let json = test_efficiency_report_json(&entries, &[], &summary);
+        assert!(json.contains("\"test_intent\":"));
+        assert!(json.contains("\"declared\": 0"));
+        assert!(json.contains("\"matched\": 0"));
+
+        let markdown = test_efficiency_report_markdown(&entries, &[], &summary);
+        assert!(markdown.contains("## Declared Test Intent"));
+        assert!(markdown.contains("None declared."));
+    }
+
+    #[test]
+    fn test_intent_does_not_mutate_existing_class_strings() {
+        let mut entries = vec![
+            intent_entry("smoke_test", "tests/a.rs", 1, "smoke_only"),
+            intent_entry("dup_test", "tests/b.rs", 1, "duplicative"),
+            intent_entry("opaque_test", "tests/c.rs", 1, "opaque"),
+        ];
+        let decls = vec![
+            declaration("smoke_test", None, TestIntentKind::Smoke),
+            declaration("dup_test", None, TestIntentKind::BusinessCaseDuplicate),
+            declaration("opaque_test", None, TestIntentKind::OpaqueExternalOracle),
+        ];
+        let violations = apply_test_intent_to_entries(&mut entries, &decls);
+        assert!(violations.is_empty());
+
+        assert_eq!(entries[0].class, "smoke_only");
+        assert_eq!(entries[1].class, "duplicative");
+        assert_eq!(entries[2].class, "opaque");
+        for entry in &entries {
+            assert!(entry.declared_intent.is_some());
+        }
+
+        let intent_strings: Vec<&'static str> = entries
+            .iter()
+            .filter_map(|e| e.declared_intent.as_ref().map(|i| i.intent.as_str()))
+            .collect();
+        assert_eq!(
+            intent_strings,
+            vec!["smoke", "business_case_duplicate", "opaque_external_oracle"]
+        );
+
+        let _ = DeclaredIntent {
+            intent: TestIntentKind::IntegrationContract,
+            owner: "x".to_string(),
+            reason: "y".to_string(),
+            source: ".ripr/test_intent.toml".to_string(),
+        };
     }
 }

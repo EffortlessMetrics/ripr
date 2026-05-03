@@ -159,24 +159,37 @@ suggested next steps. The table below documents them so the badge JSON's
   countable only when test-efficiency policy explicitly elevates it for the
   changed behavior, which is a future policy switch, not a v1 default.
 
-### Planned vocabulary (not yet emitted)
+### Test intent is additive metadata, not a class
 
-These will be added by upcoming Campaign 4A work and are listed here so the
-badge schema reserves the names. Until they appear in the emitter, the badge
-must not refer to them.
+Declared test intent (e.g. `intent = "smoke"` in `.ripr/test_intent.toml`)
+is **not** rendered as a replacement `class` value. The original
+`class` (`smoke_only`, `duplicative`, `useful_but_broad`, etc.) is
+preserved so the report still tells reviewers what the static analyzer
+saw. Intent is a layered, owner-and-reason-stamped declaration on top of
+the signal:
 
-| Planned class / signal | PR introducing it | Counting target on arrival |
-| --- | --- | --- |
-| `intentional_smoke` | `test-intent/v1` | Visible only; excluded from `ripr+`. |
-| `intentional_duplicate` | `test-intent/v1` | Visible only; excluded from `ripr+`. |
+```json
+{
+  "name": "cli_prints_help",
+  "class": "smoke_only",
+  "declared_intent": {
+    "intent": "smoke",
+    "owner": "devtools",
+    "reason": "CLI startup and help text smoke test.",
+    "source": ".ripr/test_intent.toml"
+  }
+}
+```
 
-If you find one of these in `ripr-badge.json` before its enabling PR has
-landed, that is a bug.
+`ripr+` consumes the `declared_intent` metadata to exclude declared
+intentional findings from its count. There is no `intentional_smoke` or
+`intentional_duplicate` *class* string — those would conflate the
+analyzer's signal with the user's declaration.
 
-The metric label `duplicate_discriminator_group_count` (planned in
-[`test-efficiency/report-and-metrics`](IMPLEMENTATION_CAMPAIGNS.md)) is a
-count-of-groups label, not a class. Today the equivalent value is
-`duplicate_groups.length` in the test-efficiency JSON.
+The metric label `duplicate_discriminator_group_count` (delivered in
+`test-efficiency/report-and-metrics`) is a count-of-groups label, not a
+class. Today the equivalent value is `duplicate_groups.length` in the
+test-efficiency JSON.
 
 ## Counting rule
 
@@ -420,8 +433,8 @@ Tracked alongside Campaign 4A in
 | Test-efficiency report metrics | done | `test-efficiency/report-and-metrics` |
 | Private `BadgeSummary` model and renderer | done | `badge/summary-renderer-v1` |
 | `ripr check --format badge-json` / `badge-shields` | done | `badge/ripr-count-v1` |
-| `.ripr/test_intent.toml` loader | not started | `test-intent/v1` |
-| `ripr check --format badge-plus-*` | not started | `badge/ripr-plus-count-v1` |
+| `.ripr/test_intent.toml` loader | done | `test-intent/v1` |
+| `ripr check --format badge-plus-*` | ready | `badge/ripr-plus-count-v1` |
 | `.ripr/suppressions.toml` loader | not started | `suppressions/v1` |
 | CI badge artifacts | not started | `ci/badge-artifacts` |
 | Published Shields endpoint from `main` | not started | `badge/publish-main-endpoint` |

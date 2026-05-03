@@ -220,13 +220,67 @@ Validation rules (all enforced; violations fail `check-static-language`):
 A legacy `.ripr/static-language-allowlist.txt` file is explicitly rejected;
 the loader fails with a clear migration message if both files are present.
 
+### `.ripr/test_intent.toml`
+
+Positive declarations for intentionally smoke, duplicative, opaque, or
+otherwise-special tests. Each declaration carries an `owner`, a written
+`reason`, and an `intent` from a closed set. The original `class`
+emitted by the test-efficiency report is preserved — intent is additive
+metadata, never a replacement.
+
+Validated by `cargo xtask test-efficiency-report` via
+`parse_test_intent_manifest` in [`xtask/src/main.rs`](../xtask/src/main.rs).
+
+```toml
+schema_version = 1
+
+[[test_intent]]
+test = "cli_prints_help"
+intent = "smoke"
+reason = "CLI startup and help text smoke test."
+owner = "devtools"
+
+[[test_intent]]
+test = "escapes_json"
+path = "crates/ripr/src/output/json/formatter.rs"
+intent = "business_case_duplicate"
+reason = "These duplicate-looking tests document distinct escaping cases."
+owner = "output"
+```
+
+Supported `intent` values:
+
+| Intent | Typical use |
+| --- | --- |
+| `smoke` | Intentional smoke-only test (CLI startup, help text). |
+| `business_case_duplicate` | Structurally similar tests that document distinct business cases. |
+| `opaque_external_oracle` | Test with an opaque oracle ripr cannot statically inspect. |
+| `integration_contract` | End-to-end contract test whose static class varies. |
+| `performance_guard` | Test exists to guard a performance characteristic. |
+| `documentation_example` | Test exists primarily as a documentation example. |
+
+Validation rules (all enforced; violations fail `test-efficiency-report`):
+
+| Rule | Behavior |
+| --- | --- |
+| `schema_version = 1` required | Missing or other values fail. |
+| `test`, `intent`, `owner`, `reason` required | Missing or whitespace-only values fail. |
+| `intent` must be one of the supported values | Unknown intents fail with the supported-list message. |
+| `path` optional, repo-relative, slash-separated | Absolute paths and backslash paths fail at parse time. |
+| `path` exists on disk | Missing files fail at load time. |
+| Duplicate `(test, path)` selectors rejected | First-declared line cited in the violation. |
+| Unknown `[[test_intent]]` fields rejected | Catches typos and prevents silent shape drift. |
+| Unmatched declarations rejected | A declared `test`/`path` selector that matches no test fails the report. |
+| Ambiguous name-only selectors rejected | If `test = "..."` matches multiple entries and no `path` is given, fail and list the candidates. |
+
+Future `ripr+` will use the `declared_intent` metadata to exclude
+declared intentional test-efficiency findings from its count. See
+[Badge policy](BADGE_POLICY.md).
+
 ### Planned policy files
 
-These narrow files land before any general `ripr.toml`:
+The remaining narrow file before any general `ripr.toml`:
 
-- `.ripr/test_intent.toml` — positive declarations for intentionally smoke,
-  duplicative, or opaque tests, so `ripr+` excludes them from its count
-  without hiding them from reports. See [Badge policy](BADGE_POLICY.md).
 - `.ripr/suppressions.toml` — exceptions for exposure gaps and remaining
   test-efficiency findings that aren't covered by intent. Reason and owner
   required; expiry encouraged.
