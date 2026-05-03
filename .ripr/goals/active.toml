@@ -205,12 +205,31 @@ commands = [
 ]
 
 [[work_item]]
-id = "badge/publish-main-endpoint"
+id = "badge/repo-scope-artifacts"
 status = "ready"
+branch = "badge/repo-scope-artifacts"
+stackable = false
+requires_human_merge = true
+acceptance = "cargo xtask repo-badge-artifacts produces repo-scoped native + Shields JSON for ripr and ripr+ plus a Markdown summary; native JSON includes `scope: \"repo\"` metadata under a bumped schema_version; existing diff-scoped `cargo xtask badge-artifacts` is unchanged; tests prove diff scope still uses git diff and repo scope does not; Shields projection remains exactly four fields"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask pr-summary",
+  "cargo xtask reports index",
+  "cargo xtask receipts",
+  "cargo xtask receipts check"
+]
+
+[[work_item]]
+id = "badge/publish-main-endpoint"
+status = "blocked"
 branch = "badge/publish-main-endpoint"
 stackable = false
 requires_human_merge = true
-acceptance = "Shields-compatible badge JSON published from main only; README references the endpoint; policy/network_allowlist.txt updated; PR workflows do not publish"
+blocked_by = ["badge/repo-scope-artifacts"]
+blocked_reason = "publishing a public README/store badge requires repo-scoped artifacts; current diff-scoped `cargo xtask badge-artifacts` always reports ripr=0 on main (empty diff vs origin/main) and would be misleading as a public signal"
+acceptance = "Shields-compatible repo-scoped badge JSON published from main only; README references the endpoint; policy/network_allowlist.txt updated; PR workflows do not publish; only repo-scoped artifacts (scope=\"repo\") are referenced from public docs"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",

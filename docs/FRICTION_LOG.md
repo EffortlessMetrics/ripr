@@ -62,6 +62,26 @@ Each entry is a date-grouped bullet:
   in #194 PR. **Lesson:** when briefing a subagent on a schema, paste
   the live JSON output (or the source-of-truth code path) into the
   brief; do not paraphrase. Cost a full agent loop + re-implementation.
+- **diff-scoped badge artifacts mistaken for repo-scoped baseline** —
+  the dogfood preflight for `badge/publish-main-endpoint` ran
+  `cargo xtask badge-artifacts` on freshly-pulled `main` and got
+  `ripr 0 brightgreen`. I initially read that as "the repo is clean
+  → safe to publish," but the task runs `git diff origin/main...HEAD`
+  which is empty on `main` itself. The result is mechanically `0`
+  exposure findings, not a meaningful repo baseline. Using that as a
+  public README badge would publish `ripr 0 brightgreen` regardless of
+  the repo's actual exposure profile — an empty signal dressed as a
+  pass. Caught at the dogfood-classification step before any public
+  badge URL was wired. **Status:** resolved by the scope-distinction
+  PR — adds `badge/repo-scope-artifacts` as a separate work item,
+  blocks `badge/publish-main-endpoint` on it, and documents `scope:
+  diff` vs `scope: repo` in `docs/BADGE_POLICY.md`. Native JSON will
+  gain a `scope` field on a bumped `schema_version`; Shields stays
+  four fields. **Lesson:** before publishing any `ripr` artifact as a
+  public signal, run it on `main` itself and verify the number is
+  *informative* — a mechanically-derivable constant (like a no-diff
+  ripr count) is not. This is now captured in the
+  `badge/repo-scope-artifacts` plan.
 - **`xtask` dep-free posture vs JSON parsing** — `badge-artifacts`
   needs to read the four badge JSONs to build the Markdown summary,
   but xtask has no `[dependencies]` block (deliberate). Implementation
