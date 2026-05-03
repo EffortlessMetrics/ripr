@@ -9,9 +9,9 @@ schema_version = 1
 #
 # Source: dogfood preflight on main at ce609b5 (2026-05-03) ahead of
 # `badge/repo-scope-artifacts`. The 7 possibly_circular + 2 likely_vacuous
-# entries below were classified as intentional after reading each test's
-# body. See `target/ripr/reports/issue-badge-publish-main-endpoint.md` for
-# the full classification table and reasoning.
+# entries below were classified as intentional after reading each test
+# body. Each entry carries its own durable reason; PR #199 contains the
+# review table.
 #
 # Supported intents (from test-intent/v1):
 #   smoke, business_case_duplicate, opaque_external_oracle,
