@@ -55,6 +55,39 @@ fn sorted_unique(files: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
     out
 }
 
+pub fn is_production_rust_path(path: &Path) -> bool {
+    if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+        return false;
+    }
+
+    let normalized = normalize_path(path);
+    let components = normalized.split('/').collect::<Vec<_>>();
+
+    if !components.iter().any(|c| c == &"src") {
+        return false;
+    }
+
+    let exclude_components = [
+        "tests",
+        "examples",
+        "benches",
+        "target",
+        "fixtures",
+        "editors",
+        "node_modules",
+    ];
+    if components.iter().any(|c| exclude_components.contains(c)) {
+        return false;
+    }
+
+    let file_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    if file_stem == "tests" {
+        return false;
+    }
+
+    true
+}
+
 fn package_root(path: &Path) -> Option<String> {
     let normalized = normalize_path(path);
     if normalized.starts_with("src/")

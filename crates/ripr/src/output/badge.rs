@@ -94,9 +94,31 @@ impl Default for BadgePolicy {
     }
 }
 
+/// Whether a badge represents the changed-behavior diff under analysis
+/// or the full-repo baseline. Diff-scoped badges feed PR step summaries
+/// and PR artifact uploads; only repo-scoped badges are safe as
+/// README / store / public Shields endpoints because a no-diff `main`
+/// run of the diff-scoped path always reports `0` regardless of the
+/// repo's actual exposure profile.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BadgeScope {
+    Diff,
+    Repo,
+}
+
+impl BadgeScope {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            BadgeScope::Diff => "diff",
+            BadgeScope::Repo => "repo",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BadgeSummary {
     pub kind: BadgeKind,
+    pub scope: BadgeScope,
     pub message: String,
     pub status: BadgeStatus,
     pub color: &'static str,
@@ -110,8 +132,10 @@ pub struct BadgeSummary {
 }
 
 /// The schema_version of the native badge JSON. Bumping it is a public
-/// contract change — call it out in the PR.
-pub const BADGE_SCHEMA_VERSION: &str = "0.1";
+/// contract change — call it out in the PR. v0.2 added the `scope`
+/// field (`"diff"` or `"repo"`) so consumers can tell PR/diff artifacts
+/// apart from repo/baseline artifacts.
+pub const BADGE_SCHEMA_VERSION: &str = "0.2";
 
 /// All test-efficiency reason strings the badge JSON reports as zero
 /// defaults until later PRs read the test-efficiency report. The order
@@ -197,6 +221,7 @@ pub fn ripr_badge_summary_with_suppressions(
 
     BadgeSummary {
         kind: BadgeKind::Ripr,
+        scope: BadgeScope::Diff,
         message: headline.to_string(),
         status,
         color,
@@ -442,6 +467,7 @@ pub fn ripr_plus_badge_summary_with_suppressions(
 
     BadgeSummary {
         kind: BadgeKind::RiprPlus,
+        scope: BadgeScope::Diff,
         message: headline.to_string(),
         status,
         color,
@@ -473,6 +499,7 @@ pub fn render_native_json(summary: &BadgeSummary) -> String {
         "  \"schema_version\": \"{BADGE_SCHEMA_VERSION}\",\n"
     ));
     out.push_str(&format!("  \"kind\": \"{}\",\n", summary.kind.as_str()));
+    out.push_str(&format!("  \"scope\": \"{}\",\n", summary.scope.as_str()));
     out.push_str(&format!(
         "  \"label\": \"{}\",\n",
         json_escape(summary.kind.label())
@@ -594,7 +621,7 @@ pub fn render_shields_json(summary: &BadgeSummary) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        BADGE_REASON_KEYS, BadgePolicy, BadgeStatus, TestEfficiencyBadgeSummary,
+        BADGE_REASON_KEYS, BadgePolicy, BadgeScope, BadgeStatus, TestEfficiencyBadgeSummary,
         badge_status_color, parse_test_efficiency_badge_summary, render_native_json,
         render_shields_json, ripr_badge_summary, ripr_plus_badge_summary,
     };
@@ -789,9 +816,10 @@ mod tests {
         let summary = ripr_badge_summary(&output, BadgePolicy::default());
         let json = render_native_json(&summary);
 
-        assert!(json.contains("\"schema_version\": \"0.1\""));
+        assert!(json.contains("\"schema_version\": \"0.2\""));
         assert!(!json.contains("\"schemaVersion\""));
         assert!(json.contains("\"kind\": \"ripr\""));
+        assert!(json.contains("\"scope\": \"diff\""));
         assert!(json.contains("\"label\": \"ripr\""));
         assert!(json.contains("\"message\": \"1\""));
         assert!(json.contains("\"status\": \"warn\""));
@@ -823,6 +851,42 @@ mod tests {
                 "native JSON missing policy key `{key}`"
             );
         }
+    }
+
+    #[test]
+    fn badge_native_json_emits_repo_scope_when_summary_carries_repo_scope() {
+        let output = check_output(vec![finding(ExposureClass::WeaklyExposed, vec![])]);
+        let mut summary = ripr_badge_summary(&output, BadgePolicy::default());
+        summary.scope = BadgeScope::Repo;
+        let json = render_native_json(&summary);
+
+        assert!(json.contains("\"scope\": \"repo\""));
+        assert!(!json.contains("\"scope\": \"diff\""));
+    }
+
+    #[test]
+    fn badge_shields_projection_omits_scope_field() {
+        // Shields stays exactly four fields after the v0.2 schema bump:
+        // schemaVersion, label, message, color. `scope` is native-only.
+        let output = check_output(vec![finding(ExposureClass::WeaklyExposed, vec![])]);
+        let mut summary = ripr_badge_summary(&output, BadgePolicy::default());
+        summary.scope = BadgeScope::Repo;
+        let shields = render_shields_json(&summary);
+
+        assert!(!shields.contains("\"scope\""));
+        let top_level_keys = shields
+            .lines()
+            .filter_map(|line| {
+                let trimmed = line.trim();
+                if trimmed.starts_with('"') {
+                    let end = trimmed[1..].find('"')? + 1;
+                    Some(trimmed[1..end].to_string())
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(top_level_keys.len(), 4);
     }
 
     #[test]

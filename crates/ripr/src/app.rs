@@ -411,8 +411,9 @@ mod tests {
         let rendered = render_check(&output, &OutputFormat::BadgeJson)?;
 
         // Native snake_case wire shape with all required top-level keys.
-        assert!(rendered.contains("\"schema_version\": \"0.1\""));
+        assert!(rendered.contains("\"schema_version\": \"0.2\""));
         assert!(rendered.contains("\"kind\": \"ripr\""));
+        assert!(rendered.contains("\"scope\": \"diff\""));
         assert!(rendered.contains("\"counts\":"));
         assert!(rendered.contains("\"reason_counts\":"));
         assert!(rendered.contains("\"policy\":"));
