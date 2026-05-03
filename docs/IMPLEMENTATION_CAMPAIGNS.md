@@ -255,7 +255,7 @@ Work items:
 | `test-efficiency/duplicate-discriminator-v1` | ready | Group tests with the same owner, activation values, oracle shape, and sink evidence; emit class `duplicative`. |
 | `test-efficiency/report-and-metrics` | blocked | Depends on vacuity and duplicate signals; summarize counts and trends without blocking CI. |
 | `docs/badge-policy` | done | [Badge policy](BADGE_POLICY.md) locks the badge counting rule, native JSON shape, Shields projection, and exact emitted vocabulary. |
-| `badge/summary-renderer-v1` | blocked | Private `BadgeSummary` types in `output::badge` render `badge-json` and `badge-shields` from `CheckOutput`. Public API stays unchanged. Blocked on `test-efficiency/report-and-metrics`. |
+| `badge/summary-renderer-v1` | blocked | Private `BadgeSummary` types in `output::badge` render `badge-json` and `badge-shields` from `CheckOutput`. Public API stays unchanged. Blocked on `test-efficiency/report-and-metrics` and `docs/badge-policy`. |
 | `badge/ripr-count-v1` | blocked | `ripr check --format badge-json` and `--format badge-shields` count unsuppressed exposure gaps. Blocked on `badge/summary-renderer-v1`. |
 | `test-intent/v1` | blocked | `.ripr/test_intent.toml` loader marks declared tests intentional in test-efficiency output; `ripr+` excludes them. Blocked on `test-efficiency/report-and-metrics`. |
 | `badge/ripr-plus-count-v1` | blocked | `ripr check --format badge-plus-json` adds actionable test-efficiency findings (excluding intent) to the `ripr+` count. Blocked on `badge/ripr-count-v1` and `test-intent/v1`. |
