@@ -121,7 +121,7 @@ The badge counts use the exact strings emitted by
 for the class string and `test_efficiency_reasons` for the reason strings. If
 you add a new class or reason there, update this table.
 
-### Per-test class field (exactly six values)
+### Per-test class field (exactly seven values)
 
 | `class` value | Counts in `ripr+` | Triggered when |
 | --- | :---: | --- |
@@ -130,9 +130,10 @@ you add a new class or reason there, update this table.
 | `smoke_only` | yes (unless declared intent) | Smoke-strength oracle (e.g. `is_ok`, `is_err`, `unwrap`). |
 | `likely_vacuous` | yes | A reason includes `no_assertion_detected`. |
 | `possibly_circular` | yes (unless declared intent) | A reason includes `expected_value_computed_from_detected_owner_path`. |
+| `duplicative` | yes (unless declared intent) | Test belongs to a duplicate-discriminator group: same owner set, role-aware activation signature, and oracle shape. Only `strong_discriminator`, `useful_but_broad`, and `smoke_only` entries are eligible to be promoted to `duplicative`; already-flagged classes are preserved. |
 | `opaque` | no | No reached owners detected. Visible only; static analysis cannot judge. |
 
-### Reason strings (exactly eight values)
+### Reason strings (exactly nine values)
 
 These are not counted directly. They explain why a class fired and feed
 suggested next steps. The table below documents them so the badge JSON's
@@ -148,6 +149,7 @@ suggested next steps. The table below documents them so the badge JSON's
 | `opaque_helper_or_fixture_boundary` | No owner call was statically resolved; demotes class to `opaque`. |
 | `no_activation_literal_detected` | No literal activation values found in the test body. |
 | `expected_value_computed_from_detected_owner_path` | The expected side of an `assert_eq!` calls back into the detected owner; demotes class to `possibly_circular`. |
+| `duplicate_activation_and_oracle_shape` | The test shares an owner set, role-aware activation signature, and oracle shape with at least one other test; appended to existing reasons (e.g. `smoke_oracle_only`) and promotes the class to `duplicative`. |
 
 ### Visible-but-not-counted by default
 
@@ -163,26 +165,18 @@ These will be added by upcoming Campaign 4A work and are listed here so the
 badge schema reserves the names. Until they appear in the emitter, the badge
 must not refer to them.
 
-The `class` and `reason` strings below are taken from
-[`RIPR-SPEC-0004`](specs/RIPR-SPEC-0004-test-efficiency.md). The campaign and
-work-item names use `duplicate-discriminator` for human readability; the
-emitted `class` is `duplicative`. The metric label
-`duplicate_discriminator_group_count` (planned in
-[`docs/IMPLEMENTATION_CAMPAIGNS.md`](IMPLEMENTATION_CAMPAIGNS.md)) is a
-count-of-groups label, not a class.
-
 | Planned class / signal | PR introducing it | Counting target on arrival |
 | --- | --- | --- |
-| `duplicative` (per-group) | `test-efficiency/duplicate-discriminator-v1` | `ripr+`, unless declared intent. |
 | `intentional_smoke` | `test-intent/v1` | Visible only; excluded from `ripr+`. |
 | `intentional_duplicate` | `test-intent/v1` | Visible only; excluded from `ripr+`. |
 
-| Planned reason | PR introducing it | Notes |
-| --- | --- | --- |
-| `duplicate_activation_and_oracle_shape` | `test-efficiency/duplicate-discriminator-v1` | Demotes class to `duplicative` for grouped tests. |
-
 If you find one of these in `ripr-badge.json` before its enabling PR has
 landed, that is a bug.
+
+The metric label `duplicate_discriminator_group_count` (planned in
+[`test-efficiency/report-and-metrics`](IMPLEMENTATION_CAMPAIGNS.md)) is a
+count-of-groups label, not a class. Today the equivalent value is
+`duplicate_groups.length` in the test-efficiency JSON.
 
 ## Counting rule
 
@@ -200,7 +194,7 @@ ripr+ count =
                           smoke_only }
     and not declared intentional in .ripr/test_intent.toml
     and not suppressed in .ripr/suppressions.toml
-  + tests in `duplicative` groups (once emitted)
+  + tests in `duplicative` groups
     not declared intentional and not suppressed
 ```
 
@@ -421,8 +415,8 @@ Tracked alongside Campaign 4A in
 | --- | --- | --- |
 | Test fact ledger | done | `cargo xtask test-efficiency-report` |
 | Vacuity signals (the 6-class table above, minus duplicate) | done | same |
-| Duplicate-discriminator grouping | ready | `test-efficiency/duplicate-discriminator-v1` |
-| Test-efficiency report metrics | blocked on duplicate-discriminator | `test-efficiency/report-and-metrics` |
+| Duplicate-discriminator grouping | done | `test-efficiency/duplicate-discriminator-v1` |
+| Test-efficiency report metrics | ready | `test-efficiency/report-and-metrics` |
 | Private `BadgeSummary` model and renderer | not started | `badge/summary-renderer-v1` |
 | `ripr check --format badge-json` / `badge-shields` | not started | `badge/ripr-count-v1` |
 | `.ripr/test_intent.toml` loader | not started | `test-intent/v1` |

@@ -252,8 +252,8 @@ Work items:
 | --- | --- | --- |
 | `test-efficiency/test-fact-ledger` | done | `cargo xtask test-efficiency-report` writes advisory per-test ledgers with reached owners, oracle kind/strength, observed values, and static limitations. |
 | `test-efficiency/vacuous-signal-v1` | done | The advisory report now records smoke-only, broad-oracle, disconnected, opaque, circular, and likely-vacuous reasons. |
-| `test-efficiency/duplicate-discriminator-v1` | ready | Group tests with the same owner, activation values, oracle shape, and sink evidence; emit class `duplicative`. |
-| `test-efficiency/report-and-metrics` | blocked | Depends on vacuity and duplicate signals; summarize counts and trends without blocking CI. |
+| `test-efficiency/duplicate-discriminator-v1` | done | Advisory groups expose tests sharing an owner set, role-aware activation signature, and oracle shape; members are reclassified `duplicative` with reason `duplicate_activation_and_oracle_shape` and a per-test `duplicate_group_id` linked to the top-level `duplicate_groups` array. Already-flagged classes (`opaque`, `likely_vacuous`, `possibly_circular`) are preserved. |
+| `test-efficiency/report-and-metrics` | ready | Summarize the per-test `counts.duplicative` plus a stable `duplicate_discriminator_group_count = duplicate_groups.length` metric without blocking CI. |
 | `docs/badge-policy` | done | [Badge policy](BADGE_POLICY.md) locks the badge counting rule, native JSON shape, Shields projection, and exact emitted vocabulary. |
 | `badge/summary-renderer-v1` | blocked | Private `BadgeSummary` types in `output::badge` render `badge-json` and `badge-shields` from `CheckOutput`. Public API stays unchanged. Blocked on `test-efficiency/report-and-metrics` and `docs/badge-policy`. |
 | `badge/ripr-count-v1` | blocked | `ripr check --format badge-json` and `--format badge-shields` count unsuppressed exposure gaps. Blocked on `badge/summary-renderer-v1`. |

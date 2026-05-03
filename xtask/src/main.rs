@@ -153,6 +153,36 @@ struct TestEfficiencyEntry {
     observed_values: Vec<TestEfficiencyValue>,
     reasons: Vec<String>,
     static_limitations: Vec<String>,
+    duplicate_group_id: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct DuplicateDiscriminatorGroup {
+    id: String,
+    members: Vec<DuplicateGroupMember>,
+    shared_evidence: DuplicateGroupSharedEvidence,
+    suggested_next_step: String,
+}
+
+#[derive(Clone, Debug)]
+struct DuplicateGroupMember {
+    path: String,
+    name: String,
+    line: usize,
+}
+
+#[derive(Clone, Debug)]
+struct DuplicateGroupSharedEvidence {
+    owners: Vec<String>,
+    oracle_kind: String,
+    oracle_strength: &'static str,
+    activation_signature: Vec<DuplicateGroupActivation>,
+}
+
+#[derive(Clone, Debug)]
+struct DuplicateGroupActivation {
+    context: &'static str,
+    value: String,
 }
 
 #[derive(Debug)]
@@ -3497,14 +3527,15 @@ fn test_oracle_report_json(tests: &[TestOracleTest]) -> String {
 
 fn test_efficiency_report() -> Result<(), String> {
     let tests = collect_test_oracle_tests()?;
-    let entries = tests.iter().map(test_efficiency_entry).collect::<Vec<_>>();
+    let mut entries = tests.iter().map(test_efficiency_entry).collect::<Vec<_>>();
+    let duplicate_groups = apply_duplicate_discriminator_groups(&mut entries);
     write_report(
         "test-efficiency.md",
-        &test_efficiency_report_markdown(&entries),
+        &test_efficiency_report_markdown(&entries, &duplicate_groups),
     )?;
     write_report(
         "test-efficiency.json",
-        &test_efficiency_report_json(&entries),
+        &test_efficiency_report_json(&entries, &duplicate_groups),
     )
 }
 
@@ -3534,7 +3565,142 @@ fn test_efficiency_entry(test: &TestOracleTest) -> TestEfficiencyEntry {
         observed_values,
         reasons,
         static_limitations,
+        duplicate_group_id: None,
     }
+}
+
+const DUPLICATE_DISCRIMINATOR_NEXT_STEP: &str = "Keep both if they document distinct business cases. Otherwise consider adding a different activation value or oracle shape.";
+
+const DUPLICATE_ACTIVATION_AND_ORACLE_SHAPE_REASON: &str = "duplicate_activation_and_oracle_shape";
+
+/// Groups eligible test-efficiency entries that share an owner set, an
+/// activation signature, and an oracle shape. Mutates eligible entries in
+/// place: their class becomes `"duplicative"`, the
+/// `duplicate_activation_and_oracle_shape` reason is appended to their
+/// reasons (preserving any existing reasons such as `smoke_oracle_only`),
+/// and `duplicate_group_id` is set.
+///
+/// Eligibility is conservative: a test is eligible only if its base class is
+/// `strong_discriminator`, `useful_but_broad`, or `smoke_only`. Tests already
+/// classified `opaque`, `likely_vacuous`, or `possibly_circular` are kept on
+/// their existing class because that signal is more actionable than
+/// "duplicate." Tests with no observed activation literals are also excluded
+/// — we cannot build a credible activation signature for them.
+///
+/// The activation signature is role-aware: it preserves the order and
+/// `(context, value)` pairing of `observed_values`, so `score(2) == 3` and
+/// `score(3) == 2` produce different signatures even though the raw value
+/// set is identical.
+///
+/// In v1 the grouping key does not include explicit flow-sink evidence —
+/// the test-efficiency ledger does not currently emit it. The role-aware
+/// activation signature acts as a narrow proxy because the
+/// `assertion_argument` context naturally captures the sink-side values of
+/// the oracle. A future PR can promote explicit sink evidence into the
+/// ledger and tighten the key.
+fn apply_duplicate_discriminator_groups(
+    entries: &mut [TestEfficiencyEntry],
+) -> Vec<DuplicateDiscriminatorGroup> {
+    let mut buckets: BTreeMap<DuplicateGroupKey, Vec<usize>> = BTreeMap::new();
+    for (index, entry) in entries.iter().enumerate() {
+        if !is_duplicate_discriminator_eligible(entry) {
+            continue;
+        }
+        let key = duplicate_discriminator_key(entry);
+        buckets.entry(key).or_default().push(index);
+    }
+
+    let mut groups: Vec<(usize, DuplicateGroupKey, Vec<usize>)> = buckets
+        .into_iter()
+        .filter(|(_, members)| members.len() >= 2)
+        .map(|(key, members)| {
+            // Safe: filter above guarantees `members.len() >= 2`.
+            let first = members[0];
+            (first, key, members)
+        })
+        .collect();
+    groups.sort_by_key(|(first, _, _)| *first);
+
+    let mut rendered = Vec::with_capacity(groups.len());
+    for (group_index, (_, key, members)) in groups.into_iter().enumerate() {
+        let id = format!("duplicate_group_{}", group_index + 1);
+        let group_members: Vec<DuplicateGroupMember> = members
+            .iter()
+            .map(|&i| DuplicateGroupMember {
+                path: normalize_path(&entries[i].path),
+                name: entries[i].name.clone(),
+                line: entries[i].line,
+            })
+            .collect();
+        for &i in &members {
+            entries[i].class = "duplicative";
+            if !entries[i]
+                .reasons
+                .iter()
+                .any(|r| r == DUPLICATE_ACTIVATION_AND_ORACLE_SHAPE_REASON)
+            {
+                entries[i]
+                    .reasons
+                    .push(DUPLICATE_ACTIVATION_AND_ORACLE_SHAPE_REASON.to_string());
+                entries[i].reasons.sort();
+            }
+            entries[i].duplicate_group_id = Some(id.clone());
+        }
+        let DuplicateGroupKey {
+            owners,
+            oracle_kind,
+            oracle_strength,
+            activation_signature,
+        } = key;
+        rendered.push(DuplicateDiscriminatorGroup {
+            id,
+            members: group_members,
+            shared_evidence: DuplicateGroupSharedEvidence {
+                owners,
+                oracle_kind,
+                oracle_strength,
+                activation_signature: activation_signature
+                    .into_iter()
+                    .map(|(context, value)| DuplicateGroupActivation { context, value })
+                    .collect(),
+            },
+            suggested_next_step: DUPLICATE_DISCRIMINATOR_NEXT_STEP.to_string(),
+        });
+    }
+    rendered
+}
+
+fn is_duplicate_discriminator_eligible(entry: &TestEfficiencyEntry) -> bool {
+    matches!(
+        entry.class,
+        "strong_discriminator" | "useful_but_broad" | "smoke_only"
+    ) && !entry.reached_owners.is_empty()
+        && !entry.observed_values.is_empty()
+}
+
+fn duplicate_discriminator_key(entry: &TestEfficiencyEntry) -> DuplicateGroupKey {
+    let mut owners = entry.reached_owners.clone();
+    owners.sort();
+    owners.dedup();
+    let activation_signature = entry
+        .observed_values
+        .iter()
+        .map(|value| (value.context, value.value.clone()))
+        .collect();
+    DuplicateGroupKey {
+        owners,
+        oracle_kind: entry.oracle_kind.clone(),
+        oracle_strength: entry.oracle_strength,
+        activation_signature,
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct DuplicateGroupKey {
+    owners: Vec<String>,
+    oracle_kind: String,
+    oracle_strength: &'static str,
+    activation_signature: Vec<(&'static str, String)>,
 }
 
 fn test_efficiency_class(
@@ -3939,6 +4105,7 @@ fn test_efficiency_counts(entries: &[TestEfficiencyEntry]) -> BTreeMap<&'static 
         ("smoke_only", 0usize),
         ("likely_vacuous", 0usize),
         ("possibly_circular", 0usize),
+        ("duplicative", 0usize),
         ("opaque", 0usize),
     ]);
     for entry in entries {
@@ -3968,18 +4135,23 @@ fn test_efficiency_report_status(entries: &[TestEfficiencyEntry]) -> &'static st
     }
 }
 
-fn test_efficiency_report_markdown(entries: &[TestEfficiencyEntry]) -> String {
+fn test_efficiency_report_markdown(
+    entries: &[TestEfficiencyEntry],
+    duplicate_groups: &[DuplicateDiscriminatorGroup],
+) -> String {
     let counts = test_efficiency_counts(entries);
     let reason_counts = test_efficiency_reason_counts(entries);
     let mut body = format!(
-        "# ripr test efficiency report\n\nStatus: {}\n\nMode: advisory\n\nThis report builds a per-test evidence ledger from static Rust test facts. It records apparent owner calls, oracle shape, activation values, and static limitations so reviewers can spot low-discriminator patterns without making the report blocking.\n\n## Summary\n\n- Strong discriminator: {}\n- Useful but broad: {}\n- Smoke only: {}\n- Likely vacuous: {}\n- Possibly circular: {}\n- Opaque: {}\n- Tests scanned: {}\n\n",
+        "# ripr test efficiency report\n\nStatus: {}\n\nMode: advisory\n\nThis report builds a per-test evidence ledger from static Rust test facts. It records apparent owner calls, oracle shape, activation values, and static limitations so reviewers can spot low-discriminator patterns without making the report blocking.\n\n## Summary\n\n- Strong discriminator: {}\n- Useful but broad: {}\n- Smoke only: {}\n- Likely vacuous: {}\n- Possibly circular: {}\n- Duplicative: {}\n- Opaque: {}\n- Duplicate discriminator groups: {}\n- Tests scanned: {}\n\n",
         test_efficiency_report_status(entries),
         counts.get("strong_discriminator").copied().unwrap_or(0),
         counts.get("useful_but_broad").copied().unwrap_or(0),
         counts.get("smoke_only").copied().unwrap_or(0),
         counts.get("likely_vacuous").copied().unwrap_or(0),
         counts.get("possibly_circular").copied().unwrap_or(0),
+        counts.get("duplicative").copied().unwrap_or(0),
         counts.get("opaque").copied().unwrap_or(0),
+        duplicate_groups.len(),
         entries.len(),
     );
 
@@ -4014,6 +4186,44 @@ fn test_efficiency_report_markdown(entries: &[TestEfficiencyEntry]) -> String {
             }
         }
         body.push('\n');
+    }
+
+    body.push_str("## Duplicate Discriminator Groups\n\n");
+    if duplicate_groups.is_empty() {
+        body.push_str("None detected.\n\n");
+    } else {
+        for group in duplicate_groups {
+            body.push_str(&format!("### {}\n\n", group.id));
+            let owners = if group.shared_evidence.owners.is_empty() {
+                "none detected".to_string()
+            } else {
+                group.shared_evidence.owners.join(", ")
+            };
+            body.push_str(&format!("- Owners: {owners}\n"));
+            body.push_str(&format!(
+                "- Oracle: `{}` / `{}`\n",
+                group.shared_evidence.oracle_kind, group.shared_evidence.oracle_strength
+            ));
+            let activation = group
+                .shared_evidence
+                .activation_signature
+                .iter()
+                .map(|item| format!("{}=`{}`", item.context, item.value))
+                .collect::<Vec<_>>()
+                .join(", ");
+            body.push_str(&format!("- Activation signature: {activation}\n"));
+            body.push_str("- Members:\n");
+            for member in &group.members {
+                body.push_str(&format!(
+                    "  - `{}`:{} `{}`\n",
+                    member.path, member.line, member.name
+                ));
+            }
+            body.push_str(&format!(
+                "- Suggested next step: {}\n\n",
+                group.suggested_next_step
+            ));
+        }
     }
 
     body.push_str("## Ledger\n\n| Test | Class | Reasons | Oracle | Reached owners | Observed values | Static limitations |\n| --- | --- | --- | --- | --- | --- | --- |\n");
@@ -4060,17 +4270,21 @@ fn test_efficiency_report_markdown(entries: &[TestEfficiencyEntry]) -> String {
     body
 }
 
-fn test_efficiency_report_json(entries: &[TestEfficiencyEntry]) -> String {
+fn test_efficiency_report_json(
+    entries: &[TestEfficiencyEntry],
+    duplicate_groups: &[DuplicateDiscriminatorGroup],
+) -> String {
     let counts = test_efficiency_counts(entries);
     let reason_counts = test_efficiency_reason_counts(entries);
     let mut body = format!(
-        "{{\n  \"schema_version\": \"0.1\",\n  \"status\": \"{}\",\n  \"advisory\": true,\n  \"counts\": {{\n    \"strong_discriminator\": {},\n    \"useful_but_broad\": {},\n    \"smoke_only\": {},\n    \"likely_vacuous\": {},\n    \"possibly_circular\": {},\n    \"opaque\": {}\n  }},\n",
+        "{{\n  \"schema_version\": \"0.1\",\n  \"status\": \"{}\",\n  \"advisory\": true,\n  \"counts\": {{\n    \"strong_discriminator\": {},\n    \"useful_but_broad\": {},\n    \"smoke_only\": {},\n    \"likely_vacuous\": {},\n    \"possibly_circular\": {},\n    \"duplicative\": {},\n    \"opaque\": {}\n  }},\n",
         test_efficiency_report_status(entries),
         counts.get("strong_discriminator").copied().unwrap_or(0),
         counts.get("useful_but_broad").copied().unwrap_or(0),
         counts.get("smoke_only").copied().unwrap_or(0),
         counts.get("likely_vacuous").copied().unwrap_or(0),
         counts.get("possibly_circular").copied().unwrap_or(0),
+        counts.get("duplicative").copied().unwrap_or(0),
         counts.get("opaque").copied().unwrap_or(0)
     );
 
@@ -4133,9 +4347,85 @@ fn test_efficiency_report_json(entries: &[TestEfficiencyEntry]) -> String {
         body.push_str("\n      ],\n");
         body.push_str("      \"static_limitations\": [");
         write_json_string_array(&mut body, &entry.static_limitations);
-        body.push_str("]\n    }");
+        body.push(']');
+        if let Some(group_id) = &entry.duplicate_group_id {
+            body.push_str(&format!(
+                ",\n      \"duplicate_group_id\": \"{}\"",
+                json_escape(group_id)
+            ));
+        }
+        body.push_str("\n    }");
     }
-    body.push_str("\n  ]\n}\n");
+    body.push_str("\n  ],\n  \"duplicate_groups\": [");
+    if duplicate_groups.is_empty() {
+        body.push_str("]\n}\n");
+    } else {
+        body.push('\n');
+        for (group_index, group) in duplicate_groups.iter().enumerate() {
+            if group_index > 0 {
+                body.push_str(",\n");
+            }
+            body.push_str("    {\n");
+            body.push_str(&format!("      \"id\": \"{}\",\n", json_escape(&group.id)));
+            body.push_str("      \"members\": [\n");
+            for (member_index, member) in group.members.iter().enumerate() {
+                if member_index > 0 {
+                    body.push_str(",\n");
+                }
+                body.push_str("        {\n");
+                body.push_str(&format!(
+                    "          \"path\": \"{}\",\n",
+                    json_escape(&member.path)
+                ));
+                body.push_str(&format!(
+                    "          \"name\": \"{}\",\n",
+                    json_escape(&member.name)
+                ));
+                body.push_str(&format!("          \"line\": {}\n", member.line));
+                body.push_str("        }");
+            }
+            body.push_str("\n      ],\n      \"shared_evidence\": {\n");
+            body.push_str("        \"owners\": [");
+            write_json_string_array(&mut body, &group.shared_evidence.owners);
+            body.push_str("],\n");
+            body.push_str(&format!(
+                "        \"oracle_kind\": \"{}\",\n",
+                json_escape(&group.shared_evidence.oracle_kind)
+            ));
+            body.push_str(&format!(
+                "        \"oracle_strength\": \"{}\",\n",
+                group.shared_evidence.oracle_strength
+            ));
+            body.push_str("        \"activation_signature\": [\n");
+            for (activation_index, activation) in group
+                .shared_evidence
+                .activation_signature
+                .iter()
+                .enumerate()
+            {
+                if activation_index > 0 {
+                    body.push_str(",\n");
+                }
+                body.push_str("          {\n");
+                body.push_str(&format!(
+                    "            \"context\": \"{}\",\n",
+                    activation.context
+                ));
+                body.push_str(&format!(
+                    "            \"value\": \"{}\"\n",
+                    json_escape(&activation.value)
+                ));
+                body.push_str("          }");
+            }
+            body.push_str("\n        ]\n      },\n");
+            body.push_str(&format!(
+                "      \"suggested_next_step\": \"{}\"\n",
+                json_escape(&group.suggested_next_step)
+            ));
+            body.push_str("    }");
+        }
+        body.push_str("\n  ]\n}\n");
+    }
     body
 }
 
@@ -9142,6 +9432,7 @@ mod tests {
         test_oracle_report_markdown, test_oracle_tests_in_text, validate_local_context_allowlist,
         windows_absolute_path_tokens, workflow_runtime_violations,
     };
+    use super::{TestEfficiencyEntry, TestEfficiencyValue, apply_duplicate_discriminator_groups};
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
     use std::path::Path;
@@ -10622,8 +10913,8 @@ fn smoke_status_check() {
 "#;
         let tests = test_oracle_tests_in_text(Path::new("crates/ripr/tests/example.rs"), source);
         let entry = test_efficiency_entry(&tests[0]);
-        let markdown = test_efficiency_report_markdown(std::slice::from_ref(&entry));
-        let json = test_efficiency_report_json(std::slice::from_ref(&entry));
+        let markdown = test_efficiency_report_markdown(std::slice::from_ref(&entry), &[]);
+        let json = test_efficiency_report_json(std::slice::from_ref(&entry), &[]);
 
         assert_eq!(entry.class, "smoke_only");
         assert!(entry.reasons.contains(&"smoke_oracle_only".to_string()));
@@ -10649,7 +10940,7 @@ fn expected_uses_same_owner_path() {
         let tests = test_oracle_tests_in_text(Path::new("crates/ripr/tests/example.rs"), source);
         let vacuous = test_efficiency_entry(&tests[0]);
         let circular = test_efficiency_entry(&tests[1]);
-        let json = test_efficiency_report_json(&[vacuous.clone(), circular.clone()]);
+        let json = test_efficiency_report_json(&[vacuous.clone(), circular.clone()], &[]);
 
         assert_eq!(vacuous.class, "likely_vacuous");
         assert!(
@@ -10743,5 +11034,570 @@ fn exact_owner_call_has_external_expected_value() {
         assert!(markdown.contains("Mode: advisory"));
         assert!(markdown.contains("boundary_gap"));
         assert!(json.contains("\"advisory\": true"));
+    }
+
+    fn duplicate_entry(
+        name: &str,
+        line: usize,
+        class: &'static str,
+        oracle_kind: &str,
+        oracle_strength: &'static str,
+        owners: &[&str],
+        activations: &[(&'static str, &str)],
+    ) -> TestEfficiencyEntry {
+        TestEfficiencyEntry {
+            path: Path::new("tests/example.rs").to_path_buf(),
+            name: name.to_string(),
+            line,
+            class,
+            oracle_kind: oracle_kind.to_string(),
+            oracle_strength,
+            reached_owners: owners.iter().map(|s| s.to_string()).collect(),
+            observed_values: activations
+                .iter()
+                .enumerate()
+                .map(|(index, (context, value))| TestEfficiencyValue {
+                    line: line + index,
+                    context,
+                    value: (*value).to_string(),
+                    text: (*value).to_string(),
+                })
+                .collect(),
+            reasons: Vec::new(),
+            static_limitations: Vec::new(),
+            duplicate_group_id: None,
+        }
+    }
+
+    #[test]
+    fn duplicate_grouping_groups_structurally_identical_eligible_tests() {
+        let mut entries = vec![
+            duplicate_entry(
+                "discount_above_threshold",
+                10,
+                "strong_discriminator",
+                "exact assertion",
+                "strong",
+                &["pricing::discounted_total"],
+                &[("function_argument", "100"), ("assertion_argument", "90")],
+            ),
+            duplicate_entry(
+                "vip_discount_above_threshold",
+                30,
+                "strong_discriminator",
+                "exact assertion",
+                "strong",
+                &["pricing::discounted_total"],
+                &[("function_argument", "100"), ("assertion_argument", "90")],
+            ),
+        ];
+
+        let groups = apply_duplicate_discriminator_groups(&mut entries);
+
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].id, "duplicate_group_1");
+        assert_eq!(groups[0].members.len(), 2);
+        for entry in &entries {
+            assert_eq!(entry.class, "duplicative");
+            assert!(
+                entry
+                    .reasons
+                    .contains(&"duplicate_activation_and_oracle_shape".to_string())
+            );
+            assert_eq!(
+                entry.duplicate_group_id.as_deref(),
+                Some("duplicate_group_1")
+            );
+        }
+    }
+
+    #[test]
+    fn duplicate_grouping_does_not_group_different_owners() {
+        let mut entries = vec![
+            duplicate_entry(
+                "a",
+                10,
+                "strong_discriminator",
+                "exact assertion",
+                "strong",
+                &["pricing::a"],
+                &[("function_argument", "1")],
+            ),
+            duplicate_entry(
+                "b",
+                30,
+                "strong_discriminator",
+                "exact assertion",
+                "strong",
+                &["pricing::b"],
+                &[("function_argument", "1")],
+            ),
+        ];
+
+        let groups = apply_duplicate_discriminator_groups(&mut entries);
+
+        assert!(groups.is_empty());
+        for entry in &entries {
+            assert_eq!(entry.class, "strong_discriminator");
+            assert!(entry.duplicate_group_id.is_none());
+        }
+    }
+
+    #[test]
+    fn duplicate_grouping_does_not_group_different_activation_values() {
+        let mut entries = vec![
+            duplicate_entry(
+                "a",
+                10,
+                "strong_discriminator",
+                "exact assertion",
+                "strong",
+                &["pricing::p"],
+                &[("function_argument", "1")],
+            ),
+            duplicate_entry(
+                "b",
+                30,
+                "strong_discriminator",
+                "exact assertion",
+                "strong",
+                &["pricing::p"],
+                &[("function_argument", "2")],
+            ),
+        ];
+
+        let groups = apply_duplicate_discriminator_groups(&mut entries);
+
+        assert!(groups.is_empty());
+    }
+
+    #[test]
+    fn duplicate_grouping_does_not_group_swapped_function_and_assertion_values() {
+        let mut entries = vec![
+            duplicate_entry(
+                "score_two_equals_three",
+                10,
+                "strong_discriminator",
+                "exact assertion",
+                "strong",
+                &["pricing::score"],
+                &[("function_argument", "2"), ("assertion_argument", "3")],
+            ),
+            duplicate_entry(
+                "score_three_equals_two",
+                30,
+                "strong_discriminator",
+                "exact assertion",
+                "strong",
+                &["pricing::score"],
+                &[("function_argument", "3"), ("assertion_argument", "2")],
+            ),
+        ];
+
+        let groups = apply_duplicate_discriminator_groups(&mut entries);
+
+        assert!(
+            groups.is_empty(),
+            "swapped activation/expected values must not group: same raw value set, different roles"
+        );
+    }
+
+    #[test]
+    fn duplicate_grouping_does_not_group_swapped_function_argument_order() {
+        let mut entries = vec![
+            duplicate_entry(
+                "f_one_two",
+                10,
+                "strong_discriminator",
+                "exact assertion",
+                "strong",
+                &["pricing::f"],
+                &[("function_argument", "1"), ("function_argument", "2")],
+            ),
+            duplicate_entry(
+                "f_two_one",
+                30,
+                "strong_discriminator",
+                "exact assertion",
+                "strong",
+                &["pricing::f"],
+                &[("function_argument", "2"), ("function_argument", "1")],
+            ),
+        ];
+
+        let groups = apply_duplicate_discriminator_groups(&mut entries);
+
+        assert!(groups.is_empty(), "argument order must matter");
+    }
+
+    #[test]
+    fn duplicate_grouping_does_not_group_different_oracle_kind() {
+        let mut entries = vec![
+            duplicate_entry(
+                "a",
+                10,
+                "strong_discriminator",
+                "exact assertion",
+                "strong",
+                &["pricing::p"],
+                &[("function_argument", "1")],
+            ),
+            duplicate_entry(
+                "b",
+                30,
+                "useful_but_broad",
+                "broad predicate",
+                "strong",
+                &["pricing::p"],
+                &[("function_argument", "1")],
+            ),
+        ];
+
+        let groups = apply_duplicate_discriminator_groups(&mut entries);
+
+        assert!(groups.is_empty());
+    }
+
+    #[test]
+    fn duplicate_grouping_does_not_group_different_oracle_strength() {
+        let mut entries = vec![
+            duplicate_entry(
+                "a",
+                10,
+                "strong_discriminator",
+                "exact assertion",
+                "strong",
+                &["pricing::p"],
+                &[("function_argument", "1")],
+            ),
+            duplicate_entry(
+                "b",
+                30,
+                "useful_but_broad",
+                "exact assertion",
+                "weak",
+                &["pricing::p"],
+                &[("function_argument", "1")],
+            ),
+        ];
+
+        let groups = apply_duplicate_discriminator_groups(&mut entries);
+
+        assert!(groups.is_empty());
+    }
+
+    #[test]
+    fn duplicate_grouping_excludes_opaque_entries() {
+        let mut entries = vec![
+            duplicate_entry(
+                "a",
+                10,
+                "opaque",
+                "exact assertion",
+                "strong",
+                &[],
+                &[("function_argument", "1")],
+            ),
+            duplicate_entry(
+                "b",
+                30,
+                "opaque",
+                "exact assertion",
+                "strong",
+                &[],
+                &[("function_argument", "1")],
+            ),
+        ];
+
+        let groups = apply_duplicate_discriminator_groups(&mut entries);
+
+        assert!(groups.is_empty());
+        for entry in &entries {
+            assert_eq!(entry.class, "opaque");
+            assert!(entry.duplicate_group_id.is_none());
+        }
+    }
+
+    #[test]
+    fn duplicate_grouping_keeps_likely_vacuous_priority() {
+        let mut a = duplicate_entry(
+            "a",
+            10,
+            "likely_vacuous",
+            "exact assertion",
+            "strong",
+            &["pricing::p"],
+            &[("function_argument", "1")],
+        );
+        a.reasons.push("no_assertion_detected".to_string());
+        let mut b = duplicate_entry(
+            "b",
+            30,
+            "likely_vacuous",
+            "exact assertion",
+            "strong",
+            &["pricing::p"],
+            &[("function_argument", "1")],
+        );
+        b.reasons.push("no_assertion_detected".to_string());
+        let mut entries = vec![a, b];
+
+        let groups = apply_duplicate_discriminator_groups(&mut entries);
+
+        assert!(groups.is_empty());
+        for entry in &entries {
+            assert_eq!(entry.class, "likely_vacuous");
+        }
+    }
+
+    #[test]
+    fn duplicate_grouping_keeps_possibly_circular_priority() {
+        let mut a = duplicate_entry(
+            "a",
+            10,
+            "possibly_circular",
+            "exact assertion",
+            "strong",
+            &["pricing::p"],
+            &[("function_argument", "1")],
+        );
+        a.reasons
+            .push("expected_value_computed_from_detected_owner_path".to_string());
+        let mut b = duplicate_entry(
+            "b",
+            30,
+            "possibly_circular",
+            "exact assertion",
+            "strong",
+            &["pricing::p"],
+            &[("function_argument", "1")],
+        );
+        b.reasons
+            .push("expected_value_computed_from_detected_owner_path".to_string());
+        let mut entries = vec![a, b];
+
+        let groups = apply_duplicate_discriminator_groups(&mut entries);
+
+        assert!(groups.is_empty());
+        for entry in &entries {
+            assert_eq!(entry.class, "possibly_circular");
+        }
+    }
+
+    #[test]
+    fn duplicate_grouping_promotes_smoke_duplicates_and_keeps_smoke_reason() {
+        let mut a = duplicate_entry(
+            "a",
+            10,
+            "smoke_only",
+            "smoke only",
+            "smoke",
+            &["pricing::p"],
+            &[("function_argument", "1")],
+        );
+        a.reasons.push("smoke_oracle_only".to_string());
+        let mut b = duplicate_entry(
+            "b",
+            30,
+            "smoke_only",
+            "smoke only",
+            "smoke",
+            &["pricing::p"],
+            &[("function_argument", "1")],
+        );
+        b.reasons.push("smoke_oracle_only".to_string());
+        let mut entries = vec![a, b];
+
+        let groups = apply_duplicate_discriminator_groups(&mut entries);
+
+        assert_eq!(groups.len(), 1);
+        for entry in &entries {
+            assert_eq!(entry.class, "duplicative");
+            assert!(
+                entry.reasons.contains(&"smoke_oracle_only".to_string()),
+                "smoke duplicate must retain smoke_oracle_only reason"
+            );
+            assert!(
+                entry
+                    .reasons
+                    .contains(&"duplicate_activation_and_oracle_shape".to_string()),
+                "smoke duplicate must add duplicate reason"
+            );
+        }
+    }
+
+    #[test]
+    fn duplicate_grouping_ignores_single_candidate() {
+        let mut entries = vec![duplicate_entry(
+            "a",
+            10,
+            "strong_discriminator",
+            "exact assertion",
+            "strong",
+            &["pricing::p"],
+            &[("function_argument", "1")],
+        )];
+
+        let groups = apply_duplicate_discriminator_groups(&mut entries);
+
+        assert!(groups.is_empty());
+        assert_eq!(entries[0].class, "strong_discriminator");
+        assert!(entries[0].duplicate_group_id.is_none());
+    }
+
+    #[test]
+    fn duplicate_grouping_excludes_entries_with_no_activation_literals() {
+        let mut entries = vec![
+            duplicate_entry(
+                "a",
+                10,
+                "strong_discriminator",
+                "exact assertion",
+                "strong",
+                &["pricing::p"],
+                &[],
+            ),
+            duplicate_entry(
+                "b",
+                30,
+                "strong_discriminator",
+                "exact assertion",
+                "strong",
+                &["pricing::p"],
+                &[],
+            ),
+        ];
+
+        let groups = apply_duplicate_discriminator_groups(&mut entries);
+
+        assert!(
+            groups.is_empty(),
+            "tests with no activation literals must not group; signature would be empty"
+        );
+    }
+
+    #[test]
+    fn duplicate_grouping_assigns_deterministic_group_ids() {
+        let build = || {
+            vec![
+                duplicate_entry(
+                    "a",
+                    10,
+                    "strong_discriminator",
+                    "exact assertion",
+                    "strong",
+                    &["pricing::a"],
+                    &[("function_argument", "1")],
+                ),
+                duplicate_entry(
+                    "b",
+                    20,
+                    "strong_discriminator",
+                    "exact assertion",
+                    "strong",
+                    &["pricing::a"],
+                    &[("function_argument", "1")],
+                ),
+                duplicate_entry(
+                    "c",
+                    30,
+                    "strong_discriminator",
+                    "exact assertion",
+                    "strong",
+                    &["pricing::b"],
+                    &[("function_argument", "1")],
+                ),
+                duplicate_entry(
+                    "d",
+                    40,
+                    "strong_discriminator",
+                    "exact assertion",
+                    "strong",
+                    &["pricing::b"],
+                    &[("function_argument", "1")],
+                ),
+            ]
+        };
+
+        let mut first = build();
+        let groups_first = apply_duplicate_discriminator_groups(&mut first);
+        let mut second = build();
+        let groups_second = apply_duplicate_discriminator_groups(&mut second);
+
+        assert_eq!(groups_first.len(), 2);
+        assert_eq!(groups_first[0].id, "duplicate_group_1");
+        assert_eq!(groups_first[1].id, "duplicate_group_2");
+        for (a, b) in groups_first.iter().zip(groups_second.iter()) {
+            assert_eq!(a.id, b.id);
+            let names_a: Vec<_> = a.members.iter().map(|m| &m.name).collect();
+            let names_b: Vec<_> = b.members.iter().map(|m| &m.name).collect();
+            assert_eq!(names_a, names_b);
+        }
+    }
+
+    #[test]
+    fn duplicate_grouping_emits_per_test_id_linked_to_top_level_groups() {
+        let mut entries = vec![
+            duplicate_entry(
+                "a",
+                10,
+                "strong_discriminator",
+                "exact assertion",
+                "strong",
+                &["pricing::p"],
+                &[("function_argument", "1")],
+            ),
+            duplicate_entry(
+                "b",
+                30,
+                "strong_discriminator",
+                "exact assertion",
+                "strong",
+                &["pricing::p"],
+                &[("function_argument", "1")],
+            ),
+        ];
+        let groups = apply_duplicate_discriminator_groups(&mut entries);
+        let json = test_efficiency_report_json(&entries, &groups);
+
+        assert!(json.contains("\"duplicate_group_id\": \"duplicate_group_1\""));
+        assert!(json.contains("\"duplicate_groups\": ["));
+        assert!(json.contains("\"id\": \"duplicate_group_1\""));
+        assert!(json.contains("\"duplicative\": 2"));
+        assert!(json.contains("\"duplicate_activation_and_oracle_shape\": 2"));
+    }
+
+    #[test]
+    fn duplicate_grouping_markdown_renders_groups_without_deletion_language() {
+        let mut entries = vec![
+            duplicate_entry(
+                "a",
+                10,
+                "strong_discriminator",
+                "exact assertion",
+                "strong",
+                &["pricing::p"],
+                &[("function_argument", "1")],
+            ),
+            duplicate_entry(
+                "b",
+                30,
+                "strong_discriminator",
+                "exact assertion",
+                "strong",
+                &["pricing::p"],
+                &[("function_argument", "1")],
+            ),
+        ];
+        let groups = apply_duplicate_discriminator_groups(&mut entries);
+        let markdown = test_efficiency_report_markdown(&entries, &groups);
+
+        assert!(markdown.contains("## Duplicate Discriminator Groups"));
+        assert!(markdown.contains("duplicate_group_1"));
+        assert!(markdown.contains("Duplicate discriminator groups: 1"));
+        assert!(
+            !markdown.to_ascii_lowercase().contains("delete"),
+            "report must not recommend deleting tests"
+        );
     }
 }
