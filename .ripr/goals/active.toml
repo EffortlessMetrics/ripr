@@ -9,10 +9,12 @@ same evidence facts used for static exposure findings.
 
 end_state = [
   "per-test evidence ledgers name owners, oracle kind and strength, observed values, and missing discriminator overlap",
-  "likely vacuous, smoke-only, broad-oracle, opaque, circular, and duplicate-discriminator signals are advisory",
+  "likely vacuous, smoke-only, broad-oracle, opaque, circular, and duplicative signals are advisory",
   "reports explain evidence and suggested next steps without calling tests bad",
   "test-efficiency metrics are available for trend tracking",
-  "agent and editor surfaces can avoid imitating low-discriminator tests"
+  "agent and editor surfaces can avoid imitating low-discriminator tests",
+  "ripr and ripr+ badge artifacts publish unresolved-finding counts as inbox-zero signals",
+  "test intent and suppressions are durable, reasoned exception files rather than allowlist entries"
 ]
 
 [[work_item]]
@@ -77,7 +79,7 @@ stackable = false
 requires_human_merge = true
 blocked_by = ["test-efficiency/vacuous-signal-v1", "test-efficiency/duplicate-discriminator-v1"]
 blocked_reason = "needs stable vacuity and duplicate signal classes before summarizing metrics"
-acceptance = "test-efficiency reports and metrics summarize strong, broad, smoke-only, likely-vacuous, opaque, and duplicate-discriminator counts"
+acceptance = "test-efficiency reports and metrics summarize strong, broad, smoke-only, likely-vacuous, opaque, and duplicative counts"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
@@ -87,4 +89,149 @@ commands = [
   "cargo xtask receipts check",
   "cargo xtask metrics",
   "cargo xtask check-capabilities"
+]
+
+[[work_item]]
+id = "docs/badge-policy"
+status = "done"
+branch = "docs/badge-policy"
+stackable = false
+requires_human_merge = true
+acceptance = "docs/BADGE_POLICY.md locks the badge counting rule, native JSON shape, Shields projection, and the exact test-efficiency vocabulary emitted by xtask::test_efficiency_report"
+commands = [
+  "cargo xtask test-efficiency-report",
+  "cargo xtask markdown-links",
+  "cargo xtask check-doc-index",
+  "cargo xtask check-readme-state",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "badge/summary-renderer-v1"
+status = "blocked"
+branch = "badge/summary-renderer-v1"
+stackable = false
+requires_human_merge = true
+blocked_by = ["test-efficiency/report-and-metrics", "docs/badge-policy"]
+blocked_reason = "needs stable test-efficiency metrics and the locked badge vocabulary before adding renderer code"
+acceptance = "private BadgeSummary types in output::badge render badge-json and badge-shields projections from CheckOutput; cargo xtask check-public-api stays green"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask pr-summary",
+  "cargo xtask check-public-api",
+  "cargo xtask check-output-contracts"
+]
+
+[[work_item]]
+id = "badge/ripr-count-v1"
+status = "blocked"
+branch = "badge/ripr-count-v1"
+stackable = false
+requires_human_merge = true
+blocked_by = ["badge/summary-renderer-v1"]
+blocked_reason = "needs the private BadgeSummary renderer before exposing the badge formats on ripr check"
+acceptance = "ripr check --format badge-json and --format badge-shields emit a single source-of-truth schema with snake_case fields and a mechanical Shields projection; counts include unsuppressed_exposure_gaps, suppressed_exposure_gaps, unknowns, analyzed_findings, analyzed_tests"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask pr-summary",
+  "cargo xtask fixtures",
+  "cargo xtask goldens check",
+  "cargo xtask check-output-contracts"
+]
+
+[[work_item]]
+id = "test-intent/v1"
+status = "blocked"
+branch = "test-intent/v1"
+stackable = false
+requires_human_merge = true
+blocked_by = ["test-efficiency/report-and-metrics"]
+blocked_reason = "needs stable test-efficiency classes before declaring intent against them"
+acceptance = ".ripr/test_intent.toml loader marks declared tests intentional in target/ripr/reports/test-efficiency.json; supported intents are smoke, business_case_duplicate, opaque_external_oracle, integration_contract, performance_guard, documentation_example; declared tests stay visible in reports"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask pr-summary",
+  "cargo xtask test-efficiency-report",
+  "cargo xtask fixtures",
+  "cargo xtask goldens check"
+]
+
+[[work_item]]
+id = "badge/ripr-plus-count-v1"
+status = "blocked"
+branch = "badge/ripr-plus-count-v1"
+stackable = false
+requires_human_merge = true
+blocked_by = ["badge/ripr-count-v1", "test-intent/v1"]
+blocked_reason = "needs both the ripr badge counter and test-intent loader before adding the stricter ripr+ badge"
+acceptance = "ripr check --format badge-plus-json and --format badge-plus-shields sum unsuppressed exposure gaps and unsuppressed actionable test-efficiency findings (excluding declared intent); intentional findings are reported in counts.intentional_test_efficiency_findings"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask pr-summary",
+  "cargo xtask fixtures",
+  "cargo xtask goldens check",
+  "cargo xtask check-output-contracts"
+]
+
+[[work_item]]
+id = "suppressions/v1"
+status = "blocked"
+branch = "suppressions/v1"
+stackable = false
+requires_human_merge = true
+blocked_by = ["badge/ripr-plus-count-v1"]
+blocked_reason = "needs the ripr+ counter before suppressions can affect a published badge number"
+acceptance = ".ripr/suppressions.toml loader; reason and owner required; expiry encouraged; suppressed findings remain visible in reports; badge counts.suppressed_* reflect the count"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask pr-summary",
+  "cargo xtask fixtures",
+  "cargo xtask goldens check"
+]
+
+[[work_item]]
+id = "ci/badge-artifacts"
+status = "blocked"
+branch = "ci/badge-artifacts"
+stackable = false
+requires_human_merge = true
+blocked_by = ["badge/ripr-plus-count-v1", "suppressions/v1"]
+blocked_reason = "needs both badge formats and durable intent/suppression handling before CI publishes badge artifacts that consumers may treat as meaningful"
+acceptance = "CI uploads target/ripr/reports/ripr-badge*.json and ripr-plus-badge*.json, links them from the report index, and shows counts in the GitHub step summary; advisory by default; --fail-on-nonzero is opt-in"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask pr-summary",
+  "cargo xtask reports index",
+  "cargo xtask receipts",
+  "cargo xtask receipts check"
+]
+
+[[work_item]]
+id = "badge/publish-main-endpoint"
+status = "blocked"
+branch = "badge/publish-main-endpoint"
+stackable = false
+requires_human_merge = true
+blocked_by = ["ci/badge-artifacts"]
+blocked_reason = "publishing a Shields endpoint from main requires stable badge artifacts and a network-allowlist entry"
+acceptance = "Shields-compatible badge JSON published from main only; README references the endpoint; policy/network_allowlist.txt updated; PR workflows do not publish"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask pr-summary",
+  "cargo xtask check-network-policy",
+  "cargo xtask check-workflows"
 ]

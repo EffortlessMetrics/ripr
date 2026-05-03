@@ -45,6 +45,8 @@ Current reference docs:
 
 - [Output schema](OUTPUT_SCHEMA.md)
 - [Static exposure model](STATIC_EXPOSURE_MODEL.md)
+- [Configuration](CONFIGURATION.md)
+- [Badge policy](BADGE_POLICY.md)
 - [Spec-test-code traceability](SPEC_TEST_CODE.md)
 - [Spec format](SPEC_FORMAT.md)
 - [Test taxonomy](TEST_TAXONOMY.md)
@@ -55,7 +57,6 @@ Current reference docs:
 
 Planned reference docs:
 
-- `ripr.toml` reference
 - SARIF output reference
 - LSP diagnostic code reference
 
