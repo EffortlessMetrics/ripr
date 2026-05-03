@@ -82,6 +82,12 @@ pub enum OutputFormat {
     Json,
     /// GitHub annotation output suitable for CI logs.
     Github,
+    /// Native `ripr` badge JSON (snake_case wire shape with full counts,
+    /// reason counts, and policy). Consumed by tools and CI artifacts.
+    BadgeJson,
+    /// Shields-compatible projection for the `ripr` badge: exactly four
+    /// top-level fields (`schemaVersion`, `label`, `message`, `color`).
+    BadgeShields,
 }
 
 /// Result payload produced by [`check_workspace`].
@@ -130,6 +136,16 @@ pub fn render_check(output: &CheckOutput, format: &OutputFormat) -> String {
         OutputFormat::Human => output::human::render(output),
         OutputFormat::Json => output::json::render(output),
         OutputFormat::Github => output::github::render(output),
+        OutputFormat::BadgeJson => {
+            let summary =
+                output::badge::ripr_badge_summary(output, output::badge::BadgePolicy::default());
+            output::badge::render_native_json(&summary)
+        }
+        OutputFormat::BadgeShields => {
+            let summary =
+                output::badge::ripr_badge_summary(output, output::badge::BadgePolicy::default());
+            output::badge::render_shields_json(&summary)
+        }
     }
 }
 
@@ -212,13 +228,14 @@ fn selector_matches_location(selector: &str, finding: &Finding) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{Mode, selector_matches_location};
+    use super::{CheckOutput, Mode, OutputFormat, render_check, selector_matches_location};
     use crate::analysis::AnalysisMode;
     use crate::domain::{
         ActivationEvidence, Confidence, ExposureClass, Finding, OracleStrength, Probe, ProbeFamily,
         ProbeId, RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence,
         StageState, StopReason, Summary,
     };
+    use std::path::PathBuf;
 
     #[test]
     fn mode_labels_match_public_contract() {
@@ -304,5 +321,81 @@ mod tests {
         assert_eq!(summary.findings, 0);
         assert_eq!(summary.exposed, 0);
         assert_eq!(summary.weakly_exposed, 0);
+    }
+
+    fn check_output_with(findings: Vec<Finding>) -> CheckOutput {
+        CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("."),
+            base: Some("origin/main".to_string()),
+            summary: Summary::default(),
+            findings,
+        }
+    }
+
+    #[test]
+    fn render_check_dispatches_badge_json_format() {
+        let output = check_output_with(vec![sample_finding("src/lib.rs", 1)]);
+        let rendered = render_check(&output, &OutputFormat::BadgeJson);
+
+        // Native snake_case wire shape with all required top-level keys.
+        assert!(rendered.contains("\"schema_version\": \"0.1\""));
+        assert!(rendered.contains("\"kind\": \"ripr\""));
+        assert!(rendered.contains("\"counts\":"));
+        assert!(rendered.contains("\"reason_counts\":"));
+        assert!(rendered.contains("\"policy\":"));
+        // Specifically includes the new vocabulary from #187/#188 with zero default.
+        assert!(rendered.contains("\"duplicate_activation_and_oracle_shape\": 0"));
+    }
+
+    #[test]
+    fn render_check_dispatches_badge_shields_format() {
+        let output = check_output_with(vec![sample_finding("src/lib.rs", 1)]);
+        let rendered = render_check(&output, &OutputFormat::BadgeShields);
+
+        assert!(rendered.contains("\"schemaVersion\": 1"));
+        assert!(rendered.contains("\"label\":"));
+        assert!(rendered.contains("\"message\":"));
+        assert!(rendered.contains("\"color\":"));
+        // Native-only fields must not leak into the Shields shape.
+        for forbidden in [
+            "\"counts\"",
+            "\"reason_counts\"",
+            "\"policy\"",
+            "\"kind\"",
+            "\"status\"",
+        ] {
+            assert!(
+                !rendered.contains(forbidden),
+                "Shields projection must not contain `{forbidden}`"
+            );
+        }
+    }
+
+    #[test]
+    fn badge_render_message_has_no_denominator_or_coverage_framing() {
+        let output = check_output_with(vec![
+            sample_finding("src/a.rs", 1),
+            sample_finding("src/b.rs", 2),
+        ]);
+        for format in [OutputFormat::BadgeJson, OutputFormat::BadgeShields] {
+            let rendered = render_check(&output, &format);
+            let lower = rendered.to_ascii_lowercase();
+            // Confirm no "X/Y" denominator pattern in the message field; the
+            // message itself is just a count string.
+            assert!(
+                !rendered.contains("\"message\": \"") || {
+                    let after = rendered.split("\"message\": \"").nth(1).unwrap_or("");
+                    let value_end = after.find('"').unwrap_or(after.len());
+                    let value = &after[..value_end];
+                    !value.contains('/')
+                },
+                "badge message must not contain a denominator: {rendered}"
+            );
+            assert!(!lower.contains("coverage"));
+            assert!(!lower.contains("uncovered"));
+        }
     }
 }

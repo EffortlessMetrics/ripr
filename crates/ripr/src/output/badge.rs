@@ -9,13 +9,6 @@
 //! The current implementation supports only the `ripr` badge (exposure-gap
 //! counts). Test-efficiency, intent, suppressions, and the `ripr+` shape
 //! are intentionally absent and will arrive in their own scoped PRs.
-//!
-//! The module-level lint suppression below exists because `badge/ripr-count-v1`
-//! is the consumer that wires this renderer into `ripr check --format`; until
-//! that PR lands, the renderer is exercised only by the unit tests in this
-//! file. The suppression is registered in `.ripr/allow-attributes.txt` and
-//! should be removed when the consumer lands.
-#![allow(dead_code)]
 
 use crate::app::CheckOutput;
 use crate::domain::ExposureClass;
