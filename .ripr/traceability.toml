@@ -37,6 +37,7 @@ outputs = [
 metrics = [
   "fixture_pass_rate",
   "oracle_kind_recognition_rate",
+  "activation_value_extraction_rate",
   "unknowns_with_stop_reasons"
 ]
 

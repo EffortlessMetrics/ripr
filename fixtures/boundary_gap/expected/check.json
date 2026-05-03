@@ -4,13 +4,13 @@
   "mode": "fast",
   "root": "fixtures/boundary_gap/input",
   "base": "origin/main",
-  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":1,"propagation_unknown":0,"static_unknown":0},
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0},
   "findings": [
     {
       "id": "probe:src_lib.rs:2:predicate",
-      "classification": "infection_unknown",
+      "classification": "weakly_exposed",
       "severity": "warning",
-      "confidence": 0.87,
+      "confidence": 0.92,
       "probe": {
         "id": "probe:src_lib.rs:2:predicate",
         "family": "predicate",
@@ -21,13 +21,60 @@
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach discounted_total: below_threshold_has_no_discount, far_above_threshold_discounts"},
-        "infect": {"state":"unknown","confidence":"low","summary":"Predicate changed, but no literal boundary was visible in the changed expression"},
+        "infect": {"state":"weak","confidence":"medium","summary":"Related tests contain input values, but the equality-boundary discriminator is missing"},
         "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: amount - 10"},
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
        },
-      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: amount - 10", "Predicate changed, but no literal boundary was visible in the changed expression", "Related tests appear to reach discounted_total: below_threshold_has_no_discount, far_above_threshold_discounts", "Strong oracle found: exact value or pattern assertion"],
-      "missing": ["No detected boundary input for the changed predicate", "Predicate changed, but no literal boundary was visible in the changed expression"],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: amount - 10", "Related tests appear to reach discounted_total: below_threshold_has_no_discount, far_above_threshold_discounts", "Related tests contain input values, but the equality-boundary discriminator is missing", "Strong oracle found: exact value or pattern assertion"],
+      "missing": ["Missing discriminator value: amount == discount_threshold"],
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "text": "assert_eq!(discounted_total(50, 100), 50);",
+            "value": "50",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 5,
+            "text": "assert_eq!(discounted_total(50, 100), 50);",
+            "value": "amount = 50",
+            "context": "function_argument"
+          },
+          {
+            "line": 5,
+            "text": "assert_eq!(discounted_total(50, 100), 50);",
+            "value": "discount_threshold = 100",
+            "context": "function_argument"
+          },
+          {
+            "line": 10,
+            "text": "assert_eq!(discounted_total(10_000, 100), 9_990);",
+            "value": "9_990",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 10,
+            "text": "assert_eq!(discounted_total(10_000, 100), 9_990);",
+            "value": "amount = 10_000",
+            "context": "function_argument"
+          },
+          {
+            "line": 10,
+            "text": "assert_eq!(discounted_total(10_000, 100), 9_990);",
+            "value": "discount_threshold = 100",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "amount == discount_threshold",
+            "reason": "No related test call uses amount equal to discount_threshold; observed amount values: 10_000, 50; observed discount_threshold values: 100",
+            "flow_sink": {"kind":"return_value","text":"amount - 10","line":3}
+          }
+        ]
+      },
       "related_tests": [
         {
           "name": "below_threshold_has_no_discount",
@@ -44,8 +91,8 @@
           "oracle": "assert_eq!(discounted_total(10_000, 100), 9_990);"
         }
       ],
-      "stop_reasons": ["infection_evidence_unknown"],
-      "recommended_next_step": "Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml."
+      "stop_reasons": [],
+      "recommended_next_step": "Add boundary tests for below, equal, and above the changed threshold with exact assertions."
     }
   ]
 }

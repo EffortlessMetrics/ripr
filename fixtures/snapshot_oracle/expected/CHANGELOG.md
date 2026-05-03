@@ -23,3 +23,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0001: activation modeling names observed values and missing equality discriminator
+
+Command:
+`cargo xtask goldens bless snapshot_oracle --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

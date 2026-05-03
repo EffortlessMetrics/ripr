@@ -27,7 +27,24 @@
         "discriminate": {"state":"weak","confidence":"high","summary":"Only broad error oracle found; it may not discriminate the changed behavior exactly"}
        },
       "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)", "Only broad error oracle found; it may not discriminate the changed behavior exactly", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach authenticate: empty_token_is_rejected"],
-      "missing": ["No strong discriminator was detected"],
+      "missing": ["Missing discriminator value: AuthError::RevokedToken", "No strong discriminator was detected"],
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "text": "assert!(authenticate(\"\").is_err());",
+            "value": "token = \"\"",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "AuthError::RevokedToken",
+            "reason": "No exact error variant assertion for AuthError::RevokedToken",
+            "flow_sink": {"kind":"error_variant","text":"Result::Err(AuthError::RevokedToken)","line":7}
+          }
+        ]
+      },
       "related_tests": [
         {
           "name": "empty_token_is_rejected",
@@ -61,7 +78,24 @@
         "discriminate": {"state":"weak","confidence":"high","summary":"Only broad error oracle found; is_err() does not discriminate exact error variants"}
        },
       "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)", "Only broad error oracle found; is_err() does not discriminate exact error variants", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach authenticate: empty_token_is_rejected"],
-      "missing": ["No exact error variant discriminator was detected"],
+      "missing": ["Missing discriminator value: AuthError::RevokedToken", "No exact error variant discriminator was detected"],
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "text": "assert!(authenticate(\"\").is_err());",
+            "value": "token = \"\"",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "AuthError::RevokedToken",
+            "reason": "No exact error variant assertion for AuthError::RevokedToken",
+            "flow_sink": {"kind":"error_variant","text":"Result::Err(AuthError::RevokedToken)","line":7}
+          }
+        ]
+      },
       "related_tests": [
         {
           "name": "empty_token_is_rejected",
@@ -95,7 +129,24 @@
         "discriminate": {"state":"weak","confidence":"high","summary":"Only broad error oracle found; it may not discriminate the changed behavior exactly"}
        },
       "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)", "Only broad error oracle found; it may not discriminate the changed behavior exactly", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach authenticate: empty_token_is_rejected"],
-      "missing": ["No strong discriminator was detected"],
+      "missing": ["Missing discriminator value: AuthError::RevokedToken", "No strong discriminator was detected"],
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "text": "assert!(authenticate(\"\").is_err());",
+            "value": "token = \"\"",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "AuthError::RevokedToken",
+            "reason": "No exact error variant assertion for AuthError::RevokedToken",
+            "flow_sink": {"kind":"error_variant","text":"Result::Err(AuthError::RevokedToken)","line":7}
+          }
+        ]
+      },
       "related_tests": [
         {
           "name": "empty_token_is_rejected",

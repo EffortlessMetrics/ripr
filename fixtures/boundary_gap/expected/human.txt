@@ -2,11 +2,11 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/boundary_gap/input
 
-Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
+Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
 
 WARNING fixtures/boundary_gap/input/src/lib.rs:2
 
-Static exposure: infection_unknown (predicate, control)
+Static exposure: weakly_exposed (predicate, control)
 
 Changed behavior:
   before: if amount > discount_threshold {
@@ -14,7 +14,7 @@ Changed behavior:
 
 RIPR:
   Reach:       yes — Related tests appear to reach discounted_total: below_threshold_has_no_discount, far_above_threshold_discounts
-  Infect:      unknown — Predicate changed, but no literal boundary was visible in the changed expression
+  Infect:      weak — Related tests contain input values, but the equality-boundary discriminator is missing
   Propagate:   yes — Changed behavior appears to influence returned value: amount - 10
   Observe:     yes — A related test observes a value or effect near the changed behavior
   Discriminate: yes — Strong oracle found: exact value or pattern assertion
@@ -23,12 +23,17 @@ Related tests / oracles:
   - tests/pricing.rs:4 below_threshold_has_no_discount [strong] — assert_eq!(discounted_total(50, 100), 50);
   - tests/pricing.rs:9 far_above_threshold_discounts [strong] — assert_eq!(discounted_total(10_000, 100), 9_990);
 
-Gap:
-  - No detected boundary input for the changed predicate
-  - Predicate changed, but no literal boundary was visible in the changed expression
+Activation evidence:
+  - observed 50 at line 5 (assertion_argument)
+  - observed amount = 50 at line 5 (function_argument)
+  - observed discount_threshold = 100 at line 5 (function_argument)
+  - observed 9_990 at line 10 (assertion_argument)
+  - observed amount = 10_000 at line 10 (function_argument)
+  - observed discount_threshold = 100 at line 10 (function_argument)
+  - missing amount == discount_threshold — No related test call uses amount equal to discount_threshold; observed amount values: 10_000, 50; observed discount_threshold values: 100
 
-Stop reasons:
-  - infection_evidence_unknown
+Gap:
+  - Missing discriminator value: amount == discount_threshold
 
 Recommended next step:
-  Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.
+  Add boundary tests for below, equal, and above the changed threshold with exact assertions.

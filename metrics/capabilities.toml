@@ -18,13 +18,15 @@ evidence = [
   "parser-backed probe shape facts",
   "unknown stop reason invariant",
   "probe-relative oracle kind and strength",
-  "typed local flow sink facts"
+  "typed local flow sink facts",
+  "observed activation value facts",
+  "missing discriminator facts"
 ]
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "activation-value-modeling-v1"
+next = "evidence-first-output"
 metric = "findings include changed behavior, class, evidence, and next step"
 
 [[capability]]
@@ -58,12 +60,13 @@ evidence = [
   "ra_ap_syntax parser-backed test/oracle extraction",
   "module-qualified and impl-qualified owner symbols",
   "parser-backed predicate probe shape facts",
-  "predicate branch to return-value flow tests"
+  "predicate branch to return-value flow tests",
+  "missing equality discriminator facts"
 ]
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "activation-value-modeling-v1"
+next = "evidence-first-output"
 metric = "missing boundary discriminator detection"
 
 [[capability]]
@@ -76,12 +79,13 @@ evidence = [
   "weak_error_oracle fixture",
   "parser-backed error-path probe shape facts",
   "probe-relative exact error variant vs broad error oracle classification",
-  "error variant flow sink tests"
+  "error variant flow sink tests",
+  "missing exact error variant discriminator facts"
 ]
 fixtures = [
   "fixtures/weak_error_oracle"
 ]
-next = "activation-value-modeling-v1"
+next = "evidence-first-output"
 metric = "broad error checks distinguished from exact variants"
 
 [[capability]]
@@ -99,7 +103,7 @@ evidence = [
 fixtures = [
   "fixtures/weak_error_oracle"
 ]
-next = "activation-value-modeling-v1"
+next = "evidence-first-output"
 metric = "exact vs smoke return oracle distinction"
 
 [[capability]]
@@ -116,7 +120,7 @@ evidence = [
 fixtures = [
   "fixtures/weak_error_oracle"
 ]
-next = "activation-value-modeling-v1"
+next = "evidence-first-output"
 metric = "side-effect or call boundary candidate named"
 
 [[capability]]
@@ -245,13 +249,15 @@ evidence = [
   "module-qualified and impl-qualified owner symbols",
   "parser-backed probe shape facts",
   "probe-relative oracle kind and strength",
-  "typed local flow sink facts"
+  "typed local flow sink facts",
+  "observed activation value facts",
+  "missing discriminator facts"
 ]
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "activation-value-modeling-v1"
+next = "evidence-first-output"
 metric = "syntax extraction parity"
 
 [[capability]]
@@ -271,7 +277,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "activation-value-modeling-v1"
+next = "evidence-first-output"
 metric = "oracle kind recognition rate"
 
 [[capability]]
@@ -290,7 +296,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "activation-value-modeling-v1"
+next = "evidence-first-output"
 metric = "duplicate symbols do not cross-link tests"
 
 [[capability]]
@@ -305,13 +311,15 @@ evidence = [
   "parser-backed call, side-effect, field, and match probe shape facts",
   "fixture/golden output stability",
   "probe-relative oracle kind and strength",
-  "typed local flow sink facts"
+  "typed local flow sink facts",
+  "observed activation value facts",
+  "missing discriminator facts"
 ]
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "activation-value-modeling-v1"
+next = "evidence-first-output"
 metric = "syntax facts generate current probe families"
 
 [[capability]]
@@ -327,11 +335,35 @@ evidence = [
   "side-effect call flow sink tests",
   "match-arm result flow sink tests",
   "binding to return-value flow tests",
-  "propagation_unknown stop reason regression test"
+  "propagation_unknown stop reason regression test",
+  "missing discriminator facts tied to flow sinks"
 ]
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "activation-value-modeling-v1"
+next = "evidence-first-output"
 metric = "flow sink identification rate"
+
+[[capability]]
+id = "activation_value_modeling"
+name = "Activation/value modeling"
+status = "alpha"
+spec = "RIPR-SPEC-0001"
+evidence = [
+  "ValueContext domain contract labels",
+  "observed ValueFact records",
+  "MissingDiscriminatorFact records",
+  "boundary equality BDD tests",
+  "exact error variant gap BDD tests",
+  "boundary_gap fixture",
+  "weak_error_oracle fixture",
+  "snapshot_oracle fixture"
+]
+fixtures = [
+  "fixtures/boundary_gap",
+  "fixtures/weak_error_oracle",
+  "fixtures/snapshot_oracle"
+]
+next = "evidence-first-output"
+metric = "detected and missing value facts"

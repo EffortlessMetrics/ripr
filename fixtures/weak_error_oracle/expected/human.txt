@@ -22,7 +22,12 @@ RIPR:
 Related tests / oracles:
   - tests/errors.rs:4 empty_token_is_rejected [weak] — assert!(authenticate("").is_err());
 
+Activation evidence:
+  - observed token = "" at line 5 (function_argument)
+  - missing AuthError::RevokedToken — No exact error variant assertion for AuthError::RevokedToken
+
 Gap:
+  - Missing discriminator value: AuthError::RevokedToken
   - No strong discriminator was detected
 
 Recommended next step:
@@ -46,7 +51,12 @@ RIPR:
 Related tests / oracles:
   - tests/errors.rs:4 empty_token_is_rejected [weak] — assert!(authenticate("").is_err());
 
+Activation evidence:
+  - observed token = "" at line 5 (function_argument)
+  - missing AuthError::RevokedToken — No exact error variant assertion for AuthError::RevokedToken
+
 Gap:
+  - Missing discriminator value: AuthError::RevokedToken
   - No exact error variant discriminator was detected
 
 Recommended next step:
@@ -70,7 +80,12 @@ RIPR:
 Related tests / oracles:
   - tests/errors.rs:4 empty_token_is_rejected [weak] — assert!(authenticate("").is_err());
 
+Activation evidence:
+  - observed token = "" at line 5 (function_argument)
+  - missing AuthError::RevokedToken — No exact error variant assertion for AuthError::RevokedToken
+
 Gap:
+  - Missing discriminator value: AuthError::RevokedToken
   - No strong discriminator was detected
 
 Recommended next step:

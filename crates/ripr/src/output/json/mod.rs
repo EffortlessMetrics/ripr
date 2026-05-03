@@ -12,8 +12,8 @@ mod tests {
     use super::{context_packet::render_context_packet, escape, render, report::finding_json};
     use crate::app::{CheckOutput, Mode};
     use crate::domain::{
-        Confidence, DeltaKind, ExposureClass, Finding, Probe, ProbeFamily, ProbeId, RevealEvidence,
-        RiprEvidence, SourceLocation, StageEvidence, StageState, Summary,
+        ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, Probe, ProbeFamily,
+        ProbeId, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState, Summary,
     };
     use std::path::PathBuf;
 
@@ -85,6 +85,7 @@ mod tests {
             evidence: vec![],
             missing: vec![],
             flow_sinks: vec![],
+            activation: ActivationEvidence::default(),
             stop_reasons: vec![],
             related_tests: vec![],
             recommended_next_step: Some("Escalate to real mutation testing.".to_string()),

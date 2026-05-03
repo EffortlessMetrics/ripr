@@ -21,13 +21,30 @@
        },
       "ripr": {
         "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach render_status: renders_error_status_snapshot"},
-        "infect": {"state":"weak","confidence":"medium","summary":"Tests have literals [404], but no detected value matches changed boundary [299]"},
+        "infect": {"state":"weak","confidence":"medium","summary":"Related tests contain input values, but the equality-boundary discriminator is missing"},
         "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: \"ok\".to_string()"},
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"weak","confidence":"medium","summary":"Medium oracle found: snapshot assertion observes the changed behavior"}
        },
-      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: \"ok\".to_string()", "Medium oracle found: snapshot assertion observes the changed behavior", "Related tests appear to reach render_status: renders_error_status_snapshot", "Tests have literals [404], but no detected value matches changed boundary [299]"],
-      "missing": ["No detected boundary input for the changed predicate", "No strong discriminator was detected"],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: \"ok\".to_string()", "Medium oracle found: snapshot assertion observes the changed behavior", "Related tests appear to reach render_status: renders_error_status_snapshot", "Related tests contain input values, but the equality-boundary discriminator is missing"],
+      "missing": ["Missing discriminator value: code == 299", "No strong discriminator was detected"],
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "text": "let rendered = render_status(404);",
+            "value": "code = 404",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "code == 299",
+            "reason": "No related test call uses code equal to 299; observed code values: 404; target 299 value: 299",
+            "flow_sink": {"kind":"return_value","text":"\"ok\".to_string()","line":3}
+          }
+        ]
+      },
       "related_tests": [
         {
           "name": "renders_error_status_snapshot",

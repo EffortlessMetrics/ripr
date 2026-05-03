@@ -1,5 +1,7 @@
 use crate::app::CheckOutput;
-use crate::domain::{Finding, RelatedTest, StageEvidence};
+use crate::domain::{
+    Finding, FlowSinkFact, MissingDiscriminatorFact, RelatedTest, StageEvidence, ValueFact,
+};
 
 use super::{array_field, escape, field, float_field, number_field};
 
@@ -112,6 +114,8 @@ pub(super) fn finding_json(out: &mut String, finding: &Finding, indent: usize) {
     out.push_str(&format!("{} }},\n", "  ".repeat(indent + 1)));
     array_field(out, indent + 1, "evidence", &finding.evidence, true);
     array_field(out, indent + 1, "missing", &finding.missing, true);
+    activation_json(out, finding, indent + 1);
+    out.push_str(",\n");
     out.push_str(&format!(
         "{}\"related_tests\": [\n",
         "  ".repeat(indent + 1)
@@ -134,6 +138,70 @@ pub(super) fn finding_json(out: &mut String, finding: &Finding, indent: usize) {
         false,
     );
     out.push_str(&format!("{sp}}}"));
+}
+
+fn activation_json(out: &mut String, finding: &Finding, indent: usize) {
+    let sp = "  ".repeat(indent);
+    out.push_str(&format!("{sp}\"activation\": {{\n"));
+    out.push_str(&format!(
+        "{}\"observed_values\": [\n",
+        "  ".repeat(indent + 1)
+    ));
+    for (idx, value) in finding.activation.observed_values.iter().enumerate() {
+        value_fact_json(out, value, indent + 2);
+        if idx + 1 != finding.activation.observed_values.len() {
+            out.push(',');
+        }
+        out.push('\n');
+    }
+    out.push_str(&format!("{}],\n", "  ".repeat(indent + 1)));
+    out.push_str(&format!(
+        "{}\"missing_discriminators\": [\n",
+        "  ".repeat(indent + 1)
+    ));
+    for (idx, discriminator) in finding.activation.missing_discriminators.iter().enumerate() {
+        missing_discriminator_json(out, discriminator, indent + 2);
+        if idx + 1 != finding.activation.missing_discriminators.len() {
+            out.push(',');
+        }
+        out.push('\n');
+    }
+    out.push_str(&format!("{}]\n", "  ".repeat(indent + 1)));
+    out.push_str(&format!("{sp}}}"));
+}
+
+fn value_fact_json(out: &mut String, fact: &ValueFact, indent: usize) {
+    let sp = "  ".repeat(indent);
+    out.push_str(&format!("{sp}{{\n"));
+    number_field(out, indent + 1, "line", fact.line, true);
+    field(out, indent + 1, "text", &fact.text, true);
+    field(out, indent + 1, "value", &fact.value, true);
+    field(out, indent + 1, "context", fact.context.as_str(), false);
+    out.push_str(&format!("{sp}}}"));
+}
+
+fn missing_discriminator_json(out: &mut String, fact: &MissingDiscriminatorFact, indent: usize) {
+    let sp = "  ".repeat(indent);
+    out.push_str(&format!("{sp}{{\n"));
+    field(out, indent + 1, "value", &fact.value, true);
+    field(out, indent + 1, "reason", &fact.reason, true);
+    out.push_str(&format!("{}\"flow_sink\": ", "  ".repeat(indent + 1)));
+    if let Some(sink) = &fact.flow_sink {
+        flow_sink_json(out, sink);
+    } else {
+        out.push_str("null");
+    }
+    out.push('\n');
+    out.push_str(&format!("{sp}}}"));
+}
+
+fn flow_sink_json(out: &mut String, sink: &FlowSinkFact) {
+    out.push_str(&format!(
+        "{{\"kind\":\"{}\",\"text\":\"{}\",\"line\":{}}}",
+        sink.kind.as_str(),
+        escape(&sink.text),
+        sink.line
+    ));
 }
 
 pub(super) fn stop_reason_values(finding: &Finding) -> Vec<String> {

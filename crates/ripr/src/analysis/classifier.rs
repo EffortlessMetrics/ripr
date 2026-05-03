@@ -15,8 +15,9 @@ pub fn classify_probe(probe: &Probe, index: &RustIndex) -> Finding {
 
     let related_tests = find_related_tests(probe, owner_fn, index);
     let reach = reach_evidence(&related_tests, owner_fn);
-    let infect = infection_evidence(probe, &related_tests);
     let flow_sinks = local_flow_sinks(probe, owner_fn);
+    let activation = activation_evidence(probe, owner_fn, &related_tests, &flow_sinks);
+    let infect = infection_evidence(probe, &related_tests, &activation);
     let propagate = propagation_evidence(probe, &flow_sinks);
     let (observe, discriminate, related) = reveal_evidence(probe, &related_tests);
 
@@ -49,7 +50,7 @@ pub fn classify_probe(probe: &Probe, index: &RustIndex) -> Finding {
     evidence.sort();
     evidence.dedup();
 
-    let missing = missing_evidence(probe, &class, &infect, &observe, &discriminate);
+    let missing = missing_evidence(probe, &class, &infect, &observe, &discriminate, &activation);
     let mut stop_reasons = stop_reasons(probe, owner_fn, &related_tests);
     ensure_unknown_stop_reason(&class, &mut stop_reasons);
     let recommended_next_step = recommended_next_step(probe, &class);
@@ -63,6 +64,7 @@ pub fn classify_probe(probe: &Probe, index: &RustIndex) -> Finding {
         evidence,
         missing,
         flow_sinks,
+        activation,
         stop_reasons,
         related_tests: related,
         recommended_next_step,
@@ -153,7 +155,665 @@ fn reach_evidence(
     }
 }
 
-fn infection_evidence(probe: &Probe, related_tests: &[&TestSummary]) -> StageEvidence {
+fn activation_evidence(
+    probe: &Probe,
+    owner_fn: Option<&FunctionSummary>,
+    related_tests: &[&TestSummary],
+    flow_sinks: &[FlowSinkFact],
+) -> ActivationEvidence {
+    let mut observed_values = related_tests
+        .iter()
+        .flat_map(|test| value_facts_for_test(test, owner_fn))
+        .collect::<Vec<_>>();
+    observed_values.extend(observed_discriminator_values(
+        probe,
+        owner_fn,
+        related_tests,
+    ));
+    sort_value_facts(&mut observed_values);
+
+    let mut missing_discriminators =
+        missing_discriminator_facts(probe, owner_fn, related_tests, flow_sinks, &observed_values);
+    missing_discriminators.sort_by(|left, right| {
+        left.value
+            .cmp(&right.value)
+            .then(left.reason.cmp(&right.reason))
+            .then(
+                left.flow_sink
+                    .as_ref()
+                    .map(|sink| sink.kind.as_str())
+                    .cmp(&right.flow_sink.as_ref().map(|sink| sink.kind.as_str())),
+            )
+    });
+    missing_discriminators
+        .dedup_by(|left, right| left.value == right.value && left.reason == right.reason);
+
+    ActivationEvidence {
+        observed_values,
+        missing_discriminators,
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ParameterValue {
+    parameter: String,
+    value: String,
+    line: usize,
+    text: String,
+}
+
+fn value_facts_for_test(test: &TestSummary, owner_fn: Option<&FunctionSummary>) -> Vec<ValueFact> {
+    let owner_name = owner_fn.map(|owner| owner.name.as_str()).unwrap_or("");
+    let parameters = owner_fn.map(function_parameters).unwrap_or_default();
+    let mut facts = Vec::new();
+
+    for call in &test.calls {
+        if !owner_name.is_empty() && call.name != owner_name {
+            continue;
+        }
+        let Some(arguments) = call_arguments(&call.text, &call.name) else {
+            continue;
+        };
+        for (idx, argument) in arguments.iter().enumerate() {
+            for value in scalar_values(argument) {
+                let value = parameters
+                    .get(idx)
+                    .map(|parameter| format!("{parameter} = {value}"))
+                    .unwrap_or(value);
+                facts.push(ValueFact {
+                    line: call.line,
+                    text: call.text.clone(),
+                    value,
+                    context: ValueContext::FunctionArgument,
+                });
+            }
+            for value in enum_variant_values(argument) {
+                facts.push(ValueFact {
+                    line: call.line,
+                    text: call.text.clone(),
+                    value,
+                    context: ValueContext::EnumVariant,
+                });
+            }
+        }
+    }
+
+    for assertion in &test.assertions {
+        let assertion_arguments = macro_arguments(&assertion.text).unwrap_or_default();
+        for argument in assertion_arguments {
+            if argument.contains(owner_name) && !owner_name.is_empty() {
+                continue;
+            }
+            for value in scalar_values(&argument) {
+                facts.push(ValueFact {
+                    line: assertion.line,
+                    text: assertion.text.clone(),
+                    value,
+                    context: ValueContext::AssertionArgument,
+                });
+            }
+        }
+        for value in enum_variant_values(&assertion.text) {
+            facts.push(ValueFact {
+                line: assertion.line,
+                text: assertion.text.clone(),
+                value,
+                context: ValueContext::EnumVariant,
+            });
+        }
+    }
+
+    for (offset, line) in test.body.lines().enumerate() {
+        let line_number = test.start_line + offset;
+        let trimmed = line.trim();
+        if looks_like_table_row(trimmed) {
+            for value in scalar_values(trimmed) {
+                facts.push(ValueFact {
+                    line: line_number,
+                    text: trimmed.to_string(),
+                    value,
+                    context: ValueContext::TableRow,
+                });
+            }
+        }
+        if looks_like_builder_method(trimmed) {
+            for value in scalar_values(trimmed) {
+                facts.push(ValueFact {
+                    line: line_number,
+                    text: trimmed.to_string(),
+                    value,
+                    context: ValueContext::BuilderMethod,
+                });
+            }
+        }
+    }
+
+    sort_value_facts(&mut facts);
+    facts
+}
+
+fn observed_discriminator_values(
+    probe: &Probe,
+    owner_fn: Option<&FunctionSummary>,
+    related_tests: &[&TestSummary],
+) -> Vec<ValueFact> {
+    let Some((left, right)) = comparison_operands(&probe.expression) else {
+        return Vec::new();
+    };
+    let Some(owner) = owner_fn else {
+        return Vec::new();
+    };
+    let parameters = function_parameters(owner);
+    let call_values = owner_call_parameter_values(related_tests, &owner.name, &parameters);
+    let mut facts = Vec::new();
+
+    for row in call_values {
+        let Some(left_value) = parameter_value(&row, &left) else {
+            continue;
+        };
+        let right_value = parameter_value(&row, &right)
+            .map(|value| value.value)
+            .or_else(|| literal_operand_value(&right));
+        if right_value
+            .as_deref()
+            .is_some_and(|value| comparable_value(value) == comparable_value(&left_value.value))
+        {
+            facts.push(ValueFact {
+                line: left_value.line,
+                text: left_value.text.clone(),
+                value: format!("{left} == {right}"),
+                context: ValueContext::FunctionArgument,
+            });
+        }
+    }
+
+    facts
+}
+
+fn missing_discriminator_facts(
+    probe: &Probe,
+    owner_fn: Option<&FunctionSummary>,
+    related_tests: &[&TestSummary],
+    flow_sinks: &[FlowSinkFact],
+    observed_values: &[ValueFact],
+) -> Vec<MissingDiscriminatorFact> {
+    let mut missing = Vec::new();
+    if matches!(probe.family, ProbeFamily::Predicate)
+        && let Some(fact) =
+            missing_boundary_discriminator(probe, owner_fn, related_tests, flow_sinks)
+    {
+        missing.push(fact);
+    }
+    if (matches!(probe.family, ProbeFamily::ErrorPath)
+        || flow_sinks
+            .iter()
+            .any(|sink| sink.kind == FlowSinkKind::ErrorVariant))
+        && let Some(fact) = missing_error_variant_discriminator(probe, related_tests, flow_sinks)
+    {
+        missing.push(fact);
+    }
+    if missing.is_empty()
+        && observed_values
+            .iter()
+            .any(|fact| fact.value.contains(" == "))
+    {
+        return Vec::new();
+    }
+    missing
+}
+
+fn missing_boundary_discriminator(
+    probe: &Probe,
+    owner_fn: Option<&FunctionSummary>,
+    related_tests: &[&TestSummary],
+    flow_sinks: &[FlowSinkFact],
+) -> Option<MissingDiscriminatorFact> {
+    let (left, right) = comparison_operands(&probe.expression)?;
+    let owner = owner_fn?;
+    let parameters = function_parameters(owner);
+    let call_values = owner_call_parameter_values(related_tests, &owner.name, &parameters);
+    if call_values.is_empty() {
+        return None;
+    }
+
+    let equality_observed = call_values.iter().any(|row| {
+        let Some(left_value) = parameter_value(row, &left) else {
+            return false;
+        };
+        let right_value = parameter_value(row, &right)
+            .map(|value| value.value)
+            .or_else(|| literal_operand_value(&right));
+        right_value
+            .as_deref()
+            .is_some_and(|value| comparable_value(value) == comparable_value(&left_value.value))
+    });
+    if equality_observed {
+        return None;
+    }
+
+    let left_values = observed_parameter_values(&call_values, &left);
+    let right_parameter_values = parameter_value_set(&call_values, &right);
+    let right_literal = literal_operand_value(&right);
+    let reason = if let Some(right_values) = right_parameter_values {
+        format!(
+            "No related test call uses {left} equal to {right}; observed {left} values: {}; observed {right} values: {}",
+            list_or_unknown(&left_values),
+            list_or_unknown(&right_values)
+        )
+    } else if let Some(right_value) = right_literal {
+        format!(
+            "No related test call uses {left} equal to {right}; observed {left} values: {}; target {right} value: {right_value}",
+            list_or_unknown(&left_values)
+        )
+    } else {
+        format!(
+            "No related test call uses {left} equal to {right}; observed {left} values: {}",
+            list_or_unknown(&left_values)
+        )
+    };
+
+    Some(MissingDiscriminatorFact {
+        value: format!("{left} == {right}"),
+        reason,
+        flow_sink: first_visible_flow_sink(flow_sinks).cloned(),
+    })
+}
+
+fn missing_error_variant_discriminator(
+    probe: &Probe,
+    related_tests: &[&TestSummary],
+    flow_sinks: &[FlowSinkFact],
+) -> Option<MissingDiscriminatorFact> {
+    let variant = exact_error_variant(&probe.expression).or_else(|| {
+        flow_sinks
+            .iter()
+            .find_map(|sink| exact_error_variant(&sink.text))
+    })?;
+    let exact_assertion_found = related_tests.iter().any(|test| {
+        test.assertions.iter().any(|assertion| {
+            assertion.kind == OracleKind::ExactErrorVariant && assertion.text.contains(&variant)
+        })
+    });
+    if exact_assertion_found {
+        return None;
+    }
+
+    Some(MissingDiscriminatorFact {
+        value: variant.clone(),
+        reason: format!("No exact error variant assertion for {variant}"),
+        flow_sink: flow_sinks
+            .iter()
+            .find(|sink| sink.kind == FlowSinkKind::ErrorVariant)
+            .or_else(|| first_visible_flow_sink(flow_sinks))
+            .cloned(),
+    })
+}
+
+fn owner_call_parameter_values(
+    related_tests: &[&TestSummary],
+    owner_name: &str,
+    parameters: &[String],
+) -> Vec<Vec<ParameterValue>> {
+    let mut rows = Vec::new();
+    if owner_name.is_empty() || parameters.is_empty() {
+        return rows;
+    }
+    for test in related_tests {
+        for call in &test.calls {
+            if call.name != owner_name {
+                continue;
+            }
+            let Some(arguments) = call_arguments(&call.text, &call.name) else {
+                continue;
+            };
+            let row = arguments
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, argument)| {
+                    let parameter = parameters.get(idx)?;
+                    let value = scalar_values(argument).into_iter().next()?;
+                    Some(ParameterValue {
+                        parameter: parameter.clone(),
+                        value,
+                        line: call.line,
+                        text: call.text.clone(),
+                    })
+                })
+                .collect::<Vec<_>>();
+            if !row.is_empty() {
+                rows.push(row);
+            }
+        }
+    }
+    rows
+}
+
+fn parameter_value(row: &[ParameterValue], parameter: &str) -> Option<ParameterValue> {
+    row.iter()
+        .find(|value| value.parameter == parameter)
+        .cloned()
+}
+
+fn parameter_value_set(rows: &[Vec<ParameterValue>], parameter: &str) -> Option<Vec<String>> {
+    let mut values = observed_parameter_values(rows, parameter);
+    if values.is_empty() {
+        None
+    } else {
+        values.sort();
+        values.dedup();
+        Some(values)
+    }
+}
+
+fn observed_parameter_values(rows: &[Vec<ParameterValue>], parameter: &str) -> Vec<String> {
+    let mut values = rows
+        .iter()
+        .flat_map(|row| {
+            row.iter()
+                .filter(|value| value.parameter == parameter)
+                .map(|value| value.value.clone())
+        })
+        .collect::<Vec<_>>();
+    values.sort();
+    values.dedup();
+    values
+}
+
+fn function_parameters(function: &FunctionSummary) -> Vec<String> {
+    let signature = function
+        .body
+        .lines()
+        .next()
+        .unwrap_or(function.body.as_str());
+    let Some(arguments) = delimited_contents_after(signature, '(') else {
+        return Vec::new();
+    };
+    split_top_level_args(&arguments)
+        .into_iter()
+        .filter_map(|argument| {
+            argument
+                .split_once(':')
+                .map(|(name, _)| name.trim().to_string())
+        })
+        .filter(|name| !name.is_empty() && name != "self" && name != "&self" && name != "mut self")
+        .collect()
+}
+
+fn comparison_operands(expression: &str) -> Option<(String, String)> {
+    for operator in [">=", "<=", "==", "!=", ">", "<"] {
+        if let Some((left, right)) = expression.split_once(operator) {
+            let left = clean_operand(left);
+            let right = clean_operand(right);
+            if !left.is_empty() && !right.is_empty() {
+                return Some((left, right));
+            }
+        }
+    }
+    None
+}
+
+fn clean_operand(operand: &str) -> String {
+    let cleaned = operand
+        .trim()
+        .trim_start_matches("if ")
+        .trim_end_matches('{')
+        .trim_end_matches(';')
+        .trim();
+    let cleaned = cleaned
+        .split_once('{')
+        .map(|(before, _)| before.trim())
+        .unwrap_or(cleaned);
+    cleaned.to_string()
+}
+
+fn literal_operand_value(operand: &str) -> Option<String> {
+    scalar_values(operand).into_iter().next()
+}
+
+fn comparable_value(value: &str) -> String {
+    value
+        .trim()
+        .trim_matches('"')
+        .chars()
+        .filter(|ch| *ch != '_')
+        .collect()
+}
+
+fn first_visible_flow_sink(flow_sinks: &[FlowSinkFact]) -> Option<&FlowSinkFact> {
+    flow_sinks
+        .iter()
+        .find(|sink| sink.kind != FlowSinkKind::Unknown)
+}
+
+fn exact_error_variant(text: &str) -> Option<String> {
+    let start = text.find("Err(")?;
+    let inner = delimited_contents_at(text, start + "Err".len())?;
+    enum_variant_values(&inner).into_iter().next()
+}
+
+fn list_or_unknown(values: &[String]) -> String {
+    if values.is_empty() {
+        "unknown".to_string()
+    } else {
+        values.join(", ")
+    }
+}
+
+fn has_observed_boundary_equality(activation: &ActivationEvidence) -> bool {
+    activation
+        .observed_values
+        .iter()
+        .any(|fact| fact.value.contains(" == "))
+}
+
+fn sort_value_facts(facts: &mut Vec<ValueFact>) {
+    facts.sort_by(|left, right| {
+        left.line
+            .cmp(&right.line)
+            .then(left.context.as_str().cmp(right.context.as_str()))
+            .then(left.value.cmp(&right.value))
+            .then(left.text.cmp(&right.text))
+    });
+    facts.dedup_by(|left, right| {
+        left.line == right.line
+            && left.text == right.text
+            && left.value == right.value
+            && left.context == right.context
+    });
+}
+
+fn call_arguments(text: &str, name: &str) -> Option<Vec<String>> {
+    let needle = format!("{name}(");
+    let start = text.find(&needle)? + name.len();
+    let contents = delimited_contents_at(text, start)?;
+    Some(split_top_level_args(&contents))
+}
+
+fn macro_arguments(text: &str) -> Option<Vec<String>> {
+    let start = text.find("!(")? + 1;
+    let contents = delimited_contents_at(text, start)?;
+    Some(split_top_level_args(&contents))
+}
+
+fn delimited_contents_after(text: &str, delimiter: char) -> Option<String> {
+    let start = text.find(delimiter)?;
+    delimited_contents_at(text, start)
+}
+
+fn delimited_contents_at(text: &str, open_index: usize) -> Option<String> {
+    let bytes = text.as_bytes();
+    if bytes.get(open_index) != Some(&b'(') {
+        return None;
+    }
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+    for (idx, ch) in text.char_indices().skip_while(|(idx, _)| *idx < open_index) {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match ch {
+            '"' => in_string = true,
+            '(' => depth += 1,
+            ')' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    let start = open_index + 1;
+                    return text.get(start..idx).map(ToString::to_string);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn split_top_level_args(text: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    let mut start = 0usize;
+    let mut depth = 0i32;
+    let mut in_string = false;
+    let mut escaped = false;
+    for (idx, ch) in text.char_indices() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match ch {
+            '"' => in_string = true,
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth -= 1,
+            ',' if depth == 0 => {
+                if let Some(arg) = text.get(start..idx).map(str::trim)
+                    && !arg.is_empty()
+                {
+                    args.push(arg.to_string());
+                }
+                start = idx + 1;
+            }
+            _ => {}
+        }
+    }
+    if let Some(arg) = text.get(start..).map(str::trim)
+        && !arg.is_empty()
+    {
+        args.push(arg.to_string());
+    }
+    args
+}
+
+fn scalar_values(text: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    let chars = text.char_indices().collect::<Vec<_>>();
+    let mut idx = 0usize;
+    while idx < chars.len() {
+        let (byte_idx, ch) = chars[idx];
+        if ch == '"' {
+            let mut end = byte_idx + ch.len_utf8();
+            let mut cursor = idx + 1;
+            let mut escaped = false;
+            while cursor < chars.len() {
+                let (next_byte, next_ch) = chars[cursor];
+                end = next_byte + next_ch.len_utf8();
+                if escaped {
+                    escaped = false;
+                } else if next_ch == '\\' {
+                    escaped = true;
+                } else if next_ch == '"' {
+                    break;
+                }
+                cursor += 1;
+            }
+            if let Some(value) = text.get(byte_idx..end) {
+                values.push(value.to_string());
+            }
+            idx = cursor.saturating_add(1);
+            continue;
+        }
+        if ch.is_ascii_digit()
+            || (ch == '-'
+                && chars
+                    .get(idx + 1)
+                    .is_some_and(|(_, next_ch)| next_ch.is_ascii_digit()))
+        {
+            let mut end = byte_idx + ch.len_utf8();
+            let mut cursor = idx + 1;
+            while cursor < chars.len() {
+                let (next_byte, next_ch) = chars[cursor];
+                if next_ch.is_ascii_digit() || next_ch == '_' {
+                    end = next_byte + next_ch.len_utf8();
+                    cursor += 1;
+                } else {
+                    break;
+                }
+            }
+            if let Some(value) = text.get(byte_idx..end) {
+                values.push(value.to_string());
+            }
+            idx = cursor;
+            continue;
+        }
+        idx += 1;
+    }
+    values.sort();
+    values.dedup();
+    values
+}
+
+fn enum_variant_values(text: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    for token in text.split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == ':')) {
+        if !token.contains("::") {
+            continue;
+        }
+        let Some(last) = token.rsplit("::").next() else {
+            continue;
+        };
+        if last
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_ascii_uppercase())
+        {
+            values.push(token.to_string());
+        }
+    }
+    values.sort();
+    values.dedup();
+    values
+}
+
+fn looks_like_table_row(line: &str) -> bool {
+    (line.starts_with('(') || line.starts_with('[') || line.contains("[(")) && line.contains(',')
+}
+
+fn looks_like_builder_method(line: &str) -> bool {
+    line.contains('.')
+        && line.contains('(')
+        && (line.contains("builder")
+            || line.contains("with_")
+            || line.contains(".amount(")
+            || line.contains(".token(")
+            || line.contains(".threshold("))
+}
+
+fn infection_evidence(
+    probe: &Probe,
+    related_tests: &[&TestSummary],
+    activation: &ActivationEvidence,
+) -> StageEvidence {
     match probe.family {
         ProbeFamily::Predicate => {
             let probe_literals = extract_literals(&probe.expression);
@@ -166,6 +826,22 @@ fn infection_evidence(probe: &Probe, related_tests: &[&TestSummary]) -> StageEvi
                     StageState::Unknown,
                     Confidence::Low,
                     "No tests were found, so activation/infection cannot be estimated",
+                )
+            } else if activation
+                .missing_discriminators
+                .iter()
+                .any(|fact| fact.value.contains("=="))
+            {
+                StageEvidence::new(
+                    StageState::Weak,
+                    Confidence::Medium,
+                    "Related tests contain input values, but the equality-boundary discriminator is missing",
+                )
+            } else if has_observed_boundary_equality(activation) {
+                StageEvidence::new(
+                    StageState::Yes,
+                    Confidence::Medium,
+                    "Detected related test input at the changed boundary",
                 )
             } else if probe_literals.is_empty() {
                 StageEvidence::new(
@@ -521,6 +1197,9 @@ fn flow_sink(
 }
 
 fn result_error_text(text: &str) -> String {
+    if let Some(variant) = exact_error_variant(text) {
+        return format!("Result::Err({variant})");
+    }
     if let Some(start) = text.find("Err(") {
         let error = text[start..]
             .trim()
@@ -971,6 +1650,7 @@ fn missing_evidence(
     infect: &StageEvidence,
     observe: &StageEvidence,
     discriminate: &StageEvidence,
+    activation: &ActivationEvidence,
 ) -> Vec<String> {
     let mut missing = Vec::new();
     match class {
@@ -991,7 +1671,13 @@ fn missing_evidence(
         ),
         ExposureClass::WeaklyExposed => {}
     }
-    if matches!(probe.family, ProbeFamily::Predicate) && infect.state != StageState::Yes {
+    if matches!(probe.family, ProbeFamily::Predicate)
+        && infect.state != StageState::Yes
+        && !activation
+            .missing_discriminators
+            .iter()
+            .any(|fact| fact.value.contains("=="))
+    {
         missing.push("No detected boundary input for the changed predicate".to_string());
     }
     if observe.state != StageState::Yes {
@@ -1004,6 +1690,12 @@ fn missing_evidence(
             missing.push("No strong discriminator was detected".to_string());
         }
     }
+    missing.extend(
+        activation
+            .missing_discriminators
+            .iter()
+            .map(|fact| format!("Missing discriminator value: {}", fact.value)),
+    );
     missing.sort();
     missing.dedup();
     missing
@@ -2056,6 +2748,241 @@ mod tests {
         assert_eq!(
             finding.ripr.propagate.summary,
             "Propagation is not statically obvious from syntax-first analysis"
+        );
+    }
+
+    #[test]
+    fn given_boundary_predicate_when_tests_skip_equal_value_then_activation_names_missing_boundary()
+    {
+        let function = FunctionSummary {
+            body: r#"pub fn score(amount: i32, threshold: i32) -> i32 {
+    if amount >= threshold {
+        amount - 10
+    } else {
+        amount
+    }
+}"#
+            .to_string(),
+            start_line: 1,
+            end_line: 7,
+            ..function("src/lib.rs", "score")
+        };
+        let index = RustIndex {
+            functions: vec![function],
+            tests: vec![
+                test(
+                    "tests/score.rs",
+                    "below_threshold_has_no_discount",
+                    "score(50, 100)",
+                    "assert_eq!(score(50, 100), 50);",
+                ),
+                test(
+                    "tests/score.rs",
+                    "far_above_threshold_discounts",
+                    "score(10_000, 100)",
+                    "assert_eq!(score(10_000, 100), 9_990);",
+                ),
+            ],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:2:predicate".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId("src/lib.rs::score".to_string())),
+            family: ProbeFamily::Predicate,
+            delta: DeltaKind::Control,
+            before: None,
+            after: Some("amount >= threshold".to_string()),
+            expression: "amount >= threshold".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+
+        assert_eq!(finding.class, ExposureClass::WeaklyExposed);
+        assert_eq!(finding.ripr.infect.state, StageState::Weak);
+        assert!(finding.activation.observed_values.iter().any(|fact| {
+            fact.context == ValueContext::FunctionArgument && fact.value == "amount = 50"
+        }));
+        assert!(finding.activation.observed_values.iter().any(|fact| {
+            fact.context == ValueContext::FunctionArgument && fact.value == "amount = 10_000"
+        }));
+        assert!(finding.activation.observed_values.iter().any(|fact| {
+            fact.context == ValueContext::FunctionArgument && fact.value == "threshold = 100"
+        }));
+        assert_eq!(finding.activation.missing_discriminators.len(), 1);
+        assert_eq!(
+            finding.activation.missing_discriminators[0].value,
+            "amount == threshold"
+        );
+        assert_eq!(
+            finding.activation.missing_discriminators[0]
+                .flow_sink
+                .as_ref()
+                .map(|sink| &sink.kind),
+            Some(&FlowSinkKind::ReturnValue)
+        );
+    }
+
+    #[test]
+    fn given_boundary_predicate_when_equal_value_exists_then_activation_has_no_missing_boundary() {
+        let function = FunctionSummary {
+            body: r#"pub fn score(amount: i32, threshold: i32) -> i32 {
+    if amount >= threshold {
+        amount - 10
+    } else {
+        amount
+    }
+}"#
+            .to_string(),
+            start_line: 1,
+            end_line: 7,
+            ..function("src/lib.rs", "score")
+        };
+        let index = RustIndex {
+            functions: vec![function],
+            tests: vec![test(
+                "tests/score.rs",
+                "equal_threshold_discounts",
+                "score(100, 100)",
+                "assert_eq!(score(100, 100), 90);",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:2:predicate".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId("src/lib.rs::score".to_string())),
+            family: ProbeFamily::Predicate,
+            delta: DeltaKind::Control,
+            before: None,
+            after: Some("amount >= threshold".to_string()),
+            expression: "amount >= threshold".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+
+        assert_eq!(finding.ripr.infect.state, StageState::Yes);
+        assert!(finding.activation.missing_discriminators.is_empty());
+        assert!(finding.activation.observed_values.iter().any(|fact| {
+            fact.context == ValueContext::FunctionArgument && fact.value == "amount == threshold"
+        }));
+    }
+
+    #[test]
+    fn given_error_path_probe_when_test_uses_is_err_then_exact_error_variant_is_missing() {
+        let function = FunctionSummary {
+            body: r#"pub fn score(token: &str) -> Result<&'static str, AuthError> {
+    if token.is_empty() {
+        return Err(AuthError::RevokedToken);
+    }
+    Ok("accepted")
+}"#
+            .to_string(),
+            start_line: 1,
+            end_line: 6,
+            returns: vec![
+                ReturnFact {
+                    line: 3,
+                    text: "return Err(AuthError::RevokedToken);".to_string(),
+                },
+                ReturnFact {
+                    line: 5,
+                    text: "Ok(\"accepted\")".to_string(),
+                },
+            ],
+            ..function("src/lib.rs", "score")
+        };
+        let index = RustIndex {
+            functions: vec![function],
+            tests: vec![test_with_oracle(
+                "tests/errors.rs",
+                "empty_token_is_rejected",
+                "score(\"\")",
+                oracle_fact(
+                    "assert!(score(\"\").is_err());",
+                    OracleKind::BroadError,
+                    OracleStrength::Weak,
+                ),
+            )],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:3:error_path".to_string()),
+            location: SourceLocation::new("src/lib.rs", 3, 1),
+            owner: Some(SymbolId("src/lib.rs::score".to_string())),
+            family: ProbeFamily::ErrorPath,
+            delta: DeltaKind::Value,
+            before: None,
+            after: Some("return Err(AuthError::RevokedToken);".to_string()),
+            expression: "return Err(AuthError::RevokedToken);".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+
+        assert!(finding.activation.observed_values.iter().any(|fact| {
+            fact.context == ValueContext::FunctionArgument && fact.value == "token = \"\""
+        }));
+        assert_eq!(finding.activation.missing_discriminators.len(), 1);
+        assert_eq!(
+            finding.activation.missing_discriminators[0].value,
+            "AuthError::RevokedToken"
+        );
+        assert_eq!(
+            finding.activation.missing_discriminators[0]
+                .flow_sink
+                .as_ref()
+                .map(|sink| &sink.kind),
+            Some(&FlowSinkKind::ErrorVariant)
+        );
+    }
+
+    #[test]
+    fn given_table_rows_and_builder_calls_when_extracting_values_then_contexts_are_preserved() {
+        let test = TestSummary {
+            name: "table_and_builder".to_string(),
+            file: PathBuf::from("tests/value.rs"),
+            start_line: 10,
+            end_line: 16,
+            body: r#"let rows = [(99, 100), (100, 100)];
+let input = Request::builder().amount(100).token("abc").build();
+assert_eq!(input.amount, 100);"#
+                .to_string(),
+            calls: vec![],
+            assertions: vec![oracle_fact(
+                "assert_eq!(input.amount, 100);",
+                OracleKind::ExactValue,
+                OracleStrength::Strong,
+            )],
+            literals: vec![],
+        };
+
+        let facts = value_facts_for_test(&test, None);
+
+        assert!(
+            facts
+                .iter()
+                .any(|fact| fact.context == ValueContext::TableRow && fact.value == "99")
+        );
+        assert!(
+            facts
+                .iter()
+                .any(|fact| fact.context == ValueContext::BuilderMethod && fact.value == "100")
+        );
+        assert!(
+            facts
+                .iter()
+                .any(|fact| fact.context == ValueContext::BuilderMethod && fact.value == "\"abc\"")
+        );
+        assert!(
+            facts
+                .iter()
+                .any(|fact| fact.context == ValueContext::AssertionArgument && fact.value == "100")
         );
     }
 

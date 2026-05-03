@@ -100,6 +100,26 @@ pub fn render_finding(finding: &Finding) -> String {
         }
     }
 
+    if !finding.activation.observed_values.is_empty()
+        || !finding.activation.missing_discriminators.is_empty()
+    {
+        out.push_str("\nActivation evidence:\n");
+        for value in finding.activation.observed_values.iter().take(8) {
+            out.push_str(&format!(
+                "  - observed {} at line {} ({})\n",
+                value.value,
+                value.line,
+                value.context.as_str()
+            ));
+        }
+        for discriminator in &finding.activation.missing_discriminators {
+            out.push_str(&format!(
+                "  - missing {} — {}\n",
+                discriminator.value, discriminator.reason
+            ));
+        }
+    }
+
     if !finding.missing.is_empty() {
         out.push_str("\nGap:\n");
         for missing in &finding.missing {
@@ -128,9 +148,9 @@ mod tests {
     use super::{render, render_finding};
     use crate::app::{CheckOutput, Mode};
     use crate::domain::{
-        Confidence, DeltaKind, ExposureClass, Finding, OracleStrength, Probe, ProbeFamily, ProbeId,
-        RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState,
-        Summary,
+        ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, OracleStrength, Probe,
+        ProbeFamily, ProbeId, RelatedTest, RevealEvidence, RiprEvidence, SourceLocation,
+        StageEvidence, StageState, Summary,
     };
     use std::path::PathBuf;
 
@@ -231,6 +251,7 @@ mod tests {
             evidence: vec![],
             missing: vec!["missing strong oracle".to_string()],
             flow_sinks: vec![],
+            activation: ActivationEvidence::default(),
             stop_reasons: vec![],
             related_tests: vec![RelatedTest {
                 name: "test_handles_disabled".to_string(),
@@ -272,6 +293,7 @@ mod tests {
             evidence: vec![],
             missing: vec![],
             flow_sinks: vec![],
+            activation: ActivationEvidence::default(),
             stop_reasons: vec![],
             related_tests: vec![],
             recommended_next_step: Some("Escalate to real mutation testing.".to_string()),

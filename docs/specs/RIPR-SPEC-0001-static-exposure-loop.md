@@ -35,6 +35,7 @@ Each finding should carry:
 - RIPR stage evidence
 - related tests, if any
 - oracle evidence, if any
+- observed activation values, if statically visible
 - missing discriminator
 - recommended next step
 - stop reason for unknowns
@@ -123,4 +124,5 @@ Current and planned modules:
 - unknowns with stop reasons
 - oracle kind recognition rate
 - flow sink identification rate
+- activation value extraction rate
 - static runtime by mode
