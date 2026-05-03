@@ -24,10 +24,10 @@ CHANGELOG.md|documentation|docs|Repository changelog.
 CONTRIBUTING.md|documentation|docs|Contribution guide.
 Cargo.lock|rust_lockfile|rust|Cargo lockfile.
 Cargo.toml|rust_manifest|rust|Cargo workspace manifest.
-codecov.yml|ci_coverage_policy|release/ci|Codecov configuration for coverage status checks and reporting.
 LICENSE-*|license|repo|License files.
 README.md|documentation|docs|Repository README.
 assets/**|asset|brand/docs|Non-code assets.
+codecov.yml|ci_coverage_policy|release/ci|Codecov configuration for coverage status checks and reporting.
 crates/**/Cargo.toml|rust_manifest|rust|Cargo package manifests.
 crates/ripr/examples/**|fixture_input|analysis-fixtures|Packaged sample workspace and diff are analyzed inputs.
 deny.toml|supply_chain_policy|security|Cargo-deny policy for advisories, licenses, bans, and source registries.
