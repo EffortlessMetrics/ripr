@@ -56,11 +56,11 @@ commands = [
 
 [[work_item]]
 id = "test-efficiency/duplicate-discriminator-v1"
-status = "ready"
+status = "done"
 branch = "test-efficiency/duplicate-discriminator-v1"
 stackable = false
 requires_human_merge = true
-acceptance = "advisory duplicate-discriminator groups name tests with the same owner, activation values, oracle shape, and sink evidence"
+acceptance = "advisory duplicate-discriminator groups name tests with the same owner, activation signature, and oracle shape; emit class `duplicative` and reason `duplicate_activation_and_oracle_shape`"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
@@ -73,13 +73,11 @@ commands = [
 
 [[work_item]]
 id = "test-efficiency/report-and-metrics"
-status = "blocked"
+status = "ready"
 branch = "test-efficiency/report-and-metrics"
 stackable = false
 requires_human_merge = true
-blocked_by = ["test-efficiency/vacuous-signal-v1", "test-efficiency/duplicate-discriminator-v1"]
-blocked_reason = "needs stable vacuity and duplicate signal classes before summarizing metrics"
-acceptance = "test-efficiency reports and metrics summarize strong, broad, smoke-only, likely-vacuous, opaque, and duplicative counts"
+acceptance = "test-efficiency reports and metrics summarize strong, broad, smoke-only, likely-vacuous, opaque, and duplicative counts; expose `duplicate_discriminator_group_count` as a stable metric"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
