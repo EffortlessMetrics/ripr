@@ -173,11 +173,11 @@ commands = [
 
 [[work_item]]
 id = "suppressions/v1"
-status = "ready"
+status = "done"
 branch = "suppressions/v1"
 stackable = false
 requires_human_merge = true
-acceptance = ".ripr/suppressions.toml loader; reason and owner required; expiry encouraged; suppressed findings remain visible in reports; badge counts.suppressed_* reflect the count"
+acceptance = ".ripr/suppressions.toml loader: closed-set kinds (exposure_gap, test_efficiency); reason and owner required; expires optional in YYYY-MM-DD; expired entries do NOT apply and surface as warnings; unknown / unmatched / duplicate selectors fail the badge command; suppressed findings remain visible while moving from unsuppressed_* into suppressed_* badge counts; native JSON gains a `warnings` array; Shields stays exactly four fields"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
@@ -189,12 +189,10 @@ commands = [
 
 [[work_item]]
 id = "ci/badge-artifacts"
-status = "blocked"
+status = "ready"
 branch = "ci/badge-artifacts"
 stackable = false
 requires_human_merge = true
-blocked_by = ["badge/ripr-plus-count-v1", "suppressions/v1"]
-blocked_reason = "needs both badge formats and durable intent/suppression handling before CI publishes badge artifacts that consumers may treat as meaningful"
 acceptance = "CI uploads target/ripr/reports/ripr-badge*.json and ripr-plus-badge*.json, links them from the report index, and shows counts in the GitHub step summary; advisory by default; --fail-on-nonzero is opt-in"
 commands = [
   "cargo xtask shape",

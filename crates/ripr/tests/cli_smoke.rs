@@ -175,6 +175,13 @@ fn fixture_test_efficiency_report() -> &'static str {
 }
 
 fn make_temp_workspace(report: Option<&str>) -> Result<PathBuf, String> {
+    make_temp_workspace_with_suppressions(report, None)
+}
+
+fn make_temp_workspace_with_suppressions(
+    report: Option<&str>,
+    suppressions: Option<&str>,
+) -> Result<PathBuf, String> {
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
@@ -195,6 +202,12 @@ fn make_temp_workspace(report: Option<&str>) -> Result<PathBuf, String> {
         std::fs::create_dir_all(&reports).map_err(|e| format!("create reports dir: {e}"))?;
         std::fs::write(reports.join("test-efficiency.json"), text)
             .map_err(|e| format!("write report: {e}"))?;
+    }
+    if let Some(text) = suppressions {
+        let policy_dir = dir.join(".ripr");
+        std::fs::create_dir_all(&policy_dir).map_err(|e| format!("create .ripr dir: {e}"))?;
+        std::fs::write(policy_dir.join("suppressions.toml"), text)
+            .map_err(|e| format!("write suppressions: {e}"))?;
     }
     Ok(dir)
 }
@@ -406,4 +419,189 @@ fn explain_unknown_probe_fails_with_clear_error() {
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("no finding matched"));
+}
+
+// -------- suppressions/v1 smoke --------
+
+fn fixture_test_efficiency_with_actionable_test() -> &'static str {
+    // One bare smoke_only entry the suppressions test can target by name.
+    r#"{
+  "schema_version": "0.1",
+  "tests": [
+    {"name": "cli_prints_help", "path": "tests/cli.rs", "class": "smoke_only"}
+  ],
+  "metrics": {
+    "tests_scanned": 1,
+    "reason_counts": {"smoke_oracle_only": 1}
+  }
+}
+"#
+}
+
+#[test]
+fn check_badge_plus_applies_test_efficiency_suppressions_from_disk() -> Result<(), String> {
+    let suppressions = r#"schema_version = 1
+
+[[suppressions]]
+kind = "test_efficiency"
+test = "cli_prints_help"
+path = "tests/cli.rs"
+reason = "Intentionally broad CLI smoke test."
+owner = "devtools"
+expires = "2099-09-01"
+"#;
+    let workspace = make_temp_workspace_with_suppressions(
+        Some(fixture_test_efficiency_with_actionable_test()),
+        Some(suppressions),
+    )?;
+    let root = workspace.display().to_string();
+    let diff = sample_diff().display().to_string();
+    let output = run_ripr(&[
+        "check",
+        "--root",
+        &root,
+        "--diff",
+        &diff,
+        "--format",
+        "badge-plus-json",
+    ]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // 1 actionable test moved into the suppressed bucket.
+    assert!(stdout.contains(r#""unsuppressed_test_efficiency_findings": 0"#));
+    assert!(stdout.contains(r#""suppressed_test_efficiency_findings": 1"#));
+    // intentional remains 0 — declared_intent and suppressions are distinct.
+    assert!(stdout.contains(r#""intentional_test_efficiency_findings": 0"#));
+    // No warnings — selector matched and not expired.
+    assert!(stdout.contains(r#""warnings": []"#));
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn check_badge_plus_warns_on_expired_suppression_and_keeps_finding_in_headline()
+-> Result<(), String> {
+    let suppressions = r#"schema_version = 1
+
+[[suppressions]]
+kind = "test_efficiency"
+test = "cli_prints_help"
+path = "tests/cli.rs"
+reason = "Was intentionally broad."
+owner = "devtools"
+expires = "2025-01-01"
+"#;
+    let workspace = make_temp_workspace_with_suppressions(
+        Some(fixture_test_efficiency_with_actionable_test()),
+        Some(suppressions),
+    )?;
+    let root = workspace.display().to_string();
+    let diff = sample_diff().display().to_string();
+    let output = run_ripr(&[
+        "check",
+        "--root",
+        &root,
+        "--diff",
+        &diff,
+        "--format",
+        "badge-plus-json",
+    ]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Expired suppression must NOT apply — the finding stays in the
+    // unsuppressed bucket.
+    assert!(stdout.contains(r#""unsuppressed_test_efficiency_findings": 1"#));
+    assert!(stdout.contains(r#""suppressed_test_efficiency_findings": 0"#));
+    // Warnings array surfaces the expiry.
+    assert!(stdout.contains("expired"));
+    assert!(stdout.contains("cli_prints_help"));
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn check_badge_plus_fails_when_suppressions_manifest_is_malformed() -> Result<(), String> {
+    let suppressions = r#"schema_version = 1
+
+[[suppressions]]
+kind = "wishful"
+finding_id = "probe:x"
+owner = "z"
+reason = "y"
+"#;
+    let workspace = make_temp_workspace_with_suppressions(
+        Some(fixture_test_efficiency_with_actionable_test()),
+        Some(suppressions),
+    )?;
+    let root = workspace.display().to_string();
+    let diff = sample_diff().display().to_string();
+    let output = run_ripr(&[
+        "check",
+        "--root",
+        &root,
+        "--diff",
+        &diff,
+        "--format",
+        "badge-plus-json",
+    ]);
+    assert!(
+        !output.status.success(),
+        "malformed suppressions manifest must fail the badge command"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(".ripr/suppressions.toml validation failed"),
+        "stderr must name the file: {stderr}"
+    );
+    assert!(
+        stderr.contains("unsupported kind `wishful`"),
+        "stderr must name the offending value: {stderr}"
+    );
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn check_badge_shields_remains_four_fields_with_suppressions_warnings() -> Result<(), String> {
+    // An unmatched suppression generates a warning. The Shields shape must
+    // stay exactly four fields and never leak warnings text.
+    let suppressions = r#"schema_version = 1
+
+[[suppressions]]
+kind = "exposure_gap"
+finding_id = "probe:does_not_match_any_finding"
+owner = "z"
+reason = "ghost selector"
+"#;
+    let workspace = make_temp_workspace_with_suppressions(None, Some(suppressions))?;
+    let root = workspace.display().to_string();
+    let diff = sample_diff().display().to_string();
+    let output = run_ripr(&[
+        "check",
+        "--root",
+        &root,
+        "--diff",
+        &diff,
+        "--format",
+        "badge-shields",
+    ]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for forbidden in [r#""warnings""#, "ghost", "did not match"] {
+        assert!(
+            !stdout.contains(forbidden),
+            "Shields projection must not leak `{forbidden}`: {stdout}"
+        );
+    }
+    let top_level = stdout.lines().filter(|l| l.starts_with("  \"")).count();
+    assert_eq!(top_level, 4);
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
 }

@@ -153,13 +153,11 @@ pub fn render_check(output: &CheckOutput, format: &OutputFormat) -> Result<Strin
         OutputFormat::Json => Ok(output::json::render(output)),
         OutputFormat::Github => Ok(output::github::render(output)),
         OutputFormat::BadgeJson => {
-            let summary =
-                output::badge::ripr_badge_summary(output, output::badge::BadgePolicy::default());
+            let summary = ripr_summary_with_suppressions(output)?;
             Ok(output::badge::render_native_json(&summary))
         }
         OutputFormat::BadgeShields => {
-            let summary =
-                output::badge::ripr_badge_summary(output, output::badge::BadgePolicy::default());
+            let summary = ripr_summary_with_suppressions(output)?;
             Ok(output::badge::render_shields_json(&summary))
         }
         OutputFormat::BadgePlusJson => {
@@ -171,6 +169,30 @@ pub fn render_check(output: &CheckOutput, format: &OutputFormat) -> Result<Strin
             Ok(output::badge::render_shields_json(&summary))
         }
     }
+}
+
+fn load_suppressions(
+    output: &CheckOutput,
+) -> Result<Vec<output::suppressions::SuppressionEntry>, String> {
+    output::suppressions::load_suppressions_for_root(&output.root).map_err(|violations| {
+        format!(
+            ".ripr/suppressions.toml validation failed:\n{}",
+            violations.join("\n")
+        )
+    })
+}
+
+fn ripr_summary_with_suppressions(
+    output: &CheckOutput,
+) -> Result<output::badge::BadgeSummary, String> {
+    let suppressions = load_suppressions(output)?;
+    let today = output::suppressions::current_iso_date();
+    Ok(output::badge::ripr_badge_summary_with_suppressions(
+        output,
+        &suppressions,
+        &today,
+        output::badge::BadgePolicy::default(),
+    ))
 }
 
 fn ripr_plus_summary_from_disk(
@@ -186,9 +208,13 @@ fn ripr_plus_summary_from_disk(
     let text = std::fs::read_to_string(&report_path)
         .map_err(|err| format!("failed to read {}: {err}", report_path.display()))?;
     let test_efficiency = output::badge::parse_test_efficiency_badge_summary(&text)?;
-    Ok(output::badge::ripr_plus_badge_summary(
+    let suppressions = load_suppressions(output)?;
+    let today = output::suppressions::current_iso_date();
+    Ok(output::badge::ripr_plus_badge_summary_with_suppressions(
         output,
         test_efficiency,
+        &suppressions,
+        &today,
         output::badge::BadgePolicy::default(),
     ))
 }

@@ -277,13 +277,58 @@ Future `ripr+` will use the `declared_intent` metadata to exclude
 declared intentional test-efficiency findings from its count. See
 [Badge policy](BADGE_POLICY.md).
 
-### Planned policy files
+### `.ripr/suppressions.toml`
 
-The remaining narrow file before any general `ripr.toml`:
+Accepted exceptions for exposure-gap or test-efficiency findings the team
+has agreed to carry as known debt. Suppressed findings remain visible in
+detailed reports — they only move from `unsuppressed_*` into `suppressed_*`
+in the badge counts.
 
-- `.ripr/suppressions.toml` — exceptions for exposure gaps and remaining
-  test-efficiency findings that aren't covered by intent. Reason and owner
-  required; expiry encouraged.
+Validated by `ripr check --format badge-*` (loaded relative to `--root`).
+Schema:
+
+```toml
+schema_version = 1
+
+[[suppressions]]
+kind = "exposure_gap"
+finding_id = "probe:src/pricing.rs:88:predicate"
+reason = "Covered by integration test in tests/billing/integration.rs that ripr cannot statically inspect yet."
+owner = "billing"
+expires = "2026-09-01"
+
+[[suppressions]]
+kind = "test_efficiency"
+test = "cli_prints_help"
+path = "tests/cli.rs"
+reason = "The CLI help smoke test is intentionally broad and covered by CLI contract tests."
+owner = "devtools"
+```
+
+Supported `kind` values (closed set): `exposure_gap`, `test_efficiency`.
+
+| Rule | Behavior |
+| --- | --- |
+| `schema_version = 1` required | Missing or other values fail. |
+| `kind`, `owner`, `reason` required and non-blank | Missing or whitespace-only values fail. |
+| `kind = "exposure_gap"` requires `finding_id` | And rejects `test`. |
+| `kind = "test_efficiency"` requires `test` | And rejects `finding_id`; `path` is optional for disambiguation. |
+| `path` repo-relative, slash-separated | Absolute paths and backslash paths fail at parse time. |
+| `expires` ISO `YYYY-MM-DD` if present | Other formats fail at parse time. |
+| Unknown fields rejected | Catches typos. |
+| Duplicate selectors rejected | Same `finding_id` (or `(test, path)`) twice fails. |
+| Unmatched selectors surface as warnings | Selector that matches no current finding is reported but does not fail the badge. |
+| Expired suppressions do **not** apply | They surface as warnings on the badge so silent green-forever debt is impossible. |
+
+Suppressions and `declared_intent` are distinct concerns: intent is a
+positive declaration about test purpose; a suppression is an accepted
+exception or accepted debt. They can coexist on the same test (suppression
+wins for the badge count); the test-efficiency JSON shows both fields
+independently.
+
+When suppressions affect the badge, the native JSON `warnings` array
+surfaces expired/unmatched selectors. The Shields projection always
+remains exactly four fields and never leaks warning text.
 
 ## Analysis modes
 
