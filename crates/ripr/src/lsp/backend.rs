@@ -3,8 +3,8 @@ use super::actions::code_action_response;
 use super::capabilities::{initialize_result, root_from_initialize_params};
 use super::config::LspAnalysisConfig;
 use super::diagnostics::{
-    DiagnosticBatch, DiagnosticRefreshPlan, diagnostic_refresh_plan, take_all_uris,
-    workspace_diagnostics_with_config,
+    DiagnosticBatch, DiagnosticRefreshPlan, WorkspaceDiagnostics, diagnostic_refresh_plan,
+    take_all_uris, workspace_diagnostics_with_config,
 };
 use super::hover::{diagnostic_at_position, diagnostic_hover_response, hover_response};
 use super::state::{AnalysisSnapshot, DocumentStore};
@@ -81,7 +81,7 @@ impl Backend {
         if !self.is_current_refresh_generation(generation) {
             return;
         }
-        let Some(refresh) = self.refresh_plan(diagnostics.snapshot, diagnostics.batches) else {
+        let Some(refresh) = self.refresh_plan(diagnostics) else {
             return;
         };
         for batch in refresh.publish_batches {
@@ -108,9 +108,9 @@ impl Backend {
 
     pub(super) fn refresh_plan(
         &self,
-        snapshot: AnalysisSnapshot,
-        batches: Vec<DiagnosticBatch>,
+        diagnostics: WorkspaceDiagnostics,
     ) -> Option<DiagnosticRefreshPlan> {
+        let WorkspaceDiagnostics { snapshot, batches } = diagnostics;
         let Ok(mut last_diagnostic_uris) = self.last_diagnostic_uris.lock() else {
             return None;
         };
@@ -120,6 +120,9 @@ impl Backend {
         let Ok(mut latest_analysis) = self.latest_analysis.lock() else {
             return None;
         };
+        if snapshot.diagnostics_by_uri != diagnostics_by_uri_from_batches(&batches) {
+            return None;
+        }
         let refresh = diagnostic_refresh_plan(&last_diagnostic_uris, batches);
         debug_assert!(snapshot.is_consistent());
         *last_diagnostics = refresh
@@ -235,6 +238,13 @@ impl Backend {
         let diagnostics = last_diagnostics.get(uri)?;
         diagnostic_at_position(diagnostics, position).map(diagnostic_hover_response)
     }
+}
+
+fn diagnostics_by_uri_from_batches(batches: &[DiagnosticBatch]) -> BTreeMap<Uri, Vec<Diagnostic>> {
+    batches
+        .iter()
+        .map(|batch| (batch.uri.clone(), batch.diagnostics.clone()))
+        .collect()
 }
 
 impl LanguageServer for Backend {

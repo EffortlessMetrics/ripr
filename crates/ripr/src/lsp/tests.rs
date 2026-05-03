@@ -3,7 +3,7 @@ use super::backend::Backend;
 use super::capabilities::{initialize_result, root_from_initialize_params};
 use super::config::LspAnalysisConfig;
 use super::diagnostics::{
-    DiagnosticBatch, diagnostic_for_finding, diagnostic_refresh_plan,
+    DiagnosticBatch, WorkspaceDiagnostics, diagnostic_for_finding, diagnostic_refresh_plan,
     diagnostic_severity_for_class, take_all_uris, workspace_diagnostic_batches,
 };
 use super::hover::hover_response;
@@ -68,19 +68,13 @@ fn hover_for_position_uses_latest_matching_diagnostic() -> Result<(), String> {
     let finding = sample_finding();
     let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
     let uri = test_uri("file:///workspace/src/pricing.rs")?;
-    let snapshot = sample_analysis_snapshot(
+    let diagnostics = sample_workspace_diagnostics(
         PathBuf::from("/workspace"),
         uri.clone(),
         vec![diagnostic.clone()],
         vec![finding],
     );
-    let Some(_) = backend.refresh_plan(
-        snapshot,
-        vec![DiagnosticBatch {
-            uri: uri.clone(),
-            diagnostics: vec![diagnostic],
-        }],
-    ) else {
+    let Some(_) = backend.refresh_plan(diagnostics) else {
         return Err("expected refresh plan".to_string());
     };
 
@@ -131,20 +125,14 @@ fn refresh_plan_stores_latest_analysis_snapshot() -> Result<(), String> {
     let finding = sample_finding();
     let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
     let uri = test_uri("file:///workspace/src/pricing.rs")?;
-    let snapshot = sample_analysis_snapshot(
+    let diagnostics = sample_workspace_diagnostics(
         PathBuf::from("/workspace"),
         uri.clone(),
         vec![diagnostic.clone()],
         vec![finding],
     );
 
-    let Some(_) = backend.refresh_plan(
-        snapshot,
-        vec![DiagnosticBatch {
-            uri,
-            diagnostics: vec![diagnostic],
-        }],
-    ) else {
+    let Some(_) = backend.refresh_plan(diagnostics) else {
         return Err("expected refresh plan".to_string());
     };
     let Some(latest) = backend.latest_analysis_snapshot() else {
@@ -154,6 +142,42 @@ fn refresh_plan_stores_latest_analysis_snapshot() -> Result<(), String> {
     assert_eq!(latest.root, PathBuf::from("/workspace"));
     assert_eq!(latest.base.as_deref(), Some("origin/main"));
     assert_eq!(latest.mode, Mode::Draft);
+    assert_eq!(latest.findings.len(), 1);
+    assert_eq!(latest.diagnostics_by_uri.len(), 1);
+    Ok(())
+}
+
+#[test]
+fn refresh_plan_rejects_mismatched_snapshot_and_batches() -> Result<(), String> {
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    let finding = sample_finding();
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let baseline = sample_workspace_diagnostics(
+        PathBuf::from("/workspace"),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        vec![finding.clone()],
+    );
+
+    let Some(_) = backend.refresh_plan(baseline) else {
+        return Err("expected baseline refresh plan".to_string());
+    };
+    let mismatched = WorkspaceDiagnostics {
+        snapshot: sample_analysis_snapshot(
+            PathBuf::from("/workspace"),
+            uri.clone(),
+            vec![diagnostic],
+            vec![finding],
+        ),
+        batches: Vec::new(),
+    };
+
+    assert!(backend.refresh_plan(mismatched).is_none());
+    let Some(latest) = backend.latest_analysis_snapshot() else {
+        return Err("expected baseline snapshot to remain stored".to_string());
+    };
     assert_eq!(latest.findings.len(), 1);
     assert_eq!(latest.diagnostics_by_uri.len(), 1);
     Ok(())
@@ -362,19 +386,13 @@ fn refresh_failure_reports_and_clears_tracked_diagnostics() -> Result<(), String
         let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
         let backend = service.inner();
         let tracked_uri = test_uri("file:///workspace/src/stale.rs")?;
-        let snapshot = sample_analysis_snapshot(
+        let diagnostics = sample_workspace_diagnostics(
             PathBuf::from("/workspace"),
             tracked_uri.clone(),
             Vec::new(),
             Vec::new(),
         );
-        let Some(_) = backend.refresh_plan(
-            snapshot,
-            vec![DiagnosticBatch {
-                uri: tracked_uri.clone(),
-                diagnostics: Vec::new(),
-            }],
-        ) else {
+        let Some(_) = backend.refresh_plan(diagnostics) else {
             return Err("expected refresh plan".to_string());
         };
         assert!(backend.latest_analysis_snapshot().is_some());
@@ -706,6 +724,19 @@ fn sample_analysis_snapshot(
         mode: Mode::Draft,
         findings,
         diagnostics_by_uri,
+    }
+}
+
+fn sample_workspace_diagnostics(
+    root: PathBuf,
+    uri: tower_lsp_server::ls_types::Uri,
+    diagnostics: Vec<tower_lsp_server::ls_types::Diagnostic>,
+    findings: Vec<Finding>,
+) -> WorkspaceDiagnostics {
+    let snapshot = sample_analysis_snapshot(root, uri.clone(), diagnostics.clone(), findings);
+    WorkspaceDiagnostics {
+        snapshot,
+        batches: vec![DiagnosticBatch { uri, diagnostics }],
     }
 }
 
