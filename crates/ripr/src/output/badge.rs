@@ -14,6 +14,9 @@
 use crate::app::CheckOutput;
 use crate::domain::ExposureClass;
 use crate::output::json::escape as json_escape;
+use crate::output::suppressions::{
+    SuppressionEntry, apply_exposure_suppressions, apply_test_efficiency_suppressions,
+};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -100,6 +103,10 @@ pub struct BadgeSummary {
     pub counts: BadgeCounts,
     pub reason_counts: BTreeMap<&'static str, usize>,
     pub policy: BadgePolicy,
+    /// Advisory warnings surfaced to the badge consumer — currently
+    /// expired suppressions and unmatched suppression selectors. Empty
+    /// for the common-case green badge.
+    pub warnings: Vec<String>,
 }
 
 /// The schema_version of the native badge JSON. Bumping it is a public
@@ -121,11 +128,18 @@ const BADGE_REASON_KEYS: &[&str] = &[
     "duplicate_activation_and_oracle_shape",
 ];
 
-/// Builds the `ripr` badge summary from a `CheckOutput`. Counts only
-/// exposure-gap classes; reports unknowns separately. Test-efficiency,
-/// intent, and suppression fields stay zero in this PR.
-pub fn ripr_badge_summary(output: &CheckOutput, policy: BadgePolicy) -> BadgeSummary {
-    let mut unsuppressed_exposure_gaps = 0usize;
+/// Builds the `ripr` badge summary from a `CheckOutput`, applying any
+/// `kind = "exposure_gap"` suppressions whose `finding_id` matches a
+/// currently-counted exposure gap. Expired and unmatched suppressions
+/// surface as `warnings` so silently-stale debt cannot keep the badge
+/// green. `today` is the ISO date used for expiry comparison.
+pub fn ripr_badge_summary_with_suppressions(
+    output: &CheckOutput,
+    suppressions: &[SuppressionEntry],
+    today: &str,
+    policy: BadgePolicy,
+) -> BadgeSummary {
+    let mut candidate_ids: Vec<String> = Vec::new();
     let mut unknowns = 0usize;
     let mut unique_tests: BTreeSet<(String, String, usize)> = BTreeSet::new();
 
@@ -134,7 +148,7 @@ pub fn ripr_badge_summary(output: &CheckOutput, policy: BadgePolicy) -> BadgeSum
             ExposureClass::WeaklyExposed
             | ExposureClass::ReachableUnrevealed
             | ExposureClass::NoStaticPath => {
-                unsuppressed_exposure_gaps += 1;
+                candidate_ids.push(finding.id.clone());
             }
             ExposureClass::InfectionUnknown
             | ExposureClass::PropagationUnknown
@@ -152,11 +166,15 @@ pub fn ripr_badge_summary(output: &CheckOutput, policy: BadgePolicy) -> BadgeSum
         }
     }
 
+    let suppression_app = apply_exposure_suppressions(&candidate_ids, suppressions, today);
+    let suppressed = suppression_app.suppressed_findings.len();
+    let unsuppressed_exposure_gaps = candidate_ids.len().saturating_sub(suppressed);
+
     let counts = BadgeCounts {
         unsuppressed_exposure_gaps,
         unsuppressed_test_efficiency_findings: 0,
         intentional_test_efficiency_findings: 0,
-        suppressed_exposure_gaps: 0,
+        suppressed_exposure_gaps: suppressed,
         suppressed_test_efficiency_findings: 0,
         unknowns,
         unknowns_test_efficiency: 0,
@@ -185,7 +203,17 @@ pub fn ripr_badge_summary(output: &CheckOutput, policy: BadgePolicy) -> BadgeSum
         counts,
         reason_counts,
         policy,
+        warnings: suppression_app.warnings,
     }
+}
+
+/// Convenience wrapper: builds the `ripr` badge with no suppressions.
+/// Equivalent to calling [`ripr_badge_summary_with_suppressions`] with
+/// an empty slice. Test-only since production callers always go through
+/// [`crate::app::render_check`] which threads the loaded suppressions.
+#[cfg(test)]
+pub fn ripr_badge_summary(output: &CheckOutput, policy: BadgePolicy) -> BadgeSummary {
+    ripr_badge_summary_with_suppressions(output, &[], "", policy)
 }
 
 fn badge_status_color(count: usize, fail_on_nonzero: bool) -> (BadgeStatus, &'static str) {
@@ -199,10 +227,22 @@ fn badge_status_color(count: usize, fail_on_nonzero: bool) -> (BadgeStatus, &'st
     }
 }
 
+/// One actionable test-efficiency entry seen by the badge, retained so
+/// suppressions can be applied per-`(test, path)` after the report is
+/// parsed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TestEfficiencyBadgeEntry {
+    pub test: String,
+    pub path: String,
+    pub has_intent: bool,
+}
+
 /// Test-efficiency contribution to the `ripr+` badge. Built by parsing
 /// `target/ripr/reports/test-efficiency.json`; the per-test ledger is
 /// the source of truth because `declared_intent` exclusion is per-test
-/// and cannot be derived from aggregate `class_counts` alone.
+/// and cannot be derived from aggregate `class_counts` alone. Actionable
+/// entries are kept on the side so the badge orchestrator can apply
+/// suppressions after the parse.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct TestEfficiencyBadgeSummary {
     pub unsuppressed_test_efficiency_findings: usize,
@@ -210,6 +250,10 @@ pub struct TestEfficiencyBadgeSummary {
     pub unknowns_test_efficiency: usize,
     pub analyzed_tests: usize,
     pub reason_counts: BTreeMap<&'static str, usize>,
+    /// Actionable, non-intentional entries — i.e., the candidate set for
+    /// `ripr+` suppression matching. Empty when no test-efficiency entry
+    /// is actionable.
+    pub actionable_entries: Vec<TestEfficiencyBadgeEntry>,
 }
 
 /// The test-efficiency `class` strings that contribute to `ripr+` when not
@@ -255,6 +299,7 @@ pub fn parse_test_efficiency_badge_summary(
     let mut unsuppressed = 0usize;
     let mut intentional = 0usize;
     let mut unknowns_te = 0usize;
+    let mut actionable_entries: Vec<TestEfficiencyBadgeEntry> = Vec::new();
 
     for entry in tests {
         let class = entry
@@ -268,6 +313,21 @@ pub fn parse_test_efficiency_badge_summary(
                 intentional += 1;
             } else {
                 unsuppressed += 1;
+                let test_name = entry
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                let path = entry
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                actionable_entries.push(TestEfficiencyBadgeEntry {
+                    test: test_name,
+                    path,
+                    has_intent: false,
+                });
             }
         } else if class == "opaque" {
             unknowns_te += 1;
@@ -320,28 +380,47 @@ pub fn parse_test_efficiency_badge_summary(
         unknowns_test_efficiency: unknowns_te,
         analyzed_tests,
         reason_counts,
+        actionable_entries,
     })
 }
 
 /// Builds the `ripr+` badge summary from a `CheckOutput` plus a parsed
-/// test-efficiency contribution. Reuses the exposure-counting logic from
-/// `ripr_badge_summary` so the two badges stay perfectly aligned on
-/// exposure semantics; the only difference at the headline is the
-/// addition of unsuppressed actionable test-efficiency findings.
-pub fn ripr_plus_badge_summary(
+/// test-efficiency contribution and a slice of suppressions. Applies
+/// `exposure_gap` suppressions to the exposure side and
+/// `test_efficiency` suppressions to the actionable test-efficiency
+/// entries; expired and unmatched selectors surface as `warnings`.
+pub fn ripr_plus_badge_summary_with_suppressions(
     output: &CheckOutput,
     test_efficiency: TestEfficiencyBadgeSummary,
+    suppressions: &[SuppressionEntry],
+    today: &str,
     policy: BadgePolicy,
 ) -> BadgeSummary {
-    let exposure = ripr_badge_summary(output, policy.clone());
+    let exposure =
+        ripr_badge_summary_with_suppressions(output, suppressions, today, policy.clone());
+
+    // Apply test-efficiency suppressions against the actionable entries
+    // surfaced by the test-efficiency parser. Suppressed entries shift
+    // from `unsuppressed_test_efficiency_findings` to
+    // `suppressed_test_efficiency_findings`. `intentional_*` is
+    // unaffected — declared intent and suppressions are distinct.
+    let candidate_pairs: Vec<(String, String)> = test_efficiency
+        .actionable_entries
+        .iter()
+        .map(|entry| (entry.test.clone(), entry.path.clone()))
+        .collect();
+    let te_application = apply_test_efficiency_suppressions(&candidate_pairs, suppressions, today);
+    let suppressed_te = te_application.suppressed_tests.len();
+    let unsuppressed_te = test_efficiency
+        .unsuppressed_test_efficiency_findings
+        .saturating_sub(suppressed_te);
 
     let counts = BadgeCounts {
         unsuppressed_exposure_gaps: exposure.counts.unsuppressed_exposure_gaps,
-        unsuppressed_test_efficiency_findings: test_efficiency
-            .unsuppressed_test_efficiency_findings,
+        unsuppressed_test_efficiency_findings: unsuppressed_te,
         intentional_test_efficiency_findings: test_efficiency.intentional_test_efficiency_findings,
-        suppressed_exposure_gaps: 0,
-        suppressed_test_efficiency_findings: 0,
+        suppressed_exposure_gaps: exposure.counts.suppressed_exposure_gaps,
+        suppressed_test_efficiency_findings: suppressed_te,
         unknowns: exposure.counts.unknowns,
         unknowns_test_efficiency: test_efficiency.unknowns_test_efficiency,
         analyzed_findings: exposure.counts.analyzed_findings,
@@ -358,6 +437,9 @@ pub fn ripr_plus_badge_summary(
         + unknown_contribution;
     let (status, color) = badge_status_color(headline, policy.fail_on_nonzero);
 
+    let mut warnings = exposure.warnings;
+    warnings.extend(te_application.warnings);
+
     BadgeSummary {
         kind: BadgeKind::RiprPlus,
         message: headline.to_string(),
@@ -366,7 +448,21 @@ pub fn ripr_plus_badge_summary(
         counts,
         reason_counts: test_efficiency.reason_counts,
         policy,
+        warnings,
     }
+}
+
+/// Convenience wrapper: builds the `ripr+` badge with no suppressions.
+/// Test-only — production calls
+/// [`ripr_plus_badge_summary_with_suppressions`] via
+/// [`crate::app::render_check`].
+#[cfg(test)]
+pub fn ripr_plus_badge_summary(
+    output: &CheckOutput,
+    test_efficiency: TestEfficiencyBadgeSummary,
+    policy: BadgePolicy,
+) -> BadgeSummary {
+    ripr_plus_badge_summary_with_suppressions(output, test_efficiency, &[], "", policy)
 }
 
 /// Renders the native badge JSON (snake_case, full counts/reasons/policy).
@@ -463,7 +559,24 @@ pub fn render_native_json(summary: &BadgeSummary) -> String {
         "    \"suppressions_path\": \"{}\"\n",
         json_escape(&policy.suppressions_path)
     ));
-    out.push_str("  }\n}\n");
+    out.push_str("  },\n");
+
+    // Always emit `warnings` as an array (possibly empty) so consumers
+    // can rely on a stable shape. Currently used for expired
+    // suppressions and unmatched suppression selectors.
+    out.push_str("  \"warnings\": [");
+    if summary.warnings.is_empty() {
+        out.push_str("]\n}\n");
+    } else {
+        out.push('\n');
+        for (index, warning) in summary.warnings.iter().enumerate() {
+            if index > 0 {
+                out.push_str(",\n");
+            }
+            out.push_str(&format!("    \"{}\"", json_escape(warning)));
+        }
+        out.push_str("\n  ]\n}\n");
+    }
     out
 }
 
@@ -997,6 +1110,7 @@ mod tests {
                     }
                     m
                 },
+                actionable_entries: Vec::new(),
             },
             BadgePolicy::default(),
         );
@@ -1025,6 +1139,7 @@ mod tests {
                 unknowns_test_efficiency: 1,
                 analyzed_tests: 0,
                 reason_counts: std::collections::BTreeMap::new(),
+                actionable_entries: Vec::new(),
             },
             BadgePolicy::default(),
         );
@@ -1109,5 +1224,199 @@ mod tests {
 
         // 1 + 2 + 1 + 3 = 7
         assert_eq!(summary.message, "7");
+    }
+
+    // -------- suppressions wiring --------
+
+    use super::{
+        TestEfficiencyBadgeEntry, ripr_badge_summary_with_suppressions,
+        ripr_plus_badge_summary_with_suppressions,
+    };
+    use crate::output::suppressions::{SuppressionEntry, SuppressionKind};
+
+    fn finding_at_id(id: &str, class: ExposureClass) -> Finding {
+        let mut f = finding(class, vec![]);
+        f.id = id.to_string();
+        f
+    }
+
+    fn exposure_suppression(finding_id: &str, expires: Option<&str>) -> SuppressionEntry {
+        SuppressionEntry {
+            kind: SuppressionKind::ExposureGap,
+            finding_id: Some(finding_id.to_string()),
+            test: None,
+            path: None,
+            reason: "x".to_string(),
+            owner: "y".to_string(),
+            expires: expires.map(str::to_string),
+            block_line: 10,
+        }
+    }
+
+    fn te_suppression(test: &str, path: Option<&str>, expires: Option<&str>) -> SuppressionEntry {
+        SuppressionEntry {
+            kind: SuppressionKind::TestEfficiency,
+            finding_id: None,
+            test: Some(test.to_string()),
+            path: path.map(str::to_string),
+            reason: "x".to_string(),
+            owner: "y".to_string(),
+            expires: expires.map(str::to_string),
+            block_line: 20,
+        }
+    }
+
+    #[test]
+    fn ripr_badge_with_suppressions_moves_matched_findings_into_suppressed_bucket() {
+        let output = check_output(vec![
+            finding_at_id("probe:a", ExposureClass::WeaklyExposed),
+            finding_at_id("probe:b", ExposureClass::ReachableUnrevealed),
+            finding_at_id("probe:c", ExposureClass::NoStaticPath),
+        ]);
+        let suppressions = vec![exposure_suppression("probe:b", None)];
+
+        let summary = ripr_badge_summary_with_suppressions(
+            &output,
+            &suppressions,
+            "2026-05-03",
+            BadgePolicy::default(),
+        );
+
+        assert_eq!(summary.counts.unsuppressed_exposure_gaps, 2);
+        assert_eq!(summary.counts.suppressed_exposure_gaps, 1);
+        assert_eq!(summary.message, "2");
+        assert!(summary.warnings.is_empty());
+    }
+
+    #[test]
+    fn ripr_badge_with_expired_suppression_keeps_finding_in_headline_and_warns() {
+        let output = check_output(vec![finding_at_id("probe:a", ExposureClass::WeaklyExposed)]);
+        let suppressions = vec![exposure_suppression("probe:a", Some("2025-01-01"))];
+
+        let summary = ripr_badge_summary_with_suppressions(
+            &output,
+            &suppressions,
+            "2026-05-03",
+            BadgePolicy::default(),
+        );
+
+        // Expired suppression must NOT apply.
+        assert_eq!(summary.counts.unsuppressed_exposure_gaps, 1);
+        assert_eq!(summary.counts.suppressed_exposure_gaps, 0);
+        // Warning surfaces so debt is visible.
+        assert_eq!(summary.warnings.len(), 1);
+        assert!(summary.warnings[0].contains("expired"));
+        assert!(summary.warnings[0].contains("probe:a"));
+    }
+
+    #[test]
+    fn ripr_plus_badge_with_test_efficiency_suppressions_moves_into_suppressed_bucket() {
+        let te = TestEfficiencyBadgeSummary {
+            unsuppressed_test_efficiency_findings: 2,
+            actionable_entries: vec![
+                TestEfficiencyBadgeEntry {
+                    test: "alpha".to_string(),
+                    path: "tests/a.rs".to_string(),
+                    has_intent: false,
+                },
+                TestEfficiencyBadgeEntry {
+                    test: "beta".to_string(),
+                    path: "tests/b.rs".to_string(),
+                    has_intent: false,
+                },
+            ],
+            ..TestEfficiencyBadgeSummary::default()
+        };
+        let output = check_output(vec![]);
+        let suppressions = vec![te_suppression("alpha", Some("tests/a.rs"), None)];
+
+        let summary = ripr_plus_badge_summary_with_suppressions(
+            &output,
+            te,
+            &suppressions,
+            "2026-05-03",
+            BadgePolicy::default(),
+        );
+
+        assert_eq!(summary.counts.unsuppressed_test_efficiency_findings, 1);
+        assert_eq!(summary.counts.suppressed_test_efficiency_findings, 1);
+        assert_eq!(summary.message, "1");
+        assert!(summary.warnings.is_empty());
+    }
+
+    #[test]
+    fn native_json_emits_warnings_array_always_even_when_empty() {
+        let summary = ripr_badge_summary(&check_output(vec![]), BadgePolicy::default());
+        let json = render_native_json(&summary);
+
+        // Empty case still emits the field for stable shape.
+        assert!(json.contains("\"warnings\": []"));
+    }
+
+    #[test]
+    fn native_json_emits_warnings_when_suppressions_have_warnings() {
+        let output = check_output(vec![finding_at_id("probe:a", ExposureClass::WeaklyExposed)]);
+        let suppressions = vec![exposure_suppression("probe:a", Some("2025-01-01"))];
+        let summary = ripr_badge_summary_with_suppressions(
+            &output,
+            &suppressions,
+            "2026-05-03",
+            BadgePolicy::default(),
+        );
+        let json = render_native_json(&summary);
+
+        assert!(json.contains("\"warnings\": ["));
+        assert!(json.contains("expired"));
+        assert!(json.contains("probe:a"));
+    }
+
+    #[test]
+    fn shields_projection_remains_four_fields_even_with_warnings_present() {
+        let output = check_output(vec![finding_at_id("probe:a", ExposureClass::WeaklyExposed)]);
+        let suppressions = vec![exposure_suppression("probe:does_not_match", None)];
+        let summary = ripr_badge_summary_with_suppressions(
+            &output,
+            &suppressions,
+            "2026-05-03",
+            BadgePolicy::default(),
+        );
+        let shields = render_shields_json(&summary);
+
+        // Warnings must NOT bleed into the Shields projection.
+        assert!(!shields.contains("warnings"));
+        assert!(!shields.contains("probe:does_not_match"));
+        let top_level = shields.lines().filter(|l| l.starts_with("  \"")).count();
+        assert_eq!(top_level, 4);
+    }
+
+    #[test]
+    fn declared_intent_remains_distinct_from_suppression_in_counts() {
+        // 1 unsuppressed actionable, 2 intentional, 0 unknowns_te.
+        let te = TestEfficiencyBadgeSummary {
+            unsuppressed_test_efficiency_findings: 1,
+            intentional_test_efficiency_findings: 2,
+            actionable_entries: vec![TestEfficiencyBadgeEntry {
+                test: "alpha".to_string(),
+                path: "tests/a.rs".to_string(),
+                has_intent: false,
+            }],
+            ..TestEfficiencyBadgeSummary::default()
+        };
+        let output = check_output(vec![]);
+        let suppressions = vec![te_suppression("alpha", Some("tests/a.rs"), None)];
+
+        let summary = ripr_plus_badge_summary_with_suppressions(
+            &output,
+            te,
+            &suppressions,
+            "2026-05-03",
+            BadgePolicy::default(),
+        );
+
+        // The actionable becomes suppressed, leaving 0 unsuppressed.
+        assert_eq!(summary.counts.unsuppressed_test_efficiency_findings, 0);
+        assert_eq!(summary.counts.suppressed_test_efficiency_findings, 1);
+        // Intentional count is unaffected — intent and suppression are distinct.
+        assert_eq!(summary.counts.intentional_test_efficiency_findings, 2);
     }
 }

@@ -442,8 +442,8 @@ Tracked alongside Campaign 4A in
 | `ripr check --format badge-json` / `badge-shields` | done | `badge/ripr-count-v1` |
 | `.ripr/test_intent.toml` loader | done | `test-intent/v1` |
 | `ripr check --format badge-plus-*` | done | `badge/ripr-plus-count-v1` |
-| `.ripr/suppressions.toml` loader | ready | `suppressions/v1` |
-| CI badge artifacts | not started | `ci/badge-artifacts` |
+| `.ripr/suppressions.toml` loader | done | `suppressions/v1` |
+| CI badge artifacts | ready | `ci/badge-artifacts` |
 | Published Shields endpoint from `main` | not started | `badge/publish-main-endpoint` |
 
 ## See also
