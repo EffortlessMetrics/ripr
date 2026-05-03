@@ -122,6 +122,7 @@ mod tests {
                 evidence: vec![],
                 missing: vec![],
                 flow_sinks: vec![],
+                activation: crate::domain::ActivationEvidence::default(),
                 stop_reasons: vec![],
                 related_tests: vec![],
                 recommended_next_step: Some(

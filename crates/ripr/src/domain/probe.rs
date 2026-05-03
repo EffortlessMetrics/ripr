@@ -147,6 +147,52 @@ pub struct FlowSinkFact {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ValueContext {
+    FunctionArgument,
+    AssertionArgument,
+    BuilderMethod,
+    TableRow,
+    EnumVariant,
+    ReturnValue,
+    Unknown,
+}
+
+impl ValueContext {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ValueContext::FunctionArgument => "function_argument",
+            ValueContext::AssertionArgument => "assertion_argument",
+            ValueContext::BuilderMethod => "builder_method",
+            ValueContext::TableRow => "table_row",
+            ValueContext::EnumVariant => "enum_variant",
+            ValueContext::ReturnValue => "return_value",
+            ValueContext::Unknown => "unknown",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ValueFact {
+    pub line: usize,
+    pub text: String,
+    pub value: String,
+    pub context: ValueContext,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MissingDiscriminatorFact {
+    pub value: String,
+    pub reason: String,
+    pub flow_sink: Option<FlowSinkFact>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ActivationEvidence {
+    pub observed_values: Vec<ValueFact>,
+    pub missing_discriminators: Vec<MissingDiscriminatorFact>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RelatedTest {
     pub name: String,
     pub file: PathBuf,
@@ -165,6 +211,7 @@ pub struct Finding {
     pub evidence: Vec<String>,
     pub missing: Vec<String>,
     pub flow_sinks: Vec<FlowSinkFact>,
+    pub activation: ActivationEvidence,
     pub stop_reasons: Vec<StopReason>,
     pub related_tests: Vec<RelatedTest>,
     pub recommended_next_step: Option<String>,
@@ -187,7 +234,7 @@ impl Finding {
 
 #[cfg(test)]
 mod tests {
-    use super::{FlowSinkKind, StopReason};
+    use super::{FlowSinkKind, StopReason, ValueContext};
     use crate::domain::ExposureClass;
 
     #[test]
@@ -219,5 +266,22 @@ mod tests {
             Some("propagation_evidence_unknown")
         );
         assert_eq!(StopReason::for_unknown_class(&ExposureClass::Exposed), None);
+    }
+
+    #[test]
+    fn value_context_labels_are_stable_contract_terms() {
+        let cases = [
+            (ValueContext::FunctionArgument, "function_argument"),
+            (ValueContext::AssertionArgument, "assertion_argument"),
+            (ValueContext::BuilderMethod, "builder_method"),
+            (ValueContext::TableRow, "table_row"),
+            (ValueContext::EnumVariant, "enum_variant"),
+            (ValueContext::ReturnValue, "return_value"),
+            (ValueContext::Unknown, "unknown"),
+        ];
+
+        for (context, value) in cases {
+            assert_eq!(context.as_str(), value);
+        }
     }
 }

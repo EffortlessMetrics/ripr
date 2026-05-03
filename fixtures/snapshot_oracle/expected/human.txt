@@ -14,7 +14,7 @@ Changed behavior:
 
 RIPR:
   Reach:       yes — Related tests appear to reach render_status: renders_error_status_snapshot
-  Infect:      weak — Tests have literals [404], but no detected value matches changed boundary [299]
+  Infect:      weak — Related tests contain input values, but the equality-boundary discriminator is missing
   Propagate:   yes — Changed behavior appears to influence returned value: "ok".to_string()
   Observe:     yes — A related test observes a value or effect near the changed behavior
   Discriminate: weak — Medium oracle found: snapshot assertion observes the changed behavior
@@ -22,8 +22,12 @@ RIPR:
 Related tests / oracles:
   - tests/rendering.rs:4 renders_error_status_snapshot [medium] — insta::assert_snapshot!(rendered);
 
+Activation evidence:
+  - observed code = 404 at line 5 (function_argument)
+  - missing code == 299 — No related test call uses code equal to 299; observed code values: 404; target 299 value: 299
+
 Gap:
-  - No detected boundary input for the changed predicate
+  - Missing discriminator value: code == 299
   - No strong discriminator was detected
 
 Recommended next step:

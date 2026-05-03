@@ -9,7 +9,8 @@ pub use evidence::{
     Confidence, OracleKind, OracleStrength, RevealEvidence, RiprEvidence, StageEvidence, StageState,
 };
 pub use probe::{
-    DeltaKind, Finding, FlowSinkFact, FlowSinkKind, Probe, ProbeFamily, RelatedTest, StopReason,
+    ActivationEvidence, DeltaKind, Finding, FlowSinkFact, FlowSinkKind, MissingDiscriminatorFact,
+    Probe, ProbeFamily, RelatedTest, StopReason, ValueContext, ValueFact,
 };
 pub use summary::Summary;
 pub use support::{ProbeId, SourceLocation, SymbolId};

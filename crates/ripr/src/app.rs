@@ -215,9 +215,9 @@ mod tests {
     use super::{Mode, selector_matches_location};
     use crate::analysis::AnalysisMode;
     use crate::domain::{
-        Confidence, ExposureClass, Finding, OracleStrength, Probe, ProbeFamily, ProbeId,
-        RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState,
-        StopReason, Summary,
+        ActivationEvidence, Confidence, ExposureClass, Finding, OracleStrength, Probe, ProbeFamily,
+        ProbeId, RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence,
+        StageState, StopReason, Summary,
     };
 
     #[test]
@@ -284,6 +284,7 @@ mod tests {
             evidence: vec!["changed test".to_string()],
             missing: vec!["strong oracle".to_string()],
             flow_sinks: Vec::new(),
+            activation: ActivationEvidence::default(),
             stop_reasons: vec![StopReason::NoChangedRustLine],
             related_tests: vec![RelatedTest {
                 name: "sample_test".to_string(),

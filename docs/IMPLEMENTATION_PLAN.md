@@ -687,18 +687,18 @@ Purpose: detect whether tests appear to activate the changed behavior.
 
 Deliverables:
 
-- [ ] Numeric and string literal value facts.
-- [ ] Function argument value facts.
-- [ ] Builder-chain value facts.
-- [ ] Table-row value facts.
-- [ ] Enum variant value facts.
-- [ ] Boundary neighbor suggestions.
+- [x] Numeric and string literal value facts.
+- [x] Function argument value facts.
+- [x] Builder-chain value facts.
+- [x] Table-row value facts.
+- [x] Enum variant value facts.
+- [x] Boundary equality discriminator facts.
 
 Acceptance:
 
-- [ ] Boundary findings include detected values.
-- [ ] Boundary findings include missing equality value.
-- [ ] Opaque fixtures produce `infection_unknown`, not false confidence.
+- [x] Boundary findings include detected values.
+- [x] Boundary findings include missing equality value.
+- [x] Opaque fixtures produce `infection_unknown`, not false confidence.
 
 ## PR 11: `evidence-first-output`
 

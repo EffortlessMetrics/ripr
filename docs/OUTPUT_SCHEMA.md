@@ -86,6 +86,27 @@ A finding contains:
   },
   "evidence": [],
   "missing": [],
+  "activation": {
+    "observed_values": [
+      {
+        "line": 12,
+        "text": "assert_eq!(discounted_total(50, 100), 50);",
+        "value": "amount = 50",
+        "context": "function_argument"
+      }
+    ],
+    "missing_discriminators": [
+      {
+        "value": "amount == discount_threshold",
+        "reason": "No related test call uses amount equal to discount_threshold",
+        "flow_sink": {
+          "kind": "return_value",
+          "text": "amount - 10",
+          "line": 89
+        }
+      }
+    ]
+  },
   "related_tests": [],
   "stop_reasons": [],
   "recommended_next_step": "Add boundary tests with exact assertions."
@@ -166,6 +187,16 @@ contract language.
 - `none`
 - `unknown`
 
+`value_context` values:
+
+- `function_argument`
+- `assertion_argument`
+- `builder_method`
+- `table_row`
+- `enum_variant`
+- `return_value`
+- `unknown`
+
 `stop_reason` values:
 
 - `max_depth_reached`
@@ -204,6 +235,8 @@ contract language.
     "discriminate": "weak"
   },
   "related_tests": [],
+  "observed_values": [],
+  "missing_discriminators": [],
   "missing": [],
   "stop_reasons": [],
   "recommended_next_step": "Add below, equal, and above threshold tests."

@@ -57,3 +57,10 @@ stop_reason|no_changed_rust_line|Static analysis stop reason value.
 stop_reason|proc_macro_opaque|Static analysis stop reason value.
 stop_reason|propagation_evidence_unknown|Static analysis stop reason value.
 stop_reason|static_probe_unknown|Static analysis stop reason value.
+value_context|assertion_argument|Activation value context.
+value_context|builder_method|Activation value context.
+value_context|enum_variant|Activation value context.
+value_context|function_argument|Activation value context.
+value_context|return_value|Activation value context.
+value_context|table_row|Activation value context.
+value_context|unknown|Activation value context.

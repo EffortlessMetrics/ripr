@@ -56,7 +56,8 @@ fn check_human_output_reports_sample_findings() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Summary: 5 probe(s)"));
     assert!(stdout.contains("Static exposure: weakly_exposed"));
-    assert!(stdout.contains("Static exposure: infection_unknown"));
+    assert!(stdout.contains("Activation evidence:"));
+    assert!(stdout.contains("Missing discriminator value"));
     assert!(stdout.contains("Recommended next step:"));
 }
 
@@ -70,7 +71,8 @@ fn check_json_output_has_stable_contract_fields() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains(r#""schema_version": "0.1""#));
     assert!(stdout.contains(r#""classification": "weakly_exposed""#));
-    assert!(stdout.contains(r#""classification": "infection_unknown""#));
+    assert!(stdout.contains(r#""activation""#));
+    assert!(stdout.contains(r#""missing_discriminators""#));
     assert!(stdout.contains(r#""recommended_next_step""#));
 }
 

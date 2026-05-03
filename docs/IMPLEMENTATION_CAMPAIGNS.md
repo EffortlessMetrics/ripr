@@ -182,8 +182,8 @@ Work items:
 | `output/unknown-stop-reason-invariant` | done | Unknown classifications carry stop reasons across domain, JSON, context, GitHub annotations, and human output. |
 | `analysis/oracle-strength-v2` | done | Oracle kind and strength distinguish exact error variants, exact values, broad errors, smoke-only checks, snapshots, relational checks, and mock expectations. |
 | `analysis/local-delta-flow-v1` | done | Findings carry typed local flow sinks for visible return, error, field, match-arm, and effect boundaries. |
-| `analysis/activation-value-modeling-v1` | ready | Tie observed and missing discriminator values to local flow evidence. |
-| `output/evidence-first-output` | blocked | Depends on stable activation evidence fields. |
+| `analysis/activation-value-modeling-v1` | done | Findings carry observed value facts and missing discriminator facts tied to local flow evidence. |
+| `output/evidence-first-output` | ready | Render the stable oracle, flow, and activation evidence fields as the primary explanation. |
 | `fixtures/negative-metamorphic-baseline` | blocked | Depends on evidence-first output expectations. |
 
 Dependencies:
@@ -191,8 +191,7 @@ Dependencies:
 - `output/unknown-stop-reason-invariant` should land before deeper unknown
   evidence grows so silent unknowns do not become accepted output.
 - `analysis/local-delta-flow-v1` landed before activation/value modeling.
-- `output/evidence-first-output` should wait until oracle, flow, and activation
-  fields are stable enough to expose.
+- `analysis/activation-value-modeling-v1` landed before evidence-first output.
 
 Commands:
 

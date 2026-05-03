@@ -1,6 +1,6 @@
-use crate::domain::Finding;
+use crate::domain::{Finding, MissingDiscriminatorFact, ValueFact};
 
-use super::{array_field, field, number_field};
+use super::{array_field, escape, field, number_field};
 use crate::output::json::report::{related_test_json, stop_reason_values};
 
 pub fn render_context_packet(finding: &Finding, max_related_tests: usize) -> String {
@@ -80,6 +80,20 @@ pub fn render_context_packet(finding: &Finding, max_related_tests: usize) -> Str
         out.push('\n');
     }
     out.push_str("  ],\n");
+    value_array(
+        &mut out,
+        1,
+        "observed_values",
+        &finding.activation.observed_values,
+    );
+    out.push_str(",\n");
+    discriminator_array(
+        &mut out,
+        1,
+        "missing_discriminators",
+        &finding.activation.missing_discriminators,
+    );
+    out.push_str(",\n");
     array_field(&mut out, 1, "missing", &finding.missing, true);
     let stop_reasons = stop_reason_values(finding);
     array_field(&mut out, 1, "stop_reasons", &stop_reasons, true);
@@ -92,4 +106,40 @@ pub fn render_context_packet(finding: &Finding, max_related_tests: usize) -> Str
     );
     out.push_str("}\n");
     out
+}
+
+fn value_array(out: &mut String, indent: usize, name: &str, values: &[ValueFact]) {
+    out.push_str(&format!("{}\"{name}\": [", "  ".repeat(indent)));
+    for (idx, value) in values.iter().enumerate() {
+        if idx > 0 {
+            out.push_str(", ");
+        }
+        out.push_str(&format!(
+            "{{\"value\":\"{}\",\"context\":\"{}\",\"line\":{}}}",
+            escape(&value.value),
+            value.context.as_str(),
+            value.line
+        ));
+    }
+    out.push(']');
+}
+
+fn discriminator_array(
+    out: &mut String,
+    indent: usize,
+    name: &str,
+    values: &[MissingDiscriminatorFact],
+) {
+    out.push_str(&format!("{}\"{name}\": [", "  ".repeat(indent)));
+    for (idx, value) in values.iter().enumerate() {
+        if idx > 0 {
+            out.push_str(", ");
+        }
+        out.push_str(&format!(
+            "{{\"value\":\"{}\",\"reason\":\"{}\"}}",
+            escape(&value.value),
+            escape(&value.reason)
+        ));
+    }
+    out.push(']');
 }

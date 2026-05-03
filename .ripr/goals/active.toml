@@ -70,7 +70,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/activation-value-modeling-v1"
-status = "ready"
+status = "done"
 branch = "analysis/activation-value-modeling-v1"
 stackable = false
 requires_human_merge = true
@@ -88,15 +88,22 @@ commands = [
 
 [[work_item]]
 id = "output/evidence-first-output"
-status = "blocked"
+status = "ready"
 branch = "output/evidence-first-output"
 stackable = false
 requires_human_merge = true
 acceptance = "human and JSON output explain changed behavior, evidence path, weakness, and next action"
-blocked_by = [
-  "analysis/activation-value-modeling-v1"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask pr-summary",
+  "cargo xtask fixtures",
+  "cargo xtask goldens check",
+  "cargo xtask golden-drift",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language"
 ]
-blocked_reason = "requires stable activation evidence fields before output reshaping"
 
 [[work_item]]
 id = "fixtures/negative-metamorphic-baseline"
