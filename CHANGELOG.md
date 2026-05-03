@@ -22,6 +22,8 @@ are scoped or reviewed.
 - Stored the latest LSP analysis snapshot alongside diagnostics so future
   hover, code-action, and context paths can resolve findings without rerunning
   analysis.
+- Scoped LSP diagnostic ranges to the probe source column and expression width
+  instead of marking a fixed line prefix.
 
 ## 0.3.0 - 2026-05-02
 

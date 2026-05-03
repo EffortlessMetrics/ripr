@@ -10,6 +10,8 @@ use tower_lsp_server::ls_types::{
     Position, Range, Uri,
 };
 
+const MAX_DIAGNOSTIC_RANGE_WIDTH: u32 = 120;
+
 pub struct DiagnosticBatch {
     pub uri: Uri,
     pub diagnostics: Vec<Diagnostic>,
@@ -98,15 +100,8 @@ pub(super) fn workspace_diagnostics_with_config(
 }
 
 pub(super) fn diagnostic_for_finding(root: &Path, finding: &Finding) -> Diagnostic {
-    let line = finding.probe.location.line.saturating_sub(1) as u32;
     Diagnostic {
-        range: Range {
-            start: Position { line, character: 0 },
-            end: Position {
-                line,
-                character: 120,
-            },
-        },
+        range: diagnostic_range_for_finding(finding),
         severity: Some(diagnostic_severity_for_class(&finding.class)),
         code: Some(NumberOrString::String(finding.class.as_str().to_string())),
         code_description: None,
@@ -128,6 +123,30 @@ pub(super) fn diagnostic_for_finding(root: &Path, finding: &Finding) -> Diagnost
             },
         })),
     }
+}
+
+fn diagnostic_range_for_finding(finding: &Finding) -> Range {
+    let line = finding.probe.location.line.saturating_sub(1) as u32;
+    let start_character = finding.probe.location.column.saturating_sub(1) as u32;
+    let width = expression_lsp_width(&finding.probe.expression).min(MAX_DIAGNOSTIC_RANGE_WIDTH);
+    Range {
+        start: Position {
+            line,
+            character: start_character,
+        },
+        end: Position {
+            line,
+            character: start_character.saturating_add(width),
+        },
+    }
+}
+
+fn expression_lsp_width(expression: &str) -> u32 {
+    expression
+        .chars()
+        .map(|character| character.len_utf16() as u32)
+        .sum::<u32>()
+        .max(1)
 }
 
 fn related_information_for_finding(
