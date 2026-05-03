@@ -103,7 +103,7 @@
         "ripr.baseRef": {
           "type": "string",
           "default": "origin/main",
-          "description": "Git base ref used by ripr context commands."
+          "description": "Git base ref used by ripr editor diagnostics and context commands."
         },
         "ripr.trace.server": {
           "type": "string",

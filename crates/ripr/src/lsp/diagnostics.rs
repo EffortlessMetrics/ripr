@@ -1,5 +1,6 @@
+use super::config::LspAnalysisConfig;
 use super::uri::file_uri_for_path;
-use crate::app::{CheckInput, OutputFormat, check_workspace};
+use crate::app::check_workspace;
 use crate::domain::{ExposureClass, Finding, RelatedTest};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -45,11 +46,14 @@ pub(super) fn take_all_uris(uris: &mut BTreeSet<Uri>) -> Vec<Uri> {
 }
 
 pub fn workspace_diagnostic_batches(root: &Path) -> Result<Vec<DiagnosticBatch>, String> {
-    let input = CheckInput {
-        root: root.to_path_buf(),
-        format: OutputFormat::Json,
-        ..CheckInput::default()
-    };
+    workspace_diagnostic_batches_with_config(root, &LspAnalysisConfig::default())
+}
+
+pub(super) fn workspace_diagnostic_batches_with_config(
+    root: &Path,
+    config: &LspAnalysisConfig,
+) -> Result<Vec<DiagnosticBatch>, String> {
+    let input = config.check_input(root);
     let output =
         check_workspace(input).map_err(|err| format!("workspace analysis failed: {err}"))?;
     let mut grouped = BTreeMap::<Uri, Vec<Diagnostic>>::new();

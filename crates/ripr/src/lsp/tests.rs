@@ -1,20 +1,23 @@
 use super::actions::code_action_response;
 use super::backend::Backend;
 use super::capabilities::{initialize_result, root_from_initialize_params};
+use super::config::LspAnalysisConfig;
 use super::diagnostics::{
     DiagnosticBatch, diagnostic_for_finding, diagnostic_refresh_plan,
-    diagnostic_severity_for_class, take_all_uris,
+    diagnostic_severity_for_class, take_all_uris, workspace_diagnostic_batches,
 };
 use super::hover::hover_response;
 use super::state::DocumentStore;
 use super::uri::{encode_uri_path, file_uri_for_path, path_from_file_uri};
 use super::{COPY_CONTEXT_COMMAND, HOVER_TEXT, REFRESH_COMMAND};
+use crate::app::Mode;
 use crate::domain::{
     Confidence, DeltaKind, ExposureClass, Finding, OracleStrength, Probe, ProbeFamily, ProbeId,
     RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState,
 };
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use tower_lsp_server::LanguageServer;
 use tower_lsp_server::LspService;
 use tower_lsp_server::ls_types::{
     CodeActionContext, CodeActionOrCommand, CodeActionParams, DiagnosticSeverity,
@@ -455,6 +458,126 @@ fn initialize_root_falls_back_to_process_cwd_when_no_lsp_root_exists() {
     let root = root_from_initialize_params(&params, &fallback);
 
     assert_eq!(root, fallback);
+}
+
+#[test]
+fn initialization_options_override_lsp_analysis_config() {
+    let mut params = initialize_params(None, None);
+    params.initialization_options = Some(serde_json::json!({
+        "baseRef": "origin/release",
+        "checkMode": "deep",
+        "includeUnchangedTests": false,
+    }));
+
+    let config = LspAnalysisConfig::from_initialize_params(&params);
+    let input = config.check_input(Path::new("/workspace"));
+
+    assert_eq!(config.base_ref.as_deref(), Some("origin/release"));
+    assert_eq!(config.mode, Mode::Deep);
+    assert!(!config.include_unchanged_tests);
+    assert_eq!(input.root, PathBuf::from("/workspace"));
+    assert_eq!(input.base.as_deref(), Some("origin/release"));
+    assert_eq!(input.mode, Mode::Deep);
+    assert!(!input.include_unchanged_tests);
+}
+
+#[test]
+fn initialization_options_allow_empty_base_ref_and_invalid_mode_falls_back() {
+    let mut params = initialize_params(None, None);
+    params.initialization_options = Some(serde_json::json!({
+        "baseRef": "",
+        "checkMode": "surprise",
+    }));
+
+    let config = LspAnalysisConfig::from_initialize_params(&params);
+
+    assert_eq!(config.base_ref, None);
+    assert_eq!(config.mode, Mode::Draft);
+    assert!(config.include_unchanged_tests);
+}
+
+#[test]
+fn initialization_options_accept_all_analysis_mode_labels() {
+    let cases = [
+        ("instant", Mode::Instant),
+        ("draft", Mode::Draft),
+        ("fast", Mode::Fast),
+        ("deep", Mode::Deep),
+        ("ready", Mode::Ready),
+    ];
+
+    for (label, expected) in cases {
+        let mut params = initialize_params(None, None);
+        params.initialization_options = Some(serde_json::json!({
+            "checkMode": label,
+        }));
+
+        let config = LspAnalysisConfig::from_initialize_params(&params);
+
+        assert_eq!(config.mode, expected);
+    }
+}
+
+#[test]
+fn default_lsp_analysis_config_matches_check_input_defaults() {
+    let config = LspAnalysisConfig::default();
+    let input = config.check_input(Path::new("/workspace"));
+
+    assert_eq!(input.root, PathBuf::from("/workspace"));
+    assert_eq!(input.base.as_deref(), Some("origin/main"));
+    assert_eq!(input.mode, Mode::Draft);
+    assert!(input.include_unchanged_tests);
+}
+
+#[test]
+fn initialize_stores_lsp_analysis_config() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let mut params = initialize_params(None, None);
+        params.initialization_options = Some(serde_json::json!({
+            "baseRef": "upstream/main",
+            "checkMode": "fast",
+        }));
+
+        backend
+            .initialize(params)
+            .await
+            .map_err(|err| format!("initialize failed: {err}"))?;
+        let Some(config) = backend.analysis_config() else {
+            return Err("expected backend analysis config".to_string());
+        };
+
+        assert_eq!(config.base_ref.as_deref(), Some("upstream/main"));
+        assert_eq!(config.mode, Mode::Fast);
+        Ok(())
+    })
+}
+
+#[test]
+fn backend_starts_with_default_lsp_analysis_config() -> Result<(), String> {
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+
+    let Some(config) = backend.analysis_config() else {
+        return Err("expected backend analysis config".to_string());
+    };
+
+    assert_eq!(config.base_ref.as_deref(), Some("origin/main"));
+    assert_eq!(config.mode, Mode::Draft);
+    assert!(config.include_unchanged_tests);
+    Ok(())
+}
+
+#[test]
+fn workspace_diagnostic_batches_uses_default_lsp_analysis_config() {
+    let missing_root = Path::new("target/ripr/definitely-missing-lsp-root");
+
+    assert!(workspace_diagnostic_batches(missing_root).is_err());
 }
 
 #[test]

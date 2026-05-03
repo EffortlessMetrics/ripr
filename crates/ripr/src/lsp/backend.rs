@@ -1,9 +1,10 @@
 use super::REFRESH_COMMAND;
 use super::actions::code_action_response;
 use super::capabilities::{initialize_result, root_from_initialize_params};
+use super::config::LspAnalysisConfig;
 use super::diagnostics::{
     DiagnosticBatch, DiagnosticRefreshPlan, diagnostic_refresh_plan, take_all_uris,
-    workspace_diagnostic_batches,
+    workspace_diagnostic_batches_with_config,
 };
 use super::hover::{diagnostic_at_position, diagnostic_hover_response, hover_response};
 use super::state::DocumentStore;
@@ -24,6 +25,7 @@ pub(super) struct Backend {
     client: Client,
     root: Mutex<PathBuf>,
     documents: Mutex<DocumentStore>,
+    analysis_config: Mutex<LspAnalysisConfig>,
     last_diagnostic_uris: Mutex<BTreeSet<Uri>>,
     last_diagnostics: Mutex<BTreeMap<Uri, Vec<Diagnostic>>>,
     refresh_generation: Mutex<u64>,
@@ -36,6 +38,7 @@ impl Backend {
             client,
             root: Mutex::new(root),
             documents: Mutex::new(DocumentStore::default()),
+            analysis_config: Mutex::new(LspAnalysisConfig::default()),
             last_diagnostic_uris: Mutex::new(BTreeSet::new()),
             last_diagnostics: Mutex::new(BTreeMap::new()),
             refresh_generation: Mutex::new(0),
@@ -54,19 +57,25 @@ impl Backend {
         let Some(root) = self.root() else {
             return;
         };
-        let batches =
-            match tokio::task::spawn_blocking(move || workspace_diagnostic_batches(&root)).await {
-                Ok(Ok(batches)) => batches,
-                Ok(Err(err)) => {
-                    self.report_refresh_failure(err).await;
-                    return;
-                }
-                Err(err) => {
-                    self.report_refresh_failure(format!("analysis task failed: {err}"))
-                        .await;
-                    return;
-                }
-            };
+        let Some(config) = self.analysis_config() else {
+            return;
+        };
+        let batches = match tokio::task::spawn_blocking(move || {
+            workspace_diagnostic_batches_with_config(&root, &config)
+        })
+        .await
+        {
+            Ok(Ok(batches)) => batches,
+            Ok(Err(err)) => {
+                self.report_refresh_failure(err).await;
+                return;
+            }
+            Err(err) => {
+                self.report_refresh_failure(format!("analysis task failed: {err}"))
+                    .await;
+                return;
+            }
+        };
         if !self.is_current_refresh_generation(generation) {
             return;
         }
@@ -147,11 +156,25 @@ impl Backend {
         Some(root.clone())
     }
 
+    pub(super) fn analysis_config(&self) -> Option<LspAnalysisConfig> {
+        let Ok(config) = self.analysis_config.lock() else {
+            return None;
+        };
+        Some(config.clone())
+    }
+
     fn set_root(&self, root: PathBuf) {
         let Ok(mut current_root) = self.root.lock() else {
             return;
         };
         *current_root = root;
+    }
+
+    fn set_analysis_config(&self, config: LspAnalysisConfig) {
+        let Ok(mut current_config) = self.analysis_config.lock() else {
+            return;
+        };
+        *current_config = config;
     }
 
     fn open_document(&self, params: DidOpenTextDocumentParams) {
@@ -192,6 +215,7 @@ impl LanguageServer for Backend {
             .root()
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
         self.set_root(root_from_initialize_params(&params, &fallback_root));
+        self.set_analysis_config(LspAnalysisConfig::from_initialize_params(&params));
         Ok(initialize_result())
     }
 

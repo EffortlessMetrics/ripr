@@ -14,6 +14,8 @@ are scoped or reviewed.
 - Added internal local flow sink facts for changed expressions, including
   return values, error variants, struct fields, call effects, and match-arm
   results.
+- Passed VS Code `ripr.check.mode` and `ripr.baseRef` settings into LSP
+  workspace diagnostics.
 
 ## 0.3.0 - 2026-05-02
 

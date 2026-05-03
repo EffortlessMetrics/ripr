@@ -18,7 +18,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await vscode.commands.executeCommand('workbench.action.openSettings', 'ripr');
     }),
     vscode.workspace.onDidChangeConfiguration(async (event) => {
-      if (event.affectsConfiguration('ripr.server')) {
+      if (
+        event.affectsConfiguration('ripr.server') ||
+        event.affectsConfiguration('ripr.check') ||
+        event.affectsConfiguration('ripr.baseRef') ||
+        event.affectsConfiguration('ripr.trace')
+      ) {
         await controller?.restart();
       }
     })
