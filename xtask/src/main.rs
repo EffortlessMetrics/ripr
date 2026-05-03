@@ -2036,7 +2036,9 @@ fn check_static_language() -> Result<(), String> {
 
     for path in collect_files(Path::new("."))? {
         let normalized = normalize_path(&path);
-        if !is_static_language_candidate(&normalized) || allowed.contains(&normalized) {
+        if !is_static_language_candidate(&normalized)
+            || static_language_allowlist_covers(&allowed, &normalized)
+        {
             continue;
         }
         let text = read_text_lossy(&path)?;
@@ -8565,6 +8567,16 @@ fn glob_matches(pattern: &str, path: &str) -> bool {
     glob_parts_match(&pattern_parts, &path_parts)
 }
 
+fn static_language_allowlist_covers(allowlist: &BTreeSet<String>, path: &str) -> bool {
+    allowlist.iter().any(|entry| {
+        if entry.contains('*') {
+            glob_matches(entry, path)
+        } else {
+            entry == path
+        }
+    })
+}
+
 fn glob_parts_match(pattern: &[&str], path: &[&str]) -> bool {
     if pattern.is_empty() {
         return path.is_empty();
@@ -8762,11 +8774,11 @@ mod tests {
         parse_inline_array, parse_reason, pr_shape_warnings, precommit_report_body,
         public_contract_rows, receipt_json, receipt_specs, receipt_status_from_reports,
         report_index_markdown, report_index_missing_expected, report_status_from_text,
-        sorted_allowlist_content, spec_id_from_path, status_for_report,
-        suspicious_runtime_file_names, test_efficiency_entry, test_efficiency_report_json,
-        test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
-        test_oracle_tests_in_text, validate_local_context_allowlist, windows_absolute_path_tokens,
-        workflow_runtime_violations,
+        sorted_allowlist_content, spec_id_from_path, static_language_allowlist_covers,
+        status_for_report, suspicious_runtime_file_names, test_efficiency_entry,
+        test_efficiency_report_json, test_efficiency_report_markdown, test_oracle_report_json,
+        test_oracle_report_markdown, test_oracle_tests_in_text, validate_local_context_allowlist,
+        windows_absolute_path_tokens, workflow_runtime_violations,
     };
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
@@ -8786,6 +8798,36 @@ mod tests {
         assert!(!glob_matches(
             "editors/vscode/**/*.ts",
             "docs/examples/client.ts"
+        ));
+    }
+
+    #[test]
+    fn static_language_allowlist_covers_exact_paths_and_scoped_doc_globs() {
+        let mut allowlist = BTreeSet::new();
+        allowlist.insert("AGENTS.md".to_string());
+        allowlist.insert("docs/*.md".to_string());
+        allowlist.insert("docs/**/*.md".to_string());
+
+        assert!(static_language_allowlist_covers(&allowlist, "AGENTS.md"));
+        assert!(static_language_allowlist_covers(
+            &allowlist,
+            "docs/BADGE_POLICY.md"
+        ));
+        assert!(static_language_allowlist_covers(
+            &allowlist,
+            "docs/specs/RIPR-SPEC-0004-test-efficiency.md"
+        ));
+        assert!(!static_language_allowlist_covers(
+            &allowlist,
+            "crates/ripr/src/lib.rs"
+        ));
+        assert!(!static_language_allowlist_covers(
+            &allowlist,
+            "fixtures/boundary_gap/input/src/lib.rs"
+        ));
+        assert!(!static_language_allowlist_covers(
+            &allowlist,
+            "docs/generated/output.json"
         ));
     }
 
