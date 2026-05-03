@@ -17,8 +17,8 @@ use crate::domain::{
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tower_lsp_server::LanguageServer;
-use tower_lsp_server::LspService;
 use tower_lsp_server::ls_types::{
     CodeActionContext, CodeActionOrCommand, CodeActionParams, DiagnosticSeverity,
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
@@ -27,6 +27,7 @@ use tower_lsp_server::ls_types::{
     TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind,
     VersionedTextDocumentIdentifier, WorkspaceFolder,
 };
+use tower_lsp_server::{LspService, Server};
 
 #[test]
 fn initialize_result_exposes_existing_lsp_capabilities() -> Result<(), String> {
@@ -46,6 +47,169 @@ fn initialize_result_exposes_existing_lsp_capabilities() -> Result<(), String> {
     let commands = provider.commands;
     assert_eq!(commands, vec![REFRESH_COMMAND]);
     Ok(())
+}
+
+#[test]
+fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+
+    runtime.block_on(async {
+        let (client_io, server_io) = tokio::io::duplex(64 * 1024);
+        let (client_read, mut client_write) = tokio::io::split(client_io);
+        let (server_read, server_write) = tokio::io::split(server_io);
+        let (service, socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let mut server_task = tokio::spawn(async move {
+            Server::new(server_read, server_write, socket)
+                .serve(service)
+                .await;
+        });
+        let mut client_read = client_read;
+        let text_uri = "file:///workspace/src/lib.rs";
+
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "processId": null,
+                    "rootUri": "file:///target/ripr/lsp-protocol-smoke-missing-root",
+                    "capabilities": {}
+                }
+            }),
+        )
+        .await?;
+        let initialize = read_lsp_response(&mut client_read, 1).await?;
+        assert_eq!(
+            initialize["result"]["capabilities"]["executeCommandProvider"]["commands"][0],
+            REFRESH_COMMAND
+        );
+        assert_eq!(
+            initialize["result"]["capabilities"]["hoverProvider"],
+            serde_json::Value::Bool(true)
+        );
+
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "initialized",
+                "params": {}
+            }),
+        )
+        .await?;
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "textDocument/didOpen",
+                "params": {
+                    "textDocument": {
+                        "uri": text_uri,
+                        "languageId": "rust",
+                        "version": 1,
+                        "text": "pub fn demo() -> bool { true }\n"
+                    }
+                }
+            }),
+        )
+        .await?;
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "workspace/executeCommand",
+                "params": {
+                    "command": REFRESH_COMMAND,
+                    "arguments": []
+                }
+            }),
+        )
+        .await?;
+        let refresh = read_lsp_response(&mut client_read, 2).await?;
+        assert!(refresh.get("error").is_none());
+
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "textDocument/hover",
+                "params": {
+                    "textDocument": { "uri": text_uri },
+                    "position": { "line": 0, "character": 4 }
+                }
+            }),
+        )
+        .await?;
+        let hover = read_lsp_response(&mut client_read, 3).await?;
+        let hover_value = hover["result"]["contents"]["value"]
+            .as_str()
+            .ok_or_else(|| "expected hover markdown value".to_string())?;
+        assert!(hover_value.contains("ripr estimates static RIPR exposure"));
+
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 4,
+                "method": "textDocument/codeAction",
+                "params": {
+                    "textDocument": { "uri": text_uri },
+                    "range": {
+                        "start": { "line": 0, "character": 0 },
+                        "end": { "line": 0, "character": 4 }
+                    },
+                    "context": { "diagnostics": [] }
+                }
+            }),
+        )
+        .await?;
+        let actions = read_lsp_response(&mut client_read, 4).await?;
+        assert_eq!(actions["result"][0]["title"], "Run ripr check");
+        assert_eq!(actions["result"][0]["command"]["command"], REFRESH_COMMAND);
+
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 5,
+                "method": "shutdown",
+                "params": null
+            }),
+        )
+        .await?;
+        let shutdown = read_lsp_response(&mut client_read, 5).await?;
+        assert!(shutdown.get("error").is_none());
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "exit",
+                "params": null
+            }),
+        )
+        .await?;
+        client_write
+            .shutdown()
+            .await
+            .map_err(|err| format!("failed to close test client: {err}"))?;
+        match tokio::time::timeout(std::time::Duration::from_secs(2), &mut server_task).await {
+            Ok(join_result) => {
+                join_result.map_err(|err| format!("LSP server task failed: {err}"))?;
+            }
+            Err(_) => {
+                server_task.abort();
+                return Err("LSP server did not stop after exit notification".to_string());
+            }
+        }
+        Ok(())
+    })
 }
 
 #[test]
@@ -737,6 +901,71 @@ fn uri_path_encoding_preserves_path_syntax_and_escapes_spaces() {
 fn test_uri(uri: &str) -> Result<tower_lsp_server::ls_types::Uri, String> {
     uri.parse::<tower_lsp_server::ls_types::Uri>()
         .map_err(|err| format!("failed to parse test URI: {err}"))
+}
+
+async fn write_lsp_message<W>(writer: &mut W, message: serde_json::Value) -> Result<(), String>
+where
+    W: AsyncWrite + Unpin,
+{
+    let body = serde_json::to_vec(&message)
+        .map_err(|err| format!("failed to encode LSP message: {err}"))?;
+    let header = format!("Content-Length: {}\r\n\r\n", body.len());
+    writer
+        .write_all(header.as_bytes())
+        .await
+        .map_err(|err| format!("failed to write LSP header: {err}"))?;
+    writer
+        .write_all(&body)
+        .await
+        .map_err(|err| format!("failed to write LSP body: {err}"))?;
+    writer
+        .flush()
+        .await
+        .map_err(|err| format!("failed to flush LSP message: {err}"))
+}
+
+async fn read_lsp_response<R>(reader: &mut R, id: u64) -> Result<serde_json::Value, String>
+where
+    R: AsyncRead + Unpin,
+{
+    loop {
+        let message = read_lsp_message(reader).await?;
+        if message.get("id").and_then(serde_json::Value::as_u64) == Some(id) {
+            return Ok(message);
+        }
+    }
+}
+
+async fn read_lsp_message<R>(reader: &mut R) -> Result<serde_json::Value, String>
+where
+    R: AsyncRead + Unpin,
+{
+    let mut header = Vec::new();
+    loop {
+        let mut byte = [0_u8; 1];
+        reader
+            .read_exact(&mut byte)
+            .await
+            .map_err(|err| format!("failed to read LSP header: {err}"))?;
+        header.push(byte[0]);
+        if header.ends_with(b"\r\n\r\n") {
+            break;
+        }
+    }
+    let header =
+        std::str::from_utf8(&header).map_err(|err| format!("invalid LSP header UTF-8: {err}"))?;
+    let content_length = header
+        .lines()
+        .find_map(|line| line.strip_prefix("Content-Length: "))
+        .ok_or_else(|| "missing LSP Content-Length header".to_string())?
+        .parse::<usize>()
+        .map_err(|err| format!("invalid LSP Content-Length header: {err}"))?;
+    let mut body = vec![0_u8; content_length];
+    reader
+        .read_exact(&mut body)
+        .await
+        .map_err(|err| format!("failed to read LSP body: {err}"))?;
+    serde_json::from_slice(&body).map_err(|err| format!("failed to decode LSP message: {err}"))
 }
 
 fn sample_analysis_snapshot(
