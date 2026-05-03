@@ -73,11 +73,11 @@ commands = [
 
 [[work_item]]
 id = "test-efficiency/report-and-metrics"
-status = "ready"
+status = "done"
 branch = "test-efficiency/report-and-metrics"
 stackable = false
 requires_human_merge = true
-acceptance = "test-efficiency reports and metrics summarize strong, broad, smoke-only, likely-vacuous, opaque, and duplicative counts; expose `duplicate_discriminator_group_count` as a stable metric"
+acceptance = "test-efficiency reports include a stable `metrics` object with `tests_scanned`, per-class counts (including `duplicative`), per-reason counts (including `duplicate_activation_and_oracle_shape`), and `duplicate_discriminator_group_count` distinct from the duplicative-test count; capability metadata in `metrics/capabilities.toml` references the new metrics surface"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
@@ -106,12 +106,10 @@ commands = [
 
 [[work_item]]
 id = "badge/summary-renderer-v1"
-status = "blocked"
+status = "ready"
 branch = "badge/summary-renderer-v1"
 stackable = false
 requires_human_merge = true
-blocked_by = ["test-efficiency/report-and-metrics", "docs/badge-policy"]
-blocked_reason = "needs stable test-efficiency metrics and the locked badge vocabulary before adding renderer code"
 acceptance = "private BadgeSummary types in output::badge render badge-json and badge-shields projections from CheckOutput; cargo xtask check-public-api stays green"
 commands = [
   "cargo xtask shape",
@@ -143,12 +141,10 @@ commands = [
 
 [[work_item]]
 id = "test-intent/v1"
-status = "blocked"
+status = "ready"
 branch = "test-intent/v1"
 stackable = false
 requires_human_merge = true
-blocked_by = ["test-efficiency/report-and-metrics"]
-blocked_reason = "needs stable test-efficiency classes before declaring intent against them"
 acceptance = ".ripr/test_intent.toml loader marks declared tests intentional in target/ripr/reports/test-efficiency.json; supported intents are smoke, business_case_duplicate, opaque_external_oracle, integration_contract, performance_guard, documentation_example; declared tests stay visible in reports"
 commands = [
   "cargo xtask shape",
