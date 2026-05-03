@@ -1,0 +1,96 @@
+schema_version = 1
+
+# Declared test intent for ripr's own test suite.
+#
+# Each entry below positively declares the *shape* of an intentional test
+# pattern. The original analyzer class (e.g. possibly_circular,
+# likely_vacuous) is preserved in test-efficiency reports — declared_intent
+# is additive metadata, not a replacement for the static signal.
+#
+# Source: dogfood preflight on main at ce609b5 (2026-05-03) ahead of
+# `badge/repo-scope-artifacts`. The 7 possibly_circular + 2 likely_vacuous
+# entries below were classified as intentional after reading each test's
+# body. See `target/ripr/reports/issue-badge-publish-main-endpoint.md` for
+# the full classification table and reasoning.
+#
+# Supported intents (from test-intent/v1):
+#   smoke, business_case_duplicate, opaque_external_oracle,
+#   integration_contract, performance_guard, documentation_example.
+# Adding a new intent is a doc + schema PR, not an ad-hoc string.
+
+# --- 7 integration_contract: BDD / state-machine / table-driven tests
+# whose expected values are computed from the same code paths the SUT
+# walks. The analyzer flags these as `possibly_circular` because setup
+# helpers and assertions reference the same owners; the circularity is
+# benign (helpers are not the SUT) and the test shape is the canonical
+# integration-contract pattern for the surface under test.
+
+[[test_intent]]
+test = "given_changed_side_effect_call_when_effect_method_is_called_then_flow_sink_is_call_effect"
+path = "crates/ripr/src/analysis/classifier.rs"
+intent = "integration_contract"
+owner = "ripr"
+reason = "BDD-style integration test of classify_probe; setup builds a function fact via the function() helper and asserts the resulting flow-sink kind. The helper is not the system under test, so the analyzer's possibly_circular flag is conservative noise — this is the canonical shape for classifier integration tests."
+
+[[test_intent]]
+test = "classifies_snapshot_mock_relational_smoke_and_unknown_oracles"
+path = "crates/ripr/src/analysis/rust_index.rs"
+intent = "integration_contract"
+owner = "ripr"
+reason = "Table-driven test of classify_assertion across the 5 supported oracle shapes (snapshot, mock, relational, smoke, unknown). Each table row is the literal oracle string, which the analyzer reads as setup-from-detected-owner-path; the shape is intentional and the only way to keep oracle classification cases readable in one test."
+
+[[test_intent]]
+test = "instant_indexes_changed_rust_files_only"
+path = "crates/ripr/src/analysis/workspace.rs"
+intent = "integration_contract"
+owner = "ripr"
+reason = "Table-driven test of select_rust_files_for_mode for AnalysisMode::Instant. Setup uses a files() helper to construct file lists; the helper is shared with the assertion side, which the analyzer flags as possibly_circular. The shape is intentional — workspace-mode behavior is asserted by enumerating inputs and the expected subset."
+
+[[test_intent]]
+test = "no_unchanged_tests_limits_any_mode_to_changed_files"
+path = "crates/ripr/src/analysis/workspace.rs"
+intent = "integration_contract"
+owner = "ripr"
+reason = "Same table-driven shape as instant_indexes_changed_rust_files_only, asserting the include_unchanged_tests flag's effect across modes. Helper-vs-SUT separation is intact; possibly_circular flag is conservative."
+
+[[test_intent]]
+test = "document_store_tracks_open_change_and_close"
+path = "crates/ripr/src/lsp/tests.rs"
+intent = "integration_contract"
+owner = "ripr"
+reason = "State-machine integration test of the LSP document store across open → change → close. The test_uri() helper and the change/close/open methods are shared between setup and assertion sides; this is the canonical state-machine test pattern, not real circularity."
+
+[[test_intent]]
+test = "document_store_creates_document_from_full_change_when_missing"
+path = "crates/ripr/src/lsp/tests.rs"
+intent = "integration_contract"
+owner = "ripr"
+reason = "State-machine integration test for the missing-document-on-full-change branch. Same helper-vs-SUT shape as document_store_tracks_open_change_and_close; possibly_circular flag is conservative."
+
+[[test_intent]]
+test = "test_efficiency_signals_likely_vacuous_and_possibly_circular_tests"
+path = "xtask/src/main.rs"
+intent = "integration_contract"
+owner = "ripr"
+reason = "Meta-test of the test-efficiency classifier itself: it constructs sample test bodies that *should* be classified as likely_vacuous and possibly_circular, then asserts the classifier produces those classes. The setup intentionally mirrors the patterns the analyzer is detecting — circularity is the contract, not a bug."
+
+# --- 2 smoke: CLI smoke tests that pin the advisory-by-default exit-code
+# contract for the badge formats. The lack of stdout assertions is
+# intentional — the only thing being asserted is "exit code is 0 even when
+# the count is nonzero." Adding a stronger oracle would test something
+# different (the count rendering), which is already covered by the badge
+# renderer unit tests.
+
+[[test_intent]]
+test = "check_badge_plus_command_exits_zero_by_default_even_with_nonzero_count"
+path = "crates/ripr/tests/cli_smoke.rs"
+intent = "smoke"
+owner = "ripr"
+reason = "Pins the advisory-by-default exit-code contract for ripr check --format badge-plus-*: a nonzero badge count must NOT fail CI unless --fail-on-nonzero is passed. Smoke-only oracle is intentional — the count rendering is covered by the badge unit tests; this test only asserts the exit-code policy."
+
+[[test_intent]]
+test = "check_badge_command_exits_zero_even_with_nonzero_count"
+path = "crates/ripr/tests/cli_smoke.rs"
+intent = "smoke"
+owner = "ripr"
+reason = "Pins the advisory-by-default exit-code contract for ripr check --format badge-*. Same shape and rationale as check_badge_plus_command_exits_zero_by_default_even_with_nonzero_count — smoke-only oracle is intentional."
