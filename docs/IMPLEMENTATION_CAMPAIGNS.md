@@ -238,11 +238,13 @@ End state:
 
 - per-test ledgers name reachable owners, oracle kind and strength, observed
   values, and static limitations
-- likely-vacuous, smoke-only, broad-oracle, opaque, circular, and duplicate
+- likely-vacuous, smoke-only, broad-oracle, opaque, circular, and `duplicative`
   signals are advisory
 - reports explain evidence and suggested next steps without calling tests bad
 - test-efficiency metrics are available for trend tracking
 - agent and editor surfaces can avoid imitating low-discriminator tests
+- `ripr` and `ripr+` badge artifacts publish unresolved-finding counts as
+  inbox-zero signals, with intent and suppressions as durable exception files
 
 Work items:
 
@@ -250,15 +252,27 @@ Work items:
 | --- | --- | --- |
 | `test-efficiency/test-fact-ledger` | done | `cargo xtask test-efficiency-report` writes advisory per-test ledgers with reached owners, oracle kind/strength, observed values, and static limitations. |
 | `test-efficiency/vacuous-signal-v1` | done | The advisory report now records smoke-only, broad-oracle, disconnected, opaque, circular, and likely-vacuous reasons. |
-| `test-efficiency/duplicate-discriminator-v1` | ready | Group tests with the same owner, activation values, oracle shape, and sink evidence. |
+| `test-efficiency/duplicate-discriminator-v1` | ready | Group tests with the same owner, activation values, oracle shape, and sink evidence; emit class `duplicative`. |
 | `test-efficiency/report-and-metrics` | blocked | Depends on vacuity and duplicate signals; summarize counts and trends without blocking CI. |
+| `docs/badge-policy` | done | [Badge policy](BADGE_POLICY.md) locks the badge counting rule, native JSON shape, Shields projection, and exact emitted vocabulary. |
+| `badge/summary-renderer-v1` | blocked | Private `BadgeSummary` types in `output::badge` render `badge-json` and `badge-shields` from `CheckOutput`. Public API stays unchanged. Blocked on `test-efficiency/report-and-metrics`. |
+| `badge/ripr-count-v1` | blocked | `ripr check --format badge-json` and `--format badge-shields` count unsuppressed exposure gaps. Blocked on `badge/summary-renderer-v1`. |
+| `test-intent/v1` | blocked | `.ripr/test_intent.toml` loader marks declared tests intentional in test-efficiency output; `ripr+` excludes them. Blocked on `test-efficiency/report-and-metrics`. |
+| `badge/ripr-plus-count-v1` | blocked | `ripr check --format badge-plus-json` adds actionable test-efficiency findings (excluding intent) to the `ripr+` count. Blocked on `badge/ripr-count-v1` and `test-intent/v1`. |
+| `suppressions/v1` | blocked | `.ripr/suppressions.toml` loader; reason and owner required, expiry encouraged. Suppressed findings stay visible. Blocked on `badge/ripr-plus-count-v1`. |
+| `ci/badge-artifacts` | blocked | CI uploads `target/ripr/reports/ripr-badge*.json` and `ripr-plus-badge*.json`, links them from the report index, and shows counts in the GitHub step summary. Advisory by default. Blocked on `badge/ripr-plus-count-v1` and `suppressions/v1` so durable intent/suppression handling exists before consumers treat published artifacts as meaningful. |
+| `badge/publish-main-endpoint` | blocked | Trunk-only Shields endpoint published from `main`; README badges point at it. Requires `policy/network_allowlist.txt` entry. Blocked on `ci/badge-artifacts`. |
 
 Dependencies:
 
 - Campaign 3 evidence fields should remain the source of truth; test-efficiency
   work should not invent a separate classifier for changed behavior.
 - The first report should be advisory and should not fail CI.
-- Configured test intent and suppressions should wait until signals prove useful.
+- Badge counting must use the exact emitted strings audited in
+  [Badge policy](BADGE_POLICY.md); aspirational class names that the reporter
+  does not produce must not appear in the badge schema.
+- `test-intent/v1` ships before `suppressions/v1` so intentional smoke and
+  duplicate tests are positive declarations, not exception entries.
 
 Commands:
 
