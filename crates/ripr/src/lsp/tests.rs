@@ -261,6 +261,9 @@ fn diagnostic_for_finding_preserves_lsp_payload_shape() -> Result<(), String> {
     let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
 
     assert_eq!(diagnostic.range.start.line, 87);
+    assert_eq!(diagnostic.range.start.character, 0);
+    assert_eq!(diagnostic.range.end.line, 87);
+    assert_eq!(diagnostic.range.end.character, 19);
     assert_eq!(diagnostic.severity, Some(DiagnosticSeverity::WARNING));
     assert_eq!(
         diagnostic.code,
@@ -281,6 +284,32 @@ fn diagnostic_for_finding_preserves_lsp_payload_shape() -> Result<(), String> {
     assert_eq!(data["source_range"]["line"], 88);
     assert_eq!(data["source_range"]["column"], 1);
     Ok(())
+}
+
+#[test]
+fn diagnostic_for_finding_uses_probe_column_and_expression_width() {
+    let mut finding = sample_finding();
+    finding.probe.location.column = 5;
+    finding.probe.expression = "total".to_string();
+
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+
+    assert_eq!(diagnostic.range.start.line, 87);
+    assert_eq!(diagnostic.range.start.character, 4);
+    assert_eq!(diagnostic.range.end.line, 87);
+    assert_eq!(diagnostic.range.end.character, 9);
+}
+
+#[test]
+fn diagnostic_for_finding_uses_one_character_range_for_empty_expression() {
+    let mut finding = sample_finding();
+    finding.probe.location.column = 3;
+    finding.probe.expression.clear();
+
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+
+    assert_eq!(diagnostic.range.start.character, 2);
+    assert_eq!(diagnostic.range.end.character, 3);
 }
 
 #[test]
