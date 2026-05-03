@@ -19,6 +19,9 @@ are scoped or reviewed.
   variant gaps tied to local flow sinks.
 - Passed VS Code `ripr.check.mode` and `ripr.baseRef` settings into LSP
   workspace diagnostics.
+- Stored the latest LSP analysis snapshot alongside diagnostics so future
+  hover, code-action, and context paths can resolve findings without rerunning
+  analysis.
 
 ## 0.3.0 - 2026-05-02
 

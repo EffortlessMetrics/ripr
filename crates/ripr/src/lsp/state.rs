@@ -1,9 +1,57 @@
 use super::uri::path_from_file_uri;
+use crate::app::Mode;
+use crate::domain::Finding;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use tower_lsp_server::ls_types::{
-    DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams, Uri,
+    Diagnostic, DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    Uri,
 };
+
+#[derive(Clone, Debug)]
+pub(super) struct AnalysisSnapshot {
+    pub(super) root: PathBuf,
+    pub(super) base: Option<String>,
+    pub(super) mode: Mode,
+    pub(super) findings: Vec<Finding>,
+    pub(super) diagnostics_by_uri: BTreeMap<Uri, Vec<Diagnostic>>,
+}
+
+impl AnalysisSnapshot {
+    pub(super) fn is_consistent(&self) -> bool {
+        let diagnostic_count = self
+            .diagnostics_by_uri
+            .values()
+            .map(Vec::len)
+            .sum::<usize>();
+        !self.root.as_os_str().is_empty()
+            && self
+                .base
+                .as_ref()
+                .is_none_or(|base| !base.trim().is_empty())
+            && !self.mode.as_str().is_empty()
+            && self.findings.len() == diagnostic_count
+    }
+
+    pub(super) fn diagnostics_for_uri(&self, uri: &Uri) -> Option<&[Diagnostic]> {
+        self.diagnostics_by_uri.get(uri).map(Vec::as_slice)
+    }
+
+    pub(super) fn finding_by_id(&self, finding_id: &str) -> Option<&Finding> {
+        self.findings
+            .iter()
+            .find(|finding| finding.id == finding_id)
+    }
+
+    pub(super) fn finding_for_diagnostic(&self, diagnostic: &Diagnostic) -> Option<&Finding> {
+        let finding_id = diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("finding_id"))
+            .and_then(|value| value.as_str())?;
+        self.finding_by_id(finding_id)
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct DocumentState {
