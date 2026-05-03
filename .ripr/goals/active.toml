@@ -139,11 +139,11 @@ commands = [
 
 [[work_item]]
 id = "test-intent/v1"
-status = "ready"
+status = "done"
 branch = "test-intent/v1"
 stackable = false
 requires_human_merge = true
-acceptance = ".ripr/test_intent.toml loader marks declared tests intentional in target/ripr/reports/test-efficiency.json; supported intents are smoke, business_case_duplicate, opaque_external_oracle, integration_contract, performance_guard, documentation_example; declared tests stay visible in reports"
+acceptance = ".ripr/test_intent.toml loader attaches `declared_intent` metadata (intent, owner, reason, source) to matching entries in target/ripr/reports/test-efficiency.json; supported intents are smoke, business_case_duplicate, opaque_external_oracle, integration_contract, performance_guard, documentation_example; original `class` strings are preserved (intent is additive, never a replacement); unmatched and ambiguous selectors fail the report; declared tests remain visible in JSON ledger and Markdown ## Declared Test Intent section"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
@@ -156,12 +156,10 @@ commands = [
 
 [[work_item]]
 id = "badge/ripr-plus-count-v1"
-status = "blocked"
+status = "ready"
 branch = "badge/ripr-plus-count-v1"
 stackable = false
 requires_human_merge = true
-blocked_by = ["test-intent/v1"]
-blocked_reason = "needs the test-intent loader before the ripr+ count can exclude declared intentional test-efficiency findings; the ripr badge CLI shipped in #190"
 acceptance = "ripr check --format badge-plus-json and --format badge-plus-shields sum unsuppressed exposure gaps and unsuppressed actionable test-efficiency findings (excluding declared intent); intentional findings are reported in counts.intentional_test_efficiency_findings"
 commands = [
   "cargo xtask shape",
