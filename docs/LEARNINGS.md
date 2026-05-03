@@ -88,6 +88,29 @@ learning output.
 Do not commit local checkout notes, machine-specific paths, chat transcript
 artifacts, or one-run command transcripts as repository state.
 
+## 2026-05-03: Reasoned Policy Allowlists
+
+Narrow exception files that bypass repo-wide checks should be structured, not
+bare paths. Every entry needs an `owner` and a written `reason`, and the
+checker should fail on missing or blank values, duplicate matchers, absolute
+paths, backslash paths, and overly-broad globs.
+
+The current example is `.ripr/static-language-allowlist.toml`, validated by
+`parse_static_language_allowlist` in `xtask/src/main.rs`. Glob entries are
+restricted to a small scoped set (`docs/*.md` and `docs/**/*.md`); broader
+patterns are rejected at parse time. The legacy `.ripr/static-language-allowlist.txt`
+file is rejected with a migration message if both files coexist.
+
+Future narrow exception files should follow the same contract:
+
+- `.ripr/test_intent.toml` (planned in `test-intent/v1`)
+- `.ripr/suppressions.toml` (planned in `suppressions/v1`)
+
+A reviewer one year from now should be able to look at any allowlist entry and
+understand why it exists, who owns it, and whether the exemption could be
+rewritten away. "Allowlisting because tests fail" is not a reason; "this file
+defines the language boundary and must quote prohibited terms verbatim" is.
+
 ## 2026-05-01: Engineering Debt to Track
 
 The repository currently contains `unwrap`/`expect` usage in code and tests.
