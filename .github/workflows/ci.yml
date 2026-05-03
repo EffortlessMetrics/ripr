@@ -30,6 +30,12 @@ jobs:
       - run: cargo xtask check-network-policy
       - run: cargo package -p ripr --list
       - run: cargo publish -p ripr --dry-run
+      - name: Generate ripr test-efficiency report
+        if: always()
+        run: cargo xtask test-efficiency-report || true
+      - name: Generate ripr badge artifacts
+        if: always()
+        run: cargo xtask badge-artifacts || true
       - name: Generate ripr PR summary
         if: always()
         run: cargo xtask pr-summary || true
@@ -47,6 +53,12 @@ jobs:
         run: |
           if [ -f target/ripr/reports/index.md ]; then
             cat target/ripr/reports/index.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Write ripr badge summary
+        if: always()
+        run: |
+          if [ -f target/ripr/reports/ripr-badges.md ]; then
+            cat target/ripr/reports/ripr-badges.md >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Upload ripr reports
         if: always()

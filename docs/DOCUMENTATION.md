@@ -82,6 +82,7 @@ Current explanation docs:
 - [Metrics](METRICS.md)
 - [Capability matrix](CAPABILITY_MATRIX.md)
 - [Learnings](LEARNINGS.md)
+- [Friction log](FRICTION_LOG.md)
 - [ADRs](adr/)
 - [Specs](specs/)
 - [Agent workflows](AGENT_WORKFLOWS.md)
