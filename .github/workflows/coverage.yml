@@ -50,3 +50,4 @@ jobs:
       - name: Explain skipped Codecov upload
         if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: echo "Skipping Codecov upload for fork pull requests because repository secrets are unavailable."
+
