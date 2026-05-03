@@ -2036,9 +2036,7 @@ fn check_static_language() -> Result<(), String> {
 
     for path in collect_files(Path::new("."))? {
         let normalized = normalize_path(&path);
-        if !is_static_language_candidate(&normalized)
-            || static_language_allowlist_covers(&allowed, &normalized)
-        {
+        if !should_scan_static_language_path(&allowed, &normalized) {
             continue;
         }
         let text = read_text_lossy(&path)?;
@@ -8577,6 +8575,10 @@ fn static_language_allowlist_covers(allowlist: &BTreeSet<String>, path: &str) ->
     })
 }
 
+fn should_scan_static_language_path(allowlist: &BTreeSet<String>, path: &str) -> bool {
+    is_static_language_candidate(path) && !static_language_allowlist_covers(allowlist, path)
+}
+
 fn glob_parts_match(pattern: &[&str], path: &[&str]) -> bool {
     if pattern.is_empty() {
         return path.is_empty();
@@ -8774,11 +8776,12 @@ mod tests {
         parse_inline_array, parse_reason, pr_shape_warnings, precommit_report_body,
         public_contract_rows, receipt_json, receipt_specs, receipt_status_from_reports,
         report_index_markdown, report_index_missing_expected, report_status_from_text,
-        sorted_allowlist_content, spec_id_from_path, static_language_allowlist_covers,
-        status_for_report, suspicious_runtime_file_names, test_efficiency_entry,
-        test_efficiency_report_json, test_efficiency_report_markdown, test_oracle_report_json,
-        test_oracle_report_markdown, test_oracle_tests_in_text, validate_local_context_allowlist,
-        windows_absolute_path_tokens, workflow_runtime_violations,
+        should_scan_static_language_path, sorted_allowlist_content, spec_id_from_path,
+        static_language_allowlist_covers, status_for_report, suspicious_runtime_file_names,
+        test_efficiency_entry, test_efficiency_report_json, test_efficiency_report_markdown,
+        test_oracle_report_json, test_oracle_report_markdown, test_oracle_tests_in_text,
+        validate_local_context_allowlist, windows_absolute_path_tokens,
+        workflow_runtime_violations,
     };
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
@@ -8829,6 +8832,116 @@ mod tests {
             &allowlist,
             "docs/generated/output.json"
         ));
+    }
+
+    #[test]
+    fn should_scan_static_language_path_combines_candidate_check_and_allowlist() {
+        let mut allowlist = BTreeSet::new();
+        allowlist.insert("AGENTS.md".to_string());
+        allowlist.insert("docs/*.md".to_string());
+        allowlist.insert("docs/**/*.md".to_string());
+
+        // Non-candidate files (not in the watched extensions list) are never
+        // scanned, regardless of allowlist contents.
+        assert!(!should_scan_static_language_path(
+            &allowlist,
+            "docs/generated/output.png"
+        ));
+        assert!(!should_scan_static_language_path(
+            &allowlist,
+            "fixtures/boundary_gap/expected/output.bin"
+        ));
+
+        // Candidate files covered by an exact allowlist entry are not scanned.
+        assert!(!should_scan_static_language_path(&allowlist, "AGENTS.md"));
+
+        // Candidate files covered by the docs Markdown globs are not scanned.
+        assert!(!should_scan_static_language_path(
+            &allowlist,
+            "docs/BADGE_POLICY.md"
+        ));
+        assert!(!should_scan_static_language_path(
+            &allowlist,
+            "docs/specs/RIPR-SPEC-0004-test-efficiency.md"
+        ));
+
+        // Non-allowlisted candidate Rust source IS scanned.
+        assert!(should_scan_static_language_path(
+            &allowlist,
+            "crates/ripr/src/lib.rs"
+        ));
+        assert!(should_scan_static_language_path(
+            &allowlist,
+            "fixtures/boundary_gap/input/src/lib.rs"
+        ));
+    }
+
+    #[test]
+    fn glob_matches_distinguishes_single_star_from_double_star_segments() {
+        // docs/*.md must NOT match a nested path: a single `*` cannot cross `/`.
+        assert!(!glob_matches(
+            "docs/*.md",
+            "docs/specs/RIPR-SPEC-0004-test-efficiency.md"
+        ));
+
+        // docs/**/*.md must match a top-level docs file because ** consumes zero segments.
+        assert!(glob_matches("docs/**/*.md", "docs/BADGE_POLICY.md"));
+
+        // docs/**/*.md must match deeply nested paths.
+        assert!(glob_matches("docs/**/*.md", "docs/adr/sub/0001-x.md"));
+
+        // Empty path against a non-empty pattern → false.
+        assert!(!glob_matches("docs/*.md", ""));
+
+        // A pattern with no wildcards behaves as exact match (case-sensitive).
+        assert!(glob_matches("AGENTS.md", "AGENTS.md"));
+        assert!(!glob_matches("AGENTS.md", "agents.md"));
+
+        // A `*` segment cannot cross `/`, so it matches one path component only.
+        assert!(glob_matches(
+            "crates/*/src/lib.rs",
+            "crates/ripr/src/lib.rs"
+        ));
+        assert!(!glob_matches(
+            "crates/*/src/lib.rs",
+            "crates/ripr/src/main.rs"
+        ));
+    }
+
+    #[test]
+    fn static_language_allowlist_covers_handles_empty_and_glob_only_lists() {
+        // An empty allowlist covers nothing.
+        let empty: BTreeSet<String> = BTreeSet::new();
+        assert!(!static_language_allowlist_covers(&empty, "AGENTS.md"));
+        assert!(!static_language_allowlist_covers(&empty, "docs/X.md"));
+
+        // Glob-only allowlist: only paths matching the glob are covered.
+        let mut globs_only = BTreeSet::new();
+        globs_only.insert("docs/**/*.md".to_string());
+        assert!(static_language_allowlist_covers(
+            &globs_only,
+            "docs/specs/X.md"
+        ));
+        assert!(static_language_allowlist_covers(
+            &globs_only,
+            "docs/BADGE_POLICY.md"
+        ));
+        assert!(!static_language_allowlist_covers(&globs_only, "AGENTS.md"));
+        assert!(!static_language_allowlist_covers(
+            &globs_only,
+            "crates/ripr/README.md"
+        ));
+
+        // Exact-only allowlist: no glob behavior applied to non-glob entries.
+        let mut exact_only = BTreeSet::new();
+        exact_only.insert("AGENTS.md".to_string());
+        exact_only.insert("README.md".to_string());
+        assert!(static_language_allowlist_covers(&exact_only, "AGENTS.md"));
+        assert!(!static_language_allowlist_covers(
+            &exact_only,
+            "docs/AGENTS.md"
+        ));
+        assert!(!static_language_allowlist_covers(&exact_only, "docs/X.md"));
     }
 
     #[test]
