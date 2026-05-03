@@ -160,11 +160,18 @@ is separate from the VS Code extension-host compatibility declared in
 The coverage workflow currently runs:
 
 ```bash
+cargo llvm-cov clean --workspace
 cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
 ```
 
-It uploads `lcov.info` to Codecov with `fail_ci_if_error: false` while the
-coverage integration is being established.
+It uploads `lcov.info` as the `rust-lcov` GitHub Actions artifact and uploads
+the same file to Codecov with the `rust` flag and `rust-workspace` upload name.
+
+Codecov uses the repository `CODECOV_TOKEN` secret. Upload failures and Codecov
+coverage statuses stay advisory while the regenerated token and checked-in
+`codecov.yml` are being proved on `main`. After a successful main-branch upload,
+the next scoped PR should make Codecov upload failures blocking and can begin
+ratcheting Codecov statuses from advisory to required.
 
 The security workflow currently runs:
 

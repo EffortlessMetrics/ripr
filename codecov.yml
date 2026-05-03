@@ -1,0 +1,30 @@
+coverage:
+  precision: 2
+  round: down
+  range: "70...95"
+
+  status:
+    project:
+      default:
+        target: 75%
+        threshold: 1%
+    patch:
+      default:
+        target: 80%
+        threshold: 5%
+
+comment:
+  layout: "diff, flags, files"
+  behavior: default
+  require_changes: false
+
+flags:
+  rust:
+    paths:
+      - crates/ripr/src/
+      - xtask/src/
+
+ignore:
+  - "target/**"
+  - "fixtures/**/target/**"
+  - "editors/vscode/**/node_modules/**"
