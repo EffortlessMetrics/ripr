@@ -24,6 +24,8 @@ are scoped or reviewed.
   analysis.
 - Scoped LSP diagnostic ranges to the probe source column and expression width
   instead of marking a fixed line prefix.
+- Added a framed LSP protocol smoke test for initialize, didOpen, refresh,
+  hover, codeAction, shutdown, and exit over the tower server.
 
 ## 0.3.0 - 2026-05-02
 
