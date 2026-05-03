@@ -236,7 +236,8 @@ output boundary; it is never the source of truth.
     "assertion_may_not_match_detected_owner": 0,
     "opaque_helper_or_fixture_boundary": 0,
     "no_activation_literal_detected": 0,
-    "expected_value_computed_from_detected_owner_path": 0
+    "expected_value_computed_from_detected_owner_path": 0,
+    "duplicate_activation_and_oracle_shape": 0
   },
   "policy": {
     "include_unknowns": false,
@@ -417,8 +418,8 @@ Tracked alongside Campaign 4A in
 | Vacuity signals (the 6-class table above, minus duplicate) | done | same |
 | Duplicate-discriminator grouping | done | `test-efficiency/duplicate-discriminator-v1` |
 | Test-efficiency report metrics | done | `test-efficiency/report-and-metrics` |
-| Private `BadgeSummary` model and renderer | ready | `badge/summary-renderer-v1` |
-| `ripr check --format badge-json` / `badge-shields` | not started | `badge/ripr-count-v1` |
+| Private `BadgeSummary` model and renderer | done | `badge/summary-renderer-v1` |
+| `ripr check --format badge-json` / `badge-shields` | ready | `badge/ripr-count-v1` |
 | `.ripr/test_intent.toml` loader | not started | `test-intent/v1` |
 | `ripr check --format badge-plus-*` | not started | `badge/ripr-plus-count-v1` |
 | `.ripr/suppressions.toml` loader | not started | `suppressions/v1` |
