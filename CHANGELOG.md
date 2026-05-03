@@ -23,6 +23,9 @@ are scoped or reviewed.
 - Added negative and metamorphic fixture coverage for whitespace/comment/import
   noise, unrelated token mentions, strong boundary/error oracles, and equivalent
   assertion/test-layout variants.
+- Closed Campaign 3 and added the advisory Test Efficiency and Vacuity Signals
+  lane for per-test evidence ledgers, likely-vacuity signals, and duplicate
+  discriminator reports.
 - Passed VS Code `ripr.check.mode` and `ripr.baseRef` settings into LSP
   workspace diagnostics.
 - Stored the latest LSP analysis snapshot alongside diagnostics so future

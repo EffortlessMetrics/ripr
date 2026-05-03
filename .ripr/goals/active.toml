@@ -1,118 +1,47 @@
-id = "evidence-quality"
-title = "Make ripr findings evidence-first"
+id = "test-efficiency"
+title = "Make low-discriminator tests visible"
 status = "active"
 
 objective = """
-Make findings explain changed behavior, oracle strength, propagation,
-activation, and unknown stop reasons with enough precision to guide test work.
+Make ripr report advisory test-efficiency and likely-vacuity signals from the
+same evidence facts used for static exposure findings.
 """
 
 end_state = [
-  "oracle kind and strength are probe-relative",
-  "local delta flow can name visible sinks",
-  "activation modeling can name observed and missing discriminator values",
-  "output is evidence-first",
-  "unknown findings include stop reasons across surfaces",
-  "negative and metamorphic fixtures protect evidence-first output"
+  "per-test evidence ledgers name owners, oracle kind and strength, observed values, and missing discriminator overlap",
+  "likely vacuous, smoke-only, broad-oracle, opaque, circular, and duplicate-discriminator signals are advisory",
+  "reports explain evidence and suggested next steps without calling tests bad",
+  "test-efficiency metrics are available for trend tracking",
+  "agent and editor surfaces can avoid imitating low-discriminator tests"
 ]
 
 [[work_item]]
-id = "output/unknown-stop-reason-invariant"
-status = "done"
-branch = "output/unknown-stop-reason-invariant"
+id = "test-efficiency/test-fact-ledger"
+status = "ready"
+branch = "test-efficiency/test-fact-ledger"
 stackable = false
 requires_human_merge = true
-acceptance = "unknown findings include at least one stop reason across JSON and human output"
+acceptance = "advisory per-test ledger reports each test's reachable owners, oracle kind/strength, observed values, and static limitations"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
   "cargo xtask check-pr",
   "cargo xtask pr-summary",
-  "cargo xtask fixtures",
-  "cargo xtask goldens check",
-  "cargo xtask check-output-contracts"
-]
-
-[[work_item]]
-id = "analysis/oracle-strength-v2"
-status = "done"
-branch = "analysis/oracle-strength-v2"
-stackable = false
-requires_human_merge = true
-acceptance = "oracle strength distinguishes exact discriminators from broad or smoke checks"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask pr-summary",
-  "cargo xtask fixtures",
-  "cargo xtask goldens check",
-  "cargo xtask check-output-contracts",
-  "cargo xtask test-oracle-report"
-]
-
-[[work_item]]
-id = "analysis/local-delta-flow-v1"
-status = "done"
-branch = "analysis/local-delta-flow-v1"
-stackable = false
-requires_human_merge = true
-acceptance = "changed expressions map to visible return, error, field, or effect sinks"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask pr-summary",
-  "cargo xtask fixtures",
-  "cargo xtask goldens check",
-  "cargo xtask golden-drift",
-  "cargo xtask check-output-contracts"
-]
-
-[[work_item]]
-id = "analysis/activation-value-modeling-v1"
-status = "done"
-branch = "analysis/activation-value-modeling-v1"
-stackable = false
-requires_human_merge = true
-acceptance = "observed and missing discriminator values are tied to local flow evidence"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask pr-summary",
-  "cargo xtask fixtures",
-  "cargo xtask goldens check",
-  "cargo xtask golden-drift",
-  "cargo xtask check-output-contracts"
-]
-
-[[work_item]]
-id = "output/evidence-first-output"
-status = "done"
-branch = "output/evidence-first-output"
-stackable = false
-requires_human_merge = true
-acceptance = "human and JSON output explain changed behavior, evidence path, weakness, and next action"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask pr-summary",
-  "cargo xtask fixtures",
-  "cargo xtask goldens check",
-  "cargo xtask golden-drift",
-  "cargo xtask check-output-contracts",
+  "cargo xtask reports index",
+  "cargo xtask receipts check",
+  "cargo xtask test-oracle-report",
   "cargo xtask check-static-language"
 ]
 
 [[work_item]]
-id = "fixtures/negative-metamorphic-baseline"
-status = "done"
-branch = "fixtures/negative-metamorphic-baseline"
+id = "test-efficiency/vacuous-signal-v1"
+status = "blocked"
+branch = "test-efficiency/vacuous-signal-v1"
 stackable = false
 requires_human_merge = true
-acceptance = "negative and metamorphic fixtures protect evidence-first output from noise and syntax brittleness"
+blocked_by = ["test-efficiency/test-fact-ledger"]
+blocked_reason = "needs per-test ledger shape before classifying vacuity signals"
+acceptance = "advisory findings classify smoke-only, broad-oracle, disconnected, opaque, circular, and likely-vacuous test signals with reasons"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
@@ -120,22 +49,44 @@ commands = [
   "cargo xtask pr-summary",
   "cargo xtask fixtures",
   "cargo xtask goldens check",
-  "cargo xtask golden-drift",
-  "cargo xtask check-output-contracts"
+  "cargo xtask check-static-language"
 ]
 
 [[work_item]]
-id = "campaign/evidence-quality-closeout"
-status = "ready"
-branch = "campaign/evidence-quality-closeout"
+id = "test-efficiency/duplicate-discriminator-v1"
+status = "blocked"
+branch = "test-efficiency/duplicate-discriminator-v1"
 stackable = false
 requires_human_merge = true
-acceptance = "Campaign 3 is closed and Campaign 4 becomes active with agent-context-v2 ready"
+blocked_by = ["test-efficiency/vacuous-signal-v1"]
+blocked_reason = "needs stable test-efficiency reasons before grouping duplicate discriminators"
+acceptance = "advisory duplicate-discriminator groups name tests with the same owner, activation values, oracle shape, and sink evidence"
 commands = [
-  "cargo xtask check-campaign",
-  "cargo xtask goals status",
-  "cargo xtask goals next",
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask pr-summary",
+  "cargo xtask fixtures",
+  "cargo xtask goldens check",
+  "cargo xtask check-static-language"
+]
+
+[[work_item]]
+id = "test-efficiency/report-and-metrics"
+status = "blocked"
+branch = "test-efficiency/report-and-metrics"
+stackable = false
+requires_human_merge = true
+blocked_by = ["test-efficiency/vacuous-signal-v1", "test-efficiency/duplicate-discriminator-v1"]
+blocked_reason = "needs stable vacuity and duplicate signal classes before summarizing metrics"
+acceptance = "test-efficiency reports and metrics summarize strong, broad, smoke-only, likely-vacuous, opaque, and duplicate-discriminator counts"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask pr-summary",
+  "cargo xtask reports index",
+  "cargo xtask receipts check",
   "cargo xtask metrics",
-  "cargo xtask check-capabilities",
-  "cargo xtask check-pr"
+  "cargo xtask check-capabilities"
 ]

@@ -149,3 +149,23 @@ metrics = [
   "context_packets_with_missing_discriminator",
   "context_packets_with_suggested_assertions"
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0004"
+name = "test efficiency and vacuity signals"
+spec = "docs/specs/RIPR-SPEC-0004-test-efficiency.md"
+tests = []
+fixtures = []
+code = [
+  "xtask/src/main.rs",
+  "crates/ripr/src/analysis"
+]
+outputs = [
+]
+metrics = [
+  "strong_discriminator_count",
+  "smoke_only_count",
+  "likely_vacuous_count",
+  "duplicate_discriminator_count",
+  "opaque_test_count"
+]

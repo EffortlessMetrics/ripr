@@ -158,7 +158,7 @@ status changes, and a clear non-goal list.
 
 Campaign ID: `evidence-quality`
 
-Status: active
+Status: complete
 
 Objective:
 
@@ -186,7 +186,7 @@ Work items:
 | `analysis/activation-value-modeling-v1` | done | Findings carry observed value facts and missing discriminator facts tied to local flow evidence. |
 | `output/evidence-first-output` | done | Human and JSON output render changed behavior, evidence path, weakness, stop reasons, and next action as first-class finding evidence. |
 | `fixtures/negative-metamorphic-baseline` | done | Negative and metamorphic fixtures cover whitespace/comment/import noise, unrelated token mentions, strong boundary/error oracles, and syntax variants. |
-| `campaign/evidence-quality-closeout` | ready | Close Campaign 3 and activate Campaign 4 once the new fixture baseline is merged. |
+| `campaign/evidence-quality-closeout` | done | Campaign 3 closed with evidence-first output and negative/metamorphic fixture guardrails. |
 
 Dependencies:
 
@@ -222,6 +222,62 @@ Review policy:
 
 Campaign 3 work should improve evidence precision without claiming real mutation
 outcomes. Unknown is acceptable, but it must be explicit and actionable.
+
+## Campaign 4A: Test Efficiency and Vacuity Signals
+
+Status: active
+
+Objective:
+
+```text
+Make low-discriminator tests visible from the same evidence facts used for
+static exposure findings.
+```
+
+End state:
+
+- per-test ledgers name reachable owners, oracle kind and strength, observed
+  values, and static limitations
+- likely-vacuous, smoke-only, broad-oracle, opaque, circular, and duplicate
+  signals are advisory
+- reports explain evidence and suggested next steps without calling tests bad
+- test-efficiency metrics are available for trend tracking
+- agent and editor surfaces can avoid imitating low-discriminator tests
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `test-efficiency/test-fact-ledger` | ready | Create advisory per-test evidence ledgers from existing test, oracle, value, and owner facts. |
+| `test-efficiency/vacuous-signal-v1` | blocked | Depends on the ledger; classify smoke-only, broad-oracle, disconnected, opaque, circular, and likely-vacuous signals with reasons. |
+| `test-efficiency/duplicate-discriminator-v1` | blocked | Depends on first vacuity signals; group tests with the same owner, activation values, oracle shape, and sink evidence. |
+| `test-efficiency/report-and-metrics` | blocked | Depends on vacuity and duplicate signals; summarize counts and trends without blocking CI. |
+
+Dependencies:
+
+- Campaign 3 evidence fields should remain the source of truth; test-efficiency
+  work should not invent a separate classifier for changed behavior.
+- The first report should be advisory and should not fail CI.
+- Configured test intent and suppressions should wait until signals prove useful.
+
+Commands:
+
+```bash
+cargo xtask shape
+cargo xtask fix-pr
+cargo xtask check-pr
+cargo xtask pr-summary
+cargo xtask reports index
+cargo xtask receipts check
+cargo xtask test-oracle-report
+```
+
+Blocking conditions:
+
+- output says a test is bad instead of reporting evidence and risk shape
+- static analysis suggests deleting tests
+- report language becomes blocking policy before calibration/configuration
+- new automation bypasses Rust-first `xtask` policy
 
 ## Campaign 4: Editor and Agent Loop
 

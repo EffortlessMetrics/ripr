@@ -195,13 +195,16 @@ Nice later, not blocking:
 | 24 | `local-delta-flow-v1` | Name return, field, error, and effect sinks for changed behavior. | `0.4.0` |
 | 25 | `activation-value-modeling-v1` | Detect observed values and missing boundary or variant inputs. | `0.4.0` |
 | 26 | `evidence-first-output` | Make CLI output the reference explanation for each finding. | `0.4.0` |
-| 27 | `lsp-evidence-hover-actions` | Add finding-specific diagnostics, hover evidence, and code actions. | `0.5.0` |
-| 28 | `agent-context-v2` | Emit a compact test-writing brief from CLI and LSP. | `0.5.0` |
-| 29 | `ripr-config-v1` | Add topology, oracle, snapshot, mock, and external-boundary config. | `0.6.0` |
-| 30 | `suppression-v1` | Add reasoned, visible suppressions with optional expiry. | `0.6.0` |
-| 31 | `sarif-ci-policy` | Add SARIF and opt-in CI policy modes. | `0.6.0` |
-| 32 | `cargo-mutants-calibration-scaffold` | Import real mutation results for offline calibration. | `0.7.0` |
-| 33 | `persistent-cache-v1` | Cache stable facts after the fact model is worth caching. | `0.8.0` |
+| 27 | `test-efficiency-test-fact-ledger` | Emit advisory per-test ledgers from existing owner, oracle, value, and evidence facts. | `0.4.x` |
+| 28 | `test-efficiency-vacuous-signal-v1` | Classify likely vacuous, smoke-only, broad-oracle, opaque, and circular test signals with evidence. | `0.4.x` |
+| 29 | `test-efficiency-duplicate-discriminator-v1` | Group tests with duplicate owner, activation, oracle, and sink evidence. | `0.4.x` |
+| 30 | `lsp-evidence-hover-actions` | Add finding-specific diagnostics, hover evidence, and code actions. | `0.5.0` |
+| 31 | `agent-context-v2` | Emit a compact test-writing brief from CLI and LSP. | `0.5.0` |
+| 32 | `ripr-config-v1` | Add topology, oracle, snapshot, mock, and external-boundary config. | `0.6.0` |
+| 33 | `suppression-v1` | Add reasoned, visible suppressions with optional expiry. | `0.6.0` |
+| 34 | `sarif-ci-policy` | Add SARIF and opt-in CI policy modes. | `0.6.0` |
+| 35 | `cargo-mutants-calibration-scaffold` | Import real mutation results for offline calibration. | `0.7.0` |
+| 36 | `persistent-cache-v1` | Cache stable facts after the fact model is worth caching. | `0.8.0` |
 
 ## Release Frames
 

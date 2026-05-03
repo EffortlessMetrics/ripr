@@ -14,3 +14,4 @@ observable behavior.
 | [RIPR-SPEC-0001](RIPR-SPEC-0001-static-exposure-loop.md) | accepted | Static exposure loop |
 | [RIPR-SPEC-0002](RIPR-SPEC-0002-fixture-laboratory.md) | accepted | Fixture laboratory |
 | [RIPR-SPEC-0003](RIPR-SPEC-0003-agent-context.md) | planned | Agent context packet |
+| [RIPR-SPEC-0004](RIPR-SPEC-0004-test-efficiency.md) | planned | Test efficiency and vacuity signals |
