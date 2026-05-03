@@ -16,6 +16,8 @@ pub(super) fn parse_format(value: &str) -> Result<OutputFormat, String> {
         "human" | "text" => Ok(OutputFormat::Human),
         "json" => Ok(OutputFormat::Json),
         "github" => Ok(OutputFormat::Github),
+        "badge-json" => Ok(OutputFormat::BadgeJson),
+        "badge-shields" => Ok(OutputFormat::BadgeShields),
         _ => Err(format!("unknown format {value:?}")),
     }
 }
@@ -105,6 +107,23 @@ mod tests {
             FormatScenario {
                 given_format: "github",
                 then_result: Ok(OutputFormat::Github),
+            },
+            FormatScenario {
+                given_format: "badge-json",
+                then_result: Ok(OutputFormat::BadgeJson),
+            },
+            FormatScenario {
+                given_format: "badge-shields",
+                then_result: Ok(OutputFormat::BadgeShields),
+            },
+            // ripr+ formats remain rejected until `badge/ripr-plus-count-v1`.
+            FormatScenario {
+                given_format: "badge-plus-json",
+                then_result: Err("unknown format \"badge-plus-json\"".to_string()),
+            },
+            FormatScenario {
+                given_format: "badge-plus-shields",
+                then_result: Err("unknown format \"badge-plus-shields\"".to_string()),
             },
             FormatScenario {
                 given_format: "xml",

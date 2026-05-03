@@ -419,7 +419,7 @@ Tracked alongside Campaign 4A in
 | Duplicate-discriminator grouping | done | `test-efficiency/duplicate-discriminator-v1` |
 | Test-efficiency report metrics | done | `test-efficiency/report-and-metrics` |
 | Private `BadgeSummary` model and renderer | done | `badge/summary-renderer-v1` |
-| `ripr check --format badge-json` / `badge-shields` | ready | `badge/ripr-count-v1` |
+| `ripr check --format badge-json` / `badge-shields` | done | `badge/ripr-count-v1` |
 | `.ripr/test_intent.toml` loader | not started | `test-intent/v1` |
 | `ripr check --format badge-plus-*` | not started | `badge/ripr-plus-count-v1` |
 | `.ripr/suppressions.toml` loader | not started | `suppressions/v1` |

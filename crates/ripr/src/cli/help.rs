@@ -26,7 +26,8 @@ Options:
   --base REV               Base revision for git diff. Defaults to origin/main.
   --diff PATH              Read a unified diff file instead of running git diff.
   --mode MODE              instant, draft, fast, deep, or ready. Defaults to draft.
-  --format FORMAT          human, json, or github. Defaults to human.
+  --format FORMAT          human, json, github, badge-json, or badge-shields.
+                           Defaults to human.
   --json                   Shortcut for --format json.
   --no-unchanged-tests     Limit the index to changed Rust files.
 "#

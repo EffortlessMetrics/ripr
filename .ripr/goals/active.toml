@@ -122,18 +122,18 @@ commands = [
 
 [[work_item]]
 id = "badge/ripr-count-v1"
-status = "ready"
+status = "done"
 branch = "badge/ripr-count-v1"
 stackable = false
 requires_human_merge = true
-acceptance = "ripr check --format badge-json and --format badge-shields emit a single source-of-truth schema with snake_case fields and a mechanical Shields projection; counts include unsuppressed_exposure_gaps, suppressed_exposure_gaps, unknowns, analyzed_findings, analyzed_tests"
+acceptance = "ripr check --format badge-json and --format badge-shields emit the renderer output from #189; default BadgePolicy only (no new CLI flags); the temporary `output/badge.rs` `allow(dead_code)` from #189 is removed; cargo xtask check-allow-attributes is clean; CLI smoke tests cover both formats and reject `badge-plus-*` until `badge/ripr-plus-count-v1`"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
   "cargo xtask check-pr",
   "cargo xtask pr-summary",
-  "cargo xtask fixtures",
-  "cargo xtask goldens check",
+  "cargo xtask check-allow-attributes",
+  "cargo xtask check-public-api",
   "cargo xtask check-output-contracts"
 ]
 
@@ -160,8 +160,8 @@ status = "blocked"
 branch = "badge/ripr-plus-count-v1"
 stackable = false
 requires_human_merge = true
-blocked_by = ["badge/ripr-count-v1", "test-intent/v1"]
-blocked_reason = "needs both the ripr badge counter and test-intent loader before adding the stricter ripr+ badge"
+blocked_by = ["test-intent/v1"]
+blocked_reason = "needs the test-intent loader before the ripr+ count can exclude declared intentional test-efficiency findings; the ripr badge CLI shipped in #190"
 acceptance = "ripr check --format badge-plus-json and --format badge-plus-shields sum unsuppressed exposure gaps and unsuppressed actionable test-efficiency findings (excluding declared intent); intentional findings are reported in counts.intentional_test_efficiency_findings"
 commands = [
   "cargo xtask shape",
