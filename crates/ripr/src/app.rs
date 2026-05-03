@@ -291,6 +291,7 @@ mod tests {
                 file: "tests/sample.rs".into(),
                 line: 10,
                 oracle: None,
+                oracle_kind: crate::domain::OracleKind::Unknown,
                 oracle_strength: OracleStrength::Weak,
             }],
             recommended_next_step: Some("add stronger assertion".to_string()),

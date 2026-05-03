@@ -6,29 +6,31 @@ Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
 
 WARNING fixtures/snapshot_oracle/input/src/lib.rs:2
 
-Static exposure: weakly_exposed (predicate, control)
-
-Changed behavior:
+Changed
   before: if code == 200 {
   after:  if code <= 299 {
 
-RIPR:
-  Reach:       yes — Related tests appear to reach render_status: renders_error_status_snapshot
-  Infect:      weak — Related tests contain input values, but the equality-boundary discriminator is missing
-  Propagate:   yes — Changed behavior appears to influence returned value: "ok".to_string()
-  Observe:     yes — A related test observes a value or effect near the changed behavior
-  Discriminate: weak — Medium oracle found: snapshot assertion observes the changed behavior
+Probe
+  family: predicate
+  delta:  control
+  owner:  src/lib.rs::render_status
 
-Related tests / oracles:
-  - tests/rendering.rs:4 renders_error_status_snapshot [medium] — insta::assert_snapshot!(rendered);
+Static exposure
+  weakly_exposed (warning, confidence 0.84)
 
-Activation evidence:
-  - observed code = 404 at line 5 (function_argument)
-  - missing code == 299 — No related test call uses code equal to 299; observed code values: 404; target 299 value: 299
+Evidence
+  - reach yes: Related tests appear to reach render_status: renders_error_status_snapshot
+  - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
+  - propagation yes: Changed behavior appears to influence returned value: "ok".to_string()
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Medium oracle found: snapshot assertion observes the changed behavior
+  - local flow reaches returned value: "ok".to_string() (line 3)
+  - related test tests/rendering.rs:4 renders_error_status_snapshot uses medium snapshot oracle: insta::assert_snapshot!(rendered);
+  - observed function argument value code = 404 at line 5
 
-Gap:
-  - Missing discriminator value: code == 299
+Weakness
   - No strong discriminator was detected
+  - missing discriminator code == 299: No related test call uses code equal to 299; observed code values: 404; target 299 value: 299
 
-Recommended next step:
+Next step
   Add boundary tests for below, equal, and above the changed threshold with exact assertions.

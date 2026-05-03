@@ -12,8 +12,8 @@ use super::uri::{encode_uri_path, file_uri_for_path, path_from_file_uri};
 use super::{COPY_CONTEXT_COMMAND, HOVER_TEXT, REFRESH_COMMAND};
 use crate::app::Mode;
 use crate::domain::{
-    Confidence, DeltaKind, ExposureClass, Finding, OracleStrength, Probe, ProbeFamily, ProbeId,
-    RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState,
+    Confidence, DeltaKind, ExposureClass, Finding, OracleKind, OracleStrength, Probe, ProbeFamily,
+    ProbeId, RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -484,6 +484,7 @@ fn diagnostic_for_finding_attaches_related_test_information() -> Result<(), Stri
         file: PathBuf::from("tests/pricing.rs"),
         line: 12,
         oracle: Some("assert_eq!(total, expected)".to_string()),
+        oracle_kind: OracleKind::ExactValue,
         oracle_strength: OracleStrength::Strong,
     });
 

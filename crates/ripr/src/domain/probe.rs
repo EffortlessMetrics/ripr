@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
-use super::{ExposureClass, OracleStrength, ProbeId, RiprEvidence, SourceLocation, SymbolId};
+use super::{
+    ExposureClass, OracleKind, OracleStrength, ProbeId, RiprEvidence, SourceLocation, SymbolId,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ProbeFamily {
@@ -198,6 +200,7 @@ pub struct RelatedTest {
     pub file: PathBuf,
     pub line: usize,
     pub oracle: Option<String>,
+    pub oracle_kind: OracleKind,
     pub oracle_strength: OracleStrength,
 }
 

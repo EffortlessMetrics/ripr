@@ -1107,6 +1107,7 @@ struct GoldenDriftSemantics {
     removed_finding_ids: Vec<String>,
     changed_exposure_classes: Vec<String>,
     changed_probe_families: Vec<String>,
+    changed_oracle_kinds: Vec<String>,
     changed_oracle_strengths: Vec<String>,
     changed_stop_reasons: Vec<String>,
     changed_recommendations: Vec<String>,
@@ -1413,6 +1414,8 @@ fn golden_drift_semantics(surface: &str, expected: &str, actual: &str) -> Golden
         let actual_families = json_string_values_for_key(actual, "family");
         let expected_oracles = json_string_values_for_key(expected, "oracle_strength");
         let actual_oracles = json_string_values_for_key(actual, "oracle_strength");
+        let expected_oracle_kinds = json_string_values_for_key(expected, "oracle_kind");
+        let actual_oracle_kinds = json_string_values_for_key(actual, "oracle_kind");
         let expected_stop_reasons = json_stop_reason_values(expected);
         let actual_stop_reasons = json_stop_reason_values(actual);
         let expected_recommendations =
@@ -1424,6 +1427,7 @@ fn golden_drift_semantics(surface: &str, expected: &str, actual: &str) -> Golden
             removed_finding_ids: set_difference(&expected_ids, &actual_ids),
             changed_exposure_classes: set_change_summary(&expected_classes, &actual_classes),
             changed_probe_families: set_change_summary(&expected_families, &actual_families),
+            changed_oracle_kinds: set_change_summary(&expected_oracle_kinds, &actual_oracle_kinds),
             changed_oracle_strengths: set_change_summary(&expected_oracles, &actual_oracles),
             changed_stop_reasons: set_change_summary(&expected_stop_reasons, &actual_stop_reasons),
             changed_recommendations: set_change_summary(
@@ -1506,6 +1510,11 @@ fn golden_drift_markdown(entries: &[GoldenDriftEntry], violations: &[String]) ->
                 &mut body,
                 "changed oracle strengths",
                 &entry.semantics.changed_oracle_strengths,
+            );
+            write_optional_list(
+                &mut body,
+                "changed oracle kinds",
+                &entry.semantics.changed_oracle_kinds,
             );
             write_optional_list(
                 &mut body,
@@ -1621,6 +1630,12 @@ fn golden_drift_json(entries: &[GoldenDriftEntry], violations: &[String]) -> Str
             &mut body,
             "changed_oracle_strengths",
             &entry.semantics.changed_oracle_strengths,
+            true,
+        );
+        write_json_field_array(
+            &mut body,
+            "changed_oracle_kinds",
+            &entry.semantics.changed_oracle_kinds,
             true,
         );
         write_json_field_array(
@@ -4317,7 +4332,7 @@ fn check_output_contracts() -> Result<(), String> {
                 );
             }
             "exposure_class" | "severity" | "probe_family" | "delta" | "flow_sink"
-            | "stage_state" | "confidence" | "oracle_strength" | "stop_reason"
+            | "stage_state" | "confidence" | "oracle_kind" | "oracle_strength" | "stop_reason"
             | "value_context" => {
                 require_contract_value(
                     "crates/ripr/src/domain/",
@@ -8813,13 +8828,13 @@ jobs:
     fn golden_drift_semantics_summarize_json_changes() {
         let expected = r#"{
   "findings": [
-    {"id":"probe:src_lib.rs:1:predicate","classification":"infection_unknown","probe":{"family":"predicate"},"related_tests":[{"oracle_strength":"strong"}],"recommended_next_step":"Add a boundary test"}
+    {"id":"probe:src_lib.rs:1:predicate","classification":"infection_unknown","probe":{"family":"predicate"},"related_tests":[{"oracle_kind":"exact_value","oracle_strength":"strong"}],"recommended_next_step":"Add a boundary test"}
   ]
 }"#;
         let actual = r#"{
   "findings": [
-    {"id":"probe:src_lib.rs:1:predicate","classification":"weakly_exposed","probe":{"family":"predicate"},"related_tests":[{"oracle_strength":"smoke"}],"stop_reasons":["opaque fixture"],"recommended_next_step":"Assert the exact variant"},
-    {"id":"probe:src_lib.rs:2:error_path","classification":"weakly_exposed","probe":{"family":"error_path"},"related_tests":[{"oracle_strength":"smoke"}],"recommended_next_step":"Assert the exact variant"}
+    {"id":"probe:src_lib.rs:1:predicate","classification":"weakly_exposed","probe":{"family":"predicate"},"related_tests":[{"oracle_kind":"smoke_only","oracle_strength":"smoke"}],"stop_reasons":["opaque fixture"],"recommended_next_step":"Assert the exact variant"},
+    {"id":"probe:src_lib.rs:2:error_path","classification":"weakly_exposed","probe":{"family":"error_path"},"related_tests":[{"oracle_kind":"broad_error","oracle_strength":"smoke"}],"recommended_next_step":"Assert the exact variant"}
   ]
 }"#;
 
@@ -8844,6 +8859,12 @@ jobs:
                 .changed_oracle_strengths
                 .iter()
                 .any(|value| value.contains("smoke"))
+        );
+        assert!(
+            semantics
+                .changed_oracle_kinds
+                .iter()
+                .any(|value| value.contains("broad_error"))
         );
         assert!(
             semantics

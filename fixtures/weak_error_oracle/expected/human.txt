@@ -6,87 +6,93 @@ Summary: 3 probe(s), 0 exposed, 3 weak, 0 unrevealed, 0 no path, 0 unknown
 
 WARNING fixtures/weak_error_oracle/input/src/lib.rs:7
 
-Static exposure: weakly_exposed (call_deletion, effect)
-
-Changed behavior:
+Changed
   before: return Err(AuthError::EmptyToken);
   after:  return Err(AuthError::RevokedToken);
 
-RIPR:
-  Reach:       yes — Related tests appear to reach authenticate: empty_token_is_rejected
-  Infect:      yes — Reachable tests can plausibly activate this changed behavior
-  Propagate:   yes — Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)
-  Observe:     yes — A related test observes a value or effect near the changed behavior
-  Discriminate: weak — Only broad error oracle found; it may not discriminate the changed behavior exactly
+Probe
+  family: call_deletion
+  delta:  effect
+  owner:  src/lib.rs::authenticate
 
-Related tests / oracles:
-  - tests/errors.rs:4 empty_token_is_rejected [weak] — assert!(authenticate("").is_err());
+Static exposure
+  weakly_exposed (warning, confidence 0.92)
 
-Activation evidence:
-  - observed token = "" at line 5 (function_argument)
-  - missing AuthError::RevokedToken — No exact error variant assertion for AuthError::RevokedToken
+Evidence
+  - reach yes: Related tests appear to reach authenticate: empty_token_is_rejected
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Only broad error oracle found; it may not discriminate the changed behavior exactly
+  - local flow reaches error variant: Result::Err(AuthError::RevokedToken) (line 7)
+  - related test tests/errors.rs:4 empty_token_is_rejected uses weak broad error oracle: assert!(authenticate("").is_err());
+  - observed function argument value token = "" at line 5
 
-Gap:
-  - Missing discriminator value: AuthError::RevokedToken
+Weakness
   - No strong discriminator was detected
+  - missing discriminator AuthError::RevokedToken: No exact error variant assertion for AuthError::RevokedToken
 
-Recommended next step:
+Next step
   Strengthen the related assertion so it discriminates the changed behavior.
 
 WARNING fixtures/weak_error_oracle/input/src/lib.rs:7
 
-Static exposure: weakly_exposed (error_path, value)
-
-Changed behavior:
+Changed
   before: return Err(AuthError::EmptyToken);
   after:  return Err(AuthError::RevokedToken);
 
-RIPR:
-  Reach:       yes — Related tests appear to reach authenticate: empty_token_is_rejected
-  Infect:      yes — Reachable tests can plausibly activate this changed behavior
-  Propagate:   yes — Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)
-  Observe:     yes — A related test observes a value or effect near the changed behavior
-  Discriminate: weak — Only broad error oracle found; is_err() does not discriminate exact error variants
+Probe
+  family: error_path
+  delta:  value
+  owner:  src/lib.rs::authenticate
 
-Related tests / oracles:
-  - tests/errors.rs:4 empty_token_is_rejected [weak] — assert!(authenticate("").is_err());
+Static exposure
+  weakly_exposed (warning, confidence 0.92)
 
-Activation evidence:
-  - observed token = "" at line 5 (function_argument)
-  - missing AuthError::RevokedToken — No exact error variant assertion for AuthError::RevokedToken
+Evidence
+  - reach yes: Related tests appear to reach authenticate: empty_token_is_rejected
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Only broad error oracle found; is_err() does not discriminate exact error variants
+  - local flow reaches error variant: Result::Err(AuthError::RevokedToken) (line 7)
+  - related test tests/errors.rs:4 empty_token_is_rejected uses weak broad error oracle: assert!(authenticate("").is_err());
+  - observed function argument value token = "" at line 5
 
-Gap:
-  - Missing discriminator value: AuthError::RevokedToken
+Weakness
   - No exact error variant discriminator was detected
+  - missing discriminator AuthError::RevokedToken: No exact error variant assertion for AuthError::RevokedToken
 
-Recommended next step:
+Next step
   Assert the exact error variant or payload instead of only is_err().
 
 WARNING fixtures/weak_error_oracle/input/src/lib.rs:7
 
-Static exposure: weakly_exposed (return_value, value)
-
-Changed behavior:
+Changed
   before: return Err(AuthError::EmptyToken);
   after:  return Err(AuthError::RevokedToken);
 
-RIPR:
-  Reach:       yes — Related tests appear to reach authenticate: empty_token_is_rejected
-  Infect:      yes — Reachable tests can plausibly activate this changed behavior
-  Propagate:   yes — Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)
-  Observe:     yes — A related test observes a value or effect near the changed behavior
-  Discriminate: weak — Only broad error oracle found; it may not discriminate the changed behavior exactly
+Probe
+  family: return_value
+  delta:  value
+  owner:  src/lib.rs::authenticate
 
-Related tests / oracles:
-  - tests/errors.rs:4 empty_token_is_rejected [weak] — assert!(authenticate("").is_err());
+Static exposure
+  weakly_exposed (warning, confidence 0.92)
 
-Activation evidence:
-  - observed token = "" at line 5 (function_argument)
-  - missing AuthError::RevokedToken — No exact error variant assertion for AuthError::RevokedToken
+Evidence
+  - reach yes: Related tests appear to reach authenticate: empty_token_is_rejected
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Only broad error oracle found; it may not discriminate the changed behavior exactly
+  - local flow reaches error variant: Result::Err(AuthError::RevokedToken) (line 7)
+  - related test tests/errors.rs:4 empty_token_is_rejected uses weak broad error oracle: assert!(authenticate("").is_err());
+  - observed function argument value token = "" at line 5
 
-Gap:
-  - Missing discriminator value: AuthError::RevokedToken
+Weakness
   - No strong discriminator was detected
+  - missing discriminator AuthError::RevokedToken: No exact error variant assertion for AuthError::RevokedToken
 
-Recommended next step:
+Next step
   Replace broad assertions with exact equality or a property that constrains the changed returned value.

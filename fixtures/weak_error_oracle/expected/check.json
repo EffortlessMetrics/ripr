@@ -26,6 +26,10 @@
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"weak","confidence":"high","summary":"Only broad error oracle found; it may not discriminate the changed behavior exactly"}
        },
+      "evidence_path": ["reach yes: Related tests appear to reach authenticate: empty_token_is_rejected", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Only broad error oracle found; it may not discriminate the changed behavior exactly", "local flow reaches error variant: Result::Err(AuthError::RevokedToken) (line 7)", "related test tests/errors.rs:4 empty_token_is_rejected uses weak broad error oracle: assert!(authenticate(\"\").is_err());", "observed function argument value token = \"\" at line 5", "missing discriminator AuthError::RevokedToken: No exact error variant assertion for AuthError::RevokedToken"],
+      "flow_sinks": [
+        {"kind":"error_variant","text":"Result::Err(AuthError::RevokedToken)","line":7}
+      ],
       "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)", "Only broad error oracle found; it may not discriminate the changed behavior exactly", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach authenticate: empty_token_is_rejected"],
       "missing": ["Missing discriminator value: AuthError::RevokedToken", "No strong discriminator was detected"],
       "activation": {
@@ -45,17 +49,36 @@
           }
         ]
       },
+      "observed_values": [
+        {
+          "line": 5,
+          "text": "assert!(authenticate(\"\").is_err());",
+          "value": "token = \"\"",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "AuthError::RevokedToken",
+          "reason": "No exact error variant assertion for AuthError::RevokedToken",
+          "flow_sink": {"kind":"error_variant","text":"Result::Err(AuthError::RevokedToken)","line":7}
+        }
+      ],
       "related_tests": [
         {
           "name": "empty_token_is_rejected",
           "file": "tests/errors.rs",
           "line": 4,
           "oracle_strength": "weak",
+          "oracle_kind": "broad_error",
           "oracle": "assert!(authenticate(\"\").is_err());"
         }
       ],
       "stop_reasons": [],
-      "recommended_next_step": "Strengthen the related assertion so it discriminates the changed behavior."
+      "oracle_kind": "broad_error",
+      "oracle_strength": "weak",
+      "recommended_next_step": "Strengthen the related assertion so it discriminates the changed behavior.",
+      "suggested_next_action": "Strengthen the related assertion so it discriminates the changed behavior."
     },
     {
       "id": "probe:src_lib.rs:7:error_path",
@@ -77,6 +100,10 @@
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"weak","confidence":"high","summary":"Only broad error oracle found; is_err() does not discriminate exact error variants"}
        },
+      "evidence_path": ["reach yes: Related tests appear to reach authenticate: empty_token_is_rejected", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Only broad error oracle found; is_err() does not discriminate exact error variants", "local flow reaches error variant: Result::Err(AuthError::RevokedToken) (line 7)", "related test tests/errors.rs:4 empty_token_is_rejected uses weak broad error oracle: assert!(authenticate(\"\").is_err());", "observed function argument value token = \"\" at line 5", "missing discriminator AuthError::RevokedToken: No exact error variant assertion for AuthError::RevokedToken"],
+      "flow_sinks": [
+        {"kind":"error_variant","text":"Result::Err(AuthError::RevokedToken)","line":7}
+      ],
       "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)", "Only broad error oracle found; is_err() does not discriminate exact error variants", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach authenticate: empty_token_is_rejected"],
       "missing": ["Missing discriminator value: AuthError::RevokedToken", "No exact error variant discriminator was detected"],
       "activation": {
@@ -96,17 +123,36 @@
           }
         ]
       },
+      "observed_values": [
+        {
+          "line": 5,
+          "text": "assert!(authenticate(\"\").is_err());",
+          "value": "token = \"\"",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "AuthError::RevokedToken",
+          "reason": "No exact error variant assertion for AuthError::RevokedToken",
+          "flow_sink": {"kind":"error_variant","text":"Result::Err(AuthError::RevokedToken)","line":7}
+        }
+      ],
       "related_tests": [
         {
           "name": "empty_token_is_rejected",
           "file": "tests/errors.rs",
           "line": 4,
           "oracle_strength": "weak",
+          "oracle_kind": "broad_error",
           "oracle": "assert!(authenticate(\"\").is_err());"
         }
       ],
       "stop_reasons": [],
-      "recommended_next_step": "Assert the exact error variant or payload instead of only is_err()."
+      "oracle_kind": "broad_error",
+      "oracle_strength": "weak",
+      "recommended_next_step": "Assert the exact error variant or payload instead of only is_err().",
+      "suggested_next_action": "Assert the exact error variant or payload instead of only is_err()."
     },
     {
       "id": "probe:src_lib.rs:7:return_value",
@@ -128,6 +174,10 @@
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"weak","confidence":"high","summary":"Only broad error oracle found; it may not discriminate the changed behavior exactly"}
        },
+      "evidence_path": ["reach yes: Related tests appear to reach authenticate: empty_token_is_rejected", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Only broad error oracle found; it may not discriminate the changed behavior exactly", "local flow reaches error variant: Result::Err(AuthError::RevokedToken) (line 7)", "related test tests/errors.rs:4 empty_token_is_rejected uses weak broad error oracle: assert!(authenticate(\"\").is_err());", "observed function argument value token = \"\" at line 5", "missing discriminator AuthError::RevokedToken: No exact error variant assertion for AuthError::RevokedToken"],
+      "flow_sinks": [
+        {"kind":"error_variant","text":"Result::Err(AuthError::RevokedToken)","line":7}
+      ],
       "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence error variant: Result::Err(AuthError::RevokedToken)", "Only broad error oracle found; it may not discriminate the changed behavior exactly", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach authenticate: empty_token_is_rejected"],
       "missing": ["Missing discriminator value: AuthError::RevokedToken", "No strong discriminator was detected"],
       "activation": {
@@ -147,17 +197,36 @@
           }
         ]
       },
+      "observed_values": [
+        {
+          "line": 5,
+          "text": "assert!(authenticate(\"\").is_err());",
+          "value": "token = \"\"",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "AuthError::RevokedToken",
+          "reason": "No exact error variant assertion for AuthError::RevokedToken",
+          "flow_sink": {"kind":"error_variant","text":"Result::Err(AuthError::RevokedToken)","line":7}
+        }
+      ],
       "related_tests": [
         {
           "name": "empty_token_is_rejected",
           "file": "tests/errors.rs",
           "line": 4,
           "oracle_strength": "weak",
+          "oracle_kind": "broad_error",
           "oracle": "assert!(authenticate(\"\").is_err());"
         }
       ],
       "stop_reasons": [],
-      "recommended_next_step": "Replace broad assertions with exact equality or a property that constrains the changed returned value."
+      "oracle_kind": "broad_error",
+      "oracle_strength": "weak",
+      "recommended_next_step": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
+      "suggested_next_action": "Replace broad assertions with exact equality or a property that constrains the changed returned value."
     }
   ]
 }

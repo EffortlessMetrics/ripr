@@ -84,6 +84,20 @@ A finding contains:
       "summary": "Only weak or smoke oracle found"
     }
   },
+  "evidence_path": [
+    "reach yes: Related tests appear to reach price: premium_customer_gets_discount",
+    "propagation yes: Changed behavior appears to influence returned value: amount - discount",
+    "related test tests/pricing.rs:12 premium_customer_gets_discount uses strong exact value oracle: assert_eq!(total, 90)",
+    "observed function argument value amount = 100 at line 12",
+    "missing discriminator amount == discount_threshold: No related test call uses the boundary value"
+  ],
+  "flow_sinks": [
+    {
+      "kind": "return_value",
+      "text": "amount - discount",
+      "line": 89
+    }
+  ],
   "evidence": [],
   "missing": [],
   "activation": {
@@ -107,11 +121,55 @@ A finding contains:
       }
     ]
   },
-  "related_tests": [],
+  "observed_values": [
+    {
+      "line": 12,
+      "text": "assert_eq!(discounted_total(50, 100), 50);",
+      "value": "amount = 50",
+      "context": "function_argument"
+    }
+  ],
+  "missing_discriminators": [
+    {
+      "value": "amount == discount_threshold",
+      "reason": "No related test call uses amount equal to discount_threshold",
+      "flow_sink": {
+        "kind": "return_value",
+        "text": "amount - 10",
+        "line": 89
+      }
+    }
+  ],
+  "related_tests": [
+    {
+      "name": "premium_customer_gets_discount",
+      "file": "tests/pricing.rs",
+      "line": 12,
+      "oracle_strength": "strong",
+      "oracle_kind": "exact_value",
+      "oracle": "assert_eq!(total, 90)"
+    }
+  ],
   "stop_reasons": [],
-  "recommended_next_step": "Add boundary tests with exact assertions."
+  "oracle_kind": "exact_value",
+  "oracle_strength": "strong",
+  "recommended_next_step": "Add boundary tests with exact assertions.",
+  "suggested_next_action": "Add boundary tests with exact assertions."
 }
 ```
+
+The evidence-first fields are additive in schema `0.1`:
+
+- `evidence_path` is an ordered, human-readable summary of reachability,
+  infection, propagation, observation, discrimination, local flow, related test
+  oracles, observed values, and missing discriminator evidence.
+- `flow_sinks`, `observed_values`, and `missing_discriminators` promote the
+  nested activation evidence for consumers that want direct finding-level
+  access.
+- `oracle_kind` and `oracle_strength` summarize the strongest related oracle
+  currently visible to the finding.
+- `suggested_next_action` mirrors `recommended_next_step` for action-oriented
+  integrations.
 
 ## Enums
 
@@ -185,6 +243,18 @@ contract language.
 - `weak`
 - `smoke`
 - `none`
+- `unknown`
+
+`oracle_kind` values:
+
+- `exact_value`
+- `exact_error_variant`
+- `whole_object_equality`
+- `snapshot`
+- `relational_check`
+- `broad_error`
+- `smoke_only`
+- `mock_expectation`
 - `unknown`
 
 `value_context` values:

@@ -1336,6 +1336,7 @@ fn analyze_related_assertions(
                 file: test.file.clone(),
                 line: test.start_line,
                 oracle: None,
+                oracle_kind: OracleKind::Unknown,
                 oracle_strength: OracleStrength::None,
             });
             continue;
@@ -1358,6 +1359,7 @@ fn analyze_related_assertions(
                     file: test.file.clone(),
                     line: test.start_line,
                     oracle: Some(assertion.text.clone()),
+                    oracle_kind: assertion.kind.clone(),
                     oracle_strength: relative_strength,
                 });
             }

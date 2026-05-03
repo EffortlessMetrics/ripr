@@ -12,10 +12,13 @@ tests = [
   "crates/ripr/src/analysis/classifier.rs",
   "crates/ripr/src/analysis/rust_index.rs",
   "crates/ripr/src/analysis/mod.rs",
+  "crates/ripr/src/output/human.rs",
+  "crates/ripr/src/output/json",
   "crates/ripr/tests/cli_smoke.rs"
 ]
 fixtures = [
   "fixtures/boundary_gap",
+  "fixtures/snapshot_oracle",
   "fixtures/weak_error_oracle"
 ]
 code = [
@@ -24,13 +27,15 @@ code = [
   "crates/ripr/src/analysis",
   "crates/ripr/src/output",
   "crates/ripr/src/cli",
-  "crates/ripr/src/lsp.rs"
+  "crates/ripr/src/lsp"
 ]
 outputs = [
   "docs/OUTPUT_SCHEMA.md",
   "docs/STATIC_EXPOSURE_MODEL.md",
   "fixtures/boundary_gap/expected/check.json",
   "fixtures/boundary_gap/expected/human.txt",
+  "fixtures/snapshot_oracle/expected/check.json",
+  "fixtures/snapshot_oracle/expected/human.txt",
   "fixtures/weak_error_oracle/expected/check.json",
   "fixtures/weak_error_oracle/expected/human.txt"
 ]
@@ -48,6 +53,7 @@ spec = "docs/specs/RIPR-SPEC-0002-fixture-laboratory.md"
 tests = []
 fixtures = [
   "fixtures/boundary_gap",
+  "fixtures/snapshot_oracle",
   "fixtures/weak_error_oracle"
 ]
 code = [
@@ -56,6 +62,8 @@ code = [
 outputs = [
   "fixtures/boundary_gap/expected/check.json",
   "fixtures/boundary_gap/expected/human.txt",
+  "fixtures/snapshot_oracle/expected/check.json",
+  "fixtures/snapshot_oracle/expected/human.txt",
   "fixtures/weak_error_oracle/expected/check.json",
   "fixtures/weak_error_oracle/expected/human.txt"
 ]
@@ -72,7 +80,7 @@ tests = []
 code = [
   "crates/ripr/src/app.rs",
   "crates/ripr/src/output/json/context_packet.rs",
-  "crates/ripr/src/lsp.rs"
+  "crates/ripr/src/lsp"
 ]
 outputs = [
   "docs/OUTPUT_SCHEMA.md"

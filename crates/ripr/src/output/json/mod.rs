@@ -12,8 +12,10 @@ mod tests {
     use super::{context_packet::render_context_packet, escape, render, report::finding_json};
     use crate::app::{CheckOutput, Mode};
     use crate::domain::{
-        ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, Probe, ProbeFamily,
-        ProbeId, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState, Summary,
+        ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, FlowSinkFact,
+        FlowSinkKind, MissingDiscriminatorFact, OracleKind, OracleStrength, Probe, ProbeFamily,
+        ProbeId, RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence,
+        StageState, Summary, ValueContext, ValueFact,
     };
     use std::path::PathBuf;
 
@@ -30,6 +32,50 @@ mod tests {
         finding_json(&mut out, &finding, 0);
 
         assert!(out.contains("\"stop_reasons\": [\"static_probe_unknown\"]"));
+    }
+
+    #[test]
+    fn finding_json_promotes_evidence_first_fields() {
+        let mut finding = unknown_finding();
+        finding.flow_sinks.push(FlowSinkFact {
+            kind: FlowSinkKind::ReturnValue,
+            text: "total".to_string(),
+            line: 7,
+            owner: None,
+        });
+        finding.activation.observed_values.push(ValueFact {
+            line: 12,
+            text: "discounted_total(50, 100)".to_string(),
+            value: "amount = 50".to_string(),
+            context: ValueContext::FunctionArgument,
+        });
+        finding
+            .activation
+            .missing_discriminators
+            .push(MissingDiscriminatorFact {
+                value: "amount == discount_threshold".to_string(),
+                reason: "No related test calls the boundary value".to_string(),
+                flow_sink: None,
+            });
+        finding.related_tests.push(RelatedTest {
+            name: "below_threshold_has_no_discount".to_string(),
+            file: PathBuf::from("tests/pricing.rs"),
+            line: 12,
+            oracle: Some("assert_eq!(discounted_total(50, 100), 50);".to_string()),
+            oracle_kind: OracleKind::ExactValue,
+            oracle_strength: OracleStrength::Strong,
+        });
+
+        let mut out = String::new();
+        finding_json(&mut out, &finding, 0);
+
+        assert!(out.contains("\"evidence_path\""));
+        assert!(out.contains("\"flow_sinks\""));
+        assert!(out.contains("\"observed_values\""));
+        assert!(out.contains("\"missing_discriminators\""));
+        assert!(out.contains("\"oracle_kind\": \"exact_value\""));
+        assert!(out.contains("\"oracle_strength\": \"strong\""));
+        assert!(out.contains("\"suggested_next_action\""));
     }
 
     #[test]

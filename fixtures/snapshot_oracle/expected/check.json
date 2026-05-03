@@ -26,6 +26,10 @@
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"weak","confidence":"medium","summary":"Medium oracle found: snapshot assertion observes the changed behavior"}
        },
+      "evidence_path": ["reach yes: Related tests appear to reach render_status: renders_error_status_snapshot", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation yes: Changed behavior appears to influence returned value: \"ok\".to_string()", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Medium oracle found: snapshot assertion observes the changed behavior", "local flow reaches returned value: \"ok\".to_string() (line 3)", "related test tests/rendering.rs:4 renders_error_status_snapshot uses medium snapshot oracle: insta::assert_snapshot!(rendered);", "observed function argument value code = 404 at line 5", "missing discriminator code == 299: No related test call uses code equal to 299; observed code values: 404; target 299 value: 299"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"\"ok\".to_string()","line":3}
+      ],
       "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: \"ok\".to_string()", "Medium oracle found: snapshot assertion observes the changed behavior", "Related tests appear to reach render_status: renders_error_status_snapshot", "Related tests contain input values, but the equality-boundary discriminator is missing"],
       "missing": ["Missing discriminator value: code == 299", "No strong discriminator was detected"],
       "activation": {
@@ -45,17 +49,36 @@
           }
         ]
       },
+      "observed_values": [
+        {
+          "line": 5,
+          "text": "let rendered = render_status(404);",
+          "value": "code = 404",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "code == 299",
+          "reason": "No related test call uses code equal to 299; observed code values: 404; target 299 value: 299",
+          "flow_sink": {"kind":"return_value","text":"\"ok\".to_string()","line":3}
+        }
+      ],
       "related_tests": [
         {
           "name": "renders_error_status_snapshot",
           "file": "tests/rendering.rs",
           "line": 4,
           "oracle_strength": "medium",
+          "oracle_kind": "snapshot",
           "oracle": "insta::assert_snapshot!(rendered);"
         }
       ],
       "stop_reasons": [],
-      "recommended_next_step": "Add boundary tests for below, equal, and above the changed threshold with exact assertions."
+      "oracle_kind": "snapshot",
+      "oracle_strength": "medium",
+      "recommended_next_step": "Add boundary tests for below, equal, and above the changed threshold with exact assertions.",
+      "suggested_next_action": "Add boundary tests for below, equal, and above the changed threshold with exact assertions."
     }
   ]
 }

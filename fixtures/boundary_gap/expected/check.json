@@ -26,6 +26,10 @@
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
        },
+      "evidence_path": ["reach yes: Related tests appear to reach discounted_total: below_threshold_has_no_discount, far_above_threshold_discounts", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation yes: Changed behavior appears to influence returned value: amount - 10", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: amount - 10 (line 3)", "related test tests/pricing.rs:4 below_threshold_has_no_discount uses strong exact value oracle: assert_eq!(discounted_total(50, 100), 50);", "related test tests/pricing.rs:9 far_above_threshold_discounts uses strong exact value oracle: assert_eq!(discounted_total(10_000, 100), 9_990);", "observed assertion argument value 50 at line 5", "observed function argument value amount = 50 at line 5", "observed function argument value discount_threshold = 100 at line 5", "observed assertion argument value 9_990 at line 10", "observed function argument value amount = 10_000 at line 10", "observed function argument value discount_threshold = 100 at line 10", "missing discriminator amount == discount_threshold: No related test call uses amount equal to discount_threshold; observed amount values: 10_000, 50; observed discount_threshold values: 100"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"amount - 10","line":3}
+      ],
       "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: amount - 10", "Related tests appear to reach discounted_total: below_threshold_has_no_discount, far_above_threshold_discounts", "Related tests contain input values, but the equality-boundary discriminator is missing", "Strong oracle found: exact value or pattern assertion"],
       "missing": ["Missing discriminator value: amount == discount_threshold"],
       "activation": {
@@ -75,12 +79,58 @@
           }
         ]
       },
+      "observed_values": [
+        {
+          "line": 5,
+          "text": "assert_eq!(discounted_total(50, 100), 50);",
+          "value": "50",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 5,
+          "text": "assert_eq!(discounted_total(50, 100), 50);",
+          "value": "amount = 50",
+          "context": "function_argument"
+        },
+        {
+          "line": 5,
+          "text": "assert_eq!(discounted_total(50, 100), 50);",
+          "value": "discount_threshold = 100",
+          "context": "function_argument"
+        },
+        {
+          "line": 10,
+          "text": "assert_eq!(discounted_total(10_000, 100), 9_990);",
+          "value": "9_990",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 10,
+          "text": "assert_eq!(discounted_total(10_000, 100), 9_990);",
+          "value": "amount = 10_000",
+          "context": "function_argument"
+        },
+        {
+          "line": 10,
+          "text": "assert_eq!(discounted_total(10_000, 100), 9_990);",
+          "value": "discount_threshold = 100",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "amount == discount_threshold",
+          "reason": "No related test call uses amount equal to discount_threshold; observed amount values: 10_000, 50; observed discount_threshold values: 100",
+          "flow_sink": {"kind":"return_value","text":"amount - 10","line":3}
+        }
+      ],
       "related_tests": [
         {
           "name": "below_threshold_has_no_discount",
           "file": "tests/pricing.rs",
           "line": 4,
           "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
           "oracle": "assert_eq!(discounted_total(50, 100), 50);"
         },
         {
@@ -88,11 +138,15 @@
           "file": "tests/pricing.rs",
           "line": 9,
           "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
           "oracle": "assert_eq!(discounted_total(10_000, 100), 9_990);"
         }
       ],
       "stop_reasons": [],
-      "recommended_next_step": "Add boundary tests for below, equal, and above the changed threshold with exact assertions."
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Add boundary tests for below, equal, and above the changed threshold with exact assertions.",
+      "suggested_next_action": "Add boundary tests for below, equal, and above the changed threshold with exact assertions."
     }
   ]
 }

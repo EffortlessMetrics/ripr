@@ -20,13 +20,14 @@ evidence = [
   "probe-relative oracle kind and strength",
   "typed local flow sink facts",
   "observed activation value facts",
-  "missing discriminator facts"
+  "missing discriminator facts",
+  "evidence-first human and JSON finding output"
 ]
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "evidence-first-output"
+next = "negative-metamorphic-baseline"
 metric = "findings include changed behavior, class, evidence, and next step"
 
 [[capability]]
@@ -39,12 +40,13 @@ evidence = [
   "domain unknown stop reason invariant",
   "JSON stop_reasons output",
   "human stop reasons output",
-  "boundary_gap fixture"
+  "boundary_gap fixture",
+  "evidence-first stop reason output section"
 ]
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "evidence-first-output"
+next = "negative-metamorphic-baseline"
 metric = "unknown findings include explicit stop reasons"
 
 [[capability]]
@@ -61,12 +63,13 @@ evidence = [
   "module-qualified and impl-qualified owner symbols",
   "parser-backed predicate probe shape facts",
   "predicate branch to return-value flow tests",
-  "missing equality discriminator facts"
+  "missing equality discriminator facts",
+  "evidence-first boundary gap output"
 ]
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "evidence-first-output"
+next = "negative-metamorphic-baseline"
 metric = "missing boundary discriminator detection"
 
 [[capability]]
@@ -80,12 +83,13 @@ evidence = [
   "parser-backed error-path probe shape facts",
   "probe-relative exact error variant vs broad error oracle classification",
   "error variant flow sink tests",
-  "missing exact error variant discriminator facts"
+  "missing exact error variant discriminator facts",
+  "evidence-first weak error oracle output"
 ]
 fixtures = [
   "fixtures/weak_error_oracle"
 ]
-next = "evidence-first-output"
+next = "negative-metamorphic-baseline"
 metric = "broad error checks distinguished from exact variants"
 
 [[capability]]
@@ -103,7 +107,7 @@ evidence = [
 fixtures = [
   "fixtures/weak_error_oracle"
 ]
-next = "evidence-first-output"
+next = "negative-metamorphic-baseline"
 metric = "exact vs smoke return oracle distinction"
 
 [[capability]]
@@ -120,7 +124,7 @@ evidence = [
 fixtures = [
   "fixtures/weak_error_oracle"
 ]
-next = "evidence-first-output"
+next = "negative-metamorphic-baseline"
 metric = "side-effect or call boundary candidate named"
 
 [[capability]]
@@ -156,7 +160,8 @@ evidence = [
   "schema reference",
   "goldens check runner",
   "boundary_gap check.json",
-  "weak_error_oracle check.json"
+  "weak_error_oracle check.json",
+  "evidence-first finding fields in check JSON"
 ]
 fixtures = [
   "fixtures/boundary_gap",
@@ -174,7 +179,8 @@ evidence = [
   "human output renderer",
   "goldens check runner",
   "boundary_gap human.txt",
-  "weak_error_oracle human.txt"
+  "weak_error_oracle human.txt",
+  "evidence-first human finding sections"
 ]
 fixtures = [
   "fixtures/boundary_gap",
@@ -257,7 +263,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "evidence-first-output"
+next = "negative-metamorphic-baseline"
 metric = "syntax extraction parity"
 
 [[capability]]
@@ -277,7 +283,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "evidence-first-output"
+next = "negative-metamorphic-baseline"
 metric = "oracle kind recognition rate"
 
 [[capability]]
@@ -296,7 +302,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "evidence-first-output"
+next = "negative-metamorphic-baseline"
 metric = "duplicate symbols do not cross-link tests"
 
 [[capability]]
@@ -319,7 +325,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "evidence-first-output"
+next = "negative-metamorphic-baseline"
 metric = "syntax facts generate current probe families"
 
 [[capability]]
@@ -336,13 +342,14 @@ evidence = [
   "match-arm result flow sink tests",
   "binding to return-value flow tests",
   "propagation_unknown stop reason regression test",
-  "missing discriminator facts tied to flow sinks"
+  "missing discriminator facts tied to flow sinks",
+  "evidence-first flow sink output"
 ]
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "evidence-first-output"
+next = "negative-metamorphic-baseline"
 metric = "flow sink identification rate"
 
 [[capability]]
@@ -358,12 +365,13 @@ evidence = [
   "exact error variant gap BDD tests",
   "boundary_gap fixture",
   "weak_error_oracle fixture",
-  "snapshot_oracle fixture"
+  "snapshot_oracle fixture",
+  "evidence-first activation output"
 ]
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle",
   "fixtures/snapshot_oracle"
 ]
-next = "evidence-first-output"
+next = "negative-metamorphic-baseline"
 metric = "detected and missing value facts"

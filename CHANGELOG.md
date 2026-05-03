@@ -17,6 +17,9 @@ are scoped or reviewed.
 - Added activation evidence facts for observed test values and missing
   discriminator values, including boundary equality gaps and exact error
   variant gaps tied to local flow sinks.
+- Added evidence-first human and JSON finding output that promotes changed
+  behavior evidence paths, local flow sinks, observed values, missing
+  discriminators, oracle kind/strength, and suggested next actions.
 - Passed VS Code `ripr.check.mode` and `ripr.baseRef` settings into LSP
   workspace diagnostics.
 - Stored the latest LSP analysis snapshot alongside diagnostics so future

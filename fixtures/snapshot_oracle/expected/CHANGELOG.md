@@ -35,3 +35,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0001: evidence-first output renders flow, activation, weakness, and next action
+
+Command:
+`cargo xtask goldens bless snapshot_oracle --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
