@@ -98,8 +98,9 @@ alias that produces the same non-blocking report.
 `test-efficiency-report` writes an advisory per-test evidence ledger to
 `target/ripr/reports/test-efficiency.md` and
 `target/ripr/reports/test-efficiency.json`. It records apparent owner calls,
-oracle kind and strength, observed literal values, and static limitations. The
-report is a review aid and does not block CI.
+oracle kind and strength, observed literal values, static limitations, and
+advisory reason counts for low-discriminator signals. The report is a review
+aid and does not block CI.
 
 `dogfood` runs `ripr check --mode fast` against stable in-repo fixture diffs,
 writes actual outputs under `target/ripr/dogfood/`, and writes advisory

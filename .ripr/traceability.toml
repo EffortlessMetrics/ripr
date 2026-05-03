@@ -156,7 +156,8 @@ name = "test efficiency and vacuity signals"
 spec = "docs/specs/RIPR-SPEC-0004-test-efficiency.md"
 tests = [
   "xtask/src/main.rs::test_efficiency_ledger_records_owner_oracle_values_and_limitations",
-  "xtask/src/main.rs::test_efficiency_reports_are_advisory"
+  "xtask/src/main.rs::test_efficiency_reports_are_advisory",
+  "xtask/src/main.rs::test_efficiency_signals_likely_vacuous_and_possibly_circular_tests"
 ]
 fixtures = []
 code = [
