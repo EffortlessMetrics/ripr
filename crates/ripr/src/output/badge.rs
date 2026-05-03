@@ -877,13 +877,9 @@ mod tests {
         let top_level_keys = shields
             .lines()
             .filter_map(|line| {
-                let trimmed = line.trim();
-                if trimmed.starts_with('"') {
-                    let end = trimmed[1..].find('"')? + 1;
-                    Some(trimmed[1..end].to_string())
-                } else {
-                    None
-                }
+                let stripped = line.trim().strip_prefix('"')?;
+                let end = stripped.find('"')?;
+                Some(stripped[..end].to_string())
             })
             .collect::<Vec<_>>();
         assert_eq!(top_level_keys.len(), 4);
