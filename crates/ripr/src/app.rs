@@ -1,6 +1,7 @@
-use crate::analysis::{AnalysisMode, AnalysisOptions, run_analysis};
+use crate::analysis::{AnalysisMode, AnalysisOptions, run_analysis, run_repo_analysis};
 use crate::domain::{Finding, Summary};
 use crate::output;
+use crate::output::badge::BadgeScope;
 use std::path::{Path, PathBuf};
 
 /// Input contract for [`check_workspace`].
@@ -95,6 +96,39 @@ pub enum OutputFormat {
     BadgePlusJson,
     /// Shields-compatible projection for the `ripr+` badge.
     BadgePlusShields,
+    /// Repo-scoped native `ripr` badge JSON. Renders against the full
+    /// repo baseline (`run_repo_analysis`) rather than a diff. Carries
+    /// `scope: "repo"` so README/store endpoints can distinguish public
+    /// repo signal from PR/diff artifacts.
+    RepoBadgeJson,
+    /// Repo-scoped Shields projection for the `ripr` badge. Same four
+    /// fields as the diff-scoped Shields shape; native-only fields like
+    /// `scope` do not leak into Shields.
+    RepoBadgeShields,
+    /// Repo-scoped native `ripr+` badge JSON. Same disk requirement as
+    /// `BadgePlusJson` (the test-efficiency report) — `cargo xtask
+    /// test-efficiency-report` already scans the full test suite, so
+    /// the report is already repo-scoped.
+    RepoBadgePlusJson,
+    /// Repo-scoped Shields projection for the `ripr+` badge.
+    RepoBadgePlusShields,
+}
+
+impl OutputFormat {
+    /// Whether this format renders against the full-repo baseline rather
+    /// than a diff. Repo-scope formats route through
+    /// [`check_workspace_repo`] and emit native badge JSON with
+    /// `scope: "repo"`. The Shields projection stays four-field for both
+    /// scopes.
+    pub fn is_repo_scope(&self) -> bool {
+        matches!(
+            self,
+            OutputFormat::RepoBadgeJson
+                | OutputFormat::RepoBadgeShields
+                | OutputFormat::RepoBadgePlusJson
+                | OutputFormat::RepoBadgePlusShields
+        )
+    }
 }
 
 /// Result payload produced by [`check_workspace`].
@@ -137,6 +171,33 @@ pub fn check_workspace(input: CheckInput) -> Result<CheckOutput, String> {
     })
 }
 
+/// Runs the repo-baseline static exposure analysis for a workspace. This
+/// seeds probes from every currently-probeable production syntax shape
+/// rather than from a diff, and is the analysis path behind the
+/// `repo-badge-*` output formats. Use this when the answer to "is the
+/// repo's static exposure clean?" should not depend on the contents of
+/// `git diff origin/main...HEAD` — for example, when rendering a
+/// public README badge from `main`.
+pub fn check_workspace_repo(input: CheckInput) -> Result<CheckOutput, String> {
+    let options = AnalysisOptions {
+        root: input.root.clone(),
+        base: input.base.clone(),
+        diff_file: input.diff_file.clone(),
+        mode: input.mode.analysis_mode(),
+        include_unchanged_tests: input.include_unchanged_tests,
+    };
+    let analysis = run_repo_analysis(&options)?;
+    Ok(CheckOutput {
+        schema_version: "0.1".to_string(),
+        tool: "ripr".to_string(),
+        mode: input.mode,
+        root: input.root,
+        base: input.base,
+        summary: analysis.summary,
+        findings: analysis.findings,
+    })
+}
+
 /// Path (relative to the analyzed workspace root) where the
 /// test-efficiency report is expected when rendering `ripr+` badge formats.
 pub(crate) const TEST_EFFICIENCY_REPORT_RELATIVE: &str = "target/ripr/reports/test-efficiency.json";
@@ -152,20 +213,32 @@ pub fn render_check(output: &CheckOutput, format: &OutputFormat) -> Result<Strin
         OutputFormat::Human => Ok(output::human::render(output)),
         OutputFormat::Json => Ok(output::json::render(output)),
         OutputFormat::Github => Ok(output::github::render(output)),
-        OutputFormat::BadgeJson => {
-            let summary = ripr_summary_with_suppressions(output)?;
+        OutputFormat::BadgeJson | OutputFormat::RepoBadgeJson => {
+            let mut summary = ripr_summary_with_suppressions(output)?;
+            if format.is_repo_scope() {
+                summary.scope = BadgeScope::Repo;
+            }
             Ok(output::badge::render_native_json(&summary))
         }
-        OutputFormat::BadgeShields => {
-            let summary = ripr_summary_with_suppressions(output)?;
+        OutputFormat::BadgeShields | OutputFormat::RepoBadgeShields => {
+            let mut summary = ripr_summary_with_suppressions(output)?;
+            if format.is_repo_scope() {
+                summary.scope = BadgeScope::Repo;
+            }
             Ok(output::badge::render_shields_json(&summary))
         }
-        OutputFormat::BadgePlusJson => {
-            let summary = ripr_plus_summary_from_disk(output)?;
+        OutputFormat::BadgePlusJson | OutputFormat::RepoBadgePlusJson => {
+            let mut summary = ripr_plus_summary_from_disk(output)?;
+            if format.is_repo_scope() {
+                summary.scope = BadgeScope::Repo;
+            }
             Ok(output::badge::render_native_json(&summary))
         }
-        OutputFormat::BadgePlusShields => {
-            let summary = ripr_plus_summary_from_disk(output)?;
+        OutputFormat::BadgePlusShields | OutputFormat::RepoBadgePlusShields => {
+            let mut summary = ripr_plus_summary_from_disk(output)?;
+            if format.is_repo_scope() {
+                summary.scope = BadgeScope::Repo;
+            }
             Ok(output::badge::render_shields_json(&summary))
         }
     }
@@ -469,6 +542,71 @@ mod tests {
             );
             assert!(!lower.contains("coverage"));
             assert!(!lower.contains("uncovered"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn output_format_is_repo_scope_only_for_repo_variants() {
+        for repo in [
+            OutputFormat::RepoBadgeJson,
+            OutputFormat::RepoBadgeShields,
+            OutputFormat::RepoBadgePlusJson,
+            OutputFormat::RepoBadgePlusShields,
+        ] {
+            assert!(
+                repo.is_repo_scope(),
+                "expected {:?} to report repo scope",
+                repo
+            );
+        }
+        for diff in [
+            OutputFormat::Human,
+            OutputFormat::Json,
+            OutputFormat::Github,
+            OutputFormat::BadgeJson,
+            OutputFormat::BadgeShields,
+            OutputFormat::BadgePlusJson,
+            OutputFormat::BadgePlusShields,
+        ] {
+            assert!(
+                !diff.is_repo_scope(),
+                "expected {:?} to report diff scope",
+                diff
+            );
+        }
+    }
+
+    #[test]
+    fn render_check_repo_badge_json_paints_scope_repo() -> Result<(), String> {
+        let output = check_output_with(vec![sample_finding("src/lib.rs", 1)]);
+        let rendered = render_check(&output, &OutputFormat::RepoBadgeJson)?;
+
+        assert!(rendered.contains("\"schema_version\": \"0.2\""));
+        assert!(rendered.contains("\"scope\": \"repo\""));
+        assert!(!rendered.contains("\"scope\": \"diff\""));
+        assert!(rendered.contains("\"kind\": \"ripr\""));
+        Ok(())
+    }
+
+    #[test]
+    fn render_check_repo_badge_shields_stays_four_fields_without_scope_leak() -> Result<(), String>
+    {
+        let output = check_output_with(vec![sample_finding("src/lib.rs", 1)]);
+        let rendered = render_check(&output, &OutputFormat::RepoBadgeShields)?;
+
+        // Scope is native-only metadata; Shields stays a four-field projection.
+        assert!(!rendered.contains("\"scope\""));
+        let top_level_keys = rendered
+            .lines()
+            .filter(|line| line.starts_with("  \""))
+            .count();
+        assert_eq!(top_level_keys, 4);
+        for forbidden in ["\"counts\"", "\"reason_counts\"", "\"policy\"", "\"kind\""] {
+            assert!(
+                !rendered.contains(forbidden),
+                "Shields projection must not contain `{forbidden}`"
+            );
         }
         Ok(())
     }

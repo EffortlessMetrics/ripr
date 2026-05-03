@@ -12,10 +12,13 @@ This is the contract that `ripr check --format badge-json` and
 
 ## Status
 
-This is the policy document. The badge command and the test-intent /
-suppressions config files are planned work in Campaign 4A. The current
-implementation status of each piece is tracked in the status table at the
-bottom of this doc and in [`.ripr/goals/active.toml`](../.ripr/goals/active.toml).
+This is the policy document. The badge command, the test-intent and
+suppressions config files, the diff-scoped CI artifact pipeline, and
+the repo-scoped artifact path have all landed under Campaign 4A. The
+remaining campaign item is `badge/publish-main-endpoint` (trunk-only
+public Shields endpoint). The current implementation status of each
+piece is tracked in the status table at the bottom of this doc and in
+[`.ripr/goals/active.toml`](../.ripr/goals/active.toml).
 
 ## What each badge means
 
@@ -71,13 +74,39 @@ page, or extension store badge.
   under policy."
 - `ripr+` is already partly repo-scoped because
   `cargo xtask test-efficiency-report` scans the whole test suite.
-  Pure `ripr` requires an explicit repo-baseline mode that analyzes
-  every probeable production owner — tracked as
-  `badge/repo-scope-artifacts` in Campaign 4A.
+  Pure `ripr` repo scope is rendered through
+  `app::check_workspace_repo` (analysis path
+  `analysis::run_repo_analysis`), which seeds probes from every
+  currently-probeable production syntax shape and classifies them
+  through the same evidence/classifier pipeline as diff scope. The
+  CLI surface is `--format repo-badge-json`,
+  `--format repo-badge-shields`, `--format repo-badge-plus-json`,
+  and `--format repo-badge-plus-shields`; the xtask wrapper is
+  `cargo xtask repo-badge-artifacts`.
 
-Until repo-scoped pure `ripr` exists, **public README / store badges
-must not be derived from `cargo xtask badge-artifacts`** — that task
-generates diff-scoped artifacts only.
+#### What v1 repo scope means — and does not mean
+
+The v1 repo baseline counts findings produced from the
+**currently-probeable production syntax shapes** the analyzer knows
+how to detect (predicate, return value, error path, call deletion,
+field construction, side effect, match arm). It is **not**:
+
+- a complete inventory of every behavior seam in the repo
+- proof that every behavior is tested
+- proof of mutation adequacy
+- a coverage metric
+
+A first-class seam-inventory and test-grip model — `RepoSeam` /
+`SeamKind` types, dedicated discriminator classification per seam,
+LSP diagnostics surfacing weakly-gripped seams, and agent dispatch
+packets that close one seam per PR — is tracked as later work and is
+intentionally **not** part of `badge/repo-scope-artifacts`. The
+bounded v1 unblocks honest repo-scoped public artifacts without
+expanding Campaign 4A.
+
+Public README / store badges that derive from
+`cargo xtask badge-artifacts` are unsafe — that task generates
+diff-scoped artifacts only.
 
 ### What neither badge proves
 
@@ -535,8 +564,8 @@ Tracked alongside Campaign 4A in
 | `ripr check --format badge-plus-*` | done | `badge/ripr-plus-count-v1` |
 | `.ripr/suppressions.toml` loader | done | `suppressions/v1` |
 | CI badge artifacts (diff-scoped, PR) | done | `ci/badge-artifacts` |
-| Repo-scoped badge artifacts | not started | `badge/repo-scope-artifacts` |
-| Published Shields endpoint from `main` | blocked | `badge/publish-main-endpoint` (blocked on `badge/repo-scope-artifacts`) |
+| Repo-scoped badge artifacts | done | `badge/repo-scope-artifacts` (`cargo xtask repo-badge-artifacts`) |
+| Published Shields endpoint from `main` | ready | `badge/publish-main-endpoint` |
 
 ## See also
 
