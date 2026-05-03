@@ -26,8 +26,11 @@ Options:
   --base REV               Base revision for git diff. Defaults to origin/main.
   --diff PATH              Read a unified diff file instead of running git diff.
   --mode MODE              instant, draft, fast, deep, or ready. Defaults to draft.
-  --format FORMAT          human, json, github, badge-json, or badge-shields.
-                           Defaults to human.
+  --format FORMAT          human, json, github, badge-json, badge-shields,
+                           badge-plus-json, or badge-plus-shields. Defaults to
+                           human. badge-plus-* formats require
+                           target/ripr/reports/test-efficiency.json (run
+                           `cargo xtask test-efficiency-report` first).
   --json                   Shortcut for --format json.
   --no-unchanged-tests     Limit the index to changed Rust files.
 "#

@@ -88,6 +88,13 @@ pub enum OutputFormat {
     /// Shields-compatible projection for the `ripr` badge: exactly four
     /// top-level fields (`schemaVersion`, `label`, `message`, `color`).
     BadgeShields,
+    /// Native `ripr+` badge JSON. Sums unsuppressed exposure gaps and
+    /// unsuppressed actionable test-efficiency findings, excluding
+    /// declared intent. Requires `target/ripr/reports/test-efficiency.json`
+    /// produced by `cargo xtask test-efficiency-report`.
+    BadgePlusJson,
+    /// Shields-compatible projection for the `ripr+` badge.
+    BadgePlusShields,
 }
 
 /// Result payload produced by [`check_workspace`].
@@ -130,23 +137,60 @@ pub fn check_workspace(input: CheckInput) -> Result<CheckOutput, String> {
     })
 }
 
+/// Path (relative to the analyzed workspace root) where the
+/// test-efficiency report is expected when rendering `ripr+` badge formats.
+pub(crate) const TEST_EFFICIENCY_REPORT_RELATIVE: &str = "target/ripr/reports/test-efficiency.json";
+
 /// Renders a previously computed [`CheckOutput`] in the requested format.
-pub fn render_check(output: &CheckOutput, format: &OutputFormat) -> String {
+///
+/// Returns `Err` when the requested format requires auxiliary inputs that
+/// are not present — currently only the `BadgePlus*` formats, which read
+/// the test-efficiency report. The other formats are infallible and
+/// always return `Ok`.
+pub fn render_check(output: &CheckOutput, format: &OutputFormat) -> Result<String, String> {
     match format {
-        OutputFormat::Human => output::human::render(output),
-        OutputFormat::Json => output::json::render(output),
-        OutputFormat::Github => output::github::render(output),
+        OutputFormat::Human => Ok(output::human::render(output)),
+        OutputFormat::Json => Ok(output::json::render(output)),
+        OutputFormat::Github => Ok(output::github::render(output)),
         OutputFormat::BadgeJson => {
             let summary =
                 output::badge::ripr_badge_summary(output, output::badge::BadgePolicy::default());
-            output::badge::render_native_json(&summary)
+            Ok(output::badge::render_native_json(&summary))
         }
         OutputFormat::BadgeShields => {
             let summary =
                 output::badge::ripr_badge_summary(output, output::badge::BadgePolicy::default());
-            output::badge::render_shields_json(&summary)
+            Ok(output::badge::render_shields_json(&summary))
+        }
+        OutputFormat::BadgePlusJson => {
+            let summary = ripr_plus_summary_from_disk(output)?;
+            Ok(output::badge::render_native_json(&summary))
+        }
+        OutputFormat::BadgePlusShields => {
+            let summary = ripr_plus_summary_from_disk(output)?;
+            Ok(output::badge::render_shields_json(&summary))
         }
     }
+}
+
+fn ripr_plus_summary_from_disk(
+    output: &CheckOutput,
+) -> Result<output::badge::BadgeSummary, String> {
+    let report_path = output.root.join(TEST_EFFICIENCY_REPORT_RELATIVE);
+    if !report_path.exists() {
+        return Err(format!(
+            "missing {}; run `cargo xtask test-efficiency-report` before requesting badge-plus formats",
+            report_path.display()
+        ));
+    }
+    let text = std::fs::read_to_string(&report_path)
+        .map_err(|err| format!("failed to read {}: {err}", report_path.display()))?;
+    let test_efficiency = output::badge::parse_test_efficiency_badge_summary(&text)?;
+    Ok(output::badge::ripr_plus_badge_summary(
+        output,
+        test_efficiency,
+        output::badge::BadgePolicy::default(),
+    ))
 }
 
 /// Computes findings and renders a single selected finding in human format.
@@ -336,9 +380,9 @@ mod tests {
     }
 
     #[test]
-    fn render_check_dispatches_badge_json_format() {
+    fn render_check_dispatches_badge_json_format() -> Result<(), String> {
         let output = check_output_with(vec![sample_finding("src/lib.rs", 1)]);
-        let rendered = render_check(&output, &OutputFormat::BadgeJson);
+        let rendered = render_check(&output, &OutputFormat::BadgeJson)?;
 
         // Native snake_case wire shape with all required top-level keys.
         assert!(rendered.contains("\"schema_version\": \"0.1\""));
@@ -348,12 +392,13 @@ mod tests {
         assert!(rendered.contains("\"policy\":"));
         // Specifically includes the new vocabulary from #187/#188 with zero default.
         assert!(rendered.contains("\"duplicate_activation_and_oracle_shape\": 0"));
+        Ok(())
     }
 
     #[test]
-    fn render_check_dispatches_badge_shields_format() {
+    fn render_check_dispatches_badge_shields_format() -> Result<(), String> {
         let output = check_output_with(vec![sample_finding("src/lib.rs", 1)]);
-        let rendered = render_check(&output, &OutputFormat::BadgeShields);
+        let rendered = render_check(&output, &OutputFormat::BadgeShields)?;
 
         assert!(rendered.contains("\"schemaVersion\": 1"));
         assert!(rendered.contains("\"label\":"));
@@ -372,16 +417,17 @@ mod tests {
                 "Shields projection must not contain `{forbidden}`"
             );
         }
+        Ok(())
     }
 
     #[test]
-    fn badge_render_message_has_no_denominator_or_coverage_framing() {
+    fn badge_render_message_has_no_denominator_or_coverage_framing() -> Result<(), String> {
         let output = check_output_with(vec![
             sample_finding("src/a.rs", 1),
             sample_finding("src/b.rs", 2),
         ]);
         for format in [OutputFormat::BadgeJson, OutputFormat::BadgeShields] {
-            let rendered = render_check(&output, &format);
+            let rendered = render_check(&output, &format)?;
             let lower = rendered.to_ascii_lowercase();
             // Confirm no "X/Y" denominator pattern in the message field; the
             // message itself is just a count string.
@@ -397,5 +443,36 @@ mod tests {
             assert!(!lower.contains("coverage"));
             assert!(!lower.contains("uncovered"));
         }
+        Ok(())
+    }
+
+    #[test]
+    fn render_check_badge_plus_fails_when_test_efficiency_report_missing() -> Result<(), String> {
+        // CheckOutput.root points at a temporary directory that does NOT
+        // contain target/ripr/reports/test-efficiency.json.
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let tmp = std::env::temp_dir().join(format!("ripr-badge-plus-missing-{stamp}"));
+        std::fs::create_dir_all(&tmp).map_err(|e| format!("create temp dir: {e}"))?;
+
+        let mut output = check_output_with(vec![sample_finding("src/lib.rs", 1)]);
+        output.root = tmp.clone();
+
+        let result = render_check(&output, &OutputFormat::BadgePlusJson);
+        assert!(result.is_err(), "badge-plus must fail when report missing");
+        let err = result.err().unwrap_or_default();
+        assert!(
+            err.contains("test-efficiency.json"),
+            "error must name the missing report: {err}"
+        );
+        assert!(
+            err.contains("cargo xtask test-efficiency-report"),
+            "error must direct the user to the regenerator command: {err}"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+        Ok(())
     }
 }
