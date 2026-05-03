@@ -5,11 +5,17 @@ on:
   push:
     branches: [main, master]
 
+permissions:
+  contents: read
+
 jobs:
   coverage:
+    name: rust-coverage
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -17,12 +23,25 @@ jobs:
 
       - uses: taiki-e/install-action@cargo-llvm-cov
 
+      - name: Clean coverage state
+        run: cargo llvm-cov clean --workspace
+
       - name: Generate coverage
         run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rust-lcov
+          path: lcov.info
+          if-no-files-found: error
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v6
         with:
           files: lcov.info
+          flags: rust
+          name: rust-workspace
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}

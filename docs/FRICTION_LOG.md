@@ -72,3 +72,12 @@ Each entry is a date-grouped bullet:
   the substring-extraction helpers into one private module within
   xtask, OR introduce a tiny vendored serde-free reader (`mini_json`)
   if a fourth duplication appears.
+- **codecov.yml informational field not in docs** — drafting the codecov
+  config for PR1 (`coverage/codecov-config-v1`), the handoff packet
+  included `informational: true` fields on coverage statuses. Web check
+  against https://docs.codecov.com/docs/codecovyml-reference found
+  `informational` is not a documented field; only `target`, `threshold`,
+  `base`, `branches`, `if_ci_failed`, `only_pulls`, `flags`, and
+  `paths` are mentioned. Simplified to the fallback safe config (no
+  named path statuses, no undocumented fields). **Status:** resolved in
+  PR1 by using documented fields only.
