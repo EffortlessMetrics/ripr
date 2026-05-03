@@ -445,8 +445,11 @@ evidence = [
   "cargo xtask test-efficiency-report",
   "advisory test-efficiency Markdown and JSON reports",
   "xtask test-efficiency ledger unit tests",
-  "test-efficiency reason counts for smoke-only, broad, disconnected, opaque, circular, and likely-vacuous signals"
+  "test-efficiency reason counts for smoke-only, broad, disconnected, opaque, circular, and likely-vacuous signals",
+  "duplicative class and duplicate_activation_and_oracle_shape reason",
+  "duplicate_groups report section with role-aware activation signature",
+  "stable metrics object with tests_scanned, class_counts, reason_counts, and duplicate_discriminator_group_count"
 ]
 fixtures = []
-next = "test-efficiency-duplicate-discriminator-v1"
-metric = "strong discriminator, useful broad, smoke-only, likely-vacuous, possibly circular, opaque, and reason counts"
+next = "badge-summary-renderer-v1"
+metric = "tests_scanned, class_counts (strong_discriminator, useful_but_broad, smoke_only, likely_vacuous, possibly_circular, duplicative, opaque), reason_counts (including duplicate_activation_and_oracle_shape), and duplicate_discriminator_group_count"

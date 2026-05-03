@@ -416,8 +416,8 @@ Tracked alongside Campaign 4A in
 | Test fact ledger | done | `cargo xtask test-efficiency-report` |
 | Vacuity signals (the 6-class table above, minus duplicate) | done | same |
 | Duplicate-discriminator grouping | done | `test-efficiency/duplicate-discriminator-v1` |
-| Test-efficiency report metrics | ready | `test-efficiency/report-and-metrics` |
-| Private `BadgeSummary` model and renderer | not started | `badge/summary-renderer-v1` |
+| Test-efficiency report metrics | done | `test-efficiency/report-and-metrics` |
+| Private `BadgeSummary` model and renderer | ready | `badge/summary-renderer-v1` |
 | `ripr check --format badge-json` / `badge-shields` | not started | `badge/ripr-count-v1` |
 | `.ripr/test_intent.toml` loader | not started | `test-intent/v1` |
 | `ripr check --format badge-plus-*` | not started | `badge/ripr-plus-count-v1` |

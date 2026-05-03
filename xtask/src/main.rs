@@ -4124,6 +4124,38 @@ fn test_efficiency_reason_counts(entries: &[TestEfficiencyEntry]) -> BTreeMap<St
     counts
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct TestEfficiencyMetrics {
+    tests_scanned: usize,
+    class_counts: BTreeMap<&'static str, usize>,
+    reason_counts: BTreeMap<String, usize>,
+    duplicate_discriminator_group_count: usize,
+}
+
+/// Builds the stable advisory metrics surface for the test-efficiency
+/// report. Computed directly from the entries and groups already used to
+/// render the report — the JSON and Markdown renderers do not parse their
+/// own output to derive metrics.
+///
+/// `class_counts` is keyed by the seven emitted class strings and always
+/// includes every class with a zero default. `reason_counts` is keyed by
+/// the reason strings actually present in the entries. `tests_scanned` is
+/// the total entry count. `duplicate_discriminator_group_count` is the
+/// number of duplicate groups, **not** the number of tests classified
+/// `duplicative` — those are reported separately as
+/// `class_counts["duplicative"]`.
+fn test_efficiency_metrics(
+    entries: &[TestEfficiencyEntry],
+    duplicate_groups: &[DuplicateDiscriminatorGroup],
+) -> TestEfficiencyMetrics {
+    TestEfficiencyMetrics {
+        tests_scanned: entries.len(),
+        class_counts: test_efficiency_counts(entries),
+        reason_counts: test_efficiency_reason_counts(entries),
+        duplicate_discriminator_group_count: duplicate_groups.len(),
+    }
+}
+
 fn test_efficiency_report_status(entries: &[TestEfficiencyEntry]) -> &'static str {
     if entries
         .iter()
@@ -4139,8 +4171,9 @@ fn test_efficiency_report_markdown(
     entries: &[TestEfficiencyEntry],
     duplicate_groups: &[DuplicateDiscriminatorGroup],
 ) -> String {
-    let counts = test_efficiency_counts(entries);
-    let reason_counts = test_efficiency_reason_counts(entries);
+    let metrics = test_efficiency_metrics(entries, duplicate_groups);
+    let counts = &metrics.class_counts;
+    let reason_counts = &metrics.reason_counts;
     let mut body = format!(
         "# ripr test efficiency report\n\nStatus: {}\n\nMode: advisory\n\nThis report builds a per-test evidence ledger from static Rust test facts. It records apparent owner calls, oracle shape, activation values, and static limitations so reviewers can spot low-discriminator patterns without making the report blocking.\n\n## Summary\n\n- Strong discriminator: {}\n- Useful but broad: {}\n- Smoke only: {}\n- Likely vacuous: {}\n- Possibly circular: {}\n- Duplicative: {}\n- Opaque: {}\n- Duplicate discriminator groups: {}\n- Tests scanned: {}\n\n",
         test_efficiency_report_status(entries),
@@ -4155,11 +4188,46 @@ fn test_efficiency_report_markdown(
         entries.len(),
     );
 
+    body.push_str("## Metrics\n\n| Metric | Value |\n| --- | ---: |\n");
+    body.push_str(&format!("| Tests scanned | {} |\n", metrics.tests_scanned));
+    body.push_str(&format!(
+        "| Strong discriminator | {} |\n",
+        counts.get("strong_discriminator").copied().unwrap_or(0)
+    ));
+    body.push_str(&format!(
+        "| Useful but broad | {} |\n",
+        counts.get("useful_but_broad").copied().unwrap_or(0)
+    ));
+    body.push_str(&format!(
+        "| Smoke only | {} |\n",
+        counts.get("smoke_only").copied().unwrap_or(0)
+    ));
+    body.push_str(&format!(
+        "| Likely vacuous | {} |\n",
+        counts.get("likely_vacuous").copied().unwrap_or(0)
+    ));
+    body.push_str(&format!(
+        "| Possibly circular | {} |\n",
+        counts.get("possibly_circular").copied().unwrap_or(0)
+    ));
+    body.push_str(&format!(
+        "| Duplicative | {} |\n",
+        counts.get("duplicative").copied().unwrap_or(0)
+    ));
+    body.push_str(&format!(
+        "| Opaque | {} |\n",
+        counts.get("opaque").copied().unwrap_or(0)
+    ));
+    body.push_str(&format!(
+        "| Duplicate discriminator groups | {} |\n\n",
+        metrics.duplicate_discriminator_group_count
+    ));
+
     body.push_str("## Signal Reasons\n\n");
     if reason_counts.is_empty() {
         body.push_str("None detected.\n\n");
     } else {
-        for (reason, count) in &reason_counts {
+        for (reason, count) in reason_counts {
             body.push_str(&format!("- `{reason}`: {count}\n"));
         }
         body.push('\n');
@@ -4274,8 +4342,9 @@ fn test_efficiency_report_json(
     entries: &[TestEfficiencyEntry],
     duplicate_groups: &[DuplicateDiscriminatorGroup],
 ) -> String {
-    let counts = test_efficiency_counts(entries);
-    let reason_counts = test_efficiency_reason_counts(entries);
+    let metrics = test_efficiency_metrics(entries, duplicate_groups);
+    let counts = &metrics.class_counts;
+    let reason_counts = &metrics.reason_counts;
     let mut body = format!(
         "{{\n  \"schema_version\": \"0.1\",\n  \"status\": \"{}\",\n  \"advisory\": true,\n  \"counts\": {{\n    \"strong_discriminator\": {},\n    \"useful_but_broad\": {},\n    \"smoke_only\": {},\n    \"likely_vacuous\": {},\n    \"possibly_circular\": {},\n    \"duplicative\": {},\n    \"opaque\": {}\n  }},\n",
         test_efficiency_report_status(entries),
@@ -4358,7 +4427,7 @@ fn test_efficiency_report_json(
     }
     body.push_str("\n  ],\n  \"duplicate_groups\": [");
     if duplicate_groups.is_empty() {
-        body.push_str("]\n}\n");
+        body.push(']');
     } else {
         body.push('\n');
         for (group_index, group) in duplicate_groups.iter().enumerate() {
@@ -4424,8 +4493,59 @@ fn test_efficiency_report_json(
             ));
             body.push_str("    }");
         }
-        body.push_str("\n  ]\n}\n");
+        body.push_str("\n  ]");
     }
+    body.push_str(",\n  \"metrics\": {\n");
+    body.push_str(&format!(
+        "    \"tests_scanned\": {},\n",
+        metrics.tests_scanned
+    ));
+    body.push_str("    \"class_counts\": {\n");
+    body.push_str(&format!(
+        "      \"strong_discriminator\": {},\n",
+        counts.get("strong_discriminator").copied().unwrap_or(0)
+    ));
+    body.push_str(&format!(
+        "      \"useful_but_broad\": {},\n",
+        counts.get("useful_but_broad").copied().unwrap_or(0)
+    ));
+    body.push_str(&format!(
+        "      \"smoke_only\": {},\n",
+        counts.get("smoke_only").copied().unwrap_or(0)
+    ));
+    body.push_str(&format!(
+        "      \"likely_vacuous\": {},\n",
+        counts.get("likely_vacuous").copied().unwrap_or(0)
+    ));
+    body.push_str(&format!(
+        "      \"possibly_circular\": {},\n",
+        counts.get("possibly_circular").copied().unwrap_or(0)
+    ));
+    body.push_str(&format!(
+        "      \"duplicative\": {},\n",
+        counts.get("duplicative").copied().unwrap_or(0)
+    ));
+    body.push_str(&format!(
+        "      \"opaque\": {}\n",
+        counts.get("opaque").copied().unwrap_or(0)
+    ));
+    body.push_str("    },\n    \"reason_counts\": {");
+    for (index, (reason, count)) in reason_counts.iter().enumerate() {
+        if index > 0 {
+            body.push(',');
+        }
+        body.push_str(&format!("\n      \"{}\": {}", json_escape(reason), count));
+    }
+    if reason_counts.is_empty() {
+        body.push('}');
+    } else {
+        body.push_str("\n    }");
+    }
+    body.push_str(&format!(
+        ",\n    \"duplicate_discriminator_group_count\": {}\n",
+        metrics.duplicate_discriminator_group_count
+    ));
+    body.push_str("  }\n}\n");
     body
 }
 
@@ -9432,7 +9552,10 @@ mod tests {
         test_oracle_report_markdown, test_oracle_tests_in_text, validate_local_context_allowlist,
         windows_absolute_path_tokens, workflow_runtime_violations,
     };
-    use super::{TestEfficiencyEntry, TestEfficiencyValue, apply_duplicate_discriminator_groups};
+    use super::{
+        TestEfficiencyEntry, TestEfficiencyValue, apply_duplicate_discriminator_groups,
+        test_efficiency_metrics,
+    };
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
     use std::path::Path;
@@ -11599,5 +11722,287 @@ fn exact_owner_call_has_external_expected_value() {
             !markdown.to_ascii_lowercase().contains("delete"),
             "report must not recommend deleting tests"
         );
+    }
+
+    #[test]
+    fn metrics_helper_counts_all_seven_classes_with_zero_default() {
+        let entries = vec![
+            duplicate_entry(
+                "strong",
+                10,
+                "strong_discriminator",
+                "exact assertion",
+                "strong",
+                &["pricing::p"],
+                &[("function_argument", "1")],
+            ),
+            duplicate_entry(
+                "broad",
+                20,
+                "useful_but_broad",
+                "broad predicate",
+                "weak",
+                &["pricing::p"],
+                &[("function_argument", "2")],
+            ),
+            duplicate_entry("opaque", 30, "opaque", "smoke only", "smoke", &[], &[]),
+        ];
+        let metrics = test_efficiency_metrics(&entries, &[]);
+
+        assert_eq!(metrics.tests_scanned, 3);
+        // Every class is present with a zero default, even unused ones.
+        for class in [
+            "strong_discriminator",
+            "useful_but_broad",
+            "smoke_only",
+            "likely_vacuous",
+            "possibly_circular",
+            "duplicative",
+            "opaque",
+        ] {
+            assert!(
+                metrics.class_counts.contains_key(class),
+                "metrics.class_counts is missing `{class}`"
+            );
+        }
+        assert_eq!(metrics.class_counts["strong_discriminator"], 1);
+        assert_eq!(metrics.class_counts["useful_but_broad"], 1);
+        assert_eq!(metrics.class_counts["opaque"], 1);
+        assert_eq!(metrics.class_counts["smoke_only"], 0);
+        assert_eq!(metrics.class_counts["duplicative"], 0);
+    }
+
+    #[test]
+    fn metrics_helper_counts_reason_strings_from_entries() {
+        let mut a = duplicate_entry(
+            "a",
+            10,
+            "useful_but_broad",
+            "broad predicate",
+            "weak",
+            &["pricing::p"],
+            &[("function_argument", "1")],
+        );
+        a.reasons.push("broad_oracle".to_string());
+        a.reasons
+            .push("assertion_may_not_match_detected_owner".to_string());
+        let mut b = duplicate_entry(
+            "b",
+            20,
+            "useful_but_broad",
+            "broad predicate",
+            "weak",
+            &["pricing::p"],
+            &[("function_argument", "2")],
+        );
+        b.reasons.push("broad_oracle".to_string());
+
+        let metrics = test_efficiency_metrics(&[a, b], &[]);
+
+        assert_eq!(metrics.reason_counts["broad_oracle"], 2);
+        assert_eq!(
+            metrics.reason_counts["assertion_may_not_match_detected_owner"],
+            1
+        );
+        assert!(!metrics.reason_counts.contains_key("nonexistent_reason"));
+    }
+
+    #[test]
+    fn metrics_helper_distinguishes_duplicative_test_count_from_group_count() {
+        // Two disjoint groups, each with two members + one with three members.
+        // Total duplicative tests = 2 + 2 + 3 = 7. Total groups = 3.
+        let mut entries = Vec::new();
+        for owner in &["pricing::a", "pricing::b"] {
+            for index in 0..2 {
+                entries.push(duplicate_entry(
+                    owner,
+                    10 + index,
+                    "strong_discriminator",
+                    "exact assertion",
+                    "strong",
+                    &[owner],
+                    &[("function_argument", "1")],
+                ));
+            }
+        }
+        for index in 0..3 {
+            entries.push(duplicate_entry(
+                "pricing::c",
+                100 + index,
+                "strong_discriminator",
+                "exact assertion",
+                "strong",
+                &["pricing::c"],
+                &[("function_argument", "9")],
+            ));
+        }
+
+        let groups = apply_duplicate_discriminator_groups(&mut entries);
+        let metrics = test_efficiency_metrics(&entries, &groups);
+
+        assert_eq!(groups.len(), 3, "three distinct duplicate groups");
+        assert_eq!(
+            metrics.duplicate_discriminator_group_count, 3,
+            "duplicate_discriminator_group_count must count groups"
+        );
+        assert_eq!(
+            metrics.class_counts["duplicative"], 7,
+            "class_counts.duplicative must count tests, not groups"
+        );
+    }
+
+    #[test]
+    fn metrics_json_contains_metrics_object_with_exact_keys() {
+        let entries = vec![duplicate_entry(
+            "alone",
+            10,
+            "strong_discriminator",
+            "exact assertion",
+            "strong",
+            &["pricing::p"],
+            &[("function_argument", "1")],
+        )];
+        let json = test_efficiency_report_json(&entries, &[]);
+
+        assert!(json.contains("\"metrics\": {"));
+        assert!(json.contains("\"tests_scanned\": 1"));
+        assert!(json.contains("\"class_counts\": {"));
+        // Every required class key is present in the metrics.class_counts.
+        for class in [
+            "strong_discriminator",
+            "useful_but_broad",
+            "smoke_only",
+            "likely_vacuous",
+            "possibly_circular",
+            "duplicative",
+            "opaque",
+        ] {
+            assert!(
+                json.contains(&format!("\"{class}\":")),
+                "metrics JSON is missing class `{class}`"
+            );
+        }
+        assert!(json.contains("\"duplicate_discriminator_group_count\": 0"));
+    }
+
+    #[test]
+    fn metrics_json_keeps_existing_top_level_counts_and_reason_counts() {
+        let mut entry = duplicate_entry(
+            "x",
+            10,
+            "useful_but_broad",
+            "broad predicate",
+            "weak",
+            &["pricing::p"],
+            &[("function_argument", "1")],
+        );
+        entry.reasons.push("broad_oracle".to_string());
+        let json = test_efficiency_report_json(&[entry], &[]);
+
+        // Existing top-level surfaces must remain for backward compatibility.
+        assert!(json.contains("\"counts\": {"));
+        assert!(json.contains("\"reason_counts\": {"));
+        // The new metrics object lives alongside, not instead.
+        assert!(json.contains("\"metrics\": {"));
+        // Both surfaces report the same broad_oracle count.
+        let broad_oracle_count = json.matches("\"broad_oracle\": 1").count();
+        assert!(
+            broad_oracle_count >= 2,
+            "expected `broad_oracle: 1` to appear in both top-level reason_counts and metrics.reason_counts; saw {broad_oracle_count}"
+        );
+    }
+
+    #[test]
+    fn metrics_markdown_contains_metrics_table_with_group_count_separate_from_test_count() {
+        let mut entries = vec![
+            duplicate_entry(
+                "a",
+                10,
+                "strong_discriminator",
+                "exact assertion",
+                "strong",
+                &["pricing::p"],
+                &[("function_argument", "1")],
+            ),
+            duplicate_entry(
+                "b",
+                30,
+                "strong_discriminator",
+                "exact assertion",
+                "strong",
+                &["pricing::p"],
+                &[("function_argument", "1")],
+            ),
+        ];
+        let groups = apply_duplicate_discriminator_groups(&mut entries);
+        let markdown = test_efficiency_report_markdown(&entries, &groups);
+
+        assert!(markdown.contains("## Metrics"));
+        assert!(markdown.contains("| Metric | Value |"));
+        assert!(markdown.contains("| Tests scanned | 2 |"));
+        assert!(markdown.contains("| Duplicative | 2 |"));
+        assert!(
+            markdown.contains("| Duplicate discriminator groups | 1 |"),
+            "metrics table must distinguish group count from duplicative test count"
+        );
+    }
+
+    #[test]
+    fn metrics_report_uses_only_emitted_vocabulary_strings() {
+        let entries = vec![duplicate_entry(
+            "x",
+            10,
+            "strong_discriminator",
+            "exact assertion",
+            "strong",
+            &["pricing::p"],
+            &[("function_argument", "1")],
+        )];
+        let json = test_efficiency_report_json(&entries, &[]);
+
+        // Aliases that must NOT appear in the metrics surface — ensures we
+        // do not introduce a parallel vocabulary.
+        for forbidden in [
+            "\"broad\":",
+            "\"circular\":",
+            "\"vacuous\":",
+            "\"smoke\":",
+            "\"duplicate\":",
+            "\"duplicate_discriminator\":",
+            "\"discriminator\":",
+        ] {
+            assert!(
+                !json.contains(forbidden),
+                "metrics JSON must not contain alias `{forbidden}`"
+            );
+        }
+    }
+
+    #[test]
+    fn metrics_report_has_no_coverage_or_denominator_language() {
+        let entries = vec![duplicate_entry(
+            "x",
+            10,
+            "strong_discriminator",
+            "exact assertion",
+            "strong",
+            &["pricing::p"],
+            &[("function_argument", "1")],
+        )];
+        let markdown = test_efficiency_report_markdown(&entries, &[]);
+        let json = test_efficiency_report_json(&entries, &[]);
+
+        for body in [&markdown, &json] {
+            let lower = body.to_ascii_lowercase();
+            assert!(
+                !lower.contains("coverage"),
+                "test-efficiency report must not use coverage framing"
+            );
+            // The badge contract is inbox-zero; no denominators in this report.
+            assert!(
+                !lower.contains("uncovered"),
+                "test-efficiency report must not use uncovered framing"
+            );
+        }
     }
 }
