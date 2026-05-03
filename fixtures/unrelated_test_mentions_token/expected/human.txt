@@ -1,0 +1,36 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/unrelated_test_mentions_token/input
+
+Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 1 no path, 0 unknown
+
+WARNING fixtures/unrelated_test_mentions_token/input/src/lib.rs:2
+
+Changed
+  before: if amount > discount_threshold {
+  after:  if amount >= discount_threshold {
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  src/lib.rs::discounted_total
+
+Static exposure
+  no_static_path (warning, confidence 0.48)
+
+Evidence
+  - reach no: No static test path found for the changed owner
+  - infection unknown: No tests were found, so activation/infection cannot be estimated
+  - propagation yes: Changed behavior appears to influence returned value: amount - 10
+  - observation no: No reachable test oracle found
+  - discriminator no: No assertion can discriminate the changed behavior without a reachable test
+  - local flow reaches returned value: amount - 10 (line 3)
+
+Weakness
+  - No detected boundary input for the changed predicate
+  - No relevant oracle was detected
+  - No static test path reaches the changed owner
+  - No strong discriminator was detected
+
+Next step
+  Add or identify a test path that reaches the changed owner, or run ready-mode mutation to confirm coverage.

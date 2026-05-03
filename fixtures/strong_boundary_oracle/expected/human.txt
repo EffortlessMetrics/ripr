@@ -1,0 +1,38 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/strong_boundary_oracle/input
+
+Summary: 1 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
+
+INFO fixtures/strong_boundary_oracle/input/src/lib.rs:2
+
+Changed
+  before: if amount > discount_threshold {
+  after:  if amount >= discount_threshold {
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  src/lib.rs::discounted_total
+
+Static exposure
+  exposed (info, confidence 1.00)
+
+Evidence
+  - reach yes: Related tests appear to reach discounted_total: below_threshold_has_no_discount, equality_threshold_discounts, far_above_threshold_discounts
+  - infection yes: Detected related test input at the changed boundary
+  - propagation yes: Changed behavior appears to influence returned value: amount - 10
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator yes: Strong oracle found: exact value or pattern assertion
+  - local flow reaches returned value: amount - 10 (line 3)
+  - related test tests/pricing.rs:4 below_threshold_has_no_discount uses strong exact value oracle: assert_eq!(discounted_total(50, 100), 50);
+  - related test tests/pricing.rs:9 equality_threshold_discounts uses strong exact value oracle: assert_eq!(discounted_total(100, 100), 90);
+  - related test tests/pricing.rs:14 far_above_threshold_discounts uses strong exact value oracle: assert_eq!(discounted_total(10_000, 100), 9_990);
+  - observed assertion argument value 50 at line 5
+  - observed function argument value amount = 50 at line 5
+  - observed function argument value discount_threshold = 100 at line 5
+  - observed assertion argument value 90 at line 10
+  - observed function argument value amount = 100 at line 10
+  - observed function argument value amount == discount_threshold at line 10
+  - observed function argument value discount_threshold = 100 at line 10
+  - observed assertion argument value 9_990 at line 15

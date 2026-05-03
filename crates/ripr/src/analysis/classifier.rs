@@ -105,21 +105,15 @@ fn find_related_tests<'a>(
         let calls_owner = !owner_name.is_empty()
             && (test.calls.iter().any(|call| call.name == owner_name)
                 || test.body.contains(owner_name));
-        let mentions_tokens = probe_tokens
-            .iter()
-            .any(|token| token.len() > 3 && test.body.contains(token));
+        let test_name = test.name.to_ascii_lowercase();
+        let owner_name = owner_name.to_ascii_lowercase();
         let same_file_or_named = normalize_path(&test.file).contains(file_name)
-            || test
-                .name
-                .to_ascii_lowercase()
-                .contains(&owner_name.to_ascii_lowercase())
-            || probe_tokens.iter().any(|token| {
-                test.name
-                    .to_ascii_lowercase()
-                    .contains(&token.to_ascii_lowercase())
-            });
+            || (!owner_name.is_empty() && test_name.contains(&owner_name))
+            || probe_tokens
+                .iter()
+                .any(|token| token.len() > 2 && test_name.contains(&token.to_ascii_lowercase()));
 
-        if calls_owner || mentions_tokens || same_file_or_named {
+        if calls_owner || same_file_or_named {
             related.push(test);
         }
     }
@@ -1837,6 +1831,104 @@ mod tests {
 
         assert_eq!(finding.related_tests.len(), 1);
         assert_eq!(finding.related_tests[0].name, "crate_a_score_test");
+    }
+
+    #[test]
+    fn given_unrelated_test_mentions_probe_token_when_owner_is_not_called_then_no_static_path() {
+        let index = RustIndex {
+            functions: vec![function("src/lib.rs", "discounted_total")],
+            tests: vec![TestSummary {
+                name: "token_label_includes_token_text".to_string(),
+                file: PathBuf::from("tests/tokens.rs"),
+                start_line: 1,
+                end_line: 4,
+                body: "token_label(\"discount_threshold\");\nassert_eq!(token_label(\"discount_threshold\"), \"token:discount_threshold\");".to_string(),
+                calls: vec![CallFact {
+                    line: 1,
+                    name: "token_label".to_string(),
+                    text: "token_label(\"discount_threshold\")".to_string(),
+                }],
+                assertions: vec![oracle_fact(
+                    "assert_eq!(token_label(\"discount_threshold\"), \"token:discount_threshold\");",
+                    OracleKind::ExactValue,
+                    OracleStrength::Strong,
+                )],
+                literals: vec![LiteralFact {
+                    line: 1,
+                    value: "\"discount_threshold\"".to_string(),
+                }],
+            }],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:2:predicate".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId("src/lib.rs::discounted_total".to_string())),
+            family: ProbeFamily::Predicate,
+            delta: DeltaKind::Control,
+            before: None,
+            after: Some("amount >= discount_threshold".to_string()),
+            expression: "amount >= discount_threshold".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+
+        assert_eq!(finding.class, ExposureClass::NoStaticPath);
+        assert_eq!(finding.ripr.reach.state, StageState::No);
+        assert!(finding.related_tests.is_empty());
+    }
+
+    #[test]
+    fn given_three_character_probe_token_in_test_name_when_owner_is_not_called_then_test_is_related()
+     {
+        let index = RustIndex {
+            functions: vec![function("src/lib.rs", "tax_total")],
+            tests: vec![TestSummary {
+                name: "vat_boundary_is_checked_by_macro".to_string(),
+                file: PathBuf::from("tests/tax.rs"),
+                start_line: 1,
+                end_line: 4,
+                body: "assert_eq!(macro_tax_case!(100), 120);".to_string(),
+                calls: vec![CallFact {
+                    line: 1,
+                    name: "macro_tax_case".to_string(),
+                    text: "macro_tax_case!(100)".to_string(),
+                }],
+                assertions: vec![oracle_fact(
+                    "assert_eq!(macro_tax_case!(100), 120);",
+                    OracleKind::ExactValue,
+                    OracleStrength::Strong,
+                )],
+                literals: vec![LiteralFact {
+                    line: 1,
+                    value: "100".to_string(),
+                }],
+            }],
+            ..RustIndex::default()
+        };
+        let probe = Probe {
+            id: ProbeId("probe:src_lib_rs:2:predicate".to_string()),
+            location: SourceLocation::new("src/lib.rs", 2, 1),
+            owner: Some(SymbolId("src/lib.rs::tax_total".to_string())),
+            family: ProbeFamily::Predicate,
+            delta: DeltaKind::Control,
+            before: None,
+            after: Some("vat >= threshold".to_string()),
+            expression: "vat >= threshold".to_string(),
+            expected_sinks: vec![],
+            required_oracles: vec![],
+        };
+
+        let finding = classify_probe(&probe, &index);
+
+        assert_eq!(finding.ripr.reach.state, StageState::Yes);
+        assert_eq!(finding.related_tests.len(), 1);
+        assert_eq!(
+            finding.related_tests[0].name,
+            "vat_boundary_is_checked_by_macro"
+        );
     }
 
     #[test]

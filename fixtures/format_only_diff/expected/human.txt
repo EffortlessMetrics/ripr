@@ -1,0 +1,7 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/format_only_diff/input
+
+Summary: 0 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
+
+No diff-derived mutation exposure probes found.

@@ -1,0 +1,8 @@
+[package]
+name = "import_only_diff_fixture"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "import_only_diff_fixture"
+path = "src/lib.rs"

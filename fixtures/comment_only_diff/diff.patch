@@ -1,0 +1,9 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -1,3 +1,4 @@
++// Keep discounts strict at the configured threshold.
+ pub fn discounted_total(amount: i32, discount_threshold: i32) -> i32 {
+     if amount > discount_threshold {
+         amount - 10

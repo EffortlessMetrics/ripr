@@ -65,6 +65,12 @@ surfaces are:
 updates expected output. It requires an explicit reason and appends
 `expected/CHANGELOG.md`.
 
-The first fixture-laboratory PR will add concrete fixture directories. Until
-then, the command surface passes with a clear report when no fixture
-directories exist.
+The current fixture baseline covers:
+
+- primary behavior gaps: `boundary_gap`, `weak_error_oracle`, `snapshot_oracle`
+- negative/noise cases: `format_only_diff`, `comment_only_diff`,
+  `import_only_diff`, `unrelated_test_mentions_token`
+- strong-oracle controls: `strong_boundary_oracle`, `strong_error_oracle`
+- metamorphic syntax variants: `boundary_gap_multiline_assert`,
+  `boundary_gap_nested_tests`, `boundary_gap_reordered_tests`,
+  `weak_error_oracle_assert_matches`
