@@ -48,6 +48,11 @@ export class RiprClientController {
 
     const clientOptions: LanguageClientOptions = {
       documentSelector: [{ language: 'rust', scheme: 'file' }],
+      initializationOptions: {
+        baseRef: config.baseRef,
+        checkMode: config.checkMode,
+        includeUnchangedTests: true
+      },
       outputChannel: this.output,
       revealOutputChannelOn: RevealOutputChannelOn.Never,
       traceOutputChannel: this.output,

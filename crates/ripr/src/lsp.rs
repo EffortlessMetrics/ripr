@@ -1,6 +1,7 @@
 mod actions;
 mod backend;
 mod capabilities;
+mod config;
 mod diagnostics;
 mod hover;
 mod state;
