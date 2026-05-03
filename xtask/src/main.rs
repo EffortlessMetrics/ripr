@@ -127,8 +127,31 @@ struct TestOracleTest {
     path: PathBuf,
     name: String,
     line: usize,
+    body_line: usize,
+    body: String,
     class: TestOracleClass,
     observations: Vec<TestOracleObservation>,
+}
+
+#[derive(Clone, Debug)]
+struct TestEfficiencyValue {
+    line: usize,
+    context: &'static str,
+    value: String,
+    text: String,
+}
+
+#[derive(Clone, Debug)]
+struct TestEfficiencyEntry {
+    path: PathBuf,
+    name: String,
+    line: usize,
+    class: &'static str,
+    oracle_kind: String,
+    oracle_strength: &'static str,
+    reached_owners: Vec<String>,
+    observed_values: Vec<TestEfficiencyValue>,
+    static_limitations: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -266,6 +289,7 @@ fn main() {
         Some("goldens") => goldens(&args[2..]),
         Some("metrics") => metrics_report(),
         Some("test-oracle-report") | Some("check-test-oracles") => test_oracle_report(),
+        Some("test-efficiency-report") => test_efficiency_report(),
         Some("dogfood") => dogfood(),
         Some("critic") => critic(),
         Some("goals") => goals(&args[2..]),
@@ -423,7 +447,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  golden-drift\n  metrics\n  test-oracle-report\n  check-test-oracles\n  dogfood\n  critic\n  goals status|next|report\n  reports index\n  receipts [check]\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-allow-attributes\n  check-local-context\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-supply-chain\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
+        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  golden-drift\n  metrics\n  test-oracle-report\n  check-test-oracles\n  test-efficiency-report\n  dogfood\n  critic\n  goals status|next|report\n  reports index\n  receipts [check]\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-allow-attributes\n  check-local-context\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-supply-chain\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
     );
 }
 
@@ -3133,6 +3157,8 @@ fn test_oracle_tests_in_text(path: &Path, text: &str) -> Vec<TestOracleTest> {
                     path: path.to_path_buf(),
                     name,
                     line: attr_line,
+                    body_line: index + 1,
+                    body: lines[index..=end].join("\n"),
                     class,
                     observations,
                 });
@@ -3459,6 +3485,477 @@ fn test_oracle_report_json(tests: &[TestOracleTest]) -> String {
             body.push_str("        }");
         }
         body.push_str("\n      ]\n    }");
+    }
+    body.push_str("\n  ]\n}\n");
+    body
+}
+
+fn test_efficiency_report() -> Result<(), String> {
+    let tests = collect_test_oracle_tests()?;
+    let entries = tests.iter().map(test_efficiency_entry).collect::<Vec<_>>();
+    write_report(
+        "test-efficiency.md",
+        &test_efficiency_report_markdown(&entries),
+    )?;
+    write_report(
+        "test-efficiency.json",
+        &test_efficiency_report_json(&entries),
+    )
+}
+
+fn test_efficiency_entry(test: &TestOracleTest) -> TestEfficiencyEntry {
+    let reached_owners = test_efficiency_reached_owners(test);
+    let observed_values = test_efficiency_observed_values(test);
+    let mut static_limitations = test_efficiency_static_limitations(test);
+    if reached_owners.is_empty() {
+        static_limitations.push(
+            "no direct owner call detected; test may route through helpers, fixtures, or macros"
+                .to_string(),
+        );
+    }
+    if observed_values.is_empty() {
+        static_limitations.push("no literal activation values detected".to_string());
+    }
+
+    TestEfficiencyEntry {
+        path: test.path.clone(),
+        name: test.name.clone(),
+        line: test.line,
+        class: test_efficiency_class(test, &reached_owners),
+        oracle_kind: test_efficiency_oracle_kind(test).to_string(),
+        oracle_strength: test.class.as_str(),
+        reached_owners,
+        observed_values,
+        static_limitations,
+    }
+}
+
+fn test_efficiency_class(test: &TestOracleTest, reached_owners: &[String]) -> &'static str {
+    if reached_owners.is_empty() {
+        return "opaque";
+    }
+    match test.class {
+        TestOracleClass::Strong => "strong_discriminator",
+        TestOracleClass::Medium | TestOracleClass::Weak => "useful_but_broad",
+        TestOracleClass::Smoke => "smoke_only",
+    }
+}
+
+fn test_efficiency_oracle_kind(test: &TestOracleTest) -> &'static str {
+    test.observations
+        .iter()
+        .max_by_key(|observation| observation.class.rank())
+        .map(|observation| match observation.pattern.as_str() {
+            "exact assertion" => "exact assertion",
+            "matches!" => "pattern assertion",
+            "boolean comparison" => "relational check",
+            "broad predicate" => "broad predicate",
+            "status.success" => "smoke execution",
+            "generic assert" => "generic boolean assertion",
+            "no assertion" => "no assertion detected",
+            _ => "opaque oracle",
+        })
+        .unwrap_or("opaque oracle")
+}
+
+fn test_efficiency_static_limitations(test: &TestOracleTest) -> Vec<String> {
+    let mut limitations = Vec::new();
+    if test
+        .observations
+        .iter()
+        .any(|observation| observation.pattern == "no assertion")
+    {
+        limitations.push("no assertion-like oracle detected".to_string());
+    }
+    match test.class {
+        TestOracleClass::Strong => {}
+        TestOracleClass::Medium => limitations.push(
+            "relational oracle; static ledger cannot confirm exact changed value".to_string(),
+        ),
+        TestOracleClass::Weak => limitations
+            .push("broad oracle; static ledger may miss exact discriminator drift".to_string()),
+        TestOracleClass::Smoke => limitations.push(
+            "smoke-only oracle; static ledger sees execution but little discriminator detail"
+                .to_string(),
+        ),
+    }
+    limitations.sort();
+    limitations.dedup();
+    limitations
+}
+
+fn test_efficiency_reached_owners(test: &TestOracleTest) -> Vec<String> {
+    let mut calls = BTreeSet::new();
+    for line in test.body.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("//")
+            || trimmed.starts_with("fn ")
+            || trimmed.starts_with("async fn ")
+        {
+            continue;
+        }
+        for call in call_names_in_line(trimmed) {
+            if !ignored_test_efficiency_call(&call) {
+                calls.insert(call);
+            }
+        }
+    }
+    calls.into_iter().collect()
+}
+
+fn call_names_in_line(line: &str) -> Vec<String> {
+    let bytes = line.as_bytes();
+    let mut calls = Vec::new();
+    let mut index = 0usize;
+    while index < bytes.len() {
+        if bytes[index] != b'(' {
+            index += 1;
+            continue;
+        }
+        if index > 0 && bytes[index - 1] == b'!' {
+            index += 1;
+            continue;
+        }
+
+        let mut start = index;
+        while start > 0 && is_call_token_byte(bytes[start - 1]) {
+            start -= 1;
+        }
+        if start == index {
+            index += 1;
+            continue;
+        }
+        let token = &line[start..index];
+        if let Some(call) = normalized_call_name(token) {
+            calls.push(call);
+        }
+        index += 1;
+    }
+    calls
+}
+
+fn is_call_token_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_' || byte == b':'
+}
+
+fn normalized_call_name(token: &str) -> Option<String> {
+    let trimmed = token.trim_matches(':');
+    if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed
+        .split("::")
+        .any(|segment| segment.chars().next().is_some_and(char::is_uppercase))
+    {
+        return None;
+    }
+    let last = trimmed.rsplit("::").next().unwrap_or(trimmed);
+    if last.is_empty() || !last.chars().next().unwrap_or('_').is_ascii_alphabetic() {
+        return None;
+    }
+    Some(trimmed.to_string())
+}
+
+fn ignored_test_efficiency_call(call: &str) -> bool {
+    let last = call.rsplit("::").next().unwrap_or(call);
+    matches!(
+        last,
+        "assert"
+            | "assert_eq"
+            | "assert_ne"
+            | "assert_matches"
+            | "matches"
+            | "format"
+            | "format_args"
+            | "include_str"
+            | "println"
+            | "eprintln"
+            | "panic"
+            | "dbg"
+            | "vec"
+            | "default"
+            | "new"
+            | "join"
+            | "to_string"
+            | "to_owned"
+            | "contains"
+            | "starts_with"
+            | "ends_with"
+            | "is_ok"
+            | "is_err"
+            | "is_some"
+            | "is_none"
+            | "is_empty"
+            | "unwrap"
+            | "expect"
+            | "clone"
+            | "collect"
+            | "map"
+            | "filter"
+            | "iter"
+            | "into_iter"
+            | "push"
+            | "len"
+            | "get"
+            | "insert"
+            | "from"
+            | "write"
+            | "read_to_string"
+            | "test"
+    )
+}
+
+fn test_efficiency_observed_values(test: &TestOracleTest) -> Vec<TestEfficiencyValue> {
+    let mut values = Vec::new();
+    for (offset, line) in test.body.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("//") {
+            continue;
+        }
+        let line_number = test.body_line + offset;
+        let context = test_efficiency_value_context(trimmed);
+        for value in string_literals_in_line(trimmed)
+            .into_iter()
+            .chain(number_literals_in_line(trimmed))
+        {
+            values.push(TestEfficiencyValue {
+                line: line_number,
+                context,
+                value,
+                text: trimmed.to_string(),
+            });
+        }
+    }
+    values
+}
+
+fn test_efficiency_value_context(line: &str) -> &'static str {
+    if line.contains("assert") {
+        "assertion_argument"
+    } else if line.contains("vec![") || line.contains('[') {
+        "table_or_collection"
+    } else if line.contains('(') {
+        "function_argument"
+    } else {
+        "literal"
+    }
+}
+
+fn string_literals_in_line(line: &str) -> Vec<String> {
+    let bytes = line.as_bytes();
+    let mut values = Vec::new();
+    let mut index = 0usize;
+    while index < bytes.len() {
+        if bytes[index] != b'"' {
+            index += 1;
+            continue;
+        }
+        let start = index;
+        index += 1;
+        let mut escaped = false;
+        while index < bytes.len() {
+            let byte = bytes[index];
+            if escaped {
+                escaped = false;
+            } else if byte == b'\\' {
+                escaped = true;
+            } else if byte == b'"' {
+                index += 1;
+                values.push(line[start..index].to_string());
+                break;
+            }
+            index += 1;
+        }
+    }
+    values
+}
+
+fn number_literals_in_line(line: &str) -> Vec<String> {
+    let bytes = line.as_bytes();
+    let mut values = Vec::new();
+    let mut index = 0usize;
+    while index < bytes.len() {
+        let token_boundary = index == 0 || !is_identifier_byte(bytes[index - 1]);
+        if !token_boundary || !bytes[index].is_ascii_digit() {
+            index += 1;
+            continue;
+        }
+        let start = index;
+        index += 1;
+        while index < bytes.len()
+            && (bytes[index].is_ascii_digit() || bytes[index] == b'_' || bytes[index] == b'.')
+        {
+            index += 1;
+        }
+        if index == bytes.len() || !is_identifier_byte(bytes[index]) {
+            values.push(line[start..index].to_string());
+        }
+    }
+    values
+}
+
+fn is_identifier_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_'
+}
+
+fn test_efficiency_counts(entries: &[TestEfficiencyEntry]) -> BTreeMap<&'static str, usize> {
+    let mut counts = BTreeMap::from([
+        ("strong_discriminator", 0usize),
+        ("useful_but_broad", 0usize),
+        ("smoke_only", 0usize),
+        ("opaque", 0usize),
+    ]);
+    for entry in entries {
+        if let Some(count) = counts.get_mut(entry.class) {
+            *count += 1;
+        }
+    }
+    counts
+}
+
+fn test_efficiency_report_status(entries: &[TestEfficiencyEntry]) -> &'static str {
+    if entries
+        .iter()
+        .any(|entry| entry.class != "strong_discriminator")
+    {
+        "warn"
+    } else {
+        "pass"
+    }
+}
+
+fn test_efficiency_report_markdown(entries: &[TestEfficiencyEntry]) -> String {
+    let counts = test_efficiency_counts(entries);
+    let mut body = format!(
+        "# ripr test efficiency report\n\nStatus: {}\n\nMode: advisory\n\nThis report builds a per-test evidence ledger from static Rust test facts. It records apparent owner calls, oracle shape, activation values, and static limitations so reviewers can spot low-discriminator patterns without making the report blocking.\n\n## Summary\n\n- Strong discriminator: {}\n- Useful but broad: {}\n- Smoke only: {}\n- Opaque: {}\n- Tests scanned: {}\n\n",
+        test_efficiency_report_status(entries),
+        counts.get("strong_discriminator").copied().unwrap_or(0),
+        counts.get("useful_but_broad").copied().unwrap_or(0),
+        counts.get("smoke_only").copied().unwrap_or(0),
+        counts.get("opaque").copied().unwrap_or(0),
+        entries.len(),
+    );
+
+    body.push_str("## Static Limitations\n\n");
+    let limited_entries = entries
+        .iter()
+        .filter(|entry| !entry.static_limitations.is_empty())
+        .collect::<Vec<_>>();
+    if limited_entries.is_empty() {
+        body.push_str("None detected.\n\n");
+    } else {
+        for entry in limited_entries {
+            body.push_str(&format!(
+                "- `{}`:{} `{}` classified `{}`\n",
+                normalize_path(&entry.path),
+                entry.line,
+                entry.name,
+                entry.class
+            ));
+            for limitation in &entry.static_limitations {
+                body.push_str(&format!("  - {limitation}\n"));
+            }
+        }
+        body.push('\n');
+    }
+
+    body.push_str("## Ledger\n\n| Test | Class | Oracle | Reached owners | Observed values | Static limitations |\n| --- | --- | --- | --- | --- | --- |\n");
+    for entry in entries {
+        let owners = if entry.reached_owners.is_empty() {
+            "none detected".to_string()
+        } else {
+            entry.reached_owners.join("<br>")
+        };
+        let values = if entry.observed_values.is_empty() {
+            "none detected".to_string()
+        } else {
+            entry
+                .observed_values
+                .iter()
+                .map(|value| format!("{} `{}` ({})", value.line, value.value, value.context))
+                .collect::<Vec<_>>()
+                .join("<br>")
+        };
+        let limitations = if entry.static_limitations.is_empty() {
+            "none".to_string()
+        } else {
+            entry.static_limitations.join("<br>")
+        };
+        body.push_str(&format!(
+            "| `{}`:{} `{}` | `{}` | `{}` / `{}` | {} | {} | {} |\n",
+            normalize_path(&entry.path),
+            entry.line,
+            markdown_cell(&entry.name),
+            entry.class,
+            entry.oracle_kind,
+            entry.oracle_strength,
+            markdown_cell(&owners),
+            markdown_cell(&values),
+            markdown_cell(&limitations)
+        ));
+    }
+    body
+}
+
+fn test_efficiency_report_json(entries: &[TestEfficiencyEntry]) -> String {
+    let counts = test_efficiency_counts(entries);
+    let mut body = format!(
+        "{{\n  \"schema_version\": \"0.1\",\n  \"status\": \"{}\",\n  \"advisory\": true,\n  \"counts\": {{\n    \"strong_discriminator\": {},\n    \"useful_but_broad\": {},\n    \"smoke_only\": {},\n    \"opaque\": {}\n  }},\n  \"tests\": [\n",
+        test_efficiency_report_status(entries),
+        counts.get("strong_discriminator").copied().unwrap_or(0),
+        counts.get("useful_but_broad").copied().unwrap_or(0),
+        counts.get("smoke_only").copied().unwrap_or(0),
+        counts.get("opaque").copied().unwrap_or(0)
+    );
+
+    for (entry_index, entry) in entries.iter().enumerate() {
+        if entry_index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("    {\n");
+        body.push_str(&format!(
+            "      \"path\": \"{}\",\n",
+            json_escape(&normalize_path(&entry.path))
+        ));
+        body.push_str(&format!(
+            "      \"name\": \"{}\",\n",
+            json_escape(&entry.name)
+        ));
+        body.push_str(&format!("      \"line\": {},\n", entry.line));
+        body.push_str(&format!("      \"class\": \"{}\",\n", entry.class));
+        body.push_str(&format!(
+            "      \"oracle_kind\": \"{}\",\n",
+            json_escape(&entry.oracle_kind)
+        ));
+        body.push_str(&format!(
+            "      \"oracle_strength\": \"{}\",\n",
+            entry.oracle_strength
+        ));
+        body.push_str("      \"reached_owners\": [");
+        write_json_string_array(&mut body, &entry.reached_owners);
+        body.push_str("],\n");
+        body.push_str("      \"observed_values\": [\n");
+        for (value_index, value) in entry.observed_values.iter().enumerate() {
+            if value_index > 0 {
+                body.push_str(",\n");
+            }
+            body.push_str("        {\n");
+            body.push_str(&format!("          \"line\": {},\n", value.line));
+            body.push_str(&format!("          \"context\": \"{}\",\n", value.context));
+            body.push_str(&format!(
+                "          \"value\": \"{}\",\n",
+                json_escape(&value.value)
+            ));
+            body.push_str(&format!(
+                "          \"text\": \"{}\"\n",
+                json_escape(&value.text)
+            ));
+            body.push_str("        }");
+        }
+        body.push_str("\n      ],\n");
+        body.push_str("      \"static_limitations\": [");
+        write_json_string_array(&mut body, &entry.static_limitations);
+        body.push_str("]\n    }");
     }
     body.push_str("\n  ]\n}\n");
     body
@@ -5281,6 +5778,7 @@ fn known_xtask_command(command: &str) -> bool {
             | "metrics"
             | "test-oracle-report"
             | "check-test-oracles"
+            | "test-efficiency-report"
             | "dogfood"
             | "critic"
             | "goals"
@@ -8091,7 +8589,8 @@ mod tests {
         public_contract_rows, receipt_json, receipt_specs, receipt_status_from_reports,
         report_index_markdown, report_index_missing_expected, report_status_from_text,
         sorted_allowlist_content, spec_id_from_path, status_for_report,
-        suspicious_runtime_file_names, test_oracle_report_json, test_oracle_report_markdown,
+        suspicious_runtime_file_names, test_efficiency_entry, test_efficiency_report_json,
+        test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
         test_oracle_tests_in_text, validate_local_context_allowlist, windows_absolute_path_tokens,
         workflow_runtime_violations,
     };
@@ -9058,6 +9557,9 @@ commands = [
             "cargo xtask check-allow-attributes"
         ));
         assert!(is_known_campaign_command("cargo xtask test-oracle-report"));
+        assert!(is_known_campaign_command(
+            "cargo xtask test-efficiency-report"
+        ));
         assert!(is_known_campaign_command("cargo xtask dogfood"));
         assert!(is_known_campaign_command("cargo test --workspace"));
         assert!(!is_known_campaign_command("cargo xtask missing-command"));
@@ -9114,6 +9616,62 @@ fn weak_contains() {
         assert!(markdown.contains("BDD-shaped names: 0 / 1"));
         assert!(json.contains("\"advisory\": true"));
         assert!(json.contains("\"weak\": 1"));
+    }
+
+    #[test]
+    fn test_efficiency_ledger_records_owner_oracle_values_and_limitations() {
+        let source = r#"
+#[test]
+fn creates_invoice_smoke() {
+    let invoice = create_invoice("acct-1", 100);
+    assert!(invoice.is_ok());
+}
+"#;
+        let tests = test_oracle_tests_in_text(Path::new("crates/ripr/tests/example.rs"), source);
+        let entry = test_efficiency_entry(&tests[0]);
+
+        assert_eq!(entry.name, "creates_invoice_smoke");
+        assert_eq!(entry.class, "useful_but_broad");
+        assert_eq!(entry.oracle_kind, "broad predicate");
+        assert_eq!(entry.oracle_strength, "weak");
+        assert!(entry.reached_owners.contains(&"create_invoice".to_string()));
+        assert!(
+            entry
+                .observed_values
+                .iter()
+                .any(|value| value.value == "\"acct-1\"")
+        );
+        assert!(
+            entry
+                .observed_values
+                .iter()
+                .any(|value| value.value == "100")
+        );
+        assert!(
+            entry
+                .static_limitations
+                .iter()
+                .any(|limitation| limitation.contains("broad oracle"))
+        );
+    }
+
+    #[test]
+    fn test_efficiency_reports_are_advisory() {
+        let source = r#"
+#[test]
+fn helper_driven_smoke() {
+    build_fixture();
+}
+"#;
+        let tests = test_oracle_tests_in_text(Path::new("crates/ripr/tests/example.rs"), source);
+        let entry = test_efficiency_entry(&tests[0]);
+        let markdown = test_efficiency_report_markdown(std::slice::from_ref(&entry));
+        let json = test_efficiency_report_json(&[entry]);
+
+        assert!(markdown.contains("Mode: advisory"));
+        assert!(markdown.contains("helper_driven_smoke"));
+        assert!(json.contains("\"advisory\": true"));
+        assert!(json.contains("\"smoke_only\": 1"));
     }
 
     #[test]

@@ -39,7 +39,7 @@ fixtures = [
   "fixtures/weak_error_oracle",
   "fixtures/weak_error_oracle_assert_matches"
 ]
-next = "test-efficiency-test-fact-ledger"
+next = "test-efficiency-vacuous-signal-v1"
 metric = "findings include changed behavior, class, evidence, and next step"
 
 [[capability]]
@@ -58,7 +58,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "test-efficiency-test-fact-ledger"
+next = "test-efficiency-vacuous-signal-v1"
 metric = "unknown findings include explicit stop reasons"
 
 [[capability]]
@@ -87,7 +87,7 @@ fixtures = [
   "fixtures/strong_boundary_oracle",
   "fixtures/unrelated_test_mentions_token"
 ]
-next = "test-efficiency-test-fact-ledger"
+next = "test-efficiency-vacuous-signal-v1"
 metric = "missing boundary discriminator detection"
 
 [[capability]]
@@ -110,7 +110,7 @@ fixtures = [
   "fixtures/weak_error_oracle",
   "fixtures/weak_error_oracle_assert_matches"
 ]
-next = "test-efficiency-test-fact-ledger"
+next = "test-efficiency-vacuous-signal-v1"
 metric = "broad error checks distinguished from exact variants"
 
 [[capability]]
@@ -128,7 +128,7 @@ evidence = [
 fixtures = [
   "fixtures/weak_error_oracle"
 ]
-next = "test-efficiency-test-fact-ledger"
+next = "test-efficiency-vacuous-signal-v1"
 metric = "exact vs smoke return oracle distinction"
 
 [[capability]]
@@ -145,7 +145,7 @@ evidence = [
 fixtures = [
   "fixtures/weak_error_oracle"
 ]
-next = "test-efficiency-test-fact-ledger"
+next = "test-efficiency-vacuous-signal-v1"
 metric = "side-effect or call boundary candidate named"
 
 [[capability]]
@@ -182,7 +182,7 @@ fixtures = [
   "fixtures/weak_error_oracle",
   "fixtures/weak_error_oracle_assert_matches"
 ]
-next = "test-efficiency-test-fact-ledger"
+next = "test-efficiency-vacuous-signal-v1"
 metric = "fixture pass rate"
 
 [[capability]]
@@ -321,7 +321,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "test-efficiency-test-fact-ledger"
+next = "test-efficiency-vacuous-signal-v1"
 metric = "syntax extraction parity"
 
 [[capability]]
@@ -341,7 +341,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "test-efficiency-test-fact-ledger"
+next = "test-efficiency-vacuous-signal-v1"
 metric = "oracle kind recognition rate"
 
 [[capability]]
@@ -360,7 +360,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "test-efficiency-test-fact-ledger"
+next = "test-efficiency-vacuous-signal-v1"
 metric = "duplicate symbols do not cross-link tests"
 
 [[capability]]
@@ -383,7 +383,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "test-efficiency-test-fact-ledger"
+next = "test-efficiency-vacuous-signal-v1"
 metric = "syntax facts generate current probe families"
 
 [[capability]]
@@ -407,7 +407,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "test-efficiency-test-fact-ledger"
+next = "test-efficiency-vacuous-signal-v1"
 metric = "flow sink identification rate"
 
 [[capability]]
@@ -431,18 +431,21 @@ fixtures = [
   "fixtures/weak_error_oracle",
   "fixtures/snapshot_oracle"
 ]
-next = "test-efficiency-test-fact-ledger"
+next = "test-efficiency-vacuous-signal-v1"
 metric = "detected and missing value facts"
 
 [[capability]]
 id = "test_efficiency_signals"
 name = "Test efficiency and vacuity signals"
-status = "planned"
+status = "alpha"
 spec = "RIPR-SPEC-0004"
 evidence = [
   "test efficiency spec",
-  "Campaign 4A manifest"
+  "Campaign 4A manifest",
+  "cargo xtask test-efficiency-report",
+  "advisory test-efficiency Markdown and JSON reports",
+  "xtask test-efficiency ledger unit tests"
 ]
 fixtures = []
-next = "test-efficiency-test-fact-ledger"
-metric = "strong, broad, smoke-only, likely-vacuous, opaque, and duplicate signal counts"
+next = "test-efficiency-vacuous-signal-v1"
+metric = "strong discriminator, useful broad, smoke-only, and opaque ledger counts"

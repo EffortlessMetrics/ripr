@@ -154,11 +154,13 @@ metrics = [
 id = "RIPR-SPEC-0004"
 name = "test efficiency and vacuity signals"
 spec = "docs/specs/RIPR-SPEC-0004-test-efficiency.md"
-tests = []
+tests = [
+  "xtask/src/main.rs::test_efficiency_ledger_records_owner_oracle_values_and_limitations",
+  "xtask/src/main.rs::test_efficiency_reports_are_advisory"
+]
 fixtures = []
 code = [
-  "xtask/src/main.rs",
-  "crates/ripr/src/analysis"
+  "xtask/src/main.rs"
 ]
 outputs = [
 ]
