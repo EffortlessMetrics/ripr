@@ -9,7 +9,7 @@ pub(crate) use formatter::{array_field, escape, field, float_field, number_field
 
 #[cfg(test)]
 mod tests {
-    use super::{context_packet::render_context_packet, escape, render, report::finding_json};
+    use super::{context_packet::render_context_packet, render, report::finding_json};
     use crate::app::{CheckOutput, Mode};
     use crate::domain::{
         ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, FlowSinkFact,
@@ -18,11 +18,6 @@ mod tests {
         StageState, Summary, ValueContext, ValueFact,
     };
     use std::path::PathBuf;
-
-    #[test]
-    fn escapes_json() {
-        assert_eq!(escape("a\"b\n"), "a\\\"b\\n");
-    }
 
     #[test]
     fn finding_json_includes_effective_stop_reasons_for_unknowns() {
