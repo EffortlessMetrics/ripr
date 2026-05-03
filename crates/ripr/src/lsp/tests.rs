@@ -7,7 +7,7 @@ use super::diagnostics::{
     diagnostic_severity_for_class, take_all_uris, workspace_diagnostic_batches,
 };
 use super::hover::hover_response;
-use super::state::DocumentStore;
+use super::state::{AnalysisSnapshot, DocumentStore};
 use super::uri::{encode_uri_path, file_uri_for_path, path_from_file_uri};
 use super::{COPY_CONTEXT_COMMAND, HOVER_TEXT, REFRESH_COMMAND};
 use crate::app::Mode;
@@ -15,7 +15,7 @@ use crate::domain::{
     Confidence, DeltaKind, ExposureClass, Finding, OracleStrength, Probe, ProbeFamily, ProbeId,
     RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState,
 };
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use tower_lsp_server::LanguageServer;
 use tower_lsp_server::LspService;
@@ -68,10 +68,19 @@ fn hover_for_position_uses_latest_matching_diagnostic() -> Result<(), String> {
     let finding = sample_finding();
     let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
     let uri = test_uri("file:///workspace/src/pricing.rs")?;
-    let Some(_) = backend.refresh_plan(vec![DiagnosticBatch {
-        uri: uri.clone(),
-        diagnostics: vec![diagnostic],
-    }]) else {
+    let snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        vec![finding],
+    );
+    let Some(_) = backend.refresh_plan(
+        snapshot,
+        vec![DiagnosticBatch {
+            uri: uri.clone(),
+            diagnostics: vec![diagnostic],
+        }],
+    ) else {
         return Err("expected refresh plan".to_string());
     };
 
@@ -92,6 +101,62 @@ fn hover_for_position_uses_latest_matching_diagnostic() -> Result<(), String> {
         }
         _ => Err("expected markup hover".to_string()),
     }
+}
+
+#[test]
+fn analysis_snapshot_finds_finding_from_diagnostic_data() -> Result<(), String> {
+    let finding = sample_finding();
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri,
+        vec![diagnostic.clone()],
+        vec![finding],
+    );
+
+    let Some(found) = snapshot.finding_for_diagnostic(&diagnostic) else {
+        return Err("expected finding from diagnostic data".to_string());
+    };
+
+    assert_eq!(found.id, "probe:pricing:88:predicate");
+    assert_eq!(found.probe.expression, "amount >= threshold");
+    Ok(())
+}
+
+#[test]
+fn refresh_plan_stores_latest_analysis_snapshot() -> Result<(), String> {
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    let finding = sample_finding();
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        vec![finding],
+    );
+
+    let Some(_) = backend.refresh_plan(
+        snapshot,
+        vec![DiagnosticBatch {
+            uri,
+            diagnostics: vec![diagnostic],
+        }],
+    ) else {
+        return Err("expected refresh plan".to_string());
+    };
+    let Some(latest) = backend.latest_analysis_snapshot() else {
+        return Err("expected latest analysis snapshot".to_string());
+    };
+
+    assert_eq!(latest.root, PathBuf::from("/workspace"));
+    assert_eq!(latest.base.as_deref(), Some("origin/main"));
+    assert_eq!(latest.mode, Mode::Draft);
+    assert_eq!(latest.findings.len(), 1);
+    assert_eq!(latest.diagnostics_by_uri.len(), 1);
+    Ok(())
 }
 
 #[test]
@@ -297,18 +362,29 @@ fn refresh_failure_reports_and_clears_tracked_diagnostics() -> Result<(), String
         let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
         let backend = service.inner();
         let tracked_uri = test_uri("file:///workspace/src/stale.rs")?;
-        let Some(_) = backend.refresh_plan(vec![DiagnosticBatch {
-            uri: tracked_uri.clone(),
-            diagnostics: Vec::new(),
-        }]) else {
+        let snapshot = sample_analysis_snapshot(
+            PathBuf::from("/workspace"),
+            tracked_uri.clone(),
+            Vec::new(),
+            Vec::new(),
+        );
+        let Some(_) = backend.refresh_plan(
+            snapshot,
+            vec![DiagnosticBatch {
+                uri: tracked_uri.clone(),
+                diagnostics: Vec::new(),
+            }],
+        ) else {
             return Err("expected refresh plan".to_string());
         };
+        assert!(backend.latest_analysis_snapshot().is_some());
 
         backend
             .report_refresh_failure("simulated analysis failure".to_string())
             .await;
 
         assert!(backend.clear_all_diagnostic_uris().is_empty());
+        assert!(backend.latest_analysis_snapshot().is_none());
         Ok(())
     })
 }
@@ -614,6 +690,23 @@ fn uri_path_encoding_preserves_path_syntax_and_escapes_spaces() {
 fn test_uri(uri: &str) -> Result<tower_lsp_server::ls_types::Uri, String> {
     uri.parse::<tower_lsp_server::ls_types::Uri>()
         .map_err(|err| format!("failed to parse test URI: {err}"))
+}
+
+fn sample_analysis_snapshot(
+    root: PathBuf,
+    uri: tower_lsp_server::ls_types::Uri,
+    diagnostics: Vec<tower_lsp_server::ls_types::Diagnostic>,
+    findings: Vec<Finding>,
+) -> AnalysisSnapshot {
+    let mut diagnostics_by_uri = BTreeMap::new();
+    diagnostics_by_uri.insert(uri, diagnostics);
+    AnalysisSnapshot {
+        root,
+        base: Some("origin/main".to_string()),
+        mode: Mode::Draft,
+        findings,
+        diagnostics_by_uri,
+    }
 }
 
 fn code_action_params(

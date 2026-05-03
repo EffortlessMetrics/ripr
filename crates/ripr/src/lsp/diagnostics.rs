@@ -1,4 +1,5 @@
 use super::config::LspAnalysisConfig;
+use super::state::AnalysisSnapshot;
 use super::uri::file_uri_for_path;
 use crate::app::check_workspace;
 use crate::domain::{ExposureClass, Finding, RelatedTest};
@@ -12,6 +13,11 @@ use tower_lsp_server::ls_types::{
 pub struct DiagnosticBatch {
     pub uri: Uri,
     pub diagnostics: Vec<Diagnostic>,
+}
+
+pub(super) struct WorkspaceDiagnostics {
+    pub(super) snapshot: AnalysisSnapshot,
+    pub(super) batches: Vec<DiagnosticBatch>,
 }
 
 pub(super) struct DiagnosticRefreshPlan {
@@ -53,22 +59,42 @@ pub(super) fn workspace_diagnostic_batches_with_config(
     root: &Path,
     config: &LspAnalysisConfig,
 ) -> Result<Vec<DiagnosticBatch>, String> {
+    Ok(workspace_diagnostics_with_config(root, config)?.batches)
+}
+
+pub(super) fn workspace_diagnostics_with_config(
+    root: &Path,
+    config: &LspAnalysisConfig,
+) -> Result<WorkspaceDiagnostics, String> {
     let input = config.check_input(root);
     let output =
         check_workspace(input).map_err(|err| format!("workspace analysis failed: {err}"))?;
+    let root = output.root;
+    let base = output.base;
+    let mode = output.mode;
+    let findings = output.findings;
     let mut grouped = BTreeMap::<Uri, Vec<Diagnostic>>::new();
-    for finding in &output.findings {
-        let path = absolute_finding_path(&output.root, finding);
+    for finding in &findings {
+        let path = absolute_finding_path(&root, finding);
         let uri = file_uri_for_path(&path)?;
         grouped
             .entry(uri)
             .or_default()
-            .push(diagnostic_for_finding(&output.root, finding));
+            .push(diagnostic_for_finding(&root, finding));
     }
-    Ok(grouped
+    let diagnostics_by_uri = grouped.clone();
+    let batches = grouped
         .into_iter()
         .map(|(uri, diagnostics)| DiagnosticBatch { uri, diagnostics })
-        .collect())
+        .collect();
+    let snapshot = AnalysisSnapshot {
+        root,
+        base,
+        mode,
+        findings,
+        diagnostics_by_uri,
+    };
+    Ok(WorkspaceDiagnostics { snapshot, batches })
 }
 
 pub(super) fn diagnostic_for_finding(root: &Path, finding: &Finding) -> Diagnostic {

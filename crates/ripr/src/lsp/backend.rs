@@ -4,10 +4,10 @@ use super::capabilities::{initialize_result, root_from_initialize_params};
 use super::config::LspAnalysisConfig;
 use super::diagnostics::{
     DiagnosticBatch, DiagnosticRefreshPlan, diagnostic_refresh_plan, take_all_uris,
-    workspace_diagnostic_batches_with_config,
+    workspace_diagnostics_with_config,
 };
 use super::hover::{diagnostic_at_position, diagnostic_hover_response, hover_response};
-use super::state::DocumentStore;
+use super::state::{AnalysisSnapshot, DocumentStore};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -28,6 +28,7 @@ pub(super) struct Backend {
     analysis_config: Mutex<LspAnalysisConfig>,
     last_diagnostic_uris: Mutex<BTreeSet<Uri>>,
     last_diagnostics: Mutex<BTreeMap<Uri, Vec<Diagnostic>>>,
+    latest_analysis: Mutex<Option<AnalysisSnapshot>>,
     refresh_generation: Mutex<u64>,
     refresh_in_flight: AsyncMutex<()>,
 }
@@ -41,6 +42,7 @@ impl Backend {
             analysis_config: Mutex::new(LspAnalysisConfig::default()),
             last_diagnostic_uris: Mutex::new(BTreeSet::new()),
             last_diagnostics: Mutex::new(BTreeMap::new()),
+            latest_analysis: Mutex::new(None),
             refresh_generation: Mutex::new(0),
             refresh_in_flight: AsyncMutex::new(()),
         }
@@ -60,12 +62,12 @@ impl Backend {
         let Some(config) = self.analysis_config() else {
             return;
         };
-        let batches = match tokio::task::spawn_blocking(move || {
-            workspace_diagnostic_batches_with_config(&root, &config)
+        let diagnostics = match tokio::task::spawn_blocking(move || {
+            workspace_diagnostics_with_config(&root, &config)
         })
         .await
         {
-            Ok(Ok(batches)) => batches,
+            Ok(Ok(diagnostics)) => diagnostics,
             Ok(Err(err)) => {
                 self.report_refresh_failure(err).await;
                 return;
@@ -79,7 +81,7 @@ impl Backend {
         if !self.is_current_refresh_generation(generation) {
             return;
         }
-        let Some(refresh) = self.refresh_plan(batches) else {
+        let Some(refresh) = self.refresh_plan(diagnostics.snapshot, diagnostics.batches) else {
             return;
         };
         for batch in refresh.publish_batches {
@@ -106,6 +108,7 @@ impl Backend {
 
     pub(super) fn refresh_plan(
         &self,
+        snapshot: AnalysisSnapshot,
         batches: Vec<DiagnosticBatch>,
     ) -> Option<DiagnosticRefreshPlan> {
         let Ok(mut last_diagnostic_uris) = self.last_diagnostic_uris.lock() else {
@@ -114,13 +117,18 @@ impl Backend {
         let Ok(mut last_diagnostics) = self.last_diagnostics.lock() else {
             return None;
         };
+        let Ok(mut latest_analysis) = self.latest_analysis.lock() else {
+            return None;
+        };
         let refresh = diagnostic_refresh_plan(&last_diagnostic_uris, batches);
+        debug_assert!(snapshot.is_consistent());
         *last_diagnostics = refresh
             .publish_batches
             .iter()
             .map(|batch| (batch.uri.clone(), batch.diagnostics.clone()))
             .collect();
         *last_diagnostic_uris = refresh.current_uris.clone();
+        *latest_analysis = Some(snapshot);
         Some(refresh)
     }
 
@@ -130,6 +138,9 @@ impl Backend {
         };
         if let Ok(mut last_diagnostics) = self.last_diagnostics.lock() {
             last_diagnostics.clear();
+        }
+        if let Ok(mut latest_analysis) = self.latest_analysis.lock() {
+            *latest_analysis = None;
         }
         take_all_uris(&mut last_diagnostic_uris)
     }
@@ -161,6 +172,14 @@ impl Backend {
             return None;
         };
         Some(config.clone())
+    }
+
+    #[cfg(test)]
+    pub(super) fn latest_analysis_snapshot(&self) -> Option<AnalysisSnapshot> {
+        let Ok(snapshot) = self.latest_analysis.lock() else {
+            return None;
+        };
+        snapshot.clone()
     }
 
     fn set_root(&self, root: PathBuf) {
@@ -199,13 +218,22 @@ impl Backend {
     }
 
     pub(super) fn hover_for_position(&self, params: &HoverParams) -> Option<Hover> {
+        let uri = &params.text_document_position_params.text_document.uri;
+        let position = &params.text_document_position_params.position;
+        if let Ok(snapshot) = self.latest_analysis.lock()
+            && let Some(snapshot) = snapshot.as_ref()
+            && let Some(diagnostics) = snapshot.diagnostics_for_uri(uri)
+            && let Some(diagnostic) = diagnostic_at_position(diagnostics, position)
+            && snapshot.finding_for_diagnostic(diagnostic).is_some()
+        {
+            return Some(diagnostic_hover_response(diagnostic));
+        }
+
         let Ok(last_diagnostics) = self.last_diagnostics.lock() else {
             return None;
         };
-        let diagnostics =
-            last_diagnostics.get(&params.text_document_position_params.text_document.uri)?;
-        diagnostic_at_position(diagnostics, &params.text_document_position_params.position)
-            .map(diagnostic_hover_response)
+        let diagnostics = last_diagnostics.get(uri)?;
+        diagnostic_at_position(diagnostics, position).map(diagnostic_hover_response)
     }
 }
 
