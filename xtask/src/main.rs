@@ -5117,43 +5117,80 @@ fn badge_artifacts() -> Result<(), String> {
         )
     })?;
 
-    let formats = vec![
-        ("badge-json", "ripr-badge.json"),
-        ("badge-shields", "ripr-badge-shields.json"),
-        ("badge-plus-json", "ripr-plus-badge.json"),
-        ("badge-plus-shields", "ripr-plus-badge-shields.json"),
-    ];
-
     let mut ripr_native_json = String::new();
     let mut ripr_plus_native_json = String::new();
 
-    for (format_flag, output_file) in formats {
-        let args = vec![
-            "run".to_string(),
-            "-p".to_string(),
-            "ripr".to_string(),
-            "--quiet".to_string(),
-            "--".to_string(),
-            "check".to_string(),
-            "--root".to_string(),
-            ".".to_string(),
-            "--diff".to_string(),
-            "target/ripr/badge-input.diff".to_string(),
-            "--format".to_string(),
-            format_flag.to_string(),
-        ];
+    for job in badge_artifact_jobs() {
+        let args = badge_artifact_command_args(job.format);
         let output = run_output_owned("cargo", &args)?;
-        write_report(output_file, &output)?;
-
-        if format_flag == "badge-json" {
-            ripr_native_json = output;
-        } else if format_flag == "badge-plus-json" {
-            ripr_plus_native_json = output;
+        write_report(job.output_file, &output)?;
+        match badge_artifact_native_slot(job.format) {
+            Some(BadgeNativeSlot::Ripr) => ripr_native_json = output,
+            Some(BadgeNativeSlot::RiprPlus) => ripr_plus_native_json = output,
+            None => {}
         }
     }
 
     let summary = badge_artifacts_summary_markdown(&ripr_native_json, &ripr_plus_native_json);
     write_report("ripr-badges.md", &summary)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct BadgeArtifactJob {
+    format: &'static str,
+    output_file: &'static str,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum BadgeNativeSlot {
+    Ripr,
+    RiprPlus,
+}
+
+fn badge_artifact_jobs() -> Vec<BadgeArtifactJob> {
+    vec![
+        BadgeArtifactJob {
+            format: "badge-json",
+            output_file: "ripr-badge.json",
+        },
+        BadgeArtifactJob {
+            format: "badge-shields",
+            output_file: "ripr-badge-shields.json",
+        },
+        BadgeArtifactJob {
+            format: "badge-plus-json",
+            output_file: "ripr-plus-badge.json",
+        },
+        BadgeArtifactJob {
+            format: "badge-plus-shields",
+            output_file: "ripr-plus-badge-shields.json",
+        },
+    ]
+}
+
+fn badge_artifact_command_args(format: &str) -> Vec<String> {
+    vec![
+        "run".to_string(),
+        "-p".to_string(),
+        "ripr".to_string(),
+        "--quiet".to_string(),
+        "--".to_string(),
+        "check".to_string(),
+        "--root".to_string(),
+        ".".to_string(),
+        "--diff".to_string(),
+        "target/ripr/badge-input.diff".to_string(),
+        "--format".to_string(),
+        format.to_string(),
+    ]
+}
+
+fn badge_artifact_native_slot(format: &str) -> Option<BadgeNativeSlot> {
+    match format {
+        "badge-json" => Some(BadgeNativeSlot::Ripr),
+        "badge-plus-json" => Some(BadgeNativeSlot::RiprPlus),
+        _ => None,
+    }
 }
 
 fn badge_artifacts_summary_markdown(ripr_native_json: &str, ripr_plus_native_json: &str) -> String {
@@ -10269,28 +10306,30 @@ fn is_word_char(value: Option<char>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        CampaignManifest, Capability, ChangedPath, DogfoodRun, LocalContextAllow, MarkdownLink,
-        ReceiptRecord, ReportIndexCampaign, ReportIndexEntry, StaticLanguageAllowEntry,
-        StaticLanguageMatcher, TestOracleClass, badge_artifacts_summary_markdown, critic_findings,
-        dogfood_class_counts, dogfood_report_json, dogfood_report_markdown,
-        extract_workflow_run_blocks, first_line_difference, glob_matches,
-        golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
-        guarded_allow_attributes_in_text, is_bdd_test_name, is_dependency_surface_candidate,
-        is_evidence_path, is_generated_candidate, is_known_campaign_command, is_policy_path,
-        is_production_path, is_receipt_status, is_snake_case_id, is_spec_id, json_escape,
-        json_number_after, json_string_values_for_key, known_xtask_command,
-        local_context_line_findings, local_markdown_target, markdown_links_in_text,
-        next_checkpoints_from_capabilities, normalize_fixture_human_output,
-        normalize_fixture_json_output, normalize_golden_text, parse_campaign_manifest,
-        parse_inline_array, parse_reason, parse_static_language_allowlist, pr_shape_warnings,
-        precommit_report_body, public_contract_rows, receipt_json, receipt_specs,
-        receipt_status_from_reports, report_index_markdown, report_index_missing_expected,
-        report_status_from_text, should_scan_static_language_path, sorted_allowlist_content,
-        spec_id_from_path, static_language_allowlist_covers, status_for_report,
-        suspicious_runtime_file_names, test_efficiency_entry, test_efficiency_report_json,
-        test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
-        test_oracle_tests_in_text, validate_local_context_allowlist, windows_absolute_path_tokens,
-        workflow_runtime_violations,
+        BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, DogfoodRun,
+        LocalContextAllow, MarkdownLink, ReceiptRecord, ReportIndexCampaign, ReportIndexEntry,
+        StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass,
+        badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
+        badge_artifacts_summary_markdown, critic_findings, dogfood_class_counts,
+        dogfood_report_json, dogfood_report_markdown, extract_json_object_usize_map,
+        extract_json_string, extract_json_warnings, extract_workflow_run_blocks,
+        first_line_difference, glob_matches, golden_changes_without_blessing,
+        golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
+        is_bdd_test_name, is_dependency_surface_candidate, is_evidence_path,
+        is_generated_candidate, is_known_campaign_command, is_policy_path, is_production_path,
+        is_receipt_status, is_snake_case_id, is_spec_id, json_escape, json_number_after,
+        json_string_values_for_key, known_xtask_command, local_context_line_findings,
+        local_markdown_target, markdown_links_in_text, next_checkpoints_from_capabilities,
+        normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
+        parse_campaign_manifest, parse_inline_array, parse_reason, parse_static_language_allowlist,
+        pr_shape_warnings, precommit_report_body, public_contract_rows, receipt_json,
+        receipt_specs, receipt_status_from_reports, report_index_markdown,
+        report_index_missing_expected, report_status_from_text, should_scan_static_language_path,
+        sorted_allowlist_content, spec_id_from_path, static_language_allowlist_covers,
+        status_for_report, suspicious_runtime_file_names, test_efficiency_entry,
+        test_efficiency_report_json, test_efficiency_report_markdown, test_oracle_report_json,
+        test_oracle_report_markdown, test_oracle_tests_in_text, validate_local_context_allowlist,
+        windows_absolute_path_tokens, workflow_runtime_violations,
     };
     use super::{
         DeclaredIntent, TestEfficiencyEntry, TestEfficiencyValue, TestIntentDeclaration,
@@ -13523,6 +13562,256 @@ reason = "second"
                     ));
                 }
                 prev = Some(curr);
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn extract_json_string_returns_value_for_present_key() -> Result<(), String> {
+        let json = r#"{"label": "ripr", "color": "brightgreen"}"#;
+        match extract_json_string(json, "\"color\":") {
+            Some(value) if value == "brightgreen" => Ok(()),
+            other => Err(format!("expected Some(\"brightgreen\"), got {other:?}")),
+        }
+    }
+
+    #[test]
+    fn extract_json_string_returns_none_for_missing_key() -> Result<(), String> {
+        let json = r#"{"label": "ripr"}"#;
+        match extract_json_string(json, "\"color\":") {
+            None => Ok(()),
+            other => Err(format!("expected None, got {other:?}")),
+        }
+    }
+
+    #[test]
+    fn extract_json_string_returns_none_for_unterminated_value() -> Result<(), String> {
+        let json = r#"{"label": "ripr"#;
+        match extract_json_string(json, "\"label\":") {
+            None => Ok(()),
+            other => Err(format!(
+                "expected None for unterminated value, got {other:?}"
+            )),
+        }
+    }
+
+    #[test]
+    fn extract_json_object_usize_map_reads_flat_object() -> Result<(), String> {
+        let json = r#"{"counts": {"a": 1, "b": 2, "c": 3}}"#;
+        let map = extract_json_object_usize_map(json, "\"counts\":");
+        let expected: std::collections::BTreeMap<String, usize> = [("a", 1), ("b", 2), ("c", 3)]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect();
+        if map == expected {
+            Ok(())
+        } else {
+            Err(format!("expected {expected:?}, got {map:?}"))
+        }
+    }
+
+    #[test]
+    fn extract_json_object_usize_map_returns_empty_for_missing_key() -> Result<(), String> {
+        let json = r#"{"label": "ripr"}"#;
+        let map = extract_json_object_usize_map(json, "\"counts\":");
+        if map.is_empty() {
+            Ok(())
+        } else {
+            Err(format!("expected empty map, got {map:?}"))
+        }
+    }
+
+    #[test]
+    fn extract_json_object_usize_map_skips_non_numeric_values() -> Result<(), String> {
+        let json = r#"{"counts": {"a": 1, "b": "two", "c": 3}}"#;
+        let map = extract_json_object_usize_map(json, "\"counts\":");
+        if map.contains_key("b") {
+            return Err(format!(
+                "non-numeric value 'two' should be skipped: {map:?}"
+            ));
+        }
+        if map.get("a") != Some(&1) || map.get("c") != Some(&3) {
+            return Err(format!("expected a=1 and c=3, got {map:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn extract_json_object_usize_map_orders_keys_lexicographically() -> Result<(), String> {
+        let json = r#"{"counts": {"zeta": 1, "alpha": 2, "mu": 3}}"#;
+        let map = extract_json_object_usize_map(json, "\"counts\":");
+        let keys: Vec<String> = map.keys().cloned().collect();
+        let expected = vec!["alpha".to_string(), "mu".to_string(), "zeta".to_string()];
+        if keys == expected {
+            Ok(())
+        } else {
+            Err(format!(
+                "expected lexicographic order {expected:?}, got {keys:?}"
+            ))
+        }
+    }
+
+    #[test]
+    fn extract_json_warnings_returns_empty_for_empty_array() -> Result<(), String> {
+        let json = r#"{"warnings": []}"#;
+        let warnings = extract_json_warnings(json);
+        if warnings.is_empty() {
+            Ok(())
+        } else {
+            Err(format!("expected empty Vec, got {warnings:?}"))
+        }
+    }
+
+    #[test]
+    fn extract_json_warnings_returns_empty_for_missing_key() -> Result<(), String> {
+        let json = r#"{"label": "ripr"}"#;
+        let warnings = extract_json_warnings(json);
+        if warnings.is_empty() {
+            Ok(())
+        } else {
+            Err(format!("expected empty Vec, got {warnings:?}"))
+        }
+    }
+
+    #[test]
+    fn extract_json_warnings_returns_all_entries() -> Result<(), String> {
+        let json = r#"{"warnings": ["first", "second", "third"]}"#;
+        let warnings = extract_json_warnings(json);
+        let expected = vec![
+            "first".to_string(),
+            "second".to_string(),
+            "third".to_string(),
+        ];
+        if warnings == expected {
+            Ok(())
+        } else {
+            Err(format!("expected {expected:?}, got {warnings:?}"))
+        }
+    }
+
+    #[test]
+    fn extract_json_warnings_unescapes_backslash_pairs() -> Result<(), String> {
+        // The substring extractor consumes the backslash-escape and keeps the
+        // following character — so `\"` becomes a literal quote inside the
+        // captured warning, and `\\` becomes a single backslash.
+        let json = r#"{"warnings": ["with \"quote\"", "with \\path"]}"#;
+        let warnings = extract_json_warnings(json);
+        let expected = vec!["with \"quote\"".to_string(), "with \\path".to_string()];
+        if warnings == expected {
+            Ok(())
+        } else {
+            Err(format!("expected {expected:?}, got {warnings:?}"))
+        }
+    }
+
+    #[test]
+    fn badge_artifact_jobs_has_exactly_four_entries_in_documented_order() -> Result<(), String> {
+        let jobs = badge_artifact_jobs();
+        let expected = vec![
+            BadgeArtifactJob {
+                format: "badge-json",
+                output_file: "ripr-badge.json",
+            },
+            BadgeArtifactJob {
+                format: "badge-shields",
+                output_file: "ripr-badge-shields.json",
+            },
+            BadgeArtifactJob {
+                format: "badge-plus-json",
+                output_file: "ripr-plus-badge.json",
+            },
+            BadgeArtifactJob {
+                format: "badge-plus-shields",
+                output_file: "ripr-plus-badge-shields.json",
+            },
+        ];
+        if jobs == expected {
+            Ok(())
+        } else {
+            Err(format!("expected {expected:?}, got {jobs:?}"))
+        }
+    }
+
+    #[test]
+    fn badge_artifact_command_args_matches_documented_invocation() -> Result<(), String> {
+        let args = badge_artifact_command_args("badge-plus-json");
+        let expected: Vec<String> = [
+            "run",
+            "-p",
+            "ripr",
+            "--quiet",
+            "--",
+            "check",
+            "--root",
+            ".",
+            "--diff",
+            "target/ripr/badge-input.diff",
+            "--format",
+            "badge-plus-json",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        if args == expected {
+            Ok(())
+        } else {
+            Err(format!("expected {expected:?}, got {args:?}"))
+        }
+    }
+
+    #[test]
+    fn badge_artifact_command_args_substitutes_format_only() -> Result<(), String> {
+        for format in ["badge-json", "badge-shields", "badge-plus-shields"] {
+            let args = badge_artifact_command_args(format);
+            let last = args.last().cloned().unwrap_or_default();
+            if last != format {
+                return Err(format!(
+                    "expected last arg to be {format:?}, got {last:?} (full args: {args:?})"
+                ));
+            }
+            // The static prefix must be byte-identical across formats.
+            let prefix = &args[..args.len() - 1];
+            let expected_prefix: Vec<String> = [
+                "run",
+                "-p",
+                "ripr",
+                "--quiet",
+                "--",
+                "check",
+                "--root",
+                ".",
+                "--diff",
+                "target/ripr/badge-input.diff",
+                "--format",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+            if prefix != expected_prefix.as_slice() {
+                return Err(format!(
+                    "static arg prefix changed for {format:?}: expected {expected_prefix:?}, got {prefix:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn badge_artifact_native_slot_maps_native_formats_only() -> Result<(), String> {
+        let cases = [
+            ("badge-json", Some(BadgeNativeSlot::Ripr)),
+            ("badge-plus-json", Some(BadgeNativeSlot::RiprPlus)),
+            ("badge-shields", None),
+            ("badge-plus-shields", None),
+            ("garbage", None),
+        ];
+        for (format, expected) in cases {
+            let actual = badge_artifact_native_slot(format);
+            if actual != expected {
+                return Err(format!(
+                    "for format {format:?} expected {expected:?}, got {actual:?}"
+                ));
             }
         }
         Ok(())
