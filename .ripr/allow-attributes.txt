@@ -6,3 +6,9 @@
 # Suppressions for guarded lints should be rare and temporary. Prefer fixing
 # the underlying warning. Do not use this file to normalize panic-family,
 # unsafe, dead-code, or broad warning suppressions.
+
+# Phase 2 infrastructure: semantic selector matching
+# These structs and functions are tested in test modules but not yet
+# integrated into production code. Will be used when semantic matching
+# is integrated into check_no_panic_family command.
+xtask/src/main.rs|allow(dead_code)|4|Tested semantic selector infrastructure for Phase 2 integration

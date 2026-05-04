@@ -10724,6 +10724,7 @@ struct PanicAllowEntry {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct PanicFamilySelectorKind {
     kind: String,
     container: Option<String>,
@@ -10733,12 +10734,14 @@ struct PanicFamilySelectorKind {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct PanicFamilyLastSeen {
     line: usize,
     column: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct PanicAllowEntryV2 {
     path: String,
     family: String,
@@ -11210,6 +11213,7 @@ fn check_old_panic_allowlist_exists() -> Result<(), String> {
     Ok(())
 }
 
+#[allow(dead_code)]
 fn semantic_selector_matches(
     selector: &PanicFamilySelectorKind,
     finding: &SemanticPanicFinding,
