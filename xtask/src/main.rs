@@ -12094,6 +12094,156 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 
+    #[test]
+    fn semantic_selector_matches_string_literal_requires_kind() {
+        let string_literal_finding = SemanticPanicFinding {
+            path: "src/lib.rs".to_string(),
+            family: "panic_macro".to_string(),
+            kind: "string_literal".to_string(),
+            line: 10,
+            column: Some(5),
+            container: None,
+            callee: None,
+            receiver_fingerprint: None,
+            snippet_fingerprint: "panic!(\"error\")".to_string(),
+            cfg_test: false,
+        };
+
+        let method_call_finding = SemanticPanicFinding {
+            path: "src/lib.rs".to_string(),
+            family: "unwrap".to_string(),
+            kind: "method_call".to_string(),
+            line: 15,
+            column: Some(10),
+            container: None,
+            callee: Some("unwrap".to_string()),
+            receiver_fingerprint: None,
+            snippet_fingerprint: "x.unwrap()".to_string(),
+            cfg_test: false,
+        };
+
+        // String literal selector with text_contains should match string_literal findings
+        let selector_with_text = PanicFamilySelectorKind {
+            kind: "string_literal".to_string(),
+            container: None,
+            callee: None,
+            receiver_fingerprint: None,
+            text_contains: Some("error".to_string()),
+        };
+
+        assert!(semantic_selector_matches(&selector_with_text, &string_literal_finding));
+        assert!(!semantic_selector_matches(
+            &selector_with_text,
+            &method_call_finding
+        ));
+
+        // String literal selector without text_contains should not match
+        let selector_no_text = PanicFamilySelectorKind {
+            kind: "string_literal".to_string(),
+            container: None,
+            callee: None,
+            receiver_fingerprint: None,
+            text_contains: None,
+        };
+
+        assert!(!semantic_selector_matches(&selector_no_text, &string_literal_finding));
+        assert!(!semantic_selector_matches(&selector_no_text, &method_call_finding));
+    }
+
+    #[test]
+    fn collect_semantic_panic_findings_detects_test_context() {
+        let root = temp_dir("semantic_test_context");
+
+        let code = r#"
+#[test]
+fn bare_test_function() {
+    let x = Some(5);
+    x.unwrap();
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_in_cfg_module() {
+        panic!("test panic");
+    }
+}
+
+fn production_code() {
+    let x = Some(10);
+    x.unwrap();
+}
+"#;
+
+        let lib_path = root.join("lib.rs");
+        write(&lib_path, code);
+
+        let patterns = forbidden_panic_patterns();
+        let findings =
+            collect_semantic_panic_findings(&root, &patterns).expect("failed to collect findings");
+
+        let test_findings: Vec<_> = findings.iter().filter(|f| f.cfg_test).collect();
+        let prod_findings: Vec<_> = findings.iter().filter(|f| !f.cfg_test).collect();
+
+        // Should have test findings from the #[test] and #[cfg(test)] functions
+        assert!(
+            !test_findings.is_empty(),
+            "should find panic calls in test context"
+        );
+
+        // Should have production findings from the non-test function
+        assert!(
+            !prod_findings.is_empty(),
+            "should find panic calls in production context"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn collect_semantic_panic_findings_identifies_containers_and_callees() {
+        let root = temp_dir("semantic_containers");
+
+        let code = r#"
+fn my_function() {
+    Some(42).unwrap();
+}
+
+#[test]
+fn test_with_receiver() {
+    let vec = vec![1, 2, 3];
+    vec.iter().next().unwrap();
+}
+"#;
+
+        let lib_path = root.join("lib.rs");
+        write(&lib_path, code);
+
+        let patterns = forbidden_panic_patterns();
+        let findings =
+            collect_semantic_panic_findings(&root, &patterns).expect("failed to collect findings");
+
+        // Check that containers are properly identified
+        let with_container: Vec<_> = findings
+            .iter()
+            .filter(|f| f.container.is_some() && f.callee.is_some())
+            .collect();
+        assert!(
+            !with_container.is_empty(),
+            "should identify function containers and callees"
+        );
+
+        // All findings should have method_call kind (for unwrap)
+        for finding in &findings {
+            if finding.family == "unwrap" {
+                assert_eq!(finding.kind, "method_call");
+                assert_eq!(finding.callee, Some("unwrap".to_string()));
+            }
+        }
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
     // ============================================================================
     // Enum contract tests
     // ============================================================================
