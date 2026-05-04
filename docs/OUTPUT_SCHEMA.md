@@ -603,6 +603,79 @@ discriminator, the oracle shape, and an assertion template — but never
 generates the test itself. Composition with a coding agent closes the
 loop.
 
+## LSP Seam Diagnostics
+
+When `seamDiagnostics: true` is passed in `initializationOptions`, the
+LSP server publishes a `Diagnostic` for every actionable
+`ClassifiedSeam` alongside the existing diff-scoped `Finding`
+diagnostics. The flag is **off by default** because the underlying
+classification walks the entire production tree (~12 k seams on the
+ripr repo) and would add multi-second latency to every editor
+refresh; `cache/repo-seam-facts-v1` will lift the default once the
+classification is cached.
+
+Diagnostic shape:
+
+```jsonc
+{
+  "range": { "start": { "line": 87, "character": 0 }, "end": { "line": 87, "character": 28 } },
+  "severity": 2, // 1=Error, 2=Warning, 3=Information, 4=Hint
+  "code": "ripr-seam-weakly-gripped",
+  "source": "ripr",
+  "message": "Weakly gripped behavioral seam (predicate_boundary): amount >= discount_threshold",
+  "data": {
+    "schema_version": "0.1",
+    "seam_id": "f3c9e4d21a0b7c88",
+    "seam_kind": "predicate_boundary",
+    "grip_class": "weakly_gripped",
+    "headline_eligible": true,
+    "owner": "src/pricing.rs::discounted_total",
+    "expected_sink": "return_value",
+    "evidence": {
+      "reach": "yes",
+      "activate": "yes",
+      "propagate": "yes",
+      "observe": "yes",
+      "discriminate": "weak"
+    }
+  }
+}
+```
+
+Per-class severity:
+
+| `SeamGripClass`            | Severity      | Diagnostic? |
+|----------------------------|---------------|-------------|
+| `weakly_gripped`           | `Warning`     | yes         |
+| `ungripped`                | `Warning`     | yes         |
+| `reachable_unrevealed`     | `Warning`     | yes         |
+| `activation_unknown`       | `Information` | yes         |
+| `propagation_unknown`      | `Information` | yes         |
+| `observation_unknown`      | `Information` | yes         |
+| `discrimination_unknown`   | `Information` | yes         |
+| `opaque`                   | `Information` | yes         |
+| `strongly_gripped`         | —             | **no**      |
+| `intentional`              | —             | **no**      |
+| `suppressed`               | —             | **no**      |
+
+Diagnostic codes are stable: `ripr-seam-{class}` with `_` replaced by
+`-` in the class name. Editors can filter or theme by code without
+parsing severity. The `data` field carries `seam_id` so seam-evidence
+hover (`lsp/seam-evidence-hover-v1`) can look up the same record from
+`inventory_classified_seams_at`.
+
+The diagnostic range is currently a **full-line placeholder**: seams
+do not yet carry a column, so the range spans `(line, 0)` →
+`(line, MAX_DIAGNOSTIC_RANGE_WIDTH)`. Editors render this as a
+single-line squiggle that always covers the seam regardless of
+indentation. A future PR can derive the real column from the source
+file via the (now reserved) `_root` parameter on
+`diagnostic_for_classified_seam`.
+
+This PR adds diagnostics only — no code actions yet. The pre-4B
+`Finding`/`AnalysisSnapshot` hover continues to work for
+diff-scoped diagnostics; seam diagnostics live alongside it.
+
 ## Stability Rules
 
 Output contract values are registered in `policy/output_contracts.txt`.

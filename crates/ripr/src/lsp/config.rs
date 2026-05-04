@@ -7,6 +7,12 @@ pub(super) struct LspAnalysisConfig {
     pub(super) base_ref: Option<String>,
     pub(super) mode: Mode,
     pub(super) include_unchanged_tests: bool,
+    /// Enable Voice B seam diagnostics. Off by default because the
+    /// `inventory_classified_seams_at` walk is whole-repo and can add
+    /// multi-second latency to every editor refresh on large workspaces.
+    /// `cache/repo-seam-facts-v1` will lift the default to `true` once
+    /// the underlying classification is cached.
+    pub(super) enable_seam_diagnostics: bool,
 }
 
 impl Default for LspAnalysisConfig {
@@ -16,6 +22,7 @@ impl Default for LspAnalysisConfig {
             base_ref: defaults.base,
             mode: defaults.mode,
             include_unchanged_tests: defaults.include_unchanged_tests,
+            enable_seam_diagnostics: false,
         }
     }
 }
@@ -54,6 +61,13 @@ impl LspAnalysisConfig {
             config.include_unchanged_tests = include_unchanged_tests;
         }
 
+        if let Some(enable_seam_diagnostics) = options
+            .get("seamDiagnostics")
+            .and_then(|value| value.as_bool())
+        {
+            config.enable_seam_diagnostics = enable_seam_diagnostics;
+        }
+
         config
     }
 
@@ -77,5 +91,50 @@ fn parse_mode(value: &str) -> Option<Mode> {
         "deep" => Some(Mode::Deep),
         "ready" => Some(Mode::Ready),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use tower_lsp_server::ls_types::ClientCapabilities;
+
+    fn params_with(options: serde_json::Value) -> InitializeParams {
+        InitializeParams {
+            initialization_options: Some(options),
+            capabilities: ClientCapabilities::default(),
+            ..InitializeParams::default()
+        }
+    }
+
+    #[test]
+    fn seam_diagnostics_defaults_to_false_when_option_is_missing() {
+        let params = params_with(json!({}));
+        let config = LspAnalysisConfig::from_initialize_params(&params);
+        assert!(!config.enable_seam_diagnostics);
+    }
+
+    #[test]
+    fn seam_diagnostics_true_in_init_options_enables_flag() {
+        let params = params_with(json!({"seamDiagnostics": true}));
+        let config = LspAnalysisConfig::from_initialize_params(&params);
+        assert!(config.enable_seam_diagnostics);
+    }
+
+    #[test]
+    fn seam_diagnostics_false_in_init_options_keeps_default() {
+        let params = params_with(json!({"seamDiagnostics": false}));
+        let config = LspAnalysisConfig::from_initialize_params(&params);
+        assert!(!config.enable_seam_diagnostics);
+    }
+
+    #[test]
+    fn non_boolean_seam_diagnostics_value_is_ignored() {
+        let params = params_with(json!({"seamDiagnostics": "yes"}));
+        let config = LspAnalysisConfig::from_initialize_params(&params);
+        // Falls back to the default rather than misinterpreting a
+        // string as truthy.
+        assert!(!config.enable_seam_diagnostics);
     }
 }
