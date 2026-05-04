@@ -1101,3 +1101,160 @@ fn sample_finding() -> Finding {
         recommended_next_step: Some("Add an exact boundary assertion.".to_string()),
     }
 }
+
+#[test]
+fn finding_hover_response_includes_ripr_evidence_path() -> Result<(), String> {
+    use super::hover::finding_hover_response;
+
+    let finding = sample_finding();
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+
+    let hover = finding_hover_response(&finding, &diagnostic);
+
+    match hover.contents {
+        HoverContents::Markup(markup) => {
+            assert!(markup.value.contains("**ripr** `weakly_exposed`"));
+            assert!(markup.value.contains("predicate"));
+            assert!(markup.value.contains("reach yes:"));
+            assert!(markup.value.contains("infection yes:"));
+            assert!(markup.value.contains("propagation yes:"));
+            assert!(markup.value.contains("observation weak:"));
+            assert!(markup.value.contains("discriminator weak:"));
+            Ok(())
+        }
+        _ => Err("expected markup hover".to_string()),
+    }
+}
+
+#[test]
+fn finding_hover_response_includes_evidence_details() -> Result<(), String> {
+    use super::hover::finding_hover_response;
+    use crate::domain::{
+        ActivationEvidence, FlowSinkFact, FlowSinkKind, MissingDiscriminatorFact, RelatedTest,
+        ValueContext, ValueFact,
+    };
+
+    let mut finding = sample_finding();
+    finding.flow_sinks = vec![FlowSinkFact {
+        kind: FlowSinkKind::ReturnValue,
+        text: "total".to_string(),
+        line: 88,
+        owner: None,
+    }];
+    finding.related_tests = vec![RelatedTest {
+        name: "discount_boundary_is_exact".to_string(),
+        file: PathBuf::from("tests/pricing.rs"),
+        line: 12,
+        oracle: Some("assert_eq!(total, expected)".to_string()),
+        oracle_kind: OracleKind::ExactValue,
+        oracle_strength: OracleStrength::Strong,
+    }];
+    finding.activation = ActivationEvidence {
+        observed_values: vec![ValueFact {
+            line: 12,
+            text: "assert_eq!".to_string(),
+            value: "amount == threshold".to_string(),
+            context: ValueContext::FunctionArgument,
+        }],
+        missing_discriminators: vec![MissingDiscriminatorFact {
+            value: "amount == threshold".to_string(),
+            reason: "related tests do not cover the changed boundary value".to_string(),
+            flow_sink: None,
+        }],
+    };
+
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    let hover = finding_hover_response(&finding, &diagnostic);
+
+    match hover.contents {
+        HoverContents::Markup(markup) => {
+            assert!(markup.value.contains("## Local flow"));
+            assert!(markup.value.contains("returned value: `total` at line 88"));
+            assert!(markup.value.contains("## Related tests"));
+            assert!(markup.value.contains("tests/pricing.rs:12"));
+            assert!(markup.value.contains("discount_boundary_is_exact"));
+            assert!(markup.value.contains("strong"));
+            assert!(markup.value.contains("exact_value"));
+            assert!(markup.value.contains("## Observed values"));
+            assert!(
+                markup
+                    .value
+                    .contains("function_argument: `amount == threshold`")
+            );
+            assert!(markup.value.contains("## Missing discriminator"));
+            assert!(
+                markup
+                    .value
+                    .contains("related tests do not cover the changed boundary value")
+            );
+            assert!(markup.value.contains("## Next step"));
+            assert!(markup.value.contains("Add an exact boundary assertion."));
+            Ok(())
+        }
+        _ => Err("expected markup hover".to_string()),
+    }
+}
+
+#[test]
+fn hover_for_position_uses_snapshot_finding_hover() -> Result<(), String> {
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    let finding = sample_finding();
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let diagnostics = sample_workspace_diagnostics(
+        PathBuf::from("/workspace"),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        vec![finding],
+    );
+    let Some(_) = backend.refresh_plan(diagnostics) else {
+        return Err("expected refresh plan".to_string());
+    };
+
+    let Some(hover) = backend.hover_for_position(&hover_params(uri, 87, 1)) else {
+        return Err("expected finding hover".to_string());
+    };
+
+    match hover.contents {
+        HoverContents::Markup(markup) => {
+            assert!(markup.value.contains("**ripr** `weakly_exposed`"));
+            assert!(markup.value.contains("predicate"));
+            assert!(markup.value.contains("## Evidence"));
+            assert!(markup.value.contains("reach yes:"));
+            assert!(markup.value.contains("Add an exact boundary assertion."));
+            assert!(
+                markup
+                    .value
+                    .contains("Finding: `probe:pricing:88:predicate`")
+            );
+            Ok(())
+        }
+        _ => Err("expected markup hover".to_string()),
+    }
+}
+
+#[test]
+fn finding_hover_avoids_mutation_runtime_language() -> Result<(), String> {
+    use super::hover::finding_hover_response;
+
+    let finding = sample_finding();
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+
+    let hover = finding_hover_response(&finding, &diagnostic);
+
+    match hover.contents {
+        HoverContents::Markup(markup) => {
+            let lower = markup.value.to_lowercase();
+            let forbidden_terms = vec!["kil", "surv", "prov", "adeq", "untest"];
+            for term in forbidden_terms {
+                assert!(
+                    !lower.contains(term),
+                    "hover must use conservative static language"
+                );
+            }
+            Ok(())
+        }
+        _ => Err("expected markup hover".to_string()),
+    }
+}

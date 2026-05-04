@@ -146,6 +146,23 @@ Diagnostics remain advisory. `exposed`, `propagation_unknown`, and
 `static_unknown` findings are informational; weak or missing exposure findings
 are warnings.
 
+## Hover Evidence
+
+When a diagnostic maps to the latest analysis snapshot, hovering the diagnostic
+line shows finding-specific evidence:
+
+- changed expression (before/after or probe expression)
+- RIPR stage summaries (reach, infection, propagation, observation, discriminator)
+- local flow sinks (where the change can flow to)
+- related tests and oracle strength (test assertions that observe the change)
+- observed values (value patterns seen during analysis)
+- missing discriminators (boundary values not yet tested)
+- stop reasons (analysis limits encountered)
+- recommended next step (suggested testing improvement)
+
+If the latest analysis snapshot is unavailable, the server falls back to a
+diagnostic-only hover.
+
 ## Current Limitations
 
 The preview extension does not yet provide:
@@ -153,4 +170,7 @@ The preview extension does not yet provide:
 - bundled native server binaries
 - platform-specific VSIX packages
 - automatic Rust or Cargo installation
-- deep editor UI beyond LSP diagnostics and basic commands
+- deep editor UI beyond diagnostics, evidence hovers, and basic commands
+- server-owned context packet commands
+- evidence-aware code actions
+- unsaved-buffer analysis overlays
