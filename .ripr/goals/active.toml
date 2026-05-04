@@ -1,266 +1,235 @@
-id = "test-efficiency"
-title = "Make low-discriminator tests visible"
-# Campaign-level status stays "active" until the next campaign is
-# scoped (the manifest validator only accepts "active"). All work
-# items are `done`, the campaign is `Status: complete` in
-# `docs/IMPLEMENTATION_CAMPAIGNS.md`, and the closeout work item below
-# records the final architecture and snapshot. The next campaign
-# (Voice B — Repo Seam Inventory and Test Grip,
-# `deferred/seam-inventory-test-grip` in `docs/DEFERRED.md`) will
-# replace this manifest in its own scoping PR per the operating
-# protocol; the current manifest is intentionally a transitional
-# record between campaigns rather than active implementation work.
+id = "repo-seam-inventory-test-grip"
+title = "Repo Seam Inventory and Test Grip"
 status = "active"
 
+# This is Campaign 4B in `docs/IMPLEMENTATION_CAMPAIGNS.md`. It
+# replaces the original Campaign 4 (Editor and Agent Loop) work
+# items with seam-aware shapes; it also subsumes Campaign 5's
+# `cache/persistent-cache-v1` and `calibration/cargo-mutants-scaffold`
+# as `cache/repo-seam-facts-v1` and `calibration/cargo-mutants-v1`
+# below. Campaign 5 retains its broader operationalization scope
+# (`config/ripr-config-v1`, `ci/sarif-ci-policy`).
+
 objective = """
-Make ripr report advisory test-efficiency and likely-vacuity signals from the
-same evidence facts used for static exposure findings.
+Inventory behavior seams across the repo, classify how strongly current
+tests grip each seam through RIPR evidence, and turn actionable gaps
+into editor diagnostics and agent-ready test packets. The Voice A
+baseline (currently-probeable production syntax shapes) becomes a
+special case of seam classification rather than the analyzer's only
+mode.
 """
 
 end_state = [
-  "per-test evidence ledgers name owners, oracle kind and strength, observed values, and missing discriminator overlap",
-  "likely vacuous, smoke-only, broad-oracle, opaque, circular, and duplicative signals are advisory",
-  "reports explain evidence and suggested next steps without calling tests bad",
-  "test-efficiency metrics are available for trend tracking",
-  "agent and editor surfaces can avoid imitating low-discriminator tests",
-  "ripr and ripr+ badge artifacts publish unresolved-finding counts as inbox-zero signals",
-  "test intent and suppressions are durable, reasoned exception files rather than allowlist entries"
+  "RepoSeam, SeamKind, RequiredDiscriminator, and SeamGripClass exist as a first-class data model",
+  "seam IDs are stable across runs and across input file walk reorderings",
+  "test-grip evidence per seam covers reach, activate/infect, propagate, observe, discriminate",
+  "test-grip classification uses a separate SeamGripClass; mapping to existing ExposureClass and to badge counts is explicit, not implicit through type extension",
+  "a repo exposure report enumerates seams with their grip class and missing-discriminator hypothesis",
+  "LSP diagnostics surface ungripped or under-gripped seams in the editor",
+  "hover renders the RIPR evidence path that produced the classification, with cited related tests",
+  "agent context packets contain the load-bearing fields a coding agent needs to write the missing test",
+  "public repo badge counts can be derived from seam classification without breaking the existing schema",
+  "static-language constraints hold: runtime-mutation outcome vocabulary is forbidden in static output (per docs/LEARNINGS.md § Static Language)",
+  "Voice B does not claim mutation-test outcomes from static evidence; runtime mutation testing remains a separate confirmation step"
 ]
 
 [[work_item]]
-id = "test-efficiency/test-fact-ledger"
-status = "done"
-branch = "test-efficiency/test-fact-ledger"
+id = "spec/repo-seam-inventory"
+status = "ready"
+branch = "spec/repo-seam-inventory"
 stackable = false
 requires_human_merge = true
-acceptance = "advisory per-test ledger reports each test's reachable owners, oracle kind/strength, observed values, and static limitations"
-commands = [
-  "cargo xtask test-efficiency-report",
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask pr-summary",
-  "cargo xtask reports index",
-  "cargo xtask receipts check",
-  "cargo xtask test-oracle-report",
-  "cargo xtask check-static-language"
-]
-
-[[work_item]]
-id = "test-efficiency/vacuous-signal-v1"
-status = "done"
-branch = "test-efficiency/vacuous-signal-v1"
-stackable = false
-requires_human_merge = true
-acceptance = "advisory findings classify smoke-only, broad-oracle, disconnected, opaque, circular, and likely-vacuous test signals with reasons"
-commands = [
-  "cargo xtask test-efficiency-report",
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask pr-summary",
-  "cargo xtask fixtures",
-  "cargo xtask goldens check",
-  "cargo xtask check-static-language"
-]
-
-[[work_item]]
-id = "test-efficiency/duplicate-discriminator-v1"
-status = "done"
-branch = "test-efficiency/duplicate-discriminator-v1"
-stackable = false
-requires_human_merge = true
-acceptance = "advisory duplicate-discriminator groups name tests with the same owner, activation signature, and oracle shape; emit class `duplicative` and reason `duplicate_activation_and_oracle_shape`"
+acceptance = "docs/specs/RIPR-SPEC-0005-repo-seam-inventory.md defines RepoSeam, SeamKind, RequiredDiscriminator, TestGripEvidence, SeamGripClass; locks stable seam ID rules; records the relationship to ProbeShapeFact and to the existing repo badge baseline; specifies which classes count toward the headline and which stay visible-but-non-headline; reaffirms static-language boundaries; declares the Voice A vs Voice B contract (Voice A = currently-probeable production syntax shapes, Voice B = first-class behavior seams + test-grip evidence, neither claims mutation adequacy)"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
   "cargo xtask check-pr",
-  "cargo xtask pr-summary",
-  "cargo xtask fixtures",
-  "cargo xtask goldens check",
-  "cargo xtask check-static-language"
-]
-
-[[work_item]]
-id = "test-efficiency/report-and-metrics"
-status = "done"
-branch = "test-efficiency/report-and-metrics"
-stackable = false
-requires_human_merge = true
-acceptance = "test-efficiency reports include a stable `metrics` object with `tests_scanned`, per-class counts (including `duplicative`), per-reason counts (including `duplicate_activation_and_oracle_shape`), and `duplicate_discriminator_group_count` distinct from the duplicative-test count; capability metadata in `metrics/capabilities.toml` references the new metrics surface"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask pr-summary",
-  "cargo xtask reports index",
-  "cargo xtask receipts check",
-  "cargo xtask metrics",
-  "cargo xtask check-capabilities"
-]
-
-[[work_item]]
-id = "docs/badge-policy"
-status = "done"
-branch = "docs/badge-policy"
-stackable = false
-requires_human_merge = true
-acceptance = "docs/BADGE_POLICY.md locks the badge counting rule, native JSON shape, Shields projection, and the exact test-efficiency vocabulary emitted by xtask::test_efficiency_report"
-commands = [
-  "cargo xtask test-efficiency-report",
-  "cargo xtask markdown-links",
+  "cargo xtask check-spec-format",
+  "cargo xtask check-spec-ids",
   "cargo xtask check-doc-index",
-  "cargo xtask check-readme-state",
+  "cargo xtask markdown-links"
+]
+
+[[work_item]]
+id = "analysis/repo-seam-model-v1"
+status = "blocked"
+branch = "analysis/repo-seam-model-v1"
+stackable = false
+requires_human_merge = true
+blocked_by = ["spec/repo-seam-inventory"]
+blocked_reason = "the seam model implements the spec; without the locked spec, RepoSeam/SeamKind/SeamGripClass boundaries are implicit"
+acceptance = "crates/ripr/src/analysis/seams.rs (or analysis/seams/) introduces RepoSeam, SeamId, SeamKind, ExpectedSink, RequiredDiscriminator, SeamGripClass as crate-private types; stable IDs do not depend on scan order; test files do not generate production seams; no public Rust API export (policy/public_api.txt unchanged); no LSP work; no badge change"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-public-api",
+  "cargo xtask check-architecture",
+  "cargo xtask check-output-contracts"
+]
+
+[[work_item]]
+id = "analysis/repo-seam-inventory-v1"
+status = "blocked"
+branch = "analysis/repo-seam-inventory-v1"
+stackable = false
+requires_human_merge = true
+blocked_by = ["analysis/repo-seam-model-v1"]
+blocked_reason = "the inventory walk emits the seam types defined by repo-seam-model-v1"
+acceptance = "walks production Rust files via the existing syntax adapter and emits Vec<RepoSeam>; covers initial seam kinds (predicate_boundary, error_variant, return_value, field_construction, side_effect, match_arm, validation_branch, call_presence); writes target/ripr/reports/repo-seams.json and repo-seams.md; no classification yet; no LSP work; no badge change"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask reports index",
+  "cargo xtask receipts",
+  "cargo xtask receipts check"
+]
+
+[[work_item]]
+id = "analysis/test-grip-evidence-v1"
+status = "blocked"
+branch = "analysis/test-grip-evidence-v1"
+stackable = false
+requires_human_merge = true
+blocked_by = ["analysis/repo-seam-inventory-v1"]
+blocked_reason = "test-grip evidence attaches to inventoried seams"
+acceptance = "for each inventoried seam, attach reach/activate/propagate/observe/discriminate evidence built from existing test/oracle facts (no MIR, no full trait resolution, no cargo-mutants); evidence records cite related tests, oracle strength, observed values, and missing-discriminator hypothesis; deterministic"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language"
+]
+
+[[work_item]]
+id = "analysis/repo-ripr-classification-v1"
+status = "blocked"
+branch = "analysis/repo-ripr-classification-v1"
+stackable = false
+requires_human_merge = true
+blocked_by = ["analysis/test-grip-evidence-v1"]
+blocked_reason = "classification consumes test-grip evidence to produce SeamGripClass per seam"
+acceptance = "classify each seam into one of the SeamGripClass values locked by the spec (candidate set: strongly_gripped, weakly_gripped, ungripped, reachable_unrevealed, activation_unknown, propagation_unknown, observation_unknown, discrimination_unknown, opaque, intentional, suppressed); badge-headline-eligible vs visible-only mapping is explicit; static-language check stays clean"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-static-language",
+  "cargo xtask check-output-contracts"
+]
+
+[[work_item]]
+id = "output/repo-exposure-report-v1"
+status = "blocked"
+branch = "output/repo-exposure-report-v1"
+stackable = false
+requires_human_merge = true
+blocked_by = ["analysis/repo-ripr-classification-v1"]
+blocked_reason = "the report renders the classified seam inventory"
+acceptance = "Markdown + JSON repo exposure report enumerates seams with grip class, evidence path, and missing-discriminator hypothesis; output schema is versioned; OUTPUT_SCHEMA.md updated if needed; existing repo-badge-artifacts schema unchanged unless the spec explicitly opts in"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-output-contracts",
+  "cargo xtask reports index",
+  "cargo xtask receipts check"
+]
+
+[[work_item]]
+id = "lsp/repo-seam-diagnostics-v1"
+status = "blocked"
+branch = "lsp/repo-seam-diagnostics-v1"
+stackable = false
+requires_human_merge = true
+blocked_by = ["output/repo-exposure-report-v1"]
+blocked_reason = "diagnostics consume classified seams"
+acceptance = "LSP surfaces ungripped or under-gripped seams in the editor with stable diagnostic codes; the diagnostic schema bumps if it must, with OUTPUT_SCHEMA.md updated; no code-action work yet"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-output-contracts"
+]
+
+[[work_item]]
+id = "lsp/seam-evidence-hover-v1"
+status = "blocked"
+branch = "lsp/seam-evidence-hover-v1"
+stackable = false
+requires_human_merge = true
+blocked_by = ["lsp/repo-seam-diagnostics-v1"]
+blocked_reason = "hover renders evidence for seams surfaced by repo-seam-diagnostics-v1"
+acceptance = "hover renders the RIPR evidence path that produced the classification with cited related tests; PR #211 disposition decided here (adopt with revisions, adopt as-is, or close + reopen) once the seam model and diagnostics schema are settled"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-output-contracts"
+]
+
+[[work_item]]
+id = "context/agent-seam-packets-v1"
+status = "blocked"
+branch = "context/agent-seam-packets-v1"
+stackable = false
+requires_human_merge = true
+blocked_by = ["analysis/repo-ripr-classification-v1"]
+blocked_reason = "agent packets cite the seam, its grip class, and missing-discriminator hypothesis"
+acceptance = "agent context packet schema (RIPR-SPEC-0003 successor or addendum) defines the load-bearing fields a coding agent needs to write the missing test: changed expression, owner, related tests, oracle strength, observed values, missing discriminator; serialized through the existing context CLI surface"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-output-contracts"
+]
+
+[[work_item]]
+id = "docs/agent-dispatch-workflow-v1"
+status = "blocked"
+branch = "docs/agent-dispatch-workflow-v1"
+stackable = false
+requires_human_merge = true
+blocked_by = ["context/agent-seam-packets-v1"]
+blocked_reason = "the workflow doc shows agents how to consume seam packets"
+acceptance = "docs/AGENT_DISPATCH_WORKFLOW.md (or similar) documents how a coding agent uses a seam packet to write the missing test; references the protocol and handoff ledger; honest about what ripr does and does not produce"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask markdown-links",
+  "cargo xtask check-doc-index"
+]
+
+[[work_item]]
+id = "cache/repo-seam-facts-v1"
+status = "blocked"
+branch = "cache/repo-seam-facts-v1"
+stackable = false
+requires_human_merge = true
+blocked_by = ["analysis/repo-ripr-classification-v1"]
+blocked_reason = "caching depends on stable fact layers from the classification PR"
+acceptance = "optional fact-layer cache (file-facts, owner-index, seam-facts; never final outputs) gated on real performance signal; if shipped, keyed by schema version, ripr analyzer version, file path + content hash, cfg/features hash, config hash, intent hash, suppressions hash"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
   "cargo xtask check-pr"
 ]
 
 [[work_item]]
-id = "badge/summary-renderer-v1"
-status = "done"
-branch = "badge/summary-renderer-v1"
+id = "calibration/cargo-mutants-v1"
+status = "blocked"
+branch = "calibration/cargo-mutants-v1"
 stackable = false
 requires_human_merge = true
-acceptance = "private BadgeSummary types in output::badge render badge-json and badge-shields projections from CheckOutput; module is pub(crate) and lib.rs public exports are unchanged; cargo xtask check-public-api stays green"
+blocked_by = ["analysis/repo-ripr-classification-v1"]
+blocked_reason = "calibration compares static SeamGripClass against runtime survival; depends on stable seam IDs"
+acceptance = "scaffold for comparing static seam classes against cargo-mutants outcomes; advisory only; no static output adopts mutation-runtime language; v2 path toward calibrated test-grip"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
   "cargo xtask check-pr",
-  "cargo xtask pr-summary",
-  "cargo xtask check-public-api",
-  "cargo xtask check-output-contracts"
-]
-
-[[work_item]]
-id = "badge/ripr-count-v1"
-status = "done"
-branch = "badge/ripr-count-v1"
-stackable = false
-requires_human_merge = true
-acceptance = "ripr check --format badge-json and --format badge-shields emit the renderer output from #189; default BadgePolicy only (no new CLI flags); the temporary `output/badge.rs` `allow(dead_code)` from #189 is removed; cargo xtask check-allow-attributes is clean; CLI smoke tests cover both formats and reject `badge-plus-*` until `badge/ripr-plus-count-v1`"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask pr-summary",
-  "cargo xtask check-allow-attributes",
-  "cargo xtask check-public-api",
-  "cargo xtask check-output-contracts"
-]
-
-[[work_item]]
-id = "test-intent/v1"
-status = "done"
-branch = "test-intent/v1"
-stackable = false
-requires_human_merge = true
-acceptance = ".ripr/test_intent.toml loader attaches `declared_intent` metadata (intent, owner, reason, source) to matching entries in target/ripr/reports/test-efficiency.json; supported intents are smoke, business_case_duplicate, opaque_external_oracle, integration_contract, performance_guard, documentation_example; original `class` strings are preserved (intent is additive, never a replacement); unmatched and ambiguous selectors fail the report; declared tests remain visible in JSON ledger and Markdown ## Declared Test Intent section"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask pr-summary",
-  "cargo xtask test-efficiency-report",
-  "cargo xtask fixtures",
-  "cargo xtask goldens check"
-]
-
-[[work_item]]
-id = "badge/ripr-plus-count-v1"
-status = "done"
-branch = "badge/ripr-plus-count-v1"
-stackable = false
-requires_human_merge = true
-acceptance = "ripr check --format badge-plus-json and --format badge-plus-shields read target/ripr/reports/test-efficiency.json (relative to --root), sum unsuppressed exposure gaps and unsuppressed actionable test-efficiency findings, exclude entries with declared_intent metadata, and report opaque entries as unknowns_test_efficiency; missing report fails clearly with a regenerator hint; existing ripr badge formats remain unchanged; suppressed counts stay 0 until suppressions/v1"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask pr-summary",
-  "cargo xtask fixtures",
-  "cargo xtask goldens check",
-  "cargo xtask check-output-contracts"
-]
-
-[[work_item]]
-id = "suppressions/v1"
-status = "done"
-branch = "suppressions/v1"
-stackable = false
-requires_human_merge = true
-acceptance = ".ripr/suppressions.toml loader: closed-set kinds (exposure_gap, test_efficiency); reason and owner required; expires optional in YYYY-MM-DD; expired entries do NOT apply and surface as warnings; unknown / unmatched / duplicate selectors fail the badge command; suppressed findings remain visible while moving from unsuppressed_* into suppressed_* badge counts; native JSON gains a `warnings` array; Shields stays exactly four fields"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask pr-summary",
-  "cargo xtask fixtures",
-  "cargo xtask goldens check"
-]
-
-[[work_item]]
-id = "ci/badge-artifacts"
-status = "done"
-branch = "ci/badge-artifacts"
-stackable = false
-requires_human_merge = true
-acceptance = "CI uploads target/ripr/reports/ripr-badge*.json and ripr-plus-badge*.json, links them from the report index, and shows counts in the GitHub step summary; advisory by default; --fail-on-nonzero is opt-in"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask pr-summary",
-  "cargo xtask reports index",
-  "cargo xtask receipts",
-  "cargo xtask receipts check"
-]
-
-[[work_item]]
-id = "badge/repo-scope-artifacts"
-status = "done"
-branch = "badge/repo-scope-artifacts"
-stackable = false
-requires_human_merge = true
-acceptance = "cargo xtask repo-badge-artifacts produces repo-scoped native + Shields JSON for ripr and ripr+ plus a Markdown summary; native JSON includes `scope: \"repo\"` metadata under a bumped schema_version; existing diff-scoped `cargo xtask badge-artifacts` is unchanged; tests prove diff scope still uses git diff and repo scope does not; Shields projection remains exactly four fields"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask pr-summary",
-  "cargo xtask reports index",
-  "cargo xtask receipts",
-  "cargo xtask receipts check"
-]
-
-[[work_item]]
-id = "badge/publish-main-endpoint"
-status = "done"
-branch = "badge/publish-main-endpoint"
-stackable = false
-requires_human_merge = true
-acceptance = "Repo-scoped Shields-compatible badge JSON committed to badges/ripr.json and badges/ripr-plus.json (refresh via `cargo xtask update-badge-endpoints`, verify via `cargo xtask check-badge-endpoints`); root README renders them via raw.githubusercontent.com; only repo-scoped artifacts (scope=\"repo\") are referenced from public docs; checked-in JSON chosen over Pages deployment to avoid Pages enablement, workflow surface, and downstream-user implication that ripr requires Pages"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask pr-summary",
-  "cargo xtask check-network-policy",
-  "cargo xtask check-workflows"
-]
-
-[[work_item]]
-id = "campaign/test-efficiency-closeout"
-status = "done"
-branch = "campaign/close-4a"
-stackable = false
-requires_human_merge = true
-acceptance = "Campaign 4A marked complete in .ripr/goals/active.toml and docs/IMPLEMENTATION_CAMPAIGNS.md; final architecture recorded (test-efficiency report + metrics, test_intent + suppressions, diff-scoped PR badge artifacts, repo-scoped badge artifacts, checked-in README badge endpoint JSON served via raw.githubusercontent.com); deferred items noted (hosted-badge-service for productizing badge hosting, seam-inventory-test-grip for the Voice B follow-on campaign); final dogfood snapshot recorded as ripr/ripr+ 163 at main = 6b4b2b0 with the explicit 'snapshot, not fixture expectation' caveat; no production behavior change"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-campaign",
-  "cargo xtask check-readme-state",
-  "cargo xtask markdown-links",
-  "cargo xtask check-doc-index",
-  "cargo xtask check-badge-endpoints"
+  "cargo xtask check-static-language"
 ]
