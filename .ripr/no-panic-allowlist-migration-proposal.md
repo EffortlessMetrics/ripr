@@ -10,8 +10,8 @@ schema_version = "0.2"
 [[allow]]
 path = "xtask/src/main.rs"
 family = "panic_macro"
-classification = "false_positive"
-explanation = "Pattern matching in function that converts panic patterns to family names, not an actual panic"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure: Phase 2 integration"
 
 [allow.selector]
 kind = "macro_call"
@@ -22,7 +22,7 @@ callee = "panic!"
 path = "xtask/src/main.rs"
 family = "panic_macro"
 classification = "test_only"
-explanation = "Test function: panic family pattern matching validation"
+explanation = "Semantic selector test infrastructure: Phase 2 integration"
 
 [allow.selector]
 kind = "macro_call"
@@ -33,73 +33,7 @@ callee = "panic!"
 path = "xtask/src/main.rs"
 family = "panic_macro"
 classification = "test_only"
-explanation = "Test assertion: validates unreachable status value detection"
-
-[allow.selector]
-kind = "macro_call"
-container = "check_report_aggregates_violations_and_status"
-callee = "panic!"
-
-[[allow]]
-path = "xtask/src/main.rs"
-family = "panic_macro"
-classification = "false_positive"
-explanation = "Pattern matching in function that converts panic patterns to family names, not an actual panic"
-
-[allow.selector]
-kind = "macro_call"
-container = "check_report_aggregates_violations_and_status"
-callee = "panic!"
-
-[[allow]]
-path = "xtask/src/main.rs"
-family = "panic_macro"
-classification = "test_only"
-explanation = "Test assertion: validates panic family pattern matching"
-
-[allow.selector]
-kind = "macro_call"
-container = "check_report_aggregates_violations_and_status"
-callee = "panic!"
-
-[[allow]]
-path = "xtask/src/main.rs"
-family = "panic_macro"
-classification = "test_only"
-explanation = "Test assertion: validates process policy panic detection"
-
-[allow.selector]
-kind = "macro_call"
-container = "check_report_aggregates_violations_and_status"
-callee = "panic!"
-
-[[allow]]
-path = "xtask/src/main.rs"
-family = "panic_macro"
-classification = "false_positive"
-explanation = "Pattern matching in function that converts panic patterns to family names, not an actual panic"
-
-[allow.selector]
-kind = "macro_call"
-container = "check_report_aggregates_violations_and_status"
-callee = "panic!"
-
-[[allow]]
-path = "xtask/src/main.rs"
-family = "panic_macro"
-classification = "test_only"
-explanation = "Test assertion: validates panic family pattern matching"
-
-[allow.selector]
-kind = "macro_call"
-container = "check_report_aggregates_violations_and_status"
-callee = "panic!"
-
-[[allow]]
-path = "xtask/src/main.rs"
-family = "panic_macro"
-classification = "test_only"
-explanation = "Test assertion: validates process policy panic detection"
+explanation = "Semantic selector test infrastructure: Phase 2 integration"
 
 [allow.selector]
 kind = "macro_call"
@@ -109,6 +43,6 @@ callee = "panic!"
 
 ## Analysis Notes
 
-- **Total Entries Proposed**: 9
+- **Total Entries Proposed**: 3
 - **Kind Distribution**:
-  - `macro_call`: 9
+  - `macro_call`: 3
