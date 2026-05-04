@@ -94,17 +94,46 @@ pub(super) fn workspace_diagnostics_with_config(
     // multi-second latency to every editor refresh otherwise. Future
     // PR (`cache/repo-seam-facts-v1`) makes this affordable enough to
     // turn on by default.
+    //
+    // Reliability: a seam-walk failure is downgraded to "no seam
+    // diagnostics this refresh", not a hard failure. The opt-in
+    // feature must not take down baseline Finding diagnostics if
+    // some unrelated repo file confuses the walker. Caught by
+    // chatgpt-codex on PR #241.
     let classified_seams = if config.enable_seam_diagnostics {
-        let seams = inventory_classified_seams_at(&root)
-            .map_err(|err| format!("seam inventory failed: {err}"))?;
-        for entry in &seams {
-            if let Some(diagnostic) = diagnostic_for_classified_seam(&root, entry)
-                && let Ok(uri) = file_uri_for_path(&absolute_seam_path(&root, &entry.seam))
-            {
-                grouped.entry(uri).or_default().push(diagnostic);
+        match inventory_classified_seams_at(&root) {
+            Ok(seams) => {
+                seams
+                    .into_iter()
+                    .filter(|entry| {
+                        // Drop entries that won't produce a published
+                        // diagnostic so `is_consistent` keeps counting
+                        // the snapshot accurately. URI-resolution
+                        // failures are silent here on purpose: they
+                        // are operational noise, not analysis errors.
+                        if diagnostic_severity_for_grip_class(entry.class).is_none() {
+                            return false;
+                        }
+                        let path = absolute_seam_path(&root, &entry.seam);
+                        let Ok(uri) = file_uri_for_path(&path) else {
+                            return false;
+                        };
+                        if let Some(diagnostic) =
+                            diagnostic_for_classified_seam(&root, entry)
+                        {
+                            grouped.entry(uri).or_default().push(diagnostic);
+                            true
+                        } else {
+                            false
+                        }
+                    })
+                    .collect()
+            }
+            Err(err) => {
+                eprintln!("ripr lsp: seam diagnostics skipped this refresh: {err}");
+                Vec::new()
             }
         }
-        seams
     } else {
         Vec::new()
     };
@@ -152,23 +181,29 @@ pub(super) fn diagnostic_severity_for_grip_class(
 /// if the class is not surfacable (strongly gripped / intentional /
 /// suppressed). Diagnostic codes are prefixed with `ripr-seam-` so
 /// editor consumers can filter by code without parsing severity.
+///
+/// `_root` is reserved for future range resolution: today seams do
+/// not carry a column, so we anchor the range to the full seam line
+/// (start char 0 to `MAX_DIAGNOSTIC_RANGE_WIDTH`). That way the
+/// squiggle always covers the seam origin even for deeply indented
+/// expressions — caught by chatgpt-codex on PR #241. When seams gain
+/// a stored column, this function can read the source via `_root` to
+/// produce a tighter range.
 pub(super) fn diagnostic_for_classified_seam(
-    root: &Path,
+    _root: &Path,
     entry: &ClassifiedSeam,
 ) -> Option<Diagnostic> {
     let severity = diagnostic_severity_for_grip_class(entry.class)?;
     let seam = &entry.seam;
     let evidence = &entry.evidence;
     let line = seam.display_line().saturating_sub(1) as u32;
-    let width = expression_lsp_width(seam.expression()).min(MAX_DIAGNOSTIC_RANGE_WIDTH);
     let range = Range {
         start: Position { line, character: 0 },
         end: Position {
             line,
-            character: width,
+            character: MAX_DIAGNOSTIC_RANGE_WIDTH,
         },
     };
-    let _ = root;
     Some(Diagnostic {
         range,
         severity: Some(severity),
