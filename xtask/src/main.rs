@@ -10848,15 +10848,23 @@ fn check_old_panic_allowlist_exists() -> Result<(), String> {
 fn strip_yaml_comment(line: &str) -> &str {
     let mut in_single = false;
     let mut in_double = false;
-    let mut prev = '\0';
-    for (idx, ch) in line.char_indices() {
-        match ch {
+    let chars: Vec<char> = line.chars().collect();
+    for idx in 0..chars.len() {
+        match chars[idx] {
             '\'' if !in_double => in_single = !in_single,
-            '"' if !in_single && prev != '\\' => in_double = !in_double,
-            '#' if !in_single && !in_double => return &line[..idx],
+            '"' if !in_single => {
+                let backslash_run = chars[..idx]
+                    .iter()
+                    .rev()
+                    .take_while(|&&c| c == '\\')
+                    .count();
+                if backslash_run % 2 == 0 {
+                    in_double = !in_double;
+                }
+            }
+            '#' if !in_single && !in_double => return &line[..chars[idx].len_utf8() * idx],
             _ => {}
         }
-        prev = ch;
     }
     line
 }
@@ -10980,7 +10988,9 @@ fn check_droid_review_config() -> Result<(), String> {
             ));
         }
 
-        if text.contains("draft")
+        if lines
+            .iter()
+            .any(|line| line.to_ascii_lowercase().contains("draft"))
             && lines
                 .iter()
                 .any(|line| line.contains("if:") && line.to_ascii_lowercase().contains("draft"))
@@ -15776,6 +15786,22 @@ requires_human_merge = false
         assert_eq!(
             strip_yaml_comment("review_model: \"custom:MiniMax-M2.7-0\""),
             "review_model: \"custom:MiniMax-M2.7-0\""
+        );
+    }
+
+    #[test]
+    fn strip_yaml_comment_handles_escaped_quote() {
+        assert_eq!(
+            strip_yaml_comment("key: \"value\\\" # not a comment"),
+            "key: \"value\\\" # not a comment"
+        );
+    }
+
+    #[test]
+    fn strip_yaml_comment_handles_double_backslash_before_quote() {
+        assert_eq!(
+            strip_yaml_comment("key: \"value\\\\\" # real comment"),
+            "key: \"value\\\\\" "
         );
     }
 

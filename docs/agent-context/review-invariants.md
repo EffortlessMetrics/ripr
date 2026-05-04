@@ -55,6 +55,16 @@ For Droid review workflows:
 - Keep `${MINIMAX_API_KEY}` literal in checked-in or artifact-prone files.
 - Do not set `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_BASE_URL`.
 - Keep `show_full_output: false`.
+- `automatic_review: true` and `automatic_security_review: true` must be set.
+- `review_depth: shallow` unless intentionally changed.
+- `cancel-in-progress: false` with per-PR concurrency group.
+- `pull_request` types must include `opened`, `synchronize`, `ready_for_review`, `reopened`.
+- Same-repo guard (`head.repo.full_name == github.repository`) is required.
+- Draft PRs must not be filtered out.
+- `MINIMAX_API_KEY` must be job-level env referencing `${{ secrets.MINIMAX_API_KEY }}`.
+- Action refs must be immutable 40-character commit SHAs.
+- The manual workflow (`droid.yml`) must have trusted actor guards (`OWNER`, `MEMBER`, `COLLABORATOR`).
+- These invariants are enforced by `cargo xtask check-droid-review-config`.
 
 ## Queueing invariants
 
