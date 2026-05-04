@@ -2334,14 +2334,7 @@ fn find_best_matching_finding<'a>(
         return None;
     }
 
-    candidates.sort_by_key(|f| {
-        let line_diff = if f.line > entry.line {
-            f.line - entry.line
-        } else {
-            entry.line - f.line
-        };
-        line_diff
-    });
+    candidates.sort_by_key(|f| f.line.abs_diff(entry.line));
 
     candidates.first().copied()
 }
@@ -10725,6 +10718,7 @@ struct PanicAllowEntry {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // Used in Phase 2 (semantic matching integration)
 struct PanicFamilySelectorKind {
     kind: String,
     container: Option<String>,
@@ -10734,12 +10728,14 @@ struct PanicFamilySelectorKind {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // Used in Phase 2 (semantic matching integration)
 struct PanicFamilyLastSeen {
     line: usize,
     column: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // Used in Phase 2 (semantic matching integration)
 struct PanicAllowEntryV2 {
     path: String,
     family: String,
@@ -10838,65 +10834,60 @@ fn extract_panic_calls_from_node(
     use ra_ap_syntax::ast::{self, AstNode};
 
     for child in node.children() {
-        if let Some(call_expr) = ast::MethodCallExpr::cast(child.clone()) {
-            if let Some(method_name) = call_expr.name_ref() {
-                let name = method_name.text().to_string();
-                for pattern in patterns {
-                    if pattern.contains(&name) && (name == "unwrap" || name == "expect") {
-                        if let Some(finding) = extract_call_metadata(
-                            call_expr.syntax(),
-                            text,
-                            path,
-                            &name,
-                        ) {
-                            findings.push(finding);
-                        }
-                        break;
+        let matched = if let Some(call_expr) = ast::MethodCallExpr::cast(child.clone()) {
+            call_expr
+                .name_ref()
+                .and_then(|method_name| {
+                    let name = method_name.text().to_string();
+                    if pattern_matches_panic_call(patterns, &name) {
+                        extract_call_metadata(call_expr.syntax(), text, path, &name)
+                    } else {
+                        None
                     }
-                }
-            }
+                })
         } else if let Some(call_expr) = ast::CallExpr::cast(child.clone()) {
-            if let Some(path_expr) = call_expr.expr() {
-                let func_text = path_expr.syntax().text().to_string();
-                for pattern in patterns {
-                    if (pattern.contains("panic!") && func_text.contains("panic"))
-                        || (pattern.contains("todo!") && func_text.contains("todo"))
-                        || (pattern.contains("unimplemented!") && func_text.contains("unimplemented"))
-                        || (pattern.contains("unreachable!") && func_text.contains("unreachable"))
-                    {
-                        if let Some(finding) = extract_call_metadata(
-                            call_expr.syntax(),
-                            text,
-                            path,
-                            &func_text,
-                        ) {
-                            findings.push(finding);
-                        }
-                        break;
+            call_expr
+                .expr()
+                .and_then(|path_expr| {
+                    let func_text = path_expr.syntax().text().to_string();
+                    if pattern_matches_panic_call(patterns, &func_text) {
+                        extract_call_metadata(call_expr.syntax(), text, path, &func_text)
+                    } else {
+                        None
                     }
-                }
-            }
+                })
         } else if let Some(macro_call) = ast::MacroCall::cast(child.clone()) {
-            if let Some(path_seg) = macro_call.path().and_then(|p| p.segment()) {
-                let name = path_seg.name_ref().map(|n| n.text().to_string()).unwrap_or_default();
-                for pattern in patterns {
-                    if pattern.contains(&format!("{}!", name)) {
-                        if let Some(finding) = extract_call_metadata(
-                            macro_call.syntax(),
-                            text,
-                            path,
-                            &format!("{}!", name),
-                        ) {
-                            findings.push(finding);
-                        }
-                        break;
+            macro_call
+                .path()
+                .and_then(|p| p.segment())
+                .and_then(|path_seg| {
+                    let name = path_seg.name_ref().map(|n| n.text().to_string()).unwrap_or_default();
+                    let macro_name = format!("{}!", name);
+                    if pattern_matches_panic_call(patterns, &macro_name) {
+                        extract_call_metadata(macro_call.syntax(), text, path, &macro_name)
+                    } else {
+                        None
                     }
-                }
-            }
+                })
+        } else {
+            None
+        };
+
+        if let Some(finding) = matched {
+            findings.push(finding);
         }
 
         extract_panic_calls_from_node(&child, text, path, patterns, findings);
     }
+}
+
+fn pattern_matches_panic_call(patterns: &[String], text: &str) -> bool {
+    for pattern in patterns {
+        if pattern == text {
+            return true;
+        }
+    }
+    false
 }
 
 fn extract_call_metadata(
@@ -10924,12 +10915,12 @@ fn extract_call_metadata(
 }
 
 fn line_and_column_for_node(node: &ra_ap_syntax::SyntaxNode, text: &str) -> (usize, Option<usize>) {
-    let offset = node.text_range().start().into();
+    let offset: usize = node.text_range().start().into();
     let mut line = 1;
     let mut col = 0;
 
-    for (idx, ch) in text.chars().enumerate() {
-        if idx >= offset {
+    for (byte_idx, ch) in text.char_indices() {
+        if byte_idx >= offset {
             break;
         }
         if ch == '\n' {
@@ -10960,20 +10951,23 @@ fn extract_container_name(node: &ra_ap_syntax::SyntaxNode) -> Option<String> {
 
     let mut current = node.parent();
     while let Some(parent) = current {
-        if let Some(func) = ast::Fn::cast(parent.clone()) {
-            if let Some(name) = func.name() {
-                return Some(name.text().to_string());
+        let result = (|| {
+            if let Some(func) = ast::Fn::cast(parent.clone()) {
+                return func.name().map(|n| n.text().to_string());
             }
-        } else if let Some(impl_block) = ast::Impl::cast(parent.clone()) {
-            if let Some(name_ref) = impl_block.self_ty().and_then(|t| {
-                if let ast::Type::PathType(pt) = t {
-                    pt.path().and_then(|p| p.segment().and_then(|s| s.name_ref()))
-                } else {
-                    None
-                }
-            }) {
-                return Some(name_ref.text().to_string());
+            if let Some(impl_block) = ast::Impl::cast(parent.clone()) {
+                return impl_block.self_ty().and_then(|t| {
+                    if let ast::Type::PathType(pt) = t {
+                        pt.path().and_then(|p| p.segment().and_then(|s| s.name_ref().map(|n| n.text().to_string())))
+                    } else {
+                        None
+                    }
+                });
             }
+            None
+        })();
+        if result.is_some() {
+            return result;
         }
         current = parent.parent();
     }
@@ -11184,44 +11178,35 @@ fn check_old_panic_allowlist_exists() -> Result<(), String> {
     Ok(())
 }
 
+#[allow(dead_code)] // Used in Phase 2 (semantic matching integration)
 fn semantic_selector_matches(
     selector: &PanicFamilySelectorKind,
     finding: &SemanticPanicFinding,
 ) -> bool {
-    if selector.kind != "method_call" && selector.kind != "call" && selector.kind != "macro_call"
-        && selector.kind != "string_literal"
-    {
+    let valid_kind = matches!(
+        selector.kind.as_str(),
+        "method_call" | "call" | "macro_call" | "string_literal"
+    );
+    if !valid_kind {
         return false;
     }
 
     if selector.kind == "string_literal" {
-        if let Some(text_contains) = &selector.text_contains {
-            return finding.snippet_fingerprint.contains(text_contains);
-        }
-        return false;
+        return selector
+            .text_contains
+            .as_ref()
+            .is_some_and(|tc| finding.snippet_fingerprint.contains(tc));
     }
 
-    if let Some(container) = &selector.container {
-        if finding.container.as_ref() != Some(container) {
-            return false;
-        }
-    }
-
-    if let Some(callee) = &selector.callee {
-        if finding.callee.as_ref() != Some(callee) {
-            return false;
-        }
-    }
-
-    if let Some(receiver_fp) = &selector.receiver_fingerprint {
-        if finding.receiver_fingerprint.as_ref() != Some(receiver_fp) {
-            return false;
-        }
-    }
-
-    true
+    (selector.container.is_none()
+        || finding.container.as_ref() == selector.container.as_ref())
+        && (selector.callee.is_none()
+            || finding.callee.as_ref() == selector.callee.as_ref())
+        && (selector.receiver_fingerprint.is_none()
+            || finding.receiver_fingerprint.as_ref() == selector.receiver_fingerprint.as_ref())
 }
 
+#[allow(dead_code)] // Used in Phase 2 (semantic matching integration)
 fn matches_panic_finding(entry: &PanicAllowEntry, finding: &PanicFinding) -> bool {
     entry.path == finding.path
         && entry.line == finding.line
@@ -11236,6 +11221,7 @@ fn matches_semantic_finding(
     entry.path == finding.path && entry.family == finding.family
 }
 
+#[allow(dead_code)] // Used in Phase 2 (semantic matching integration)
 fn panic_allowlist_v0_2_matches_semantic(
     entry: &PanicAllowEntryV2,
     finding: &SemanticPanicFinding,
@@ -11251,6 +11237,7 @@ fn panic_allowlist_v0_2_matches_semantic(
     }
 }
 
+#[allow(dead_code)] // Used in Phase 2 (semantic matching integration)
 fn parse_no_panic_allowlist_toml_v0_2(path: &str) -> Result<Vec<PanicAllowEntryV2>, String> {
     let text = read_text_lossy(Path::new(path))?;
     let mut entries = Vec::new();
@@ -11293,6 +11280,12 @@ fn parse_no_panic_allowlist_toml_v0_2(path: &str) -> Result<Vec<PanicAllowEntryV
 
         if trimmed == "[[allow]]" {
             if has_entry_started {
+                if selector_data.kind != String::new() {
+                    current_entry.selector = Some(selector_data.clone());
+                }
+                if last_seen_data.line > 0 {
+                    current_entry.last_seen = Some(last_seen_data.clone());
+                }
                 validate_panic_allow_entry_v2(&current_entry, path, entry_start_line)?;
                 entries.push(current_entry.clone());
             }
@@ -11412,6 +11405,7 @@ fn parse_no_panic_allowlist_toml_v0_2(path: &str) -> Result<Vec<PanicAllowEntryV
     Ok(entries)
 }
 
+#[allow(dead_code)] // Used in Phase 2 (semantic matching integration)
 fn validate_panic_allow_entry_v2(
     entry: &PanicAllowEntryV2,
     path: &str,
