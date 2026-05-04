@@ -12,7 +12,7 @@
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](Cargo.toml)
 [![MSRV](https://img.shields.io/badge/MSRV-1.93-blue)](https://www.rust-lang.org/)
 
-<!-- The `ripr` and `ripr+` badges count unresolved repo-scoped exposure findings under the configured policy — inbox-zero, not coverage. The v1 baseline reflects currently-probeable production syntax shapes; it is not full seam inventory or mutation adequacy proof. See [docs/BADGE_POLICY.md](docs/BADGE_POLICY.md). -->
+<!-- The `ripr` and `ripr+` badges count unresolved repo-scoped exposure findings under the configured policy — inbox-zero, not coverage. The v1 baseline reflects currently-probeable production syntax shapes; it is not full seam inventory or mutation adequacy proof. The Shields JSON is hosted on this repo's self-hosted GitHub Pages dogfood endpoint; downstream users do not have to enable Pages — the ripr product contract is "ripr emits Shields-compatible JSON" and any stable public host can serve it. See [docs/BADGE_POLICY.md](docs/BADGE_POLICY.md) and `deferred/hosted-badge-service` in [docs/DEFERRED.md](docs/DEFERRED.md). -->
 
 
 <!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-02 from the public listing. Refresh from publisher metrics after publish. Do not use live VS Marketplace Shields routes. -->

@@ -23,7 +23,11 @@ permissions:
 
 jobs:
   publish:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Publish from `main` only. Both push and workflow_dispatch are
+    # accepted so a maintainer can re-publish manually if a deploy
+    # needs retrying (e.g. first Pages enable, transient API failure).
+    # PR refs and any non-main branch are rejected.
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     environment:
       name: github-pages
