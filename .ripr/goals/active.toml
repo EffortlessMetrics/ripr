@@ -153,7 +153,7 @@ commands = [
 
 [[work_item]]
 id = "syntax/adapter-extraction"
-status = "ready"
+status = "done"
 branch = "syntax-adapter-extraction"
 stackable = false
 requires_human_merge = true
@@ -165,5 +165,23 @@ commands = [
   "cargo xtask check-public-api",
   "cargo xtask check-architecture",
   "cargo xtask check-output-contracts",
+  "cargo test --workspace"
+]
+
+[[work_item]]
+id = "facts/builder-extraction"
+status = "ready"
+branch = "build-index-extraction"
+stackable = false
+requires_human_merge = true
+acceptance = "index construction moves into analysis/facts/build.rs after syntax adapter type extraction; parser-backed extraction, lexical fallback, and query logic remain behavior-stable with no output, API, or schema drift"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-public-api",
+  "cargo xtask check-architecture",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-no-panic-family",
   "cargo test --workspace"
 ]
