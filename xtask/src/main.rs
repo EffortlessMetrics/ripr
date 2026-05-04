@@ -2353,7 +2353,11 @@ fn find_best_matching_finding<'a>(
     }
 
     // Prefer exact line matches first, then fall back to nearest line
-    let exact_matches: Vec<_> = candidates.iter().filter(|f| f.line == entry.line).copied().collect();
+    let exact_matches: Vec<_> = candidates
+        .iter()
+        .filter(|f| f.line == entry.line)
+        .copied()
+        .collect();
     if !exact_matches.is_empty() {
         // Among exact line matches, prefer column proximity if available
         if let Some(entry_col) = entry.column {
@@ -2409,8 +2413,14 @@ fn generate_migration_markdown(
 
     for (entry, selector) in entries {
         md.push_str("\n[[allow]]\n");
-        md.push_str(&format!("path = \"{}\"\n", toml_basic_string_escape(&entry.path)));
-        md.push_str(&format!("family = \"{}\"\n", toml_basic_string_escape(&entry.family)));
+        md.push_str(&format!(
+            "path = \"{}\"\n",
+            toml_basic_string_escape(&entry.path)
+        ));
+        md.push_str(&format!(
+            "family = \"{}\"\n",
+            toml_basic_string_escape(&entry.family)
+        ));
         md.push_str(&format!(
             "classification = \"{}\"\n",
             toml_basic_string_escape(entry.classification.as_deref().unwrap_or("test_only"))
@@ -2420,7 +2430,10 @@ fn generate_migration_markdown(
             toml_basic_string_escape(&entry.explanation)
         ));
         md.push_str("\n[allow.selector]\n");
-        md.push_str(&format!("kind = \"{}\"\n", toml_basic_string_escape(&selector.kind)));
+        md.push_str(&format!(
+            "kind = \"{}\"\n",
+            toml_basic_string_escape(&selector.kind)
+        ));
         if let Some(container) = &selector.container {
             md.push_str(&format!(
                 "container = \"{}\"\n",
@@ -2428,7 +2441,10 @@ fn generate_migration_markdown(
             ));
         }
         if let Some(callee) = &selector.callee {
-            md.push_str(&format!("callee = \"{}\"\n", toml_basic_string_escape(callee)));
+            md.push_str(&format!(
+                "callee = \"{}\"\n",
+                toml_basic_string_escape(callee)
+            ));
         }
         if let Some(receiver_fp) = &selector.receiver_fingerprint {
             md.push_str(&format!(
@@ -11325,7 +11341,8 @@ fn semantic_selector_matches(
     }
 
     selector.kind == finding.kind
-        && (selector.container.is_none() || finding.container.as_ref() == selector.container.as_ref())
+        && (selector.container.is_none()
+            || finding.container.as_ref() == selector.container.as_ref())
         && (selector.callee.is_none() || finding.callee.as_ref() == selector.callee.as_ref())
         && (selector.receiver_fingerprint.is_none()
             || finding.receiver_fingerprint.as_ref() == selector.receiver_fingerprint.as_ref())
