@@ -12283,10 +12283,7 @@ fn test_with_chained_calls() {
             collect_semantic_panic_findings(&root, &patterns).expect("failed to collect findings");
 
         // Verify that unwrap calls were found
-        let unwrap_findings: Vec<_> = findings
-            .iter()
-            .filter(|f| f.family == "unwrap")
-            .collect();
+        let unwrap_findings: Vec<_> = findings.iter().filter(|f| f.family == "unwrap").collect();
         assert!(
             !unwrap_findings.is_empty(),
             "should find unwrap calls in multiline expressions"
