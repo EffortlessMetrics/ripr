@@ -11,4 +11,5 @@
 # These structs and functions are tested in test modules but not yet
 # integrated into production code. Will be used when semantic matching
 # is integrated into check_no_panic_family command.
+
 xtask/src/main.rs|allow(dead_code)|4|Tested semantic selector infrastructure for Phase 2 integration
