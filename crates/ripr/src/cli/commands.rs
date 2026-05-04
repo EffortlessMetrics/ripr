@@ -273,4 +273,103 @@ mod tests {
             Err("unknown lsp argument \"--bad\"".to_string())
         );
     }
+
+    #[test]
+    fn check_rejects_unknown_argument() {
+        assert_eq!(
+            check(&args(&["--wat"])),
+            Err("unknown check argument \"--wat\"".to_string())
+        );
+    }
+
+    #[test]
+    fn check_requires_values_for_all_value_flags() {
+        assert_eq!(
+            check(&args(&["--root"])),
+            Err("missing value for --root".to_string())
+        );
+        assert_eq!(
+            check(&args(&["--base"])),
+            Err("missing value for --base".to_string())
+        );
+        assert_eq!(
+            check(&args(&["--format"])),
+            Err("missing value for --format".to_string())
+        );
+    }
+
+    #[test]
+    fn explain_requires_selector() {
+        assert_eq!(
+            explain(&args(&[])),
+            Err("missing finding selector".to_string())
+        );
+    }
+
+    #[test]
+    fn explain_rejects_unexpected_argument_after_selector() {
+        assert_eq!(
+            explain(&args(&["probe:src_lib_rs:10:return_value", "extra"])),
+            Err("unexpected explain argument \"extra\"".to_string())
+        );
+    }
+
+    #[test]
+    fn explain_requires_values_for_value_flags() {
+        assert_eq!(
+            explain(&args(&["--root"])),
+            Err("missing value for --root".to_string())
+        );
+        assert_eq!(
+            explain(&args(&["--base"])),
+            Err("missing value for --base".to_string())
+        );
+        assert_eq!(
+            explain(&args(&["--diff"])),
+            Err("missing value for --diff".to_string())
+        );
+    }
+
+    #[test]
+    fn context_requires_selector() {
+        assert_eq!(
+            context(&args(&[])),
+            Err("missing --at or --finding selector".to_string())
+        );
+    }
+
+    #[test]
+    fn context_rejects_unknown_argument() {
+        assert_eq!(
+            context(&args(&["--unknown", "value"])),
+            Err("unexpected context argument \"--unknown\"".to_string())
+        );
+    }
+
+    #[test]
+    fn context_requires_values_for_value_flags() {
+        assert_eq!(
+            context(&args(&["--at"])),
+            Err("missing value for --at".to_string())
+        );
+        assert_eq!(
+            context(&args(&["--finding"])),
+            Err("missing value for --finding".to_string())
+        );
+        assert_eq!(
+            context(&args(&["--root"])),
+            Err("missing value for --root".to_string())
+        );
+    }
+
+    #[test]
+    fn lsp_accepts_stdio_flag() {
+        // lsp function doesn't reject --stdio, it just processes it
+        assert_eq!(lsp(&args(&["--stdio"])), Ok(()));
+    }
+
+    #[test]
+    fn lsp_version_returns_ok_with_short_flag() {
+        assert_eq!(lsp(&args(&["-V"])), Ok(()));
+    }
 }
