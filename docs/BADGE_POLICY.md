@@ -574,55 +574,84 @@ is required.
 
 ### Self-hosted dogfood endpoint (this repo)
 
-`.github/workflows/publish-badge-endpoint.yml` is **this repo's
-self-hosted dogfood endpoint**. It is not the standard downstream-user
-publishing model.
+This repo's v1 dogfood endpoint is **two Shields JSON files committed
+to `main`**, served via `raw.githubusercontent.com`. It is not the
+standard downstream-user publishing model.
 
-The workflow runs `cargo xtask test-efficiency-report` and
-`cargo xtask repo-badge-artifacts`, copies exactly two Shields JSON
-files into the Pages deployment artifact, and serves them at:
+The committed files live at:
 
 ```text
-https://effortlessmetrics.github.io/ripr/badges/ripr.json
-https://effortlessmetrics.github.io/ripr/badges/ripr-plus.json
+badges/ripr.json
+badges/ripr-plus.json
+```
+
+Each is a minimal four-field Shields object, e.g.:
+
+```json
+{
+  "schemaVersion": 1,
+  "label": "ripr",
+  "message": "163",
+  "color": "orange"
+}
 ```
 
 The README renders those endpoints via:
 
 ```text
-https://img.shields.io/endpoint?url=https://effortlessmetrics.github.io/ripr/badges/ripr.json
-https://img.shields.io/endpoint?url=https://effortlessmetrics.github.io/ripr/badges/ripr-plus.json
+https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/EffortlessMetrics/ripr/main/badges/ripr.json
+https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/EffortlessMetrics/ripr/main/badges/ripr-plus.json
 ```
 
-What is on Pages is **only** those two files — no full reports, no
-generated markdown, no diff-scoped artifacts, no HTML dashboard, no
-`target/` snapshots. Pages is being used as a static Shields-endpoint
-host, not as a website.
+Refreshing the committed files is one xtask command:
+
+```bash
+cargo xtask update-badge-endpoints
+```
+
+That regenerates `target/ripr/reports/repo-ripr-{badge,plus-badge}-shields.json`
+via `repo_badge_artifacts()` and copies the two Shields projections
+into `badges/`. Commit the resulting diff.
 
 #### Pinned contract for the endpoint
 
-- The publish job's guard is
-  `github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')`.
-  PR refs and any non-`main` branch are rejected. `workflow_dispatch`
-  is accepted from `main` so a maintainer can re-publish manually
-  (e.g. first Pages enable or transient deploy failure).
-- The job uses first-party `actions/configure-pages`,
-  `actions/upload-pages-artifact`, and `actions/deploy-pages` —
-  GitHub Pages deployment via Actions, **not** a `gh-pages` branch.
-  No `curl`/`wget` patterns are introduced; `policy/network_allowlist.txt`
-  does not need a new entry. The workflow is registered in
-  `policy/workflow_allowlist.txt`.
-- Only repo-scoped Shields JSON is published. Diff-scoped artifacts
-  (`ripr-badge-shields.json`, `ripr-plus-badge-shields.json`) stay in
-  per-PR step summaries and CI artifact uploads.
-- README and store-facing docs reference the published repo-scoped
-  endpoint URLs only; they never embed PR-artifact URLs or
-  `target/ripr/reports/` paths.
+- Only the two `badges/*.json` files are part of the public endpoint
+  surface — no reports, no markdown, no diff-scoped artifacts, no
+  `target/` snapshots.
+- The endpoint URL points at the `main` branch via
+  `raw.githubusercontent.com`. Shields/CDN cache layers can take
+  minutes to refresh after a `main` push.
+- Diff-scoped artifacts (`ripr-badge-shields.json`,
+  `ripr-plus-badge-shields.json`) stay in per-PR step summaries and
+  CI artifact uploads — never linked from public docs.
+- `cargo xtask check-badge-endpoints` verifies the committed files
+  against a fresh `repo-badge-artifacts` run. It is **not** wired into
+  the default CI gate set in v1: the headline drifts whenever
+  production code or tests change, and requiring every PR to also
+  refresh `badges/` would be too much friction before the count
+  stabilizes. Use it locally before campaign closeouts and after
+  material analyzer changes.
 - The `ripr 0` headline on `main` means: zero unresolved actionable
   exposure findings under the v1 currently-probeable repo baseline.
   It does not mean the repo is fully tested, that all behavior seams
   are gripped by oracles, or that mutation testing would pass — see
   "What v1 repo scope means — and does not mean" above.
+
+#### Why checked-in JSON, not GitHub Pages
+
+An earlier shape of this work used a Pages deployment workflow with
+first-party `actions/configure-pages` / `actions/upload-pages-artifact`
+/ `actions/deploy-pages`. That was over-engineered for v1 dogfood:
+
+- it required the repo owner to enable Pages
+- it added a workflow + `policy/workflow_allowlist.txt` entry +
+  Pages permissions surface
+- it implied that downstream users should also enable Pages, which is
+  not the long-term `ripr` user story
+
+Checked-in JSON gives the same public-URL-on-`main` outcome with much
+less machinery, and badge changes show up in PR diffs — which is
+useful while the repo headline is still stabilizing.
 
 #### What downstream users should do
 
@@ -630,9 +659,10 @@ If you want `ripr` and `ripr+` badges in your own README today:
 
 1. Run `ripr` in your CI.
 2. Pick **any** stable public surface to serve the resulting Shields
-   JSON: GitHub Pages (the pattern this repo uses), an
-   organization-level badge-host repo, a static asset bucket, a Gist,
-   or a hosted host. Pages is one option; it is not a requirement.
+   JSON: a committed `badges/` directory in your repo (the pattern
+   this repo uses), GitHub Pages, an organization-level badge-host
+   repo, a static asset bucket, a Gist, or a hosted host. None is
+   required.
 3. Point Shields at your URL via the
    `https://img.shields.io/endpoint?url=...` pattern.
 

@@ -391,6 +391,8 @@ fn main() {
         Some("test-efficiency-report") => test_efficiency_report(),
         Some("badge-artifacts") => badge_artifacts(),
         Some("repo-badge-artifacts") => repo_badge_artifacts(),
+        Some("update-badge-endpoints") => update_badge_endpoints(),
+        Some("check-badge-endpoints") => check_badge_endpoints(),
         Some("dogfood") => dogfood(),
         Some("critic") => critic(),
         Some("goals") => goals(&args[2..]),
@@ -548,7 +550,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  golden-drift\n  metrics\n  test-oracle-report\n  check-test-oracles\n  test-efficiency-report\n  badge-artifacts\n  repo-badge-artifacts\n  dogfood\n  critic\n  goals status|next|report\n  reports index\n  receipts [check]\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-allow-attributes\n  check-local-context\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-supply-chain\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
+        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  golden-drift\n  metrics\n  test-oracle-report\n  check-test-oracles\n  test-efficiency-report\n  badge-artifacts\n  repo-badge-artifacts\n  update-badge-endpoints\n  check-badge-endpoints\n  dogfood\n  critic\n  goals status|next|report\n  reports index\n  receipts [check]\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-allow-attributes\n  check-local-context\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-supply-chain\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
     );
 }
 
@@ -5316,6 +5318,91 @@ classification are tracked as later work.\n\n",
     markdown
 }
 
+/// Names of the two committed badge endpoint files served via
+/// `raw.githubusercontent.com/.../main/badges/<file>`. The `ripr`
+/// product contract is "ripr emits Shields-compatible JSON"; this is
+/// just the v1 self-hosted dogfood path that copies the latest
+/// repo-scoped Shields JSON into a stable repo-relative location.
+/// See `docs/BADGE_POLICY.md` and `deferred/hosted-badge-service`.
+const BADGE_ENDPOINT_FILES: &[(&str, &str)] = &[
+    ("badges/ripr.json", "repo-ripr-badge-shields.json"),
+    ("badges/ripr-plus.json", "repo-ripr-plus-badge-shields.json"),
+];
+
+/// Regenerates `target/ripr/reports/repo-ripr-{badge,plus-badge}-shields.json`
+/// via `repo_badge_artifacts()` and copies the two Shields projections
+/// into the committed `badges/` directory so the README endpoint URLs
+/// reflect the latest repo-scoped state.
+fn update_badge_endpoints() -> Result<(), String> {
+    repo_badge_artifacts()?;
+    fs::create_dir_all("badges")
+        .map_err(|err| format!("failed to create badges directory: {err}"))?;
+    for (committed, source_name) in BADGE_ENDPOINT_FILES {
+        let source = Path::new("target/ripr/reports").join(source_name);
+        let bytes = fs::read(&source).map_err(|err| {
+            format!(
+                "failed to read {} (run `cargo xtask repo-badge-artifacts` first): {err}",
+                normalize_path(&source)
+            )
+        })?;
+        fs::write(committed, &bytes)
+            .map_err(|err| format!("failed to write {committed}: {err}"))?;
+    }
+    Ok(())
+}
+
+/// Verifies that the committed `badges/*.json` files match the latest
+/// `cargo xtask repo-badge-artifacts` output. Fails with an actionable
+/// message pointing at `cargo xtask update-badge-endpoints` when stale.
+/// Intentionally not added to the default CI gate set in v1 — the
+/// endpoint count drifts whenever production code or tests change, and
+/// requiring every PR to also update `badges/` is too much friction
+/// before the headline stabilizes. Use locally before campaign
+/// closeouts and after material analyzer changes.
+fn check_badge_endpoints() -> Result<(), String> {
+    repo_badge_artifacts()?;
+    let mut violations = Vec::new();
+    for (committed, source_name) in BADGE_ENDPOINT_FILES {
+        let source = Path::new("target/ripr/reports").join(source_name);
+        let want = fs::read(&source)
+            .map_err(|err| format!("failed to read {}: {err}", normalize_path(&source)))?;
+        let got = match fs::read(committed) {
+            Ok(bytes) => bytes,
+            Err(err) => {
+                violations.push(format!(
+                    "missing badge endpoint file {committed}: {err}; \
+                     run `cargo xtask update-badge-endpoints`"
+                ));
+                continue;
+            }
+        };
+        if want != got {
+            violations.push(format!(
+                "badge endpoint file {committed} is stale relative to \
+                 {}; run `cargo xtask update-badge-endpoints` and commit \
+                 the diff",
+                normalize_path(&source)
+            ));
+        }
+    }
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "badge-endpoints.md",
+            check: "check-badge-endpoints",
+            why_it_matters: "The committed badges/*.json files are the public Shields endpoint surfaces; stale files cause the README badge to lie about repo state.",
+            fix_kind: FixKind::AuthorDecisionRequired,
+            recommended_fixes: &[
+                "Run `cargo xtask update-badge-endpoints` and commit the resulting badges/*.json diff.",
+                "If the drift is from an unrelated PR, run `cargo xtask update-badge-endpoints` on `main` and commit on its own scoped PR.",
+                "Skip running this check on PRs that do not change the repo headline (it is not yet a hard CI gate).",
+            ],
+            rerun_command: "cargo xtask check-badge-endpoints",
+            exception_template: None,
+        },
+        &violations,
+    )
+}
+
 fn append_badge_section(markdown: &mut String, heading: &str, native_json: &str) {
     let message = extract_json_string(native_json, "\"message\":").unwrap_or_default();
     let color = extract_json_string(native_json, "\"color\":").unwrap_or_default();
@@ -7256,6 +7343,8 @@ fn known_xtask_command(command: &str) -> bool {
             | "test-efficiency-report"
             | "badge-artifacts"
             | "repo-badge-artifacts"
+            | "update-badge-endpoints"
+            | "check-badge-endpoints"
             | "dogfood"
             | "critic"
             | "goals"
