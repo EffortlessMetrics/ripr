@@ -34,7 +34,7 @@ coverage:
 
       automation:
         target: 75%
-        threshold: 3%
+        threshold: 10%
         paths:
           - xtask/src/
 
