@@ -252,22 +252,41 @@ fn badge_status_color(count: usize, fail_on_nonzero: bool) -> (BadgeStatus, &'st
     }
 }
 
-/// One actionable test-efficiency entry seen by the badge, retained so
-/// suppressions can be applied per-`(test, path)` after the report is
-/// parsed.
+/// One test-efficiency entry seen by the badge, retained so suppressions
+/// can be applied per-`(test, path)` after the report is parsed and so
+/// scope-aware aggregation can filter by relationship to the diff.
+///
+/// `class` is the per-test class string from the test-efficiency report
+/// (e.g. `smoke_only`, `likely_vacuous`, `opaque`, `strong_discriminator`).
+/// `reached_owners` is the per-test owner list — the same shape used by
+/// the analyzer's `Finding.probe.owner.0` (`SymbolId.0`) — so a
+/// diff-scope filter can intersect them with the changed/probed owner
+/// set without an extra fact-extraction pass.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TestEfficiencyBadgeEntry {
     pub test: String,
     pub path: String,
     pub has_intent: bool,
+    pub class: String,
+    pub reached_owners: Vec<String>,
 }
 
 /// Test-efficiency contribution to the `ripr+` badge. Built by parsing
 /// `target/ripr/reports/test-efficiency.json`; the per-test ledger is
 /// the source of truth because `declared_intent` exclusion is per-test
-/// and cannot be derived from aggregate `class_counts` alone. Actionable
-/// entries are kept on the side so the badge orchestrator can apply
-/// suppressions after the parse.
+/// and cannot be derived from aggregate `class_counts` alone.
+///
+/// `entries` carries every parsed entry (actionable, intentional,
+/// opaque, and visible-only) with its class and reached owners so that
+/// diff-scope aggregation can filter and recount without re-parsing.
+/// The aggregate counters (`unsuppressed_*`, `intentional_*`,
+/// `unknowns_te`) are the **repo-wide** totals; diff-scope aggregation
+/// recomputes its own counts from `entries`.
+///
+/// `actionable_entries` is the legacy projection preserved for the
+/// suppression matcher: only actionable, non-intentional entries.
+/// Repo-scope aggregation pairs it with the repo-wide totals; diff-scope
+/// aggregation derives its own filtered view from `entries`.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct TestEfficiencyBadgeSummary {
     pub unsuppressed_test_efficiency_findings: usize,
@@ -276,9 +295,13 @@ pub struct TestEfficiencyBadgeSummary {
     pub analyzed_tests: usize,
     pub reason_counts: BTreeMap<&'static str, usize>,
     /// Actionable, non-intentional entries — i.e., the candidate set for
-    /// `ripr+` suppression matching. Empty when no test-efficiency entry
-    /// is actionable.
+    /// `ripr+` suppression matching under repo scope. Empty when no
+    /// test-efficiency entry is actionable.
     pub actionable_entries: Vec<TestEfficiencyBadgeEntry>,
+    /// Every parsed entry (actionable, intentional, opaque, and
+    /// visible-only) with class and reached owners. Used by diff-scope
+    /// aggregation to filter to tests related to the changed code.
+    pub entries: Vec<TestEfficiencyBadgeEntry>,
 }
 
 /// The test-efficiency `class` strings that contribute to `ripr+` when not
@@ -325,6 +348,7 @@ pub fn parse_test_efficiency_badge_summary(
     let mut intentional = 0usize;
     let mut unknowns_te = 0usize;
     let mut actionable_entries: Vec<TestEfficiencyBadgeEntry> = Vec::new();
+    let mut all_entries: Vec<TestEfficiencyBadgeEntry> = Vec::new();
 
     for entry in tests {
         let class = entry
@@ -333,25 +357,38 @@ pub fn parse_test_efficiency_badge_summary(
             .ok_or_else(|| "test-efficiency entry is missing `class`".to_string())?;
         let has_intent = entry.get("declared_intent").is_some();
 
+        let test_name = entry
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let path = entry
+            .get("path")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let reached_owners: Vec<String> = entry
+            .get("reached_owners")
+            .and_then(Value::as_array)
+            .map(|values| {
+                values
+                    .iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+
         if ACTIONABLE_TE_CLASSES.contains(&class) {
             if has_intent {
                 intentional += 1;
             } else {
                 unsuppressed += 1;
-                let test_name = entry
-                    .get("name")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string();
-                let path = entry
-                    .get("path")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string();
                 actionable_entries.push(TestEfficiencyBadgeEntry {
-                    test: test_name,
-                    path,
+                    test: test_name.clone(),
+                    path: path.clone(),
                     has_intent: false,
+                    class: class.to_string(),
+                    reached_owners: reached_owners.clone(),
                 });
             }
         } else if class == "opaque" {
@@ -370,6 +407,14 @@ pub fn parse_test_efficiency_badge_summary(
                 .join(", ")
             ));
         }
+
+        all_entries.push(TestEfficiencyBadgeEntry {
+            test: test_name,
+            path,
+            has_intent,
+            class: class.to_string(),
+            reached_owners,
+        });
     }
 
     let analyzed_tests = value
@@ -406,7 +451,77 @@ pub fn parse_test_efficiency_badge_summary(
         analyzed_tests,
         reason_counts,
         actionable_entries,
+        entries: all_entries,
     })
+}
+
+/// The set of tests + owners considered "related to the diff" for
+/// scope-aware `ripr+` aggregation. Built from `CheckOutput.findings`:
+///
+/// - `related_test_keys` contains both the bare test name and a
+///   `<path>::<name>` qualified form so the filter can match either
+///   shape from the test-efficiency report.
+/// - `changed_owners` is the set of owner symbol strings extracted from
+///   `Finding.probe.owner` — same shape as the test-efficiency JSON's
+///   `reached_owners` field.
+///
+/// A test-efficiency entry is *related* to the diff if either:
+/// 1. its bare or qualified name appears in `related_test_keys`, or
+/// 2. its `reached_owners` intersect `changed_owners`.
+#[derive(Clone, Debug, Default)]
+pub struct DiffRelatedTests {
+    pub related_test_keys: BTreeSet<String>,
+    pub changed_owners: BTreeSet<String>,
+}
+
+impl DiffRelatedTests {
+    pub fn from_check_output(output: &CheckOutput) -> Self {
+        let mut related_test_keys = BTreeSet::new();
+        let mut changed_owners = BTreeSet::new();
+        for finding in &output.findings {
+            if let Some(owner) = finding.probe.owner.as_ref() {
+                changed_owners.insert(owner.0.clone());
+            }
+            for test in &finding.related_tests {
+                let path = test.file.to_string_lossy().into_owned();
+                related_test_keys.insert(test.name.clone());
+                related_test_keys.insert(format!("{}::{}", path, test.name));
+            }
+        }
+        Self {
+            related_test_keys,
+            changed_owners,
+        }
+    }
+
+    fn includes(&self, entry: &TestEfficiencyBadgeEntry) -> bool {
+        if self.related_test_keys.contains(&entry.test) {
+            return true;
+        }
+        let qualified = format!("{}::{}", entry.path, entry.test);
+        if self.related_test_keys.contains(&qualified) {
+            return true;
+        }
+        entry
+            .reached_owners
+            .iter()
+            .any(|owner| self.changed_owners.contains(owner))
+    }
+}
+
+/// Aggregation scope for the `ripr+` test-efficiency contribution.
+/// `cargo xtask test-efficiency-report` is repo-wide as a fact source;
+/// badge aggregation must be scope-aware so a PR badge is not noisy
+/// with unrelated whole-repo test-efficiency debt.
+#[derive(Clone, Debug)]
+pub enum TestEfficiencyAggregationScope<'a> {
+    /// Repo-scoped aggregation: count every entry from the repo-wide
+    /// ledger (current behavior, used by `repo-badge-plus-*` formats).
+    Repo,
+    /// Diff-scoped aggregation: filter to entries whose tests appear in
+    /// the diff's related-tests set or whose `reached_owners` intersect
+    /// the diff's changed/probed owners.
+    Diff(&'a DiffRelatedTests),
 }
 
 /// Builds the `ripr+` badge summary from a `CheckOutput` plus a parsed
@@ -414,40 +529,84 @@ pub fn parse_test_efficiency_badge_summary(
 /// `exposure_gap` suppressions to the exposure side and
 /// `test_efficiency` suppressions to the actionable test-efficiency
 /// entries; expired and unmatched selectors surface as `warnings`.
+///
+/// `scope` controls whether the test-efficiency contribution comes
+/// from the repo-wide ledger (`Repo`) or is filtered to entries
+/// related to the diff under analysis (`Diff`). The exposure side is
+/// already scope-aware via the underlying `CheckOutput` (built by the
+/// diff or repo analysis), so only the test-efficiency contribution
+/// needs scope-awareness here.
 pub fn ripr_plus_badge_summary_with_suppressions(
     output: &CheckOutput,
     test_efficiency: TestEfficiencyBadgeSummary,
     suppressions: &[SuppressionEntry],
     today: &str,
     policy: BadgePolicy,
+    scope: TestEfficiencyAggregationScope<'_>,
 ) -> BadgeSummary {
     let exposure =
         ripr_badge_summary_with_suppressions(output, suppressions, today, policy.clone());
 
-    // Apply test-efficiency suppressions against the actionable entries
-    // surfaced by the test-efficiency parser. Suppressed entries shift
-    // from `unsuppressed_test_efficiency_findings` to
+    // Decide which entries contribute to this scope's headline. For
+    // repo scope, take the parser's pre-computed repo-wide totals and
+    // the existing actionable list. For diff scope, recompute counts
+    // from the filtered entry list — `related_test_keys` from
+    // `Finding.related_tests` and `changed_owners` from
+    // `Finding.probe.owner` are the only inputs.
+    let (actionable_pairs, unsuppressed_te_before_suppression, intentional_te, unknowns_te) =
+        match scope {
+            TestEfficiencyAggregationScope::Repo => (
+                test_efficiency
+                    .actionable_entries
+                    .iter()
+                    .map(|entry| (entry.test.clone(), entry.path.clone()))
+                    .collect::<Vec<_>>(),
+                test_efficiency.unsuppressed_test_efficiency_findings,
+                test_efficiency.intentional_test_efficiency_findings,
+                test_efficiency.unknowns_test_efficiency,
+            ),
+            TestEfficiencyAggregationScope::Diff(filter) => {
+                let mut pairs: Vec<(String, String)> = Vec::new();
+                let mut unsuppressed_count = 0usize;
+                let mut intentional_count = 0usize;
+                let mut unknowns_count = 0usize;
+                for entry in &test_efficiency.entries {
+                    if !filter.includes(entry) {
+                        continue;
+                    }
+                    if ACTIONABLE_TE_CLASSES.contains(&entry.class.as_str()) {
+                        if entry.has_intent {
+                            intentional_count += 1;
+                        } else {
+                            unsuppressed_count += 1;
+                            pairs.push((entry.test.clone(), entry.path.clone()));
+                        }
+                    } else if entry.class == "opaque" {
+                        unknowns_count += 1;
+                    }
+                    // strong_discriminator / useful_but_broad stay visible only.
+                }
+                (pairs, unsuppressed_count, intentional_count, unknowns_count)
+            }
+        };
+
+    // Apply test-efficiency suppressions against the (scope-filtered)
+    // candidate pairs. Suppressed entries shift from
+    // `unsuppressed_test_efficiency_findings` to
     // `suppressed_test_efficiency_findings`. `intentional_*` is
     // unaffected — declared intent and suppressions are distinct.
-    let candidate_pairs: Vec<(String, String)> = test_efficiency
-        .actionable_entries
-        .iter()
-        .map(|entry| (entry.test.clone(), entry.path.clone()))
-        .collect();
-    let te_application = apply_test_efficiency_suppressions(&candidate_pairs, suppressions, today);
+    let te_application = apply_test_efficiency_suppressions(&actionable_pairs, suppressions, today);
     let suppressed_te = te_application.suppressed_tests.len();
-    let unsuppressed_te = test_efficiency
-        .unsuppressed_test_efficiency_findings
-        .saturating_sub(suppressed_te);
+    let unsuppressed_te = unsuppressed_te_before_suppression.saturating_sub(suppressed_te);
 
     let counts = BadgeCounts {
         unsuppressed_exposure_gaps: exposure.counts.unsuppressed_exposure_gaps,
         unsuppressed_test_efficiency_findings: unsuppressed_te,
-        intentional_test_efficiency_findings: test_efficiency.intentional_test_efficiency_findings,
+        intentional_test_efficiency_findings: intentional_te,
         suppressed_exposure_gaps: exposure.counts.suppressed_exposure_gaps,
         suppressed_test_efficiency_findings: suppressed_te,
         unknowns: exposure.counts.unknowns,
-        unknowns_test_efficiency: test_efficiency.unknowns_test_efficiency,
+        unknowns_test_efficiency: unknowns_te,
         analyzed_findings: exposure.counts.analyzed_findings,
         analyzed_tests: test_efficiency.analyzed_tests,
     };
@@ -478,17 +637,25 @@ pub fn ripr_plus_badge_summary_with_suppressions(
     }
 }
 
-/// Convenience wrapper: builds the `ripr+` badge with no suppressions.
-/// Test-only — production calls
-/// [`ripr_plus_badge_summary_with_suppressions`] via
-/// [`crate::app::render_check`].
+/// Convenience wrapper: builds the `ripr+` badge with no suppressions
+/// and **repo** aggregation scope. Test-only — production calls
+/// [`ripr_plus_badge_summary_with_suppressions`] directly via
+/// [`crate::app::render_check`], which threads the right scope from
+/// the requested `OutputFormat`.
 #[cfg(test)]
 pub fn ripr_plus_badge_summary(
     output: &CheckOutput,
     test_efficiency: TestEfficiencyBadgeSummary,
     policy: BadgePolicy,
 ) -> BadgeSummary {
-    ripr_plus_badge_summary_with_suppressions(output, test_efficiency, &[], "", policy)
+    ripr_plus_badge_summary_with_suppressions(
+        output,
+        test_efficiency,
+        &[],
+        "",
+        policy,
+        TestEfficiencyAggregationScope::Repo,
+    )
 }
 
 /// Renders the native badge JSON (snake_case, full counts/reasons/policy).
@@ -1171,6 +1338,7 @@ mod tests {
                     m
                 },
                 actionable_entries: Vec::new(),
+                entries: Vec::new(),
             },
             BadgePolicy::default(),
         );
@@ -1200,6 +1368,7 @@ mod tests {
                 analyzed_tests: 0,
                 reason_counts: std::collections::BTreeMap::new(),
                 actionable_entries: Vec::new(),
+                entries: Vec::new(),
             },
             BadgePolicy::default(),
         );
@@ -1289,8 +1458,8 @@ mod tests {
     // -------- suppressions wiring --------
 
     use super::{
-        TestEfficiencyBadgeEntry, ripr_badge_summary_with_suppressions,
-        ripr_plus_badge_summary_with_suppressions,
+        TestEfficiencyAggregationScope, TestEfficiencyBadgeEntry,
+        ripr_badge_summary_with_suppressions, ripr_plus_badge_summary_with_suppressions,
     };
     use crate::output::suppressions::{SuppressionEntry, SuppressionKind};
 
@@ -1378,11 +1547,15 @@ mod tests {
                     test: "alpha".to_string(),
                     path: "tests/a.rs".to_string(),
                     has_intent: false,
+                    class: "smoke_only".to_string(),
+                    reached_owners: Vec::new(),
                 },
                 TestEfficiencyBadgeEntry {
                     test: "beta".to_string(),
                     path: "tests/b.rs".to_string(),
                     has_intent: false,
+                    class: "smoke_only".to_string(),
+                    reached_owners: Vec::new(),
                 },
             ],
             ..TestEfficiencyBadgeSummary::default()
@@ -1396,6 +1569,7 @@ mod tests {
             &suppressions,
             "2026-05-03",
             BadgePolicy::default(),
+            TestEfficiencyAggregationScope::Repo,
         );
 
         assert_eq!(summary.counts.unsuppressed_test_efficiency_findings, 1);
@@ -1459,6 +1633,8 @@ mod tests {
                 test: "alpha".to_string(),
                 path: "tests/a.rs".to_string(),
                 has_intent: false,
+                class: "smoke_only".to_string(),
+                reached_owners: Vec::new(),
             }],
             ..TestEfficiencyBadgeSummary::default()
         };
@@ -1471,6 +1647,7 @@ mod tests {
             &suppressions,
             "2026-05-03",
             BadgePolicy::default(),
+            TestEfficiencyAggregationScope::Repo,
         );
 
         // The actionable becomes suppressed, leaving 0 unsuppressed.
@@ -1478,5 +1655,411 @@ mod tests {
         assert_eq!(summary.counts.suppressed_test_efficiency_findings, 1);
         // Intentional count is unaffected — intent and suppression are distinct.
         assert_eq!(summary.counts.intentional_test_efficiency_findings, 2);
+    }
+
+    // -------- diff-scope `ripr+` aggregation --------
+    //
+    // `cargo xtask test-efficiency-report` is repo-wide as a fact source.
+    // Diff-scoped `ripr+` must filter that ledger to entries related to
+    // the changed code; repo-scoped `ripr+` aggregates the full ledger.
+    // The `DiffRelatedTests` filter uses `Finding.related_tests` names
+    // (rule 1) and `Finding.probe.owner` ∩ entry `reached_owners`
+    // (rule 2). These tests pin both rules and the bucket-by-class
+    // behavior under diff scope.
+
+    use super::{DiffRelatedTests, TestEfficiencyAggregationScope as Scope};
+    use crate::domain::SymbolId;
+    use std::collections::BTreeMap;
+
+    fn finding_with_owner(owner: &str, related: Vec<RelatedTest>) -> Finding {
+        let mut f = finding(ExposureClass::WeaklyExposed, related);
+        f.probe.owner = Some(SymbolId(owner.to_string()));
+        f
+    }
+
+    fn te_entry(
+        name: &str,
+        path: &str,
+        class: &str,
+        has_intent: bool,
+        reached_owners: &[&str],
+    ) -> TestEfficiencyBadgeEntry {
+        TestEfficiencyBadgeEntry {
+            test: name.to_string(),
+            path: path.to_string(),
+            has_intent,
+            class: class.to_string(),
+            reached_owners: reached_owners.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    fn te_summary(
+        unsuppressed: usize,
+        intentional: usize,
+        unknowns: usize,
+        actionable: Vec<TestEfficiencyBadgeEntry>,
+        all: Vec<TestEfficiencyBadgeEntry>,
+    ) -> TestEfficiencyBadgeSummary {
+        TestEfficiencyBadgeSummary {
+            unsuppressed_test_efficiency_findings: unsuppressed,
+            intentional_test_efficiency_findings: intentional,
+            unknowns_test_efficiency: unknowns,
+            analyzed_tests: all.len(),
+            reason_counts: BTreeMap::new(),
+            actionable_entries: actionable,
+            entries: all,
+        }
+    }
+
+    #[test]
+    fn diff_related_tests_extracts_owners_and_test_keys_from_findings() {
+        let output = check_output(vec![
+            finding_with_owner(
+                "pricing::quote",
+                vec![related_test(
+                    "premium_customer_gets_discount",
+                    "tests/pricing.rs",
+                    12,
+                )],
+            ),
+            finding_with_owner("billing::charge", vec![]),
+        ]);
+        let filter = DiffRelatedTests::from_check_output(&output);
+
+        assert!(filter.changed_owners.contains("pricing::quote"));
+        assert!(filter.changed_owners.contains("billing::charge"));
+        // Both bare and qualified test keys are present so the filter
+        // can match either shape from the test-efficiency report.
+        assert!(
+            filter
+                .related_test_keys
+                .contains("premium_customer_gets_discount")
+        );
+        assert!(
+            filter
+                .related_test_keys
+                .contains("tests/pricing.rs::premium_customer_gets_discount")
+        );
+    }
+
+    #[test]
+    fn diff_ripr_plus_counts_related_smoke_only_via_related_tests_match() {
+        // Entry's `(name, path)` matches a Finding.related_tests entry.
+        let related = related_test("premium_customer_gets_discount", "tests/pricing.rs", 12);
+        let output = check_output(vec![finding_with_owner("pricing::quote", vec![related])]);
+        let entry = te_entry(
+            "premium_customer_gets_discount",
+            "tests/pricing.rs",
+            "smoke_only",
+            false,
+            &[], // no reached_owners — rule 1 still wins
+        );
+        let te = te_summary(1, 0, 0, vec![entry.clone()], vec![entry]);
+        let filter = DiffRelatedTests::from_check_output(&output);
+
+        let summary = ripr_plus_badge_summary_with_suppressions(
+            &output,
+            te,
+            &[],
+            "2026-05-04",
+            BadgePolicy::default(),
+            Scope::Diff(&filter),
+        );
+
+        assert_eq!(summary.counts.unsuppressed_test_efficiency_findings, 1);
+    }
+
+    #[test]
+    fn diff_ripr_plus_counts_related_smoke_only_via_owner_intersection() {
+        // No related_tests match; rule 2 (reached_owners ∩ changed_owners) wins.
+        let output = check_output(vec![finding_with_owner("pricing::quote", vec![])]);
+        let entry = te_entry(
+            "unrelated_name",
+            "tests/elsewhere.rs",
+            "smoke_only",
+            false,
+            &["pricing::quote", "billing::charge"],
+        );
+        let te = te_summary(1, 0, 0, vec![entry.clone()], vec![entry]);
+        let filter = DiffRelatedTests::from_check_output(&output);
+
+        let summary = ripr_plus_badge_summary_with_suppressions(
+            &output,
+            te,
+            &[],
+            "2026-05-04",
+            BadgePolicy::default(),
+            Scope::Diff(&filter),
+        );
+
+        assert_eq!(summary.counts.unsuppressed_test_efficiency_findings, 1);
+    }
+
+    #[test]
+    fn diff_ripr_plus_counts_related_duplicative_entry() {
+        let output = check_output(vec![finding_with_owner("pricing::quote", vec![])]);
+        let entry = te_entry(
+            "premium_customer_gets_discount",
+            "tests/pricing.rs",
+            "duplicative",
+            false,
+            &["pricing::quote"],
+        );
+        let te = te_summary(1, 0, 0, vec![entry.clone()], vec![entry]);
+        let filter = DiffRelatedTests::from_check_output(&output);
+
+        let summary = ripr_plus_badge_summary_with_suppressions(
+            &output,
+            te,
+            &[],
+            "2026-05-04",
+            BadgePolicy::default(),
+            Scope::Diff(&filter),
+        );
+
+        assert_eq!(summary.counts.unsuppressed_test_efficiency_findings, 1);
+    }
+
+    #[test]
+    fn diff_ripr_plus_ignores_unrelated_likely_vacuous_test() {
+        // Diff touches `pricing::quote`; the test-efficiency entry
+        // reaches `unrelated::module` and has no related_tests match.
+        let output = check_output(vec![finding_with_owner("pricing::quote", vec![])]);
+        let unrelated = te_entry(
+            "totally_unrelated_test",
+            "tests/elsewhere.rs",
+            "likely_vacuous",
+            false,
+            &["unrelated::module"],
+        );
+        let te = te_summary(1, 0, 0, vec![unrelated.clone()], vec![unrelated]);
+        let filter = DiffRelatedTests::from_check_output(&output);
+
+        let summary = ripr_plus_badge_summary_with_suppressions(
+            &output,
+            te,
+            &[],
+            "2026-05-04",
+            BadgePolicy::default(),
+            Scope::Diff(&filter),
+        );
+
+        assert_eq!(
+            summary.counts.unsuppressed_test_efficiency_findings, 0,
+            "unrelated repo-wide test-efficiency debt must NOT move the diff headline"
+        );
+    }
+
+    #[test]
+    fn diff_ripr_plus_ignores_unrelated_duplicative_group() {
+        let output = check_output(vec![finding_with_owner("pricing::quote", vec![])]);
+        let entries = vec![
+            te_entry(
+                "dup_a",
+                "tests/elsewhere.rs",
+                "duplicative",
+                false,
+                &["unrelated::a"],
+            ),
+            te_entry(
+                "dup_b",
+                "tests/elsewhere.rs",
+                "duplicative",
+                false,
+                &["unrelated::b"],
+            ),
+            te_entry(
+                "dup_c",
+                "tests/elsewhere.rs",
+                "duplicative",
+                false,
+                &["unrelated::c"],
+            ),
+        ];
+        let te = te_summary(3, 0, 0, entries.clone(), entries);
+        let filter = DiffRelatedTests::from_check_output(&output);
+
+        let summary = ripr_plus_badge_summary_with_suppressions(
+            &output,
+            te,
+            &[],
+            "2026-05-04",
+            BadgePolicy::default(),
+            Scope::Diff(&filter),
+        );
+
+        assert_eq!(summary.counts.unsuppressed_test_efficiency_findings, 0);
+    }
+
+    #[test]
+    fn repo_ripr_plus_still_counts_whole_repo_actionable_test_efficiency() {
+        // Same fixture as the diff-ignores test above; under repo
+        // scope the whole-repo unsuppressed total still counts.
+        let output = check_output(vec![finding_with_owner("pricing::quote", vec![])]);
+        let unrelated = te_entry(
+            "totally_unrelated_test",
+            "tests/elsewhere.rs",
+            "likely_vacuous",
+            false,
+            &["unrelated::module"],
+        );
+        let te = te_summary(1, 0, 0, vec![unrelated.clone()], vec![unrelated]);
+
+        let summary = ripr_plus_badge_summary_with_suppressions(
+            &output,
+            te,
+            &[],
+            "2026-05-04",
+            BadgePolicy::default(),
+            Scope::Repo,
+        );
+
+        assert_eq!(summary.counts.unsuppressed_test_efficiency_findings, 1);
+    }
+
+    #[test]
+    fn diff_ripr_plus_excludes_related_declared_intent_finding() {
+        // A related entry with declared intent counts toward
+        // `intentional_*`, never toward the unsuppressed headline.
+        let output = check_output(vec![finding_with_owner("pricing::quote", vec![])]);
+        let intent_entry = te_entry(
+            "premium_customer_gets_discount",
+            "tests/pricing.rs",
+            "smoke_only",
+            true,
+            &["pricing::quote"],
+        );
+        // unsuppressed count from the parser is 0 (intent excluded);
+        // intentional total is 1.
+        let te = te_summary(0, 1, 0, Vec::new(), vec![intent_entry]);
+        let filter = DiffRelatedTests::from_check_output(&output);
+
+        let summary = ripr_plus_badge_summary_with_suppressions(
+            &output,
+            te,
+            &[],
+            "2026-05-04",
+            BadgePolicy::default(),
+            Scope::Diff(&filter),
+        );
+
+        assert_eq!(summary.counts.unsuppressed_test_efficiency_findings, 0);
+        assert_eq!(summary.counts.intentional_test_efficiency_findings, 1);
+    }
+
+    #[test]
+    fn diff_ripr_plus_excludes_related_suppressed_finding() {
+        let output = check_output(vec![finding_with_owner("pricing::quote", vec![])]);
+        let entry = te_entry(
+            "premium_customer_gets_discount",
+            "tests/pricing.rs",
+            "smoke_only",
+            false,
+            &["pricing::quote"],
+        );
+        let te = te_summary(1, 0, 0, vec![entry.clone()], vec![entry]);
+        let suppressions = vec![te_suppression(
+            "premium_customer_gets_discount",
+            Some("tests/pricing.rs"),
+            None,
+        )];
+        let filter = DiffRelatedTests::from_check_output(&output);
+
+        let summary = ripr_plus_badge_summary_with_suppressions(
+            &output,
+            te,
+            &suppressions,
+            "2026-05-04",
+            BadgePolicy::default(),
+            Scope::Diff(&filter),
+        );
+
+        assert_eq!(summary.counts.unsuppressed_test_efficiency_findings, 0);
+        assert_eq!(summary.counts.suppressed_test_efficiency_findings, 1);
+    }
+
+    #[test]
+    fn diff_ripr_plus_keeps_related_opaque_visible_but_not_headline() {
+        // Use an exposure-side `Exposed` finding (which does not count
+        // as an exposure gap) so the headline isolates the
+        // test-efficiency contribution. The owner is still set so the
+        // diff filter has something to intersect against.
+        let mut f = finding(ExposureClass::Exposed, vec![]);
+        f.probe.owner = Some(SymbolId("pricing::quote".to_string()));
+        let output = check_output(vec![f]);
+        let opaque_entry = te_entry(
+            "opaque_oracle_test",
+            "tests/pricing.rs",
+            "opaque",
+            false,
+            &["pricing::quote"],
+        );
+        // Parser totals: 0 unsuppressed (opaque doesn't go there), 1 unknowns_te.
+        let te = te_summary(0, 0, 1, Vec::new(), vec![opaque_entry]);
+        let filter = DiffRelatedTests::from_check_output(&output);
+
+        let summary = ripr_plus_badge_summary_with_suppressions(
+            &output,
+            te,
+            &[],
+            "2026-05-04",
+            BadgePolicy::default(),
+            Scope::Diff(&filter),
+        );
+
+        assert_eq!(summary.counts.unsuppressed_test_efficiency_findings, 0);
+        assert_eq!(summary.counts.unknowns_test_efficiency, 1);
+        // Headline excludes both unknowns and unsuppressed_te here:
+        // 0 exposure gaps + 0 te + 0 (unknowns excluded by default policy).
+        assert_eq!(summary.message, "0");
+    }
+
+    #[test]
+    fn diff_ripr_plus_count_unaffected_by_unrelated_repo_wide_te_debt() {
+        // Mix one related actionable with many unrelated repo-wide
+        // entries. The diff headline should reflect only the related
+        // entry; unrelated debt stays in the repo-wide counts but does
+        // NOT move the diff signal.
+        let output = check_output(vec![finding_with_owner("pricing::quote", vec![])]);
+        let related = te_entry(
+            "premium_customer_gets_discount",
+            "tests/pricing.rs",
+            "smoke_only",
+            false,
+            &["pricing::quote"],
+        );
+        let unrelated = (0..5)
+            .map(|i| {
+                te_entry(
+                    &format!("unrelated_{i}"),
+                    "tests/elsewhere.rs",
+                    "duplicative",
+                    false,
+                    &["other::module"],
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let mut all_entries = vec![related.clone()];
+        all_entries.extend(unrelated.iter().cloned());
+        let mut all_actionable = vec![related];
+        all_actionable.extend(unrelated);
+
+        let te = te_summary(6, 0, 0, all_actionable, all_entries);
+        let filter = DiffRelatedTests::from_check_output(&output);
+
+        let summary = ripr_plus_badge_summary_with_suppressions(
+            &output,
+            te,
+            &[],
+            "2026-05-04",
+            BadgePolicy::default(),
+            Scope::Diff(&filter),
+        );
+
+        assert_eq!(
+            summary.counts.unsuppressed_test_efficiency_findings, 1,
+            "diff headline should only count the related entry, not the 5 unrelated ones"
+        );
     }
 }

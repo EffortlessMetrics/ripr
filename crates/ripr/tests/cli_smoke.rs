@@ -280,25 +280,21 @@ fn check_badge_plus_fails_clearly_when_test_efficiency_report_missing() -> Resul
 }
 
 #[test]
-fn check_badge_plus_json_emits_native_shape_with_fixture_report() -> Result<(), String> {
+fn check_repo_badge_plus_json_emits_native_shape_with_fixture_report() -> Result<(), String> {
+    // Repo scope aggregates the repo-wide test-efficiency ledger directly,
+    // so a fixture report with no matching diff findings still produces
+    // the expected non-zero counts. (Diff scope filters to entries
+    // related to the changed code; that is exercised by the dedicated
+    // diff-scope filter tests below.)
     let workspace = make_temp_workspace(Some(fixture_test_efficiency_report()))?;
     let root = workspace.display().to_string();
-    let diff = sample_diff().display().to_string();
-    let output = run_ripr(&[
-        "check",
-        "--root",
-        &root,
-        "--diff",
-        &diff,
-        "--format",
-        "badge-plus-json",
-    ]);
+    let output = run_ripr(&["check", "--root", &root, "--format", "repo-badge-plus-json"]);
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains(r#""schema_version": "0.2""#));
     assert!(stdout.contains(r#""kind": "ripr_plus""#));
-    assert!(stdout.contains(r#""scope": "diff""#));
+    assert!(stdout.contains(r#""scope": "repo""#));
     assert!(stdout.contains(r#""label": "ripr+""#));
     assert!(stdout.contains(r#""counts""#));
     assert!(stdout.contains(r#""reason_counts""#));
@@ -640,8 +636,31 @@ fn fixture_test_efficiency_with_actionable_test() -> &'static str {
 "#
 }
 
+fn fixture_test_efficiency_with_unrelated_actionable_test() -> &'static str {
+    // One actionable entry that reaches an owner the placeholder
+    // workspace does not have (and whose name does not appear in any
+    // diff finding's related_tests). Diff-scope `ripr+` must filter it
+    // out; repo-scope `ripr+` must still count it.
+    r#"{
+  "schema_version": "0.1",
+  "tests": [
+    {
+      "name": "totally_unrelated_test",
+      "path": "tests/elsewhere.rs",
+      "class": "smoke_only",
+      "reached_owners": ["unrelated::module"]
+    }
+  ],
+  "metrics": {
+    "tests_scanned": 1,
+    "reason_counts": {"smoke_oracle_only": 1}
+  }
+}
+"#
+}
+
 #[test]
-fn check_badge_plus_applies_test_efficiency_suppressions_from_disk() -> Result<(), String> {
+fn check_repo_badge_plus_applies_test_efficiency_suppressions_from_disk() -> Result<(), String> {
     let suppressions = r#"schema_version = 1
 
 [[suppressions]]
@@ -657,16 +676,11 @@ expires = "2099-09-01"
         Some(suppressions),
     )?;
     let root = workspace.display().to_string();
-    let diff = sample_diff().display().to_string();
-    let output = run_ripr(&[
-        "check",
-        "--root",
-        &root,
-        "--diff",
-        &diff,
-        "--format",
-        "badge-plus-json",
-    ]);
+    // Repo scope aggregates the repo-wide ledger; suppressions still
+    // apply by `(test, path)` regardless of scope. Using repo scope
+    // here keeps the test focused on suppression mechanics rather than
+    // diff-relatedness filtering (covered by separate tests below).
+    let output = run_ripr(&["check", "--root", &root, "--format", "repo-badge-plus-json"]);
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -683,7 +697,7 @@ expires = "2099-09-01"
 }
 
 #[test]
-fn check_badge_plus_warns_on_expired_suppression_and_keeps_finding_in_headline()
+fn check_repo_badge_plus_warns_on_expired_suppression_and_keeps_finding_in_headline()
 -> Result<(), String> {
     let suppressions = r#"schema_version = 1
 
@@ -700,16 +714,7 @@ expires = "2025-01-01"
         Some(suppressions),
     )?;
     let root = workspace.display().to_string();
-    let diff = sample_diff().display().to_string();
-    let output = run_ripr(&[
-        "check",
-        "--root",
-        &root,
-        "--diff",
-        &diff,
-        "--format",
-        "badge-plus-json",
-    ]);
+    let output = run_ripr(&["check", "--root", &root, "--format", "repo-badge-plus-json"]);
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -803,6 +808,79 @@ reason = "ghost selector"
     }
     let top_level = stdout.lines().filter(|l| l.starts_with("  \"")).count();
     assert_eq!(top_level, 4);
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn check_diff_badge_plus_excludes_unrelated_repo_wide_test_efficiency_debt() -> Result<(), String> {
+    // Pin the load-bearing semantic fix: diff-scoped `ripr+` must NOT
+    // sum unrelated whole-repo test-efficiency debt into the headline.
+    // The fixture has one actionable entry whose reached_owners do not
+    // intersect anything the diff touches, so the diff-filtered
+    // unsuppressed count stays at 0.
+    let workspace = make_temp_workspace(Some(
+        fixture_test_efficiency_with_unrelated_actionable_test(),
+    ))?;
+    let root = workspace.display().to_string();
+    // Empty unified diff: no findings, no changed owners, no related
+    // tests. The unrelated TE entry must therefore be filtered out
+    // under diff scope.
+    let empty_diff = workspace.join("empty.patch");
+    std::fs::write(
+        &empty_diff,
+        r#"diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+"#,
+    )
+    .map_err(|e| format!("write empty.patch: {e}"))?;
+    let output = run_ripr(&[
+        "check",
+        "--root",
+        &root,
+        "--diff",
+        &empty_diff.display().to_string(),
+        "--format",
+        "badge-plus-json",
+    ]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains(r#""scope": "diff""#));
+    assert!(
+        stdout.contains(r#""unsuppressed_test_efficiency_findings": 0"#),
+        "diff-scope `ripr+` must filter out unrelated repo-wide TE debt: {stdout}"
+    );
+    // The headline must reflect the filter: no exposure gaps (empty
+    // diff) and no unrelated TE debt = 0.
+    assert!(stdout.contains(r#""message": "0""#));
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn check_repo_badge_plus_still_aggregates_unrelated_repo_wide_test_efficiency() -> Result<(), String>
+{
+    // Companion to the diff-scope filter test: under repo scope the
+    // same fixture's unrelated entry IS counted (repo scope aggregates
+    // the whole-repo ledger; relatedness only matters for diff scope).
+    let workspace = make_temp_workspace(Some(
+        fixture_test_efficiency_with_unrelated_actionable_test(),
+    ))?;
+    let root = workspace.display().to_string();
+    let output = run_ripr(&["check", "--root", &root, "--format", "repo-badge-plus-json"]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains(r#""scope": "repo""#));
+    assert!(
+        stdout.contains(r#""unsuppressed_test_efficiency_findings": 1"#),
+        "repo-scope `ripr+` must aggregate repo-wide TE findings: {stdout}"
+    );
 
     let _ = std::fs::remove_dir_all(&workspace);
     Ok(())

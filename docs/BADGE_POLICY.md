@@ -72,9 +72,7 @@ page, or extension store badge.
 - **Audience**: anyone reading the repo cold from outside.
 - **Meaning**: "the current repo baseline has N unresolved findings
   under policy."
-- `ripr+` is already partly repo-scoped because
-  `cargo xtask test-efficiency-report` scans the whole test suite.
-  Pure `ripr` repo scope is rendered through
+- Pure `ripr` repo scope is rendered through
   `app::check_workspace_repo` (analysis path
   `analysis::run_repo_analysis`), which seeds probes from every
   currently-probeable production syntax shape and classifies them
@@ -83,6 +81,41 @@ page, or extension store badge.
   `--format repo-badge-shields`, `--format repo-badge-plus-json`,
   and `--format repo-badge-plus-shields`; the xtask wrapper is
   `cargo xtask repo-badge-artifacts`.
+
+### `ripr+` fact source vs aggregation scope
+
+`cargo xtask test-efficiency-report` is repo-wide as a **fact source**:
+it scans the entire test suite and records per-test evidence
+(`reached_owners`, oracle kind/strength, observed values, declared
+intent). Badge **aggregation** is scope-aware:
+
+- **Diff-scoped `ripr+`** (`--format badge-plus-json`,
+  `--format badge-plus-shields`) filters the test-efficiency ledger to
+  entries *related to* the changed owners / findings in the analyzed
+  diff. A test-efficiency entry is related when **either**:
+  - the entry's bare or `<path>::<name>` form appears in any diff
+    `Finding.related_tests`, or
+  - the entry's `reached_owners` intersect the changed/probed owners
+    drawn from `Finding.probe.owner`.
+
+  Unrelated repo-wide debt (e.g. a `likely_vacuous` test in a module
+  this PR doesn't touch) does **not** move the diff `ripr+` headline.
+  Suppressions and declared intent still apply to the filtered set:
+  declared intent moves a related entry into
+  `intentional_test_efficiency_findings` (out of the headline);
+  matched suppressions move a related actionable entry from
+  `unsuppressed_test_efficiency_findings` to
+  `suppressed_test_efficiency_findings`.
+
+- **Repo-scoped `ripr+`** (`--format repo-badge-plus-json`,
+  `--format repo-badge-plus-shields`) aggregates the repo-wide
+  test-efficiency ledger directly — no relatedness filter. This is
+  the intended source for public README / store badges.
+
+The split keeps PR badges scoped to the tests that act on the changed
+code while README / store badges remain repo-baseline signals. The
+underlying JSON shape (`schema_version: 0.2`) is unchanged; only the
+**aggregation rule** for diff scope changed.
 
 #### What v1 repo scope means — and does not mean
 
@@ -689,7 +722,8 @@ Tracked alongside Campaign 4A in
 | `.ripr/suppressions.toml` loader | done | `suppressions/v1` |
 | CI badge artifacts (diff-scoped, PR) | done | `ci/badge-artifacts` |
 | Repo-scoped badge artifacts | done | `badge/repo-scope-artifacts` (`cargo xtask repo-badge-artifacts`) |
-| Published Shields endpoint from `main` | done | `badge/publish-main-endpoint` (`.github/workflows/publish-badge-endpoint.yml` → GitHub Pages) |
+| Published Shields endpoint from `main` | done | `badge/publish-main-endpoint` (committed `badges/*.json` served via `raw.githubusercontent.com`; refresh with `cargo xtask update-badge-endpoints`) |
+| Diff-scope `ripr+` related-tests filter | done | `badge/diff-ripr-plus-related-tests` (this PR) |
 
 ## See also
 
