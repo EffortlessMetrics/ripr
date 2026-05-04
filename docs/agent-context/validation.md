@@ -5,7 +5,7 @@ Agents should use the smallest validation set that proves the change.
 ## Rust
 
 ```bash
-cargo check --workspace
+cargo check --workspace --all-targets
 cargo test --workspace
 ```
 

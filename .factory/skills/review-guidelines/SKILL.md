@@ -84,7 +84,7 @@ No actionable findings emitted.
 Inspected surfaces: <files / systems / changed areas>.
 Checks performed: <repo invariants, security/workflow/release/correctness risks considered>.
 Why no comments: <why the diff satisfies those checks>.
-Residual risk: <anything not proven by review, such as external service behavior or unrun validation>.
+Residual risk: <anything not verified by review, such as external service behavior or unrun validation>.
 Validation signal: <CI checks, tests, reports, or commands that support the result>.
 ```
 
@@ -102,7 +102,7 @@ Use this shape:
 Failure mode: What can break, leak, regress, or become unmaintainable.
 Why here: The specific repo invariant or contract this violates.
 Fix direction: Concrete repair guidance. Include the smallest viable fix when obvious.
-Validation: Command, report, fixture, golden, or CI check that should prove the fix.
+Validation: Command, report, fixture, golden, or CI check that should verify the fix.
 ```
 
 ## Priority scale
@@ -250,7 +250,7 @@ cargo publish -p ripr --dry-run
 
 ## Validation commands
 
-Name the smallest validation set that proves the fix.
+Name the smallest validation set that verifies the fix.
 
 Common commands:
 

@@ -14,8 +14,8 @@
 
 ## Action refs
 
-- Avoid mutable refs such as `@main` in workflows with secrets or write permissions.
-- Prefer versioned tags for quick setup and full commit SHAs for locked-down rollout.
+- Avoid mutable refs, including branches and tags, in workflows with secrets or write permissions.
+- Use full commit SHAs for high-privilege workflows; versioned tags are acceptable for low-risk tasks.
 
 ## Workflow budget
 

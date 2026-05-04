@@ -9,6 +9,8 @@
 ## Filesystem and process behavior
 
 - Treat filesystem paths as cross-platform unless the code is explicitly platform-specific.
+- Use `std::path::Path` and `PathBuf` for cross-platform path manipulation.
+- Avoid manual path string concatenation and platform-specific separators unless the code is explicitly platform-scoped.
 - Be careful with path traversal, symlinks, environment variables, and working directory assumptions.
 - Avoid unsafe command construction or shell interpolation.
 
