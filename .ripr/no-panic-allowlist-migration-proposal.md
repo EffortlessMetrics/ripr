@@ -142,8 +142,8 @@ receiver_fingerprint = "run_analysis(&AnalysisOptions { root: root.clone(), base
 [[allow]]
 path = "xtask/src/main.rs"
 family = "panic_macro"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
+classification = "false_positive"
+explanation = "Static pattern matching detects panic-family string literal in production match arm (panic_family_from_call_name), not a runtime call"
 
 [allow.selector]
 kind = "macro_call"

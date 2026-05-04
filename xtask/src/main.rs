@@ -2284,11 +2284,6 @@ fn check_no_panic_family() -> Result<(), String> {
 }
 
 fn generate_no_panic_migration_report() -> Result<(), String> {
-    let allowlist_path = ".ripr/no-panic-allowlist.toml";
-    if !Path::new(allowlist_path).exists() {
-        return Err(format!("{} is missing; nothing to migrate", allowlist_path));
-    }
-
     let roots = [
         Path::new("crates/ripr/src"),
         Path::new("crates/ripr/tests"),
@@ -2304,7 +2299,11 @@ fn generate_no_panic_migration_report() -> Result<(), String> {
         semantic_findings.extend(collect_semantic_panic_findings(root, &patterns)?);
     }
 
-    let allowlist = parse_no_panic_allowlist_toml(allowlist_path)?;
+    let allowlist = if Path::new(".ripr/no-panic-allowlist.toml").exists() {
+        parse_no_panic_allowlist_toml(".ripr/no-panic-allowlist.toml")?
+    } else {
+        Vec::new()
+    };
 
     let mut migration_entries = Vec::new();
     let mut seen_selectors = BTreeSet::new();
