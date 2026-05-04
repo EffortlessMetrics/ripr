@@ -35,7 +35,7 @@ Related PRs / friction:
 
 ## deferred/seam-inventory-test-grip
 
-Status: open
+Status: landing-soon (Campaign 4B; scoped in #216, manifest scoping PR follows)
 Surface: analyzer / output / lsp
 
 Current v1 behavior:
