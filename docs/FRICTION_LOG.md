@@ -78,12 +78,21 @@ Each entry is a date-grouped bullet:
   `badge/publish-main-endpoint`) and #204 (implements
   `cargo xtask repo-badge-artifacts`, the four `repo-badge-*` CLI
   formats, `analysis::run_repo_analysis`, schema 0.2 `scope` field;
-  the bounded Voice A baseline). First honest repo-scoped headline:
-  `ripr 317` against the current ripr workspace, vs the misleading
-  `ripr 0` from the empty diff. **Lesson:** before publishing any
-  `ripr` artifact as a public signal, run it on `main` itself and
-  verify the number is *informative* — a mechanically-derivable
-  constant (like a no-diff ripr count) is not.
+  the bounded Voice A baseline). The initial repo-scoped headline at
+  PR open was `ripr 317`, but ChatGPT-Codex review on #204 caught a
+  P1 correctness bug — `run_repo_analysis` indexed production files
+  only, hiding integration tests from the classifier's
+  `find_related_tests` and inflating `no_static_path` by ~150. #204's
+  follow-up commit `ab8b14f` indexes every discovered Rust file while
+  seeding probes only from production files. Corrected honest repo
+  baseline at #204 merge: `ripr 163`, vs the misleading `ripr 0` an
+  empty-diff run on `main` would have produced.
+  **Lesson:** before publishing any `ripr` artifact as a public
+  signal, run it on `main` itself and verify the number is
+  *informative* — a mechanically-derivable constant (like a no-diff
+  ripr count) is not. Companion lesson from the P1 review: a repo
+  baseline must include test files in its index even when probe
+  seeding stays production-only, or the headline silently inflates.
 - **two-voice operating brief** — the ChatGPT operating packet that
   framed Campaign 4A's repo-scope work contained two voices: Voice A
   (finish the bounded probe-shape baseline that was already in flight
