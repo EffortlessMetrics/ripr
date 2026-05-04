@@ -10609,14 +10609,13 @@ mod tests {
     where
         F: FnOnce(&Path) -> Result<T, String>,
     {
-        let lock = CWD_LOCK.get_or_init(|| Mutex::new(()))
+        let lock = CWD_LOCK
+            .get_or_init(|| Mutex::new(()))
             .lock()
             .map_err(|e| format!("failed to acquire cwd lock: {e}"))?;
-        let old = std::env::current_dir()
-            .map_err(|e| format!("failed to get current dir: {e}"))?;
+        let old = std::env::current_dir().map_err(|e| format!("failed to get current dir: {e}"))?;
         let root = temp_dir(name)?;
-        std::env::set_current_dir(&root)
-            .map_err(|e| format!("failed to set current dir: {e}"))?;
+        std::env::set_current_dir(&root).map_err(|e| format!("failed to set current dir: {e}"))?;
 
         let result = f(&root);
 
@@ -14312,8 +14311,9 @@ requires_human_merge = false
         with_temp_cwd("campaign-invalid", |root| {
             let manifest_path = root.join("campaign.toml");
             write(&manifest_path, "this is not valid toml [ invalid")?;
-            let (_manifest, violations) = parse_campaign_manifest(&manifest_path)
-                .map_err(|e| format!("invalid TOML should return Ok with violations, got error: {e}"))?;
+            let (_manifest, violations) = parse_campaign_manifest(&manifest_path).map_err(|e| {
+                format!("invalid TOML should return Ok with violations, got error: {e}")
+            })?;
             assert!(
                 !violations.is_empty(),
                 "invalid TOML should produce violations"
