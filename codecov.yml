@@ -27,14 +27,14 @@ coverage:
         threshold: 5%
 
       product:
-        target: 90%
+        target: 94%
         threshold: 3%
         paths:
           - crates/ripr/src/
 
       automation:
         target: 75%
-        threshold: 10%
+        threshold: 3%
         paths:
           - xtask/src/
 
