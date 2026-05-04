@@ -11475,6 +11475,10 @@ mod tests {
         apply_duplicate_discriminator_groups, apply_test_intent_to_entries,
         parse_test_intent_manifest, test_efficiency_metrics,
     };
+    use super::{
+        PanicAllowEntry, SemanticPanicFinding, PanicFamilySelectorKind,
+        semantic_selector_matches, matches_semantic_finding,
+    };
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -11718,6 +11722,137 @@ explanation = "Duplicate entry"
             assert!(findings.iter().any(|f| f.line == 2 && f.family == "unwrap"));
             assert!(findings.iter().any(|f| f.line == 3 && f.family == "expect"));
         });
+    }
+
+    // ============================================================================
+    // Semantic selector tests
+    // ============================================================================
+
+    #[test]
+    fn semantic_selector_matches_container() {
+        let finding = SemanticPanicFinding {
+            path: "src/lib.rs".to_string(),
+            family: "unwrap".to_string(),
+            line: 10,
+            column: Some(5),
+            container: Some("test_function".to_string()),
+            callee: Some("unwrap".to_string()),
+            receiver_fingerprint: None,
+            snippet_fingerprint: "x.unwrap()".to_string(),
+            cfg_test: true,
+        };
+
+        let selector_match = PanicFamilySelectorKind {
+            kind: "method_call".to_string(),
+            container: Some("test_function".to_string()),
+            callee: Some("unwrap".to_string()),
+            receiver_fingerprint: None,
+            text_contains: None,
+        };
+
+        assert!(semantic_selector_matches(&selector_match, &finding));
+    }
+
+    #[test]
+    fn semantic_selector_rejects_mismatched_container() {
+        let finding = SemanticPanicFinding {
+            path: "src/lib.rs".to_string(),
+            family: "unwrap".to_string(),
+            line: 10,
+            column: Some(5),
+            container: Some("test_function".to_string()),
+            callee: Some("unwrap".to_string()),
+            receiver_fingerprint: None,
+            snippet_fingerprint: "x.unwrap()".to_string(),
+            cfg_test: true,
+        };
+
+        let selector_mismatch = PanicFamilySelectorKind {
+            kind: "method_call".to_string(),
+            container: Some("different_function".to_string()),
+            callee: Some("unwrap".to_string()),
+            receiver_fingerprint: None,
+            text_contains: None,
+        };
+
+        assert!(!semantic_selector_matches(&selector_mismatch, &finding));
+    }
+
+    #[test]
+    fn semantic_selector_matches_with_partial_fields() {
+        let finding = SemanticPanicFinding {
+            path: "src/lib.rs".to_string(),
+            family: "unwrap".to_string(),
+            line: 10,
+            column: Some(5),
+            container: Some("test_function".to_string()),
+            callee: Some("unwrap".to_string()),
+            receiver_fingerprint: None,
+            snippet_fingerprint: "x.unwrap()".to_string(),
+            cfg_test: true,
+        };
+
+        let selector_partial = PanicFamilySelectorKind {
+            kind: "method_call".to_string(),
+            container: None,
+            callee: Some("unwrap".to_string()),
+            receiver_fingerprint: None,
+            text_contains: None,
+        };
+
+        assert!(semantic_selector_matches(&selector_partial, &finding));
+    }
+
+    #[test]
+    fn matches_semantic_finding_requires_path_and_family() {
+        let entry = PanicAllowEntry {
+            path: "src/lib.rs".to_string(),
+            line: 10,
+            column: Some(5),
+            family: "unwrap".to_string(),
+            classification: Some("test_only".to_string()),
+            explanation: "test".to_string(),
+        };
+
+        let matching_finding = SemanticPanicFinding {
+            path: "src/lib.rs".to_string(),
+            family: "unwrap".to_string(),
+            line: 15,
+            column: Some(8),
+            container: Some("func".to_string()),
+            callee: Some("unwrap".to_string()),
+            receiver_fingerprint: None,
+            snippet_fingerprint: "x.unwrap()".to_string(),
+            cfg_test: true,
+        };
+
+        assert!(matches_semantic_finding(&entry, &matching_finding));
+    }
+
+    #[test]
+    fn matches_semantic_finding_rejects_different_path() {
+        let entry = PanicAllowEntry {
+            path: "src/lib.rs".to_string(),
+            line: 10,
+            column: Some(5),
+            family: "unwrap".to_string(),
+            classification: Some("test_only".to_string()),
+            explanation: "test".to_string(),
+        };
+
+        let different_path = SemanticPanicFinding {
+            path: "src/other.rs".to_string(),
+            family: "unwrap".to_string(),
+            line: 15,
+            column: Some(8),
+            container: Some("func".to_string()),
+            callee: Some("unwrap".to_string()),
+            receiver_fingerprint: None,
+            snippet_fingerprint: "x.unwrap()".to_string(),
+            cfg_test: true,
+        };
+
+        assert!(!matches_semantic_finding(&entry, &different_path));
     }
 
     // ============================================================================
