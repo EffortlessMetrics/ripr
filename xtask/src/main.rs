@@ -10367,7 +10367,17 @@ mod tests {
         let old = std::env::current_dir().unwrap();
         let root = temp_dir(name);
         std::env::set_current_dir(&root).unwrap();
-        let out = f(&root);
+
+        let out = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&root))) {
+            Ok(result) => result,
+            Err(panic_payload) => {
+                let _ = std::env::set_current_dir(&old);
+                drop(lock);
+                let _ = fs::remove_dir_all(&root);
+                std::panic::resume_unwind(panic_payload);
+            }
+        };
+
         std::env::set_current_dir(old).unwrap();
         drop(lock);
         let _ = fs::remove_dir_all(&root);
@@ -14051,8 +14061,10 @@ requires_human_merge = false
             let manifest_path = root.join("campaign.toml");
             write(&manifest_path, "this is not valid toml [ invalid");
             let result = parse_campaign_manifest(&manifest_path);
-            // This test just ensures the function handles invalid input
-            assert!(result.is_ok() || result.is_err());
+            // Invalid TOML should return Ok with violations, not an error
+            assert!(result.is_ok(), "invalid TOML should return Ok with violations");
+            let (_manifest, violations) = result.unwrap();
+            assert!(!violations.is_empty(), "invalid TOML should produce violations");
         });
     }
 
