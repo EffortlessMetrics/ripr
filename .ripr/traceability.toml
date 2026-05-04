@@ -172,3 +172,22 @@ metrics = [
   "duplicate_discriminator_count",
   "opaque_test_count"
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0005"
+name = "repo seam inventory and test grip"
+spec = "docs/specs/RIPR-SPEC-0005-repo-seam-inventory.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0005-repo-seam-inventory.md"
+]
+metrics = [
+  "seam_inventory_count",
+  "seam_kind_distribution",
+  "seam_grip_class_distribution",
+  "ungripped_seam_count",
+  "stable_id_collision_rate",
+  "seam_to_finding_link_rate"
+]
