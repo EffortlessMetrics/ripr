@@ -9,7 +9,7 @@ use super::diagnostics::{
 use super::hover::hover_response;
 use super::state::{AnalysisSnapshot, DocumentStore};
 use super::uri::{encode_uri_path, file_uri_for_path, path_from_file_uri};
-use super::{COPY_CONTEXT_COMMAND, HOVER_TEXT, REFRESH_COMMAND};
+use super::{COLLECT_CONTEXT_COMMAND, COPY_CONTEXT_COMMAND, HOVER_TEXT, REFRESH_COMMAND};
 use crate::app::Mode;
 use crate::domain::{
     Confidence, DeltaKind, ExposureClass, Finding, OracleKind, OracleStrength, Probe, ProbeFamily,
@@ -22,9 +22,9 @@ use tower_lsp_server::LanguageServer;
 use tower_lsp_server::ls_types::{
     CodeActionContext, CodeActionOrCommand, CodeActionParams, DiagnosticSeverity,
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    HoverContents, HoverParams, HoverProviderCapability, InitializeParams, NumberOrString,
-    Position, Range, TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
-    TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind,
+    ExecuteCommandParams, HoverContents, HoverParams, HoverProviderCapability, InitializeParams,
+    NumberOrString, Position, Range, TextDocumentContentChangeEvent, TextDocumentIdentifier,
+    TextDocumentItem, TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind,
     VersionedTextDocumentIdentifier, WorkspaceFolder,
 };
 use tower_lsp_server::{LspService, Server};
@@ -45,7 +45,7 @@ fn initialize_result_exposes_existing_lsp_capabilities() -> Result<(), String> {
         return Err("expected execute command provider".to_string());
     };
     let commands = provider.commands;
-    assert_eq!(commands, vec![REFRESH_COMMAND]);
+    assert_eq!(commands, vec![REFRESH_COMMAND, COLLECT_CONTEXT_COMMAND]);
     Ok(())
 }
 
@@ -87,6 +87,10 @@ fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
         assert_eq!(
             initialize["result"]["capabilities"]["executeCommandProvider"]["commands"][0],
             REFRESH_COMMAND
+        );
+        assert_eq!(
+            initialize["result"]["capabilities"]["executeCommandProvider"]["commands"][1],
+            COLLECT_CONTEXT_COMMAND
         );
         assert_eq!(
             initialize["result"]["capabilities"]["hoverProvider"],
@@ -625,6 +629,8 @@ fn code_action_response_keeps_current_commands() -> Result<(), String> {
     };
     assert_eq!(arguments[0]["uri"], "file:///workspace/src/pricing.rs");
     assert_eq!(arguments[0]["line"], 88);
+    assert_eq!(arguments[0]["finding_id"], "probe:pricing:88:predicate");
+    assert_eq!(arguments[0]["probe_id"], "probe:pricing:88:predicate");
     Ok(())
 }
 
@@ -1486,4 +1492,108 @@ fn finding_hover_avoids_mutation_runtime_language() -> Result<(), String> {
         }
         _ => Err("expected markup hover".to_string()),
     }
+}
+
+#[test]
+fn execute_command_collect_context_returns_packet_for_known_finding() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let finding = sample_finding();
+        let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+        let uri = test_uri("file:///workspace/src/pricing.rs")?;
+        let diagnostics = sample_workspace_diagnostics(
+            PathBuf::from("/workspace"),
+            uri.clone(),
+            vec![diagnostic.clone()],
+            vec![finding],
+        );
+        let Some(_) = backend.refresh_plan(diagnostics) else {
+            return Err("expected refresh plan".to_string());
+        };
+
+        let params = ExecuteCommandParams {
+            command: COLLECT_CONTEXT_COMMAND.to_string(),
+            arguments: vec![serde_json::json!({
+                "finding_id": "probe:pricing:88:predicate",
+                "probe_id": "probe:pricing:88:predicate",
+                "uri": "file:///workspace/src/pricing.rs",
+                "line": 88,
+            })],
+            work_done_progress_params: Default::default(),
+        };
+        let result = backend.execute_command(params).await;
+        let packet = result.map_err(|err| format!("execute_command failed: {err}"))?;
+        let Some(packet) = packet else {
+            return Err("expected context packet".to_string());
+        };
+        let packet_str = serde_json::to_string(&packet)
+            .map_err(|err| format!("failed to serialize packet: {err}"))?;
+        assert!(packet_str.contains("\"version\""));
+        assert!(packet_str.contains("\"tool\""));
+        assert!(packet_str.contains("probe:pricing:88:predicate"));
+        Ok(())
+    })
+}
+
+#[test]
+fn execute_command_collect_context_returns_none_for_unknown_finding() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let finding = sample_finding();
+        let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+        let uri = test_uri("file:///workspace/src/pricing.rs")?;
+        let diagnostics = sample_workspace_diagnostics(
+            PathBuf::from("/workspace"),
+            uri.clone(),
+            vec![diagnostic.clone()],
+            vec![finding],
+        );
+        let Some(_) = backend.refresh_plan(diagnostics) else {
+            return Err("expected refresh plan".to_string());
+        };
+
+        let params = ExecuteCommandParams {
+            command: COLLECT_CONTEXT_COMMAND.to_string(),
+            arguments: vec![serde_json::json!({
+                "finding_id": "probe:unknown:1:predicate",
+            })],
+            work_done_progress_params: Default::default(),
+        };
+        let result = backend.execute_command(params).await;
+        let packet = result.map_err(|err| format!("execute_command failed: {err}"))?;
+        assert!(packet.is_none(), "expected None for unknown finding");
+        Ok(())
+    })
+}
+
+#[test]
+fn execute_command_refresh_remains_unchanged() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+
+        let params = ExecuteCommandParams {
+            command: REFRESH_COMMAND.to_string(),
+            arguments: Vec::new(),
+            work_done_progress_params: Default::default(),
+        };
+        let result = backend.execute_command(params).await;
+        let packet = result.map_err(|err| format!("execute_command failed: {err}"))?;
+        assert_eq!(packet, None);
+        Ok(())
+    })
 }
