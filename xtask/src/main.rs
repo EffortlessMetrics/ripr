@@ -2316,7 +2316,10 @@ fn generate_no_panic_migration_report() -> Result<(), String> {
     write_text(".ripr/no-panic-allowlist-migration-proposal.md", &report_md)?;
 
     println!("Migration report generated: .ripr/no-panic-allowlist-migration-proposal.md");
-    println!("Found {} allowlist entries with proposed selectors", migration_entries.len());
+    println!(
+        "Found {} allowlist entries with proposed selectors",
+        migration_entries.len()
+    );
 
     Ok(())
 }
@@ -2371,7 +2374,10 @@ fn generate_migration_markdown(
         md.push_str("[[allow]]\n");
         md.push_str(&format!("path = \"{}\"\n", entry.path));
         md.push_str(&format!("family = \"{}\"\n", entry.family));
-        md.push_str(&format!("classification = \"{}\"\n", entry.classification.as_deref().unwrap_or("test_only")));
+        md.push_str(&format!(
+            "classification = \"{}\"\n",
+            entry.classification.as_deref().unwrap_or("test_only")
+        ));
         md.push_str(&format!("explanation = \"{}\"\n\n", entry.explanation));
         md.push_str("[allow.selector]\n");
         md.push_str(&format!("kind = \"{}\"\n", selector.kind));
@@ -10803,8 +10809,11 @@ fn collect_panic_findings(root: &Path, patterns: &[String]) -> Result<Vec<PanicF
     Ok(findings)
 }
 
-fn collect_semantic_panic_findings(root: &Path, patterns: &[String]) -> Result<Vec<SemanticPanicFinding>, String> {
-    use ra_ap_syntax::{SourceFile, Edition, AstNode};
+fn collect_semantic_panic_findings(
+    root: &Path,
+    patterns: &[String],
+) -> Result<Vec<SemanticPanicFinding>, String> {
+    use ra_ap_syntax::{AstNode, Edition, SourceFile};
 
     let mut findings = Vec::new();
 
@@ -10836,36 +10845,41 @@ fn extract_panic_calls_from_node(
 
     for child in node.children() {
         let matched = if let Some(call_expr) = ast::MethodCallExpr::cast(child.clone()) {
-            call_expr
-                .name_ref()
-                .and_then(|method_name| {
-                    let name = method_name.text().to_string();
-                    if pattern_matches_panic_call(patterns, &name) {
-                        extract_call_metadata(call_expr.syntax(), text, path, &name, "method_call")
-                    } else {
-                        None
-                    }
-                })
+            call_expr.name_ref().and_then(|method_name| {
+                let name = method_name.text().to_string();
+                if pattern_matches_panic_call(patterns, &name) {
+                    extract_call_metadata(call_expr.syntax(), text, path, &name, "method_call")
+                } else {
+                    None
+                }
+            })
         } else if let Some(call_expr) = ast::CallExpr::cast(child.clone()) {
-            call_expr
-                .expr()
-                .and_then(|path_expr| {
-                    let func_text = path_expr.syntax().text().to_string();
-                    if pattern_matches_panic_call(patterns, &func_text) {
-                        extract_call_metadata(call_expr.syntax(), text, path, &func_text, "call")
-                    } else {
-                        None
-                    }
-                })
+            call_expr.expr().and_then(|path_expr| {
+                let func_text = path_expr.syntax().text().to_string();
+                if pattern_matches_panic_call(patterns, &func_text) {
+                    extract_call_metadata(call_expr.syntax(), text, path, &func_text, "call")
+                } else {
+                    None
+                }
+            })
         } else if let Some(macro_call) = ast::MacroCall::cast(child.clone()) {
             macro_call
                 .path()
                 .and_then(|p| p.segment())
                 .and_then(|path_seg| {
-                    let name = path_seg.name_ref().map(|n| n.text().to_string()).unwrap_or_default();
+                    let name = path_seg
+                        .name_ref()
+                        .map(|n| n.text().to_string())
+                        .unwrap_or_default();
                     let macro_name = format!("{}!", name);
                     if pattern_matches_panic_call(patterns, &macro_name) {
-                        extract_call_metadata(macro_call.syntax(), text, path, &macro_name, "macro_call")
+                        extract_call_metadata(
+                            macro_call.syntax(),
+                            text,
+                            path,
+                            &macro_name,
+                            "macro_call",
+                        )
                     } else {
                         None
                     }
@@ -10976,7 +10990,10 @@ fn extract_container_name(node: &ra_ap_syntax::SyntaxNode) -> Option<String> {
             if let Some(impl_block) = ast::Impl::cast(parent.clone()) {
                 return impl_block.self_ty().and_then(|t| {
                     if let ast::Type::PathType(pt) = t {
-                        pt.path().and_then(|p| p.segment().and_then(|s| s.name_ref().map(|n| n.text().to_string())))
+                        pt.path().and_then(|p| {
+                            p.segment()
+                                .and_then(|s| s.name_ref().map(|n| n.text().to_string()))
+                        })
                     } else {
                         None
                     }
@@ -11216,10 +11233,8 @@ fn semantic_selector_matches(
             .is_some_and(|tc| finding.snippet_fingerprint.contains(tc));
     }
 
-    (selector.container.is_none()
-        || finding.container.as_ref() == selector.container.as_ref())
-        && (selector.callee.is_none()
-            || finding.callee.as_ref() == selector.callee.as_ref())
+    (selector.container.is_none() || finding.container.as_ref() == selector.container.as_ref())
+        && (selector.callee.is_none() || finding.callee.as_ref() == selector.callee.as_ref())
         && (selector.receiver_fingerprint.is_none()
             || finding.receiver_fingerprint.as_ref() == selector.receiver_fingerprint.as_ref())
 }
@@ -11232,10 +11247,7 @@ fn matches_panic_finding(entry: &PanicAllowEntry, finding: &PanicFinding) -> boo
         && (entry.column.is_none() || entry.column == finding.column)
 }
 
-fn matches_semantic_finding(
-    entry: &PanicAllowEntry,
-    finding: &SemanticPanicFinding,
-) -> bool {
+fn matches_semantic_finding(entry: &PanicAllowEntry, finding: &SemanticPanicFinding) -> bool {
     entry.path == finding.path && entry.family == finding.family
 }
 
@@ -11363,13 +11375,19 @@ fn parse_no_panic_allowlist_toml_v0_2(path: &str) -> Result<Vec<PanicAllowEntryV
         if in_selector_section {
             match key {
                 "kind" => selector_data.kind = parse_string_value(value, path, line_number)?,
-                "container" => selector_data.container = Some(parse_string_value(value, path, line_number)?),
-                "callee" => selector_data.callee = Some(parse_string_value(value, path, line_number)?),
+                "container" => {
+                    selector_data.container = Some(parse_string_value(value, path, line_number)?)
+                }
+                "callee" => {
+                    selector_data.callee = Some(parse_string_value(value, path, line_number)?)
+                }
                 "receiver_fingerprint" => {
-                    selector_data.receiver_fingerprint = Some(parse_string_value(value, path, line_number)?)
+                    selector_data.receiver_fingerprint =
+                        Some(parse_string_value(value, path, line_number)?)
                 }
                 "text_contains" => {
-                    selector_data.text_contains = Some(parse_string_value(value, path, line_number)?)
+                    selector_data.text_contains =
+                        Some(parse_string_value(value, path, line_number)?)
                 }
                 _ => {
                     return Err(format!(
@@ -11381,7 +11399,9 @@ fn parse_no_panic_allowlist_toml_v0_2(path: &str) -> Result<Vec<PanicAllowEntryV
         } else if in_last_seen_section {
             match key {
                 "line" => last_seen_data.line = parse_usize_value(value, path, line_number)?,
-                "column" => last_seen_data.column = Some(parse_usize_value(value, path, line_number)?),
+                "column" => {
+                    last_seen_data.column = Some(parse_usize_value(value, path, line_number)?)
+                }
                 _ => {
                     return Err(format!(
                         "{path}:{} unknown field '{key}' in [allow.last_seen] section",
@@ -11394,7 +11414,8 @@ fn parse_no_panic_allowlist_toml_v0_2(path: &str) -> Result<Vec<PanicAllowEntryV
                 "path" => current_entry.path = parse_string_value(value, path, line_number)?,
                 "family" => current_entry.family = parse_string_value(value, path, line_number)?,
                 "classification" => {
-                    current_entry.classification = Some(parse_string_value(value, path, line_number)?)
+                    current_entry.classification =
+                        Some(parse_string_value(value, path, line_number)?)
                 }
                 "explanation" => {
                     current_entry.explanation = parse_string_value(value, path, line_number)?
@@ -11488,8 +11509,8 @@ mod tests {
         parse_test_intent_manifest, test_efficiency_metrics,
     };
     use super::{
-        PanicAllowEntry, SemanticPanicFinding, PanicFamilySelectorKind,
-        semantic_selector_matches, matches_semantic_finding,
+        PanicAllowEntry, PanicFamilySelectorKind, SemanticPanicFinding, matches_semantic_finding,
+        semantic_selector_matches,
     };
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
