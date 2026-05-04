@@ -14293,7 +14293,7 @@ requires_human_merge = false
             );
             let result = parse_campaign_manifest(&manifest_path);
             assert!(result.is_ok());
-            let (manifest, violations) = result.unwrap();
+            let (manifest, _violations) = result.unwrap();
             assert_eq!(manifest.id, Some("campaign-01".to_string()));
             assert_eq!(manifest.title, Some("Add test coverage".to_string()));
             assert_eq!(manifest.status, Some("in_progress".to_string()));
@@ -14323,7 +14323,7 @@ requires_human_merge = false
 
     #[test]
     fn local_context_findings_are_sorted_deterministically() {
-        let mut findings = vec![
+        let mut findings = [
             LocalContextFinding {
                 path: "b.rs".to_string(),
                 line: Some(2),
@@ -14436,7 +14436,6 @@ requires_human_merge = false
 
     #[test]
     fn check_status_enum_distinguishes_pass_warn_fail() {
-        use std::fmt::Debug;
         let statuses = [CheckStatus::Pass, CheckStatus::Warn, CheckStatus::Fail];
         for status in &statuses {
             let debug_str = format!("{:?}", status);
