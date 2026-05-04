@@ -14347,12 +14347,12 @@ requires_human_merge = false
     fn local_context_allow_entries_track_path_pattern_and_max_count() {
         let entry = LocalContextAllow {
             path: "crates/ripr/src/analysis/classifier.rs".to_string(),
-            pattern: "unwrap()".to_string(),
+            pattern: "Some::pattern".to_string(),
             max_count: 3,
             line: 42,
         };
         assert_eq!(entry.path, "crates/ripr/src/analysis/classifier.rs");
-        assert_eq!(entry.pattern, "unwrap()");
+        assert_eq!(entry.pattern, "Some::pattern");
         assert_eq!(entry.max_count, 3);
     }
 
