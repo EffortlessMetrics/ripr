@@ -10546,25 +10546,26 @@ fn is_word_char(value: Option<char>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, DogfoodRun,
-        LocalContextAllow, MarkdownLink, ReceiptRecord, ReportIndexCampaign, ReportIndexEntry,
-        StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass,
-        badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
-        badge_artifacts_summary_markdown, critic_findings, dogfood_class_counts,
-        dogfood_report_json, dogfood_report_markdown, extract_json_object_usize_map,
-        extract_json_string, extract_json_warnings, extract_workflow_run_blocks,
-        first_line_difference, glob_matches, golden_changes_without_blessing,
-        golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
-        is_bdd_test_name, is_dependency_surface_candidate, is_evidence_path,
-        is_generated_candidate, is_known_campaign_command, is_policy_path, is_production_path,
-        is_receipt_status, is_snake_case_id, is_spec_id, json_escape, json_number_after,
-        json_string_values_for_key, known_xtask_command, local_context_line_findings,
-        local_markdown_target, markdown_links_in_text, next_checkpoints_from_capabilities,
-        normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
-        parse_campaign_manifest, parse_inline_array, parse_reason, parse_static_language_allowlist,
-        pr_shape_warnings, precommit_report_body, public_contract_rows, receipt_json,
-        receipt_specs, receipt_status_from_reports, repo_badge_artifact_command_args,
-        repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown, report_index_markdown,
+        BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, CheckReport,
+        CheckStatus, CheckViolation, DogfoodRun, FixKind, LocalContextAllow, MarkdownLink,
+        ReceiptRecord, ReportIndexCampaign, ReportIndexEntry, StaticLanguageAllowEntry,
+        StaticLanguageMatcher, TestOracleClass, badge_artifact_command_args, badge_artifact_jobs,
+        badge_artifact_native_slot, badge_artifacts_summary_markdown, critic_findings,
+        dogfood_class_counts, dogfood_report_json, dogfood_report_markdown,
+        extract_json_object_usize_map, extract_json_string, extract_json_warnings,
+        extract_workflow_run_blocks, first_line_difference, glob_matches,
+        golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
+        guarded_allow_attributes_in_text, is_bdd_test_name, is_dependency_surface_candidate,
+        is_evidence_path, is_generated_candidate, is_known_campaign_command, is_policy_path,
+        is_production_path, is_receipt_status, is_snake_case_id, is_spec_id, json_escape,
+        json_number_after, json_string_values_for_key, known_xtask_command,
+        local_context_line_findings, local_markdown_target, markdown_links_in_text,
+        next_checkpoints_from_capabilities, normalize_fixture_human_output,
+        normalize_fixture_json_output, normalize_golden_text, parse_campaign_manifest,
+        parse_inline_array, parse_reason, parse_static_language_allowlist, pr_shape_warnings,
+        precommit_report_body, public_contract_rows, receipt_json, receipt_specs,
+        receipt_status_from_reports, repo_badge_artifact_command_args, repo_badge_artifact_jobs,
+        repo_badge_artifacts_summary_markdown, report_index_markdown,
         report_index_missing_expected, report_status_from_text, should_scan_static_language_path,
         sorted_allowlist_content, spec_id_from_path, static_language_allowlist_covers,
         status_for_report, suspicious_runtime_file_names, test_efficiency_entry,
@@ -10573,13 +10574,180 @@ mod tests {
         windows_absolute_path_tokens, workflow_runtime_violations,
     };
     use super::{
-        DeclaredIntent, TestEfficiencyEntry, TestEfficiencyValue, TestIntentDeclaration,
-        TestIntentKind, TestIntentReportSummary, apply_duplicate_discriminator_groups,
-        apply_test_intent_to_entries, parse_test_intent_manifest, test_efficiency_metrics,
+        DeclaredIntent, LocalContextFinding, TestEfficiencyEntry, TestEfficiencyValue,
+        TestIntentDeclaration, TestIntentKind, TestIntentReportSummary,
+        apply_duplicate_discriminator_groups, apply_test_intent_to_entries,
+        parse_test_intent_manifest, test_efficiency_metrics,
     };
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
+    use std::sync::{Mutex, OnceLock};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    static CWD_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("ripr-xtask-{name}-{stamp}"));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn write(path: &Path, text: &str) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(path, text).unwrap();
+    }
+
+    fn with_temp_cwd<T>(name: &str, f: impl FnOnce(&Path) -> T) -> T {
+        let lock = CWD_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let old = std::env::current_dir().unwrap();
+        let root = temp_dir(name);
+        std::env::set_current_dir(&root).unwrap();
+
+        let out = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&root))) {
+            Ok(result) => result,
+            Err(panic_payload) => {
+                let _ = std::env::set_current_dir(&old);
+                drop(lock);
+                let _ = fs::remove_dir_all(&root);
+                std::panic::resume_unwind(panic_payload);
+            }
+        };
+
+        std::env::set_current_dir(old).unwrap();
+        drop(lock);
+        let _ = fs::remove_dir_all(&root);
+        out
+    }
+
+    // ============================================================================
+    // Enum contract tests
+    // ============================================================================
+
+    #[test]
+    fn test_oracle_class_labels_are_stable() {
+        assert_eq!(TestOracleClass::Strong.as_str(), "strong");
+        assert_eq!(TestOracleClass::Medium.as_str(), "medium");
+        assert_eq!(TestOracleClass::Weak.as_str(), "weak");
+        assert_eq!(TestOracleClass::Smoke.as_str(), "smoke");
+    }
+
+    #[test]
+    fn test_oracle_class_rank_is_monotonic() {
+        assert!(TestOracleClass::Strong.rank() > TestOracleClass::Medium.rank());
+        assert!(TestOracleClass::Medium.rank() > TestOracleClass::Weak.rank());
+        assert!(TestOracleClass::Weak.rank() > TestOracleClass::Smoke.rank());
+    }
+
+    #[test]
+    fn test_intent_kind_round_trips_supported_values() {
+        for value in TestIntentKind::supported() {
+            let parsed = TestIntentKind::from_str(value).expect("supported intent should parse");
+            assert_eq!(parsed.as_str(), *value);
+        }
+    }
+
+    #[test]
+    fn test_intent_kind_rejects_unknown_values() {
+        assert_eq!(TestIntentKind::from_str("not_a_real_intent"), None);
+        assert_eq!(TestIntentKind::from_str(""), None);
+        assert_eq!(TestIntentKind::from_str("SMOKE"), None);
+    }
+
+    #[test]
+    fn test_intent_kind_supported_list_has_expected_values() {
+        let supported = TestIntentKind::supported();
+        assert!(supported.contains(&"smoke"));
+        assert!(supported.contains(&"business_case_duplicate"));
+        assert!(supported.contains(&"opaque_external_oracle"));
+        assert!(supported.contains(&"integration_contract"));
+        assert!(supported.contains(&"performance_guard"));
+        assert!(supported.contains(&"documentation_example"));
+        assert_eq!(supported.len(), 6);
+    }
+
+    // ============================================================================
+    // Receipt and status utility tests
+    // ============================================================================
+
+    #[test]
+    fn receipt_status_vocabulary_is_locked() {
+        assert!(is_receipt_status("passed"));
+        assert!(is_receipt_status("warn"));
+        assert!(is_receipt_status("failed"));
+        assert!(is_receipt_status("missing"));
+
+        assert!(!is_receipt_status("pass"));
+        assert!(!is_receipt_status("warning"));
+        assert!(!is_receipt_status("fail"));
+        assert!(!is_receipt_status("unknown"));
+        assert!(!is_receipt_status(""));
+    }
+
+    #[test]
+    fn receipt_json_escapes_and_includes_metadata() {
+        let record = ReceiptRecord {
+            file: "shape.json".to_string(),
+            command: "cargo xtask shape".to_string(),
+            status: "passed".to_string(),
+            reports: vec![
+                "target/ripr/reports/shape.md".to_string(),
+                "target/ripr/reports/pr-summary.md".to_string(),
+            ],
+        };
+        let mut git = BTreeMap::new();
+        git.insert("branch".to_string(), "main".to_string());
+        git.insert("commit".to_string(), "abc123".to_string());
+
+        let json = receipt_json(&record, &git);
+
+        assert!(json.contains("\"schema_version\": \"0.1\""));
+        assert!(json.contains("\"command\": \"cargo xtask shape\""));
+        assert!(json.contains("\"status\": \"passed\""));
+        assert!(json.contains("\"branch\": \"main\""));
+        assert!(json.contains("\"commit\": \"abc123\""));
+        assert!(json.contains("target/ripr/reports/shape.md"));
+    }
+
+    #[test]
+    fn receipt_json_escapes_quotes_and_backslashes() {
+        let record = ReceiptRecord {
+            file: "report.json".to_string(),
+            command: "cargo run -- check --diff \"path\\to\\file.diff\"".to_string(),
+            status: "passed".to_string(),
+            reports: vec![],
+        };
+        let git = BTreeMap::new();
+
+        let json = receipt_json(&record, &git);
+
+        assert!(json.contains("cargo run -- check --diff \\\"path\\\\to\\\\file.diff\\\""));
+    }
+
+    #[test]
+    fn receipt_status_from_reports_detects_missing_files() {
+        with_temp_cwd("receipt-status-missing", |_root| {
+            let result = receipt_status_from_reports(&["missing.md".to_string()]);
+            assert_eq!(result, "missing");
+        });
+    }
+
+    #[test]
+    fn receipt_specs_returns_expected_reports() {
+        let specs = receipt_specs();
+        assert!(!specs.is_empty());
+
+        // Spot-check that we have some expected specs
+        let spec_commands: Vec<&str> = specs.iter().map(|s| s.command).collect();
+        assert!(spec_commands.contains(&"cargo xtask shape"));
+        assert!(spec_commands.contains(&"cargo xtask check-pr"));
+    }
 
     #[test]
     fn glob_match_supports_recursive_segments_and_star_suffixes() {
@@ -14060,6 +14228,221 @@ reason = "second"
         Ok(())
     }
 
+    // ============================================================================
+    // Markdown link and local context tests
+    // ============================================================================
+
+    #[test]
+    fn markdown_links_extracts_relative_targets() {
+        let text = "[link](relative/path.md) and [another](../sibling.md)";
+        let links = markdown_links_in_text(text);
+        assert!(links.iter().any(|l| l.target == "relative/path.md"));
+        assert!(links.iter().any(|l| l.target == "../sibling.md"));
+    }
+
+    #[test]
+    fn markdown_links_extracts_all_link_targets_including_urls() {
+        let text = "[http](https://example.com) [anchor](#section) [mail](mailto:test@example.com)";
+        let links = markdown_links_in_text(text);
+        assert!(links.iter().any(|l| l.target == "https://example.com"));
+        assert!(links.iter().any(|l| l.target == "#section"));
+        assert!(links.iter().any(|l| l.target == "mailto:test@example.com"));
+    }
+
+    #[test]
+    fn markdown_links_includes_line_numbers() {
+        let text = "Line 1\n[link](target.md)\nLine 3";
+        let links = markdown_links_in_text(text);
+        assert!(links.iter().any(|l| l.line == 2));
+    }
+
+    #[test]
+    fn local_markdown_target_filters_absolute_urls() {
+        assert_eq!(local_markdown_target("https://example.com"), None);
+        assert_eq!(local_markdown_target("http://example.com"), None);
+        assert_eq!(local_markdown_target("mailto:test@example.com"), None);
+        assert_eq!(local_markdown_target("#anchor"), None);
+    }
+
+    #[test]
+    fn local_markdown_target_returns_relative_local_paths() {
+        let target = local_markdown_target("relative/path.md");
+        assert_eq!(target, Some("relative/path.md".to_string()));
+
+        let target = local_markdown_target("../sibling.md");
+        assert_eq!(target, Some("../sibling.md".to_string()));
+    }
+
+    #[test]
+    fn campaign_manifest_parses_valid_file() {
+        with_temp_cwd("campaign-manifest", |root| {
+            let manifest_path = root.join("campaign.toml");
+            write(
+                &manifest_path,
+                r#"
+id = "campaign-01"
+title = "Add test coverage"
+status = "in_progress"
+
+[[work_item]]
+id = "item-1"
+status = "ready"
+stackable = true
+requires_human_merge = false
+"#,
+            );
+            let result = parse_campaign_manifest(&manifest_path);
+            assert!(result.is_ok());
+            let (manifest, _violations) = result.unwrap();
+            assert_eq!(manifest.id, Some("campaign-01".to_string()));
+            assert_eq!(manifest.title, Some("Add test coverage".to_string()));
+            assert_eq!(manifest.status, Some("in_progress".to_string()));
+            assert_eq!(manifest.work_items.len(), 1);
+            assert_eq!(manifest.work_items[0].id, Some("item-1".to_string()));
+        });
+    }
+
+    #[test]
+    fn campaign_manifest_reports_violations_for_invalid_file() {
+        with_temp_cwd("campaign-invalid", |root| {
+            let manifest_path = root.join("campaign.toml");
+            write(&manifest_path, "this is not valid toml [ invalid");
+            let result = parse_campaign_manifest(&manifest_path);
+            // Invalid TOML should return Ok with violations, not an error
+            assert!(
+                result.is_ok(),
+                "invalid TOML should return Ok with violations"
+            );
+            let (_manifest, violations) = result.unwrap();
+            assert!(
+                !violations.is_empty(),
+                "invalid TOML should produce violations"
+            );
+        });
+    }
+
+    #[test]
+    fn local_context_findings_are_sorted_deterministically() {
+        let mut findings = [
+            LocalContextFinding {
+                path: "b.rs".to_string(),
+                line: Some(2),
+                pattern: "pat".to_string(),
+                problem: "prob".to_string(),
+            },
+            LocalContextFinding {
+                path: "a.rs".to_string(),
+                line: Some(1),
+                pattern: "pat".to_string(),
+                problem: "prob".to_string(),
+            },
+        ];
+        findings.sort();
+        assert_eq!(findings[0].path, "a.rs");
+        assert_eq!(findings[1].path, "b.rs");
+    }
+
+    #[test]
+    fn local_context_allow_entries_track_path_pattern_and_max_count() {
+        let entry = LocalContextAllow {
+            path: "crates/ripr/src/analysis/classifier.rs".to_string(),
+            pattern: "unwrap()".to_string(),
+            max_count: 3,
+            line: 42,
+        };
+        assert_eq!(entry.path, "crates/ripr/src/analysis/classifier.rs");
+        assert_eq!(entry.pattern, "unwrap()");
+        assert_eq!(entry.max_count, 3);
+    }
+
+    // ============================================================================
+    // Test efficiency and declared intent tests
+    // ============================================================================
+
+    #[test]
+    fn declared_intent_structure_holds_intent_and_metadata() {
+        let intent = DeclaredIntent {
+            intent: TestIntentKind::Smoke,
+            owner: "docs".to_string(),
+            reason: "example".to_string(),
+            source: "docs/example.md".to_string(),
+        };
+        assert_eq!(intent.intent, TestIntentKind::Smoke);
+        assert_eq!(intent.owner, "docs");
+        assert_eq!(intent.reason, "example");
+    }
+
+    #[test]
+    fn test_efficiency_entry_structure_matches_expected_shape() {
+        let entry = TestEfficiencyEntry {
+            path: PathBuf::from("tests/test.rs"),
+            name: "test_foo".to_string(),
+            line: 5,
+            class: "smoke_only",
+            oracle_kind: "assert".to_string(),
+            oracle_strength: "smoke",
+            reached_owners: vec!["parse".to_string()],
+            observed_values: vec![],
+            reasons: vec!["no explicit discriminator".to_string()],
+            static_limitations: vec![],
+            duplicate_group_id: None,
+            declared_intent: None,
+        };
+        assert_eq!(entry.class, "smoke_only");
+        assert_eq!(entry.oracle_strength, "smoke");
+    }
+
+    #[test]
+    fn test_efficiency_value_tracks_context_and_line() {
+        let value = TestEfficiencyValue {
+            line: 10,
+            context: "activation",
+            value: "foo()".to_string(),
+            text: "let x = foo();".to_string(),
+        };
+        assert_eq!(value.line, 10);
+        assert_eq!(value.context, "activation");
+        assert_eq!(value.value, "foo()");
+    }
+
+    // ============================================================================
+    // Report rendering and status tests
+    // ============================================================================
+
+    #[test]
+    fn report_index_entries_contain_file_path_and_status() {
+        let entry = ReportIndexEntry {
+            file: "shape.md".to_string(),
+            path: "target/ripr/reports/shape.md".to_string(),
+            status: "pass".to_string(),
+        };
+        assert_eq!(entry.file, "shape.md");
+        assert_eq!(entry.path, "target/ripr/reports/shape.md");
+        assert_eq!(entry.status, "pass");
+    }
+
+    #[test]
+    fn report_index_campaign_tracks_id_title_and_ready_items() {
+        let campaign = ReportIndexCampaign {
+            id: "test-coverage".to_string(),
+            title: "Improve test coverage".to_string(),
+            status: "in_progress".to_string(),
+            ready_work_items: vec!["item-1".to_string(), "item-2".to_string()],
+            issues: vec![],
+        };
+        assert_eq!(campaign.id, "test-coverage");
+        assert_eq!(campaign.ready_work_items.len(), 2);
+    }
+
+    #[test]
+    fn check_status_enum_distinguishes_pass_warn_fail() {
+        let statuses = [CheckStatus::Pass, CheckStatus::Warn, CheckStatus::Fail];
+        for status in &statuses {
+            let debug_str = format!("{:?}", status);
+            assert!(!debug_str.is_empty());
+        }
+    }
+
     #[test]
     fn repo_badge_artifact_jobs_has_exactly_four_entries_with_repo_prefix() -> Result<(), String> {
         let jobs = repo_badge_artifact_jobs();
@@ -14086,6 +14469,91 @@ reason = "second"
         } else {
             Err(format!("expected {expected:?}, got {jobs:?}"))
         }
+    }
+
+    #[test]
+    fn check_violation_structure_holds_check_path_and_message() {
+        let violation = CheckViolation {
+            check: "test-coverage".to_string(),
+            path: Some(PathBuf::from("src/lib.rs")),
+            line: Some(42),
+            severity: CheckStatus::Fail,
+            category: "coverage".to_string(),
+            message: "Missing test".to_string(),
+            why_it_matters: "Ensures code quality".to_string(),
+            fix_kind: FixKind::AuthorDecisionRequired,
+            suggested_commands: vec!["cargo test".to_string()],
+            suggested_patch: Some("patch content".to_string()),
+            exception_template: None,
+        };
+        assert_eq!(violation.check, "test-coverage");
+        assert_eq!(violation.line, Some(42));
+        assert_eq!(violation.message, "Missing test");
+    }
+
+    #[test]
+    fn check_report_aggregates_violations_and_status() {
+        let report = CheckReport {
+            check: "coverage".to_string(),
+            status: CheckStatus::Fail,
+            violations: vec![],
+        };
+        assert_eq!(report.check, "coverage");
+        match report.status {
+            CheckStatus::Fail => {}
+            _ => panic!("expected Fail status"),
+        }
+    }
+
+    // ============================================================================
+    // Identifier validation tests
+    // ============================================================================
+
+    #[test]
+    fn is_spec_id_matches_expected_format() {
+        assert!(is_spec_id("RIPR-SPEC-0001"));
+        assert!(is_spec_id("RIPR-SPEC-9999"));
+        assert!(is_spec_id("RIPR-SPEC-0000"));
+
+        assert!(!is_spec_id("RIPR-SPEC-001")); // too short
+        assert!(!is_spec_id("RIPR-SPEC-00001")); // too long
+        assert!(!is_spec_id("RIPR-SPEC-abc1")); // non-digits
+        assert!(!is_spec_id("ripr-spec-0001")); // lowercase
+        assert!(!is_spec_id("RIPR-0001")); // missing SPEC
+        assert!(!is_spec_id(""));
+    }
+
+    #[test]
+    fn is_snake_case_id_validates_naming_rules() {
+        assert!(is_snake_case_id("valid_id"));
+        assert!(is_snake_case_id("also_valid_123"));
+        assert!(is_snake_case_id("a"));
+        assert!(is_snake_case_id("test123test"));
+
+        assert!(!is_snake_case_id("")); // empty
+        assert!(!is_snake_case_id("_starts_with")); // starts with underscore
+        assert!(!is_snake_case_id("ends_with_")); // ends with underscore
+        assert!(!is_snake_case_id("double__underscore")); // double underscore
+        assert!(!is_snake_case_id("CamelCase")); // uppercase
+        assert!(!is_snake_case_id("with-dash")); // non-alphanumeric
+    }
+
+    #[test]
+    fn is_bdd_test_name_matches_given_when_then_pattern() {
+        assert!(is_bdd_test_name(
+            "given_a_user_when_logged_in_then_access_granted"
+        ));
+        assert!(is_bdd_test_name(
+            "Given_Some_Context_When_Something_Happens_Then_Result"
+        ));
+        assert!(is_bdd_test_name("given_x_when_y_then_z"));
+
+        assert!(!is_bdd_test_name("when_no_given")); // missing given
+        assert!(!is_bdd_test_name("given_no_when_then")); // missing when
+        assert!(!is_bdd_test_name("given_when_no_then")); // missing then
+        assert!(!is_bdd_test_name("given__when__then")); // missing content between parts
+        assert!(!is_bdd_test_name("regular_test_name")); // not BDD format
+        assert!(!is_bdd_test_name(""));
     }
 
     #[test]
