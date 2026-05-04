@@ -141,7 +141,7 @@ family = "unwrap"
 
 [allow.selector]
 kind = "method_call"
-container = "tests::with_temp_cwd"
+container = "with_temp_cwd"
 callee = "unwrap"
 
 [allow.last_seen]

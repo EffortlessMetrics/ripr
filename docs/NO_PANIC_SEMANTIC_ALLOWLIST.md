@@ -45,7 +45,7 @@ explanation = "Test helper function: unwrap in temporary directory management"
 
 [allow.selector]
 kind = "method_call"
-container = "tests::with_temp_cwd"
+container = "with_temp_cwd"
 callee = "unwrap"
 receiver_fingerprint = "std::env::current_dir()"
 
