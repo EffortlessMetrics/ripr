@@ -489,4 +489,221 @@ pub fn build_quote(amount: i32, fee: i32) -> Quote {
         }
         Ok(())
     }
+
+    // -- Cache wiring integration tests -------------------------------
+    //
+    // These exercise the `inventory_classified_seams_at` -> cache load
+    // -> uncached fallback -> cache store loop end-to-end against a
+    // real on-disk workspace. They are paired with the unit tests in
+    // `analysis::seam_cache::tests` (which characterize the cache
+    // module in isolation).
+
+    /// FNV-style unique-ish suffix so tempdir names do not collide
+    /// when tests run in parallel.
+    fn unique_suffix() -> String {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        format!("{}-{:x}", std::process::id(), nanos)
+    }
+
+    fn make_tempdir(label: &str) -> Result<PathBuf, String> {
+        let dir = std::env::temp_dir().join(format!("ripr-inv-{label}-{}", unique_suffix()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create {}: {err}", dir.display()))?;
+        Ok(dir)
+    }
+
+    fn write_file(path: &Path, content: &str) -> Result<(), String> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|err| format!("mkdir {}: {err}", parent.display()))?;
+        }
+        std::fs::write(path, content).map_err(|err| format!("write {}: {err}", path.display()))
+    }
+
+    fn cache_dir_under(root: &Path) -> PathBuf {
+        root.join("target")
+            .join("ripr")
+            .join("cache")
+            .join("repo-seam-facts")
+            .join("0.1")
+    }
+
+    fn list_cache_entries(root: &Path) -> Result<Vec<PathBuf>, String> {
+        let dir = cache_dir_under(root);
+        if !dir.exists() {
+            return Ok(Vec::new());
+        }
+        let mut out = Vec::new();
+        for entry in
+            std::fs::read_dir(&dir).map_err(|err| format!("read {}: {err}", dir.display()))?
+        {
+            let entry = entry.map_err(|err| format!("read entry: {err}"))?;
+            out.push(entry.path());
+        }
+        out.sort();
+        Ok(out)
+    }
+
+    #[test]
+    fn given_cached_classified_seams_when_inventory_runs_then_cached_seams_are_returned()
+    -> Result<(), String> {
+        let root = make_tempdir("warm-hit")?;
+        write_file(
+            &root.join("src/foo.rs"),
+            "pub fn discount(amount: i32, threshold: i32) -> bool { amount >= threshold }\n",
+        )?;
+
+        // Cold pass: classifies the predicate seam, writes cache.
+        let cold = inventory_classified_seams_at(&root)?;
+        if cold.is_empty() {
+            return Err("cold path should classify at least one seam from foo.rs".into());
+        }
+
+        // Replace the cache file's `classified_seams` with `[]`
+        // without changing the key fields. If the warm path returns
+        // `[]`, the cache was read; if it returns the cold result,
+        // the cache was bypassed.
+        let entries = list_cache_entries(&root)?;
+        if entries.len() != 1 {
+            return Err(format!(
+                "expected exactly 1 cache entry, got {}",
+                entries.len()
+            ));
+        }
+        let cache_file = &entries[0];
+        let bytes = std::fs::read(cache_file)
+            .map_err(|err| format!("read {}: {err}", cache_file.display()))?;
+        let mut envelope: serde_json::Value =
+            serde_json::from_slice(&bytes).map_err(|err| format!("parse cache: {err}"))?;
+        envelope["classified_seams"] = serde_json::Value::Array(Vec::new());
+        let rewritten =
+            serde_json::to_vec(&envelope).map_err(|err| format!("encode cache: {err}"))?;
+        std::fs::write(cache_file, rewritten)
+            .map_err(|err| format!("rewrite {}: {err}", cache_file.display()))?;
+
+        let warm = inventory_classified_seams_at(&root)?;
+        if !warm.is_empty() {
+            return Err(format!(
+                "warm path should return cached (empty) seams, got {} seams",
+                warm.len()
+            ));
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn given_corrupt_cache_entry_when_inventory_runs_then_uncached_path_computes_without_failure()
+    -> Result<(), String> {
+        let root = make_tempdir("corrupt-recover")?;
+        write_file(
+            &root.join("src/foo.rs"),
+            "pub fn discount(amount: i32, threshold: i32) -> bool { amount >= threshold }\n",
+        )?;
+
+        // Pre-populate the cache file (under the exact key the
+        // inventory will compute) with garbage so the loader returns
+        // `CorruptIgnored` and the inventory falls through to compute.
+        let state = collect_workspace_state(&root)?;
+        let key = state.cache_key();
+        let dir = cache_dir_under(&root);
+        std::fs::create_dir_all(&dir).map_err(|err| format!("mkdir {}: {err}", dir.display()))?;
+        let entry = dir.join(key.filename());
+        std::fs::write(&entry, b"{not valid json")
+            .map_err(|err| format!("write corrupt entry: {err}"))?;
+
+        // Inventory must still return real classified seams.
+        let result = inventory_classified_seams_at(&root)?;
+        if result.is_empty() {
+            return Err("inventory should compute real seams when cache is corrupt".into());
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn given_cache_store_fails_when_inventory_runs_then_analysis_result_is_still_returned()
+    -> Result<(), String> {
+        let root = make_tempdir("storefail")?;
+        write_file(
+            &root.join("src/foo.rs"),
+            "pub fn discount(amount: i32, threshold: i32) -> bool { amount >= threshold }\n",
+        )?;
+
+        // Reserve the path the cache would write to as a *directory*.
+        // `std::fs::write` to a path that is a directory fails on
+        // both POSIX and Windows; the inventory must still return
+        // its in-memory result.
+        let state = collect_workspace_state(&root)?;
+        let key = state.cache_key();
+        let dir = cache_dir_under(&root);
+        std::fs::create_dir_all(dir.join(key.filename()))
+            .map_err(|err| format!("mkdir conflict path: {err}"))?;
+
+        let result = inventory_classified_seams_at(&root)?;
+        if result.is_empty() {
+            return Err("inventory should return real seams even when cache write fails".into());
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn given_test_intent_or_suppressions_change_when_inventory_runs_then_cache_key_changes()
+    -> Result<(), String> {
+        let root = make_tempdir("intentkey")?;
+        write_file(
+            &root.join("src/foo.rs"),
+            "pub fn discount(amount: i32, threshold: i32) -> bool { amount >= threshold }\n",
+        )?;
+
+        let baseline = collect_workspace_state(&root)?.cache_key();
+
+        // Add a `.ripr/test_intent.toml` and re-derive the key.
+        write_file(
+            &root.join(".ripr/test_intent.toml"),
+            concat!(
+                "[[test]]\n",
+                "name = \"smoke\"\n",
+                "owner = \"src/foo.rs\"\n",
+                "intent = \"smoke\"\n",
+                "reason = \"bar\"\n"
+            ),
+        )?;
+        let with_intent = collect_workspace_state(&root)?.cache_key();
+        if baseline.test_intent_hash == with_intent.test_intent_hash {
+            return Err("adding test_intent.toml should change test_intent_hash".into());
+        }
+        if baseline.filename() == with_intent.filename() {
+            return Err("adding test_intent.toml should change cache filename".into());
+        }
+
+        // Add `.ripr/suppressions.toml` and re-derive again.
+        write_file(
+            &root.join(".ripr/suppressions.toml"),
+            concat!(
+                "[[suppression]]\n",
+                "kind = \"exposure_gap\"\n",
+                "owner = \"src/foo.rs\"\n",
+                "reason = \"bar\"\n"
+            ),
+        )?;
+        let with_both = collect_workspace_state(&root)?.cache_key();
+        if with_intent.suppressions_hash == with_both.suppressions_hash {
+            return Err("adding suppressions.toml should change suppressions_hash".into());
+        }
+        if with_intent.filename() == with_both.filename() {
+            return Err("adding suppressions.toml should change cache filename".into());
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
 }
