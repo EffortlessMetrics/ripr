@@ -234,7 +234,11 @@ tests = [
   "crates/ripr/src/output/agent_seam_packets.rs::tests::given_related_tests_when_packet_is_rendered_then_oracle_kind_and_strength_are_present",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::schema_version_is_pinned_to_zero_two",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::empty_input_emits_well_formed_json",
-  "crates/ripr/src/output/agent_seam_packets.rs::tests::suggested_assertion_for_predicate_boundary_uses_owner_and_missing_value"
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::suggested_assertion_for_predicate_boundary_uses_owner_and_missing_value",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::missing_discriminators_carry_value_and_reason_objects",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::given_opaque_seam_when_packet_is_rendered_then_task_is_inspect_static_limitation",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::predicate_boundary_fallback_emits_when_no_analyzer_hypothesis_fired",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::given_intentional_seam_when_packets_are_requested_then_no_packet_is_emitted"
 ]
 fixtures = []
 code = [

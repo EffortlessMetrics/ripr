@@ -511,6 +511,7 @@ generated via `cargo xtask agent-seam-packets`.
       "line": 88,
       "changed_expression": "amount >= discount_threshold",
       "current_grip": "weakly_gripped",
+      "headline_eligible": true,
       "evidence": {
         "reach": "yes",
         "activate": "yes",
@@ -519,9 +520,11 @@ generated via `cargo xtask agent-seam-packets`.
         "discriminate": "weak"
       },
       "observed_values": ["50", "10000"],
-      "missing_input_values": [
-        "discount_threshold (equality boundary)",
-        "input that hits the boundary: amount >= discount_threshold"
+      "missing_discriminators": [
+        {
+          "value": "discount_threshold (equality boundary)",
+          "reason": "observed values do not include the equality-boundary case for this predicate"
+        }
       ],
       "missing_oracle_shape": "exact returned value assertion at the equality boundary",
       "related_existing_tests": [
@@ -530,12 +533,14 @@ generated via `cargo xtask agent-seam-packets`.
           "file": "tests/pricing.rs",
           "line": 12,
           "oracle_kind": "exact_value",
-          "oracle_strength": "strong"
+          "oracle_strength": "strong",
+          "evidence_summary": "exact value assertion"
         }
       ],
       "suggested_assertions": [
         "assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)"
-      ]
+      ],
+      "runtime_confirmation": "optional cargo-mutants confirmation; ripr reports static evidence only"
     }
   ]
 }
@@ -549,23 +554,28 @@ Field contract:
   section, the renderer (`crates/ripr/src/output/agent_seam_packets.rs`),
   and any downstream consumers in lockstep.
 - `scope` — always `"repo"`.
-- `packets_total` — number of actionable packets emitted. **Equal to
-  the count of headline-eligible seams**; strongly-gripped, opaque,
-  intentional, and suppressed seams produce no packet.
-- `packets[].task` — currently always `"write_targeted_test"`. Future
+- `packets_total` — number of actionable packets emitted. Equals the
+  count of headline-eligible seams plus opaque seams (which emit
+  `inspect_static_limitation`). Strongly-gripped, intentional, and
+  suppressed seams produce no packet.
+- `packets[].task` — `"write_targeted_test"` for headline-eligible
+  seams; `"inspect_static_limitation"` for opaque seams. Future
   versions may add tasks like `"strengthen_oracle"` or
   `"add_match_arm_observer"`.
-- `packets[].current_grip` — one of the headline-eligible
-  `SeamGripClass` strings (`weakly_gripped`, `ungripped`,
-  `reachable_unrevealed`, `activation_unknown`, `propagation_unknown`,
-  `observation_unknown`, `discrimination_unknown`).
+- `packets[].current_grip` — one of the `SeamGripClass` strings the
+  packet is emitted for (`weakly_gripped`, `ungripped`,
+  `reachable_unrevealed`, the four `*_unknown` classes, or
+  `opaque`).
+- `packets[].headline_eligible` — boolean. `true` for the
+  headline-eligible classes, `false` for `opaque`. Lets agents
+  prioritize without re-deriving the headline mapping.
 - `packets[].evidence` — per-stage `StageState` strings.
 - `packets[].observed_values` — literal scalars seen in owner-call
   arguments across related tests.
-- `packets[].missing_input_values` — analyzer-emitted hypotheses for
-  values the test suite skips. For predicate boundaries, includes the
-  equality-boundary hypothesis even when no missing-discriminator
-  fact fired.
+- `packets[].missing_discriminators` — array of `{value, reason}`
+  records mirroring the analyzer's `MissingDiscriminatorFact` shape.
+  For predicate-boundary seams, includes a fallback entry naming the
+  equality boundary even when no analyzer hypothesis fired.
 - `packets[].missing_oracle_shape` — guidance string keyed by
   `SeamKind` and `ExpectedSink`. Examples:
   - `predicate_boundary` → "exact returned value assertion at the
@@ -574,12 +584,19 @@ Field contract:
     assert_matches!)"
   - `side_effect` → "mock expectation, event/state observer, or
     persistence assertion (...)"
-- `packets[].related_existing_tests` — capped at 8 per packet. Carries
-  test name, file, line, oracle kind, oracle strength.
+- `packets[].related_existing_tests` — capped at
+  `MAX_RELATED_TESTS_PER_PACKET` (currently 8). Carries test name,
+  file, line, oracle kind, oracle strength, and a short
+  `evidence_summary` describing the oracle shape (e.g., "exact value
+  assertion", "is_err / broad-error assertion").
 - `packets[].suggested_assertions` — best-effort assertion templates
   the agent fills in. Placeholders are intentional; ripr never invents
   expected values. Example for predicate boundary:
   `"assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)"`.
+- `packets[].runtime_confirmation` — boilerplate string reminding the
+  agent that `ripr` is preflight static evidence and runtime
+  mutation confirmation (e.g., `cargo-mutants`) is a separate
+  calibration step.
 
 The packet is the agent's work order: it names the seam, the missing
 discriminator, the oracle shape, and an assertion template — but never

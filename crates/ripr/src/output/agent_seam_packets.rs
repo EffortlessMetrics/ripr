@@ -1,12 +1,17 @@
-//! Render Voice B classified seam gaps as agent-ready test-writing
-//! packets per RIPR-SPEC-0005 (and the agent-packet shape in
+//! Render Voice B classified seam gaps as agent-ready packets per
+//! RIPR-SPEC-0005 (and the agent-packet shape in
 //! `docs/OUTPUT_SCHEMA.md` § "Agent Seam Packets").
 //!
-//! Packets are emitted only for headline-eligible grip classes
-//! (`Ungripped`, `WeaklyGripped`, `ReachableUnrevealed`, the four
-//! `*_unknown` classes). `StronglyGripped`, `Opaque`, `Intentional`,
-//! and `Suppressed` produce no packet — the agent has no actionable
-//! gap to close.
+//! Packets are emitted for actionable classes:
+//!
+//! - Headline-eligible classes (`Ungripped`, `WeaklyGripped`,
+//!   `ReachableUnrevealed`, the four `*_unknown` classes) emit a
+//!   `task: "write_targeted_test"` packet.
+//! - `Opaque` emits a conservative `task: "inspect_static_limitation"`
+//!   packet so the agent at least sees the static boundary.
+//!
+//! `StronglyGripped`, `Intentional`, and `Suppressed` produce no
+//! packet — there is nothing for the agent to do.
 //!
 //! The packet schema is **0.2**, intentionally distinct from the
 //! repo-exposure report's 0.1, because the packet is a separate
@@ -19,9 +24,21 @@ use crate::output::json::escape as json_escape;
 
 pub(crate) const AGENT_SEAM_PACKET_SCHEMA_VERSION: &str = "0.2";
 
-/// Render every headline-eligible `ClassifiedSeam` in `classified` as
-/// an agent packet, returning a JSON array. Strongly-gripped, opaque,
-/// intentional, and suppressed seams are intentionally skipped.
+/// Cap on related-tests rendered per packet. Mirrors the JSON-side
+/// limit in `output::repo_exposure` so an agent inspecting the same
+/// seam from either artifact sees the same evidence size.
+const MAX_RELATED_TESTS_PER_PACKET: usize = 8;
+
+/// Boilerplate string surfaced under `runtime_confirmation` to remind
+/// agents that static evidence is preflight, not proof.
+const RUNTIME_CONFIRMATION_NOTE: &str =
+    "optional cargo-mutants confirmation; ripr reports static evidence only";
+
+/// Render every actionable `ClassifiedSeam` in `classified` as an agent
+/// packet, returning a JSON object with a `packets` array. Strongly-gripped,
+/// intentional, and suppressed seams are skipped. `Opaque` seams emit a
+/// conservative `inspect_static_limitation` packet so the agent at least
+/// sees the static boundary that hides evidence.
 pub(crate) fn render_agent_seam_packets_json(classified: &[ClassifiedSeam]) -> String {
     let mut out = String::new();
     out.push_str("{\n");
@@ -58,17 +75,25 @@ pub(crate) fn render_agent_seam_packets_json(classified: &[ClassifiedSeam]) -> S
 }
 
 fn is_actionable(class: SeamGripClass) -> bool {
-    // Headline-eligible classes are the seams an agent can act on.
-    // `Opaque`, `Intentional`, and `Suppressed` are visible but not
-    // headline-eligible, so they do not get packets.
-    class.is_headline_eligible()
+    // Headline-eligible classes are the natural agent targets.
+    // `Opaque` is also actionable as `inspect_static_limitation`.
+    // `Intentional` and `Suppressed` are governance classes; the
+    // agent should not be told to "fix" them.
+    class.is_headline_eligible() || matches!(class, SeamGripClass::Opaque)
+}
+
+fn task_for(class: SeamGripClass) -> &'static str {
+    match class {
+        SeamGripClass::Opaque => "inspect_static_limitation",
+        _ => "write_targeted_test",
+    }
 }
 
 fn push_packet_json(out: &mut String, entry: &ClassifiedSeam) {
     let seam = &entry.seam;
     let evidence = &entry.evidence;
     out.push_str("    {\n");
-    out.push_str("      \"task\": \"write_targeted_test\",\n");
+    out.push_str(&format!("      \"task\": \"{}\",\n", task_for(entry.class)));
     out.push_str(&format!(
         "      \"seam_id\": \"{}\",\n",
         json_escape(seam.id().as_str())
@@ -93,6 +118,10 @@ fn push_packet_json(out: &mut String, entry: &ClassifiedSeam) {
     out.push_str(&format!(
         "      \"current_grip\": \"{}\",\n",
         entry.class.as_str()
+    ));
+    out.push_str(&format!(
+        "      \"headline_eligible\": {},\n",
+        entry.class.is_headline_eligible()
     ));
 
     out.push_str("      \"evidence\": {");
@@ -127,13 +156,22 @@ fn push_packet_json(out: &mut String, entry: &ClassifiedSeam) {
     }
     out.push_str("],\n");
 
-    let missing_inputs = missing_input_values_for(entry);
-    out.push_str("      \"missing_input_values\": [");
-    for (idx, value) in missing_inputs.iter().enumerate() {
-        out.push_str(&format!("\"{}\"", json_escape(value)));
-        if idx + 1 != missing_inputs.len() {
-            out.push_str(", ");
+    let missing = missing_discriminator_records_for(entry);
+    out.push_str("      \"missing_discriminators\": [");
+    if !missing.is_empty() {
+        out.push('\n');
+        for (idx, record) in missing.iter().enumerate() {
+            out.push_str(&format!(
+                "        {{\"value\": \"{}\", \"reason\": \"{}\"}}",
+                json_escape(record.value.as_str()),
+                json_escape(record.reason.as_str())
+            ));
+            if idx + 1 != missing.len() {
+                out.push(',');
+            }
+            out.push('\n');
         }
+        out.push_str("      ");
     }
     out.push_str("],\n");
 
@@ -145,7 +183,10 @@ fn push_packet_json(out: &mut String, entry: &ClassifiedSeam) {
     out.push_str("      \"related_existing_tests\": [");
     if !evidence.related_tests.is_empty() {
         out.push('\n');
-        let cap = evidence.related_tests.len().min(8);
+        let cap = evidence
+            .related_tests
+            .len()
+            .min(MAX_RELATED_TESTS_PER_PACKET);
         for (idx, grip) in evidence.related_tests.iter().take(cap).enumerate() {
             out.push_str("        {");
             out.push_str(&format!(
@@ -162,8 +203,12 @@ fn push_packet_json(out: &mut String, entry: &ClassifiedSeam) {
                 grip.oracle_kind.as_str()
             ));
             out.push_str(&format!(
-                "\"oracle_strength\": \"{}\"",
+                "\"oracle_strength\": \"{}\", ",
                 grip.oracle_strength.as_str()
+            ));
+            out.push_str(&format!(
+                "\"evidence_summary\": \"{}\"",
+                json_escape(grip.evidence_summary.as_str())
             ));
             out.push('}');
             if idx + 1 != cap {
@@ -183,28 +228,49 @@ fn push_packet_json(out: &mut String, entry: &ClassifiedSeam) {
             out.push_str(", ");
         }
     }
-    out.push_str("]\n");
+    out.push_str("],\n");
+    out.push_str(&format!(
+        "      \"runtime_confirmation\": \"{}\"\n",
+        json_escape(RUNTIME_CONFIRMATION_NOTE)
+    ));
     out.push_str("    }");
 }
 
-/// Derive `missing_input_values` from the seam's `RequiredDiscriminator`
-/// and the analyzer-emitted `missing_discriminators` hypotheses.
-fn missing_input_values_for(entry: &ClassifiedSeam) -> Vec<String> {
-    let mut out: Vec<String> = entry
+/// A flat (value, reason) record carried in the packet's
+/// `missing_discriminators` array. Mirrors the field shape of
+/// `MissingDiscriminatorFact` but excludes `flow_sink` because the
+/// packet already carries the sink class via `missing_oracle_shape`.
+struct MissingRecord {
+    value: String,
+    reason: String,
+}
+
+/// Build the `missing_discriminators` array carried in the packet,
+/// pairing analyzer-emitted hypotheses with a predicate-boundary
+/// fallback when the seam expression names a clear boundary.
+fn missing_discriminator_records_for(entry: &ClassifiedSeam) -> Vec<MissingRecord> {
+    let mut out: Vec<MissingRecord> = entry
         .evidence
         .missing_discriminators
         .iter()
-        .map(|m| m.value.clone())
+        .map(|m| MissingRecord {
+            value: m.value.clone(),
+            reason: m.reason.clone(),
+        })
         .collect();
     // For predicate-boundary seams, surface the boundary expression
-    // explicitly even when the missing-discriminator hypothesis only
-    // names the RHS token.
+    // explicitly even when the analyzer hypothesis only names the RHS
+    // token (or hasn't fired). This pins the most common ask.
     if matches!(entry.seam.kind(), SeamKind::PredicateBoundary)
         && let RequiredDiscriminator::BoundaryValue { description } =
             entry.seam.required_discriminator()
-        && !out.iter().any(|v| v == description)
+        && !out.iter().any(|r| r.value.contains(description.as_str()))
     {
-        out.push(format!("input that hits the boundary: {description}"));
+        out.push(MissingRecord {
+            value: format!("input that hits the boundary: {description}"),
+            reason: "predicate uses an equality-bearing operator; tests should exercise the boundary case"
+                .to_string(),
+        });
     }
     out
 }
@@ -389,13 +455,88 @@ mod tests {
         if !json.contains("\"current_grip\": \"weakly_gripped\"") {
             return Err(format!("missing current_grip in: {json}"));
         }
+        if !json.contains("\"headline_eligible\": true") {
+            return Err(format!("missing headline_eligible: {json}"));
+        }
         if !json.contains("discount_threshold (equality boundary)") {
             return Err(format!(
-                "expected boundary value in missing_input_values: {json}"
+                "expected boundary value in missing_discriminators: {json}"
             ));
         }
         if !json.contains("\"missing_oracle_shape\": \"exact returned value assertion") {
             return Err(format!("expected predicate-boundary oracle shape: {json}"));
+        }
+        if !json.contains("\"runtime_confirmation\":") {
+            return Err(format!("missing runtime_confirmation: {json}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn missing_discriminators_carry_value_and_reason_objects() -> Result<(), String> {
+        let json = render_agent_seam_packets_json(&[weakly_gripped_classified()]);
+        if !json.contains(
+            "{\"value\": \"discount_threshold (equality boundary)\", \"reason\": \"observed values do not include the equality-boundary case\"}",
+        ) {
+            return Err(format!(
+                "expected structured missing_discriminator record in: {json}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn given_opaque_seam_when_packet_is_rendered_then_task_is_inspect_static_limitation()
+    -> Result<(), String> {
+        let mut entry = weakly_gripped_classified();
+        entry.class = SeamGripClass::Opaque;
+        let json = render_agent_seam_packets_json(&[entry]);
+        if !json.contains("\"task\": \"inspect_static_limitation\"") {
+            return Err(format!(
+                "expected task=inspect_static_limitation for opaque seam: {json}"
+            ));
+        }
+        if !json.contains("\"current_grip\": \"opaque\"") {
+            return Err(format!("missing current_grip=opaque: {json}"));
+        }
+        if !json.contains("\"headline_eligible\": false") {
+            return Err(format!(
+                "expected headline_eligible=false for opaque: {json}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn predicate_boundary_fallback_emits_when_no_analyzer_hypothesis_fired() -> Result<(), String> {
+        // Construct a weakly-gripped predicate seam with EMPTY
+        // missing_discriminators (no analyzer hypothesis). The packet
+        // should still surface the equality-boundary fallback so an
+        // agent has something to act on.
+        let mut entry = weakly_gripped_classified();
+        entry.evidence.missing_discriminators = Vec::new();
+        let json = render_agent_seam_packets_json(&[entry]);
+        if !json
+            .contains("\"value\": \"input that hits the boundary: amount >= discount_threshold\"")
+        {
+            return Err(format!(
+                "expected predicate-boundary fallback record when analyzer hypothesis is empty: {json}"
+            ));
+        }
+        if !json.contains("predicate uses an equality-bearing operator") {
+            return Err(format!("expected fallback reason text: {json}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn given_intentional_seam_when_packets_are_requested_then_no_packet_is_emitted()
+    -> Result<(), String> {
+        let mut entry = weakly_gripped_classified();
+        entry.class = SeamGripClass::Intentional;
+        let json = render_agent_seam_packets_json(&[entry]);
+        if !json.contains("\"packets_total\": 0") {
+            return Err(format!("intentional seam should produce no packet: {json}"));
         }
         Ok(())
     }
