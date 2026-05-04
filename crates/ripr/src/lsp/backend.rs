@@ -6,7 +6,9 @@ use super::diagnostics::{
     DiagnosticBatch, DiagnosticRefreshPlan, WorkspaceDiagnostics, diagnostic_refresh_plan,
     take_all_uris, workspace_diagnostics_with_config,
 };
-use super::hover::{diagnostic_at_position, diagnostic_hover_response, hover_response};
+use super::hover::{
+    diagnostic_at_position, diagnostic_hover_response, finding_hover_response, hover_response,
+};
 use super::state::{AnalysisSnapshot, DocumentStore};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
@@ -227,9 +229,9 @@ impl Backend {
             && let Some(snapshot) = snapshot.as_ref()
             && let Some(diagnostics) = snapshot.diagnostics_for_uri(uri)
             && let Some(diagnostic) = diagnostic_at_position(diagnostics, position)
-            && snapshot.finding_for_diagnostic(diagnostic).is_some()
+            && let Some(finding) = snapshot.finding_for_diagnostic(diagnostic)
         {
-            return Some(diagnostic_hover_response(diagnostic));
+            return Some(finding_hover_response(finding, diagnostic));
         }
 
         let Ok(last_diagnostics) = self.last_diagnostics.lock() else {
