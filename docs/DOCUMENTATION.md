@@ -83,6 +83,7 @@ Current explanation docs:
 - [Capability matrix](CAPABILITY_MATRIX.md)
 - [Learnings](LEARNINGS.md)
 - [Friction log](FRICTION_LOG.md)
+- [Deferred decisions](DEFERRED.md)
 - [ADRs](adr/)
 - [Specs](specs/)
 - [Agent workflows](AGENT_WORKFLOWS.md)

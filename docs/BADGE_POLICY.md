@@ -12,10 +12,13 @@ This is the contract that `ripr check --format badge-json` and
 
 ## Status
 
-This is the policy document. The badge command and the test-intent /
-suppressions config files are planned work in Campaign 4A. The current
-implementation status of each piece is tracked in the status table at the
-bottom of this doc and in [`.ripr/goals/active.toml`](../.ripr/goals/active.toml).
+This is the policy document. The badge command, the test-intent and
+suppressions config files, the diff-scoped CI artifact pipeline, the
+repo-scoped artifact path, and the trunk-only public Shields endpoint
+have all landed under Campaign 4A. The current implementation status
+of each piece is tracked in the status table at the bottom of this
+doc and in
+[`.ripr/goals/active.toml`](../.ripr/goals/active.toml).
 
 ## What each badge means
 
@@ -71,13 +74,39 @@ page, or extension store badge.
   under policy."
 - `ripr+` is already partly repo-scoped because
   `cargo xtask test-efficiency-report` scans the whole test suite.
-  Pure `ripr` requires an explicit repo-baseline mode that analyzes
-  every probeable production owner — tracked as
-  `badge/repo-scope-artifacts` in Campaign 4A.
+  Pure `ripr` repo scope is rendered through
+  `app::check_workspace_repo` (analysis path
+  `analysis::run_repo_analysis`), which seeds probes from every
+  currently-probeable production syntax shape and classifies them
+  through the same evidence/classifier pipeline as diff scope. The
+  CLI surface is `--format repo-badge-json`,
+  `--format repo-badge-shields`, `--format repo-badge-plus-json`,
+  and `--format repo-badge-plus-shields`; the xtask wrapper is
+  `cargo xtask repo-badge-artifacts`.
 
-Until repo-scoped pure `ripr` exists, **public README / store badges
-must not be derived from `cargo xtask badge-artifacts`** — that task
-generates diff-scoped artifacts only.
+#### What v1 repo scope means — and does not mean
+
+The v1 repo baseline counts findings produced from the
+**currently-probeable production syntax shapes** the analyzer knows
+how to detect (predicate, return value, error path, call deletion,
+field construction, side effect, match arm). It is **not**:
+
+- a complete inventory of every behavior seam in the repo
+- proof that every behavior is tested
+- proof of mutation adequacy
+- a coverage metric
+
+A first-class seam-inventory and test-grip model — `RepoSeam` /
+`SeamKind` types, dedicated discriminator classification per seam,
+LSP diagnostics surfacing weakly-gripped seams, and agent dispatch
+packets that close one seam per PR — is tracked as later work and is
+intentionally **not** part of `badge/repo-scope-artifacts`. The
+bounded v1 unblocks honest repo-scoped public artifacts without
+expanding Campaign 4A.
+
+Public README / store badges that derive from
+`cargo xtask badge-artifacts` are unsafe — that task generates
+diff-scoped artifacts only.
 
 ### What neither badge proves
 
@@ -309,10 +338,11 @@ otherwise identical so consumers can parse one shape.
 gate on a single version. Bumping it is a public-contract change and must be
 called out in the PR.
 
-### Scope metadata (planned, native only)
+### Scope metadata (native only)
 
 A `scope` field is required before public README/store badges go live.
-`badge/repo-scope-artifacts` introduces it on a `schema_version` bump:
+`badge/repo-scope-artifacts` introduced it on the `schema_version` 0.2
+bump:
 
 ```json
 {
@@ -496,10 +526,10 @@ artifact. CI does **not** fail on a nonzero badge count unless a
 workflow explicitly passes `--fail-on-nonzero`. **These artifacts are
 not safe to publish as README badges** — see "Scope: diff vs repo."
 
-### `main` runs — repo-scoped (planned)
+### `main` runs — repo-scoped
 
-`cargo xtask repo-badge-artifacts` (planned, `badge/repo-scope-artifacts`)
-will analyze the full repo baseline rather than a diff and write repo-
+`cargo xtask repo-badge-artifacts` (`badge/repo-scope-artifacts`)
+analyzes the full repo baseline rather than a diff and writes repo-
 scoped artifacts:
 
 ```bash
@@ -511,11 +541,134 @@ cargo xtask repo-badge-artifacts
 # writes target/ripr/reports/repo-ripr-badges.md
 ```
 
-Trunk-only publication of Shields endpoints
-(`badge/publish-main-endpoint`) requires a `policy/network_allowlist.txt`
-entry, runs only from `main` (never from PR workflows), and consumes
-**repo-scoped** artifacts only. README and store-facing docs reference
-the published repo-scoped endpoint; they never embed PR-artifact URLs.
+### `ripr` badge product contract
+
+The `ripr` badge product contract is a single sentence:
+
+> `ripr` emits Shields-compatible JSON.
+
+To put a `ripr` value into a README, that JSON has to be available at a
+stable public URL. Hosting the JSON is a **separate, replaceable
+layer** — `ripr` itself does not require any specific host.
+
+| Question | Answer |
+| --- | --- |
+| Who computes the value? | A normal CI job that runs `cargo xtask repo-badge-artifacts`. |
+| Who hosts the value? | Any stable public surface that can serve the resulting Shields JSON. |
+| Does a downstream user have to enable GitHub Pages? | **No.** Pages is one host; it is not a requirement of `ripr`. |
+
+Compare to existing badges in this repo's README:
+
+| Badge | Computation | Hosting |
+| --- | --- | --- |
+| CI status | GitHub Actions | GitHub |
+| Codecov | CI uploads coverage | Codecov |
+| crates.io version | `cargo publish` | crates.io / Shields |
+| Open VSX downloads | registry | Open VSX / Shields |
+| `ripr` / `ripr+` | `ripr` CI computes JSON | self-hosted (see below) |
+
+The `ripr`/`ripr+` row is the one without a third-party host. Long-term
+that gap is intended to close — see `deferred/hosted-badge-service` in
+[`docs/DEFERRED.md`](DEFERRED.md). In the meantime, a self-hosted host
+is required.
+
+### Self-hosted dogfood endpoint (this repo)
+
+This repo's v1 dogfood endpoint is **two Shields JSON files committed
+to `main`**, served via `raw.githubusercontent.com`. It is not the
+standard downstream-user publishing model.
+
+The committed files live at:
+
+```text
+badges/ripr.json
+badges/ripr-plus.json
+```
+
+Each is a minimal four-field Shields object, e.g.:
+
+```json
+{
+  "schemaVersion": 1,
+  "label": "ripr",
+  "message": "163",
+  "color": "orange"
+}
+```
+
+The README renders those endpoints via:
+
+```text
+https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/EffortlessMetrics/ripr/main/badges/ripr.json
+https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/EffortlessMetrics/ripr/main/badges/ripr-plus.json
+```
+
+Refreshing the committed files is one xtask command:
+
+```bash
+cargo xtask update-badge-endpoints
+```
+
+That regenerates `target/ripr/reports/repo-ripr-{badge,plus-badge}-shields.json`
+via `repo_badge_artifacts()` and copies the two Shields projections
+into `badges/`. Commit the resulting diff.
+
+#### Pinned contract for the endpoint
+
+- Only the two `badges/*.json` files are part of the public endpoint
+  surface — no reports, no markdown, no diff-scoped artifacts, no
+  `target/` snapshots.
+- The endpoint URL points at the `main` branch via
+  `raw.githubusercontent.com`. Shields/CDN cache layers can take
+  minutes to refresh after a `main` push.
+- Diff-scoped artifacts (`ripr-badge-shields.json`,
+  `ripr-plus-badge-shields.json`) stay in per-PR step summaries and
+  CI artifact uploads — never linked from public docs.
+- `cargo xtask check-badge-endpoints` verifies the committed files
+  against a fresh `repo-badge-artifacts` run. It is **not** wired into
+  the default CI gate set in v1: the headline drifts whenever
+  production code or tests change, and requiring every PR to also
+  refresh `badges/` would be too much friction before the count
+  stabilizes. Use it locally before campaign closeouts and after
+  material analyzer changes.
+- The `ripr 0` headline on `main` means: zero unresolved actionable
+  exposure findings under the v1 currently-probeable repo baseline.
+  It does not mean the repo is fully tested, that all behavior seams
+  are gripped by oracles, or that mutation testing would pass — see
+  "What v1 repo scope means — and does not mean" above.
+
+#### Why checked-in JSON, not GitHub Pages
+
+An earlier shape of this work used a Pages deployment workflow with
+first-party `actions/configure-pages` / `actions/upload-pages-artifact`
+/ `actions/deploy-pages`. That was over-engineered for v1 dogfood:
+
+- it required the repo owner to enable Pages
+- it added a workflow + `policy/workflow_allowlist.txt` entry +
+  Pages permissions surface
+- it implied that downstream users should also enable Pages, which is
+  not the long-term `ripr` user story
+
+Checked-in JSON gives the same public-URL-on-`main` outcome with much
+less machinery, and badge changes show up in PR diffs — which is
+useful while the repo headline is still stabilizing.
+
+#### What downstream users should do
+
+If you want `ripr` and `ripr+` badges in your own README today:
+
+1. Run `ripr` in your CI.
+2. Pick **any** stable public surface to serve the resulting Shields
+   JSON: a committed `badges/` directory in your repo (the pattern
+   this repo uses), GitHub Pages, an organization-level badge-host
+   repo, a static asset bucket, a Gist, or a hosted host. None is
+   required.
+3. Point Shields at your URL via the
+   `https://img.shields.io/endpoint?url=...` pattern.
+
+A general-purpose hosted `ripr` badge service (so step 2 disappears) is
+tracked as `deferred/hosted-badge-service`. Until that lands,
+self-hosting is the v1 path.
 
 ## Implementation status
 
@@ -535,8 +688,8 @@ Tracked alongside Campaign 4A in
 | `ripr check --format badge-plus-*` | done | `badge/ripr-plus-count-v1` |
 | `.ripr/suppressions.toml` loader | done | `suppressions/v1` |
 | CI badge artifacts (diff-scoped, PR) | done | `ci/badge-artifacts` |
-| Repo-scoped badge artifacts | not started | `badge/repo-scope-artifacts` |
-| Published Shields endpoint from `main` | blocked | `badge/publish-main-endpoint` (blocked on `badge/repo-scope-artifacts`) |
+| Repo-scoped badge artifacts | done | `badge/repo-scope-artifacts` (`cargo xtask repo-badge-artifacts`) |
+| Published Shields endpoint from `main` | done | `badge/publish-main-endpoint` (`.github/workflows/publish-badge-endpoint.yml` → GitHub Pages) |
 
 ## See also
 

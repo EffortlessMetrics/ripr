@@ -390,6 +390,9 @@ fn main() {
         Some("test-oracle-report") | Some("check-test-oracles") => test_oracle_report(),
         Some("test-efficiency-report") => test_efficiency_report(),
         Some("badge-artifacts") => badge_artifacts(),
+        Some("repo-badge-artifacts") => repo_badge_artifacts(),
+        Some("update-badge-endpoints") => update_badge_endpoints(),
+        Some("check-badge-endpoints") => check_badge_endpoints(),
         Some("dogfood") => dogfood(),
         Some("critic") => critic(),
         Some("goals") => goals(&args[2..]),
@@ -547,7 +550,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  golden-drift\n  metrics\n  test-oracle-report\n  check-test-oracles\n  test-efficiency-report\n  dogfood\n  critic\n  goals status|next|report\n  reports index\n  receipts [check]\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-allow-attributes\n  check-local-context\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-supply-chain\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
+        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  golden-drift\n  metrics\n  test-oracle-report\n  check-test-oracles\n  test-efficiency-report\n  badge-artifacts\n  repo-badge-artifacts\n  update-badge-endpoints\n  check-badge-endpoints\n  dogfood\n  critic\n  goals status|next|report\n  reports index\n  receipts [check]\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-allow-attributes\n  check-local-context\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-supply-chain\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
     );
 }
 
@@ -757,6 +760,17 @@ fn receipt_specs() -> Vec<ReceiptSpec> {
                 "ripr-plus-badge.json",
                 "ripr-plus-badge-shields.json",
                 "ripr-badges.md",
+            ],
+        },
+        ReceiptSpec {
+            file: "repo-badge-artifacts.json",
+            command: "cargo xtask repo-badge-artifacts",
+            reports: &[
+                "repo-ripr-badge.json",
+                "repo-ripr-badge-shields.json",
+                "repo-ripr-plus-badge.json",
+                "repo-ripr-plus-badge-shields.json",
+                "repo-ripr-badges.md",
             ],
         },
         ReceiptSpec {
@@ -5187,8 +5201,8 @@ fn badge_artifact_command_args(format: &str) -> Vec<String> {
 
 fn badge_artifact_native_slot(format: &str) -> Option<BadgeNativeSlot> {
     match format {
-        "badge-json" => Some(BadgeNativeSlot::Ripr),
-        "badge-plus-json" => Some(BadgeNativeSlot::RiprPlus),
+        "badge-json" | "repo-badge-json" => Some(BadgeNativeSlot::Ripr),
+        "badge-plus-json" | "repo-badge-plus-json" => Some(BadgeNativeSlot::RiprPlus),
         _ => None,
     }
 }
@@ -5203,6 +5217,228 @@ fn badge_artifacts_summary_markdown(ripr_native_json: &str, ripr_plus_native_jso
     markdown.push_str("- `ripr-plus-badge.json` — native ripr+ badge\n");
     markdown.push_str("- `ripr-plus-badge-shields.json` — Shields projection of ripr+ badge\n");
     markdown
+}
+
+fn repo_badge_artifacts() -> Result<(), String> {
+    let badge_dir = Path::new("target").join("ripr");
+    fs::create_dir_all(&badge_dir).map_err(|err| {
+        format!(
+            "failed to create badge directory {}: {err}",
+            normalize_path(&badge_dir)
+        )
+    })?;
+
+    // Repo scope is intentionally diff-free: the analysis comes from
+    // run_repo_analysis (every probeable production syntax shape) rather
+    // than `git diff origin/main...HEAD`. Capturing a diff would silently
+    // make the artifact dependent on branch state.
+    let mut ripr_native_json = String::new();
+    let mut ripr_plus_native_json = String::new();
+
+    for job in repo_badge_artifact_jobs() {
+        let args = repo_badge_artifact_command_args(job.format);
+        let output = run_output_owned("cargo", &args)?;
+        write_report(job.output_file, &output)?;
+        match badge_artifact_native_slot(job.format) {
+            Some(BadgeNativeSlot::Ripr) => ripr_native_json = output,
+            Some(BadgeNativeSlot::RiprPlus) => ripr_plus_native_json = output,
+            None => {}
+        }
+    }
+
+    let summary = repo_badge_artifacts_summary_markdown(&ripr_native_json, &ripr_plus_native_json);
+    write_report("repo-ripr-badges.md", &summary)
+}
+
+fn repo_badge_artifact_jobs() -> Vec<BadgeArtifactJob> {
+    vec![
+        BadgeArtifactJob {
+            format: "repo-badge-json",
+            output_file: "repo-ripr-badge.json",
+        },
+        BadgeArtifactJob {
+            format: "repo-badge-shields",
+            output_file: "repo-ripr-badge-shields.json",
+        },
+        BadgeArtifactJob {
+            format: "repo-badge-plus-json",
+            output_file: "repo-ripr-plus-badge.json",
+        },
+        BadgeArtifactJob {
+            format: "repo-badge-plus-shields",
+            output_file: "repo-ripr-plus-badge-shields.json",
+        },
+    ]
+}
+
+fn repo_badge_artifact_command_args(format: &str) -> Vec<String> {
+    // Intentionally omits any `--diff` / `--base` argument: repo scope must
+    // not consult `git diff origin/main...HEAD`. The regression test
+    // `repo_badge_artifact_command_args_does_not_use_git_diff` pins this
+    // contract.
+    vec![
+        "run".to_string(),
+        "-p".to_string(),
+        "ripr".to_string(),
+        "--quiet".to_string(),
+        "--".to_string(),
+        "check".to_string(),
+        "--root".to_string(),
+        ".".to_string(),
+        "--format".to_string(),
+        format.to_string(),
+    ]
+}
+
+fn repo_badge_artifacts_summary_markdown(
+    ripr_native_json: &str,
+    ripr_plus_native_json: &str,
+) -> String {
+    let mut markdown = String::from("# ripr repo badges\n\n");
+    markdown.push_str(
+        "Repo-scoped artifacts: rendered against the currently-probeable repo \
+baseline (every production syntax shape `ripr` knows how to probe under \
+the current analyzer), not against `git diff origin/main...HEAD`. Counts \
+reflect unresolved exposure gaps and unsuppressed actionable \
+test-efficiency findings under the configured policy. They are not a \
+proof of mutation adequacy; full seam inventory and discriminator \
+classification are tracked as later work.\n\n",
+    );
+    append_badge_section(&mut markdown, "ripr", ripr_native_json);
+    append_badge_section(&mut markdown, "ripr+", ripr_plus_native_json);
+    markdown.push_str("## Artifacts\n\n");
+    markdown.push_str("- `repo-ripr-badge.json` — native repo-scoped ripr badge\n");
+    markdown.push_str(
+        "- `repo-ripr-badge-shields.json` — Shields projection of repo-scoped ripr badge\n",
+    );
+    markdown.push_str("- `repo-ripr-plus-badge.json` — native repo-scoped ripr+ badge\n");
+    markdown.push_str(
+        "- `repo-ripr-plus-badge-shields.json` — Shields projection of repo-scoped ripr+ badge\n",
+    );
+    markdown
+}
+
+/// Names of the two committed badge endpoint files served via
+/// `raw.githubusercontent.com/.../main/badges/<file>`. The `ripr`
+/// product contract is "ripr emits Shields-compatible JSON"; this is
+/// just the v1 self-hosted dogfood path that copies the latest
+/// repo-scoped Shields JSON into a stable repo-relative location.
+/// See `docs/BADGE_POLICY.md` and `deferred/hosted-badge-service`.
+const BADGE_ENDPOINT_FILES: &[(&str, &str)] = &[
+    ("badges/ripr.json", "repo-ripr-badge-shields.json"),
+    ("badges/ripr-plus.json", "repo-ripr-plus-badge-shields.json"),
+];
+
+/// Regenerates `target/ripr/reports/repo-ripr-{badge,plus-badge}-shields.json`
+/// via `repo_badge_artifacts()` and copies the two Shields projections
+/// into the committed `badges/` directory so the README endpoint URLs
+/// reflect the latest repo-scoped state.
+fn update_badge_endpoints() -> Result<(), String> {
+    repo_badge_artifacts()?;
+    copy_badge_endpoints_from_reports(Path::new("target/ripr/reports"), Path::new("."))
+}
+
+/// Pure file-copy half of `update_badge_endpoints` — separated so the
+/// path arithmetic and per-file error wrapping can be unit-tested
+/// against tempdirs without invoking `cargo`.
+fn copy_badge_endpoints_from_reports(reports_dir: &Path, repo_root: &Path) -> Result<(), String> {
+    let badges_dir = repo_root.join("badges");
+    fs::create_dir_all(&badges_dir).map_err(|err| {
+        format!(
+            "failed to create badges directory {}: {err}",
+            normalize_path(&badges_dir)
+        )
+    })?;
+    for (committed, source_name) in BADGE_ENDPOINT_FILES {
+        let source = reports_dir.join(source_name);
+        let bytes = fs::read(&source).map_err(|err| {
+            format!(
+                "failed to read {} (run `cargo xtask repo-badge-artifacts` first): {err}",
+                normalize_path(&source)
+            )
+        })?;
+        let dest = repo_root.join(committed);
+        fs::write(&dest, &bytes)
+            .map_err(|err| format!("failed to write {}: {err}", normalize_path(&dest)))?;
+    }
+    Ok(())
+}
+
+/// File-reading wrapper around `badge_endpoint_violation`. Walks
+/// `BADGE_ENDPOINT_FILES`, reads each source from `reports_dir` and
+/// each committed file from `repo_root`, and collects violations.
+/// Splitting this out from `check_badge_endpoints` lets tests exercise
+/// the file walk against tempdirs without invoking `cargo`.
+fn compute_badge_endpoint_violations(
+    reports_dir: &Path,
+    repo_root: &Path,
+) -> Result<Vec<String>, String> {
+    let mut violations = Vec::new();
+    for (committed, source_name) in BADGE_ENDPOINT_FILES {
+        let source = reports_dir.join(source_name);
+        let source_display = normalize_path(&source);
+        let want =
+            fs::read(&source).map_err(|err| format!("failed to read {source_display}: {err}"))?;
+        let committed_path = repo_root.join(committed);
+        let actual = fs::read(&committed_path).ok();
+        if let Some(violation) =
+            badge_endpoint_violation(committed, &source_display, &want, actual.as_deref())
+        {
+            violations.push(violation);
+        }
+    }
+    Ok(violations)
+}
+
+/// Pure comparison helper for `check_badge_endpoints` — separated so
+/// the violation-string contract is unit-testable without touching
+/// the file system. Returns `None` when the committed file is in
+/// sync, otherwise an actionable violation message.
+fn badge_endpoint_violation(
+    committed_path: &str,
+    source_display: &str,
+    expected_bytes: &[u8],
+    actual_bytes: Option<&[u8]>,
+) -> Option<String> {
+    match actual_bytes {
+        None => Some(format!(
+            "missing badge endpoint file {committed_path}; run `cargo xtask update-badge-endpoints`"
+        )),
+        Some(actual) if actual != expected_bytes => Some(format!(
+            "badge endpoint file {committed_path} is stale relative to {source_display}; run `cargo xtask update-badge-endpoints` and commit the diff"
+        )),
+        _ => None,
+    }
+}
+
+/// Verifies that the committed `badges/*.json` files match the latest
+/// `cargo xtask repo-badge-artifacts` output. Fails with an actionable
+/// message pointing at `cargo xtask update-badge-endpoints` when stale.
+/// Intentionally not added to the default CI gate set in v1 — the
+/// endpoint count drifts whenever production code or tests change, and
+/// requiring every PR to also update `badges/` is too much friction
+/// before the headline stabilizes. Use locally before campaign
+/// closeouts and after material analyzer changes.
+fn check_badge_endpoints() -> Result<(), String> {
+    repo_badge_artifacts()?;
+    let violations =
+        compute_badge_endpoint_violations(Path::new("target/ripr/reports"), Path::new("."))?;
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "badge-endpoints.md",
+            check: "check-badge-endpoints",
+            why_it_matters: "The committed badges/*.json files are the public Shields endpoint surfaces; stale files cause the README badge to lie about repo state.",
+            fix_kind: FixKind::AuthorDecisionRequired,
+            recommended_fixes: &[
+                "Run `cargo xtask update-badge-endpoints` and commit the resulting badges/*.json diff.",
+                "If the drift is from an unrelated PR, run `cargo xtask update-badge-endpoints` on `main` and commit on its own scoped PR.",
+                "Skip running this check on PRs that do not change the repo headline (it is not yet a hard CI gate).",
+            ],
+            rerun_command: "cargo xtask check-badge-endpoints",
+            exception_template: None,
+        },
+        &violations,
+    )
 }
 
 fn append_badge_section(markdown: &mut String, heading: &str, native_json: &str) {
@@ -7143,6 +7379,10 @@ fn known_xtask_command(command: &str) -> bool {
             | "test-oracle-report"
             | "check-test-oracles"
             | "test-efficiency-report"
+            | "badge-artifacts"
+            | "repo-badge-artifacts"
+            | "update-badge-endpoints"
+            | "check-badge-endpoints"
             | "dogfood"
             | "critic"
             | "goals"
@@ -10323,7 +10563,8 @@ mod tests {
         normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
         parse_campaign_manifest, parse_inline_array, parse_reason, parse_static_language_allowlist,
         pr_shape_warnings, precommit_report_body, public_contract_rows, receipt_json,
-        receipt_specs, receipt_status_from_reports, report_index_markdown,
+        receipt_specs, receipt_status_from_reports, repo_badge_artifact_command_args,
+        repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown, report_index_markdown,
         report_index_missing_expected, report_status_from_text, should_scan_static_language_path,
         sorted_allowlist_content, spec_id_from_path, static_language_allowlist_covers,
         status_for_report, suspicious_runtime_file_names, test_efficiency_entry,
@@ -11462,6 +11703,8 @@ jobs:
         assert!(files.contains("fixtures.json"));
         assert!(files.contains("goldens.json"));
         assert!(files.contains("test-oracles.json"));
+        assert!(files.contains("badge-artifacts.json"));
+        assert!(files.contains("repo-badge-artifacts.json"));
         assert!(files.contains("dogfood.json"));
         assert!(files.contains("metrics.json"));
         assert!(known_xtask_command("receipts"));
@@ -13812,6 +14055,499 @@ reason = "second"
                 return Err(format!(
                     "for format {format:?} expected {expected:?}, got {actual:?}"
                 ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn repo_badge_artifact_jobs_has_exactly_four_entries_with_repo_prefix() -> Result<(), String> {
+        let jobs = repo_badge_artifact_jobs();
+        let expected = vec![
+            BadgeArtifactJob {
+                format: "repo-badge-json",
+                output_file: "repo-ripr-badge.json",
+            },
+            BadgeArtifactJob {
+                format: "repo-badge-shields",
+                output_file: "repo-ripr-badge-shields.json",
+            },
+            BadgeArtifactJob {
+                format: "repo-badge-plus-json",
+                output_file: "repo-ripr-plus-badge.json",
+            },
+            BadgeArtifactJob {
+                format: "repo-badge-plus-shields",
+                output_file: "repo-ripr-plus-badge-shields.json",
+            },
+        ];
+        if jobs == expected {
+            Ok(())
+        } else {
+            Err(format!("expected {expected:?}, got {jobs:?}"))
+        }
+    }
+
+    #[test]
+    fn repo_badge_artifact_command_args_does_not_use_git_diff() -> Result<(), String> {
+        // Load-bearing regression: repo-scope artifacts MUST NOT depend on
+        // `git diff origin/main...HEAD`. On `main`, that diff is empty, so a
+        // diff-driven repo badge would always report 0 regardless of repo
+        // state. badge_artifacts_summary_markdown_includes the diff in
+        // diff-scope, so this test pins the absence here.
+        for format in [
+            "repo-badge-json",
+            "repo-badge-shields",
+            "repo-badge-plus-json",
+            "repo-badge-plus-shields",
+        ] {
+            let args = repo_badge_artifact_command_args(format);
+            for arg in &args {
+                if arg == "--diff" || arg == "--base" {
+                    return Err(format!(
+                        "repo-scope command args must not contain `--diff` or `--base` for {format:?}: {args:?}"
+                    ));
+                }
+                if arg.contains("origin/main") || arg.contains("badge-input.diff") {
+                    return Err(format!(
+                        "repo-scope command args must not reference origin/main or the diff input for {format:?}: {args:?}"
+                    ));
+                }
+            }
+            if args.last().map(String::as_str) != Some(format) {
+                return Err(format!(
+                    "expected last arg to be {format:?}, got {:?}",
+                    args.last()
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn diff_badge_artifact_command_args_still_use_git_diff_input() -> Result<(), String> {
+        // Companion to the repo regression: the diff-scope contract is that
+        // the args DO consult `git diff origin/main...HEAD` (captured to
+        // target/ripr/badge-input.diff before render). Pinning this here
+        // catches any accidental drift to a unified scope path.
+        for format in [
+            "badge-json",
+            "badge-shields",
+            "badge-plus-json",
+            "badge-plus-shields",
+        ] {
+            let args = badge_artifact_command_args(format);
+            if !args.iter().any(|arg| arg == "--diff") {
+                return Err(format!(
+                    "diff-scope command args must contain `--diff` for {format:?}: {args:?}"
+                ));
+            }
+            if !args.iter().any(|arg| arg.contains("badge-input.diff")) {
+                return Err(format!(
+                    "diff-scope command args must reference badge-input.diff for {format:?}: {args:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn repo_badge_artifact_native_slot_reuses_diff_mapping() -> Result<(), String> {
+        // The native-slot mapping is keyed on the format's `*-json` suffix,
+        // not on diff-vs-repo prefix; repo formats reuse it so badge_artifacts
+        // / repo_badge_artifacts share the same slotting helper.
+        let cases = [
+            ("repo-badge-json", Some(BadgeNativeSlot::Ripr)),
+            ("repo-badge-plus-json", Some(BadgeNativeSlot::RiprPlus)),
+            ("repo-badge-shields", None),
+            ("repo-badge-plus-shields", None),
+        ];
+        for (format, expected) in cases {
+            let actual = badge_artifact_native_slot(format);
+            if actual != expected {
+                return Err(format!(
+                    "for format {format:?} expected {expected:?}, got {actual:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn repo_badge_artifacts_summary_markdown_carries_baseline_disclaimer() -> Result<(), String> {
+        let markdown = repo_badge_artifacts_summary_markdown(
+            STUB_RIPR_NATIVE_JSON,
+            STUB_RIPR_PLUS_NATIVE_JSON,
+        );
+
+        let must_contain = [
+            "# ripr repo badges",
+            "currently-probeable repo baseline",
+            "not against `git diff origin/main...HEAD`",
+            "## ripr",
+            "## ripr+",
+            "- `repo-ripr-badge.json`",
+            "- `repo-ripr-plus-badge-shields.json`",
+        ];
+        for expected in must_contain {
+            if !markdown.contains(expected) {
+                return Err(format!(
+                    "expected '{expected}' in repo markdown, got:\n{markdown}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn badge_endpoint_files_pair_committed_paths_with_repo_shields_sources() {
+        // Pin both the count and the (committed -> source) mapping so a
+        // future rename of either side trips the test, not the badge URL.
+        assert_eq!(super::BADGE_ENDPOINT_FILES.len(), 2);
+        let pairs: Vec<(&str, &str)> = super::BADGE_ENDPOINT_FILES.to_vec();
+        assert!(pairs.contains(&("badges/ripr.json", "repo-ripr-badge-shields.json")));
+        assert!(pairs.contains(&("badges/ripr-plus.json", "repo-ripr-plus-badge-shields.json")));
+    }
+
+    #[test]
+    fn badge_endpoint_violation_reports_missing_committed_file() -> Result<(), String> {
+        let violation = super::badge_endpoint_violation(
+            "badges/ripr.json",
+            "target/ripr/reports/repo-ripr-badge-shields.json",
+            b"{\"schemaVersion\":1}",
+            None,
+        );
+        let message =
+            violation.ok_or_else(|| "missing file should produce a violation".to_string())?;
+        assert!(
+            message.contains("missing badge endpoint file badges/ripr.json"),
+            "violation should name the missing file: {message}"
+        );
+        assert!(
+            message.contains("cargo xtask update-badge-endpoints"),
+            "violation should point at the refresh command: {message}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn badge_endpoint_violation_reports_stale_committed_file() -> Result<(), String> {
+        let violation = super::badge_endpoint_violation(
+            "badges/ripr-plus.json",
+            "target/ripr/reports/repo-ripr-plus-badge-shields.json",
+            b"{\"schemaVersion\":1,\"label\":\"ripr+\",\"message\":\"163\",\"color\":\"orange\"}",
+            Some(b"{\"schemaVersion\":1,\"label\":\"ripr+\",\"message\":\"317\",\"color\":\"orange\"}"),
+        );
+        let message =
+            violation.ok_or_else(|| "stale file should produce a violation".to_string())?;
+        assert!(
+            message.contains("badges/ripr-plus.json is stale"),
+            "violation should describe the stale committed path: {message}"
+        );
+        assert!(
+            message.contains("repo-ripr-plus-badge-shields.json"),
+            "violation should name the source-of-truth file: {message}"
+        );
+        assert!(
+            message.contains("cargo xtask update-badge-endpoints"),
+            "violation should point at the refresh command: {message}"
+        );
+        assert!(
+            message.contains("commit the diff"),
+            "violation should remind the author to commit: {message}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn badge_endpoint_violation_returns_none_when_committed_file_matches() {
+        let bytes =
+            b"{\"schemaVersion\":1,\"label\":\"ripr\",\"message\":\"0\",\"color\":\"brightgreen\"}";
+        let violation = super::badge_endpoint_violation(
+            "badges/ripr.json",
+            "target/ripr/reports/repo-ripr-badge-shields.json",
+            bytes,
+            Some(bytes),
+        );
+        assert!(
+            violation.is_none(),
+            "matching content must not produce a violation: {violation:?}"
+        );
+    }
+
+    fn badge_endpoint_tempdir(label: &str) -> Result<std::path::PathBuf, String> {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let pid = std::process::id();
+        let dir = std::env::temp_dir().join(format!("ripr-badge-endpoint-{label}-{stamp}-{pid}"));
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create temp dir {label}: {err}"))?;
+        Ok(dir)
+    }
+
+    fn write_fixture_shields(dir: &std::path::Path, name: &str, body: &[u8]) -> Result<(), String> {
+        std::fs::write(dir.join(name), body).map_err(|err| format!("write {name}: {err}"))
+    }
+
+    #[test]
+    fn copy_badge_endpoints_from_reports_writes_both_files() -> Result<(), String> {
+        let reports = badge_endpoint_tempdir("copy-reports")?;
+        let repo_root = badge_endpoint_tempdir("copy-root")?;
+        write_fixture_shields(
+            &reports,
+            "repo-ripr-badge-shields.json",
+            b"{\"schemaVersion\":1,\"label\":\"ripr\",\"message\":\"7\",\"color\":\"yellow\"}",
+        )?;
+        write_fixture_shields(
+            &reports,
+            "repo-ripr-plus-badge-shields.json",
+            b"{\"schemaVersion\":1,\"label\":\"ripr+\",\"message\":\"7\",\"color\":\"yellow\"}",
+        )?;
+
+        super::copy_badge_endpoints_from_reports(&reports, &repo_root)?;
+
+        let ripr = std::fs::read(repo_root.join("badges/ripr.json"))
+            .map_err(|err| format!("read written ripr.json: {err}"))?;
+        let ripr_plus = std::fs::read(repo_root.join("badges/ripr-plus.json"))
+            .map_err(|err| format!("read written ripr-plus.json: {err}"))?;
+        assert_eq!(
+            ripr,
+            b"{\"schemaVersion\":1,\"label\":\"ripr\",\"message\":\"7\",\"color\":\"yellow\"}"
+        );
+        assert_eq!(
+            ripr_plus,
+            b"{\"schemaVersion\":1,\"label\":\"ripr+\",\"message\":\"7\",\"color\":\"yellow\"}"
+        );
+
+        let _ = std::fs::remove_dir_all(&reports);
+        let _ = std::fs::remove_dir_all(&repo_root);
+        Ok(())
+    }
+
+    #[test]
+    fn copy_badge_endpoints_from_reports_creates_badges_dir_when_missing() -> Result<(), String> {
+        let reports = badge_endpoint_tempdir("copy-mkdir-reports")?;
+        let repo_root = badge_endpoint_tempdir("copy-mkdir-root")?;
+        write_fixture_shields(
+            &reports,
+            "repo-ripr-badge-shields.json",
+            b"{\"schemaVersion\":1,\"label\":\"ripr\",\"message\":\"0\",\"color\":\"brightgreen\"}",
+        )?;
+        write_fixture_shields(
+            &reports,
+            "repo-ripr-plus-badge-shields.json",
+            b"{\"schemaVersion\":1,\"label\":\"ripr+\",\"message\":\"0\",\"color\":\"brightgreen\"}",
+        )?;
+        // badges/ subdir does not exist yet; copy_badge_endpoints_from_reports must create it.
+        assert!(!repo_root.join("badges").exists());
+
+        super::copy_badge_endpoints_from_reports(&reports, &repo_root)?;
+
+        assert!(repo_root.join("badges").is_dir());
+        assert!(repo_root.join("badges/ripr.json").exists());
+        assert!(repo_root.join("badges/ripr-plus.json").exists());
+
+        let _ = std::fs::remove_dir_all(&reports);
+        let _ = std::fs::remove_dir_all(&repo_root);
+        Ok(())
+    }
+
+    #[test]
+    fn copy_badge_endpoints_from_reports_errors_when_source_missing() -> Result<(), String> {
+        let reports = badge_endpoint_tempdir("copy-err-reports")?;
+        let repo_root = badge_endpoint_tempdir("copy-err-root")?;
+        // Write only the ripr source; ripr-plus is missing.
+        write_fixture_shields(
+            &reports,
+            "repo-ripr-badge-shields.json",
+            b"{\"schemaVersion\":1}",
+        )?;
+
+        let result = super::copy_badge_endpoints_from_reports(&reports, &repo_root);
+        let err = result.err().ok_or_else(|| {
+            "missing source must produce an error from copy_badge_endpoints_from_reports"
+                .to_string()
+        })?;
+        assert!(
+            err.contains("repo-ripr-plus-badge-shields.json"),
+            "error should name the missing source file: {err}"
+        );
+        assert!(
+            err.contains("cargo xtask repo-badge-artifacts"),
+            "error should suggest regenerating the source: {err}"
+        );
+
+        let _ = std::fs::remove_dir_all(&reports);
+        let _ = std::fs::remove_dir_all(&repo_root);
+        Ok(())
+    }
+
+    #[test]
+    fn compute_badge_endpoint_violations_returns_empty_when_in_sync() -> Result<(), String> {
+        let reports = badge_endpoint_tempdir("compute-sync-reports")?;
+        let repo_root = badge_endpoint_tempdir("compute-sync-root")?;
+        let ripr_body =
+            b"{\"schemaVersion\":1,\"label\":\"ripr\",\"message\":\"3\",\"color\":\"yellow\"}";
+        let plus_body =
+            b"{\"schemaVersion\":1,\"label\":\"ripr+\",\"message\":\"3\",\"color\":\"yellow\"}";
+        write_fixture_shields(&reports, "repo-ripr-badge-shields.json", ripr_body)?;
+        write_fixture_shields(&reports, "repo-ripr-plus-badge-shields.json", plus_body)?;
+        std::fs::create_dir_all(repo_root.join("badges"))
+            .map_err(|err| format!("mkdir badges: {err}"))?;
+        std::fs::write(repo_root.join("badges/ripr.json"), ripr_body)
+            .map_err(|err| format!("write committed ripr.json: {err}"))?;
+        std::fs::write(repo_root.join("badges/ripr-plus.json"), plus_body)
+            .map_err(|err| format!("write committed ripr-plus.json: {err}"))?;
+
+        let violations = super::compute_badge_endpoint_violations(&reports, &repo_root)?;
+        assert!(
+            violations.is_empty(),
+            "in-sync committed files must produce no violations: {violations:?}"
+        );
+
+        let _ = std::fs::remove_dir_all(&reports);
+        let _ = std::fs::remove_dir_all(&repo_root);
+        Ok(())
+    }
+
+    #[test]
+    fn compute_badge_endpoint_violations_flags_missing_committed_file() -> Result<(), String> {
+        let reports = badge_endpoint_tempdir("compute-missing-reports")?;
+        let repo_root = badge_endpoint_tempdir("compute-missing-root")?;
+        write_fixture_shields(
+            &reports,
+            "repo-ripr-badge-shields.json",
+            b"{\"schemaVersion\":1,\"label\":\"ripr\",\"message\":\"0\",\"color\":\"brightgreen\"}",
+        )?;
+        write_fixture_shields(
+            &reports,
+            "repo-ripr-plus-badge-shields.json",
+            b"{\"schemaVersion\":1,\"label\":\"ripr+\",\"message\":\"0\",\"color\":\"brightgreen\"}",
+        )?;
+        // No committed badges/*.json files exist on the temp repo root.
+
+        let violations = super::compute_badge_endpoint_violations(&reports, &repo_root)?;
+        assert_eq!(
+            violations.len(),
+            2,
+            "both committed files missing must flag both: {violations:?}"
+        );
+        for violation in &violations {
+            assert!(
+                violation.contains("missing badge endpoint file"),
+                "violation should be the missing-file shape: {violation}"
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&reports);
+        let _ = std::fs::remove_dir_all(&repo_root);
+        Ok(())
+    }
+
+    #[test]
+    fn compute_badge_endpoint_violations_flags_stale_committed_file() -> Result<(), String> {
+        let reports = badge_endpoint_tempdir("compute-stale-reports")?;
+        let repo_root = badge_endpoint_tempdir("compute-stale-root")?;
+        let want =
+            b"{\"schemaVersion\":1,\"label\":\"ripr\",\"message\":\"5\",\"color\":\"orange\"}";
+        let stale =
+            b"{\"schemaVersion\":1,\"label\":\"ripr\",\"message\":\"99\",\"color\":\"orange\"}";
+        write_fixture_shields(&reports, "repo-ripr-badge-shields.json", want)?;
+        write_fixture_shields(
+            &reports,
+            "repo-ripr-plus-badge-shields.json",
+            b"{\"schemaVersion\":1,\"label\":\"ripr+\",\"message\":\"5\",\"color\":\"orange\"}",
+        )?;
+        std::fs::create_dir_all(repo_root.join("badges"))
+            .map_err(|err| format!("mkdir badges: {err}"))?;
+        // ripr.json is stale; ripr-plus.json is in sync.
+        std::fs::write(repo_root.join("badges/ripr.json"), stale)
+            .map_err(|err| format!("write stale ripr.json: {err}"))?;
+        std::fs::write(
+            repo_root.join("badges/ripr-plus.json"),
+            b"{\"schemaVersion\":1,\"label\":\"ripr+\",\"message\":\"5\",\"color\":\"orange\"}",
+        )
+        .map_err(|err| format!("write fresh ripr-plus.json: {err}"))?;
+
+        let violations = super::compute_badge_endpoint_violations(&reports, &repo_root)?;
+        assert_eq!(violations.len(), 1, "exactly one stale: {violations:?}");
+        assert!(
+            violations[0].contains("badges/ripr.json is stale"),
+            "violation should name the stale file: {}",
+            violations[0]
+        );
+
+        let _ = std::fs::remove_dir_all(&reports);
+        let _ = std::fs::remove_dir_all(&repo_root);
+        Ok(())
+    }
+
+    #[test]
+    fn compute_badge_endpoint_violations_errors_when_source_missing() -> Result<(), String> {
+        let reports = badge_endpoint_tempdir("compute-noreport-reports")?;
+        let repo_root = badge_endpoint_tempdir("compute-noreport-root")?;
+        // No source files at all.
+
+        let result = super::compute_badge_endpoint_violations(&reports, &repo_root);
+        let err = result.err().ok_or_else(|| {
+            "missing reports directory contents should produce a hard error".to_string()
+        })?;
+        assert!(
+            err.contains("failed to read"),
+            "error should describe the read failure: {err}"
+        );
+
+        let _ = std::fs::remove_dir_all(&reports);
+        let _ = std::fs::remove_dir_all(&repo_root);
+        Ok(())
+    }
+
+    #[test]
+    fn badge_endpoint_violation_treats_byte_diff_as_stale() {
+        // Even a single-byte difference (e.g. trailing newline) trips the
+        // staleness check so committed files stay byte-equal with the
+        // source-of-truth Shields JSON.
+        let want = b"{\"schemaVersion\":1,\"label\":\"ripr\",\"message\":\"0\",\"color\":\"brightgreen\"}\n";
+        let got =
+            b"{\"schemaVersion\":1,\"label\":\"ripr\",\"message\":\"0\",\"color\":\"brightgreen\"}";
+        let violation = super::badge_endpoint_violation(
+            "badges/ripr.json",
+            "target/ripr/reports/repo-ripr-badge-shields.json",
+            want,
+            Some(got),
+        );
+        assert!(
+            violation.is_some(),
+            "trailing-byte difference must be flagged as stale"
+        );
+    }
+
+    #[test]
+    fn repo_badge_artifacts_summary_markdown_omits_forbidden_terms() -> Result<(), String> {
+        let markdown = repo_badge_artifacts_summary_markdown(
+            STUB_RIPR_NATIVE_JSON,
+            STUB_RIPR_PLUS_NATIVE_JSON,
+        );
+
+        // Repo badge output is public-facing: it must not borrow runtime
+        // mutation language ("killed", "survived", "proven", "adequate")
+        // and must not pretend to be a coverage metric.
+        let lower = markdown.to_lowercase();
+        for term in ["coverage", "uncovered", "killed", "proven", "adequate"] {
+            if lower.contains(term) {
+                return Err(format!(
+                    "forbidden term '{term}' found in repo markdown:\n{markdown}"
+                ));
+            }
+        }
+        for forbidden_word in ["survived", "untested"] {
+            for window in lower.split(|c: char| !c.is_alphanumeric() && c != '_') {
+                if window == forbidden_word {
+                    return Err(format!(
+                        "forbidden word '{forbidden_word}' found in repo markdown:\n{markdown}"
+                    ));
+                }
             }
         }
         Ok(())
