@@ -206,7 +206,7 @@ commands = [
 
 [[work_item]]
 id = "badge/repo-scope-artifacts"
-status = "ready"
+status = "done"
 branch = "badge/repo-scope-artifacts"
 stackable = false
 requires_human_merge = true
@@ -223,12 +223,10 @@ commands = [
 
 [[work_item]]
 id = "badge/publish-main-endpoint"
-status = "blocked"
+status = "ready"
 branch = "badge/publish-main-endpoint"
 stackable = false
 requires_human_merge = true
-blocked_by = ["badge/repo-scope-artifacts"]
-blocked_reason = "publishing a public README/store badge requires repo-scoped artifacts; current diff-scoped `cargo xtask badge-artifacts` always reports ripr=0 on main (empty diff vs origin/main) and would be misleading as a public signal"
 acceptance = "Shields-compatible repo-scoped badge JSON published from main only; README references the endpoint; policy/network_allowlist.txt updated; PR workflows do not publish; only repo-scoped artifacts (scope=\"repo\") are referenced from public docs"
 commands = [
   "cargo xtask shape",
