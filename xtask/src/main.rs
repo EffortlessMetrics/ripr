@@ -12643,13 +12643,25 @@ fn test_free_function_call() {
         assert_eq!(toml_basic_string_escape("hello\\world"), "hello\\\\world");
         assert_eq!(toml_basic_string_escape("quote\"test"), "quote\\\"test");
         assert_eq!(toml_basic_string_escape("line\nbreak"), "line\\nbreak");
-        assert_eq!(toml_basic_string_escape("carriage\rreturn"), "carriage\\rreturn");
+        assert_eq!(
+            toml_basic_string_escape("carriage\rreturn"),
+            "carriage\\rreturn"
+        );
         assert_eq!(toml_basic_string_escape("tab\there"), "tab\\there");
 
         // Test control character escaping (0x00-0x1F except allowed ones)
-        assert_eq!(toml_basic_string_escape("null\x00char"), "null\\u{0000}char");
-        assert_eq!(toml_basic_string_escape("bell\x07sound"), "bell\\u{0007}sound");
-        assert_eq!(toml_basic_string_escape("escape\x1Bchar"), "escape\\u{001B}char");
+        assert_eq!(
+            toml_basic_string_escape("null\x00char"),
+            "null\\u{0000}char"
+        );
+        assert_eq!(
+            toml_basic_string_escape("bell\x07sound"),
+            "bell\\u{0007}sound"
+        );
+        assert_eq!(
+            toml_basic_string_escape("escape\x1Bchar"),
+            "escape\\u{001B}char"
+        );
 
         // Test mixed escaping
         assert_eq!(
