@@ -439,3 +439,355 @@ column = 18
 family = "panic_macro"
 classification = "test_only"
 explanation = "Test assertion: validates unreachable status value detection"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 10772
+column = 26
+family = "panic_macro"
+classification = "false_positive"
+explanation = "Pattern matching in function that converts panic patterns to family names, not an actual panic" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 10773
+column = 26
+family = "todo"
+classification = "false_positive"
+explanation = "Pattern matching in function that converts panic patterns to family names, not an actual todo" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 10774
+column = 26
+family = "unimplemented"
+classification = "false_positive"
+explanation = "Pattern matching in function that converts panic patterns to family names, not an actual unimplemented" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 10775
+column = 26
+family = "unreachable"
+classification = "false_positive"
+explanation = "Pattern matching in function that converts panic patterns to family names, not an actual unreachable" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11526
+column = 14
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for computing temporary directory timestamps" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11529
+column = 34
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for creating temporary directories" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11535
+column = 40
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for writing test files" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11537
+column = 31
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for writing test files" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11541
+column = 67
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for locking temporary directory access" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11542
+column = 43
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for getting current directory" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11544
+column = 42
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for setting current directory" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11556
+column = 40
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for restoring original directory" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11582
+column = 84
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for parsing campaign manifest" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11584
+column = 34
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for extracting campaign manifest" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11608
+column = 84
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for parsing campaign manifest" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11627
+column = 84
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for parsing campaign manifest" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11646
+column = 84
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for parsing campaign manifest" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11669
+column = 84
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for parsing campaign manifest" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11694
+column = 84
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for parsing campaign manifest" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11726
+column = 84
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for parsing campaign manifest" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11734
+column = 47
+family = "unwrap"
+classification = "test_only"
+explanation = "Test assertion: validates panic family pattern matching" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11735
+column = 47
+family = "expect"
+classification = "test_only"
+explanation = "Test assertion: validates panic family pattern matching" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11736
+column = 47
+family = "panic_macro"
+classification = "test_only"
+explanation = "Test assertion: validates panic family pattern matching" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11737
+column = 47
+family = "todo"
+classification = "test_only"
+explanation = "Test assertion: validates panic family pattern matching" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11738
+column = 47
+family = "unimplemented"
+classification = "test_only"
+explanation = "Test assertion: validates panic family pattern matching" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11739
+column = 47
+family = "unreachable"
+classification = "test_only"
+explanation = "Test assertion: validates panic family pattern matching" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11748
+column = 53
+family = "unwrap"
+classification = "test_only"
+explanation = "Test assertion: validates panic findings collection" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11748
+column = 84
+family = "expect"
+classification = "test_only"
+explanation = "Test assertion: validates panic findings collection" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11751
+column = 34
+family = "unwrap"
+classification = "test_only"
+explanation = "Test assertion: validates panic findings collection" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11751
+column = 57
+family = "expect"
+classification = "test_only"
+explanation = "Test assertion: validates panic findings collection" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11752
+column = 68
+family = "unwrap"
+classification = "test_only"
+explanation = "Test assertion: validates panic findings collection" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11754
+column = 28
+family = "unwrap"
+classification = "test_only"
+explanation = "Test assertion: validates panic findings collection" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11754
+column = 50
+family = "expect"
+classification = "test_only"
+explanation = "Test assertion: validates panic findings collection" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11775
+column = 37
+family = "unwrap"
+classification = "test_only"
+explanation = "Test assertion: validates semantic selector container matching" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11801
+column = 37
+family = "unwrap"
+classification = "test_only"
+explanation = "Test assertion: validates semantic selector rejects mismatched container" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11827
+column = 37
+family = "unwrap"
+classification = "test_only"
+explanation = "Test assertion: validates semantic selector with partial fields" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11862
+column = 37
+family = "unwrap"
+classification = "test_only"
+explanation = "Test assertion: validates semantic finding entry matching" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11889
+column = 37
+family = "unwrap"
+classification = "test_only"
+explanation = "Test assertion: validates semantic finding rejects different path" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11918
+column = 58
+family = "expect"
+classification = "test_only"
+explanation = "Test assertion: validates best matching finding by line proximity" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 15563
+column = 50
+family = "unwrap"
+classification = "test_only"
+explanation = "Test assertion: validates campaign manifest parsing" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 15583
+column = 50
+family = "unwrap"
+classification = "test_only"
+explanation = "Test assertion: validates campaign manifest with violations" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 15616
+column = 23
+family = "unwrap"
+classification = "test_only"
+explanation = "Test assertion: validates local context allow entry" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 15621
+column = 36
+family = "unwrap"
+classification = "test_only"
+explanation = "Test assertion: validates local context allow entry" 
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 15771
+column = 18
+family = "panic_macro"
+classification = "test_only"
+explanation = "Test assertion: validates process policy panic detection" 
