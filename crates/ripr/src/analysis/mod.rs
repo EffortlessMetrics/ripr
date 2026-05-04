@@ -2,6 +2,7 @@ mod classifier;
 mod diff;
 mod probes;
 mod rust_index;
+mod seams;
 mod workspace;
 
 use crate::domain::{Finding, Summary};
@@ -97,6 +98,14 @@ pub fn run_analysis(options: &AnalysisOptions) -> Result<AnalysisResult, String>
 }
 
 pub fn run_repo_analysis(options: &AnalysisOptions) -> Result<AnalysisResult, String> {
+    // Stage-zero anchor for the Voice B seam model introduced in
+    // `analysis/repo-seam-model-v1`. The next work item,
+    // `analysis/repo-seam-inventory-v1`, replaces this call with a real
+    // walk that produces `Vec<RepoSeam>` and threads it into the analysis
+    // result. Until then, the call exists so the seam types stay live in
+    // lib builds.
+    let _seam_lifecheck = seams::registry_lifecheck_v0();
+
     let rust_files = workspace::discover_rust_files(&options.root)?;
     let production_files = rust_files
         .iter()
