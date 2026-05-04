@@ -10587,43 +10587,45 @@ mod tests {
 
     static CWD_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
-    fn temp_dir(name: &str) -> PathBuf {
+    fn temp_dir(name: &str) -> Result<PathBuf, String> {
         let stamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .map_err(|e| format!("failed to get current time: {e}"))?
             .as_nanos();
         let dir = std::env::temp_dir().join(format!("ripr-xtask-{name}-{stamp}"));
-        fs::create_dir_all(&dir).unwrap();
-        dir
+        fs::create_dir_all(&dir).map_err(|e| format!("failed to create temp dir: {e}"))?;
+        Ok(dir)
     }
 
-    fn write(path: &Path, text: &str) {
+    fn write(path: &Path, text: &str) -> Result<(), String> {
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).unwrap();
+            fs::create_dir_all(parent).map_err(|e| format!("failed to create parent dir: {e}"))?;
         }
-        fs::write(path, text).unwrap();
+        fs::write(path, text).map_err(|e| format!("failed to write {}: {e}", path.display()))?;
+        Ok(())
     }
 
-    fn with_temp_cwd<T>(name: &str, f: impl FnOnce(&Path) -> T) -> T {
-        let lock = CWD_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
-        let old = std::env::current_dir().unwrap();
-        let root = temp_dir(name);
-        std::env::set_current_dir(&root).unwrap();
+    fn with_temp_cwd<T, F>(name: &str, f: F) -> Result<T, String>
+    where
+        F: FnOnce(&Path) -> Result<T, String>,
+    {
+        let lock = CWD_LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .map_err(|e| format!("failed to acquire cwd lock: {e}"))?;
+        let old = std::env::current_dir()
+            .map_err(|e| format!("failed to get current dir: {e}"))?;
+        let root = temp_dir(name)?;
+        std::env::set_current_dir(&root)
+            .map_err(|e| format!("failed to set current dir: {e}"))?;
 
-        let out = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&root))) {
-            Ok(result) => result,
-            Err(panic_payload) => {
-                let _ = std::env::set_current_dir(&old);
-                drop(lock);
-                let _ = fs::remove_dir_all(&root);
-                std::panic::resume_unwind(panic_payload);
-            }
-        };
+        let result = f(&root);
 
-        std::env::set_current_dir(old).unwrap();
+        let restore_result = std::env::set_current_dir(&old);
         drop(lock);
         let _ = fs::remove_dir_all(&root);
-        out
+
+        restore_result.map_err(|e| format!("failed to restore cwd: {e}"))?;
+        result
     }
 
     // ============================================================================
@@ -10646,11 +10648,13 @@ mod tests {
     }
 
     #[test]
-    fn test_intent_kind_round_trips_supported_values() {
+    fn test_intent_kind_round_trips_supported_values() -> Result<(), String> {
         for value in TestIntentKind::supported() {
-            let parsed = TestIntentKind::from_str(value).expect("supported intent should parse");
+            let parsed = TestIntentKind::from_str(value)
+                .ok_or_else(|| format!("supported intent should parse: {value}"))?;
             assert_eq!(parsed.as_str(), *value);
         }
+        Ok(())
     }
 
     #[test]
@@ -10731,11 +10735,12 @@ mod tests {
     }
 
     #[test]
-    fn receipt_status_from_reports_detects_missing_files() {
+    fn receipt_status_from_reports_detects_missing_files() -> Result<(), String> {
         with_temp_cwd("receipt-status-missing", |_root| {
             let result = receipt_status_from_reports(&["missing.md".to_string()]);
             assert_eq!(result, "missing");
-        });
+            Ok(())
+        })
     }
 
     #[test]
@@ -14274,7 +14279,7 @@ reason = "second"
     }
 
     #[test]
-    fn campaign_manifest_parses_valid_file() {
+    fn campaign_manifest_parses_valid_file() -> Result<(), String> {
         with_temp_cwd("campaign-manifest", |root| {
             let manifest_path = root.join("campaign.toml");
             write(
@@ -14290,35 +14295,31 @@ status = "ready"
 stackable = true
 requires_human_merge = false
 "#,
-            );
-            let result = parse_campaign_manifest(&manifest_path);
-            assert!(result.is_ok());
-            let (manifest, _violations) = result.unwrap();
+            )?;
+            let (manifest, _violations) = parse_campaign_manifest(&manifest_path)
+                .map_err(|e| format!("failed to parse campaign manifest: {e}"))?;
             assert_eq!(manifest.id, Some("campaign-01".to_string()));
             assert_eq!(manifest.title, Some("Add test coverage".to_string()));
             assert_eq!(manifest.status, Some("in_progress".to_string()));
             assert_eq!(manifest.work_items.len(), 1);
             assert_eq!(manifest.work_items[0].id, Some("item-1".to_string()));
-        });
+            Ok(())
+        })
     }
 
     #[test]
-    fn campaign_manifest_reports_violations_for_invalid_file() {
+    fn campaign_manifest_reports_violations_for_invalid_file() -> Result<(), String> {
         with_temp_cwd("campaign-invalid", |root| {
             let manifest_path = root.join("campaign.toml");
-            write(&manifest_path, "this is not valid toml [ invalid");
-            let result = parse_campaign_manifest(&manifest_path);
-            // Invalid TOML should return Ok with violations, not an error
-            assert!(
-                result.is_ok(),
-                "invalid TOML should return Ok with violations"
-            );
-            let (_manifest, violations) = result.unwrap();
+            write(&manifest_path, "this is not valid toml [ invalid")?;
+            let (_manifest, violations) = parse_campaign_manifest(&manifest_path)
+                .map_err(|e| format!("invalid TOML should return Ok with violations, got error: {e}"))?;
             assert!(
                 !violations.is_empty(),
                 "invalid TOML should produce violations"
             );
-        });
+            Ok(())
+        })
     }
 
     #[test]
@@ -14492,7 +14493,7 @@ requires_human_merge = false
     }
 
     #[test]
-    fn check_report_aggregates_violations_and_status() {
+    fn check_report_aggregates_violations_and_status() -> Result<(), String> {
         let report = CheckReport {
             check: "coverage".to_string(),
             status: CheckStatus::Fail,
@@ -14500,8 +14501,8 @@ requires_human_merge = false
         };
         assert_eq!(report.check, "coverage");
         match report.status {
-            CheckStatus::Fail => {}
-            _ => panic!("expected Fail status"),
+            CheckStatus::Fail => Ok(()),
+            other => Err(format!("expected Fail status, got {other:?}")),
         }
     }
 
