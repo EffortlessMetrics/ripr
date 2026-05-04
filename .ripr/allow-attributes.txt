@@ -6,3 +6,17 @@
 # Suppressions for guarded lints should be rare and temporary. Prefer fixing
 # the underlying warning. Do not use this file to normalize panic-family,
 # unsafe, dead-code, or broad warning suppressions.
+
+# EXCEPTION: Phase 2 semantic selector infrastructure
+# PanicFamilyLastSeen, PanicAllowEntryV2, and semantic_selector_matches are
+# part of Phase 2 infrastructure for semantic allowlist matching (v0.2 schema).
+# These structures and functions are intentionally defined for use in:
+# 1. Migration report generation (propose_selector_for_finding)
+# 2. Semantic selector matching logic (semantic_selector_matches)
+# 3. V0.2 schema data structures (PanicAllowEntryV2 with last_seen hints)
+# They will be integrated into the checker during Phase 3 (v0.2 enforcement).
+# The dead_code warnings are suppressed because these items are used within
+# this Phase 2 infrastructure (tests + migration generation) but not yet in
+# the checker's main control flow.
+
+xtask/src/main.rs|allow(dead_code)|3|Phase 2: PanicFamilyLastSeen, PanicAllowEntryV2, semantic_selector_matches used in v0.2 migration infrastructure
