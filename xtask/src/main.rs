@@ -12419,6 +12419,66 @@ fn test_with_multiple_families() {
     }
 
     #[test]
+    fn collect_semantic_panic_findings_detects_free_function_calls() {
+        let root = temp_dir("semantic_call_kinds_free_fn");
+
+        // Code with a free function call matching panic-family name
+        let code = r#"
+fn unwrap<T>(value: Option<T>) -> T {
+    match value {
+        Some(v) => v,
+        None => panic!("unwrap failed"),
+    }
+}
+
+#[test]
+fn test_free_function_call() {
+    let result = unwrap(Some(42));
+    assert_eq!(result, 42);
+}
+"#;
+
+        let lib_path = root.join("lib.rs");
+        write(&lib_path, code);
+
+        let patterns = forbidden_panic_patterns();
+        let findings =
+            collect_semantic_panic_findings(&root, &patterns).expect("failed to collect findings");
+
+        // Should find both the panic! macro inside unwrap and the unwrap() call in test
+        let panic_findings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.family == "panic_macro")
+            .collect();
+        assert!(
+            !panic_findings.is_empty(),
+            "should find panic! inside unwrap function"
+        );
+
+        // Should find the unwrap() free function call
+        let call_findings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.kind == "call" && f.family == "unwrap")
+            .collect();
+        assert!(
+            !call_findings.is_empty(),
+            "should find free function call to unwrap()"
+        );
+
+        // Verify the free function call is correctly identified
+        if let Some(call_finding) = call_findings.first() {
+            assert_eq!(call_finding.kind, "call");
+            assert_eq!(call_finding.family, "unwrap");
+            assert!(
+                call_finding.cfg_test,
+                "free function call should be in test context"
+            );
+        }
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn semantic_selector_matching_respects_all_filters() {
         let finding = SemanticPanicFinding {
             path: "src/lib.rs".to_string(),

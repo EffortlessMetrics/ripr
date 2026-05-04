@@ -32,18 +32,6 @@ callee = "unwrap"
 receiver_fingerprint = "Path::new(env!(\"CARGO_MANIFEST_DIR\")) .parent() .and_then(Path::parent)"
 
 [[allow]]
-path = "xtask/src/main.rs"
-family = "unwrap"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
-
-[allow.selector]
-kind = "method_call"
-container = "temp_dir"
-callee = "unwrap"
-receiver_fingerprint = "SystemTime::now() .duration_since(UNIX_EPOCH)"
-
-[[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
 family = "unwrap"
 classification = "test_only"
@@ -153,6 +141,28 @@ receiver_fingerprint = "run_analysis(&AnalysisOptions { root: root.clone(), base
 
 [[allow]]
 path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[allow.selector]
+kind = "method_call"
+container = "closure_552448"
+callee = "unwrap"
+receiver_fingerprint = "result"
+
+# ⚠️ WARNING: Position-based container ID
+# This container is a byte-offset-based identifier (closure_NNNNN).
+# It will become stale if code before the closure changes.
+# Before adopting this entry, manually stabilize the container using:
+# - The enclosing named function if this closure is inside one, OR
+# - A hash-based or semantic identifier for the closure, OR
+# - A more specific receiver_fingerprint filter
+# Current receiver_fingerprint: result
+
+
+[[allow]]
+path = "xtask/src/main.rs"
 family = "panic_macro"
 classification = "test_only"
 explanation = "Semantic selector test infrastructure"
@@ -170,45 +180,9 @@ explanation = "Semantic selector test infrastructure"
 
 [allow.selector]
 kind = "method_call"
-container = "closure_407398"
+container = "temp_dir"
 callee = "unwrap"
-receiver_fingerprint = "root.join(\"allowlist.toml\").to_str()"
-
-[[allow]]
-path = "xtask/src/main.rs"
-family = "expect"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
-
-[allow.selector]
-kind = "method_call"
-container = "collect_semantic_panic_findings_integration"
-callee = "expect"
-receiver_fingerprint = "collect_semantic_panic_findings(&root, &patterns)"
-
-[[allow]]
-path = "xtask/src/main.rs"
-family = "unwrap"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
-
-[allow.selector]
-kind = "method_call"
-container = "closure_408609"
-callee = "unwrap"
-receiver_fingerprint = "collect_panic_findings(root, &patterns)"
-
-[[allow]]
-path = "xtask/src/main.rs"
-family = "unwrap"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
-
-[allow.selector]
-kind = "method_call"
-container = "closure_536396"
-callee = "unwrap"
-receiver_fingerprint = "result"
+receiver_fingerprint = "SystemTime::now() .duration_since(UNIX_EPOCH)"
 
 [[allow]]
 path = "xtask/src/main.rs"
@@ -230,6 +204,66 @@ explanation = "Semantic selector test infrastructure"
 
 [allow.selector]
 kind = "method_call"
+container = "write"
+callee = "unwrap"
+receiver_fingerprint = "fs::create_dir_all(parent)"
+
+[[allow]]
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[allow.selector]
+kind = "method_call"
+container = "write"
+callee = "unwrap"
+receiver_fingerprint = "fs::write(path, text)"
+
+[[allow]]
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[allow.selector]
+kind = "method_call"
+container = "with_temp_cwd"
+callee = "unwrap"
+receiver_fingerprint = "CWD_LOCK.get_or_init(|| Mutex::new(())).lock()"
+
+[[allow]]
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[allow.selector]
+kind = "method_call"
+container = "with_temp_cwd"
+callee = "unwrap"
+receiver_fingerprint = "std::env::current_dir()"
+
+[[allow]]
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[allow.selector]
+kind = "method_call"
+container = "with_temp_cwd"
+callee = "unwrap"
+receiver_fingerprint = "std::env::set_current_dir(&root)"
+
+[[allow]]
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[allow.selector]
+kind = "method_call"
 container = "with_temp_cwd"
 callee = "unwrap"
 receiver_fingerprint = "std::env::set_current_dir(old)"
@@ -242,9 +276,19 @@ explanation = "Semantic selector test infrastructure"
 
 [allow.selector]
 kind = "method_call"
-container = "closure_403284"
+container = "closure_404312"
 callee = "unwrap"
 receiver_fingerprint = "root.join(\"allowlist.toml\").to_str()"
+
+# ⚠️ WARNING: Position-based container ID
+# This container is a byte-offset-based identifier (closure_NNNNN).
+# It will become stale if code before the closure changes.
+# Before adopting this entry, manually stabilize the container using:
+# - The enclosing named function if this closure is inside one, OR
+# - A hash-based or semantic identifier for the closure, OR
+# - A more specific receiver_fingerprint filter
+# Current receiver_fingerprint: root.join("allowlist.toml").to_str()
+
 
 [[allow]]
 path = "xtask/src/main.rs"
@@ -254,9 +298,19 @@ explanation = "Semantic selector test infrastructure"
 
 [allow.selector]
 kind = "method_call"
-container = "closure_404262"
+container = "closure_404312"
 callee = "unwrap"
-receiver_fingerprint = "root.join(\"allowlist.toml\").to_str()"
+receiver_fingerprint = "result"
+
+# ⚠️ WARNING: Position-based container ID
+# This container is a byte-offset-based identifier (closure_NNNNN).
+# It will become stale if code before the closure changes.
+# Before adopting this entry, manually stabilize the container using:
+# - The enclosing named function if this closure is inside one, OR
+# - A hash-based or semantic identifier for the closure, OR
+# - A more specific receiver_fingerprint filter
+# Current receiver_fingerprint: result
+
 
 [[allow]]
 path = "xtask/src/main.rs"
@@ -266,9 +320,19 @@ explanation = "Semantic selector test infrastructure"
 
 [allow.selector]
 kind = "method_call"
-container = "closure_404828"
+container = "closure_405290"
 callee = "unwrap"
 receiver_fingerprint = "root.join(\"allowlist.toml\").to_str()"
+
+# ⚠️ WARNING: Position-based container ID
+# This container is a byte-offset-based identifier (closure_NNNNN).
+# It will become stale if code before the closure changes.
+# Before adopting this entry, manually stabilize the container using:
+# - The enclosing named function if this closure is inside one, OR
+# - A hash-based or semantic identifier for the closure, OR
+# - A more specific receiver_fingerprint filter
+# Current receiver_fingerprint: root.join("allowlist.toml").to_str()
+
 
 [[allow]]
 path = "xtask/src/main.rs"
@@ -278,9 +342,19 @@ explanation = "Semantic selector test infrastructure"
 
 [allow.selector]
 kind = "method_call"
-container = "closure_405408"
+container = "closure_405856"
 callee = "unwrap"
 receiver_fingerprint = "root.join(\"allowlist.toml\").to_str()"
+
+# ⚠️ WARNING: Position-based container ID
+# This container is a byte-offset-based identifier (closure_NNNNN).
+# It will become stale if code before the closure changes.
+# Before adopting this entry, manually stabilize the container using:
+# - The enclosing named function if this closure is inside one, OR
+# - A hash-based or semantic identifier for the closure, OR
+# - A more specific receiver_fingerprint filter
+# Current receiver_fingerprint: root.join("allowlist.toml").to_str()
+
 
 [[allow]]
 path = "xtask/src/main.rs"
@@ -290,9 +364,19 @@ explanation = "Semantic selector test infrastructure"
 
 [allow.selector]
 kind = "method_call"
-container = "closure_406066"
+container = "closure_406436"
 callee = "unwrap"
 receiver_fingerprint = "root.join(\"allowlist.toml\").to_str()"
+
+# ⚠️ WARNING: Position-based container ID
+# This container is a byte-offset-based identifier (closure_NNNNN).
+# It will become stale if code before the closure changes.
+# Before adopting this entry, manually stabilize the container using:
+# - The enclosing named function if this closure is inside one, OR
+# - A hash-based or semantic identifier for the closure, OR
+# - A more specific receiver_fingerprint filter
+# Current receiver_fingerprint: root.join("allowlist.toml").to_str()
+
 
 [[allow]]
 path = "xtask/src/main.rs"
@@ -302,14 +386,174 @@ explanation = "Semantic selector test infrastructure"
 
 [allow.selector]
 kind = "method_call"
-container = "closure_406712"
+container = "closure_407094"
 callee = "unwrap"
 receiver_fingerprint = "root.join(\"allowlist.toml\").to_str()"
+
+# ⚠️ WARNING: Position-based container ID
+# This container is a byte-offset-based identifier (closure_NNNNN).
+# It will become stale if code before the closure changes.
+# Before adopting this entry, manually stabilize the container using:
+# - The enclosing named function if this closure is inside one, OR
+# - A hash-based or semantic identifier for the closure, OR
+# - A more specific receiver_fingerprint filter
+# Current receiver_fingerprint: root.join("allowlist.toml").to_str()
+
+
+[[allow]]
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[allow.selector]
+kind = "method_call"
+container = "closure_407740"
+callee = "unwrap"
+receiver_fingerprint = "root.join(\"allowlist.toml\").to_str()"
+
+# ⚠️ WARNING: Position-based container ID
+# This container is a byte-offset-based identifier (closure_NNNNN).
+# It will become stale if code before the closure changes.
+# Before adopting this entry, manually stabilize the container using:
+# - The enclosing named function if this closure is inside one, OR
+# - A hash-based or semantic identifier for the closure, OR
+# - A more specific receiver_fingerprint filter
+# Current receiver_fingerprint: root.join("allowlist.toml").to_str()
+
+
+[[allow]]
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[allow.selector]
+kind = "method_call"
+container = "closure_408426"
+callee = "unwrap"
+receiver_fingerprint = "root.join(\"allowlist.toml\").to_str()"
+
+# ⚠️ WARNING: Position-based container ID
+# This container is a byte-offset-based identifier (closure_NNNNN).
+# It will become stale if code before the closure changes.
+# Before adopting this entry, manually stabilize the container using:
+# - The enclosing named function if this closure is inside one, OR
+# - A hash-based or semantic identifier for the closure, OR
+# - A more specific receiver_fingerprint filter
+# Current receiver_fingerprint: root.join("allowlist.toml").to_str()
+
+
+[[allow]]
+path = "xtask/src/main.rs"
+family = "expect"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[allow.selector]
+kind = "method_call"
+container = "collect_semantic_panic_findings_integration"
+callee = "expect"
+receiver_fingerprint = "collect_semantic_panic_findings(&root, &patterns)"
+
+[[allow]]
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[allow.selector]
+kind = "method_call"
+container = "closure_409637"
+callee = "unwrap"
+receiver_fingerprint = "collect_panic_findings(root, &patterns)"
+
+# ⚠️ WARNING: Position-based container ID
+# This container is a byte-offset-based identifier (closure_NNNNN).
+# It will become stale if code before the closure changes.
+# Before adopting this entry, manually stabilize the container using:
+# - The enclosing named function if this closure is inside one, OR
+# - A hash-based or semantic identifier for the closure, OR
+# - A more specific receiver_fingerprint filter
+# Current receiver_fingerprint: collect_panic_findings(root, &patterns)
+
+
+[[allow]]
+path = "xtask/src/main.rs"
+family = "expect"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[allow.selector]
+kind = "method_call"
+container = "collect_semantic_panic_findings_detects_test_context"
+callee = "expect"
+receiver_fingerprint = "collect_semantic_panic_findings(&root, &patterns)"
+
+[[allow]]
+path = "xtask/src/main.rs"
+family = "expect"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[allow.selector]
+kind = "method_call"
+container = "collect_semantic_panic_findings_identifies_containers_and_callees"
+callee = "expect"
+receiver_fingerprint = "collect_semantic_panic_findings(&root, &patterns)"
+
+[[allow]]
+path = "xtask/src/main.rs"
+family = "expect"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[allow.selector]
+kind = "method_call"
+container = "collect_semantic_panic_findings_normalizes_receiver_fingerprints"
+callee = "expect"
+receiver_fingerprint = "collect_semantic_panic_findings(&root, &patterns)"
+
+[[allow]]
+path = "xtask/src/main.rs"
+family = "expect"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[allow.selector]
+kind = "method_call"
+container = "collect_semantic_panic_findings_covers_various_panic_call_kinds"
+callee = "expect"
+receiver_fingerprint = "collect_semantic_panic_findings(&root, &patterns)"
+
+[[allow]]
+path = "xtask/src/main.rs"
+family = "expect"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[allow.selector]
+kind = "method_call"
+container = "collect_semantic_panic_findings_detects_free_function_calls"
+callee = "expect"
+receiver_fingerprint = "collect_semantic_panic_findings(&root, &patterns)"
+
+[[allow]]
+path = "xtask/src/main.rs"
+family = "expect"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[allow.selector]
+kind = "method_call"
+container = "collect_semantic_panic_findings_empty_directory_returns_empty"
+callee = "expect"
+receiver_fingerprint = "collect_semantic_panic_findings(&root, &patterns)"
 ```
 
 ## Analysis Notes
 
-- **Total Entries Proposed**: 25
+- **Total Entries Proposed**: 37
 - **Kind Distribution**:
   - `macro_call`: 1
-  - `method_call`: 24
+  - `method_call`: 36
