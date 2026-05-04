@@ -56,7 +56,7 @@ This document summarizes the implementation of AST-backed semantic selectors for
 - Checks for `#[cfg(test)]` attribute
 - Walks up parent chain
 
-### 3. Semantic Matching (xtask/src/main.rs:11187-11235)
+### 3. Semantic Matching (xtask/src/main.rs:11187-11235, Phase 3 Integration)
 
 **semantic_selector_matches()** — Core matching logic:
 - Validates selector kind is known
@@ -64,6 +64,7 @@ This document summarizes the implementation of AST-backed semantic selectors for
 - Filters by container (if specified)
 - Filters by callee (if specified)
 - Filters by receiver fingerprint (if specified)
+- *Note: Currently tested in unit tests; will be called by check_no_panic_family in Phase 3 when v0.2 parsing is integrated*
 
 **matches_semantic_finding()** — Entry-to-finding comparison:
 - Requires matching path
@@ -75,18 +76,21 @@ This document summarizes the implementation of AST-backed semantic selectors for
 - Sorts by line proximity to entry's original line
 - Returns closest match (for last_seen hint accuracy)
 
-### 4. V0.2 Schema Support (xtask/src/main.rs:11254-11415)
+### 4. V0.2 Schema Data Structures (Phase 2 Tooling)
 
-**parse_no_panic_allowlist_toml_v0_2()** — Schema parser:
-- Handles `schema_version = "0.2"`
-- Parses `[[allow]]` sections
-- Supports nested `[allow.selector]` subsections
-- Supports nested `[allow.last_seen]` subsections
-- Full validation of required fields
+**PanicAllowEntryV2** — v0.2 schema entry struct:
+- Fields: `path`, `family`, `classification`, `explanation`, `selector`, `last_seen`
+- Represents the target v0.2 allowlist schema (not yet integrated into checker)
+- Used in migration report generation to propose v0.2 entries
 
-**validate_panic_allow_entry_v2()** — Entry validation:
-- Ensures `path`, `family`, `explanation` present
-- Allows optional `classification`, `selector`, `last_seen`
+**PanicFamilySelectorKind** — Selector definition:
+- `kind` — Type: "method_call", "macro_call", "string_literal"
+- `container` — Optional: filter by enclosing function
+- `callee` — Optional: filter by method/macro name
+- `receiver_fingerprint` — Optional: filter by receiver expression
+- `text_contains` — Optional: for string literal matching
+
+**Note:** V0.2 schema parsing and integration into the checker is planned for Phase 3 (separate PR). Phase 2 focuses on generating proposals and validating semantic selector correctness through tests.
 
 ### 5. Migration Report Generator (xtask/src/main.rs:2281-2370)
 

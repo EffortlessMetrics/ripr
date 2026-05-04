@@ -131,32 +131,32 @@ path = "xtask/src/main.rs"
 line = 10866
 column = 26
 family = "panic_macro"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
+classification = "false_positive"
+explanation = "String literal detected in panic_family_from_pattern() match guard - not a runtime call"
 
 [[allow]]
 path = "xtask/src/main.rs"
 line = 10867
 column = 26
 family = "todo"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
+classification = "false_positive"
+explanation = "String literal detected in panic_family_from_pattern() match guard - not a runtime call"
 
 [[allow]]
 path = "xtask/src/main.rs"
 line = 10868
 column = 26
 family = "unimplemented"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
+classification = "false_positive"
+explanation = "String literal detected in panic_family_from_pattern() match guard - not a runtime call"
 
 [[allow]]
 path = "xtask/src/main.rs"
 line = 10869
 column = 26
 family = "unreachable"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
+classification = "false_positive"
+explanation = "String literal detected in panic_family_from_pattern() match guard - not a runtime call"
 
 [[allow]]
 path = "xtask/src/main.rs"
