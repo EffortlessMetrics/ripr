@@ -2,6 +2,7 @@
 
 cargo_manifest|Cargo.toml|workspace root
 cargo_manifest|crates/ripr/Cargo.toml|published package manifest
+cargo_manifest|editors/vscode/test-fixtures/**/Cargo.toml|VS Code extension test fixture workspace manifest
 cargo_manifest|fixtures/**/Cargo.toml|fixture input workspace manifests
 cargo_manifest|xtask/Cargo.toml|unpublished automation manifest
 workspace_member|crates/ripr|published product package
