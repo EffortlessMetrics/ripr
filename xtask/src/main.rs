@@ -2374,7 +2374,7 @@ fn find_best_matching_finding<'a>(
     candidates.first().copied()
 }
 
-fn toml_basic_string_escape(value: &str) -> String {
+pub fn toml_basic_string_escape(value: &str) -> String {
     let mut escaped = String::new();
     for ch in value.chars() {
         match ch {
@@ -2383,6 +2383,10 @@ fn toml_basic_string_escape(value: &str) -> String {
             '\n' => escaped.push_str("\\n"),
             '\r' => escaped.push_str("\\r"),
             '\t' => escaped.push_str("\\t"),
+            c if (c as u32) < 0x20 && c != '\t' && c != '\n' && c != '\r' => {
+                // Escape other control characters using \u{XXXX} format
+                escaped.push_str(&format!("\\u{{{:04X}}}", c as u32));
+            }
             other => escaped.push(other),
         }
     }
@@ -12629,6 +12633,32 @@ fn test_free_function_call() {
         assert!(supported.contains(&"performance_guard"));
         assert!(supported.contains(&"documentation_example"));
         assert_eq!(supported.len(), 6);
+    }
+
+    #[test]
+    fn toml_escaping_handles_control_characters() {
+        use crate::toml_basic_string_escape;
+
+        // Test basic string escaping
+        assert_eq!(toml_basic_string_escape("hello\\world"), "hello\\\\world");
+        assert_eq!(toml_basic_string_escape("quote\"test"), "quote\\\"test");
+        assert_eq!(toml_basic_string_escape("line\nbreak"), "line\\nbreak");
+        assert_eq!(toml_basic_string_escape("carriage\rreturn"), "carriage\\rreturn");
+        assert_eq!(toml_basic_string_escape("tab\there"), "tab\\there");
+
+        // Test control character escaping (0x00-0x1F except allowed ones)
+        assert_eq!(toml_basic_string_escape("null\x00char"), "null\\u{0000}char");
+        assert_eq!(toml_basic_string_escape("bell\x07sound"), "bell\\u{0007}sound");
+        assert_eq!(toml_basic_string_escape("escape\x1Bchar"), "escape\\u{001B}char");
+
+        // Test mixed escaping
+        assert_eq!(
+            toml_basic_string_escape("complex\"string\nwith\x00control"),
+            "complex\\\"string\\nwith\\u{0000}control"
+        );
+
+        // Tab, newline, and carriage return should not be escaped as control chars
+        assert_eq!(toml_basic_string_escape("\t\n\r"), "\\t\\n\\r");
     }
 
     // ============================================================================
