@@ -330,18 +330,36 @@ fn push_top_gap_md(out: &mut String, entry: &ClassifiedSeam) {
             out.push_str(&format!(
                 "  - `{}` — {}\n",
                 md_escape(missing.value.as_str()),
-                md_escape(missing.reason.as_str())
+                md_escape_paragraph(missing.reason.as_str())
             ));
         }
     }
     out.push('\n');
 }
 
+/// Escape values that get wrapped in inline-code spans. Inside
+/// backticks every character is literal except the closing backtick
+/// and the table-cell pipe, so we only swap those plus newlines.
+/// Backslash-escaping `*`/`_`/`[`/`]` here would render as literal
+/// `\*` in the inline-code span — see `md_escape_paragraph` for the
+/// non-code variant.
 fn md_escape(value: &str) -> String {
     value
         .replace('`', "\u{2018}")
         .replace('|', "\\|")
         .replace('\n', " ")
+}
+
+/// Escape values that appear in paragraph text (no surrounding
+/// backticks). Adds backslash escapes for emphasis and link tokens so
+/// a future analyzer-emitted reason string containing snake_case or
+/// `*` does not silently trigger italic/bold/link rendering.
+fn md_escape_paragraph(value: &str) -> String {
+    md_escape(value)
+        .replace('*', "\\*")
+        .replace('_', "\\_")
+        .replace('[', "\\[")
+        .replace(']', "\\]")
 }
 
 /// Per-class metric bucket for the repo exposure report.
