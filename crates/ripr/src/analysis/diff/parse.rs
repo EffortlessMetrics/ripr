@@ -1,47 +1,7 @@
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::path::PathBuf;
 
-#[derive(Clone, Debug, Default)]
-pub struct ChangedFile {
-    pub path: PathBuf,
-    pub added_lines: Vec<ChangedLine>,
-    pub removed_lines: Vec<ChangedLine>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ChangedLine {
-    pub line: usize,
-    pub text: String,
-}
-
-pub fn load_diff(
-    root: &Path,
-    base: Option<&str>,
-    diff_file: Option<&PathBuf>,
-) -> Result<String, String> {
-    if let Some(diff_file) = diff_file {
-        return std::fs::read_to_string(diff_file)
-            .map_err(|err| format!("failed to read diff file {}: {err}", diff_file.display()));
-    }
-
-    let base = base.unwrap_or("origin/main");
-    let output = Command::new("git")
-        .arg("diff")
-        .arg(format!("{base}...HEAD"))
-        .current_dir(root)
-        .output()
-        .map_err(|err| format!("failed to run git diff: {err}"))?;
-
-    if !output.status.success() {
-        return Err(format!(
-            "git diff failed: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
-    }
-
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
-}
+use super::model::{ChangedFile, ChangedLine};
 
 pub fn parse_unified_diff(input: &str) -> Vec<ChangedFile> {
     let mut files: BTreeMap<PathBuf, ChangedFile> = BTreeMap::new();
