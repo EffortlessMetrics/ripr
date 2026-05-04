@@ -90,6 +90,10 @@ pub struct LiteralFact {
 pub struct ProbeShapeFact {
     pub start_line: usize,
     pub end_line: usize,
+    /// Byte offset of the shape's start within the source file. Populated
+    /// by the parser-backed summarizer; the lexical fallback emits no
+    /// probe shapes at all, so this stays accurate.
+    pub start_byte: usize,
     pub kind: String,
     pub text: String,
 }
@@ -715,6 +719,7 @@ fn push_probe_shape(
     shapes.push(ProbeShapeFact {
         start_line: line_index.line(start),
         end_line: line_index.line_for_range_end(end),
+        start_byte: u32::from(start) as usize,
         kind: kind.to_string(),
         text: snippet,
     });

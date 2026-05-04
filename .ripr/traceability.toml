@@ -187,16 +187,29 @@ tests = [
   "crates/ripr/src/analysis/seams.rs::tests::seam_kind_round_trips_through_str",
   "crates/ripr/src/analysis/seams.rs::tests::required_discriminator_carries_kind_via_as_str",
   "crates/ripr/src/analysis/seams.rs::tests::expected_sink_str_covers_all_variants",
-  "crates/ripr/src/analysis/seams.rs::tests::seam_grip_class_str_covers_all_variants",
-  "crates/ripr/src/analysis/seams.rs::tests::seam_grip_class_headline_eligibility_matches_spec",
-  "crates/ripr/src/analysis/seams.rs::tests::repo_seam_accessors_round_trip_construction_inputs"
+  "crates/ripr/src/analysis/seams.rs::tests::repo_seam_accessors_round_trip_construction_inputs",
+  "crates/ripr/src/analysis/seam_inventory.rs::tests::given_production_predicate_shape_when_repo_inventory_runs_then_predicate_boundary_seam_is_emitted",
+  "crates/ripr/src/analysis/seam_inventory.rs::tests::given_test_file_predicate_shape_when_repo_inventory_runs_then_no_production_seam_is_emitted",
+  "crates/ripr/src/analysis/seam_inventory.rs::tests::given_same_files_in_different_walk_order_when_repo_inventory_runs_then_seam_ids_are_stable",
+  "crates/ripr/src/analysis/seam_inventory.rs::tests::given_error_path_shape_when_repo_inventory_runs_then_error_variant_seam_is_emitted",
+  "crates/ripr/src/analysis/seam_inventory.rs::tests::given_field_construction_shape_when_repo_inventory_runs_then_field_construction_seam_is_emitted",
+  "crates/ripr/src/analysis/seam_inventory.rs::tests::seam_inventory_omits_seams_with_no_owner_function",
+  "crates/ripr/src/output/repo_seams.rs::tests::json_carries_schema_version_and_repo_scope",
+  "crates/ripr/src/output/repo_seams.rs::tests::json_carries_full_seam_record",
+  "crates/ripr/src/output/repo_seams.rs::tests::json_emits_empty_array_when_no_seams",
+  "crates/ripr/src/output/repo_seams.rs::tests::markdown_renders_table_when_seams_exist",
+  "crates/ripr/src/output/repo_seams.rs::tests::markdown_explains_when_inventory_is_empty",
+  "crates/ripr/src/output/repo_seams.rs::tests::markdown_uses_static_exposure_vocabulary"
 ]
 fixtures = []
 code = [
-  "crates/ripr/src/analysis/seams.rs"
+  "crates/ripr/src/analysis/seams.rs",
+  "crates/ripr/src/analysis/seam_inventory.rs",
+  "crates/ripr/src/output/repo_seams.rs"
 ]
 outputs = [
-  "docs/specs/RIPR-SPEC-0005-repo-seam-inventory.md"
+  "docs/specs/RIPR-SPEC-0005-repo-seam-inventory.md",
+  "docs/OUTPUT_SCHEMA.md"
 ]
 metrics = [
   "seam_inventory_count",

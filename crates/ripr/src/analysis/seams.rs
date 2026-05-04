@@ -28,7 +28,10 @@ impl SeamId {
 }
 
 /// Behavior seam category. The initial set is syntax-backed; per
-/// RIPR-SPEC-0005 § Non-Goals, MIR/trait-resolution kinds may be added later.
+/// RIPR-SPEC-0005 § Non-Goals, MIR/trait-resolution kinds may be added
+/// later. `ValidationBranch` from the spec is intentionally absent
+/// until `analysis/test-grip-evidence-v1` adds detection — the model
+/// admits new variants additively.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum SeamKind {
     PredicateBoundary,
@@ -37,22 +40,10 @@ pub(crate) enum SeamKind {
     FieldConstruction,
     SideEffect,
     MatchArm,
-    ValidationBranch,
     CallPresence,
 }
 
 impl SeamKind {
-    pub(crate) const ALL: [SeamKind; 8] = [
-        SeamKind::PredicateBoundary,
-        SeamKind::ErrorVariant,
-        SeamKind::ReturnValue,
-        SeamKind::FieldConstruction,
-        SeamKind::SideEffect,
-        SeamKind::MatchArm,
-        SeamKind::ValidationBranch,
-        SeamKind::CallPresence,
-    ];
-
     pub(crate) fn as_str(&self) -> &'static str {
         match self {
             SeamKind::PredicateBoundary => "predicate_boundary",
@@ -61,11 +52,15 @@ impl SeamKind {
             SeamKind::FieldConstruction => "field_construction",
             SeamKind::SideEffect => "side_effect",
             SeamKind::MatchArm => "match_arm",
-            SeamKind::ValidationBranch => "validation_branch",
             SeamKind::CallPresence => "call_presence",
         }
     }
 
+    /// Test-only round-trip helper. The walker constructs `SeamKind`
+    /// values directly from probe shape strings via
+    /// `seam_inventory::seam_kind_from_probe_shape`; nothing in
+    /// production code parses kind discriminants back into the enum.
+    #[cfg(test)]
     pub(crate) fn from_str(s: &str) -> Option<Self> {
         Some(match s {
             "predicate_boundary" => SeamKind::PredicateBoundary,
@@ -74,7 +69,6 @@ impl SeamKind {
             "field_construction" => SeamKind::FieldConstruction,
             "side_effect" => SeamKind::SideEffect,
             "match_arm" => SeamKind::MatchArm,
-            "validation_branch" => SeamKind::ValidationBranch,
             "call_presence" => SeamKind::CallPresence,
             _ => return None,
         })
@@ -82,6 +76,11 @@ impl SeamKind {
 }
 
 /// What a test would need to observe to grip this seam.
+///
+/// The variant set tracks what the inventory walker can currently
+/// emit. Spec variants (e.g. `BranchTaken` for validation branches)
+/// will be added when `analysis/test-grip-evidence-v1` introduces
+/// the corresponding detection.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum RequiredDiscriminator {
     BoundaryValue { description: String },
@@ -90,43 +89,10 @@ pub(crate) enum RequiredDiscriminator {
     FieldValue { field: String },
     Effect { sink: String },
     MatchArmTaken { arm: String },
-    BranchTaken { branch: String },
     CallSite { target: String },
 }
 
 impl RequiredDiscriminator {
-    /// One placeholder of each variant, in declaration order. Used by the
-    /// stage-zero registry function `inventory_repo_seams_v0` to anchor every
-    /// variant in lib code until `analysis/repo-seam-inventory-v1` produces
-    /// real discriminators. Future PRs will replace placeholder strings with
-    /// owner-specific values.
-    pub(crate) fn placeholders() -> [RequiredDiscriminator; 8] {
-        [
-            RequiredDiscriminator::BoundaryValue {
-                description: String::new(),
-            },
-            RequiredDiscriminator::ErrorVariant {
-                variant: String::new(),
-            },
-            RequiredDiscriminator::ReturnValue {
-                description: String::new(),
-            },
-            RequiredDiscriminator::FieldValue {
-                field: String::new(),
-            },
-            RequiredDiscriminator::Effect {
-                sink: String::new(),
-            },
-            RequiredDiscriminator::MatchArmTaken { arm: String::new() },
-            RequiredDiscriminator::BranchTaken {
-                branch: String::new(),
-            },
-            RequiredDiscriminator::CallSite {
-                target: String::new(),
-            },
-        ]
-    }
-
     pub(crate) fn as_str(&self) -> &'static str {
         match self {
             RequiredDiscriminator::BoundaryValue { .. } => "boundary_value",
@@ -135,110 +101,39 @@ impl RequiredDiscriminator {
             RequiredDiscriminator::FieldValue { .. } => "field_value",
             RequiredDiscriminator::Effect { .. } => "effect",
             RequiredDiscriminator::MatchArmTaken { .. } => "match_arm_taken",
-            RequiredDiscriminator::BranchTaken { .. } => "branch_taken",
             RequiredDiscriminator::CallSite { .. } => "call_site",
         }
     }
 }
 
 /// Where a seam's effect would manifest — the sink class a test must
-/// observe to discriminate the changed behavior. Subsequent inventory and
-/// classification PRs populate this from existing flow-sink facts.
+/// observe to discriminate the changed behavior. Subsequent inventory
+/// and classification PRs populate this from existing flow-sink facts.
+/// `Unknown` will be added back when a kind without a determinable
+/// sink is detected.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum ExpectedSink {
     ReturnValue,
     OutputField,
     ErrorChannel,
     SideEffect,
-    Unknown,
 }
 
 impl ExpectedSink {
-    pub(crate) const ALL: [ExpectedSink; 5] = [
-        ExpectedSink::ReturnValue,
-        ExpectedSink::OutputField,
-        ExpectedSink::ErrorChannel,
-        ExpectedSink::SideEffect,
-        ExpectedSink::Unknown,
-    ];
-
     pub(crate) fn as_str(&self) -> &'static str {
         match self {
             ExpectedSink::ReturnValue => "return_value",
             ExpectedSink::OutputField => "output_field",
             ExpectedSink::ErrorChannel => "error_channel",
             ExpectedSink::SideEffect => "side_effect",
-            ExpectedSink::Unknown => "unknown",
         }
     }
 }
 
-/// Classification of how strongly current tests grip a seam.
-///
-/// The full set is locked in RIPR-SPEC-0005. Headline-vs-visible mapping is
-/// also locked there and is consulted by the report and badge work items.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub(crate) enum SeamGripClass {
-    StronglyGripped,
-    WeaklyGripped,
-    Ungripped,
-    ReachableUnrevealed,
-    ActivationUnknown,
-    PropagationUnknown,
-    ObservationUnknown,
-    DiscriminationUnknown,
-    Opaque,
-    Intentional,
-    Suppressed,
-}
-
-impl SeamGripClass {
-    pub(crate) const ALL: [SeamGripClass; 11] = [
-        SeamGripClass::StronglyGripped,
-        SeamGripClass::WeaklyGripped,
-        SeamGripClass::Ungripped,
-        SeamGripClass::ReachableUnrevealed,
-        SeamGripClass::ActivationUnknown,
-        SeamGripClass::PropagationUnknown,
-        SeamGripClass::ObservationUnknown,
-        SeamGripClass::DiscriminationUnknown,
-        SeamGripClass::Opaque,
-        SeamGripClass::Intentional,
-        SeamGripClass::Suppressed,
-    ];
-
-    pub(crate) fn as_str(&self) -> &'static str {
-        match self {
-            SeamGripClass::StronglyGripped => "strongly_gripped",
-            SeamGripClass::WeaklyGripped => "weakly_gripped",
-            SeamGripClass::Ungripped => "ungripped",
-            SeamGripClass::ReachableUnrevealed => "reachable_unrevealed",
-            SeamGripClass::ActivationUnknown => "activation_unknown",
-            SeamGripClass::PropagationUnknown => "propagation_unknown",
-            SeamGripClass::ObservationUnknown => "observation_unknown",
-            SeamGripClass::DiscriminationUnknown => "discrimination_unknown",
-            SeamGripClass::Opaque => "opaque",
-            SeamGripClass::Intentional => "intentional",
-            SeamGripClass::Suppressed => "suppressed",
-        }
-    }
-
-    /// Per RIPR-SPEC-0005 § "Headline Count vs Visible-Only Mapping".
-    /// `Opaque`'s headline treatment is decided by badge policy at render
-    /// time, not by the class itself, so it is not headline-eligible here.
-    pub(crate) fn is_headline_eligible(&self) -> bool {
-        matches!(
-            self,
-            SeamGripClass::Ungripped
-                | SeamGripClass::WeaklyGripped
-                | SeamGripClass::ReachableUnrevealed
-                | SeamGripClass::ActivationUnknown
-                | SeamGripClass::PropagationUnknown
-                | SeamGripClass::ObservationUnknown
-                | SeamGripClass::DiscriminationUnknown
-        )
-    }
-}
+// `SeamGripClass` and the headline-eligibility table from
+// RIPR-SPEC-0005 are reintroduced by `analysis/repo-ripr-classification-v1`
+// once test-grip evidence exists to drive classification. Until then,
+// the inventory walker emits unclassified `RepoSeam` records.
 
 /// A first-class behavior seam discovered in a production file.
 ///
@@ -253,6 +148,7 @@ pub(crate) struct RepoSeam {
     owner: String,
     byte_offset: usize,
     display_line: usize,
+    expression: String,
     required_discriminator: RequiredDiscriminator,
     expected_sink: ExpectedSink,
 }
@@ -260,12 +156,22 @@ pub(crate) struct RepoSeam {
 impl RepoSeam {
     /// Construct a seam, computing a deterministic ID from the canonical
     /// fields per RIPR-SPEC-0005 § "Stable Seam ID Rules".
+    ///
+    /// `expression` is the source-code text at the seam origin and is
+    /// surfaced verbatim in human/JSON output. It is *not* part of the
+    /// canonical ID hash, so reformatting whitespace within an expression
+    /// does not change `SeamId`.
+    // Eight fields are intrinsic to a seam's identity and presentation;
+    // grouping them into nested structs would force every call site
+    // through extra constructors without making the data simpler.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         file: impl AsRef<Path>,
         owner: impl Into<String>,
         kind: SeamKind,
         byte_offset: usize,
         display_line: usize,
+        expression: impl Into<String>,
         required_discriminator: RequiredDiscriminator,
         expected_sink: ExpectedSink,
     ) -> Self {
@@ -279,6 +185,7 @@ impl RepoSeam {
             owner,
             byte_offset,
             display_line,
+            expression: expression.into(),
             required_discriminator,
             expected_sink,
         }
@@ -301,6 +208,9 @@ impl RepoSeam {
     }
     pub(crate) fn display_line(&self) -> usize {
         self.display_line
+    }
+    pub(crate) fn expression(&self) -> &str {
+        &self.expression
     }
     pub(crate) fn required_discriminator(&self) -> &RequiredDiscriminator {
         &self.required_discriminator
@@ -354,72 +264,6 @@ fn compute_seam_id(file: &str, owner: &str, kind: SeamKind, byte_offset: usize) 
     SeamId(format!("{hash:016x}"))
 }
 
-/// Stage-zero anchor that exercises every public-facing surface of the
-/// seam model in lib (non-test) code. Without it, dead-code lints fire
-/// under `-D warnings` because the inventory walk and downstream
-/// classification/report consumers do not exist yet.
-///
-/// `analysis/repo-seam-inventory-v1` replaces this with a real walk over
-/// production files. Removing this function before that PR lands will
-/// reintroduce the dead-code wall.
-///
-/// The returned string is intentionally informal — it is not part of any
-/// output contract.
-pub(crate) fn registry_lifecheck_v0() -> String {
-    let kinds = SeamKind::ALL;
-    let sinks = ExpectedSink::ALL;
-    let classes = SeamGripClass::ALL;
-    let discriminators = RequiredDiscriminator::placeholders();
-
-    // A single placeholder seam, never returned outside this function, so
-    // `RepoSeam::new` (and via it `normalize_path` and `compute_seam_id`)
-    // are referenced in lib code.
-    let seams: Vec<RepoSeam> = vec![RepoSeam::new(
-        "src/lib.rs",
-        "::placeholder",
-        SeamKind::PredicateBoundary,
-        0,
-        0,
-        RequiredDiscriminator::BoundaryValue {
-            description: String::new(),
-        },
-        ExpectedSink::Unknown,
-    )];
-
-    let mut buf = String::new();
-    for kind in &kinds {
-        buf.push_str(kind.as_str());
-        if SeamKind::from_str(kind.as_str()) == Some(*kind) {
-            buf.push('!');
-        }
-    }
-    for sink in &sinks {
-        buf.push_str(sink.as_str());
-    }
-    for class in &classes {
-        buf.push_str(class.as_str());
-        if class.is_headline_eligible() {
-            buf.push('*');
-        }
-    }
-    for discriminator in &discriminators {
-        buf.push_str(discriminator.as_str());
-    }
-    // Empty in this PR; covers `RepoSeam` accessors so they stay live for
-    // `analysis/repo-seam-inventory-v1` and downstream consumers.
-    for seam in &seams {
-        buf.push_str(seam.id().as_str());
-        buf.push_str(seam.kind().as_str());
-        buf.push_str(&seam.file().to_string_lossy());
-        buf.push_str(seam.owner());
-        buf.push_str(&seam.byte_offset().to_string());
-        buf.push_str(&seam.display_line().to_string());
-        buf.push_str(seam.required_discriminator().as_str());
-        buf.push_str(seam.expected_sink().as_str());
-    }
-    buf
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -431,6 +275,7 @@ mod tests {
             kind,
             off,
             1,
+            "amount >= threshold",
             RequiredDiscriminator::BoundaryValue {
                 description: "amount >= threshold".to_string(),
             },
@@ -584,7 +429,6 @@ mod tests {
             SeamKind::FieldConstruction,
             SeamKind::SideEffect,
             SeamKind::MatchArm,
-            SeamKind::ValidationBranch,
             SeamKind::CallPresence,
         ];
         for kind in all {
@@ -641,12 +485,6 @@ mod tests {
                 "match_arm_taken",
             ),
             (
-                RequiredDiscriminator::BranchTaken {
-                    branch: "valid_email".to_string(),
-                },
-                "branch_taken",
-            ),
-            (
                 RequiredDiscriminator::CallSite {
                     target: "metrics::record".to_string(),
                 },
@@ -665,66 +503,9 @@ mod tests {
             (ExpectedSink::OutputField, "output_field"),
             (ExpectedSink::ErrorChannel, "error_channel"),
             (ExpectedSink::SideEffect, "side_effect"),
-            (ExpectedSink::Unknown, "unknown"),
         ];
         for (sink, expected) in all {
             assert_eq!(sink.as_str(), expected);
-        }
-    }
-
-    #[test]
-    fn seam_grip_class_str_covers_all_variants() {
-        let all = [
-            (SeamGripClass::StronglyGripped, "strongly_gripped"),
-            (SeamGripClass::WeaklyGripped, "weakly_gripped"),
-            (SeamGripClass::Ungripped, "ungripped"),
-            (SeamGripClass::ReachableUnrevealed, "reachable_unrevealed"),
-            (SeamGripClass::ActivationUnknown, "activation_unknown"),
-            (SeamGripClass::PropagationUnknown, "propagation_unknown"),
-            (SeamGripClass::ObservationUnknown, "observation_unknown"),
-            (
-                SeamGripClass::DiscriminationUnknown,
-                "discrimination_unknown",
-            ),
-            (SeamGripClass::Opaque, "opaque"),
-            (SeamGripClass::Intentional, "intentional"),
-            (SeamGripClass::Suppressed, "suppressed"),
-        ];
-        for (class, expected) in all {
-            assert_eq!(class.as_str(), expected);
-        }
-    }
-
-    #[test]
-    fn seam_grip_class_headline_eligibility_matches_spec() {
-        let headline = [
-            SeamGripClass::Ungripped,
-            SeamGripClass::WeaklyGripped,
-            SeamGripClass::ReachableUnrevealed,
-            SeamGripClass::ActivationUnknown,
-            SeamGripClass::PropagationUnknown,
-            SeamGripClass::ObservationUnknown,
-            SeamGripClass::DiscriminationUnknown,
-        ];
-        for class in headline {
-            assert!(
-                class.is_headline_eligible(),
-                "{} should be headline-eligible",
-                class.as_str()
-            );
-        }
-        let visible_only = [
-            SeamGripClass::StronglyGripped,
-            SeamGripClass::Intentional,
-            SeamGripClass::Suppressed,
-            SeamGripClass::Opaque,
-        ];
-        for class in visible_only {
-            assert!(
-                !class.is_headline_eligible(),
-                "{} should not be headline-eligible",
-                class.as_str()
-            );
         }
     }
 
@@ -736,6 +517,7 @@ mod tests {
             SeamKind::PredicateBoundary,
             1234,
             88,
+            "amount >= discount_threshold",
             RequiredDiscriminator::BoundaryValue {
                 description: "amount >= discount_threshold".to_string(),
             },
@@ -745,6 +527,7 @@ mod tests {
         assert_eq!(seam.owner(), "pricing::check_discount");
         assert_eq!(seam.byte_offset(), 1234);
         assert_eq!(seam.display_line(), 88);
+        assert_eq!(seam.expression(), "amount >= discount_threshold");
         assert_eq!(seam.expected_sink(), ExpectedSink::ReturnValue);
         assert_eq!(seam.file().to_string_lossy(), "src/pricing.rs");
         match seam.required_discriminator() {
