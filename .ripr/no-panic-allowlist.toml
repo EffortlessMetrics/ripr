@@ -82,7 +82,7 @@ explanation = "Test helper function for writing test files"
 
 [[allow]]
 path = "crates/ripr/src/analysis/rust_index.rs"
-line = 1109
+line = 1027
 column = 28
 family = "expect"
 classification = "false_positive"
@@ -90,7 +90,7 @@ explanation = "Static pattern matching detects text in analyzed Rust source, not
 
 [[allow]]
 path = "crates/ripr/src/analysis/rust_index.rs"
-line = 1110
+line = 1028
 column = 28
 family = "unwrap"
 classification = "false_positive"
@@ -98,7 +98,7 @@ explanation = "Static pattern matching detects text in analyzed Rust source, not
 
 [[allow]]
 path = "crates/ripr/src/analysis/rust_index.rs"
-line = 1141
+line = 1059
 column = 31
 family = "unwrap"
 classification = "false_positive"
@@ -106,7 +106,7 @@ explanation = "Static pattern matching detects text in analyzed Rust source, not
 
 [[allow]]
 path = "crates/ripr/src/analysis/rust_index.rs"
-line = 1142
+line = 1060
 column = 28
 family = "expect"
 classification = "false_positive"
