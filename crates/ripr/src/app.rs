@@ -228,14 +228,14 @@ pub fn render_check(output: &CheckOutput, format: &OutputFormat) -> Result<Strin
             Ok(output::badge::render_shields_json(&summary))
         }
         OutputFormat::BadgePlusJson | OutputFormat::RepoBadgePlusJson => {
-            let mut summary = ripr_plus_summary_from_disk(output)?;
+            let mut summary = ripr_plus_summary_from_disk(output, format.is_repo_scope())?;
             if format.is_repo_scope() {
                 summary.scope = BadgeScope::Repo;
             }
             Ok(output::badge::render_native_json(&summary))
         }
         OutputFormat::BadgePlusShields | OutputFormat::RepoBadgePlusShields => {
-            let mut summary = ripr_plus_summary_from_disk(output)?;
+            let mut summary = ripr_plus_summary_from_disk(output, format.is_repo_scope())?;
             if format.is_repo_scope() {
                 summary.scope = BadgeScope::Repo;
             }
@@ -270,6 +270,7 @@ fn ripr_summary_with_suppressions(
 
 fn ripr_plus_summary_from_disk(
     output: &CheckOutput,
+    repo_scope: bool,
 ) -> Result<output::badge::BadgeSummary, String> {
     let report_path = output.root.join(TEST_EFFICIENCY_REPORT_RELATIVE);
     if !report_path.exists() {
@@ -283,12 +284,27 @@ fn ripr_plus_summary_from_disk(
     let test_efficiency = output::badge::parse_test_efficiency_badge_summary(&text)?;
     let suppressions = load_suppressions(output)?;
     let today = output::suppressions::current_iso_date();
+    // `cargo xtask test-efficiency-report` is repo-wide as a fact source.
+    // Diff-scoped `ripr+` filters that ledger to entries related to the
+    // changed code (via `Finding.related_tests` names + `Finding.probe.owner`
+    // intersected with each entry's `reached_owners`); repo-scoped
+    // `ripr+` aggregates the repo-wide ledger directly.
+    let diff_filter = if repo_scope {
+        None
+    } else {
+        Some(output::badge::DiffRelatedTests::from_check_output(output))
+    };
+    let scope = match &diff_filter {
+        Some(filter) => output::badge::TestEfficiencyAggregationScope::Diff(filter),
+        None => output::badge::TestEfficiencyAggregationScope::Repo,
+    };
     Ok(output::badge::ripr_plus_badge_summary_with_suppressions(
         output,
         test_efficiency,
         &suppressions,
         &today,
         output::badge::BadgePolicy::default(),
+        scope,
     ))
 }
 
