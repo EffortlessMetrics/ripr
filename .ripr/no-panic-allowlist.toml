@@ -162,7 +162,7 @@ explanation = "Pattern matching in function that converts panic patterns to fami
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 10852
+line = 10848
 column = 14
 family = "unwrap"
 classification = "test_only"
@@ -170,7 +170,7 @@ explanation = "Test harness: creates temporary directories for test isolation"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 10855
+line = 10851
 column = 34
 family = "unwrap"
 classification = "test_only"
@@ -178,7 +178,7 @@ explanation = "Test harness: creates temporary directories for test isolation"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 10861
+line = 10857
 column = 40
 family = "unwrap"
 classification = "test_only"
@@ -186,7 +186,7 @@ explanation = "Test harness: creates parent directories for temporary files"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 10863
+line = 10859
 column = 31
 family = "unwrap"
 classification = "test_only"
@@ -194,7 +194,7 @@ explanation = "Test harness: writes test files to temporary directory"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 10867
+line = 10863
 column = 67
 family = "unwrap"
 classification = "test_only"
@@ -202,7 +202,7 @@ explanation = "Test harness: acquires lock for current working directory managem
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 10868
+line = 10864
 column = 43
 family = "unwrap"
 classification = "test_only"
@@ -210,7 +210,7 @@ explanation = "Test harness: saves current working directory before test"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 10870
+line = 10866
 column = 42
 family = "unwrap"
 classification = "test_only"
@@ -218,7 +218,7 @@ explanation = "Test harness: changes to temporary directory for test isolation"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 10882
+line = 10878
 column = 40
 family = "unwrap"
 classification = "test_only"
@@ -226,15 +226,15 @@ explanation = "Test harness: restores original working directory after test"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 10907
-column = 93
+line = 10904
+column = 84
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 10909
+line = 10906
 column = 34
 family = "unwrap"
 classification = "test_only"
@@ -242,16 +242,16 @@ explanation = "Test function: TOML parser validation"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 10932
-column = 93
+line = 10930
+column = 84
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 10950
-column = 93
+line = 10949
+column = 84
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
@@ -259,38 +259,47 @@ explanation = "Test function: TOML parser validation"
 [[allow]]
 path = "xtask/src/main.rs"
 line = 10968
-column = 93
+column = 84
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 10986
-column = 93
+line = 10991
+column = 84
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 11006
-column = 93
+line = 11104
+column = 58
+family = "expect"
+classification = "test_only"
+explanation = "Test harness: expects supported test intent kinds to parse successfully"
+
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11016
+column = 84
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 11033
-column = 93
+line = 11048
+column = 84
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: TOML parser validation"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 11041
+line = 11056
 column = 47
 family = "unwrap"
 classification = "test_only"
@@ -298,7 +307,7 @@ explanation = "Test function: panic family pattern matching validation"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 11042
+line = 11057
 column = 47
 family = "expect"
 classification = "test_only"
@@ -306,7 +315,7 @@ explanation = "Test function: panic family pattern matching validation"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 11043
+line = 11058
 column = 47
 family = "panic_macro"
 classification = "test_only"
@@ -314,7 +323,7 @@ explanation = "Test function: panic family pattern matching validation"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 11044
+line = 11059
 column = 47
 family = "todo"
 classification = "test_only"
@@ -322,7 +331,7 @@ explanation = "Test function: panic family pattern matching validation"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 11045
+line = 11060
 column = 47
 family = "unimplemented"
 classification = "test_only"
@@ -330,15 +339,7 @@ explanation = "Test function: panic family pattern matching validation"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 11046
-column = 47
-family = "unreachable"
-classification = "test_only"
-explanation = "Test function: panic family pattern matching validation"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11055
+line = 11070
 column = 53
 family = "unwrap"
 classification = "test_only"
@@ -346,7 +347,7 @@ explanation = "Test fixture: string literal in test harness code"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 11055
+line = 11070
 column = 84
 family = "expect"
 classification = "test_only"
@@ -354,7 +355,7 @@ explanation = "Test fixture: string literal in test harness code"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 11058
+line = 11073
 column = 34
 family = "unwrap"
 classification = "test_only"
@@ -362,7 +363,7 @@ explanation = "Test fixture: string literal in test harness code"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 11058
+line = 11073
 column = 57
 family = "expect"
 classification = "test_only"
@@ -370,7 +371,7 @@ explanation = "Test fixture: string literal in test harness code"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 11059
+line = 11074
 column = 69
 family = "unwrap"
 classification = "test_only"
@@ -378,7 +379,7 @@ explanation = "Test function: assertion on panic findings collection"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 11061
+line = 11076
 column = 28
 family = "unwrap"
 classification = "test_only"
@@ -386,7 +387,7 @@ explanation = "Test assertion: panic findings validation"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 11061
+line = 11076
 column = 50
 family = "expect"
 classification = "test_only"
@@ -394,15 +395,15 @@ explanation = "Test assertion: panic findings validation"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 11089
-column = 58
-family = "expect"
+line = 11061
+column = 47
+family = "unreachable"
 classification = "test_only"
-explanation = "Test harness: expects supported test intent kinds to parse successfully"
+explanation = "Test assertion: panic family pattern matching validation"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 14734
+line = 14749
 column = 50
 family = "unwrap"
 classification = "test_only"
@@ -410,7 +411,7 @@ explanation = "Test function: campaign manifest parsing validation"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 14754
+line = 14769
 column = 50
 family = "unwrap"
 classification = "test_only"
@@ -418,7 +419,7 @@ explanation = "Test function: campaign manifest parsing validation"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 14787
+line = 14802
 column = 23
 family = "unwrap"
 classification = "test_only"
@@ -426,7 +427,7 @@ explanation = "Test function: string parsing validation"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 14792
+line = 14807
 column = 36
 family = "unwrap"
 classification = "test_only"
@@ -434,7 +435,7 @@ explanation = "Test function: string parsing validation"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 14942
+line = 14957
 column = 18
 family = "panic_macro"
 classification = "test_only"
