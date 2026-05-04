@@ -12253,6 +12253,95 @@ fn test_with_receiver() {
         let _ = fs::remove_dir_all(&root);
     }
 
+    #[test]
+    fn collect_semantic_panic_findings_normalizes_receiver_fingerprints() {
+        let root = temp_dir("semantic_fingerprints");
+
+        // Code with multiline method receiver that should be normalized
+        let code = r#"
+#[test]
+fn test_with_multiline_receiver() {
+    let result = vec![1, 2, 3]
+        .iter()
+        .next()
+        .unwrap();
+}
+
+#[test]
+fn test_with_chained_calls() {
+    some_function()
+        .and_then(|x| Some(x + 1))
+        .unwrap();
+}
+"#;
+
+        let lib_path = root.join("lib.rs");
+        write(&lib_path, code);
+
+        let patterns = forbidden_panic_patterns();
+        let findings =
+            collect_semantic_panic_findings(&root, &patterns).expect("failed to collect findings");
+
+        // Verify that unwrap calls were found
+        let unwrap_findings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.family == "unwrap")
+            .collect();
+        assert!(
+            !unwrap_findings.is_empty(),
+            "should find unwrap calls in multiline expressions"
+        );
+
+        // Verify receiver fingerprints are normalized (no newlines)
+        for finding in &unwrap_findings {
+            if let Some(ref fp) = finding.receiver_fingerprint {
+                // Normalized fingerprints should not contain actual newlines
+                assert!(
+                    !fp.contains('\n'),
+                    "receiver_fingerprint should not contain newlines: {}",
+                    fp
+                );
+                // Should contain spaces for readability
+                if fp.len() > 10 {
+                    assert!(
+                        fp.contains(' '),
+                        "normalized multiline receiver should contain spaces: {}",
+                        fp
+                    );
+                }
+            }
+        }
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn collect_semantic_panic_findings_handles_invalid_kind() {
+        let selector_invalid = PanicFamilySelectorKind {
+            kind: "invalid_kind".to_string(),
+            container: None,
+            callee: None,
+            receiver_fingerprint: None,
+            text_contains: None,
+        };
+
+        let finding = SemanticPanicFinding {
+            path: "src/lib.rs".to_string(),
+            family: "unwrap".to_string(),
+            kind: "method_call".to_string(),
+            line: 10,
+            column: Some(5),
+            container: None,
+            callee: None,
+            receiver_fingerprint: None,
+            snippet_fingerprint: "x.unwrap()".to_string(),
+            cfg_test: false,
+        };
+
+        // Invalid selector kind should not match
+        assert!(!semantic_selector_matches(&selector_invalid, &finding));
+    }
+
     // ============================================================================
     // Enum contract tests
     // ============================================================================
