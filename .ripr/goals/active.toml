@@ -223,11 +223,11 @@ commands = [
 
 [[work_item]]
 id = "badge/publish-main-endpoint"
-status = "ready"
+status = "done"
 branch = "badge/publish-main-endpoint"
 stackable = false
 requires_human_merge = true
-acceptance = "Shields-compatible repo-scoped badge JSON published from main only; README references the endpoint; policy/network_allowlist.txt updated; PR workflows do not publish; only repo-scoped artifacts (scope=\"repo\") are referenced from public docs"
+acceptance = "Shields-compatible repo-scoped badge JSON published from main only via .github/workflows/publish-badge-endpoint.yml; root README references the endpoint; first-party Pages actions need no new policy/network_allowlist.txt entry but policy/workflow_allowlist.txt registers the new workflow; PR workflows do not publish (if-guard pins refs/heads/main); only repo-scoped artifacts (scope=\"repo\") are referenced from public docs"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",

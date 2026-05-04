@@ -13,11 +13,11 @@ This is the contract that `ripr check --format badge-json` and
 ## Status
 
 This is the policy document. The badge command, the test-intent and
-suppressions config files, the diff-scoped CI artifact pipeline, and
-the repo-scoped artifact path have all landed under Campaign 4A. The
-remaining campaign item is `badge/publish-main-endpoint` (trunk-only
-public Shields endpoint). The current implementation status of each
-piece is tracked in the status table at the bottom of this doc and in
+suppressions config files, the diff-scoped CI artifact pipeline, the
+repo-scoped artifact path, and the trunk-only public Shields endpoint
+have all landed under Campaign 4A. The current implementation status
+of each piece is tracked in the status table at the bottom of this
+doc and in
 [`.ripr/goals/active.toml`](../.ripr/goals/active.toml).
 
 ## What each badge means
@@ -541,11 +541,44 @@ cargo xtask repo-badge-artifacts
 # writes target/ripr/reports/repo-ripr-badges.md
 ```
 
-Trunk-only publication of Shields endpoints
-(`badge/publish-main-endpoint`) requires a `policy/network_allowlist.txt`
-entry, runs only from `main` (never from PR workflows), and consumes
-**repo-scoped** artifacts only. README and store-facing docs reference
-the published repo-scoped endpoint; they never embed PR-artifact URLs.
+### Published main endpoint
+
+`.github/workflows/publish-badge-endpoint.yml` publishes the
+repo-scoped Shields JSON to GitHub Pages from `main` runs only:
+
+```text
+https://effortlessmetrics.github.io/ripr/badges/ripr.json
+https://effortlessmetrics.github.io/ripr/badges/ripr-plus.json
+```
+
+The Shields render URLs (used in README badges) are:
+
+```text
+https://img.shields.io/endpoint?url=https://effortlessmetrics.github.io/ripr/badges/ripr.json
+https://img.shields.io/endpoint?url=https://effortlessmetrics.github.io/ripr/badges/ripr-plus.json
+```
+
+Pinned contract for the endpoint:
+
+- The publish job's `if:` guard is
+  `github.event_name == 'push' && github.ref == 'refs/heads/main'`.
+  PR workflows never publish.
+- The job uses first-party `actions/configure-pages`,
+  `actions/upload-pages-artifact`, and `actions/deploy-pages` actions —
+  no `curl`/`wget` patterns are introduced, so
+  `policy/network_allowlist.txt` does not need a new entry. The
+  workflow is registered in `policy/workflow_allowlist.txt`.
+- Only repo-scoped Shields JSON is published. Diff-scoped artifacts
+  (`ripr-badge-shields.json`, `ripr-plus-badge-shields.json`) stay in
+  per-PR step summaries and CI artifact uploads.
+- README and store-facing docs reference the published repo-scoped
+  endpoint URLs only; they never embed PR-artifact URLs or
+  `target/ripr/reports/` paths.
+- The `ripr 0` headline on `main` means: zero unresolved actionable
+  exposure findings under the v1 currently-probeable repo baseline.
+  It does not mean the repo is fully tested, that all behavior seams
+  are gripped by oracles, or that mutation testing would pass — see
+  "What v1 repo scope means — and does not mean" above.
 
 ## Implementation status
 
@@ -566,7 +599,7 @@ Tracked alongside Campaign 4A in
 | `.ripr/suppressions.toml` loader | done | `suppressions/v1` |
 | CI badge artifacts (diff-scoped, PR) | done | `ci/badge-artifacts` |
 | Repo-scoped badge artifacts | done | `badge/repo-scope-artifacts` (`cargo xtask repo-badge-artifacts`) |
-| Published Shields endpoint from `main` | ready | `badge/publish-main-endpoint` |
+| Published Shields endpoint from `main` | done | `badge/publish-main-endpoint` (`.github/workflows/publish-badge-endpoint.yml` → GitHub Pages) |
 
 ## See also
 
