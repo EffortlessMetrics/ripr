@@ -489,6 +489,103 @@ Voice B reports static test grip evidence. Runtime confirmation via
 Static-language constraints from RIPR-SPEC-0005 still apply: the report
 never uses runtime-mutation outcome words.
 
+## Agent Seam Packets
+
+`ripr check --root . --format agent-seam-packets-json` emits per-seam
+agent work orders for every headline-eligible classified seam. The
+artifact lands at `target/ripr/reports/agent-seam-packets.json` when
+generated via `cargo xtask agent-seam-packets`.
+
+```json
+{
+  "schema_version": "0.2",
+  "scope": "repo",
+  "packets_total": 12565,
+  "packets": [
+    {
+      "task": "write_targeted_test",
+      "seam_id": "f3c9e4d21a0b7c88",
+      "owner": "src/pricing.rs::discounted_total",
+      "seam_kind": "predicate_boundary",
+      "file": "src/pricing.rs",
+      "line": 88,
+      "changed_expression": "amount >= discount_threshold",
+      "current_grip": "weakly_gripped",
+      "evidence": {
+        "reach": "yes",
+        "activate": "yes",
+        "propagate": "yes",
+        "observe": "yes",
+        "discriminate": "weak"
+      },
+      "observed_values": ["50", "10000"],
+      "missing_input_values": [
+        "discount_threshold (equality boundary)",
+        "input that hits the boundary: amount >= discount_threshold"
+      ],
+      "missing_oracle_shape": "exact returned value assertion at the equality boundary",
+      "related_existing_tests": [
+        {
+          "name": "below_threshold_has_no_discount",
+          "file": "tests/pricing.rs",
+          "line": 12,
+          "oracle_kind": "exact_value",
+          "oracle_strength": "strong"
+        }
+      ],
+      "suggested_assertions": [
+        "assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)"
+      ]
+    }
+  ]
+}
+```
+
+Field contract:
+
+- `schema_version` — currently `"0.2"`. Distinct from the repo-exposure
+  report's `"0.1"` because the packet is a separate contract aimed at
+  coding agents rather than reviewers. Bumping requires updating this
+  section, the renderer (`crates/ripr/src/output/agent_seam_packets.rs`),
+  and any downstream consumers in lockstep.
+- `scope` — always `"repo"`.
+- `packets_total` — number of actionable packets emitted. **Equal to
+  the count of headline-eligible seams**; strongly-gripped, opaque,
+  intentional, and suppressed seams produce no packet.
+- `packets[].task` — currently always `"write_targeted_test"`. Future
+  versions may add tasks like `"strengthen_oracle"` or
+  `"add_match_arm_observer"`.
+- `packets[].current_grip` — one of the headline-eligible
+  `SeamGripClass` strings (`weakly_gripped`, `ungripped`,
+  `reachable_unrevealed`, `activation_unknown`, `propagation_unknown`,
+  `observation_unknown`, `discrimination_unknown`).
+- `packets[].evidence` — per-stage `StageState` strings.
+- `packets[].observed_values` — literal scalars seen in owner-call
+  arguments across related tests.
+- `packets[].missing_input_values` — analyzer-emitted hypotheses for
+  values the test suite skips. For predicate boundaries, includes the
+  equality-boundary hypothesis even when no missing-discriminator
+  fact fired.
+- `packets[].missing_oracle_shape` — guidance string keyed by
+  `SeamKind` and `ExpectedSink`. Examples:
+  - `predicate_boundary` → "exact returned value assertion at the
+    equality boundary"
+  - `error_variant` → "exact error-variant assertion (matches! /
+    assert_matches!)"
+  - `side_effect` → "mock expectation, event/state observer, or
+    persistence assertion (...)"
+- `packets[].related_existing_tests` — capped at 8 per packet. Carries
+  test name, file, line, oracle kind, oracle strength.
+- `packets[].suggested_assertions` — best-effort assertion templates
+  the agent fills in. Placeholders are intentional; ripr never invents
+  expected values. Example for predicate boundary:
+  `"assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)"`.
+
+The packet is the agent's work order: it names the seam, the missing
+discriminator, the oracle shape, and an assertion template — but never
+generates the test itself. Composition with a coding agent closes the
+loop.
+
 ## Stability Rules
 
 Output contract values are registered in `policy/output_contracts.txt`.

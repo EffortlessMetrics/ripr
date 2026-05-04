@@ -227,7 +227,14 @@ tests = [
   "crates/ripr/src/output/repo_exposure.rs::tests::markdown_renders_summary_table_and_top_gaps",
   "crates/ripr/src/output/repo_exposure.rs::tests::markdown_explains_when_inventory_is_empty",
   "crates/ripr/src/output/repo_exposure.rs::tests::markdown_explains_when_no_headline_gaps",
-  "crates/ripr/src/output/repo_exposure.rs::tests::markdown_uses_static_exposure_vocabulary"
+  "crates/ripr/src/output/repo_exposure.rs::tests::markdown_uses_static_exposure_vocabulary",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::given_weakly_gripped_boundary_seam_when_packet_is_rendered_then_missing_boundary_value_is_present",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::given_ungripped_seam_when_packet_is_rendered_then_task_is_write_targeted_test",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::given_strongly_gripped_seam_when_packets_are_requested_then_no_actionable_packet_is_emitted",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::given_related_tests_when_packet_is_rendered_then_oracle_kind_and_strength_are_present",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::schema_version_is_pinned_to_zero_two",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::empty_input_emits_well_formed_json",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::suggested_assertion_for_predicate_boundary_uses_owner_and_missing_value"
 ]
 fixtures = []
 code = [
@@ -236,7 +243,8 @@ code = [
   "crates/ripr/src/analysis/test_grip_evidence.rs",
   "crates/ripr/src/analysis/seam_classification.rs",
   "crates/ripr/src/output/repo_seams.rs",
-  "crates/ripr/src/output/repo_exposure.rs"
+  "crates/ripr/src/output/repo_exposure.rs",
+  "crates/ripr/src/output/agent_seam_packets.rs"
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0005-repo-seam-inventory.md",

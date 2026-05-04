@@ -182,7 +182,7 @@ commands = [
 
 [[work_item]]
 id = "context/agent-seam-packets-v1"
-status = "ready"
+status = "done"
 branch = "context/agent-seam-packets-v1"
 stackable = false
 requires_human_merge = true
@@ -196,12 +196,10 @@ commands = [
 
 [[work_item]]
 id = "docs/agent-dispatch-workflow-v1"
-status = "blocked"
+status = "ready"
 branch = "docs/agent-dispatch-workflow-v1"
 stackable = false
 requires_human_merge = true
-blocked_by = ["context/agent-seam-packets-v1"]
-blocked_reason = "the workflow doc shows agents how to consume seam packets"
 acceptance = "docs/AGENT_DISPATCH_WORKFLOW.md (or similar) documents how a coding agent uses a seam packet to write the missing test; references the protocol and handoff ledger; honest about what ripr does and does not produce"
 commands = [
   "cargo xtask shape",
