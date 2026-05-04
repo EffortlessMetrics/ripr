@@ -2224,19 +2224,14 @@ fn check_no_panic_family() -> Result<(), String> {
 
     let mut violations = Vec::new();
 
-    let allowed_set: BTreeSet<_> = allowlist
-        .iter()
-        .map(|e| (e.path.clone(), e.line, e.column, e.family.clone()))
-        .collect();
-
     for finding in &findings {
-        let key = (
-            finding.path.clone(),
-            finding.line,
-            finding.column,
-            finding.family.clone(),
-        );
-        if !allowed_set.contains(&key) {
+        let matched = allowlist.iter().any(|e| {
+            e.path == finding.path
+                && e.line == finding.line
+                && e.family == finding.family
+                && (e.column.is_none() || e.column == finding.column)
+        });
+        if !matched {
             violations.push(format!(
                 "{}:{}:{} contains unallowed panic-family '{}'; add exact allowlist entry with explanation",
                 finding.path,
@@ -2247,19 +2242,14 @@ fn check_no_panic_family() -> Result<(), String> {
         }
     }
 
-    let finding_set: BTreeSet<_> = findings
-        .iter()
-        .map(|f| (f.path.clone(), f.line, f.column, f.family.clone()))
-        .collect();
-
     for entry in &allowlist {
-        let key = (
-            entry.path.clone(),
-            entry.line,
-            entry.column,
-            entry.family.clone(),
-        );
-        if !finding_set.contains(&key) {
+        let matched = findings.iter().any(|f| {
+            f.path == entry.path
+                && f.line == entry.line
+                && f.family == entry.family
+                && (entry.column.is_none() || entry.column == f.column)
+        });
+        if !matched {
             violations.push(format!(
                 "stale allowlist entry: {}:{}:{:?} ({}) does not match any current finding",
                 entry.path, entry.line, entry.column, entry.family
@@ -10633,6 +10623,7 @@ fn parse_no_panic_allowlist_toml(path: &str) -> Result<Vec<PanicAllowEntry>, Str
         explanation: String::new(),
     };
     let mut has_entry_started = false;
+    let mut entry_start_line = 0;
 
     for (line_num, line) in text.lines().enumerate() {
         let line_number = line_num + 1;
@@ -10648,7 +10639,7 @@ fn parse_no_panic_allowlist_toml(path: &str) -> Result<Vec<PanicAllowEntry>, Str
 
         if trimmed == "[[allow]]" {
             if has_entry_started {
-                validate_panic_allow_entry(&current_entry, path, line_number)?;
+                validate_panic_allow_entry(&current_entry, path, entry_start_line)?;
                 entries.push(current_entry.clone());
             }
             current_entry = PanicAllowEntry {
@@ -10661,6 +10652,7 @@ fn parse_no_panic_allowlist_toml(path: &str) -> Result<Vec<PanicAllowEntry>, Str
             };
             has_entry_started = true;
             in_allow_section = true;
+            entry_start_line = line_number;
             continue;
         }
 
@@ -10699,7 +10691,7 @@ fn parse_no_panic_allowlist_toml(path: &str) -> Result<Vec<PanicAllowEntry>, Str
     }
 
     if has_entry_started {
-        validate_panic_allow_entry(&current_entry, path, text.lines().count())?;
+        validate_panic_allow_entry(&current_entry, path, entry_start_line)?;
         entries.push(current_entry);
     }
 
@@ -10715,8 +10707,9 @@ fn parse_toml_key_value(trimmed: &str) -> Option<(&str, &str)> {
 }
 
 fn parse_string_value(value: &str, path: &str, line_number: usize) -> Result<String, String> {
-    if value.starts_with('"') && value.ends_with('"') && value.len() >= 2 {
-        Ok(value[1..value.len() - 1].to_string())
+    let v = value.split('#').next().unwrap_or(value).trim();
+    if v.starts_with('"') && v.ends_with('"') && v.len() >= 2 {
+        Ok(v[1..v.len() - 1].to_string())
     } else {
         Err(format!(
             "{path}:{} string value must be quoted (got: {value})",
@@ -10726,9 +10719,8 @@ fn parse_string_value(value: &str, path: &str, line_number: usize) -> Result<Str
 }
 
 fn parse_usize_value(value: &str, path: &str, line_number: usize) -> Result<usize, String> {
-    value
-        .trim()
-        .parse::<usize>()
+    let v = value.split('#').next().unwrap_or(value).trim();
+    v.parse::<usize>()
         .map_err(|_| format!("{path}:{} invalid number (got: {value})", line_number))
 }
 
