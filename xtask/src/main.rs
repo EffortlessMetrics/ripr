@@ -11063,7 +11063,7 @@ explanation = "Duplicate entry"
             );
 
             let patterns = vec!["unwrap(".to_string(), "expect(".to_string()];
-            let findings = collect_panic_findings(&root, &patterns).unwrap();
+            let findings = collect_panic_findings(root, &patterns).unwrap();
 
             // Should find unwrap( on line 2 and expect( on line 3
             assert!(findings.iter().any(|f| f.line == 2 && f.family == "unwrap"));
