@@ -2458,9 +2458,13 @@ fn generate_migration_markdown(
         if let Some(container) = &selector.container {
             if container.starts_with("closure_") {
                 md.push_str("\n# ⚠️ WARNING: Position-based container ID\n");
-                md.push_str("# This container is a byte-offset-based identifier (closure_NNNNN).\n");
+                md.push_str(
+                    "# This container is a byte-offset-based identifier (closure_NNNNN).\n",
+                );
                 md.push_str("# It will become stale if code before the closure changes.\n");
-                md.push_str("# Before adopting this entry, manually stabilize the container using:\n");
+                md.push_str(
+                    "# Before adopting this entry, manually stabilize the container using:\n",
+                );
                 md.push_str("# - The enclosing named function if this closure is inside one, OR\n");
                 md.push_str("# - A hash-based or semantic identifier for the closure, OR\n");
                 md.push_str("# - A more specific receiver_fingerprint filter\n");
