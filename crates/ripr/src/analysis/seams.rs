@@ -11,6 +11,7 @@
 //! unchanged: the seam model is internal until a real consumer contract
 //! exists.
 
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 /// Stable seam identifier.
@@ -18,7 +19,7 @@ use std::path::{Path, PathBuf};
 /// Deterministic across runs and across input file walk reorderings.
 /// Format: 16 lowercase hex chars, the FNV-1a 64-bit hash of the canonical
 /// fields (file, owner, kind, byte offset).
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub(crate) struct SeamId(String);
 
 impl SeamId {
@@ -32,7 +33,7 @@ impl SeamId {
 /// later. `ValidationBranch` from the spec is intentionally absent
 /// until `analysis/test-grip-evidence-v1` adds detection — the model
 /// admits new variants additively.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub(crate) enum SeamKind {
     PredicateBoundary,
     ErrorVariant,
@@ -81,7 +82,7 @@ impl SeamKind {
 /// emit. Spec variants (e.g. `BranchTaken` for validation branches)
 /// will be added when `analysis/test-grip-evidence-v1` introduces
 /// the corresponding detection.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum RequiredDiscriminator {
     BoundaryValue { description: String },
     ErrorVariant { variant: String },
@@ -111,7 +112,7 @@ impl RequiredDiscriminator {
 /// and classification PRs populate this from existing flow-sink facts.
 /// `Unknown` will be added back when a kind without a determinable
 /// sink is detected.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub(crate) enum ExpectedSink {
     ReturnValue,
     OutputField,
@@ -136,7 +137,7 @@ impl ExpectedSink {
 /// table on `is_headline_eligible` mirrors the spec's
 /// "Headline Count vs Visible-Only Mapping" section and is consumed
 /// by the upcoming `output/repo-exposure-report-v1` work item.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub(crate) enum SeamGripClass {
     StronglyGripped,
     WeaklyGripped,
@@ -208,7 +209,7 @@ impl SeamGripClass {
 /// The `id` is computed from the canonical fields by `RepoSeam::new`; do
 /// not assemble seams via field literals at call sites, because that would
 /// allow constructing a seam whose `id` does not match its fields.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct RepoSeam {
     id: SeamId,
     kind: SeamKind,

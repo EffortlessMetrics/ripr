@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 use super::{
@@ -106,7 +107,7 @@ pub struct Probe {
     pub required_oracles: Vec<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FlowSinkKind {
     ReturnValue,
     ErrorVariant,
@@ -140,7 +141,7 @@ impl FlowSinkKind {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FlowSinkFact {
     pub kind: FlowSinkKind,
     pub text: String,
@@ -148,7 +149,7 @@ pub struct FlowSinkFact {
     pub owner: Option<SymbolId>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ValueContext {
     FunctionArgument,
     AssertionArgument,
@@ -173,7 +174,7 @@ impl ValueContext {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ValueFact {
     pub line: usize,
     pub text: String,
@@ -181,7 +182,7 @@ pub struct ValueFact {
     pub context: ValueContext,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MissingDiscriminatorFact {
     pub value: String,
     pub reason: String,

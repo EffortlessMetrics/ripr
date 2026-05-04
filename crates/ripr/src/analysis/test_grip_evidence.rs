@@ -18,10 +18,11 @@ use crate::domain::{
     Confidence, MissingDiscriminatorFact, OracleKind, OracleStrength, StageEvidence, StageState,
     ValueContext, ValueFact,
 };
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 /// Per-seam test-grip evidence record.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct TestGripEvidence {
     pub(crate) seam_id: SeamId,
     pub(crate) related_tests: Vec<RelatedTestGrip>,
@@ -35,7 +36,7 @@ pub(crate) struct TestGripEvidence {
 }
 
 /// Per-related-test grip facts attached to a `TestGripEvidence`.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct RelatedTestGrip {
     pub(crate) test_name: String,
     pub(crate) file: PathBuf,

@@ -21,6 +21,7 @@ use super::rust_index::{
     PROBE_SHAPE_MATCH_ARM, PROBE_SHAPE_PREDICATE, PROBE_SHAPE_RETURN_VALUE,
     PROBE_SHAPE_SIDE_EFFECT, ProbeShapeFact, RustIndex,
 };
+use super::seam_cache::{CacheLoad, RepoSeamFactCache, WorkspaceState};
 use super::seam_classification::{self, ClassifiedSeam};
 use super::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator, SeamKind};
 use super::test_grip_evidence;
@@ -50,7 +51,40 @@ pub(crate) fn inventory_seams_at(root: &Path) -> Result<Vec<RepoSeam>, String> {
 /// The discard hook in `inventory_seams_at` from #237 is replaced by
 /// this real consumer; evidence and classification are no longer
 /// computed for the diff-free seam-only formats.
+///
+/// Consults the on-disk fact-layer cache
+/// (`target/ripr/cache/repo-seam-facts/...`) before computing. Cache
+/// hits skip the file walk, parse, evidence build, and classification
+/// pipeline entirely. Misses and corrupt entries fall through to a
+/// fresh compute and write the result for the next run. Cache
+/// failures never fail the analysis.
 pub(crate) fn inventory_classified_seams_at(root: &Path) -> Result<Vec<ClassifiedSeam>, String> {
+    let cache = RepoSeamFactCache::at(root);
+    let state = collect_workspace_state(root)?;
+    let key = state.cache_key();
+    match cache.load_classified_seams(&key) {
+        CacheLoad::Hit(cached) => return Ok(cached),
+        CacheLoad::Miss => {}
+        CacheLoad::CorruptIgnored { reason } => {
+            // Advisory: surface the reason so operators can see why a
+            // warm path degraded to cold. Never fail analysis.
+            eprintln!("ripr: repo seam cache entry ignored ({reason})");
+        }
+    }
+    let classified = inventory_classified_seams_uncached(root)?;
+    // Best-effort write: a write failure does not fail analysis. The
+    // result is already in memory; the next run just sees a miss again.
+    let _ = cache.store_classified_seams(&key, &classified);
+    Ok(classified)
+}
+
+/// Cold-path inventory + classify with no cache. Used by the cached
+/// entry point on miss and by tests that want to drive the pipeline
+/// directly. Stays crate-private; the public entry is the cached
+/// function above.
+pub(crate) fn inventory_classified_seams_uncached(
+    root: &Path,
+) -> Result<Vec<ClassifiedSeam>, String> {
     let rust_files = workspace::discover_rust_files(root)?;
     let production_files: Vec<PathBuf> = rust_files
         .iter()
@@ -62,6 +96,59 @@ pub(crate) fn inventory_classified_seams_at(root: &Path) -> Result<Vec<Classifie
     let seams = inventory_seams_from_index(&production_files, &index);
     let evidence = test_grip_evidence::evidence_for_seams(&seams, &index);
     Ok(seam_classification::classify_seams(&seams, &evidence))
+}
+
+/// Collect the per-file content + intent + suppressions inputs the
+/// cache key derives from. Reads files once; the build_index path
+/// reads them again, but the cost is minor compared to parsing. A
+/// future optimization can share the file contents.
+fn collect_workspace_state(root: &Path) -> Result<OwnedWorkspaceState, String> {
+    let rust_files = workspace::discover_rust_files(root)?;
+    let production_files: Vec<PathBuf> = rust_files
+        .iter()
+        .filter(|p| workspace::is_production_rust_path(p))
+        .cloned()
+        .collect();
+    let mut files: Vec<(PathBuf, Vec<u8>)> = Vec::with_capacity(production_files.len());
+    for path in production_files {
+        let bytes = std::fs::read(root.join(&path))
+            .map_err(|err| format!("read {} failed: {err}", path.display()))?;
+        files.push((path, bytes));
+    }
+    Ok(OwnedWorkspaceState {
+        workspace_root: root.to_path_buf(),
+        files,
+        test_intent_text: read_optional(&root.join(".ripr").join("test_intent.toml")),
+        suppressions_text: read_optional(&root.join(".ripr").join("suppressions.toml")),
+    })
+}
+
+fn read_optional(path: &Path) -> Option<String> {
+    std::fs::read_to_string(path).ok()
+}
+
+/// Owned form of `WorkspaceState` so the inventory function can return
+/// it across the cache call boundary. `WorkspaceState` borrows; this
+/// converts to it on demand.
+struct OwnedWorkspaceState {
+    workspace_root: PathBuf,
+    files: Vec<(PathBuf, Vec<u8>)>,
+    test_intent_text: Option<String>,
+    suppressions_text: Option<String>,
+}
+
+impl OwnedWorkspaceState {
+    fn cache_key(&self) -> super::seam_cache::RepoSeamCacheKey {
+        WorkspaceState {
+            workspace_root: &self.workspace_root,
+            files: &self.files,
+            cfg_features: None,
+            config_text: None,
+            test_intent_text: self.test_intent_text.as_deref(),
+            suppressions_text: self.suppressions_text.as_deref(),
+        }
+        .cache_key()
+    }
 }
 
 /// Inventory seams from a pre-built index. Public(crate) so tests can
