@@ -10546,26 +10546,26 @@ fn is_word_char(value: Option<char>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, DogfoodRun,
-        LocalContextAllow, MarkdownLink, ReceiptRecord, ReportIndexCampaign, ReportIndexEntry,
-        StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass, CheckStatus, CheckReport,
-        CheckViolation, FixKind,
-        badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
-        badge_artifacts_summary_markdown, critic_findings, dogfood_class_counts,
-        dogfood_report_json, dogfood_report_markdown, extract_json_object_usize_map,
-        extract_json_string, extract_json_warnings, extract_workflow_run_blocks,
-        first_line_difference, glob_matches, golden_changes_without_blessing,
-        golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
-        is_bdd_test_name, is_dependency_surface_candidate, is_evidence_path,
-        is_generated_candidate, is_known_campaign_command, is_policy_path, is_production_path,
-        is_receipt_status, is_snake_case_id, is_spec_id, json_escape, json_number_after,
-        json_string_values_for_key, known_xtask_command, local_context_line_findings,
-        local_markdown_target, markdown_links_in_text, next_checkpoints_from_capabilities,
-        normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
-        parse_campaign_manifest, parse_inline_array, parse_reason, parse_static_language_allowlist,
-        pr_shape_warnings, precommit_report_body, public_contract_rows, receipt_json,
-        receipt_specs, receipt_status_from_reports, repo_badge_artifact_command_args,
-        repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown, report_index_markdown,
+        BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, CheckReport,
+        CheckStatus, CheckViolation, DogfoodRun, FixKind, LocalContextAllow, MarkdownLink,
+        ReceiptRecord, ReportIndexCampaign, ReportIndexEntry, StaticLanguageAllowEntry,
+        StaticLanguageMatcher, TestOracleClass, badge_artifact_command_args, badge_artifact_jobs,
+        badge_artifact_native_slot, badge_artifacts_summary_markdown, critic_findings,
+        dogfood_class_counts, dogfood_report_json, dogfood_report_markdown,
+        extract_json_object_usize_map, extract_json_string, extract_json_warnings,
+        extract_workflow_run_blocks, first_line_difference, glob_matches,
+        golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
+        guarded_allow_attributes_in_text, is_bdd_test_name, is_dependency_surface_candidate,
+        is_evidence_path, is_generated_candidate, is_known_campaign_command, is_policy_path,
+        is_production_path, is_receipt_status, is_snake_case_id, is_spec_id, json_escape,
+        json_number_after, json_string_values_for_key, known_xtask_command,
+        local_context_line_findings, local_markdown_target, markdown_links_in_text,
+        next_checkpoints_from_capabilities, normalize_fixture_human_output,
+        normalize_fixture_json_output, normalize_golden_text, parse_campaign_manifest,
+        parse_inline_array, parse_reason, parse_static_language_allowlist, pr_shape_warnings,
+        precommit_report_body, public_contract_rows, receipt_json, receipt_specs,
+        receipt_status_from_reports, repo_badge_artifact_command_args, repo_badge_artifact_jobs,
+        repo_badge_artifacts_summary_markdown, report_index_markdown,
         report_index_missing_expected, report_status_from_text, should_scan_static_language_path,
         sorted_allowlist_content, spec_id_from_path, static_language_allowlist_covers,
         status_for_report, suspicious_runtime_file_names, test_efficiency_entry,
@@ -10574,9 +10574,10 @@ mod tests {
         windows_absolute_path_tokens, workflow_runtime_violations,
     };
     use super::{
-        DeclaredIntent, LocalContextFinding, TestEfficiencyEntry, TestEfficiencyValue, TestIntentDeclaration,
-        TestIntentKind, TestIntentReportSummary, apply_duplicate_discriminator_groups,
-        apply_test_intent_to_entries, parse_test_intent_manifest, test_efficiency_metrics,
+        DeclaredIntent, LocalContextFinding, TestEfficiencyEntry, TestEfficiencyValue,
+        TestIntentDeclaration, TestIntentKind, TestIntentReportSummary,
+        apply_duplicate_discriminator_groups, apply_test_intent_to_entries,
+        parse_test_intent_manifest, test_efficiency_metrics,
     };
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
@@ -14276,7 +14277,9 @@ reason = "second"
     fn campaign_manifest_parses_valid_file() {
         with_temp_cwd("campaign-manifest", |root| {
             let manifest_path = root.join("campaign.toml");
-            write(&manifest_path, r#"
+            write(
+                &manifest_path,
+                r#"
 id = "campaign-01"
 title = "Add test coverage"
 status = "in_progress"
@@ -14286,7 +14289,8 @@ id = "item-1"
 status = "ready"
 stackable = true
 requires_human_merge = false
-"#);
+"#,
+            );
             let result = parse_campaign_manifest(&manifest_path);
             assert!(result.is_ok());
             let (manifest, violations) = result.unwrap();
@@ -14305,9 +14309,15 @@ requires_human_merge = false
             write(&manifest_path, "this is not valid toml [ invalid");
             let result = parse_campaign_manifest(&manifest_path);
             // Invalid TOML should return Ok with violations, not an error
-            assert!(result.is_ok(), "invalid TOML should return Ok with violations");
+            assert!(
+                result.is_ok(),
+                "invalid TOML should return Ok with violations"
+            );
             let (_manifest, violations) = result.unwrap();
-            assert!(!violations.is_empty(), "invalid TOML should produce violations");
+            assert!(
+                !violations.is_empty(),
+                "invalid TOML should produce violations"
+            );
         });
     }
 
@@ -14491,7 +14501,7 @@ requires_human_merge = false
         };
         assert_eq!(report.check, "coverage");
         match report.status {
-            CheckStatus::Fail => {},
+            CheckStatus::Fail => {}
             _ => panic!("expected Fail status"),
         }
     }
@@ -14506,11 +14516,11 @@ requires_human_merge = false
         assert!(is_spec_id("RIPR-SPEC-9999"));
         assert!(is_spec_id("RIPR-SPEC-0000"));
 
-        assert!(!is_spec_id("RIPR-SPEC-001"));  // too short
+        assert!(!is_spec_id("RIPR-SPEC-001")); // too short
         assert!(!is_spec_id("RIPR-SPEC-00001")); // too long
         assert!(!is_spec_id("RIPR-SPEC-abc1")); // non-digits
         assert!(!is_spec_id("ripr-spec-0001")); // lowercase
-        assert!(!is_spec_id("RIPR-0001"));  // missing SPEC
+        assert!(!is_spec_id("RIPR-0001")); // missing SPEC
         assert!(!is_spec_id(""));
     }
 
@@ -14521,21 +14531,25 @@ requires_human_merge = false
         assert!(is_snake_case_id("a"));
         assert!(is_snake_case_id("test123test"));
 
-        assert!(!is_snake_case_id(""));              // empty
+        assert!(!is_snake_case_id("")); // empty
         assert!(!is_snake_case_id("_starts_with")); // starts with underscore
-        assert!(!is_snake_case_id("ends_with_"));   // ends with underscore
+        assert!(!is_snake_case_id("ends_with_")); // ends with underscore
         assert!(!is_snake_case_id("double__underscore")); // double underscore
-        assert!(!is_snake_case_id("CamelCase"));    // uppercase
-        assert!(!is_snake_case_id("with-dash"));    // non-alphanumeric
+        assert!(!is_snake_case_id("CamelCase")); // uppercase
+        assert!(!is_snake_case_id("with-dash")); // non-alphanumeric
     }
 
     #[test]
     fn is_bdd_test_name_matches_given_when_then_pattern() {
-        assert!(is_bdd_test_name("given_a_user_when_logged_in_then_access_granted"));
-        assert!(is_bdd_test_name("Given_Some_Context_When_Something_Happens_Then_Result"));
+        assert!(is_bdd_test_name(
+            "given_a_user_when_logged_in_then_access_granted"
+        ));
+        assert!(is_bdd_test_name(
+            "Given_Some_Context_When_Something_Happens_Then_Result"
+        ));
         assert!(is_bdd_test_name("given_x_when_y_then_z"));
 
-        assert!(!is_bdd_test_name("when_no_given"));   // missing given
+        assert!(!is_bdd_test_name("when_no_given")); // missing given
         assert!(!is_bdd_test_name("given_no_when_then")); // missing when
         assert!(!is_bdd_test_name("given_when_no_then")); // missing then
         assert!(!is_bdd_test_name("given__when__then")); // missing content between parts
