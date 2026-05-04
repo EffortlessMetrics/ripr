@@ -180,12 +180,12 @@ Codecov project and patch status checks are not yet branch-protection gates.
 After the emitted status names and baseline are stable, a later scoped PR can
 ratchet Codecov status requirements and branch protection separately.
 
-### Coverage Baseline Calibration
+**Coverage Baseline Calibration**
 
 As of 2026-05-04, the main branch coverage baseline is stable at **75.5%**
 (product crate: 94.8%, automation: 59%). The project target of 75% in
 `codecov.yml` is appropriate for this baseline. Future coverage ratchets should
-follow the calibration strategy in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+follow the [calibration strategy](IMPLEMENTATION_CAMPAIGNS.md).
 
 The security workflow currently runs:
 
