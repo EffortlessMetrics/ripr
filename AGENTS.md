@@ -203,6 +203,32 @@ spec -> test or fixture -> code -> output contract -> metric
 Make production delta, evidence delta, acceptance criterion, and non-goals
 explicit in PRs and planning docs.
 
+## Review posture
+
+Automated review comments are primarily consumed by follow-up coding agents.
+Do not optimize for a human reading every comment. Optimize for concrete,
+structured, actionable findings that another agent can fix.
+
+A clean review must still document what was inspected.
+Do not treat "LGTM" as a useful review result. If there are no actionable
+findings, produce a short inspection record that names:
+
+- changed surfaces inspected;
+- risks considered;
+- repo invariants checked;
+- validation signals;
+- residual assumptions.
+
+When reviewing or repairing code, read these files first:
+
+- `.factory/skills/review-guidelines/SKILL.md`
+- `.factory/rules/rust.md`
+- `.factory/rules/github-actions.md`
+- `.factory/rules/security.md`
+- `docs/agent-context/repo-map.md`
+- `docs/agent-context/review-invariants.md`
+- `docs/agent-context/validation.md`
+
 ## Long-Context Agent Workflow
 
 This repo is intentionally organized so agents can resume long-running goals
