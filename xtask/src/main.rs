@@ -393,7 +393,6 @@ fn main() {
         Some("repo-badge-artifacts") => repo_badge_artifacts(),
         Some("repo-seam-inventory") => repo_seam_inventory(),
         Some("repo-exposure-report") => repo_exposure_report(),
-        Some("agent-seam-packets") => agent_seam_packets(),
         Some("update-badge-endpoints") => update_badge_endpoints(),
         Some("check-badge-endpoints") => check_badge_endpoints(),
         Some("dogfood") => dogfood(),
@@ -411,6 +410,7 @@ fn main() {
         Some("check-file-policy") => check_file_policy(),
         Some("check-executable-files") => check_executable_files(),
         Some("check-workflows") => check_workflows(),
+        Some("check-droid-review-config") => check_droid_review_config(),
         Some("check-spec-format") => check_spec_format(),
         Some("check-fixture-contracts") => check_fixture_contracts(),
         Some("check-traceability") | Some("check-spec-ids") | Some("check-behavior-manifest") => {
@@ -464,6 +464,7 @@ fn precommit() -> Result<(), String> {
     check_file_policy()?;
     check_executable_files()?;
     check_workflows()?;
+    check_droid_review_config()?;
     check_spec_format()?;
     check_fixture_contracts()?;
     check_traceability()?;
@@ -513,6 +514,7 @@ fn run_policy_checks() -> Result<(), String> {
     check_file_policy()?;
     check_executable_files()?;
     check_workflows()?;
+    check_droid_review_config()?;
     check_spec_format()?;
     check_fixture_contracts()?;
     check_traceability()?;
@@ -553,7 +555,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  golden-drift\n  metrics\n  test-oracle-report\n  check-test-oracles\n  test-efficiency-report\n  badge-artifacts\n  repo-badge-artifacts\n  repo-seam-inventory\n  repo-exposure-report\n  agent-seam-packets\n  update-badge-endpoints\n  check-badge-endpoints\n  dogfood\n  critic\n  goals status|next|report\n  reports index\n  receipts [check]\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-allow-attributes\n  check-local-context\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-supply-chain\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
+        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  golden-drift\n  metrics\n  test-oracle-report\n  check-test-oracles\n  test-efficiency-report\n  badge-artifacts\n  repo-badge-artifacts\n  update-badge-endpoints\n  check-badge-endpoints\n  dogfood\n  critic\n  goals status|next|report\n  reports index\n  receipts [check]\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-allow-attributes\n  check-local-context\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-droid-review-config\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-supply-chain\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
     );
 }
 
@@ -965,7 +967,7 @@ fn receipts_report_markdown(
 }
 
 fn precommit_report_body() -> String {
-    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-allow-attributes`\n- `cargo xtask check-local-context`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-public-api`\n- `cargo xtask check-output-contracts`\n- `cargo xtask check-doc-index`\n- `cargo xtask check-readme-state`\n- `cargo xtask markdown-links`\n- `cargo xtask check-campaign`\n- `cargo xtask check-pr-shape`\n- `cargo xtask check-generated`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
+    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-allow-attributes`\n- `cargo xtask check-local-context`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-droid-review-config`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-public-api`\n- `cargo xtask check-output-contracts`\n- `cargo xtask check-doc-index`\n- `cargo xtask check-readme-state`\n- `cargo xtask markdown-links`\n- `cargo xtask check-campaign`\n- `cargo xtask check-pr-shape`\n- `cargo xtask check-generated`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
 }
 
 fn check_pr_report_body() -> String {
@@ -5276,16 +5278,6 @@ fn repo_exposure_report() -> Result<(), String> {
     write_report("repo-exposure.md", &md_output)
 }
 
-/// Emit Voice B agent seam packets for every headline-eligible
-/// classified seam and write `target/ripr/reports/agent-seam-packets.json`
-/// per RIPR-SPEC-0005. Strongly-gripped, opaque, intentional, and
-/// suppressed seams produce no packet.
-fn agent_seam_packets() -> Result<(), String> {
-    let args = repo_seam_inventory_command_args("agent-seam-packets-json");
-    let json_output = run_output_owned("cargo", &args)?;
-    write_report("agent-seam-packets.json", &json_output)
-}
-
 fn repo_badge_artifacts() -> Result<(), String> {
     let badge_dir = Path::new("target").join("ripr");
     fs::create_dir_all(&badge_dir).map_err(|err| {
@@ -7450,7 +7442,6 @@ fn known_xtask_command(command: &str) -> bool {
             | "repo-badge-artifacts"
             | "repo-seam-inventory"
             | "repo-exposure-report"
-            | "agent-seam-packets"
             | "update-badge-endpoints"
             | "check-badge-endpoints"
             | "dogfood"
@@ -10854,6 +10845,239 @@ fn check_old_panic_allowlist_exists() -> Result<(), String> {
     Ok(())
 }
 
+fn strip_yaml_comment(line: &str) -> &str {
+    let mut in_single = false;
+    let mut in_double = false;
+    let chars: Vec<char> = line.chars().collect();
+    for idx in 0..chars.len() {
+        match chars[idx] {
+            '\'' if !in_double => in_single = !in_single,
+            '"' if !in_single => {
+                let backslash_run = chars[..idx]
+                    .iter()
+                    .rev()
+                    .take_while(|&&c| c == '\\')
+                    .count();
+                if backslash_run % 2 == 0 {
+                    in_double = !in_double;
+                }
+            }
+            '#' if !in_single && !in_double => return &line[..chars[idx].len_utf8() * idx],
+            _ => {}
+        }
+    }
+    line
+}
+
+fn active_yaml_lines(text: &str) -> Vec<String> {
+    text.lines()
+        .map(strip_yaml_comment)
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+fn has_active_line(lines: &[String], pattern: &str) -> bool {
+    lines.iter().any(|line| line.contains(pattern))
+}
+
+fn forbids_active_line(lines: &[String], pattern: &str) -> bool {
+    lines.iter().any(|line| line.contains(pattern))
+}
+
+fn check_droid_action_refs(violations: &mut Vec<String>, path_label: &str, text: &str) {
+    for (line_number, line) in text.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('#') {
+            continue;
+        }
+        let after_comment = strip_yaml_comment(trimmed).trim();
+        let after_uses = after_comment
+            .strip_prefix("- uses: ")
+            .or_else(|| after_comment.strip_prefix("uses: "));
+        if let Some(after_uses) = after_uses
+            && let Some(at_pos) = after_uses.find('@')
+        {
+            let action = &after_uses[..at_pos];
+            let ref_part = after_uses[at_pos + 1..]
+                .split_whitespace()
+                .next()
+                .unwrap_or("");
+            if !(ref_part.len() == 40 && ref_part.chars().all(|c| c.is_ascii_hexdigit())) {
+                violations.push(format!(
+                    "{path_label}:{} action ref must use immutable commit SHA: {action}@{ref_part}",
+                    line_number + 1
+                ));
+            }
+        }
+    }
+}
+
+fn check_droid_common(violations: &mut Vec<String>, path_label: &str, text: &str) {
+    let lines = active_yaml_lines(text);
+
+    if !has_active_line(&lines, "head.repo.full_name == github.repository") {
+        violations.push(format!(
+            "{path_label}: same-repo guard (head.repo.full_name == github.repository) is required"
+        ));
+    }
+
+    if !has_active_line(&lines, "review_model: \"custom:MiniMax-M2.7-0\"") {
+        violations.push(format!(
+            "{path_label}: review_model must be custom:MiniMax-M2.7-0"
+        ));
+    }
+
+    if !has_active_line(&lines, "security_model: \"custom:MiniMax-M2.7-0\"") {
+        violations.push(format!(
+            "{path_label}: security_model must be custom:MiniMax-M2.7-0"
+        ));
+    }
+
+    if !has_active_line(&lines, "$HOME/.factory/settings.local.json") {
+        violations.push(format!(
+            "{path_label}: must write $HOME/.factory/settings.local.json"
+        ));
+    }
+
+    if !has_active_line(&lines, "${MINIMAX_API_KEY}") {
+        violations.push(format!(
+            "{path_label}: must keep ${{MINIMAX_API_KEY}} literal in settings.local.json"
+        ));
+    }
+
+    if forbids_active_line(&lines, "settings:") {
+        violations.push(format!(
+            "{path_label}: must not use the Droid Action settings: input for BYOK"
+        ));
+    }
+
+    if forbids_active_line(&lines, "ANTHROPIC_AUTH_TOKEN")
+        || forbids_active_line(&lines, "ANTHROPIC_BASE_URL")
+    {
+        violations.push(format!(
+            "{path_label}: must not set ANTHROPIC_AUTH_TOKEN or ANTHROPIC_BASE_URL"
+        ));
+    }
+
+    let lower_lines: Vec<String> = lines.iter().map(|l| l.to_ascii_lowercase()).collect();
+    if has_active_line(&lower_lines, "show_full_output: true") {
+        violations.push(format!("{path_label}: must not enable show_full_output"));
+    }
+
+    check_droid_action_refs(violations, path_label, text);
+}
+
+fn check_droid_review_config() -> Result<(), String> {
+    let mut violations = Vec::new();
+
+    let droid_review_path = ".github/workflows/droid-review.yml";
+    let droid_path = ".github/workflows/droid.yml";
+
+    if let Ok(text) = read_text_lossy(Path::new(droid_review_path)) {
+        let lines = active_yaml_lines(&text);
+
+        if !has_active_line(&lines, "opened")
+            || !has_active_line(&lines, "synchronize")
+            || !has_active_line(&lines, "ready_for_review")
+            || !has_active_line(&lines, "reopened")
+        {
+            violations.push(format!(
+                "{droid_review_path}: pull_request types must include opened, synchronize, ready_for_review, reopened"
+            ));
+        }
+
+        if lines
+            .iter()
+            .any(|line| line.to_ascii_lowercase().contains("draft"))
+            && lines
+                .iter()
+                .any(|line| line.contains("if:") && line.to_ascii_lowercase().contains("draft"))
+        {
+            violations.push(format!(
+                "{droid_review_path}: must not filter out draft PRs"
+            ));
+        }
+
+        if !has_active_line(&lines, "cancel-in-progress: false") {
+            violations.push(format!(
+                "{droid_review_path}: concurrency cancel-in-progress must be false"
+            ));
+        }
+
+        if !has_active_line(
+            &lines,
+            "droid-review-${{ github.repository }}-${{ github.event.pull_request.number }}",
+        ) {
+            violations.push(format!(
+                "{droid_review_path}: concurrency group must be per repository and PR number"
+            ));
+        }
+
+        if !has_active_line(&lines, "automatic_review: true") {
+            violations.push(format!(
+                "{droid_review_path}: automatic_review must be true"
+            ));
+        }
+
+        if !has_active_line(&lines, "automatic_security_review: true") {
+            violations.push(format!(
+                "{droid_review_path}: automatic_security_review must be true"
+            ));
+        }
+
+        if !has_active_line(&lines, "review_depth: shallow") {
+            violations.push(format!(
+                "{droid_review_path}: review_depth must be shallow unless intentionally changed"
+            ));
+        }
+
+        if !has_active_line(&lines, "MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}") {
+            violations.push(format!(
+                "{droid_review_path}: MINIMAX_API_KEY must be job-level env"
+            ));
+        }
+
+        check_droid_common(&mut violations, droid_review_path, &text);
+    } else {
+        violations.push(format!("{droid_review_path}: file not found or unreadable"));
+    }
+
+    if let Ok(text) = read_text_lossy(Path::new(droid_path)) {
+        let lines = active_yaml_lines(&text);
+
+        if !has_active_line(&lines, "OWNER")
+            || !has_active_line(&lines, "MEMBER")
+            || !has_active_line(&lines, "COLLABORATOR")
+        {
+            violations.push(format!(
+                "{droid_path}: trusted actor guard (OWNER, MEMBER, COLLABORATOR) is required"
+            ));
+        }
+
+        check_droid_common(&mut violations, droid_path, &text);
+    } else {
+        violations.push(format!("{droid_path}: file not found or unreadable"));
+    }
+
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "droid-review-config.md",
+            check: "check-droid-review-config",
+            why_it_matters: "Droid review workflows handle repository secrets and automated review output; invariant drift can expose secrets, break BYOK model selection, or degrade review quality.",
+            fix_kind: FixKind::PolicyExceptionRequired,
+            recommended_fixes: &[
+                "Restore the required invariant in the workflow YAML.",
+                "If the invariant is intentionally changed, update docs/agent-context/review-invariants.md and add an xtask exception only after repo review.",
+            ],
+            rerun_command: "cargo xtask check-droid-review-config",
+            exception_template: None,
+        },
+        &violations,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -10890,6 +11114,10 @@ mod tests {
         TestIntentDeclaration, TestIntentKind, TestIntentReportSummary,
         apply_duplicate_discriminator_groups, apply_test_intent_to_entries,
         parse_test_intent_manifest, test_efficiency_metrics,
+    };
+    use super::{
+        active_yaml_lines, check_droid_action_refs, check_droid_common, forbids_active_line,
+        has_active_line, strip_yaml_comment,
     };
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
@@ -15529,5 +15757,308 @@ requires_human_merge = false
             }
         }
         Ok(())
+    }
+
+    #[test]
+    fn strip_yaml_comment_removes_trailing_comment() {
+        assert_eq!(strip_yaml_comment("key: value # comment"), "key: value ");
+    }
+
+    #[test]
+    fn strip_yaml_comment_preserves_hash_in_strings() {
+        assert_eq!(
+            strip_yaml_comment("key: \"value#with hash\""),
+            "key: \"value#with hash\""
+        );
+        assert_eq!(
+            strip_yaml_comment("key: 'value#with hash'"),
+            "key: 'value#with hash'"
+        );
+    }
+
+    #[test]
+    fn strip_yaml_comment_handles_full_comment_line() {
+        assert_eq!(strip_yaml_comment("# this is a comment"), "");
+    }
+
+    #[test]
+    fn strip_yaml_comment_preserves_line_without_comment() {
+        assert_eq!(
+            strip_yaml_comment("review_model: \"custom:MiniMax-M2.7-0\""),
+            "review_model: \"custom:MiniMax-M2.7-0\""
+        );
+    }
+
+    #[test]
+    fn strip_yaml_comment_handles_escaped_quote() {
+        assert_eq!(
+            strip_yaml_comment("key: \"value\\\" # not a comment"),
+            "key: \"value\\\" # not a comment"
+        );
+    }
+
+    #[test]
+    fn strip_yaml_comment_handles_double_backslash_before_quote() {
+        assert_eq!(
+            strip_yaml_comment("key: \"value\\\\\" # real comment"),
+            "key: \"value\\\\\" "
+        );
+    }
+
+    #[test]
+    fn active_yaml_lines_strips_comments_and_blanks() {
+        let input = "\
+# commented out
+key: value
+  # indented comment
+
+active: true
+";
+        let lines = active_yaml_lines(input);
+        assert_eq!(lines, vec!["key: value", "active: true"]);
+    }
+
+    #[test]
+    fn has_active_line_finds_active_content() {
+        let lines = active_yaml_lines("review_model: \"custom:MiniMax-M2.7-0\"");
+        assert!(has_active_line(
+            &lines,
+            "review_model: \"custom:MiniMax-M2.7-0\""
+        ));
+    }
+
+    #[test]
+    fn has_active_line_ignores_commented_content() {
+        let lines = active_yaml_lines("# review_model: \"custom:MiniMax-M2.7-0\"");
+        assert!(!has_active_line(
+            &lines,
+            "review_model: \"custom:MiniMax-M2.7-0\""
+        ));
+    }
+
+    #[test]
+    fn forbids_active_line_catches_active_forbidden_content() {
+        let lines = active_yaml_lines("settings: |");
+        assert!(forbids_active_line(&lines, "settings:"));
+    }
+
+    #[test]
+    fn forbids_active_line_ignores_commented_forbidden_content() {
+        let lines = active_yaml_lines("# settings: |");
+        assert!(!forbids_active_line(&lines, "settings:"));
+    }
+
+    #[test]
+    fn check_droid_action_refs_rejects_non_sha_refs() {
+        let mut violations = Vec::new();
+        check_droid_action_refs(
+            &mut violations,
+            "test.yml",
+            "      - uses: Factory-AI/droid-action@v5\n",
+        );
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].contains("immutable commit SHA"));
+    }
+
+    #[test]
+    fn check_droid_action_refs_accepts_sha_refs() {
+        let mut violations = Vec::new();
+        check_droid_action_refs(
+            &mut violations,
+            "test.yml",
+            "      - uses: Factory-AI/droid-action@e3d1f5e7861c36fe4a9c4dca3edec87b964b2bc4\n",
+        );
+        assert!(violations.is_empty());
+    }
+
+    #[test]
+    fn check_droid_action_refs_ignores_commented_uses() {
+        let mut violations = Vec::new();
+        check_droid_action_refs(
+            &mut violations,
+            "test.yml",
+            "      # - uses: Factory-AI/droid-action@v5\n",
+        );
+        assert!(violations.is_empty());
+    }
+
+    #[test]
+    fn check_droid_action_refs_rejects_main_ref() {
+        let mut violations = Vec::new();
+        check_droid_action_refs(
+            &mut violations,
+            "test.yml",
+            "      - uses: Factory-AI/droid-action@main\n",
+        );
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn check_droid_common_flags_missing_same_repo_guard() {
+        let mut violations = Vec::new();
+        let yaml = "\
+review_model: \"custom:MiniMax-M2.7-0\"
+security_model: \"custom:MiniMax-M2.7-0\"
+";
+        check_droid_common(&mut violations, "test.yml", yaml);
+        assert!(violations.iter().any(|v| v.contains("same-repo guard")));
+    }
+
+    #[test]
+    fn check_droid_common_flags_anthropic_tokens_on_active_lines_only() {
+        let mut violations = Vec::new();
+        let yaml = "\
+# ANTHROPIC_AUTH_TOKEN: something
+review_model: \"custom:MiniMax-M2.7-0\"
+security_model: \"custom:MiniMax-M2.7-0\"
+";
+        check_droid_common(&mut violations, "test.yml", yaml);
+        assert!(!violations.iter().any(|v| v.contains("ANTHROPIC")));
+    }
+
+    #[test]
+    fn check_droid_common_flags_active_anthropic_tokens() {
+        let mut violations = Vec::new();
+        let yaml = "\
+ANTHROPIC_AUTH_TOKEN: something
+review_model: \"custom:MiniMax-M2.7-0\"
+security_model: \"custom:MiniMax-M2.7-0\"
+";
+        check_droid_common(&mut violations, "test.yml", yaml);
+        assert!(violations.iter().any(|v| v.contains("ANTHROPIC")));
+    }
+
+    #[test]
+    fn check_droid_common_flags_settings_input_only_when_active() {
+        let mut violations = Vec::new();
+        let yaml = "\
+# settings: |
+review_model: \"custom:MiniMax-M2.7-0\"
+";
+        check_droid_common(&mut violations, "test.yml", yaml);
+        assert!(!violations.iter().any(|v| v.contains("settings:")));
+    }
+
+    #[test]
+    fn check_droid_common_flags_active_settings_input() {
+        let mut violations = Vec::new();
+        let yaml = "\
+settings: |
+  some: config
+";
+        check_droid_common(&mut violations, "test.yml", yaml);
+        assert!(violations.iter().any(|v| v.contains("settings:")));
+    }
+
+    #[test]
+    fn check_droid_common_flags_show_full_output_only_when_active() {
+        let mut violations = Vec::new();
+        let yaml = "# show_full_output: true\n";
+        check_droid_common(&mut violations, "test.yml", yaml);
+        assert!(!violations.iter().any(|v| v.contains("show_full_output")));
+    }
+
+    #[test]
+    fn check_droid_common_flags_missing_review_model() {
+        let mut violations = Vec::new();
+        let yaml = "security_model: \"custom:MiniMax-M2.7-0\"\n";
+        check_droid_common(&mut violations, "test.yml", yaml);
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("review_model must be custom:MiniMax-M2.7-0"))
+        );
+    }
+
+    #[test]
+    fn check_droid_common_flags_missing_security_model() {
+        let mut violations = Vec::new();
+        let yaml = "review_model: \"custom:MiniMax-M2.7-0\"\n";
+        check_droid_common(&mut violations, "test.yml", yaml);
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("security_model must be custom:MiniMax-M2.7-0"))
+        );
+    }
+
+    #[test]
+    fn check_droid_common_flags_missing_settings_local_json() {
+        let mut violations = Vec::new();
+        let yaml = "review_model: \"custom:MiniMax-M2.7-0\"\n";
+        check_droid_common(&mut violations, "test.yml", yaml);
+        assert!(violations.iter().any(|v| v.contains("settings.local.json")));
+    }
+
+    #[test]
+    fn check_droid_common_flags_missing_literal_minimax_key() {
+        let mut violations = Vec::new();
+        let yaml = "review_model: \"custom:MiniMax-M2.7-0\"\n";
+        check_droid_common(&mut violations, "test.yml", yaml);
+        assert!(violations.iter().any(|v| v.contains("${MINIMAX_API_KEY}")));
+    }
+
+    #[test]
+    fn check_droid_common_flags_active_anthropic_base_url() {
+        let mut violations = Vec::new();
+        let yaml = "ANTHROPIC_BASE_URL: https://example.com\n";
+        check_droid_common(&mut violations, "test.yml", yaml);
+        assert!(violations.iter().any(|v| v.contains("ANTHROPIC")));
+    }
+
+    #[test]
+    fn check_droid_common_flags_active_show_full_output() {
+        let mut violations = Vec::new();
+        let yaml = "show_full_output: true\n";
+        check_droid_common(&mut violations, "test.yml", yaml);
+        assert!(violations.iter().any(|v| v.contains("show_full_output")));
+    }
+
+    #[test]
+    fn check_droid_action_refs_rejects_short_sha() {
+        let mut violations = Vec::new();
+        check_droid_action_refs(
+            &mut violations,
+            "test.yml",
+            "      - uses: actions/checkout@abc123\n",
+        );
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].contains("immutable commit SHA"));
+    }
+
+    #[test]
+    fn check_droid_action_refs_handles_dash_uses_with_non_sha() {
+        let mut violations = Vec::new();
+        check_droid_action_refs(&mut violations, "test.yml", "- uses: some/action@v1.2.3\n");
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn check_droid_action_refs_handles_bare_uses_with_sha() {
+        let mut violations = Vec::new();
+        check_droid_action_refs(
+            &mut violations,
+            "test.yml",
+            "        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd\n",
+        );
+        assert!(violations.is_empty());
+    }
+
+    #[test]
+    fn check_droid_action_refs_ignores_line_without_at_sign() {
+        let mut violations = Vec::new();
+        check_droid_action_refs(&mut violations, "test.yml", "      - uses: local-action\n");
+        assert!(violations.is_empty());
+    }
+
+    #[test]
+    fn check_droid_action_refs_strips_inline_comment_before_checking() {
+        let mut violations = Vec::new();
+        check_droid_action_refs(
+            &mut violations,
+            "test.yml",
+            "      - uses: actions/checkout@v5 # old ref\n",
+        );
+        assert_eq!(violations.len(), 1);
     }
 }

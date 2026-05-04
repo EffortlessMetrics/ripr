@@ -8,6 +8,29 @@ A finding is useful if it identifies a concrete failure mode another agent can f
 
 Do not suppress concrete findings because there are many of them. Suppress only duplicates, speculation, or non-actionable comments.
 
+## Review output invariants
+
+Each actionable finding emitted by Droid must include:
+
+* failure mode;
+* repo invariant, policy, or edge case violated;
+* fix direction (name likely files/functions when useful);
+* validation (command, report, fixture, golden, or CI check);
+* confidence (High / Medium / Low with justification when not high).
+
+Review output should not optimize for short comments at the expense of repair value. Droid runs consume CI time, model calls, and repo research; each finding should amortize that cost by preserving useful research context in the comment or summary.
+
+Do not discard useful repo research. If Droid inspected specs, policies, CI configuration, prior comments, or in-repo documentation, preserve the relevant result so the next repair agent does not rediscover the same invariant.
+
+## Notification invariants
+
+Automated review output should avoid unnecessary notifications.
+
+* Droid-generated review bodies must not @mention humans, teams, bots, or organizations unless explicitly requested.
+* Review comments should be addressed to the next repair agent, not to the PR author.
+* Prefer PR-scoped language: `this PR`, `this diff`, `the changed code`.
+* Treat platform-generated wrapper mentions as outside repo guidance; do not repeat them in review content.
+
 ## Workflow invariants
 
 For GitHub Actions:
@@ -32,6 +55,16 @@ For Droid review workflows:
 - Keep `${MINIMAX_API_KEY}` literal in checked-in or artifact-prone files.
 - Do not set `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_BASE_URL`.
 - Keep `show_full_output: false`.
+- `automatic_review: true` and `automatic_security_review: true` must be set.
+- `review_depth: shallow` unless intentionally changed.
+- `cancel-in-progress: false` with per-PR concurrency group.
+- `pull_request` types must include `opened`, `synchronize`, `ready_for_review`, `reopened`.
+- Same-repo guard (`head.repo.full_name == github.repository`) is required.
+- Draft PRs must not be filtered out.
+- `MINIMAX_API_KEY` must be job-level env referencing `${{ secrets.MINIMAX_API_KEY }}`.
+- Action refs must be immutable 40-character commit SHAs.
+- The manual workflow (`droid.yml`) must have trusted actor guards (`OWNER`, `MEMBER`, `COLLABORATOR`).
+- These invariants are enforced by `cargo xtask check-droid-review-config`.
 
 ## Queueing invariants
 

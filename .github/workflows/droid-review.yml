@@ -28,7 +28,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           fetch-depth: 1
 
@@ -56,7 +56,7 @@ jobs:
           JSON
 
       - name: Run Droid Auto Review with MiniMax M2.7 BYOK
-        uses: Factory-AI/droid-action@v5
+        uses: Factory-AI/droid-action@e3d1f5e7861c36fe4a9c4dca3edec87b964b2bc4 # v5
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
 

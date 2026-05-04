@@ -70,6 +70,22 @@ Do not suppress actionable findings because there are many of them. Suppress onl
 
 If there are 20 concrete issues, leave 20 comments. If many instances share one root cause, leave one systemic comment and name representative locations.
 
+## Repair value
+
+Droid comments are an inter-agent repair queue. Each actionable finding should preserve enough context for a follow-up coding agent to fix the issue without repeating the research that produced the finding.
+
+Each finding should include:
+
+* failure mode;
+* why here / repo invariant;
+* fix direction;
+* validation;
+* confidence.
+
+Do not optimize for short comments when useful repair context would be lost. Droid runs consume CI time, model calls, and repo research; each finding should amortize that cost by preserving the useful result.
+
+Preserve useful repo research in the comment or summary. If Droid inspected specs, policies, CI configuration, prior comments, or in-repo documentation to reach a finding, include the relevant context source so the next agent does not rediscover the same invariant.
+
 ## No naked LGTM
 
 Do not use `LGTM`, `looks good`, or equivalent empty approval language as the review summary.
@@ -83,7 +99,10 @@ Inspected surfaces: <files / systems / changed areas>.
 Checks performed: <repo invariants, security/workflow/release/correctness risks considered>.
 Why no comments: <why the diff satisfies those checks>.
 Residual risk: <anything not verified by review, such as external service behavior or unrun validation>.
-Validation signal: <CI checks, tests, reports, or commands that support the result>.
+Validation signal:
+  Observed: <CI checks, files, logs, artifacts Droid directly inspected>.
+  Reported: <PR-body, commit-message, or comment claims>.
+  Not verified: <validation Droid did not run or observe>.
 ```
 
 If the review system submits an approval, the approval body must still include this inspection record.
@@ -98,9 +117,10 @@ Use this shape:
 [P0|P1|P2] Short title
 
 Failure mode: What can break, leak, regress, or become unmaintainable.
-Why here: The specific repo invariant or contract this violates.
-Fix direction: Concrete repair guidance. Include the smallest viable fix when obvious.
+Why here: The repo invariant, product contract, policy, or edge case this violates.
+Fix direction: The smallest safe repair. Name likely files/functions when useful.
 Validation: Command, report, fixture, golden, or CI check that should verify the fix.
+Confidence: High / Medium / Low. If not high, explain what would confirm it.
 ```
 
 ## Priority scale
@@ -196,17 +216,8 @@ Check:
 * whether shell `run:` blocks exceed the approved non-empty line budget;
 * whether CI docs need updates.
 
-For Droid workflows specifically:
-
-* automatic PR review should run on same-repo PRs and every commit when configured that way;
-* active Droid reviews should not be canceled merely because a newer commit arrived;
-* the per-PR queue should keep the latest pending run without serializing unrelated PRs;
-* MiniMax BYOK model should remain `custom:MiniMax-M2.7-0` unless intentionally changed;
-* runtime BYOK settings should be written to `~/.factory/settings.local.json`;
-* do not rely on the Droid Action `settings:` input for BYOK custom models unless the Factory path mismatch is known fixed;
-* keep `${MINIMAX_API_KEY}` literal in generated settings files; do not expand it into artifacts;
-* do not set `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_BASE_URL`;
-* do not enable `show_full_output` in normal operation.
+For Droid workflow-specific invariants, review `docs/agent-context/review-invariants.md`
+before commenting on `.github/workflows/droid*.yml` changes.
 
 ### VS Code extension
 
@@ -312,15 +323,145 @@ Validation: <commands or checks to run after repair>.
 
 Do not hide actionable findings only in the summary. If a finding maps to a line, use an inline comment.
 
-## Suggestions
+## Suggested fix policy
 
 Use GitHub suggestion blocks when:
 
 * the fix is small;
 * the replacement is locally obvious;
-* the suggestion will apply cleanly.
+* the suggestion will apply cleanly;
+* confidence is high.
 
-Do not use suggestion blocks for multi-file, policy, schema, or design-dependent changes. In those cases, describe the fix direction.
+Do not use suggestion blocks for multi-file, policy, schema, or design-dependent changes. In those cases, use an ordered repair plan:
+
+1. Name the likely files, tests, and policies involved.
+2. Describe each step.
+3. Include validation commands.
+
+For cross-file changes, describe the full repair direction even if the fix touches only one line in each file. The next agent needs to know what else must change to keep the repo consistent.
+
+## Research amortization
+
+If Droid inspected repo docs, specs, policies, CI configuration, prior comments, or in-repo documentation to reach a finding, preserve the useful result in the comment or summary.
+
+Do not make the next repair agent rediscover the same invariant. Include the context source when relevant.
+
+Prefer:
+
+```text
+Why here: `CLAUDE.md` requires spec-test-code-output-metric traceability for
+behavior changes. This diff changes classifier output without updating the
+corresponding fixture in `fixtures/classifier/basic/`.
+```
+
+Avoid:
+
+```text
+Why here: Missing test update.
+```
+
+## Mentions and notifications
+
+Do not @mention people, teams, bots, or organizations in review comments, review summaries, inspection records, or security findings unless explicitly instructed.
+
+Droid review output is primarily consumed by follow-up agents. Avoid notification-generating language.
+
+Do not write:
+
+* `@username`
+* `cc @username`
+* `asking @username`
+* `Droid finished @username's task`
+* direct phrases like `Steven`, `the author`, or `you should`
+
+Use neutral, PR-scoped wording instead:
+
+* `this PR`
+* `this diff`
+* `the changed code`
+* `the follow-up agent`
+* `the maintainer`
+* `the next repair pass`
+
+When referring to responsibility, describe the work, not the person.
+
+Prefer:
+
+```text
+Fix direction: update the workflow guard so fork PRs do not receive
+secrets-backed execution.
+```
+
+Avoid:
+
+```text
+@Steven should update the workflow guard.
+```
+
+If a platform wrapper adds an @mention outside the review body, do not copy or repeat it in the Droid-generated content.
+
+## Clean-review wording
+
+Avoid social approval language as the main finding.
+
+Do not lead with:
+
+* `LGTM`
+* `looks good`
+* `approved`
+* `great work`
+* `nice`
+* `no concerns`
+
+Prefer:
+
+```text
+No actionable findings emitted.
+```
+
+A GitHub approval state is acceptable when no blocking findings exist, but the visible review body should remain an inspection record, not a social approval.
+
+Use concrete residual-risk language. Avoid vague risk adjectives such as `minimal`, `low risk`, or `safe` unless tied to a specific validation signal.
+
+Prefer:
+
+```text
+Residual risk: the review did not independently run the full validation suite;
+it relies on CI and the PR-provided validation notes.
+```
+
+Avoid:
+
+```text
+Residual risk: Minimal.
+```
+
+## Evidence provenance
+
+Distinguish observed evidence from reported evidence.
+
+Use:
+
+* `Observed:` for CI checks, files, logs, or artifacts Droid directly inspected.
+* `Reported:` for claims made in the PR body, commit message, or comments.
+* `Not verified:` for validation that Droid did not run or observe.
+
+Do not treat PR-body validation claims as independently verified facts.
+
+Prefer:
+
+```text
+Validation signal: Observed CI is green for `cargo xtask check-pr`. Reported
+validation in the PR body includes `cargo test --workspace`.
+```
+
+or:
+
+```text
+Validation signal: PR body reports `cargo xtask check-pr` and
+`cargo test --workspace`; Droid did not independently run those commands in
+this review.
+```
 
 ## Language and output
 
