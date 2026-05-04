@@ -29,15 +29,13 @@ explanation = "Semantic selector test infrastructure"
 kind = "method_call"
 container = "workspace_root"
 callee = "unwrap"
-receiver_fingerprint = "Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(Path::parent)"
+receiver_fingerprint = "Path::new(env!(\"CARGO_MANIFEST_DIR\"))\n        .parent()\n        .and_then(Path::parent)"
 
 [[allow]]
 path = "xtask/src/main.rs"
 family = "panic_macro"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
+classification = "false_positive"
+explanation = "Static analysis detects panic-family string literal in match guard within panic_family_from_pattern(), not a runtime call"
 
 [allow.selector]
 kind = "macro_call"
@@ -54,68 +52,7 @@ explanation = "Semantic selector test infrastructure"
 kind = "method_call"
 container = "temp_dir"
 callee = "unwrap"
-receiver_fingerprint = "SystemTime::now()
-            .duration_since(UNIX_EPOCH)"
-
-[[allow]]
-path = "xtask/src/main.rs"
-family = "unwrap"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
-
-[allow.selector]
-kind = "method_call"
-container = "temp_dir"
-callee = "unwrap"
-receiver_fingerprint = "fs::create_dir_all(&dir)"
-
-[[allow]]
-path = "xtask/src/main.rs"
-family = "unwrap"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
-
-[allow.selector]
-kind = "method_call"
-container = "write"
-callee = "unwrap"
-receiver_fingerprint = "fs::create_dir_all(parent)"
-
-[[allow]]
-path = "xtask/src/main.rs"
-family = "unwrap"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
-
-[allow.selector]
-kind = "method_call"
-container = "write"
-callee = "unwrap"
-receiver_fingerprint = "fs::write(path, text)"
-
-[[allow]]
-path = "xtask/src/main.rs"
-family = "unwrap"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
-
-[allow.selector]
-kind = "method_call"
-container = "with_temp_cwd"
-callee = "unwrap"
-receiver_fingerprint = "CWD_LOCK.get_or_init(|| Mutex::new(())).lock()"
-
-[[allow]]
-path = "xtask/src/main.rs"
-family = "unwrap"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
-
-[allow.selector]
-kind = "method_call"
-container = "with_temp_cwd"
-callee = "unwrap"
-receiver_fingerprint = "std::env::current_dir()"
+receiver_fingerprint = "SystemTime::now()\n            .duration_since(UNIX_EPOCH)"
 
 [[allow]]
 path = "xtask/src/main.rs"
@@ -137,21 +74,9 @@ explanation = "Semantic selector test infrastructure"
 
 [allow.selector]
 kind = "method_call"
-container = "with_temp_cwd"
-callee = "unwrap"
-receiver_fingerprint = "std::env::set_current_dir(old)"
-
-[[allow]]
-path = "xtask/src/main.rs"
-family = "unwrap"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
-
-[allow.selector]
-kind = "method_call"
 container = "parse_no_panic_allowlist_toml_parses_valid_entries"
 callee = "unwrap"
-receiver_fingerprint = "root.join("allowlist.toml").to_str()"
+receiver_fingerprint = "root.join(\"allowlist.toml\").to_str()"
 
 [[allow]]
 path = "xtask/src/main.rs"
@@ -175,7 +100,7 @@ explanation = "Semantic selector test infrastructure"
 kind = "method_call"
 container = "parse_no_panic_allowlist_toml_requires_path"
 callee = "unwrap"
-receiver_fingerprint = "root.join("allowlist.toml").to_str()"
+receiver_fingerprint = "root.join(\"allowlist.toml\").to_str()"
 
 [[allow]]
 path = "xtask/src/main.rs"
@@ -187,7 +112,7 @@ explanation = "Semantic selector test infrastructure"
 kind = "method_call"
 container = "parse_no_panic_allowlist_toml_requires_line"
 callee = "unwrap"
-receiver_fingerprint = "root.join("allowlist.toml").to_str()"
+receiver_fingerprint = "root.join(\"allowlist.toml\").to_str()"
 
 [[allow]]
 path = "xtask/src/main.rs"
@@ -199,19 +124,7 @@ explanation = "Semantic selector test infrastructure"
 kind = "method_call"
 container = "parse_no_panic_allowlist_toml_requires_family"
 callee = "unwrap"
-receiver_fingerprint = "root.join("allowlist.toml").to_str()"
-
-[[allow]]
-path = "xtask/src/main.rs"
-family = "unwrap"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
-
-[allow.selector]
-kind = "method_call"
-container = "parse_no_panic_allowlist_toml_requires_explanation"
-callee = "unwrap"
-receiver_fingerprint = "root.join("allowlist.toml").to_str()"
+receiver_fingerprint = "root.join(\"allowlist.toml\").to_str()"
 
 [[allow]]
 path = "xtask/src/main.rs"
@@ -223,19 +136,7 @@ explanation = "Semantic selector test infrastructure"
 kind = "method_call"
 container = "parse_no_panic_allowlist_toml_rejects_unknown_fields"
 callee = "unwrap"
-receiver_fingerprint = "root.join("allowlist.toml").to_str()"
-
-[[allow]]
-path = "xtask/src/main.rs"
-family = "unwrap"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
-
-[allow.selector]
-kind = "method_call"
-container = "parse_no_panic_allowlist_toml_rejects_duplicate_locations"
-callee = "unwrap"
-receiver_fingerprint = "root.join("allowlist.toml").to_str()"
+receiver_fingerprint = "root.join(\"allowlist.toml\").to_str()"
 
 [[allow]]
 path = "xtask/src/main.rs"
@@ -248,6 +149,18 @@ kind = "method_call"
 container = "test_intent_kind_round_trips_supported_values"
 callee = "expect"
 receiver_fingerprint = "TestIntentKind::from_str(value)"
+
+[[allow]]
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[allow.selector]
+kind = "method_call"
+container = "parse_no_panic_allowlist_toml_rejects_duplicate_locations"
+callee = "unwrap"
+receiver_fingerprint = "root.join(\"allowlist.toml\").to_str()"
 
 [[allow]]
 path = "xtask/src/main.rs"
@@ -295,8 +208,7 @@ explanation = "Test helper function for creating temporary directories"
 kind = "method_call"
 container = "temp_dir"
 callee = "unwrap"
-receiver_fingerprint = "SystemTime::now()
-            .duration_since(UNIX_EPOCH)"
+receiver_fingerprint = "SystemTime::now()\n            .duration_since(UNIX_EPOCH)"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
@@ -320,7 +232,7 @@ explanation = "Test helper function for creating temporary directories"
 kind = "method_call"
 container = "analyzes_simple_predicate_gap"
 callee = "unwrap"
-receiver_fingerprint = "fs::create_dir_all(root.join("src"))"
+receiver_fingerprint = "fs::create_dir_all(root.join(\"src\"))"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
@@ -332,7 +244,7 @@ explanation = "Test helper function for creating temporary directories"
 kind = "method_call"
 container = "analyzes_simple_predicate_gap"
 callee = "unwrap"
-receiver_fingerprint = "fs::create_dir_all(root.join("tests"))"
+receiver_fingerprint = "fs::create_dir_all(root.join(\"tests\"))"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
@@ -344,14 +256,7 @@ explanation = "Test helper function for writing test files"
 kind = "method_call"
 container = "analyzes_simple_predicate_gap"
 callee = "unwrap"
-receiver_fingerprint = "fs::write(
-            root.join("src/lib.rs"),
-            r#"
-pub fn price(amount: i32, threshold: i32) -> i32 {
-    if amount >= threshold { amount - 10 } else { amount }
-}
-"#,
-        )"
+receiver_fingerprint = "fs::write(\n            root.join(\"src/lib.rs\"),\n            r#\"\npub fn price(amount: i32, threshold: i32) -> i32 {\n    if amount >= threshold { amount - 10 } else { amount }\n}\n\"#,\n        )"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
@@ -363,16 +268,7 @@ explanation = "Test helper function for writing test files"
 kind = "method_call"
 container = "analyzes_simple_predicate_gap"
 callee = "unwrap"
-receiver_fingerprint = "fs::write(
-            root.join("tests/pricing.rs"),
-            r#"
-#[test]
-fn premium_customer_gets_discount() {
-    let total = x::price(10000, 100);
-    assert!(total > 0);
-}
-"#,
-        )"
+receiver_fingerprint = "fs::write(\n            root.join(\"tests/pricing.rs\"),\n            r#\"\n#[test]\nfn premium_customer_gets_discount() {\n    let total = x::price(10000, 100);\n    assert!(total > 0);\n}\n\"#,\n        )"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
@@ -384,18 +280,7 @@ explanation = "Test helper function for writing test files"
 kind = "method_call"
 container = "analyzes_simple_predicate_gap"
 callee = "unwrap"
-receiver_fingerprint = "fs::write(
-            root.join("diff.patch"),
-            r#"diff --git a/src/lib.rs b/src/lib.rs
-index 0000000..1111111 100644
---- a/src/lib.rs
-+++ b/src/lib.rs
-@@ -1,3 +1,3 @@
- pub fn price(amount: i32, threshold: i32) -> i32 {
-+    if amount >= threshold { amount - 10 } else { amount }
- }
-"#,
-        )"
+receiver_fingerprint = "fs::write(\n            root.join(\"diff.patch\"),\n            r#\"diff --git a/src/lib.rs b/src/lib.rs\nindex 0000000..1111111 100644\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,3 +1,3 @@\n pub fn price(amount: i32, threshold: i32) -> i32 {\n+    if amount >= threshold { amount - 10 } else { amount }\n }\n\"#,\n        )"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
@@ -407,13 +292,7 @@ explanation = "Test helper function for writing test files"
 kind = "method_call"
 container = "analyzes_simple_predicate_gap"
 callee = "unwrap"
-receiver_fingerprint = "run_analysis(&AnalysisOptions {
-            root: root.clone(),
-            base: None,
-            diff_file: Some(root.join("diff.patch")),
-            mode: AnalysisMode::Draft,
-            include_unchanged_tests: true,
-        })"
+receiver_fingerprint = "run_analysis(&AnalysisOptions {\n            root: root.clone(),\n            base: None,\n            diff_file: Some(root.join(\"diff.patch\")),\n            mode: AnalysisMode::Draft,\n            include_unchanged_tests: true,\n        })"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
@@ -425,18 +304,12 @@ explanation = "Test helper function for writing test files"
 kind = "method_call"
 container = "analyzes_simple_predicate_gap"
 callee = "unwrap"
-receiver_fingerprint = "run_analysis(&AnalysisOptions {
-            root: root.clone(),
-            base: None,
-            diff_file: Some(root.join("diff.patch")),
-            mode: AnalysisMode::Instant,
-            include_unchanged_tests: true,
-        })"
+receiver_fingerprint = "run_analysis(&AnalysisOptions {\n            root: root.clone(),\n            base: None,\n            diff_file: Some(root.join(\"diff.patch\")),\n            mode: AnalysisMode::Instant,\n            include_unchanged_tests: true,\n        })"
 ```
 
 ## Analysis Notes
 
-- **Total Entries Proposed**: 32
+- **Total Entries Proposed**: 25
 - **Kind Distribution**:
   - `macro_call`: 1
-  - `method_call`: 31
+  - `method_call`: 24
