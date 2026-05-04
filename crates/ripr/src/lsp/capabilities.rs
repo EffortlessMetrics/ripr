@@ -1,5 +1,5 @@
-use super::REFRESH_COMMAND;
 use super::uri::path_from_file_uri;
+use super::{COLLECT_CONTEXT_COMMAND, REFRESH_COMMAND};
 use std::path::{Path, PathBuf};
 use tower_lsp_server::ls_types::{
     CodeActionProviderCapability, ExecuteCommandOptions, HoverProviderCapability, InitializeParams,
@@ -14,7 +14,10 @@ pub(super) fn initialize_result() -> InitializeResult {
             hover_provider: Some(HoverProviderCapability::Simple(true)),
             code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
             execute_command_provider: Some(ExecuteCommandOptions {
-                commands: vec![REFRESH_COMMAND.to_string()],
+                commands: vec![
+                    REFRESH_COMMAND.to_string(),
+                    COLLECT_CONTEXT_COMMAND.to_string(),
+                ],
                 ..ExecuteCommandOptions::default()
             }),
             ..ServerCapabilities::default()

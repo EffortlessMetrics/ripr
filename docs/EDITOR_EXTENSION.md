@@ -73,6 +73,19 @@ restarts the client so the next diagnostic refresh uses the new configuration.
 - `ripr: Copy Finding Context`
 - `ripr: Open Settings`
 
+### Copy Finding Context
+
+The `ripr: Copy Finding Context` command first attempts to collect context
+through the running LSP server via `workspace/executeCommand` with
+`ripr.collectContext`. If the server has a matching analysis snapshot, it
+returns a JSON context packet directly. If the LSP command is unavailable or
+returns no result, the extension falls back to shelling out to the `ripr`
+CLI (`ripr context --at <selector> --json`).
+
+The code action `Copy ripr context packet` includes `finding_id` and
+`probe_id` from the diagnostic data so the server can resolve the finding
+without re-running workspace analysis.
+
 ## Missing Server Behavior
 
 If no usable server can be resolved, the extension shows:
