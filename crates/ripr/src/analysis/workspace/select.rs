@@ -1,4 +1,4 @@
-use super::AnalysisMode;
+use super::super::AnalysisMode;
 use super::classify::package_root;
 use std::path::PathBuf;
 
