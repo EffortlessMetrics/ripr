@@ -184,8 +184,16 @@ ratchet Codecov status requirements and branch protection separately.
 
 As of 2026-05-04, the main branch coverage baseline is stable at **75.5%**
 (product crate: 94.8%, automation: 59%). The project target of 75% in
-`codecov.yml` is appropriate for this baseline. Future coverage ratchets should
-follow the [calibration strategy](IMPLEMENTATION_CAMPAIGNS.md).
+`codecov.yml` is appropriate for this baseline.
+
+Codecov now tracks product and automation coverage separately to prevent
+automation code from obscuring product quality:
+
+- **Product crate** (crates/ripr/src/): target 94% (project), 94% (patch)
+- **Automation** (xtask/src/): target 65% (project), 75% (patch), 10% patch threshold (initial ratchet tolerance for the large, unevenly-tested xtask main.rs)
+
+The component split uses Codecov's path-based named statuses. Future coverage
+ratchets should follow the [calibration strategy](IMPLEMENTATION_CAMPAIGNS.md).
 
 The security workflow currently runs:
 
