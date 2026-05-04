@@ -243,6 +243,23 @@ When code is refactored:
 - Syntactic: "unwrap on line 42, column 47" (breaks on formatting changes)
 - Semantic fingerprints work even if code is reformatted
 
+### Known Phase 2 Limitations
+
+**Closure Container Identifiers**
+
+When panic-family calls occur inside closures without an enclosing named function, the extractor generates position-based container IDs like `closure_404553` (using the byte offset of the closure in the source file). These identifiers are fragile:
+
+- If code is inserted before the closure, the ID changes
+- The migration proposal includes warnings flagging these entries
+- Manual review during migration can identify a more stable container (e.g., enclosing loop variable name, test function name, or receiver fingerprint)
+
+**Recommendation for Phase 2 adoption:** When reviewing v0.2 proposals, consider:
+1. Whether the receiver fingerprint is specific enough without the closure ID
+2. Adding more selective receiver_fingerprint filters to disambiguate
+3. Using the enclosing function name if the closure is actually inside one
+
+**Phase 3 improvement:** Stabilize closure identifiers using semantic anchors instead of byte offsets. Options include context-based naming, content-aware hashing, or deriving names from surrounding semantic structures.
+
 ### Backward Compatibility
 
 - v0.1 parsing still supported during migration
