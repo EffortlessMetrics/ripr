@@ -483,3 +483,139 @@ Work items:
 | --- | --- | --- |
 | `config/ripr-config-v1` | blocked | Depends on stable analyzer conventions. |
 | `ci/sarif-ci-policy` | blocked | Depends on output contract stability. |
+
+## Campaign 6: Module SRP Refactoring
+
+Campaign ID: `modularize-ripr-submodules`
+
+Status: planned (ready to start after Campaign 4B stabilizes)
+
+Objective:
+
+```text
+Refactor internal modules under crates/ripr/src/ so each module has one
+product responsibility, improving maintainability, testability, and reasoning
+without splitting the package.
+```
+
+Why it matters:
+
+Current modules mix responsibilities (e.g., `analysis/mod.rs` orchestrates pipeline
+and counts summaries; `analysis/rust_index.rs` parses, indexes, and extracts facts).
+This makes behavior changes ripple across boundaries, testing harder, and future
+modularization (async, parallelism, caching) more complex. Module boundaries should
+align with RIPR stages and clear responsibilities.
+
+End state:
+
+```text
+crates/ripr/src/
+  domain/           — stable data model
+  app/              — use-case orchestration
+  analysis/
+    diff/           — diff parsing
+    workspace/      — file discovery and scope
+    facts/          — fact model and index
+    syntax/         — syntax adapter
+    extract/        — fact extraction
+    probes/         — probe generation
+    classify/       — classification pipeline
+  output/           — rendering
+  cli/              — argv parsing and execution
+  lsp/              — LSP server
+  xtask/            — repo automation
+```
+
+The ripr package **stays one crate** with one published library and binary. Do not
+split into `ripr-core`, `ripr-cli`, `ripr-lsp`, or schema crates.
+
+Hard constraints:
+
+```text
+- Do not split the crate
+- No JSON schema changes
+- No static output language changes
+- No new probe families or classification behavior changes
+- Preserve all public behavior and CLI surface
+- Re-bless goldens only if the PR intentionally changes output
+```
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `modularization/infrastructure-and-planning` | in-progress | This PR: lay down documentation, infrastructure, and establish first-PR pattern |
+| `analysis/summary-extraction` | pending | PR 1: Extract duplicated summary and sort logic from `analysis/mod.rs` |
+| `analysis/pipeline-extraction` | pending | PR 2: Make `analysis/mod.rs` a façade over pipeline.rs |
+| `diff/module-split` | pending | PR 3: Split `analysis/diff.rs` into `diff/{mod,model,load,parse}.rs` |
+| `workspace/module-split` | pending | PR 4: Split workspace concerns into `workspace/{mod,discover,scope,production,paths}.rs` |
+| `facts/model-extraction` | pending | PR 5: Move fact DTOs into `analysis/facts/model.rs` |
+| `syntax/adapter-extraction` | pending | PR 6: Move syntax adapters into `analysis/syntax/adapter.rs` |
+| `facts/builder-extraction` | pending | PR 7: Move index construction into `analysis/facts/build.rs` |
+| `syntax/ra-extraction` | pending | PR 8: Move parser-backed logic into `analysis/syntax/ra.rs` |
+| `syntax/lexical-extraction` | pending | PR 9: Move lexical fallback into `analysis/syntax/lexical.rs` |
+| `extract/fact-extraction` | pending | PR 10: Move extractors into `analysis/extract/{calls,literals,oracles,probe_shapes,text}.rs` |
+| `probes/family-extraction` | pending | PR 11: Create `analysis/probes/family.rs` |
+| `probes/expectations-extraction` | pending | PR 12: Create `analysis/probes/expectations.rs` |
+| `probes/id-extraction` | pending | PR 13: Create `analysis/probes/ids.rs` |
+| `probes/lexical-extraction` | pending | PR 14: Create `analysis/probes/lexical.rs` |
+| `probes/diff-repo-split` | pending | PR 15: Split diff and repo probe seeding |
+| `classify/context-extraction` | pending | PR 16: Create `analysis/classify/context.rs` with `ProbeContext` |
+| `classify/related-tests` | pending | PR 17: Move related-test discovery into stage module |
+| `classify/reach-stage` | pending | PR 18: Move reach evidence into stage module |
+| `classify/flow-propagation` | pending | PR 19: Move flow and propagation stages |
+| `classify/activation-stage` | pending | PR 20: Move activation stage |
+| `classify/remaining-stages` | pending | PR 21: Move infection, reveal, decision, confidence, missing, stop reasons |
+| `app/usecase-split` | pending | PR 22: Split `app.rs` into use-case modules (check, explain, context) |
+| `output/format-extraction` | pending | PR 23: Move `OutputFormat` to `output/format.rs` |
+| `output/render-dispatch` | pending | PR 24: Move rendering logic to `output/render.rs` |
+| `cli/command-model` | pending | PR 25: Create `cli/command.rs` with `CliCommand` enum |
+| `cli/parse-command` | pending | PR 26: Update `cli/parse.rs` to return `CliCommand` |
+| `cli/execute-command` | pending | PR 27: Create `cli/execute.rs` for command execution |
+| `domain/context-packet-dto` | pending | PR 28: Create `domain/context_packet.rs` with `ContextPacket` struct |
+| `output/json-context-dto` | pending | PR 29: Update JSON context renderer to use `ContextPacket` |
+| `lsp/context-packet-usage` | pending | PR 30: Update LSP to use `ContextPacket` |
+| `api/doc-hidden-internals` | pending | PR 31: Mark internal modules `#[doc(hidden)]` |
+| `api/private-internals` | pending | PR 32: Make internal modules private (breaking, optional) |
+| `xtask/command-dispatch` | pending | PR 33: Split xtask into command and run modules |
+| `xtask/policy-modules` | pending | PR 34: Organize policy checks into `xtask/src/policy/` |
+| `xtask/report-modules` | pending | PR 35: Organize reports into `xtask/src/reports/` |
+| `campaign/modularization-closeout` | pending | Final review and closure of Campaign 6 |
+
+Dependencies:
+
+- Phase 1 (summary, pipeline) establishes the extraction pattern and should merge before Phase 2
+- Phases 2–5 (analysis breakdown) are lowest-risk and can proceed in parallel if CI capacity allows
+- Phase 6–7 (app/CLI split) should follow analysis stabilization
+- Phase 8–9 (API tightening) should follow all internal movement
+- Phase 10 (xtask) is lowest-priority and can happen any time after Phase 1
+
+Commands:
+
+```bash
+cargo fmt --check
+cargo test --workspace
+cargo xtask shape
+cargo xtask fix-pr
+cargo xtask check-architecture
+cargo xtask check-public-api
+cargo xtask check-pr
+cargo xtask fixtures
+cargo xtask goldens check
+cargo xtask dogfood
+```
+
+Blocking conditions:
+
+- Output or golden drift without intentional spec/test evidence
+- Architecture guard or public API guard fails
+- PR mixes multiple phases or responsibilities
+- JSON schema change without new version docs
+- Static language constraints violated
+
+Review policy:
+
+Each modularization PR should be a pure movement with zero behavior change. Include
+a production-delta summary noting which responsibilities moved to which modules. No
+refactoring or cleanup in the same PR. Include the standard acceptance checklist in
+the PR template.
