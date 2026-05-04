@@ -1,5 +1,15 @@
 id = "test-efficiency"
 title = "Make low-discriminator tests visible"
+# Campaign-level status stays "active" until the next campaign is
+# scoped (the manifest validator only accepts "active"). All work
+# items are `done`, the campaign is `Status: complete` in
+# `docs/IMPLEMENTATION_CAMPAIGNS.md`, and the closeout work item below
+# records the final architecture and snapshot. The next campaign
+# (Voice B — Repo Seam Inventory and Test Grip,
+# `deferred/seam-inventory-test-grip` in `docs/DEFERRED.md`) will
+# replace this manifest in its own scoping PR per the operating
+# protocol; the current manifest is intentionally a transitional
+# record between campaigns rather than active implementation work.
 status = "active"
 
 objective = """
@@ -235,4 +245,22 @@ commands = [
   "cargo xtask pr-summary",
   "cargo xtask check-network-policy",
   "cargo xtask check-workflows"
+]
+
+[[work_item]]
+id = "campaign/test-efficiency-closeout"
+status = "done"
+branch = "campaign/close-4a"
+stackable = false
+requires_human_merge = true
+acceptance = "Campaign 4A marked complete in .ripr/goals/active.toml and docs/IMPLEMENTATION_CAMPAIGNS.md; final architecture recorded (test-efficiency report + metrics, test_intent + suppressions, diff-scoped PR badge artifacts, repo-scoped badge artifacts, checked-in README badge endpoint JSON served via raw.githubusercontent.com); deferred items noted (hosted-badge-service for productizing badge hosting, seam-inventory-test-grip for the Voice B follow-on campaign); final dogfood snapshot recorded as ripr/ripr+ 163 at main = 6b4b2b0 with the explicit 'snapshot, not fixture expectation' caveat; no production behavior change"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-campaign",
+  "cargo xtask check-readme-state",
+  "cargo xtask markdown-links",
+  "cargo xtask check-doc-index",
+  "cargo xtask check-badge-endpoints"
 ]
