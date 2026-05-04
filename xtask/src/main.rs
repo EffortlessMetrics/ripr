@@ -10961,7 +10961,7 @@ fn line_and_column_for_node(node: &ra_ap_syntax::SyntaxNode, text: &str) -> (usi
     let mut col = 0;
 
     for (byte_idx, ch) in text.char_indices() {
-        if byte_idx >= offset {
+        if byte_idx > offset {
             break;
         }
         if ch == '\n' {
@@ -10972,7 +10972,7 @@ fn line_and_column_for_node(node: &ra_ap_syntax::SyntaxNode, text: &str) -> (usi
         }
     }
 
-    (line, Some(col + 1))
+    (line, Some(col))
 }
 
 fn panic_family_from_call_name(name: &str) -> &'static str {
