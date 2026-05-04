@@ -219,7 +219,8 @@ tests = [
   "crates/ripr/src/analysis/seam_classification.rs::tests::weak_discriminate_maps_to_weakly_gripped_even_without_missing_discriminators",
   "crates/ripr/src/analysis/seam_classification.rs::tests::headline_eligibility_matches_spec_table",
   "crates/ripr/src/analysis/seam_classification.rs::tests::intentional_and_suppressed_render_their_strings",
-  "crates/ripr/src/analysis/seam_classification.rs::tests::classify_seams_pairs_inputs_by_index"
+  "crates/ripr/src/analysis/seam_classification.rs::tests::classify_seams_returns_one_classified_seam_per_input",
+  "crates/ripr/src/analysis/seam_classification.rs::tests::classify_seams_pairs_evidence_by_seam_id_not_index"
 ]
 fixtures = []
 code = [

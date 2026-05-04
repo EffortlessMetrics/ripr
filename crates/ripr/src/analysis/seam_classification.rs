@@ -25,9 +25,10 @@
 //! (`.ripr/suppressions.toml`) and post-process the natural class
 //! into one of those two.
 
-use super::seams::{RepoSeam, SeamGripClass};
+use super::seams::{RepoSeam, SeamGripClass, SeamId};
 use super::test_grip_evidence::TestGripEvidence;
 use crate::domain::StageState;
+use std::collections::HashMap;
 
 /// A seam paired with its evidence and the resulting grip class.
 /// Crate-private; the report PR consumes `Vec<ClassifiedSeam>` directly.
@@ -78,20 +79,33 @@ pub(crate) fn classify_seam(_seam: &RepoSeam, evidence: &TestGripEvidence) -> Se
     SeamGripClass::Opaque
 }
 
-/// Classify each (seam, evidence) pair. Inputs must be aligned by index;
-/// the inventory walker constructs them that way.
+/// Classify each seam by pairing it with its matching evidence record.
+///
+/// Pairing is done by `seam_id`, not by index, because
+/// `evidence_for_seams` sorts its output by `seam_id` while the
+/// inventory walker sorts seams by `(file, byte_offset, kind, owner)`.
+/// Index-alignment would silently misattribute evidence to seams once
+/// the input has more than one seam — caught by chatgpt-codex during
+/// review and pinned by `classify_seams_pairs_evidence_by_seam_id`.
+///
+/// Seams without a matching evidence record are skipped. The inventory
+/// walker always builds evidence for every seam, so this only filters
+/// out genuinely orphaned input.
 pub(crate) fn classify_seams(
     seams: &[RepoSeam],
     evidence: &[TestGripEvidence],
 ) -> Vec<ClassifiedSeam> {
-    debug_assert_eq!(seams.len(), evidence.len());
+    let evidence_by_id: HashMap<&SeamId, &TestGripEvidence> =
+        evidence.iter().map(|ev| (&ev.seam_id, ev)).collect();
     seams
         .iter()
-        .zip(evidence.iter())
-        .map(|(seam, ev)| ClassifiedSeam {
-            seam: seam.clone(),
-            evidence: ev.clone(),
-            class: classify_seam(seam, ev),
+        .filter_map(|seam| {
+            let ev = evidence_by_id.get(seam.id())?;
+            Some(ClassifiedSeam {
+                seam: seam.clone(),
+                evidence: (*ev).clone(),
+                class: classify_seam(seam, ev),
+            })
         })
         .collect()
 }
@@ -379,7 +393,7 @@ mod tests {
     }
 
     #[test]
-    fn classify_seams_pairs_inputs_by_index() {
+    fn classify_seams_returns_one_classified_seam_per_input() {
         let seam = sample_seam();
         let evidence = evidence_with(
             StageState::Yes,
@@ -394,5 +408,81 @@ mod tests {
         assert_eq!(classified.len(), 1);
         assert_eq!(classified[0].class, SeamGripClass::StronglyGripped);
         assert_eq!(classified[0].seam.id(), seam.id());
+    }
+
+    #[test]
+    fn classify_seams_pairs_evidence_by_seam_id_not_index() -> Result<(), String> {
+        // Regression for chatgpt-codex review on PR #237: evidence is
+        // sorted by seam_id while seams are sorted by (file, byte_offset,
+        // kind, owner). Index-alignment misattributes evidence; pairing
+        // must be by seam_id.
+        let strong_seam = RepoSeam::new(
+            "src/a.rs",
+            "a::strong",
+            SeamKind::PredicateBoundary,
+            10,
+            1,
+            "x >= 1",
+            RequiredDiscriminator::BoundaryValue {
+                description: "x >= 1".to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        );
+        let ungripped_seam = RepoSeam::new(
+            "src/b.rs",
+            "b::ungripped",
+            SeamKind::ReturnValue,
+            20,
+            2,
+            "answer",
+            RequiredDiscriminator::ReturnValue {
+                description: "answer".to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        );
+
+        let strong_evidence = TestGripEvidence {
+            seam_id: strong_seam.id().clone(),
+            related_tests: Vec::<RelatedTestGrip>::new(),
+            reach: stage(StageState::Yes),
+            activate: stage(StageState::Yes),
+            propagate: stage(StageState::Yes),
+            observe: stage(StageState::Yes),
+            discriminate: stage(StageState::Yes),
+            observed_values: Vec::<ValueFact>::new(),
+            missing_discriminators: no_missing(),
+        };
+        let ungripped_evidence = TestGripEvidence {
+            seam_id: ungripped_seam.id().clone(),
+            related_tests: Vec::<RelatedTestGrip>::new(),
+            reach: stage(StageState::No),
+            activate: stage(StageState::No),
+            propagate: stage(StageState::No),
+            observe: stage(StageState::No),
+            discriminate: stage(StageState::No),
+            observed_values: Vec::<ValueFact>::new(),
+            missing_discriminators: no_missing(),
+        };
+
+        // Seams in one order, evidence in the OPPOSITE order. With
+        // index-alignment this would swap their classifications.
+        let seams = [strong_seam.clone(), ungripped_seam.clone()];
+        let evidence = [ungripped_evidence, strong_evidence];
+
+        let classified = classify_seams(&seams, &evidence);
+        assert_eq!(classified.len(), 2);
+
+        let strong_record = classified
+            .iter()
+            .find(|c| c.seam.id() == strong_seam.id())
+            .ok_or_else(|| "strong seam not classified".to_string())?;
+        let ungripped_record = classified
+            .iter()
+            .find(|c| c.seam.id() == ungripped_seam.id())
+            .ok_or_else(|| "ungripped seam not classified".to_string())?;
+
+        assert_eq!(strong_record.class, SeamGripClass::StronglyGripped);
+        assert_eq!(ungripped_record.class, SeamGripClass::Ungripped);
+        Ok(())
     }
 }
