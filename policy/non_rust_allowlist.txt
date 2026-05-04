@@ -37,6 +37,7 @@ editors/vscode/**/*.json|editor_extension_config|lsp/editor|VS Code extension co
 editors/vscode/**/*.ts|editor_extension|lsp/editor|VS Code extension client and tests.
 editors/vscode/package-lock.json|editor_extension_lockfile|lsp/editor|Pinned npm dependency lockfile for the extension.
 editors/vscode/package.json|editor_extension_manifest|lsp/editor|VS Code extension package manifest.
+editors/vscode/test-fixtures/**|fixture_input|lsp/editor|Fixture workspace for VS Code extension smoke tests.
 editors/vscode/tsconfig.json|editor_extension_config|lsp/editor|VS Code TypeScript compiler config.
 fixtures/**|fixture_input|analysis-fixtures|Fixture workspaces may intentionally contain analyzed source files.
 metrics/*.toml|policy_metadata|repo-policy|Machine-readable capability and metrics metadata.
