@@ -12398,6 +12398,113 @@ fn test_with_multiple_families() {
         let _ = fs::remove_dir_all(&root);
     }
 
+    #[test]
+    fn semantic_selector_matching_respects_all_filters() {
+        let finding = SemanticPanicFinding {
+            path: "src/lib.rs".to_string(),
+            family: "unwrap".to_string(),
+            kind: "method_call".to_string(),
+            line: 10,
+            column: Some(5),
+            container: Some("my_function".to_string()),
+            callee: Some("unwrap".to_string()),
+            receiver_fingerprint: Some("result".to_string()),
+            snippet_fingerprint: "result.unwrap()".to_string(),
+            cfg_test: true,
+        };
+
+        // Selector with all fields specified should match
+        let selector_all = PanicFamilySelectorKind {
+            kind: "method_call".to_string(),
+            container: Some("my_function".to_string()),
+            callee: Some("unwrap".to_string()),
+            receiver_fingerprint: Some("result".to_string()),
+            text_contains: None,
+        };
+        assert!(semantic_selector_matches(&selector_all, &finding));
+
+        // Selector with mismatched container should not match
+        let selector_bad_container = PanicFamilySelectorKind {
+            kind: "method_call".to_string(),
+            container: Some("other_function".to_string()),
+            callee: Some("unwrap".to_string()),
+            receiver_fingerprint: Some("result".to_string()),
+            text_contains: None,
+        };
+        assert!(!semantic_selector_matches(
+            &selector_bad_container,
+            &finding
+        ));
+
+        // Selector with mismatched callee should not match
+        let selector_bad_callee = PanicFamilySelectorKind {
+            kind: "method_call".to_string(),
+            container: Some("my_function".to_string()),
+            callee: Some("expect".to_string()),
+            receiver_fingerprint: Some("result".to_string()),
+            text_contains: None,
+        };
+        assert!(!semantic_selector_matches(&selector_bad_callee, &finding));
+
+        // Selector with mismatched receiver should not match
+        let selector_bad_receiver = PanicFamilySelectorKind {
+            kind: "method_call".to_string(),
+            container: Some("my_function".to_string()),
+            callee: Some("unwrap".to_string()),
+            receiver_fingerprint: Some("other_result".to_string()),
+            text_contains: None,
+        };
+        assert!(!semantic_selector_matches(&selector_bad_receiver, &finding));
+
+        // Selector with only kind should match
+        let selector_minimal = PanicFamilySelectorKind {
+            kind: "method_call".to_string(),
+            container: None,
+            callee: None,
+            receiver_fingerprint: None,
+            text_contains: None,
+        };
+        assert!(semantic_selector_matches(&selector_minimal, &finding));
+    }
+
+    #[test]
+    fn collect_semantic_panic_findings_empty_directory_returns_empty() {
+        let root = temp_dir("semantic_empty");
+        let patterns = forbidden_panic_patterns();
+        let findings =
+            collect_semantic_panic_findings(&root, &patterns).expect("should handle empty dir");
+        assert!(
+            findings.is_empty(),
+            "should return no findings for empty directory"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn collect_semantic_panic_findings_ignores_non_rust_files() {
+        let root = temp_dir("semantic_non_rust");
+
+        // Create non-Rust files with panic-like content
+        let txt_path = root.join("file.txt");
+        write(&txt_path, "panic!(\"error\")");
+
+        let json_path = root.join("data.json");
+        write(&json_path, r#"{"unwrap": "value"}"#);
+
+        let patterns = forbidden_panic_patterns();
+        let findings =
+            collect_semantic_panic_findings(&root, &patterns).expect("should handle non-rust");
+
+        // Non-Rust files should be ignored
+        assert!(
+            findings.is_empty(),
+            "should not analyze non-Rust files, found: {:?}",
+            findings
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
     // ============================================================================
     // Enum contract tests
     // ============================================================================
