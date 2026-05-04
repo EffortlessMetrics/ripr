@@ -232,7 +232,7 @@ When code is refactored:
 
 ### Why Rust AST Parsing?
 
-- `ripr` already depends on `ra_ap_syntax`
+- `ra_ap_syntax` was added as a new dev-only `xtask` dependency (no production impact)
 - Precise extraction without fragile heuristics
 - Supports macro detection and context analysis
 - Same library used for seam/probe analysis elsewhere

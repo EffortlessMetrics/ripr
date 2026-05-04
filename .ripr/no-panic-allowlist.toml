@@ -116,29 +116,29 @@ path = "xtask/src/main.rs"
 line = 10885
 column = 26
 family = "panic_macro"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
+classification = "false_positive"
+explanation = "Static pattern matching detects panic-family string literal in production match arm (panic_family_from_call_name), not a runtime call"
 [[allow]]
 path = "xtask/src/main.rs"
 line = 10886
 column = 26
 family = "todo"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
+classification = "false_positive"
+explanation = "Static pattern matching detects panic-family string literal in production match arm (panic_family_from_call_name), not a runtime call"
 [[allow]]
 path = "xtask/src/main.rs"
 line = 10887
 column = 26
 family = "unimplemented"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
+classification = "false_positive"
+explanation = "Static pattern matching detects panic-family string literal in production match arm (panic_family_from_call_name), not a runtime call"
 [[allow]]
 path = "xtask/src/main.rs"
 line = 10888
 column = 26
 family = "unreachable"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
+classification = "false_positive"
+explanation = "Static pattern matching detects panic-family string literal in production match arm (panic_family_from_call_name), not a runtime call"
 [[allow]]
 path = "xtask/src/main.rs"
 line = 11018
@@ -151,29 +151,29 @@ path = "xtask/src/main.rs"
 line = 11096
 column = 10
 family = "panic_macro"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
+classification = "false_positive"
+explanation = "Static pattern matching detects panic-family string literal in production match arm, not a runtime call"
 [[allow]]
 path = "xtask/src/main.rs"
 line = 11097
 column = 10
 family = "todo"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
+classification = "false_positive"
+explanation = "Static pattern matching detects panic-family string literal in production match arm, not a runtime call"
 [[allow]]
 path = "xtask/src/main.rs"
 line = 11098
 column = 10
 family = "unimplemented"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
+classification = "false_positive"
+explanation = "Static pattern matching detects panic-family string literal in production match arm, not a runtime call"
 [[allow]]
 path = "xtask/src/main.rs"
 line = 11099
 column = 10
 family = "unreachable"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
+classification = "false_positive"
+explanation = "Static pattern matching detects panic-family string literal in production match arm, not a runtime call"
 [[allow]]
 path = "xtask/src/main.rs"
 line = 11685
