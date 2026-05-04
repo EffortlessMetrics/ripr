@@ -699,8 +699,8 @@ Work items:
 | `probes/module-split` | done | PR 5 (#249): Split probe concerns into focused modules and preserved `sanitize_path` behavior for Unix paths, Windows-style paths, colons, and trimming. |
 | `facts/model-extraction` | done | PR 6 (#251): Moved neutral fact DTOs into `analysis/facts/model.rs` while leaving syntax adapters, builders, extraction, and query logic in place. |
 | `syntax/adapter-extraction` | done | PR 7: Moved syntax adapter traits and shared syntax facts into `analysis/syntax/adapter.rs` without moving builders or extraction logic yet. |
-| `facts/builder-extraction` | ready | PR 8 (#253): Move index construction into `analysis/facts/build.rs` after syntax adapter type extraction. |
-| `syntax/ra-extraction` | pending | PR 8: Move parser-backed logic into `analysis/syntax/ra.rs` |
+| `facts/builder-extraction` | done | PR 8 (#253): Moved index construction into `analysis/facts/build.rs` after syntax adapter type extraction. |
+| `syntax/ra-extraction` | ready | PR 9: Move parser-backed logic into `analysis/syntax/ra.rs` after build-index extraction. |
 | `syntax/lexical-extraction` | pending | PR 9: Move lexical fallback into `analysis/syntax/lexical.rs` |
 | `extract/fact-extraction` | pending | PR 10: Move extractors into `analysis/extract/{calls,literals,oracles,probe_shapes,text}.rs` |
 | `probes/family-extraction` | pending | PR 11: Create `analysis/probes/family.rs` |
