@@ -5,10 +5,11 @@ mod rust_index;
 mod seam_classification;
 mod seam_inventory;
 pub(crate) mod seams;
-mod test_grip_evidence;
+pub(crate) mod test_grip_evidence;
 mod workspace;
 
-pub(crate) use seam_inventory::inventory_seams_at;
+pub(crate) use seam_classification::ClassifiedSeam;
+pub(crate) use seam_inventory::{inventory_classified_seams_at, inventory_seams_at};
 pub(crate) use seams::{RepoSeam, RequiredDiscriminator};
 
 use crate::domain::{Finding, Summary};

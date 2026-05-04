@@ -21,13 +21,15 @@ use super::rust_index::{
     PROBE_SHAPE_MATCH_ARM, PROBE_SHAPE_PREDICATE, PROBE_SHAPE_RETURN_VALUE,
     PROBE_SHAPE_SIDE_EFFECT, ProbeShapeFact, RustIndex,
 };
-use super::seam_classification;
-use super::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator, SeamGripClass, SeamKind};
+use super::seam_classification::{self, ClassifiedSeam};
+use super::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator, SeamKind};
 use super::test_grip_evidence;
 use super::workspace;
 use std::path::{Path, PathBuf};
 
-/// Walk production Rust files at `root` and emit the seam inventory.
+/// Walk production Rust files at `root` and emit the raw seam inventory.
+/// Used by the `repo-seams-*` formats; the classified inventory used by
+/// `repo-exposure-*` formats lives in [`inventory_classified_seams_at`].
 pub(crate) fn inventory_seams_at(root: &Path) -> Result<Vec<RepoSeam>, String> {
     let rust_files = workspace::discover_rust_files(root)?;
     let production_files: Vec<PathBuf> = rust_files
@@ -40,60 +42,26 @@ pub(crate) fn inventory_seams_at(root: &Path) -> Result<Vec<RepoSeam>, String> {
     // even when the seam appears in a file the production filter
     // includes but tests reference.
     let index = rust_index::build_index(root, &rust_files)?;
+    Ok(inventory_seams_from_index(&production_files, &index))
+}
+
+/// Walk production Rust files at `root` and emit per-seam evidence and
+/// classification. This is the input to `output/repo-exposure-report-v1`.
+/// The discard hook in `inventory_seams_at` from #237 is replaced by
+/// this real consumer; evidence and classification are no longer
+/// computed for the diff-free seam-only formats.
+pub(crate) fn inventory_classified_seams_at(root: &Path) -> Result<Vec<ClassifiedSeam>, String> {
+    let rust_files = workspace::discover_rust_files(root)?;
+    let production_files: Vec<PathBuf> = rust_files
+        .iter()
+        .filter(|p| workspace::is_production_rust_path(p))
+        .cloned()
+        .collect();
+
+    let index = rust_index::build_index(root, &rust_files)?;
     let seams = inventory_seams_from_index(&production_files, &index);
-
-    // Build per-seam test-grip evidence and classify each seam into a
-    // `SeamGripClass`. Today we discard the classified result because
-    // `output/repo-exposure-report-v1` is the first renderer; that PR
-    // replaces this discard with a real return path. Computing the
-    // classification here keeps `evidence_for_seams` and `classify_seams`
-    // live in lib (non-test) code without resorting to dead-code lint
-    // suppressions, which the repo policy forbids.
     let evidence = test_grip_evidence::evidence_for_seams(&seams, &index);
-    let classified = seam_classification::classify_seams(&seams, &evidence);
-
-    // Initialize a per-class count bucket using `SeamGripClass::ALL` so
-    // every variant — including the reserved `Intentional` and
-    // `Suppressed` — is constructed in lib code. The report PR replaces
-    // this scaffolding with real metric emission.
-    let mut grip_counts: Vec<(SeamGripClass, usize)> =
-        SeamGripClass::ALL.iter().copied().map(|c| (c, 0)).collect();
-    for entry in &classified {
-        if let Some(bucket) = grip_counts.iter_mut().find(|(c, _)| *c == entry.class) {
-            bucket.1 += 1;
-        }
-    }
-    let _ = grip_counts.len();
-    // Touch each classified record's evidence + grip class so every
-    // field of `TestGripEvidence`, `RelatedTestGrip`, and
-    // `SeamGripClass` stays structurally honest until the report PR
-    // consumes them. The compiler optimizes this away in release builds.
-    for entry in &classified {
-        let _ = (
-            entry.seam.id().as_str(),
-            entry.evidence.reach.state.as_str(),
-            entry.evidence.activate.state.as_str(),
-            entry.evidence.propagate.state.as_str(),
-            entry.evidence.observe.state.as_str(),
-            entry.evidence.discriminate.state.as_str(),
-            entry.evidence.observed_values.len(),
-            entry.evidence.missing_discriminators.len(),
-            entry.class.as_str(),
-            entry.class.is_headline_eligible(),
-        );
-        for grip in &entry.evidence.related_tests {
-            let _ = (
-                grip.test_name.as_str(),
-                grip.file.as_path(),
-                grip.line,
-                grip.oracle_kind.as_str(),
-                grip.oracle_strength.as_str(),
-                grip.evidence_summary.as_str(),
-            );
-        }
-    }
-
-    Ok(seams)
+    Ok(seam_classification::classify_seams(&seams, &evidence))
 }
 
 /// Inventory seams from a pre-built index. Public(crate) so tests can

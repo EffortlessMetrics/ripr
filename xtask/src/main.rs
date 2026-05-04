@@ -392,6 +392,7 @@ fn main() {
         Some("badge-artifacts") => badge_artifacts(),
         Some("repo-badge-artifacts") => repo_badge_artifacts(),
         Some("repo-seam-inventory") => repo_seam_inventory(),
+        Some("repo-exposure-report") => repo_exposure_report(),
         Some("update-badge-endpoints") => update_badge_endpoints(),
         Some("check-badge-endpoints") => check_badge_endpoints(),
         Some("dogfood") => dogfood(),
@@ -5258,6 +5259,22 @@ fn repo_seam_inventory_command_args(format: &str) -> Vec<String> {
     ]
 }
 
+/// Run the Voice B repo exposure report (classified seam inventory)
+/// and write `target/ripr/reports/repo-exposure.{json,md}` per
+/// RIPR-SPEC-0005. Same CLI shell-out pattern as
+/// `repo_seam_inventory`, but routes through the
+/// `repo-exposure-json|md` formats which compute test-grip evidence
+/// and `SeamGripClass` per seam.
+fn repo_exposure_report() -> Result<(), String> {
+    let json_args = repo_seam_inventory_command_args("repo-exposure-json");
+    let json_output = run_output_owned("cargo", &json_args)?;
+    write_report("repo-exposure.json", &json_output)?;
+
+    let md_args = repo_seam_inventory_command_args("repo-exposure-md");
+    let md_output = run_output_owned("cargo", &md_args)?;
+    write_report("repo-exposure.md", &md_output)
+}
+
 fn repo_badge_artifacts() -> Result<(), String> {
     let badge_dir = Path::new("target").join("ripr");
     fs::create_dir_all(&badge_dir).map_err(|err| {
@@ -7421,6 +7438,7 @@ fn known_xtask_command(command: &str) -> bool {
             | "badge-artifacts"
             | "repo-badge-artifacts"
             | "repo-seam-inventory"
+            | "repo-exposure-report"
             | "update-badge-endpoints"
             | "check-badge-endpoints"
             | "dogfood"

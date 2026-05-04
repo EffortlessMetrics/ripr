@@ -121,6 +121,14 @@ pub enum OutputFormat {
     /// Voice B repo seam inventory rendered as Markdown for human
     /// review.
     RepoSeamsMd,
+    /// Voice B classified seam inventory rendered as a repo exposure
+    /// JSON report. Adds per-seam grip class and per-class metrics on
+    /// top of the seam inventory. Schema in `docs/OUTPUT_SCHEMA.md`
+    /// under `repo-exposure.json`.
+    RepoExposureJson,
+    /// Voice B repo exposure report rendered as Markdown for human
+    /// review.
+    RepoExposureMd,
 }
 
 impl OutputFormat {
@@ -138,18 +146,22 @@ impl OutputFormat {
                 | OutputFormat::RepoBadgePlusShields
                 | OutputFormat::RepoSeamsJson
                 | OutputFormat::RepoSeamsMd
+                | OutputFormat::RepoExposureJson
+                | OutputFormat::RepoExposureMd
         )
     }
 
-    /// Whether this format renders the Voice B seam inventory rather
-    /// than the diff/badge `Findings` pipeline. Repo-scope seam formats
-    /// short-circuit the analysis path: `check_workspace_repo` runs no
-    /// findings work and `render_check` invokes the inventory walker
-    /// using `output.root`.
+    /// Whether this format renders the Voice B seam inventory or
+    /// classified exposure report rather than the diff/badge `Findings`
+    /// pipeline. These formats short-circuit `check_workspace_repo`
+    /// since they do not consume `Findings`.
     pub fn is_repo_seam_inventory(&self) -> bool {
         matches!(
             self,
-            OutputFormat::RepoSeamsJson | OutputFormat::RepoSeamsMd
+            OutputFormat::RepoSeamsJson
+                | OutputFormat::RepoSeamsMd
+                | OutputFormat::RepoExposureJson
+                | OutputFormat::RepoExposureMd
         )
     }
 }
@@ -289,6 +301,16 @@ pub fn render_check(output: &CheckOutput, format: &OutputFormat) -> Result<Strin
         OutputFormat::RepoSeamsMd => {
             let seams = analysis::inventory_seams_at(&output.root)?;
             Ok(output::repo_seams::render_repo_seams_md(&seams))
+        }
+        OutputFormat::RepoExposureJson => {
+            let classified = analysis::inventory_classified_seams_at(&output.root)?;
+            Ok(output::repo_exposure::render_repo_exposure_json(
+                &classified,
+            ))
+        }
+        OutputFormat::RepoExposureMd => {
+            let classified = analysis::inventory_classified_seams_at(&output.root)?;
+            Ok(output::repo_exposure::render_repo_exposure_md(&classified))
         }
     }
 }
