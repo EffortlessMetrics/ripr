@@ -6,6 +6,8 @@ mod seam_cache;
 mod seam_classification;
 mod seam_inventory;
 pub(crate) mod seams;
+mod sort;
+mod summary;
 pub(crate) mod test_grip_evidence;
 mod value_resolution;
 mod workspace;
@@ -88,32 +90,8 @@ pub(crate) fn run_analysis_with_oracle_policy(
         }
     }
 
-    findings.sort_by(|a, b| {
-        a.probe
-            .location
-            .file
-            .cmp(&b.probe.location.file)
-            .then(a.probe.location.line.cmp(&b.probe.location.line))
-            .then(a.probe.family.as_str().cmp(b.probe.family.as_str()))
-    });
-
-    let mut summary = Summary {
-        changed_rust_files,
-        probes: findings.len(),
-        findings: findings.len(),
-        ..Summary::default()
-    };
-    for finding in &findings {
-        match finding.class {
-            crate::domain::ExposureClass::Exposed => summary.exposed += 1,
-            crate::domain::ExposureClass::WeaklyExposed => summary.weakly_exposed += 1,
-            crate::domain::ExposureClass::ReachableUnrevealed => summary.reachable_unrevealed += 1,
-            crate::domain::ExposureClass::NoStaticPath => summary.no_static_path += 1,
-            crate::domain::ExposureClass::InfectionUnknown => summary.infection_unknown += 1,
-            crate::domain::ExposureClass::PropagationUnknown => summary.propagation_unknown += 1,
-            crate::domain::ExposureClass::StaticUnknown => summary.static_unknown += 1,
-        }
-    }
+    sort::sort_findings(&mut findings);
+    let summary = summary::summarize_findings(changed_rust_files, &findings);
 
     Ok(AnalysisResult { summary, findings })
 }
@@ -151,32 +129,8 @@ pub(crate) fn run_repo_analysis_with_oracle_policy(
         }
     }
 
-    findings.sort_by(|a, b| {
-        a.probe
-            .location
-            .file
-            .cmp(&b.probe.location.file)
-            .then(a.probe.location.line.cmp(&b.probe.location.line))
-            .then(a.probe.family.as_str().cmp(b.probe.family.as_str()))
-    });
-
-    let mut summary = Summary {
-        changed_rust_files: production_files.len(),
-        probes: findings.len(),
-        findings: findings.len(),
-        ..Summary::default()
-    };
-    for finding in &findings {
-        match finding.class {
-            crate::domain::ExposureClass::Exposed => summary.exposed += 1,
-            crate::domain::ExposureClass::WeaklyExposed => summary.weakly_exposed += 1,
-            crate::domain::ExposureClass::ReachableUnrevealed => summary.reachable_unrevealed += 1,
-            crate::domain::ExposureClass::NoStaticPath => summary.no_static_path += 1,
-            crate::domain::ExposureClass::InfectionUnknown => summary.infection_unknown += 1,
-            crate::domain::ExposureClass::PropagationUnknown => summary.propagation_unknown += 1,
-            crate::domain::ExposureClass::StaticUnknown => summary.static_unknown += 1,
-        }
-    }
+    sort::sort_findings(&mut findings);
+    let summary = summary::summarize_findings(production_files.len(), &findings);
 
     Ok(AnalysisResult { summary, findings })
 }
