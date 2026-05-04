@@ -141,28 +141,6 @@ receiver_fingerprint = "run_analysis(&AnalysisOptions { root: root.clone(), base
 
 [[allow]]
 path = "xtask/src/main.rs"
-family = "unwrap"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
-
-[allow.selector]
-kind = "method_call"
-container = "closure_552448"
-callee = "unwrap"
-receiver_fingerprint = "result"
-
-# ⚠️ WARNING: Position-based container ID
-# This container is a byte-offset-based identifier (closure_NNNNN).
-# It will become stale if code before the closure changes.
-# Before adopting this entry, manually stabilize the container using:
-# - The enclosing named function if this closure is inside one, OR
-# - A hash-based or semantic identifier for the closure, OR
-# - A more specific receiver_fingerprint filter
-# Current receiver_fingerprint: result
-
-
-[[allow]]
-path = "xtask/src/main.rs"
 family = "panic_macro"
 classification = "test_only"
 explanation = "Semantic selector test infrastructure"
@@ -530,7 +508,7 @@ receiver_fingerprint = "collect_semantic_panic_findings(&root, &patterns)"
 path = "xtask/src/main.rs"
 family = "expect"
 classification = "test_only"
-explanation = "Semantic selector test infrastructure"
+explanation = "Test infrastructure: semantic selector matching test"
 
 [allow.selector]
 kind = "method_call"
@@ -542,18 +520,86 @@ receiver_fingerprint = "collect_semantic_panic_findings(&root, &patterns)"
 path = "xtask/src/main.rs"
 family = "expect"
 classification = "test_only"
-explanation = "Semantic selector test infrastructure"
+explanation = "Test infrastructure: semantic selector matching test"
 
 [allow.selector]
 kind = "method_call"
 container = "collect_semantic_panic_findings_empty_directory_returns_empty"
 callee = "expect"
 receiver_fingerprint = "collect_semantic_panic_findings(&root, &patterns)"
+
+[[allow]]
+path = "xtask/src/main.rs"
+family = "expect"
+classification = "test_only"
+explanation = "Test infrastructure: semantic selector matching test"
+
+[allow.selector]
+kind = "method_call"
+container = "collect_semantic_panic_findings_ignores_non_rust_files"
+callee = "expect"
+receiver_fingerprint = "collect_semantic_panic_findings(&root, &patterns)"
+
+[[allow]]
+path = "xtask/src/main.rs"
+family = "expect"
+classification = "test_only"
+explanation = "Test infrastructure: semantic selector matching test"
+
+[allow.selector]
+kind = "method_call"
+container = "test_intent_kind_round_trips_supported_values"
+callee = "expect"
+receiver_fingerprint = "TestIntentKind::from_str(value)"
+
+[[allow]]
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test infrastructure: semantic selector matching test"
+
+[allow.selector]
+kind = "method_call"
+container = "closure_552448"
+callee = "unwrap"
+receiver_fingerprint = "result"
+
+# ⚠️ WARNING: Position-based container ID
+# This container is a byte-offset-based identifier (closure_NNNNN).
+# It will become stale if code before the closure changes.
+# Before adopting this entry, manually stabilize the container using:
+# - The enclosing named function if this closure is inside one, OR
+# - A hash-based or semantic identifier for the closure, OR
+# - A more specific receiver_fingerprint filter
+# Current receiver_fingerprint: result
+
+
+[[allow]]
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test infrastructure: semantic selector matching test"
+
+[allow.selector]
+kind = "method_call"
+container = "closure_553425"
+callee = "unwrap"
+receiver_fingerprint = "result"
+
+# ⚠️ WARNING: Position-based container ID
+# This container is a byte-offset-based identifier (closure_NNNNN).
+# It will become stale if code before the closure changes.
+# Before adopting this entry, manually stabilize the container using:
+# - The enclosing named function if this closure is inside one, OR
+# - A hash-based or semantic identifier for the closure, OR
+# - A more specific receiver_fingerprint filter
+# Current receiver_fingerprint: result
+
 ```
 
 ## Analysis Notes
 
-- **Total Entries Proposed**: 37
+- **Total Entries Proposed**: 40
 - **Kind Distribution**:
   - `macro_call`: 1
-  - `method_call`: 36
+  - `method_call`: 39
