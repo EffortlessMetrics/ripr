@@ -14212,4 +14212,51 @@ requires_human_merge = false
             _ => panic!("expected Fail status"),
         }
     }
+
+    // ============================================================================
+    // Identifier validation tests
+    // ============================================================================
+
+    #[test]
+    fn is_spec_id_matches_expected_format() {
+        assert!(is_spec_id("RIPR-SPEC-0001"));
+        assert!(is_spec_id("RIPR-SPEC-9999"));
+        assert!(is_spec_id("RIPR-SPEC-0000"));
+
+        assert!(!is_spec_id("RIPR-SPEC-001"));  // too short
+        assert!(!is_spec_id("RIPR-SPEC-00001")); // too long
+        assert!(!is_spec_id("RIPR-SPEC-abc1")); // non-digits
+        assert!(!is_spec_id("ripr-spec-0001")); // lowercase
+        assert!(!is_spec_id("RIPR-0001"));  // missing SPEC
+        assert!(!is_spec_id(""));
+    }
+
+    #[test]
+    fn is_snake_case_id_validates_naming_rules() {
+        assert!(is_snake_case_id("valid_id"));
+        assert!(is_snake_case_id("also_valid_123"));
+        assert!(is_snake_case_id("a"));
+        assert!(is_snake_case_id("test123test"));
+
+        assert!(!is_snake_case_id(""));              // empty
+        assert!(!is_snake_case_id("_starts_with")); // starts with underscore
+        assert!(!is_snake_case_id("ends_with_"));   // ends with underscore
+        assert!(!is_snake_case_id("double__underscore")); // double underscore
+        assert!(!is_snake_case_id("CamelCase"));    // uppercase
+        assert!(!is_snake_case_id("with-dash"));    // non-alphanumeric
+    }
+
+    #[test]
+    fn is_bdd_test_name_matches_given_when_then_pattern() {
+        assert!(is_bdd_test_name("given_a_user_when_logged_in_then_access_granted"));
+        assert!(is_bdd_test_name("Given_Some_Context_When_Something_Happens_Then_Result"));
+        assert!(is_bdd_test_name("given_x_when_y_then_z"));
+
+        assert!(!is_bdd_test_name("when_no_given"));   // missing given
+        assert!(!is_bdd_test_name("given_no_when_then")); // missing when
+        assert!(!is_bdd_test_name("given_when_no_then")); // missing then
+        assert!(!is_bdd_test_name("given__when__then")); // missing content between parts
+        assert!(!is_bdd_test_name("regular_test_name")); // not BDD format
+        assert!(!is_bdd_test_name(""));
+    }
 }
