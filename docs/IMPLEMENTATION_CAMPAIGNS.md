@@ -459,40 +459,157 @@ This campaign sits inside the operating contract codified in
 Spec/model work pings the owner; mechanical sub-step work proceeds
 inline once authorized.
 
-## Campaign 5: Adoption and Calibration
+## Campaign 5A: Voice B Usability and Precision
 
-Campaign ID: `adoption-and-calibration`
+Campaign ID: `voice-b-usability-and-precision`
 
 Status: active
 
 Objective:
 
 ```text
-Make `ripr` practical in repositories, CI, and external operationalization
-loops, with cached seam evidence fast enough for default-on use and
-runtime calibration grounding the static signal.
+Make repo seam evidence fast, precise, and directly actionable for
+developers and coding agents, without adopting mutation-runtime
+language in static output.
 ```
+
+Why it matters:
+
+Campaign 4B made Voice B real (RepoSeam, TestGripEvidence,
+SeamGripClass, repo exposure report, agent seam packets, LSP
+diagnostics, hover, agent dispatch docs). The signal is visible but
+not yet useful every day: full-repo seam classification adds
+multi-second editor latency (so `seamDiagnostics` ships off by
+default), related-test fanout is broad, many seams classify as
+`activation_unknown` because value extraction does not yet cover
+common Rust test data patterns, oracle-shape detection misses
+real-world assertion shapes (field assertions, whole-object equality,
+mock expectations), and packets explain the gap without telling an
+agent where and how to close it. This campaign closes that gap along
+four product axes: fast (cache), precise (related-test, value,
+oracle-shape), actionable (agent packets v2, LSP code actions), and
+calibrated (cargo-mutants).
+
+Operationalization items (`config/ripr-config-v1`,
+`ci/sarif-ci-policy`) move to Campaign 5B because their defaults and
+severity model depend on cache performance and oracle-shape
+stability.
 
 End state:
 
-- seam fact layers cache cleanly so seam diagnostics can be default-on
-- runtime mutation calibration compares static `SeamGripClass` against
-  real outcomes without adopting mutation-runtime language in static
-  output
-- repository config exists
-- SARIF and CI policy modes exist
-
-Cache/calibration items rolled forward from Campaign 4B because they
-depend on stable seam IDs (now stable after Campaign 4B closeout):
+- seam fact layers cache cleanly so the cold path still works and the
+  warm path avoids full repo seam walk when inputs are unchanged
+- cache invalidates on source/config/intent/suppression changes; repo
+  exposure report and LSP diagnostics consume the same cached fact
+  source
+- no rendered outputs are cached; cache serialization stays behind a
+  codec boundary; binary serialization, when introduced, uses
+  `postcard` (never `bincode`)
+- related-test fanout is reduced and ranked; related tests carry
+  `relation_reason` and `relation_confidence`; high-fanout files show
+  fewer irrelevant top related tests
+- activation/value evidence detects common Rust test data patterns
+  (let bindings, constants, builder methods, table-driven cases,
+  rstest cases, enum variants, `Option`/`Result` constructors,
+  fixture factories); `activation_unknown` count falls without new
+  false positives
+- oracle-shape evidence recognizes `assert_matches` exact variants,
+  field assertions, whole-object equality, snapshot calls with
+  visible field names, mock expectations, and event/state/persistence
+  assertions
+- agent seam packet v2 carries recommended test name, recommended
+  test file, nearest strong test to imitate, candidate input values,
+  assertion shape with example, patterns to imitate, patterns to
+  avoid, and confidence — enough to write the targeted test directly
+- LSP code actions surface "Copy seam packet", "Copy suggested
+  assertion", "Open related test", and "Refresh ripr analysis" for
+  diagnostics that carry `seam_id`; no automatic edits
+- calibration scaffold compares static `SeamGripClass` against
+  cargo-mutants outcomes; runtime mutation vocabulary stays inside
+  calibration/runtime reports; static reports keep the audit
+  vocabulary
 
 Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `cache/repo-seam-facts-v1` | ready | Optional fact-layer cache (file-facts, owner-index, seam-facts; never final outputs). Gated on real performance signal. Lifts the `seamDiagnostics` default once warm-path latency is acceptable. |
-| `calibration/cargo-mutants-v1` | ready | Optional scaffold for comparing static `SeamGripClass` against cargo-mutants outcomes. Advisory only; static output adopts no mutation-runtime language. |
-| `config/ripr-config-v1` | blocked | Depends on stable analyzer conventions. |
-| `ci/sarif-ci-policy` | blocked | Depends on output contract stability. |
+| `cache/repo-seam-facts-v1` | ready | Fact-layer cache only (`FileFacts`, owner index, `RepoSeam` facts, `TestGripEvidence`, `ClassifiedSeam` summaries). Never cache rendered JSON / Markdown / diagnostics / hover / packet strings. Codec boundary; postcard if binary, never bincode. Lifts the `seamDiagnostics` default once warm-path latency is acceptable. |
+| `analysis/related-test-precision-v1` | ready | Add `relation_reason` and `relation_confidence` to related tests; rank related tests in repo exposure report, agent packets, and LSP hover. Reduce noisy fanout without removing `related_tests_total`. |
+| `analysis/value-extraction-v2` | ready | Extract test values from let bindings, constants, builder methods, table-driven cases, rstest cases, enum variants, `Option`/`Result` constructors, fixture factories. Reduce `activation_unknown` without new false positives. |
+| `analysis/oracle-shape-v2` | ready | Detect `assert_matches` exact variants, field assertions, whole-object equality, snapshot calls with visible field names, mock expectations, event/state/persistence assertions, simple custom assertion helpers. |
+| `context/agent-seam-packets-v2` | ready | Schema 0.3: add `recommended_test`, `candidate_values`, `assertion_shape` (kind + example), `patterns_to_imitate`, `patterns_to_avoid`, `confidence`. Uses ranked related tests from `analysis/related-test-precision-v1` when available. |
+| `lsp/seam-code-actions-v1` | ready | Code actions: copy seam packet, copy suggested assertion, open related test, refresh ripr analysis. No automatic edits, no generated tests, no CodeLens. |
+| `calibration/cargo-mutants-v1` | ready | Scaffold for comparing static `SeamGripClass` against cargo-mutants outcomes; advisory; runtime mutation vocabulary appears only in calibration/runtime reports. |
+| `campaign/voice-b-usability-closeout` | pending | Final Campaign 5A state transition; rolls remaining items into 5B / future. |
+
+Dependencies:
+
+- `cache/repo-seam-facts-v1` does not block the precision items
+  technically, but landing it first lets the precision PRs benchmark
+  warm/cold paths without rerunning full inventory.
+- `analysis/related-test-precision-v1` should land before
+  `context/agent-seam-packets-v2` so v2 packets can use ranked
+  related tests as `patterns_to_imitate` / `patterns_to_avoid`.
+- `analysis/value-extraction-v2` and `analysis/oracle-shape-v2` are
+  independent and can land in either order.
+- `lsp/seam-code-actions-v1` should land after
+  `context/agent-seam-packets-v2` so the "Copy suggested assertion"
+  action can use the v2 `assertion_shape` field.
+- `calibration/cargo-mutants-v1` is independent and can land any time.
+
+Commands:
+
+```bash
+cargo xtask shape
+cargo xtask fix-pr
+cargo xtask check-pr
+cargo xtask goldens check
+cargo xtask check-output-contracts
+cargo xtask check-static-language
+```
+
+Blocking conditions:
+
+- bincode introduced as a serialization dependency (use postcard)
+- rendered outputs cached (only fact layers may be cached)
+- mutation-runtime language (`killed`, `survived`, `proven`,
+  `adequate`) leaking from calibration into static reports
+- output drift without golden evidence
+- `seamDiagnostics` flipped on by default before cache lands
+
+Review policy:
+
+This campaign is product work, not refactor work. Each work item
+should preserve the spec/test/code/output trail. PRs that mix
+implementation with refactoring should be split.
+
+## Campaign 5B: Operationalization
+
+Campaign ID: `operationalization`
+
+Status: planned (blocked behind Campaign 5A precision work)
+
+Objective:
+
+```text
+Make ripr deployable: repository config governs analyzer behavior,
+SARIF and CI policy modes integrate with PR workflows, and the badge
+schema can be remapped onto seam-native counts.
+```
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `config/ripr-config-v1` | blocked | Blocked by `cache/repo-seam-facts-v1` (defaults need warm-path cost) and `analysis/oracle-shape-v2` (severity policy needs stable oracle taxonomy). |
+| `ci/sarif-ci-policy` | blocked | Blocked by `config/ripr-config-v1` (severity + suppression). |
+| `badge/seam-native-count-mapping` | planned | Map `ripr` and `ripr+` badge counts onto seam-native counts after seam report and calibration semantics settle. |
+
+Review policy:
+
+5B work cannot land before Campaign 5A's cache and oracle-shape
+items, so opening 5B PRs before then is out-of-scope and should be
+held in draft.
 
 ## Campaign 6: Module SRP Refactoring
 

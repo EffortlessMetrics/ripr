@@ -36,6 +36,16 @@ are scoped or reviewed.
   and `calibration/cargo-mutants-v1` carry forward from Campaign 4B as
   ready items; `config/ripr-config-v1` and `ci/sarif-ci-policy` remain
   blocked on the cache and config respectively.
+- Reframed Campaign 5 as Campaign 5A (Voice B Usability and Precision)
+  to focus the queue on four product axes — fast (cache), precise
+  (related-test-precision-v1, value-extraction-v2, oracle-shape-v2),
+  actionable (agent-seam-packets-v2, lsp/seam-code-actions-v1), and
+  calibrated (cargo-mutants-v1). Operationalization items
+  (`config/ripr-config-v1`, `ci/sarif-ci-policy`, future
+  `badge/seam-native-count-mapping`) move to Campaign 5B and stay
+  blocked behind 5A's cache and oracle-shape work. Cache
+  serialization policy: never bincode; postcard if binary; fact
+  layers only.
 - Added internal local flow sink facts for changed expressions, including
   return values, error variants, struct fields, call effects, and match-arm
   results.
