@@ -192,7 +192,7 @@ When code is refactored:
 - ✓ Test context validation ensures `test_only` entries are legitimate
 
 ### Improved Clarity
-- ✓ Container names document intent: `tests::json_parsing_with_fallback`
+- ✓ Container names document intent: `json_parsing_with_fallback`
 - ✓ Selector type makes nature explicit: is it a call or a string?
 - ✓ Explanations pair with semantic selectors, not line numbers
 

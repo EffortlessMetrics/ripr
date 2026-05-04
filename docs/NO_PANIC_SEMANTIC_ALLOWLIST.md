@@ -140,7 +140,7 @@ Update the checker to:
 
 ### Improved Clarity
 ✓ Selector documents the "why" of each exception
-✓ Container name makes intent explicit: `tests::parse_json_with_unwrap`
+✓ Container name makes intent explicit: `parse_json_with_unwrap`
 ✓ Semantic fingerprints are less fragile than line numbers
 
 ## Implementation Details
