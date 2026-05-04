@@ -2,7 +2,7 @@ schema_version = "0.1"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 171
+line = 173
 column = 14
 family = "unwrap"
 classification = "test_only"
@@ -10,7 +10,7 @@ explanation = "Test helper function for creating temporary directories"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 174
+line = 176
 column = 34
 family = "unwrap"
 classification = "test_only"
@@ -18,7 +18,7 @@ explanation = "Test helper function for creating temporary directories"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 181
+line = 183
 column = 46
 family = "unwrap"
 classification = "test_only"
@@ -26,7 +26,7 @@ explanation = "Test helper function for creating temporary directories"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 182
+line = 184
 column = 48
 family = "unwrap"
 classification = "test_only"
@@ -34,7 +34,7 @@ explanation = "Test helper function for creating temporary directories"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 187
+line = 189
 column = 10
 family = "unwrap"
 classification = "test_only"
@@ -42,7 +42,7 @@ explanation = "Test helper function for writing test files"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 196
+line = 198
 column = 10
 family = "unwrap"
 classification = "test_only"
@@ -50,7 +50,7 @@ explanation = "Test helper function for writing test files"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 207
+line = 209
 column = 10
 family = "unwrap"
 classification = "test_only"
@@ -58,7 +58,7 @@ explanation = "Test helper function for writing test files"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 220
+line = 222
 column = 10
 family = "unwrap"
 classification = "test_only"
@@ -66,7 +66,7 @@ explanation = "Test helper function for writing test files"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 228
+line = 230
 column = 10
 family = "unwrap"
 classification = "test_only"
@@ -74,7 +74,7 @@ explanation = "Test helper function for writing test files"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 244
+line = 246
 column = 10
 family = "unwrap"
 classification = "test_only"
@@ -82,7 +82,7 @@ explanation = "Test helper function for writing test files"
 
 [[allow]]
 path = "crates/ripr/src/analysis/rust_index.rs"
-line = 1027
+line = 982
 column = 28
 family = "expect"
 classification = "false_positive"
@@ -90,7 +90,7 @@ explanation = "Static pattern matching detects text in analyzed Rust source, not
 
 [[allow]]
 path = "crates/ripr/src/analysis/rust_index.rs"
-line = 1028
+line = 983
 column = 28
 family = "unwrap"
 classification = "false_positive"
@@ -98,7 +98,7 @@ explanation = "Static pattern matching detects text in analyzed Rust source, not
 
 [[allow]]
 path = "crates/ripr/src/analysis/rust_index.rs"
-line = 1059
+line = 1014
 column = 31
 family = "unwrap"
 classification = "false_positive"
@@ -106,7 +106,7 @@ explanation = "Static pattern matching detects text in analyzed Rust source, not
 
 [[allow]]
 path = "crates/ripr/src/analysis/rust_index.rs"
-line = 1060
+line = 1015
 column = 28
 family = "expect"
 classification = "false_positive"
@@ -471,3 +471,139 @@ column = 28
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: verifies file discovery works"
+
+[[allow]]
+path = "crates/ripr/src/analysis/facts/build.rs"
+line = 32
+column = 14
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function: creates temporary directory"
+
+[[allow]]
+path = "crates/ripr/src/analysis/facts/build.rs"
+line = 35
+column = 34
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function: creates temporary directories"
+
+[[allow]]
+path = "crates/ripr/src/analysis/facts/build.rs"
+line = 42
+column = 46
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function: writes test files"
+
+[[allow]]
+path = "crates/ripr/src/analysis/facts/build.rs"
+line = 47
+column = 10
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function: writes test files"
+
+[[allow]]
+path = "crates/ripr/src/analysis/facts/build.rs"
+line = 61
+column = 10
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function: creates temporary directory"
+
+[[allow]]
+path = "crates/ripr/src/analysis/facts/build.rs"
+line = 63
+column = 72
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function: creates src directory"
+
+[[allow]]
+path = "crates/ripr/src/analysis/facts/build.rs"
+line = 72
+column = 46
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function: writes test files"
+
+[[allow]]
+path = "crates/ripr/src/analysis/facts/build.rs"
+line = 77
+column = 10
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: verifies index building"
+
+[[allow]]
+path = "crates/ripr/src/analysis/facts/build.rs"
+line = 91
+column = 10
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function: creates temporary directory"
+
+[[allow]]
+path = "crates/ripr/src/analysis/facts/build.rs"
+line = 93
+column = 72
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function: creates src directory"
+
+[[allow]]
+path = "crates/ripr/src/analysis/facts/build.rs"
+line = 94
+column = 72
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function: writes test files"
+
+[[allow]]
+path = "crates/ripr/src/analysis/facts/build.rs"
+line = 102
+column = 46
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function: writes test files"
+
+[[allow]]
+path = "crates/ripr/src/analysis/facts/build.rs"
+line = 107
+column = 10
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: verifies index building"
+
+[[allow]]
+path = "crates/ripr/src/analysis/facts/build.rs"
+line = 120
+column = 10
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function: creates temporary directory"
+
+[[allow]]
+path = "crates/ripr/src/analysis/facts/build.rs"
+line = 122
+column = 72
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function: creates src directory"
+
+[[allow]]
+path = "crates/ripr/src/analysis/facts/build.rs"
+line = 123
+column = 72
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function: writes test files"
+
+[[allow]]
+path = "crates/ripr/src/analysis/facts/build.rs"
+line = 130
+column = 46
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function: writes test files"
