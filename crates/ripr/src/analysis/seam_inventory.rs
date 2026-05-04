@@ -49,12 +49,12 @@ pub(crate) fn inventory_seams_at(root: &Path) -> Result<Vec<RepoSeam>, String> {
     // structurally honest under `-D warnings`. Cost is bounded (linear
     // in seams * related tests) and deterministic.
     //
-    // Why this loop instead of `#[allow(dead_code)]` on TestGripEvidence:
-    // `dead_code` is on the guarded list in `.ripr/allow-attributes.txt`
-    // and the repo policy explicitly forbids using that file to
-    // normalize dead-code suppressions. The loop is a transitional
-    // anti-dead-code tactic that the next PR removes by reading the
-    // evidence for real.
+    // Why this loop instead of a dead-code lint suppression on
+    // TestGripEvidence: dead_code is on the guarded list in
+    // `.ripr/allow-attributes.txt` and the repo policy explicitly forbids
+    // using that file to normalize dead-code suppressions. The loop is a
+    // transitional anti-dead-code tactic that the next PR removes by
+    // reading the evidence for real.
     let evidence = test_grip_evidence::evidence_for_seams(&seams, &index);
     if cfg!(debug_assertions) {
         // Materialize the Debug rendering in debug builds so any field
