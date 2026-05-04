@@ -246,7 +246,11 @@ tests = [
   "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::strongly_gripped_emits_no_diagnostic",
   "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::intentional_and_suppressed_emit_no_diagnostic",
   "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::diagnostic_data_field_carries_seam_id_and_grip_class",
-  "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::diagnostic_message_names_seam_kind_and_expression"
+  "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::diagnostic_message_names_seam_kind_and_expression",
+  "crates/ripr/src/lsp/config.rs::tests::seam_diagnostics_defaults_to_false_when_option_is_missing",
+  "crates/ripr/src/lsp/config.rs::tests::seam_diagnostics_true_in_init_options_enables_flag",
+  "crates/ripr/src/lsp/config.rs::tests::seam_diagnostics_false_in_init_options_keeps_default",
+  "crates/ripr/src/lsp/config.rs::tests::non_boolean_seam_diagnostics_value_is_ignored"
 ]
 fixtures = []
 code = [

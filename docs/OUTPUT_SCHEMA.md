@@ -664,6 +664,14 @@ parsing severity. The `data` field carries `seam_id` so seam-evidence
 hover (`lsp/seam-evidence-hover-v1`) can look up the same record from
 `inventory_classified_seams_at`.
 
+The diagnostic range is currently a **full-line placeholder**: seams
+do not yet carry a column, so the range spans `(line, 0)` →
+`(line, MAX_DIAGNOSTIC_RANGE_WIDTH)`. Editors render this as a
+single-line squiggle that always covers the seam regardless of
+indentation. A future PR can derive the real column from the source
+file via the (now reserved) `_root` parameter on
+`diagnostic_for_classified_seam`.
+
 This PR adds diagnostics only — no code actions yet. The pre-4B
 `Finding`/`AnalysisSnapshot` hover continues to work for
 diff-scoped diagnostics; seam diagnostics live alongside it.
