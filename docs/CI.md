@@ -190,6 +190,7 @@ Codecov now tracks product and automation coverage separately to prevent
 automation code from obscuring product quality:
 
 - **Product crate** (crates/ripr/src/): target 94% (project), 94% (patch)
+<<<<<<< HEAD
 - **Automation** (xtask/src/): target 65% (project), 75% (patch), 10% patch threshold (initial ratchet tolerance for the large, unevenly-tested xtask main.rs)
 
 The component split uses Codecov's path-based named statuses. Future coverage
