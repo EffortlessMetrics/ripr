@@ -10588,10 +10588,7 @@ fn panic_family_from_pattern(pattern: &str) -> &'static str {
     }
 }
 
-fn collect_panic_findings(
-    root: &Path,
-    patterns: &[String],
-) -> Result<Vec<PanicFinding>, String> {
+fn collect_panic_findings(root: &Path, patterns: &[String]) -> Result<Vec<PanicFinding>, String> {
     let mut findings = Vec::new();
 
     for path in collect_files(root)? {
@@ -10696,7 +10693,7 @@ fn parse_no_panic_allowlist_toml(path: &str) -> Result<Vec<PanicAllowEntry>, Str
                 return Err(format!(
                     "{path}:{} unknown field '{key}' in [[allow]] section",
                     line_number
-                ))
+                ));
             }
         }
     }
@@ -10805,11 +10802,10 @@ mod tests {
     use super::{
         BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, CheckReport,
         CheckStatus, CheckViolation, DogfoodRun, FixKind, LocalContextAllow, MarkdownLink,
-        ReceiptRecord, ReportIndexCampaign, ReportIndexEntry,
-        StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass, badge_artifact_command_args,
-        badge_artifact_jobs, badge_artifact_native_slot, badge_artifacts_summary_markdown,
-        collect_panic_findings, critic_findings,
-        dogfood_class_counts, dogfood_report_json, dogfood_report_markdown,
+        ReceiptRecord, ReportIndexCampaign, ReportIndexEntry, StaticLanguageAllowEntry,
+        StaticLanguageMatcher, TestOracleClass, badge_artifact_command_args, badge_artifact_jobs,
+        badge_artifact_native_slot, badge_artifacts_summary_markdown, collect_panic_findings,
+        critic_findings, dogfood_class_counts, dogfood_report_json, dogfood_report_markdown,
         extract_json_object_usize_map, extract_json_string, extract_json_warnings,
         extract_workflow_run_blocks, first_line_difference, glob_matches,
         golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
@@ -10904,7 +10900,8 @@ explanation = "Test helper"
 "#;
             write(&root.join("allowlist.toml"), toml_content);
 
-            let result = parse_no_panic_allowlist_toml(root.join("allowlist.toml").to_str().unwrap());
+            let result =
+                parse_no_panic_allowlist_toml(root.join("allowlist.toml").to_str().unwrap());
             assert!(result.is_ok());
             let entries = result.unwrap();
             assert_eq!(entries.len(), 1);
@@ -10929,7 +10926,8 @@ explanation = "Missing path"
 "#;
             write(&root.join("allowlist.toml"), toml_content);
 
-            let result = parse_no_panic_allowlist_toml(root.join("allowlist.toml").to_str().unwrap());
+            let result =
+                parse_no_panic_allowlist_toml(root.join("allowlist.toml").to_str().unwrap());
             assert!(result.is_err());
             assert!(result.unwrap_err().contains("missing required field: path"));
         });
@@ -10947,7 +10945,8 @@ explanation = "Missing line"
 "#;
             write(&root.join("allowlist.toml"), toml_content);
 
-            let result = parse_no_panic_allowlist_toml(root.join("allowlist.toml").to_str().unwrap());
+            let result =
+                parse_no_panic_allowlist_toml(root.join("allowlist.toml").to_str().unwrap());
             assert!(result.is_err());
             assert!(result.unwrap_err().contains("missing required field: line"));
         });
@@ -10965,9 +10964,14 @@ explanation = "Missing family"
 "#;
             write(&root.join("allowlist.toml"), toml_content);
 
-            let result = parse_no_panic_allowlist_toml(root.join("allowlist.toml").to_str().unwrap());
+            let result =
+                parse_no_panic_allowlist_toml(root.join("allowlist.toml").to_str().unwrap());
             assert!(result.is_err());
-            assert!(result.unwrap_err().contains("missing required field: family"));
+            assert!(
+                result
+                    .unwrap_err()
+                    .contains("missing required field: family")
+            );
         });
     }
 
@@ -10983,9 +10987,14 @@ family = "unwrap"
 "#;
             write(&root.join("allowlist.toml"), toml_content);
 
-            let result = parse_no_panic_allowlist_toml(root.join("allowlist.toml").to_str().unwrap());
+            let result =
+                parse_no_panic_allowlist_toml(root.join("allowlist.toml").to_str().unwrap());
             assert!(result.is_err());
-            assert!(result.unwrap_err().contains("missing required field: explanation"));
+            assert!(
+                result
+                    .unwrap_err()
+                    .contains("missing required field: explanation")
+            );
         });
     }
 
@@ -11003,9 +11012,14 @@ unknown_field = "value"
 "#;
             write(&root.join("allowlist.toml"), toml_content);
 
-            let result = parse_no_panic_allowlist_toml(root.join("allowlist.toml").to_str().unwrap());
+            let result =
+                parse_no_panic_allowlist_toml(root.join("allowlist.toml").to_str().unwrap());
             assert!(result.is_err());
-            assert!(result.unwrap_err().contains("unknown field 'unknown_field'"));
+            assert!(
+                result
+                    .unwrap_err()
+                    .contains("unknown field 'unknown_field'")
+            );
         });
     }
 
@@ -11030,7 +11044,8 @@ explanation = "Duplicate entry"
 "#;
             write(&root.join("allowlist.toml"), toml_content);
 
-            let result = parse_no_panic_allowlist_toml(root.join("allowlist.toml").to_str().unwrap());
+            let result =
+                parse_no_panic_allowlist_toml(root.join("allowlist.toml").to_str().unwrap());
             assert!(result.is_err());
             assert!(result.unwrap_err().contains("duplicate allowlist entry"));
         });
