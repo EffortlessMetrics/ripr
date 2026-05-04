@@ -371,7 +371,7 @@ explanation = "Test fixture: string literal in test harness code"
 [[allow]]
 path = "xtask/src/main.rs"
 line = 11066
-column = 69
+column = 68
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: assertion on panic findings collection"
