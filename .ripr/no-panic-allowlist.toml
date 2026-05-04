@@ -81,32 +81,32 @@ classification = "test_only"
 explanation = "Test helper function for writing test files"
 
 [[allow]]
-path = "crates/ripr/src/analysis/rust_index.rs"
-line = 1109
+path = "crates/ripr/src/analysis/rust_index/mod.rs"
+line = 994
 column = 28
 family = "expect"
 classification = "false_positive"
 explanation = "Static pattern matching detects text in analyzed Rust source, not a runtime call"
 
 [[allow]]
-path = "crates/ripr/src/analysis/rust_index.rs"
-line = 1110
+path = "crates/ripr/src/analysis/rust_index/mod.rs"
+line = 995
 column = 28
 family = "unwrap"
 classification = "false_positive"
 explanation = "Static pattern matching detects text in analyzed Rust source, not a runtime call"
 
 [[allow]]
-path = "crates/ripr/src/analysis/rust_index.rs"
-line = 1141
+path = "crates/ripr/src/analysis/rust_index/mod.rs"
+line = 1026
 column = 31
 family = "unwrap"
 classification = "false_positive"
 explanation = "Static pattern matching detects text in analyzed Rust source, not a runtime call"
 
 [[allow]]
-path = "crates/ripr/src/analysis/rust_index.rs"
-line = 1142
+path = "crates/ripr/src/analysis/rust_index/mod.rs"
+line = 1027
 column = 28
 family = "expect"
 classification = "false_positive"
