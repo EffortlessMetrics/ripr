@@ -789,11 +789,3 @@ column = 23
 family = "unwrap"
 classification = "test_only"
 explanation = "Semantic selector test infrastructure"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 16253
-column = 36
-family = "unwrap"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
