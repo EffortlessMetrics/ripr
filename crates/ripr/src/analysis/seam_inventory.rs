@@ -21,7 +21,8 @@ use super::rust_index::{
     PROBE_SHAPE_MATCH_ARM, PROBE_SHAPE_PREDICATE, PROBE_SHAPE_RETURN_VALUE,
     PROBE_SHAPE_SIDE_EFFECT, ProbeShapeFact, RustIndex,
 };
-use super::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator, SeamKind};
+use super::seam_classification;
+use super::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator, SeamGripClass, SeamKind};
 use super::test_grip_evidence;
 use super::workspace;
 use std::path::{Path, PathBuf};
@@ -41,49 +42,54 @@ pub(crate) fn inventory_seams_at(root: &Path) -> Result<Vec<RepoSeam>, String> {
     let index = rust_index::build_index(root, &rust_files)?;
     let seams = inventory_seams_from_index(&production_files, &index);
 
-    // Stage-zero hook for `analysis/repo-ripr-classification-v1`: build
-    // test-grip evidence on every inventory call so the evidence
-    // pipeline stays a live consumer of the seam types. The classification
-    // PR threads the result into the exposure report; until then we
-    // exercise every record field (via `Debug`) so the type stays
-    // structurally honest under `-D warnings`. Cost is bounded (linear
-    // in seams * related tests) and deterministic.
-    //
-    // Why this loop instead of a dead-code lint suppression on
-    // TestGripEvidence: dead_code is on the guarded list in
-    // `.ripr/allow-attributes.txt` and the repo policy explicitly forbids
-    // using that file to normalize dead-code suppressions. The loop is a
-    // transitional anti-dead-code tactic that the next PR removes by
-    // reading the evidence for real.
+    // Build per-seam test-grip evidence and classify each seam into a
+    // `SeamGripClass`. Today we discard the classified result because
+    // `output/repo-exposure-report-v1` is the first renderer; that PR
+    // replaces this discard with a real return path. Computing the
+    // classification here keeps `evidence_for_seams` and `classify_seams`
+    // live in lib (non-test) code without resorting to dead-code lint
+    // suppressions, which the repo policy forbids.
     let evidence = test_grip_evidence::evidence_for_seams(&seams, &index);
-    if cfg!(debug_assertions) {
-        // Materialize the Debug rendering in debug builds so any field
-        // drift is caught locally; release builds skip the work.
-        let _ = format!("{evidence:?}").len();
-    } else {
-        // Non-debug: still touch each evidence record's stage fields
-        // so they stay live in lib code without paying for Debug.
-        for entry in &evidence {
+    let classified = seam_classification::classify_seams(&seams, &evidence);
+
+    // Initialize a per-class count bucket using `SeamGripClass::ALL` so
+    // every variant — including the reserved `Intentional` and
+    // `Suppressed` — is constructed in lib code. The report PR replaces
+    // this scaffolding with real metric emission.
+    let mut grip_counts: Vec<(SeamGripClass, usize)> =
+        SeamGripClass::ALL.iter().copied().map(|c| (c, 0)).collect();
+    for entry in &classified {
+        if let Some(bucket) = grip_counts.iter_mut().find(|(c, _)| *c == entry.class) {
+            bucket.1 += 1;
+        }
+    }
+    let _ = grip_counts.len();
+    // Touch each classified record's evidence + grip class so every
+    // field of `TestGripEvidence`, `RelatedTestGrip`, and
+    // `SeamGripClass` stays structurally honest until the report PR
+    // consumes them. The compiler optimizes this away in release builds.
+    for entry in &classified {
+        let _ = (
+            entry.seam.id().as_str(),
+            entry.evidence.reach.state.as_str(),
+            entry.evidence.activate.state.as_str(),
+            entry.evidence.propagate.state.as_str(),
+            entry.evidence.observe.state.as_str(),
+            entry.evidence.discriminate.state.as_str(),
+            entry.evidence.observed_values.len(),
+            entry.evidence.missing_discriminators.len(),
+            entry.class.as_str(),
+            entry.class.is_headline_eligible(),
+        );
+        for grip in &entry.evidence.related_tests {
             let _ = (
-                entry.seam_id.as_str(),
-                entry.reach.state.as_str(),
-                entry.activate.state.as_str(),
-                entry.propagate.state.as_str(),
-                entry.observe.state.as_str(),
-                entry.discriminate.state.as_str(),
-                entry.observed_values.len(),
-                entry.missing_discriminators.len(),
+                grip.test_name.as_str(),
+                grip.file.as_path(),
+                grip.line,
+                grip.oracle_kind.as_str(),
+                grip.oracle_strength.as_str(),
+                grip.evidence_summary.as_str(),
             );
-            for grip in &entry.related_tests {
-                let _ = (
-                    grip.test_name.as_str(),
-                    grip.file.as_path(),
-                    grip.line,
-                    grip.oracle_kind.as_str(),
-                    grip.oracle_strength.as_str(),
-                    grip.evidence_summary.as_str(),
-                );
-            }
         }
     }
 

@@ -119,7 +119,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/repo-ripr-classification-v1"
-status = "ready"
+status = "done"
 branch = "analysis/repo-ripr-classification-v1"
 stackable = false
 requires_human_merge = true
@@ -134,12 +134,10 @@ commands = [
 
 [[work_item]]
 id = "output/repo-exposure-report-v1"
-status = "blocked"
+status = "ready"
 branch = "output/repo-exposure-report-v1"
 stackable = false
 requires_human_merge = true
-blocked_by = ["analysis/repo-ripr-classification-v1"]
-blocked_reason = "the report renders the classified seam inventory"
 acceptance = "Markdown + JSON repo exposure report enumerates seams with grip class, evidence path, and missing-discriminator hypothesis; output schema is versioned; OUTPUT_SCHEMA.md updated if needed; existing repo-badge-artifacts schema unchanged unless the spec explicitly opts in"
 commands = [
   "cargo xtask shape",
@@ -184,12 +182,10 @@ commands = [
 
 [[work_item]]
 id = "context/agent-seam-packets-v1"
-status = "blocked"
+status = "ready"
 branch = "context/agent-seam-packets-v1"
 stackable = false
 requires_human_merge = true
-blocked_by = ["analysis/repo-ripr-classification-v1"]
-blocked_reason = "agent packets cite the seam, its grip class, and missing-discriminator hypothesis"
 acceptance = "agent context packet schema (RIPR-SPEC-0003 successor or addendum) defines the load-bearing fields a coding agent needs to write the missing test: changed expression, owner, related tests, oracle strength, observed values, missing discriminator; serialized through the existing context CLI surface"
 commands = [
   "cargo xtask shape",
@@ -217,12 +213,10 @@ commands = [
 
 [[work_item]]
 id = "cache/repo-seam-facts-v1"
-status = "blocked"
+status = "ready"
 branch = "cache/repo-seam-facts-v1"
 stackable = false
 requires_human_merge = true
-blocked_by = ["analysis/repo-ripr-classification-v1"]
-blocked_reason = "caching depends on stable fact layers from the classification PR"
 acceptance = "optional fact-layer cache (file-facts, owner-index, seam-facts; never final outputs) gated on real performance signal; if shipped, keyed by schema version, ripr analyzer version, file path + content hash, cfg/features hash, config hash, intent hash, suppressions hash"
 commands = [
   "cargo xtask shape",
@@ -232,12 +226,10 @@ commands = [
 
 [[work_item]]
 id = "calibration/cargo-mutants-v1"
-status = "blocked"
+status = "ready"
 branch = "calibration/cargo-mutants-v1"
 stackable = false
 requires_human_merge = true
-blocked_by = ["analysis/repo-ripr-classification-v1"]
-blocked_reason = "calibration compares static SeamGripClass against runtime survival; depends on stable seam IDs"
 acceptance = "scaffold for comparing static seam classes against cargo-mutants outcomes; advisory only; no static output adopts mutation-runtime language; v2 path toward calibrated test-grip"
 commands = [
   "cargo xtask shape",
