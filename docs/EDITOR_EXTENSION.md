@@ -146,22 +146,40 @@ Diagnostics remain advisory. `exposed`, `propagation_unknown`, and
 `static_unknown` findings are informational; weak or missing exposure findings
 are warnings.
 
-## Hover Evidence
+## Hover Content
 
-When a diagnostic maps to the latest analysis snapshot, hovering the diagnostic
-line shows finding-specific evidence:
+When the cursor is on a diagnostic range and a matching analysis snapshot is
+available, the hover renders evidence-rich finding content:
 
-- changed expression (before/after or probe expression)
-- RIPR stage summaries (reach, infection, propagation, observation, discriminator)
-- local flow sinks (where the change can flow to)
-- related tests and oracle strength (test assertions that observe the change)
-- observed values (value patterns seen during analysis)
-- missing discriminators (boundary values not yet tested)
-- stop reasons (analysis limits encountered)
-- recommended next step (suggested testing improvement)
+```text
+**ripr** `weakly_exposed`
 
-If the latest analysis snapshot is unavailable, the server falls back to a
-diagnostic-only hover.
+Add an exact boundary assertion.
+
+## RIPR Evidence
+
+* reach yes: related tests found
+* infection yes: predicate can alter branch behavior
+* propagation yes: branch influences return value
+* observation weak: return value asserted
+* discriminator weak: boundary value missing
+
+## Related Tests
+
+- `tests/pricing.rs:12` `discount_boundary_is_exact` — strong exact_value oracle: assert_eq!(total, expected)
+
+## Weakness
+
+- no equality-boundary case was found
+```
+
+Fallback behavior preserves three levels:
+
+1. **Snapshot + matching finding** — evidence-rich hover with RIPR stage
+   summaries, related tests, and weakness notes.
+2. **Diagnostic without matching finding** — diagnostic-only hover showing the
+   classification, message, and finding or probe identifiers.
+3. **No diagnostic at position** — generic guidance hover.
 
 ## Current Limitations
 
