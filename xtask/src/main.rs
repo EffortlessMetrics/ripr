@@ -10949,8 +10949,7 @@ fn extract_call_metadata(
 fn extract_method_receiver_fingerprint(node: &ra_ap_syntax::SyntaxNode) -> Option<String> {
     use ra_ap_syntax::ast::{self, AstNode};
 
-    let parent = node.parent()?;
-    let method_call = ast::MethodCallExpr::cast(parent)?;
+    let method_call = ast::MethodCallExpr::cast(node.clone())?;
     let receiver = method_call.receiver()?;
     Some(receiver.syntax().text().to_string().trim().to_string())
 }
