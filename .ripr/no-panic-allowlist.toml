@@ -442,15 +442,15 @@ explanation = "Test assertion: validates unreachable status value detection"
 
 [[allow]]
 path = "crates/ripr/src/analysis/workspace/discover.rs"
-line = 42
+line = 45
 column = 34
 family = "unwrap"
 classification = "test_only"
-explanation = "Test fixture cleanup: removes temporary directory"
+explanation = "Test helper function: creates temporary directory"
 
 [[allow]]
 path = "crates/ripr/src/analysis/workspace/discover.rs"
-line = 43
+line = 46
 column = 41
 family = "unwrap"
 classification = "test_only"
@@ -458,7 +458,7 @@ explanation = "Test helper function: creates src directory for test"
 
 [[allow]]
 path = "crates/ripr/src/analysis/workspace/discover.rs"
-line = 44
+line = 47
 column = 47
 family = "unwrap"
 classification = "test_only"
@@ -466,7 +466,7 @@ explanation = "Test helper function: writes test file to temporary directory"
 
 [[allow]]
 path = "crates/ripr/src/analysis/workspace/discover.rs"
-line = 48
+line = 51
 column = 28
 family = "unwrap"
 classification = "test_only"

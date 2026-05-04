@@ -37,7 +37,10 @@ mod tests {
 
     #[test]
     fn discover_rust_files_is_callable() {
-        let dir = std::env::temp_dir().join("ripr-discover-test");
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-discover-test-{:?}",
+            std::thread::current().id()
+        ));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         fs::create_dir(dir.join("src")).unwrap();
