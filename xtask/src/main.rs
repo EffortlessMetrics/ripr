@@ -10724,7 +10724,6 @@ struct PanicAllowEntry {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // Used in Phase 2 (semantic matching integration)
 struct PanicFamilySelectorKind {
     kind: String,
     container: Option<String>,
@@ -10734,14 +10733,12 @@ struct PanicFamilySelectorKind {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // Used in Phase 2 (semantic matching integration)
 struct PanicFamilyLastSeen {
     line: usize,
     column: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // Used in Phase 2 (semantic matching integration)
 struct PanicAllowEntryV2 {
     path: String,
     family: String,
@@ -11213,7 +11210,6 @@ fn check_old_panic_allowlist_exists() -> Result<(), String> {
     Ok(())
 }
 
-#[allow(dead_code)] // Used in Phase 2 (semantic matching integration)
 fn semantic_selector_matches(
     selector: &PanicFamilySelectorKind,
     finding: &SemanticPanicFinding,
@@ -11239,236 +11235,8 @@ fn semantic_selector_matches(
             || finding.receiver_fingerprint.as_ref() == selector.receiver_fingerprint.as_ref())
 }
 
-#[allow(dead_code)] // Used in Phase 2 (semantic matching integration)
-fn matches_panic_finding(entry: &PanicAllowEntry, finding: &PanicFinding) -> bool {
-    entry.path == finding.path
-        && entry.line == finding.line
-        && entry.family == finding.family
-        && (entry.column.is_none() || entry.column == finding.column)
-}
-
 fn matches_semantic_finding(entry: &PanicAllowEntry, finding: &SemanticPanicFinding) -> bool {
     entry.path == finding.path && entry.family == finding.family
-}
-
-#[allow(dead_code)] // Used in Phase 2 (semantic matching integration)
-fn panic_allowlist_v0_2_matches_semantic(
-    entry: &PanicAllowEntryV2,
-    finding: &SemanticPanicFinding,
-) -> bool {
-    if entry.path != finding.path || entry.family != finding.family {
-        return false;
-    }
-
-    if let Some(selector) = &entry.selector {
-        semantic_selector_matches(selector, finding)
-    } else {
-        false
-    }
-}
-
-#[allow(dead_code)] // Used in Phase 2 (semantic matching integration)
-fn parse_no_panic_allowlist_toml_v0_2(path: &str) -> Result<Vec<PanicAllowEntryV2>, String> {
-    let text = read_text_lossy(Path::new(path))?;
-    let mut entries = Vec::new();
-    let mut current_entry = PanicAllowEntryV2 {
-        path: String::new(),
-        family: String::new(),
-        classification: None,
-        explanation: String::new(),
-        selector: None,
-        last_seen: None,
-    };
-    let mut in_allow_section = false;
-    let mut has_entry_started = false;
-    let mut entry_start_line = 0;
-    let mut in_selector_section = false;
-    let mut in_last_seen_section = false;
-    let mut selector_data = PanicFamilySelectorKind {
-        kind: String::new(),
-        container: None,
-        callee: None,
-        receiver_fingerprint: None,
-        text_contains: None,
-    };
-    let mut last_seen_data = PanicFamilyLastSeen {
-        line: 0,
-        column: None,
-    };
-
-    for (line_num, line) in text.lines().enumerate() {
-        let line_number = line_num + 1;
-        let trimmed = line.trim();
-
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
-        }
-
-        if trimmed == "schema_version = \"0.2\"" || trimmed == "schema_version = \"0.1\"" {
-            continue;
-        }
-
-        if trimmed == "[[allow]]" {
-            if has_entry_started {
-                if selector_data.kind != String::new() {
-                    current_entry.selector = Some(selector_data.clone());
-                }
-                if last_seen_data.line > 0 {
-                    current_entry.last_seen = Some(last_seen_data.clone());
-                }
-                validate_panic_allow_entry_v2(&current_entry, path, entry_start_line)?;
-                entries.push(current_entry.clone());
-            }
-            current_entry = PanicAllowEntryV2 {
-                path: String::new(),
-                family: String::new(),
-                classification: None,
-                explanation: String::new(),
-                selector: None,
-                last_seen: None,
-            };
-            selector_data = PanicFamilySelectorKind {
-                kind: String::new(),
-                container: None,
-                callee: None,
-                receiver_fingerprint: None,
-                text_contains: None,
-            };
-            last_seen_data = PanicFamilyLastSeen {
-                line: 0,
-                column: None,
-            };
-            has_entry_started = true;
-            in_allow_section = true;
-            in_selector_section = false;
-            in_last_seen_section = false;
-            entry_start_line = line_number;
-            continue;
-        }
-
-        if trimmed == "[allow.selector]" {
-            in_selector_section = true;
-            in_last_seen_section = false;
-            continue;
-        }
-
-        if trimmed == "[allow.last_seen]" {
-            in_selector_section = false;
-            in_last_seen_section = true;
-            continue;
-        }
-
-        if !in_allow_section {
-            return Err(format!(
-                "{path}:{} unexpected content outside [[allow]] section",
-                line_number
-            ));
-        }
-
-        let Some((key, value)) = parse_toml_key_value(trimmed) else {
-            return Err(format!(
-                "{path}:{} invalid TOML syntax (expected key = value)",
-                line_number
-            ));
-        };
-
-        if in_selector_section {
-            match key {
-                "kind" => selector_data.kind = parse_string_value(value, path, line_number)?,
-                "container" => {
-                    selector_data.container = Some(parse_string_value(value, path, line_number)?)
-                }
-                "callee" => {
-                    selector_data.callee = Some(parse_string_value(value, path, line_number)?)
-                }
-                "receiver_fingerprint" => {
-                    selector_data.receiver_fingerprint =
-                        Some(parse_string_value(value, path, line_number)?)
-                }
-                "text_contains" => {
-                    selector_data.text_contains =
-                        Some(parse_string_value(value, path, line_number)?)
-                }
-                _ => {
-                    return Err(format!(
-                        "{path}:{} unknown field '{key}' in [allow.selector] section",
-                        line_number
-                    ));
-                }
-            }
-        } else if in_last_seen_section {
-            match key {
-                "line" => last_seen_data.line = parse_usize_value(value, path, line_number)?,
-                "column" => {
-                    last_seen_data.column = Some(parse_usize_value(value, path, line_number)?)
-                }
-                _ => {
-                    return Err(format!(
-                        "{path}:{} unknown field '{key}' in [allow.last_seen] section",
-                        line_number
-                    ));
-                }
-            }
-        } else {
-            match key {
-                "path" => current_entry.path = parse_string_value(value, path, line_number)?,
-                "family" => current_entry.family = parse_string_value(value, path, line_number)?,
-                "classification" => {
-                    current_entry.classification =
-                        Some(parse_string_value(value, path, line_number)?)
-                }
-                "explanation" => {
-                    current_entry.explanation = parse_string_value(value, path, line_number)?
-                }
-                _ => {
-                    return Err(format!(
-                        "{path}:{} unknown field '{key}' in [[allow]] section",
-                        line_number
-                    ));
-                }
-            }
-        }
-    }
-
-    if has_entry_started {
-        if selector_data.kind != String::new() {
-            current_entry.selector = Some(selector_data);
-        }
-        if last_seen_data.line > 0 {
-            current_entry.last_seen = Some(last_seen_data);
-        }
-        validate_panic_allow_entry_v2(&current_entry, path, entry_start_line)?;
-        entries.push(current_entry);
-    }
-
-    Ok(entries)
-}
-
-#[allow(dead_code)] // Used in Phase 2 (semantic matching integration)
-fn validate_panic_allow_entry_v2(
-    entry: &PanicAllowEntryV2,
-    path: &str,
-    line_number: usize,
-) -> Result<(), String> {
-    if entry.path.is_empty() {
-        return Err(format!(
-            "{path}:{} missing required field: path",
-            line_number
-        ));
-    }
-    if entry.family.is_empty() {
-        return Err(format!(
-            "{path}:{} missing required field: family",
-            line_number
-        ));
-    }
-    if entry.explanation.is_empty() {
-        return Err(format!(
-            "{path}:{} missing required field: explanation",
-            line_number
-        ));
-    }
-    Ok(())
 }
 
 #[cfg(test)]
