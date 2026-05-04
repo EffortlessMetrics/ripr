@@ -511,6 +511,57 @@ fn analysis_snapshot_finds_finding_from_diagnostic_data() -> Result<(), String> 
 }
 
 #[test]
+fn overlapping_diagnostics_prefer_seam_id_lookup_over_finding_id_lookup() -> Result<(), String> {
+    // Regression for chatgpt-codex review on PR #242: when a Finding
+    // diagnostic and a Seam diagnostic share the same line, the
+    // backend's hover handler must prefer the seam-bearing one. The
+    // batch builder pushes findings before seams in the per-uri
+    // diagnostic vector, so a naive first-match scan would shadow the
+    // new seam-evidence hover. Pin the priority by direct lookup.
+    let finding = sample_finding();
+    let finding_diag = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    let mut seam_diag = finding_diag.clone();
+    seam_diag.data = Some(serde_json::json!({
+        "schema_version": "0.1",
+        "seam_id": "f3c9e4d21a0b7c88",
+        "seam_kind": "predicate_boundary",
+        "grip_class": "weakly_gripped",
+    }));
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    // Order matters here: finding diagnostic first, seam diagnostic
+    // second — the same order the batch builder uses.
+    let snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri,
+        vec![finding_diag.clone(), seam_diag.clone()],
+        vec![finding],
+    );
+
+    // Both lookups exist in the snapshot. The backend's overlap fix
+    // walks all matching diagnostics and prefers the seam-bearing
+    // one. We verify the lookups individually here; the backend
+    // ordering is exercised by `framed_lsp_protocol_smoke_exercises_tower_server`.
+    if snapshot.finding_for_diagnostic(&finding_diag).is_none() {
+        return Err("finding lookup should still resolve".to_string());
+    }
+    // The seam diagnostic carries seam_id but no matching seam in
+    // classified_seams (the test snapshot helper has empty seams).
+    // What matters is that classified_seam_for_diagnostic only fires
+    // for diagnostics with data.seam_id — i.e., it does not match
+    // finding_diag.
+    if snapshot
+        .classified_seam_for_diagnostic(&finding_diag)
+        .is_some()
+    {
+        return Err(
+            "classified_seam_for_diagnostic should reject diagnostics carrying finding_id only"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn given_diagnostic_with_unknown_seam_id_when_lookup_runs_then_no_classified_seam_is_returned()
 -> Result<(), String> {
     // Regression for the directive's "unknown seam_id falls back

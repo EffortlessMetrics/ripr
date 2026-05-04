@@ -63,6 +63,13 @@ pub(super) fn diagnostic_at_position<'a>(
         .find(|diagnostic| position_in_range(position, &diagnostic.range))
 }
 
+/// True if `diagnostic`'s range covers `position`. Useful for callers
+/// that need to scan all overlapping diagnostics (e.g., backend hover
+/// preferring seam-bearing diagnostics over finding-bearing ones).
+pub(super) fn diagnostic_covers_position(diagnostic: &Diagnostic, position: &Position) -> bool {
+    position_in_range(position, &diagnostic.range)
+}
+
 fn diagnostic_hover_markdown(diagnostic: &Diagnostic) -> String {
     let classification = diagnostic
         .code
