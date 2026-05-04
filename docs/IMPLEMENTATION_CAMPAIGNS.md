@@ -697,8 +697,8 @@ Work items:
 | `diff/module-split` | done | PR 3 (#246): Split `analysis/diff.rs` into `diff/{mod,model,load,parse}.rs` with the parser and git-diff adapter behavior preserved. |
 | `workspace/module-split` | done | PR 4 (#247): Split workspace concerns into focused modules without changing workspace selection behavior. |
 | `probes/module-split` | done | PR 5 (#249): Split probe concerns into focused modules and preserved `sanitize_path` behavior for Unix paths, Windows-style paths, colons, and trimming. |
-| `facts/model-extraction` | ready | PR 6 (#251): Move fact DTOs into `analysis/facts/model.rs` after the probe split lands. |
-| `syntax/adapter-extraction` | pending | PR 7: Move syntax adapters into `analysis/syntax/adapter.rs` |
+| `facts/model-extraction` | done | PR 6 (#251): Moved neutral fact DTOs into `analysis/facts/model.rs` while leaving syntax adapters, builders, extraction, and query logic in place. |
+| `syntax/adapter-extraction` | ready | PR 7: Move syntax adapter traits and shared syntax facts into `analysis/syntax/adapter.rs` without moving builders or extraction logic yet. |
 | `facts/builder-extraction` | pending | PR 8 (#253): Move index construction into `analysis/facts/build.rs` |
 | `syntax/ra-extraction` | pending | PR 8: Move parser-backed logic into `analysis/syntax/ra.rs` |
 | `syntax/lexical-extraction` | pending | PR 9: Move lexical fallback into `analysis/syntax/lexical.rs` |
