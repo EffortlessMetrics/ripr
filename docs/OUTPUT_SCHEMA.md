@@ -386,6 +386,109 @@ The Markdown sibling (`repo-seams.md`, generated alongside the JSON) is
 human-readable but follows the same contract for `kind`, `owner`, and
 `expected_sink` strings.
 
+## Repo Exposure Report
+
+`ripr check --root . --format repo-exposure-json` emits the Voice B
+classified seam inventory introduced by `analysis/repo-ripr-classification-v1`.
+The artifact lands at `target/ripr/reports/repo-exposure.json` when generated
+via `cargo xtask repo-exposure-report`.
+
+```json
+{
+  "schema_version": "0.1",
+  "scope": "repo",
+  "metrics": {
+    "seams_total": 12882,
+    "headline_eligible": 12352,
+    "strongly_gripped": 530,
+    "weakly_gripped": 8102,
+    "ungripped": 45,
+    "reachable_unrevealed": 104,
+    "activation_unknown": 4101,
+    "propagation_unknown": 0,
+    "observation_unknown": 0,
+    "discrimination_unknown": 0,
+    "opaque": 0,
+    "intentional": 0,
+    "suppressed": 0
+  },
+  "seams": [
+    {
+      "seam_id": "f3c9e4d21a0b7c88",
+      "kind": "predicate_boundary",
+      "file": "src/pricing.rs",
+      "line": 88,
+      "owner": "src/pricing.rs::discounted_total",
+      "expression": "amount >= discount_threshold",
+      "grip_class": "weakly_gripped",
+      "headline_eligible": true,
+      "evidence": {
+        "reach": "yes",
+        "activate": "yes",
+        "propagate": "yes",
+        "observe": "yes",
+        "discriminate": "weak"
+      },
+      "related_tests_total": 47,
+      "related_tests": [
+        {
+          "name": "below_threshold_has_no_discount",
+          "file": "tests/pricing_tests.rs",
+          "line": 12,
+          "oracle_kind": "exact_value",
+          "oracle_strength": "strong",
+          "evidence_summary": "exact value assertion"
+        }
+      ],
+      "observed_values": ["50", "10000"],
+      "missing_discriminators": [
+        {
+          "value": "discount_threshold (equality boundary)",
+          "reason": "observed values do not include the equality-boundary case for this predicate"
+        }
+      ]
+    }
+  ]
+}
+```
+
+Field contract:
+
+- `schema_version` — currently `"0.1"`. Bumping requires updating this
+  section, the renderer (`crates/ripr/src/output/repo_exposure.rs`), and
+  any downstream consumers in lockstep.
+- `scope` — always `"repo"`.
+- `metrics` — totals plus a per-`SeamGripClass` count bucket. Keys mirror
+  `SeamGripClass::as_str()`. The renderer emits all 11 buckets even when
+  zero so consumers can plot stable bar charts.
+- `metrics.headline_eligible` — count of seams whose `grip_class`
+  satisfies `SeamGripClass::is_headline_eligible()` per RIPR-SPEC-0005.
+- `seams[].grip_class` — one of the 11 `SeamGripClass` strings:
+  `strongly_gripped`, `weakly_gripped`, `ungripped`, `reachable_unrevealed`,
+  `activation_unknown`, `propagation_unknown`, `observation_unknown`,
+  `discrimination_unknown`, `opaque`, `intentional`, `suppressed`.
+- `seams[].evidence` — per-stage `StageState` strings: `yes`, `weak`,
+  `no`, `unknown`, `opaque`, `not_applicable`.
+- `seams[].related_tests_total` — number of related tests the analyzer
+  matched. The `related_tests` array is **capped** for artifact size; see
+  `MAX_RELATED_TESTS_PER_SEAM_JSON` in the renderer (currently 8). The
+  total field always carries the unbounded count.
+- `seams[].observed_values` — literal scalar values seen in owner-call
+  arguments across related tests. Bare identifiers and helper-derived
+  values are intentionally excluded.
+- `seams[].missing_discriminators` — per-rule hypothesis strings (e.g.,
+  the equality-boundary case for predicate seams). Empty when no rule
+  fires.
+
+The Markdown sibling (`repo-exposure.md`) prints a metrics table plus
+the top headline-eligible seams (capped at 50). Both formats are
+generated together by `cargo xtask repo-exposure-report`.
+
+Voice B reports static test grip evidence. Runtime confirmation via
+`cargo-mutants` is a separate calibration step (`calibration/cargo-mutants-v1`).
+Static-language constraints from RIPR-SPEC-0005 still apply: the report
+never uses runtime-mutation outcome words.
+
 ## Stability Rules
 
 Output contract values are registered in `policy/output_contracts.txt`.
