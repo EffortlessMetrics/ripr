@@ -11044,10 +11044,7 @@ fn extract_method_receiver_fingerprint(node: &ra_ap_syntax::SyntaxNode) -> Optio
     let receiver = method_call.receiver()?;
     let text = receiver.syntax().text().to_string();
     // Normalize whitespace: collapse consecutive whitespace (including newlines) into single spaces
-    let normalized = text
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
+    let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
     Some(normalized)
 }
 
@@ -11651,8 +11648,8 @@ mod tests {
     use super::{
         PanicAllowEntry, PanicFamilySelectorKind, SemanticPanicFinding, active_yaml_lines,
         check_droid_action_refs, check_droid_common, collect_semantic_panic_findings,
-        forbids_active_line, forbidden_panic_patterns, has_active_line,
-        matches_semantic_finding, semantic_selector_matches, strip_yaml_comment,
+        forbidden_panic_patterns, forbids_active_line, has_active_line, matches_semantic_finding,
+        semantic_selector_matches, strip_yaml_comment,
     };
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
@@ -12066,15 +12063,12 @@ mod tests {
         write(&lib_path, code);
 
         let patterns = forbidden_panic_patterns();
-        let findings = collect_semantic_panic_findings(&root, &patterns)
-            .expect("failed to collect findings");
+        let findings =
+            collect_semantic_panic_findings(&root, &patterns).expect("failed to collect findings");
 
         assert!(!findings.is_empty(), "should find panic-family calls");
 
-        let unwrap_findings: Vec<_> = findings
-            .iter()
-            .filter(|f| f.family == "unwrap")
-            .collect();
+        let unwrap_findings: Vec<_> = findings.iter().filter(|f| f.family == "unwrap").collect();
         assert!(!unwrap_findings.is_empty(), "should find unwrap calls");
 
         let panic_findings: Vec<_> = findings
@@ -12083,16 +12077,18 @@ mod tests {
             .collect();
         assert!(!panic_findings.is_empty(), "should find panic! calls");
 
-        let expect_findings: Vec<_> = findings
-            .iter()
-            .filter(|f| f.family == "expect")
-            .collect();
+        let expect_findings: Vec<_> = findings.iter().filter(|f| f.family == "expect").collect();
         assert!(!expect_findings.is_empty(), "should find expect calls");
 
         for finding in &findings {
-            assert!(!finding.path.is_empty(), "finding should have non-empty path");
-            assert!(finding.kind == "method_call" || finding.kind == "macro_call",
-                "kind should be method_call or macro_call");
+            assert!(
+                !finding.path.is_empty(),
+                "finding should have non-empty path"
+            );
+            assert!(
+                finding.kind == "method_call" || finding.kind == "macro_call",
+                "kind should be method_call or macro_call"
+            );
         }
 
         let _ = fs::remove_dir_all(&root);
