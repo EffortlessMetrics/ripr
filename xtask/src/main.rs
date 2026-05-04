@@ -11042,7 +11042,13 @@ fn extract_method_receiver_fingerprint(node: &ra_ap_syntax::SyntaxNode) -> Optio
 
     let method_call = ast::MethodCallExpr::cast(node.clone())?;
     let receiver = method_call.receiver()?;
-    Some(receiver.syntax().text().to_string().trim().to_string())
+    let text = receiver.syntax().text().to_string();
+    // Normalize whitespace: collapse consecutive whitespace (including newlines) into single spaces
+    let normalized = text
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    Some(normalized)
 }
 
 fn line_and_column_for_node(node: &ra_ap_syntax::SyntaxNode, text: &str) -> (usize, Option<usize>) {
@@ -11106,6 +11112,12 @@ fn extract_container_name(node: &ra_ap_syntax::SyntaxNode) -> Option<String> {
                     }
                 });
             }
+            // Check for closures by examining the syntax directly
+            let parent_kind = parent.kind();
+            if parent_kind == ra_ap_syntax::SyntaxKind::CLOSURE_EXPR {
+                let offset: u32 = parent.text_range().start().into();
+                return Some(format!("closure_{}", offset));
+            }
             None
         })();
         if result.is_some() {
@@ -11119,12 +11131,22 @@ fn extract_container_name(node: &ra_ap_syntax::SyntaxNode) -> Option<String> {
 fn has_cfg_test_ancestor(node: &ra_ap_syntax::SyntaxNode) -> bool {
     use ra_ap_syntax::ast::{self, AstNode, HasAttrs};
 
+    let is_test_attr = |attr_text: &str| {
+        attr_text.contains("#[test]")
+            || attr_text.contains("cfg(test)")
+            || attr_text.contains("#[tokio::test]")
+            || attr_text.contains("#[actix_web::test]")
+            || attr_text.contains("#[test_case")
+            || attr_text.contains("#[quickcheck")
+            || attr_text.contains("#[proptest")
+    };
+
     let mut current = Some(node.clone());
     while let Some(parent) = current {
         if let Some(func) = ast::Fn::cast(parent.clone()) {
             for attr in func.attrs() {
                 let attr_text = attr.syntax().text().to_string();
-                if attr_text.contains("#[test]") || attr_text.contains("cfg(test)") {
+                if is_test_attr(&attr_text) {
                     return true;
                 }
             }
@@ -11334,6 +11356,10 @@ fn semantic_selector_matches(
     }
 
     if selector.kind == "string_literal" {
+        // String literal selectors must match string_literal findings
+        if finding.kind != "string_literal" {
+            return false;
+        }
         return selector
             .text_contains
             .as_ref()
@@ -11624,7 +11650,8 @@ mod tests {
     };
     use super::{
         PanicAllowEntry, PanicFamilySelectorKind, SemanticPanicFinding, active_yaml_lines,
-        check_droid_action_refs, check_droid_common, forbids_active_line, has_active_line,
+        check_droid_action_refs, check_droid_common, collect_semantic_panic_findings,
+        forbids_active_line, forbidden_panic_patterns, has_active_line,
         matches_semantic_finding, semantic_selector_matches, strip_yaml_comment,
     };
     use std::collections::{BTreeMap, BTreeSet};
@@ -12006,6 +12033,69 @@ explanation = "Duplicate entry"
         };
 
         assert!(!matches_semantic_finding(&entry, &different_path));
+    }
+
+    #[test]
+    fn collect_semantic_panic_findings_integration() {
+        let root = temp_dir("semantic_findings");
+
+        let code = r#"
+#[test]
+fn test_with_unwrap() {
+    let x = Some(5);
+    x.unwrap();
+}
+
+fn helper_with_panic() {
+    panic!("this should not be detected as test_only");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn another_test() {
+        let result = Err::<i32, String>("error".to_string());
+        result.expect("should not fail");
+    }
+}
+"#;
+
+        let lib_path = root.join("lib.rs");
+        write(&lib_path, code);
+
+        let patterns = forbidden_panic_patterns();
+        let findings = collect_semantic_panic_findings(&root, &patterns)
+            .expect("failed to collect findings");
+
+        assert!(!findings.is_empty(), "should find panic-family calls");
+
+        let unwrap_findings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.family == "unwrap")
+            .collect();
+        assert!(!unwrap_findings.is_empty(), "should find unwrap calls");
+
+        let panic_findings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.family == "panic_macro")
+            .collect();
+        assert!(!panic_findings.is_empty(), "should find panic! calls");
+
+        let expect_findings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.family == "expect")
+            .collect();
+        assert!(!expect_findings.is_empty(), "should find expect calls");
+
+        for finding in &findings {
+            assert!(!finding.path.is_empty(), "finding should have non-empty path");
+            assert!(finding.kind == "method_call" || finding.kind == "macro_call",
+                "kind should be method_call or macro_call");
+        }
+
+        let _ = fs::remove_dir_all(&root);
     }
 
     // ============================================================================
