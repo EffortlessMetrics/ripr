@@ -189,8 +189,11 @@ As of 2026-05-04, the main branch coverage baseline is stable at **75.5%**
 Codecov now tracks product and automation coverage separately to prevent
 automation code from obscuring product quality:
 
-- **Product crate** (crates/ripr/src/): target 94% (project), 94% (patch)
-- **Automation** (xtask/src/): target 65% (project), 75% (patch), 10% patch threshold (initial ratchet tolerance for the large, unevenly-tested xtask main.rs)
+- **Product crate** (crates/ripr/src/): target 94% (project), 94% (patch), threshold 1%/3%
+- **Automation** (xtask/src/): target 59% (project), 75% (patch), threshold 1%/10%
+  The automation project target aligns with the current 59% baseline, allowing ratchet
+  growth as xtask debt is paid down. The patch threshold of 10% provides initial ratchet
+  tolerance for the large, unevenly-tested xtask main.rs.
 
 The component split uses Codecov's path-based named statuses. Future coverage
 ratchets should follow the [calibration strategy](IMPLEMENTATION_CAMPAIGNS.md).
