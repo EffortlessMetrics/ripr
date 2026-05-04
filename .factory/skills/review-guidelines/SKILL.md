@@ -196,17 +196,8 @@ Check:
 * whether shell `run:` blocks exceed the approved non-empty line budget;
 * whether CI docs need updates.
 
-For Droid workflows specifically:
-
-* automatic PR review should run on same-repo PRs and every commit when configured that way;
-* active Droid reviews should not be canceled merely because a newer commit arrived;
-* the per-PR queue should keep the latest pending run without serializing unrelated PRs;
-* MiniMax BYOK model should remain `custom:MiniMax-M2.7-0` unless intentionally changed;
-* runtime BYOK settings should be written to `~/.factory/settings.local.json`;
-* do not rely on the Droid Action `settings:` input for BYOK custom models unless the Factory path mismatch is known fixed;
-* keep `${MINIMAX_API_KEY}` literal in generated settings files; do not expand it into artifacts;
-* do not set `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_BASE_URL`;
-* do not enable `show_full_output` in normal operation.
+For Droid workflow-specific invariants, review `docs/agent-context/review-invariants.md`
+before commenting on `.github/workflows/droid*.yml` changes.
 
 ### VS Code extension
 
