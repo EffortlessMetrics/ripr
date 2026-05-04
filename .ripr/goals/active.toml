@@ -88,7 +88,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/repo-seam-inventory-v1"
-status = "ready"
+status = "done"
 branch = "analysis/repo-seam-inventory-v1"
 stackable = false
 requires_human_merge = true
@@ -104,12 +104,10 @@ commands = [
 
 [[work_item]]
 id = "analysis/test-grip-evidence-v1"
-status = "blocked"
+status = "ready"
 branch = "analysis/test-grip-evidence-v1"
 stackable = false
 requires_human_merge = true
-blocked_by = ["analysis/repo-seam-inventory-v1"]
-blocked_reason = "test-grip evidence attaches to inventoried seams"
 acceptance = "for each inventoried seam, attach reach/activate/propagate/observe/discriminate evidence built from existing test/oracle facts (no MIR, no full trait resolution, no cargo-mutants); evidence records cite related tests, oracle strength, observed values, and missing-discriminator hypothesis; deterministic"
 commands = [
   "cargo xtask shape",

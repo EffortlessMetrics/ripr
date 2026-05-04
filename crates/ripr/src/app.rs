@@ -1,4 +1,4 @@
-use crate::analysis::{AnalysisMode, AnalysisOptions, run_analysis, run_repo_analysis};
+use crate::analysis::{self, AnalysisMode, AnalysisOptions, run_analysis, run_repo_analysis};
 use crate::domain::{Finding, Summary};
 use crate::output;
 use crate::output::badge::BadgeScope;
@@ -112,6 +112,15 @@ pub enum OutputFormat {
     RepoBadgePlusJson,
     /// Repo-scoped Shields projection for the `ripr+` badge.
     RepoBadgePlusShields,
+    /// Voice B repo seam inventory rendered as JSON. Walks production
+    /// Rust files and emits `RepoSeam` records per RIPR-SPEC-0005. Schema
+    /// version is documented in `docs/OUTPUT_SCHEMA.md` under
+    /// `repo-seams.json`. Independent of the diff-scoped `Findings`
+    /// pipeline.
+    RepoSeamsJson,
+    /// Voice B repo seam inventory rendered as Markdown for human
+    /// review.
+    RepoSeamsMd,
 }
 
 impl OutputFormat {
@@ -127,6 +136,20 @@ impl OutputFormat {
                 | OutputFormat::RepoBadgeShields
                 | OutputFormat::RepoBadgePlusJson
                 | OutputFormat::RepoBadgePlusShields
+                | OutputFormat::RepoSeamsJson
+                | OutputFormat::RepoSeamsMd
+        )
+    }
+
+    /// Whether this format renders the Voice B seam inventory rather
+    /// than the diff/badge `Findings` pipeline. Repo-scope seam formats
+    /// short-circuit the analysis path: `check_workspace_repo` runs no
+    /// findings work and `render_check` invokes the inventory walker
+    /// using `output.root`.
+    pub fn is_repo_seam_inventory(&self) -> bool {
+        matches!(
+            self,
+            OutputFormat::RepoSeamsJson | OutputFormat::RepoSeamsMd
         )
     }
 }
@@ -198,6 +221,24 @@ pub fn check_workspace_repo(input: CheckInput) -> Result<CheckOutput, String> {
     })
 }
 
+/// Build a minimal [`CheckOutput`] for repo seam inventory rendering.
+///
+/// The seam inventory walker reads only `output.root`, so this avoids
+/// running `run_repo_analysis` (which would compute Voice A `Findings`
+/// the seam formats discard). The rest of the fields are populated for
+/// schema-consistency only.
+pub fn repo_seam_inventory_input(input: CheckInput) -> CheckOutput {
+    CheckOutput {
+        schema_version: "0.1".to_string(),
+        tool: "ripr".to_string(),
+        mode: input.mode,
+        root: input.root,
+        base: input.base,
+        summary: Summary::default(),
+        findings: Vec::new(),
+    }
+}
+
 /// Path (relative to the analyzed workspace root) where the
 /// test-efficiency report is expected when rendering `ripr+` badge formats.
 pub(crate) const TEST_EFFICIENCY_REPORT_RELATIVE: &str = "target/ripr/reports/test-efficiency.json";
@@ -240,6 +281,14 @@ pub fn render_check(output: &CheckOutput, format: &OutputFormat) -> Result<Strin
                 summary.scope = BadgeScope::Repo;
             }
             Ok(output::badge::render_shields_json(&summary))
+        }
+        OutputFormat::RepoSeamsJson => {
+            let seams = analysis::inventory_seams_at(&output.root)?;
+            Ok(output::repo_seams::render_repo_seams_json(&seams))
+        }
+        OutputFormat::RepoSeamsMd => {
+            let seams = analysis::inventory_seams_at(&output.root)?;
+            Ok(output::repo_seams::render_repo_seams_md(&seams))
         }
     }
 }

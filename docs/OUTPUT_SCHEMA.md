@@ -316,6 +316,76 @@ contract language.
 The context packet is intentionally smaller than check output. It is optimized
 for coding agents and editor commands.
 
+## Repo Seam Inventory
+
+`ripr check --root . --format repo-seams-json` emits the Voice B repo seam
+inventory introduced by RIPR-SPEC-0005. The artifact lands at
+`target/ripr/reports/repo-seams.json` when generated via
+`cargo xtask repo-seam-inventory`.
+
+```json
+{
+  "schema_version": "0.1",
+  "scope": "repo",
+  "seams": [
+    {
+      "seam_id": "f3c9e4d21a0b7c88",
+      "kind": "predicate_boundary",
+      "file": "src/pricing.rs",
+      "line": 88,
+      "owner": "src/pricing.rs::discounted_total",
+      "expression": "amount >= discount_threshold",
+      "required_discriminator": {
+        "kind": "boundary_value",
+        "description": "amount >= discount_threshold"
+      },
+      "expected_sink": {
+        "kind": "return_value"
+      }
+    }
+  ]
+}
+```
+
+Field contract:
+
+- `schema_version` — currently `"0.1"`. Bumping requires updating this section,
+  the renderer (`crates/ripr/src/output/repo_seams.rs`), and any downstream
+  consumers in lockstep.
+- `scope` — always `"repo"` for this artifact. Distinguishes Voice B repo
+  inventory from Voice A diff-scoped findings.
+- `seam_id` — 16-char lowercase hex. FNV-1a 64-bit hash of
+  `file | owner | kind | byte_offset` (null-byte separators). Stable across
+  runs and file walk reorderings.
+- `kind` — one of `predicate_boundary`, `error_variant`, `return_value`,
+  `field_construction`, `side_effect`, `match_arm`, `call_presence`. The spec
+  also reserves `validation_branch` for a future detection PR.
+- `file` — repo-root-relative Unix-separator path (no leading `./`).
+- `line` — 1-based start line for human display only. Not part of the seam ID
+  hash; `byte_offset` is the canonical position field internally.
+- `owner` — fully-qualified module/symbol path of the enclosing function.
+  Backslashes from native paths are normalized to forward slashes before
+  hashing. Test functions (e.g., `#[test] fn` inside `#[cfg(test)] mod tests`)
+  are excluded.
+- `expression` — verbatim source-code text at the seam origin. Surfaced for
+  human review; not part of the seam ID hash.
+- `required_discriminator.kind` — `boundary_value`, `error_variant`,
+  `return_value`, `field_value`, `effect`, `match_arm_taken`, or `call_site`.
+- `required_discriminator.description` — human-readable summary of what a test
+  must observe to grip the seam.
+- `expected_sink.kind` — `return_value`, `output_field`, `error_channel`, or
+  `side_effect`. The spec's `unknown` sink will return when an undetermined
+  kind is detected.
+
+Voice B v1 inventories every probeable production syntax shape and does not
+yet classify test grip; `analysis/repo-ripr-classification-v1` adds
+`SeamGripClass` and the headline-eligibility table per RIPR-SPEC-0005. Static
+output continues to forbid runtime-mutation outcome words.
+
+The Markdown sibling (`repo-seams.md`, generated alongside the JSON) is
+human-readable but follows the same contract for `kind`, `owner`, and
+`expected_sink` strings.
+
 ## Stability Rules
 
 Output contract values are registered in `policy/output_contracts.txt`.

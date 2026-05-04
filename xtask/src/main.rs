@@ -391,6 +391,7 @@ fn main() {
         Some("test-efficiency-report") => test_efficiency_report(),
         Some("badge-artifacts") => badge_artifacts(),
         Some("repo-badge-artifacts") => repo_badge_artifacts(),
+        Some("repo-seam-inventory") => repo_seam_inventory(),
         Some("update-badge-endpoints") => update_badge_endpoints(),
         Some("check-badge-endpoints") => check_badge_endpoints(),
         Some("dogfood") => dogfood(),
@@ -5224,6 +5225,39 @@ fn badge_artifacts_summary_markdown(ripr_native_json: &str, ripr_plus_native_jso
     markdown
 }
 
+/// Run the Voice B repo seam inventory and write
+/// `target/ripr/reports/repo-seams.{json,md}` per RIPR-SPEC-0005.
+/// Shells out to the ripr CLI's `check --format repo-seams-*` paths
+/// (the inventory walker is crate-private, so xtask cannot call it
+/// directly).
+fn repo_seam_inventory() -> Result<(), String> {
+    let json_args = repo_seam_inventory_command_args("repo-seams-json");
+    let json_output = run_output_owned("cargo", &json_args)?;
+    write_report("repo-seams.json", &json_output)?;
+
+    let md_args = repo_seam_inventory_command_args("repo-seams-md");
+    let md_output = run_output_owned("cargo", &md_args)?;
+    write_report("repo-seams.md", &md_output)
+}
+
+fn repo_seam_inventory_command_args(format: &str) -> Vec<String> {
+    // Mirrors `repo_badge_artifact_command_args`: no `--diff` / `--base`
+    // because the seam inventory must not depend on
+    // `git diff origin/main...HEAD`.
+    vec![
+        "run".to_string(),
+        "-p".to_string(),
+        "ripr".to_string(),
+        "--quiet".to_string(),
+        "--".to_string(),
+        "check".to_string(),
+        "--root".to_string(),
+        ".".to_string(),
+        "--format".to_string(),
+        format.to_string(),
+    ]
+}
+
 fn repo_badge_artifacts() -> Result<(), String> {
     let badge_dir = Path::new("target").join("ripr");
     fs::create_dir_all(&badge_dir).map_err(|err| {
@@ -7386,6 +7420,7 @@ fn known_xtask_command(command: &str) -> bool {
             | "test-efficiency-report"
             | "badge-artifacts"
             | "repo-badge-artifacts"
+            | "repo-seam-inventory"
             | "update-badge-endpoints"
             | "check-badge-endpoints"
             | "dogfood"
