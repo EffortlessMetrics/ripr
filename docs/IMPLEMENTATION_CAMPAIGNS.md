@@ -327,7 +327,7 @@ items below are subsumed there with seam-aware shapes:
 
 Campaign ID: `repo-seam-inventory-test-grip`
 
-Status: active
+Status: complete
 
 Objective:
 
@@ -400,8 +400,9 @@ Work items:
 | `lsp/seam-evidence-hover-v1` | done | LSP hover for seam diagnostics: looks up `ClassifiedSeam` via `data.seam_id` and renders the Voice B evidence path (grip class, all five RIPR stages with summary, observed values, missing discriminator, related tests with oracle kind/strength, per-kind next step). Pre-4B Finding hover still works for diff-scoped diagnostics — backend prefers seam hover when `seam_id` is present, otherwise falls through to Finding hover. Code-action work deferred. |
 | `context/agent-seam-packets-v1` | done | `cargo xtask agent-seam-packets` writes `target/ripr/reports/agent-seam-packets.json`. Schema 0.2 in `crates/ripr/src/output/agent_seam_packets.rs`. Each headline-eligible classified seam emits one `write_targeted_test` packet with seam_id, owner, kind, expression, current_grip, RIPR evidence, observed values, missing input values, missing oracle shape, related tests, and assertion templates. Strongly-gripped/opaque/intentional/suppressed seams emit no packet. |
 | `docs/agent-dispatch-workflow-v1` | done | `docs/AGENT_DISPATCH_WORKFLOW.md` documents the practical loop: run ripr → inspect report/diagnostic → read seam evidence hover → copy seam packet → hand to agent → agent writes targeted test → rerun ripr → optional cargo-mutants confirmation. Includes per-kind examples (predicate boundary, error variant, return value, field construction, side effect, opaque, intentional, suppressed) and explicit pushback against "add more tests" / "coverage is fine" / "this is proven". Linked from `docs/DOCUMENTATION.md`. |
-| `cache/repo-seam-facts-v1` | ready | Optional fact-layer cache (file-facts, owner-index, seam-facts; never final outputs). Gated on real performance signal. Subsumes Campaign 5's `cache/persistent-cache-v1`. |
-| `calibration/cargo-mutants-v1` | ready | Optional scaffold for comparing static `SeamGripClass` against cargo-mutants outcomes. Advisory only; static output adopts no mutation-runtime language. Subsumes Campaign 5's `calibration/cargo-mutants-scaffold`. |
+| `cache/repo-seam-facts-v1` | rolled-forward | Carried forward into Campaign 5 (Adoption and Calibration). Optional fact-layer cache (file-facts, owner-index, seam-facts; never final outputs). Gated on real performance signal. |
+| `calibration/cargo-mutants-v1` | rolled-forward | Carried forward into Campaign 5. Optional scaffold for comparing static `SeamGripClass` against cargo-mutants outcomes. Advisory only; static output adopts no mutation-runtime language. |
+| `campaign/seam-inventory-test-grip-closeout` | done | Campaign 4B marked complete here and in `.ripr/goals/active.toml`. Voice B is real: `RepoSeam` model, repo seam inventory, `TestGripEvidence`, `SeamGripClass` classification, repo exposure report, agent seam packets, LSP seam diagnostics, seam evidence hover, and agent dispatch workflow docs. Static output remains evidence-first; runtime mutation testing remains a separate confirmation step (`calibration/cargo-mutants-v1` in Campaign 5). PR chain: #229, #235, #236, #237, #239, #240, #241, #242, #248. The active manifest now points at Campaign 5; `cache/repo-seam-facts-v1` and `calibration/cargo-mutants-v1` carry forward as ready items there. |
 
 Dependencies:
 
@@ -460,27 +461,36 @@ inline once authorized.
 
 ## Campaign 5: Adoption and Calibration
 
+Campaign ID: `adoption-and-calibration`
+
+Status: active
+
 Objective:
 
 ```text
 Make `ripr` practical in repositories, CI, and external operationalization
-loops.
+loops, with cached seam evidence fast enough for default-on use and
+runtime calibration grounding the static signal.
 ```
 
 End state:
 
+- seam fact layers cache cleanly so seam diagnostics can be default-on
+- runtime mutation calibration compares static `SeamGripClass` against
+  real outcomes without adopting mutation-runtime language in static
+  output
 - repository config exists
 - SARIF and CI policy modes exist
 
-Cache/calibration work that depends on stable seam IDs migrated to
-Campaign 4B (`cache/repo-seam-facts-v1`, `calibration/cargo-mutants-v1`).
-Campaign 5 retains the broader operationalization concerns that do
-not require the seam model.
+Cache/calibration items rolled forward from Campaign 4B because they
+depend on stable seam IDs (now stable after Campaign 4B closeout):
 
 Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
+| `cache/repo-seam-facts-v1` | ready | Optional fact-layer cache (file-facts, owner-index, seam-facts; never final outputs). Gated on real performance signal. Lifts the `seamDiagnostics` default once warm-path latency is acceptable. |
+| `calibration/cargo-mutants-v1` | ready | Optional scaffold for comparing static `SeamGripClass` against cargo-mutants outcomes. Advisory only; static output adopts no mutation-runtime language. |
 | `config/ripr-config-v1` | blocked | Depends on stable analyzer conventions. |
 | `ci/sarif-ci-policy` | blocked | Depends on output contract stability. |
 

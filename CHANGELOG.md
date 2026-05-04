@@ -11,6 +11,31 @@ are scoped or reviewed.
 
 ### Added
 
+- Closed Campaign 4B (Repo Seam Inventory and Test Grip) and made Voice B
+  real: `RepoSeam` / `SeamId` / `SeamKind` / `RequiredDiscriminator` /
+  `ExpectedSink` / `SeamGripClass` data model with deterministic 16-char
+  FNV-1a seam IDs (#229); production-file seam inventory walker writing
+  `target/ripr/reports/repo-seams.{json,md}` (#235); `TestGripEvidence`
+  + `RelatedTestGrip` attaching reach/activate/propagate/observe/
+  discriminate evidence per seam (#236); seam classification mapping
+  evidence to one of 11 spec classes with explicit headline-eligibility
+  table (#237); repo exposure report at
+  `target/ripr/reports/repo-exposure.{json,md}` with per-class metric
+  buckets (#239); agent seam packets at
+  `target/ripr/reports/agent-seam-packets.json` carrying
+  `write_targeted_test` work orders for headline-eligible seams and
+  `inspect_static_limitation` for opaque seams (#240); LSP seam
+  diagnostics with stable `ripr-seam-{class}` codes behind
+  `seamDiagnostics: true` opt-in (#241); seam-native LSP hover that
+  looks up `ClassifiedSeam` via `data.seam_id` and renders the RIPR
+  evidence path (#242); and `docs/AGENT_DISPATCH_WORKFLOW.md`
+  documenting the practical loop (#248). Static output keeps the
+  audit vocabulary; runtime mutation testing remains a separate
+  confirmation step.
+- Started Campaign 5 (Adoption and Calibration). `cache/repo-seam-facts-v1`
+  and `calibration/cargo-mutants-v1` carry forward from Campaign 4B as
+  ready items; `config/ripr-config-v1` and `ci/sarif-ci-policy` remain
+  blocked on the cache and config respectively.
 - Added internal local flow sink facts for changed expressions, including
   return values, error variants, struct fields, call effects, and match-arm
   results.
