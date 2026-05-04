@@ -1,12 +1,11 @@
 mod types;
 
 pub use types::{
-    CallFact, FileFacts, FunctionFact, FunctionSummary, LexicalRustSyntaxAdapter,
-    OracleFact, ProbeShapeFact, RaRustSyntaxAdapter, ReturnFact, RustIndex, RustSyntaxAdapter,
-    SyntaxNodeFact, TestFact, TestSummary, TextRange, LiteralFact,
-    PROBE_SHAPE_CALL_DELETION, PROBE_SHAPE_ERROR_PATH, PROBE_SHAPE_FIELD_CONSTRUCTION,
+    CallFact, FileFacts, FunctionFact, FunctionSummary, LexicalRustSyntaxAdapter, LiteralFact,
+    OracleFact, PROBE_SHAPE_CALL_DELETION, PROBE_SHAPE_ERROR_PATH, PROBE_SHAPE_FIELD_CONSTRUCTION,
     PROBE_SHAPE_MATCH_ARM, PROBE_SHAPE_PREDICATE, PROBE_SHAPE_RETURN_VALUE,
-    PROBE_SHAPE_SIDE_EFFECT,
+    PROBE_SHAPE_SIDE_EFFECT, ProbeShapeFact, RaRustSyntaxAdapter, ReturnFact, RustIndex,
+    RustSyntaxAdapter, SyntaxNodeFact, TestFact, TestSummary, TextRange,
 };
 
 use crate::domain::{OracleKind, OracleStrength, SymbolId};
@@ -16,7 +15,6 @@ use ra_ap_syntax::{
 };
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-
 
 impl RustSyntaxAdapter for LexicalRustSyntaxAdapter {
     fn summarize_file(&self, path: &Path, text: &str) -> Result<FileFacts, String> {
