@@ -5335,20 +5335,59 @@ const BADGE_ENDPOINT_FILES: &[(&str, &str)] = &[
 /// reflect the latest repo-scoped state.
 fn update_badge_endpoints() -> Result<(), String> {
     repo_badge_artifacts()?;
-    fs::create_dir_all("badges")
-        .map_err(|err| format!("failed to create badges directory: {err}"))?;
+    copy_badge_endpoints_from_reports(Path::new("target/ripr/reports"), Path::new("."))
+}
+
+/// Pure file-copy half of `update_badge_endpoints` — separated so the
+/// path arithmetic and per-file error wrapping can be unit-tested
+/// against tempdirs without invoking `cargo`.
+fn copy_badge_endpoints_from_reports(reports_dir: &Path, repo_root: &Path) -> Result<(), String> {
+    let badges_dir = repo_root.join("badges");
+    fs::create_dir_all(&badges_dir).map_err(|err| {
+        format!(
+            "failed to create badges directory {}: {err}",
+            normalize_path(&badges_dir)
+        )
+    })?;
     for (committed, source_name) in BADGE_ENDPOINT_FILES {
-        let source = Path::new("target/ripr/reports").join(source_name);
+        let source = reports_dir.join(source_name);
         let bytes = fs::read(&source).map_err(|err| {
             format!(
                 "failed to read {} (run `cargo xtask repo-badge-artifacts` first): {err}",
                 normalize_path(&source)
             )
         })?;
-        fs::write(committed, &bytes)
-            .map_err(|err| format!("failed to write {committed}: {err}"))?;
+        let dest = repo_root.join(committed);
+        fs::write(&dest, &bytes)
+            .map_err(|err| format!("failed to write {}: {err}", normalize_path(&dest)))?;
     }
     Ok(())
+}
+
+/// File-reading wrapper around `badge_endpoint_violation`. Walks
+/// `BADGE_ENDPOINT_FILES`, reads each source from `reports_dir` and
+/// each committed file from `repo_root`, and collects violations.
+/// Splitting this out from `check_badge_endpoints` lets tests exercise
+/// the file walk against tempdirs without invoking `cargo`.
+fn compute_badge_endpoint_violations(
+    reports_dir: &Path,
+    repo_root: &Path,
+) -> Result<Vec<String>, String> {
+    let mut violations = Vec::new();
+    for (committed, source_name) in BADGE_ENDPOINT_FILES {
+        let source = reports_dir.join(source_name);
+        let source_display = normalize_path(&source);
+        let want =
+            fs::read(&source).map_err(|err| format!("failed to read {source_display}: {err}"))?;
+        let committed_path = repo_root.join(committed);
+        let actual = fs::read(&committed_path).ok();
+        if let Some(violation) =
+            badge_endpoint_violation(committed, &source_display, &want, actual.as_deref())
+        {
+            violations.push(violation);
+        }
+    }
+    Ok(violations)
 }
 
 /// Pure comparison helper for `check_badge_endpoints` — separated so
@@ -5382,19 +5421,8 @@ fn badge_endpoint_violation(
 /// closeouts and after material analyzer changes.
 fn check_badge_endpoints() -> Result<(), String> {
     repo_badge_artifacts()?;
-    let mut violations = Vec::new();
-    for (committed, source_name) in BADGE_ENDPOINT_FILES {
-        let source = Path::new("target/ripr/reports").join(source_name);
-        let source_display = normalize_path(&source);
-        let want =
-            fs::read(&source).map_err(|err| format!("failed to read {source_display}: {err}"))?;
-        let actual = fs::read(committed).ok();
-        if let Some(violation) =
-            badge_endpoint_violation(committed, &source_display, &want, actual.as_deref())
-        {
-            violations.push(violation);
-        }
-    }
+    let violations =
+        compute_badge_endpoint_violations(Path::new("target/ripr/reports"), Path::new("."))?;
     finish_policy_report(
         PolicyReportSpec {
             report_file: "badge-endpoints.md",
@@ -14245,6 +14273,234 @@ reason = "second"
             violation.is_none(),
             "matching content must not produce a violation: {violation:?}"
         );
+    }
+
+    fn badge_endpoint_tempdir(label: &str) -> Result<std::path::PathBuf, String> {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let pid = std::process::id();
+        let dir = std::env::temp_dir().join(format!("ripr-badge-endpoint-{label}-{stamp}-{pid}"));
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create temp dir {label}: {err}"))?;
+        Ok(dir)
+    }
+
+    fn write_fixture_shields(dir: &std::path::Path, name: &str, body: &[u8]) -> Result<(), String> {
+        std::fs::write(dir.join(name), body).map_err(|err| format!("write {name}: {err}"))
+    }
+
+    #[test]
+    fn copy_badge_endpoints_from_reports_writes_both_files() -> Result<(), String> {
+        let reports = badge_endpoint_tempdir("copy-reports")?;
+        let repo_root = badge_endpoint_tempdir("copy-root")?;
+        write_fixture_shields(
+            &reports,
+            "repo-ripr-badge-shields.json",
+            b"{\"schemaVersion\":1,\"label\":\"ripr\",\"message\":\"7\",\"color\":\"yellow\"}",
+        )?;
+        write_fixture_shields(
+            &reports,
+            "repo-ripr-plus-badge-shields.json",
+            b"{\"schemaVersion\":1,\"label\":\"ripr+\",\"message\":\"7\",\"color\":\"yellow\"}",
+        )?;
+
+        super::copy_badge_endpoints_from_reports(&reports, &repo_root)?;
+
+        let ripr = std::fs::read(repo_root.join("badges/ripr.json"))
+            .map_err(|err| format!("read written ripr.json: {err}"))?;
+        let ripr_plus = std::fs::read(repo_root.join("badges/ripr-plus.json"))
+            .map_err(|err| format!("read written ripr-plus.json: {err}"))?;
+        assert_eq!(
+            ripr,
+            b"{\"schemaVersion\":1,\"label\":\"ripr\",\"message\":\"7\",\"color\":\"yellow\"}"
+        );
+        assert_eq!(
+            ripr_plus,
+            b"{\"schemaVersion\":1,\"label\":\"ripr+\",\"message\":\"7\",\"color\":\"yellow\"}"
+        );
+
+        let _ = std::fs::remove_dir_all(&reports);
+        let _ = std::fs::remove_dir_all(&repo_root);
+        Ok(())
+    }
+
+    #[test]
+    fn copy_badge_endpoints_from_reports_creates_badges_dir_when_missing() -> Result<(), String> {
+        let reports = badge_endpoint_tempdir("copy-mkdir-reports")?;
+        let repo_root = badge_endpoint_tempdir("copy-mkdir-root")?;
+        write_fixture_shields(
+            &reports,
+            "repo-ripr-badge-shields.json",
+            b"{\"schemaVersion\":1,\"label\":\"ripr\",\"message\":\"0\",\"color\":\"brightgreen\"}",
+        )?;
+        write_fixture_shields(
+            &reports,
+            "repo-ripr-plus-badge-shields.json",
+            b"{\"schemaVersion\":1,\"label\":\"ripr+\",\"message\":\"0\",\"color\":\"brightgreen\"}",
+        )?;
+        // badges/ subdir does not exist yet; copy_badge_endpoints_from_reports must create it.
+        assert!(!repo_root.join("badges").exists());
+
+        super::copy_badge_endpoints_from_reports(&reports, &repo_root)?;
+
+        assert!(repo_root.join("badges").is_dir());
+        assert!(repo_root.join("badges/ripr.json").exists());
+        assert!(repo_root.join("badges/ripr-plus.json").exists());
+
+        let _ = std::fs::remove_dir_all(&reports);
+        let _ = std::fs::remove_dir_all(&repo_root);
+        Ok(())
+    }
+
+    #[test]
+    fn copy_badge_endpoints_from_reports_errors_when_source_missing() -> Result<(), String> {
+        let reports = badge_endpoint_tempdir("copy-err-reports")?;
+        let repo_root = badge_endpoint_tempdir("copy-err-root")?;
+        // Write only the ripr source; ripr-plus is missing.
+        write_fixture_shields(
+            &reports,
+            "repo-ripr-badge-shields.json",
+            b"{\"schemaVersion\":1}",
+        )?;
+
+        let result = super::copy_badge_endpoints_from_reports(&reports, &repo_root);
+        let err = result.err().ok_or_else(|| {
+            "missing source must produce an error from copy_badge_endpoints_from_reports"
+                .to_string()
+        })?;
+        assert!(
+            err.contains("repo-ripr-plus-badge-shields.json"),
+            "error should name the missing source file: {err}"
+        );
+        assert!(
+            err.contains("cargo xtask repo-badge-artifacts"),
+            "error should suggest regenerating the source: {err}"
+        );
+
+        let _ = std::fs::remove_dir_all(&reports);
+        let _ = std::fs::remove_dir_all(&repo_root);
+        Ok(())
+    }
+
+    #[test]
+    fn compute_badge_endpoint_violations_returns_empty_when_in_sync() -> Result<(), String> {
+        let reports = badge_endpoint_tempdir("compute-sync-reports")?;
+        let repo_root = badge_endpoint_tempdir("compute-sync-root")?;
+        let ripr_body =
+            b"{\"schemaVersion\":1,\"label\":\"ripr\",\"message\":\"3\",\"color\":\"yellow\"}";
+        let plus_body =
+            b"{\"schemaVersion\":1,\"label\":\"ripr+\",\"message\":\"3\",\"color\":\"yellow\"}";
+        write_fixture_shields(&reports, "repo-ripr-badge-shields.json", ripr_body)?;
+        write_fixture_shields(&reports, "repo-ripr-plus-badge-shields.json", plus_body)?;
+        std::fs::create_dir_all(repo_root.join("badges"))
+            .map_err(|err| format!("mkdir badges: {err}"))?;
+        std::fs::write(repo_root.join("badges/ripr.json"), ripr_body)
+            .map_err(|err| format!("write committed ripr.json: {err}"))?;
+        std::fs::write(repo_root.join("badges/ripr-plus.json"), plus_body)
+            .map_err(|err| format!("write committed ripr-plus.json: {err}"))?;
+
+        let violations = super::compute_badge_endpoint_violations(&reports, &repo_root)?;
+        assert!(
+            violations.is_empty(),
+            "in-sync committed files must produce no violations: {violations:?}"
+        );
+
+        let _ = std::fs::remove_dir_all(&reports);
+        let _ = std::fs::remove_dir_all(&repo_root);
+        Ok(())
+    }
+
+    #[test]
+    fn compute_badge_endpoint_violations_flags_missing_committed_file() -> Result<(), String> {
+        let reports = badge_endpoint_tempdir("compute-missing-reports")?;
+        let repo_root = badge_endpoint_tempdir("compute-missing-root")?;
+        write_fixture_shields(
+            &reports,
+            "repo-ripr-badge-shields.json",
+            b"{\"schemaVersion\":1,\"label\":\"ripr\",\"message\":\"0\",\"color\":\"brightgreen\"}",
+        )?;
+        write_fixture_shields(
+            &reports,
+            "repo-ripr-plus-badge-shields.json",
+            b"{\"schemaVersion\":1,\"label\":\"ripr+\",\"message\":\"0\",\"color\":\"brightgreen\"}",
+        )?;
+        // No committed badges/*.json files exist on the temp repo root.
+
+        let violations = super::compute_badge_endpoint_violations(&reports, &repo_root)?;
+        assert_eq!(
+            violations.len(),
+            2,
+            "both committed files missing must flag both: {violations:?}"
+        );
+        for violation in &violations {
+            assert!(
+                violation.contains("missing badge endpoint file"),
+                "violation should be the missing-file shape: {violation}"
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&reports);
+        let _ = std::fs::remove_dir_all(&repo_root);
+        Ok(())
+    }
+
+    #[test]
+    fn compute_badge_endpoint_violations_flags_stale_committed_file() -> Result<(), String> {
+        let reports = badge_endpoint_tempdir("compute-stale-reports")?;
+        let repo_root = badge_endpoint_tempdir("compute-stale-root")?;
+        let want =
+            b"{\"schemaVersion\":1,\"label\":\"ripr\",\"message\":\"5\",\"color\":\"orange\"}";
+        let stale =
+            b"{\"schemaVersion\":1,\"label\":\"ripr\",\"message\":\"99\",\"color\":\"orange\"}";
+        write_fixture_shields(&reports, "repo-ripr-badge-shields.json", want)?;
+        write_fixture_shields(
+            &reports,
+            "repo-ripr-plus-badge-shields.json",
+            b"{\"schemaVersion\":1,\"label\":\"ripr+\",\"message\":\"5\",\"color\":\"orange\"}",
+        )?;
+        std::fs::create_dir_all(repo_root.join("badges"))
+            .map_err(|err| format!("mkdir badges: {err}"))?;
+        // ripr.json is stale; ripr-plus.json is in sync.
+        std::fs::write(repo_root.join("badges/ripr.json"), stale)
+            .map_err(|err| format!("write stale ripr.json: {err}"))?;
+        std::fs::write(
+            repo_root.join("badges/ripr-plus.json"),
+            b"{\"schemaVersion\":1,\"label\":\"ripr+\",\"message\":\"5\",\"color\":\"orange\"}",
+        )
+        .map_err(|err| format!("write fresh ripr-plus.json: {err}"))?;
+
+        let violations = super::compute_badge_endpoint_violations(&reports, &repo_root)?;
+        assert_eq!(violations.len(), 1, "exactly one stale: {violations:?}");
+        assert!(
+            violations[0].contains("badges/ripr.json is stale"),
+            "violation should name the stale file: {}",
+            violations[0]
+        );
+
+        let _ = std::fs::remove_dir_all(&reports);
+        let _ = std::fs::remove_dir_all(&repo_root);
+        Ok(())
+    }
+
+    #[test]
+    fn compute_badge_endpoint_violations_errors_when_source_missing() -> Result<(), String> {
+        let reports = badge_endpoint_tempdir("compute-noreport-reports")?;
+        let repo_root = badge_endpoint_tempdir("compute-noreport-root")?;
+        // No source files at all.
+
+        let result = super::compute_badge_endpoint_violations(&reports, &repo_root);
+        let err = result.err().ok_or_else(|| {
+            "missing reports directory contents should produce a hard error".to_string()
+        })?;
+        assert!(
+            err.contains("failed to read"),
+            "error should describe the read failure: {err}"
+        );
+
+        let _ = std::fs::remove_dir_all(&reports);
+        let _ = std::fs::remove_dir_all(&repo_root);
+        Ok(())
     }
 
     #[test]
