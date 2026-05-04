@@ -2,7 +2,7 @@ name: Droid Auto Review
 
 on:
   pull_request:
-    types: [opened, ready_for_review, reopened]
+    types: [opened, synchronize, ready_for_review, reopened]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -13,21 +13,53 @@ jobs:
     if: |
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository
+
     runs-on: ubuntu-latest
+
     permissions:
       contents: write
       pull-requests: write
       issues: write
       id-token: write
       actions: read
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
           fetch-depth: 1
-      - name: Run Droid Auto Review
+
+      - name: Run Droid Auto Review with MiniMax M2.7 BYOK
         uses: Factory-AI/droid-action@v5
+        env:
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+
           automatic_review: true
           automatic_security_review: true
+
+          review_depth: shallow
+          review_model: "custom:MiniMax-M2.7-0"
+          security_model: "custom:MiniMax-M2.7-0"
+
+          security_severity_threshold: high
+          security_block_on_critical: true
+          security_block_on_high: false
+
+          include_suggestions: true
+
+          settings: |
+            {
+              "customModels": [
+                {
+                  "displayName": "MiniMax-M2.7",
+                  "model": "MiniMax-M2.7",
+                  "baseUrl": "https://api.minimax.io/anthropic",
+                  "apiKey": "${MINIMAX_API_KEY}",
+                  "provider": "anthropic",
+                  "maxOutputTokens": 64000,
+                  "noImageSupport": true
+                }
+              ]
+            }

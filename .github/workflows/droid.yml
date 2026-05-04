@@ -15,24 +15,70 @@ on:
 jobs:
   droid:
     if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@droid')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@droid')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@droid')) ||
-      (github.event_name == 'issues' && (contains(github.event.issue.body, '@droid') || contains(github.event.issue.title, '@droid'))) ||
-      (github.event_name == 'pull_request' && (contains(github.event.pull_request.body, '@droid') || contains(github.event.pull_request.title, '@droid')))
+      (
+        github.event_name == 'issue_comment' &&
+        contains(github.event.comment.body, '@droid') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+      ) ||
+      (
+        github.event_name == 'pull_request_review_comment' &&
+        contains(github.event.comment.body, '@droid') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+      ) ||
+      (
+        github.event_name == 'pull_request_review' &&
+        contains(github.event.review.body, '@droid') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.review.author_association)
+      ) ||
+      (
+        github.event_name == 'issues' &&
+        (contains(github.event.issue.body, '@droid') || contains(github.event.issue.title, '@droid')) &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)
+      ) ||
+      (
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        (contains(github.event.pull_request.body, '@droid') || contains(github.event.pull_request.title, '@droid')) &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.pull_request.author_association)
+      )
+
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
       pull-requests: write
       issues: write
       id-token: write
       actions: read
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
           fetch-depth: 1
-      - name: Run Droid Exec
+
+      - name: Run Droid Exec with MiniMax M2.7 BYOK
         uses: Factory-AI/droid-action@v5
+        env:
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
+
+          review_depth: shallow
+          review_model: "custom:MiniMax-M2.7-0"
+          security_model: "custom:MiniMax-M2.7-0"
+
+          settings: |
+            {
+              "customModels": [
+                {
+                  "displayName": "MiniMax-M2.7",
+                  "model": "MiniMax-M2.7",
+                  "baseUrl": "https://api.minimax.io/anthropic",
+                  "apiKey": "${MINIMAX_API_KEY}",
+                  "provider": "anthropic",
+                  "maxOutputTokens": 64000,
+                  "noImageSupport": true
+                }
+              ]
+            }
