@@ -439,3 +439,35 @@ column = 18
 family = "panic_macro"
 classification = "test_only"
 explanation = "Test assertion: validates unreachable status value detection"
+
+[[allow]]
+path = "crates/ripr/src/analysis/workspace/discover.rs"
+line = 42
+column = 34
+family = "unwrap"
+classification = "test_only"
+explanation = "Test fixture cleanup: removes temporary directory"
+
+[[allow]]
+path = "crates/ripr/src/analysis/workspace/discover.rs"
+line = 43
+column = 41
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function: creates src directory for test"
+
+[[allow]]
+path = "crates/ripr/src/analysis/workspace/discover.rs"
+line = 44
+column = 47
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function: writes test file to temporary directory"
+
+[[allow]]
+path = "crates/ripr/src/analysis/workspace/discover.rs"
+line = 48
+column = 28
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: verifies file discovery works"
