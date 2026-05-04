@@ -2344,7 +2344,7 @@ fn propose_selector_for_finding(
     finding: &SemanticPanicFinding,
 ) -> PanicFamilySelectorKind {
     PanicFamilySelectorKind {
-        kind: "method_call".to_string(),
+        kind: finding.kind.clone(),
         container: finding.container.clone(),
         callee: finding.callee.clone(),
         receiver_fingerprint: finding.receiver_fingerprint.clone(),
@@ -10749,6 +10749,7 @@ struct PanicAllowEntryV2 {
 struct SemanticPanicFinding {
     path: String,
     family: String,
+    kind: String, // "method_call", "macro_call", "string_literal"
     line: usize,
     column: Option<usize>,
     container: Option<String>,
@@ -10840,7 +10841,7 @@ fn extract_panic_calls_from_node(
                 .and_then(|method_name| {
                     let name = method_name.text().to_string();
                     if pattern_matches_panic_call(patterns, &name) {
-                        extract_call_metadata(call_expr.syntax(), text, path, &name)
+                        extract_call_metadata(call_expr.syntax(), text, path, &name, "method_call")
                     } else {
                         None
                     }
@@ -10851,7 +10852,7 @@ fn extract_panic_calls_from_node(
                 .and_then(|path_expr| {
                     let func_text = path_expr.syntax().text().to_string();
                     if pattern_matches_panic_call(patterns, &func_text) {
-                        extract_call_metadata(call_expr.syntax(), text, path, &func_text)
+                        extract_call_metadata(call_expr.syntax(), text, path, &func_text, "call")
                     } else {
                         None
                     }
@@ -10864,7 +10865,7 @@ fn extract_panic_calls_from_node(
                     let name = path_seg.name_ref().map(|n| n.text().to_string()).unwrap_or_default();
                     let macro_name = format!("{}!", name);
                     if pattern_matches_panic_call(patterns, &macro_name) {
-                        extract_call_metadata(macro_call.syntax(), text, path, &macro_name)
+                        extract_call_metadata(macro_call.syntax(), text, path, &macro_name, "macro_call")
                     } else {
                         None
                     }
@@ -10895,23 +10896,40 @@ fn extract_call_metadata(
     text: &str,
     path: &str,
     family_name: &str,
+    kind: &str,
 ) -> Option<SemanticPanicFinding> {
     let (line, column) = line_and_column_for_node(node, text);
     let family = panic_family_from_call_name(family_name).to_string();
     let snippet = node.text().to_string();
     let snippet_fingerprint = snippet.replace('\n', " ").trim().to_string();
 
+    let receiver_fingerprint = if kind == "method_call" {
+        extract_method_receiver_fingerprint(node)
+    } else {
+        None
+    };
+
     Some(SemanticPanicFinding {
         path: path.to_string(),
         family,
+        kind: kind.to_string(),
         line,
         column,
         container: extract_container_name(node),
         callee: Some(family_name.to_string()),
-        receiver_fingerprint: None,
+        receiver_fingerprint,
         snippet_fingerprint,
         cfg_test: has_cfg_test_ancestor(node),
     })
+}
+
+fn extract_method_receiver_fingerprint(node: &ra_ap_syntax::SyntaxNode) -> Option<String> {
+    use ra_ap_syntax::ast::{self, AstNode};
+
+    let parent = node.parent()?;
+    let method_call = ast::MethodCallExpr::cast(parent)?;
+    let receiver = method_call.receiver()?;
+    Some(receiver.syntax().text().to_string().trim().to_string())
 }
 
 fn line_and_column_for_node(node: &ra_ap_syntax::SyntaxNode, text: &str) -> (usize, Option<usize>) {
@@ -11727,6 +11745,7 @@ explanation = "Duplicate entry"
         let finding = SemanticPanicFinding {
             path: "src/lib.rs".to_string(),
             family: "unwrap".to_string(),
+            kind: "method_call".to_string(),
             line: 10,
             column: Some(5),
             container: Some("test_function".to_string()),
@@ -11752,6 +11771,7 @@ explanation = "Duplicate entry"
         let finding = SemanticPanicFinding {
             path: "src/lib.rs".to_string(),
             family: "unwrap".to_string(),
+            kind: "method_call".to_string(),
             line: 10,
             column: Some(5),
             container: Some("test_function".to_string()),
@@ -11777,6 +11797,7 @@ explanation = "Duplicate entry"
         let finding = SemanticPanicFinding {
             path: "src/lib.rs".to_string(),
             family: "unwrap".to_string(),
+            kind: "method_call".to_string(),
             line: 10,
             column: Some(5),
             container: Some("test_function".to_string()),
@@ -11811,6 +11832,7 @@ explanation = "Duplicate entry"
         let matching_finding = SemanticPanicFinding {
             path: "src/lib.rs".to_string(),
             family: "unwrap".to_string(),
+            kind: "method_call".to_string(),
             line: 15,
             column: Some(8),
             container: Some("func".to_string()),
@@ -11837,6 +11859,7 @@ explanation = "Duplicate entry"
         let different_path = SemanticPanicFinding {
             path: "src/other.rs".to_string(),
             family: "unwrap".to_string(),
+            kind: "method_call".to_string(),
             line: 15,
             column: Some(8),
             container: Some("func".to_string()),
