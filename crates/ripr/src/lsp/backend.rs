@@ -6,7 +6,8 @@ use super::diagnostics::{
     take_all_uris, workspace_diagnostics_with_config,
 };
 use super::hover::{
-    diagnostic_at_position, diagnostic_hover_response, finding_hover_response, hover_response,
+    classified_seam_hover_response, diagnostic_at_position, diagnostic_hover_response,
+    finding_hover_response, hover_response,
 };
 use super::state::{AnalysisSnapshot, DocumentStore};
 use super::{COLLECT_CONTEXT_COMMAND, REFRESH_COMMAND};
@@ -229,9 +230,19 @@ impl Backend {
             && let Some(snapshot) = snapshot.as_ref()
             && let Some(diagnostics) = snapshot.diagnostics_for_uri(uri)
             && let Some(diagnostic) = diagnostic_at_position(diagnostics, position)
-            && let Some(finding) = snapshot.finding_for_diagnostic(diagnostic)
         {
-            return Some(finding_hover_response(finding, diagnostic));
+            // Voice B seam diagnostics carry `data.seam_id` and look
+            // up classified seams. Pre-4B Finding diagnostics carry
+            // `data.finding_id` and continue to use the finding hover
+            // path. Order matters: seam hover wins when both ids are
+            // somehow present, but in practice each diagnostic has
+            // exactly one.
+            if let Some(seam) = snapshot.classified_seam_for_diagnostic(diagnostic) {
+                return Some(classified_seam_hover_response(seam, diagnostic));
+            }
+            if let Some(finding) = snapshot.finding_for_diagnostic(diagnostic) {
+                return Some(finding_hover_response(finding, diagnostic));
+            }
         }
 
         let Ok(last_diagnostics) = self.last_diagnostics.lock() else {

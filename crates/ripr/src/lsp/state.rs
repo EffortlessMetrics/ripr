@@ -63,6 +63,26 @@ impl AnalysisSnapshot {
             .and_then(|value| value.as_str())?;
         self.finding_by_id(finding_id)
     }
+
+    /// Look up the classified seam matching a diagnostic's
+    /// `data.seam_id` field, if present. Mirrors
+    /// `finding_for_diagnostic` for the Voice B seam diagnostics
+    /// introduced by `lsp/repo-seam-diagnostics-v1`. Returns `None`
+    /// when the diagnostic carries a `finding_id` instead, or when
+    /// the snapshot was built without seam diagnostics enabled.
+    pub(super) fn classified_seam_for_diagnostic(
+        &self,
+        diagnostic: &Diagnostic,
+    ) -> Option<&ClassifiedSeam> {
+        let seam_id = diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("seam_id"))
+            .and_then(|value| value.as_str())?;
+        self.classified_seams
+            .iter()
+            .find(|entry| entry.seam.id().as_str() == seam_id)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
