@@ -2361,25 +2361,19 @@ fn generate_migration_markdown(
 ) -> String {
     let mut md = String::from("# No-Panic Allowlist Migration Report\n\n");
     md.push_str("This report proposes v0.2 schema entries with semantic selectors.\n\n");
-    md.push_str("## Proposed Entries\n\n");
+    md.push_str("## Proposed TOML (Schema v0.2)\n\n");
+    md.push_str("```toml\nschema_version = \"0.2\"\n");
 
     for (entry, selector) in entries {
-        md.push_str(&format!("### {}\n\n", entry.path));
-        md.push_str(&format!(
-            "**Family**: {} | **Classification**: {}\n\n",
-            entry.family,
-            entry.classification.as_deref().unwrap_or("unspecified")
-        ));
-        md.push_str("```toml\n");
-        md.push_str("[[allow]]\n");
+        md.push_str("\n[[allow]]\n");
         md.push_str(&format!("path = \"{}\"\n", entry.path));
         md.push_str(&format!("family = \"{}\"\n", entry.family));
         md.push_str(&format!(
             "classification = \"{}\"\n",
             entry.classification.as_deref().unwrap_or("test_only")
         ));
-        md.push_str(&format!("explanation = \"{}\"\n\n", entry.explanation));
-        md.push_str("[allow.selector]\n");
+        md.push_str(&format!("explanation = \"{}\"\n", entry.explanation));
+        md.push_str("\n[allow.selector]\n");
         md.push_str(&format!("kind = \"{}\"\n", selector.kind));
         if let Some(container) = &selector.container {
             md.push_str(&format!("container = \"{}\"\n", container));
@@ -2390,7 +2384,22 @@ fn generate_migration_markdown(
         if let Some(receiver_fp) = &selector.receiver_fingerprint {
             md.push_str(&format!("receiver_fingerprint = \"{}\"\n", receiver_fp));
         }
-        md.push_str("```\n\n");
+    }
+
+    md.push_str("```\n\n");
+    md.push_str("## Analysis Notes\n\n");
+    md.push_str(&format!(
+        "- **Total Entries Proposed**: {}\n",
+        entries.len()
+    ));
+    md.push_str("- **Kind Distribution**:\n");
+
+    let mut kind_counts = std::collections::BTreeMap::new();
+    for (_, selector) in entries {
+        *kind_counts.entry(selector.kind.clone()).or_insert(0) += 1;
+    }
+    for (kind, count) in kind_counts {
+        md.push_str(&format!("  - `{}`: {}\n", kind, count));
     }
 
     md

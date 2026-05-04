@@ -141,11 +141,11 @@ family = "unwrap"
 
 [allow.selector]
 kind = "method_call"
-container = "tests::panic_family_pattern_matching_validation"
+container = "tests::with_temp_cwd"
 callee = "unwrap"
 
 [allow.last_seen]
-line = 11083
+line = 11324
 ```
 
 When code is refactored:

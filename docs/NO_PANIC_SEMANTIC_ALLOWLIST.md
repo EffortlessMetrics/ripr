@@ -41,17 +41,17 @@ schema_version = "0.2"
 path = "xtask/src/main.rs"
 family = "unwrap"
 classification = "test_only"
-explanation = "Test function: panic family pattern matching validation"
+explanation = "Test helper function: unwrap in temporary directory management"
 
 [allow.selector]
 kind = "method_call"
-container = "tests::panic_family_pattern_matching_validation"
+container = "tests::with_temp_cwd"
 callee = "unwrap"
-receiver_fingerprint = "panic_family_for_pattern(\"unwrap()\")"
+receiver_fingerprint = "std::env::current_dir()"
 
 [allow.last_seen]
-line = 11083
-column = 47
+line = 11324
+column = 40
 ```
 
 ## Selector Types
@@ -69,6 +69,18 @@ Matches `.unwrap()` and `.expect()` method calls, optionally filtered by:
 - `container`: Enclosing function/test/mod
 - `callee`: Method name
 - `receiver_fingerprint`: Expression being called on
+
+### Free Function Call Selector
+```toml
+[allow.selector]
+kind = "call"
+container = "optional_function_name"
+callee = "some_function"
+```
+
+Matches free function calls (e.g., `some_function()`), optionally filtered by:
+- `container`: Enclosing function/test/mod
+- `callee`: Function name
 
 ### Macro Call Selector
 ```toml
