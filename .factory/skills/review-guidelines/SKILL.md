@@ -49,15 +49,13 @@ Static findings may use:
 * `propagation_unknown`
 * `static_unknown`
 
-Static findings must not claim:
+Static findings must not use mutation-runtime outcome language.
 
-* `killed`
-* `survived`
-* `untested`
-* `proven`
-* `adequate`
+Use only the allowed exposure vocabulary above. For the full static-output
+language boundary, follow `AGENTS.md` and the repository static-language policy.
 
-Real mutation testing confirms later. `ripr` gives draft-mode exposure evidence and targeted test intent.
+Real mutation testing confirms later. `ripr` gives draft-mode exposure evidence
+and targeted test intent.
 
 ## Review posture
 
