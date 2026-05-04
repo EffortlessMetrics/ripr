@@ -9,7 +9,7 @@
 
 # Phase 2 infrastructure: semantic selector matching
 # These structs and functions are tested in test modules but not yet
-# integrated into production code. Will be used when semantic matching
-# is integrated into check_no_panic_family command.
+# integrated into production code (no semantic matching in checker yet).
+# Will be used when semantic matching is integrated into check_no_panic_family.
 
-xtask/src/main.rs|allow(dead_code)|4|Tested semantic selector infrastructure for Phase 2 integration
+xtask/src/main.rs|allow(dead_code)|3|Phase 2 semantic selector infrastructure not yet integrated

@@ -10803,7 +10803,6 @@ struct PanicAllowEntry {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 struct PanicFamilySelectorKind {
     kind: String,
     container: Option<String>,
