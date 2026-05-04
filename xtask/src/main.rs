@@ -12131,7 +12131,10 @@ mod tests {
             text_contains: Some("error".to_string()),
         };
 
-        assert!(semantic_selector_matches(&selector_with_text, &string_literal_finding));
+        assert!(semantic_selector_matches(
+            &selector_with_text,
+            &string_literal_finding
+        ));
         assert!(!semantic_selector_matches(
             &selector_with_text,
             &method_call_finding
@@ -12146,8 +12149,14 @@ mod tests {
             text_contains: None,
         };
 
-        assert!(!semantic_selector_matches(&selector_no_text, &string_literal_finding));
-        assert!(!semantic_selector_matches(&selector_no_text, &method_call_finding));
+        assert!(!semantic_selector_matches(
+            &selector_no_text,
+            &string_literal_finding
+        ));
+        assert!(!semantic_selector_matches(
+            &selector_no_text,
+            &method_call_finding
+        ));
     }
 
     #[test]
