@@ -8,10 +8,35 @@ coverage:
       default:
         target: 75%
         threshold: 1%
+
+      product:
+        target: 94%
+        threshold: 1%
+        paths:
+          - crates/ripr/src/
+
+      automation:
+        target: 59%
+        threshold: 1%
+        paths:
+          - xtask/src/
+
     patch:
       default:
         target: 80%
         threshold: 5%
+
+      product:
+        target: 94%
+        threshold: 3%
+        paths:
+          - crates/ripr/src/
+
+      automation:
+        target: 75%
+        threshold: 10%
+        paths:
+          - xtask/src/
 
 comment:
   layout: "diff, flags, files"
