@@ -1,6 +1,357 @@
 schema_version = "0.1"
 
 [[allow]]
+path = "crates/ripr/tests/cli_smoke.rs"
+line = 6
+column = 43
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "crates/ripr/tests/cli_smoke.rs"
+line = 13
+column = 10
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 10813
+column = 26
+family = "panic_macro"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 10814
+column = 26
+family = "todo"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 10815
+column = 26
+family = "unimplemented"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 10816
+column = 26
+family = "unreachable"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 10946
+column = 60
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11021
+column = 10
+family = "panic_macro"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11022
+column = 10
+family = "todo"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11023
+column = 10
+family = "unimplemented"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11024
+column = 10
+family = "unreachable"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11586
+column = 14
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11589
+column = 34
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11595
+column = 40
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11597
+column = 31
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11601
+column = 67
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11602
+column = 43
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11604
+column = 42
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11616
+column = 40
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11642
+column = 84
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11644
+column = 34
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11668
+column = 84
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11687
+column = 84
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11706
+column = 84
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11729
+column = 84
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11754
+column = 84
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11786
+column = 84
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11794
+column = 47
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11795
+column = 47
+family = "expect"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11796
+column = 47
+family = "panic_macro"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11797
+column = 47
+family = "todo"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11798
+column = 47
+family = "unimplemented"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11799
+column = 47
+family = "unreachable"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11808
+column = 84
+family = "expect"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11808
+column = 53
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11811
+column = 57
+family = "expect"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11811
+column = 34
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11812
+column = 68
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11814
+column = 50
+family = "expect"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11814
+column = 28
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11835
+column = 37
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11861
+column = 37
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11887
+column = 37
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11922
+column = 37
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11949
+column = 37
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11978
+column = 58
+family = "expect"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 15623
+column = 50
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 15643
+column = 50
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 15676
+column = 23
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+[[allow]]
+path = "xtask/src/main.rs"
+line = 15681
+column = 36
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
 line = 171
 column = 14
@@ -113,409 +464,9 @@ classification = "false_positive"
 explanation = "Static pattern matching detects text in analyzed Rust source, not a runtime call"
 
 [[allow]]
-path = "crates/ripr/tests/cli_smoke.rs"
-line = 6
-column = 43
-family = "unwrap"
-classification = "test_only"
-explanation = "Test helper function for running CLI tests"
-
-[[allow]]
-path = "crates/ripr/tests/cli_smoke.rs"
-line = 13
-column = 10
-family = "unwrap"
-classification = "test_only"
-explanation = "Test helper function for running CLI tests"
-
-[[allow]]
 path = "xtask/src/main.rs"
-line = 10813
-column = 26
-family = "panic_macro"
-classification = "false_positive"
-explanation = "Pattern matching in function that converts panic patterns to family names, not an actual panic"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 10814
-column = 26
-family = "todo"
-classification = "false_positive"
-explanation = "Pattern matching in function that converts panic patterns to family names, not an actual todo"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 10815
-column = 26
-family = "unimplemented"
-classification = "false_positive"
-explanation = "Pattern matching in function that converts panic patterns to family names, not an actual unimplemented"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 10816
-column = 26
-family = "unreachable"
-classification = "false_positive"
-explanation = "Pattern matching in function that converts panic patterns to family names, not an actual unreachable"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 10946
-column = 60
-family = "unwrap"
-classification = "false_positive"
-explanation = "Comment text describing pattern matching behavior, not a runtime call"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11021
-column = 10
-family = "panic_macro"
-classification = "false_positive"
-explanation = "Exact match arm in panic_family_from_call_name, not an actual panic"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11022
-column = 10
-family = "todo"
-classification = "false_positive"
-explanation = "Exact match arm in panic_family_from_call_name, not an actual todo"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11023
-column = 10
-family = "unimplemented"
-classification = "false_positive"
-explanation = "Exact match arm in panic_family_from_call_name, not an actual unimplemented"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11024
-column = 10
-family = "unreachable"
-classification = "false_positive"
-explanation = "Exact match arm in panic_family_from_call_name, not an actual unreachable"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11587
-column = 14
-family = "unwrap"
-classification = "test_only"
-explanation = "Test harness: creates temporary directories for test isolation"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11590
-column = 34
-family = "unwrap"
-classification = "test_only"
-explanation = "Test harness: creates temporary directories for test isolation"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11596
-column = 40
-family = "unwrap"
-classification = "test_only"
-explanation = "Test harness: creates parent directories for temporary files"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11598
-column = 31
-family = "unwrap"
-classification = "test_only"
-explanation = "Test harness: writes test files to temporary directory"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11602
-column = 67
-family = "unwrap"
-classification = "test_only"
-explanation = "Test harness: acquires lock for current working directory management"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11603
-column = 43
-family = "unwrap"
-classification = "test_only"
-explanation = "Test harness: saves current working directory before test"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11605
-column = 42
-family = "unwrap"
-classification = "test_only"
-explanation = "Test harness: changes to temporary directory for test isolation"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11617
-column = 40
-family = "unwrap"
-classification = "test_only"
-explanation = "Test harness: restores original working directory after test"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11643
-column = 84
-family = "unwrap"
-classification = "test_only"
-explanation = "Test function: TOML parser validation"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11645
-column = 34
-family = "unwrap"
-classification = "test_only"
-explanation = "Test function: TOML parser validation"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11669
-column = 84
-family = "unwrap"
-classification = "test_only"
-explanation = "Test function: TOML parser validation"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11688
-column = 84
-family = "unwrap"
-classification = "test_only"
-explanation = "Test function: TOML parser validation"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11707
-column = 84
-family = "unwrap"
-classification = "test_only"
-explanation = "Test function: TOML parser validation"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11730
-column = 84
-family = "unwrap"
-classification = "test_only"
-explanation = "Test function: TOML parser validation"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11755
-column = 84
-family = "unwrap"
-classification = "test_only"
-explanation = "Test function: TOML parser validation"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11787
-column = 84
-family = "unwrap"
-classification = "test_only"
-explanation = "Test function: TOML parser validation"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11795
-column = 47
-family = "unwrap"
-classification = "test_only"
-explanation = "Test function: panic family pattern matching validation"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11796
-column = 47
-family = "expect"
-classification = "test_only"
-explanation = "Test function: panic family pattern matching validation"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11797
-column = 47
-family = "panic_macro"
-classification = "test_only"
-explanation = "Test function: panic family pattern matching validation"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11798
-column = 47
-family = "todo"
-classification = "test_only"
-explanation = "Test function: panic family pattern matching validation"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11799
-column = 47
-family = "unimplemented"
-classification = "test_only"
-explanation = "Test function: panic family pattern matching validation"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11800
-column = 47
-family = "unreachable"
-classification = "test_only"
-explanation = "Test function: panic family pattern matching validation"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11809
-column = 53
-family = "unwrap"
-classification = "test_only"
-explanation = "Test fixture: string literal in test harness code"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11809
-column = 84
-family = "expect"
-classification = "test_only"
-explanation = "Test fixture: string literal in test harness code"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11812
-column = 34
-family = "unwrap"
-classification = "test_only"
-explanation = "Test fixture: string literal in test harness code"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11812
-column = 57
-family = "expect"
-classification = "test_only"
-explanation = "Test fixture: string literal in test harness code"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11813
-column = 68
-family = "unwrap"
-classification = "test_only"
-explanation = "Test function: assertion on panic findings collection"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11815
-column = 28
-family = "unwrap"
-classification = "test_only"
-explanation = "Test assertion: panic findings validation"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11815
-column = 50
-family = "expect"
-classification = "test_only"
-explanation = "Test assertion: panic findings validation"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11836
-column = 37
-family = "unwrap"
-classification = "test_only"
-explanation = "Test function: semantic selector test fixture with string literal callee"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11862
-column = 37
-family = "unwrap"
-classification = "test_only"
-explanation = "Test function: semantic selector test fixture with string literal callee"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11888
-column = 37
-family = "unwrap"
-classification = "test_only"
-explanation = "Test function: semantic selector test fixture with string literal callee"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11923
-column = 37
-family = "unwrap"
-classification = "test_only"
-explanation = "Test function: semantic selector test fixture with string literal callee"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11950
-column = 37
-family = "unwrap"
-classification = "test_only"
-explanation = "Test function: semantic selector test fixture with string literal callee"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 11979
-column = 58
-family = "expect"
-classification = "test_only"
-explanation = "Test function: expects supported test intent kinds to parse successfully"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 15624
-column = 50
-family = "unwrap"
-classification = "test_only"
-explanation = "Test function: campaign manifest parsing validation"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 15644
-column = 50
-family = "unwrap"
-classification = "test_only"
-explanation = "Test function: campaign manifest parsing validation"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 15677
-column = 23
-family = "unwrap"
-classification = "test_only"
-explanation = "Test function: string parsing validation"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 15682
-column = 36
-family = "unwrap"
-classification = "test_only"
-explanation = "Test function: string parsing validation"
-
-[[allow]]
-path = "xtask/src/main.rs"
-line = 15832
+line = 15831
 column = 18
 family = "panic_macro"
 classification = "test_only"
-explanation = "Test assertion: validates unreachable status value detection"
+explanation = "Semantic selector test infrastructure"
