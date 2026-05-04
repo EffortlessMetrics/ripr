@@ -21,6 +21,7 @@ The no-panic allowlist has been refactored from line-number-based matching to AS
 ## Schema Changes
 
 ### v0.1 Format
+
 ```toml
 schema_version = "0.1"
 
@@ -34,6 +35,7 @@ explanation = "Test function: panic family pattern matching validation"
 ```
 
 ### v0.2 Format
+
 ```toml
 schema_version = "0.2"
 
@@ -57,6 +59,7 @@ column = 40
 ## Selector Types
 
 ### Method Call Selector
+
 ```toml
 [allow.selector]
 kind = "method_call"
@@ -71,6 +74,7 @@ Matches `.unwrap()` and `.expect()` method calls, optionally filtered by:
 - `receiver_fingerprint`: Expression being called on
 
 ### Free Function Call Selector
+
 ```toml
 [allow.selector]
 kind = "call"
@@ -83,6 +87,7 @@ Matches free function calls (e.g., `some_function()`), optionally filtered by:
 - `callee`: Function name
 
 ### Macro Call Selector
+
 ```toml
 [allow.selector]
 kind = "macro_call"
@@ -92,6 +97,7 @@ callee = "panic!"
 Matches `panic!()`, `todo!()`, `unimplemented!()`, `unreachable!()` macro invocations.
 
 ### String Literal Selector
+
 ```toml
 [allow.selector]
 kind = "string_literal"
@@ -103,6 +109,7 @@ Matches string literals containing panic-family text (e.g., analyzed Rust source
 ## Migration
 
 ### Step 1: Generate Migration Report
+
 ```bash
 cargo xtask no-panic-migration-report
 ```
@@ -113,15 +120,18 @@ Generates `.ripr/no-panic-allowlist-migration-proposal.md` with:
 - Preserved explanations and classifications
 
 ### Step 2: Review Proposals
+
 Review the migration report to ensure:
 - Selectors accurately capture the intended panic calls
 - Test context is correctly identified
 - False positives (string literals) are properly classified
 
 ### Step 3: Convert Allowlist (in separate PR)
+
 Replace `.ripr/no-panic-allowlist.toml` with v0.2 schema once migration report is approved.
 
 ### Step 4: Enable Semantic Matching
+
 Update the checker to:
 - Parse v0.2 selectors (falls back to v0.1 for backward compatibility during transition)
 - Match using semantic selectors instead of exact line/column
@@ -130,15 +140,18 @@ Update the checker to:
 ## Benefits
 
 ### Eliminates Churn
+
 ✓ Adding blank lines above a test function no longer breaks allowlist matching
 ✓ Line shifts in unrelated code don't require allowlist updates
 
 ### Better False Positive Handling
+
 ✓ String literals containing panic patterns classified separately
 ✓ Can distinguish `// panic!` comments from actual runtime calls
 ✓ Test-only validation ensures classification accuracy
 
 ### Improved Clarity
+
 ✓ Selector documents the "why" of each exception
 ✓ Container name makes intent explicit: `parse_json_with_unwrap`
 ✓ Semantic fingerprints are less fragile than line numbers
@@ -146,6 +159,7 @@ Update the checker to:
 ## Implementation Details
 
 ### AST Extraction
+
 The `collect_semantic_panic_findings()` function:
 1. Parses each Rust file with `ra_ap_syntax`
 2. Traverses AST to find panic-family occurrences
@@ -157,6 +171,7 @@ The `collect_semantic_panic_findings()` function:
    - Whether inside `#[cfg(test)]` or `#[test]`
 
 ### Selector Matching
+
 For each allowlist entry with a selector:
 1. Extract all semantic findings for that path + family
 2. Check if any finding matches the selector criteria
@@ -165,6 +180,7 @@ For each allowlist entry with a selector:
 5. If selector matches but line has drifted, warn (don't fail)
 
 ### Backward Compatibility
+
 During migration period (v0.1 → v0.2):
 - Both schemas supported simultaneously
 - v0.1 entries still work (exact line/column matching)

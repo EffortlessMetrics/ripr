@@ -122,6 +122,7 @@ All tests passing: 9 panic-related tests + 3 new semantic tests.
 ### Example: v0.1 vs v0.2 Matching
 
 **Original (v0.1):**
+
 ```toml
 [[allow]]
 path = "xtask/src/main.rs"
@@ -134,6 +135,7 @@ When code is refactored and line changes to 11102:
 - ❌ Fails: Line no longer matches exactly
 
 **Proposed (v0.2):**
+
 ```toml
 [[allow]]
 path = "xtask/src/main.rs"
@@ -155,11 +157,13 @@ When code is refactored:
 ### Usage Flow
 
 1. **Review current allowlist state:**
+
    ```bash
    cargo xtask check-no-panic-family
    ```
 
 2. **Generate migration proposals:**
+
    ```bash
    cargo xtask no-panic-migration-report
    ```
@@ -182,16 +186,19 @@ When code is refactored:
 ## Key Improvements
 
 ### Eliminates Line Number Churn
+
 - ✓ Adding blank lines before a test function doesn't invalidate entries
 - ✓ Moving test functions to different parts of the file: still works
 - ✓ Refactoring code structure: selectors remain valid
 
 ### Better False-Positive Handling
+
 - ✓ String literal selectors detect analyzed Rust source
 - ✓ Can distinguish actual panic calls from text in fixtures
 - ✓ Test context validation ensures `test_only` entries are legitimate
 
 ### Improved Clarity
+
 - ✓ Container names document intent: `json_parsing_with_fallback`
 - ✓ Selector type makes nature explicit: is it a call or a string?
 - ✓ Explanations pair with semantic selectors, not line numbers
@@ -199,17 +206,20 @@ When code is refactored:
 ## Migration Path
 
 ### Phase 1: Current (Parallel Support)
+
 - Generate migration proposals
 - Review and verify semantics
 - Maintain v0.1 during review period
 
 ### Phase 2: Next PR (Convert Schema)
+
 - Replace v0.1 with v0.2 schema
 - Add special selectors for false positives
 - Update matching logic to use semantic selectors
 - Keep v0.1 format backward compatible during transition
 
 ### Phase 3: Future (Cleanup)
+
 - Remove v0.1 compatibility
 - Refine selectors based on real usage
 - Add more sophisticated fingerprinting (macro expansion, etc.)
@@ -217,17 +227,20 @@ When code is refactored:
 ## Implementation Details
 
 ### Why Rust AST Parsing?
+
 - `ripr` already depends on `ra_ap_syntax`
 - Precise extraction without fragile heuristics
 - Supports macro detection and context analysis
 - Same library used for seam/probe analysis elsewhere
 
 ### Why Semantic > Syntactic?
+
 - Semantic: "unwrap in function X within test Y" (durable across refactoring)
 - Syntactic: "unwrap on line 42, column 47" (breaks on formatting changes)
 - Semantic fingerprints work even if code is reformatted
 
 ### Backward Compatibility
+
 - v0.1 parsing still supported during migration
 - v0.2 selectors coexist with v0.1 line-column entries temporarily
 - No breaking changes to `check_no_panic_family` until v0.2 fully adopted
