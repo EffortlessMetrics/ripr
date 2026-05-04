@@ -4,6 +4,7 @@ mod probes;
 mod rust_index;
 mod seam_inventory;
 pub(crate) mod seams;
+mod test_grip_evidence;
 mod workspace;
 
 pub(crate) use seam_inventory::inventory_seams_at;

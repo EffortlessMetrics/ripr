@@ -104,7 +104,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/test-grip-evidence-v1"
-status = "ready"
+status = "done"
 branch = "analysis/test-grip-evidence-v1"
 stackable = false
 requires_human_merge = true
@@ -119,12 +119,10 @@ commands = [
 
 [[work_item]]
 id = "analysis/repo-ripr-classification-v1"
-status = "blocked"
+status = "ready"
 branch = "analysis/repo-ripr-classification-v1"
 stackable = false
 requires_human_merge = true
-blocked_by = ["analysis/test-grip-evidence-v1"]
-blocked_reason = "classification consumes test-grip evidence to produce SeamGripClass per seam"
 acceptance = "classify each seam into one of the SeamGripClass values locked by the spec (candidate set: strongly_gripped, weakly_gripped, ungripped, reachable_unrevealed, activation_unknown, propagation_unknown, observation_unknown, discrimination_unknown, opaque, intentional, suppressed); badge-headline-eligible vs visible-only mapping is explicit; static-language check stays clean"
 commands = [
   "cargo xtask shape",
