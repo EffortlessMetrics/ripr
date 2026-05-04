@@ -15,6 +15,7 @@ Before reviewing, use the repository's checked-in context:
 - `docs/SCOPED_PR_CONTRACT.md`
 - `docs/CI.md`
 - `policy/workflow_allowlist.txt`
+- `docs/agent-context/review-invariants.md`
 
 For product, analyzer, output, fixture, LSP, release, or workflow changes, inspect the relevant docs linked from `README.md`.
 
@@ -216,8 +217,8 @@ Check:
 * whether shell `run:` blocks exceed the approved non-empty line budget;
 * whether CI docs need updates.
 
-For Droid workflow-specific invariants, review `docs/agent-context/review-invariants.md`
-before commenting on `.github/workflows/droid*.yml` changes.
+For Droid-specific invariants, review `docs/agent-context/review-invariants.md`
+when reviewing Droid-related changes.
 
 ### VS Code extension
 
