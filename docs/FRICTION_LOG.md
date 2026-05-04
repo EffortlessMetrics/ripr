@@ -59,9 +59,11 @@ Each entry is a date-grouped bullet:
   integration smoke (`cargo xtask badge-artifacts` actually run against
   the repo) — the resulting `ripr-badges.md` showed `value: 0` for the
   ripr+ badge that actually had `message: "11"`. **Status:** resolved
-  in #194 PR. **Lesson:** when briefing a subagent on a schema, paste
-  the live JSON output (or the source-of-truth code path) into the
-  brief; do not paraphrase. Cost a full agent loop + re-implementation.
+  in #194 PR; graduated (LEARNINGS § "2026-05-04: Live Source Beats
+  Paraphrased Schema"). **Lesson:** when briefing a subagent on a
+  schema, paste the live JSON output (or the source-of-truth code
+  path) into the brief; do not paraphrase. Cost a full agent loop +
+  re-implementation.
 - **diff-scoped badge artifacts mistaken for repo-scoped baseline** —
   the dogfood preflight for `badge/publish-main-endpoint` ran
   `cargo xtask badge-artifacts` on freshly-pulled `main` and got
@@ -87,8 +89,9 @@ Each entry is a date-grouped bullet:
   seeding probes only from production files. Corrected honest repo
   baseline at #204 merge: `ripr 163`, vs the misleading `ripr 0` an
   empty-diff run on `main` would have produced.
-  **Lesson:** before publishing any `ripr` artifact as a public
-  signal, run it on `main` itself and verify the number is
+  Graduated (LEARNINGS § "2026-05-04: Empty Diff Is Not Repo
+  Baseline"). **Lesson:** before publishing any `ripr` artifact as a
+  public signal, run it on `main` itself and verify the number is
   *informative* — a mechanically-derivable constant (like a no-diff
   ripr count) is not. Companion lesson from the P1 review: a repo
   baseline must include test files in its index even when probe
@@ -104,11 +107,11 @@ Each entry is a date-grouped bullet:
   it explicitly rather than picking silently. The user then chose
   Option C (bounded Voice A now via #204, seam inventory deferred to
   a future campaign and recorded in `docs/DEFERRED.md` as
-  `deferred/seam-inventory-test-grip`). **Status:** open as a process
-  observation. **Lesson:** when an operating brief contains
-  contradictory directives, name the contradiction in the Step 0
-  report and force the choice — silent picks lock the user into a
-  path they didn't actually choose.
+  `deferred/seam-inventory-test-grip`). **Status:** graduated
+  (LEARNINGS § "2026-05-04: Step 0 Premise Check"). **Lesson:** when
+  an operating brief contains contradictory directives, name the
+  contradiction in the Step 0 report and force the choice — silent
+  picks lock the user into a path they didn't actually choose.
 - **clippy gates can redden existing committed code** — `cargo xtask
   check-pr` on `badge/repo-scope-artifacts` failed `clippy::manual_strip`
   on an existing test in `crates/ripr/src/output/badge.rs:880-885`
