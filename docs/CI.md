@@ -151,7 +151,10 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
+xvfb-run -a npm run test:e2e
 ```
+
+The `test:e2e` step launches a headless VS Code instance via `@vscode/test-electron`, activates the extension in a fixture Rust workspace, and runs the smoke test suite. `xvfb-run` provides the virtual display required on Linux CI runners.
 
 The VS Code extension build and extension publish workflows use Node 24. This
 is separate from the VS Code extension-host compatibility declared in

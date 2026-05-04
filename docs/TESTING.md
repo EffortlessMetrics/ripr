@@ -83,6 +83,30 @@ New tests should return `Result` when setup can fail and should use explicit
 assertions. Existing panic-family usage is tracked engineering debt and should
 be paid down in scoped PRs rather than copied into new tests.
 
+## VS Code Extension Tests
+
+The VS Code extension smoke tests run inside a real VS Code instance through
+`@vscode/test-electron`:
+
+```bash
+cd editors/vscode
+npm ci
+npm run test:e2e
+```
+
+The test suite:
+
+- opens a fixture Rust workspace (`test-fixtures/workspace/Cargo.toml`)
+- activates the extension
+- asserts commands are registered (`ripr.restartServer`, `ripr.showOutput`,
+  `ripr.copyContext`, `ripr.openSettings`)
+- verifies `copyContext` completes without crash when no editor is active
+- verifies `copyContext` accepts a structured target with `finding_id` and
+  `probe_id` without crashing
+- verifies `restartServer` is callable even when server resolution fails
+
+CI runs the suite headless with `xvfb-run -a npm run test:e2e`.
+
 ## Golden Output
 
 When changing user-visible output, update or add golden coverage for:

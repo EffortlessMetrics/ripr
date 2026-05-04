@@ -194,6 +194,20 @@ Fallback behavior preserves three levels:
    classification, message, and finding or probe identifiers.
 3. **No diagnostic at position** — generic guidance hover.
 
+## VS Code Extension Tests
+
+Smoke tests run inside a real VS Code instance via `@vscode/test-electron`:
+
+```bash
+cd editors/vscode
+npm ci
+npm run test:e2e
+```
+
+The suite activates the extension in a fixture Rust workspace and verifies
+command registration, `copyContext` input handling, and `restartServer`
+callability. CI runs the suite headless with `xvfb-run`.
+
 ## Current Limitations
 
 The preview extension does not yet provide:
