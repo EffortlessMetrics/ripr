@@ -48,7 +48,7 @@ pub(super) fn classified_seam_hover_response(
     Hover {
         contents: HoverContents::Markup(MarkupContent {
             kind: MarkupKind::Markdown,
-            value: classified_seam_hover_markdown(diagnostic, seam),
+            value: classified_seam_hover_markdown(seam),
         }),
         range: Some(diagnostic.range),
     }
@@ -170,7 +170,7 @@ fn position_is_before(position: &Position, end: &Position) -> bool {
     position.line < end.line || (position.line == end.line && position.character < end.character)
 }
 
-fn classified_seam_hover_markdown(diagnostic: &Diagnostic, entry: &ClassifiedSeam) -> String {
+fn classified_seam_hover_markdown(entry: &ClassifiedSeam) -> String {
     let seam = &entry.seam;
     let evidence = &entry.evidence;
     let mut lines = vec![
@@ -222,7 +222,6 @@ fn classified_seam_hover_markdown(diagnostic: &Diagnostic, entry: &ClassifiedSea
     lines.push("## Next step".to_string());
     lines.push(seam_next_step_for(entry));
 
-    let _ = diagnostic;
     lines.join("\n")
 }
 
