@@ -10601,6 +10601,44 @@ struct PanicAllowEntry {
     explanation: String,
 }
 
+#[derive(Debug, Clone)]
+struct PanicFamilySelectorKind {
+    kind: String,
+    container: Option<String>,
+    callee: Option<String>,
+    receiver_fingerprint: Option<String>,
+    text_contains: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct PanicFamilyLastSeen {
+    line: usize,
+    column: Option<usize>,
+}
+
+#[derive(Debug, Clone)]
+struct PanicAllowEntryV2 {
+    path: String,
+    family: String,
+    classification: Option<String>,
+    explanation: String,
+    selector: Option<PanicFamilySelectorKind>,
+    last_seen: Option<PanicFamilyLastSeen>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+struct SemanticPanicFinding {
+    path: String,
+    family: String,
+    line: usize,
+    column: Option<usize>,
+    container: Option<String>,
+    callee: Option<String>,
+    receiver_fingerprint: Option<String>,
+    snippet_fingerprint: String,
+    cfg_test: bool,
+}
+
 fn panic_family_from_pattern(pattern: &str) -> &'static str {
     match pattern {
         s if s.contains("unwrap") => "unwrap",
@@ -10643,6 +10681,205 @@ fn collect_panic_findings(root: &Path, patterns: &[String]) -> Result<Vec<PanicF
 
     findings.sort();
     Ok(findings)
+}
+
+fn collect_semantic_panic_findings(root: &Path, patterns: &[String]) -> Result<Vec<SemanticPanicFinding>, String> {
+    use ra_ap_syntax::{SourceFile, Edition, AstNode};
+
+    let mut findings = Vec::new();
+
+    for path in collect_files(root)? {
+        if path.extension().and_then(|value| value.to_str()) != Some("rs") {
+            continue;
+        }
+        let normalized = normalize_path(&path);
+        let text = read_text_lossy(&path)?;
+
+        let parse = SourceFile::parse(&text, Edition::Edition2024);
+        let tree = parse.tree();
+        let root_node = tree.syntax();
+        extract_panic_calls_from_node(root_node, &text, &normalized, patterns, &mut findings);
+    }
+
+    findings.sort();
+    Ok(findings)
+}
+
+fn extract_panic_calls_from_node(
+    node: &ra_ap_syntax::SyntaxNode,
+    text: &str,
+    path: &str,
+    patterns: &[String],
+    findings: &mut Vec<SemanticPanicFinding>,
+) {
+    use ra_ap_syntax::ast::{self, AstNode};
+
+    for child in node.children() {
+        if let Some(call_expr) = ast::MethodCallExpr::cast(child.clone()) {
+            if let Some(method_name) = call_expr.name_ref() {
+                let name = method_name.text().to_string();
+                for pattern in patterns {
+                    if pattern.contains(&name) && (name == "unwrap" || name == "expect") {
+                        if let Some(finding) = extract_call_metadata(
+                            call_expr.syntax(),
+                            text,
+                            path,
+                            &name,
+                        ) {
+                            findings.push(finding);
+                        }
+                        break;
+                    }
+                }
+            }
+        } else if let Some(call_expr) = ast::CallExpr::cast(child.clone()) {
+            if let Some(path_expr) = call_expr.expr() {
+                let func_text = path_expr.syntax().text().to_string();
+                for pattern in patterns {
+                    if (pattern.contains("panic!") && func_text.contains("panic"))
+                        || (pattern.contains("todo!") && func_text.contains("todo"))
+                        || (pattern.contains("unimplemented!") && func_text.contains("unimplemented"))
+                        || (pattern.contains("unreachable!") && func_text.contains("unreachable"))
+                    {
+                        if let Some(finding) = extract_call_metadata(
+                            call_expr.syntax(),
+                            text,
+                            path,
+                            &func_text,
+                        ) {
+                            findings.push(finding);
+                        }
+                        break;
+                    }
+                }
+            }
+        } else if let Some(macro_call) = ast::MacroCall::cast(child.clone()) {
+            if let Some(path_seg) = macro_call.path().and_then(|p| p.segment()) {
+                let name = path_seg.name_ref().map(|n| n.text().to_string()).unwrap_or_default();
+                for pattern in patterns {
+                    if pattern.contains(&format!("{}!", name)) {
+                        if let Some(finding) = extract_call_metadata(
+                            macro_call.syntax(),
+                            text,
+                            path,
+                            &format!("{}!", name),
+                        ) {
+                            findings.push(finding);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        extract_panic_calls_from_node(&child, text, path, patterns, findings);
+    }
+}
+
+fn extract_call_metadata(
+    node: &ra_ap_syntax::SyntaxNode,
+    text: &str,
+    path: &str,
+    family_name: &str,
+) -> Option<SemanticPanicFinding> {
+    let (line, column) = line_and_column_for_node(node, text);
+    let family = panic_family_from_call_name(family_name).to_string();
+    let snippet = node.text().to_string();
+    let snippet_fingerprint = snippet.replace('\n', " ").trim().to_string();
+
+    Some(SemanticPanicFinding {
+        path: path.to_string(),
+        family,
+        line,
+        column,
+        container: extract_container_name(node),
+        callee: Some(family_name.to_string()),
+        receiver_fingerprint: None,
+        snippet_fingerprint,
+        cfg_test: has_cfg_test_ancestor(node),
+    })
+}
+
+fn line_and_column_for_node(node: &ra_ap_syntax::SyntaxNode, text: &str) -> (usize, Option<usize>) {
+    let offset = node.text_range().start().into();
+    let mut line = 1;
+    let mut col = 0;
+
+    for (idx, ch) in text.chars().enumerate() {
+        if idx >= offset {
+            break;
+        }
+        if ch == '\n' {
+            line += 1;
+            col = 0;
+        } else {
+            col += 1;
+        }
+    }
+
+    (line, Some(col + 1))
+}
+
+fn panic_family_from_call_name(name: &str) -> &'static str {
+    match name {
+        s if s.contains("unwrap") => "unwrap",
+        s if s.contains("expect") => "expect",
+        s if s.contains("panic") => "panic_macro",
+        s if s.contains("todo") => "todo",
+        s if s.contains("unimplemented") => "unimplemented",
+        s if s.contains("unreachable") => "unreachable",
+        _ => "unknown",
+    }
+}
+
+fn extract_container_name(node: &ra_ap_syntax::SyntaxNode) -> Option<String> {
+    use ra_ap_syntax::ast::{self, AstNode, HasName};
+
+    let mut current = node.parent();
+    while let Some(parent) = current {
+        if let Some(func) = ast::Fn::cast(parent.clone()) {
+            if let Some(name) = func.name() {
+                return Some(name.text().to_string());
+            }
+        } else if let Some(impl_block) = ast::Impl::cast(parent.clone()) {
+            if let Some(name_ref) = impl_block.self_ty().and_then(|t| {
+                if let ast::Type::PathType(pt) = t {
+                    pt.path().and_then(|p| p.segment().and_then(|s| s.name_ref()))
+                } else {
+                    None
+                }
+            }) {
+                return Some(name_ref.text().to_string());
+            }
+        }
+        current = parent.parent();
+    }
+    None
+}
+
+fn has_cfg_test_ancestor(node: &ra_ap_syntax::SyntaxNode) -> bool {
+    use ra_ap_syntax::ast::{self, AstNode, HasAttrs};
+
+    let mut current = Some(node.clone());
+    while let Some(parent) = current {
+        if let Some(func) = ast::Fn::cast(parent.clone()) {
+            for attr in func.attrs() {
+                let attr_text = attr.syntax().text().to_string();
+                if attr_text.contains("#[test]") || attr_text.contains("cfg(test)") {
+                    return true;
+                }
+            }
+        } else if let Some(module) = ast::Module::cast(parent.clone()) {
+            for attr in module.attrs() {
+                let attr_text = attr.syntax().text().to_string();
+                if attr_text.contains("cfg(test)") {
+                    return true;
+                }
+            }
+        }
+        current = parent.parent();
+    }
+    false
 }
 
 fn parse_no_panic_allowlist_toml(path: &str) -> Result<Vec<PanicAllowEntry>, String> {
@@ -10820,6 +11057,260 @@ fn check_old_panic_allowlist_exists() -> Result<(), String> {
             ".ripr/no-panic-allowlist.txt still exists; use .ripr/no-panic-allowlist.toml instead"
                 .to_string(),
         );
+    }
+    Ok(())
+}
+
+fn semantic_selector_matches(
+    selector: &PanicFamilySelectorKind,
+    finding: &SemanticPanicFinding,
+) -> bool {
+    if selector.kind != "method_call" && selector.kind != "call" && selector.kind != "macro_call"
+        && selector.kind != "string_literal"
+    {
+        return false;
+    }
+
+    if selector.kind == "string_literal" {
+        if let Some(text_contains) = &selector.text_contains {
+            return finding.snippet_fingerprint.contains(text_contains);
+        }
+        return false;
+    }
+
+    if let Some(container) = &selector.container {
+        if finding.container.as_ref() != Some(container) {
+            return false;
+        }
+    }
+
+    if let Some(callee) = &selector.callee {
+        if finding.callee.as_ref() != Some(callee) {
+            return false;
+        }
+    }
+
+    if let Some(receiver_fp) = &selector.receiver_fingerprint {
+        if finding.receiver_fingerprint.as_ref() != Some(receiver_fp) {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn matches_panic_finding(entry: &PanicAllowEntry, finding: &PanicFinding) -> bool {
+    entry.path == finding.path
+        && entry.line == finding.line
+        && entry.family == finding.family
+        && (entry.column.is_none() || entry.column == finding.column)
+}
+
+fn matches_semantic_finding(
+    entry: &PanicAllowEntry,
+    finding: &SemanticPanicFinding,
+) -> bool {
+    entry.path == finding.path && entry.family == finding.family
+}
+
+fn panic_allowlist_v0_2_matches_semantic(
+    entry: &PanicAllowEntryV2,
+    finding: &SemanticPanicFinding,
+) -> bool {
+    if entry.path != finding.path || entry.family != finding.family {
+        return false;
+    }
+
+    if let Some(selector) = &entry.selector {
+        semantic_selector_matches(selector, finding)
+    } else {
+        false
+    }
+}
+
+fn parse_no_panic_allowlist_toml_v0_2(path: &str) -> Result<Vec<PanicAllowEntryV2>, String> {
+    let text = read_text_lossy(Path::new(path))?;
+    let mut entries = Vec::new();
+    let mut current_entry = PanicAllowEntryV2 {
+        path: String::new(),
+        family: String::new(),
+        classification: None,
+        explanation: String::new(),
+        selector: None,
+        last_seen: None,
+    };
+    let mut in_allow_section = false;
+    let mut has_entry_started = false;
+    let mut entry_start_line = 0;
+    let mut in_selector_section = false;
+    let mut in_last_seen_section = false;
+    let mut selector_data = PanicFamilySelectorKind {
+        kind: String::new(),
+        container: None,
+        callee: None,
+        receiver_fingerprint: None,
+        text_contains: None,
+    };
+    let mut last_seen_data = PanicFamilyLastSeen {
+        line: 0,
+        column: None,
+    };
+
+    for (line_num, line) in text.lines().enumerate() {
+        let line_number = line_num + 1;
+        let trimmed = line.trim();
+
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+
+        if trimmed == "schema_version = \"0.2\"" || trimmed == "schema_version = \"0.1\"" {
+            continue;
+        }
+
+        if trimmed == "[[allow]]" {
+            if has_entry_started {
+                validate_panic_allow_entry_v2(&current_entry, path, entry_start_line)?;
+                entries.push(current_entry.clone());
+            }
+            current_entry = PanicAllowEntryV2 {
+                path: String::new(),
+                family: String::new(),
+                classification: None,
+                explanation: String::new(),
+                selector: None,
+                last_seen: None,
+            };
+            selector_data = PanicFamilySelectorKind {
+                kind: String::new(),
+                container: None,
+                callee: None,
+                receiver_fingerprint: None,
+                text_contains: None,
+            };
+            last_seen_data = PanicFamilyLastSeen {
+                line: 0,
+                column: None,
+            };
+            has_entry_started = true;
+            in_allow_section = true;
+            in_selector_section = false;
+            in_last_seen_section = false;
+            entry_start_line = line_number;
+            continue;
+        }
+
+        if trimmed == "[allow.selector]" {
+            in_selector_section = true;
+            in_last_seen_section = false;
+            continue;
+        }
+
+        if trimmed == "[allow.last_seen]" {
+            in_selector_section = false;
+            in_last_seen_section = true;
+            continue;
+        }
+
+        if !in_allow_section {
+            return Err(format!(
+                "{path}:{} unexpected content outside [[allow]] section",
+                line_number
+            ));
+        }
+
+        let Some((key, value)) = parse_toml_key_value(trimmed) else {
+            return Err(format!(
+                "{path}:{} invalid TOML syntax (expected key = value)",
+                line_number
+            ));
+        };
+
+        if in_selector_section {
+            match key {
+                "kind" => selector_data.kind = parse_string_value(value, path, line_number)?,
+                "container" => selector_data.container = Some(parse_string_value(value, path, line_number)?),
+                "callee" => selector_data.callee = Some(parse_string_value(value, path, line_number)?),
+                "receiver_fingerprint" => {
+                    selector_data.receiver_fingerprint = Some(parse_string_value(value, path, line_number)?)
+                }
+                "text_contains" => {
+                    selector_data.text_contains = Some(parse_string_value(value, path, line_number)?)
+                }
+                _ => {
+                    return Err(format!(
+                        "{path}:{} unknown field '{key}' in [allow.selector] section",
+                        line_number
+                    ));
+                }
+            }
+        } else if in_last_seen_section {
+            match key {
+                "line" => last_seen_data.line = parse_usize_value(value, path, line_number)?,
+                "column" => last_seen_data.column = Some(parse_usize_value(value, path, line_number)?),
+                _ => {
+                    return Err(format!(
+                        "{path}:{} unknown field '{key}' in [allow.last_seen] section",
+                        line_number
+                    ));
+                }
+            }
+        } else {
+            match key {
+                "path" => current_entry.path = parse_string_value(value, path, line_number)?,
+                "family" => current_entry.family = parse_string_value(value, path, line_number)?,
+                "classification" => {
+                    current_entry.classification = Some(parse_string_value(value, path, line_number)?)
+                }
+                "explanation" => {
+                    current_entry.explanation = parse_string_value(value, path, line_number)?
+                }
+                _ => {
+                    return Err(format!(
+                        "{path}:{} unknown field '{key}' in [[allow]] section",
+                        line_number
+                    ));
+                }
+            }
+        }
+    }
+
+    if has_entry_started {
+        if selector_data.kind != String::new() {
+            current_entry.selector = Some(selector_data);
+        }
+        if last_seen_data.line > 0 {
+            current_entry.last_seen = Some(last_seen_data);
+        }
+        validate_panic_allow_entry_v2(&current_entry, path, entry_start_line)?;
+        entries.push(current_entry);
+    }
+
+    Ok(entries)
+}
+
+fn validate_panic_allow_entry_v2(
+    entry: &PanicAllowEntryV2,
+    path: &str,
+    line_number: usize,
+) -> Result<(), String> {
+    if entry.path.is_empty() {
+        return Err(format!(
+            "{path}:{} missing required field: path",
+            line_number
+        ));
+    }
+    if entry.family.is_empty() {
+        return Err(format!(
+            "{path}:{} missing required field: family",
+            line_number
+        ));
+    }
+    if entry.explanation.is_empty() {
+        return Err(format!(
+            "{path}:{} missing required field: explanation",
+            line_number
+        ));
     }
     Ok(())
 }
