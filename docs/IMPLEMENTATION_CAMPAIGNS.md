@@ -367,6 +367,25 @@ End state:
   `adequate` in static output
 - Voice B does not pretend to prove mutation adequacy
 
+**Pre-4B LSP groundwork.** Before the seam model was ready, three PRs
+built editor/agent surfaces on the current `Finding` / `AnalysisSnapshot`
+model. They protect the LSP loop and provide fallback behavior while
+Campaign 4B types are being designed:
+
+- **PR #211** — evidence-rich hover over current `Finding` /
+  `AnalysisSnapshot`, replacing generic "evidence found" text with real
+  `StageEvidence.summary`, related-test oracle text, and weakness rendering.
+- **PR #218** — LSP `executeCommand` `ripr.collectContext` with
+  server-side context packet lookup and VS Code LSP-first / CLI-fallback
+  `copyContext` path.
+- **PR #219** — VS Code extension e2e smoke tests for activation,
+  command registration, `copyContext`, and `restartServer`; wired CI
+  `xvfb-run` step.
+
+Campaign 4B LSP work (`lsp/repo-seam-diagnostics-v1`,
+`lsp/seam-evidence-hover-v1`, `context/agent-seam-packets-v1`) will
+extend or revise these surfaces for `RepoSeam` / `SeamGripClass`.
+
 Work items:
 
 | Work item | Status | Notes |
@@ -378,7 +397,7 @@ Work items:
 | `analysis/repo-ripr-classification-v1` | blocked | Aggregates test-grip evidence into `SeamGripClass` per seam. Badge-headline-eligible vs visible-only mapping is explicit. |
 | `output/repo-exposure-report-v1` | blocked | Markdown + JSON repo report. Schema versioned; existing repo-badge-artifacts schema unchanged unless the spec opts in. |
 | `lsp/repo-seam-diagnostics-v1` | blocked | Surface ungripped or under-gripped seams in the editor with stable diagnostic codes. |
-| `lsp/seam-evidence-hover-v1` | blocked | Hover renders the RIPR evidence path with cited related tests. **PR #211 disposition decided here**: adopt with revisions / adopt as-is / close + reopen, once the seam model and diagnostics schema are settled. |
+| `lsp/seam-evidence-hover-v1` | blocked | Hover renders the RIPR evidence path with cited related tests. **PR #211 is merged** (pre-4B evidence-rich hover over the current Finding / AnalysisSnapshot model); this seam-native hover will extend or revise it once the seam model and diagnostics schema are settled. |
 | `context/agent-seam-packets-v1` | blocked | Agent context packet schema (RIPR-SPEC-0003 successor or addendum). Load-bearing fields: changed expression, owner, related tests, oracle strength, observed values, missing discriminator. |
 | `docs/agent-dispatch-workflow-v1` | blocked | How a coding agent uses a seam packet to write the missing test. |
 | `cache/repo-seam-facts-v1` | blocked | Optional fact-layer cache (file-facts, owner-index, seam-facts; never final outputs). Gated on real performance signal. Subsumes Campaign 5's `cache/persistent-cache-v1`. |
@@ -388,8 +407,15 @@ Dependencies:
 
 - `spec/repo-seam-inventory` is the single ready item; everything else
   is blocked on it directly or transitively until the contract lands.
-- `lsp/seam-evidence-hover-v1` is where PR #211 (currently a frozen
-  draft) is reopened for adoption.
+- `lsp/seam-evidence-hover-v1` extends or revises PR #211, which is
+  already merged as pre-4B evidence-rich hover over the current
+  Finding / AnalysisSnapshot model. The seam-native hover will
+  supersede the Finding-backed hover once RepoSeam and SeamGripClass
+  are stable.
+- PR #218 (LSP executeCommand `ripr.collectContext`) and PR #219
+  (VS Code extension smoke tests) are also pre-4B groundwork merged
+  before Campaign 4B seam work began. Campaign 4B agent and editor
+  surfaces will build on or replace these current-model implementations.
 - `cache/repo-seam-facts-v1` and `calibration/cargo-mutants-v1`
   subsume their broader analogs from Campaign 5; Campaign 5 retains
   its config and CI policy work.

@@ -33,6 +33,26 @@ end_state = [
   "Voice B does not claim mutation-test outcomes from static evidence; runtime mutation testing remains a separate confirmation step"
 ]
 
+# Pre-4B LSP groundwork (merged before Campaign 4B seam work)
+#
+# These PRs built editor/agent surfaces on the current Finding / AnalysisSnapshot
+# model. They are not seam-native, but they protect the LSP loop and provide
+# fallback behavior while Campaign 4B types are being designed.
+#
+# - PR #211: evidence-rich hover over current Finding / AnalysisSnapshot.
+#   Replaced generic "evidence found" text with real StageEvidence.summary,
+#   added related-test oracle text and weakness rendering.
+# - PR #218: LSP executeCommand ripr.collectContext.
+#   Added executeCommand provider, server-side context packet lookup from
+#   latest_analysis, and VS Code LSP-first / CLI-fallback copyContext path.
+# - PR #219: VS Code extension smoke tests.
+#   Added @vscode/test-electron e2e tests for activation, command registration,
+#   copyContext, and restartServer; wired CI xvfb-run step.
+#
+# Campaign 4B LSP work (lsp/repo-seam-diagnostics-v1, lsp/seam-evidence-hover-v1,
+# context/agent-seam-packets-v1) will extend or revise these surfaces for
+# RepoSeam / SeamGripClass.
+
 [[work_item]]
 id = "spec/repo-seam-inventory"
 status = "ready"
@@ -162,7 +182,7 @@ stackable = false
 requires_human_merge = true
 blocked_by = ["lsp/repo-seam-diagnostics-v1"]
 blocked_reason = "hover renders evidence for seams surfaced by repo-seam-diagnostics-v1"
-acceptance = "hover renders the RIPR evidence path that produced the classification with cited related tests; PR #211 disposition decided here (adopt with revisions, adopt as-is, or close + reopen) once the seam model and diagnostics schema are settled"
+acceptance = "hover renders the RIPR evidence path that produced the classification with cited related tests; PR #211 (pre-4B evidence-rich hover over the current Finding / AnalysisSnapshot model) is already merged; this seam-native hover will extend or revise it once the seam model and diagnostics schema are settled"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
