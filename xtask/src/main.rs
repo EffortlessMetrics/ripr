@@ -404,6 +404,7 @@ fn main() {
         Some("ci-full") => ci_full(),
         Some("check-static-language") => check_static_language(),
         Some("check-no-panic-family") => check_no_panic_family(),
+        Some("no-panic-migration-report") => generate_no_panic_migration_report(),
         Some("check-allow-attributes") => check_allow_attributes(),
         Some("check-local-context") => check_local_context(),
         Some("check-file-policy") => check_file_policy(),
@@ -2276,6 +2277,124 @@ fn check_no_panic_family() -> Result<(), String> {
         },
         &violations,
     )
+}
+
+fn generate_no_panic_migration_report() -> Result<(), String> {
+    let roots = [
+        Path::new("crates/ripr/src"),
+        Path::new("crates/ripr/tests"),
+        Path::new("xtask/src"),
+    ];
+    let patterns = forbidden_panic_patterns();
+
+    let mut semantic_findings = Vec::new();
+    for root in roots {
+        if !root.exists() {
+            continue;
+        }
+        semantic_findings.extend(collect_semantic_panic_findings(root, &patterns)?);
+    }
+
+    let allowlist = if Path::new(".ripr/no-panic-allowlist.toml").exists() {
+        parse_no_panic_allowlist_toml(".ripr/no-panic-allowlist.toml")?
+    } else {
+        Vec::new()
+    };
+
+    let mut migration_entries = Vec::new();
+
+    for entry in &allowlist {
+        let best_match = find_best_matching_finding(entry, &semantic_findings);
+
+        if let Some(finding) = best_match {
+            let selector = propose_selector_for_finding(entry, finding);
+            migration_entries.push((entry.clone(), selector));
+        }
+    }
+
+    let report_md = generate_migration_markdown(&migration_entries, &allowlist);
+    write_text(".ripr/no-panic-allowlist-migration-proposal.md", &report_md)?;
+
+    println!("Migration report generated: .ripr/no-panic-allowlist-migration-proposal.md");
+    println!("Found {} allowlist entries with proposed selectors", migration_entries.len());
+
+    Ok(())
+}
+
+fn find_best_matching_finding<'a>(
+    entry: &PanicAllowEntry,
+    semantic_findings: &'a [SemanticPanicFinding],
+) -> Option<&'a SemanticPanicFinding> {
+    let mut candidates: Vec<_> = semantic_findings
+        .iter()
+        .filter(|f| matches_semantic_finding(entry, f))
+        .collect();
+
+    if candidates.is_empty() {
+        return None;
+    }
+
+    candidates.sort_by_key(|f| {
+        let line_diff = if f.line > entry.line {
+            f.line - entry.line
+        } else {
+            entry.line - f.line
+        };
+        line_diff
+    });
+
+    candidates.first().copied()
+}
+
+fn propose_selector_for_finding(
+    _entry: &PanicAllowEntry,
+    finding: &SemanticPanicFinding,
+) -> PanicFamilySelectorKind {
+    PanicFamilySelectorKind {
+        kind: "method_call".to_string(),
+        container: finding.container.clone(),
+        callee: finding.callee.clone(),
+        receiver_fingerprint: finding.receiver_fingerprint.clone(),
+        text_contains: None,
+    }
+}
+
+fn generate_migration_markdown(
+    entries: &[(PanicAllowEntry, PanicFamilySelectorKind)],
+    _old_allowlist: &[PanicAllowEntry],
+) -> String {
+    let mut md = String::from("# No-Panic Allowlist Migration Report\n\n");
+    md.push_str("This report proposes v0.2 schema entries with semantic selectors.\n\n");
+    md.push_str("## Proposed Entries\n\n");
+
+    for (entry, selector) in entries {
+        md.push_str(&format!("### {}\n\n", entry.path));
+        md.push_str(&format!(
+            "**Family**: {} | **Classification**: {}\n\n",
+            entry.family,
+            entry.classification.as_deref().unwrap_or("unspecified")
+        ));
+        md.push_str("```toml\n");
+        md.push_str("[[allow]]\n");
+        md.push_str(&format!("path = \"{}\"\n", entry.path));
+        md.push_str(&format!("family = \"{}\"\n", entry.family));
+        md.push_str(&format!("classification = \"{}\"\n", entry.classification.as_deref().unwrap_or("test_only")));
+        md.push_str(&format!("explanation = \"{}\"\n\n", entry.explanation));
+        md.push_str("[allow.selector]\n");
+        md.push_str(&format!("kind = \"{}\"\n", selector.kind));
+        if let Some(container) = &selector.container {
+            md.push_str(&format!("container = \"{}\"\n", container));
+        }
+        if let Some(callee) = &selector.callee {
+            md.push_str(&format!("callee = \"{}\"\n", callee));
+        }
+        if let Some(receiver_fp) = &selector.receiver_fingerprint {
+            md.push_str(&format!("receiver_fingerprint = \"{}\"\n", receiver_fp));
+        }
+        md.push_str("```\n\n");
+    }
+
+    md
 }
 
 fn check_allow_attributes() -> Result<(), String> {
@@ -9457,6 +9576,10 @@ fn read_text_lossy(path: &Path) -> Result<String, String> {
     let bytes =
         fs::read(path).map_err(|err| format!("failed to read {}: {err}", path.display()))?;
     Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+fn write_text(path: &str, text: &str) -> Result<(), String> {
+    fs::write(path, text).map_err(|err| format!("failed to write {}: {err}", path))
 }
 
 fn guarded_allow_attribute_lints() -> BTreeSet<&'static str> {
