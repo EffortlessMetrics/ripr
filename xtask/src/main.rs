@@ -15931,4 +15931,108 @@ settings: |
         check_droid_common(&mut violations, "test.yml", yaml);
         assert!(!violations.iter().any(|v| v.contains("show_full_output")));
     }
+
+    #[test]
+    fn check_droid_common_flags_missing_review_model() {
+        let mut violations = Vec::new();
+        let yaml = "security_model: \"custom:MiniMax-M2.7-0\"\n";
+        check_droid_common(&mut violations, "test.yml", yaml);
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("review_model must be custom:MiniMax-M2.7-0"))
+        );
+    }
+
+    #[test]
+    fn check_droid_common_flags_missing_security_model() {
+        let mut violations = Vec::new();
+        let yaml = "review_model: \"custom:MiniMax-M2.7-0\"\n";
+        check_droid_common(&mut violations, "test.yml", yaml);
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("security_model must be custom:MiniMax-M2.7-0"))
+        );
+    }
+
+    #[test]
+    fn check_droid_common_flags_missing_settings_local_json() {
+        let mut violations = Vec::new();
+        let yaml = "review_model: \"custom:MiniMax-M2.7-0\"\n";
+        check_droid_common(&mut violations, "test.yml", yaml);
+        assert!(violations.iter().any(|v| v.contains("settings.local.json")));
+    }
+
+    #[test]
+    fn check_droid_common_flags_missing_literal_minimax_key() {
+        let mut violations = Vec::new();
+        let yaml = "review_model: \"custom:MiniMax-M2.7-0\"\n";
+        check_droid_common(&mut violations, "test.yml", yaml);
+        assert!(violations.iter().any(|v| v.contains("${MINIMAX_API_KEY}")));
+    }
+
+    #[test]
+    fn check_droid_common_flags_active_anthropic_base_url() {
+        let mut violations = Vec::new();
+        let yaml = "ANTHROPIC_BASE_URL: https://example.com\n";
+        check_droid_common(&mut violations, "test.yml", yaml);
+        assert!(violations.iter().any(|v| v.contains("ANTHROPIC")));
+    }
+
+    #[test]
+    fn check_droid_common_flags_active_show_full_output() {
+        let mut violations = Vec::new();
+        let yaml = "show_full_output: true\n";
+        check_droid_common(&mut violations, "test.yml", yaml);
+        assert!(violations.iter().any(|v| v.contains("show_full_output")));
+    }
+
+    #[test]
+    fn check_droid_action_refs_rejects_short_sha() {
+        let mut violations = Vec::new();
+        check_droid_action_refs(
+            &mut violations,
+            "test.yml",
+            "      - uses: actions/checkout@abc123\n",
+        );
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].contains("immutable commit SHA"));
+    }
+
+    #[test]
+    fn check_droid_action_refs_handles_dash_uses_with_non_sha() {
+        let mut violations = Vec::new();
+        check_droid_action_refs(&mut violations, "test.yml", "- uses: some/action@v1.2.3\n");
+        assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn check_droid_action_refs_handles_bare_uses_with_sha() {
+        let mut violations = Vec::new();
+        check_droid_action_refs(
+            &mut violations,
+            "test.yml",
+            "        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd\n",
+        );
+        assert!(violations.is_empty());
+    }
+
+    #[test]
+    fn check_droid_action_refs_ignores_line_without_at_sign() {
+        let mut violations = Vec::new();
+        check_droid_action_refs(&mut violations, "test.yml", "      - uses: local-action\n");
+        assert!(violations.is_empty());
+    }
+
+    #[test]
+    fn check_droid_action_refs_strips_inline_comment_before_checking() {
+        let mut violations = Vec::new();
+        check_droid_action_refs(
+            &mut violations,
+            "test.yml",
+            "      - uses: actions/checkout@v5 # old ref\n",
+        );
+        assert_eq!(violations.len(), 1);
+    }
 }
