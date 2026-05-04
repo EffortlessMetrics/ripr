@@ -390,8 +390,8 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `spec/repo-seam-inventory` | ready | First slice. Lock the contract before code: `RepoSeam`, `SeamKind`, `RequiredDiscriminator`, `TestGripEvidence`, `SeamGripClass`, stable seam ID rules, relationship to `ProbeShapeFact`, headline-vs-visible mapping, static-language boundaries, Voice A vs Voice B contract. Spec lives at `docs/specs/RIPR-SPEC-0005-repo-seam-inventory.md`. |
-| `analysis/repo-seam-model-v1` | blocked | `crates/ripr/src/analysis/seams.rs` (or `analysis/seams/`) introduces the seam types as crate-private. Stable IDs, no public Rust API. |
+| `spec/repo-seam-inventory` | done | Landed in #223 as `docs/specs/RIPR-SPEC-0005-repo-seam-inventory.md`; defines `RepoSeam`, `SeamKind`, `RequiredDiscriminator`, `TestGripEvidence`, `SeamGripClass`, stable seam ID rules, the relationship to `ProbeShapeFact`, headline-vs-visible mapping, static-language boundaries, and the Voice A vs Voice B contract. |
+| `analysis/repo-seam-model-v1` | ready | `crates/ripr/src/analysis/seams.rs` (or `analysis/seams/`) introduces the seam types as crate-private per RIPR-SPEC-0005. Stable IDs, no public Rust API, no LSP, no badge change. |
 | `analysis/repo-seam-inventory-v1` | blocked | Walks production Rust files and emits `Vec<RepoSeam>`. Initial seam kinds: predicate_boundary, error_variant, return_value, field_construction, side_effect, match_arm, validation_branch, call_presence. |
 | `analysis/test-grip-evidence-v1` | blocked | Per-seam evidence record (reach/activate/propagate/observe/discriminate) built from existing test/oracle facts. No MIR, no full trait resolution, no cargo-mutants. |
 | `analysis/repo-ripr-classification-v1` | blocked | Aggregates test-grip evidence into `SeamGripClass` per seam. Badge-headline-eligible vs visible-only mapping is explicit. |
@@ -405,8 +405,9 @@ Work items:
 
 Dependencies:
 
-- `spec/repo-seam-inventory` is the single ready item; everything else
-  is blocked on it directly or transitively until the contract lands.
+- `spec/repo-seam-inventory` landed in #223; `analysis/repo-seam-model-v1`
+  is now the single ready item, with the rest of the chain blocked on
+  it directly or transitively.
 - `lsp/seam-evidence-hover-v1` extends or revises PR #211, which is
   already merged as pre-4B evidence-rich hover over the current
   Finding / AnalysisSnapshot model. The seam-native hover will
