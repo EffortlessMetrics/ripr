@@ -63,14 +63,18 @@ pub(crate) fn inventory_seams_from_index(
         }
     }
 
-    // Stable order: file path first, then byte offset, then kind. This
-    // pins `seam_ids_do_not_depend_on_construction_order` even if the
-    // index iteration order differs across runs.
+    // Stable order: file, byte offset, kind, owner — matches the
+    // canonical seam ID fields exactly so the sort key and the dedup
+    // key agree. Without `owner` in the sort, two seams with the same
+    // (file, byte_offset, kind) but different owners would still be
+    // adjacent after sorting (one byte belongs to one function), but
+    // having the keys aligned makes the contract explicit.
     seams.sort_by(|a, b| {
         a.file()
             .cmp(b.file())
             .then(a.byte_offset().cmp(&b.byte_offset()))
             .then(a.kind().as_str().cmp(b.kind().as_str()))
+            .then(a.owner().cmp(b.owner()))
     });
 
     // Two probe shapes can land at the same byte offset with the same
