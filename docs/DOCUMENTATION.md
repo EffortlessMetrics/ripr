@@ -89,6 +89,7 @@ Current explanation docs:
 - [ADRs](adr/)
 - [Specs](specs/)
 - [Agent workflows](AGENT_WORKFLOWS.md)
+- [Agent dispatch workflow](AGENT_DISPATCH_WORKFLOW.md)
 
 ## README Rule
 

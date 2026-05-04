@@ -192,7 +192,7 @@ commands = [
 
 [[work_item]]
 id = "docs/agent-dispatch-workflow-v1"
-status = "ready"
+status = "done"
 branch = "docs/agent-dispatch-workflow-v1"
 stackable = false
 requires_human_merge = true
