@@ -616,14 +616,6 @@ explanation = "Semantic selector test infrastructure"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 16217
-column = 18
-family = "panic_macro"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
-
-[[allow]]
-path = "xtask/src/main.rs"
 line = 12334
 column = 37
 family = "unwrap"
@@ -632,7 +624,95 @@ explanation = "Semantic selector test infrastructure"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 16009
+line = 12350
+column = 13
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 12356
+column = 5
+family = "panic_macro"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 12357
+column = 5
+family = "todo"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 12358
+column = 5
+family = "unimplemented"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 12359
+column = 5
+family = "unreachable"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 12365
+column = 26
+family = "unwrap"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 12366
+column = 19
+family = "panic_macro"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 12382
+column = 65
+family = "panic_macro"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 12383
+column = 58
+family = "todo"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 12386
+column = 26
+family = "unimplemented"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 12388
+column = 65
+family = "unreachable"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 16065
 column = 50
 family = "unwrap"
 classification = "test_only"
@@ -640,7 +720,7 @@ explanation = "Semantic selector test infrastructure"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 16029
+line = 16085
 column = 50
 family = "unwrap"
 classification = "test_only"
@@ -648,7 +728,7 @@ explanation = "Semantic selector test infrastructure"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 16062
+line = 16118
 column = 23
 family = "unwrap"
 classification = "test_only"
@@ -656,7 +736,7 @@ explanation = "Semantic selector test infrastructure"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 16067
+line = 16123
 column = 36
 family = "unwrap"
 classification = "test_only"
@@ -664,8 +744,32 @@ explanation = "Semantic selector test infrastructure"
 
 [[allow]]
 path = "xtask/src/main.rs"
-line = 12364
+line = 16273
+column = 18
+family = "panic_macro"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 12420
 column = 58
+family = "expect"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 12351
+column = 25
+family = "expect"
+classification = "test_only"
+explanation = "Semantic selector test infrastructure"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 12376
+column = 63
 family = "expect"
 classification = "test_only"
 explanation = "Semantic selector test infrastructure"

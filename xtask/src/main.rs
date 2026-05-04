@@ -12339,6 +12339,65 @@ fn test_with_chained_calls() {
         assert!(!semantic_selector_matches(&selector_invalid, &finding));
     }
 
+    #[test]
+    fn collect_semantic_panic_findings_covers_various_panic_call_kinds() {
+        let root = temp_dir("semantic_call_kinds");
+
+        // Code with various panic-family call kinds
+        let code = r#"
+#[test]
+fn test_method_calls() {
+    Some(5).unwrap();
+    Ok::<_, String>(10).expect("err");
+}
+
+#[test]
+fn test_macro_calls() {
+    panic!("error");
+    todo!("implement");
+    unimplemented!();
+    unreachable!();
+}
+
+#[test]
+fn test_with_multiple_families() {
+    match Ok(1) {
+        Ok(_) => Some(2).unwrap(),
+        Err(_) => panic!("failed"),
+    }
+}
+"#;
+
+        let lib_path = root.join("lib.rs");
+        write(&lib_path, code);
+
+        let patterns = forbidden_panic_patterns();
+        let findings =
+            collect_semantic_panic_findings(&root, &patterns).expect("failed to collect findings");
+
+        // Verify all panic families are found
+        let families: Vec<_> = findings.iter().map(|f| f.family.as_str()).collect();
+        assert!(families.contains(&"unwrap"), "should find unwrap");
+        assert!(families.contains(&"expect"), "should find expect");
+        assert!(families.contains(&"panic_macro"), "should find panic!");
+        assert!(families.contains(&"todo"), "should find todo!");
+        assert!(
+            families.contains(&"unimplemented"),
+            "should find unimplemented!"
+        );
+        assert!(
+            families.contains(&"unreachable"),
+            "should find unreachable!"
+        );
+
+        // Verify all findings are marked as test_only
+        for finding in &findings {
+            assert!(finding.cfg_test, "all findings should be in test context");
+        }
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
     // ============================================================================
     // Enum contract tests
     // ============================================================================
