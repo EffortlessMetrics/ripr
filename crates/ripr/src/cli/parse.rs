@@ -26,6 +26,9 @@ pub(super) fn parse_format(value: &str) -> Result<OutputFormat, String> {
         "repo-badge-plus-shields" => Ok(OutputFormat::RepoBadgePlusShields),
         "repo-seams-json" => Ok(OutputFormat::RepoSeamsJson),
         "repo-seams-md" => Ok(OutputFormat::RepoSeamsMd),
+        "repo-exposure-json" => Ok(OutputFormat::RepoExposureJson),
+        "repo-exposure-md" => Ok(OutputFormat::RepoExposureMd),
+        "agent-seam-packets-json" => Ok(OutputFormat::AgentSeamPacketsJson),
         _ => Err(format!("unknown format {value:?}")),
     }
 }
@@ -155,6 +158,18 @@ mod tests {
             FormatScenario {
                 given_format: "repo-seams-md",
                 then_result: Ok(OutputFormat::RepoSeamsMd),
+            },
+            FormatScenario {
+                given_format: "repo-exposure-json",
+                then_result: Ok(OutputFormat::RepoExposureJson),
+            },
+            FormatScenario {
+                given_format: "repo-exposure-md",
+                then_result: Ok(OutputFormat::RepoExposureMd),
+            },
+            FormatScenario {
+                given_format: "agent-seam-packets-json",
+                then_result: Ok(OutputFormat::AgentSeamPacketsJson),
             },
             FormatScenario {
                 given_format: "xml",

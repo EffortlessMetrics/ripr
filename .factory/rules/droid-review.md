@@ -39,7 +39,39 @@ Failure mode:
 Why here:
 Fix direction:
 Validation:
+Confidence:
 ```
+
+## Repair-ready comments
+
+Each finding should preserve enough context for a follow-up coding agent to fix the issue without repeating the research.
+
+* Include failure mode, repo invariant, fix direction, validation, and confidence.
+* Do not optimize for short comments at the expense of repair value.
+* Preserve useful repo research in the comment or summary.
+* If Droid inspected specs, policies, or in-repo docs, name the source.
+* Use GitHub suggestion blocks for high-confidence local edits.
+* Use ordered repair plans for cross-file, policy, fixture, golden, traceability, or schema changes.
+
+## Evidence provenance
+
+Distinguish observed evidence from reported evidence.
+
+* `Observed:` for CI checks, files, logs, or artifacts Droid directly inspected.
+* `Reported:` for claims in PR body, commit message, or comments.
+* `Not verified:` for validation Droid did not run or observe.
+
+Do not treat PR-body claims as independently verified facts.
+
+## Notification hygiene
+
+Droid review comments are an inter-agent repair queue. They should not notify humans unless explicitly requested.
+
+* Do not @mention users, teams, bots, or organizations.
+* Do not refer to the PR author by username.
+* Avoid second-person instructions.
+* Use neutral references such as `this PR`, `this diff`, `the changed code`, and `the follow-up agent`.
+* If the Factory wrapper adds a mention outside Droid's review body, do not repeat it.
 
 ## Repo priorities
 

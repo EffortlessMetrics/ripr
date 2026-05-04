@@ -453,3 +453,117 @@ evidence = [
 fixtures = []
 next = "badge-summary-renderer-v1"
 metric = "tests_scanned, class_counts (strong_discriminator, useful_but_broad, smoke_only, likely_vacuous, possibly_circular, duplicative, opaque), reason_counts (including duplicate_activation_and_oracle_shape), and duplicate_discriminator_group_count"
+
+[[capability]]
+id = "repo_seam_inventory"
+name = "Repo seam inventory"
+status = "alpha"
+spec = "RIPR-SPEC-0005"
+evidence = [
+  "crates/ripr/src/analysis/seam_inventory.rs",
+  "deterministic 16-char FNV-1a seam IDs",
+  "production-file walk with test-function exclusion",
+  "cargo xtask repo-seam-inventory",
+  "target/ripr/reports/repo-seams.json and repo-seams.md"
+]
+fixtures = []
+next = "cache/repo-seam-facts-v1"
+metric = "seams classified per production file"
+
+[[capability]]
+id = "test_grip_evidence"
+name = "Test grip evidence"
+status = "alpha"
+spec = "RIPR-SPEC-0005"
+evidence = [
+  "crates/ripr/src/analysis/test_grip_evidence.rs",
+  "reach activate propagate observe discriminate per seam",
+  "RelatedTestGrip with oracle kind and strength",
+  "BDD coverage for boundary equality, error variant, side effect, opaque helper"
+]
+fixtures = []
+next = "analysis/value-extraction-v2"
+metric = "per-stage evidence cited per seam"
+
+[[capability]]
+id = "seam_grip_classification"
+name = "Seam grip classification"
+status = "alpha"
+spec = "RIPR-SPEC-0005"
+evidence = [
+  "crates/ripr/src/analysis/seam_classification.rs",
+  "11-class SeamGripClass enum (strongly_gripped..suppressed)",
+  "is_headline_eligible spec table",
+  "priority-ordered classification rules",
+  "BDD coverage per class plus headline-mapping pin"
+]
+fixtures = []
+next = "calibration/cargo-mutants-v1"
+metric = "classification matches priority-ordered rules"
+
+[[capability]]
+id = "repo_exposure_report"
+name = "Repo exposure report"
+status = "alpha"
+spec = "RIPR-SPEC-0005"
+evidence = [
+  "crates/ripr/src/output/repo_exposure.rs",
+  "schema 0.1 with all 11 SeamGripClass metric buckets",
+  "cargo xtask repo-exposure-report",
+  "target/ripr/reports/repo-exposure.json and repo-exposure.md",
+  "OUTPUT_SCHEMA.md Repo Exposure Report section"
+]
+fixtures = []
+next = "cache/repo-seam-facts-v1"
+metric = "per-class metric buckets stable across runs"
+
+[[capability]]
+id = "agent_seam_packets"
+name = "Agent seam packets"
+status = "alpha"
+spec = "RIPR-SPEC-0005"
+evidence = [
+  "crates/ripr/src/output/agent_seam_packets.rs",
+  "schema 0.2 with write_targeted_test and inspect_static_limitation tasks",
+  "cargo xtask agent-seam-packets",
+  "target/ripr/reports/agent-seam-packets.json",
+  "missing_discriminators with value+reason objects",
+  "suggested_assertions assertion templates with placeholders",
+  "OUTPUT_SCHEMA.md Agent Seam Packets section"
+]
+fixtures = []
+next = "lsp/seam-code-actions-v1"
+metric = "packet carries missing discriminator + suggested assertion templates"
+
+[[capability]]
+id = "lsp_seam_diagnostics"
+name = "LSP seam diagnostics"
+status = "alpha"
+spec = "RIPR-SPEC-0005"
+evidence = [
+  "crates/ripr/src/lsp/diagnostics.rs diagnostic_for_classified_seam",
+  "stable ripr-seam-{class} codes",
+  "severity table (Warning for headline-eligible, Information for unknowns and opaque)",
+  "data.seam_id as hover lookup key",
+  "off by default behind seamDiagnostics: true",
+  "OUTPUT_SCHEMA.md LSP Seam Diagnostics section"
+]
+fixtures = []
+next = "cache/repo-seam-facts-v1"
+metric = "seam_id in diagnostic.data is the hover lookup key"
+
+[[capability]]
+id = "lsp_seam_evidence_hover"
+name = "LSP seam evidence hover"
+status = "alpha"
+spec = "RIPR-SPEC-0005"
+evidence = [
+  "crates/ripr/src/lsp/hover.rs classified_seam_hover_response",
+  "looks up ClassifiedSeam via data.seam_id",
+  "renders Grip class plus RIPR evidence path plus observed values plus missing discriminator plus related tests plus per-kind next step",
+  "prefers seam-bearing diagnostics on overlap (chatgpt-codex review fix)",
+  "preserves pre-4B Finding hover fallback"
+]
+fixtures = []
+next = "lsp/seam-code-actions-v1"
+metric = "hover renders evidence path from ClassifiedSeam, never parses diagnostic message"

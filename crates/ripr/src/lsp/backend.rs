@@ -6,7 +6,8 @@ use super::diagnostics::{
     take_all_uris, workspace_diagnostics_with_config,
 };
 use super::hover::{
-    diagnostic_at_position, diagnostic_hover_response, finding_hover_response, hover_response,
+    classified_seam_hover_response, diagnostic_at_position, diagnostic_covers_position,
+    diagnostic_hover_response, finding_hover_response, hover_response,
 };
 use super::state::{AnalysisSnapshot, DocumentStore};
 use super::{COLLECT_CONTEXT_COMMAND, REFRESH_COMMAND};
@@ -228,10 +229,29 @@ impl Backend {
         if let Ok(snapshot) = self.latest_analysis.lock()
             && let Some(snapshot) = snapshot.as_ref()
             && let Some(diagnostics) = snapshot.diagnostics_for_uri(uri)
-            && let Some(diagnostic) = diagnostic_at_position(diagnostics, position)
-            && let Some(finding) = snapshot.finding_for_diagnostic(diagnostic)
         {
-            return Some(finding_hover_response(finding, diagnostic));
+            // Walk every diagnostic that covers the cursor, not just
+            // the first. When seamDiagnostics is enabled a Finding
+            // diagnostic can overlap a seam diagnostic on the same
+            // line, and findings are pushed before seams in the
+            // diagnostic batch — first-match scanning would silently
+            // shadow the new seam-evidence hover. Prefer the
+            // seam-bearing diagnostic, then the finding-bearing one.
+            // Caught by chatgpt-codex on PR #242.
+            let overlapping: Vec<&Diagnostic> = diagnostics
+                .iter()
+                .filter(|d| diagnostic_covers_position(d, position))
+                .collect();
+            for diagnostic in &overlapping {
+                if let Some(seam) = snapshot.classified_seam_for_diagnostic(diagnostic) {
+                    return Some(classified_seam_hover_response(seam, diagnostic));
+                }
+            }
+            for diagnostic in &overlapping {
+                if let Some(finding) = snapshot.finding_for_diagnostic(diagnostic) {
+                    return Some(finding_hover_response(finding, diagnostic));
+                }
+            }
         }
 
         let Ok(last_diagnostics) = self.last_diagnostics.lock() else {

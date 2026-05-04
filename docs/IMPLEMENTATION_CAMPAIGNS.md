@@ -327,7 +327,7 @@ items below are subsumed there with seam-aware shapes:
 
 Campaign ID: `repo-seam-inventory-test-grip`
 
-Status: active
+Status: complete
 
 Objective:
 
@@ -394,22 +394,26 @@ Work items:
 | `analysis/repo-seam-model-v1` | done | Landed in #229 as `crates/ripr/src/analysis/seams.rs`; introduces `RepoSeam`, `SeamId`, `SeamKind`, `ExpectedSink`, `RequiredDiscriminator`, `SeamGripClass` as crate-private types per RIPR-SPEC-0005. Deterministic 16-char `SeamId` via FNV-1a 64-bit; no public Rust API change; no LSP; no badge change. |
 | `analysis/repo-seam-inventory-v1` | done | Walks production Rust files and emits `Vec<RepoSeam>`; writes `target/ripr/reports/repo-seams.{json,md}` via `cargo xtask repo-seam-inventory`. Initial seam kinds: predicate_boundary, error_variant, return_value, field_construction, side_effect, match_arm, call_presence (`validation_branch` deferred to a follow-up detection PR). |
 | `analysis/test-grip-evidence-v1` | done | Crate-private `TestGripEvidence` + `RelatedTestGrip` attaching reach/activate/propagate/observe/discriminate evidence per inventoried seam. No classification, no public report. Built from existing `RustIndex` / `OracleFact` / `ValueFact` facts. |
-| `analysis/repo-ripr-classification-v1` | ready | Aggregates test-grip evidence into `SeamGripClass` per seam. Badge-headline-eligible vs visible-only mapping is explicit. |
-| `output/repo-exposure-report-v1` | blocked | Markdown + JSON repo report. Schema versioned; existing repo-badge-artifacts schema unchanged unless the spec opts in. |
-| `lsp/repo-seam-diagnostics-v1` | blocked | Surface ungripped or under-gripped seams in the editor with stable diagnostic codes. |
-| `lsp/seam-evidence-hover-v1` | blocked | Hover renders the RIPR evidence path with cited related tests. **PR #211 is merged** (pre-4B evidence-rich hover over the current Finding / AnalysisSnapshot model); this seam-native hover will extend or revise it once the seam model and diagnostics schema are settled. |
-| `context/agent-seam-packets-v1` | blocked | Agent context packet schema (RIPR-SPEC-0003 successor or addendum). Load-bearing fields: changed expression, owner, related tests, oracle strength, observed values, missing discriminator. |
-| `docs/agent-dispatch-workflow-v1` | blocked | How a coding agent uses a seam packet to write the missing test. |
-| `cache/repo-seam-facts-v1` | blocked | Optional fact-layer cache (file-facts, owner-index, seam-facts; never final outputs). Gated on real performance signal. Subsumes Campaign 5's `cache/persistent-cache-v1`. |
-| `calibration/cargo-mutants-v1` | blocked | Optional scaffold for comparing static `SeamGripClass` against cargo-mutants outcomes. Advisory only; static output adopts no mutation-runtime language. Subsumes Campaign 5's `calibration/cargo-mutants-scaffold`. |
+| `analysis/repo-ripr-classification-v1` | done | Crate-private `SeamGripClass` (re-introduced) + `classify_seam(seam, evidence)` mapping `TestGripEvidence` to one of 11 spec classes. Headline-vs-visible table on `is_headline_eligible`. Replaces the stage-zero discard hook from #236 with a real classifier consumer. |
+| `output/repo-exposure-report-v1` | done | `cargo xtask repo-exposure-report` writes `target/ripr/reports/repo-exposure.{json,md}` from the classified seam inventory; `repo-exposure-json` / `repo-exposure-md` formats live in `crates/ripr/src/output/repo_exposure.rs`. Schema 0.1 documented in `docs/OUTPUT_SCHEMA.md` § "Repo Exposure Report". Replaces the stage-zero classification discard from #237 with the real renderer consumer. |
+| `lsp/repo-seam-diagnostics-v1` | done | LSP publishes seam diagnostics with stable `ripr-seam-{class}` codes when `seamDiagnostics: true` is set in initialization options. WARNING for `weakly_gripped`/`ungripped`/`reachable_unrevealed`; INFORMATION for the four `*_unknown` classes and `opaque`. `strongly_gripped`/`intentional`/`suppressed` produce no diagnostic. Off by default until `cache/repo-seam-facts-v1` lands. Diagnostic data carries `seam_id` for hover lookup. |
+| `lsp/seam-evidence-hover-v1` | done | LSP hover for seam diagnostics: looks up `ClassifiedSeam` via `data.seam_id` and renders the Voice B evidence path (grip class, all five RIPR stages with summary, observed values, missing discriminator, related tests with oracle kind/strength, per-kind next step). Pre-4B Finding hover still works for diff-scoped diagnostics — backend prefers seam hover when `seam_id` is present, otherwise falls through to Finding hover. Code-action work deferred. |
+| `context/agent-seam-packets-v1` | done | `cargo xtask agent-seam-packets` writes `target/ripr/reports/agent-seam-packets.json`. Schema 0.2 in `crates/ripr/src/output/agent_seam_packets.rs`. Each headline-eligible classified seam emits one `write_targeted_test` packet with seam_id, owner, kind, expression, current_grip, RIPR evidence, observed values, missing input values, missing oracle shape, related tests, and assertion templates. Strongly-gripped/opaque/intentional/suppressed seams emit no packet. |
+| `docs/agent-dispatch-workflow-v1` | done | `docs/AGENT_DISPATCH_WORKFLOW.md` documents the practical loop: run ripr → inspect report/diagnostic → read seam evidence hover → copy seam packet → hand to agent → agent writes targeted test → rerun ripr → optional cargo-mutants confirmation. Includes per-kind examples (predicate boundary, error variant, return value, field construction, side effect, opaque, intentional, suppressed) and explicit pushback against "add more tests" / "coverage is fine" / "this is proven". Linked from `docs/DOCUMENTATION.md`. |
+| `cache/repo-seam-facts-v1` | rolled-forward | Carried forward into Campaign 5 (Adoption and Calibration). Optional fact-layer cache (file-facts, owner-index, seam-facts; never final outputs). Gated on real performance signal. |
+| `calibration/cargo-mutants-v1` | rolled-forward | Carried forward into Campaign 5. Optional scaffold for comparing static `SeamGripClass` against cargo-mutants outcomes. Advisory only; static output adopts no mutation-runtime language. |
+| `campaign/seam-inventory-test-grip-closeout` | done | Campaign 4B marked complete here and in `.ripr/goals/active.toml`. Voice B is real: `RepoSeam` model, repo seam inventory, `TestGripEvidence`, `SeamGripClass` classification, repo exposure report, agent seam packets, LSP seam diagnostics, seam evidence hover, and agent dispatch workflow docs. Static output remains evidence-first; runtime mutation testing remains a separate confirmation step (`calibration/cargo-mutants-v1` in Campaign 5). PR chain: #229, #235, #236, #237, #239, #240, #241, #242, #248. The active manifest now points at Campaign 5; `cache/repo-seam-facts-v1` and `calibration/cargo-mutants-v1` carry forward as ready items there. |
 
 Dependencies:
 
 - `spec/repo-seam-inventory` landed in #223, `analysis/repo-seam-model-v1`
-  in #229, `analysis/repo-seam-inventory-v1` in #235, and
-  `analysis/test-grip-evidence-v1` follows; `analysis/repo-ripr-classification-v1`
-  is now the single ready item, with the rest of the chain blocked on
-  it directly or transitively.
+  in #229, `analysis/repo-seam-inventory-v1` in #235,
+  `analysis/test-grip-evidence-v1` in #236,
+  `analysis/repo-ripr-classification-v1` in #237, and
+  `output/repo-exposure-report-v1` follows. Recommended next core
+  steps: `context/agent-seam-packets-v1` (agent work-order packets) or
+  `lsp/repo-seam-diagnostics-v1` (editor surface). `cache/repo-seam-facts-v1`
+  and `calibration/cargo-mutants-v1` remain unblocked but optional.
 - `lsp/seam-evidence-hover-v1` extends or revises PR #211, which is
   already merged as pre-4B evidence-rich hover over the current
   Finding / AnalysisSnapshot model. The seam-native hover will
@@ -455,28 +459,290 @@ This campaign sits inside the operating contract codified in
 Spec/model work pings the owner; mechanical sub-step work proceeds
 inline once authorized.
 
-## Campaign 5: Adoption and Calibration
+## Campaign 5A: Voice B Usability and Precision
+
+Campaign ID: `voice-b-usability-and-precision`
+
+Status: active
 
 Objective:
 
 ```text
-Make `ripr` practical in repositories, CI, and external operationalization
-loops.
+Make repo seam evidence fast, precise, and directly actionable for
+developers and coding agents, without adopting mutation-runtime
+language in static output.
 ```
+
+Why it matters:
+
+Campaign 4B made Voice B real (RepoSeam, TestGripEvidence,
+SeamGripClass, repo exposure report, agent seam packets, LSP
+diagnostics, hover, agent dispatch docs). The signal is visible but
+not yet useful every day: full-repo seam classification adds
+multi-second editor latency (so `seamDiagnostics` ships off by
+default), related-test fanout is broad, many seams classify as
+`activation_unknown` because value extraction does not yet cover
+common Rust test data patterns, oracle-shape detection misses
+real-world assertion shapes (field assertions, whole-object equality,
+mock expectations), and packets explain the gap without telling an
+agent where and how to close it. This campaign closes that gap along
+four product axes: fast (cache), precise (related-test, value,
+oracle-shape), actionable (agent packets v2, LSP code actions), and
+calibrated (cargo-mutants).
+
+Operationalization items (`config/ripr-config-v1`,
+`ci/sarif-ci-policy`) move to Campaign 5B because their defaults and
+severity model depend on cache performance and oracle-shape
+stability.
 
 End state:
 
-- repository config exists
-- SARIF and CI policy modes exist
-
-Cache/calibration work that depends on stable seam IDs migrated to
-Campaign 4B (`cache/repo-seam-facts-v1`, `calibration/cargo-mutants-v1`).
-Campaign 5 retains the broader operationalization concerns that do
-not require the seam model.
+- seam fact layers cache cleanly so the cold path still works and the
+  warm path avoids full repo seam walk when inputs are unchanged
+- cache invalidates on source/config/intent/suppression changes; repo
+  exposure report and LSP diagnostics consume the same cached fact
+  source
+- no rendered outputs are cached; cache serialization stays behind a
+  codec boundary; binary serialization, when introduced, uses
+  `postcard` (never `bincode`)
+- related-test fanout is reduced and ranked; related tests carry
+  `relation_reason` and `relation_confidence`; high-fanout files show
+  fewer irrelevant top related tests
+- activation/value evidence detects common Rust test data patterns
+  (let bindings, constants, builder methods, table-driven cases,
+  rstest cases, enum variants, `Option`/`Result` constructors,
+  fixture factories); `activation_unknown` count falls without new
+  false positives
+- oracle-shape evidence recognizes `assert_matches` exact variants,
+  field assertions, whole-object equality, snapshot calls with
+  visible field names, mock expectations, and event/state/persistence
+  assertions
+- agent seam packet v2 carries recommended test name, recommended
+  test file, nearest strong test to imitate, candidate input values,
+  assertion shape with example, patterns to imitate, patterns to
+  avoid, and confidence — enough to write the targeted test directly
+- LSP code actions surface "Copy seam packet", "Copy suggested
+  assertion", "Open related test", and "Refresh ripr analysis" for
+  diagnostics that carry `seam_id`; no automatic edits
+- calibration scaffold compares static `SeamGripClass` against
+  cargo-mutants outcomes; runtime mutation vocabulary stays inside
+  calibration/runtime reports; static reports keep the audit
+  vocabulary
 
 Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `config/ripr-config-v1` | blocked | Depends on stable analyzer conventions. |
-| `ci/sarif-ci-policy` | blocked | Depends on output contract stability. |
+| `cache/repo-seam-facts-v1` | ready | Fact-layer cache only (`FileFacts`, owner index, `RepoSeam` facts, `TestGripEvidence`, `ClassifiedSeam` summaries). Never cache rendered JSON / Markdown / diagnostics / hover / packet strings. Codec boundary; postcard if binary, never bincode. Lifts the `seamDiagnostics` default once warm-path latency is acceptable. |
+| `analysis/related-test-precision-v1` | ready | Add `relation_reason` and `relation_confidence` to related tests; rank related tests in repo exposure report, agent packets, and LSP hover. Reduce noisy fanout without removing `related_tests_total`. |
+| `analysis/value-extraction-v2` | ready | Extract test values from let bindings, constants, builder methods, table-driven cases, rstest cases, enum variants, `Option`/`Result` constructors, fixture factories. Reduce `activation_unknown` without new false positives. |
+| `analysis/oracle-shape-v2` | ready | Detect `assert_matches` exact variants, field assertions, whole-object equality, snapshot calls with visible field names, mock expectations, event/state/persistence assertions, simple custom assertion helpers. |
+| `context/agent-seam-packets-v2` | ready | Schema 0.3: add `recommended_test`, `candidate_values`, `assertion_shape` (kind + example), `patterns_to_imitate`, `patterns_to_avoid`, `confidence`. Uses ranked related tests from `analysis/related-test-precision-v1` when available. |
+| `lsp/seam-code-actions-v1` | ready | Code actions: copy seam packet, copy suggested assertion, open related test, refresh ripr analysis. No automatic edits, no generated tests, no CodeLens. |
+| `calibration/cargo-mutants-v1` | ready | Scaffold for comparing static `SeamGripClass` against cargo-mutants outcomes; advisory; runtime mutation vocabulary appears only in calibration/runtime reports. |
+| `campaign/voice-b-usability-closeout` | pending | Final Campaign 5A state transition; rolls remaining items into 5B / future. |
+
+Dependencies:
+
+- `cache/repo-seam-facts-v1` does not block the precision items
+  technically, but landing it first lets the precision PRs benchmark
+  warm/cold paths without rerunning full inventory.
+- `analysis/related-test-precision-v1` should land before
+  `context/agent-seam-packets-v2` so v2 packets can use ranked
+  related tests as `patterns_to_imitate` / `patterns_to_avoid`.
+- `analysis/value-extraction-v2` and `analysis/oracle-shape-v2` are
+  independent and can land in either order.
+- `lsp/seam-code-actions-v1` should land after
+  `context/agent-seam-packets-v2` so the "Copy suggested assertion"
+  action can use the v2 `assertion_shape` field.
+- `calibration/cargo-mutants-v1` is independent and can land any time.
+
+Commands:
+
+```bash
+cargo xtask shape
+cargo xtask fix-pr
+cargo xtask check-pr
+cargo xtask goldens check
+cargo xtask check-output-contracts
+cargo xtask check-static-language
+```
+
+Blocking conditions:
+
+- bincode introduced as a serialization dependency (use postcard)
+- rendered outputs cached (only fact layers may be cached)
+- mutation-runtime language (`killed`, `survived`, `proven`,
+  `adequate`) leaking from calibration into static reports
+- output drift without golden evidence
+- `seamDiagnostics` flipped on by default before cache lands
+
+Review policy:
+
+This campaign is product work, not refactor work. Each work item
+should preserve the spec/test/code/output trail. PRs that mix
+implementation with refactoring should be split.
+
+## Campaign 5B: Operationalization
+
+Campaign ID: `operationalization`
+
+Status: planned (blocked behind Campaign 5A precision work)
+
+Objective:
+
+```text
+Make ripr deployable: repository config governs analyzer behavior,
+SARIF and CI policy modes integrate with PR workflows, and the badge
+schema can be remapped onto seam-native counts.
+```
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `config/ripr-config-v1` | blocked | Blocked by `cache/repo-seam-facts-v1` (defaults need warm-path cost) and `analysis/oracle-shape-v2` (severity policy needs stable oracle taxonomy). |
+| `ci/sarif-ci-policy` | blocked | Blocked by `config/ripr-config-v1` (severity + suppression). |
+| `badge/seam-native-count-mapping` | planned | Map `ripr` and `ripr+` badge counts onto seam-native counts after seam report and calibration semantics settle. |
+
+Review policy:
+
+5B work cannot land before Campaign 5A's cache and oracle-shape
+items, so opening 5B PRs before then is out-of-scope and should be
+held in draft.
+
+## Campaign 6: Module SRP Refactoring
+
+Campaign ID: `modularize-ripr-submodules`
+
+Status: planned (ready to start after Campaign 4B stabilizes)
+
+Objective:
+
+```text
+Refactor internal modules under crates/ripr/src/ so each module has one
+product responsibility, improving maintainability, testability, and reasoning
+without splitting the package.
+```
+
+Why it matters:
+
+Current modules mix responsibilities (e.g., `analysis/mod.rs` orchestrates pipeline
+and counts summaries; `analysis/rust_index.rs` parses, indexes, and extracts facts).
+This makes behavior changes ripple across boundaries, testing harder, and future
+modularization (async, parallelism, caching) more complex. Module boundaries should
+align with RIPR stages and clear responsibilities.
+
+End state:
+
+```text
+crates/ripr/src/
+  domain/           — stable data model
+  app/              — use-case orchestration
+  analysis/
+    diff/           — diff parsing
+    workspace/      — file discovery and scope
+    facts/          — fact model and index
+    syntax/         — syntax adapter
+    extract/        — fact extraction
+    probes/         — probe generation
+    classify/       — classification pipeline
+  output/           — rendering
+  cli/              — argv parsing and execution
+  lsp/              — LSP server
+  xtask/            — repo automation
+```
+
+The ripr package **stays one crate** with one published library and binary. Do not
+split into `ripr-core`, `ripr-cli`, `ripr-lsp`, or schema crates.
+
+Hard constraints:
+
+```text
+- Do not split the crate
+- No JSON schema changes
+- No static output language changes
+- No new probe families or classification behavior changes
+- Preserve all public behavior and CLI surface
+- Re-bless goldens only if the PR intentionally changes output
+```
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `modularization/infrastructure-and-planning` | in-progress | This PR: lay down documentation, infrastructure, and establish first-PR pattern |
+| `analysis/summary-extraction` | pending | PR 1: Extract duplicated summary and sort logic from `analysis/mod.rs` |
+| `analysis/pipeline-extraction` | pending | PR 2: Make `analysis/mod.rs` a façade over pipeline.rs |
+| `diff/module-split` | pending | PR 3: Split `analysis/diff.rs` into `diff/{mod,model,load,parse}.rs` |
+| `workspace/module-split` | pending | PR 4: Split workspace concerns into `workspace/{mod,discover,scope,production,paths}.rs` |
+| `facts/model-extraction` | pending | PR 5: Move fact DTOs into `analysis/facts/model.rs` |
+| `syntax/adapter-extraction` | pending | PR 6: Move syntax adapters into `analysis/syntax/adapter.rs` |
+| `facts/builder-extraction` | pending | PR 7: Move index construction into `analysis/facts/build.rs` |
+| `syntax/ra-extraction` | pending | PR 8: Move parser-backed logic into `analysis/syntax/ra.rs` |
+| `syntax/lexical-extraction` | pending | PR 9: Move lexical fallback into `analysis/syntax/lexical.rs` |
+| `extract/fact-extraction` | pending | PR 10: Move extractors into `analysis/extract/{calls,literals,oracles,probe_shapes,text}.rs` |
+| `probes/family-extraction` | pending | PR 11: Create `analysis/probes/family.rs` |
+| `probes/expectations-extraction` | pending | PR 12: Create `analysis/probes/expectations.rs` |
+| `probes/id-extraction` | pending | PR 13: Create `analysis/probes/ids.rs` |
+| `probes/lexical-extraction` | pending | PR 14: Create `analysis/probes/lexical.rs` |
+| `probes/diff-repo-split` | pending | PR 15: Split diff and repo probe seeding |
+| `classify/context-extraction` | pending | PR 16: Create `analysis/classify/context.rs` with `ProbeContext` |
+| `classify/related-tests` | pending | PR 17: Move related-test discovery into stage module |
+| `classify/reach-stage` | pending | PR 18: Move reach evidence into stage module |
+| `classify/flow-propagation` | pending | PR 19: Move flow and propagation stages |
+| `classify/activation-stage` | pending | PR 20: Move activation stage |
+| `classify/remaining-stages` | pending | PR 21: Move infection, reveal, decision, confidence, missing, stop reasons |
+| `app/usecase-split` | pending | PR 22: Split `app.rs` into use-case modules (check, explain, context) |
+| `output/format-extraction` | pending | PR 23: Move `OutputFormat` to `output/format.rs` |
+| `output/render-dispatch` | pending | PR 24: Move rendering logic to `output/render.rs` |
+| `cli/command-model` | pending | PR 25: Create `cli/command.rs` with `CliCommand` enum |
+| `cli/parse-command` | pending | PR 26: Update `cli/parse.rs` to return `CliCommand` |
+| `cli/execute-command` | pending | PR 27: Create `cli/execute.rs` for command execution |
+| `domain/context-packet-dto` | pending | PR 28: Create `domain/context_packet.rs` with `ContextPacket` struct |
+| `output/json-context-dto` | pending | PR 29: Update JSON context renderer to use `ContextPacket` |
+| `lsp/context-packet-usage` | pending | PR 30: Update LSP to use `ContextPacket` |
+| `api/doc-hidden-internals` | pending | PR 31: Mark internal modules `#[doc(hidden)]` |
+| `api/private-internals` | pending | PR 32: Make internal modules private (breaking, optional) |
+| `xtask/command-dispatch` | pending | PR 33: Split xtask into command and run modules |
+| `xtask/policy-modules` | pending | PR 34: Organize policy checks into `xtask/src/policy/` |
+| `xtask/report-modules` | pending | PR 35: Organize reports into `xtask/src/reports/` |
+| `campaign/modularization-closeout` | pending | Final review and closure of Campaign 6 |
+
+Dependencies:
+
+- Phase 1 (summary, pipeline) establishes the extraction pattern and should merge before Phase 2
+- Phases 2–5 (analysis breakdown) are lowest-risk and can proceed in parallel if CI capacity allows
+- Phase 6–7 (app/CLI split) should follow analysis stabilization
+- Phase 8–9 (API tightening) should follow all internal movement
+- Phase 10 (xtask) is lowest-priority and can happen any time after Phase 1
+
+Commands:
+
+```bash
+cargo fmt --check
+cargo test --workspace
+cargo xtask shape
+cargo xtask fix-pr
+cargo xtask check-architecture
+cargo xtask check-public-api
+cargo xtask check-pr
+cargo xtask fixtures
+cargo xtask goldens check
+cargo xtask dogfood
+```
+
+Blocking conditions:
+
+- Output or golden drift without intentional spec/test evidence
+- Architecture guard or public API guard fails
+- PR mixes multiple phases or responsibilities
+- JSON schema change without new version docs
+- Static language constraints violated
+
+Review policy:
+
+Each modularization PR should be a pure movement with zero behavior change. Include
+a production-delta summary noting which responsibilities moved to which modules. No
+refactoring or cleanup in the same PR. Include the standard acceptance checklist in
+the PR template.

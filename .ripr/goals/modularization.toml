@@ -1,0 +1,336 @@
+id = "modularize-ripr-submodules"
+title = "Module SRP Refactoring"
+status = "planned"
+
+objective = """
+Refactor internal modules under crates/ripr/src/ so each module has one
+product responsibility, improving maintainability, testability, and reasoning
+without splitting the package. The ripr crate stays one published package with
+one library and binary — no internal splits into ripr-core, ripr-cli, etc.
+"""
+
+end_state = [
+  "Every internal module has a single, clear product responsibility",
+  "Module boundaries align with RIPR analysis stages (parse → facts → probes → classify → render)",
+  "analysis/mod.rs is a thin orchestration façade, not implementation",
+  "rust_index.rs is deleted or a compatibility shim; parsing/extraction is modularized",
+  "Classification logic is split into stage-specific modules (reach, activate, infect, etc.)",
+  "app.rs is split into use-case modules (check, explain, context)",
+  "CLI parsing is decoupled from execution",
+  "context_packet exists as a domain DTO",
+  "Public API is tightened (internal modules marked #[doc(hidden)] or private)",
+  "Test coverage is unchanged or improved",
+  "All output artifacts (golden, test-oracle, dogfood) are stable",
+  "Architecture guard passes with no exceptions"
+]
+
+[[work_item]]
+id = "infrastructure-and-planning"
+status = "in-progress"
+branch = "claude/modularize-ripr-submodules-VOyRW"
+stackable = false
+requires_human_merge = true
+acceptance = "docs/MODULARIZATION_CAMPAIGN.md exists with detailed phase-by-phase breakdown (10 phases, 35 PRs); IMPLEMENTATION_CAMPAIGNS.md includes Campaign 6 registry; .ripr/goals/modularization.toml exists; CLAUDE.md already documents agent operating rules; branch is ready for PR 1"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "analysis-summary-extraction"
+status = "pending"
+branch = "analysis-summary-extraction"
+stackable = false
+requires_human_merge = true
+acceptance = "crates/ripr/src/analysis/summary.rs and sort.rs created; duplicated logic in analysis/mod.rs replaced with calls to summary::summarize_findings and sort::sort_findings; run_analysis and run_repo_analysis behavior unchanged; no output drift; cargo test --workspace && cargo xtask check-pr pass"
+commands = [
+  "cargo fmt --check",
+  "cargo test --workspace",
+  "cargo xtask check-architecture",
+  "cargo xtask check-public-api",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "analysis-pipeline-extraction"
+status = "pending"
+branch = "analysis-pipeline-extraction"
+stackable = false
+requires_human_merge = true
+acceptance = "crates/ripr/src/analysis/pipeline.rs created; run_analysis and run_repo_analysis moved to pipeline::run_diff_pipeline and pipeline::run_repo_pipeline; analysis/mod.rs is a thin façade; no behavior change; cargo xtask fixtures && cargo xtask goldens check && cargo xtask dogfood && cargo xtask check-pr pass"
+commands = [
+  "cargo fmt --check",
+  "cargo test --workspace",
+  "cargo xtask fixtures",
+  "cargo xtask goldens check",
+  "cargo xtask dogfood",
+  "cargo xtask check-architecture",
+  "cargo xtask check-public-api",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "diff-module-split"
+status = "pending"
+branch = "diff-module-split"
+stackable = false
+requires_human_merge = true
+acceptance = "analysis/diff.rs replaced with analysis/diff/{mod,model,load,parse}.rs; ChangedFile/ChangedLine in model.rs; load_diff in load.rs; parse_unified_diff/parse_hunk_header/parse_start in parse.rs; all existing parser tests migrated and passing; diff parsing behavior unchanged; cargo test --workspace && cargo xtask check-pr pass"
+commands = [
+  "cargo fmt --check",
+  "cargo test -p ripr analysis::diff",
+  "cargo test --workspace",
+  "cargo xtask check-architecture",
+  "cargo xtask check-public-api",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "workspace-module-split"
+status = "pending"
+branch = "workspace-module-split"
+stackable = false
+requires_human_merge = true
+acceptance = "analysis/workspace.rs (if it exists as file) replaced with workspace/{mod,discover,scope,production,paths}.rs; file discovery and scope selection logic split by concern; all existing tests pass; mode-based file selection behavior unchanged; production-file detection unchanged; cargo xtask check-pr pass"
+commands = [
+  "cargo fmt --check",
+  "cargo test --workspace",
+  "cargo xtask check-architecture",
+  "cargo xtask check-public-api",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "facts-model-extraction"
+status = "pending"
+branch = "facts-model-extraction"
+stackable = false
+requires_human_merge = true
+acceptance = "crates/ripr/src/analysis/facts/{mod,model}.rs created; RustIndex, FileFacts, FunctionFact, TestFact, OracleFact, CallFact, ReturnFact, LiteralFact, ProbeShapeFact, FunctionSummary, TestSummary moved to facts/model.rs; temporary re-exports from rust_index.rs for compatibility; no behavior change; cargo xtask check-pr pass"
+commands = [
+  "cargo fmt --check",
+  "cargo test --workspace",
+  "cargo xtask check-architecture",
+  "cargo xtask check-public-api",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "syntax-adapter-extraction"
+status = "pending"
+branch = "syntax-adapter-extraction"
+stackable = false
+requires_human_merge = true
+acceptance = "crates/ripr/src/analysis/syntax/{mod,adapter}.rs created; RustSyntaxAdapter, LexicalRustSyntaxAdapter, RaRustSyntaxAdapter, TextRange, SyntaxNodeFact moved to adapter.rs; adapter implementations temporarily remain in place; no behavior change; cargo xtask check-pr pass"
+commands = [
+  "cargo fmt --check",
+  "cargo test --workspace",
+  "cargo xtask check-architecture",
+  "cargo xtask check-public-api",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "index-builder-extraction"
+status = "pending"
+branch = "index-builder-extraction"
+stackable = false
+requires_human_merge = true
+acceptance = "crates/ripr/src/analysis/facts/build.rs created; build_index function moved from rust_index to facts::build; call sites updated; no behavior change; cargo xtask check-pr pass"
+commands = [
+  "cargo fmt --check",
+  "cargo test --workspace",
+  "cargo xtask check-architecture",
+  "cargo xtask check-public-api",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "ra-syntax-adapter-extraction"
+status = "pending"
+branch = "ra-syntax-adapter-extraction"
+stackable = false
+requires_human_merge = true
+acceptance = "crates/ripr/src/analysis/syntax/{ra,line_index}.rs created; impl RustSyntaxAdapter for RaRustSyntaxAdapter and related parser logic moved to syntax/ra.rs; LineIndex moved to syntax/line_index.rs; no behavior change; cargo xtask check-pr pass"
+commands = [
+  "cargo fmt --check",
+  "cargo test --workspace",
+  "cargo xtask check-architecture",
+  "cargo xtask check-public-api",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "lexical-syntax-extraction"
+status = "pending"
+branch = "lexical-syntax-extraction"
+stackable = false
+requires_human_merge = true
+acceptance = "crates/ripr/src/analysis/syntax/lexical.rs created; impl RustSyntaxAdapter for LexicalRustSyntaxAdapter and lexical fallback logic moved; no behavior change; cargo xtask check-pr pass"
+commands = [
+  "cargo fmt --check",
+  "cargo test --workspace",
+  "cargo xtask check-architecture",
+  "cargo xtask check-public-api",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "extractors-extraction"
+status = "pending"
+branch = "extractors-extraction"
+stackable = false
+requires_human_merge = true
+acceptance = "crates/ripr/src/analysis/extract/{mod,calls,literals,oracles,probe_shapes,text}.rs created; fact extraction functions moved out of rust_index; rust_index.rs deleted or reduced to compatibility shim; golden outputs unchanged; cargo xtask fixtures && cargo xtask goldens check && cargo xtask dogfood && cargo xtask check-pr pass"
+commands = [
+  "cargo fmt --check",
+  "cargo test --workspace",
+  "cargo xtask fixtures",
+  "cargo xtask goldens check",
+  "cargo xtask dogfood",
+  "cargo xtask check-architecture",
+  "cargo xtask check-public-api",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "probe-generation-modules"
+status = "pending"
+branch = "probe-generation-modules"
+stackable = false
+requires_human_merge = true
+acceptance = "crates/ripr/src/analysis/probes/{mod,family,expectations,ids,lexical,diff,repo}.rs created; probe seeding logic split by family, expectation, ID, lexical fallback, and diff vs repo scope; no behavior change; cargo xtask fixtures && cargo xtask goldens check && cargo xtask dogfood && cargo xtask check-pr pass"
+commands = [
+  "cargo fmt --check",
+  "cargo test --workspace",
+  "cargo xtask fixtures",
+  "cargo xtask goldens check",
+  "cargo xtask dogfood",
+  "cargo xtask check-architecture",
+  "cargo xtask check-public-api",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "classification-stage-modules"
+status = "pending"
+branch = "classification-stage-modules"
+stackable = false
+requires_human_merge = true
+acceptance = "crates/ripr/src/analysis/classify/{mod,context,related_tests,reach,flow,propagation,activation,infection,reveal,decision,confidence,missing,stop_reasons,recommendation,text}.rs created; each RIPR stage split into dedicated module; ProbeContext used consistently; no behavior change; cargo xtask fixtures && cargo xtask goldens check && cargo xtask test-oracle-report && cargo xtask check-pr pass"
+commands = [
+  "cargo fmt --check",
+  "cargo test --workspace",
+  "cargo xtask fixtures",
+  "cargo xtask goldens check",
+  "cargo xtask test-oracle-report",
+  "cargo xtask check-architecture",
+  "cargo xtask check-public-api",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "app-usecase-modules"
+status = "pending"
+branch = "app-usecase-modules"
+stackable = false
+requires_human_merge = true
+acceptance = "crates/ripr/src/app/{mod,input,check,explain,context}.rs created; check_workspace, explain_finding, collect_context split into dedicated modules; public signatures unchanged; no behavior change; cargo test -p ripr app && cargo xtask check-pr pass"
+commands = [
+  "cargo fmt --check",
+  "cargo test --workspace",
+  "cargo test -p ripr app",
+  "cargo xtask check-architecture",
+  "cargo xtask check-public-api",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "output-format-rendering-split"
+status = "pending"
+branch = "output-format-rendering-split"
+stackable = false
+requires_human_merge = true
+acceptance = "crates/ripr/src/output/{mod,format,render}.rs created; OutputFormat moved to format.rs; rendering dispatch moved to render.rs; app produces CheckOutput, output renders it; no behavior change; cargo test --workspace && cargo xtask check-pr pass"
+commands = [
+  "cargo fmt --check",
+  "cargo test --workspace",
+  "cargo xtask check-architecture",
+  "cargo xtask check-public-api",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "cli-command-parsing-execution"
+status = "pending"
+branch = "cli-command-parsing-execution"
+stackable = false
+requires_human_merge = true
+acceptance = "crates/ripr/src/cli/{mod,command,parse,execute,doctor}.rs refactored; parse.rs returns CliCommand enum; execute.rs handles execution; doctor.rs contains doctor-specific logic; parse.rs does not run analysis; execute.rs does not parse argv; CLI surface unchanged; cargo test -p ripr cli && cargo xtask check-pr pass"
+commands = [
+  "cargo fmt --check",
+  "cargo test --workspace",
+  "cargo test -p ripr cli",
+  "cargo xtask check-architecture",
+  "cargo xtask check-public-api",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "context-packet-dto"
+status = "pending"
+branch = "context-packet-dto"
+stackable = false
+requires_human_merge = true
+acceptance = "crates/ripr/src/domain/context_packet.rs created; ContextPacket struct defined; JSON renderer updated to use ContextPacket; LSP context lookup uses ContextPacket; no output schema change; cargo test --workspace && cargo xtask check-pr pass"
+commands = [
+  "cargo fmt --check",
+  "cargo test --workspace",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-architecture",
+  "cargo xtask check-public-api",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "api-tightening"
+status = "pending"
+branch = "api-tightening"
+stackable = false
+requires_human_merge = true
+acceptance = "Internal modules marked #[doc(hidden)] or made private; public API surface documented; policy/public_api.txt updated if needed; no behavior change; cargo xtask check-public-api && cargo xtask check-pr pass"
+commands = [
+  "cargo fmt --check",
+  "cargo test --workspace",
+  "cargo xtask check-architecture",
+  "cargo xtask check-public-api",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "xtask-modularization"
+status = "pending"
+branch = "xtask-modularization"
+stackable = false
+requires_human_merge = true
+acceptance = "xtask/src/{command,run,policy,reports} modules created; xtask automation split by concern; no behavior change; cargo xtask commands still work; cargo test --workspace && cargo xtask check-pr pass"
+commands = [
+  "cargo fmt --check",
+  "cargo test --workspace",
+  "cargo xtask check-architecture",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "campaign-modularization-closeout"
+status = "pending"
+branch = "campaign-modularization-closeout"
+stackable = false
+requires_human_merge = true
+acceptance = "Campaign 6 marked complete; all 35 PRs merged; architecture guard passes; public API guard passes; golden outputs stable; test-oracle and dogfood reports stable; IMPLEMENTATION_CAMPAIGNS.md and .ripr/goals/modularization.toml updated to reflect completion"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask check-pr",
+  "cargo xtask reports index"
+]

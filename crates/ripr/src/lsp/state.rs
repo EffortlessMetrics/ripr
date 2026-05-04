@@ -1,4 +1,5 @@
 use super::uri::path_from_file_uri;
+use crate::analysis::ClassifiedSeam;
 use crate::app::Mode;
 use crate::domain::Finding;
 use std::collections::BTreeMap;
@@ -14,6 +15,10 @@ pub(super) struct AnalysisSnapshot {
     pub(super) base: Option<String>,
     pub(super) mode: Mode,
     pub(super) findings: Vec<Finding>,
+    /// Voice B classified seams. Empty when `seamDiagnostics` is off
+    /// (the default). Populated lazily on workspace refresh when the
+    /// flag is enabled.
+    pub(super) classified_seams: Vec<ClassifiedSeam>,
     pub(super) diagnostics_by_uri: BTreeMap<Uri, Vec<Diagnostic>>,
 }
 
@@ -24,13 +29,20 @@ impl AnalysisSnapshot {
             .values()
             .map(Vec::len)
             .sum::<usize>();
+        let surfacable_seams = self
+            .classified_seams
+            .iter()
+            .filter(|entry| {
+                super::diagnostics::diagnostic_severity_for_grip_class(entry.class).is_some()
+            })
+            .count();
         !self.root.as_os_str().is_empty()
             && self
                 .base
                 .as_ref()
                 .is_none_or(|base| !base.trim().is_empty())
             && !self.mode.as_str().is_empty()
-            && self.findings.len() == diagnostic_count
+            && self.findings.len() + surfacable_seams == diagnostic_count
     }
 
     pub(super) fn diagnostics_for_uri(&self, uri: &Uri) -> Option<&[Diagnostic]> {
@@ -50,6 +62,26 @@ impl AnalysisSnapshot {
             .and_then(|data| data.get("finding_id"))
             .and_then(|value| value.as_str())?;
         self.finding_by_id(finding_id)
+    }
+
+    /// Look up the classified seam matching a diagnostic's
+    /// `data.seam_id` field, if present. Mirrors
+    /// `finding_for_diagnostic` for the Voice B seam diagnostics
+    /// introduced by `lsp/repo-seam-diagnostics-v1`. Returns `None`
+    /// when the diagnostic carries a `finding_id` instead, or when
+    /// the snapshot was built without seam diagnostics enabled.
+    pub(super) fn classified_seam_for_diagnostic(
+        &self,
+        diagnostic: &Diagnostic,
+    ) -> Option<&ClassifiedSeam> {
+        let seam_id = diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("seam_id"))
+            .and_then(|value| value.as_str())?;
+        self.classified_seams
+            .iter()
+            .find(|entry| entry.seam.id().as_str() == seam_id)
     }
 }
 
