@@ -118,9 +118,7 @@ pub(super) fn workspace_diagnostics_with_config(
                         let Ok(uri) = file_uri_for_path(&path) else {
                             return false;
                         };
-                        if let Some(diagnostic) =
-                            diagnostic_for_classified_seam(&root, entry)
-                        {
+                        if let Some(diagnostic) = diagnostic_for_classified_seam(&root, entry) {
                             grouped.entry(uri).or_default().push(diagnostic);
                             true
                         } else {
