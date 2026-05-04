@@ -489,6 +489,120 @@ Voice B reports static test grip evidence. Runtime confirmation via
 Static-language constraints from RIPR-SPEC-0005 still apply: the report
 never uses runtime-mutation outcome words.
 
+## Agent Seam Packets
+
+`ripr check --root . --format agent-seam-packets-json` emits per-seam
+agent work orders for every headline-eligible classified seam. The
+artifact lands at `target/ripr/reports/agent-seam-packets.json` when
+generated via `cargo xtask agent-seam-packets`.
+
+```json
+{
+  "schema_version": "0.2",
+  "scope": "repo",
+  "packets_total": 12565,
+  "packets": [
+    {
+      "task": "write_targeted_test",
+      "seam_id": "f3c9e4d21a0b7c88",
+      "owner": "src/pricing.rs::discounted_total",
+      "seam_kind": "predicate_boundary",
+      "file": "src/pricing.rs",
+      "line": 88,
+      "changed_expression": "amount >= discount_threshold",
+      "current_grip": "weakly_gripped",
+      "headline_eligible": true,
+      "evidence": {
+        "reach": "yes",
+        "activate": "yes",
+        "propagate": "yes",
+        "observe": "yes",
+        "discriminate": "weak"
+      },
+      "observed_values": ["50", "10000"],
+      "missing_discriminators": [
+        {
+          "value": "discount_threshold (equality boundary)",
+          "reason": "observed values do not include the equality-boundary case for this predicate"
+        }
+      ],
+      "missing_oracle_shape": "exact returned value assertion at the equality boundary",
+      "related_existing_tests": [
+        {
+          "name": "below_threshold_has_no_discount",
+          "file": "tests/pricing.rs",
+          "line": 12,
+          "oracle_kind": "exact_value",
+          "oracle_strength": "strong",
+          "evidence_summary": "exact value assertion"
+        }
+      ],
+      "suggested_assertions": [
+        "assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)"
+      ],
+      "runtime_confirmation": "optional cargo-mutants confirmation; ripr reports static evidence only"
+    }
+  ]
+}
+```
+
+Field contract:
+
+- `schema_version` — currently `"0.2"`. Distinct from the repo-exposure
+  report's `"0.1"` because the packet is a separate contract aimed at
+  coding agents rather than reviewers. Bumping requires updating this
+  section, the renderer (`crates/ripr/src/output/agent_seam_packets.rs`),
+  and any downstream consumers in lockstep.
+- `scope` — always `"repo"`.
+- `packets_total` — number of actionable packets emitted. Equals the
+  count of headline-eligible seams plus opaque seams (which emit
+  `inspect_static_limitation`). Strongly-gripped, intentional, and
+  suppressed seams produce no packet.
+- `packets[].task` — `"write_targeted_test"` for headline-eligible
+  seams; `"inspect_static_limitation"` for opaque seams. Future
+  versions may add tasks like `"strengthen_oracle"` or
+  `"add_match_arm_observer"`.
+- `packets[].current_grip` — one of the `SeamGripClass` strings the
+  packet is emitted for (`weakly_gripped`, `ungripped`,
+  `reachable_unrevealed`, the four `*_unknown` classes, or
+  `opaque`).
+- `packets[].headline_eligible` — boolean. `true` for the
+  headline-eligible classes, `false` for `opaque`. Lets agents
+  prioritize without re-deriving the headline mapping.
+- `packets[].evidence` — per-stage `StageState` strings.
+- `packets[].observed_values` — literal scalars seen in owner-call
+  arguments across related tests.
+- `packets[].missing_discriminators` — array of `{value, reason}`
+  records mirroring the analyzer's `MissingDiscriminatorFact` shape.
+  For predicate-boundary seams, includes a fallback entry naming the
+  equality boundary even when no analyzer hypothesis fired.
+- `packets[].missing_oracle_shape` — guidance string keyed by
+  `SeamKind` and `ExpectedSink`. Examples:
+  - `predicate_boundary` → "exact returned value assertion at the
+    equality boundary"
+  - `error_variant` → "exact error-variant assertion (matches! /
+    assert_matches!)"
+  - `side_effect` → "mock expectation, event/state observer, or
+    persistence assertion (...)"
+- `packets[].related_existing_tests` — capped at
+  `MAX_RELATED_TESTS_PER_PACKET` (currently 8). Carries test name,
+  file, line, oracle kind, oracle strength, and a short
+  `evidence_summary` describing the oracle shape (e.g., "exact value
+  assertion", "is_err / broad-error assertion").
+- `packets[].suggested_assertions` — best-effort assertion templates
+  the agent fills in. Placeholders are intentional; ripr never invents
+  expected values. Example for predicate boundary:
+  `"assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)"`.
+- `packets[].runtime_confirmation` — boilerplate string reminding the
+  agent that `ripr` is preflight static evidence and runtime
+  mutation confirmation (e.g., `cargo-mutants`) is a separate
+  calibration step.
+
+The packet is the agent's work order: it names the seam, the missing
+discriminator, the oracle shape, and an assertion template — but never
+generates the test itself. Composition with a coding agent closes the
+loop.
+
 ## Stability Rules
 
 Output contract values are registered in `policy/output_contracts.txt`.

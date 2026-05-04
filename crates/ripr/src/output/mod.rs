@@ -1,3 +1,4 @@
+pub(crate) mod agent_seam_packets;
 pub(crate) mod badge;
 pub mod github;
 pub mod human;

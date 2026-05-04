@@ -393,6 +393,7 @@ fn main() {
         Some("repo-badge-artifacts") => repo_badge_artifacts(),
         Some("repo-seam-inventory") => repo_seam_inventory(),
         Some("repo-exposure-report") => repo_exposure_report(),
+        Some("agent-seam-packets") => agent_seam_packets(),
         Some("update-badge-endpoints") => update_badge_endpoints(),
         Some("check-badge-endpoints") => check_badge_endpoints(),
         Some("dogfood") => dogfood(),
@@ -552,7 +553,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  golden-drift\n  metrics\n  test-oracle-report\n  check-test-oracles\n  test-efficiency-report\n  badge-artifacts\n  repo-badge-artifacts\n  update-badge-endpoints\n  check-badge-endpoints\n  dogfood\n  critic\n  goals status|next|report\n  reports index\n  receipts [check]\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-allow-attributes\n  check-local-context\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-supply-chain\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
+        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  golden-drift\n  metrics\n  test-oracle-report\n  check-test-oracles\n  test-efficiency-report\n  badge-artifacts\n  repo-badge-artifacts\n  repo-seam-inventory\n  repo-exposure-report\n  agent-seam-packets\n  update-badge-endpoints\n  check-badge-endpoints\n  dogfood\n  critic\n  goals status|next|report\n  reports index\n  receipts [check]\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-allow-attributes\n  check-local-context\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-supply-chain\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
     );
 }
 
@@ -5275,6 +5276,16 @@ fn repo_exposure_report() -> Result<(), String> {
     write_report("repo-exposure.md", &md_output)
 }
 
+/// Emit Voice B agent seam packets for every headline-eligible
+/// classified seam and write `target/ripr/reports/agent-seam-packets.json`
+/// per RIPR-SPEC-0005. Strongly-gripped, opaque, intentional, and
+/// suppressed seams produce no packet.
+fn agent_seam_packets() -> Result<(), String> {
+    let args = repo_seam_inventory_command_args("agent-seam-packets-json");
+    let json_output = run_output_owned("cargo", &args)?;
+    write_report("agent-seam-packets.json", &json_output)
+}
+
 fn repo_badge_artifacts() -> Result<(), String> {
     let badge_dir = Path::new("target").join("ripr");
     fs::create_dir_all(&badge_dir).map_err(|err| {
@@ -7439,6 +7450,7 @@ fn known_xtask_command(command: &str) -> bool {
             | "repo-badge-artifacts"
             | "repo-seam-inventory"
             | "repo-exposure-report"
+            | "agent-seam-packets"
             | "update-badge-endpoints"
             | "check-badge-endpoints"
             | "dogfood"

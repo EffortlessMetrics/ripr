@@ -129,6 +129,12 @@ pub enum OutputFormat {
     /// Voice B repo exposure report rendered as Markdown for human
     /// review.
     RepoExposureMd,
+    /// Voice B agent-ready seam packets per RIPR-SPEC-0005 — one
+    /// `write_targeted_test` packet per headline-eligible classified
+    /// seam. Schema 0.2 in `docs/OUTPUT_SCHEMA.md` § "Agent Seam
+    /// Packets". Strongly-gripped, opaque, intentional, and
+    /// suppressed seams emit no packet.
+    AgentSeamPacketsJson,
 }
 
 impl OutputFormat {
@@ -148,13 +154,14 @@ impl OutputFormat {
                 | OutputFormat::RepoSeamsMd
                 | OutputFormat::RepoExposureJson
                 | OutputFormat::RepoExposureMd
+                | OutputFormat::AgentSeamPacketsJson
         )
     }
 
-    /// Whether this format renders the Voice B seam inventory or
-    /// classified exposure report rather than the diff/badge `Findings`
-    /// pipeline. These formats short-circuit `check_workspace_repo`
-    /// since they do not consume `Findings`.
+    /// Whether this format renders the Voice B seam inventory,
+    /// classified exposure report, or agent packets rather than the
+    /// diff/badge `Findings` pipeline. These formats short-circuit
+    /// `check_workspace_repo` since they do not consume `Findings`.
     pub fn is_repo_seam_inventory(&self) -> bool {
         matches!(
             self,
@@ -162,6 +169,7 @@ impl OutputFormat {
                 | OutputFormat::RepoSeamsMd
                 | OutputFormat::RepoExposureJson
                 | OutputFormat::RepoExposureMd
+                | OutputFormat::AgentSeamPacketsJson
         )
     }
 }
@@ -311,6 +319,12 @@ pub fn render_check(output: &CheckOutput, format: &OutputFormat) -> Result<Strin
         OutputFormat::RepoExposureMd => {
             let classified = analysis::inventory_classified_seams_at(&output.root)?;
             Ok(output::repo_exposure::render_repo_exposure_md(&classified))
+        }
+        OutputFormat::AgentSeamPacketsJson => {
+            let classified = analysis::inventory_classified_seams_at(&output.root)?;
+            Ok(output::agent_seam_packets::render_agent_seam_packets_json(
+                &classified,
+            ))
         }
     }
 }
