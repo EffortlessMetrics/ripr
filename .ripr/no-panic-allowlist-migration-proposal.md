@@ -220,30 +220,6 @@ explanation = "Semantic selector test infrastructure"
 kind = "method_call"
 container = "with_temp_cwd"
 callee = "unwrap"
-receiver_fingerprint = "std::env::current_dir()"
-
-[[allow]]
-path = "xtask/src/main.rs"
-family = "unwrap"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
-
-[allow.selector]
-kind = "method_call"
-container = "with_temp_cwd"
-callee = "unwrap"
-receiver_fingerprint = "std::env::set_current_dir(&root)"
-
-[[allow]]
-path = "xtask/src/main.rs"
-family = "unwrap"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
-
-[allow.selector]
-kind = "method_call"
-container = "with_temp_cwd"
-callee = "unwrap"
 receiver_fingerprint = "std::env::set_current_dir(old)"
 
 [[allow]]
@@ -254,7 +230,7 @@ explanation = "Semantic selector test infrastructure"
 
 [allow.selector]
 kind = "method_call"
-container = "closure_404312"
+container = "closure_404553"
 callee = "unwrap"
 receiver_fingerprint = "root.join(\"allowlist.toml\").to_str()"
 
@@ -276,29 +252,7 @@ explanation = "Semantic selector test infrastructure"
 
 [allow.selector]
 kind = "method_call"
-container = "closure_404312"
-callee = "unwrap"
-receiver_fingerprint = "result"
-
-# ⚠️ WARNING: Position-based container ID
-# This container is a byte-offset-based identifier (closure_NNNNN).
-# It will become stale if code before the closure changes.
-# Before adopting this entry, manually stabilize the container using:
-# - The enclosing named function if this closure is inside one, OR
-# - A hash-based or semantic identifier for the closure, OR
-# - A more specific receiver_fingerprint filter
-# Current receiver_fingerprint: result
-
-
-[[allow]]
-path = "xtask/src/main.rs"
-family = "unwrap"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
-
-[allow.selector]
-kind = "method_call"
-container = "closure_405290"
+container = "closure_405531"
 callee = "unwrap"
 receiver_fingerprint = "root.join(\"allowlist.toml\").to_str()"
 
@@ -320,7 +274,7 @@ explanation = "Semantic selector test infrastructure"
 
 [allow.selector]
 kind = "method_call"
-container = "closure_405856"
+container = "closure_406097"
 callee = "unwrap"
 receiver_fingerprint = "root.join(\"allowlist.toml\").to_str()"
 
@@ -342,7 +296,7 @@ explanation = "Semantic selector test infrastructure"
 
 [allow.selector]
 kind = "method_call"
-container = "closure_406436"
+container = "closure_406677"
 callee = "unwrap"
 receiver_fingerprint = "root.join(\"allowlist.toml\").to_str()"
 
@@ -364,7 +318,7 @@ explanation = "Semantic selector test infrastructure"
 
 [allow.selector]
 kind = "method_call"
-container = "closure_407094"
+container = "closure_407335"
 callee = "unwrap"
 receiver_fingerprint = "root.join(\"allowlist.toml\").to_str()"
 
@@ -386,7 +340,7 @@ explanation = "Semantic selector test infrastructure"
 
 [allow.selector]
 kind = "method_call"
-container = "closure_407740"
+container = "closure_407981"
 callee = "unwrap"
 receiver_fingerprint = "root.join(\"allowlist.toml\").to_str()"
 
@@ -408,7 +362,7 @@ explanation = "Semantic selector test infrastructure"
 
 [allow.selector]
 kind = "method_call"
-container = "closure_408426"
+container = "closure_408667"
 callee = "unwrap"
 receiver_fingerprint = "root.join(\"allowlist.toml\").to_str()"
 
@@ -442,7 +396,7 @@ explanation = "Semantic selector test infrastructure"
 
 [allow.selector]
 kind = "method_call"
-container = "closure_409637"
+container = "closure_409878"
 callee = "unwrap"
 receiver_fingerprint = "collect_panic_findings(root, &patterns)"
 
@@ -560,7 +514,7 @@ explanation = "Test infrastructure: semantic selector matching test"
 
 [allow.selector]
 kind = "method_call"
-container = "closure_552448"
+container = "closure_554052"
 callee = "unwrap"
 receiver_fingerprint = "result"
 
@@ -582,7 +536,7 @@ explanation = "Test infrastructure: semantic selector matching test"
 
 [allow.selector]
 kind = "method_call"
-container = "closure_553425"
+container = "closure_555029"
 callee = "unwrap"
 receiver_fingerprint = "result"
 
@@ -599,7 +553,7 @@ receiver_fingerprint = "result"
 
 ## Analysis Notes
 
-- **Total Entries Proposed**: 40
+- **Total Entries Proposed**: 37
 - **Kind Distribution**:
   - `macro_call`: 1
-  - `method_call`: 39
+  - `method_call`: 36
