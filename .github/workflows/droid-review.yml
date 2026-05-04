@@ -16,6 +16,9 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    env:
+      MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+
     permissions:
       contents: write
       pull-requests: write
@@ -29,10 +32,31 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Configure MiniMax BYOK for Factory Droid
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.factory"
+          cat > "$HOME/.factory/settings.local.json" <<'JSON'
+          {
+            "customModels": [
+              {
+                "displayName": "MiniMax-M2.7",
+                "model": "MiniMax-M2.7",
+                "baseUrl": "https://api.minimax.io/anthropic",
+                "apiKey": "${MINIMAX_API_KEY}",
+                "provider": "anthropic",
+                "maxOutputTokens": 64000,
+                "noImageSupport": true,
+                "extraArgs": {
+                  "temperature": 1
+                }
+              }
+            ]
+          }
+          JSON
+
       - name: Run Droid Auto Review with MiniMax M2.7 BYOK
         uses: Factory-AI/droid-action@v5
-        env:
-          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
         with:
           factory_api_key: ${{ secrets.FACTORY_API_KEY }}
 
@@ -48,18 +72,3 @@ jobs:
           security_block_on_high: false
 
           include_suggestions: true
-
-          settings: |
-            {
-              "customModels": [
-                {
-                  "displayName": "MiniMax-M2.7",
-                  "model": "MiniMax-M2.7",
-                  "baseUrl": "https://api.minimax.io/anthropic",
-                  "apiKey": "${MINIMAX_API_KEY}",
-                  "provider": "anthropic",
-                  "maxOutputTokens": 64000,
-                  "noImageSupport": true
-                }
-              ]
-            }
