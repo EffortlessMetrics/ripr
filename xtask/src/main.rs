@@ -2421,10 +2421,12 @@ fn generate_migration_markdown(
             "family = \"{}\"\n",
             toml_basic_string_escape(&entry.family)
         ));
-        md.push_str(&format!(
-            "classification = \"{}\"\n",
-            toml_basic_string_escape(entry.classification.as_deref().unwrap_or("test_only"))
-        ));
+        if let Some(classification) = entry.classification.as_deref() {
+            md.push_str(&format!(
+                "classification = \"{}\"\n",
+                toml_basic_string_escape(classification)
+            ));
+        }
         md.push_str(&format!(
             "explanation = \"{}\"\n",
             toml_basic_string_escape(&entry.explanation)
@@ -2451,6 +2453,23 @@ fn generate_migration_markdown(
                 "receiver_fingerprint = \"{}\"\n",
                 toml_basic_string_escape(receiver_fp)
             ));
+        }
+
+        if let Some(container) = &selector.container {
+            if container.starts_with("closure_") {
+                md.push_str("\n# ⚠️ WARNING: Position-based container ID\n");
+                md.push_str("# This container is a byte-offset-based identifier (closure_NNNNN).\n");
+                md.push_str("# It will become stale if code before the closure changes.\n");
+                md.push_str("# Before adopting this entry, manually stabilize the container using:\n");
+                md.push_str("# - The enclosing named function if this closure is inside one, OR\n");
+                md.push_str("# - A hash-based or semantic identifier for the closure, OR\n");
+                md.push_str("# - A more specific receiver_fingerprint filter\n");
+                md.push_str(&format!(
+                    "# Current receiver_fingerprint: {}\n",
+                    selector.receiver_fingerprint.as_deref().unwrap_or("(none)")
+                ));
+                md.push_str("\n");
+            }
         }
     }
 
@@ -11129,13 +11148,14 @@ fn has_cfg_test_ancestor(node: &ra_ap_syntax::SyntaxNode) -> bool {
     use ra_ap_syntax::ast::{self, AstNode, HasAttrs};
 
     let is_test_attr = |attr_text: &str| {
-        attr_text.contains("#[test]")
-            || attr_text.contains("cfg(test)")
-            || attr_text.contains("#[tokio::test]")
-            || attr_text.contains("#[actix_web::test]")
-            || attr_text.contains("#[test_case")
-            || attr_text.contains("#[quickcheck")
-            || attr_text.contains("#[proptest")
+        let compact = attr_text.replace(' ', "");
+        compact.contains("#[test]")
+            || compact.contains("cfg(test)")
+            || compact.contains("#[tokio::test")
+            || compact.contains("#[actix_web::test")
+            || compact.contains("#[test_case")
+            || compact.contains("#[quickcheck")
+            || compact.contains("#[proptest")
     };
 
     let mut current = Some(node.clone());

@@ -208,5 +208,4 @@ Deferred to v0.3 or later:
 ## See Also
 
 - `docs/STATIC_EXPOSURE_MODEL.md` — Why v0.2 matches ripr's semantic anchor strategy
-- `policy/no-panic-allowlist-v1.md` — Design rationale (this file is the spec)
 - `.ripr/no-panic-allowlist.toml` — Current allowlist (in transition)

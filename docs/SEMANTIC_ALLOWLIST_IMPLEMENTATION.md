@@ -17,7 +17,7 @@ This document summarizes the implementation of AST-backed semantic selectors for
 - `cfg_test` — Whether in test context
 
 **PanicFamilySelectorKind** — Selector definition:
-- `kind` — Type: "method_call", "macro_call", "string_literal"
+- `kind` — Type: "method_call", "call", "macro_call", "string_literal"
 - `container` — Optional: filter by enclosing function
 - `callee` — Optional: filter by method/macro name
 - `receiver_fingerprint` — Optional: filter by receiver expression
@@ -84,7 +84,7 @@ This document summarizes the implementation of AST-backed semantic selectors for
 - Used in migration report generation to propose v0.2 entries
 
 **PanicFamilySelectorKind** — Selector definition:
-- `kind` — Type: "method_call", "macro_call", "string_literal"
+- `kind` — Type: "method_call", "call", "macro_call", "string_literal"
 - `container` — Optional: filter by enclosing function
 - `callee` — Optional: filter by method/macro name
 - `receiver_fingerprint` — Optional: filter by receiver expression
@@ -119,7 +119,7 @@ This document summarizes the implementation of AST-backed semantic selectors for
 **matches_semantic_finding_requires_path_and_family** — Entry matching test
 **matches_semantic_finding_rejects_different_path** — Path validation test
 
-All tests passing: 9 panic-related tests + 3 new semantic tests.
+All tests passing; see test module in xtask/src/main.rs for current coverage.
 
 ## How It Works
 
@@ -263,7 +263,7 @@ When code is refactored:
 ## Files Created
 
 - `docs/NO_PANIC_SEMANTIC_ALLOWLIST.md` — Specification
-- `.ripr/no-panic-allowlist-migration-proposal.md` — Example output (45 entries)
+- `.ripr/no-panic-allowlist-migration-proposal.md` — Example output (25 entries)
 
 ## Next Steps (Future PRs)
 
