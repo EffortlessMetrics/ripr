@@ -72,7 +72,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/repo-seam-model-v1"
-status = "ready"
+status = "done"
 branch = "analysis/repo-seam-model-v1"
 stackable = false
 requires_human_merge = true
@@ -88,12 +88,10 @@ commands = [
 
 [[work_item]]
 id = "analysis/repo-seam-inventory-v1"
-status = "blocked"
+status = "ready"
 branch = "analysis/repo-seam-inventory-v1"
 stackable = false
 requires_human_merge = true
-blocked_by = ["analysis/repo-seam-model-v1"]
-blocked_reason = "the inventory walk emits the seam types defined by repo-seam-model-v1"
 acceptance = "walks production Rust files via the existing syntax adapter and emits Vec<RepoSeam>; covers initial seam kinds (predicate_boundary, error_variant, return_value, field_construction, side_effect, match_arm, validation_branch, call_presence); writes target/ripr/reports/repo-seams.json and repo-seams.md; no classification yet; no LSP work; no badge change"
 commands = [
   "cargo xtask shape",

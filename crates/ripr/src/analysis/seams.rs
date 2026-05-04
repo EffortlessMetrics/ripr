@@ -330,14 +330,18 @@ fn compute_seam_id(file: &str, owner: &str, kind: SeamKind, byte_offset: usize) 
     const FNV_OFFSET: u64 = 0xcbf29ce484222325;
     const FNV_PRIME: u64 = 0x100000001b3;
 
+    // Null byte separator avoids collisions: `\0` cannot appear in POSIX
+    // or Windows file paths, in Rust module/identifier names that make up
+    // owner symbols, in our static kind discriminants, or in the decimal
+    // stringification of `byte_offset`.
     let offset_str = byte_offset.to_string();
     let parts: [&[u8]; 7] = [
         file.as_bytes(),
-        b"|",
+        b"\0",
         owner.as_bytes(),
-        b"|",
+        b"\0",
         kind.as_str().as_bytes(),
-        b"|",
+        b"\0",
         offset_str.as_bytes(),
     ];
     let mut hash: u64 = FNV_OFFSET;
@@ -385,10 +389,7 @@ pub(crate) fn registry_lifecheck_v0() -> String {
     let mut buf = String::new();
     for kind in &kinds {
         buf.push_str(kind.as_str());
-        if SeamKind::from_str(kind.as_str())
-            .map(|parsed| parsed == *kind)
-            .unwrap_or(false)
-        {
+        if SeamKind::from_str(kind.as_str()) == Some(*kind) {
             buf.push('!');
         }
     }
