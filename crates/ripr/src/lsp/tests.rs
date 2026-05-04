@@ -511,6 +511,78 @@ fn analysis_snapshot_finds_finding_from_diagnostic_data() -> Result<(), String> 
 }
 
 #[test]
+fn given_diagnostic_with_unknown_seam_id_when_lookup_runs_then_no_classified_seam_is_returned()
+-> Result<(), String> {
+    // Regression for the directive's "unknown seam_id falls back
+    // safely" acceptance: a diagnostic carries data.seam_id but the
+    // snapshot has no matching ClassifiedSeam (e.g., the snapshot was
+    // refreshed and the seam was filtered out). Lookup must return
+    // None so the backend falls through to finding hover or the
+    // generic diagnostic hover; the LSP must not panic or hang.
+    let finding = sample_finding();
+    let mut diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    // Replace the diagnostic data with a synthetic seam_id that does
+    // not appear in classified_seams. Drops the finding_id, mirroring
+    // a Voice B seam diagnostic.
+    diagnostic.data = Some(serde_json::json!({
+        "schema_version": "0.1",
+        "seam_id": "deadbeef00000000",
+        "seam_kind": "predicate_boundary",
+        "grip_class": "weakly_gripped",
+    }));
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri,
+        vec![diagnostic.clone()],
+        vec![finding],
+    );
+
+    if snapshot
+        .classified_seam_for_diagnostic(&diagnostic)
+        .is_some()
+    {
+        return Err("expected None for unknown seam_id".to_string());
+    }
+    if snapshot.finding_for_diagnostic(&diagnostic).is_some() {
+        return Err(
+            "expected None for finding_for_diagnostic when seam_id is set instead of finding_id"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn given_finding_diagnostic_when_lookup_runs_then_finding_hover_path_still_resolves()
+-> Result<(), String> {
+    // Pre-4B Finding diagnostics still resolve through finding_for_diagnostic
+    // even when the new seam-aware lookup is on the same snapshot.
+    let finding = sample_finding();
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri,
+        vec![diagnostic.clone()],
+        vec![finding],
+    );
+
+    if snapshot
+        .classified_seam_for_diagnostic(&diagnostic)
+        .is_some()
+    {
+        return Err("Finding diagnostics carry finding_id, not seam_id; \
+             classified_seam_for_diagnostic should return None"
+            .to_string());
+    }
+    if snapshot.finding_for_diagnostic(&diagnostic).is_none() {
+        return Err("expected Finding hover lookup to still work".to_string());
+    }
+    Ok(())
+}
+
+#[test]
 fn refresh_plan_stores_latest_analysis_snapshot() -> Result<(), String> {
     let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
     let backend = service.inner();
