@@ -130,10 +130,78 @@ impl ExpectedSink {
     }
 }
 
-// `SeamGripClass` and the headline-eligibility table from
-// RIPR-SPEC-0005 are reintroduced by `analysis/repo-ripr-classification-v1`
-// once test-grip evidence exists to drive classification. Until then,
-// the inventory walker emits unclassified `RepoSeam` records.
+/// Classification of how strongly current tests grip a seam.
+///
+/// The full set is locked in RIPR-SPEC-0005. The headline-eligibility
+/// table on `is_headline_eligible` mirrors the spec's
+/// "Headline Count vs Visible-Only Mapping" section and is consumed
+/// by the upcoming `output/repo-exposure-report-v1` work item.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) enum SeamGripClass {
+    StronglyGripped,
+    WeaklyGripped,
+    Ungripped,
+    ReachableUnrevealed,
+    ActivationUnknown,
+    PropagationUnknown,
+    ObservationUnknown,
+    DiscriminationUnknown,
+    Opaque,
+    Intentional,
+    Suppressed,
+}
+
+impl SeamGripClass {
+    /// Every grip class, in spec declaration order. Used by future
+    /// renderers to enumerate per-class metric buckets.
+    pub(crate) const ALL: [SeamGripClass; 11] = [
+        SeamGripClass::StronglyGripped,
+        SeamGripClass::WeaklyGripped,
+        SeamGripClass::Ungripped,
+        SeamGripClass::ReachableUnrevealed,
+        SeamGripClass::ActivationUnknown,
+        SeamGripClass::PropagationUnknown,
+        SeamGripClass::ObservationUnknown,
+        SeamGripClass::DiscriminationUnknown,
+        SeamGripClass::Opaque,
+        SeamGripClass::Intentional,
+        SeamGripClass::Suppressed,
+    ];
+
+    pub(crate) fn as_str(&self) -> &'static str {
+        match self {
+            SeamGripClass::StronglyGripped => "strongly_gripped",
+            SeamGripClass::WeaklyGripped => "weakly_gripped",
+            SeamGripClass::Ungripped => "ungripped",
+            SeamGripClass::ReachableUnrevealed => "reachable_unrevealed",
+            SeamGripClass::ActivationUnknown => "activation_unknown",
+            SeamGripClass::PropagationUnknown => "propagation_unknown",
+            SeamGripClass::ObservationUnknown => "observation_unknown",
+            SeamGripClass::DiscriminationUnknown => "discrimination_unknown",
+            SeamGripClass::Opaque => "opaque",
+            SeamGripClass::Intentional => "intentional",
+            SeamGripClass::Suppressed => "suppressed",
+        }
+    }
+
+    /// Whether this class counts toward the headline badge per
+    /// RIPR-SPEC-0005 § "Headline Count vs Visible-Only Mapping".
+    /// `Opaque`'s headline treatment is decided by badge policy at
+    /// render time; this method returns `false` so the model itself
+    /// stays policy-free.
+    pub(crate) fn is_headline_eligible(&self) -> bool {
+        matches!(
+            self,
+            SeamGripClass::Ungripped
+                | SeamGripClass::WeaklyGripped
+                | SeamGripClass::ReachableUnrevealed
+                | SeamGripClass::ActivationUnknown
+                | SeamGripClass::PropagationUnknown
+                | SeamGripClass::ObservationUnknown
+                | SeamGripClass::DiscriminationUnknown
+        )
+    }
+}
 
 /// A first-class behavior seam discovered in a production file.
 ///

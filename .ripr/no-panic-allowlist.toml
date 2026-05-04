@@ -2,7 +2,7 @@ schema_version = "0.1"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 169
+line = 170
 column = 14
 family = "unwrap"
 classification = "test_only"
@@ -10,7 +10,7 @@ explanation = "Test helper function for creating temporary directories"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 172
+line = 173
 column = 34
 family = "unwrap"
 classification = "test_only"
@@ -18,7 +18,7 @@ explanation = "Test helper function for creating temporary directories"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 179
+line = 180
 column = 46
 family = "unwrap"
 classification = "test_only"
@@ -26,7 +26,7 @@ explanation = "Test helper function for creating temporary directories"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 180
+line = 181
 column = 48
 family = "unwrap"
 classification = "test_only"
@@ -34,7 +34,7 @@ explanation = "Test helper function for creating temporary directories"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 185
+line = 186
 column = 10
 family = "unwrap"
 classification = "test_only"
@@ -42,7 +42,7 @@ explanation = "Test helper function for writing test files"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 194
+line = 195
 column = 10
 family = "unwrap"
 classification = "test_only"
@@ -50,7 +50,7 @@ explanation = "Test helper function for writing test files"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 205
+line = 206
 column = 10
 family = "unwrap"
 classification = "test_only"
@@ -58,7 +58,7 @@ explanation = "Test helper function for writing test files"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 218
+line = 219
 column = 10
 family = "unwrap"
 classification = "test_only"
@@ -66,7 +66,7 @@ explanation = "Test helper function for writing test files"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 226
+line = 227
 column = 10
 family = "unwrap"
 classification = "test_only"
@@ -74,7 +74,7 @@ explanation = "Test helper function for writing test files"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 242
+line = 243
 column = 10
 family = "unwrap"
 classification = "test_only"

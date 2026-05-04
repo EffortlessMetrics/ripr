@@ -394,22 +394,25 @@ Work items:
 | `analysis/repo-seam-model-v1` | done | Landed in #229 as `crates/ripr/src/analysis/seams.rs`; introduces `RepoSeam`, `SeamId`, `SeamKind`, `ExpectedSink`, `RequiredDiscriminator`, `SeamGripClass` as crate-private types per RIPR-SPEC-0005. Deterministic 16-char `SeamId` via FNV-1a 64-bit; no public Rust API change; no LSP; no badge change. |
 | `analysis/repo-seam-inventory-v1` | done | Walks production Rust files and emits `Vec<RepoSeam>`; writes `target/ripr/reports/repo-seams.{json,md}` via `cargo xtask repo-seam-inventory`. Initial seam kinds: predicate_boundary, error_variant, return_value, field_construction, side_effect, match_arm, call_presence (`validation_branch` deferred to a follow-up detection PR). |
 | `analysis/test-grip-evidence-v1` | done | Crate-private `TestGripEvidence` + `RelatedTestGrip` attaching reach/activate/propagate/observe/discriminate evidence per inventoried seam. No classification, no public report. Built from existing `RustIndex` / `OracleFact` / `ValueFact` facts. |
-| `analysis/repo-ripr-classification-v1` | ready | Aggregates test-grip evidence into `SeamGripClass` per seam. Badge-headline-eligible vs visible-only mapping is explicit. |
-| `output/repo-exposure-report-v1` | blocked | Markdown + JSON repo report. Schema versioned; existing repo-badge-artifacts schema unchanged unless the spec opts in. |
+| `analysis/repo-ripr-classification-v1` | done | Crate-private `SeamGripClass` (re-introduced) + `classify_seam(seam, evidence)` mapping `TestGripEvidence` to one of 11 spec classes. Headline-vs-visible table on `is_headline_eligible`. Replaces the stage-zero discard hook from #236 with a real classifier consumer. |
+| `output/repo-exposure-report-v1` | ready | Markdown + JSON repo report. Schema versioned; existing repo-badge-artifacts schema unchanged unless the spec opts in. |
 | `lsp/repo-seam-diagnostics-v1` | blocked | Surface ungripped or under-gripped seams in the editor with stable diagnostic codes. |
 | `lsp/seam-evidence-hover-v1` | blocked | Hover renders the RIPR evidence path with cited related tests. **PR #211 is merged** (pre-4B evidence-rich hover over the current Finding / AnalysisSnapshot model); this seam-native hover will extend or revise it once the seam model and diagnostics schema are settled. |
-| `context/agent-seam-packets-v1` | blocked | Agent context packet schema (RIPR-SPEC-0003 successor or addendum). Load-bearing fields: changed expression, owner, related tests, oracle strength, observed values, missing discriminator. |
+| `context/agent-seam-packets-v1` | ready | Agent context packet schema (RIPR-SPEC-0003 successor or addendum). Load-bearing fields: changed expression, owner, related tests, oracle strength, observed values, missing discriminator. |
 | `docs/agent-dispatch-workflow-v1` | blocked | How a coding agent uses a seam packet to write the missing test. |
-| `cache/repo-seam-facts-v1` | blocked | Optional fact-layer cache (file-facts, owner-index, seam-facts; never final outputs). Gated on real performance signal. Subsumes Campaign 5's `cache/persistent-cache-v1`. |
-| `calibration/cargo-mutants-v1` | blocked | Optional scaffold for comparing static `SeamGripClass` against cargo-mutants outcomes. Advisory only; static output adopts no mutation-runtime language. Subsumes Campaign 5's `calibration/cargo-mutants-scaffold`. |
+| `cache/repo-seam-facts-v1` | ready | Optional fact-layer cache (file-facts, owner-index, seam-facts; never final outputs). Gated on real performance signal. Subsumes Campaign 5's `cache/persistent-cache-v1`. |
+| `calibration/cargo-mutants-v1` | ready | Optional scaffold for comparing static `SeamGripClass` against cargo-mutants outcomes. Advisory only; static output adopts no mutation-runtime language. Subsumes Campaign 5's `calibration/cargo-mutants-scaffold`. |
 
 Dependencies:
 
 - `spec/repo-seam-inventory` landed in #223, `analysis/repo-seam-model-v1`
-  in #229, `analysis/repo-seam-inventory-v1` in #235, and
-  `analysis/test-grip-evidence-v1` follows; `analysis/repo-ripr-classification-v1`
-  is now the single ready item, with the rest of the chain blocked on
-  it directly or transitively.
+  in #229, `analysis/repo-seam-inventory-v1` in #235,
+  `analysis/test-grip-evidence-v1` in #236, and
+  `analysis/repo-ripr-classification-v1` follows. With classification
+  complete, `output/repo-exposure-report-v1` (the renderer) is the
+  single recommended next step; `context/agent-seam-packets-v1`,
+  `cache/repo-seam-facts-v1`, and `calibration/cargo-mutants-v1` are
+  also unblocked but optional.
 - `lsp/seam-evidence-hover-v1` extends or revises PR #211, which is
   already merged as pre-4B evidence-rich hover over the current
   Finding / AnalysisSnapshot model. The seam-native hover will
