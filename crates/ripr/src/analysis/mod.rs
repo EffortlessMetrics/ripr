@@ -6,6 +6,7 @@ mod rust_index;
 mod seam_classification;
 mod seam_inventory;
 pub(crate) mod seams;
+mod syntax;
 pub(crate) mod test_grip_evidence;
 mod workspace;
 
