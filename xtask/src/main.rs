@@ -556,7 +556,7 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 
 fn print_help() {
     println!(
-        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  golden-drift\n  metrics\n  test-oracle-report\n  check-test-oracles\n  test-efficiency-report\n  badge-artifacts\n  repo-badge-artifacts\n  update-badge-endpoints\n  check-badge-endpoints\n  dogfood\n  critic\n  goals status|next|report\n  reports index\n  receipts [check]\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-allow-attributes\n  check-local-context\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-droid-review-config\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-supply-chain\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
+        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  golden-drift\n  metrics\n  test-oracle-report\n  check-test-oracles\n  test-efficiency-report\n  badge-artifacts\n  repo-badge-artifacts\n  update-badge-endpoints\n  check-badge-endpoints\n  dogfood\n  critic\n  goals status|next|report\n  reports index\n  receipts [check]\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  no-panic-migration-report\n  check-allow-attributes\n  check-local-context\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-droid-review-config\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-supply-chain\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
     );
 }
 
@@ -2352,9 +2352,37 @@ fn find_best_matching_finding<'a>(
         return None;
     }
 
+    // Prefer exact line matches first, then fall back to nearest line
+    let exact_matches: Vec<_> = candidates.iter().filter(|f| f.line == entry.line).copied().collect();
+    if !exact_matches.is_empty() {
+        // Among exact line matches, prefer column proximity if available
+        if let Some(entry_col) = entry.column {
+            let mut sorted = exact_matches;
+            sorted.sort_by_key(|f| f.column.map_or(usize::MAX, |c| c.abs_diff(entry_col)));
+            return sorted.first().copied();
+        }
+        return exact_matches.first().copied();
+    }
+
+    // Fall back to sorting all candidates by line distance
     candidates.sort_by_key(|f| f.line.abs_diff(entry.line));
 
     candidates.first().copied()
+}
+
+fn toml_basic_string_escape(value: &str) -> String {
+    let mut escaped = String::new();
+    for ch in value.chars() {
+        match ch {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            other => escaped.push(other),
+        }
+    }
+    escaped
 }
 
 fn propose_selector_for_finding(
@@ -2381,23 +2409,32 @@ fn generate_migration_markdown(
 
     for (entry, selector) in entries {
         md.push_str("\n[[allow]]\n");
-        md.push_str(&format!("path = \"{}\"\n", entry.path));
-        md.push_str(&format!("family = \"{}\"\n", entry.family));
+        md.push_str(&format!("path = \"{}\"\n", toml_basic_string_escape(&entry.path)));
+        md.push_str(&format!("family = \"{}\"\n", toml_basic_string_escape(&entry.family)));
         md.push_str(&format!(
             "classification = \"{}\"\n",
-            entry.classification.as_deref().unwrap_or("test_only")
+            toml_basic_string_escape(entry.classification.as_deref().unwrap_or("test_only"))
         ));
-        md.push_str(&format!("explanation = \"{}\"\n", entry.explanation));
+        md.push_str(&format!(
+            "explanation = \"{}\"\n",
+            toml_basic_string_escape(&entry.explanation)
+        ));
         md.push_str("\n[allow.selector]\n");
-        md.push_str(&format!("kind = \"{}\"\n", selector.kind));
+        md.push_str(&format!("kind = \"{}\"\n", toml_basic_string_escape(&selector.kind)));
         if let Some(container) = &selector.container {
-            md.push_str(&format!("container = \"{}\"\n", container));
+            md.push_str(&format!(
+                "container = \"{}\"\n",
+                toml_basic_string_escape(container)
+            ));
         }
         if let Some(callee) = &selector.callee {
-            md.push_str(&format!("callee = \"{}\"\n", callee));
+            md.push_str(&format!("callee = \"{}\"\n", toml_basic_string_escape(callee)));
         }
         if let Some(receiver_fp) = &selector.receiver_fingerprint {
-            md.push_str(&format!("receiver_fingerprint = \"{}\"\n", receiver_fp));
+            md.push_str(&format!(
+                "receiver_fingerprint = \"{}\"\n",
+                toml_basic_string_escape(receiver_fp)
+            ));
         }
     }
 
@@ -7591,6 +7628,7 @@ fn known_xtask_command(command: &str) -> bool {
             | "ci-full"
             | "check-static-language"
             | "check-no-panic-family"
+            | "no-panic-migration-report"
             | "check-allow-attributes"
             | "check-local-context"
             | "check-file-policy"
@@ -11287,7 +11325,8 @@ fn semantic_selector_matches(
             .is_some_and(|tc| finding.snippet_fingerprint.contains(tc));
     }
 
-    (selector.container.is_none() || finding.container.as_ref() == selector.container.as_ref())
+    selector.kind == finding.kind
+        && (selector.container.is_none() || finding.container.as_ref() == selector.container.as_ref())
         && (selector.callee.is_none() || finding.callee.as_ref() == selector.callee.as_ref())
         && (selector.receiver_fingerprint.is_none()
             || finding.receiver_fingerprint.as_ref() == selector.receiver_fingerprint.as_ref())
