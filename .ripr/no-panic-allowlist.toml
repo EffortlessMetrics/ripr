@@ -19,29 +19,29 @@ path = "xtask/src/main.rs"
 line = 10813
 column = 26
 family = "panic_macro"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
+classification = "false_positive"
+explanation = "Static analysis detects panic-family string literal in match guard within panic_family_from_pattern(), not a runtime call"
 [[allow]]
 path = "xtask/src/main.rs"
 line = 10814
 column = 26
 family = "todo"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
+classification = "false_positive"
+explanation = "Static analysis detects panic-family string literal in match guard within panic_family_from_pattern(), not a runtime call"
 [[allow]]
 path = "xtask/src/main.rs"
 line = 10815
 column = 26
 family = "unimplemented"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
+classification = "false_positive"
+explanation = "Static analysis detects panic-family string literal in match guard within panic_family_from_pattern(), not a runtime call"
 [[allow]]
 path = "xtask/src/main.rs"
 line = 10816
 column = 26
 family = "unreachable"
-classification = "test_only"
-explanation = "Semantic selector test infrastructure"
+classification = "false_positive"
+explanation = "Static analysis detects panic-family string literal in match guard within panic_family_from_pattern(), not a runtime call"
 [[allow]]
 path = "xtask/src/main.rs"
 line = 10946
