@@ -5351,6 +5351,27 @@ fn update_badge_endpoints() -> Result<(), String> {
     Ok(())
 }
 
+/// Pure comparison helper for `check_badge_endpoints` — separated so
+/// the violation-string contract is unit-testable without touching
+/// the file system. Returns `None` when the committed file is in
+/// sync, otherwise an actionable violation message.
+fn badge_endpoint_violation(
+    committed_path: &str,
+    source_display: &str,
+    expected_bytes: &[u8],
+    actual_bytes: Option<&[u8]>,
+) -> Option<String> {
+    match actual_bytes {
+        None => Some(format!(
+            "missing badge endpoint file {committed_path}; run `cargo xtask update-badge-endpoints`"
+        )),
+        Some(actual) if actual != expected_bytes => Some(format!(
+            "badge endpoint file {committed_path} is stale relative to {source_display}; run `cargo xtask update-badge-endpoints` and commit the diff"
+        )),
+        _ => None,
+    }
+}
+
 /// Verifies that the committed `badges/*.json` files match the latest
 /// `cargo xtask repo-badge-artifacts` output. Fails with an actionable
 /// message pointing at `cargo xtask update-badge-endpoints` when stale.
@@ -5364,25 +5385,14 @@ fn check_badge_endpoints() -> Result<(), String> {
     let mut violations = Vec::new();
     for (committed, source_name) in BADGE_ENDPOINT_FILES {
         let source = Path::new("target/ripr/reports").join(source_name);
-        let want = fs::read(&source)
-            .map_err(|err| format!("failed to read {}: {err}", normalize_path(&source)))?;
-        let got = match fs::read(committed) {
-            Ok(bytes) => bytes,
-            Err(err) => {
-                violations.push(format!(
-                    "missing badge endpoint file {committed}: {err}; \
-                     run `cargo xtask update-badge-endpoints`"
-                ));
-                continue;
-            }
-        };
-        if want != got {
-            violations.push(format!(
-                "badge endpoint file {committed} is stale relative to \
-                 {}; run `cargo xtask update-badge-endpoints` and commit \
-                 the diff",
-                normalize_path(&source)
-            ));
+        let source_display = normalize_path(&source);
+        let want =
+            fs::read(&source).map_err(|err| format!("failed to read {source_display}: {err}"))?;
+        let actual = fs::read(committed).ok();
+        if let Some(violation) =
+            badge_endpoint_violation(committed, &source_display, &want, actual.as_deref())
+        {
+            violations.push(violation);
         }
     }
     finish_policy_report(
@@ -14159,6 +14169,102 @@ reason = "second"
             }
         }
         Ok(())
+    }
+
+    #[test]
+    fn badge_endpoint_files_pair_committed_paths_with_repo_shields_sources() {
+        // Pin both the count and the (committed -> source) mapping so a
+        // future rename of either side trips the test, not the badge URL.
+        assert_eq!(super::BADGE_ENDPOINT_FILES.len(), 2);
+        let pairs: Vec<(&str, &str)> = super::BADGE_ENDPOINT_FILES.to_vec();
+        assert!(pairs.contains(&("badges/ripr.json", "repo-ripr-badge-shields.json")));
+        assert!(pairs.contains(&("badges/ripr-plus.json", "repo-ripr-plus-badge-shields.json")));
+    }
+
+    #[test]
+    fn badge_endpoint_violation_reports_missing_committed_file() -> Result<(), String> {
+        let violation = super::badge_endpoint_violation(
+            "badges/ripr.json",
+            "target/ripr/reports/repo-ripr-badge-shields.json",
+            b"{\"schemaVersion\":1}",
+            None,
+        );
+        let message =
+            violation.ok_or_else(|| "missing file should produce a violation".to_string())?;
+        assert!(
+            message.contains("missing badge endpoint file badges/ripr.json"),
+            "violation should name the missing file: {message}"
+        );
+        assert!(
+            message.contains("cargo xtask update-badge-endpoints"),
+            "violation should point at the refresh command: {message}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn badge_endpoint_violation_reports_stale_committed_file() -> Result<(), String> {
+        let violation = super::badge_endpoint_violation(
+            "badges/ripr-plus.json",
+            "target/ripr/reports/repo-ripr-plus-badge-shields.json",
+            b"{\"schemaVersion\":1,\"label\":\"ripr+\",\"message\":\"163\",\"color\":\"orange\"}",
+            Some(b"{\"schemaVersion\":1,\"label\":\"ripr+\",\"message\":\"317\",\"color\":\"orange\"}"),
+        );
+        let message =
+            violation.ok_or_else(|| "stale file should produce a violation".to_string())?;
+        assert!(
+            message.contains("badges/ripr-plus.json is stale"),
+            "violation should describe the stale committed path: {message}"
+        );
+        assert!(
+            message.contains("repo-ripr-plus-badge-shields.json"),
+            "violation should name the source-of-truth file: {message}"
+        );
+        assert!(
+            message.contains("cargo xtask update-badge-endpoints"),
+            "violation should point at the refresh command: {message}"
+        );
+        assert!(
+            message.contains("commit the diff"),
+            "violation should remind the author to commit: {message}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn badge_endpoint_violation_returns_none_when_committed_file_matches() {
+        let bytes =
+            b"{\"schemaVersion\":1,\"label\":\"ripr\",\"message\":\"0\",\"color\":\"brightgreen\"}";
+        let violation = super::badge_endpoint_violation(
+            "badges/ripr.json",
+            "target/ripr/reports/repo-ripr-badge-shields.json",
+            bytes,
+            Some(bytes),
+        );
+        assert!(
+            violation.is_none(),
+            "matching content must not produce a violation: {violation:?}"
+        );
+    }
+
+    #[test]
+    fn badge_endpoint_violation_treats_byte_diff_as_stale() {
+        // Even a single-byte difference (e.g. trailing newline) trips the
+        // staleness check so committed files stay byte-equal with the
+        // source-of-truth Shields JSON.
+        let want = b"{\"schemaVersion\":1,\"label\":\"ripr\",\"message\":\"0\",\"color\":\"brightgreen\"}\n";
+        let got =
+            b"{\"schemaVersion\":1,\"label\":\"ripr\",\"message\":\"0\",\"color\":\"brightgreen\"}";
+        let violation = super::badge_endpoint_violation(
+            "badges/ripr.json",
+            "target/ripr/reports/repo-ripr-badge-shields.json",
+            want,
+            Some(got),
+        );
+        assert!(
+            violation.is_some(),
+            "trailing-byte difference must be flagged as stale"
+        );
     }
 
     #[test]
