@@ -2199,55 +2199,70 @@ fn check_static_language() -> Result<(), String> {
 }
 
 fn check_no_panic_family() -> Result<(), String> {
-    let allowlist = read_count_allowlist(".ripr/no-panic-allowlist.txt")?;
+    check_old_panic_allowlist_exists()?;
+
     let roots = [
         Path::new("crates/ripr/src"),
         Path::new("crates/ripr/tests"),
         Path::new("xtask/src"),
     ];
     let patterns = forbidden_panic_patterns();
-    let mut counts = BTreeMap::<(String, String), usize>::new();
 
+    let mut findings = Vec::new();
     for root in roots {
         if !root.exists() {
             continue;
         }
-        for path in collect_files(root)? {
-            if path.extension().and_then(|value| value.to_str()) != Some("rs") {
-                continue;
-            }
-            let normalized = normalize_path(&path);
-            let text = read_text_lossy(&path)?;
-            for pattern in &patterns {
-                let count = text.matches(pattern).count();
-                if count > 0 {
-                    counts.insert((normalized.clone(), pattern.clone()), count);
-                }
-            }
-        }
+        findings.extend(collect_panic_findings(root, &patterns)?);
     }
 
+    let allowlist = if Path::new(".ripr/no-panic-allowlist.toml").exists() {
+        parse_no_panic_allowlist_toml(".ripr/no-panic-allowlist.toml")?
+    } else {
+        Vec::new()
+    };
+
     let mut violations = Vec::new();
-    for ((path, pattern), count) in &counts {
-        let allowed = allowlist
-            .get(&(path.clone(), pattern.clone()))
-            .copied()
-            .unwrap_or(0);
-        if *count > allowed {
+
+    let allowed_set: BTreeSet<_> = allowlist
+        .iter()
+        .map(|e| (e.path.clone(), e.line, e.column, e.family.clone()))
+        .collect();
+
+    for finding in &findings {
+        let key = (
+            finding.path.clone(),
+            finding.line,
+            finding.column,
+            finding.family.clone(),
+        );
+        if !allowed_set.contains(&key) {
             violations.push(format!(
-                "{path} contains `{pattern}` {count} time(s), allowed {allowed}"
+                "{}:{}:{} contains unallowed panic-family '{}'; add exact allowlist entry with explanation",
+                finding.path,
+                finding.line,
+                finding.column.unwrap_or(0),
+                finding.family
             ));
         }
     }
 
-    for ((path, pattern), allowed) in &allowlist {
-        let actual = counts
-            .get(&(path.clone(), pattern.clone()))
-            .copied()
-            .unwrap_or(0);
-        if actual > *allowed {
+    let finding_set: BTreeSet<_> = findings
+        .iter()
+        .map(|f| (f.path.clone(), f.line, f.column, f.family.clone()))
+        .collect();
+
+    for entry in &allowlist {
+        let key = (
+            entry.path.clone(),
+            entry.line,
+            entry.column,
+            entry.family.clone(),
+        );
+        if !finding_set.contains(&key) {
             violations.push(format!(
-                "{path} contains `{pattern}` {actual} time(s), allowed {allowed}"
+                "stale allowlist entry: {}:{}:{:?} ({}) does not match any current finding",
+                entry.path, entry.line, entry.column, entry.family
             ));
         }
     }
@@ -2265,7 +2280,7 @@ fn check_no_panic_family() -> Result<(), String> {
             ],
             rerun_command: "cargo xtask check-no-panic-family",
             exception_template: Some(
-                ".ripr/no-panic-allowlist.txt entry:\npath/to/file.rs|pattern|max_count|reason",
+                ".ripr/no-panic-allowlist.toml entry:\n[[allow]]\npath = \"path/to/file.rs\"\nline = 123\ncolumn = 17\nfamily = \"unwrap\"\nexplanation = \"Human-readable reason\"",
             ),
         },
         &violations,
@@ -10543,14 +10558,257 @@ fn is_word_char(value: Option<char>) -> bool {
         .unwrap_or(false)
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+struct PanicFinding {
+    path: String,
+    line: usize,
+    column: Option<usize>,
+    family: String,
+}
+
+#[derive(Debug, Clone)]
+struct PanicAllowEntry {
+    path: String,
+    line: usize,
+    column: Option<usize>,
+    family: String,
+    classification: Option<String>,
+    explanation: String,
+}
+
+fn panic_family_from_pattern(pattern: &str) -> &'static str {
+    match pattern {
+        s if s.contains("unwrap") => "unwrap",
+        s if s.contains("expect") => "expect",
+        s if s.contains("panic!") => "panic_macro",
+        s if s.contains("todo!") => "todo",
+        s if s.contains("unimplemented!") => "unimplemented",
+        s if s.contains("unreachable!") => "unreachable",
+        _ => "unknown",
+    }
+}
+
+fn collect_panic_findings(
+    root: &Path,
+    patterns: &[String],
+) -> Result<Vec<PanicFinding>, String> {
+    let mut findings = Vec::new();
+
+    for path in collect_files(root)? {
+        if path.extension().and_then(|value| value.to_str()) != Some("rs") {
+            continue;
+        }
+        let normalized = normalize_path(&path);
+        let text = read_text_lossy(&path)?;
+
+        for (line_num, line) in text.lines().enumerate() {
+            let line_number = line_num + 1;
+            for pattern in patterns {
+                let mut start = 0usize;
+                while let Some(offset) = line[start..].find(pattern) {
+                    let col = start + offset + 1;
+                    findings.push(PanicFinding {
+                        path: normalized.clone(),
+                        line: line_number,
+                        column: Some(col),
+                        family: panic_family_from_pattern(pattern).to_string(),
+                    });
+                    start = col;
+                }
+            }
+        }
+    }
+
+    findings.sort();
+    Ok(findings)
+}
+
+fn parse_no_panic_allowlist_toml(path: &str) -> Result<Vec<PanicAllowEntry>, String> {
+    let text = read_text_lossy(Path::new(path))?;
+    let mut entries = Vec::new();
+    let mut in_allow_section = false;
+    let mut current_entry = PanicAllowEntry {
+        path: String::new(),
+        line: 0,
+        column: None,
+        family: String::new(),
+        classification: None,
+        explanation: String::new(),
+    };
+    let mut has_entry_started = false;
+
+    for (line_num, line) in text.lines().enumerate() {
+        let line_number = line_num + 1;
+        let trimmed = line.trim();
+
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+
+        if trimmed == "schema_version = \"0.1\"" {
+            continue;
+        }
+
+        if trimmed == "[[allow]]" {
+            if has_entry_started {
+                validate_panic_allow_entry(&current_entry, path, line_number)?;
+                entries.push(current_entry.clone());
+            }
+            current_entry = PanicAllowEntry {
+                path: String::new(),
+                line: 0,
+                column: None,
+                family: String::new(),
+                classification: None,
+                explanation: String::new(),
+            };
+            has_entry_started = true;
+            in_allow_section = true;
+            continue;
+        }
+
+        if !in_allow_section {
+            return Err(format!(
+                "{path}:{} unexpected content outside [[allow]] section",
+                line_number
+            ));
+        }
+
+        let Some((key, value)) = parse_toml_key_value(trimmed) else {
+            return Err(format!(
+                "{path}:{} invalid TOML syntax (expected key = value)",
+                line_number
+            ));
+        };
+
+        match key {
+            "path" => current_entry.path = parse_string_value(value, path, line_number)?,
+            "line" => current_entry.line = parse_usize_value(value, path, line_number)?,
+            "column" => current_entry.column = Some(parse_usize_value(value, path, line_number)?),
+            "family" => current_entry.family = parse_string_value(value, path, line_number)?,
+            "classification" => {
+                current_entry.classification = Some(parse_string_value(value, path, line_number)?)
+            }
+            "explanation" => {
+                current_entry.explanation = parse_string_value(value, path, line_number)?
+            }
+            _ => {
+                return Err(format!(
+                    "{path}:{} unknown field '{key}' in [[allow]] section",
+                    line_number
+                ))
+            }
+        }
+    }
+
+    if has_entry_started {
+        validate_panic_allow_entry(&current_entry, path, text.lines().count())?;
+        entries.push(current_entry);
+    }
+
+    check_duplicate_panic_allow_entries(&entries, path)?;
+    Ok(entries)
+}
+
+fn parse_toml_key_value(trimmed: &str) -> Option<(&str, &str)> {
+    let equals_idx = trimmed.find('=')?;
+    let key = trimmed[..equals_idx].trim();
+    let value_part = trimmed[equals_idx + 1..].trim();
+    Some((key, value_part))
+}
+
+fn parse_string_value(value: &str, path: &str, line_number: usize) -> Result<String, String> {
+    if value.starts_with('"') && value.ends_with('"') && value.len() >= 2 {
+        Ok(value[1..value.len() - 1].to_string())
+    } else {
+        Err(format!(
+            "{path}:{} string value must be quoted (got: {value})",
+            line_number
+        ))
+    }
+}
+
+fn parse_usize_value(value: &str, path: &str, line_number: usize) -> Result<usize, String> {
+    value
+        .trim()
+        .parse::<usize>()
+        .map_err(|_| format!("{path}:{} invalid number (got: {value})", line_number))
+}
+
+fn validate_panic_allow_entry(
+    entry: &PanicAllowEntry,
+    path: &str,
+    line_number: usize,
+) -> Result<(), String> {
+    if entry.path.is_empty() {
+        return Err(format!(
+            "{path}:{} missing required field: path",
+            line_number
+        ));
+    }
+    if entry.line == 0 {
+        return Err(format!(
+            "{path}:{} missing required field: line",
+            line_number
+        ));
+    }
+    if entry.family.is_empty() {
+        return Err(format!(
+            "{path}:{} missing required field: family",
+            line_number
+        ));
+    }
+    if entry.explanation.is_empty() {
+        return Err(format!(
+            "{path}:{} missing required field: explanation",
+            line_number
+        ));
+    }
+    Ok(())
+}
+
+fn check_duplicate_panic_allow_entries(
+    entries: &[PanicAllowEntry],
+    path: &str,
+) -> Result<(), String> {
+    let mut seen = BTreeMap::new();
+    for entry in entries {
+        let key = (
+            entry.path.clone(),
+            entry.line,
+            entry.column,
+            entry.family.clone(),
+        );
+        if seen.contains_key(&key) {
+            return Err(format!(
+                "{path}: duplicate allowlist entry for {}:{}:{:?} ({})",
+                entry.path, entry.line, entry.column, entry.family
+            ));
+        }
+        seen.insert(key, entry.line);
+    }
+    Ok(())
+}
+
+fn check_old_panic_allowlist_exists() -> Result<(), String> {
+    if Path::new(".ripr/no-panic-allowlist.txt").exists() {
+        return Err(
+            ".ripr/no-panic-allowlist.txt still exists; use .ripr/no-panic-allowlist.toml instead"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, CheckReport,
         CheckStatus, CheckViolation, DogfoodRun, FixKind, LocalContextAllow, MarkdownLink,
-        ReceiptRecord, ReportIndexCampaign, ReportIndexEntry, StaticLanguageAllowEntry,
-        StaticLanguageMatcher, TestOracleClass, badge_artifact_command_args, badge_artifact_jobs,
-        badge_artifact_native_slot, badge_artifacts_summary_markdown, critic_findings,
+        ReceiptRecord, ReportIndexCampaign, ReportIndexEntry,
+        StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass, badge_artifact_command_args,
+        badge_artifact_jobs, badge_artifact_native_slot, badge_artifacts_summary_markdown,
+        collect_panic_findings, critic_findings,
         dogfood_class_counts, dogfood_report_json, dogfood_report_markdown,
         extract_json_object_usize_map, extract_json_string, extract_json_warnings,
         extract_workflow_run_blocks, first_line_difference, glob_matches,
@@ -10561,10 +10819,11 @@ mod tests {
         json_number_after, json_string_values_for_key, known_xtask_command,
         local_context_line_findings, local_markdown_target, markdown_links_in_text,
         next_checkpoints_from_capabilities, normalize_fixture_human_output,
-        normalize_fixture_json_output, normalize_golden_text, parse_campaign_manifest,
-        parse_inline_array, parse_reason, parse_static_language_allowlist, pr_shape_warnings,
-        precommit_report_body, public_contract_rows, receipt_json, receipt_specs,
-        receipt_status_from_reports, repo_badge_artifact_command_args, repo_badge_artifact_jobs,
+        normalize_fixture_json_output, normalize_golden_text, panic_family_from_pattern,
+        parse_campaign_manifest, parse_inline_array, parse_no_panic_allowlist_toml, parse_reason,
+        parse_static_language_allowlist, pr_shape_warnings, precommit_report_body,
+        public_contract_rows, receipt_json, receipt_specs, receipt_status_from_reports,
+        repo_badge_artifact_command_args, repo_badge_artifact_jobs,
         repo_badge_artifacts_summary_markdown, report_index_markdown,
         report_index_missing_expected, report_status_from_text, should_scan_static_language_path,
         sorted_allowlist_content, spec_id_from_path, static_language_allowlist_covers,
@@ -10624,6 +10883,185 @@ mod tests {
         drop(lock);
         let _ = fs::remove_dir_all(&root);
         out
+    }
+
+    // ============================================================================
+    // Panic allowlist TOML tests
+    // ============================================================================
+
+    #[test]
+    fn parse_no_panic_allowlist_toml_parses_valid_entries() {
+        with_temp_cwd("parse_valid", |root| {
+            let toml_content = r#"schema_version = "0.1"
+
+[[allow]]
+path = "src/lib.rs"
+line = 42
+column = 10
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper"
+"#;
+            write(&root.join("allowlist.toml"), toml_content);
+
+            let result = parse_no_panic_allowlist_toml(root.join("allowlist.toml").to_str().unwrap());
+            assert!(result.is_ok());
+            let entries = result.unwrap();
+            assert_eq!(entries.len(), 1);
+            assert_eq!(entries[0].path, "src/lib.rs");
+            assert_eq!(entries[0].line, 42);
+            assert_eq!(entries[0].column, Some(10));
+            assert_eq!(entries[0].family, "unwrap");
+            assert_eq!(entries[0].classification, Some("test_only".to_string()));
+            assert_eq!(entries[0].explanation, "Test helper");
+        });
+    }
+
+    #[test]
+    fn parse_no_panic_allowlist_toml_requires_path() {
+        with_temp_cwd("missing_path", |root| {
+            let toml_content = r#"schema_version = "0.1"
+
+[[allow]]
+line = 42
+family = "unwrap"
+explanation = "Missing path"
+"#;
+            write(&root.join("allowlist.toml"), toml_content);
+
+            let result = parse_no_panic_allowlist_toml(root.join("allowlist.toml").to_str().unwrap());
+            assert!(result.is_err());
+            assert!(result.unwrap_err().contains("missing required field: path"));
+        });
+    }
+
+    #[test]
+    fn parse_no_panic_allowlist_toml_requires_line() {
+        with_temp_cwd("missing_line", |root| {
+            let toml_content = r#"schema_version = "0.1"
+
+[[allow]]
+path = "src/lib.rs"
+family = "unwrap"
+explanation = "Missing line"
+"#;
+            write(&root.join("allowlist.toml"), toml_content);
+
+            let result = parse_no_panic_allowlist_toml(root.join("allowlist.toml").to_str().unwrap());
+            assert!(result.is_err());
+            assert!(result.unwrap_err().contains("missing required field: line"));
+        });
+    }
+
+    #[test]
+    fn parse_no_panic_allowlist_toml_requires_family() {
+        with_temp_cwd("missing_family", |root| {
+            let toml_content = r#"schema_version = "0.1"
+
+[[allow]]
+path = "src/lib.rs"
+line = 42
+explanation = "Missing family"
+"#;
+            write(&root.join("allowlist.toml"), toml_content);
+
+            let result = parse_no_panic_allowlist_toml(root.join("allowlist.toml").to_str().unwrap());
+            assert!(result.is_err());
+            assert!(result.unwrap_err().contains("missing required field: family"));
+        });
+    }
+
+    #[test]
+    fn parse_no_panic_allowlist_toml_requires_explanation() {
+        with_temp_cwd("missing_explanation", |root| {
+            let toml_content = r#"schema_version = "0.1"
+
+[[allow]]
+path = "src/lib.rs"
+line = 42
+family = "unwrap"
+"#;
+            write(&root.join("allowlist.toml"), toml_content);
+
+            let result = parse_no_panic_allowlist_toml(root.join("allowlist.toml").to_str().unwrap());
+            assert!(result.is_err());
+            assert!(result.unwrap_err().contains("missing required field: explanation"));
+        });
+    }
+
+    #[test]
+    fn parse_no_panic_allowlist_toml_rejects_unknown_fields() {
+        with_temp_cwd("unknown_field", |root| {
+            let toml_content = r#"schema_version = "0.1"
+
+[[allow]]
+path = "src/lib.rs"
+line = 42
+family = "unwrap"
+explanation = "Test"
+unknown_field = "value"
+"#;
+            write(&root.join("allowlist.toml"), toml_content);
+
+            let result = parse_no_panic_allowlist_toml(root.join("allowlist.toml").to_str().unwrap());
+            assert!(result.is_err());
+            assert!(result.unwrap_err().contains("unknown field 'unknown_field'"));
+        });
+    }
+
+    #[test]
+    fn parse_no_panic_allowlist_toml_rejects_duplicate_locations() {
+        with_temp_cwd("duplicate", |root| {
+            let toml_content = r#"schema_version = "0.1"
+
+[[allow]]
+path = "src/lib.rs"
+line = 42
+column = 10
+family = "unwrap"
+explanation = "First entry"
+
+[[allow]]
+path = "src/lib.rs"
+line = 42
+column = 10
+family = "unwrap"
+explanation = "Duplicate entry"
+"#;
+            write(&root.join("allowlist.toml"), toml_content);
+
+            let result = parse_no_panic_allowlist_toml(root.join("allowlist.toml").to_str().unwrap());
+            assert!(result.is_err());
+            assert!(result.unwrap_err().contains("duplicate allowlist entry"));
+        });
+    }
+
+    #[test]
+    fn panic_family_from_pattern_matches_all_families() {
+        assert_eq!(panic_family_from_pattern("unwrap("), "unwrap");
+        assert_eq!(panic_family_from_pattern("expect("), "expect");
+        assert_eq!(panic_family_from_pattern("panic!"), "panic_macro");
+        assert_eq!(panic_family_from_pattern("todo!"), "todo");
+        assert_eq!(panic_family_from_pattern("unimplemented!"), "unimplemented");
+        assert_eq!(panic_family_from_pattern("unreachable!"), "unreachable");
+    }
+
+    #[test]
+    fn collect_panic_findings_finds_exact_locations() {
+        with_temp_cwd("collect_findings", |root| {
+            let rs_file = root.join("lib.rs");
+            write(
+                &rs_file,
+                "fn test() {\n    let x = some_fn().unwrap();\n    let y = other().expect(\"msg\");\n}\n",
+            );
+
+            let patterns = vec!["unwrap(".to_string(), "expect(".to_string()];
+            let findings = collect_panic_findings(&root, &patterns).unwrap();
+
+            // Should find unwrap( on line 2 and expect( on line 3
+            assert!(findings.iter().any(|f| f.line == 2 && f.family == "unwrap"));
+            assert!(findings.iter().any(|f| f.line == 3 && f.family == "expect"));
+        });
     }
 
     // ============================================================================

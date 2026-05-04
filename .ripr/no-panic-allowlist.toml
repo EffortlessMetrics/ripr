@@ -1,0 +1,441 @@
+schema_version = "0.1"
+
+[[allow]]
+path = "crates/ripr/src/analysis/mod.rs"
+line = 163
+column = 14
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for creating temporary directories"
+
+[[allow]]
+path = "crates/ripr/src/analysis/mod.rs"
+line = 166
+column = 34
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for creating temporary directories"
+
+[[allow]]
+path = "crates/ripr/src/analysis/mod.rs"
+line = 173
+column = 46
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for creating temporary directories"
+
+[[allow]]
+path = "crates/ripr/src/analysis/mod.rs"
+line = 174
+column = 48
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for creating temporary directories"
+
+[[allow]]
+path = "crates/ripr/src/analysis/mod.rs"
+line = 179
+column = 10
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for writing test files"
+
+[[allow]]
+path = "crates/ripr/src/analysis/mod.rs"
+line = 188
+column = 10
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for writing test files"
+
+[[allow]]
+path = "crates/ripr/src/analysis/mod.rs"
+line = 199
+column = 10
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for writing test files"
+
+[[allow]]
+path = "crates/ripr/src/analysis/mod.rs"
+line = 212
+column = 10
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for writing test files"
+
+[[allow]]
+path = "crates/ripr/src/analysis/mod.rs"
+line = 220
+column = 10
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for writing test files"
+
+[[allow]]
+path = "crates/ripr/src/analysis/mod.rs"
+line = 236
+column = 10
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for writing test files"
+
+[[allow]]
+path = "crates/ripr/src/analysis/rust_index.rs"
+line = 1104
+column = 28
+family = "expect"
+classification = "false_positive"
+explanation = "Static pattern matching detects text in analyzed Rust source, not a runtime call"
+
+[[allow]]
+path = "crates/ripr/src/analysis/rust_index.rs"
+line = 1105
+column = 28
+family = "unwrap"
+classification = "false_positive"
+explanation = "Static pattern matching detects text in analyzed Rust source, not a runtime call"
+
+[[allow]]
+path = "crates/ripr/src/analysis/rust_index.rs"
+line = 1136
+column = 31
+family = "unwrap"
+classification = "false_positive"
+explanation = "Static pattern matching detects text in analyzed Rust source, not a runtime call"
+
+[[allow]]
+path = "crates/ripr/src/analysis/rust_index.rs"
+line = 1137
+column = 28
+family = "expect"
+classification = "false_positive"
+explanation = "Static pattern matching detects text in analyzed Rust source, not a runtime call"
+
+[[allow]]
+path = "crates/ripr/tests/cli_smoke.rs"
+line = 6
+column = 43
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for running CLI tests"
+
+[[allow]]
+path = "crates/ripr/tests/cli_smoke.rs"
+line = 13
+column = 10
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for running CLI tests"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 10583
+column = 26
+family = "panic_macro"
+classification = "false_positive"
+explanation = "Pattern matching in function that converts panic patterns to family names, not an actual panic"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 10584
+column = 26
+family = "todo"
+classification = "false_positive"
+explanation = "Pattern matching in function that converts panic patterns to family names, not an actual todo"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 10585
+column = 26
+family = "unimplemented"
+classification = "false_positive"
+explanation = "Pattern matching in function that converts panic patterns to family names, not an actual unimplemented"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 10586
+column = 26
+family = "unreachable"
+classification = "false_positive"
+explanation = "Pattern matching in function that converts panic patterns to family names, not an actual unreachable"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 10852
+column = 14
+family = "unwrap"
+classification = "test_only"
+explanation = "Test harness: creates temporary directories for test isolation"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 10855
+column = 34
+family = "unwrap"
+classification = "test_only"
+explanation = "Test harness: creates temporary directories for test isolation"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 10861
+column = 40
+family = "unwrap"
+classification = "test_only"
+explanation = "Test harness: creates parent directories for temporary files"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 10863
+column = 31
+family = "unwrap"
+classification = "test_only"
+explanation = "Test harness: writes test files to temporary directory"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 10867
+column = 67
+family = "unwrap"
+classification = "test_only"
+explanation = "Test harness: acquires lock for current working directory management"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 10868
+column = 43
+family = "unwrap"
+classification = "test_only"
+explanation = "Test harness: saves current working directory before test"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 10870
+column = 42
+family = "unwrap"
+classification = "test_only"
+explanation = "Test harness: changes to temporary directory for test isolation"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 10882
+column = 40
+family = "unwrap"
+classification = "test_only"
+explanation = "Test harness: restores original working directory after test"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 10907
+column = 93
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: TOML parser validation"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 10909
+column = 34
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: TOML parser validation"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 10932
+column = 93
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: TOML parser validation"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 10950
+column = 93
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: TOML parser validation"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 10968
+column = 93
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: TOML parser validation"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 10986
+column = 93
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: TOML parser validation"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11006
+column = 93
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: TOML parser validation"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11033
+column = 93
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: TOML parser validation"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11041
+column = 47
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: panic family pattern matching validation"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11042
+column = 47
+family = "expect"
+classification = "test_only"
+explanation = "Test function: panic family pattern matching validation"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11043
+column = 47
+family = "panic_macro"
+classification = "test_only"
+explanation = "Test function: panic family pattern matching validation"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11044
+column = 47
+family = "todo"
+classification = "test_only"
+explanation = "Test function: panic family pattern matching validation"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11045
+column = 47
+family = "unimplemented"
+classification = "test_only"
+explanation = "Test function: panic family pattern matching validation"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11046
+column = 47
+family = "unreachable"
+classification = "test_only"
+explanation = "Test function: panic family pattern matching validation"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11055
+column = 53
+family = "unwrap"
+classification = "test_only"
+explanation = "Test fixture: string literal in test harness code"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11055
+column = 84
+family = "expect"
+classification = "test_only"
+explanation = "Test fixture: string literal in test harness code"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11058
+column = 34
+family = "unwrap"
+classification = "test_only"
+explanation = "Test fixture: string literal in test harness code"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11058
+column = 57
+family = "expect"
+classification = "test_only"
+explanation = "Test fixture: string literal in test harness code"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11059
+column = 69
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: assertion on panic findings collection"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11061
+column = 28
+family = "unwrap"
+classification = "test_only"
+explanation = "Test assertion: panic findings validation"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11061
+column = 50
+family = "expect"
+classification = "test_only"
+explanation = "Test assertion: panic findings validation"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 11089
+column = 58
+family = "expect"
+classification = "test_only"
+explanation = "Test harness: expects supported test intent kinds to parse successfully"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 14734
+column = 50
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: campaign manifest parsing validation"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 14754
+column = 50
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: campaign manifest parsing validation"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 14787
+column = 23
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: string parsing validation"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 14792
+column = 36
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: string parsing validation"
+
+[[allow]]
+path = "xtask/src/main.rs"
+line = 14942
+column = 18
+family = "panic_macro"
+classification = "test_only"
+explanation = "Test assertion: validates unreachable status value detection"
