@@ -2306,13 +2306,24 @@ fn generate_no_panic_migration_report() -> Result<(), String> {
     };
 
     let mut migration_entries = Vec::new();
+    let mut seen_selectors = BTreeSet::new();
 
     for entry in &allowlist {
         let best_match = find_best_matching_finding(entry, &semantic_findings);
 
         if let Some(finding) = best_match {
             let selector = propose_selector_for_finding(entry, finding);
-            migration_entries.push((entry.clone(), selector));
+            let dedup_key = (
+                entry.path.clone(),
+                entry.family.clone(),
+                selector.kind.clone(),
+                selector.container.clone(),
+                selector.callee.clone(),
+                selector.receiver_fingerprint.clone(),
+            );
+            if seen_selectors.insert(dedup_key) {
+                migration_entries.push((entry.clone(), selector));
+            }
         }
     }
 
@@ -10931,6 +10942,12 @@ fn pattern_matches_panic_call(patterns: &[String], text: &str) -> bool {
         if pattern == text {
             return true;
         }
+        // AST extraction produces base names without trailing "(" or "!"
+        // e.g. method name "unwrap" should match pattern "unwrap("
+        let base = pattern.trim_end_matches('(').trim_end_matches('!');
+        if base == text && !base.is_empty() {
+            return true;
+        }
     }
     false
 }
@@ -10996,13 +11013,21 @@ fn line_and_column_for_node(node: &ra_ap_syntax::SyntaxNode, text: &str) -> (usi
 }
 
 fn panic_family_from_call_name(name: &str) -> &'static str {
+    // Use exact matching to avoid substring false positives
+    // e.g. "panic_family_from_pattern" must not classify as "panic_macro"
     match name {
-        s if s.contains("unwrap") => "unwrap",
-        s if s.contains("expect") => "expect",
-        s if s.contains("panic") => "panic_macro",
-        s if s.contains("todo") => "todo",
-        s if s.contains("unimplemented") => "unimplemented",
-        s if s.contains("unreachable") => "unreachable",
+        "unwrap" => "unwrap",
+        "expect" => "expect",
+        "panic!" => "panic_macro",
+        "todo!" => "todo",
+        "unimplemented!" => "unimplemented",
+        "unreachable!" => "unreachable",
+        s if s.starts_with("unwrap") && s.ends_with('(') => "unwrap",
+        s if s.starts_with("expect") && s.ends_with('(') => "expect",
+        s if s.starts_with("panic") && s.ends_with('!') => "panic_macro",
+        s if s.starts_with("todo") && s.ends_with('!') => "todo",
+        s if s.starts_with("unimplemented") && s.ends_with('!') => "unimplemented",
+        s if s.starts_with("unreachable") && s.ends_with('!') => "unreachable",
         _ => "unknown",
     }
 }
