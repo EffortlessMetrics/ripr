@@ -1,5 +1,7 @@
 # ripr
 
+[![ripr](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/EffortlessMetrics/ripr/main/badges/ripr.json)](docs/BADGE_POLICY.md)
+[![ripr+](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/EffortlessMetrics/ripr/main/badges/ripr-plus.json)](docs/BADGE_POLICY.md)
 [![CI](https://github.com/EffortlessMetrics/ripr/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/EffortlessMetrics/ripr/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/EffortlessMetrics/ripr/branch/main/graph/badge.svg)](https://codecov.io/gh/EffortlessMetrics/ripr)
 [![crates.io](https://img.shields.io/crates/v/ripr.svg)](https://crates.io/crates/ripr)
@@ -9,6 +11,9 @@
 [![Open VSX Downloads](https://img.shields.io/open-vsx/dt/EffortlessMetrics/ripr?label=Open%20VSX%20downloads)](https://open-vsx.org/extension/EffortlessMetrics/ripr)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](Cargo.toml)
 [![MSRV](https://img.shields.io/badge/MSRV-1.93-blue)](https://www.rust-lang.org/)
+
+<!-- The `ripr` and `ripr+` badges count unresolved repo-scoped exposure findings under the configured policy — inbox-zero, not coverage. The v1 baseline reflects currently-probeable production syntax shapes; it is not full seam inventory or mutation adequacy proof. For v1 dogfood, this repo commits the Shields endpoint JSON under `badges/` and Shields fetches it from `raw.githubusercontent.com`; refresh with `cargo xtask update-badge-endpoints`. The ripr product contract is "ripr emits Shields-compatible JSON" — downstream users can self-host the JSON anywhere stable and are not expected to enable GitHub Pages. See [docs/BADGE_POLICY.md](docs/BADGE_POLICY.md) and `deferred/hosted-badge-service` in [docs/DEFERRED.md](docs/DEFERRED.md). -->
+
 
 <!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-02 from the public listing. Refresh from publisher metrics after publish. Do not use live VS Marketplace Shields routes. -->
 

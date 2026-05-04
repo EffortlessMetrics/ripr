@@ -381,6 +381,93 @@ Current v1 behavior:
 
 ---
 
+## deferred/hosted-badge-service
+
+Status: open
+Surface: badges / distribution / service
+
+Current v1 behavior:
+  This repository dogfoods public README badges by **committing two
+  Shields JSON files** (`badges/ripr.json`, `badges/ripr-plus.json`)
+  to `main` and serving them via `raw.githubusercontent.com`
+  (`badge/publish-main-endpoint`, #207, #209). README badges render
+  those endpoints through `https://img.shields.io/endpoint?url=...`.
+  Refresh: `cargo xtask update-badge-endpoints`. Verify (advisory):
+  `cargo xtask check-badge-endpoints`.
+
+  The `ripr` product contract is: **`ripr` emits Shields-compatible
+  JSON.** Hosting that JSON is a separate, replaceable layer.
+  Checked-in JSON is the v1 host this repo uses; it is not a
+  requirement of `ripr`.
+
+  An earlier shape of #209 used a GitHub Pages deployment workflow
+  with first-party Pages Actions. That was over-engineered for v1
+  dogfood: it required Pages enablement, added workflow surface, and
+  implied that downstream users should also enable Pages. The
+  checked-in JSON path keeps the same public-URL-on-`main` outcome
+  with much less machinery — see `docs/BADGE_POLICY.md` § "Why
+  checked-in JSON, not GitHub Pages."
+
+Why v1 kept it simple:
+  Checked-in endpoint files avoid Pages enablement, avoid a separate
+  deployment workflow, avoid `policy/network_allowlist.txt` entries,
+  and avoid cross-repo credential surfaces. Badge changes are
+  reviewable in PR diffs — useful while the repo headline is still
+  stabilizing.
+
+Risk:
+  Downstream users may infer that they must commit `badges/*.json` to
+  use `ripr` badges. That is one option, not a requirement; the policy
+  doc lists alternatives (Pages, org-level host, hosted service). The
+  bigger product gap remains: most badges in practice (CI status,
+  Codecov, crates.io, Open VSX, docs.rs) work without the user hosting
+  anything because the badge provider already hosts the data. `ripr`
+  does not yet have such a provider, so any v1 path puts hosting on
+  the user.
+
+  Secondary risk: badge counts can drift from `main` reality between
+  refresh runs of `cargo xtask update-badge-endpoints`. Until a
+  hard-gate `check-badge-endpoints` lands, a stale README badge is
+  possible.
+
+Revisit trigger:
+  Any of:
+  - First external repo asks how to use `ripr` badges.
+  - Second EffortlessMetrics repo wants `ripr` badges without enabling
+    Pages.
+  - First reported confusion that "ripr requires GitHub Pages."
+  - Hosted-service investment is otherwise scoped.
+
+Likely v2 directions (any one of, not all):
+  - **Shared badge-host repo** (e.g. `EffortlessMetrics/badges`):
+    a single Pages site for all EffortlessMetrics badges, with
+    cross-repo write tokens; good for internal repos, not the general
+    user story.
+  - **Hosted `ripr` badge service** (e.g. `badges.ripr.dev`):
+    Codecov-style — users `ripr check` in CI, upload the result, the
+    service stores latest-`main` data and serves the badge URL.
+    Cleanest user UX.
+  - **Built-in Shields integration**: long-tail, only viable once
+    `ripr` is mature and adopted enough that Shields would accept a
+    first-party route.
+  - **GitHub Check + Action UX only, no README badge**: for users who
+    only need PR-time feedback and do not want a public number.
+
+  The self-hosted Pages path stays available as a documented fallback
+  in all of these.
+
+Related PRs / friction:
+  - #207 — design-plan issue (initial decisions: Pages dogfood. Pivoted
+    to checked-in JSON in #209 review.)
+  - #209 — implementation of the self-hosted dogfood endpoint
+    (checked-in `badges/*.json` after Pages was rejected as
+    over-engineered for v1).
+  - `docs/BADGE_POLICY.md` — "`ripr` badge product contract",
+    "Self-hosted dogfood endpoint (this repo)", and "Why checked-in
+    JSON, not GitHub Pages" sections.
+
+---
+
 ## Cross-references
 
 - `docs/BADGE_POLICY.md` — locked vocabulary and what each badge does and does not prove.
