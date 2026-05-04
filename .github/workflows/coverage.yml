@@ -38,10 +38,15 @@ jobs:
           if-no-files-found: error
 
       - name: Upload coverage to Codecov
+        if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
         uses: codecov/codecov-action@v6
         with:
           files: lcov.info
           flags: rust
           name: rust-workspace
-          fail_ci_if_error: false
+          fail_ci_if_error: true
           token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Explain skipped Codecov upload
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: echo "Skipping Codecov upload for fork pull requests because repository secrets are unavailable."
