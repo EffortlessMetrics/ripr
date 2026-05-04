@@ -104,7 +104,13 @@ pub fn run_repo_analysis(options: &AnalysisOptions) -> Result<AnalysisResult, St
         .cloned()
         .collect::<Vec<_>>();
 
-    let index = rust_index::build_index(&options.root, &production_files)?;
+    // Index all discovered Rust files (production + tests + benches +
+    // examples). The classifier's `find_related_tests` looks up tests
+    // in the index; without test files the repo headline silently
+    // inflates `no_static_path` for owners that *are* exercised by
+    // integration tests under `tests/` or `examples/`. Probe seeding
+    // stays production-only so test bodies do not generate findings.
+    let index = rust_index::build_index(&options.root, &rust_files)?;
 
     let mut findings = Vec::new();
 

@@ -523,10 +523,19 @@ index 0000000..1111111 100644
     assert!(stdout.contains(r#""scope": "repo""#));
     // The temp workspace has a probeable predicate; repo analysis seeds
     // probes from production syntax shapes so analyzed_findings > 0
-    // even when the diff is empty.
+    // even when the diff is empty. Assert the value, not just the key —
+    // a key check alone would also pass for `analyzed_findings: 0`,
+    // which is exactly the diff-scope behavior this regression pins
+    // against.
     assert!(
         stdout.contains(r#""analyzed_findings""#),
         "repo native JSON must include analyzed_findings: {stdout}"
+    );
+    assert!(
+        !stdout.contains(r#""analyzed_findings": 0"#),
+        "repo badge must find ≥1 analyzed finding from the workspace \
+         predicate; got analyzed_findings: 0 — this suggests diff scope \
+         was used instead: {stdout}"
     );
 
     let _ = std::fs::remove_dir_all(&workspace);

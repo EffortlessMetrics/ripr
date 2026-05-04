@@ -338,10 +338,11 @@ otherwise identical so consumers can parse one shape.
 gate on a single version. Bumping it is a public-contract change and must be
 called out in the PR.
 
-### Scope metadata (planned, native only)
+### Scope metadata (native only)
 
 A `scope` field is required before public README/store badges go live.
-`badge/repo-scope-artifacts` introduces it on a `schema_version` bump:
+`badge/repo-scope-artifacts` introduced it on the `schema_version` 0.2
+bump:
 
 ```json
 {
@@ -525,10 +526,10 @@ artifact. CI does **not** fail on a nonzero badge count unless a
 workflow explicitly passes `--fail-on-nonzero`. **These artifacts are
 not safe to publish as README badges** — see "Scope: diff vs repo."
 
-### `main` runs — repo-scoped (planned)
+### `main` runs — repo-scoped
 
-`cargo xtask repo-badge-artifacts` (planned, `badge/repo-scope-artifacts`)
-will analyze the full repo baseline rather than a diff and write repo-
+`cargo xtask repo-badge-artifacts` (`badge/repo-scope-artifacts`)
+analyzes the full repo baseline rather than a diff and writes repo-
 scoped artifacts:
 
 ```bash
