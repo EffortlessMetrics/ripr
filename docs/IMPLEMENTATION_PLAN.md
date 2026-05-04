@@ -16,13 +16,14 @@ through multiple work items in a campaign, but each work item should follow the
 | Agentic DevEx Foundation | Make the repo safe for Codex Goals and human review. | `policy/architecture-guard`, `output/output-contract-check`, `docs/codex-goals-campaigns`, `fixtures/runner-comparison-v1`, `fixtures/first-two-goldens`, `testing/test-oracle-report`, `dogfood/static-self-check` |
 | Syntax-Backed Analyzer Foundation | Move the analyzer from lexical facts to syntax-backed facts. | `analysis/file-facts-model`, `analysis/syntax-adapter-mvp`, `design/rust-syntax-substrate`, `analysis/ast-test-oracle-extraction`, `analysis/ast-probe-ownership`, `analysis/ast-probe-generation` |
 | Evidence Quality | Improve oracle strength, local flow, activation values, output evidence, and stop reasons. | `output/unknown-stop-reason-invariant`, `analysis/oracle-strength-v2`, `analysis/local-delta-flow-v1`, `analysis/activation-value-modeling-v1`, `output/evidence-first-output`, `fixtures/negative-metamorphic-baseline` |
-| Test Efficiency and Vacuity Signals | Make low-discriminator, smoke-only, broad-oracle, opaque, circular, and duplicate test signals visible as advisory evidence. | `test-efficiency/test-fact-ledger`, `test-efficiency/vacuous-signal-v1`, `test-efficiency/duplicate-discriminator-v1`, `test-efficiency/report-and-metrics` |
-| Editor and Agent Loop | Turn findings into editor actions and agent test-writing briefs. | `lsp/evidence-hover-actions`, `context/agent-context-v2`, `docs/how-to-use-agent-context` |
-| Adoption and Calibration | Make `ripr` practical in repositories, CI, and offline calibration loops. | `config/ripr-config-v1`, `ci/sarif-ci-policy`, `calibration/cargo-mutants-scaffold`, `cache/persistent-cache-v1` |
+| Test Efficiency and Vacuity Signals (4A) | Make low-discriminator, smoke-only, broad-oracle, opaque, circular, and duplicate test signals visible as advisory evidence; ship `ripr` and `ripr+` badge artifacts. | `test-efficiency/test-fact-ledger`, `test-efficiency/vacuous-signal-v1`, `test-efficiency/duplicate-discriminator-v1`, `test-efficiency/report-and-metrics`, `badge/ripr-count-v1`, `badge/ripr-plus-count-v1`, `badge/repo-scope-artifacts`, `badge/publish-main-endpoint` |
+| Repo Seam Inventory and Test Grip (4B) | Inventory behavior seams, classify test-grip per seam, and turn actionable gaps into editor diagnostics and agent-ready packets. | `spec/repo-seam-inventory`, `analysis/repo-seam-model-v1`, `analysis/repo-seam-inventory-v1`, `analysis/test-grip-evidence-v1`, `analysis/repo-ripr-classification-v1`, `output/repo-exposure-report-v1`, `lsp/repo-seam-diagnostics-v1`, `lsp/seam-evidence-hover-v1`, `context/agent-seam-packets-v1`, `docs/agent-dispatch-workflow-v1` |
+| Adoption and Calibration (5) | Make `ripr` practical in repositories, CI, and external operationalization loops, with cached seam evidence fast enough for default-on use and runtime calibration grounding the static signal. | `cache/repo-seam-facts-v1`, `calibration/cargo-mutants-v1`, `config/ripr-config-v1`, `ci/sarif-ci-policy` |
+| Module SRP Refactoring (6) | Refactor internal modules under `crates/ripr/src/` so each module has one product responsibility, without splitting the package. | See `docs/IMPLEMENTATION_CAMPAIGNS.md` Campaign 6. |
 
-The active machine-readable campaign is `.ripr/goals/active.toml`. Campaign 1
-through Campaign 3 are complete; the active Campaign 4A queue now starts with
-`test-efficiency/duplicate-discriminator-v1`.
+The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
+through 4B are complete; the active Campaign 5 queue now starts with
+`cache/repo-seam-facts-v1` (or `calibration/cargo-mutants-v1`, both ready).
 
 ## PR 0: `planning-and-tracking-docs`
 
