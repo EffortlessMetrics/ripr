@@ -1212,6 +1212,7 @@ fn sample_analysis_snapshot(
         base: Some("origin/main".to_string()),
         mode: Mode::Draft,
         findings,
+        classified_seams: Vec::new(),
         diagnostics_by_uri,
     }
 }

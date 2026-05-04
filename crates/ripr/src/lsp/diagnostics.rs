@@ -1,6 +1,9 @@
 use super::config::LspAnalysisConfig;
 use super::state::AnalysisSnapshot;
 use super::uri::file_uri_for_path;
+use crate::analysis::ClassifiedSeam;
+use crate::analysis::inventory_classified_seams_at;
+use crate::analysis::seams::SeamGripClass;
 use crate::app::check_workspace;
 use crate::domain::{ExposureClass, Finding, RelatedTest};
 use std::collections::{BTreeMap, BTreeSet};
@@ -84,6 +87,28 @@ pub(super) fn workspace_diagnostics_with_config(
             .or_default()
             .push(diagnostic_for_finding(&root, finding));
     }
+
+    // Voice B seam diagnostics. Gated by config because the
+    // `inventory_classified_seams_at` walk classifies the entire
+    // production tree (~12k seams on the ripr repo) and would add
+    // multi-second latency to every editor refresh otherwise. Future
+    // PR (`cache/repo-seam-facts-v1`) makes this affordable enough to
+    // turn on by default.
+    let classified_seams = if config.enable_seam_diagnostics {
+        let seams = inventory_classified_seams_at(&root)
+            .map_err(|err| format!("seam inventory failed: {err}"))?;
+        for entry in &seams {
+            if let Some(diagnostic) = diagnostic_for_classified_seam(&root, entry)
+                && let Ok(uri) = file_uri_for_path(&absolute_seam_path(&root, &entry.seam))
+            {
+                grouped.entry(uri).or_default().push(diagnostic);
+            }
+        }
+        seams
+    } else {
+        Vec::new()
+    };
+
     let diagnostics_by_uri = grouped.clone();
     let batches = grouped
         .into_iter()
@@ -94,9 +119,121 @@ pub(super) fn workspace_diagnostics_with_config(
         base,
         mode,
         findings,
+        classified_seams,
         diagnostics_by_uri,
     };
     Ok(WorkspaceDiagnostics { snapshot, batches })
+}
+
+/// Per-class severity for seam diagnostics. WARNING for the headline-
+/// eligible classes (the agent should act); INFORMATION for `Opaque`
+/// (visible but advisory). `StronglyGripped`, `Intentional`, and
+/// `Suppressed` produce no diagnostic — `diagnostic_for_classified_seam`
+/// returns `None` for those.
+pub(super) fn diagnostic_severity_for_grip_class(
+    class: SeamGripClass,
+) -> Option<DiagnosticSeverity> {
+    match class {
+        SeamGripClass::WeaklyGripped
+        | SeamGripClass::Ungripped
+        | SeamGripClass::ReachableUnrevealed => Some(DiagnosticSeverity::WARNING),
+        SeamGripClass::ActivationUnknown
+        | SeamGripClass::PropagationUnknown
+        | SeamGripClass::ObservationUnknown
+        | SeamGripClass::DiscriminationUnknown
+        | SeamGripClass::Opaque => Some(DiagnosticSeverity::INFORMATION),
+        SeamGripClass::StronglyGripped | SeamGripClass::Intentional | SeamGripClass::Suppressed => {
+            None
+        }
+    }
+}
+
+/// Build the LSP `Diagnostic` for a single classified seam, or `None`
+/// if the class is not surfacable (strongly gripped / intentional /
+/// suppressed). Diagnostic codes are prefixed with `ripr-seam-` so
+/// editor consumers can filter by code without parsing severity.
+pub(super) fn diagnostic_for_classified_seam(
+    root: &Path,
+    entry: &ClassifiedSeam,
+) -> Option<Diagnostic> {
+    let severity = diagnostic_severity_for_grip_class(entry.class)?;
+    let seam = &entry.seam;
+    let evidence = &entry.evidence;
+    let line = seam.display_line().saturating_sub(1) as u32;
+    let width = expression_lsp_width(seam.expression()).min(MAX_DIAGNOSTIC_RANGE_WIDTH);
+    let range = Range {
+        start: Position { line, character: 0 },
+        end: Position {
+            line,
+            character: width,
+        },
+    };
+    let _ = root;
+    Some(Diagnostic {
+        range,
+        severity: Some(severity),
+        code: Some(NumberOrString::String(format!(
+            "ripr-seam-{}",
+            entry.class.as_str().replace('_', "-")
+        ))),
+        code_description: None,
+        source: Some("ripr".to_string()),
+        message: lsp_seam_message(entry),
+        related_information: None,
+        tags: None,
+        data: Some(serde_json::json!({
+            "schema_version": "0.1",
+            "seam_id": seam.id().as_str(),
+            "seam_kind": seam.kind().as_str(),
+            "grip_class": entry.class.as_str(),
+            "headline_eligible": entry.class.is_headline_eligible(),
+            "owner": seam.owner(),
+            "expected_sink": seam.expected_sink().as_str(),
+            "evidence": {
+                "reach": evidence.reach.state.as_str(),
+                "activate": evidence.activate.state.as_str(),
+                "propagate": evidence.propagate.state.as_str(),
+                "observe": evidence.observe.state.as_str(),
+                "discriminate": evidence.discriminate.state.as_str(),
+            },
+        })),
+    })
+}
+
+fn lsp_seam_message(entry: &ClassifiedSeam) -> String {
+    let seam = &entry.seam;
+    let head = match entry.class {
+        SeamGripClass::Opaque => "Opaque static evidence",
+        SeamGripClass::Ungripped => "No detected test grip",
+        SeamGripClass::WeaklyGripped => "Weakly gripped behavioral seam",
+        SeamGripClass::ReachableUnrevealed => "Test reaches seam but does not reveal it",
+        SeamGripClass::ActivationUnknown => "Activation evidence is unclear",
+        SeamGripClass::PropagationUnknown => "Propagation to sink is unclear",
+        SeamGripClass::ObservationUnknown => "Sink observation is unclear",
+        SeamGripClass::DiscriminationUnknown => "Oracle specificity is unclear",
+        // Filtered earlier; included for exhaustiveness.
+        SeamGripClass::StronglyGripped => "Strongly gripped",
+        SeamGripClass::Intentional => "Intentional low-grip",
+        SeamGripClass::Suppressed => "Suppressed",
+    };
+    format!(
+        "{} ({}): {}",
+        head,
+        seam.kind().as_str(),
+        seam.expression()
+            .lines()
+            .next()
+            .unwrap_or(seam.expression())
+    )
+}
+
+fn absolute_seam_path(root: &Path, seam: &crate::analysis::seams::RepoSeam) -> PathBuf {
+    let path = seam.file();
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        root.join(path)
+    }
 }
 
 pub(super) fn diagnostic_for_finding(root: &Path, finding: &Finding) -> Diagnostic {
@@ -230,5 +367,172 @@ fn absolute_related_test_path(root: &Path, test: &RelatedTest) -> PathBuf {
         test.file.clone()
     } else {
         root.join(&test.file)
+    }
+}
+
+#[cfg(test)]
+mod seam_diagnostic_tests {
+    use super::*;
+    use crate::analysis::seams::{
+        ExpectedSink, RepoSeam, RequiredDiscriminator, SeamGripClass, SeamKind,
+    };
+    use crate::analysis::test_grip_evidence::TestGripEvidence;
+    use crate::domain::{Confidence, StageEvidence, StageState};
+
+    fn stage(state: StageState) -> StageEvidence {
+        StageEvidence::new(state, Confidence::Medium, "test stage")
+    }
+
+    fn classified(class: SeamGripClass) -> ClassifiedSeam {
+        let seam = RepoSeam::new(
+            "src/pricing.rs",
+            "pricing::discounted_total",
+            SeamKind::PredicateBoundary,
+            42,
+            88,
+            "amount >= discount_threshold",
+            RequiredDiscriminator::BoundaryValue {
+                description: "amount >= discount_threshold".to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        );
+        let evidence = TestGripEvidence {
+            seam_id: seam.id().clone(),
+            related_tests: Vec::new(),
+            reach: stage(StageState::Yes),
+            activate: stage(StageState::Yes),
+            propagate: stage(StageState::Yes),
+            observe: stage(StageState::Yes),
+            discriminate: stage(StageState::Weak),
+            observed_values: Vec::new(),
+            missing_discriminators: Vec::new(),
+        };
+        ClassifiedSeam {
+            seam,
+            evidence,
+            class,
+        }
+    }
+
+    #[test]
+    fn weakly_gripped_seam_emits_warning_with_stable_code() -> Result<(), String> {
+        let entry = classified(SeamGripClass::WeaklyGripped);
+        let diag = diagnostic_for_classified_seam(Path::new("/repo"), &entry)
+            .ok_or_else(|| "expected diagnostic for weakly_gripped".to_string())?;
+        if diag.severity != Some(DiagnosticSeverity::WARNING) {
+            return Err(format!("expected WARNING, got {:?}", diag.severity));
+        }
+        match &diag.code {
+            Some(NumberOrString::String(code)) if code == "ripr-seam-weakly-gripped" => Ok(()),
+            other => Err(format!("expected ripr-seam-weakly-gripped, got {other:?}")),
+        }
+    }
+
+    #[test]
+    fn ungripped_and_reachable_unrevealed_emit_warning() -> Result<(), String> {
+        for class in [SeamGripClass::Ungripped, SeamGripClass::ReachableUnrevealed] {
+            let entry = classified(class);
+            let diag = diagnostic_for_classified_seam(Path::new("/repo"), &entry)
+                .ok_or_else(|| format!("expected diagnostic for {}", class.as_str()))?;
+            if diag.severity != Some(DiagnosticSeverity::WARNING) {
+                return Err(format!(
+                    "expected WARNING for {}, got {:?}",
+                    class.as_str(),
+                    diag.severity
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unknown_classes_emit_information() -> Result<(), String> {
+        for class in [
+            SeamGripClass::ActivationUnknown,
+            SeamGripClass::PropagationUnknown,
+            SeamGripClass::ObservationUnknown,
+            SeamGripClass::DiscriminationUnknown,
+        ] {
+            let entry = classified(class);
+            let diag = diagnostic_for_classified_seam(Path::new("/repo"), &entry)
+                .ok_or_else(|| format!("expected diagnostic for {}", class.as_str()))?;
+            if diag.severity != Some(DiagnosticSeverity::INFORMATION) {
+                return Err(format!(
+                    "expected INFORMATION for {}, got {:?}",
+                    class.as_str(),
+                    diag.severity
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn opaque_emits_information_severity() -> Result<(), String> {
+        let entry = classified(SeamGripClass::Opaque);
+        let diag = diagnostic_for_classified_seam(Path::new("/repo"), &entry)
+            .ok_or_else(|| "expected diagnostic for opaque".to_string())?;
+        if diag.severity != Some(DiagnosticSeverity::INFORMATION) {
+            return Err(format!("expected INFORMATION, got {:?}", diag.severity));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn strongly_gripped_emits_no_diagnostic() {
+        let entry = classified(SeamGripClass::StronglyGripped);
+        assert!(diagnostic_for_classified_seam(Path::new("/repo"), &entry).is_none());
+    }
+
+    #[test]
+    fn intentional_and_suppressed_emit_no_diagnostic() {
+        for class in [SeamGripClass::Intentional, SeamGripClass::Suppressed] {
+            let entry = classified(class);
+            assert!(
+                diagnostic_for_classified_seam(Path::new("/repo"), &entry).is_none(),
+                "{} should produce no diagnostic",
+                class.as_str()
+            );
+        }
+    }
+
+    #[test]
+    fn diagnostic_data_field_carries_seam_id_and_grip_class() -> Result<(), String> {
+        let entry = classified(SeamGripClass::WeaklyGripped);
+        let diag = diagnostic_for_classified_seam(Path::new("/repo"), &entry)
+            .ok_or_else(|| "expected diagnostic".to_string())?;
+        let data = diag
+            .data
+            .as_ref()
+            .ok_or_else(|| "missing data".to_string())?;
+        let seam_id = data
+            .get("seam_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "missing seam_id".to_string())?;
+        if seam_id != entry.seam.id().as_str() {
+            return Err(format!("seam_id mismatch: {seam_id}"));
+        }
+        let grip_class = data
+            .get("grip_class")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| "missing grip_class".to_string())?;
+        if grip_class != "weakly_gripped" {
+            return Err(format!("grip_class mismatch: {grip_class}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn diagnostic_message_names_seam_kind_and_expression() -> Result<(), String> {
+        let entry = classified(SeamGripClass::WeaklyGripped);
+        let diag = diagnostic_for_classified_seam(Path::new("/repo"), &entry)
+            .ok_or_else(|| "expected diagnostic".to_string())?;
+        if !diag.message.contains("predicate_boundary") {
+            return Err(format!("message missing kind: {}", diag.message));
+        }
+        if !diag.message.contains("amount >= discount_threshold") {
+            return Err(format!("message missing expression: {}", diag.message));
+        }
+        Ok(())
     }
 }

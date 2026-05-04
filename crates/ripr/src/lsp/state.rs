@@ -1,4 +1,5 @@
 use super::uri::path_from_file_uri;
+use crate::analysis::ClassifiedSeam;
 use crate::app::Mode;
 use crate::domain::Finding;
 use std::collections::BTreeMap;
@@ -14,6 +15,10 @@ pub(super) struct AnalysisSnapshot {
     pub(super) base: Option<String>,
     pub(super) mode: Mode,
     pub(super) findings: Vec<Finding>,
+    /// Voice B classified seams. Empty when `seamDiagnostics` is off
+    /// (the default). Populated lazily on workspace refresh when the
+    /// flag is enabled.
+    pub(super) classified_seams: Vec<ClassifiedSeam>,
     pub(super) diagnostics_by_uri: BTreeMap<Uri, Vec<Diagnostic>>,
 }
 
@@ -24,13 +29,20 @@ impl AnalysisSnapshot {
             .values()
             .map(Vec::len)
             .sum::<usize>();
+        let surfacable_seams = self
+            .classified_seams
+            .iter()
+            .filter(|entry| {
+                super::diagnostics::diagnostic_severity_for_grip_class(entry.class).is_some()
+            })
+            .count();
         !self.root.as_os_str().is_empty()
             && self
                 .base
                 .as_ref()
                 .is_none_or(|base| !base.trim().is_empty())
             && !self.mode.as_str().is_empty()
-            && self.findings.len() == diagnostic_count
+            && self.findings.len() + surfacable_seams == diagnostic_count
     }
 
     pub(super) fn diagnostics_for_uri(&self, uri: &Uri) -> Option<&[Diagnostic]> {

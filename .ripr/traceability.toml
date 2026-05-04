@@ -238,7 +238,15 @@ tests = [
   "crates/ripr/src/output/agent_seam_packets.rs::tests::missing_discriminators_carry_value_and_reason_objects",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::given_opaque_seam_when_packet_is_rendered_then_task_is_inspect_static_limitation",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::predicate_boundary_fallback_emits_when_no_analyzer_hypothesis_fired",
-  "crates/ripr/src/output/agent_seam_packets.rs::tests::given_intentional_seam_when_packets_are_requested_then_no_packet_is_emitted"
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::given_intentional_seam_when_packets_are_requested_then_no_packet_is_emitted",
+  "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::weakly_gripped_seam_emits_warning_with_stable_code",
+  "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::ungripped_and_reachable_unrevealed_emit_warning",
+  "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::unknown_classes_emit_information",
+  "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::opaque_emits_information_severity",
+  "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::strongly_gripped_emits_no_diagnostic",
+  "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::intentional_and_suppressed_emit_no_diagnostic",
+  "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::diagnostic_data_field_carries_seam_id_and_grip_class",
+  "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::diagnostic_message_names_seam_kind_and_expression"
 ]
 fixtures = []
 code = [
@@ -248,7 +256,10 @@ code = [
   "crates/ripr/src/analysis/seam_classification.rs",
   "crates/ripr/src/output/repo_seams.rs",
   "crates/ripr/src/output/repo_exposure.rs",
-  "crates/ripr/src/output/agent_seam_packets.rs"
+  "crates/ripr/src/output/agent_seam_packets.rs",
+  "crates/ripr/src/lsp/diagnostics.rs",
+  "crates/ripr/src/lsp/config.rs",
+  "crates/ripr/src/lsp/state.rs"
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0005-repo-seam-inventory.md",

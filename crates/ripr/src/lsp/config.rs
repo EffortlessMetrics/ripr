@@ -7,6 +7,12 @@ pub(super) struct LspAnalysisConfig {
     pub(super) base_ref: Option<String>,
     pub(super) mode: Mode,
     pub(super) include_unchanged_tests: bool,
+    /// Enable Voice B seam diagnostics. Off by default because the
+    /// `inventory_classified_seams_at` walk is whole-repo and can add
+    /// multi-second latency to every editor refresh on large workspaces.
+    /// `cache/repo-seam-facts-v1` will lift the default to `true` once
+    /// the underlying classification is cached.
+    pub(super) enable_seam_diagnostics: bool,
 }
 
 impl Default for LspAnalysisConfig {
@@ -16,6 +22,7 @@ impl Default for LspAnalysisConfig {
             base_ref: defaults.base,
             mode: defaults.mode,
             include_unchanged_tests: defaults.include_unchanged_tests,
+            enable_seam_diagnostics: false,
         }
     }
 }
@@ -52,6 +59,13 @@ impl LspAnalysisConfig {
             .and_then(|value| value.as_bool())
         {
             config.include_unchanged_tests = include_unchanged_tests;
+        }
+
+        if let Some(enable_seam_diagnostics) = options
+            .get("seamDiagnostics")
+            .and_then(|value| value.as_bool())
+        {
+            config.enable_seam_diagnostics = enable_seam_diagnostics;
         }
 
         config

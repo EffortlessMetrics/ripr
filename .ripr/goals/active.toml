@@ -150,12 +150,10 @@ commands = [
 
 [[work_item]]
 id = "lsp/repo-seam-diagnostics-v1"
-status = "blocked"
+status = "done"
 branch = "lsp/repo-seam-diagnostics-v1"
 stackable = false
 requires_human_merge = true
-blocked_by = ["output/repo-exposure-report-v1"]
-blocked_reason = "diagnostics consume classified seams"
 acceptance = "LSP surfaces ungripped or under-gripped seams in the editor with stable diagnostic codes; the diagnostic schema bumps if it must, with OUTPUT_SCHEMA.md updated; no code-action work yet"
 commands = [
   "cargo xtask shape",
@@ -166,12 +164,10 @@ commands = [
 
 [[work_item]]
 id = "lsp/seam-evidence-hover-v1"
-status = "blocked"
+status = "ready"
 branch = "lsp/seam-evidence-hover-v1"
 stackable = false
 requires_human_merge = true
-blocked_by = ["lsp/repo-seam-diagnostics-v1"]
-blocked_reason = "hover renders evidence for seams surfaced by repo-seam-diagnostics-v1"
 acceptance = "hover renders the RIPR evidence path that produced the classification with cited related tests; PR #211 (pre-4B evidence-rich hover over the current Finding / AnalysisSnapshot model) is already merged; this seam-native hover will extend or revise it once the seam model and diagnostics schema are settled"
 commands = [
   "cargo xtask shape",
