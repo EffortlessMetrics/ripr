@@ -84,6 +84,8 @@ Current explanation docs:
 - [Learnings](LEARNINGS.md)
 - [Friction log](FRICTION_LOG.md)
 - [Deferred decisions](DEFERRED.md)
+- [Agent handoff protocol](reference/AGENT_HANDOFF_PROTOCOL.md)
+- [Handoff ledger](handoffs/README.md)
 - [ADRs](adr/)
 - [Specs](specs/)
 - [Agent workflows](AGENT_WORKFLOWS.md)
