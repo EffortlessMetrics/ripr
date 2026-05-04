@@ -151,7 +151,7 @@ container = "with_temp_cwd"
 callee = "unwrap"
 
 [allow.last_seen]
-line = 11324
+line = 11679
 ```
 
 When code is refactored:

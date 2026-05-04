@@ -43,7 +43,7 @@ schema_version = "0.2"
 path = "xtask/src/main.rs"
 family = "unwrap"
 classification = "test_only"
-explanation = "Test helper function: unwrap in temporary directory management"
+explanation = "Test helper function: matches std::env::current_dir().unwrap() in with_temp_cwd"
 
 [allow.selector]
 kind = "method_call"
@@ -52,7 +52,7 @@ callee = "unwrap"
 receiver_fingerprint = "std::env::current_dir()"
 
 [allow.last_seen]
-line = 11324
+line = 11679
 column = 40
 ```
 
@@ -71,7 +71,7 @@ receiver_fingerprint = "optional_receiver_pattern"
 Matches `.unwrap()` and `.expect()` method calls, optionally filtered by:
 - `container`: Enclosing function/test/mod
 - `callee`: Method name
-- `receiver_fingerprint`: Expression being called on
+- `receiver_fingerprint`: The expression before the method call (e.g., in `std::env::current_dir().unwrap()`, the receiver is `std::env::current_dir()`)
 
 ### Free Function Call Selector
 
