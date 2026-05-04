@@ -273,7 +273,8 @@ code = [
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0005-repo-seam-inventory.md",
-  "docs/OUTPUT_SCHEMA.md"
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/AGENT_DISPATCH_WORKFLOW.md"
 ]
 metrics = [
   "seam_inventory_count",
