@@ -55,7 +55,7 @@ end_state = [
 
 [[work_item]]
 id = "spec/repo-seam-inventory"
-status = "ready"
+status = "done"
 branch = "spec/repo-seam-inventory"
 stackable = false
 requires_human_merge = true
@@ -72,13 +72,11 @@ commands = [
 
 [[work_item]]
 id = "analysis/repo-seam-model-v1"
-status = "blocked"
+status = "ready"
 branch = "analysis/repo-seam-model-v1"
 stackable = false
 requires_human_merge = true
-blocked_by = ["spec/repo-seam-inventory"]
-blocked_reason = "the seam model implements the spec; without the locked spec, RepoSeam/SeamKind/SeamGripClass boundaries are implicit"
-acceptance = "crates/ripr/src/analysis/seams.rs (or analysis/seams/) introduces RepoSeam, SeamId, SeamKind, ExpectedSink, RequiredDiscriminator, SeamGripClass as crate-private types; stable IDs do not depend on scan order; test files do not generate production seams; no public Rust API export (policy/public_api.txt unchanged); no LSP work; no badge change"
+acceptance = "crates/ripr/src/analysis/seams.rs (or analysis/seams/) introduces RepoSeam, SeamId, SeamKind, ExpectedSink, RequiredDiscriminator, SeamGripClass as crate-private types per RIPR-SPEC-0005; stable IDs do not depend on scan order; test files do not generate production seams; no public Rust API export (policy/public_api.txt unchanged); no LSP work; no badge change"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
