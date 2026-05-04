@@ -82,7 +82,7 @@ export class RiprClientController {
     }
   }
 
-  async copyContext(target?: RiprContextTarget): Promise<void> {
+  async copyContext(target?: RiprContextTarget & { finding_id?: string; probe_id?: string }): Promise<void> {
     const targetUri = uriFromTarget(target);
     const editor = vscode.window.activeTextEditor;
     const documentUri = targetUri ?? editor?.document.uri;
@@ -95,6 +95,29 @@ export class RiprClientController {
     if (!workspaceFolder) {
       vscode.window.showInformationMessage('ripr context requires a workspace folder.');
       return;
+    }
+
+    const client = this.client;
+    if (client && target?.finding_id) {
+      try {
+        const packet = await client.sendRequest('workspace/executeCommand', {
+          command: 'ripr.collectContext',
+          arguments: [{
+            finding_id: target.finding_id,
+            probe_id: target.probe_id,
+            uri: target.uri,
+            line: target.line,
+          }],
+        });
+        if (packet && typeof packet === 'object') {
+          await vscode.env.clipboard.writeText(JSON.stringify(packet, null, 2));
+          vscode.window.showInformationMessage('Copied ripr context to clipboard.');
+          return;
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.output.appendLine(`ripr collectContext via LSP failed: ${message}`);
+      }
     }
 
     const config = getConfig();

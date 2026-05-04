@@ -27,10 +27,15 @@ Options:
   --diff PATH              Read a unified diff file instead of running git diff.
   --mode MODE              instant, draft, fast, deep, or ready. Defaults to draft.
   --format FORMAT          human, json, github, badge-json, badge-shields,
-                           badge-plus-json, or badge-plus-shields. Defaults to
-                           human. badge-plus-* formats require
+                           badge-plus-json, badge-plus-shields, repo-badge-json,
+                           repo-badge-shields, repo-badge-plus-json, or
+                           repo-badge-plus-shields. Defaults to human.
+                           badge-plus-* and repo-badge-plus-* formats require
                            target/ripr/reports/test-efficiency.json (run
                            `cargo xtask test-efficiency-report` first).
+                           repo-badge-* formats render against the full
+                           repo baseline and emit `scope: "repo"`; the
+                           non-repo badge-* formats remain diff-scoped.
   --json                   Shortcut for --format json.
   --no-unchanged-tests     Limit the index to changed Rust files.
 "#

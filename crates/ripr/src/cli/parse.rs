@@ -20,6 +20,10 @@ pub(super) fn parse_format(value: &str) -> Result<OutputFormat, String> {
         "badge-shields" => Ok(OutputFormat::BadgeShields),
         "badge-plus-json" => Ok(OutputFormat::BadgePlusJson),
         "badge-plus-shields" => Ok(OutputFormat::BadgePlusShields),
+        "repo-badge-json" => Ok(OutputFormat::RepoBadgeJson),
+        "repo-badge-shields" => Ok(OutputFormat::RepoBadgeShields),
+        "repo-badge-plus-json" => Ok(OutputFormat::RepoBadgePlusJson),
+        "repo-badge-plus-shields" => Ok(OutputFormat::RepoBadgePlusShields),
         _ => Err(format!("unknown format {value:?}")),
     }
 }
@@ -125,6 +129,22 @@ mod tests {
             FormatScenario {
                 given_format: "badge-plus-shields",
                 then_result: Ok(OutputFormat::BadgePlusShields),
+            },
+            FormatScenario {
+                given_format: "repo-badge-json",
+                then_result: Ok(OutputFormat::RepoBadgeJson),
+            },
+            FormatScenario {
+                given_format: "repo-badge-shields",
+                then_result: Ok(OutputFormat::RepoBadgeShields),
+            },
+            FormatScenario {
+                given_format: "repo-badge-plus-json",
+                then_result: Ok(OutputFormat::RepoBadgePlusJson),
+            },
+            FormatScenario {
+                given_format: "repo-badge-plus-shields",
+                then_result: Ok(OutputFormat::RepoBadgePlusShields),
             },
             FormatScenario {
                 given_format: "xml",

@@ -73,6 +73,19 @@ restarts the client so the next diagnostic refresh uses the new configuration.
 - `ripr: Copy Finding Context`
 - `ripr: Open Settings`
 
+### Copy Finding Context
+
+The `ripr: Copy Finding Context` command first attempts to collect context
+through the running LSP server via `workspace/executeCommand` with
+`ripr.collectContext`. If the server has a matching analysis snapshot, it
+returns a JSON context packet directly. If the LSP command is unavailable or
+returns no result, the extension falls back to shelling out to the `ripr`
+CLI (`ripr context --at <selector> --json`).
+
+The code action `Copy ripr context packet` includes `finding_id` and
+`probe_id` from the diagnostic data so the server can resolve the finding
+without re-running workspace analysis.
+
 ## Missing Server Behavior
 
 If no usable server can be resolved, the extension shows:
@@ -146,6 +159,41 @@ Diagnostics remain advisory. `exposed`, `propagation_unknown`, and
 `static_unknown` findings are informational; weak or missing exposure findings
 are warnings.
 
+## Hover Content
+
+When the cursor is on a diagnostic range and a matching analysis snapshot is
+available, the hover renders evidence-rich finding content:
+
+```text
+**ripr** `weakly_exposed`
+
+Add an exact boundary assertion.
+
+## RIPR Evidence
+
+* reach yes: related tests found
+* infection yes: predicate can alter branch behavior
+* propagation yes: branch influences return value
+* observation weak: return value asserted
+* discriminator weak: boundary value missing
+
+## Related Tests
+
+- `tests/pricing.rs:12` `discount_boundary_is_exact` — strong exact_value oracle: assert_eq!(total, expected)
+
+## Weakness
+
+- no equality-boundary case was found
+```
+
+Fallback behavior preserves three levels:
+
+1. **Snapshot + matching finding** — evidence-rich hover with RIPR stage
+   summaries, related tests, and weakness notes.
+2. **Diagnostic without matching finding** — diagnostic-only hover showing the
+   classification, message, and finding or probe identifiers.
+3. **No diagnostic at position** — generic guidance hover.
+
 ## Current Limitations
 
 The preview extension does not yet provide:
@@ -153,4 +201,7 @@ The preview extension does not yet provide:
 - bundled native server binaries
 - platform-specific VSIX packages
 - automatic Rust or Cargo installation
-- deep editor UI beyond LSP diagnostics and basic commands
+- deep editor UI beyond diagnostics, evidence hovers, and basic commands
+- server-owned context packet commands
+- evidence-aware code actions
+- unsaved-buffer analysis overlays

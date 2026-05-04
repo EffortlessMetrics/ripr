@@ -1,4 +1,3 @@
-use super::REFRESH_COMMAND;
 use super::actions::code_action_response;
 use super::capabilities::{initialize_result, root_from_initialize_params};
 use super::config::LspAnalysisConfig;
@@ -6,8 +5,11 @@ use super::diagnostics::{
     DiagnosticBatch, DiagnosticRefreshPlan, WorkspaceDiagnostics, diagnostic_refresh_plan,
     take_all_uris, workspace_diagnostics_with_config,
 };
-use super::hover::{diagnostic_at_position, diagnostic_hover_response, hover_response};
+use super::hover::{
+    diagnostic_at_position, diagnostic_hover_response, finding_hover_response, hover_response,
+};
 use super::state::{AnalysisSnapshot, DocumentStore};
+use super::{COLLECT_CONTEXT_COMMAND, REFRESH_COMMAND};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -227,9 +229,9 @@ impl Backend {
             && let Some(snapshot) = snapshot.as_ref()
             && let Some(diagnostics) = snapshot.diagnostics_for_uri(uri)
             && let Some(diagnostic) = diagnostic_at_position(diagnostics, position)
-            && snapshot.finding_for_diagnostic(diagnostic).is_some()
+            && let Some(finding) = snapshot.finding_for_diagnostic(diagnostic)
         {
-            return Some(diagnostic_hover_response(diagnostic));
+            return Some(finding_hover_response(finding, diagnostic));
         }
 
         let Ok(last_diagnostics) = self.last_diagnostics.lock() else {
@@ -293,7 +295,27 @@ impl LanguageServer for Backend {
     async fn execute_command(&self, params: ExecuteCommandParams) -> LspResult<Option<LSPAny>> {
         if params.command == REFRESH_COMMAND {
             self.refresh_diagnostics().await;
+            return Ok(None);
+        }
+        if params.command == COLLECT_CONTEXT_COMMAND {
+            return Ok(self.collect_context_packet(&params.arguments));
         }
         Ok(None)
+    }
+}
+
+fn context_arguments(arguments: &[LSPAny]) -> Option<&serde_json::Map<String, serde_json::Value>> {
+    let first = arguments.first()?;
+    first.as_object()
+}
+
+impl Backend {
+    fn collect_context_packet(&self, arguments: &[LSPAny]) -> Option<LSPAny> {
+        let args = context_arguments(arguments)?;
+        let finding_id = args.get("finding_id").and_then(|v| v.as_str())?;
+        let snapshot = self.latest_analysis.lock().ok()?.clone()?;
+        let finding = snapshot.finding_by_id(finding_id)?;
+        let packet = crate::output::json::render_context_packet(finding, 5);
+        serde_json::from_str(&packet).ok()
     }
 }

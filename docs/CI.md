@@ -160,11 +160,22 @@ is separate from the VS Code extension-host compatibility declared in
 The coverage workflow currently runs:
 
 ```bash
+cargo llvm-cov clean --workspace
 cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
 ```
 
-It uploads `lcov.info` to Codecov with `fail_ci_if_error: false` while the
-coverage integration is being established.
+It uploads `lcov.info` as the `rust-lcov` GitHub Actions artifact and uploads
+the same file to Codecov with the `rust` flag and `rust-workspace` upload name.
+
+Codecov uses the repository `CODECOV_TOKEN` secret. Codecov upload failures are
+blocking for trusted coverage runs: pushes and same-repository pull requests.
+Fork pull requests still generate `lcov.info` and upload the `rust-lcov`
+GitHub Actions artifact, but skip the Codecov upload because repository secrets
+are unavailable to those runs.
+
+Codecov project and patch status checks are not yet branch-protection gates.
+After the emitted status names and baseline are stable, a later scoped PR can
+ratchet Codecov status requirements and branch protection separately.
 
 The security workflow currently runs:
 
@@ -237,8 +248,8 @@ Planned CI work:
 - add markdown/link checks for docs-heavy PRs
 - add README capability snapshot consistency checks
 - add README state and Markdown link checks
-- decide when Codecov upload failures should become blocking after the first
-  successful coverage baseline
+- ratchet Codecov project and patch status requirements after the first stable
+  coverage baseline
 - decide when duplicate dependency findings should become blocking after the
   cargo-deny baseline is stable
 - add SARIF validation when SARIF output exists

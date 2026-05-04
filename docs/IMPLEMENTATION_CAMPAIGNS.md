@@ -225,7 +225,7 @@ outcomes. Unknown is acceptable, but it must be explicit and actionable.
 
 ## Campaign 4A: Test Efficiency and Vacuity Signals
 
-Status: active
+Status: complete
 
 Objective:
 
@@ -261,7 +261,9 @@ Work items:
 | `badge/ripr-plus-count-v1` | done | `ripr check --format badge-plus-json` and `--format badge-plus-shields` read `target/ripr/reports/test-efficiency.json` (relative to `--root`), sum unsuppressed exposure gaps and unsuppressed actionable test-efficiency findings, exclude entries with `declared_intent` metadata, and report `opaque` entries as `unknowns_test_efficiency`. Missing report fails clearly with a regenerator hint. |
 | `suppressions/v1` | done | `.ripr/suppressions.toml` loader with closed-set kinds (`exposure_gap`, `test_efficiency`); `owner` + `reason` required, `expires` optional in `YYYY-MM-DD`. Expired entries do **not** apply and surface as warnings — silent green-forever debt is impossible. Suppressed findings stay visible in detailed reports; the badge counts move them from `unsuppressed_*` to `suppressed_*`. Native badge JSON gains a `warnings` array; Shields stays exactly four fields. |
 | `ci/badge-artifacts` | done | `cargo xtask badge-artifacts` writes `ripr-badge.json`, `ripr-badge-shields.json`, `ripr-plus-badge.json`, `ripr-plus-badge-shields.json`, and `ripr-badges.md` to `target/ripr/reports/`. The CI workflow runs `cargo xtask test-efficiency-report` then `cargo xtask badge-artifacts` (both advisory, both `\|\| true`); the existing `Upload ripr reports` step picks up the new files; the badges Markdown is appended to `$GITHUB_STEP_SUMMARY`. The `badge-artifacts` task captures `git diff origin/main...HEAD` to `target/ripr/badge-input.diff` and runs each format against `--root .` so exposure and test-efficiency analyze the same codebase. New `ReceiptSpec` covers all five files. Advisory by default — no `--fail-on-nonzero`. |
-| `badge/publish-main-endpoint` | ready | Trunk-only Shields endpoint published from `main`; README badges point at it. Requires `policy/network_allowlist.txt` entry. |
+| `badge/repo-scope-artifacts` | done | `cargo xtask repo-badge-artifacts` analyzes the full repo baseline through `run_repo_analysis` (every currently-probeable production syntax shape, not a diff) and writes `repo-ripr-badge.json`, `repo-ripr-badge-shields.json`, `repo-ripr-plus-badge.json`, `repo-ripr-plus-badge-shields.json`, and `repo-ripr-badges.md`. Native badge JSON now carries a `scope` field (`"diff"` or `"repo"`) on schema `0.2`; Shields projection stays exactly four fields. New `OutputFormat::RepoBadge*` variants route through `app::check_workspace_repo`; existing diff-scoped `cargo xtask badge-artifacts` and the `BadgeJson`/`BadgeShields`/`BadgePlus*` formats are unchanged. The v1 baseline is the *currently-probeable* repo surface — not full seam inventory, not mutation adequacy proof; the deeper seam / test-grip model is tracked as later work. |
+| `badge/publish-main-endpoint` | done | The two repo-scoped Shields JSON files (`badges/ripr.json`, `badges/ripr-plus.json`) are committed to `main` and served via `raw.githubusercontent.com/EffortlessMetrics/ripr/main/badges/...`. Root `README.md` renders them via `img.shields.io/endpoint`. Refresh: `cargo xtask update-badge-endpoints` (regenerates from `repo-badge-artifacts` and copies into `badges/`). Verify (advisory, not yet a hard CI gate): `cargo xtask check-badge-endpoints`. Pages deployment was prototyped and rejected as over-engineered for v1 dogfood — it would have required Pages enablement, a deploy workflow, and would have implied downstream users must also enable Pages. The `ripr` product contract is "ripr emits Shields-compatible JSON"; hosting is replaceable. See `deferred/hosted-badge-service` in `docs/DEFERRED.md`. |
+| `campaign/test-efficiency-closeout` | done | Campaign 4A marked complete here and in `.ripr/goals/active.toml`. Final architecture: per-test ledger + class/reason metrics from `cargo xtask test-efficiency-report`; `.ripr/test_intent.toml` declarations and `.ripr/suppressions.toml` exceptions wired into the `ripr+` count; diff-scoped PR badge artifacts via `cargo xtask badge-artifacts` (#195); repo-scoped baseline via `cargo xtask repo-badge-artifacts` (#204) on schema 0.2 with `scope: "repo"`; checked-in `badges/ripr.json` and `badges/ripr-plus.json` rendered through `img.shields.io/endpoint?url=https://raw.githubusercontent.com/EffortlessMetrics/ripr/main/badges/...` (#209). Final dogfood snapshot at this campaign close: `ripr 163`, `ripr+ 163` (`main` = `6b4b2b0`); snapshot, **not** a fixture expectation. PR chain: #195, #198, #199, #200, #204, #205 (DEFERRED.md), #206 (friction-log graduation), #208 (stale-`317`-headline correction), #209. Issue #207 was the endpoint design-plan. Pages was rejected for v1 dogfood; hosted badge service is `deferred/hosted-badge-service`. The Voice B seam-inventory + test-grip product reframe is **next-campaign work** (`deferred/seam-inventory-test-grip`), not unfinished 4A work. |
 
 Dependencies:
 
@@ -308,28 +310,140 @@ End state:
 - code actions can copy context packets or open related tests
 - context packets include missing values and assertion shapes
 
+The original Campaign 4 plan was a direct extension of Campaign 3's
+`Finding`/`StageEvidence` model. Campaign 4A (Test Efficiency) made
+clear that the editor/agent surface needs a richer substrate —
+behavior seams classified by test-grip evidence rather than ad-hoc
+finding metadata. The continuation lives under Campaign 4B; the work
+items below are subsumed there with seam-aware shapes:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `lsp/evidence-hover-actions` | superseded | Folded into Campaign 4B as `lsp/seam-evidence-hover-v1` (preceded by `lsp/repo-seam-diagnostics-v1`). |
+| `context/agent-context-v2` | superseded | Folded into Campaign 4B as `context/agent-seam-packets-v1`, scoped around `RepoSeam` and `SeamGripClass`. |
+| `docs/how-to-use-agent-context` | superseded | Folded into Campaign 4B as `docs/agent-dispatch-workflow-v1`. |
+
+## Campaign 4B: Repo Seam Inventory and Test Grip
+
+Campaign ID: `repo-seam-inventory-test-grip`
+
+Status: active
+
+Objective:
+
+```text
+Inventory behavior seams across the repo, classify how strongly current tests
+grip each seam through RIPR evidence, and turn actionable gaps into editor
+diagnostics and agent-ready test packets.
+```
+
+The Voice A baseline shipped in Campaign 4A
+(`badge/repo-scope-artifacts`, #204) becomes a special case of seam
+classification rather than the analyzer's only repo mode. Voice B is
+the editor/agent loop with the right substrate: first-class
+`RepoSeam` and `SeamGripClass` underneath, evidence-first hover and
+agent packets on top.
+
+End state:
+
+- `RepoSeam`, `SeamKind`, `RequiredDiscriminator`, and `SeamGripClass`
+  exist as a first-class data model
+- seam IDs are stable across runs and across input file walk reorderings
+- test-grip evidence per seam covers reach, activate/infect,
+  propagate, observe, discriminate
+- a separate `SeamGripClass` / `TestGripClass` is used for grip
+  classification; mapping to existing `ExposureClass` and to badge
+  counts is explicit, not implicit through type extension
+- a repo exposure report enumerates seams with their grip class and
+  missing-discriminator hypothesis
+- LSP diagnostics surface ungripped or under-gripped seams
+- hover renders the RIPR evidence path for the classification with
+  cited related tests
+- agent context packets carry the load-bearing fields a coding agent
+  needs to write the missing test
+- public repo badge counts can be derived from seam classification
+  without breaking the existing schema
+- static-language constraints hold: no `killed`/`survived`/`proven`/
+  `adequate` in static output
+- Voice B does not pretend to prove mutation adequacy
+
 Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `lsp/evidence-hover-actions` | blocked | Depends on evidence-first output shape. |
-| `context/agent-context-v2` | blocked | Depends on stable evidence and oracle fields. |
-| `docs/how-to-use-agent-context` | blocked | Depends on context v2. |
+| `spec/repo-seam-inventory` | ready | First slice. Lock the contract before code: `RepoSeam`, `SeamKind`, `RequiredDiscriminator`, `TestGripEvidence`, `SeamGripClass`, stable seam ID rules, relationship to `ProbeShapeFact`, headline-vs-visible mapping, static-language boundaries, Voice A vs Voice B contract. Spec lives at `docs/specs/RIPR-SPEC-0005-repo-seam-inventory.md`. |
+| `analysis/repo-seam-model-v1` | blocked | `crates/ripr/src/analysis/seams.rs` (or `analysis/seams/`) introduces the seam types as crate-private. Stable IDs, no public Rust API. |
+| `analysis/repo-seam-inventory-v1` | blocked | Walks production Rust files and emits `Vec<RepoSeam>`. Initial seam kinds: predicate_boundary, error_variant, return_value, field_construction, side_effect, match_arm, validation_branch, call_presence. |
+| `analysis/test-grip-evidence-v1` | blocked | Per-seam evidence record (reach/activate/propagate/observe/discriminate) built from existing test/oracle facts. No MIR, no full trait resolution, no cargo-mutants. |
+| `analysis/repo-ripr-classification-v1` | blocked | Aggregates test-grip evidence into `SeamGripClass` per seam. Badge-headline-eligible vs visible-only mapping is explicit. |
+| `output/repo-exposure-report-v1` | blocked | Markdown + JSON repo report. Schema versioned; existing repo-badge-artifacts schema unchanged unless the spec opts in. |
+| `lsp/repo-seam-diagnostics-v1` | blocked | Surface ungripped or under-gripped seams in the editor with stable diagnostic codes. |
+| `lsp/seam-evidence-hover-v1` | blocked | Hover renders the RIPR evidence path with cited related tests. **PR #211 disposition decided here**: adopt with revisions / adopt as-is / close + reopen, once the seam model and diagnostics schema are settled. |
+| `context/agent-seam-packets-v1` | blocked | Agent context packet schema (RIPR-SPEC-0003 successor or addendum). Load-bearing fields: changed expression, owner, related tests, oracle strength, observed values, missing discriminator. |
+| `docs/agent-dispatch-workflow-v1` | blocked | How a coding agent uses a seam packet to write the missing test. |
+| `cache/repo-seam-facts-v1` | blocked | Optional fact-layer cache (file-facts, owner-index, seam-facts; never final outputs). Gated on real performance signal. Subsumes Campaign 5's `cache/persistent-cache-v1`. |
+| `calibration/cargo-mutants-v1` | blocked | Optional scaffold for comparing static `SeamGripClass` against cargo-mutants outcomes. Advisory only; static output adopts no mutation-runtime language. Subsumes Campaign 5's `calibration/cargo-mutants-scaffold`. |
+
+Dependencies:
+
+- `spec/repo-seam-inventory` is the single ready item; everything else
+  is blocked on it directly or transitively until the contract lands.
+- `lsp/seam-evidence-hover-v1` is where PR #211 (currently a frozen
+  draft) is reopened for adoption.
+- `cache/repo-seam-facts-v1` and `calibration/cargo-mutants-v1`
+  subsume their broader analogs from Campaign 5; Campaign 5 retains
+  its config and CI policy work.
+
+Commands:
+
+```bash
+cargo xtask shape
+cargo xtask fix-pr
+cargo xtask check-pr
+cargo xtask check-spec-format
+cargo xtask check-spec-ids
+cargo xtask check-output-contracts
+cargo xtask check-static-language
+cargo xtask markdown-links
+cargo xtask check-doc-index
+```
+
+Blocking conditions:
+
+- analyzer code committed before the spec lands
+- `SeamGripClass` extended without explicit mapping to badge counts
+- runtime-mutation language (`killed`, `survived`, etc.) leaking into
+  static seam reports
+- public Rust API surface change without a `policy/public_api.txt`
+  update
+- LSP / agent surfaces shipped before the seam model and report are
+  settled
+
+Review policy:
+
+This campaign sits inside the operating contract codified in
+[`docs/reference/AGENT_HANDOFF_PROTOCOL.md`](reference/AGENT_HANDOFF_PROTOCOL.md).
+Spec/model work pings the owner; mechanical sub-step work proceeds
+inline once authorized.
 
 ## Campaign 5: Adoption and Calibration
 
 Objective:
 
 ```text
-Make `ripr` practical in repositories, CI, and offline calibration loops.
+Make `ripr` practical in repositories, CI, and external operationalization
+loops.
 ```
 
 End state:
 
 - repository config exists
 - SARIF and CI policy modes exist
-- cargo-mutants calibration scaffold exists
-- persistent cache exists after fact model earns caching
+
+Cache/calibration work that depends on stable seam IDs migrated to
+Campaign 4B (`cache/repo-seam-facts-v1`, `calibration/cargo-mutants-v1`).
+Campaign 5 retains the broader operationalization concerns that do
+not require the seam model.
 
 Work items:
 
@@ -337,5 +451,3 @@ Work items:
 | --- | --- | --- |
 | `config/ripr-config-v1` | blocked | Depends on stable analyzer conventions. |
 | `ci/sarif-ci-policy` | blocked | Depends on output contract stability. |
-| `calibration/cargo-mutants-scaffold` | blocked | Depends on improved static facts. |
-| `cache/persistent-cache-v1` | blocked | Depends on stable fact model. |

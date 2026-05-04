@@ -1,0 +1,132 @@
+# Handoff Ledger
+
+Committed handoff documents capture the load-bearing state when work
+crosses a real boundary — not every transcript recap. This convention
+exists because handoff state needs a discoverable home other than the
+session transcript, but the cost of committing every recap is doc
+churn that buries the useful entries.
+
+## When to commit a handoff
+
+Use a committed handoff document when **at least one** of:
+
+- **Multi-session work**: the work pauses for hours or days and the
+  next session needs the load-bearing state without scrolling
+  transcripts.
+- **Campaign closeout or opening**: the boundary between two
+  campaigns is a useful place to record the final architecture, the
+  PR chain, and the deferred items.
+- **High-risk endpoint or release work**: anything touching network
+  policy, public README badges, store-facing copy, secrets, or
+  release pipelines.
+- **Major architecture change**: a crate split, a new public module
+  surface, a new external service.
+- **Owner-stepping-away handoff**: when the owner is leaving for a
+  long enough window that an autonomous loop or a fresh-session
+  resume needs the current state in a discoverable location.
+
+## When *not* to commit a handoff
+
+Routine work does not need committed handoffs:
+
+- single-session PR work
+- mechanical repairs and gate-pass edits
+- routine docs PRs
+- friction-log entries (those go to `docs/FRICTION_LOG.md` directly,
+  not here)
+- per-iteration loop summaries (those belong in
+  `target/ripr/reports/plan-forward.md` while the loop is running,
+  and graduate to a committed handoff only at session boundary)
+
+If the handoff is going to be obsolete in a day, leave it in
+`target/ripr/reports/` (gitignored) rather than committing it.
+
+## File layout
+
+```text
+docs/handoffs/
+├── README.md                                   # this file
+└── YYYY-MM-DD-<topic>.md                       # one file per handoff
+```
+
+The date prefix sorts handoffs chronologically when a directory listing
+is the index. The `<topic>` slug should match the campaign or PR-cluster
+the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
+
+## Template
+
+```markdown
+# Handoff: <topic>
+
+Date: YYYY-MM-DD
+Branch / PR: <branch> / #NNN
+Latest merged PR: #NNN <title> (commit <sha>)
+
+## Current work item
+
+<which manifest entry / which PR / which scope>
+
+## Next work item
+
+<the single concrete next action — not a todo list>
+
+## Open decisions
+
+- <decision> — owner: <who> — option set: <…>
+
+## Current blockers
+
+- <blocker> — what would unblock it
+
+## Verification run
+
+<output of the load-bearing gate commands; e.g. `cargo xtask check-pr`,
+`cargo xtask check-campaign`, live endpoint curl results>
+
+## Artifacts
+
+- <ephemeral artifacts in `target/ripr/reports/` worth knowing about>
+- <committed artifacts the next session should read first>
+
+## Friction log entries
+
+- <links to relevant `docs/FRICTION_LOG.md` entries; whether resolved
+  or open>
+
+## Deferred decisions
+
+- <links to relevant `docs/DEFERRED.md` entries; what would trigger
+  revisit>
+
+## Recommended next action
+
+<one concrete first step the next session should take>
+
+## What not to do
+
+<things the next session might be tempted to do that the current
+session has explicit reason to defer or avoid>
+```
+
+The template is minimal on purpose. Most fields are short. If a field
+doesn't apply, omit it rather than padding it.
+
+## Relationship to other surfaces
+
+| Surface | When to use it instead |
+| --- | --- |
+| `docs/FRICTION_LOG.md` | raw, same-day observations of friction; goes here only after multiple sessions or campaign-boundary crossing |
+| `docs/LEARNINGS.md` | settled principles; the executor should not add to LEARNINGS from a handoff — graduate from FRICTION_LOG instead |
+| `docs/DEFERRED.md` | "v1 simple, revisit later" decisions; reference these from a handoff but don't duplicate them |
+| PR body | per-PR review context; the handoff references PRs by number |
+| `target/ripr/reports/plan-forward.md` | live, ephemeral, per-iteration plan during an autonomous loop; graduate to a committed handoff only at session boundary |
+| `.ripr/goals/active.toml` | machine-readable manifest; a committed handoff complements this rather than duplicating it |
+
+## See also
+
+- [`docs/reference/AGENT_HANDOFF_PROTOCOL.md`](../reference/AGENT_HANDOFF_PROTOCOL.md)
+  — the operating contract these handoffs live inside.
+- [`docs/SCOPED_PR_CONTRACT.md`](../SCOPED_PR_CONTRACT.md) — the
+  scoped-PR contract.
+- [`docs/IMPLEMENTATION_CAMPAIGNS.md`](../IMPLEMENTATION_CAMPAIGNS.md)
+  — the campaign-level plan.

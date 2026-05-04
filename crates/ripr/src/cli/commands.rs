@@ -39,7 +39,11 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
         i += 1;
     }
     let format = input.format.clone();
-    let output = app::check_workspace(input)?;
+    let output = if format.is_repo_scope() {
+        app::check_workspace_repo(input)?
+    } else {
+        app::check_workspace(input)?
+    };
     print!("{}", app::render_check(&output, &format)?);
     Ok(())
 }
