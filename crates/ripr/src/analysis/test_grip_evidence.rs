@@ -111,8 +111,9 @@ fn find_related_tests<'a>(seam: &RepoSeam, index: &'a RustIndex) -> Vec<&'a Test
 
     let mut related: Vec<&'a TestSummary> = Vec::new();
     for test in &index.tests {
+        let test_path = normalize_path(&test.file);
         if let Some(prefix) = &prefix
-            && !normalize_path(&test.file).starts_with(prefix)
+            && !test_path.starts_with(prefix)
         {
             continue;
         }
@@ -120,8 +121,7 @@ fn find_related_tests<'a>(seam: &RepoSeam, index: &'a RustIndex) -> Vec<&'a Test
             && (test.calls.iter().any(|call| call.name == owner_name)
                 || test.body.contains(owner_name));
         let test_name_lower = test.name.to_ascii_lowercase();
-        let same_file_or_named = (!file_stem.is_empty()
-            && normalize_path(&test.file).contains(file_stem))
+        let same_file_or_named = (!file_stem.is_empty() && test_path.contains(file_stem))
             || (!owner_name_lower.is_empty() && test_name_lower.contains(&owner_name_lower))
             || expression_tokens.iter().any(|token| {
                 token.len() > 2 && test_name_lower.contains(&token.to_ascii_lowercase())
@@ -296,9 +296,15 @@ fn missing_discriminators_for(
             // We do not yet know the literal value of `boundary_token`,
             // so we can only flag that the equality boundary is not
             // explicitly named in the observed value set.
+            //
+            // Use exact equality rather than `contains` to avoid false
+            // matches like `boundary_token = "10"` matching observed
+            // value `"100"`. Observed values are literal scalars produced
+            // by `scalar_values`, so byte-for-byte equality is the right
+            // contract here.
             let equality_seen = observed
                 .iter()
-                .any(|v| v.value.contains(boundary_token.as_str()));
+                .any(|v| v.value.as_str() == boundary_token.as_str());
             if equality_seen {
                 Vec::new()
             } else {
