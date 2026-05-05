@@ -1269,6 +1269,9 @@ fn is_snapshot_assertion(line: &str) -> bool {
         "assert_csv_snapshot!",
         "assert_ron_snapshot!",
         "assert_toml_snapshot!",
+        "assert_compact_json_snapshot!",
+        "assert_inline_snapshot!",
+        "assert_binary_snapshot!",
     ];
     known_snapshot_macros
         .iter()
@@ -1590,6 +1593,9 @@ fn checks_error() {
             "assert_json_snapshot!(payload);",
             "assert_debug_snapshot!(payload);",
             "assert_csv_snapshot!(payload);",
+            "assert_compact_json_snapshot!(payload);",
+            r#"assert_inline_snapshot!(rendered, @"ok");"#,
+            "assert_binary_snapshot!(artifact);",
             r##"expect![[r#"ok"#]].assert_eq(&rendered);"##,
             r##"expect![[r#"ok"#]].assert_debug_eq(&rendered);"##,
             r##"expect![[r#"ok"#]].assert_json_eq(&rendered);"##,
