@@ -827,8 +827,9 @@ JSON shape:
     "static_seams_total": 120,
     "mutants_total": 8,
     "matched_total": 6,
-    "unmatched_mutants_total": 2,
-    "static_without_runtime_total": 114,
+    "ambiguous_file_line_total": 1,
+    "unmatched_mutants_total": 1,
+    "static_without_runtime_total": 113,
     "runtime_outcome_counts": {
       "caught": 5,
       "timeout": 3
@@ -864,6 +865,46 @@ JSON shape:
       }
     }
   ],
+  "ambiguous_file_line_matches": [
+    {
+      "runtime": {
+        "mutant_id": "m7",
+        "seam_id": null,
+        "file": "src/pricing.rs",
+        "line": 88,
+        "mutation_operator": "replace >= with >",
+        "runtime_outcome": "caught",
+        "duration": "99",
+        "test_command": "cargo test pricing"
+      },
+      "candidates": [
+        {
+          "seam_id": "f3c9e4d21a0b7c88",
+          "seam_kind": "predicate_boundary",
+          "file": "src/pricing.rs",
+          "line": 88,
+          "seam_grip_class": "weakly_gripped",
+          "oracle_kind": "exact_value",
+          "oracle_strength": "strong",
+          "observed_values": ["50", "10000"],
+          "missing_discriminators": [
+            "amount == discount_threshold (equality boundary)"
+          ]
+        },
+        {
+          "seam_id": "a1b2c3d4e5f60718",
+          "seam_kind": "return_value",
+          "file": "src/pricing.rs",
+          "line": 88,
+          "seam_grip_class": "ungripped",
+          "oracle_kind": "unknown",
+          "oracle_strength": "unknown",
+          "observed_values": [],
+          "missing_discriminators": []
+        }
+      ]
+    }
+  ],
   "unmatched_mutants": [],
   "static_without_runtime_sample": []
 }
@@ -878,10 +919,13 @@ Field contract:
 - `metrics.mutants_total` — count of runtime mutation records imported from the
   supplied JSON.
 - `metrics.matched_total` — runtime records joined to a static seam.
+- `metrics.ambiguous_file_line_total` — runtime records whose normalized
+  file/line matched multiple static seams and were therefore not assigned to a
+  single seam.
 - `metrics.unmatched_mutants_total` — runtime records that could not be joined
   by `seam_id` or file/line.
-- `metrics.static_without_runtime_total` — static seams with no matched runtime
-  record in this import.
+- `metrics.static_without_runtime_total` — static seams with no definitive or
+  ambiguous runtime record in this import.
 - `metrics.runtime_outcome_counts` — counts keyed by normalized runtime outcome
   label from the imported data.
 - `metrics.join_method_counts` — counts for `seam_id` and `file_line` joins.
@@ -893,10 +937,13 @@ Field contract:
 - `matches[].runtime` — imported runtime mutation record: mutation ID when
   available, seam/probe ID when available, location, operator, outcome, duration,
   and test command.
+- `ambiguous_file_line_matches[]` — runtime records that matched multiple
+  static seams by normalized file/line. These records are intentionally not
+  assigned to `matches[]` without a stronger seam/probe ID.
 - `unmatched_mutants[]` — runtime records that did not match a static seam.
 - `static_without_runtime_sample[]` — capped sample of static seams with no
-  runtime data in this import. Use `static_without_runtime_total` for the full
-  count.
+  definitive or ambiguous runtime data in this import. Use
+  `static_without_runtime_total` for the full count.
 
 ## Stability Rules
 

@@ -606,4 +606,4 @@ evidence = [
 ]
 fixtures = []
 next = "campaign/seam-evidence-usability-closeout"
-metric = "static seam classes joined to imported runtime mutation outcomes by seam_id or file_line"
+metric = "static seam classes joined to imported runtime mutation outcomes by seam_id or unambiguous file_line; ambiguous file_line candidates remain unassigned"

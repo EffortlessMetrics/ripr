@@ -47,7 +47,7 @@ Status values:
 | LSP seam code actions | `alpha` | `RIPR-SPEC-0005` | crates/ripr/src/lsp/actions.rs seam-aware code_action_response, crates/ripr/src/lsp/backend.rs collectContext returns agent seam packets for seam_id, VS Code copySuggestedAssertion and openRelatedTest handlers, seam diagnostics surface Copy seam packet, Copy suggested assertion, Open related test, and Refresh ripr analysis while Finding code actions remain available | `calibration/cargo-mutants-v1` | seam diagnostics expose packet/assertion/test actions without automatic edits |
 | Repository config | `planned` | future spec | roadmap | `ripr-config-v1` | configured oracle/topology rules applied |
 | Suppression | `planned` | future spec | roadmap | `suppression-v1` | suppression rate and visible suppressed findings |
-| cargo-mutants calibration | `alpha` | `RIPR-SPEC-0006` | mutation calibration spec, `cargo xtask mutation-calibration`, advisory `target/ripr/reports/mutation-calibration.{json,md}`, importer and seam/outcome join unit tests | `campaign/seam-evidence-usability-closeout` | static seam classes joined to imported runtime mutation outcomes by seam_id or file_line |
+| cargo-mutants calibration | `alpha` | `RIPR-SPEC-0006` | mutation calibration spec, `cargo xtask mutation-calibration`, advisory `target/ripr/reports/mutation-calibration.{json,md}`, importer and seam/outcome join unit tests | `campaign/seam-evidence-usability-closeout` | static seam classes joined to imported runtime mutation outcomes by seam_id or unambiguous file_line; ambiguous file_line candidates remain unassigned |
 
 ## Update Rules
 

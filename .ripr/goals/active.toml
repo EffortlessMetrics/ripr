@@ -137,7 +137,7 @@ status = "done"
 branch = "calibration/cargo-mutants-v1"
 stackable = false
 requires_human_merge = true
-acceptance = "scaffold for comparing static seam classes against cargo-mutants outcomes; cargo-mutants JSON/output can be imported; static class is joined to mutation outcome by seam/probe mapping where possible; unmatched mutants are reported separately; tracks seam_id, seam_kind, seam_grip_class, oracle kind/strength, observed values, missing discriminator, mutation operator, runtime outcome, duration, and test command; outputs target/ripr/reports/mutation-calibration.{json,md}; advisory only; runtime mutation vocabulary appears only in calibration/runtime reports; static reports continue using the audit vocabulary (test grip, missing discriminator, static evidence, runtime confirmation); cargo xtask check-static-language stays clean"
+acceptance = "scaffold for comparing static seam classes against cargo-mutants outcomes; cargo-mutants JSON/output can be imported, including span-based generated mutant locations; static class is joined to mutation outcome by seam/probe mapping or unambiguous file/line where possible; ambiguous file/line candidates and unmatched mutants are reported separately; tracks seam_id, seam_kind, seam_grip_class, oracle kind/strength, observed values, missing discriminator, mutation operator, runtime outcome, duration, and test command; outputs target/ripr/reports/mutation-calibration.{json,md}; advisory only; runtime mutation vocabulary appears only in calibration/runtime reports; static reports continue using the audit vocabulary (test grip, missing discriminator, static evidence, runtime confirmation); cargo xtask check-static-language stays clean"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",

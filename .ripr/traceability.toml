@@ -316,8 +316,10 @@ tests = [
   "xtask/src/main.rs::mutation_calibration_args_parse_root_and_input_paths",
   "xtask/src/main.rs::mutation_calibration_imports_static_seams_and_runtime_outcomes",
   "xtask/src/main.rs::mutation_calibration_merges_mutants_and_outcomes_by_mutant_id",
+  "xtask/src/main.rs::mutation_calibration_imports_span_based_mutant_locations",
   "xtask/src/main.rs::mutation_calibration_directory_input_combines_outcomes_and_mutants",
   "xtask/src/main.rs::mutation_calibration_joins_by_seam_id_then_file_line",
+  "xtask/src/main.rs::mutation_calibration_reports_ambiguous_file_line_without_selecting_first",
   "xtask/src/main.rs::mutation_calibration_reports_are_advisory_and_structured"
 ]
 fixtures = []
@@ -331,6 +333,7 @@ metrics = [
   "static_seams_total",
   "mutants_total",
   "matched_total",
+  "ambiguous_file_line_total",
   "unmatched_mutants_total",
   "static_without_runtime_total",
   "runtime_outcome_counts",

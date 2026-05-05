@@ -25,8 +25,12 @@ The report should:
   directory;
 - combine `mutants.out/outcomes.json` with `mutants.out/mutants.json` when both
   are available;
+- import span-based cargo-mutants locations when generated mutant records carry
+  a `span` object instead of a flat `line` field;
 - join records by `seam_id` when present;
 - fall back to normalized file + line matching when `seam_id` is absent;
+- report file/line matches as ambiguous when multiple static seams share the
+  same normalized file and line;
 - report unmatched runtime mutants separately;
 - keep static seam fields and runtime mutation fields separate;
 - write `target/ripr/reports/mutation-calibration.json`;
@@ -52,6 +56,9 @@ Each matched calibration row should carry:
 - duration, when provided by the runtime data
 - test command, when provided by the runtime data
 - join method (`seam_id` or `file_line`)
+
+Ambiguous file/line matches should keep the runtime record and list all static
+candidate seams without assigning the runtime outcome to any single seam.
 
 Unmatched runtime mutants should preserve their location, mutation operator,
 runtime outcome, duration, and test command when available.
@@ -98,6 +105,17 @@ when cargo xtask mutation-calibration runs,
 then the report lists the runtime mutant under unmatched_mutants.
 ```
 
+### Ambiguous file and line match stays unassigned
+
+```text
+Given two repo exposure seams at src/pricing.rs:42,
+and imported cargo-mutants JSON has no seam_id but has file = src/pricing.rs
+and line = 42,
+when cargo xtask mutation-calibration runs,
+then the report lists the runtime mutant under ambiguous_file_line_matches
+and does not pick the first seam as a definitive match.
+```
+
 ## Test Mapping
 
 Current tests:
@@ -105,8 +123,10 @@ Current tests:
 - `xtask/src/main.rs::mutation_calibration_args_parse_root_and_input_paths`
 - `xtask/src/main.rs::mutation_calibration_imports_static_seams_and_runtime_outcomes`
 - `xtask/src/main.rs::mutation_calibration_merges_mutants_and_outcomes_by_mutant_id`
+- `xtask/src/main.rs::mutation_calibration_imports_span_based_mutant_locations`
 - `xtask/src/main.rs::mutation_calibration_directory_input_combines_outcomes_and_mutants`
 - `xtask/src/main.rs::mutation_calibration_joins_by_seam_id_then_file_line`
+- `xtask/src/main.rs::mutation_calibration_reports_ambiguous_file_line_without_selecting_first`
 - `xtask/src/main.rs::mutation_calibration_reports_are_advisory_and_structured`
 
 Planned tests:
@@ -135,6 +155,7 @@ artifact, not a stable product output surface or public library API yet.
 - `static_seams_total`
 - `mutants_total`
 - `matched_total`
+- `ambiguous_file_line_total`
 - `unmatched_mutants_total`
 - `static_without_runtime_total`
 - runtime outcome counts

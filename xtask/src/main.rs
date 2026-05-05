@@ -334,6 +334,7 @@ struct MutationCalibrationReport {
     static_seams_total: usize,
     mutants_total: usize,
     matched: Vec<MutationCalibrationMatch>,
+    ambiguous_file_line: Vec<AmbiguousMutationCalibrationMatch>,
     unmatched_mutants: Vec<MutationOutcomeRecord>,
     static_without_runtime: Vec<StaticSeamRecord>,
 }
@@ -343,6 +344,12 @@ struct MutationCalibrationMatch {
     join_method: &'static str,
     seam: StaticSeamRecord,
     mutation: MutationOutcomeRecord,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct AmbiguousMutationCalibrationMatch {
+    mutation: MutationOutcomeRecord,
+    candidates: Vec<StaticSeamRecord>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -5873,6 +5880,10 @@ fn mutation_outcome_record_from_object(
     let mutant = nested_object(object, "mutant");
     let mutation = nested_object(object, "mutation");
     let location = nested_object(object, "location");
+    let span = nested_object(object, "span")
+        .or_else(|| mutant.and_then(|nested| nested_object(nested, "span")))
+        .or_else(|| mutation.and_then(|nested| nested_object(nested, "span")))
+        .or_else(|| location.and_then(|nested| nested_object(nested, "span")));
 
     let mutant_id = string_field_any(object, &["id", "mutant_id", "mutantId"]).or_else(|| {
         mutant.and_then(|nested| string_field_any(nested, &["id", "mutant_id", "mutantId"]))
@@ -5912,7 +5923,29 @@ fn mutation_outcome_record_from_object(
         location.and_then(|nested| {
             string_field_any(
                 nested,
-                &["file", "path", "source_file", "src_file", "filename"],
+                &[
+                    "file",
+                    "path",
+                    "source_file",
+                    "src_file",
+                    "filename",
+                    "file_name",
+                ],
+            )
+        })
+    })
+    .or_else(|| {
+        span.and_then(|nested| {
+            string_field_any(
+                nested,
+                &[
+                    "file",
+                    "path",
+                    "source_file",
+                    "src_file",
+                    "filename",
+                    "file_name",
+                ],
             )
         })
     })
@@ -5932,7 +5965,8 @@ fn mutation_outcome_record_from_object(
             location.and_then(|nested| {
                 usize_field_any(nested, &["line", "line_start", "start_line", "startLine"])
             })
-        });
+        })
+        .or_else(|| span.and_then(span_start_line));
     let mutation_operator = string_field_any(
         object,
         &[
@@ -6024,6 +6058,25 @@ fn nested_object<'a>(
     object.get(key).and_then(Value::as_object)
 }
 
+fn span_start_line(span: &serde_json::Map<String, Value>) -> Option<usize> {
+    usize_field_any(span, &["line", "line_start", "start_line", "startLine"])
+        .or_else(|| {
+            nested_object(span, "start").and_then(|start| {
+                usize_field_any(start, &["line", "line_start", "start_line", "startLine"])
+            })
+        })
+        .or_else(|| {
+            nested_object(span, "start_position").and_then(|start| {
+                usize_field_any(start, &["line", "line_start", "start_line", "startLine"])
+            })
+        })
+        .or_else(|| {
+            nested_object(span, "lo").and_then(|start| {
+                usize_field_any(start, &["line", "line_start", "start_line", "startLine"])
+            })
+        })
+}
+
 fn string_field_any(object: &serde_json::Map<String, Value>, keys: &[&str]) -> Option<String> {
     keys.iter()
         .find_map(|key| object.get(*key).and_then(json_scalar_as_string))
@@ -6069,7 +6122,9 @@ fn build_mutation_calibration_report(
     }
 
     let mut matched_static_ids = BTreeSet::new();
+    let mut ambiguous_static_ids = BTreeSet::new();
     let mut matched = Vec::new();
+    let mut ambiguous_file_line = Vec::new();
     let mut unmatched_mutants = Vec::new();
 
     for mutation in runtime_mutants {
@@ -6082,8 +6137,8 @@ fn build_mutation_calibration_report(
                 let file = mutation.file.as_ref()?;
                 let line = mutation.line?;
                 let key = (normalize_report_path(file), line);
-                let idx = static_by_line.get(&key)?.first().copied()?;
-                Some(("file_line", idx))
+                let candidates = static_by_line.get(&key)?;
+                (candidates.len() == 1).then_some(("file_line", candidates[0]))
             });
 
         match seam_match {
@@ -6096,20 +6151,51 @@ fn build_mutation_calibration_report(
                     mutation,
                 });
             }
-            None => unmatched_mutants.push(mutation),
+            None => {
+                let candidates = mutation
+                    .file
+                    .as_ref()
+                    .and_then(|file| {
+                        let line = mutation.line?;
+                        let key = (normalize_report_path(file), line);
+                        static_by_line.get(&key)
+                    })
+                    .filter(|candidates| candidates.len() > 1);
+
+                if let Some(candidates) = candidates {
+                    let candidates = candidates
+                        .iter()
+                        .map(|idx| {
+                            let seam = static_seams[*idx].clone();
+                            ambiguous_static_ids.insert(seam.seam_id.clone());
+                            seam
+                        })
+                        .collect::<Vec<_>>();
+                    ambiguous_file_line.push(AmbiguousMutationCalibrationMatch {
+                        mutation,
+                        candidates,
+                    });
+                } else {
+                    unmatched_mutants.push(mutation);
+                }
+            }
         }
     }
 
     let static_without_runtime = static_seams
         .iter()
-        .filter(|seam| !matched_static_ids.contains(&seam.seam_id))
+        .filter(|seam| {
+            !matched_static_ids.contains(&seam.seam_id)
+                && !ambiguous_static_ids.contains(&seam.seam_id)
+        })
         .cloned()
         .collect::<Vec<_>>();
 
     MutationCalibrationReport {
         static_seams_total: static_seams.len(),
-        mutants_total: matched.len() + unmatched_mutants.len(),
+        mutants_total: matched.len() + ambiguous_file_line.len() + unmatched_mutants.len(),
         matched,
+        ambiguous_file_line,
         unmatched_mutants,
         static_without_runtime,
     }
@@ -6125,6 +6211,7 @@ fn mutation_calibration_report_json(report: &MutationCalibrationReport) -> Resul
             "static_seams_total": report.static_seams_total,
             "mutants_total": report.mutants_total,
             "matched_total": report.matched.len(),
+            "ambiguous_file_line_total": report.ambiguous_file_line.len(),
             "unmatched_mutants_total": report.unmatched_mutants.len(),
             "static_without_runtime_total": report.static_without_runtime.len(),
             "runtime_outcome_counts": runtime_outcome_counts(report),
@@ -6134,6 +6221,11 @@ fn mutation_calibration_report_json(report: &MutationCalibrationReport) -> Resul
             .matched
             .iter()
             .map(mutation_calibration_match_json)
+            .collect::<Vec<_>>(),
+        "ambiguous_file_line_matches": report
+            .ambiguous_file_line
+            .iter()
+            .map(ambiguous_mutation_calibration_match_json)
             .collect::<Vec<_>>(),
         "unmatched_mutants": report
             .unmatched_mutants
@@ -6160,6 +6252,17 @@ fn mutation_calibration_match_json(record: &MutationCalibrationMatch) -> Value {
         "join_method": record.join_method,
         "static": static_seam_json(&record.seam),
         "runtime": mutation_outcome_json(&record.mutation),
+    })
+}
+
+fn ambiguous_mutation_calibration_match_json(record: &AmbiguousMutationCalibrationMatch) -> Value {
+    serde_json::json!({
+        "runtime": mutation_outcome_json(&record.mutation),
+        "candidates": record
+            .candidates
+            .iter()
+            .map(static_seam_json)
+            .collect::<Vec<_>>(),
     })
 }
 
@@ -6245,6 +6348,12 @@ fn runtime_outcome_counts(report: &MutationCalibrationReport) -> BTreeMap<String
         .matched
         .iter()
         .map(|matched| &matched.mutation)
+        .chain(
+            report
+                .ambiguous_file_line
+                .iter()
+                .map(|ambiguous| &ambiguous.mutation),
+        )
         .chain(report.unmatched_mutants.iter())
     {
         let key = normalize_runtime_label(&record.runtime_outcome);
@@ -6290,6 +6399,10 @@ fn mutation_calibration_report_markdown(report: &MutationCalibrationReport) -> S
     out.push_str(&format!("| mutants_total | {} |\n", report.mutants_total));
     out.push_str(&format!("| matched_total | {} |\n", report.matched.len()));
     out.push_str(&format!(
+        "| ambiguous_file_line_total | {} |\n",
+        report.ambiguous_file_line.len()
+    ));
+    out.push_str(&format!(
         "| unmatched_mutants_total | {} |\n",
         report.unmatched_mutants.len()
     ));
@@ -6325,6 +6438,33 @@ fn mutation_calibration_report_markdown(report: &MutationCalibrationReport) -> S
                 markdown_cell(&record.mutation.mutation_operator),
                 markdown_cell(&record.mutation.runtime_outcome),
                 record.join_method
+            ));
+        }
+    }
+
+    out.push_str("\n## Ambiguous File/Line Matches\n\n");
+    if report.ambiguous_file_line.is_empty() {
+        out.push_str(
+            "No runtime mutants matched multiple static seams at the same file and line.\n",
+        );
+    } else {
+        out.push_str("| Runtime mutant | Location | Runtime outcome | Candidate seams |\n");
+        out.push_str("| --- | --- | --- | --- |\n");
+        for record in &report.ambiguous_file_line {
+            let mutant = record.mutation.mutant_id.as_deref().unwrap_or("unknown");
+            let location = mutation_location_label(&record.mutation);
+            let candidates = record
+                .candidates
+                .iter()
+                .map(|candidate| format!("`{}`", candidate.seam_id))
+                .collect::<Vec<_>>()
+                .join(", ");
+            out.push_str(&format!(
+                "| `{}` | {} | {} | {} |\n",
+                markdown_cell(mutant),
+                markdown_cell(&location),
+                markdown_cell(&record.mutation.runtime_outcome),
+                markdown_cell(&candidates)
             ));
         }
     }
@@ -18495,6 +18635,37 @@ settings: |
     }
 
     #[test]
+    fn mutation_calibration_imports_span_based_mutant_locations() -> Result<(), String> {
+        let runtime_json = r#"{
+          "mutants": [
+            {
+              "id": "m1",
+              "operator": "replace >= with >",
+              "span": {
+                "file_name": "src/pricing.rs",
+                "start": { "line": 42, "column": 13 },
+                "end": { "line": 42, "column": 15 }
+              }
+            }
+          ],
+          "outcomes": [
+            {
+              "mutant_id": "m1",
+              "outcome": "caught"
+            }
+          ]
+        }"#;
+
+        let mutants = parse_mutation_outcomes_json(runtime_json)?;
+
+        assert_eq!(mutants.len(), 1);
+        assert_eq!(mutants[0].file, Some("src/pricing.rs".to_string()));
+        assert_eq!(mutants[0].line, Some(42));
+        assert_eq!(mutants[0].runtime_outcome, "caught");
+        Ok(())
+    }
+
+    #[test]
     fn mutation_calibration_directory_input_combines_outcomes_and_mutants() -> Result<(), String> {
         let dir = temp_dir("mutation-calibration-dir");
         write(
@@ -18608,6 +18779,52 @@ settings: |
     }
 
     #[test]
+    fn mutation_calibration_reports_ambiguous_file_line_without_selecting_first() {
+        let static_seams = vec![
+            StaticSeamRecord {
+                seam_id: "seam-a".to_string(),
+                seam_kind: "predicate_boundary".to_string(),
+                file: "src/pricing.rs".to_string(),
+                line: 42,
+                seam_grip_class: "weakly_gripped".to_string(),
+                oracle_kind: "exact_value".to_string(),
+                oracle_strength: "strong".to_string(),
+                observed_values: Vec::new(),
+                missing_discriminators: Vec::new(),
+            },
+            StaticSeamRecord {
+                seam_id: "seam-b".to_string(),
+                seam_kind: "return_value".to_string(),
+                file: "src/pricing.rs".to_string(),
+                line: 42,
+                seam_grip_class: "ungripped".to_string(),
+                oracle_kind: "unknown".to_string(),
+                oracle_strength: "unknown".to_string(),
+                observed_values: Vec::new(),
+                missing_discriminators: Vec::new(),
+            },
+        ];
+        let runtime_mutants = vec![MutationOutcomeRecord {
+            mutant_id: Some("m1".to_string()),
+            seam_id: None,
+            file: Some("src/pricing.rs".to_string()),
+            line: Some(42),
+            mutation_operator: "replace >= with >".to_string(),
+            runtime_outcome: "caught".to_string(),
+            duration: None,
+            test_command: None,
+        }];
+
+        let report = build_mutation_calibration_report(static_seams, runtime_mutants);
+
+        assert!(report.matched.is_empty());
+        assert_eq!(report.ambiguous_file_line.len(), 1);
+        assert_eq!(report.ambiguous_file_line[0].candidates.len(), 2);
+        assert!(report.unmatched_mutants.is_empty());
+        assert!(report.static_without_runtime.is_empty());
+    }
+
+    #[test]
     fn mutation_calibration_reports_are_advisory_and_structured() -> Result<(), String> {
         let report = build_mutation_calibration_report(
             vec![StaticSeamRecord {
@@ -18639,6 +18856,7 @@ settings: |
         assert_eq!(value["schema_version"], "0.1");
         assert_eq!(value["status"], "advisory");
         assert_eq!(value["metrics"]["matched_total"], 1);
+        assert_eq!(value["metrics"]["ambiguous_file_line_total"], 0);
         assert_eq!(
             value["matches"][0]["static"]["missing_discriminators"][0],
             "amount == discount_threshold"

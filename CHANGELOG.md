@@ -85,9 +85,11 @@ are scoped or reviewed.
   hover, codeAction, shutdown, and exit over the tower server.
 - Added `cargo xtask mutation-calibration`, an advisory cargo-mutants import
   scaffold that joins runtime mutation records to static seam evidence by
-  `seam_id` or normalized file/line and writes
-  `target/ripr/reports/mutation-calibration.{json,md}`. Runtime mutation
-  vocabulary stays confined to calibration/runtime reports.
+  `seam_id` or unambiguous normalized file/line and writes
+  `target/ripr/reports/mutation-calibration.{json,md}`. Span-based generated
+  mutant locations are imported, and ambiguous file/line candidates remain
+  unassigned. Runtime mutation vocabulary stays confined to calibration/runtime
+  reports.
 
 ## 0.3.0 - 2026-05-02
 

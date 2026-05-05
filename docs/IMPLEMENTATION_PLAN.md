@@ -826,7 +826,8 @@ Deliverables:
 
 - [x] Import cargo-mutants output through `cargo xtask mutation-calibration`.
 - [x] Match static seam evidence to runtime records by `seam_id` first and
-  normalized file/line second.
+  unambiguous normalized file/line second; report ambiguous file/line
+  candidates separately.
 - [x] Emit advisory static class vs runtime outcome reports at
   `target/ripr/reports/mutation-calibration.{json,md}`.
 - [x] Keep mutation-runtime language out of static findings; runtime vocabulary
