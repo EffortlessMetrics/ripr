@@ -440,6 +440,7 @@ fn main() {
     let result = match args.get(1).map(|s| s.as_str()) {
         Some("shape") => shape(),
         Some("fix-pr") => fix_pr(),
+        Some("install-hooks") => install_hooks(&args[2..]),
         Some("pr-summary") => pr_summary(),
         Some("precommit") => precommit(),
         Some("check-pr") => check_pr(),
@@ -614,6 +615,74 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
     }
 }
 
+const RIPR_MANAGED_PRE_COMMIT_MARKER: &str = "# ripr-managed pre-commit hook";
+
+fn install_hooks(args: &[String]) -> Result<(), String> {
+    if !args.is_empty() {
+        return Err("install-hooks does not accept arguments".to_string());
+    }
+
+    let hook = install_hooks_in(Path::new("."))?;
+    eprintln!("installed hook: {}", hook.display());
+    Ok(())
+}
+
+fn install_hooks_in(root: &Path) -> Result<PathBuf, String> {
+    let git_dir = root.join(".git");
+    if !git_dir.is_dir() {
+        return Err(format!(
+            "missing .git directory under {}; run from a git worktree",
+            root.display()
+        ));
+    }
+
+    let hooks_dir = git_dir.join("hooks");
+    fs::create_dir_all(&hooks_dir)
+        .map_err(|err| format!("failed to create {}: {err}", hooks_dir.display()))?;
+
+    let hook = hooks_dir.join("pre-commit");
+    if hook.exists() {
+        let current = fs::read_to_string(&hook)
+            .map_err(|err| format!("failed to read {}: {err}", hook.display()))?;
+        if !is_ripr_managed_hook(&current) {
+            return Err(format!(
+                "refusing to overwrite unmanaged hook at {}; remove it or install the ripr precommit hook manually",
+                hook.display()
+            ));
+        }
+    }
+
+    fs::write(&hook, ripr_pre_commit_hook())
+        .map_err(|err| format!("failed to write {}: {err}", hook.display()))?;
+    make_hook_executable(&hook)?;
+    Ok(hook)
+}
+
+fn ripr_pre_commit_hook() -> String {
+    format!("#!/usr/bin/env sh\n{RIPR_MANAGED_PRE_COMMIT_MARKER}\nset -eu\ncargo xtask precommit\n")
+}
+
+fn is_ripr_managed_hook(text: &str) -> bool {
+    text.contains(RIPR_MANAGED_PRE_COMMIT_MARKER)
+}
+
+#[cfg(unix)]
+fn make_hook_executable(path: &Path) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mut permissions = fs::metadata(path)
+        .map_err(|err| format!("failed to read {} metadata: {err}", path.display()))?
+        .permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(path, permissions)
+        .map_err(|err| format!("failed to set executable bit on {}: {err}", path.display()))
+}
+
+#[cfg(not(unix))]
+fn make_hook_executable(_path: &Path) -> Result<(), String> {
+    Ok(())
+}
+
 fn print_help() {
     let commands = known_commands().join("\n  ");
     println!("xtask commands:\n  {commands}");
@@ -623,6 +692,7 @@ fn known_commands() -> Vec<&'static str> {
     vec![
         "shape",
         "fix-pr",
+        "install-hooks",
         "pr-summary",
         "precommit",
         "check-pr",
@@ -12980,10 +13050,11 @@ mod tests {
         extract_json_string, extract_json_warnings, extract_workflow_run_blocks,
         first_line_difference, forbidden_panic_patterns, glob_matches,
         golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
-        guarded_allow_attributes_in_text, is_bdd_test_name, is_dependency_surface_candidate,
-        is_evidence_path, is_generated_candidate, is_known_campaign_command, is_policy_path,
-        is_production_path, is_receipt_status, is_snake_case_id, is_spec_id, json_escape,
-        json_number_after, json_string_values_for_key, known_commands, known_xtask_command,
+        guarded_allow_attributes_in_text, install_hooks_in, is_bdd_test_name,
+        is_dependency_surface_candidate, is_evidence_path, is_generated_candidate,
+        is_known_campaign_command, is_policy_path, is_production_path, is_receipt_status,
+        is_ripr_managed_hook, is_snake_case_id, is_spec_id, json_escape, json_number_after,
+        json_string_values_for_key, known_commands, known_xtask_command,
         local_context_line_findings, local_markdown_target, markdown_links_in_text,
         mutation_calibration_report_json, mutation_calibration_report_markdown,
         next_checkpoints_from_capabilities, normalize_fixture_human_output,
@@ -12996,13 +13067,13 @@ mod tests {
         receipt_specs, receipt_status_from_reports, repo_badge_artifact_command_args,
         repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown,
         repo_seam_inventory_command_args_for_root, report_index_markdown,
-        report_index_missing_expected, report_status_from_text, semantic_selector_matches,
-        should_scan_static_language_path, sorted_allowlist_content, spec_id_from_path,
-        static_language_allowlist_covers, status_for_report, suspicious_runtime_file_names,
-        test_efficiency_entry, test_efficiency_report_json, test_efficiency_report_markdown,
-        test_oracle_report_json, test_oracle_report_markdown, test_oracle_tests_in_text,
-        unknown_command_message, validate_local_context_allowlist, windows_absolute_path_tokens,
-        workflow_runtime_violations,
+        report_index_missing_expected, report_status_from_text, ripr_pre_commit_hook,
+        semantic_selector_matches, should_scan_static_language_path, sorted_allowlist_content,
+        spec_id_from_path, static_language_allowlist_covers, status_for_report,
+        suspicious_runtime_file_names, test_efficiency_entry, test_efficiency_report_json,
+        test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
+        test_oracle_tests_in_text, unknown_command_message, validate_local_context_allowlist,
+        windows_absolute_path_tokens, workflow_runtime_violations,
     };
     use super::{
         DeclaredIntent, LocalContextFinding,
@@ -18617,11 +18688,77 @@ settings: |
     #[test]
     fn known_commands_include_current_report_and_policy_commands() {
         let commands = known_commands();
+        assert!(commands.contains(&"install-hooks"));
         assert!(commands.contains(&"repo-seam-inventory"));
         assert!(commands.contains(&"repo-exposure-report"));
         assert!(commands.contains(&"agent-seam-packets [root]"));
         assert!(commands.contains(&"mutation-calibration [root] --mutants-json <path>"));
         assert!(commands.contains(&"check-droid-review-config"));
+    }
+
+    #[test]
+    fn install_hooks_creates_missing_hook() -> Result<(), String> {
+        let root = temp_dir("install-hooks-create");
+        fs::create_dir(root.join(".git")).map_err(|err| err.to_string())?;
+
+        let hook = install_hooks_in(&root)?;
+        let text = fs::read_to_string(&hook).map_err(|err| err.to_string())?;
+
+        assert_eq!(hook, root.join(".git").join("hooks").join("pre-commit"));
+        assert!(is_ripr_managed_hook(&text));
+        assert!(text.contains("cargo xtask precommit"));
+        let _ = fs::remove_dir_all(root);
+        Ok(())
+    }
+
+    #[test]
+    fn install_hooks_is_idempotent_for_managed_hook() -> Result<(), String> {
+        let root = temp_dir("install-hooks-idempotent");
+        let hook = root.join(".git").join("hooks").join("pre-commit");
+        let stale_managed_hook =
+            ripr_pre_commit_hook().replace("cargo xtask precommit", "echo old");
+        write(&hook, &stale_managed_hook);
+
+        let first = install_hooks_in(&root)?;
+        let second = install_hooks_in(&root)?;
+        let text = fs::read_to_string(&hook).map_err(|err| err.to_string())?;
+
+        assert_eq!(first, hook);
+        assert_eq!(second, hook);
+        assert_eq!(text, ripr_pre_commit_hook());
+        let _ = fs::remove_dir_all(root);
+        Ok(())
+    }
+
+    #[test]
+    fn install_hooks_refuses_unmanaged_existing_hook() -> Result<(), String> {
+        let root = temp_dir("install-hooks-unmanaged");
+        let hook = root.join(".git").join("hooks").join("pre-commit");
+        let user_hook = "#!/usr/bin/env sh\necho user hook\n";
+        write(&hook, user_hook);
+
+        let error = install_hooks_in(&root)
+            .err()
+            .ok_or_else(|| "expected unmanaged hook refusal".to_string())?;
+        let text = fs::read_to_string(&hook).map_err(|err| err.to_string())?;
+
+        assert!(error.contains("refusing to overwrite unmanaged hook"));
+        assert_eq!(text, user_hook);
+        let _ = fs::remove_dir_all(root);
+        Ok(())
+    }
+
+    #[test]
+    fn install_hooks_errors_outside_git_worktree() -> Result<(), String> {
+        let root = temp_dir("install-hooks-outside-git");
+
+        let error = install_hooks_in(&root)
+            .err()
+            .ok_or_else(|| "expected missing git worktree error".to_string())?;
+
+        assert!(error.contains("missing .git directory"));
+        let _ = fs::remove_dir_all(root);
+        Ok(())
     }
 
     #[test]
