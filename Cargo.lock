@@ -416,6 +416,7 @@ name = "ripr"
 version = "0.3.0"
 dependencies = [
  "ra_ap_syntax",
+ "serde",
  "serde_json",
  "tokio",
  "tower-lsp-server",

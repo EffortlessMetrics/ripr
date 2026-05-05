@@ -28,11 +28,12 @@
 use super::seams::{RepoSeam, SeamGripClass, SeamId};
 use super::test_grip_evidence::TestGripEvidence;
 use crate::domain::StageState;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// A seam paired with its evidence and the resulting grip class.
 /// Crate-private; the report PR consumes `Vec<ClassifiedSeam>` directly.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct ClassifiedSeam {
     pub(crate) seam: RepoSeam,
     pub(crate) evidence: TestGripEvidence,

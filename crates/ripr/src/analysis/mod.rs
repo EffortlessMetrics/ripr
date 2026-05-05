@@ -2,6 +2,7 @@ mod classifier;
 mod diff;
 mod probes;
 mod rust_index;
+mod seam_cache;
 mod seam_classification;
 mod seam_inventory;
 pub(crate) mod seams;

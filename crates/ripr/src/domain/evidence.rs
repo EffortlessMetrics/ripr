@@ -1,4 +1,4 @@
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum OracleKind {
     ExactValue,
     ExactErrorVariant,
@@ -27,7 +27,7 @@ impl OracleKind {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum OracleStrength {
     Strong,
     Medium,
@@ -61,7 +61,7 @@ impl OracleStrength {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum StageState {
     Yes,
     Weak,
@@ -84,7 +84,7 @@ impl StageState {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Confidence {
     High,
     Medium,
@@ -103,7 +103,7 @@ impl Confidence {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct StageEvidence {
     pub state: StageState,
     pub confidence: Confidence,
@@ -120,13 +120,13 @@ impl StageEvidence {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RevealEvidence {
     pub observe: StageEvidence,
     pub discriminate: StageEvidence,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RiprEvidence {
     pub reach: StageEvidence,
     pub infect: StageEvidence,
