@@ -27,6 +27,12 @@ struct RunBlock {
     text: String,
 }
 
+#[derive(Clone, Copy)]
+struct CiFullEvidenceGate {
+    name: &'static str,
+    run: fn() -> Result<(), String>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct ChangedPath {
     path: String,
@@ -598,8 +604,46 @@ fn run_policy_checks() -> Result<(), String> {
 
 fn ci_full() -> Result<(), String> {
     check_pr()?;
+    run_ci_full_evidence_gates(&ci_full_evidence_gates())?;
     run("cargo", &["package", "-p", "ripr", "--list"])?;
     run("cargo", &["publish", "-p", "ripr", "--dry-run"]).map(|_| ())
+}
+
+fn ci_full_evidence_gates() -> [CiFullEvidenceGate; 5] {
+    [
+        CiFullEvidenceGate {
+            name: "fixtures",
+            run: ci_full_fixtures,
+        },
+        CiFullEvidenceGate {
+            name: "goldens check",
+            run: goldens_check,
+        },
+        CiFullEvidenceGate {
+            name: "test-oracle-report",
+            run: test_oracle_report,
+        },
+        CiFullEvidenceGate {
+            name: "dogfood",
+            run: dogfood,
+        },
+        CiFullEvidenceGate {
+            name: "metrics",
+            run: metrics_report,
+        },
+    ]
+}
+
+fn ci_full_fixtures() -> Result<(), String> {
+    fixtures(None)
+}
+
+fn run_ci_full_evidence_gates(gates: &[CiFullEvidenceGate]) -> Result<(), String> {
+    for gate in gates {
+        (gate.run)()
+            .map_err(|err| format!("ci-full evidence gate `{}` failed: {err}", gate.name))?;
+    }
+    Ok(())
 }
 
 fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
@@ -13041,10 +13085,11 @@ fn check_droid_review_config() -> Result<(), String> {
 mod tests {
     use super::{
         BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, CheckReport,
-        CheckStatus, CheckViolation, DogfoodRun, FixKind, LocalContextAllow, MarkdownLink,
-        ReceiptRecord, ReportIndexCampaign, ReportIndexEntry, StaticLanguageAllowEntry,
-        StaticLanguageMatcher, TestOracleClass, badge_artifact_command_args, badge_artifact_jobs,
-        badge_artifact_native_slot, badge_artifacts_summary_markdown, collect_panic_findings,
+        CheckStatus, CheckViolation, CiFullEvidenceGate, DogfoodRun, FixKind, LocalContextAllow,
+        MarkdownLink, ReceiptRecord, ReportIndexCampaign, ReportIndexEntry,
+        StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass,
+        badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
+        badge_artifacts_summary_markdown, ci_full_evidence_gates, collect_panic_findings,
         collect_semantic_panic_findings, critic_findings, dogfood_class_counts,
         dogfood_report_json, dogfood_report_markdown, extract_json_object_usize_map,
         extract_json_string, extract_json_warnings, extract_workflow_run_blocks,
@@ -13068,12 +13113,13 @@ mod tests {
         repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown,
         repo_seam_inventory_command_args_for_root, report_index_markdown,
         report_index_missing_expected, report_status_from_text, ripr_pre_commit_hook,
-        semantic_selector_matches, should_scan_static_language_path, sorted_allowlist_content,
-        spec_id_from_path, static_language_allowlist_covers, status_for_report,
-        suspicious_runtime_file_names, test_efficiency_entry, test_efficiency_report_json,
-        test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
-        test_oracle_tests_in_text, unknown_command_message, validate_local_context_allowlist,
-        windows_absolute_path_tokens, workflow_runtime_violations,
+        run_ci_full_evidence_gates, semantic_selector_matches, should_scan_static_language_path,
+        sorted_allowlist_content, spec_id_from_path, static_language_allowlist_covers,
+        status_for_report, suspicious_runtime_file_names, test_efficiency_entry,
+        test_efficiency_report_json, test_efficiency_report_markdown, test_oracle_report_json,
+        test_oracle_report_markdown, test_oracle_tests_in_text, unknown_command_message,
+        validate_local_context_allowlist, windows_absolute_path_tokens,
+        workflow_runtime_violations,
     };
     use super::{
         DeclaredIntent, LocalContextFinding,
@@ -18694,6 +18740,68 @@ settings: |
         assert!(commands.contains(&"agent-seam-packets [root]"));
         assert!(commands.contains(&"mutation-calibration [root] --mutants-json <path>"));
         assert!(commands.contains(&"check-droid-review-config"));
+    }
+
+    fn ci_full_ok_gate() -> Result<(), String> {
+        if std::env::var_os("RIPR_XTASK_TEST_FAIL_OK_GATE").is_some() {
+            return Err("unexpected test env".to_string());
+        }
+        Ok(())
+    }
+
+    fn ci_full_err_gate() -> Result<(), String> {
+        Err("boom".to_string())
+    }
+
+    #[test]
+    fn ci_full_evidence_gates_pin_release_review_order() {
+        let names = ci_full_evidence_gates()
+            .iter()
+            .map(|gate| gate.name)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            names,
+            vec![
+                "fixtures",
+                "goldens check",
+                "test-oracle-report",
+                "dogfood",
+                "metrics"
+            ]
+        );
+    }
+
+    #[test]
+    fn ci_full_evidence_gate_runner_accepts_successful_gates() -> Result<(), String> {
+        let gates = [CiFullEvidenceGate {
+            name: "ok",
+            run: ci_full_ok_gate,
+        }];
+
+        run_ci_full_evidence_gates(&gates)
+    }
+
+    #[test]
+    fn ci_full_evidence_gate_runner_names_failing_gate() -> Result<(), String> {
+        let gates = [
+            CiFullEvidenceGate {
+                name: "ok",
+                run: ci_full_ok_gate,
+            },
+            CiFullEvidenceGate {
+                name: "bad",
+                run: ci_full_err_gate,
+            },
+        ];
+
+        let error = run_ci_full_evidence_gates(&gates)
+            .err()
+            .ok_or_else(|| "expected failing gate".to_string())?;
+
+        assert!(error.contains("`bad`"));
+        assert!(error.contains("boom"));
+        Ok(())
     }
 
     #[test]
