@@ -2,6 +2,23 @@
 
 This document is the release checklist for publishing `ripr`.
 
+## Release History Snapshot
+
+Use this quick ledger to keep release intent aligned with `CHANGELOG.md`:
+
+- `0.1.0` (2026-05-01): first publishable alpha baseline for static RIPR
+  exposure analysis.
+- `0.2.0` (2026-05-01): editor/server distribution path, release archives,
+  checksum manifest, and published VSIX/Open VSX extension.
+- `0.3.0` (2026-05-02): syntax-backed analyzer + evidence-quality foundation,
+  broader automation/gates, LSP state surfaces, and CI/release hardening.
+- `0.4.0` (unreleased target): Campaign 4B completion is included; Campaign 5A
+  usability/precision/calibration is in progress; Campaign 5B
+  operationalization remains blocked on 5A outputs.
+
+For detailed user-visible notes and category-level deltas, see the root
+`CHANGELOG.md`.
+
 ## Preconditions
 
 - The release branch has been reviewed and merged.

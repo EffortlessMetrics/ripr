@@ -7,10 +7,12 @@ user-visible behavior, compatibility notes, and migration guidance. Internal
 planning, ADR, and spec changes are called out when they affect how future PRs
 are scoped or reviewed.
 
-## Unreleased
+## Unreleased (target: 0.4.0)
 
 ### Added
 
+- Unified the changelog/release-history narrative so prior releases and current
+  0.4.0 scope are easier to review in one pass.
 - Closed Campaign 4B (Repo Seam Inventory and Test Grip) and made Voice B
   real: `RepoSeam` / `SeamId` / `SeamKind` / `RequiredDiscriminator` /
   `ExpectedSink` / `SeamGripClass` data model with deterministic 16-char
@@ -77,7 +79,28 @@ are scoped or reviewed.
 - Added a framed LSP protocol smoke test for initialize, didOpen, refresh,
   hover, codeAction, shutdown, and exit over the tower server.
 
+### In Progress
+
+- Campaign 5A (Voice B Usability and Precision) is active for 0.4.0 with focus
+  on cache performance, related-test precision, stronger value extraction and
+  oracle-shape fidelity, actionable seam packet follow-ups, and calibration
+  (`cargo-mutants-v1`).
+- Campaign 5B operationalization items remain intentionally blocked on 5A
+  outputs (notably cache/config prerequisites): `config/ripr-config-v1`,
+  `ci/sarif-ci-policy`, and future
+  `badge/seam-native-count-mapping`.
+
+### Planned for 0.4.0 stabilization
+
+- Freeze and validate 0.4.0 output contracts (human/JSON/LSP seams) against
+  goldens and traceability.
+- Complete release packaging/readiness validation for CLI, library, and editor
+  sidecar surfaces without changing the one-package public contract.
+
 ## 0.3.0 - 2026-05-02
+
+Release theme: syntax-backed analysis and evidence-quality foundations, plus
+LSP and release hardening.
 
 ### Added
 
@@ -123,6 +146,8 @@ are scoped or reviewed.
 
 ## 0.2.0 - 2026-05-01
 
+Release theme: editor/server distribution and first self-provisioning LSP path.
+
 - First self-provisioning editor distribution path.
 - Added `ripr lsp --stdio` and `ripr lsp --version`.
 - Added VS Code/Open VSX server resolution:
@@ -133,6 +158,8 @@ are scoped or reviewed.
 - Published the universal VSIX and Open VSX extension.
 
 ## 0.1.0 - 2026-05-01
+
+Release theme: first publishable alpha baseline.
 
 - First publishable alpha of `ripr`: static RIPR exposure analysis for
   Rust/Cargo workspaces.
