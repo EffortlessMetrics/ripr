@@ -280,13 +280,15 @@ fn find_related_tests<'a>(
                 // which does not have the false-positive risk of body
                 // substring.
                 Some(RelationReason::OwnerNamedTest)
-            } else if !owner_name.is_empty() && test_imports_owner(test, owner_name, owner_file) {
-                // `import_path_affinity`: test body mentions the owner's
-                // qualified path (e.g. `module::owner` or `use module`
-                // followed by a body reference) without a direct call.
-                // Captures the "test imports it but does not invoke it"
-                // shape, which often signals a higher-level integration
-                // test.
+            } else if !owner_name.is_empty() && test_imports_owner(test, owner_name) {
+                // `import_path_affinity`: test body mentions the owner
+                // via an explicit qualified-path (`module::owner`) or
+                // inline `use ... owner` shape, without a direct call.
+                // Captures the "test imports it but does not invoke
+                // it" pattern common in higher-level integration
+                // tests. Detection tightened per #310 review — see
+                // `test_imports_owner` for the accepted/rejected
+                // shapes.
                 Some(RelationReason::ImportPathAffinity)
             } else if test_uses_owner_fixture(test, owner_file, index) {
                 // `fixture_owner_affinity`: test calls a non-test fn that
@@ -411,36 +413,42 @@ fn same_module(owner_module: &str, test_module: &str) -> bool {
         || test_module.starts_with(&format!("{}/", parent.replace('/', "_")))
 }
 
-/// Body mentions the owner in a qualified or `use` shape — without
-/// calling it. The direct-call check has already excluded callers, so
-/// this fires for tests that import the symbol but route through some
-/// wrapper (common in integration tests).
-fn test_imports_owner(test: &TestSummary, owner_name: &str, owner_file: Option<&Path>) -> bool {
+/// Body mentions the owner via an explicit qualified-path or `use`
+/// shape — without calling it. The direct-call check has already
+/// excluded callers, so this fires for tests that import the symbol
+/// (or qualify it via a path) but route through some wrapper (common
+/// in integration tests).
+///
+/// Tightened per #310 review: pure token co-occurrence
+/// (owner_name appearing as a bare identifier somewhere in the body)
+/// was too easy to satisfy with local bindings, comments, or
+/// unrelated identifiers. The detector now requires either:
+///
+/// 1. a `module::owner_name` qualified path anywhere in the body
+///    (catches `crate::pricing::discounted_total`,
+///    `super::pricing::discounted_total`, `pricing::discounted_total`
+///    — they all contain `::owner_name`); or
+/// 2. an inline `use ... owner_name` line in the test body. File-
+///    scope `use` lines are not in `test.body` so this only covers
+///    in-function imports.
+fn test_imports_owner(test: &TestSummary, owner_name: &str) -> bool {
     if owner_name.is_empty() {
         return false;
     }
-    let body_tokens = extract_identifier_tokens(&test.body);
-    if !body_tokens.iter().any(|t| t == owner_name) {
-        return false;
-    }
-    // Also require some module-name overlap so we don't fire when an
-    // unrelated function happens to share the name. Cheap signal: the
-    // owner's parent directory name (e.g. `auth` in
-    // `src/auth/login.rs`) appears in the test body's tokens.
-    if let Some(parent) = owner_file
-        .and_then(|p| p.parent())
-        .and_then(|p| p.file_name())
-        .and_then(|s| s.to_str())
-        && !parent.is_empty()
-        && parent != "src"
-        && parent != "tests"
-        && body_tokens.iter().any(|t| t == parent)
-    {
+    let qualified = format!("::{owner_name}");
+    if test.body.contains(&qualified) {
         return true;
     }
-    // Fallback: the owner-name token alone is enough when no parent
-    // signal is available (e.g. flat `src/foo.rs`).
-    true
+    for line in test.body.lines() {
+        if line.trim_start().starts_with("use ")
+            && extract_identifier_tokens(line)
+                .iter()
+                .any(|t| t == owner_name)
+        {
+            return true;
+        }
+    }
+    false
 }
 
 /// Test calls a non-test function that lives in the owner's source
@@ -1565,6 +1573,132 @@ fn below_case() {
             return Err(format!(
                 "expected High confidence first, got {:?}",
                 first.relation_confidence
+            ));
+        }
+        Ok(())
+    }
+
+    // -- import_path_affinity tightening (#310 review) ---------------
+    //
+    // The detector requires explicit `module::owner_name` qualified-
+    // path syntax or an inline `use ... owner_name` line — pure token
+    // co-occurrence (owner_name + module token both present in the
+    // body without path syntax) must NOT fire.
+
+    #[test]
+    fn given_import_path_affinity_without_direct_call_when_related_tests_are_ranked_then_confidence_is_medium()
+    -> Result<(), String> {
+        // Test references `crate::pricing::discounted_total` as a
+        // function value (no parens → not a CallFact, so
+        // direct_owner_call cannot fire). The qualified path satisfies
+        // the tightened import_path_affinity detector. The test name
+        // does not contain "discounted_total" and the file is not
+        // pricing-flavoured, so no other reason fires either.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/integration_smoke.rs",
+            "#[test] fn smoke() { let _f = crate::pricing::discounted_total; assert_eq!(1, 1); }\n",
+        );
+        let grip = first_grip_for("src/pricing.rs", prod_src, &[test])?;
+        if grip.relation_reason != RelationReason::ImportPathAffinity {
+            return Err(format!(
+                "expected ImportPathAffinity, got {:?}",
+                grip.relation_reason
+            ));
+        }
+        if grip.relation_confidence != RelationConfidence::Medium {
+            return Err(format!(
+                "expected Medium confidence, got {:?}",
+                grip.relation_confidence
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn given_owner_and_module_tokens_without_import_path_when_related_tests_are_ranked_then_import_path_affinity_does_not_fire()
+    -> Result<(), String> {
+        // Body contains `pricing` and `discounted_total` as bare
+        // identifiers but never as a `::path::owner_name` shape and
+        // never on a `use ...` line. The pre-tightening detector
+        // would have fired (owner token + parent dir token both
+        // present); the tightened detector must not.
+        //
+        // The test name embeds "discounted_total" — that is OK because
+        // it triggers `owner_named_test`, a *different* reason. The
+        // contract under test is "ImportPathAffinity does not fire on
+        // mere token co-occurrence".
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/billing.rs",
+            "#[test] fn discounted_total_token_smoke() { \
+                let pricing = \"pricing\"; let discounted_total = 5; \
+                let _ = (pricing, discounted_total); assert_eq!(1, 1); \
+            }\n",
+        );
+        let files: Vec<(PathBuf, &str)> = vec![
+            (PathBuf::from("src/pricing.rs"), prod_src),
+            (PathBuf::from(test.0), test.1),
+        ];
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pricing.rs")], &index);
+        let predicate = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::PredicateBoundary)
+            .ok_or_else(|| "predicate seam present".to_string())?;
+        let evidence = evidence_for_seam(predicate, &index);
+        for grip in &evidence.related_tests {
+            if grip.relation_reason == RelationReason::ImportPathAffinity {
+                return Err(format!(
+                    "token co-occurrence (`pricing` + `discounted_total` in body \
+                     without `::` path syntax) must not match \
+                     ImportPathAffinity; got {grip:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn given_same_module_test_without_direct_call_when_related_tests_are_ranked_then_confidence_is_medium()
+    -> Result<(), String> {
+        // Owner sits in `src/pricing/discount.rs`; test sits in
+        // `tests/pricing/integration.rs`. Different file stem (no
+        // same_test_file). Same parent module (`pricing`) so
+        // `same_module` is the right reason. No direct call, no
+        // owner-named test, no qualified path / use line.
+        let prod_src = "pub fn apply_discount(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/pricing/integration.rs",
+            "#[test] fn module_neighbour() { assert_eq!(1, 1); }\n",
+        );
+        let files: Vec<(PathBuf, &str)> = vec![
+            (PathBuf::from("src/pricing/discount.rs"), prod_src),
+            (PathBuf::from(test.0), test.1),
+        ];
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pricing/discount.rs")], &index);
+        let predicate = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::PredicateBoundary)
+            .ok_or_else(|| "predicate seam present".to_string())?;
+        let evidence = evidence_for_seam(predicate, &index);
+        let grip = evidence.related_tests.first().ok_or_else(|| {
+            "expected at least one related test for same-module pairing".to_string()
+        })?;
+        if grip.relation_reason != RelationReason::SameModule {
+            return Err(format!(
+                "expected SameModule, got {:?}",
+                grip.relation_reason
+            ));
+        }
+        if grip.relation_confidence != RelationConfidence::Medium {
+            return Err(format!(
+                "expected Medium confidence, got {:?}",
+                grip.relation_confidence
             ));
         }
         Ok(())
