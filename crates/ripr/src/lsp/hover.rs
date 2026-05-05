@@ -209,11 +209,16 @@ fn classified_seam_hover_markdown(entry: &ClassifiedSeam) -> String {
         lines.push(String::new());
         lines.push("## Related tests".to_string());
         for grip in evidence.related_tests.iter().take(5) {
+            // Terse trailing tag — `oracle_kind/oracle_strength · reason/confidence`.
+            // Density chosen for hover; full per-field detail belongs
+            // in repo exposure JSON or the agent packet.
             lines.push(format!(
-                "- `{}` — {} / {}",
+                "- `{}` — {} / {} · {} / {}",
                 grip.test_name,
                 grip.oracle_kind.as_str(),
-                grip.oracle_strength.as_str()
+                grip.oracle_strength.as_str(),
+                grip.relation_reason.as_str(),
+                grip.relation_confidence.as_str()
             ));
         }
     }
@@ -301,6 +306,9 @@ mod seam_hover_tests {
                 oracle_kind: OracleKind::ExactValue,
                 oracle_strength: OracleStrength::Strong,
                 evidence_summary: "exact value assertion".to_string(),
+                relation_reason:
+                    crate::analysis::test_grip_evidence::RelationReason::DirectOwnerCall,
+                relation_confidence: crate::analysis::test_grip_evidence::RelationConfidence::High,
             }],
             reach: stage(StageState::Yes, "Related tests reach discounted_total"),
             activate: stage(StageState::Yes, "Observed amount = 50, amount = 10000"),
@@ -423,6 +431,21 @@ mod seam_hover_tests {
         }
         if !md.contains("exact_value / strong") {
             return Err(format!("missing oracle kind/strength in:\n{md}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn given_lsp_hover_with_related_tests_when_rendered_then_relation_reason_is_visible()
+    -> Result<(), String> {
+        // Pin the terse trailing tag format chosen for hover:
+        //   `test_name — oracle_kind/oracle_strength · reason/confidence`.
+        let seam = weakly_gripped_classified();
+        let diagnostic = sample_diagnostic();
+        let hover = classified_seam_hover_response(&seam, &diagnostic);
+        let md = extract_markup(&hover)?;
+        if !md.contains("· direct_owner_call / high") {
+            return Err(format!("hover should carry terse relation tag; got:\n{md}"));
         }
         Ok(())
     }

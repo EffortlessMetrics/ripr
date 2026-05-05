@@ -36,7 +36,13 @@ use std::path::{Path, PathBuf};
 
 /// Cache schema version. Bump when the on-disk file shape changes; old
 /// directories can be deleted on `cargo clean` or manually.
-pub(crate) const CACHE_SCHEMA_VERSION: &str = "0.1";
+///
+/// `0.1` → `0.2`: `RelatedTestGrip` gained `relation_reason` and
+/// `relation_confidence` fields in `analysis/related-test-precision-v1`.
+/// Old envelopes lack those fields and would fail serde deserialization
+/// of the new shape; the version bump routes new entries to a fresh
+/// directory and lets old entries go orphaned (gc'd on `cargo clean`).
+pub(crate) const CACHE_SCHEMA_VERSION: &str = "0.2";
 
 /// Aggregate cache key — every field that, when changed, must invalidate
 /// the workspace-level classified seam cache.

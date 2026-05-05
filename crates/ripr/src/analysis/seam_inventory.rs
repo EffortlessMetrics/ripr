@@ -530,7 +530,7 @@ pub fn build_quote(amount: i32, fee: i32) -> Quote {
             .join("ripr")
             .join("cache")
             .join("repo-seam-facts")
-            .join("0.1")
+            .join(super::super::seam_cache::CACHE_SCHEMA_VERSION)
     }
 
     fn list_cache_entries(root: &Path) -> Result<Vec<PathBuf>, String> {

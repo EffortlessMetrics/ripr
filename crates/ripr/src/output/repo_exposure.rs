@@ -10,7 +10,7 @@ use crate::analysis::ClassifiedSeam;
 use crate::analysis::seams::SeamGripClass;
 use crate::output::json::escape as json_escape;
 
-pub(crate) const REPO_EXPOSURE_SCHEMA_VERSION: &str = "0.1";
+pub(crate) const REPO_EXPOSURE_SCHEMA_VERSION: &str = "0.2";
 
 /// Cap on related-tests rendered per seam in the JSON output. The
 /// existing `test_grip_evidence::find_related_tests` heuristic is
@@ -158,8 +158,16 @@ fn push_classified_json(out: &mut String, entry: &ClassifiedSeam) {
                 grip.oracle_strength.as_str()
             ));
             out.push_str(&format!(
-                "\"evidence_summary\": \"{}\"",
+                "\"evidence_summary\": \"{}\", ",
                 json_escape(grip.evidence_summary.as_str())
+            ));
+            out.push_str(&format!(
+                "\"relation_reason\": \"{}\", ",
+                grip.relation_reason.as_str()
+            ));
+            out.push_str(&format!(
+                "\"relation_confidence\": \"{}\"",
+                grip.relation_confidence.as_str()
             ));
             out.push('}');
             if idx + 1 != related_rendered {
@@ -312,10 +320,12 @@ fn push_top_gap_md(out: &mut String, entry: &ClassifiedSeam) {
         out.push_str("- related tests:\n");
         for grip in evidence.related_tests.iter().take(5) {
             out.push_str(&format!(
-                "  - `{}` ({}, {})\n",
+                "  - `{}` ({}, {}) · {} / {}\n",
                 md_escape(grip.test_name.as_str()),
                 grip.oracle_kind.as_str(),
-                grip.oracle_strength.as_str()
+                grip.oracle_strength.as_str(),
+                grip.relation_reason.as_str(),
+                grip.relation_confidence.as_str()
             ));
         }
     }
@@ -449,6 +459,9 @@ mod tests {
                 oracle_kind: OracleKind::ExactValue,
                 oracle_strength: OracleStrength::Strong,
                 evidence_summary: "exact value assertion".to_string(),
+                relation_reason:
+                    crate::analysis::test_grip_evidence::RelationReason::DirectOwnerCall,
+                relation_confidence: crate::analysis::test_grip_evidence::RelationConfidence::High,
             }],
             reach: stage(StageState::Yes),
             activate: stage(StageState::Yes),
@@ -478,7 +491,7 @@ mod tests {
     fn json_carries_schema_version_scope_and_metrics() {
         let json = render_repo_exposure_json(&[weakly_gripped_classified()]);
         for needle in [
-            "\"schema_version\": \"0.1\"",
+            "\"schema_version\": \"0.2\"",
             "\"scope\": \"repo\"",
             "\"seams_total\": 1",
             "\"headline_eligible\": 1",
@@ -551,5 +564,29 @@ mod tests {
         assert!(md.contains("ripr repo exposure report"));
         assert!(md.contains("Runtime confirmation"));
         assert!(md.contains("cargo-mutants"));
+    }
+
+    #[test]
+    fn given_repo_exposure_related_tests_when_rendered_then_relation_reason_and_confidence_are_present()
+     {
+        // Both JSON and Markdown emit the relation_reason +
+        // relation_confidence fields per related test. Pinned by
+        // schema bump 0.1 → 0.2.
+        let json = render_repo_exposure_json(&[weakly_gripped_classified()]);
+        assert!(
+            json.contains("\"relation_reason\": \"direct_owner_call\""),
+            "JSON missing relation_reason: {json}"
+        );
+        assert!(
+            json.contains("\"relation_confidence\": \"high\""),
+            "JSON missing relation_confidence: {json}"
+        );
+
+        let md = render_repo_exposure_md(&[weakly_gripped_classified()]);
+        assert!(
+            md.contains("direct_owner_call"),
+            "Markdown missing direct_owner_call tag: {md}"
+        );
+        assert!(md.contains("high"), "Markdown missing confidence tag: {md}");
     }
 }
