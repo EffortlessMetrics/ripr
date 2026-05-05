@@ -222,8 +222,30 @@ mod tests {
 
     #[test]
     fn parser_is_robust_against_fuzz_like_inputs() {
+        let structured_cases = [
+            "diff --git a/src/lib.rs b/src/lib.rs\n@@ -1 +1 @@\n-foo\n+bar\n",
+            "diff --git a/src/lib.rs b/src/lib.rs\r\n@@ -1,2 +1,2 @@\r\n-foo\r\n+bar\r\n baz\r\n",
+            "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -0,0 +1,3 @@\n+\0\n+\u{fffd}\n+\t\n",
+            "diff --git a/src/lib.rs b/src/lib.rs\n@@ -99999999999999999999 +99999999999999999999 @@\n-legacy\n+current\n",
+            "@@ -1,1 +1,1 @@\n-without-header\n+still-parseable\n",
+            "diff --git a/src/lib.rs b/src/lib.rs\n@@ -1 +1 @@\n-\n+\n@@ -4 +4 @@\n-old\n+new\n",
+        ];
+
+        for text in structured_cases {
+            let files = parse_unified_diff(text);
+            for file in files {
+                assert!(!file.path.as_os_str().is_empty());
+                assert!(file.added_lines.windows(2).all(|w| w[0].line <= w[1].line));
+                assert!(
+                    file.removed_lines
+                        .windows(2)
+                        .all(|w| w[0].line <= w[1].line)
+                );
+            }
+        }
+
         let mut seed = 0xC0FFEE_u64;
-        for _case in 0..512 {
+        for _case in 0..1024 {
             let len = (next_u64(&mut seed) % 512) as usize;
             let mut bytes = Vec::with_capacity(len);
             for _ in 0..len {
