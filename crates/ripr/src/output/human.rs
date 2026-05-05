@@ -279,7 +279,6 @@ mod tests {
         assert!(rendered.contains("Add assertion for disabled path result."));
     }
 
-
     #[test]
     fn render_finding_uses_expr_and_fallback_evidence_when_no_before_after() {
         let mut finding = sample_finding();
@@ -307,7 +306,9 @@ mod tests {
         let rendered = render_finding(&finding);
 
         assert_eq!(
-            rendered.matches("missing discriminator enabled == false").count(),
+            rendered
+                .matches("missing discriminator enabled == false")
+                .count(),
             1
         );
         assert!(rendered.contains("  - another gap"));
