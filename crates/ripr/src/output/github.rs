@@ -1,5 +1,9 @@
 use crate::app::CheckOutput;
 
+/// Render findings as GitHub Actions workflow command annotations.
+///
+/// Each finding is emitted as one annotation line with escaped message content
+/// so newlines and punctuation are preserved by the workflow parser.
 pub fn render(output: &CheckOutput) -> String {
     let mut out = String::new();
     for finding in &output.findings {
