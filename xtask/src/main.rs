@@ -12309,15 +12309,70 @@ fn parse_toml_key_value(trimmed: &str) -> Option<(&str, &str)> {
 }
 
 fn parse_string_value(value: &str, path: &str, line_number: usize) -> Result<String, String> {
-    let v = value.split('#').next().unwrap_or(value).trim();
+    let v = strip_toml_value_comment(value).trim();
     if v.starts_with('"') && v.ends_with('"') && v.len() >= 2 {
-        Ok(v[1..v.len() - 1].to_string())
+        Ok(unescape_toml_string(&v[1..v.len() - 1]))
     } else {
         Err(format!(
             "{path}:{} string value must be quoted (got: {value})",
             line_number
         ))
     }
+}
+
+fn strip_toml_value_comment(value: &str) -> &str {
+    let mut in_double = false;
+    let mut escaped = false;
+
+    for (idx, ch) in value.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if in_double && ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == '"' {
+            in_double = !in_double;
+            continue;
+        }
+        if ch == '#' && !in_double {
+            return &value[..idx];
+        }
+    }
+
+    value
+}
+
+fn unescape_toml_string(value: &str) -> String {
+    let mut out = String::new();
+    let mut chars = value.chars();
+
+    while let Some(ch) = chars.next() {
+        if ch != '\\' {
+            out.push(ch);
+            continue;
+        }
+
+        let Some(next) = chars.next() else {
+            out.push('\\');
+            break;
+        };
+        match next {
+            '"' => out.push('"'),
+            '\\' => out.push('\\'),
+            'n' => out.push('\n'),
+            'r' => out.push('\r'),
+            't' => out.push('\t'),
+            other => {
+                out.push('\\');
+                out.push(other);
+            }
+        }
+    }
+
+    out
 }
 
 fn parse_usize_value(value: &str, path: &str, line_number: usize) -> Result<usize, String> {
@@ -12973,17 +13028,18 @@ mod tests {
         parse_campaign_manifest, parse_inline_array, parse_mutation_calibration_args,
         parse_mutation_outcomes_json, parse_no_panic_allowlist_toml,
         parse_no_panic_allowlist_toml_v2, parse_reason, parse_repo_exposure_static_seams,
-        parse_static_language_allowlist, pr_shape_warnings, precommit_report_body,
-        public_contract_rows, read_mutation_input_json, receipt_json, receipt_specs,
-        receipt_status_from_reports, repo_badge_artifact_command_args, repo_badge_artifact_jobs,
-        repo_badge_artifacts_summary_markdown, repo_seam_inventory_command_args_for_root,
-        report_index_markdown, report_index_missing_expected, report_status_from_text,
-        semantic_selector_matches, should_scan_static_language_path, sorted_allowlist_content,
-        spec_id_from_path, static_language_allowlist_covers, status_for_report,
-        suspicious_runtime_file_names, test_efficiency_entry, test_efficiency_report_json,
-        test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
-        test_oracle_tests_in_text, unknown_command_message, validate_local_context_allowlist,
-        windows_absolute_path_tokens, workflow_runtime_violations,
+        parse_static_language_allowlist, parse_string_value, pr_shape_warnings,
+        precommit_report_body, public_contract_rows, read_mutation_input_json, receipt_json,
+        receipt_specs, receipt_status_from_reports, repo_badge_artifact_command_args,
+        repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown,
+        repo_seam_inventory_command_args_for_root, report_index_markdown,
+        report_index_missing_expected, report_status_from_text, semantic_selector_matches,
+        should_scan_static_language_path, sorted_allowlist_content, spec_id_from_path,
+        static_language_allowlist_covers, status_for_report, suspicious_runtime_file_names,
+        test_efficiency_entry, test_efficiency_report_json, test_efficiency_report_markdown,
+        test_oracle_report_json, test_oracle_report_markdown, test_oracle_tests_in_text,
+        unknown_command_message, validate_local_context_allowlist, windows_absolute_path_tokens,
+        workflow_runtime_violations,
     };
     use super::{
         DeclaredIntent, LocalContextFinding,
@@ -13243,6 +13299,21 @@ explanation = "Duplicate entry"
         });
     }
 
+    #[test]
+    fn parse_string_value_preserves_hashes_and_unescapes_quotes_inside_values() -> Result<(), String>
+    {
+        let parsed = parse_string_value(
+            "\"fs::write( root.join(\\\"src/lib.rs\\\"), r#\\\" body \\\"#, )\" # trailing comment",
+            "allowlist.toml",
+            1,
+        )?;
+        assert_eq!(
+            parsed,
+            "fs::write( root.join(\"src/lib.rs\"), r#\" body \"#, )"
+        );
+        Ok(())
+    }
+
     // ============================================================================
     // v0.2 semantic selector tests
     // ============================================================================
@@ -13285,6 +13356,40 @@ explanation = "Duplicate entry"
             return Err(
                 "selector should match finding at line 25 (line movement allowed)".to_string(),
             );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn v0_2_receiver_fingerprint_disambiguates_same_container_calls() -> Result<(), String> {
+        let selector = PanicFamilySelector {
+            kind: "method_call".to_string(),
+            container: Some("my_test_fn".to_string()),
+            callee: Some("unwrap".to_string()),
+            receiver_fingerprint: Some("left_side()".to_string()),
+            text_contains: None,
+        };
+        let matching = SemanticPanicFinding {
+            path: "src/lib.rs".to_string(),
+            family: "unwrap".to_string(),
+            kind: "method_call".to_string(),
+            line: 10,
+            column: Some(5),
+            container: Some("my_test_fn".to_string()),
+            callee: Some("unwrap".to_string()),
+            receiver_fingerprint: Some("left_side()".to_string()),
+            snippet_fingerprint: "left_side().unwrap()".to_string(),
+        };
+        let different_receiver = SemanticPanicFinding {
+            receiver_fingerprint: Some("right_side()".to_string()),
+            snippet_fingerprint: "right_side().unwrap()".to_string(),
+            ..matching.clone()
+        };
+        if !semantic_selector_matches(&selector, &matching) {
+            return Err("receiver fingerprint should match identical receiver".to_string());
+        }
+        if semantic_selector_matches(&selector, &different_receiver) {
+            return Err("receiver fingerprint should reject a different receiver".to_string());
         }
         Ok(())
     }
