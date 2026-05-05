@@ -439,7 +439,7 @@ fn main() {
             print_help();
             Ok(())
         }
-        Some(other) => Err(format!("unknown xtask command {other}")),
+        Some(other) => Err(unknown_command_message(other)),
     };
     if let Err(err) = result {
         eprintln!("xtask: {err}");
@@ -554,9 +554,116 @@ fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
 }
 
 fn print_help() {
-    println!(
-        "xtask commands:\n  shape\n  fix-pr\n  pr-summary\n  precommit\n  check-pr\n  fixtures [name]\n  goldens check\n  goldens bless <name> --reason <reason>\n  golden-drift\n  metrics\n  test-oracle-report\n  check-test-oracles\n  test-efficiency-report\n  badge-artifacts\n  repo-badge-artifacts\n  update-badge-endpoints\n  check-badge-endpoints\n  dogfood\n  critic\n  goals status|next|report\n  reports index\n  receipts [check]\n  ci-fast\n  ci-full\n  check-static-language\n  check-no-panic-family\n  check-allow-attributes\n  check-local-context\n  check-file-policy\n  check-executable-files\n  check-workflows\n  check-droid-review-config\n  check-spec-format\n  check-fixture-contracts\n  check-traceability\n  check-spec-ids\n  check-behavior-manifest\n  check-capabilities\n  check-workspace-shape\n  check-architecture\n  check-public-api\n  check-output-contracts\n  check-doc-index\n  check-readme-state\n  markdown-links\n  check-campaign\n  check-goals\n  check-pr-shape\n  check-generated\n  check-dependencies\n  check-supply-chain\n  check-process-policy\n  check-network-policy\n  package\n  publish-dry-run"
-    );
+    let commands = known_commands().join("\n  ");
+    println!("xtask commands:\n  {commands}");
+}
+
+fn known_commands() -> Vec<&'static str> {
+    vec![
+        "shape",
+        "fix-pr",
+        "pr-summary",
+        "precommit",
+        "check-pr",
+        "fixtures [name]",
+        "goldens check",
+        "goldens bless <name> --reason <reason>",
+        "golden-drift",
+        "metrics",
+        "test-oracle-report",
+        "check-test-oracles",
+        "test-efficiency-report",
+        "badge-artifacts",
+        "repo-badge-artifacts",
+        "update-badge-endpoints",
+        "check-badge-endpoints",
+        "dogfood",
+        "critic",
+        "goals status|next|report",
+        "reports index",
+        "receipts [check]",
+        "ci-fast",
+        "ci-full",
+        "check-static-language",
+        "check-no-panic-family",
+        "check-allow-attributes",
+        "check-local-context",
+        "check-file-policy",
+        "check-executable-files",
+        "check-workflows",
+        "check-droid-review-config",
+        "check-spec-format",
+        "check-fixture-contracts",
+        "check-traceability",
+        "check-spec-ids",
+        "check-behavior-manifest",
+        "check-capabilities",
+        "check-workspace-shape",
+        "check-architecture",
+        "check-public-api",
+        "check-output-contracts",
+        "check-doc-index",
+        "check-readme-state",
+        "markdown-links",
+        "check-campaign",
+        "check-goals",
+        "check-pr-shape",
+        "check-generated",
+        "check-dependencies",
+        "check-supply-chain",
+        "check-process-policy",
+        "check-network-policy",
+        "package",
+        "publish-dry-run",
+    ]
+}
+
+fn unknown_command_message(command: &str) -> String {
+    let normalized = command.trim();
+    let suggestion = known_commands()
+        .into_iter()
+        .filter_map(|candidate| {
+            let root = candidate
+                .split_once(' ')
+                .map_or(candidate, |(prefix, _)| prefix);
+            let distance = levenshtein(normalized, root);
+            (distance <= 3).then_some((root, distance))
+        })
+        .min_by_key(|(_, distance)| *distance)
+        .map(|(root, _)| root);
+    match suggestion {
+        Some(suggestion) => format!(
+            "unknown xtask command `{normalized}`.\nDid you mean `{suggestion}`?\nRun `cargo xtask help` for the full list."
+        ),
+        None => format!(
+            "unknown xtask command `{normalized}`.\nRun `cargo xtask help` for the full list."
+        ),
+    }
+}
+
+fn levenshtein(lhs: &str, rhs: &str) -> usize {
+    if lhs.is_empty() {
+        return rhs.chars().count();
+    }
+    if rhs.is_empty() {
+        return lhs.chars().count();
+    }
+
+    let rhs_len = rhs.chars().count();
+    let mut previous_row: Vec<usize> = (0..=rhs_len).collect();
+
+    for (left_index, left_char) in lhs.chars().enumerate() {
+        let mut current_row = vec![left_index + 1];
+        for (right_index, right_char) in rhs.chars().enumerate() {
+            let insertion = current_row[right_index] + 1;
+            let deletion = previous_row[right_index + 1] + 1;
+            let substitution = previous_row[right_index] + usize::from(left_char != right_char);
+            current_row.push(insertion.min(deletion).min(substitution));
+        }
+        previous_row = current_row;
+    }
+
+    previous_row[rhs_len]
 }
 
 fn shape() -> Result<(), String> {
@@ -11106,8 +11213,9 @@ mod tests {
         sorted_allowlist_content, spec_id_from_path, static_language_allowlist_covers,
         status_for_report, suspicious_runtime_file_names, test_efficiency_entry,
         test_efficiency_report_json, test_efficiency_report_markdown, test_oracle_report_json,
-        test_oracle_report_markdown, test_oracle_tests_in_text, validate_local_context_allowlist,
-        windows_absolute_path_tokens, workflow_runtime_violations,
+        test_oracle_report_markdown, test_oracle_tests_in_text, unknown_command_message,
+        validate_local_context_allowlist, windows_absolute_path_tokens,
+        workflow_runtime_violations,
     };
     use super::{
         DeclaredIntent, LocalContextFinding, TestEfficiencyEntry, TestEfficiencyValue,
@@ -16060,5 +16168,18 @@ settings: |
             "      - uses: actions/checkout@v5 # old ref\n",
         );
         assert_eq!(violations.len(), 1);
+    }
+
+    #[test]
+    fn unknown_command_message_suggests_nearest_match() {
+        let message = unknown_command_message("chek-pr");
+        assert!(message.contains("Did you mean `check-pr`?"));
+    }
+
+    #[test]
+    fn unknown_command_message_includes_help_without_nearby_match() {
+        let message = unknown_command_message("totally-unknown-command");
+        assert!(!message.contains("Did you mean"));
+        assert!(message.contains("cargo xtask help"));
     }
 }
