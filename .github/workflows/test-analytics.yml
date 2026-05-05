@@ -12,6 +12,8 @@ jobs:
   rust-tests:
     name: rust-tests-junit
     runs-on: ubuntu-latest
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
     steps:
       - uses: actions/checkout@v6
@@ -35,12 +37,12 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload test results to Codecov
-        if: ${{ !cancelled() && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) }}
+        if: ${{ !cancelled() && env.CODECOV_TOKEN != '' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) }}
         uses: codecov/test-results-action@v1
         with:
           files: target/nextest/ci/junit.xml
-          token: ${{ secrets.CODECOV_TOKEN }}
+          token: ${{ env.CODECOV_TOKEN }}
 
       - name: Explain skipped Codecov test-results upload
-        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
-        run: echo "Skipping Codecov test-results upload for fork pull requests because repository secrets are unavailable."
+        if: ${{ !cancelled() && (env.CODECOV_TOKEN == '' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)) }}
+        run: echo "Skipping Codecov test-results upload because CODECOV_TOKEN is unavailable for this run."

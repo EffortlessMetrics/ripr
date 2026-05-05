@@ -206,9 +206,9 @@ cargo test --workspace --doc
 ```
 
 It uploads the JUnit XML as the `rust-junit` GitHub Actions artifact and uploads
-the same file to Codecov Test Analytics using `CODECOV_TOKEN` on trusted runs.
-Fork pull requests still run tests and upload the artifact, but skip the Codecov
-test-results upload because repository secrets are unavailable.
+the same file to Codecov Test Analytics only when `CODECOV_TOKEN` is available
+on trusted runs. Fork pull requests still run tests and upload the artifact, but
+skip the Codecov test-results upload because repository secrets are unavailable.
 
 The security workflow currently runs:
 
