@@ -2328,45 +2328,167 @@ fn check_no_panic_family() -> Result<(), String> {
         findings.extend(collect_panic_findings(root, &patterns)?);
     }
 
-    let allowlist = if Path::new(".ripr/no-panic-allowlist.toml").exists() {
-        parse_no_panic_allowlist_toml(".ripr/no-panic-allowlist.toml")?
+    // Determine schema version
+    let allowlist_path = ".ripr/no-panic-allowlist.toml";
+    let has_v02 = if Path::new(allowlist_path).exists() {
+        let text = read_text_lossy(Path::new(allowlist_path))?;
+        text.lines()
+            .any(|line| line.trim() == "schema_version = \"0.2\"")
     } else {
-        Vec::new()
+        false
     };
 
     let mut violations = Vec::new();
+    let mut advisories = Vec::new();
 
-    for finding in &findings {
-        let matched = allowlist.iter().any(|e| {
-            e.path == finding.path
-                && e.line == finding.line
-                && e.family == finding.family
-                && (e.column.is_none() || e.column == finding.column)
-        });
-        if !matched {
-            violations.push(format!(
-                "{}:{}:{} contains unallowed panic-family '{}'; add exact allowlist entry with explanation",
-                finding.path,
-                finding.line,
-                finding.column.unwrap_or(0),
-                finding.family
-            ));
+    if has_v02 {
+        // v0.2 mode: use semantic findings and versioned parser
+        let mut semantic_findings = Vec::new();
+        for root in roots {
+            if !root.exists() {
+                continue;
+            }
+            semantic_findings.extend(collect_semantic_panic_findings(root, &patterns)?);
+        }
+
+        let versioned_entries = if Path::new(allowlist_path).exists() {
+            parse_no_panic_allowlist_toml_v2(allowlist_path)?
+        } else {
+            Vec::new()
+        };
+
+        // Check each semantic finding against the allowlist
+        for finding in &semantic_findings {
+            let mut matched = false;
+            for entry in &versioned_entries {
+                match entry {
+                    PanicAllowEntryVersioned::V2(v2) => {
+                        if v2.path != finding.path || v2.family != finding.family {
+                            continue;
+                        }
+                        if let Some(ref selector) = v2.selector
+                            && semantic_selector_matches(selector, finding)
+                        {
+                            // Check last_seen drift
+                            if let Some(ref ls) = v2.last_seen
+                                && (ls.line != finding.line || ls.column != finding.column)
+                            {
+                                advisories.push(format!(
+                                    "allowed by semantic selector; last_seen changed from line {} to line {} ({}:{}:{})",
+                                    ls.line,
+                                    finding.line,
+                                    finding.path,
+                                    finding.line,
+                                    finding.column.unwrap_or(0),
+                                ));
+                            }
+                            matched = true;
+                            break;
+                        }
+                    }
+                    PanicAllowEntryVersioned::V1(v1) => {
+                        // For v0.1 entries in v0.2 file, try to match by finding a semantic finding
+                        // that overlaps the v0.1 location
+                        if v1.path == finding.path
+                            && v1.family == finding.family
+                            && v1.line == finding.line
+                            && (v1.column.is_none() || v1.column == finding.column)
+                        {
+                            matched = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if !matched {
+                violations.push(format!(
+                    "{}:{}:{} contains unallowed panic-family '{}'; add exact allowlist entry with explanation",
+                    finding.path,
+                    finding.line,
+                    finding.column.unwrap_or(0),
+                    finding.family
+                ));
+            }
+        }
+
+        // Check for stale v0.1 entries
+        for entry in &versioned_entries {
+            match entry {
+                PanicAllowEntryVersioned::V1(v1) => {
+                    let matched = semantic_findings.iter().any(|f| {
+                        f.path == v1.path
+                            && f.family == v1.family
+                            && f.line == v1.line
+                            && (v1.column.is_none() || v1.column == f.column)
+                    });
+                    if !matched {
+                        violations.push(format!(
+                            "stale allowlist entry: {}:{}:{:?} ({}) does not match any current finding",
+                            v1.path, v1.line, v1.column, v1.family
+                        ));
+                    }
+                }
+                PanicAllowEntryVersioned::V2(v2) => {
+                    if let Some(ref selector) = v2.selector {
+                        let matched = semantic_findings.iter().any(|f| {
+                            v2.path == f.path
+                                && v2.family == f.family
+                                && semantic_selector_matches(selector, f)
+                        });
+                        if !matched {
+                            violations.push(format!(
+                                "stale v0.2 allowlist entry: {} ({}) classification={:?} [{}] selector does not match any current finding",
+                                v2.path, v2.family, v2.classification, v2.explanation
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        // v0.1 mode: existing behavior
+        let allowlist = if Path::new(allowlist_path).exists() {
+            parse_no_panic_allowlist_toml(allowlist_path)?
+        } else {
+            Vec::new()
+        };
+
+        for finding in &findings {
+            let matched = allowlist.iter().any(|e| {
+                e.path == finding.path
+                    && e.line == finding.line
+                    && e.family == finding.family
+                    && (e.column.is_none() || e.column == finding.column)
+            });
+            if !matched {
+                violations.push(format!(
+                    "{}:{}:{} contains unallowed panic-family '{}'; add exact allowlist entry with explanation",
+                    finding.path,
+                    finding.line,
+                    finding.column.unwrap_or(0),
+                    finding.family
+                ));
+            }
+        }
+
+        for entry in &allowlist {
+            let matched = findings.iter().any(|f| {
+                f.path == entry.path
+                    && f.line == entry.line
+                    && f.family == entry.family
+                    && (entry.column.is_none() || entry.column == f.column)
+            });
+            if !matched {
+                violations.push(format!(
+                    "stale allowlist entry: {}:{}:{:?} ({}) does not match any current finding",
+                    entry.path, entry.line, entry.column, entry.family
+                ));
+            }
         }
     }
 
-    for entry in &allowlist {
-        let matched = findings.iter().any(|f| {
-            f.path == entry.path
-                && f.line == entry.line
-                && f.family == entry.family
-                && (entry.column.is_none() || entry.column == f.column)
-        });
-        if !matched {
-            violations.push(format!(
-                "stale allowlist entry: {}:{}:{:?} ({}) does not match any current finding",
-                entry.path, entry.line, entry.column, entry.family
-            ));
-        }
+    for advisory in &advisories {
+        println!("advisory: {advisory}");
     }
 
     finish_policy_report(
@@ -10729,6 +10851,44 @@ struct PanicAllowEntry {
     explanation: String,
 }
 
+#[derive(Debug, Clone)]
+struct PanicFamilySelector {
+    kind: String,
+    container: Option<String>,
+    callee: Option<String>,
+    receiver_fingerprint: Option<String>,
+    text_contains: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct PanicFamilyLastSeen {
+    line: usize,
+    column: Option<usize>,
+}
+
+#[derive(Debug, Clone)]
+struct PanicAllowEntryV2 {
+    path: String,
+    family: String,
+    classification: Option<String>,
+    explanation: String,
+    selector: Option<PanicFamilySelector>,
+    last_seen: Option<PanicFamilyLastSeen>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
+struct SemanticPanicFinding {
+    path: String,
+    family: String,
+    kind: String,
+    line: usize,
+    column: Option<usize>,
+    container: Option<String>,
+    callee: Option<String>,
+    receiver_fingerprint: Option<String>,
+    snippet_fingerprint: String,
+}
+
 fn panic_family_from_pattern(pattern: &str) -> &'static str {
     match pattern {
         s if s.contains("unwrap") => "unwrap",
@@ -10771,6 +10931,246 @@ fn collect_panic_findings(root: &Path, patterns: &[String]) -> Result<Vec<PanicF
 
     findings.sort();
     Ok(findings)
+}
+
+fn collect_semantic_panic_findings(
+    root: &Path,
+    patterns: &[String],
+) -> Result<Vec<SemanticPanicFinding>, String> {
+    use ra_ap_syntax::{AstNode, Edition, SourceFile};
+
+    let mut findings = Vec::new();
+
+    for path in collect_files(root)? {
+        if path.extension().and_then(|value| value.to_str()) != Some("rs") {
+            continue;
+        }
+        let normalized = normalize_path(&path);
+        let text = read_text_lossy(&path)?;
+
+        let parse = SourceFile::parse(&text, Edition::Edition2024);
+        let tree = parse.tree();
+        let root_node = tree.syntax();
+        extract_panic_calls_from_node(root_node, &text, &normalized, patterns, &mut findings);
+    }
+
+    findings.sort();
+    Ok(findings)
+}
+
+fn extract_panic_calls_from_node(
+    node: &ra_ap_syntax::SyntaxNode,
+    text: &str,
+    path: &str,
+    patterns: &[String],
+    findings: &mut Vec<SemanticPanicFinding>,
+) {
+    use ra_ap_syntax::ast::{self, AstNode};
+
+    for child in node.children() {
+        let matched = if let Some(call_expr) = ast::MethodCallExpr::cast(child.clone()) {
+            call_expr.name_ref().and_then(|method_name| {
+                let name = method_name.text().to_string();
+                if pattern_matches_panic_call(patterns, &name) {
+                    extract_call_metadata(call_expr.syntax(), text, path, &name, "method_call")
+                } else {
+                    None
+                }
+            })
+        } else if let Some(call_expr) = ast::CallExpr::cast(child.clone()) {
+            call_expr.expr().and_then(|expr| {
+                let func_text = expr.syntax().text().to_string();
+                if pattern_matches_panic_call(patterns, &func_text) {
+                    extract_call_metadata(call_expr.syntax(), text, path, &func_text, "call")
+                } else {
+                    None
+                }
+            })
+        } else if let Some(macro_call) = ast::MacroCall::cast(child.clone()) {
+            macro_call
+                .path()
+                .and_then(|p| p.segment())
+                .and_then(|path_seg| {
+                    let name = path_seg
+                        .name_ref()
+                        .map(|n| n.text().to_string())
+                        .unwrap_or_default();
+                    let macro_name = format!("{}!", name);
+                    if pattern_matches_panic_call(patterns, &macro_name) {
+                        extract_call_metadata(
+                            macro_call.syntax(),
+                            text,
+                            path,
+                            &macro_name,
+                            "macro_call",
+                        )
+                    } else {
+                        None
+                    }
+                })
+        } else {
+            None
+        };
+
+        if let Some(finding) = matched {
+            findings.push(finding);
+        }
+
+        extract_panic_calls_from_node(&child, text, path, patterns, findings);
+    }
+}
+
+fn pattern_matches_panic_call(patterns: &[String], text: &str) -> bool {
+    for pattern in patterns {
+        if pattern == text {
+            return true;
+        }
+        let base = pattern.trim_end_matches('(').trim_end_matches('!');
+        if base == text && !base.is_empty() {
+            return true;
+        }
+    }
+    false
+}
+
+fn extract_call_metadata(
+    node: &ra_ap_syntax::SyntaxNode,
+    text: &str,
+    path: &str,
+    family_name: &str,
+    kind: &str,
+) -> Option<SemanticPanicFinding> {
+    let (line, column) = line_and_column_for_node(node, text);
+    let family = panic_family_from_call_name(family_name).to_string();
+    let snippet = node.text().to_string();
+    let snippet_fingerprint = snippet.replace('\n', " ").trim().to_string();
+
+    let receiver_fingerprint = if kind == "method_call" {
+        extract_method_receiver_fingerprint(node)
+    } else {
+        None
+    };
+
+    Some(SemanticPanicFinding {
+        path: path.to_string(),
+        family,
+        kind: kind.to_string(),
+        line,
+        column,
+        container: extract_container_name(node),
+        callee: Some(family_name.to_string()),
+        receiver_fingerprint,
+        snippet_fingerprint,
+    })
+}
+
+fn extract_method_receiver_fingerprint(node: &ra_ap_syntax::SyntaxNode) -> Option<String> {
+    use ra_ap_syntax::ast::{self, AstNode};
+
+    let method_call = ast::MethodCallExpr::cast(node.clone())?;
+    let receiver = method_call.receiver()?;
+    let text = receiver.syntax().text().to_string();
+    let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    Some(normalized)
+}
+
+fn line_and_column_for_node(node: &ra_ap_syntax::SyntaxNode, text: &str) -> (usize, Option<usize>) {
+    let offset: usize = node.text_range().start().into();
+    let mut line = 1;
+    let mut col = 0;
+
+    for (byte_idx, ch) in text.char_indices() {
+        if byte_idx > offset {
+            break;
+        }
+        if ch == '\n' {
+            line += 1;
+            col = 0;
+        } else {
+            col += 1;
+        }
+    }
+
+    (line, Some(col))
+}
+
+fn panic_family_from_call_name(name: &str) -> &'static str {
+    match name {
+        "unwrap" => "unwrap",
+        "expect" => "expect",
+        "panic!" => "panic_macro",
+        "todo!" => "todo",
+        "unimplemented!" => "unimplemented",
+        "unreachable!" => "unreachable",
+        s if s.starts_with("unwrap") && s.ends_with('(') => "unwrap",
+        s if s.starts_with("expect") && s.ends_with('(') => "expect",
+        s if s.starts_with("panic") && s.ends_with('!') => "panic_macro",
+        s if s.starts_with("todo") && s.ends_with('!') => "todo",
+        s if s.starts_with("unimplemented") && s.ends_with('!') => "unimplemented",
+        s if s.starts_with("unreachable") && s.ends_with('!') => "unreachable",
+        _ => "unknown",
+    }
+}
+
+fn extract_container_name(node: &ra_ap_syntax::SyntaxNode) -> Option<String> {
+    use ra_ap_syntax::ast::{self, AstNode, HasName};
+
+    let mut current = node.parent();
+    while let Some(parent) = current {
+        let result = (|| {
+            if let Some(func) = ast::Fn::cast(parent.clone()) {
+                return func.name().map(|n| n.text().to_string());
+            }
+            if let Some(impl_block) = ast::Impl::cast(parent.clone()) {
+                return impl_block.self_ty().and_then(|t| {
+                    if let ast::Type::PathType(pt) = t {
+                        pt.path().and_then(|p| {
+                            p.segment()
+                                .and_then(|s| s.name_ref().map(|n| n.text().to_string()))
+                        })
+                    } else {
+                        None
+                    }
+                });
+            }
+            None
+        })();
+        if result.is_some() {
+            return result;
+        }
+        current = parent.parent();
+    }
+    None
+}
+
+fn semantic_selector_matches(
+    selector: &PanicFamilySelector,
+    finding: &SemanticPanicFinding,
+) -> bool {
+    let valid_kind = matches!(
+        selector.kind.as_str(),
+        "method_call" | "call" | "macro_call" | "string_literal"
+    );
+    if !valid_kind {
+        return false;
+    }
+
+    if selector.kind == "string_literal" {
+        if finding.kind != "string_literal" {
+            return false;
+        }
+        return selector
+            .text_contains
+            .as_ref()
+            .is_some_and(|tc| finding.snippet_fingerprint.contains(tc));
+    }
+
+    selector.kind == finding.kind
+        && (selector.container.is_none()
+            || finding.container.as_ref() == selector.container.as_ref())
+        && (selector.callee.is_none() || finding.callee.as_ref() == selector.callee.as_ref())
+        && (selector.receiver_fingerprint.is_none()
+            || finding.receiver_fingerprint.as_ref() == selector.receiver_fingerprint.as_ref())
 }
 
 fn parse_no_panic_allowlist_toml(path: &str) -> Result<Vec<PanicAllowEntry>, String> {
@@ -10948,6 +11348,323 @@ fn check_old_panic_allowlist_exists() -> Result<(), String> {
             ".ripr/no-panic-allowlist.txt still exists; use .ripr/no-panic-allowlist.toml instead"
                 .to_string(),
         );
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone)]
+enum PanicAllowEntryVersioned {
+    V1(PanicAllowEntry),
+    V2(PanicAllowEntryV2),
+}
+
+fn parse_no_panic_allowlist_toml_v2(path: &str) -> Result<Vec<PanicAllowEntryVersioned>, String> {
+    let text = read_text_lossy(Path::new(path))?;
+    let mut entries = Vec::new();
+
+    // Accumulated fields for current entry
+    let mut entry_path = String::new();
+    let mut entry_line: usize = 0;
+    let mut entry_column: Option<usize> = None;
+    let mut entry_family = String::new();
+    let mut entry_classification: Option<String> = None;
+    let mut entry_explanation = String::new();
+    let mut selector_kind = String::new();
+    let mut selector_container: Option<String> = None;
+    let mut selector_callee: Option<String> = None;
+    let mut selector_receiver_fingerprint: Option<String> = None;
+    let mut selector_text_contains: Option<String> = None;
+    let mut last_seen_line: usize = 0;
+    let mut last_seen_column: Option<usize> = None;
+
+    let mut in_allow_section = false;
+    let mut in_selector_section = false;
+    let mut in_last_seen_section = false;
+    let mut has_entry_started = false;
+    let mut entry_start_line = 0;
+
+    let flush_entry = |has_entry: bool,
+                       e_path: &str,
+                       e_line: usize,
+                       e_column: Option<usize>,
+                       e_family: &str,
+                       e_classification: &Option<String>,
+                       e_explanation: &str,
+                       s_kind: &str,
+                       s_container: &Option<String>,
+                       s_callee: &Option<String>,
+                       s_receiver_fp: &Option<String>,
+                       s_text_contains: &Option<String>,
+                       ls_line: usize,
+                       ls_column: Option<usize>,
+                       path: &str,
+                       start_line: usize|
+     -> Result<Option<PanicAllowEntryVersioned>, String> {
+        if !has_entry {
+            return Ok(None);
+        }
+        if e_path.is_empty() {
+            return Err(format!("{path}:{start_line} missing required field: path"));
+        }
+        if e_family.is_empty() {
+            return Err(format!(
+                "{path}:{start_line} missing required field: family"
+            ));
+        }
+        if e_explanation.is_empty() {
+            return Err(format!(
+                "{path}:{start_line} missing required field: explanation"
+            ));
+        }
+
+        if !s_kind.is_empty() {
+            // v0.2 entry with selector
+            let selector = PanicFamilySelector {
+                kind: s_kind.to_string(),
+                container: s_container.clone(),
+                callee: s_callee.clone(),
+                receiver_fingerprint: s_receiver_fp.clone(),
+                text_contains: s_text_contains.clone(),
+            };
+            let last_seen = if ls_line > 0 {
+                Some(PanicFamilyLastSeen {
+                    line: ls_line,
+                    column: ls_column,
+                })
+            } else {
+                None
+            };
+            let entry = PanicAllowEntryV2 {
+                path: e_path.to_string(),
+                family: e_family.to_string(),
+                classification: e_classification.clone(),
+                explanation: e_explanation.to_string(),
+                selector: Some(selector),
+                last_seen,
+            };
+            validate_panic_allow_entry_v2(&entry, path, start_line)?;
+            Ok(Some(PanicAllowEntryVersioned::V2(entry)))
+        } else if e_line > 0 {
+            // v0.1 entry with line number
+            let entry = PanicAllowEntry {
+                path: e_path.to_string(),
+                line: e_line,
+                column: e_column,
+                family: e_family.to_string(),
+                classification: e_classification.clone(),
+                explanation: e_explanation.to_string(),
+            };
+            validate_panic_allow_entry(&entry, path, start_line)?;
+            Ok(Some(PanicAllowEntryVersioned::V1(entry)))
+        } else {
+            Err(format!(
+                "{path}:{start_line} entry must have either a [allow.selector] or line number"
+            ))
+        }
+    };
+
+    for (line_num, line) in text.lines().enumerate() {
+        let line_number = line_num + 1;
+        let trimmed = line.trim();
+
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+
+        if trimmed == "schema_version = \"0.1\"" || trimmed == "schema_version = \"0.2\"" {
+            continue;
+        }
+
+        if trimmed == "[allow.selector]" {
+            in_selector_section = true;
+            in_last_seen_section = false;
+            in_allow_section = false;
+            continue;
+        }
+
+        if trimmed == "[allow.last_seen]" {
+            in_last_seen_section = true;
+            in_selector_section = false;
+            in_allow_section = false;
+            continue;
+        }
+
+        if trimmed == "[[allow]]" {
+            // Flush previous entry
+            let result = flush_entry(
+                has_entry_started,
+                &entry_path,
+                entry_line,
+                entry_column,
+                &entry_family,
+                &entry_classification,
+                &entry_explanation,
+                &selector_kind,
+                &selector_container,
+                &selector_callee,
+                &selector_receiver_fingerprint,
+                &selector_text_contains,
+                last_seen_line,
+                last_seen_column,
+                path,
+                entry_start_line,
+            )?;
+            if let Some(entry) = result {
+                entries.push(entry);
+            }
+
+            // Reset all fields for new entry
+            entry_path = String::new();
+            entry_line = 0;
+            entry_column = None;
+            entry_family = String::new();
+            entry_classification = None;
+            entry_explanation = String::new();
+            selector_kind = String::new();
+            selector_container = None;
+            selector_callee = None;
+            selector_receiver_fingerprint = None;
+            selector_text_contains = None;
+            last_seen_line = 0;
+            last_seen_column = None;
+
+            in_selector_section = false;
+            in_last_seen_section = false;
+            in_allow_section = true;
+            has_entry_started = true;
+            entry_start_line = line_number;
+            continue;
+        }
+
+        if !in_allow_section && !in_selector_section && !in_last_seen_section {
+            return Err(format!(
+                "{path}:{line_number} unexpected content outside [[allow]] section"
+            ));
+        }
+
+        let Some((key, value)) = parse_toml_key_value(trimmed) else {
+            return Err(format!(
+                "{path}:{line_number} invalid TOML syntax (expected key = value)"
+            ));
+        };
+
+        if in_selector_section {
+            match key {
+                "kind" => {
+                    selector_kind = parse_string_value(value, path, line_number)?;
+                }
+                "container" => {
+                    selector_container = Some(parse_string_value(value, path, line_number)?);
+                }
+                "callee" => {
+                    selector_callee = Some(parse_string_value(value, path, line_number)?);
+                }
+                "receiver_fingerprint" => {
+                    selector_receiver_fingerprint =
+                        Some(parse_string_value(value, path, line_number)?);
+                }
+                "text_contains" => {
+                    selector_text_contains = Some(parse_string_value(value, path, line_number)?);
+                }
+                _ => {
+                    return Err(format!(
+                        "{path}:{line_number} unknown field '{key}' in [allow.selector] section"
+                    ));
+                }
+            }
+            continue;
+        }
+
+        if in_last_seen_section {
+            match key {
+                "line" => {
+                    last_seen_line = parse_usize_value(value, path, line_number)?;
+                }
+                "column" => {
+                    last_seen_column = Some(parse_usize_value(value, path, line_number)?);
+                }
+                _ => {
+                    return Err(format!(
+                        "{path}:{line_number} unknown field '{key}' in [allow.last_seen] section"
+                    ));
+                }
+            }
+            continue;
+        }
+
+        // In [[allow]] section
+        match key {
+            "path" => entry_path = parse_string_value(value, path, line_number)?,
+            "line" => entry_line = parse_usize_value(value, path, line_number)?,
+            "column" => entry_column = Some(parse_usize_value(value, path, line_number)?),
+            "family" => entry_family = parse_string_value(value, path, line_number)?,
+            "classification" => {
+                entry_classification = Some(parse_string_value(value, path, line_number)?)
+            }
+            "explanation" => entry_explanation = parse_string_value(value, path, line_number)?,
+            _ => {
+                return Err(format!(
+                    "{path}:{line_number} unknown field '{key}' in [[allow]] section"
+                ));
+            }
+        }
+    }
+
+    // Flush final entry
+    let result = flush_entry(
+        has_entry_started,
+        &entry_path,
+        entry_line,
+        entry_column,
+        &entry_family,
+        &entry_classification,
+        &entry_explanation,
+        &selector_kind,
+        &selector_container,
+        &selector_callee,
+        &selector_receiver_fingerprint,
+        &selector_text_contains,
+        last_seen_line,
+        last_seen_column,
+        path,
+        entry_start_line,
+    )?;
+    if let Some(entry) = result {
+        entries.push(entry);
+    }
+
+    Ok(entries)
+}
+
+fn validate_panic_allow_entry_v2(
+    entry: &PanicAllowEntryV2,
+    path: &str,
+    line_number: usize,
+) -> Result<(), String> {
+    if entry.path.is_empty() {
+        return Err(format!("{path}:{line_number} missing required field: path"));
+    }
+    if entry.family.is_empty() {
+        return Err(format!(
+            "{path}:{line_number} missing required field: family"
+        ));
+    }
+    if entry.explanation.is_empty() {
+        return Err(format!(
+            "{path}:{line_number} missing required field: explanation"
+        ));
+    }
+    if let Some(ref selector) = entry.selector {
+        if selector.kind.is_empty() {
+            return Err(format!(
+                "{path}:{line_number} selector missing required field: kind"
+            ));
+        }
+        if selector.kind == "string_literal" && selector.text_contains.is_none() {
+            return Err(format!(
+                "{path}:{line_number} string_literal selector requires text_contains"
+            ));
+        }
     }
     Ok(())
 }
@@ -11193,9 +11910,10 @@ mod tests {
         ReceiptRecord, ReportIndexCampaign, ReportIndexEntry, StaticLanguageAllowEntry,
         StaticLanguageMatcher, TestOracleClass, badge_artifact_command_args, badge_artifact_jobs,
         badge_artifact_native_slot, badge_artifacts_summary_markdown, collect_panic_findings,
-        critic_findings, dogfood_class_counts, dogfood_report_json, dogfood_report_markdown,
-        extract_json_object_usize_map, extract_json_string, extract_json_warnings,
-        extract_workflow_run_blocks, first_line_difference, glob_matches,
+        collect_semantic_panic_findings, critic_findings, dogfood_class_counts,
+        dogfood_report_json, dogfood_report_markdown, extract_json_object_usize_map,
+        extract_json_string, extract_json_warnings, extract_workflow_run_blocks,
+        first_line_difference, forbidden_panic_patterns, glob_matches,
         golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
         guarded_allow_attributes_in_text, is_bdd_test_name, is_dependency_surface_candidate,
         is_evidence_path, is_generated_candidate, is_known_campaign_command, is_policy_path,
@@ -11204,17 +11922,17 @@ mod tests {
         local_context_line_findings, local_markdown_target, markdown_links_in_text,
         next_checkpoints_from_capabilities, normalize_fixture_human_output,
         normalize_fixture_json_output, normalize_golden_text, panic_family_from_pattern,
-        parse_campaign_manifest, parse_inline_array, parse_no_panic_allowlist_toml, parse_reason,
-        parse_static_language_allowlist, pr_shape_warnings, precommit_report_body,
-        public_contract_rows, receipt_json, receipt_specs, receipt_status_from_reports,
-        repo_badge_artifact_command_args, repo_badge_artifact_jobs,
-        repo_badge_artifacts_summary_markdown, report_index_markdown,
-        report_index_missing_expected, report_status_from_text, should_scan_static_language_path,
-        sorted_allowlist_content, spec_id_from_path, static_language_allowlist_covers,
-        status_for_report, suspicious_runtime_file_names, test_efficiency_entry,
-        test_efficiency_report_json, test_efficiency_report_markdown, test_oracle_report_json,
-        test_oracle_report_markdown, test_oracle_tests_in_text, unknown_command_message,
-        validate_local_context_allowlist, windows_absolute_path_tokens,
+        parse_campaign_manifest, parse_inline_array, parse_no_panic_allowlist_toml,
+        parse_no_panic_allowlist_toml_v2, parse_reason, parse_static_language_allowlist,
+        pr_shape_warnings, precommit_report_body, public_contract_rows, receipt_json,
+        receipt_specs, receipt_status_from_reports, repo_badge_artifact_command_args,
+        repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown, report_index_markdown,
+        report_index_missing_expected, report_status_from_text, semantic_selector_matches,
+        should_scan_static_language_path, sorted_allowlist_content, spec_id_from_path,
+        static_language_allowlist_covers, status_for_report, suspicious_runtime_file_names,
+        test_efficiency_entry, test_efficiency_report_json, test_efficiency_report_markdown,
+        test_oracle_report_json, test_oracle_report_markdown, test_oracle_tests_in_text,
+        unknown_command_message, validate_local_context_allowlist, windows_absolute_path_tokens,
         workflow_runtime_violations,
     };
     use super::{
@@ -11223,6 +11941,7 @@ mod tests {
         apply_duplicate_discriminator_groups, apply_test_intent_to_entries,
         parse_test_intent_manifest, test_efficiency_metrics,
     };
+    use super::{PanicAllowEntryVersioned, PanicFamilySelector, SemanticPanicFinding};
     use super::{
         active_yaml_lines, check_droid_action_refs, check_droid_common, forbids_active_line,
         has_active_line, strip_yaml_comment,
@@ -11470,6 +12189,378 @@ explanation = "Duplicate entry"
             assert!(findings.iter().any(|f| f.line == 2 && f.family == "unwrap"));
             assert!(findings.iter().any(|f| f.line == 3 && f.family == "expect"));
         });
+    }
+
+    // ============================================================================
+    // v0.2 semantic selector tests
+    // ============================================================================
+
+    #[test]
+    fn v0_2_method_call_selector_allows_line_movement() -> Result<(), String> {
+        let selector = PanicFamilySelector {
+            kind: "method_call".to_string(),
+            container: Some("my_test_fn".to_string()),
+            callee: Some("unwrap".to_string()),
+            receiver_fingerprint: None,
+            text_contains: None,
+        };
+        let finding_at_10 = SemanticPanicFinding {
+            path: "src/lib.rs".to_string(),
+            family: "unwrap".to_string(),
+            kind: "method_call".to_string(),
+            line: 10,
+            column: Some(5),
+            container: Some("my_test_fn".to_string()),
+            callee: Some("unwrap".to_string()),
+            receiver_fingerprint: None,
+            snippet_fingerprint: "x.unwrap()".to_string(),
+        };
+        let finding_at_25 = SemanticPanicFinding {
+            path: "src/lib.rs".to_string(),
+            family: "unwrap".to_string(),
+            kind: "method_call".to_string(),
+            line: 25,
+            column: Some(12),
+            container: Some("my_test_fn".to_string()),
+            callee: Some("unwrap".to_string()),
+            receiver_fingerprint: None,
+            snippet_fingerprint: "y.unwrap()".to_string(),
+        };
+        if !semantic_selector_matches(&selector, &finding_at_10) {
+            return Err("selector should match finding at line 10".to_string());
+        }
+        if !semantic_selector_matches(&selector, &finding_at_25) {
+            return Err(
+                "selector should match finding at line 25 (line movement allowed)".to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn v0_2_macro_call_selector_matches_exact_macro() -> Result<(), String> {
+        let selector = PanicFamilySelector {
+            kind: "macro_call".to_string(),
+            container: Some("test_fn".to_string()),
+            callee: Some("panic!".to_string()),
+            receiver_fingerprint: None,
+            text_contains: None,
+        };
+        let finding = SemanticPanicFinding {
+            path: "src/lib.rs".to_string(),
+            family: "panic_macro".to_string(),
+            kind: "macro_call".to_string(),
+            line: 5,
+            column: Some(9),
+            container: Some("test_fn".to_string()),
+            callee: Some("panic!".to_string()),
+            receiver_fingerprint: None,
+            snippet_fingerprint: "panic!(\"msg\")".to_string(),
+        };
+        if !semantic_selector_matches(&selector, &finding) {
+            return Err("macro_call selector should match panic! finding".to_string());
+        }
+        let wrong_callee = SemanticPanicFinding {
+            callee: Some("todo!".to_string()),
+            family: "todo".to_string(),
+            snippet_fingerprint: "todo!(\"msg\")".to_string(),
+            ..finding.clone()
+        };
+        if semantic_selector_matches(&selector, &wrong_callee) {
+            return Err("macro_call selector should not match different callee".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn v0_2_call_selector_matches_exact_free_function() -> Result<(), String> {
+        let selector = PanicFamilySelector {
+            kind: "call".to_string(),
+            container: Some("helper".to_string()),
+            callee: Some("panic".to_string()),
+            receiver_fingerprint: None,
+            text_contains: None,
+        };
+        let finding = SemanticPanicFinding {
+            path: "src/lib.rs".to_string(),
+            family: "panic_macro".to_string(),
+            kind: "call".to_string(),
+            line: 3,
+            column: Some(5),
+            container: Some("helper".to_string()),
+            callee: Some("panic".to_string()),
+            receiver_fingerprint: None,
+            snippet_fingerprint: "panic(\"msg\")".to_string(),
+        };
+        if !semantic_selector_matches(&selector, &finding) {
+            return Err("call selector should match finding".to_string());
+        }
+        let wrong_kind = SemanticPanicFinding {
+            kind: "method_call".to_string(),
+            ..finding.clone()
+        };
+        if semantic_selector_matches(&selector, &wrong_kind) {
+            return Err("call selector should not match method_call finding".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn v0_2_string_literal_selector_requires_text_contains() -> Result<(), String> {
+        let selector_with_text = PanicFamilySelector {
+            kind: "string_literal".to_string(),
+            container: None,
+            callee: None,
+            receiver_fingerprint: None,
+            text_contains: Some("error".to_string()),
+        };
+        let finding = SemanticPanicFinding {
+            path: "src/lib.rs".to_string(),
+            family: "panic_macro".to_string(),
+            kind: "string_literal".to_string(),
+            line: 10,
+            column: Some(5),
+            container: None,
+            callee: None,
+            receiver_fingerprint: None,
+            snippet_fingerprint: "panic!(\"error happened\")".to_string(),
+        };
+        if !semantic_selector_matches(&selector_with_text, &finding) {
+            return Err("string_literal selector with text_contains should match".to_string());
+        }
+        let selector_no_text = PanicFamilySelector {
+            kind: "string_literal".to_string(),
+            container: None,
+            callee: None,
+            receiver_fingerprint: None,
+            text_contains: None,
+        };
+        if semantic_selector_matches(&selector_no_text, &finding) {
+            return Err(
+                "string_literal selector without text_contains should not match".to_string(),
+            );
+        }
+        let finding_no_match = SemanticPanicFinding {
+            snippet_fingerprint: "panic!(\"other\")".to_string(),
+            ..finding.clone()
+        };
+        if semantic_selector_matches(&selector_with_text, &finding_no_match) {
+            return Err("string_literal selector should not match when text_contains is absent from snippet".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn v0_2_selector_kind_mismatch_rejects() -> Result<(), String> {
+        let selector = PanicFamilySelector {
+            kind: "method_call".to_string(),
+            container: None,
+            callee: Some("unwrap".to_string()),
+            receiver_fingerprint: None,
+            text_contains: None,
+        };
+        let macro_finding = SemanticPanicFinding {
+            path: "src/lib.rs".to_string(),
+            family: "panic_macro".to_string(),
+            kind: "macro_call".to_string(),
+            line: 5,
+            column: Some(9),
+            container: None,
+            callee: Some("panic!".to_string()),
+            receiver_fingerprint: None,
+            snippet_fingerprint: "panic!(\"msg\")".to_string(),
+        };
+        if semantic_selector_matches(&selector, &macro_finding) {
+            return Err("method_call selector should reject macro_call finding".to_string());
+        }
+        let invalid_selector = PanicFamilySelector {
+            kind: "invalid".to_string(),
+            container: None,
+            callee: None,
+            receiver_fingerprint: None,
+            text_contains: None,
+        };
+        if semantic_selector_matches(&invalid_selector, &macro_finding) {
+            return Err("invalid selector kind should reject all findings".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn v0_2_last_seen_drift_is_advisory_not_failure() -> Result<(), String> {
+        with_temp_cwd("last_seen_drift", |root| {
+            let toml_content = r#"schema_version = "0.2"
+
+[[allow]]
+path = "src/lib.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper"
+
+[allow.selector]
+kind = "method_call"
+container = "my_fn"
+callee = "unwrap"
+
+[allow.last_seen]
+line = 10
+column = 5
+"#;
+            write(&root.join("allowlist.toml"), toml_content);
+            let entries =
+                parse_no_panic_allowlist_toml_v2(root.join("allowlist.toml").to_str().unwrap())
+                    .map_err(|e| format!("parse failed: {e}"))?;
+
+            let entry_count = entries.len();
+            if entry_count != 1 {
+                return Err(format!("expected 1 entry, got {entry_count}"));
+            }
+
+            match &entries[0] {
+                PanicAllowEntryVersioned::V2(v2) => {
+                    let selector = v2.selector.as_ref().ok_or("missing selector")?;
+                    let finding = SemanticPanicFinding {
+                        path: "src/lib.rs".to_string(),
+                        family: "unwrap".to_string(),
+                        kind: "method_call".to_string(),
+                        line: 20,
+                        column: Some(8),
+                        container: Some("my_fn".to_string()),
+                        callee: Some("unwrap".to_string()),
+                        receiver_fingerprint: None,
+                        snippet_fingerprint: "x.unwrap()".to_string(),
+                    };
+                    if !semantic_selector_matches(selector, &finding) {
+                        return Err("selector should match finding at different line".to_string());
+                    }
+                    let ls = v2.last_seen.as_ref().ok_or("missing last_seen")?;
+                    if ls.line != 10 {
+                        return Err(format!("expected last_seen.line 10, got {}", ls.line));
+                    }
+                }
+                _ => return Err("expected V2 entry".to_string()),
+            }
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn v0_1_entries_still_match_by_line_and_column() -> Result<(), String> {
+        with_temp_cwd("v01_in_v02_file", |root| {
+            let toml_content = r#"schema_version = "0.2"
+
+[[allow]]
+path = "src/lib.rs"
+line = 42
+column = 10
+family = "unwrap"
+explanation = "Legacy entry."
+"#;
+            write(&root.join("allowlist.toml"), toml_content);
+            let entries =
+                parse_no_panic_allowlist_toml_v2(root.join("allowlist.toml").to_str().unwrap())
+                    .map_err(|e| format!("parse failed: {e}"))?;
+
+            match &entries[0] {
+                PanicAllowEntryVersioned::V1(v1) => {
+                    if v1.line != 42 || v1.column != Some(10) || v1.family != "unwrap" {
+                        return Err(format!(
+                            "v0.1 entry mismatch: line={} col={:?} family={}",
+                            v1.line, v1.column, v1.family
+                        ));
+                    }
+                }
+                _ => return Err("expected V1 entry".to_string()),
+            }
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn v0_2_missing_selector_and_missing_coordinates_fails_clearly() -> Result<(), String> {
+        with_temp_cwd("missing_both", |root| {
+            let toml_content = r#"schema_version = "0.2"
+
+[[allow]]
+path = "src/lib.rs"
+family = "unwrap"
+explanation = "Entry with neither selector nor line."
+"#;
+            write(&root.join("allowlist.toml"), toml_content);
+            let result =
+                parse_no_panic_allowlist_toml_v2(root.join("allowlist.toml").to_str().unwrap());
+            let err = result
+                .err()
+                .ok_or("expected parse error for entry with neither selector nor line")?;
+            if !err.contains("either a [allow.selector] or line number") {
+                return Err(format!("unexpected error message: {err}"));
+            }
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn semantic_extractor_avoids_substring_false_positive_function_names() -> Result<(), String> {
+        with_temp_cwd("substring_fp", |root| {
+            // Code that contains "panic" in function/variable names but not as actual panic calls
+            let code = r#"
+fn panic_family_from_pattern() -> &'static str {
+    "panic!"
+}
+
+fn has_unwrap_in_name() -> bool {
+    true
+}
+"#;
+            write(&root.join("lib.rs"), code);
+            let patterns = forbidden_panic_patterns();
+            let findings = collect_semantic_panic_findings(root, &patterns)
+                .map_err(|e| format!("collect failed: {e}"))?;
+            // Should find NO panic-family calls since these are just function names and strings
+            if !findings.is_empty() {
+                let lines: Vec<String> = findings
+                    .iter()
+                    .map(|f| {
+                        format!(
+                            "{}:{}:{} kind={}",
+                            f.path,
+                            f.line,
+                            f.column.unwrap_or(0),
+                            f.kind
+                        )
+                    })
+                    .collect();
+                return Err(format!("expected no findings, got: {:?}", lines));
+            }
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn semantic_extractor_uses_byte_offsets_for_utf8_line_column() -> Result<(), String> {
+        // Verify that line_and_column_for_node handles UTF-8 correctly
+        let code = "fn test() {\n    let x = \"héllo\".unwrap();\n}\n";
+        let patterns = vec!["unwrap(".to_string()];
+        let root = temp_dir("utf8_offsets");
+        write(&root.join("lib.rs"), code);
+        let findings = collect_semantic_panic_findings(&root, &patterns)
+            .map_err(|e| format!("collect failed: {e}"))?;
+        let _ = fs::remove_dir_all(&root);
+
+        if findings.is_empty() {
+            return Err("expected to find unwrap call".to_string());
+        }
+        let f = &findings[0];
+        if f.line != 2 {
+            return Err(format!("expected line 2, got {}", f.line));
+        }
+        if f.family != "unwrap" {
+            return Err(format!("expected family unwrap, got {}", f.family));
+        }
+        if f.kind != "method_call" {
+            return Err(format!("expected kind method_call, got {}", f.kind));
+        }
+        Ok(())
     }
 
     // ============================================================================

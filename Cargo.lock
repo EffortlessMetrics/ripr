@@ -763,6 +763,9 @@ checksum = "df79d97927682d2fd8adb29682d1140b343be4ac0f08fd68b7765d9c059d3945"
 [[package]]
 name = "xtask"
 version = "0.1.0"
+dependencies = [
+ "ra_ap_syntax",
+]
 
 [[package]]
 name = "zmij"
