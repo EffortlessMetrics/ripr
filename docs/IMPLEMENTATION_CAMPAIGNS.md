@@ -539,8 +539,8 @@ Work items:
 | `analysis/oracle-shape-v2` | done | Expands oracle-shape detection for field assertions, whole-object equality over visible struct literals, event/state/persistence observers, mock expectations, and simple custom assertion helpers. Keeps `is_err` broad and exact `assert_matches!(..., Err(...))` strong without learned priors or helper-body analysis. |
 | `context/agent-seam-packets-v2` | done | Schema 0.3 packets now carry `recommended_test`, `nearest_strong_test_to_imitate`, `candidate_values`, `assertion_shape` (kind + example), `patterns_to_imitate`, `patterns_to_avoid`, and recommendation `confidence`. Uses ranked related tests from `analysis/related-test-precision-v1` when available; no automatic edits or generated test skeletons. |
 | `lsp/seam-code-actions-v1` | done | Seam diagnostics now surface code actions for copying the selected seam packet, copying a concrete suggested assertion when the agent packet assertion shape is available, opening the nearest related test when a related-test location is present, and refreshing ripr analysis. Finding diagnostic context-copy actions still work. No automatic edits, generated tests, CodeLens, or in-memory overlays. |
-| `calibration/cargo-mutants-v1` | ready | Scaffold for comparing static `SeamGripClass` against cargo-mutants outcomes; advisory; runtime mutation vocabulary appears only in calibration/runtime reports. |
-| `campaign/seam-evidence-usability-closeout` | pending | Final Campaign 5A state transition; rolls remaining items into 5B / future. |
+| `calibration/cargo-mutants-v1` | done | Adds advisory `cargo xtask mutation-calibration` report generation. Imported cargo-mutants JSON/output is joined to static `SeamGripClass` evidence by `seam_id` first and unambiguous normalized file/line second; span-based locations are imported, ambiguous file/line candidates stay unassigned, and unmatched runtime mutants remain visible; runtime mutation vocabulary stays inside `target/ripr/reports/mutation-calibration.{json,md}`. |
+| `campaign/seam-evidence-usability-closeout` | ready | Final Campaign 5A state transition; rolls remaining items into 5B / future. |
 
 Dependencies:
 

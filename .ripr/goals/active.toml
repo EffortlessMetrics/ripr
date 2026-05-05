@@ -133,16 +133,31 @@ commands = [
 
 [[work_item]]
 id = "calibration/cargo-mutants-v1"
-status = "ready"
+status = "done"
 branch = "calibration/cargo-mutants-v1"
 stackable = false
 requires_human_merge = true
-acceptance = "scaffold for comparing static seam classes against cargo-mutants outcomes; cargo-mutants JSON/output can be imported; static class is joined to mutation outcome by seam/probe mapping where possible; unmatched mutants are reported separately; tracks seam_id, seam_kind, seam_grip_class, oracle kind/strength, observed values, missing discriminator, mutation operator, runtime outcome, duration, and test command; outputs target/ripr/reports/mutation-calibration.{json,md}; advisory only; runtime mutation vocabulary appears only in calibration/runtime reports; static reports continue using the audit vocabulary (test grip, missing discriminator, static evidence, runtime confirmation); cargo xtask check-static-language stays clean"
+acceptance = "scaffold for comparing static seam classes against cargo-mutants outcomes; cargo-mutants JSON/output can be imported, including span-based generated mutant locations; static class is joined to mutation outcome by seam/probe mapping or unambiguous file/line where possible; ambiguous file/line candidates and unmatched mutants are reported separately; tracks seam_id, seam_kind, seam_grip_class, oracle kind/strength, observed values, missing discriminator, mutation operator, runtime outcome, duration, and test command; outputs target/ripr/reports/mutation-calibration.{json,md}; advisory only; runtime mutation vocabulary appears only in calibration/runtime reports; static reports continue using the audit vocabulary (test grip, missing discriminator, static evidence, runtime confirmation); cargo xtask check-static-language stays clean"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
   "cargo xtask check-pr",
   "cargo xtask check-static-language"
+]
+
+[[work_item]]
+id = "campaign/seam-evidence-usability-closeout"
+status = "ready"
+branch = "campaign/seam-evidence-usability-closeout"
+stackable = false
+requires_human_merge = true
+acceptance = "close Campaign 5A after cache, related-test precision, value extraction, oracle-shape v2, agent seam packets v2, LSP seam code actions, and cargo-mutants calibration are all landed; update README, roadmap, implementation plan, campaign docs, capability matrix, metrics, traceability, and changelog; move config/ripr-config-v1 and ci/sarif-ci-policy into Campaign 5B / operationalization; no analyzer behavior changes"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-campaign",
+  "cargo xtask check-capabilities"
 ]
 
 [[work_item]]

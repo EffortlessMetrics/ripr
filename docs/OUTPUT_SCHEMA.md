@@ -795,6 +795,156 @@ surface. The pre-4B `Finding`/`AnalysisSnapshot` hover and context
 actions continue to work for diff-scoped diagnostics; seam diagnostics
 live alongside them.
 
+## Mutation Calibration Reports
+
+`cargo xtask mutation-calibration [root] --mutants-json <path>` joins the
+current repo exposure report with imported cargo-mutants JSON/output and writes:
+
+```text
+target/ripr/reports/mutation-calibration.json
+target/ripr/reports/mutation-calibration.md
+```
+
+`<path>` may point directly at a JSON file or at a `mutants.out` directory. When
+given a directory, the command reads and combines `outcomes.json` and
+`mutants.json` when both are present, preserving runtime outcomes and generated
+mutant locations for matching.
+
+This is an advisory runtime calibration report, not a static finding surface.
+Runtime outcome labels come from the supplied mutation output and are kept under
+the `runtime` side of each match. Static reports continue using the audit
+vocabulary (`test grip`, `missing discriminator`, `static evidence`, `runtime
+confirmation`).
+
+JSON shape:
+
+```jsonc
+{
+  "schema_version": "0.1",
+  "scope": "repo",
+  "status": "advisory",
+  "metrics": {
+    "static_seams_total": 120,
+    "mutants_total": 8,
+    "matched_total": 6,
+    "ambiguous_file_line_total": 1,
+    "unmatched_mutants_total": 1,
+    "static_without_runtime_total": 113,
+    "runtime_outcome_counts": {
+      "caught": 5,
+      "timeout": 3
+    },
+    "join_method_counts": {
+      "seam_id": 4,
+      "file_line": 2
+    }
+  },
+  "matches": [
+    {
+      "join_method": "seam_id",
+      "static": {
+        "seam_id": "f3c9e4d21a0b7c88",
+        "seam_kind": "predicate_boundary",
+        "file": "src/pricing.rs",
+        "line": 88,
+        "seam_grip_class": "weakly_gripped",
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "observed_values": ["50", "10000"],
+        "missing_discriminators": ["amount == discount_threshold (equality boundary)"]
+      },
+      "runtime": {
+        "mutant_id": "m1",
+        "seam_id": "f3c9e4d21a0b7c88",
+        "file": "src/pricing.rs",
+        "line": 88,
+        "mutation_operator": "replace >= with >",
+        "runtime_outcome": "caught",
+        "duration": "123",
+        "test_command": "cargo test pricing"
+      }
+    }
+  ],
+  "ambiguous_file_line_matches": [
+    {
+      "runtime": {
+        "mutant_id": "m7",
+        "seam_id": null,
+        "file": "src/pricing.rs",
+        "line": 88,
+        "mutation_operator": "replace >= with >",
+        "runtime_outcome": "caught",
+        "duration": "99",
+        "test_command": "cargo test pricing"
+      },
+      "candidates": [
+        {
+          "seam_id": "f3c9e4d21a0b7c88",
+          "seam_kind": "predicate_boundary",
+          "file": "src/pricing.rs",
+          "line": 88,
+          "seam_grip_class": "weakly_gripped",
+          "oracle_kind": "exact_value",
+          "oracle_strength": "strong",
+          "observed_values": ["50", "10000"],
+          "missing_discriminators": [
+            "amount == discount_threshold (equality boundary)"
+          ]
+        },
+        {
+          "seam_id": "a1b2c3d4e5f60718",
+          "seam_kind": "return_value",
+          "file": "src/pricing.rs",
+          "line": 88,
+          "seam_grip_class": "ungripped",
+          "oracle_kind": "unknown",
+          "oracle_strength": "unknown",
+          "observed_values": [],
+          "missing_discriminators": []
+        }
+      ]
+    }
+  ],
+  "unmatched_mutants": [],
+  "static_without_runtime_sample": []
+}
+```
+
+Field contract:
+
+- `schema_version` — currently `"0.1"`.
+- `status` — always `"advisory"`; this report does not block CI by default.
+- `metrics.static_seams_total` — count of seams imported from
+  `repo-exposure.json`.
+- `metrics.mutants_total` — count of runtime mutation records imported from the
+  supplied JSON.
+- `metrics.matched_total` — runtime records joined to a static seam.
+- `metrics.ambiguous_file_line_total` — runtime records whose normalized
+  file/line matched multiple static seams and were therefore not assigned to a
+  single seam.
+- `metrics.unmatched_mutants_total` — runtime records that could not be joined
+  by `seam_id` or file/line.
+- `metrics.static_without_runtime_total` — static seams with no definitive or
+  ambiguous runtime record in this import.
+- `metrics.runtime_outcome_counts` — counts keyed by normalized runtime outcome
+  label from the imported data.
+- `metrics.join_method_counts` — counts for `seam_id` and `file_line` joins.
+- `matches[].join_method` — `seam_id` when the runtime record carries a matching
+  seam/probe ID; otherwise `file_line` when normalized path and line match.
+- `matches[].static` — static seam evidence copied from `repo-exposure.json`:
+  seam identity, class, strongest visible oracle kind/strength, observed values,
+  and missing discriminators.
+- `matches[].runtime` — imported runtime mutation record: mutation ID when
+  available, seam/probe ID when available, location, operator, outcome, duration,
+  and test command.
+- `ambiguous_file_line_matches[]` — runtime records that matched multiple
+  static seams by normalized file/line. These records are intentionally not
+  assigned to `matches[]` without a stronger seam/probe ID.
+- `unmatched_mutants[]` — runtime records that did not match a static seam.
+- `static_without_runtime_sample[]` — capped sample of static seams with no
+  definitive or ambiguous runtime data in this import. Use
+  `static_without_runtime_total` for the full count.
+
 ## Stability Rules
 
 Output contract values are registered in `policy/output_contracts.txt`.

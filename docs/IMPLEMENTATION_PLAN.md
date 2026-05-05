@@ -824,14 +824,19 @@ Purpose: compare static predictions with real mutation results.
 
 Deliverables:
 
-- [ ] Import cargo-mutants output.
-- [ ] Match obvious static probe to mutant result.
-- [ ] Emit static class vs real outcome report.
-- [ ] Keep mutation-runtime language out of static findings.
+- [x] Import cargo-mutants output through `cargo xtask mutation-calibration`.
+- [x] Match static seam evidence to runtime records by `seam_id` first and
+  unambiguous normalized file/line second; report ambiguous file/line
+  candidates separately.
+- [x] Emit advisory static class vs runtime outcome reports at
+  `target/ripr/reports/mutation-calibration.{json,md}`.
+- [x] Keep mutation-runtime language out of static findings; runtime vocabulary
+  is confined to calibration/runtime reports.
 
 Acceptance:
 
-- [ ] `killed` and `survived` appear only in explicit calibration data.
+- [x] Runtime mutation vocabulary appears only in explicit calibration data and
+  static-language checks remain clean.
 
 ## PR 18: `persistent-cache-v1`
 
