@@ -33,6 +33,8 @@ The current alpha has the product shape in place:
 - an experimental LSP sidecar
 - extension-managed server provisioning
 - analysis modes that change indexing scope
+- repo seam inventory, test-grip evidence, agent seam packets, LSP seam code
+  actions, cached seam fact layers, and advisory cargo-mutants calibration
 
 Mode scope is intentionally cost-aware:
 
@@ -44,9 +46,10 @@ Mode scope is intentionally cost-aware:
 | `deep` | Whole workspace. |
 | `ready` | Whole workspace static preflight before separate mutation confirmation. |
 
-The main bottleneck is now analyzer truth. The existing syntax-first scanner is
-good enough for alpha feedback, but not enough for trustworthy diagnostics,
-hover evidence, or agent-ready test briefs.
+The main bottleneck is now operationalization. Campaign 5A closed the cache,
+precision, actionability, and calibration loop for repo seam evidence. The next
+line is repository configuration, SARIF/CI policy, and seam-native badge count
+mapping.
 
 ## Strategic Sequence
 
@@ -70,9 +73,14 @@ quality rails
 -> evidence findings
 -> LSP evidence loop
 -> agent context
+-> repo seam inventory and test grip
+-> seam fact cache
+-> related-test, value, and oracle-shape precision
+-> seam-native LSP actions
+-> runtime calibration import
 -> repository config
--> calibration
--> cache
+-> SARIF and CI policy
+-> seam-native badge counts
 ```
 
 The analyzer path is:
@@ -200,11 +208,12 @@ Nice later, not blocking:
 | 29 | `test-efficiency-duplicate-discriminator-v1` | Group tests with duplicate owner, activation, oracle, and sink evidence. | `0.4.x` |
 | 30 | `lsp-evidence-hover-actions` | Add finding-specific diagnostics, hover evidence, and code actions. | `0.5.0` |
 | 31 | `agent-context-v2` | Emit a compact test-writing brief from CLI and LSP. | `0.5.0` |
-| 32 | `ripr-config-v1` | Add topology, oracle, snapshot, mock, and external-boundary config. | `0.6.0` |
+| 32 | `ripr-config-v1` | Add topology, oracle, snapshot, mock, severity, suppression, and seam-diagnostic config. | `0.6.0` |
 | 33 | `suppression-v1` | Add reasoned, visible suppressions with optional expiry. | `0.6.0` |
 | 34 | `sarif-ci-policy` | Add SARIF and opt-in CI policy modes. | `0.6.0` |
-| 35 | `cargo-mutants-calibration-scaffold` | Import real mutation results for offline calibration. | `0.7.0` |
-| 36 | `persistent-cache-v1` | Cache stable facts after the fact model is worth caching. | `0.8.0` |
+| 35 | `seam-native-count-mapping` | Remap `ripr` and `ripr+` badge artifacts onto seam-native unresolved gap counts. | `0.6.x` |
+| done | `repo-seam-facts-cache` | Cache seam fact layers after the fact model became stable enough. | Campaign 5A |
+| done | `cargo-mutants-calibration-scaffold` | Import real mutation results for offline calibration. | Campaign 5A |
 
 ## Release Frames
 
@@ -277,11 +286,15 @@ Real repositories can teach ripr their testing idioms without hiding findings.
 
 ### `0.7.0` - Calibration
 
-Ship:
+Campaign 5A shipped the advisory scaffold:
 
 - `cargo-mutants` import
 - static-vs-real mutation reports
+
+Future calibration work can add:
+
 - family-specific precision measurements
+- explicit calibration fixtures or bounded runtime artifacts
 
 Success condition:
 
@@ -291,7 +304,7 @@ ripr can compare static exposure classes with real mutation results when explici
 
 ### `0.8.0` - Hot Sidecar
 
-Ship:
+Campaign 5A shipped the first seam fact cache. Future hot-sidecar work can add:
 
 - incremental in-memory store
 - file-hash invalidation

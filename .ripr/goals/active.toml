@@ -1,174 +1,46 @@
-id = "seam-evidence-usability-and-precision"
-title = "Seam Evidence Usability and Precision"
+id = "operationalization"
+title = "Operationalization"
 status = "active"
 
-# This is Campaign 5A in `docs/IMPLEMENTATION_CAMPAIGNS.md`. Campaign 4B
-# (`repo-seam-inventory-test-grip`) closed in #252 leaving the seam
-# evidence loop in place: RepoSeam model, repo seam inventory, test-grip
-# evidence, SeamGripClass classification, repo exposure report, agent
-# seam packets, LSP seam diagnostics, seam evidence hover, and agent
-# dispatch docs.
+# This is Campaign 5B in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+# Campaign 5A (`seam-evidence-usability-and-precision`) closed after the
+# following chain landed:
 #
-# Campaign 5 was originally framed as `adoption-and-calibration`
-# (cache + calibration + config + ci/sarif). That framing was too
-# operational — it skipped the precision and actionability work that
-# makes seam evidence useful every day. Campaign 5A reframes the queue
-# around four product axes: fast (cache), precise (related-test,
-# value, oracle-shape), actionable (agent packets v2, LSP code
-# actions), and calibrated (cargo-mutants). Operationalization items
-# (config, ci/sarif) move to Campaign 5B once the signal is fast and
-# precise.
+# - #255 cache/repo-seam-facts-v1
+# - #310 analysis/related-test-precision-v1
+# - #313 analysis/value-extraction-v2
+# - #314 analysis/oracle-shape-v2
+# - #315 context/agent-seam-packets-v2
+# - #316 lsp/seam-code-actions-v1
+# - #327 calibration/cargo-mutants-v1
 #
-# Cache serialization policy: do not use bincode. If binary
-# serialization is needed, use postcard. Keep cache serialization
-# behind a codec boundary. Never cache rendered JSON, Markdown,
-# diagnostics, hover, or packet strings — fact layers only.
+# The 5A closeout is intentionally docs/manifest only. It does not change
+# analyzer behavior, output schemas, calibration behavior, or LSP behavior.
 
 objective = """
-Make repo seam evidence fast, precise, and directly actionable for
-developers and coding agents, without adopting mutation-runtime
-language in static output. Cache the seam fact layers so seam
-diagnostics can be considered default-on without multi-second editor
-latency. Sharpen related-test ranking, activation/value extraction,
-and oracle-shape detection. Surface seam packets and assertions
-through editor code actions. Calibrate static SeamGripClass
-predictions against real cargo-mutants outcomes inside calibration
-reports only.
+Make ripr deployable in real repositories. Repository config should govern
+analysis mode, oracle policy, severity, suppressions, and seam-diagnostic
+defaults. SARIF and CI policy modes should consume that config and remain
+opt-in. Badge counts should eventually remap from legacy finding counts onto
+seam-native unresolved gap counts without changing static audit vocabulary.
 """
 
 end_state = [
-  "seam fact layers cache cleanly so the cold path still works and the warm path avoids full inventory when inputs are unchanged",
-  "cache invalidates on source/config/intent/suppression changes; repo exposure report and LSP diagnostics consume the same cached fact source",
-  "no rendered outputs are cached; cache serialization stays behind a codec boundary; binary serialization, when introduced, uses postcard (never bincode)",
-  "related-test fanout is reduced and ranked; related tests carry relation_reason and relation_confidence; high-fanout files show fewer irrelevant top related tests; related_tests_total remains available",
-  "activation/value evidence detects common Rust test data patterns (let bindings, constants, builder methods, table-driven cases, rstest cases, enum variants, Option/Result constructors, fixture factories); activation_unknown count falls on dogfood repo without new false positives against negative fixtures",
-  "oracle-shape evidence recognizes assert_matches exact variants, field assertions, whole-object equality, snapshot calls with visible field names, mock expectations, and event/state/persistence assertions; is_err-only stays weak; exact variant assertion stays strong",
-  "agent seam packet v2 carries recommended test name, recommended test file, nearest strong test to imitate, candidate input values, assertion shape with example, patterns to imitate, patterns to avoid, and confidence — enough to write the targeted test directly",
-  "LSP code actions surface 'Copy seam packet', 'Copy suggested assertion', 'Open related test', and 'Refresh ripr analysis' for diagnostics that carry seam_id; no automatic edits or generated tests",
-  "calibration scaffold compares static SeamGripClass against cargo-mutants outcomes per seam_id, seam_kind, oracle kind/strength, observed values, missing discriminator, mutation operator, runtime outcome, duration, and test command",
-  "calibration output is advisory and lives in calibration/runtime reports; static reports keep the audit vocabulary (test grip, missing discriminator, static evidence, runtime confirmation)"
-]
-
-[[work_item]]
-id = "cache/repo-seam-facts-v1"
-status = "done"
-branch = "cache/repo-seam-facts-v1"
-stackable = false
-requires_human_merge = true
-acceptance = "fact-layer cache only (FileFacts, owner index, RepoSeam facts, TestGripEvidence, ClassifiedSeam summaries); never cache rendered JSON, Markdown, diagnostics, hover, or packet strings; cold path still works; warm path avoids full repo seam walk when inputs are unchanged; cache invalidates on source/config/intent/suppression changes; keyed by schema version, ripr analyzer version, workspace root canonical path hash, file path + content hash, cfg/features hash, config hash, test intent hash, suppressions hash; repo exposure report and LSP diagnostics consume the same cached fact source; serialization stays behind a codec boundary; binary serialization, if introduced, uses postcard (never bincode); no SQLite unless profiling proves the need; no default-on seam diagnostics in the same PR; no calibration in the same PR"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr"
-]
-
-[[work_item]]
-id = "analysis/related-test-precision-v1"
-status = "done"
-branch = "analysis/related-test-precision-v1"
-stackable = false
-requires_human_merge = true
-acceptance = "related tests carry relation_reason (direct_owner_call, same_module, same_test_file, owner_named_test, import_path_affinity, assertion_target_affinity, fixture_owner_affinity) and relation_confidence (high, medium, low, opaque); related tests in repo exposure report, agent packets, and LSP hover are ordered by confidence then reason; high-fanout repo seams show fewer irrelevant top related tests; related_tests_total remains available; existing per-seam caps remain; agent packet uses highest-confidence related tests first; goldens update only where expected; no HIR; no full call graph; no value extraction expansion in this PR"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask goldens check"
-]
-
-[[work_item]]
-id = "analysis/value-extraction-v2"
-status = "done"
-branch = "analysis/value-extraction-v2"
-stackable = false
-requires_human_merge = true
-acceptance = "value extraction covers simple let bindings, constants in same test module, builder methods, table-driven loops, rstest cases, enum variants, Option/Result constructors, and fixture factory overrides; activation_unknown count decreases on dogfood repo; boundary seams detect more observed values; missing discriminator hypotheses become more specific; negative fixtures prevent string-literal and unrelated-token false positives; no HIR; no proc-macro expansion; no symbolic execution"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask goldens check"
-]
-
-[[work_item]]
-id = "analysis/oracle-shape-v2"
-status = "done"
-branch = "analysis/oracle-shape-v2"
-stackable = false
-requires_human_merge = true
-acceptance = "oracle-shape detection recognizes assert_matches exact variants, field assertions, whole-object equality, snapshot calls with visible field names, mock expectations, event/state/persistence assertions, and simple custom assertion helpers; is_err-only remains weak; exact error variant assertion is strong; field assertion is recognized for field_construction seams; whole-object equality can discriminate field/return seams; mock/event/state oracle can observe side-effect seams; no learned oracle priors; no mutation execution; no deep helper body analysis"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask goldens check"
-]
-
-[[work_item]]
-id = "context/agent-seam-packets-v2"
-status = "done"
-branch = "context/agent-seam-packets-v2"
-stackable = false
-requires_human_merge = true
-acceptance = "agent packet v2 adds recommended test name, recommended test file, nearest strong test to imitate, candidate input values with reasons, assertion shape kind + example, patterns to imitate, patterns to avoid (with reason), and confidence; preserves write_targeted_test and inspect_static_limitation tasks; uses ranked related tests from analysis/related-test-precision-v1 when available; schema version bumps to 0.3 in docs/OUTPUT_SCHEMA.md; no automatic edits; no generated test skeleton file; no LSP code action in this PR"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-output-contracts"
-]
-
-[[work_item]]
-id = "lsp/seam-code-actions-v1"
-status = "done"
-branch = "lsp/seam-code-actions-v1"
-stackable = false
-requires_human_merge = true
-acceptance = "diagnostics carrying seam_id surface 'Copy seam packet', 'Copy suggested assertion' (only when an assertion exists), 'Open related test' (only when a related-test location exists), and 'Refresh ripr analysis'; copy seam packet uses the existing agent_seam_packets surface; copy suggested assertion uses the agent_seam_packets_v2 assertion shape when available, agent_seam_packets v1 otherwise; refresh continues to work; no automatic edits; no generated tests; no CodeLens; no in-memory overlays; preserves pre-4B Finding code actions"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr"
-]
-
-[[work_item]]
-id = "calibration/cargo-mutants-v1"
-status = "done"
-branch = "calibration/cargo-mutants-v1"
-stackable = false
-requires_human_merge = true
-acceptance = "scaffold for comparing static seam classes against cargo-mutants outcomes; cargo-mutants JSON/output can be imported, including span-based generated mutant locations; static class is joined to mutation outcome by seam/probe mapping or unambiguous file/line where possible; ambiguous file/line candidates and unmatched mutants are reported separately; tracks seam_id, seam_kind, seam_grip_class, oracle kind/strength, observed values, missing discriminator, mutation operator, runtime outcome, duration, and test command; outputs target/ripr/reports/mutation-calibration.{json,md}; advisory only; runtime mutation vocabulary appears only in calibration/runtime reports; static reports continue using the audit vocabulary (test grip, missing discriminator, static evidence, runtime confirmation); cargo xtask check-static-language stays clean"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-static-language"
-]
-
-[[work_item]]
-id = "campaign/seam-evidence-usability-closeout"
-status = "ready"
-branch = "campaign/seam-evidence-usability-closeout"
-stackable = false
-requires_human_merge = true
-acceptance = "close Campaign 5A after cache, related-test precision, value extraction, oracle-shape v2, agent seam packets v2, LSP seam code actions, and cargo-mutants calibration are all landed; update README, roadmap, implementation plan, campaign docs, capability matrix, metrics, traceability, and changelog; move config/ripr-config-v1 and ci/sarif-ci-policy into Campaign 5B / operationalization; no analyzer behavior changes"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-campaign",
-  "cargo xtask check-capabilities"
+  "ripr.toml configures analysis mode, oracle policy, severity mapping, suppressions, and seam diagnostics defaults across CLI, reports, and LSP",
+  "config defaults are conservative and preserve existing CLI flags and output schemas unless explicitly versioned",
+  "SARIF output uses configured severity and suppression policy and is advisory by default",
+  "CI policy modes are opt-in, baseline-aware, and do not block by default",
+  "badge counts can be remapped onto seam-native unresolved gap counts after config and SARIF semantics are stable",
+  "runtime mutation vocabulary remains confined to calibration/runtime reports; static reports keep audit vocabulary"
 ]
 
 [[work_item]]
 id = "config/ripr-config-v1"
-status = "blocked"
+status = "ready"
 branch = "config/ripr-config-v1"
 stackable = false
 requires_human_merge = true
-blocked_by = ["cache/repo-seam-facts-v1", "analysis/oracle-shape-v2"]
-blocked_reason = "config defaults (especially seam-diagnostics) should account for the cached warm-path cost; oracle and severity policy should not be encoded as defaults until oracle-shape-v2 settles; analyzer conventions should also stabilize first. Lives in Campaign 5B / operationalization."
-acceptance = "ripr-config-v1 covers analysis mode, oracle policy, severity, and seam-diagnostics defaults; configured rules apply across CLI, LSP, and reports; existing flags continue to work; documented in docs/OUTPUT_SCHEMA.md and docs/CAPABILITY_MATRIX.md"
+acceptance = "ripr-config-v1 covers analysis mode, oracle policy, severity mapping, suppressions, and seam-diagnostics defaults; configured rules apply across CLI, LSP, and reports; existing flags continue to work; defaults are conservative; documented in docs/OUTPUT_SCHEMA.md and docs/CAPABILITY_MATRIX.md; no SARIF policy in this PR"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
@@ -183,7 +55,7 @@ branch = "ci/sarif-ci-policy"
 stackable = false
 requires_human_merge = true
 blocked_by = ["config/ripr-config-v1"]
-blocked_reason = "SARIF and policy modes should consume ripr-config-v1 severity and suppression policy. Lives in Campaign 5B / operationalization."
+blocked_reason = "SARIF and policy modes should consume ripr-config-v1 severity and suppression policy."
 acceptance = "ripr emits SARIF for seam diagnostics and Findings; opt-in baseline-aware blocking policy compares new unresolved gaps against a baseline; existing JSON schema is unchanged; documented in docs/OUTPUT_SCHEMA.md and docs/CI.md"
 commands = [
   "cargo xtask shape",
@@ -191,4 +63,20 @@ commands = [
   "cargo xtask check-pr",
   "cargo xtask check-output-contracts",
   "cargo xtask check-workflows"
+]
+
+[[work_item]]
+id = "badge/seam-native-count-mapping"
+status = "blocked"
+branch = "badge/seam-native-count-mapping"
+stackable = false
+requires_human_merge = true
+blocked_by = ["config/ripr-config-v1"]
+blocked_reason = "Badge count semantics should be decided after config establishes severity, suppression, and seam diagnostic policy."
+acceptance = "ripr and ripr+ badge artifacts map to seam-native unresolved gap counts; legacy finding count behavior remains documented or versioned; badge docs and endpoint artifacts are updated together"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-output-contracts"
 ]
