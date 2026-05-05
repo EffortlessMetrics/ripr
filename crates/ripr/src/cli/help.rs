@@ -1,6 +1,4 @@
-pub(super) fn print_help() {
-    println!(
-        r#"ripr — static RIPR mutation exposure analysis for Rust
+const HELP: &str = r#"ripr — static RIPR mutation exposure analysis for Rust
 
 Usage:
   ripr check [--base origin/main] [--diff PATH] [--mode draft] [--format human|json|github]
@@ -19,13 +17,9 @@ Quick start:
   ripr check --diff crates/ripr/examples/sample/example.diff
   ripr check --diff crates/ripr/examples/sample/example.diff --json
   ripr explain --diff crates/ripr/examples/sample/example.diff <finding-id>
-"#
-    );
-}
+"#;
 
-pub(super) fn print_check_help() {
-    println!(
-        r#"Usage: ripr check [OPTIONS]
+const CHECK_HELP: &str = r#"Usage: ripr check [OPTIONS]
 
 Options:
   --root PATH              Workspace root. Defaults to current directory.
@@ -50,39 +44,75 @@ Examples:
   ripr check --base HEAD~1
   ripr check --diff crates/ripr/examples/sample/example.diff --format github
   ripr check --mode ready --json
-"#
-    );
-}
+"#;
 
-pub(super) fn print_explain_help() {
-    println!("Usage: ripr explain [--root PATH] [--base REV|--diff PATH] <finding-id|file:line>");
-}
-
-pub(super) fn print_context_help() {
-    println!(
-        "Usage: ripr context [--root PATH] [--base REV|--diff PATH] --at <finding-id|file:line> [--max-related-tests N] [--json]"
-    );
-}
-
-pub(super) fn print_doctor_help() {
-    println!(
-        r#"Usage: ripr doctor [--root PATH]
+const EXPLAIN_HELP: &str =
+    "Usage: ripr explain [--root PATH] [--base REV|--diff PATH] <finding-id|file:line>";
+const CONTEXT_HELP: &str = "Usage: ripr context [--root PATH] [--base REV|--diff PATH] --at <finding-id|file:line> [--max-related-tests N] [--json]";
+const DOCTOR_HELP: &str = r#"Usage: ripr doctor [--root PATH]
 
 Checks:
   - root directory exists
   - Cargo.toml is present at the selected root
   - git, cargo, and rustc are available
-"#
-    );
-}
-
-pub(super) fn print_lsp_help() {
-    println!(
-        r#"Usage: ripr lsp [--stdio] [--version]
+"#;
+const LSP_HELP: &str = r#"Usage: ripr lsp [--stdio] [--version]
 
 Options:
   --stdio       Run the language server over stdio LSP framing. This is the default.
   --version     Print the language server version.
-"#
-    );
+"#;
+
+pub(super) fn print_help() {
+    println!("{HELP}");
+}
+
+pub(super) fn print_check_help() {
+    println!("{CHECK_HELP}");
+}
+
+pub(super) fn print_explain_help() {
+    println!("{EXPLAIN_HELP}");
+}
+
+pub(super) fn print_context_help() {
+    println!("{CONTEXT_HELP}");
+}
+
+pub(super) fn print_doctor_help() {
+    println!("{DOCTOR_HELP}");
+}
+
+pub(super) fn print_lsp_help() {
+    println!("{LSP_HELP}");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CHECK_HELP, CONTEXT_HELP, DOCTOR_HELP, EXPLAIN_HELP, HELP, LSP_HELP};
+
+    #[test]
+    fn top_level_help_mentions_supported_commands() {
+        assert!(HELP.contains("ripr check"));
+        assert!(HELP.contains("ripr explain"));
+        assert!(HELP.contains("ripr context"));
+        assert!(HELP.contains("ripr doctor"));
+    }
+
+    #[test]
+    fn check_help_mentions_repo_badge_formats_and_examples() {
+        assert!(CHECK_HELP.contains("repo-badge-plus-shields"));
+        assert!(CHECK_HELP.contains("test-efficiency-report"));
+        assert!(CHECK_HELP.contains("--mode ready --json"));
+    }
+
+    #[test]
+    fn command_specific_help_usage_lines_are_stable() {
+        assert!(EXPLAIN_HELP.starts_with("Usage: ripr explain"));
+        assert!(CONTEXT_HELP.starts_with("Usage: ripr context"));
+        assert!(DOCTOR_HELP.starts_with("Usage: ripr doctor [--root PATH]"));
+        assert!(DOCTOR_HELP.contains("Cargo.toml"));
+        assert!(LSP_HELP.contains("--stdio"));
+        assert!(LSP_HELP.contains("--version"));
+    }
 }
