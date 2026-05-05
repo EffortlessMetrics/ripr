@@ -514,7 +514,7 @@ status = "alpha"
 spec = "RIPR-SPEC-0005"
 evidence = [
   "crates/ripr/src/output/repo_exposure.rs",
-  "schema 0.1 with all 11 SeamGripClass metric buckets",
+  "schema 0.2 with all 11 SeamGripClass metric buckets",
   "cargo xtask repo-exposure-report",
   "target/ripr/reports/repo-exposure.json and repo-exposure.md",
   "OUTPUT_SCHEMA.md Repo Exposure Report section"
@@ -591,3 +591,19 @@ evidence = [
 fixtures = []
 next = "calibration/cargo-mutants-v1"
 metric = "seam diagnostics expose packet/assertion/test actions without automatic edits"
+
+[[capability]]
+id = "cargo_mutants_calibration"
+name = "cargo-mutants calibration"
+status = "alpha"
+spec = "RIPR-SPEC-0006"
+evidence = [
+  "docs/specs/RIPR-SPEC-0006-mutation-calibration.md",
+  "cargo xtask mutation-calibration",
+  "target/ripr/reports/mutation-calibration.json",
+  "target/ripr/reports/mutation-calibration.md",
+  "xtask mutation-calibration importer and join unit tests"
+]
+fixtures = []
+next = "campaign/seam-evidence-usability-closeout"
+metric = "static seam classes joined to imported runtime mutation outcomes by seam_id or file_line"

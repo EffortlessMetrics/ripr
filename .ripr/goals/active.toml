@@ -133,7 +133,7 @@ commands = [
 
 [[work_item]]
 id = "calibration/cargo-mutants-v1"
-status = "ready"
+status = "done"
 branch = "calibration/cargo-mutants-v1"
 stackable = false
 requires_human_merge = true
@@ -143,6 +143,21 @@ commands = [
   "cargo xtask fix-pr",
   "cargo xtask check-pr",
   "cargo xtask check-static-language"
+]
+
+[[work_item]]
+id = "campaign/seam-evidence-usability-closeout"
+status = "ready"
+branch = "campaign/seam-evidence-usability-closeout"
+stackable = false
+requires_human_merge = true
+acceptance = "close Campaign 5A after cache, related-test precision, value extraction, oracle-shape v2, agent seam packets v2, LSP seam code actions, and cargo-mutants calibration are all landed; update README, roadmap, implementation plan, campaign docs, capability matrix, metrics, traceability, and changelog; move config/ripr-config-v1 and ci/sarif-ci-policy into Campaign 5B / operationalization; no analyzer behavior changes"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-campaign",
+  "cargo xtask check-capabilities"
 ]
 
 [[work_item]]

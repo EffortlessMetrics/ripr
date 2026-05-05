@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
 use std::time::Instant;
 
+use serde_json::Value;
+
 #[derive(Debug)]
 struct GlobAllow {
     glob: String,
@@ -295,6 +297,54 @@ struct ReceiptRecord {
     reports: Vec<String>,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct MutationCalibrationArgs {
+    root: String,
+    mutants_json: PathBuf,
+    repo_exposure_json: Option<PathBuf>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct StaticSeamRecord {
+    seam_id: String,
+    seam_kind: String,
+    file: String,
+    line: usize,
+    seam_grip_class: String,
+    oracle_kind: String,
+    oracle_strength: String,
+    observed_values: Vec<String>,
+    missing_discriminators: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct MutationOutcomeRecord {
+    mutant_id: Option<String>,
+    seam_id: Option<String>,
+    file: Option<String>,
+    line: Option<usize>,
+    mutation_operator: String,
+    runtime_outcome: String,
+    duration: Option<String>,
+    test_command: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct MutationCalibrationReport {
+    static_seams_total: usize,
+    mutants_total: usize,
+    matched: Vec<MutationCalibrationMatch>,
+    unmatched_mutants: Vec<MutationOutcomeRecord>,
+    static_without_runtime: Vec<StaticSeamRecord>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct MutationCalibrationMatch {
+    join_method: &'static str,
+    seam: StaticSeamRecord,
+    mutation: MutationOutcomeRecord,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct CriticFinding {
     id: &'static str,
@@ -394,6 +444,7 @@ fn main() {
         Some("repo-seam-inventory") => repo_seam_inventory(),
         Some("repo-exposure-report") => repo_exposure_report(),
         Some("agent-seam-packets") => agent_seam_packets_report(args.get(2)),
+        Some("mutation-calibration") => mutation_calibration(&args[2..]),
         Some("update-badge-endpoints") => update_badge_endpoints(),
         Some("check-badge-endpoints") => check_badge_endpoints(),
         Some("dogfood") => dogfood(),
@@ -579,6 +630,7 @@ fn known_commands() -> Vec<&'static str> {
         "repo-seam-inventory",
         "repo-exposure-report",
         "agent-seam-packets [root]",
+        "mutation-calibration [root] --mutants-json <path>",
         "update-badge-endpoints",
         "check-badge-endpoints",
         "dogfood",
@@ -5524,6 +5576,824 @@ fn agent_seam_packets_report(root: Option<&String>) -> Result<(), String> {
     write_report("agent-seam-packets.json", &json_output)
 }
 
+fn mutation_calibration(args: &[String]) -> Result<(), String> {
+    let parsed = parse_mutation_calibration_args(args)?;
+    let repo_exposure_json = match parsed.repo_exposure_json.as_ref() {
+        Some(path) => read_text_lossy(path)?,
+        None => {
+            let json_args =
+                repo_seam_inventory_command_args_for_root("repo-exposure-json", &parsed.root);
+            let json_output = run_output_owned("cargo", &json_args)?;
+            write_report("repo-exposure.json", &json_output)?;
+            json_output
+        }
+    };
+    let mutants_json = read_mutation_input_json(&parsed.mutants_json)?;
+    let static_seams = parse_repo_exposure_static_seams(&repo_exposure_json)?;
+    let runtime_mutants = parse_mutation_outcomes_json(&mutants_json)?;
+    let report = build_mutation_calibration_report(static_seams, runtime_mutants);
+    write_report(
+        "mutation-calibration.json",
+        &mutation_calibration_report_json(&report)?,
+    )?;
+    write_report(
+        "mutation-calibration.md",
+        &mutation_calibration_report_markdown(&report),
+    )
+}
+
+fn parse_mutation_calibration_args(args: &[String]) -> Result<MutationCalibrationArgs, String> {
+    let mut root: Option<String> = None;
+    let mut mutants_json: Option<PathBuf> = None;
+    let mut repo_exposure_json: Option<PathBuf> = None;
+    let mut index = 0;
+
+    while index < args.len() {
+        let arg = args[index].as_str();
+        match arg {
+            "--mutants-json" | "--cargo-mutants-json" | "--input" => {
+                index += 1;
+                let Some(path) = args.get(index) else {
+                    return Err(format!(
+                        "missing value for `{arg}`\n{}",
+                        mutation_calibration_usage()
+                    ));
+                };
+                mutants_json = Some(PathBuf::from(path));
+            }
+            "--repo-exposure-json" | "--static-json" => {
+                index += 1;
+                let Some(path) = args.get(index) else {
+                    return Err(format!(
+                        "missing value for `{arg}`\n{}",
+                        mutation_calibration_usage()
+                    ));
+                };
+                repo_exposure_json = Some(PathBuf::from(path));
+            }
+            "--help" | "-h" => return Err(mutation_calibration_usage()),
+            flag if flag.starts_with('-') => {
+                return Err(format!(
+                    "unknown mutation-calibration option `{flag}`\n{}",
+                    mutation_calibration_usage()
+                ));
+            }
+            positional => {
+                if root.is_some() {
+                    return Err(format!(
+                        "unexpected extra positional argument `{positional}`\n{}",
+                        mutation_calibration_usage()
+                    ));
+                }
+                root = Some(positional.to_string());
+            }
+        }
+        index += 1;
+    }
+
+    let Some(mutants_json) = mutants_json else {
+        return Err(format!(
+            "mutation-calibration requires `--mutants-json <path>`\n{}",
+            mutation_calibration_usage()
+        ));
+    };
+
+    Ok(MutationCalibrationArgs {
+        root: root.unwrap_or_else(|| ".".to_string()),
+        mutants_json,
+        repo_exposure_json,
+    })
+}
+
+fn mutation_calibration_usage() -> String {
+    "usage: cargo xtask mutation-calibration [root] --mutants-json <path> [--repo-exposure-json <path>]"
+        .to_string()
+}
+
+fn read_mutation_input_json(path: &Path) -> Result<String, String> {
+    if path.is_dir() {
+        let outcomes_path = path.join("outcomes.json");
+        let mutants_path = path.join("mutants.json");
+        let outcomes_exists = outcomes_path.exists();
+        let mutants_exists = mutants_path.exists();
+
+        if outcomes_exists && mutants_exists {
+            let outcomes = read_json_value(&outcomes_path)?;
+            let mutants = read_json_value(&mutants_path)?;
+            return serde_json::to_string(&Value::Array(vec![outcomes, mutants]))
+                .map_err(|err| format!("failed to combine cargo-mutants directory JSON: {err}"));
+        }
+
+        if outcomes_exists {
+            return read_text_lossy(&outcomes_path);
+        }
+        if mutants_exists {
+            return read_text_lossy(&mutants_path);
+        }
+        return Err(format!(
+            "{} is a directory but contains neither outcomes.json nor mutants.json",
+            normalize_path(path)
+        ));
+    }
+    read_text_lossy(path)
+}
+
+fn read_json_value(path: &Path) -> Result<Value, String> {
+    let text = read_text_lossy(path)?;
+    serde_json::from_str(&text)
+        .map_err(|err| format!("failed to parse JSON from {}: {err}", normalize_path(path)))
+}
+
+fn parse_repo_exposure_static_seams(json: &str) -> Result<Vec<StaticSeamRecord>, String> {
+    let value: Value = serde_json::from_str(json)
+        .map_err(|err| format!("failed to parse repo exposure JSON: {err}"))?;
+    let seams = value
+        .get("seams")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "repo exposure JSON is missing `seams` array".to_string())?;
+
+    let mut records = Vec::new();
+    for seam in seams {
+        let seam_id = required_json_string(seam, "seam_id")?;
+        let seam_kind = required_json_string(seam, "kind")?;
+        let file = normalize_report_path(&required_json_string(seam, "file")?);
+        let line = required_json_usize(seam, "line")?;
+        let seam_grip_class = required_json_string(seam, "grip_class")?;
+        let (oracle_kind, oracle_strength) = strongest_related_oracle(seam);
+        records.push(StaticSeamRecord {
+            seam_id,
+            seam_kind,
+            file,
+            line,
+            seam_grip_class,
+            oracle_kind,
+            oracle_strength,
+            observed_values: string_array_field(seam, "observed_values"),
+            missing_discriminators: missing_discriminator_strings(seam),
+        });
+    }
+    Ok(records)
+}
+
+fn required_json_string(value: &Value, key: &str) -> Result<String, String> {
+    value
+        .get(key)
+        .and_then(json_scalar_as_string)
+        .ok_or_else(|| format!("repo exposure seam is missing string field `{key}`"))
+}
+
+fn required_json_usize(value: &Value, key: &str) -> Result<usize, String> {
+    value
+        .get(key)
+        .and_then(json_scalar_as_usize)
+        .ok_or_else(|| format!("repo exposure seam is missing numeric field `{key}`"))
+}
+
+fn strongest_related_oracle(seam: &Value) -> (String, String) {
+    let mut best_kind = "unknown".to_string();
+    let mut best_strength = "unknown".to_string();
+    let mut best_rank = 0;
+
+    if let Some(related) = seam.get("related_tests").and_then(Value::as_array) {
+        for test in related {
+            let strength = test
+                .get("oracle_strength")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
+            let rank = oracle_strength_rank(strength);
+            if rank > best_rank {
+                best_rank = rank;
+                best_strength = strength.to_string();
+                best_kind = test
+                    .get("oracle_kind")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown")
+                    .to_string();
+            }
+        }
+    }
+
+    (best_kind, best_strength)
+}
+
+fn oracle_strength_rank(strength: &str) -> u8 {
+    match strength {
+        "strong" => 5,
+        "medium" => 4,
+        "weak" => 3,
+        "smoke" => 2,
+        "none" => 1,
+        _ => 0,
+    }
+}
+
+fn string_array_field(value: &Value, key: &str) -> Vec<String> {
+    value
+        .get(key)
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(json_scalar_as_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
+fn missing_discriminator_strings(seam: &Value) -> Vec<String> {
+    seam.get("missing_discriminators")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| {
+                    if let Some(value) = json_scalar_as_string(item) {
+                        return Some(value);
+                    }
+                    let value = item.get("value").and_then(json_scalar_as_string)?;
+                    match item.get("reason").and_then(json_scalar_as_string) {
+                        Some(reason) if !reason.is_empty() => Some(format!("{value} ({reason})")),
+                        _ => Some(value),
+                    }
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
+fn parse_mutation_outcomes_json(json: &str) -> Result<Vec<MutationOutcomeRecord>, String> {
+    let value: Value = serde_json::from_str(json)
+        .map_err(|err| format!("failed to parse cargo-mutants JSON: {err}"))?;
+    let mut records = Vec::new();
+    collect_mutation_outcome_records(&value, &mut records);
+    let mut records = merge_mutation_outcome_records(records);
+    records.sort_by(|left, right| {
+        left.seam_id
+            .cmp(&right.seam_id)
+            .then(left.file.cmp(&right.file))
+            .then(left.line.cmp(&right.line))
+            .then(left.mutation_operator.cmp(&right.mutation_operator))
+            .then(left.runtime_outcome.cmp(&right.runtime_outcome))
+    });
+    Ok(records)
+}
+
+fn collect_mutation_outcome_records(value: &Value, records: &mut Vec<MutationOutcomeRecord>) {
+    match value {
+        Value::Array(items) => {
+            for item in items {
+                collect_mutation_outcome_records(item, records);
+            }
+        }
+        Value::Object(object) => {
+            for key in [
+                "outcomes",
+                "mutants",
+                "results",
+                "mutations",
+                "mutation_results",
+            ] {
+                if let Some(items) = object.get(key).and_then(Value::as_array) {
+                    for item in items {
+                        collect_mutation_outcome_records(item, records);
+                    }
+                }
+            }
+            if let Some(record) = mutation_outcome_record_from_object(object) {
+                records.push(record);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn mutation_outcome_record_from_object(
+    object: &serde_json::Map<String, Value>,
+) -> Option<MutationOutcomeRecord> {
+    let mutant = nested_object(object, "mutant");
+    let mutation = nested_object(object, "mutation");
+    let location = nested_object(object, "location");
+
+    let mutant_id = string_field_any(object, &["id", "mutant_id", "mutantId"]).or_else(|| {
+        mutant.and_then(|nested| string_field_any(nested, &["id", "mutant_id", "mutantId"]))
+    });
+    let seam_id = string_field_any(object, &["seam_id", "seamId", "probe_id", "probeId"])
+        .or_else(|| {
+            mutant.and_then(|nested| {
+                string_field_any(nested, &["seam_id", "seamId", "probe_id", "probeId"])
+            })
+        })
+        .or_else(|| {
+            mutation.and_then(|nested| {
+                string_field_any(nested, &["seam_id", "seamId", "probe_id", "probeId"])
+            })
+        });
+    let file = string_field_any(
+        object,
+        &["file", "path", "source_file", "src_file", "filename"],
+    )
+    .or_else(|| {
+        mutant.and_then(|nested| {
+            string_field_any(
+                nested,
+                &["file", "path", "source_file", "src_file", "filename"],
+            )
+        })
+    })
+    .or_else(|| {
+        mutation.and_then(|nested| {
+            string_field_any(
+                nested,
+                &["file", "path", "source_file", "src_file", "filename"],
+            )
+        })
+    })
+    .or_else(|| {
+        location.and_then(|nested| {
+            string_field_any(
+                nested,
+                &["file", "path", "source_file", "src_file", "filename"],
+            )
+        })
+    })
+    .map(|path| normalize_report_path(&path));
+    let line = usize_field_any(object, &["line", "line_start", "start_line", "startLine"])
+        .or_else(|| {
+            mutant.and_then(|nested| {
+                usize_field_any(nested, &["line", "line_start", "start_line", "startLine"])
+            })
+        })
+        .or_else(|| {
+            mutation.and_then(|nested| {
+                usize_field_any(nested, &["line", "line_start", "start_line", "startLine"])
+            })
+        })
+        .or_else(|| {
+            location.and_then(|nested| {
+                usize_field_any(nested, &["line", "line_start", "start_line", "startLine"])
+            })
+        });
+    let mutation_operator = string_field_any(
+        object,
+        &[
+            "operator",
+            "mutation_operator",
+            "mutator",
+            "mutation",
+            "description",
+            "replacement",
+            "name",
+        ],
+    )
+    .or_else(|| {
+        mutant.and_then(|nested| {
+            string_field_any(
+                nested,
+                &[
+                    "operator",
+                    "mutation_operator",
+                    "mutator",
+                    "mutation",
+                    "description",
+                    "replacement",
+                    "name",
+                ],
+            )
+        })
+    })
+    .or_else(|| {
+        mutation.and_then(|nested| {
+            string_field_any(
+                nested,
+                &[
+                    "operator",
+                    "mutation_operator",
+                    "mutator",
+                    "mutation",
+                    "description",
+                    "replacement",
+                    "name",
+                ],
+            )
+        })
+    })
+    .unwrap_or_else(|| "unknown".to_string());
+    let runtime_outcome =
+        string_field_any(object, &["outcome", "status", "result", "summary", "state"])
+            .unwrap_or_else(|| "unknown".to_string());
+    let duration = string_field_any(
+        object,
+        &[
+            "duration_ms",
+            "durationMillis",
+            "duration",
+            "elapsed_ms",
+            "elapsed",
+        ],
+    );
+    let test_command = string_field_any(
+        object,
+        &["test_command", "testCommand", "command", "cmd", "test_cmd"],
+    );
+
+    let has_identity = mutant_id.is_some() || seam_id.is_some() || file.is_some() || line.is_some();
+    let has_runtime_detail = runtime_outcome != "unknown"
+        || mutation_operator != "unknown"
+        || duration.is_some()
+        || test_command.is_some();
+    if !has_identity || !has_runtime_detail {
+        return None;
+    }
+
+    Some(MutationOutcomeRecord {
+        mutant_id,
+        seam_id,
+        file,
+        line,
+        mutation_operator,
+        runtime_outcome,
+        duration,
+        test_command,
+    })
+}
+
+fn nested_object<'a>(
+    object: &'a serde_json::Map<String, Value>,
+    key: &str,
+) -> Option<&'a serde_json::Map<String, Value>> {
+    object.get(key).and_then(Value::as_object)
+}
+
+fn string_field_any(object: &serde_json::Map<String, Value>, keys: &[&str]) -> Option<String> {
+    keys.iter()
+        .find_map(|key| object.get(*key).and_then(json_scalar_as_string))
+        .filter(|value| !value.trim().is_empty())
+}
+
+fn usize_field_any(object: &serde_json::Map<String, Value>, keys: &[&str]) -> Option<usize> {
+    keys.iter()
+        .find_map(|key| object.get(*key).and_then(json_scalar_as_usize))
+}
+
+fn json_scalar_as_string(value: &Value) -> Option<String> {
+    match value {
+        Value::String(text) => Some(text.clone()),
+        Value::Number(number) => Some(number.to_string()),
+        Value::Bool(flag) => Some(flag.to_string()),
+        _ => None,
+    }
+}
+
+fn json_scalar_as_usize(value: &Value) -> Option<usize> {
+    match value {
+        Value::Number(number) => number
+            .as_u64()
+            .and_then(|value| usize::try_from(value).ok()),
+        Value::String(text) => text.trim().parse::<usize>().ok(),
+        _ => None,
+    }
+}
+
+fn build_mutation_calibration_report(
+    static_seams: Vec<StaticSeamRecord>,
+    runtime_mutants: Vec<MutationOutcomeRecord>,
+) -> MutationCalibrationReport {
+    let mut static_by_id: BTreeMap<String, usize> = BTreeMap::new();
+    let mut static_by_line: BTreeMap<(String, usize), Vec<usize>> = BTreeMap::new();
+    for (idx, seam) in static_seams.iter().enumerate() {
+        static_by_id.insert(seam.seam_id.clone(), idx);
+        static_by_line
+            .entry((normalize_report_path(&seam.file), seam.line))
+            .or_default()
+            .push(idx);
+    }
+
+    let mut matched_static_ids = BTreeSet::new();
+    let mut matched = Vec::new();
+    let mut unmatched_mutants = Vec::new();
+
+    for mutation in runtime_mutants {
+        let seam_match = mutation
+            .seam_id
+            .as_ref()
+            .and_then(|seam_id| static_by_id.get(seam_id).copied())
+            .map(|idx| ("seam_id", idx))
+            .or_else(|| {
+                let file = mutation.file.as_ref()?;
+                let line = mutation.line?;
+                let key = (normalize_report_path(file), line);
+                let idx = static_by_line.get(&key)?.first().copied()?;
+                Some(("file_line", idx))
+            });
+
+        match seam_match {
+            Some((join_method, idx)) => {
+                let seam = static_seams[idx].clone();
+                matched_static_ids.insert(seam.seam_id.clone());
+                matched.push(MutationCalibrationMatch {
+                    join_method,
+                    seam,
+                    mutation,
+                });
+            }
+            None => unmatched_mutants.push(mutation),
+        }
+    }
+
+    let static_without_runtime = static_seams
+        .iter()
+        .filter(|seam| !matched_static_ids.contains(&seam.seam_id))
+        .cloned()
+        .collect::<Vec<_>>();
+
+    MutationCalibrationReport {
+        static_seams_total: static_seams.len(),
+        mutants_total: matched.len() + unmatched_mutants.len(),
+        matched,
+        unmatched_mutants,
+        static_without_runtime,
+    }
+}
+
+fn mutation_calibration_report_json(report: &MutationCalibrationReport) -> Result<String, String> {
+    const STATIC_WITHOUT_RUNTIME_SAMPLE_LIMIT: usize = 50;
+    let value = serde_json::json!({
+        "schema_version": "0.1",
+        "scope": "repo",
+        "status": "advisory",
+        "metrics": {
+            "static_seams_total": report.static_seams_total,
+            "mutants_total": report.mutants_total,
+            "matched_total": report.matched.len(),
+            "unmatched_mutants_total": report.unmatched_mutants.len(),
+            "static_without_runtime_total": report.static_without_runtime.len(),
+            "runtime_outcome_counts": runtime_outcome_counts(report),
+            "join_method_counts": join_method_counts(report),
+        },
+        "matches": report
+            .matched
+            .iter()
+            .map(mutation_calibration_match_json)
+            .collect::<Vec<_>>(),
+        "unmatched_mutants": report
+            .unmatched_mutants
+            .iter()
+            .map(mutation_outcome_json)
+            .collect::<Vec<_>>(),
+        "static_without_runtime_sample": report
+            .static_without_runtime
+            .iter()
+            .take(STATIC_WITHOUT_RUNTIME_SAMPLE_LIMIT)
+            .map(static_seam_json)
+            .collect::<Vec<_>>(),
+    });
+    serde_json::to_string_pretty(&value)
+        .map(|mut json| {
+            json.push('\n');
+            json
+        })
+        .map_err(|err| format!("failed to render mutation calibration JSON: {err}"))
+}
+
+fn mutation_calibration_match_json(record: &MutationCalibrationMatch) -> Value {
+    serde_json::json!({
+        "join_method": record.join_method,
+        "static": static_seam_json(&record.seam),
+        "runtime": mutation_outcome_json(&record.mutation),
+    })
+}
+
+fn static_seam_json(record: &StaticSeamRecord) -> Value {
+    serde_json::json!({
+        "seam_id": record.seam_id.as_str(),
+        "seam_kind": record.seam_kind.as_str(),
+        "file": record.file.as_str(),
+        "line": record.line,
+        "seam_grip_class": record.seam_grip_class.as_str(),
+        "oracle_kind": record.oracle_kind.as_str(),
+        "oracle_strength": record.oracle_strength.as_str(),
+        "observed_values": &record.observed_values,
+        "missing_discriminators": &record.missing_discriminators,
+    })
+}
+
+fn mutation_outcome_json(record: &MutationOutcomeRecord) -> Value {
+    serde_json::json!({
+        "mutant_id": record.mutant_id.as_deref(),
+        "seam_id": record.seam_id.as_deref(),
+        "file": record.file.as_deref(),
+        "line": record.line,
+        "mutation_operator": record.mutation_operator.as_str(),
+        "runtime_outcome": record.runtime_outcome.as_str(),
+        "duration": record.duration.as_deref(),
+        "test_command": record.test_command.as_deref(),
+    })
+}
+
+fn merge_mutation_outcome_records(
+    records: Vec<MutationOutcomeRecord>,
+) -> Vec<MutationOutcomeRecord> {
+    let mut by_id: BTreeMap<String, MutationOutcomeRecord> = BTreeMap::new();
+    let mut without_id = Vec::new();
+
+    for record in records {
+        match record.mutant_id.clone() {
+            Some(id) => {
+                if let Some(existing) = by_id.get_mut(&id) {
+                    merge_mutation_outcome_record(existing, record);
+                } else {
+                    by_id.insert(id, record);
+                }
+            }
+            None => without_id.push(record),
+        }
+    }
+
+    by_id.into_values().chain(without_id).collect::<Vec<_>>()
+}
+
+fn merge_mutation_outcome_record(
+    target: &mut MutationOutcomeRecord,
+    source: MutationOutcomeRecord,
+) {
+    if target.seam_id.is_none() {
+        target.seam_id = source.seam_id;
+    }
+    if target.file.is_none() {
+        target.file = source.file;
+    }
+    if target.line.is_none() {
+        target.line = source.line;
+    }
+    if target.mutation_operator == "unknown" && source.mutation_operator != "unknown" {
+        target.mutation_operator = source.mutation_operator;
+    }
+    if target.runtime_outcome == "unknown" && source.runtime_outcome != "unknown" {
+        target.runtime_outcome = source.runtime_outcome;
+    }
+    if target.duration.is_none() {
+        target.duration = source.duration;
+    }
+    if target.test_command.is_none() {
+        target.test_command = source.test_command;
+    }
+}
+
+fn runtime_outcome_counts(report: &MutationCalibrationReport) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::new();
+    for record in report
+        .matched
+        .iter()
+        .map(|matched| &matched.mutation)
+        .chain(report.unmatched_mutants.iter())
+    {
+        let key = normalize_runtime_label(&record.runtime_outcome);
+        *counts.entry(key).or_insert(0) += 1;
+    }
+    counts
+}
+
+fn join_method_counts(report: &MutationCalibrationReport) -> BTreeMap<&'static str, usize> {
+    let mut counts = BTreeMap::new();
+    for record in &report.matched {
+        *counts.entry(record.join_method).or_insert(0) += 1;
+    }
+    counts
+}
+
+fn normalize_runtime_label(value: &str) -> String {
+    value
+        .trim()
+        .to_ascii_lowercase()
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+        .collect::<String>()
+        .trim_matches('_')
+        .to_string()
+}
+
+fn mutation_calibration_report_markdown(report: &MutationCalibrationReport) -> String {
+    let mut out = String::new();
+    out.push_str("# ripr mutation calibration report\n\n");
+    out.push_str("Status: advisory\n\n");
+    out.push_str(
+        "This report joins static seam evidence to supplied cargo-mutants runtime data. \
+         Runtime outcome vocabulary in this report comes from that runtime data; static \
+         ripr reports continue to use audit vocabulary only.\n\n",
+    );
+    out.push_str("## Summary\n\n");
+    out.push_str("| Metric | Count |\n| --- | ---: |\n");
+    out.push_str(&format!(
+        "| static_seams_total | {} |\n",
+        report.static_seams_total
+    ));
+    out.push_str(&format!("| mutants_total | {} |\n", report.mutants_total));
+    out.push_str(&format!("| matched_total | {} |\n", report.matched.len()));
+    out.push_str(&format!(
+        "| unmatched_mutants_total | {} |\n",
+        report.unmatched_mutants.len()
+    ));
+    out.push_str(&format!(
+        "| static_without_runtime_total | {} |\n",
+        report.static_without_runtime.len()
+    ));
+
+    out.push_str("\n## Runtime Outcome Counts\n\n");
+    out.push_str("| Runtime outcome | Count |\n| --- | ---: |\n");
+    let counts = runtime_outcome_counts(report);
+    if counts.is_empty() {
+        out.push_str("| none | 0 |\n");
+    } else {
+        for (outcome, count) in counts {
+            out.push_str(&format!("| {} | {} |\n", markdown_cell(&outcome), count));
+        }
+    }
+
+    out.push_str("\n## Matched Mutants\n\n");
+    if report.matched.is_empty() {
+        out.push_str("No runtime mutants matched static seams.\n");
+    } else {
+        out.push_str("| Seam | Class | Oracle | Mutation operator | Runtime outcome | Join |\n");
+        out.push_str("| --- | --- | --- | --- | --- | --- |\n");
+        for record in &report.matched {
+            out.push_str(&format!(
+                "| `{}` | `{}` | `{}`/`{}` | {} | {} | `{}` |\n",
+                markdown_cell(&record.seam.seam_id),
+                markdown_cell(&record.seam.seam_grip_class),
+                markdown_cell(&record.seam.oracle_kind),
+                markdown_cell(&record.seam.oracle_strength),
+                markdown_cell(&record.mutation.mutation_operator),
+                markdown_cell(&record.mutation.runtime_outcome),
+                record.join_method
+            ));
+        }
+    }
+
+    out.push_str("\n## Unmatched Runtime Mutants\n\n");
+    if report.unmatched_mutants.is_empty() {
+        out.push_str("All imported runtime mutants matched a static seam.\n");
+    } else {
+        out.push_str("| Location | Mutation operator | Runtime outcome | Test command |\n");
+        out.push_str("| --- | --- | --- | --- |\n");
+        for record in &report.unmatched_mutants {
+            let location = mutation_location_label(record);
+            let command = record.test_command.as_deref().unwrap_or("unknown");
+            out.push_str(&format!(
+                "| {} | {} | {} | {} |\n",
+                markdown_cell(&location),
+                markdown_cell(&record.mutation_operator),
+                markdown_cell(&record.runtime_outcome),
+                markdown_cell(command)
+            ));
+        }
+    }
+
+    out.push_str("\n## Static Seams Without Runtime Data\n\n");
+    if report.static_without_runtime.is_empty() {
+        out.push_str(
+            "Every static seam matched at least one runtime mutant in the imported data.\n",
+        );
+    } else {
+        out.push_str(
+            "Sample only; see JSON `static_without_runtime_total` for the full count.\n\n",
+        );
+        out.push_str("| Seam | Kind | Class | Location |\n");
+        out.push_str("| --- | --- | --- | --- |\n");
+        for seam in report.static_without_runtime.iter().take(25) {
+            out.push_str(&format!(
+                "| `{}` | `{}` | `{}` | {}:{} |\n",
+                markdown_cell(&seam.seam_id),
+                markdown_cell(&seam.seam_kind),
+                markdown_cell(&seam.seam_grip_class),
+                markdown_cell(&seam.file),
+                seam.line
+            ));
+        }
+    }
+
+    out
+}
+
+fn mutation_location_label(record: &MutationOutcomeRecord) -> String {
+    if let Some(seam_id) = record.seam_id.as_ref() {
+        return format!("seam:{seam_id}");
+    }
+    match (&record.file, record.line) {
+        (Some(file), Some(line)) => format!("{file}:{line}"),
+        (Some(file), None) => file.clone(),
+        (None, Some(line)) => format!("line {line}"),
+        (None, None) => "unknown".to_string(),
+    }
+}
+
+fn normalize_report_path(path: &str) -> String {
+    let normalized = path.replace('\\', "/");
+    normalized
+        .strip_prefix("./")
+        .unwrap_or(normalized.as_str())
+        .to_string()
+}
+
 fn repo_badge_artifacts() -> Result<(), String> {
     let badge_dir = Path::new("target").join("ripr");
     fs::create_dir_all(&badge_dir).map_err(|err| {
@@ -7689,6 +8559,7 @@ fn known_xtask_command(command: &str) -> bool {
             | "repo-seam-inventory"
             | "repo-exposure-report"
             | "agent-seam-packets"
+            | "mutation-calibration"
             | "update-badge-endpoints"
             | "check-badge-endpoints"
             | "dogfood"
@@ -11951,28 +12822,31 @@ mod tests {
         is_production_path, is_receipt_status, is_snake_case_id, is_spec_id, json_escape,
         json_number_after, json_string_values_for_key, known_xtask_command,
         local_context_line_findings, local_markdown_target, markdown_links_in_text,
+        mutation_calibration_report_json, mutation_calibration_report_markdown,
         next_checkpoints_from_capabilities, normalize_fixture_human_output,
         normalize_fixture_json_output, normalize_golden_text, panic_family_from_pattern,
-        parse_campaign_manifest, parse_inline_array, parse_no_panic_allowlist_toml,
-        parse_no_panic_allowlist_toml_v2, parse_reason, parse_static_language_allowlist,
-        pr_shape_warnings, precommit_report_body, public_contract_rows, receipt_json,
-        receipt_specs, receipt_status_from_reports, repo_badge_artifact_command_args,
-        repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown,
-        repo_seam_inventory_command_args_for_root, report_index_markdown,
-        report_index_missing_expected, report_status_from_text, semantic_selector_matches,
-        should_scan_static_language_path, sorted_allowlist_content, spec_id_from_path,
-        static_language_allowlist_covers, status_for_report, suspicious_runtime_file_names,
-        test_efficiency_entry, test_efficiency_report_json, test_efficiency_report_markdown,
-        test_oracle_report_json, test_oracle_report_markdown, test_oracle_tests_in_text,
-        unknown_command_message, validate_local_context_allowlist, windows_absolute_path_tokens,
-        workflow_runtime_violations,
+        parse_campaign_manifest, parse_inline_array, parse_mutation_calibration_args,
+        parse_mutation_outcomes_json, parse_no_panic_allowlist_toml,
+        parse_no_panic_allowlist_toml_v2, parse_reason, parse_repo_exposure_static_seams,
+        parse_static_language_allowlist, pr_shape_warnings, precommit_report_body,
+        public_contract_rows, read_mutation_input_json, receipt_json, receipt_specs,
+        receipt_status_from_reports, repo_badge_artifact_command_args, repo_badge_artifact_jobs,
+        repo_badge_artifacts_summary_markdown, repo_seam_inventory_command_args_for_root,
+        report_index_markdown, report_index_missing_expected, report_status_from_text,
+        semantic_selector_matches, should_scan_static_language_path, sorted_allowlist_content,
+        spec_id_from_path, static_language_allowlist_covers, status_for_report,
+        suspicious_runtime_file_names, test_efficiency_entry, test_efficiency_report_json,
+        test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
+        test_oracle_tests_in_text, unknown_command_message, validate_local_context_allowlist,
+        windows_absolute_path_tokens, workflow_runtime_violations,
     };
     use super::{
         DeclaredIntent, LocalContextFinding, TestEfficiencyEntry, TestEfficiencyValue,
         TestIntentDeclaration, TestIntentKind, TestIntentReportSummary,
         apply_duplicate_discriminator_groups, apply_test_intent_to_entries,
-        parse_test_intent_manifest, test_efficiency_metrics,
+        build_mutation_calibration_report, parse_test_intent_manifest, test_efficiency_metrics,
     };
+    use super::{MutationOutcomeRecord, StaticSeamRecord};
     use super::{PanicAllowEntryVersioned, PanicFamilySelector, SemanticPanicFinding};
     use super::{
         active_yaml_lines, check_droid_action_refs, check_droid_common, forbids_active_line,
@@ -17497,5 +18371,287 @@ settings: |
             ]
         );
         assert!(known_xtask_command("agent-seam-packets"));
+    }
+
+    #[test]
+    fn mutation_calibration_args_parse_root_and_input_paths() -> Result<(), String> {
+        let args = vec![
+            "fixtures/demo".to_string(),
+            "--mutants-json".to_string(),
+            "target/mutants/outcomes.json".to_string(),
+            "--repo-exposure-json".to_string(),
+            "target/ripr/reports/repo-exposure.json".to_string(),
+        ];
+
+        let parsed = parse_mutation_calibration_args(&args)?;
+
+        assert_eq!(parsed.root, "fixtures/demo");
+        assert_eq!(
+            parsed.mutants_json,
+            PathBuf::from("target/mutants/outcomes.json")
+        );
+        assert_eq!(
+            parsed.repo_exposure_json,
+            Some(PathBuf::from("target/ripr/reports/repo-exposure.json"))
+        );
+        assert!(known_xtask_command("mutation-calibration"));
+        Ok(())
+    }
+
+    #[test]
+    fn mutation_calibration_imports_static_seams_and_runtime_outcomes() -> Result<(), String> {
+        let static_json = r#"{
+          "schema_version": "0.2",
+          "scope": "repo",
+          "seams": [
+            {
+              "seam_id": "abc123",
+              "kind": "predicate_boundary",
+              "file": "src/pricing.rs",
+              "line": 42,
+              "grip_class": "weakly_gripped",
+              "related_tests": [
+                {
+                  "oracle_kind": "broad_error",
+                  "oracle_strength": "weak"
+                },
+                {
+                  "oracle_kind": "exact_value",
+                  "oracle_strength": "strong"
+                }
+              ],
+              "observed_values": ["50", "10000"],
+              "missing_discriminators": [
+                {"value": "amount == discount_threshold", "reason": "equality boundary"}
+              ]
+            }
+          ]
+        }"#;
+        let runtime_json = r#"{
+          "outcomes": [
+            {
+              "mutant": {
+                "id": "m1",
+                "seam_id": "abc123",
+                "file": "src/pricing.rs",
+                "line": 42,
+                "operator": "replace >= with >"
+              },
+              "outcome": "caught",
+              "duration_ms": 123,
+              "test_command": "cargo test pricing"
+            }
+          ]
+        }"#;
+
+        let seams = parse_repo_exposure_static_seams(static_json)?;
+        let mutants = parse_mutation_outcomes_json(runtime_json)?;
+
+        assert_eq!(seams.len(), 1);
+        assert_eq!(seams[0].oracle_kind, "exact_value");
+        assert_eq!(seams[0].oracle_strength, "strong");
+        assert_eq!(
+            seams[0].missing_discriminators,
+            vec!["amount == discount_threshold (equality boundary)"]
+        );
+        assert_eq!(mutants.len(), 1);
+        assert_eq!(mutants[0].mutation_operator, "replace >= with >");
+        assert_eq!(mutants[0].runtime_outcome, "caught");
+        assert_eq!(mutants[0].duration, Some("123".to_string()));
+        Ok(())
+    }
+
+    #[test]
+    fn mutation_calibration_merges_mutants_and_outcomes_by_mutant_id() -> Result<(), String> {
+        let runtime_json = r#"{
+          "mutants": [
+            {
+              "id": "m1",
+              "file": "src/pricing.rs",
+              "line": 42,
+              "operator": "replace >= with >"
+            }
+          ],
+          "outcomes": [
+            {
+              "mutant_id": "m1",
+              "outcome": "caught",
+              "duration_ms": 123,
+              "test_command": "cargo test pricing"
+            }
+          ]
+        }"#;
+
+        let mutants = parse_mutation_outcomes_json(runtime_json)?;
+
+        assert_eq!(mutants.len(), 1);
+        assert_eq!(mutants[0].mutant_id, Some("m1".to_string()));
+        assert_eq!(mutants[0].file, Some("src/pricing.rs".to_string()));
+        assert_eq!(mutants[0].line, Some(42));
+        assert_eq!(mutants[0].mutation_operator, "replace >= with >");
+        assert_eq!(mutants[0].runtime_outcome, "caught");
+        assert_eq!(mutants[0].duration, Some("123".to_string()));
+        Ok(())
+    }
+
+    #[test]
+    fn mutation_calibration_directory_input_combines_outcomes_and_mutants() -> Result<(), String> {
+        let dir = temp_dir("mutation-calibration-dir");
+        write(
+            &dir.join("mutants.json"),
+            r#"{
+              "mutants": [
+                {
+                  "id": "m1",
+                  "file": "src/pricing.rs",
+                  "line": 42,
+                  "operator": "replace >= with >"
+                }
+              ]
+            }"#,
+        );
+        write(
+            &dir.join("outcomes.json"),
+            r#"{
+              "outcomes": [
+                {
+                  "mutant_id": "m1",
+                  "outcome": "caught",
+                  "duration_ms": 123
+                }
+              ]
+            }"#,
+        );
+
+        let input = read_mutation_input_json(&dir)?;
+        let mutants = parse_mutation_outcomes_json(&input)?;
+        let remove_result = fs::remove_dir_all(&dir);
+        if let Err(err) = remove_result {
+            return Err(format!(
+                "failed to remove temp dir {}: {err}",
+                dir.display()
+            ));
+        }
+
+        assert_eq!(mutants.len(), 1);
+        assert_eq!(mutants[0].file, Some("src/pricing.rs".to_string()));
+        assert_eq!(mutants[0].runtime_outcome, "caught");
+        Ok(())
+    }
+
+    #[test]
+    fn mutation_calibration_joins_by_seam_id_then_file_line() {
+        let static_seams = vec![
+            StaticSeamRecord {
+                seam_id: "seam-a".to_string(),
+                seam_kind: "predicate_boundary".to_string(),
+                file: "src/pricing.rs".to_string(),
+                line: 42,
+                seam_grip_class: "weakly_gripped".to_string(),
+                oracle_kind: "exact_value".to_string(),
+                oracle_strength: "strong".to_string(),
+                observed_values: vec!["50".to_string()],
+                missing_discriminators: vec!["amount == discount_threshold".to_string()],
+            },
+            StaticSeamRecord {
+                seam_id: "seam-b".to_string(),
+                seam_kind: "error_variant".to_string(),
+                file: "src/auth.rs".to_string(),
+                line: 11,
+                seam_grip_class: "ungripped".to_string(),
+                oracle_kind: "unknown".to_string(),
+                oracle_strength: "unknown".to_string(),
+                observed_values: Vec::new(),
+                missing_discriminators: Vec::new(),
+            },
+        ];
+        let runtime_mutants = vec![
+            MutationOutcomeRecord {
+                mutant_id: Some("m1".to_string()),
+                seam_id: Some("seam-a".to_string()),
+                file: None,
+                line: None,
+                mutation_operator: "replace >= with >".to_string(),
+                runtime_outcome: "caught".to_string(),
+                duration: Some("55".to_string()),
+                test_command: Some("cargo test".to_string()),
+            },
+            MutationOutcomeRecord {
+                mutant_id: Some("m2".to_string()),
+                seam_id: None,
+                file: Some(".\\src\\auth.rs".to_string()),
+                line: Some(11),
+                mutation_operator: "replace error variant".to_string(),
+                runtime_outcome: "timeout".to_string(),
+                duration: None,
+                test_command: None,
+            },
+            MutationOutcomeRecord {
+                mutant_id: Some("m3".to_string()),
+                seam_id: None,
+                file: Some("src/other.rs".to_string()),
+                line: Some(99),
+                mutation_operator: "replace value".to_string(),
+                runtime_outcome: "caught".to_string(),
+                duration: None,
+                test_command: None,
+            },
+        ];
+
+        let report = build_mutation_calibration_report(static_seams, runtime_mutants);
+
+        assert_eq!(report.matched.len(), 2);
+        assert_eq!(report.matched[0].join_method, "seam_id");
+        assert_eq!(report.matched[1].join_method, "file_line");
+        assert_eq!(report.unmatched_mutants.len(), 1);
+        assert!(report.static_without_runtime.is_empty());
+    }
+
+    #[test]
+    fn mutation_calibration_reports_are_advisory_and_structured() -> Result<(), String> {
+        let report = build_mutation_calibration_report(
+            vec![StaticSeamRecord {
+                seam_id: "seam-a".to_string(),
+                seam_kind: "predicate_boundary".to_string(),
+                file: "src/pricing.rs".to_string(),
+                line: 42,
+                seam_grip_class: "weakly_gripped".to_string(),
+                oracle_kind: "exact_value".to_string(),
+                oracle_strength: "strong".to_string(),
+                observed_values: vec!["50".to_string()],
+                missing_discriminators: vec!["amount == discount_threshold".to_string()],
+            }],
+            vec![MutationOutcomeRecord {
+                mutant_id: Some("m1".to_string()),
+                seam_id: Some("seam-a".to_string()),
+                file: Some("src/pricing.rs".to_string()),
+                line: Some(42),
+                mutation_operator: "replace >= with >".to_string(),
+                runtime_outcome: "caught".to_string(),
+                duration: Some("55".to_string()),
+                test_command: Some("cargo test pricing".to_string()),
+            }],
+        );
+
+        let json = mutation_calibration_report_json(&report)?;
+        let value: serde_json::Value = serde_json::from_str(&json)
+            .map_err(|err| format!("failed to parse calibration JSON: {err}"))?;
+        assert_eq!(value["schema_version"], "0.1");
+        assert_eq!(value["status"], "advisory");
+        assert_eq!(value["metrics"]["matched_total"], 1);
+        assert_eq!(
+            value["matches"][0]["static"]["missing_discriminators"][0],
+            "amount == discount_threshold"
+        );
+        assert_eq!(
+            value["matches"][0]["runtime"]["test_command"],
+            "cargo test pricing"
+        );
+
+        let markdown = mutation_calibration_report_markdown(&report);
+        assert!(markdown.contains("Status: advisory"));
+        assert!(markdown.contains("weakly_gripped"));
+        assert!(markdown.contains("replace >= with >"));
+        Ok(())
     }
 }

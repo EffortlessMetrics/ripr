@@ -307,3 +307,32 @@ metrics = [
   "stable_id_collision_rate",
   "seam_to_finding_link_rate"
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0006"
+name = "mutation calibration reports"
+spec = "docs/specs/RIPR-SPEC-0006-mutation-calibration.md"
+tests = [
+  "xtask/src/main.rs::mutation_calibration_args_parse_root_and_input_paths",
+  "xtask/src/main.rs::mutation_calibration_imports_static_seams_and_runtime_outcomes",
+  "xtask/src/main.rs::mutation_calibration_merges_mutants_and_outcomes_by_mutant_id",
+  "xtask/src/main.rs::mutation_calibration_directory_input_combines_outcomes_and_mutants",
+  "xtask/src/main.rs::mutation_calibration_joins_by_seam_id_then_file_line",
+  "xtask/src/main.rs::mutation_calibration_reports_are_advisory_and_structured"
+]
+fixtures = []
+code = [
+  "xtask/src/main.rs"
+]
+outputs = [
+  "docs/OUTPUT_SCHEMA.md"
+]
+metrics = [
+  "static_seams_total",
+  "mutants_total",
+  "matched_total",
+  "unmatched_mutants_total",
+  "static_without_runtime_total",
+  "runtime_outcome_counts",
+  "join_method_counts"
+]
