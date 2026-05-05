@@ -137,6 +137,56 @@ mod tests {
         assert!(!rendered.contains("Stop reason"));
     }
 
+    #[test]
+    fn render_uses_warning_annotation_for_warning_severity_findings() {
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![Finding {
+                id: "probe:src_lib_rs:34:weak_signal".to_string(),
+                probe: Probe {
+                    id: ProbeId("probe:src_lib_rs:34:weak_signal".to_string()),
+                    location: SourceLocation::new("src/lib.rs", 34, 1),
+                    owner: None,
+                    family: ProbeFamily::Predicate,
+                    delta: DeltaKind::Control,
+                    before: Some("x > 0".to_string()),
+                    after: Some("x >= 0".to_string()),
+                    expression: "x > 0".to_string(),
+                    expected_sinks: vec![],
+                    required_oracles: vec![],
+                },
+                class: ExposureClass::WeaklyExposed,
+                ripr: RiprEvidence {
+                    reach: stage(StageState::Yes, "reachable"),
+                    infect: stage(StageState::Yes, "infected"),
+                    propagate: stage(StageState::Yes, "propagated"),
+                    reveal: RevealEvidence {
+                        observe: stage(StageState::Yes, "observed"),
+                        discriminate: stage(StageState::No, "not discriminated"),
+                    },
+                },
+                confidence: 0.7,
+                evidence: vec![],
+                missing: vec![],
+                flow_sinks: vec![],
+                activation: crate::domain::ActivationEvidence::default(),
+                stop_reasons: vec![],
+                related_tests: vec![],
+                recommended_next_step: Some("Add discriminator assertion".to_string()),
+            }],
+        };
+
+        let rendered = render(&output);
+
+        assert!(rendered.contains("::warning file=src/lib.rs,line=34,title=ripr weakly_exposed::"));
+        assert!(rendered.contains("Add discriminator assertion"));
+    }
+
     fn output_with_unknown_finding() -> CheckOutput {
         CheckOutput {
             schema_version: "0.1".to_string(),
