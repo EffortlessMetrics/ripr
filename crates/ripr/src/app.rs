@@ -38,6 +38,10 @@ impl Default for CheckInput {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+/// Analysis effort profile used by both CLI and library callers.
+///
+/// Higher-effort modes may spend more time collecting and classifying static
+/// evidence, while lower-effort modes optimize for local feedback speed.
 pub enum Mode {
     /// Minimal-latency local feedback.
     Instant,
@@ -76,6 +80,10 @@ impl Mode {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+/// Output contract requested from [`check_workspace`] or rendering helpers.
+///
+/// Most integrations should prefer [`OutputFormat::Json`] for stable machine
+/// consumption and [`OutputFormat::Human`] for local developer feedback.
 pub enum OutputFormat {
     /// Human-readable plain text report.
     Human,
@@ -194,6 +202,21 @@ pub struct CheckOutput {
 }
 
 /// Runs the end-to-end static exposure analysis for a workspace.
+///
+/// # Errors
+///
+/// Returns `Err(String)` when diff acquisition fails, parsing/indexing cannot
+/// proceed, or static analysis cannot complete for the requested input.
+///
+/// # Examples
+///
+/// ```no_run
+/// use ripr::{CheckInput, check_workspace};
+///
+/// let output = check_workspace(CheckInput::default())?;
+/// println!("schema={}, findings={}", output.schema_version, output.findings.len());
+/// # Ok::<(), String>(())
+/// ```
 pub fn check_workspace(input: CheckInput) -> Result<CheckOutput, String> {
     let options = AnalysisOptions {
         root: input.root.clone(),
@@ -221,6 +244,11 @@ pub fn check_workspace(input: CheckInput) -> Result<CheckOutput, String> {
 /// repo's static exposure clean?" should not depend on the contents of
 /// `git diff origin/main...HEAD` — for example, when rendering a
 /// public README badge from `main`.
+///
+/// # Errors
+///
+/// Returns `Err(String)` when repository traversal, parsing/indexing, or
+/// classification cannot complete for the requested workspace.
 pub fn check_workspace_repo(input: CheckInput) -> Result<CheckOutput, String> {
     let options = AnalysisOptions {
         root: input.root.clone(),
