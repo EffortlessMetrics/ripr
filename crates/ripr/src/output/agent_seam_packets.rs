@@ -773,6 +773,65 @@ mod tests {
         )
     }
 
+    fn seam_with(
+        owner: &str,
+        kind: SeamKind,
+        required: RequiredDiscriminator,
+        sink: ExpectedSink,
+    ) -> RepoSeam {
+        RepoSeam::new(
+            "src/service.rs",
+            owner,
+            kind,
+            7,
+            14,
+            "changed expression",
+            required,
+            sink,
+        )
+    }
+
+    fn related_test_with(
+        name: &str,
+        oracle_kind: OracleKind,
+        oracle_strength: OracleStrength,
+        relation_confidence: crate::analysis::test_grip_evidence::RelationConfidence,
+    ) -> RelatedTestGrip {
+        RelatedTestGrip {
+            test_name: name.to_string(),
+            file: PathBuf::from("tests/service.rs"),
+            line: 21,
+            oracle_kind,
+            oracle_strength,
+            evidence_summary: "related oracle evidence".to_string(),
+            relation_reason: crate::analysis::test_grip_evidence::RelationReason::DirectOwnerCall,
+            relation_confidence,
+        }
+    }
+
+    fn classified_with(
+        seam: RepoSeam,
+        class: SeamGripClass,
+        related_tests: Vec<RelatedTestGrip>,
+    ) -> ClassifiedSeam {
+        let seam_id = seam.id().clone();
+        ClassifiedSeam {
+            seam,
+            evidence: TestGripEvidence {
+                seam_id,
+                related_tests,
+                reach: stage(StageState::Yes),
+                activate: stage(StageState::Yes),
+                propagate: stage(StageState::Weak),
+                observe: stage(StageState::Weak),
+                discriminate: stage(StageState::No),
+                observed_values: Vec::new(),
+                missing_discriminators: Vec::new(),
+            },
+            class,
+        }
+    }
+
     fn weakly_gripped_classified() -> ClassifiedSeam {
         let seam = boundary_seam();
         let evidence = TestGripEvidence {
@@ -1104,6 +1163,123 @@ mod tests {
                 return Err(format!(
                     "missing inferred recommendation {needle:?} in: {json}"
                 ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn packet_v2_carries_exact_error_variant_guidance_for_error_seams() -> Result<(), String> {
+        let seam = seam_with(
+            "auth::authenticate",
+            SeamKind::ErrorVariant,
+            RequiredDiscriminator::ErrorVariant {
+                variant: "AuthError::RevokedToken".to_string(),
+            },
+            ExpectedSink::ErrorChannel,
+        );
+        let related = related_test_with(
+            "empty_token_is_rejected",
+            OracleKind::BroadError,
+            OracleStrength::Weak,
+            crate::analysis::test_grip_evidence::RelationConfidence::High,
+        );
+        let json = render_agent_seam_packets_json(&[classified_with(
+            seam,
+            SeamGripClass::WeaklyGripped,
+            vec![related],
+        )]);
+        for needle in [
+            "\"name\": \"authenticate_exact_error_variant\"",
+            "\"candidate_values\": [",
+            "\"value\": \"input that triggers AuthError::RevokedToken\"",
+            "\"missing_oracle_shape\": \"exact error-variant assertion",
+            "\"assertion_shape\": {\"kind\": \"exact_error_variant\"",
+            "assert!(matches!(authenticate(/* trigger */), Err(/* exact variant */)))",
+            "\"pattern\": \"broad_error in empty_token_is_rejected\"",
+        ] {
+            if !json.contains(needle) {
+                return Err(format!(
+                    "missing error-variant guidance {needle:?} in: {json}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn packet_v2_carries_side_effect_and_call_observer_guidance() -> Result<(), String> {
+        let side_effect = seam_with(
+            "billing::charge_customer",
+            SeamKind::SideEffect,
+            RequiredDiscriminator::Effect {
+                sink: "payment event".to_string(),
+            },
+            ExpectedSink::SideEffect,
+        );
+        let call_presence = seam_with(
+            "billing::sync_invoice",
+            SeamKind::CallPresence,
+            RequiredDiscriminator::CallSite {
+                target: "repository.save".to_string(),
+            },
+            ExpectedSink::SideEffect,
+        );
+        let json = render_agent_seam_packets_json(&[
+            classified_with(side_effect, SeamGripClass::Ungripped, Vec::new()),
+            classified_with(call_presence, SeamGripClass::Ungripped, Vec::new()),
+        ]);
+        for needle in [
+            "\"name\": \"charge_customer_side_effect_observer\"",
+            "\"value\": \"input that produces payment event\"",
+            "\"assertion_shape\": {\"kind\": \"side_effect_observer\"",
+            "\"name\": \"sync_invoice_call_presence_observer\"",
+            "\"value\": \"input that reaches call repository.save\"",
+            "\"assertion_shape\": {\"kind\": \"call_expectation\"",
+            "\"pattern\": \"copying a smoke-only test shape\"",
+        ] {
+            if !json.contains(needle) {
+                return Err(format!(
+                    "missing effect/call guidance {needle:?} in: {json}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn packet_v2_reports_medium_and_unknown_confidence_cases() -> Result<(), String> {
+        let medium_related = related_test_with(
+            "helper_test_observes_output",
+            OracleKind::RelationalCheck,
+            OracleStrength::Medium,
+            crate::analysis::test_grip_evidence::RelationConfidence::Medium,
+        );
+        let mut opaque = weakly_gripped_classified();
+        opaque.class = SeamGripClass::Opaque;
+        let json = render_agent_seam_packets_json(&[
+            classified_with(
+                seam_with(
+                    "math::score",
+                    SeamKind::ReturnValue,
+                    RequiredDiscriminator::ReturnValue {
+                        description: "score".to_string(),
+                    },
+                    ExpectedSink::ReturnValue,
+                ),
+                SeamGripClass::WeaklyGripped,
+                vec![medium_related],
+            ),
+            opaque,
+        ]);
+        for needle in [
+            "\"confidence\": \"medium\"",
+            "\"reason\": \"medium relational_check oracle with medium relation\"",
+            "\"task\": \"inspect_static_limitation\"",
+            "\"confidence\": \"unknown\"",
+        ] {
+            if !json.contains(needle) {
+                return Err(format!("missing confidence case {needle:?} in: {json}"));
             }
         }
         Ok(())

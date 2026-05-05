@@ -11957,7 +11957,8 @@ mod tests {
         parse_no_panic_allowlist_toml_v2, parse_reason, parse_static_language_allowlist,
         pr_shape_warnings, precommit_report_body, public_contract_rows, receipt_json,
         receipt_specs, receipt_status_from_reports, repo_badge_artifact_command_args,
-        repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown, report_index_markdown,
+        repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown,
+        repo_seam_inventory_command_args_for_root, report_index_markdown,
         report_index_missing_expected, report_status_from_text, semantic_selector_matches,
         should_scan_static_language_path, sorted_allowlist_content, spec_id_from_path,
         static_language_allowlist_covers, status_for_report, suspicious_runtime_file_names,
@@ -17474,5 +17475,27 @@ settings: |
         let message = unknown_command_message("totally-unknown-command");
         assert!(!message.contains("Did you mean"));
         assert!(message.contains("cargo xtask help"));
+    }
+
+    #[test]
+    fn agent_seam_packet_command_args_use_requested_root_and_format() {
+        let args =
+            repo_seam_inventory_command_args_for_root("agent-seam-packets-json", "fixtures/demo");
+        assert_eq!(
+            args,
+            vec![
+                "run",
+                "-p",
+                "ripr",
+                "--quiet",
+                "--",
+                "check",
+                "--root",
+                "fixtures/demo",
+                "--format",
+                "agent-seam-packets-json",
+            ]
+        );
+        assert!(known_xtask_command("agent-seam-packets"));
     }
 }
