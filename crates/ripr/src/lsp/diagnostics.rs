@@ -568,4 +568,34 @@ mod seam_diagnostic_tests {
         }
         Ok(())
     }
+
+    #[test]
+    fn absolute_related_test_path_joins_repo_root_for_relative_paths() {
+        let test = RelatedTest {
+            name: "tests::pricing::handles_discount".to_string(),
+            file: PathBuf::from("tests/pricing.rs"),
+            line: 33,
+            oracle: None,
+            oracle_kind: crate::domain::OracleKind::ExactValue,
+            oracle_strength: crate::domain::OracleStrength::Weak,
+        };
+
+        let path = absolute_related_test_path(Path::new("/repo"), &test);
+        assert_eq!(path, Path::new("/repo/tests/pricing.rs"));
+    }
+
+    #[test]
+    fn absolute_related_test_path_keeps_absolute_paths() {
+        let test = RelatedTest {
+            name: "tests::pricing::handles_discount".to_string(),
+            file: PathBuf::from("/tmp/workspace/tests/pricing.rs"),
+            line: 33,
+            oracle: None,
+            oracle_kind: crate::domain::OracleKind::ExactValue,
+            oracle_strength: crate::domain::OracleStrength::Weak,
+        };
+
+        let path = absolute_related_test_path(Path::new("/repo"), &test);
+        assert_eq!(path, Path::new("/tmp/workspace/tests/pricing.rs"));
+    }
 }
