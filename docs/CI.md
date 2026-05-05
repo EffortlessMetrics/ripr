@@ -294,3 +294,13 @@ A branch is ready to merge when:
 Local `--allow-dirty` packaging checks are useful during review but are not a
 substitute for plain package and publish dry-run checks on the final committed
 branch.
+
+
+## Dependabot Version-Update Policy
+
+Dependabot version updates run weekly for Cargo, the VS Code extension npm
+package, and GitHub Actions. Routine updates are grouped by ecosystem and
+limited to minor/patch changes. Major dependency updates are handled as scoped
+human-reviewed PRs because they may affect MSRV, release behavior, CI runtime
+policy, or extension compatibility. Dependabot PRs are not auto-merged; they
+must pass normal CI, security, coverage, and xtask checks.
