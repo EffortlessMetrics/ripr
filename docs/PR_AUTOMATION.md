@@ -425,8 +425,17 @@ cargo xtask check-pr-shape
 cargo xtask check-generated
 ```
 
-The hooks themselves should be generated locally by a future
-`cargo xtask install-hooks` command instead of checked in as executable scripts.
+Install local git hooks with:
+
+```bash
+cargo xtask install-hooks
+```
+
+This writes a ripr-managed `.git/hooks/pre-commit` hook that runs
+`cargo xtask precommit` and keeps hook scripts out of version control. If a
+pre-existing hook is already ripr-managed, the command updates it idempotently.
+If a pre-existing hook is not ripr-managed, the command refuses to overwrite it
+so local user hooks are not clobbered.
 
 ## CI Reports
 
