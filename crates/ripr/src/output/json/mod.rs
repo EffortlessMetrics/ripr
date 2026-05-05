@@ -97,6 +97,51 @@ mod tests {
         assert!(rendered.contains("\"base\": \"origin/main\""));
     }
 
+    #[test]
+    fn finding_json_uses_strongest_related_test_for_oracle_summary() {
+        let mut finding = unknown_finding();
+        finding.related_tests = vec![
+            RelatedTest {
+                name: "smoke_test".to_string(),
+                file: PathBuf::from("tests/smoke.rs"),
+                line: 10,
+                oracle: Some("assert!(ok())".to_string()),
+                oracle_kind: OracleKind::RelationalCheck,
+                oracle_strength: OracleStrength::Weak,
+            },
+            RelatedTest {
+                name: "strict_check".to_string(),
+                file: PathBuf::from("tests/strict.rs"),
+                line: 21,
+                oracle: Some("assert_eq!(value, 42)".to_string()),
+                oracle_kind: OracleKind::ExactValue,
+                oracle_strength: OracleStrength::Strong,
+            },
+        ];
+
+        let mut out = String::new();
+        finding_json(&mut out, &finding, 0);
+
+        assert!(out.contains("\"oracle_strength\": \"strong\""));
+        assert!(out.contains("\"oracle_kind\": \"exact_value\""));
+    }
+
+    #[test]
+    fn finding_json_formats_observed_value_context_labels() {
+        let mut finding = unknown_finding();
+        finding.activation.observed_values.push(ValueFact {
+            line: 33,
+            text: "assert_eq!(actual, expected)".to_string(),
+            value: "actual = 10".to_string(),
+            context: ValueContext::AssertionArgument,
+        });
+
+        let mut out = String::new();
+        finding_json(&mut out, &finding, 0);
+
+        assert!(out.contains("observed assertion argument value actual = 10 at line 33"));
+    }
+
     fn unknown_finding() -> Finding {
         Finding {
             id: "probe:src_lib_rs:1:static_unknown".to_string(),
