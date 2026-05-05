@@ -143,3 +143,102 @@ fn discriminator_array(
     }
     out.push(']');
 }
+
+#[cfg(test)]
+mod tests {
+    use super::render_context_packet;
+    use crate::domain::{
+        ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding,
+        MissingDiscriminatorFact, OracleKind, OracleStrength, Probe, ProbeFamily, ProbeId,
+        RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState,
+        SymbolId, ValueContext, ValueFact,
+    };
+    use std::path::PathBuf;
+
+    #[test]
+    fn context_packet_limits_related_tests_to_max() {
+        let mut finding = sample_finding();
+        finding.related_tests = vec![related("t1"), related("t2"), related("t3")];
+
+        let packet = render_context_packet(&finding, 2);
+
+        assert!(packet.contains("\"name\": \"t1\""));
+        assert!(packet.contains("\"name\": \"t2\""));
+        assert!(!packet.contains("\"name\": \"t3\""));
+    }
+
+    #[test]
+    fn context_packet_escapes_observed_values_and_discriminator_reasons() {
+        let mut finding = sample_finding();
+        finding.activation.observed_values.push(ValueFact {
+            line: 11,
+            text: "assert!(x)".to_string(),
+            value: "line \"a\"\nnext".to_string(),
+            context: ValueContext::AssertionArgument,
+        });
+        finding
+            .activation
+            .missing_discriminators
+            .push(MissingDiscriminatorFact {
+                value: "v == \"boundary\"".to_string(),
+                reason: "No test checks \"boundary\"\ncase".to_string(),
+                flow_sink: None,
+            });
+
+        let packet = render_context_packet(&finding, 5);
+
+        assert!(packet.contains("line \\\"a\\\"\\nnext"));
+        assert!(packet.contains("No test checks \\\"boundary\\\"\\ncase"));
+    }
+
+    fn sample_finding() -> Finding {
+        Finding {
+            id: "probe:src_lib_rs:9:error_path".to_string(),
+            probe: Probe {
+                id: ProbeId("probe:src_lib_rs:9:error_path".to_string()),
+                location: SourceLocation::new("src/lib.rs", 9, 1),
+                owner: Some(SymbolId("crate::sample".to_string())),
+                family: ProbeFamily::Predicate,
+                delta: DeltaKind::Control,
+                before: Some("x > 0".to_string()),
+                after: Some("x >= 0".to_string()),
+                expression: "x >= 0".to_string(),
+                expected_sinks: vec![],
+                required_oracles: vec![],
+            },
+            class: ExposureClass::WeaklyExposed,
+            ripr: RiprEvidence {
+                reach: stage("Reachable"),
+                infect: stage("Possible infection"),
+                propagate: stage("Possible propagation"),
+                reveal: RevealEvidence {
+                    observe: stage("Observed"),
+                    discriminate: stage("Weak discriminator"),
+                },
+            },
+            confidence: 0.5,
+            evidence: vec![],
+            missing: vec![],
+            flow_sinks: vec![],
+            activation: ActivationEvidence::default(),
+            stop_reasons: vec![],
+            related_tests: vec![],
+            recommended_next_step: None,
+        }
+    }
+
+    fn related(name: &str) -> RelatedTest {
+        RelatedTest {
+            name: name.to_string(),
+            file: PathBuf::from("tests/sample.rs"),
+            line: 7,
+            oracle: Some("assert_eq!(value, 1)".to_string()),
+            oracle_kind: OracleKind::ExactValue,
+            oracle_strength: OracleStrength::Strong,
+        }
+    }
+
+    fn stage(summary: &str) -> StageEvidence {
+        StageEvidence::new(StageState::Yes, Confidence::Medium, summary)
+    }
+}
