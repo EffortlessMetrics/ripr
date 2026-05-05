@@ -3,4 +3,4 @@ retries = 0
 failure-output = "immediate-final"
 
 [profile.ci.junit]
-path = "target/nextest/ci/junit.xml"
+path = "junit.xml"
