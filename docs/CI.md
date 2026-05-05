@@ -230,12 +230,7 @@ The same cargo-deny check can be run locally with:
 cargo xtask check-supply-chain
 ```
 
-Dependabot is configured in `.github/dependabot.yml` for Cargo dependencies,
-the VS Code extension npm package, and GitHub Actions. Routine version-update
-PRs are limited to minor and patch updates. Major updates should be deliberate,
-scoped PRs because they often change toolchain, release, or runtime behavior.
-Dependabot PRs are not auto-merged; they must pass the normal CI, coverage,
-security, and `xtask` checks before merge.
+Dependabot version updates run weekly for Cargo, the VS Code extension npm package, and GitHub Actions. Routine updates are grouped by ecosystem and limited to minor/patch changes. Major dependency updates are handled as scoped human-reviewed PRs because they may affect MSRV, release behavior, CI runtime policy, or extension compatibility. Dependabot PRs are not auto-merged; they must pass normal CI, security, coverage, and `xtask` checks.
 
 GitHub-hosted security settings are tracked in
 [Repository settings](REPO_SETTINGS.md). Dependency Graph, Dependabot alerts,
