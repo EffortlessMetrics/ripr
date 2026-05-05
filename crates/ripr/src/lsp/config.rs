@@ -97,6 +97,7 @@ fn parse_mode(value: &str) -> Option<Mode> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
     use serde_json::json;
     use tower_lsp_server::ls_types::ClientCapabilities;
 
@@ -136,5 +137,34 @@ mod tests {
         // Falls back to the default rather than misinterpreting a
         // string as truthy.
         assert!(!config.enable_seam_diagnostics);
+    }
+
+    proptest! {
+        #[test]
+        fn parse_mode_accepts_only_known_variants(input in "\\PC*") {
+            let parsed = parse_mode(&input);
+            let expected = match input.as_str() {
+                "instant" => Some(Mode::Instant),
+                "draft" => Some(Mode::Draft),
+                "fast" => Some(Mode::Fast),
+                "deep" => Some(Mode::Deep),
+                "ready" => Some(Mode::Ready),
+                _ => None,
+            };
+            prop_assert_eq!(parsed, expected);
+        }
+
+        #[test]
+        fn base_ref_round_trips_trimmed_non_empty_values(base_ref in "\\PC*") {
+            let params = params_with(json!({ "baseRef": base_ref }));
+            let config = LspAnalysisConfig::from_initialize_params(&params);
+            let trimmed = base_ref.trim();
+
+            if trimmed.is_empty() {
+                prop_assert_eq!(config.base_ref, None);
+            } else {
+                prop_assert_eq!(config.base_ref, Some(trimmed.to_owned()));
+            }
+        }
     }
 }
