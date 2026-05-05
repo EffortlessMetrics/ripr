@@ -533,6 +533,21 @@ generated via `cargo xtask agent-seam-packets`.
       "changed_expression": "amount >= discount_threshold",
       "current_grip": "weakly_gripped",
       "headline_eligible": true,
+      "recommended_test": {
+        "name": "discounted_total_boundary_discriminator",
+        "file": "tests/pricing.rs",
+        "reason": "place the new targeted test next to the nearest strong related test"
+      },
+      "nearest_strong_test_to_imitate": {
+        "name": "below_threshold_has_no_discount",
+        "file": "tests/pricing.rs",
+        "line": 12,
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "relation_reason": "direct_owner_call",
+        "relation_confidence": "high",
+        "reason": "nearest strong related test by ranked evidence"
+      },
       "evidence": {
         "reach": "yes",
         "activate": "yes",
@@ -547,7 +562,17 @@ generated via `cargo xtask agent-seam-packets`.
           "reason": "observed values do not include the equality-boundary case for this predicate"
         }
       ],
+      "candidate_values": [
+        {
+          "value": "discount_threshold (equality boundary)",
+          "reason": "observed values do not include the equality-boundary case for this predicate"
+        }
+      ],
       "missing_oracle_shape": "exact returned value assertion at the equality boundary",
+      "assertion_shape": {
+        "kind": "exact_return_value",
+        "example": "assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)"
+      },
       "related_existing_tests": [
         {
           "name": "below_threshold_has_no_discount",
@@ -560,9 +585,28 @@ generated via `cargo xtask agent-seam-packets`.
           "relation_confidence": "high"
         }
       ],
+      "patterns_to_imitate": [
+        {
+          "name": "below_threshold_has_no_discount",
+          "file": "tests/pricing.rs",
+          "line": 12,
+          "oracle_kind": "exact_value",
+          "oracle_strength": "strong",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high",
+          "reason": "strong exact_value oracle with high relation"
+        }
+      ],
+      "patterns_to_avoid": [
+        {
+          "pattern": "adding another test with only already-observed values",
+          "reason": "candidate values should include the missing discriminator"
+        }
+      ],
       "suggested_assertions": [
         "assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)"
       ],
+      "confidence": "high",
       "runtime_confirmation": "optional cargo-mutants confirmation; ripr reports static evidence only"
     }
   ]
@@ -578,7 +622,12 @@ Field contract:
   and any downstream consumers in lockstep. `0.2` → `0.3`:
   `related_existing_tests[]` entries gained `relation_reason` and
   `relation_confidence` fields, and the array is now ranked
-  highest-confidence first (`analysis/related-test-precision-v1`).
+  highest-confidence first (`analysis/related-test-precision-v1`);
+  `context/agent-seam-packets-v2` added `recommended_test`,
+  `nearest_strong_test_to_imitate`, `candidate_values`,
+  `assertion_shape`, `patterns_to_imitate`, `patterns_to_avoid`, and
+  packet `confidence` without changing the version again because the
+  in-flight `0.3` contract had not yet closed.
   Reason and confidence vocabularies are documented in the
   `repo-exposure.json` field contract above.
 - `scope` — always `"repo"`.
@@ -597,6 +646,16 @@ Field contract:
 - `packets[].headline_eligible` — boolean. `true` for the
   headline-eligible classes, `false` for `opaque`. Lets agents
   prioritize without re-deriving the headline mapping.
+- `packets[].recommended_test` — suggested test placement. `name` is a
+  deterministic snake-case test name derived from the seam owner and
+  kind. `file` uses the nearest strong related test when present,
+  falls back to the highest-confidence related test, and otherwise
+  infers a conventional `tests/*_tests.rs` path from the production
+  seam file. `reason` explains that choice.
+- `packets[].nearest_strong_test_to_imitate` — first ranked related
+  test with `oracle_strength: "strong"`, or `null` when no strong
+  related test is visible. This is an imitation target, not a
+  requirement to clone that test.
 - `packets[].evidence` — per-stage `StageState` strings.
 - `packets[].observed_values` — literal scalars seen in owner-call
   arguments across related tests.
@@ -604,6 +663,11 @@ Field contract:
   records mirroring the analyzer's `MissingDiscriminatorFact` shape.
   For predicate-boundary seams, includes a fallback entry naming the
   equality boundary even when no analyzer hypothesis fired.
+- `packets[].candidate_values` — array of `{value, reason}` records
+  naming input values or trigger shapes the new test should exercise.
+  It is seeded from `missing_discriminators`; if no missing
+  discriminator exists, it falls back to the seam's required
+  discriminator.
 - `packets[].missing_oracle_shape` — guidance string keyed by
   `SeamKind` and `ExpectedSink`. Examples:
   - `predicate_boundary` → "exact returned value assertion at the
@@ -612,15 +676,31 @@ Field contract:
     assert_matches!)"
   - `side_effect` → "mock expectation, event/state observer, or
     persistence assertion (...)"
+- `packets[].assertion_shape` — structured assertion guidance with a
+  stable `kind` (`exact_return_value`, `exact_error_variant`,
+  `field_equality`, `side_effect_observer`, `match_result`, or
+  `call_expectation`) plus a fill-in example. Placeholders are
+  intentional; ripr does not invent expected values.
 - `packets[].related_existing_tests` — capped at
   `MAX_RELATED_TESTS_PER_PACKET` (currently 8). Carries test name,
   file, line, oracle kind, oracle strength, and a short
   `evidence_summary` describing the oracle shape (e.g., "exact value
   assertion", "is_err / broad-error assertion").
+- `packets[].patterns_to_imitate` — ranked related tests with strong
+  or medium oracle strength. Each entry carries the same test identity
+  and oracle/relation fields as `nearest_strong_test_to_imitate`, plus
+  a reason.
+- `packets[].patterns_to_avoid` — advisory patterns that would keep
+  the packet low-discriminator, such as copying broad/smoke-only
+  related tests or adding another test with only already-observed
+  values. Each entry has `{pattern, reason}`.
 - `packets[].suggested_assertions` — best-effort assertion templates
   the agent fills in. Placeholders are intentional; ripr never invents
   expected values. Example for predicate boundary:
   `"assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)"`.
+- `packets[].confidence` — `high`, `medium`, `low`, or `unknown`
+  confidence in the packet recommendation. It is derived from related
+  test ranking and visible missing-discriminator evidence.
 - `packets[].runtime_confirmation` — boilerplate string reminding the
   agent that `ripr` is preflight static evidence and runtime
   mutation confirmation (e.g., `cargo-mutants`) is a separate

@@ -13,7 +13,7 @@
 //! `StronglyGripped`, `Intentional`, and `Suppressed` produce no
 //! packet — there is nothing for the agent to do.
 //!
-//! The packet schema is **0.2**, intentionally distinct from the
+//! The packet schema is **0.3**, intentionally distinct from the
 //! repo-exposure report's 0.1, because the packet is a separate
 //! contract aimed at coding agents rather than reviewers.
 
@@ -124,6 +124,31 @@ fn push_packet_json(out: &mut String, entry: &ClassifiedSeam) {
         entry.class.is_headline_eligible()
     ));
 
+    let recommended = recommended_test_for(entry);
+    out.push_str("      \"recommended_test\": {");
+    out.push_str(&format!(
+        "\"name\": \"{}\", ",
+        json_escape(recommended.name.as_str())
+    ));
+    out.push_str(&format!(
+        "\"file\": \"{}\", ",
+        json_escape(recommended.file.as_str())
+    ));
+    out.push_str(&format!(
+        "\"reason\": \"{}\"",
+        json_escape(recommended.reason.as_str())
+    ));
+    out.push_str("},\n");
+
+    let nearest_strong = nearest_strong_test_to_imitate(evidence);
+    out.push_str("      \"nearest_strong_test_to_imitate\": ");
+    if let Some(test) = nearest_strong {
+        push_related_test_reference(out, test, "nearest strong related test by ranked evidence");
+    } else {
+        out.push_str("null");
+    }
+    out.push_str(",\n");
+
     out.push_str("      \"evidence\": {");
     out.push_str(&format!(
         "\"reach\": \"{}\", ",
@@ -157,6 +182,7 @@ fn push_packet_json(out: &mut String, entry: &ClassifiedSeam) {
     out.push_str("],\n");
 
     let missing = missing_discriminator_records_for(entry);
+    let candidate_values = candidate_values_for(entry, &missing);
     out.push_str("      \"missing_discriminators\": [");
     if !missing.is_empty() {
         out.push('\n');
@@ -175,10 +201,37 @@ fn push_packet_json(out: &mut String, entry: &ClassifiedSeam) {
     }
     out.push_str("],\n");
 
+    out.push_str("      \"candidate_values\": [");
+    if !candidate_values.is_empty() {
+        out.push('\n');
+        for (idx, value) in candidate_values.iter().enumerate() {
+            out.push_str(&format!(
+                "        {{\"value\": \"{}\", \"reason\": \"{}\"}}",
+                json_escape(value.value.as_str()),
+                json_escape(value.reason.as_str())
+            ));
+            if idx + 1 != candidate_values.len() {
+                out.push(',');
+            }
+            out.push('\n');
+        }
+        out.push_str("      ");
+    }
+    out.push_str("],\n");
+
     out.push_str(&format!(
         "      \"missing_oracle_shape\": \"{}\",\n",
         json_escape(&missing_oracle_shape_for(seam.kind(), seam.expected_sink()))
     ));
+
+    let assertion_shape = assertion_shape_for(seam.kind(), seam.owner(), evidence);
+    out.push_str("      \"assertion_shape\": {");
+    out.push_str(&format!("\"kind\": \"{}\", ", assertion_shape.kind));
+    out.push_str(&format!(
+        "\"example\": \"{}\"",
+        json_escape(assertion_shape.example.as_str())
+    ));
+    out.push_str("},\n");
 
     out.push_str("      \"related_existing_tests\": [");
     if !evidence.related_tests.is_empty() {
@@ -228,6 +281,41 @@ fn push_packet_json(out: &mut String, entry: &ClassifiedSeam) {
     }
     out.push_str("],\n");
 
+    let patterns_to_imitate = patterns_to_imitate_for(evidence);
+    out.push_str("      \"patterns_to_imitate\": [");
+    if !patterns_to_imitate.is_empty() {
+        out.push('\n');
+        for (idx, pattern) in patterns_to_imitate.iter().enumerate() {
+            out.push_str("        ");
+            push_related_test_reference(out, pattern.test, pattern.reason.as_str());
+            if idx + 1 != patterns_to_imitate.len() {
+                out.push(',');
+            }
+            out.push('\n');
+        }
+        out.push_str("      ");
+    }
+    out.push_str("],\n");
+
+    let patterns_to_avoid = patterns_to_avoid_for(entry);
+    out.push_str("      \"patterns_to_avoid\": [");
+    if !patterns_to_avoid.is_empty() {
+        out.push('\n');
+        for (idx, pattern) in patterns_to_avoid.iter().enumerate() {
+            out.push_str(&format!(
+                "        {{\"pattern\": \"{}\", \"reason\": \"{}\"}}",
+                json_escape(pattern.pattern.as_str()),
+                json_escape(pattern.reason.as_str())
+            ));
+            if idx + 1 != patterns_to_avoid.len() {
+                out.push(',');
+            }
+            out.push('\n');
+        }
+        out.push_str("      ");
+    }
+    out.push_str("],\n");
+
     let suggested = suggested_assertions_for(seam.kind(), seam.owner(), evidence);
     out.push_str("      \"suggested_assertions\": [");
     for (idx, suggestion) in suggested.iter().enumerate() {
@@ -237,6 +325,10 @@ fn push_packet_json(out: &mut String, entry: &ClassifiedSeam) {
         }
     }
     out.push_str("],\n");
+    out.push_str(&format!(
+        "      \"confidence\": \"{}\",\n",
+        packet_confidence_for(entry)
+    ));
     out.push_str(&format!(
         "      \"runtime_confirmation\": \"{}\"\n",
         json_escape(RUNTIME_CONFIRMATION_NOTE)
@@ -251,6 +343,307 @@ fn push_packet_json(out: &mut String, entry: &ClassifiedSeam) {
 struct MissingRecord {
     value: String,
     reason: String,
+}
+
+struct CandidateValue {
+    value: String,
+    reason: String,
+}
+
+struct RecommendedTest {
+    name: String,
+    file: String,
+    reason: String,
+}
+
+struct AssertionShape {
+    kind: &'static str,
+    example: String,
+}
+
+struct ImitationPattern<'a> {
+    test: &'a crate::analysis::test_grip_evidence::RelatedTestGrip,
+    reason: String,
+}
+
+struct AvoidPattern {
+    pattern: String,
+    reason: String,
+}
+
+fn recommended_test_for(entry: &ClassifiedSeam) -> RecommendedTest {
+    let owner_short = owner_short(entry.seam.owner());
+    let name = format!(
+        "{}_{}",
+        snake_case_token(owner_short),
+        test_name_suffix_for(entry.seam.kind())
+    );
+    if let Some(test) = nearest_strong_test_to_imitate(&entry.evidence) {
+        return RecommendedTest {
+            name,
+            file: test.file.to_string_lossy().to_string(),
+            reason: "place the new targeted test next to the nearest strong related test"
+                .to_string(),
+        };
+    }
+    if let Some(test) = entry.evidence.related_tests.first() {
+        return RecommendedTest {
+            name,
+            file: test.file.to_string_lossy().to_string(),
+            reason: "place the new targeted test next to the highest-confidence related test"
+                .to_string(),
+        };
+    }
+    RecommendedTest {
+        name,
+        file: inferred_test_file(entry.seam.file(), owner_short),
+        reason: "no related test file was visible; inferred from the production seam file"
+            .to_string(),
+    }
+}
+
+fn owner_short(owner: &str) -> &str {
+    owner.rsplit("::").next().unwrap_or(owner)
+}
+
+fn test_name_suffix_for(kind: SeamKind) -> &'static str {
+    match kind {
+        SeamKind::PredicateBoundary => "boundary_discriminator",
+        SeamKind::ErrorVariant => "exact_error_variant",
+        SeamKind::ReturnValue => "return_value_discriminator",
+        SeamKind::FieldConstruction => "field_discriminator",
+        SeamKind::SideEffect => "side_effect_observer",
+        SeamKind::MatchArm => "match_arm_discriminator",
+        SeamKind::CallPresence => "call_presence_observer",
+    }
+}
+
+fn inferred_test_file(file: &std::path::Path, owner_short: &str) -> String {
+    let stem = file
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or(owner_short);
+    format!("tests/{}_tests.rs", snake_case_token(stem))
+}
+
+fn snake_case_token(raw: &str) -> String {
+    let mut out = String::new();
+    let mut previous_was_sep = false;
+    for ch in raw.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_lowercase());
+            previous_was_sep = false;
+        } else if !previous_was_sep && !out.is_empty() {
+            out.push('_');
+            previous_was_sep = true;
+        }
+    }
+    while out.ends_with('_') {
+        out.pop();
+    }
+    if out.is_empty() {
+        "targeted".to_string()
+    } else {
+        out
+    }
+}
+
+fn nearest_strong_test_to_imitate(
+    evidence: &TestGripEvidence,
+) -> Option<&crate::analysis::test_grip_evidence::RelatedTestGrip> {
+    evidence
+        .related_tests
+        .iter()
+        .find(|test| test.oracle_strength == crate::domain::OracleStrength::Strong)
+}
+
+fn push_related_test_reference(
+    out: &mut String,
+    test: &crate::analysis::test_grip_evidence::RelatedTestGrip,
+    reason: &str,
+) {
+    out.push('{');
+    out.push_str(&format!(
+        "\"name\": \"{}\", ",
+        json_escape(test.test_name.as_str())
+    ));
+    out.push_str(&format!(
+        "\"file\": \"{}\", ",
+        json_escape(&test.file.to_string_lossy())
+    ));
+    out.push_str(&format!("\"line\": {}, ", test.line));
+    out.push_str(&format!(
+        "\"oracle_kind\": \"{}\", ",
+        test.oracle_kind.as_str()
+    ));
+    out.push_str(&format!(
+        "\"oracle_strength\": \"{}\", ",
+        test.oracle_strength.as_str()
+    ));
+    out.push_str(&format!(
+        "\"relation_reason\": \"{}\", ",
+        test.relation_reason.as_str()
+    ));
+    out.push_str(&format!(
+        "\"relation_confidence\": \"{}\", ",
+        test.relation_confidence.as_str()
+    ));
+    out.push_str(&format!("\"reason\": \"{}\"", json_escape(reason)));
+    out.push('}');
+}
+
+fn candidate_values_for(entry: &ClassifiedSeam, missing: &[MissingRecord]) -> Vec<CandidateValue> {
+    let mut out: Vec<CandidateValue> = missing
+        .iter()
+        .map(|record| CandidateValue {
+            value: record.value.clone(),
+            reason: record.reason.clone(),
+        })
+        .collect();
+    if out.is_empty() {
+        out.push(candidate_value_from_required(
+            entry.seam.required_discriminator(),
+        ));
+    }
+    out
+}
+
+fn candidate_value_from_required(required: &RequiredDiscriminator) -> CandidateValue {
+    match required {
+        RequiredDiscriminator::BoundaryValue { description } => CandidateValue {
+            value: format!("input that exercises {description}"),
+            reason: "exercise the predicate boundary named by the seam".to_string(),
+        },
+        RequiredDiscriminator::ErrorVariant { variant } => CandidateValue {
+            value: format!("input that triggers {variant}"),
+            reason: "force the exact error variant rather than any error".to_string(),
+        },
+        RequiredDiscriminator::ReturnValue { description } => CandidateValue {
+            value: format!("input that changes {description}"),
+            reason: "observe the returned value sink named by the seam".to_string(),
+        },
+        RequiredDiscriminator::FieldValue { field } => CandidateValue {
+            value: format!("input that sets {field}"),
+            reason: "observe the constructed field value".to_string(),
+        },
+        RequiredDiscriminator::Effect { sink } => CandidateValue {
+            value: format!("input that produces {sink}"),
+            reason: "observe the side effect sink".to_string(),
+        },
+        RequiredDiscriminator::MatchArmTaken { arm } => CandidateValue {
+            value: format!("input that selects {arm}"),
+            reason: "exercise the changed match arm".to_string(),
+        },
+        RequiredDiscriminator::CallSite { target } => CandidateValue {
+            value: format!("input that reaches call {target}"),
+            reason: "observe the call site with a mock or spy".to_string(),
+        },
+    }
+}
+
+fn assertion_shape_for(kind: SeamKind, owner: &str, evidence: &TestGripEvidence) -> AssertionShape {
+    let example = suggested_assertions_for(kind, owner, evidence)
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| "assert_eq!(actual, expected)".to_string());
+    AssertionShape {
+        kind: assertion_shape_kind_for(kind),
+        example,
+    }
+}
+
+fn assertion_shape_kind_for(kind: SeamKind) -> &'static str {
+    match kind {
+        SeamKind::PredicateBoundary => "exact_return_value",
+        SeamKind::ErrorVariant => "exact_error_variant",
+        SeamKind::ReturnValue => "exact_return_value",
+        SeamKind::FieldConstruction => "field_equality",
+        SeamKind::SideEffect => "side_effect_observer",
+        SeamKind::MatchArm => "match_result",
+        SeamKind::CallPresence => "call_expectation",
+    }
+}
+
+fn patterns_to_imitate_for(evidence: &TestGripEvidence) -> Vec<ImitationPattern<'_>> {
+    evidence
+        .related_tests
+        .iter()
+        .filter(|test| {
+            matches!(
+                test.oracle_strength,
+                crate::domain::OracleStrength::Strong | crate::domain::OracleStrength::Medium
+            )
+        })
+        .take(3)
+        .map(|test| ImitationPattern {
+            test,
+            reason: format!(
+                "{} {} oracle with {} relation",
+                test.oracle_strength.as_str(),
+                test.oracle_kind.as_str(),
+                test.relation_confidence.as_str()
+            ),
+        })
+        .collect()
+}
+
+fn patterns_to_avoid_for(entry: &ClassifiedSeam) -> Vec<AvoidPattern> {
+    let mut out: Vec<AvoidPattern> = entry
+        .evidence
+        .related_tests
+        .iter()
+        .filter(|test| {
+            matches!(
+                test.oracle_strength,
+                crate::domain::OracleStrength::Weak
+                    | crate::domain::OracleStrength::Smoke
+                    | crate::domain::OracleStrength::None
+                    | crate::domain::OracleStrength::Unknown
+            )
+        })
+        .take(3)
+        .map(|test| AvoidPattern {
+            pattern: format!(
+                "{} in {}",
+                test.oracle_kind.as_str(),
+                test.test_name.as_str()
+            ),
+            reason: "this related test reaches nearby behavior but lacks an exact discriminator"
+                .to_string(),
+        })
+        .collect();
+    if !entry.evidence.missing_discriminators.is_empty() {
+        out.push(AvoidPattern {
+            pattern: "adding another test with only already-observed values".to_string(),
+            reason: "candidate values should include the missing discriminator".to_string(),
+        });
+    }
+    if out.is_empty() && matches!(entry.class, SeamGripClass::Ungripped) {
+        out.push(AvoidPattern {
+            pattern: "copying a smoke-only test shape".to_string(),
+            reason: "ungripped seams need a meaningful observer, not just execution".to_string(),
+        });
+    }
+    out
+}
+
+fn packet_confidence_for(entry: &ClassifiedSeam) -> &'static str {
+    if matches!(entry.class, SeamGripClass::Opaque) {
+        return "unknown";
+    }
+    if entry.evidence.related_tests.iter().any(|test| {
+        test.relation_confidence == crate::analysis::test_grip_evidence::RelationConfidence::High
+    }) {
+        return "high";
+    }
+    if entry.evidence.related_tests.iter().any(|test| {
+        test.relation_confidence == crate::analysis::test_grip_evidence::RelationConfidence::Medium
+    }) || !entry.evidence.missing_discriminators.is_empty()
+    {
+        return "medium";
+    }
+    "low"
 }
 
 /// Build the `missing_discriminators` array carried in the packet,
@@ -656,6 +1049,62 @@ mod tests {
                 "high-confidence test must render before low-confidence; \
                  high@{high_idx} low@{low_idx}"
             ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn packet_v2_carries_recommended_test_candidate_values_assertion_shape_and_confidence()
+    -> Result<(), String> {
+        let json = render_agent_seam_packets_json(&[weakly_gripped_classified()]);
+        for needle in [
+            "\"recommended_test\": {\"name\": \"discounted_total_boundary_discriminator\"",
+            "\"file\": \"tests/pricing.rs\"",
+            "\"nearest_strong_test_to_imitate\": {\"name\": \"below_threshold_has_no_discount\"",
+            "\"candidate_values\": [",
+            "\"value\": \"discount_threshold (equality boundary)\"",
+            "\"assertion_shape\": {\"kind\": \"exact_return_value\"",
+            "\"example\": \"assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)\"",
+            "\"confidence\": \"high\"",
+        ] {
+            if !json.contains(needle) {
+                return Err(format!("missing v2 field {needle:?} in: {json}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn packet_v2_carries_patterns_to_imitate_and_avoid() -> Result<(), String> {
+        let json = render_agent_seam_packets_json(&[weakly_gripped_classified()]);
+        for needle in [
+            "\"patterns_to_imitate\": [",
+            "\"reason\": \"strong exact_value oracle with high relation\"",
+            "\"patterns_to_avoid\": [",
+            "\"pattern\": \"adding another test with only already-observed values\"",
+            "\"reason\": \"candidate values should include the missing discriminator\"",
+        ] {
+            if !json.contains(needle) {
+                return Err(format!("missing pattern field {needle:?} in: {json}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn packet_v2_recommends_inferred_test_file_when_no_related_test_exists() -> Result<(), String> {
+        let json = render_agent_seam_packets_json(&[ungripped_classified()]);
+        for needle in [
+            "\"recommended_test\": {\"name\": \"discounted_total_boundary_discriminator\"",
+            "\"file\": \"tests/pricing_tests.rs\"",
+            "\"nearest_strong_test_to_imitate\": null",
+            "\"confidence\": \"low\"",
+        ] {
+            if !json.contains(needle) {
+                return Err(format!(
+                    "missing inferred recommendation {needle:?} in: {json}"
+                ));
+            }
         }
         Ok(())
     }
