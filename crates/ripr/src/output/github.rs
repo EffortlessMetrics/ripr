@@ -137,6 +137,56 @@ mod tests {
         assert!(!rendered.contains("Stop reason"));
     }
 
+    #[test]
+    fn render_uses_warning_annotation_level_for_warning_severity_classes() {
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![Finding {
+                id: "probe:src_lib_rs:34:boundary".to_string(),
+                probe: Probe {
+                    id: ProbeId("probe:src_lib_rs:34:boundary".to_string()),
+                    location: SourceLocation::new("src/lib.rs", 34, 1),
+                    owner: None,
+                    family: ProbeFamily::Predicate,
+                    delta: DeltaKind::Control,
+                    before: Some("x > 10".to_string()),
+                    after: Some("x >= 10".to_string()),
+                    expression: "x > 10".to_string(),
+                    expected_sinks: vec![],
+                    required_oracles: vec![],
+                },
+                class: ExposureClass::WeaklyExposed,
+                ripr: RiprEvidence {
+                    reach: stage(StageState::Yes, "reachable"),
+                    infect: stage(StageState::Yes, "infected"),
+                    propagate: stage(StageState::Unknown, "propagation uncertain"),
+                    reveal: RevealEvidence {
+                        observe: stage(StageState::Unknown, "observe unknown"),
+                        discriminate: stage(StageState::Unknown, "discriminate unknown"),
+                    },
+                },
+                confidence: 0.6,
+                evidence: vec![],
+                missing: vec![],
+                flow_sinks: vec![],
+                activation: crate::domain::ActivationEvidence::default(),
+                stop_reasons: vec![],
+                related_tests: vec![],
+                recommended_next_step: None,
+            }],
+        };
+
+        let rendered = render(&output);
+
+        assert!(rendered.contains("::warning file=src/lib.rs,line=34,title=ripr weakly_exposed::"));
+        assert!(rendered.contains("Static RIPR exposure finding"));
+    }
+
     fn output_with_unknown_finding() -> CheckOutput {
         CheckOutput {
             schema_version: "0.1".to_string(),
