@@ -1,10 +1,10 @@
-id = "voice-b-usability-and-precision"
-title = "Voice B Usability and Precision"
+id = "seam-evidence-usability-and-precision"
+title = "Seam Evidence Usability and Precision"
 status = "active"
 
 # This is Campaign 5A in `docs/IMPLEMENTATION_CAMPAIGNS.md`. Campaign 4B
-# (`repo-seam-inventory-test-grip`) closed in #252 leaving the Voice B
-# product loop in place: RepoSeam model, repo seam inventory, test-grip
+# (`repo-seam-inventory-test-grip`) closed in #252 leaving the seam
+# evidence loop in place: RepoSeam model, repo seam inventory, test-grip
 # evidence, SeamGripClass classification, repo exposure report, agent
 # seam packets, LSP seam diagnostics, seam evidence hover, and agent
 # dispatch docs.
@@ -12,7 +12,7 @@ status = "active"
 # Campaign 5 was originally framed as `adoption-and-calibration`
 # (cache + calibration + config + ci/sarif). That framing was too
 # operational — it skipped the precision and actionability work that
-# makes Voice B useful every day. Campaign 5A reframes the queue
+# makes seam evidence useful every day. Campaign 5A reframes the queue
 # around four product axes: fast (cache), precise (related-test,
 # value, oracle-shape), actionable (agent packets v2, LSP code
 # actions), and calibrated (cargo-mutants). Operationalization items
@@ -51,7 +51,7 @@ end_state = [
 
 [[work_item]]
 id = "cache/repo-seam-facts-v1"
-status = "ready"
+status = "done"
 branch = "cache/repo-seam-facts-v1"
 stackable = false
 requires_human_merge = true

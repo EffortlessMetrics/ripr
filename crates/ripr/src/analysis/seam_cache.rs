@@ -1,4 +1,4 @@
-//! Voice B fact-layer cache for repo seam analysis (`cache/repo-seam-facts-v1`).
+//! Fact-layer cache for repo seam analysis (`cache/repo-seam-facts-v1`).
 //!
 //! Caches `Vec<ClassifiedSeam>` keyed on the aggregate workspace state
 //! (per-file content hashes, cfg/features, config, test intent,

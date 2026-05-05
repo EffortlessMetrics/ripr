@@ -65,7 +65,7 @@ Revisit trigger:
   the bounded count is no longer a sufficient interface.
 
 Likely v2 direction:
-  First-class **Voice B** model: introduce `RepoSeam` / `SeamKind`
+  First-class **repo seam evidence** model: introduce `RepoSeam` / `SeamKind`
   (predicate boundary, error variant, return value, struct field, side effect,
   match arm, validation, call presence) and classify each seam through
   reach / activate / propagate / observe / discriminate. Feed LSP diagnostics,

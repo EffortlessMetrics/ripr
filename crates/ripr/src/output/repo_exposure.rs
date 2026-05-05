@@ -1,5 +1,5 @@
-//! Render the Voice B classified seam inventory as a repo exposure
-//! report (JSON + Markdown).
+//! Render the classified seam inventory as a repo exposure report
+//! (JSON + Markdown).
 //!
 //! Schema is documented in `docs/OUTPUT_SCHEMA.md` under
 //! `repo-exposure.json`. The schema version pin is
@@ -200,9 +200,9 @@ fn push_classified_json(out: &mut String, entry: &ClassifiedSeam) {
     out.push_str("    }");
 }
 
-/// Render the repo exposure Markdown report. The output uses Voice B
-/// vocabulary only — no runtime-mutation outcome words per
-/// RIPR-SPEC-0005 § Static-Language Boundaries.
+/// Render the repo exposure Markdown report. The output uses the
+/// static seam evidence vocabulary only — no runtime-mutation outcome
+/// words per RIPR-SPEC-0005 § Static-Language Boundaries.
 pub(crate) fn render_repo_exposure_md(classified: &[ClassifiedSeam]) -> String {
     let metrics = ExposureMetrics::from(classified);
     let mut out = String::new();
@@ -230,8 +230,8 @@ pub(crate) fn render_repo_exposure_md(classified: &[ClassifiedSeam]) -> String {
 
     if classified.is_empty() {
         out.push_str(
-            "\nNo classified seams. Voice B inventory is empty or no production \
-             seams were detected.\n",
+            "\nNo classified seams. The repo seam inventory is empty or no \
+             production seams were detected.\n",
         );
         return out;
     }
@@ -250,9 +250,9 @@ pub(crate) fn render_repo_exposure_md(classified: &[ClassifiedSeam]) -> String {
     });
     if top_gaps.is_empty() {
         out.push_str(
-            "No headline-eligible seams. Voice B reports no detected grip gaps \
-             at the moment; runtime confirmation via `cargo-mutants` remains \
-             a separate calibration step.\n",
+            "No headline-eligible seams. Static seam evidence reports no \
+             detected grip gaps at the moment; runtime confirmation via \
+             `cargo-mutants` remains a separate calibration step.\n",
         );
         return out;
     }
@@ -269,9 +269,10 @@ pub(crate) fn render_repo_exposure_md(classified: &[ClassifiedSeam]) -> String {
     }
 
     out.push_str(
-        "\n_Voice B reports static test grip evidence. Runtime confirmation \
-        (e.g. `cargo-mutants`) is a separate calibration step. \
-        Static-language constraints from RIPR-SPEC-0005 still apply._\n",
+        "\n_This report shows static test-grip evidence for repo seams. \
+        Runtime confirmation (e.g. `cargo-mutants`) is a separate \
+        calibration step. Static-language constraints from RIPR-SPEC-0005 \
+        still apply._\n",
     );
     out
 }
@@ -529,7 +530,7 @@ mod tests {
     #[test]
     fn markdown_explains_when_inventory_is_empty() {
         let md = render_repo_exposure_md(&[]);
-        assert!(md.contains("Voice B inventory is empty"));
+        assert!(md.contains("repo seam inventory is empty"));
     }
 
     #[test]
@@ -544,7 +545,7 @@ mod tests {
 
     #[test]
     fn markdown_uses_static_exposure_vocabulary() {
-        // Pin Voice B framing strings; the repo-wide
+        // Pin seam evidence framing strings; the repo-wide
         // check-static-language gate enforces forbidden-token absence.
         let md = render_repo_exposure_md(&[weakly_gripped_classified()]);
         assert!(md.contains("ripr repo exposure report"));

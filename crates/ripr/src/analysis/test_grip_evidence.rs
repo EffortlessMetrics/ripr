@@ -1,4 +1,4 @@
-//! Voice B test-grip evidence per RIPR-SPEC-0005, v1.
+//! Test-grip evidence per RIPR-SPEC-0005, v1.
 //!
 //! For each `RepoSeam`, build per-stage evidence (reach / activate /
 //! propagate / observe / discriminate) using the existing `RustIndex`

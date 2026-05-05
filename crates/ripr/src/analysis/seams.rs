@@ -1,8 +1,9 @@
 //! Crate-private seam model per `docs/specs/RIPR-SPEC-0005-repo-seam-inventory.md`.
 //!
-//! This module introduces the Voice B data types — `RepoSeam`, `SeamId`,
-//! `SeamKind`, `RequiredDiscriminator`, `ExpectedSink`, `SeamGripClass` — but
-//! does not walk source, attach evidence, classify, or render output. Those
+//! This module introduces the seam evidence data types — `RepoSeam`,
+//! `SeamId`, `SeamKind`, `RequiredDiscriminator`, `ExpectedSink`,
+//! `SeamGripClass` — but does not walk source, attach evidence,
+//! classify, or render output. Those
 //! responsibilities land in subsequent work items
 //! (`analysis/repo-seam-inventory-v1`, `analysis/test-grip-evidence-v1`,
 //! `analysis/repo-ripr-classification-v1`, `output/repo-exposure-report-v1`).

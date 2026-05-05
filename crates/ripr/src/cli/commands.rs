@@ -40,7 +40,7 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     }
     let format = input.format.clone();
     let output = if format.is_repo_seam_inventory() {
-        // Voice B seam inventory does not consume `Findings`, so we
+        // The repo seam inventory does not consume `Findings`, so we
         // skip `run_repo_analysis` and let `render_check` drive the
         // walker directly from `output.root`. The synthesized
         // `CheckOutput` carries only the fields the renderer reads.

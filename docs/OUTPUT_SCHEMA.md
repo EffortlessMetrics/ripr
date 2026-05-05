@@ -318,8 +318,8 @@ for coding agents and editor commands.
 
 ## Repo Seam Inventory
 
-`ripr check --root . --format repo-seams-json` emits the Voice B repo seam
-inventory introduced by RIPR-SPEC-0005. The artifact lands at
+`ripr check --root . --format repo-seams-json` emits the repo seam inventory
+introduced by RIPR-SPEC-0005. The artifact lands at
 `target/ripr/reports/repo-seams.json` when generated via
 `cargo xtask repo-seam-inventory`.
 
@@ -352,8 +352,8 @@ Field contract:
 - `schema_version` — currently `"0.1"`. Bumping requires updating this section,
   the renderer (`crates/ripr/src/output/repo_seams.rs`), and any downstream
   consumers in lockstep.
-- `scope` — always `"repo"` for this artifact. Distinguishes Voice B repo
-  inventory from Voice A diff-scoped findings.
+- `scope` — always `"repo"` for this artifact. Distinguishes the repo seam
+  inventory from diff-scoped findings.
 - `seam_id` — 16-char lowercase hex. FNV-1a 64-bit hash of
   `file | owner | kind | byte_offset` (null-byte separators). Stable across
   runs and file walk reorderings.
@@ -377,10 +377,10 @@ Field contract:
   `side_effect`. The spec's `unknown` sink will return when an undetermined
   kind is detected.
 
-Voice B v1 inventories every probeable production syntax shape and does not
-yet classify test grip; `analysis/repo-ripr-classification-v1` adds
-`SeamGripClass` and the headline-eligibility table per RIPR-SPEC-0005. Static
-output continues to forbid runtime-mutation outcome words.
+The repo seam inventory v1 captures every probeable production syntax shape
+and does not yet classify test grip; `analysis/repo-ripr-classification-v1`
+adds `SeamGripClass` and the headline-eligibility table per RIPR-SPEC-0005.
+Static output continues to forbid runtime-mutation outcome words.
 
 The Markdown sibling (`repo-seams.md`, generated alongside the JSON) is
 human-readable but follows the same contract for `kind`, `owner`, and
@@ -388,10 +388,10 @@ human-readable but follows the same contract for `kind`, `owner`, and
 
 ## Repo Exposure Report
 
-`ripr check --root . --format repo-exposure-json` emits the Voice B
-classified seam inventory introduced by `analysis/repo-ripr-classification-v1`.
-The artifact lands at `target/ripr/reports/repo-exposure.json` when generated
-via `cargo xtask repo-exposure-report`.
+`ripr check --root . --format repo-exposure-json` emits the classified seam
+inventory introduced by `analysis/repo-ripr-classification-v1`. The artifact
+lands at `target/ripr/reports/repo-exposure.json` when generated via
+`cargo xtask repo-exposure-report`.
 
 ```json
 {
@@ -484,10 +484,11 @@ The Markdown sibling (`repo-exposure.md`) prints a metrics table plus
 the top headline-eligible seams (capped at 50). Both formats are
 generated together by `cargo xtask repo-exposure-report`.
 
-Voice B reports static test grip evidence. Runtime confirmation via
-`cargo-mutants` is a separate calibration step (`calibration/cargo-mutants-v1`).
-Static-language constraints from RIPR-SPEC-0005 still apply: the report
-never uses runtime-mutation outcome words.
+This report shows static test-grip evidence for repo seams. Runtime
+confirmation via `cargo-mutants` is a separate calibration step
+(`calibration/cargo-mutants-v1`). Static-language constraints from
+RIPR-SPEC-0005 still apply: the report never uses runtime-mutation
+outcome words.
 
 ## Agent Seam Packets
 

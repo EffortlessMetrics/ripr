@@ -1,4 +1,4 @@
-//! Render the Voice B repo seam inventory as JSON or Markdown.
+//! Render the repo seam inventory as JSON or Markdown.
 //!
 //! Schema is documented in `docs/OUTPUT_SCHEMA.md` under
 //! `repo-seams.json`. Bumping the JSON shape requires bumping
@@ -99,8 +99,8 @@ pub(crate) fn render_repo_seams_md(seams: &[RepoSeam]) -> String {
 
     if seams.is_empty() {
         out.push_str(
-            "No production seams currently inventoried by Voice B. \
-             Voice A diff-scoped findings remain available via `ripr check`.\n",
+            "No production seams currently inventoried. \
+             Diff-scoped findings remain available via `ripr check`.\n",
         );
         return out;
     }
@@ -121,7 +121,7 @@ pub(crate) fn render_repo_seams_md(seams: &[RepoSeam]) -> String {
     }
 
     out.push_str(
-        "\nVoice B inventory does not classify test grip yet — \
+        "\nThis repo seam inventory does not classify test grip yet — \
         `analysis/repo-ripr-classification-v1` adds `SeamGripClass`. \
         Static-language constraints from RIPR-SPEC-0005 still apply.\n",
     );
@@ -220,11 +220,11 @@ mod tests {
     fn markdown_uses_static_exposure_vocabulary() {
         // The check-static-language xtask gate enforces forbidden-token
         // absence repo-wide. This test pins that the renderer's boilerplate
-        // uses the approved Voice B vocabulary so a future edit cannot
-        // regress the wording without breaking a unit test too.
+        // uses the approved seam evidence vocabulary so a future edit
+        // cannot regress the wording without breaking a unit test too.
         let md = render_repo_seams_md(&[sample_seam()]);
         assert!(
-            md.contains("Voice B inventory does not classify test grip"),
+            md.contains("This repo seam inventory does not classify test grip"),
             "boilerplate footer drift: {md}"
         );
         assert!(

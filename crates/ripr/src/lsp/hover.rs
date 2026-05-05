@@ -35,8 +35,8 @@ pub(super) fn finding_hover_response(finding: &Finding, diagnostic: &Diagnostic)
     }
 }
 
-/// Voice B hover for seam diagnostics. Renders the RIPR evidence
-/// path that produced the seam's grip class plus related-test
+/// Seam evidence hover for seam diagnostics. Renders the RIPR
+/// evidence path that produced the seam's grip class plus related-test
 /// citations and the next-step suggestion. Looks up the seam by
 /// `diagnostic.data.seam_id` rather than parsing the diagnostic
 /// message — the lookup contract from

@@ -1,4 +1,4 @@
-//! Render Voice B classified seam gaps as agent-ready packets per
+//! Render classified seam gaps as agent-ready packets per
 //! RIPR-SPEC-0005 (and the agent-packet shape in
 //! `docs/OUTPUT_SCHEMA.md` § "Agent Seam Packets").
 //!

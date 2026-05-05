@@ -574,7 +574,7 @@ fn given_diagnostic_with_unknown_seam_id_when_lookup_runs_then_no_classified_sea
     let mut diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
     // Replace the diagnostic data with a synthetic seam_id that does
     // not appear in classified_seams. Drops the finding_id, mirroring
-    // a Voice B seam diagnostic.
+    // a seam evidence diagnostic.
     diagnostic.data = Some(serde_json::json!({
         "schema_version": "0.1",
         "seam_id": "deadbeef00000000",
