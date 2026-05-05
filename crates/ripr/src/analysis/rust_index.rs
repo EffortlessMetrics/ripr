@@ -1272,8 +1272,25 @@ fn is_snapshot_assertion(line: &str) -> bool {
     ];
     known_snapshot_macros
         .iter()
-        .any(|macro_name| line.contains(macro_name))
+        .any(|macro_name| contains_macro_invocation(line, macro_name))
         || expect_test_comparison
+}
+
+fn contains_macro_invocation(line: &str, macro_name: &str) -> bool {
+    line.match_indices(macro_name).any(|(index, _)| {
+        let prefix_ok = index == 0
+            || !line[..index]
+                .chars()
+                .next_back()
+                .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_');
+        let suffix_start = index + macro_name.len();
+        let suffix_ok = line[suffix_start..]
+            .trim_start()
+            .chars()
+            .next()
+            .is_some_and(|ch| matches!(ch, '(' | '[' | '{'));
+        prefix_ok && suffix_ok
+    })
 }
 
 fn is_exact_error_variant_assertion(line: &str) -> bool {
@@ -1526,6 +1543,42 @@ fn checks_error() {
         assert_eq!(broad.strength, OracleStrength::Weak);
         assert_eq!(ok_pattern.kind, OracleKind::ExactValue);
         assert_eq!(ok_pattern.strength, OracleStrength::Strong);
+    }
+
+    #[test]
+    fn snapshot_macro_detection_uses_invocation_boundaries() {
+        assert!(contains_macro_invocation(
+            "insta::assert_snapshot!(value)",
+            "assert_snapshot!"
+        ));
+        assert!(contains_macro_invocation(
+            "assert_snapshot! (value)",
+            "assert_snapshot!"
+        ));
+        assert!(contains_macro_invocation(
+            "assert_snapshot![value]",
+            "assert_snapshot!"
+        ));
+        assert!(contains_macro_invocation(
+            "assert_snapshot!{value}",
+            "assert_snapshot!"
+        ));
+        assert!(!contains_macro_invocation(
+            "my_assert_snapshot!(value)",
+            "assert_snapshot!"
+        ));
+        assert!(!contains_macro_invocation(
+            "assert_snapshot_extra!(value)",
+            "assert_snapshot!"
+        ));
+        assert!(!contains_macro_invocation(
+            "assert_snapshot!value",
+            "assert_snapshot!"
+        ));
+        assert!(!contains_macro_invocation(
+            "assert_snapshot! value",
+            "assert_snapshot!"
+        ));
     }
 
     #[test]
