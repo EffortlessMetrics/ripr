@@ -13,6 +13,12 @@ What it does:
   Reads changed Rust code, creates mutation-like probes, and estimates whether
   tests appear to reach, infect, propagate, and reveal the changed behavior
   through meaningful oracles. It does not run mutants.
+
+Quick start:
+  ripr doctor
+  ripr check --diff crates/ripr/examples/sample/example.diff
+  ripr check --diff crates/ripr/examples/sample/example.diff --json
+  ripr explain --diff crates/ripr/examples/sample/example.diff <finding-id>
 "#
     );
 }
@@ -38,6 +44,12 @@ Options:
                            non-repo badge-* formats remain diff-scoped.
   --json                   Shortcut for --format json.
   --no-unchanged-tests     Limit the index to changed Rust files.
+
+Examples:
+  ripr check
+  ripr check --base HEAD~1
+  ripr check --diff crates/ripr/examples/sample/example.diff --format github
+  ripr check --mode ready --json
 "#
     );
 }
