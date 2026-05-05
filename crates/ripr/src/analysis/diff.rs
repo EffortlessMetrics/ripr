@@ -224,19 +224,45 @@ mod tests {
     fn parser_is_robust_against_fuzz_like_inputs() {
         let mut seed = 0xC0FFEE_u64;
 
+        for text in structured_fuzz_regressions() {
+            assert_fuzz_invariants(text);
+        }
+
         for case in 0..1_024 {
             let text = if case % 2 == 0 {
                 fuzz_case_as_raw_bytes(&mut seed)
             } else {
                 fuzz_case_as_diff_like_lines(&mut seed)
             };
-            let files = parse_unified_diff(&text);
-            for file in files {
-                assert!(!file.path.as_os_str().is_empty());
-                assert!(file.added_lines.iter().all(|line| !line.text.contains('\n')));
-                assert!(file.removed_lines.iter().all(|line| !line.text.contains('\n')));
-            }
+            assert_fuzz_invariants(text);
         }
+    }
+
+    fn assert_fuzz_invariants(text: impl AsRef<str>) {
+        let files = parse_unified_diff(text.as_ref());
+        for file in files {
+            assert!(!file.path.as_os_str().is_empty());
+            assert!(file.added_lines.iter().all(|line| !line.text.contains('\n')));
+            assert!(file.removed_lines.iter().all(|line| !line.text.contains('\n')));
+        }
+    }
+
+    fn structured_fuzz_regressions() -> Vec<String> {
+        vec![
+            // Extremely long paths and line payloads.
+            format!(
+                "diff --git a/{name} b/{name}\n--- a/{name}\n+++ b/{name}\n@@ -1,1 +1,1 @@\n-{removed}\n+{added}\n",
+                name = "src/".to_string() + &"a".repeat(512) + ".rs",
+                removed = "x".repeat(4096),
+                added = "y".repeat(4096)
+            ),
+            // CRLF hunks mixed with LF headers.
+            "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,3 +1,3 @@\n-a\r\n+b\r\n c\r\n".to_string(),
+            // Nested diff-like markers inside changed lines.
+            "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,4 +1,4 @@\n-diff --git not a real header\n+@@ -999,999 +999,999 @@\n-+++ should stay payload\n+--- should stay payload\n".to_string(),
+            // Multi-file rename-like metadata combined with malformed hunks.
+            "diff --git a/src/a.rs b/src/z.rs\nsimilarity index 80%\nrename from src/a.rs\nrename to src/z.rs\n--- a/src/a.rs\n+++ b/src/z.rs\n@@ malformed @@\n+line\n-dropped\ndiff --git a/src/b.rs b/src/b.rs\n--- a/src/b.rs\n+++ b/src/b.rs\n@@ -0,0 +1,1 @@\n+new\n".to_string(),
+        ]
     }
 
     fn fuzz_case_as_raw_bytes(seed: &mut u64) -> String {
