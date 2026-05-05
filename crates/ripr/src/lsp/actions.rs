@@ -1,30 +1,39 @@
-use super::{COPY_CONTEXT_COMMAND, REFRESH_COMMAND};
+use super::state::AnalysisSnapshot;
+use super::uri::file_uri_for_path;
+use super::{
+    COPY_CONTEXT_COMMAND, COPY_SUGGESTED_ASSERTION_COMMAND, OPEN_RELATED_TEST_COMMAND,
+    REFRESH_COMMAND,
+};
+use crate::analysis::ClassifiedSeam;
+use crate::analysis::test_grip_evidence::RelatedTestGrip;
+use crate::output::agent_seam_packets::suggested_assertion_for_classified_seam;
+use std::path::PathBuf;
 use tower_lsp_server::ls_types::{
     CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams, CodeActionResponse, Command,
     Diagnostic, LSPAny,
 };
 
-pub(super) fn code_action_response(params: &CodeActionParams) -> CodeActionResponse {
+pub(super) fn code_action_response(
+    params: &CodeActionParams,
+    snapshot: Option<&AnalysisSnapshot>,
+) -> CodeActionResponse {
     let mut actions = Vec::new();
-    if let Some(diagnostic) = params
+    if let Some(context) = seam_action_context(params, snapshot) {
+        push_seam_actions(&mut actions, params, snapshot, context);
+    } else if let Some(diagnostic) = params
         .context
         .diagnostics
         .iter()
-        .find(|d| is_ripr_diagnostic(d))
+        .find(|d| is_ripr_diagnostic(d) && !is_seam_diagnostic(d))
     {
-        actions.push(CodeActionOrCommand::CodeAction(CodeAction {
-            title: "Copy ripr context packet".to_string(),
-            kind: Some(CodeActionKind::QUICKFIX),
-            command: Some(Command {
-                title: "Copy ripr context".to_string(),
-                command: COPY_CONTEXT_COMMAND.to_string(),
-                arguments: Some(vec![copy_context_target(params, diagnostic)]),
-            }),
-            ..CodeAction::default()
-        }));
+        actions.push(copy_context_action(
+            "Copy ripr context packet",
+            "Copy ripr context",
+            copy_context_target(params, diagnostic),
+        ));
     }
     actions.push(CodeActionOrCommand::CodeAction(CodeAction {
-        title: "Run ripr check".to_string(),
+        title: "Refresh ripr analysis".to_string(),
         kind: Some(CodeActionKind::SOURCE),
         command: Some(Command {
             title: "Refresh ripr analysis".to_string(),
@@ -36,8 +45,106 @@ pub(super) fn code_action_response(params: &CodeActionParams) -> CodeActionRespo
     actions
 }
 
+struct SeamActionContext<'a> {
+    diagnostic: &'a Diagnostic,
+    seam: &'a ClassifiedSeam,
+}
+
+fn seam_action_context<'a>(
+    params: &'a CodeActionParams,
+    snapshot: Option<&'a AnalysisSnapshot>,
+) -> Option<SeamActionContext<'a>> {
+    let snapshot = snapshot?;
+    params
+        .context
+        .diagnostics
+        .iter()
+        .filter(|d| is_ripr_diagnostic(d) && is_seam_diagnostic(d))
+        .find_map(|diagnostic| {
+            snapshot
+                .classified_seam_for_diagnostic(diagnostic)
+                .map(|seam| SeamActionContext { diagnostic, seam })
+        })
+}
+
+fn push_seam_actions(
+    actions: &mut CodeActionResponse,
+    params: &CodeActionParams,
+    snapshot: Option<&AnalysisSnapshot>,
+    context: SeamActionContext<'_>,
+) {
+    actions.push(copy_context_action(
+        "Copy seam packet",
+        "Copy seam packet",
+        copy_seam_packet_target(params, context.diagnostic, context.seam),
+    ));
+    if let Some(assertion) = suggested_assertion_for_classified_seam(context.seam) {
+        actions.push(copy_suggested_assertion_action(context.seam, assertion));
+    }
+    if let Some(snapshot) = snapshot
+        && let Some(related) = context.seam.evidence.related_tests.first()
+        && let Some(target) = related_test_target(snapshot, related)
+    {
+        actions.push(open_related_test_action(target));
+    }
+}
+
+fn copy_context_action(title: &str, command_title: &str, target: LSPAny) -> CodeActionOrCommand {
+    CodeActionOrCommand::CodeAction(CodeAction {
+        title: title.to_string(),
+        kind: Some(CodeActionKind::QUICKFIX),
+        command: Some(Command {
+            title: command_title.to_string(),
+            command: COPY_CONTEXT_COMMAND.to_string(),
+            arguments: Some(vec![target]),
+        }),
+        ..CodeAction::default()
+    })
+}
+
+fn copy_suggested_assertion_action(
+    seam: &ClassifiedSeam,
+    assertion: String,
+) -> CodeActionOrCommand {
+    CodeActionOrCommand::CodeAction(CodeAction {
+        title: "Copy suggested assertion".to_string(),
+        kind: Some(CodeActionKind::QUICKFIX),
+        command: Some(Command {
+            title: "Copy suggested assertion".to_string(),
+            command: COPY_SUGGESTED_ASSERTION_COMMAND.to_string(),
+            arguments: Some(vec![serde_json::json!({
+                "seam_id": seam.seam.id().as_str(),
+                "assertion": assertion,
+            })]),
+        }),
+        ..CodeAction::default()
+    })
+}
+
+fn open_related_test_action(target: LSPAny) -> CodeActionOrCommand {
+    CodeActionOrCommand::CodeAction(CodeAction {
+        title: "Open related test".to_string(),
+        kind: Some(CodeActionKind::QUICKFIX),
+        command: Some(Command {
+            title: "Open related test".to_string(),
+            command: OPEN_RELATED_TEST_COMMAND.to_string(),
+            arguments: Some(vec![target]),
+        }),
+        ..CodeAction::default()
+    })
+}
+
 fn is_ripr_diagnostic(diagnostic: &Diagnostic) -> bool {
     diagnostic.source.as_deref() == Some("ripr")
+}
+
+fn is_seam_diagnostic(diagnostic: &Diagnostic) -> bool {
+    diagnostic
+        .data
+        .as_ref()
+        .and_then(|data| data.get("seam_id"))
+        .and_then(|value| value.as_str())
+        .is_some()
 }
 
 fn copy_context_target(params: &CodeActionParams, diagnostic: &Diagnostic) -> LSPAny {
@@ -67,6 +174,59 @@ fn copy_context_target(params: &CodeActionParams, diagnostic: &Diagnostic) -> LS
                 serde_json::Value::String(probe_id.to_string()),
             );
         }
+        if let Some(seam_id) = obj.get("seam_id").and_then(|v| v.as_str()) {
+            target.insert(
+                "seam_id".to_string(),
+                serde_json::Value::String(seam_id.to_string()),
+            );
+        }
+        if let Some(seam_kind) = obj.get("seam_kind").and_then(|v| v.as_str()) {
+            target.insert(
+                "seam_kind".to_string(),
+                serde_json::Value::String(seam_kind.to_string()),
+            );
+        }
     }
     serde_json::Value::Object(target)
+}
+
+fn copy_seam_packet_target(
+    params: &CodeActionParams,
+    diagnostic: &Diagnostic,
+    seam: &ClassifiedSeam,
+) -> LSPAny {
+    let mut target = copy_context_target(params, diagnostic);
+    if let Some(obj) = target.as_object_mut() {
+        obj.insert(
+            "line".to_string(),
+            serde_json::Value::Number(serde_json::Number::from(seam.seam.display_line())),
+        );
+        obj.insert(
+            "seam_id".to_string(),
+            serde_json::Value::String(seam.seam.id().as_str().to_string()),
+        );
+        obj.insert(
+            "seam_kind".to_string(),
+            serde_json::Value::String(seam.seam.kind().as_str().to_string()),
+        );
+    }
+    target
+}
+
+fn related_test_target(snapshot: &AnalysisSnapshot, related: &RelatedTestGrip) -> Option<LSPAny> {
+    let path = absolute_related_test_path(snapshot, related);
+    let uri = file_uri_for_path(&path).ok()?;
+    Some(serde_json::json!({
+        "uri": uri.as_str(),
+        "line": related.line,
+        "test_name": related.test_name.as_str(),
+    }))
+}
+
+fn absolute_related_test_path(snapshot: &AnalysisSnapshot, related: &RelatedTestGrip) -> PathBuf {
+    if related.file.is_absolute() {
+        related.file.clone()
+    } else {
+        snapshot.root.join(&related.file)
+    }
 }

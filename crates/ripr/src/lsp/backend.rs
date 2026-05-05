@@ -309,7 +309,12 @@ impl LanguageServer for Backend {
     }
 
     async fn code_action(&self, params: CodeActionParams) -> LspResult<Option<CodeActionResponse>> {
-        Ok(Some(code_action_response(&params)))
+        let snapshot = self
+            .latest_analysis
+            .lock()
+            .ok()
+            .and_then(|value| value.clone());
+        Ok(Some(code_action_response(&params, snapshot.as_ref())))
     }
 
     async fn execute_command(&self, params: ExecuteCommandParams) -> LspResult<Option<LSPAny>> {
@@ -332,8 +337,15 @@ fn context_arguments(arguments: &[LSPAny]) -> Option<&serde_json::Map<String, se
 impl Backend {
     fn collect_context_packet(&self, arguments: &[LSPAny]) -> Option<LSPAny> {
         let args = context_arguments(arguments)?;
-        let finding_id = args.get("finding_id").and_then(|v| v.as_str())?;
         let snapshot = self.latest_analysis.lock().ok()?.clone()?;
+        if let Some(seam_id) = args.get("seam_id").and_then(|v| v.as_str()) {
+            let seam = snapshot.classified_seam_by_id(seam_id)?;
+            let packet = crate::output::agent_seam_packets::render_agent_seam_packets_json(
+                std::slice::from_ref(seam),
+            );
+            return serde_json::from_str(&packet).ok();
+        }
+        let finding_id = args.get("finding_id").and_then(|v| v.as_str())?;
         let finding = snapshot.finding_by_id(finding_id)?;
         let packet = crate::output::json::render_context_packet(finding, 5);
         serde_json::from_str(&packet).ok()

@@ -1,5 +1,10 @@
 import * as vscode from 'vscode';
-import { RiprClientController, RiprContextTarget } from './client';
+import {
+  RiprClientController,
+  RiprContextTarget,
+  RiprRelatedTestTarget,
+  RiprSuggestedAssertionTarget
+} from './client';
 
 let controller: RiprClientController | undefined;
 
@@ -13,6 +18,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('ripr.showOutput', () => controller?.showOutput()),
     vscode.commands.registerCommand('ripr.copyContext', async (target?: RiprContextTarget) =>
       controller?.copyContext(target)
+    ),
+    vscode.commands.registerCommand(
+      'ripr.copySuggestedAssertion',
+      async (target?: RiprSuggestedAssertionTarget) => controller?.copySuggestedAssertion(target)
+    ),
+    vscode.commands.registerCommand('ripr.openRelatedTest', async (target?: RiprRelatedTestTarget) =>
+      controller?.openRelatedTest(target)
     ),
     vscode.commands.registerCommand('ripr.openSettings', async () => {
       await vscode.commands.executeCommand('workbench.action.openSettings', 'ripr');

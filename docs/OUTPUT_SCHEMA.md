@@ -780,9 +780,20 @@ indentation. A future PR can derive the real column from the source
 file via the (now reserved) `_root` parameter on
 `diagnostic_for_classified_seam`.
 
-This PR adds diagnostics only — no code actions yet. The pre-4B
-`Finding`/`AnalysisSnapshot` hover continues to work for
-diff-scoped diagnostics; seam diagnostics live alongside it.
+Seam diagnostics also drive editor code actions:
+
+- `Copy seam packet` calls `ripr.collectContext` with `seam_id` and
+  copies the selected agent seam packet JSON.
+- `Copy suggested assertion` appears only when the agent seam packet
+  assertion shape contains a concrete assertion example.
+- `Open related test` appears only when ranked related-test evidence
+  has a visible file/line.
+- `Refresh ripr analysis` remains available for every request.
+
+These actions do not edit files, generate tests, or add CodeLens
+surface. The pre-4B `Finding`/`AnalysisSnapshot` hover and context
+actions continue to work for diff-scoped diagnostics; seam diagnostics
+live alongside them.
 
 ## Stability Rules
 

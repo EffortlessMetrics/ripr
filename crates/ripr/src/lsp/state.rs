@@ -83,6 +83,12 @@ impl AnalysisSnapshot {
             .iter()
             .find(|entry| entry.seam.id().as_str() == seam_id)
     }
+
+    pub(super) fn classified_seam_by_id(&self, seam_id: &str) -> Option<&ClassifiedSeam> {
+        self.classified_seams
+            .iter()
+            .find(|entry| entry.seam.id().as_str() == seam_id)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

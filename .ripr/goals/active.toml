@@ -120,7 +120,7 @@ commands = [
 
 [[work_item]]
 id = "lsp/seam-code-actions-v1"
-status = "ready"
+status = "done"
 branch = "lsp/seam-code-actions-v1"
 stackable = false
 requires_human_merge = true

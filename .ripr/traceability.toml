@@ -269,7 +269,10 @@ tests = [
   "crates/ripr/src/lsp/hover.rs::seam_hover_tests::given_seam_diagnostic_when_hover_is_requested_then_hover_renders_grip_evidence_path",
   "crates/ripr/src/lsp/hover.rs::seam_hover_tests::given_weakly_gripped_boundary_when_hover_is_rendered_then_missing_boundary_discriminator_is_shown",
   "crates/ripr/src/lsp/hover.rs::seam_hover_tests::given_seam_with_related_tests_when_hover_is_rendered_then_oracle_kind_and_strength_appear",
-  "crates/ripr/src/lsp/hover.rs::seam_hover_tests::opaque_seam_hover_advises_inspecting_static_limitation"
+  "crates/ripr/src/lsp/hover.rs::seam_hover_tests::opaque_seam_hover_advises_inspecting_static_limitation",
+  "crates/ripr/src/lsp/tests.rs::seam_code_actions_surface_packet_assertion_related_test_and_refresh",
+  "crates/ripr/src/lsp/tests.rs::seam_code_actions_omit_assertion_and_related_test_when_evidence_is_missing",
+  "crates/ripr/src/lsp/tests.rs::execute_command_collect_context_returns_agent_seam_packet_for_known_seam"
 ]
 fixtures = []
 code = [
@@ -285,7 +288,11 @@ code = [
   "crates/ripr/src/lsp/config.rs",
   "crates/ripr/src/lsp/state.rs",
   "crates/ripr/src/lsp/hover.rs",
-  "crates/ripr/src/lsp/backend.rs"
+  "crates/ripr/src/lsp/actions.rs",
+  "crates/ripr/src/lsp/backend.rs",
+  "editors/vscode/src/client.ts",
+  "editors/vscode/src/extension.ts",
+  "editors/vscode/package.json"
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0005-repo-seam-inventory.md",

@@ -14,6 +14,20 @@ import { resolveServer, ResolvedServer } from './serverResolver';
 export interface RiprContextTarget {
   uri?: string;
   line?: number;
+  finding_id?: string;
+  probe_id?: string;
+  seam_id?: string;
+  seam_kind?: string;
+}
+
+export interface RiprSuggestedAssertionTarget {
+  assertion?: string;
+}
+
+export interface RiprRelatedTestTarget {
+  uri?: string;
+  line?: number;
+  test_name?: string;
 }
 
 export class RiprClientController {
@@ -82,7 +96,7 @@ export class RiprClientController {
     }
   }
 
-  async copyContext(target?: RiprContextTarget & { finding_id?: string; probe_id?: string }): Promise<void> {
+  async copyContext(target?: RiprContextTarget): Promise<void> {
     const targetUri = uriFromTarget(target);
     const editor = vscode.window.activeTextEditor;
     const documentUri = targetUri ?? editor?.document.uri;
@@ -98,13 +112,15 @@ export class RiprClientController {
     }
 
     const client = this.client;
-    if (client && target?.finding_id) {
+    if (client && (target?.finding_id || target?.seam_id)) {
       try {
         const packet = await client.sendRequest('workspace/executeCommand', {
           command: 'ripr.collectContext',
           arguments: [{
             finding_id: target.finding_id,
             probe_id: target.probe_id,
+            seam_id: target.seam_id,
+            seam_kind: target.seam_kind,
             uri: target.uri,
             line: target.line,
           }],
@@ -149,6 +165,30 @@ export class RiprClientController {
       this.output.appendLine(`ripr context failed: ${message}`);
       vscode.window.showWarningMessage(`ripr context failed for ${selector}. See ripr output for details.`);
     }
+  }
+
+  async copySuggestedAssertion(target?: RiprSuggestedAssertionTarget): Promise<void> {
+    const assertion = typeof target?.assertion === 'string' ? target.assertion.trim() : '';
+    if (!assertion) {
+      vscode.window.showInformationMessage('No ripr suggested assertion is available for this diagnostic.');
+      return;
+    }
+    await vscode.env.clipboard.writeText(assertion);
+    vscode.window.showInformationMessage('Copied ripr suggested assertion to clipboard.');
+  }
+
+  async openRelatedTest(target?: RiprRelatedTestTarget): Promise<void> {
+    const uri = uriFromTarget(target);
+    if (!uri) {
+      vscode.window.showInformationMessage('No ripr related test location is available for this diagnostic.');
+      return;
+    }
+    const document = await vscode.workspace.openTextDocument(uri);
+    const editor = await vscode.window.showTextDocument(document);
+    const line = lineFromTarget(target) ?? 1;
+    const position = new vscode.Position(Math.max(0, line - 1), 0);
+    editor.selection = new vscode.Selection(position, position);
+    editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
   }
 
   showOutput(): void {

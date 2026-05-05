@@ -134,6 +134,14 @@
         "title": "ripr: Copy Finding Context"
       },
       {
+        "command": "ripr.copySuggestedAssertion",
+        "title": "ripr: Copy Suggested Assertion"
+      },
+      {
+        "command": "ripr.openRelatedTest",
+        "title": "ripr: Open Related Test"
+      },
+      {
         "command": "ripr.openSettings",
         "title": "ripr: Open Settings"
       }
