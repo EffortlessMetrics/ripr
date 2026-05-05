@@ -10980,8 +10980,9 @@ fn extract_panic_calls_from_node(
         } else if let Some(call_expr) = ast::CallExpr::cast(child.clone()) {
             call_expr.expr().and_then(|expr| {
                 let func_text = expr.syntax().text().to_string();
-                if pattern_matches_panic_call(patterns, &func_text) {
-                    extract_call_metadata(call_expr.syntax(), text, path, &func_text, "call")
+                let base_callee = base_name_from_callee_text(&func_text);
+                if pattern_matches_panic_call(patterns, base_callee) {
+                    extract_call_metadata(call_expr.syntax(), text, path, base_callee, "call")
                 } else {
                     None
                 }
@@ -11018,6 +11019,10 @@ fn extract_panic_calls_from_node(
 
         extract_panic_calls_from_node(&child, text, path, patterns, findings);
     }
+}
+
+fn base_name_from_callee_text(callee_text: &str) -> &str {
+    callee_text.rsplit("::").next().unwrap_or(callee_text)
 }
 
 fn pattern_matches_panic_call(patterns: &[String], text: &str) -> bool {
@@ -11658,6 +11663,14 @@ fn validate_panic_allow_entry_v2(
         if selector.kind.is_empty() {
             return Err(format!(
                 "{path}:{line_number} selector missing required field: kind"
+            ));
+        }
+        let supported_kinds = ["method_call", "macro_call", "call", "string_literal"];
+        if !supported_kinds.contains(&selector.kind.as_str()) {
+            return Err(format!(
+                "{path}:{line_number} invalid selector kind '{}' in {path}; expected one of: {}",
+                selector.kind,
+                supported_kinds.join(", ")
             ));
         }
         if selector.kind == "string_literal" && selector.text_contains.is_none() {
@@ -12382,6 +12395,177 @@ explanation = "Duplicate entry"
         };
         if semantic_selector_matches(&invalid_selector, &macro_finding) {
             return Err("invalid selector kind should reject all findings".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn v0_2_rejects_unknown_selector_kind() -> Result<(), String> {
+        with_temp_cwd("reject_unknown_kind", |root| {
+            let toml_content = r#"schema_version = "0.2"
+
+[[allow]]
+path = "src/lib.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Bad kind"
+
+[allow.selector]
+kind = "foo"
+callee = "unwrap"
+"#;
+            write(&root.join("allowlist.toml"), toml_content);
+            let toml_path = root
+                .join("allowlist.toml")
+                .to_str()
+                .ok_or("non-UTF-8 path")?
+                .to_string();
+            let result = parse_no_panic_allowlist_toml_v2(&toml_path);
+            let err = result
+                .err()
+                .ok_or("expected parse error for unknown selector kind")?;
+            if !err.contains("invalid selector kind 'foo'") {
+                return Err(format!("unexpected error message: {err}"));
+            }
+            if !err.contains("method_call, macro_call, call, string_literal") {
+                return Err(format!("error should list supported kinds, got: {err}"));
+            }
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn v0_2_call_selector_handles_associated_function_form() -> Result<(), String> {
+        with_temp_cwd("associated_fn", |root| {
+            // Option::unwrap(x) is a CallExpr, callee should be just "unwrap"
+            let code = "fn demo() { Option::unwrap(some_opt) }\n";
+            write(&root.join("lib.rs"), code);
+            let patterns = vec!["unwrap(".to_string()];
+            let findings = collect_semantic_panic_findings(root, &patterns)
+                .map_err(|e| format!("collect failed: {e}"))?;
+            if findings.is_empty() {
+                return Err("expected to find Option::unwrap call".to_string());
+            }
+            let f = &findings[0];
+            if f.kind != "call" {
+                return Err(format!(
+                    "Option::unwrap(x) should be kind=call, got kind={}",
+                    f.kind
+                ));
+            }
+            if f.callee.as_deref() != Some("unwrap") {
+                return Err(format!("callee should be 'unwrap', got {:?}", f.callee));
+            }
+            if f.family != "unwrap" {
+                return Err(format!("family should be 'unwrap', got {}", f.family));
+            }
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn v0_2_call_selector_does_not_match_substring_helper_name() -> Result<(), String> {
+        with_temp_cwd("no_substring_match", |root| {
+            // A function named `panic_family_from_pattern` should NOT match
+            // the panic-family patterns since its base callee name is
+            // `panic_family_from_pattern`, not `panic`.
+            let code = "fn demo() { panic_family_from_pattern(\"x\") }\n";
+            write(&root.join("lib.rs"), code);
+            let patterns = vec!["panic!".to_string()];
+            let findings = collect_semantic_panic_findings(root, &patterns)
+                .map_err(|e| format!("collect failed: {e}"))?;
+            if !findings.is_empty() {
+                return Err(format!(
+                    "panic_family_from_pattern should not match as a panic-family call, got {} findings",
+                    findings.len()
+                ));
+            }
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn v0_2_string_literal_still_requires_text_contains() -> Result<(), String> {
+        with_temp_cwd("string_literal_text_contains", |root| {
+            let toml_content = r#"schema_version = "0.2"
+
+[[allow]]
+path = "src/lib.rs"
+family = "panic_macro"
+classification = "test_only"
+explanation = "Needs text_contains"
+
+[allow.selector]
+kind = "string_literal"
+"#;
+            write(&root.join("allowlist.toml"), toml_content);
+            let toml_path = root
+                .join("allowlist.toml")
+                .to_str()
+                .ok_or("non-UTF-8 path")?
+                .to_string();
+            let result = parse_no_panic_allowlist_toml_v2(&toml_path);
+            let err = result
+                .err()
+                .ok_or("expected parse error for string_literal without text_contains")?;
+            if !err.contains("string_literal selector requires text_contains") {
+                return Err(format!("unexpected error message: {err}"));
+            }
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn v0_2_kind_mismatch_reports_actionable_error() -> Result<(), String> {
+        // A method_call selector must not match a call-type finding
+        let selector = PanicFamilySelector {
+            kind: "method_call".to_string(),
+            container: Some("demo".to_string()),
+            callee: Some("unwrap".to_string()),
+            receiver_fingerprint: None,
+            text_contains: None,
+        };
+        // Option::unwrap(x) produces kind=call, not method_call
+        let call_finding = SemanticPanicFinding {
+            path: "src/lib.rs".to_string(),
+            family: "unwrap".to_string(),
+            kind: "call".to_string(),
+            line: 3,
+            column: Some(5),
+            container: Some("demo".to_string()),
+            callee: Some("unwrap".to_string()),
+            receiver_fingerprint: None,
+            snippet_fingerprint: "Option::unwrap(x)".to_string(),
+        };
+        if semantic_selector_matches(&selector, &call_finding) {
+            return Err(
+                "method_call selector must not match a call-type finding (Option::unwrap)"
+                    .to_string(),
+            );
+        }
+        // Conversely, a method_call finding must not match a call selector
+        let call_selector = PanicFamilySelector {
+            kind: "call".to_string(),
+            container: Some("demo".to_string()),
+            callee: Some("unwrap".to_string()),
+            receiver_fingerprint: None,
+            text_contains: None,
+        };
+        let method_finding = SemanticPanicFinding {
+            path: "src/lib.rs".to_string(),
+            family: "unwrap".to_string(),
+            kind: "method_call".to_string(),
+            line: 5,
+            column: Some(8),
+            container: Some("demo".to_string()),
+            callee: Some("unwrap".to_string()),
+            receiver_fingerprint: None,
+            snippet_fingerprint: "x.unwrap()".to_string(),
+        };
+        if semantic_selector_matches(&call_selector, &method_finding) {
+            return Err(
+                "call selector must not match a method_call finding (.unwrap())".to_string(),
+            );
         }
         Ok(())
     }
