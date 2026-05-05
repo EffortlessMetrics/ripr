@@ -92,7 +92,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/oracle-shape-v2"
-status = "ready"
+status = "done"
 branch = "analysis/oracle-shape-v2"
 stackable = false
 requires_human_merge = true

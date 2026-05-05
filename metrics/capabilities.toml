@@ -335,13 +335,14 @@ evidence = [
   "unwrap/expect smoke-oracle tests",
   "probe-relative OracleKind classification",
   "fixture/golden output stability",
-  "flow sink classification tests"
+  "flow sink classification tests",
+  "oracle-shape-v2 detection for field assertions, whole-object equality over struct literals, side-effect observers, mock expectations, and custom assertion helpers"
 ]
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "test-efficiency-duplicate-discriminator-v1"
+next = "context/agent-seam-packets-v2"
 metric = "oracle kind recognition rate"
 
 [[capability]]
@@ -483,10 +484,11 @@ evidence = [
   "reach activate propagate observe discriminate per seam",
   "RelatedTestGrip with oracle kind and strength",
   "BDD coverage for boundary equality, error variant, side effect, opaque helper",
-  "value-extraction-v2 BDD coverage for bindings, constants, rstest cases, table rows, builder and fixture override methods, Option/Result constructors, and negative false-positive guards"
+  "value-extraction-v2 BDD coverage for bindings, constants, rstest cases, table rows, builder and fixture override methods, Option/Result constructors, and negative false-positive guards",
+  "oracle-shape-v2 side-effect observer seam evidence"
 ]
 fixtures = []
-next = "analysis/oracle-shape-v2"
+next = "context/agent-seam-packets-v2"
 metric = "per-stage evidence cited per seam"
 
 [[capability]]

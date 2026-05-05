@@ -1281,6 +1281,51 @@ fn publish_runs_without_panic() {
     }
 
     #[test]
+    fn given_side_effect_seam_when_event_assertion_exists_then_oracle_observes_effect()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/publish.rs");
+        let prod_src = r#"
+pub struct Service;
+pub struct Event;
+
+impl Service {
+    pub fn publish(&mut self, _event: Event) {}
+}
+
+pub fn publish_message(service: &mut Service, event: Event) {
+    service.publish(event);
+}
+"#;
+        let tests = PathBuf::from("tests/publish_tests.rs");
+        let tests_src = r#"
+#[test]
+fn publish_records_event() {
+    let mut service = Service;
+    publish_message(&mut service, Event);
+    assert!(service.published_events().contains(&"message"));
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/publish.rs")], &index);
+        let side_effect = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::SideEffect)
+            .ok_or_else(|| "expected side_effect seam".to_string())?;
+
+        let evidence = evidence_for_seam(side_effect, &index);
+        assert_eq!(evidence.observe.state, StageState::Yes);
+        assert_eq!(evidence.propagate.state, StageState::Yes);
+        assert_eq!(evidence.discriminate.state, StageState::Yes);
+        assert!(
+            evidence
+                .related_tests
+                .iter()
+                .any(|test| test.oracle_kind == OracleKind::MockExpectation)
+        );
+        Ok(())
+    }
+
+    #[test]
     fn given_opaque_helper_when_values_cannot_be_seen_then_evidence_records_static_limitation()
     -> Result<(), String> {
         // Test reaches the owner only through a helper, so no concrete
