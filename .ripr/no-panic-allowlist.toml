@@ -200,100 +200,184 @@ kind = "method_call"
 container = "v0_2_missing_selector_and_missing_coordinates_fails_clearly"
 callee = "unwrap"
 
-# crates/ripr entries (v0.1 format with updated line numbers from semantic extractor)
+# crates/ripr entries (v0.2 semantic selectors)
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 171
-column = 21
 family = "unwrap"
 classification = "test_only"
 explanation = "Test helper function for creating temporary directories"
 
+[allow.selector]
+kind = "method_call"
+container = "temp_dir"
+callee = "unwrap"
+
+[allow.last_seen]
+line = 173
+column = 14
+
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for creating temporary directories"
+
+[allow.selector]
+kind = "method_call"
+container = "temp_dir"
+callee = "unwrap"
+
+[allow.last_seen]
 line = 176
 column = 9
-family = "unwrap"
-classification = "test_only"
-explanation = "Test helper function for creating temporary directories"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for creating temporary directories in test"
+
+[allow.selector]
+kind = "method_call"
+container = "analyzes_simple_predicate_gap"
+callee = "unwrap"
+
+[allow.last_seen]
 line = 183
 column = 9
-family = "unwrap"
-classification = "test_only"
-explanation = "Test helper function for creating temporary directories"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for creating temporary directories in test"
+
+[allow.selector]
+kind = "method_call"
+container = "analyzes_simple_predicate_gap"
+callee = "unwrap"
+
+[allow.last_seen]
 line = 184
 column = 9
-family = "unwrap"
-classification = "test_only"
-explanation = "Test helper function for creating temporary directories"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for creating temporary directories in test"
+
+[allow.selector]
+kind = "method_call"
+container = "analyzes_simple_predicate_gap"
+callee = "unwrap"
+
+[allow.last_seen]
 line = 185
 column = 9
-family = "unwrap"
-classification = "test_only"
-explanation = "Test helper function for creating temporary directories"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 190
-column = 9
 family = "unwrap"
 classification = "test_only"
 explanation = "Test helper function for writing test files"
 
+[allow.selector]
+kind = "method_call"
+container = "analyzes_simple_predicate_gap"
+callee = "unwrap"
+
+[allow.last_seen]
+line = 189
+column = 9
+
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 199
-column = 9
 family = "unwrap"
 classification = "test_only"
 explanation = "Test helper function for writing test files"
 
+[allow.selector]
+kind = "method_call"
+container = "analyzes_simple_predicate_gap"
+callee = "unwrap"
+
+[allow.last_seen]
+line = 198
+column = 9
+
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 210
-column = 9
 family = "unwrap"
 classification = "test_only"
 explanation = "Test helper function for writing test files"
 
+[allow.selector]
+kind = "method_call"
+container = "analyzes_simple_predicate_gap"
+callee = "unwrap"
+
+[allow.last_seen]
+line = 209
+column = 9
+
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 223
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for writing test files"
+
+[allow.selector]
+kind = "method_call"
+container = "analyzes_simple_predicate_gap"
+callee = "unwrap"
+
+[allow.last_seen]
+line = 222
 column = 19
+
+[[allow]]
+path = "crates/ripr/src/analysis/mod.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test helper function for writing test files"
 
-[[allow]]
-path = "crates/ripr/src/analysis/mod.rs"
-line = 239
+[allow.selector]
+kind = "method_call"
+container = "analyzes_simple_predicate_gap"
+callee = "unwrap"
+
+[allow.last_seen]
+line = 238
 column = 23
-family = "unwrap"
-classification = "test_only"
-explanation = "Test helper function for writing test files"
 
 [[allow]]
 path = "crates/ripr/tests/cli_smoke.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for running CLI tests"
+
+[allow.selector]
+kind = "method_call"
+container = "run_ripr"
+callee = "unwrap"
+
+[allow.last_seen]
 line = 6
 column = 5
-family = "unwrap"
-classification = "test_only"
-explanation = "Test helper function for running CLI tests"
 
 [[allow]]
 path = "crates/ripr/tests/cli_smoke.rs"
-line = 10
-column = 5
 family = "unwrap"
 classification = "test_only"
-explanation = "Test helper function for running CLI tests"
+explanation = "Test helper function for finding workspace root"
+
+[allow.selector]
+kind = "method_call"
+container = "workspace_root"
+callee = "unwrap"
+
+[allow.last_seen]
+line = 13
+column = 9
