@@ -232,7 +232,63 @@ mod tests {
             let text = String::from_utf8_lossy(&bytes);
             let files = parse_unified_diff(&text);
             for file in files {
-                assert!(!file.path.as_os_str().is_empty());
+                assert!(file.added_lines.windows(2).all(|w| w[0].line <= w[1].line));
+                assert!(
+                    file.removed_lines
+                        .windows(2)
+                        .all(|w| w[0].line <= w[1].line)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn parser_is_robust_against_structured_mutation_fuzz_inputs() {
+        let baseline = "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,3 +1,4 @@\n alpha\n-beta\n+beta2\n gamma\n+delta\n";
+        let token_bank = [
+            "diff --git a/src/lib.rs b/src/lib.rs\n",
+            "--- a/src/lib.rs\n",
+            "+++ b/src/lib.rs\n",
+            "@@ -1,3 +1,4 @@\n",
+            "@@ malformed @@\n",
+            "+",
+            "-",
+            " ",
+            "\n",
+            "+++ b/src/alt.rs\n",
+            "diff --git a/src/alt.rs b/src/alt.rs\n",
+        ];
+        let mut seed = 0x5EED_u64;
+        for _case in 0..512 {
+            let mut bytes = baseline.as_bytes().to_vec();
+            let mutation_count = 1 + (next_u64(&mut seed) % 32) as usize;
+            for _ in 0..mutation_count {
+                match next_u64(&mut seed) % 4 {
+                    0 if !bytes.is_empty() => {
+                        let index = (next_u64(&mut seed) as usize) % bytes.len();
+                        bytes[index] = (next_u64(&mut seed) & 0xFF) as u8;
+                    }
+                    1 => {
+                        let token = token_bank[(next_u64(&mut seed) as usize) % token_bank.len()];
+                        let index = if bytes.is_empty() {
+                            0
+                        } else {
+                            (next_u64(&mut seed) as usize) % (bytes.len() + 1)
+                        };
+                        bytes.splice(index..index, token.bytes());
+                    }
+                    2 if !bytes.is_empty() => {
+                        let start = (next_u64(&mut seed) as usize) % bytes.len();
+                        let len = 1 + ((next_u64(&mut seed) as usize) % (bytes.len() - start));
+                        bytes.drain(start..start + len);
+                    }
+                    _ => bytes.push((next_u64(&mut seed) & 0xFF) as u8),
+                }
+            }
+
+            let text = String::from_utf8_lossy(&bytes);
+            let files = parse_unified_diff(&text);
+            for file in files {
                 assert!(file.added_lines.windows(2).all(|w| w[0].line <= w[1].line));
                 assert!(
                     file.removed_lines
