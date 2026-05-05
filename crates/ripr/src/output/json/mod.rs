@@ -142,6 +142,67 @@ mod tests {
         assert!(out.contains("observed assertion argument value actual = 10 at line 33"));
     }
 
+    #[test]
+    fn finding_json_defaults_oracle_summary_when_related_tests_are_empty() {
+        let finding = unknown_finding();
+        let mut out = String::new();
+
+        finding_json(&mut out, &finding, 0);
+
+        assert!(out.contains("\"oracle_kind\": \"unknown\""));
+        assert!(out.contains("\"oracle_strength\": \"none\""));
+    }
+
+    #[test]
+    fn finding_json_limits_evidence_path_related_tests_to_five_entries() {
+        let mut finding = unknown_finding();
+        finding.related_tests = (0..6)
+            .map(|index| RelatedTest {
+                name: format!("test_case_{index}"),
+                file: PathBuf::from("tests/json_contract.rs"),
+                line: 100 + index,
+                oracle: Some(format!("assert_eq!(actual, {index});")),
+                oracle_kind: OracleKind::ExactValue,
+                oracle_strength: OracleStrength::Strong,
+            })
+            .collect();
+        let mut out = String::new();
+
+        finding_json(&mut out, &finding, 0);
+
+        assert!(out.contains("test_case_0 uses strong exact value oracle"));
+        assert!(out.contains("test_case_4 uses strong exact value oracle"));
+        assert!(!out.contains("test_case_5 uses strong exact value oracle"));
+    }
+
+    #[test]
+    fn finding_json_escapes_special_characters_in_recommended_next_step() {
+        let mut finding = unknown_finding();
+        finding.recommended_next_step = Some("Verify \"quoted\" step\nthen patch".to_string());
+        let mut out = String::new();
+
+        finding_json(&mut out, &finding, 0);
+
+        assert!(
+            out.contains("\"recommended_next_step\": \"Verify \\\"quoted\\\" step\\nthen patch\"")
+        );
+        assert!(
+            out.contains("\"suggested_next_action\": \"Verify \\\"quoted\\\" step\\nthen patch\"")
+        );
+    }
+
+    #[test]
+    fn finding_json_emits_empty_next_step_fields_when_recommendation_is_missing() {
+        let mut finding = unknown_finding();
+        finding.recommended_next_step = None;
+        let mut out = String::new();
+
+        finding_json(&mut out, &finding, 0);
+
+        assert!(out.contains("\"recommended_next_step\": \"\""));
+        assert!(out.contains("\"suggested_next_action\": \"\""));
+    }
+
     fn unknown_finding() -> Finding {
         Finding {
             id: "probe:src_lib_rs:1:static_unknown".to_string(),
