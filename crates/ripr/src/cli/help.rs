@@ -1,6 +1,9 @@
 pub(super) fn print_help() {
-    println!(
-        r#"ripr — static RIPR mutation exposure analysis for Rust
+    println!("{}", help_text());
+}
+
+fn help_text() -> &'static str {
+    r#"ripr — static RIPR mutation exposure analysis for Rust
 
 Usage:
   ripr check [--base origin/main] [--diff PATH] [--mode draft] [--format human|json|github]
@@ -20,12 +23,14 @@ Quick start:
   ripr check --diff crates/ripr/examples/sample/example.diff --json
   ripr explain --diff crates/ripr/examples/sample/example.diff <finding-id>
 "#
-    );
 }
 
 pub(super) fn print_check_help() {
-    println!(
-        r#"Usage: ripr check [OPTIONS]
+    println!("{}", check_help_text());
+}
+
+fn check_help_text() -> &'static str {
+    r#"Usage: ripr check [OPTIONS]
 
 Options:
   --root PATH              Workspace root. Defaults to current directory.
@@ -51,30 +56,74 @@ Examples:
   ripr check --diff crates/ripr/examples/sample/example.diff --format github
   ripr check --mode ready --json
 "#
-    );
 }
 
 pub(super) fn print_explain_help() {
-    println!("Usage: ripr explain [--root PATH] [--base REV|--diff PATH] <finding-id|file:line>");
+    println!("{}", explain_help_text());
 }
 
 pub(super) fn print_context_help() {
-    println!(
-        "Usage: ripr context [--root PATH] [--base REV|--diff PATH] --at <finding-id|file:line> [--max-related-tests N] [--json]"
-    );
+    println!("{}", context_help_text());
 }
 
 pub(super) fn print_doctor_help() {
-    println!("Usage: ripr doctor [--root PATH]");
+    println!("{}", doctor_help_text());
 }
 
 pub(super) fn print_lsp_help() {
-    println!(
-        r#"Usage: ripr lsp [--stdio] [--version]
+    println!("{}", lsp_help_text());
+}
+
+fn explain_help_text() -> &'static str {
+    "Usage: ripr explain [--root PATH] [--base REV|--diff PATH] <finding-id|file:line>"
+}
+
+fn context_help_text() -> &'static str {
+    "Usage: ripr context [--root PATH] [--base REV|--diff PATH] --at <finding-id|file:line> [--max-related-tests N] [--json]"
+}
+
+fn doctor_help_text() -> &'static str {
+    "Usage: ripr doctor [--root PATH]"
+}
+
+fn lsp_help_text() -> &'static str {
+    r#"Usage: ripr lsp [--stdio] [--version]
 
 Options:
   --stdio       Run the language server over stdio LSP framing. This is the default.
   --version     Print the language server version.
 "#
-    );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        check_help_text, context_help_text, doctor_help_text, explain_help_text, help_text,
+        lsp_help_text,
+    };
+
+    #[test]
+    fn top_level_help_mentions_core_commands() {
+        let help = help_text();
+        assert!(help.contains("ripr check"));
+        assert!(help.contains("ripr explain"));
+        assert!(help.contains("ripr context"));
+        assert!(help.contains("ripr doctor"));
+    }
+
+    #[test]
+    fn check_help_mentions_all_badge_formats() {
+        let help = check_help_text();
+        assert!(help.contains("badge-plus-json"));
+        assert!(help.contains("repo-badge-plus-shields"));
+        assert!(help.contains("test-efficiency-report"));
+    }
+
+    #[test]
+    fn command_specific_usage_lines_are_stable() {
+        assert!(explain_help_text().starts_with("Usage: ripr explain"));
+        assert!(context_help_text().contains("--max-related-tests N"));
+        assert_eq!(doctor_help_text(), "Usage: ripr doctor [--root PATH]");
+        assert!(lsp_help_text().contains("--stdio"));
+    }
 }
