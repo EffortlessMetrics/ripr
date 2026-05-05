@@ -153,9 +153,20 @@ mod tests {
         }
 
         for unknown in [
-            "", " Instant", "Instant", "INSTANT", "ready ", "deep-mode", "0", "yes",
+            "",
+            " Instant",
+            "Instant",
+            "INSTANT",
+            "ready ",
+            "deep-mode",
+            "0",
+            "yes",
         ] {
-            assert_eq!(parse_mode(unknown), None, "unexpected parse for {unknown:?}");
+            assert_eq!(
+                parse_mode(unknown),
+                None,
+                "unexpected parse for {unknown:?}"
+            );
         }
     }
 
