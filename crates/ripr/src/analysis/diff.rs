@@ -221,6 +221,33 @@ mod tests {
     }
 
     #[test]
+    fn ignores_deleted_file_hunks_without_new_path_marker() {
+        let diff = "diff --git a/src/old.rs b/src/old.rs
+deleted file mode 100644
+--- a/src/old.rs
++++ /dev/null
+@@ -1,2 +0,0 @@
+-old
+-lines
+";
+
+        let files = parse_unified_diff(diff);
+        assert!(files.is_empty());
+    }
+
+    #[test]
+    fn ignores_file_sections_without_plus_plus_plus_b_header() {
+        let diff = "diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
+@@ -1,1 +1,1 @@
+-old
++new
+";
+
+        let files = parse_unified_diff(diff);
+        assert!(files.is_empty());
+    }
+    #[test]
     fn parser_is_robust_against_fuzz_like_inputs() {
         let mut seed = 0xC0FFEE_u64;
 
