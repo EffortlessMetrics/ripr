@@ -64,12 +64,23 @@ column = 17
 | `container` | `[allow.selector]` | Enclosing function or method name |
 | `callee` | `[allow.selector]` | Exact callee name |
 | `receiver_fingerprint` | `[allow.selector]` | Receiver type or expression fingerprint |
+| `text_contains` | `[allow.selector]` | Required text fragment for `string_literal` selectors |
 | `line` | `[allow.last_seen]` | Advisory: last known line number |
 | `column` | `[allow.last_seen]` | Advisory: last known column number |
 
 ## Selector kinds
 
-The checker currently emits three selector kinds for matching against actual call sites in code.
+The v0.2 checker supports four selector kinds:
+
+- `method_call`
+- `macro_call`
+- `call`
+- `string_literal`
+
+The active checked-in allowlist may use only a subset of these kinds at a given
+time. Migration tooling may also propose a subset first. That does not narrow
+the checker contract: supported v0.2 selector kinds are the four kinds listed
+above.
 
 ### method_call
 
@@ -110,6 +121,23 @@ callee = "unwrap"
 
 Call matching is exact after normalization. Qualified and associated call forms
 such as `Option::unwrap(some_value)` are normalized so the callee is `unwrap`.
+
+### string_literal
+
+Matches a panic-family finding caused by source text inside a string literal.
+This selector is for source-text false positives, such as documentation,
+fixture text, or expected-output snippets that intentionally mention
+panic-family spellings without executing them.
+
+```toml
+[allow.selector]
+kind = "string_literal"
+text_contains = "unwrap()"
+```
+
+`text_contains` is required for `string_literal` selectors. The checker rejects
+a `string_literal` selector without it, because string-literal matching needs a
+human-reviewed source-text fragment rather than only a structural call shape.
 
 ## last_seen
 
