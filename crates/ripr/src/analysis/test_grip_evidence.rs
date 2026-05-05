@@ -1703,4 +1703,437 @@ fn below_case() {
         }
         Ok(())
     }
+
+    // -- helper coverage ---------------------------------------------
+    //
+    // Targeted unit tests for the small private helpers introduced by
+    // analysis/related-test-precision-v1. The integration BDD tests
+    // above exercise the most common paths through `find_related_tests`,
+    // but each helper has a few branches that are not naturally hit by
+    // a single BDD scenario. The tests below pin those branches so
+    // codecov coverage reflects intent rather than scenario count.
+
+    #[test]
+    fn relation_reason_as_str_priority_and_confidence_are_pinned_per_variant() -> Result<(), String>
+    {
+        // Pin the (variant -> "string", priority, confidence) mapping
+        // for every reason. Catches accidental swaps in the match arms
+        // of `as_str` / `priority` / `confidence`.
+        let table = [
+            (
+                RelationReason::DirectOwnerCall,
+                "direct_owner_call",
+                0u8,
+                RelationConfidence::High,
+            ),
+            (
+                RelationReason::AssertionTargetAffinity,
+                "assertion_target_affinity",
+                1,
+                RelationConfidence::High,
+            ),
+            (
+                RelationReason::SameTestFile,
+                "same_test_file",
+                2,
+                RelationConfidence::Medium,
+            ),
+            (
+                RelationReason::SameModule,
+                "same_module",
+                3,
+                RelationConfidence::Medium,
+            ),
+            (
+                RelationReason::OwnerNamedTest,
+                "owner_named_test",
+                4,
+                RelationConfidence::Medium,
+            ),
+            (
+                RelationReason::ImportPathAffinity,
+                "import_path_affinity",
+                5,
+                RelationConfidence::Medium,
+            ),
+            (
+                RelationReason::FixtureOwnerAffinity,
+                "fixture_owner_affinity",
+                6,
+                RelationConfidence::Low,
+            ),
+        ];
+        for (reason, name, prio, conf) in table {
+            if reason.as_str() != name {
+                return Err(format!(
+                    "{reason:?}.as_str() = {}, want {}",
+                    reason.as_str(),
+                    name
+                ));
+            }
+            if reason.priority() != prio {
+                return Err(format!(
+                    "{reason:?}.priority() = {}, want {prio}",
+                    reason.priority()
+                ));
+            }
+            if reason.confidence() != conf {
+                return Err(format!(
+                    "{reason:?}.confidence() = {:?}, want {conf:?}",
+                    reason.confidence()
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn relation_confidence_as_str_and_rank_are_pinned_per_variant() -> Result<(), String> {
+        let table = [
+            (RelationConfidence::High, "high", 0u8),
+            (RelationConfidence::Medium, "medium", 1),
+            (RelationConfidence::Low, "low", 2),
+            (RelationConfidence::Opaque, "opaque", 3),
+        ];
+        for (conf, name, rank) in table {
+            if conf.as_str() != name {
+                return Err(format!(
+                    "{conf:?}.as_str() = {}, want {}",
+                    conf.as_str(),
+                    name
+                ));
+            }
+            if conf.rank() != rank {
+                return Err(format!("{conf:?}.rank() = {}, want {rank}", conf.rank()));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn required_discriminator_tokens_extracts_text_from_every_variant() -> Result<(), String> {
+        use crate::analysis::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator};
+        let make = |rd: RequiredDiscriminator| {
+            RepoSeam::new(
+                "src/x.rs",
+                "x::owner",
+                SeamKind::PredicateBoundary,
+                0,
+                1,
+                "irrelevant",
+                rd,
+                ExpectedSink::ReturnValue,
+            )
+        };
+        // Each arm carries a distinctive token so we can confirm the
+        // right field was picked. Tokens longer than 2 chars survive
+        // `is_interesting_token`.
+        let cases: Vec<(RequiredDiscriminator, &str)> = vec![
+            (
+                RequiredDiscriminator::BoundaryValue {
+                    description: "boundary_token".to_string(),
+                },
+                "boundary_token",
+            ),
+            (
+                RequiredDiscriminator::ReturnValue {
+                    description: "returnval_token".to_string(),
+                },
+                "returnval_token",
+            ),
+            (
+                RequiredDiscriminator::ErrorVariant {
+                    variant: "errvar_token".to_string(),
+                },
+                "errvar_token",
+            ),
+            (
+                RequiredDiscriminator::FieldValue {
+                    field: "fieldval_token".to_string(),
+                },
+                "fieldval_token",
+            ),
+            (
+                RequiredDiscriminator::Effect {
+                    sink: "effect_token".to_string(),
+                },
+                "effect_token",
+            ),
+            (
+                RequiredDiscriminator::MatchArmTaken {
+                    arm: "matcharm_token".to_string(),
+                },
+                "matcharm_token",
+            ),
+            (
+                RequiredDiscriminator::CallSite {
+                    target: "callsite_token".to_string(),
+                },
+                "callsite_token",
+            ),
+        ];
+        for (rd, expected_token) in cases {
+            let seam = make(rd.clone());
+            let tokens = required_discriminator_tokens(&seam);
+            if !tokens.iter().any(|t| t == expected_token) {
+                return Err(format!(
+                    "{:?} -> tokens {:?} must contain {expected_token}",
+                    rd, tokens
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn same_test_file_accepts_stem_match_and_test_suffixes() -> Result<(), String> {
+        if !same_test_file(Path::new("tests/foo.rs"), "foo") {
+            return Err("foo == foo should match".into());
+        }
+        if !same_test_file(Path::new("tests/foo_test.rs"), "foo") {
+            return Err("foo_test should match foo".into());
+        }
+        if !same_test_file(Path::new("tests/foo_tests.rs"), "foo") {
+            return Err("foo_tests should match foo".into());
+        }
+        if same_test_file(Path::new("tests/bar.rs"), "foo") {
+            return Err("bar should not match foo".into());
+        }
+        if same_test_file(Path::new(""), "foo") {
+            return Err("empty path should not match".into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn module_path_for_handles_every_root_shape() -> Result<(), String> {
+        let cases: Vec<(&str, Option<&str>)> = vec![
+            ("src/foo.rs", Some("foo")),
+            ("tests/cli_smoke.rs", Some("cli_smoke")),
+            ("crates/ripr/src/auth/login.rs", Some("auth/login")),
+            ("crates/ripr/tests/integration.rs", Some("integration")),
+            ("docs/note.rs", None),
+            // `body = ".rs"` after stripping `src/`; trimmed = "" → None.
+            ("src/.rs", None),
+        ];
+        for (input, expected) in cases {
+            let got = module_path_for(Path::new(input));
+            let want = expected.map(str::to_string);
+            if got != want {
+                return Err(format!("module_path_for({input}) = {got:?}, want {want:?}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn same_module_matches_parent_prefix_and_underscore_form() -> Result<(), String> {
+        if !same_module("pricing/discount", "pricing/integration") {
+            return Err("pricing/integration should share parent pricing".into());
+        }
+        if !same_module("a/b/c", "a_b/d") {
+            return Err("flattened parent prefix should match".into());
+        }
+        if same_module("flat", "anything") {
+            return Err("single-segment owner has no parent; must not match".into());
+        }
+        if same_module("pricing/discount", "billing/integration") {
+            return Err("billing should not share pricing parent".into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn is_fixture_named_recognises_each_prefix_and_suffix() -> Result<(), String> {
+        let positives = [
+            "fixture_quote",
+            "setup_db",
+            "make_quote",
+            "build_request",
+            "new_user",
+            "mock_clock",
+            "quote_fixture",
+            "quote_factory",
+        ];
+        for name in positives {
+            if !is_fixture_named(name) {
+                return Err(format!("{name} should be fixture-named"));
+            }
+        }
+        let negatives = ["compute_total", "discount", "verify"];
+        for name in negatives {
+            if is_fixture_named(name) {
+                return Err(format!("{name} should NOT be fixture-named"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn given_assertion_target_token_in_test_assertion_when_related_tests_are_ranked_then_assertion_target_affinity_fires()
+    -> Result<(), String> {
+        // Positive case for `assertion_target_affinity`: the seam's
+        // `RequiredDiscriminator::BoundaryValue.description` carries
+        // the identifier `discount_threshold`; a test assertion that
+        // mentions `discount_threshold` as a whole identifier matches.
+        // The test does not call the owner directly, the test file
+        // stem is unrelated, and the test name does not embed the
+        // owner — so this is the only reason that fires.
+        let prod_src = "pub fn discounted_total(amount: i32, discount_threshold: i32) -> i32 \
+                        { if amount >= discount_threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/billing.rs",
+            "fn other() -> i32 { 0 }\n\
+             #[test] fn smoke() { let discount_threshold = 5; assert_eq!(discount_threshold, 5); }\n",
+        );
+        let grip = first_grip_for("src/pricing.rs", prod_src, &[test])?;
+        if grip.relation_reason != RelationReason::AssertionTargetAffinity {
+            return Err(format!(
+                "expected AssertionTargetAffinity, got {:?}",
+                grip.relation_reason
+            ));
+        }
+        if grip.relation_confidence != RelationConfidence::High {
+            return Err(format!(
+                "expected High confidence, got {:?}",
+                grip.relation_confidence
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn assertion_targets_seam_returns_false_for_empty_token_list() -> Result<(), String> {
+        // The `tokens.is_empty()` early-return is the cheap escape
+        // hatch when a seam's `RequiredDiscriminator` carries no
+        // interesting tokens (e.g. a one-character variable name).
+        // Use a synthetic TestSummary because we only care about the
+        // helper's input contract.
+        use crate::analysis::rust_index::TestFact;
+        let test = TestFact {
+            name: "synth".to_string(),
+            file: PathBuf::from("tests/x.rs"),
+            start_line: 1,
+            end_line: 5,
+            body: "assert_eq!(1, 1);".to_string(),
+            calls: Vec::new(),
+            assertions: Vec::new(),
+            literals: Vec::new(),
+        };
+        if assertion_targets_seam(&test, &[]) {
+            return Err("empty token list must short-circuit to false".into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn package_prefix_resolves_crates_and_nested_src_tests_layouts() -> Result<(), String> {
+        // `crates/<name>/src/...` form returns the `crates/<name>/`
+        // prefix.
+        let crates_form = package_prefix(Path::new("crates/ripr/src/auth/login.rs"));
+        if crates_form.as_deref() != Some("crates/ripr/") {
+            return Err(format!(
+                "crates form: got {crates_form:?}, want Some(\"crates/ripr/\")"
+            ));
+        }
+        // `crates/<name>/tests/...` form also returns the package
+        // prefix (the second branch of the strip_prefix-and-or guard).
+        let crates_tests = package_prefix(Path::new("crates/ripr/tests/integration.rs"));
+        if crates_tests.as_deref() != Some("crates/ripr/") {
+            return Err(format!(
+                "crates tests form: got {crates_tests:?}, want Some(\"crates/ripr/\")"
+            ));
+        }
+        // Nested workspace path (rfind branch): the marker scan
+        // falls through to the `/src/` rfind path.
+        let nested = package_prefix(Path::new("workspaces/foo/src/auth/login.rs"));
+        if nested.as_deref() != Some("workspaces/foo/") {
+            return Err(format!(
+                "nested form: got {nested:?}, want Some(\"workspaces/foo/\")"
+            ));
+        }
+        // Bare `src/...` returns None (prefix would be empty).
+        let bare = package_prefix(Path::new("src/foo.rs"));
+        if bare.is_some() {
+            return Err(format!("bare src/ should return None, got {bare:?}"));
+        }
+        // Path under neither root.
+        let docs = package_prefix(Path::new("docs/note.rs"));
+        if docs.is_some() {
+            return Err(format!("unrooted path should return None, got {docs:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn given_owner_in_workspace_crate_when_test_is_in_other_crate_then_it_is_filtered_out()
+    -> Result<(), String> {
+        // Owner lives in `crates/ripr_pricing/src/discount.rs`; a test
+        // in a different package (`crates/ripr_other/tests/x.rs`)
+        // must not appear as a related test, even if it would
+        // otherwise satisfy a reason. Exercises the package-prefix
+        // skip branch in `find_related_tests`.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let other_pkg_test = (
+            "crates/ripr_other/tests/x.rs",
+            "#[test] fn discounted_total_other_pkg() { assert_eq!(1, 1); }\n",
+        );
+        let files: Vec<(PathBuf, &str)> = vec![
+            (
+                PathBuf::from("crates/ripr_pricing/src/discount.rs"),
+                prod_src,
+            ),
+            (PathBuf::from(other_pkg_test.0), other_pkg_test.1),
+        ];
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(
+            &[PathBuf::from("crates/ripr_pricing/src/discount.rs")],
+            &index,
+        );
+        let predicate = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::PredicateBoundary)
+            .ok_or_else(|| "predicate seam present".to_string())?;
+        let evidence = evidence_for_seam(predicate, &index);
+        for grip in &evidence.related_tests {
+            if grip.file == Path::new("crates/ripr_other/tests/x.rs") {
+                return Err(format!(
+                    "test in unrelated package should be filtered by package_prefix; \
+                     got {grip:?}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn given_test_calls_helper_with_fixture_attribute_then_fixture_owner_affinity_fires()
+    -> Result<(), String> {
+        // `test_uses_owner_fixture` accepts EITHER a fixture-named
+        // helper OR a helper whose body contains `#[fixture]`. The
+        // earlier `given_fixture_only_affinity_…` test exercises the
+        // name-based branch (`make_quote`); this one exercises the
+        // body-marker branch by using a non-fixture helper name but
+        // placing the `#[fixture]` marker as an inline comment inside
+        // the body. `FunctionFact.body` slices from the `fn` keyword
+        // to the end of the function, so attributes ABOVE the `fn`
+        // line are not captured — the marker must live inside the
+        // body block.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n\
+                        pub fn provide_quote() -> i32 {\n    // #[fixture]\n    100\n}\n";
+        let test = (
+            "tests/integration.rs",
+            "#[test] fn quote_smoke() { let _ = provide_quote(); assert!(true); }\n",
+        );
+        let grip = first_grip_for("src/pricing.rs", prod_src, &[test])?;
+        if grip.relation_reason != RelationReason::FixtureOwnerAffinity {
+            return Err(format!(
+                "expected FixtureOwnerAffinity, got {:?}",
+                grip.relation_reason
+            ));
+        }
+        Ok(())
+    }
 }
