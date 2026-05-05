@@ -8,6 +8,8 @@
 //!
 //! Schema is documented in `docs/OUTPUT_SCHEMA.md` under `mutation-calibration.json`.
 
+#![allow(dead_code)]
+
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::seams::{SeamGripClass, SeamKind};
 use crate::domain::{OracleKind, OracleStrength};
@@ -262,26 +264,27 @@ pub fn join_mutations_to_seams(
 }
 
 fn calculate_metrics(matched: &[MatchedMutation]) -> CalibrationMetrics {
-    let mut metrics = CalibrationMetrics::default();
-
-    metrics.matched_count = matched.len();
+    let mut outcome_distribution: HashMap<MutationOutcome, usize> = HashMap::new();
+    let mut class_outcome_distribution: HashMap<SeamGripClass, HashMap<MutationOutcome, usize>> =
+        HashMap::new();
 
     for mutation in matched {
-        *metrics
-            .outcome_distribution
-            .entry(mutation.outcome)
-            .or_insert(0) += 1;
+        *outcome_distribution.entry(mutation.outcome).or_insert(0) += 1;
 
-        metrics
-            .class_outcome_distribution
+        class_outcome_distribution
             .entry(mutation.grip_class)
-            .or_insert_with(HashMap::new)
+            .or_default()
             .entry(mutation.outcome)
             .and_modify(|e| *e += 1)
             .or_insert(1);
     }
 
-    metrics
+    CalibrationMetrics {
+        matched_count: matched.len(),
+        unmatched_count: 0,
+        outcome_distribution,
+        class_outcome_distribution,
+    }
 }
 
 /// Render calibration results to JSON.
