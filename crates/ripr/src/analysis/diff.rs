@@ -224,17 +224,26 @@ mod tests {
     fn parser_is_robust_against_fuzz_like_inputs() {
         let mut seed = 0xC0FFEE_u64;
 
-        for case in 0..1_024 {
-            let text = if case % 2 == 0 {
-                fuzz_case_as_raw_bytes(&mut seed)
-            } else {
-                fuzz_case_as_diff_like_lines(&mut seed)
+        for case in 0..2_048 {
+            let text = match case % 4 {
+                0 => fuzz_case_as_raw_bytes(&mut seed),
+                1 => fuzz_case_as_diff_like_lines(&mut seed),
+                2 => fuzz_case_as_pathological_hunk_shapes(&mut seed),
+                _ => fuzz_case_with_truncated_headers(&mut seed),
             };
             let files = parse_unified_diff(&text);
             for file in files {
                 assert!(!file.path.as_os_str().is_empty());
-                assert!(file.added_lines.iter().all(|line| !line.text.contains('\n')));
-                assert!(file.removed_lines.iter().all(|line| !line.text.contains('\n')));
+                assert!(
+                    file.added_lines
+                        .iter()
+                        .all(|line| !line.text.contains('\n'))
+                );
+                assert!(
+                    file.removed_lines
+                        .iter()
+                        .all(|line| !line.text.contains('\n'))
+                );
             }
         }
     }
@@ -275,6 +284,62 @@ mod tests {
                 }
             }
             out.push('\n');
+        }
+        out
+    }
+
+    fn fuzz_case_as_pathological_hunk_shapes(seed: &mut u64) -> String {
+        const HUNKS: &[&str] = &[
+            "@@ -0,0 +0,0 @@",
+            "@@ -1 +1 @@",
+            "@@ -18446744073709551615,1 +18446744073709551615,1 @@",
+            "@@ -1,999999 +1,999999 @@",
+            "@@ -bad +header @@",
+        ];
+
+        let mut out = String::from(
+            "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n",
+        );
+        let hunk_count = (next_u64(seed) % 8 + 1) as usize;
+        for _ in 0..hunk_count {
+            let hunk = HUNKS[(next_u64(seed) % HUNKS.len() as u64) as usize];
+            out.push_str(hunk);
+            out.push('\n');
+            let op_count = (next_u64(seed) % 12 + 1) as usize;
+            for _ in 0..op_count {
+                match next_u64(seed) % 3 {
+                    0 => out.push('+'),
+                    1 => out.push('-'),
+                    _ => out.push(' '),
+                }
+                let tail_len = (next_u64(seed) % 32) as usize;
+                for _ in 0..tail_len {
+                    let ch = (next_u64(seed) & 0x7f) as u8;
+                    if ch != b'\n' {
+                        out.push(ch as char);
+                    }
+                }
+                out.push('\n');
+            }
+        }
+        out
+    }
+
+    fn fuzz_case_with_truncated_headers(seed: &mut u64) -> String {
+        let mut out = String::new();
+        let chunk_count = (next_u64(seed) % 20 + 1) as usize;
+        for _ in 0..chunk_count {
+            match next_u64(seed) % 6 {
+                0 => out.push_str("diff --git a/src/lib.rs b/src/lib.rs\n"),
+                1 => out.push_str("+++ b/src/lib.rs"),
+                2 => out.push_str("--- a/src/lib.rs"),
+                3 => out.push_str("@@ -1,2 +1,2 @@"),
+                4 => out.push_str("+added"),
+                _ => out.push_str("-removed"),
+            }
+            if next_u64(seed).is_multiple_of(3) {
+                out.push('\n');
+            }
         }
         out
     }
