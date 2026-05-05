@@ -137,4 +137,40 @@ mod tests {
         // string as truthy.
         assert!(!config.enable_seam_diagnostics);
     }
+
+    #[test]
+    fn parse_mode_accepts_only_known_literals() {
+        let known_modes = [
+            ("instant", Mode::Instant),
+            ("draft", Mode::Draft),
+            ("fast", Mode::Fast),
+            ("deep", Mode::Deep),
+            ("ready", Mode::Ready),
+        ];
+
+        for (literal, expected_mode) in known_modes {
+            assert_eq!(parse_mode(literal), Some(expected_mode));
+        }
+
+        for unknown in [
+            "", " Instant", "Instant", "INSTANT", "ready ", "deep-mode", "0", "yes",
+        ] {
+            assert_eq!(parse_mode(unknown), None, "unexpected parse for {unknown:?}");
+        }
+    }
+
+    #[test]
+    fn lsp_options_property_boolean_fields_match_json_booleans() {
+        for include_unchanged_tests in [false, true] {
+            for seam_diagnostics in [false, true] {
+                let params = params_with(json!({
+                    "includeUnchangedTests": include_unchanged_tests,
+                    "seamDiagnostics": seam_diagnostics,
+                }));
+                let config = LspAnalysisConfig::from_initialize_params(&params);
+                assert_eq!(config.include_unchanged_tests, include_unchanged_tests);
+                assert_eq!(config.enable_seam_diagnostics, seam_diagnostics);
+            }
+        }
+    }
 }
