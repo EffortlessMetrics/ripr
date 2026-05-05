@@ -395,7 +395,7 @@ lands at `target/ripr/reports/repo-exposure.json` when generated via
 
 ```json
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "scope": "repo",
   "metrics": {
     "seams_total": 12882,
@@ -437,7 +437,9 @@ lands at `target/ripr/reports/repo-exposure.json` when generated via
           "line": 12,
           "oracle_kind": "exact_value",
           "oracle_strength": "strong",
-          "evidence_summary": "exact value assertion"
+          "evidence_summary": "exact value assertion",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "observed_values": ["50", "10000"],
@@ -454,9 +456,11 @@ lands at `target/ripr/reports/repo-exposure.json` when generated via
 
 Field contract:
 
-- `schema_version` — currently `"0.1"`. Bumping requires updating this
+- `schema_version` — currently `"0.2"`. Bumping requires updating this
   section, the renderer (`crates/ripr/src/output/repo_exposure.rs`), and
-  any downstream consumers in lockstep.
+  any downstream consumers in lockstep. `0.1` → `0.2`: per-related-test
+  entries gained `relation_reason` and `relation_confidence` fields
+  (`analysis/related-test-precision-v1`).
 - `scope` — always `"repo"`.
 - `metrics` — totals plus a per-`SeamGripClass` count bucket. Keys mirror
   `SeamGripClass::as_str()`. The renderer emits all 11 buckets even when
@@ -473,6 +477,22 @@ Field contract:
   matched. The `related_tests` array is **capped** for artifact size; see
   `MAX_RELATED_TESTS_PER_SEAM_JSON` in the renderer (currently 8). The
   total field always carries the unbounded count.
+- `seams[].related_tests[].relation_reason` — single highest-priority
+  reason this test is related to the seam. One of:
+  `direct_owner_call`, `assertion_target_affinity`, `same_test_file`,
+  `same_module`, `owner_named_test`, `import_path_affinity`,
+  `fixture_owner_affinity`. Detection lives in
+  `crates/ripr/src/analysis/test_grip_evidence.rs`.
+- `seams[].related_tests[].relation_confidence` — `high`, `medium`,
+  `low`, or `opaque`. Mapping from reason: `direct_owner_call` and
+  `assertion_target_affinity` → `high`; `same_test_file`,
+  `same_module`, `owner_named_test`, `import_path_affinity` →
+  `medium`; `fixture_owner_affinity` → `low`. Independent of
+  `oracle_strength`: a `low` relation can still carry a strong oracle.
+- The `related_tests` array is **ranked** by
+  `(confidence, reason_priority, file, name, line)` so the
+  highest-confidence tests appear first. `related_tests_total` is
+  unaffected by ranking.
 - `seams[].observed_values` — literal scalar values seen in owner-call
   arguments across related tests. Bare identifiers and helper-derived
   values are intentionally excluded.
@@ -499,7 +519,7 @@ generated via `cargo xtask agent-seam-packets`.
 
 ```json
 {
-  "schema_version": "0.2",
+  "schema_version": "0.3",
   "scope": "repo",
   "packets_total": 12565,
   "packets": [
@@ -535,7 +555,9 @@ generated via `cargo xtask agent-seam-packets`.
           "line": 12,
           "oracle_kind": "exact_value",
           "oracle_strength": "strong",
-          "evidence_summary": "exact value assertion"
+          "evidence_summary": "exact value assertion",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
         }
       ],
       "suggested_assertions": [
@@ -549,11 +571,16 @@ generated via `cargo xtask agent-seam-packets`.
 
 Field contract:
 
-- `schema_version` — currently `"0.2"`. Distinct from the repo-exposure
-  report's `"0.1"` because the packet is a separate contract aimed at
+- `schema_version` — currently `"0.3"`. Distinct from the repo-exposure
+  report's `"0.2"` because the packet is a separate contract aimed at
   coding agents rather than reviewers. Bumping requires updating this
   section, the renderer (`crates/ripr/src/output/agent_seam_packets.rs`),
-  and any downstream consumers in lockstep.
+  and any downstream consumers in lockstep. `0.2` → `0.3`:
+  `related_existing_tests[]` entries gained `relation_reason` and
+  `relation_confidence` fields, and the array is now ranked
+  highest-confidence first (`analysis/related-test-precision-v1`).
+  Reason and confidence vocabularies are documented in the
+  `repo-exposure.json` field contract above.
 - `scope` — always `"repo"`.
 - `packets_total` — number of actionable packets emitted. Equals the
   count of headline-eligible seams plus opaque seams (which emit

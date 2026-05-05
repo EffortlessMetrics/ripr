@@ -44,6 +44,93 @@ pub(crate) struct RelatedTestGrip {
     pub(crate) oracle_kind: OracleKind,
     pub(crate) oracle_strength: OracleStrength,
     pub(crate) evidence_summary: String,
+    pub(crate) relation_reason: RelationReason,
+    pub(crate) relation_confidence: RelationConfidence,
+}
+
+/// Why this test is related to the seam. v1: a single highest-priority
+/// reason per test (no multi-reason public shape). Priority is pinned
+/// by `RelationReason::priority` and exercised by ranking tests.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum RelationReason {
+    DirectOwnerCall,
+    AssertionTargetAffinity,
+    SameTestFile,
+    SameModule,
+    OwnerNamedTest,
+    ImportPathAffinity,
+    FixtureOwnerAffinity,
+}
+
+impl RelationReason {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::DirectOwnerCall => "direct_owner_call",
+            Self::AssertionTargetAffinity => "assertion_target_affinity",
+            Self::SameTestFile => "same_test_file",
+            Self::SameModule => "same_module",
+            Self::OwnerNamedTest => "owner_named_test",
+            Self::ImportPathAffinity => "import_path_affinity",
+            Self::FixtureOwnerAffinity => "fixture_owner_affinity",
+        }
+    }
+
+    /// Lower value sorts first. Stable contract pinned by tests.
+    fn priority(self) -> u8 {
+        match self {
+            Self::DirectOwnerCall => 0,
+            Self::AssertionTargetAffinity => 1,
+            Self::SameTestFile => 2,
+            Self::SameModule => 3,
+            Self::OwnerNamedTest => 4,
+            Self::ImportPathAffinity => 5,
+            Self::FixtureOwnerAffinity => 6,
+        }
+    }
+
+    fn confidence(self) -> RelationConfidence {
+        match self {
+            Self::DirectOwnerCall | Self::AssertionTargetAffinity => RelationConfidence::High,
+            Self::SameTestFile
+            | Self::SameModule
+            | Self::OwnerNamedTest
+            | Self::ImportPathAffinity => RelationConfidence::Medium,
+            Self::FixtureOwnerAffinity => RelationConfidence::Low,
+        }
+    }
+}
+
+/// Confidence that the related test grips the seam. Independent of
+/// oracle strength: a `Low` relation can still carry a strong oracle.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum RelationConfidence {
+    High,
+    Medium,
+    Low,
+    Opaque,
+}
+
+impl RelationConfidence {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::High => "high",
+            Self::Medium => "medium",
+            Self::Low => "low",
+            Self::Opaque => "opaque",
+        }
+    }
+
+    /// Lower value sorts first (highest confidence first).
+    fn rank(self) -> u8 {
+        match self {
+            Self::High => 0,
+            Self::Medium => 1,
+            Self::Low => 2,
+            Self::Opaque => 3,
+        }
+    }
 }
 
 /// Build evidence records for a slice of seams. Output is sorted by
@@ -59,8 +146,10 @@ pub(crate) fn evidence_for_seams(seams: &[RepoSeam], index: &RustIndex) -> Vec<T
 
 /// Build evidence for a single seam.
 pub(crate) fn evidence_for_seam(seam: &RepoSeam, index: &RustIndex) -> TestGripEvidence {
-    let related = find_related_tests(seam, index);
+    let related_with_reason = find_related_tests(seam, index);
     let owner_fn = find_owner_function(seam, index);
+
+    let related: Vec<&TestSummary> = related_with_reason.iter().map(|(t, _)| *t).collect();
 
     let reach = reach_evidence(seam, &related);
     let (activate, observed_values, missing_discriminators) =
@@ -69,18 +158,28 @@ pub(crate) fn evidence_for_seam(seam: &RepoSeam, index: &RustIndex) -> TestGripE
     let observe = observe_evidence(&related);
     let discriminate = discriminate_evidence(seam, &related);
 
-    let mut related_tests: Vec<RelatedTestGrip> = related
+    let mut related_tests: Vec<RelatedTestGrip> = related_with_reason
         .iter()
-        .map(|test| related_test_grip(seam, test))
+        .map(|(test, reason)| related_test_grip(seam, test, *reason))
         .collect();
+    // Ranked order: confidence (high first) → reason priority → file →
+    // name → line. Replaces the previous (name, file, line) sort. The
+    // dedup invariant is unchanged — `find_related_tests` already
+    // deduped by (name, file, start_line), so this is a stable ranking
+    // re-sort, not a uniqueness step.
     related_tests.sort_by(|a, b| {
-        a.test_name
-            .cmp(&b.test_name)
+        a.relation_confidence
+            .rank()
+            .cmp(&b.relation_confidence.rank())
+            .then(
+                a.relation_reason
+                    .priority()
+                    .cmp(&b.relation_reason.priority()),
+            )
             .then(a.file.cmp(&b.file))
+            .then(a.test_name.cmp(&b.test_name))
             .then(a.line.cmp(&b.line))
     });
-    related_tests
-        .dedup_by(|a, b| a.test_name == b.test_name && a.file == b.file && a.line == b.line);
 
     TestGripEvidence {
         seam_id: seam.id().clone(),
@@ -95,22 +194,45 @@ pub(crate) fn evidence_for_seam(seam: &RepoSeam, index: &RustIndex) -> TestGripE
     }
 }
 
-/// Walk index.tests and return tests that plausibly relate to `seam`.
-/// Mirrors the matching idiom used by `analysis::classifier::find_related_tests`
-/// but works directly from `RepoSeam` fields rather than `Probe`.
-fn find_related_tests<'a>(seam: &RepoSeam, index: &'a RustIndex) -> Vec<&'a TestSummary> {
+/// Walk `index.tests` and return tests that plausibly relate to `seam`,
+/// each tagged with the single highest-priority `RelationReason` it
+/// satisfies. The two-step "match then rank" replaces the old binary
+/// `calls_owner || same_file_or_named` check from earlier campaigns.
+///
+/// Detection per reason — strict ordering: the first reason that fires
+/// wins, so e.g. a test that both `calls owner` and `is in same file`
+/// carries `direct_owner_call`, never `same_test_file`.
+fn find_related_tests<'a>(
+    seam: &RepoSeam,
+    index: &'a RustIndex,
+) -> Vec<(&'a TestSummary, RelationReason)> {
     let owner_fn = find_owner_function(seam, index);
     let owner_name = owner_fn.map(|f| f.name.as_str()).unwrap_or("");
     let owner_name_lower = owner_name.to_ascii_lowercase();
-    let expression_tokens = extract_identifier_tokens(seam.expression());
-    let file_stem = seam
-        .file()
-        .file_stem()
+    let owner_file = owner_fn.map(|f| f.file.as_path());
+    let owner_file_stem = owner_file
+        .and_then(|p| p.file_stem())
         .and_then(|s| s.to_str())
         .unwrap_or("");
+    let owner_module_path = owner_file.and_then(module_path_for);
     let prefix = owner_fn.and_then(|f| package_prefix(&f.file));
 
-    let mut related: Vec<&'a TestSummary> = Vec::new();
+    // Tokens from `RequiredDiscriminator` and `ExpectedSink` for
+    // `assertion_target_affinity`. Filtered through
+    // `extract_identifier_tokens`, so common stop-words and short
+    // tokens are already excluded — the residual set is what a test
+    // assertion would have to mention to count.
+    let discriminator_tokens = required_discriminator_tokens(seam);
+    let sink_tokens = extract_identifier_tokens(seam.expected_sink().as_str());
+    let target_tokens: Vec<String> = discriminator_tokens
+        .into_iter()
+        .chain(sink_tokens)
+        .collect();
+
+    let mut related: Vec<(&'a TestSummary, RelationReason)> = Vec::new();
+    let mut seen: std::collections::HashSet<(String, std::path::PathBuf, usize)> =
+        std::collections::HashSet::new();
+
     for test in &index.tests {
         let test_path = normalize_path(&test.file);
         if let Some(prefix) = &prefix
@@ -118,22 +240,292 @@ fn find_related_tests<'a>(seam: &RepoSeam, index: &'a RustIndex) -> Vec<&'a Test
         {
             continue;
         }
-        let calls_owner = !owner_name.is_empty()
-            && (test.calls.iter().any(|call| call.name == owner_name)
-                || test.body.contains(owner_name));
+
+        let test_module_path = module_path_for(&test.file);
         let test_name_lower = test.name.to_ascii_lowercase();
-        let same_file_or_named = (!file_stem.is_empty() && test_path.contains(file_stem))
-            || (!owner_name_lower.is_empty() && test_name_lower.contains(&owner_name_lower))
-            || expression_tokens.iter().any(|token| {
-                token.len() > 2 && test_name_lower.contains(&token.to_ascii_lowercase())
-            });
-        if calls_owner || same_file_or_named {
-            related.push(test);
+
+        // Reason resolution — strict priority order.
+        let reason =
+            if !owner_name.is_empty() && test.calls.iter().any(|call| call.name == owner_name) {
+                // `direct_owner_call`: test calls the owner directly. The
+                // call walker captures the bare callee name, which covers
+                // both `owner(...)` and qualified forms like
+                // `module::owner(...)` — `CallFact.name` is the unqualified
+                // tail.
+                Some(RelationReason::DirectOwnerCall)
+            } else if !target_tokens.is_empty() && assertion_targets_seam(test, &target_tokens) {
+                // `assertion_target_affinity`: at least one assertion in
+                // the test mentions a token from the seam's required
+                // discriminator or expected sink. Token-aware (full
+                // identifier match), so `discount_threshold` does not
+                // match `discount_threshold_factor` or random substring.
+                Some(RelationReason::AssertionTargetAffinity)
+            } else if !owner_file_stem.is_empty() && same_test_file(&test.file, owner_file_stem) {
+                // `same_test_file`: physical/virtual sibling — a `tests/`
+                // file with the same stem as the owner's source, an inline
+                // `#[cfg(test)] mod tests` (test.file == owner.file), or a
+                // `*_test.rs` / `*_tests.rs` peer.
+                Some(RelationReason::SameTestFile)
+            } else if let (Some(owner_mod), Some(test_mod)) =
+                (owner_module_path.as_deref(), test_module_path.as_deref())
+                && same_module(owner_mod, test_mod)
+            {
+                // `same_module`: shares the owner's module path beyond
+                // just the file stem — e.g., `src/auth/login.rs` ↔
+                // `tests/auth/integration.rs`.
+                Some(RelationReason::SameModule)
+            } else if !owner_name_lower.is_empty() && test_name_lower.contains(&owner_name_lower) {
+                // `owner_named_test`: test name embeds the owner name.
+                // Conservative: substring on the test name (lowercase),
+                // which does not have the false-positive risk of body
+                // substring.
+                Some(RelationReason::OwnerNamedTest)
+            } else if !owner_name.is_empty() && test_imports_owner(test, owner_name) {
+                // `import_path_affinity`: test body mentions the owner
+                // via an explicit qualified-path (`module::owner`) or
+                // inline `use ... owner` shape, without a direct call.
+                // Captures the "test imports it but does not invoke
+                // it" pattern common in higher-level integration
+                // tests. Detection tightened per #310 review — see
+                // `test_imports_owner` for the accepted/rejected
+                // shapes.
+                Some(RelationReason::ImportPathAffinity)
+            } else if test_uses_owner_fixture(test, owner_file, index) {
+                // `fixture_owner_affinity`: test calls a non-test fn that
+                // lives in the owner's source file and whose name follows
+                // a fixture / builder convention. Narrow on purpose — the
+                // user tightened this to "explicit fixture relationship
+                // only", not "any helper call".
+                Some(RelationReason::FixtureOwnerAffinity)
+            } else {
+                None
+            };
+
+        let Some(reason) = reason else { continue };
+        let key = (test.name.clone(), test.file.clone(), test.start_line);
+        if seen.insert(key) {
+            related.push((test, reason));
         }
     }
-    related.sort_by(|a, b| a.name.cmp(&b.name).then(a.file.cmp(&b.file)));
-    related.dedup_by(|a, b| a.name == b.name && a.file == b.file);
     related
+}
+
+/// Tokens drawn from a `RepoSeam`'s `RequiredDiscriminator`. Filtered
+/// through `extract_identifier_tokens` so common short words and
+/// stop-tokens are already excluded.
+fn required_discriminator_tokens(seam: &RepoSeam) -> Vec<String> {
+    use super::seams::RequiredDiscriminator;
+    let text = match seam.required_discriminator() {
+        RequiredDiscriminator::BoundaryValue { description }
+        | RequiredDiscriminator::ReturnValue { description } => description.as_str(),
+        RequiredDiscriminator::ErrorVariant { variant } => variant.as_str(),
+        RequiredDiscriminator::FieldValue { field } => field.as_str(),
+        RequiredDiscriminator::Effect { sink } => sink.as_str(),
+        RequiredDiscriminator::MatchArmTaken { arm } => arm.as_str(),
+        RequiredDiscriminator::CallSite { target } => target.as_str(),
+    };
+    extract_identifier_tokens(text)
+}
+
+/// Token-aware: does any assertion text in `test` contain at least one
+/// of `tokens` as a whole identifier? Substring match would let
+/// `discount` accidentally match `discount_threshold`; we want exact
+/// identifier hits.
+fn assertion_targets_seam(test: &TestSummary, tokens: &[String]) -> bool {
+    if tokens.is_empty() {
+        return false;
+    }
+    for assertion in &test.assertions {
+        let assertion_tokens = extract_identifier_tokens(&assertion.text);
+        if assertion_tokens
+            .iter()
+            .any(|at| tokens.iter().any(|t| at == t))
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn same_test_file(test_file: &Path, owner_stem: &str) -> bool {
+    let stem = match test_file.file_stem().and_then(|s| s.to_str()) {
+        Some(s) => s,
+        None => return false,
+    };
+    if stem == owner_stem {
+        return true;
+    }
+    // Suffix check avoids the allocation that `stem == format!("{owner_stem}_test")`
+    // would do per call. Two suffix variants cover the common naming
+    // conventions: `*_test.rs` and `*_tests.rs`.
+    if let Some(prefix) = stem.strip_suffix("_test")
+        && prefix == owner_stem
+    {
+        return true;
+    }
+    if let Some(prefix) = stem.strip_suffix("_tests")
+        && prefix == owner_stem
+    {
+        return true;
+    }
+    false
+}
+
+/// Module path slug for a Rust source file: the path components below
+/// `src/` or `tests/`, joined by `/`, dropping the file extension.
+/// Returns `None` for files that do not sit under one of those roots.
+/// Examples (Unix-style after normalize):
+/// - `crates/ripr/src/auth/login.rs` → `auth/login`
+/// - `tests/cli_smoke.rs`            → `cli_smoke`
+fn module_path_for(file: &Path) -> Option<String> {
+    let normalized = normalize_path(file);
+    let body = normalized
+        .rfind("/src/")
+        .map(|idx| &normalized[idx + "/src/".len()..])
+        .or_else(|| {
+            normalized
+                .rfind("/tests/")
+                .map(|idx| &normalized[idx + "/tests/".len()..])
+        })
+        .or_else(|| normalized.strip_prefix("src/"))
+        .or_else(|| normalized.strip_prefix("tests/"))?;
+    let trimmed = body.strip_suffix(".rs").unwrap_or(body);
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+/// Two files share a module if any non-leaf segment of the owner's
+/// module path appears as a prefix of the test's module path. The leaf
+/// stem is excluded so this does not duplicate `same_test_file`.
+fn same_module(owner_module: &str, test_module: &str) -> bool {
+    let parent = match owner_module.rsplit_once('/') {
+        Some((parent, _leaf)) => parent,
+        None => return false,
+    };
+    if parent.is_empty() {
+        return false;
+    }
+    test_module == parent
+        || test_module.starts_with(&format!("{parent}/"))
+        || test_module.starts_with(&format!("{}/", parent.replace('/', "_")))
+}
+
+/// Body mentions the owner via an explicit qualified-path or `use`
+/// shape — without calling it. The direct-call check has already
+/// excluded callers, so this fires for tests that import the symbol
+/// (or qualify it via a path) but route through some wrapper (common
+/// in integration tests).
+///
+/// Tightened per #310 review: pure token co-occurrence
+/// (owner_name appearing as a bare identifier somewhere in the body)
+/// was too easy to satisfy with local bindings, comments, or
+/// unrelated identifiers. The detector now requires either:
+///
+/// 1. a `module::owner_name` qualified path anywhere in the body
+///    (catches `crate::pricing::discounted_total`,
+///    `super::pricing::discounted_total`, `pricing::discounted_total`
+///    — they all contain `::owner_name`); or
+/// 2. an inline `use ... owner_name` line in the test body. File-
+///    scope `use` lines are not in `test.body` so this only covers
+///    in-function imports.
+fn test_imports_owner(test: &TestSummary, owner_name: &str) -> bool {
+    if owner_name.is_empty() {
+        return false;
+    }
+    let qualified = format!("::{owner_name}");
+    for raw_line in test.body.lines() {
+        // Strip line comments and string-literal contents before
+        // looking at the line. Without this, doc comments like
+        // `// see crate::pricing::owner` or string literals like
+        // `let s = "crate::pricing::owner";` would falsely match the
+        // `::owner` marker — defeating the whole point of the
+        // tightening that #310 added. Caught by CodeRabbit.
+        let code = strip_comments_and_strings(raw_line);
+        if code.contains(&qualified) {
+            return true;
+        }
+        if code.trim_start().starts_with("use ")
+            && extract_identifier_tokens(&code)
+                .iter()
+                .any(|t| t == owner_name)
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// Drop everything after a `//` line comment and replace string-literal
+/// contents with empty strings. v1 best-effort: handles `"..."` with
+/// `\\` and `\"` escapes; raw strings (`r#"..."#`), char literals
+/// (`'a'`), and block comments (`/* ... */`) are out of scope — those
+/// shapes are rare inside test bodies and treating them as code is a
+/// safe over-match (the previous helper accepted them all).
+fn strip_comments_and_strings(line: &str) -> String {
+    // Strip `//` line comments first; everything after is non-code.
+    let without_comment = match line.find("//") {
+        Some(idx) => &line[..idx],
+        None => line,
+    };
+    let mut out = String::with_capacity(without_comment.len());
+    let mut in_string = false;
+    let mut escaped = false;
+    for ch in without_comment.chars() {
+        if in_string {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            match ch {
+                '\\' => escaped = true,
+                '"' => in_string = false,
+                _ => {}
+            }
+            continue;
+        }
+        if ch == '"' {
+            in_string = true;
+            continue;
+        }
+        out.push(ch);
+    }
+    out
+}
+
+/// Test calls a non-test function that lives in the owner's source
+/// file and whose name follows a fixture / builder convention. Narrow
+/// per the campaign decision: explicit fixture relationship only, not
+/// "any helper call".
+fn test_uses_owner_fixture(
+    test: &TestSummary,
+    owner_file: Option<&Path>,
+    index: &RustIndex,
+) -> bool {
+    let Some(owner_file) = owner_file else {
+        return false;
+    };
+    for call in &test.calls {
+        let Some(target) = index
+            .functions
+            .iter()
+            .find(|f| f.name == call.name && f.file == owner_file && !f.is_test)
+        else {
+            continue;
+        };
+        if is_fixture_named(&target.name) || target.body.contains("#[fixture]") {
+            return true;
+        }
+    }
+    false
+}
+
+fn is_fixture_named(name: &str) -> bool {
+    let prefixes = ["fixture_", "setup_", "make_", "build_", "new_", "mock_"];
+    let suffixes = ["_fixture", "_factory"];
+    prefixes.iter().any(|p| name.starts_with(p)) || suffixes.iter().any(|s| name.ends_with(s))
 }
 
 fn find_owner_function<'a>(seam: &RepoSeam, index: &'a RustIndex) -> Option<&'a FunctionSummary> {
@@ -476,7 +868,11 @@ fn oracle_kind_matches_seam(seam: &RepoSeam, oracle: &OracleKind) -> bool {
     }
 }
 
-fn related_test_grip(seam: &RepoSeam, test: &TestSummary) -> RelatedTestGrip {
+fn related_test_grip(
+    seam: &RepoSeam,
+    test: &TestSummary,
+    reason: RelationReason,
+) -> RelatedTestGrip {
     let (kind, strength) = best_oracle(test, seam);
     let summary = if matches!(strength, OracleStrength::None) {
         "no oracle in test body".to_string()
@@ -493,6 +889,7 @@ fn related_test_grip(seam: &RepoSeam, test: &TestSummary) -> RelatedTestGrip {
             OracleKind::Unknown => "no recognised oracle".to_string(),
         }
     };
+    let confidence = reason.confidence();
     RelatedTestGrip {
         test_name: test.name.clone(),
         file: test.file.clone(),
@@ -500,6 +897,8 @@ fn related_test_grip(seam: &RepoSeam, test: &TestSummary) -> RelatedTestGrip {
         oracle_kind: kind,
         oracle_strength: strength,
         evidence_summary: summary,
+        relation_reason: reason,
+        relation_confidence: confidence,
     }
 }
 
@@ -927,6 +1326,753 @@ fn below_case() {
                 "evidence order is not stable:\n  forward: {forward_ids:?}\n  reversed: {reversed_ids:?}"
             ));
         }
+        Ok(())
+    }
+
+    // -- relation_reason / relation_confidence ranking ----------------
+    //
+    // Pins the ranking contract:
+    //   confidence (high first) → reason priority → file → name → line.
+    // Reason detection is exercised here through `find_related_tests`
+    // via `evidence_for_seam`. Each test fabricates a small index and
+    // inspects the first emitted RelatedTestGrip per seam.
+
+    fn first_grip_for(
+        seam_file: &str,
+        prod_src: &str,
+        tests: &[(&str, &str)],
+    ) -> Result<RelatedTestGrip, String> {
+        let mut files: Vec<(PathBuf, &str)> = vec![(PathBuf::from(seam_file), prod_src)];
+        for (path, src) in tests {
+            files.push((PathBuf::from(*path), *src));
+        }
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from(seam_file)], &index);
+        let predicate = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::PredicateBoundary)
+            .ok_or_else(|| "predicate seam present".to_string())?;
+        let evidence = evidence_for_seam(predicate, &index);
+        evidence
+            .related_tests
+            .into_iter()
+            .next()
+            .ok_or_else(|| "at least one related test".to_string())
+    }
+
+    #[test]
+    fn given_direct_owner_call_and_same_file_match_when_related_tests_are_ranked_then_direct_call_is_first()
+    -> Result<(), String> {
+        // One test in the same file (would match same_test_file) plus
+        // one that calls the owner directly. Ranking must put the
+        // direct-call test first.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        // Test in pricing_tests.rs has the same file stem as src/pricing.rs.
+        let same_file_only = (
+            "tests/pricing_tests.rs",
+            "#[test] fn pricing_smoke() { assert_eq!(1, 1); }\n",
+        );
+        // Test in unrelated.rs calls the owner directly.
+        let direct = (
+            "tests/unrelated.rs",
+            "#[test] fn calls_owner() { assert_eq!(discounted_total(100, 100), 90); }\n",
+        );
+
+        let files: Vec<(PathBuf, &str)> = vec![
+            (PathBuf::from("src/pricing.rs"), prod_src),
+            (PathBuf::from(same_file_only.0), same_file_only.1),
+            (PathBuf::from(direct.0), direct.1),
+        ];
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pricing.rs")], &index);
+        let predicate = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::PredicateBoundary)
+            .ok_or_else(|| "predicate seam present".to_string())?;
+        let evidence = evidence_for_seam(predicate, &index);
+
+        let first = evidence
+            .related_tests
+            .first()
+            .ok_or_else(|| "at least one related test".to_string())?;
+        let labels: Vec<_> = evidence
+            .related_tests
+            .iter()
+            .map(|g| (g.test_name.clone(), g.relation_reason))
+            .collect();
+        assert_eq!(
+            first.relation_reason,
+            RelationReason::DirectOwnerCall,
+            "direct owner call must outrank same-file affinity; got grips {labels:?}"
+        );
+        assert_eq!(first.relation_confidence, RelationConfidence::High);
+        Ok(())
+    }
+
+    #[test]
+    fn given_owner_named_test_without_call_when_related_tests_are_ranked_then_confidence_is_medium()
+    -> Result<(), String> {
+        // Test name embeds the owner name but does not call it and is
+        // not in the same module / file. Should classify as
+        // owner_named_test with medium confidence.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/billing.rs",
+            "#[test] fn discounted_total_smoke() { assert_eq!(1, 1); }\n",
+        );
+        let grip = first_grip_for("src/pricing.rs", prod_src, &[test])?;
+        assert_eq!(grip.relation_reason, RelationReason::OwnerNamedTest);
+        assert_eq!(grip.relation_confidence, RelationConfidence::Medium);
+        Ok(())
+    }
+
+    #[test]
+    fn given_fixture_only_affinity_when_related_tests_are_ranked_then_confidence_is_low()
+    -> Result<(), String> {
+        // Test calls a fixture-named helper in the owner's source file
+        // but never the owner itself, and the test name does not embed
+        // the owner. Should classify as fixture_owner_affinity with
+        // exactly Low confidence (Opaque is reserved for cases the
+        // detector does not yet emit).
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n\
+                        pub fn make_quote() -> i32 { 100 }\n";
+        let test = (
+            "tests/integration.rs",
+            "#[test] fn quote_smoke() { let _ = make_quote(); assert!(true); }\n",
+        );
+        let grip = first_grip_for("src/pricing.rs", prod_src, &[test])?;
+        assert_eq!(grip.relation_reason, RelationReason::FixtureOwnerAffinity);
+        assert_eq!(grip.relation_confidence, RelationConfidence::Low);
+        Ok(())
+    }
+
+    #[test]
+    fn given_assertion_target_affinity_uses_token_aware_match_not_substring() -> Result<(), String>
+    {
+        // The seam's required-discriminator description contains the
+        // identifier `discount_threshold`. A test whose assertion uses
+        // `discount_threshold_factor` (a longer identifier that contains
+        // the discriminator string as a substring) must NOT be
+        // classified as assertion_target_affinity — token-aware matching
+        // requires whole-identifier hits, not substring contains.
+        //
+        // The test calls a different function (no direct_owner_call)
+        // and lives in an unrelated file (no same_test_file/module),
+        // and its name does not embed the owner.
+        let prod_src = "pub fn discounted_total(amount: i32, discount_threshold: i32) -> i32 \
+                        { if amount >= discount_threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/billing.rs",
+            "fn other() -> i32 { 0 }\n\
+             #[test] fn smoke() { let discount_threshold_factor = 5; assert_eq!(other(), 0); let _ = discount_threshold_factor; }\n",
+        );
+        let files: Vec<(PathBuf, &str)> = vec![
+            (PathBuf::from("src/pricing.rs"), prod_src),
+            (PathBuf::from(test.0), test.1),
+        ];
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pricing.rs")], &index);
+        let predicate = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::PredicateBoundary)
+            .ok_or_else(|| "predicate seam present".to_string())?;
+        let evidence = evidence_for_seam(predicate, &index);
+        // The test must not appear as assertion_target_affinity. It is
+        // OK for it to be excluded entirely (no reason fires) — the
+        // contract is "do not falsely classify substring hits".
+        for grip in &evidence.related_tests {
+            assert_ne!(
+                grip.relation_reason,
+                RelationReason::AssertionTargetAffinity,
+                "substring hit (`discount_threshold_factor`) must not match \
+                 assertion_target_affinity; got {grip:?}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn given_related_tests_with_same_confidence_when_sorted_then_order_is_stable_by_file_name_line()
+    -> Result<(), String> {
+        // Two tests with the same reason (both owner_named_test) but
+        // different (file, name). Sort tie-break must be deterministic:
+        // file → name → line.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test_a = (
+            "tests/zeta.rs",
+            "#[test] fn discounted_total_one() { assert_eq!(1, 1); }\n",
+        );
+        let test_b = (
+            "tests/alpha.rs",
+            "#[test] fn discounted_total_two() { assert_eq!(1, 1); }\n",
+        );
+        let files: Vec<(PathBuf, &str)> = vec![
+            (PathBuf::from("src/pricing.rs"), prod_src),
+            (PathBuf::from(test_a.0), test_a.1),
+            (PathBuf::from(test_b.0), test_b.1),
+        ];
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pricing.rs")], &index);
+        let predicate = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::PredicateBoundary)
+            .ok_or_else(|| "predicate seam present".to_string())?;
+        let evidence = evidence_for_seam(predicate, &index);
+        assert!(
+            evidence.related_tests.len() >= 2,
+            "expected at least 2 related tests, got {}",
+            evidence.related_tests.len()
+        );
+        // alpha.rs sorts before zeta.rs.
+        assert_eq!(evidence.related_tests[0].file, Path::new("tests/alpha.rs"));
+        assert_eq!(evidence.related_tests[1].file, Path::new("tests/zeta.rs"));
+        Ok(())
+    }
+
+    #[test]
+    fn given_higher_confidence_related_test_when_sorted_then_it_comes_before_lower_confidence()
+    -> Result<(), String> {
+        // Two tests, one with high confidence (direct_owner_call) and
+        // one with low confidence (fixture_owner_affinity via a fixture
+        // helper). High must come first regardless of file/name order.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n\
+                        pub fn make_quote() -> i32 { 100 }\n";
+        // The fixture user lives in 'a_first.rs' (alphabetically before)
+        // so without confidence ordering it would naively sort first.
+        let fixture_user = (
+            "tests/a_first.rs",
+            "#[test] fn fx() { let _ = make_quote(); assert!(true); }\n",
+        );
+        // The direct caller lives in 'z_last.rs'.
+        let direct_caller = (
+            "tests/z_last.rs",
+            "#[test] fn caller() { assert_eq!(discounted_total(100, 100), 90); }\n",
+        );
+        let files: Vec<(PathBuf, &str)> = vec![
+            (PathBuf::from("src/pricing.rs"), prod_src),
+            (PathBuf::from(fixture_user.0), fixture_user.1),
+            (PathBuf::from(direct_caller.0), direct_caller.1),
+        ];
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pricing.rs")], &index);
+        let predicate = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::PredicateBoundary)
+            .ok_or_else(|| "predicate seam present".to_string())?;
+        let evidence = evidence_for_seam(predicate, &index);
+        let first = evidence
+            .related_tests
+            .first()
+            .ok_or_else(|| "at least one related test".to_string())?;
+        assert_eq!(first.relation_reason, RelationReason::DirectOwnerCall);
+        assert_eq!(first.relation_confidence, RelationConfidence::High);
+        Ok(())
+    }
+
+    // -- import_path_affinity tightening (#310 review) ---------------
+    //
+    // The detector requires explicit `module::owner_name` qualified-
+    // path syntax or an inline `use ... owner_name` line — pure token
+    // co-occurrence (owner_name + module token both present in the
+    // body without path syntax) must NOT fire.
+
+    #[test]
+    fn given_import_path_affinity_without_direct_call_when_related_tests_are_ranked_then_confidence_is_medium()
+    -> Result<(), String> {
+        // Test references `crate::pricing::discounted_total` as a
+        // function value (no parens → not a CallFact, so
+        // direct_owner_call cannot fire). The qualified path satisfies
+        // the tightened import_path_affinity detector. The test name
+        // does not contain "discounted_total" and the file is not
+        // pricing-flavoured, so no other reason fires either.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/integration_smoke.rs",
+            "#[test] fn smoke() { let _f = crate::pricing::discounted_total; assert_eq!(1, 1); }\n",
+        );
+        let grip = first_grip_for("src/pricing.rs", prod_src, &[test])?;
+        assert_eq!(grip.relation_reason, RelationReason::ImportPathAffinity);
+        assert_eq!(grip.relation_confidence, RelationConfidence::Medium);
+        Ok(())
+    }
+
+    #[test]
+    fn given_qualified_owner_path_only_in_comment_or_string_when_related_tests_are_ranked_then_import_path_affinity_does_not_fire()
+    -> Result<(), String> {
+        // Per CodeRabbit on #310: `test_imports_owner` previously did
+        // a raw `body.contains("::owner")` which matched substrings
+        // inside `// ...` comments and `"..."` string literals. That
+        // re-introduced the noise the detector was meant to avoid.
+        // After the fix, neither shape should match.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        // Comment carries the qualified path; code does not. Test name
+        // and file are both neutral so no other reason fires.
+        let comment_only = (
+            "tests/integration_a.rs",
+            "#[test] fn smoke_a() { \
+                // see crate::pricing::discounted_total for background \n\
+                assert_eq!(1, 1); \
+            }\n",
+        );
+        // String literal carries the qualified path.
+        let string_only = (
+            "tests/integration_b.rs",
+            "#[test] fn smoke_b() { \
+                let _doc = \"crate::pricing::discounted_total\"; \
+                let _ = _doc; assert_eq!(1, 1); \
+            }\n",
+        );
+        for (path, src) in [comment_only, string_only] {
+            let files: Vec<(PathBuf, &str)> = vec![
+                (PathBuf::from("src/pricing.rs"), prod_src),
+                (PathBuf::from(path), src),
+            ];
+            let index = index_from_files(&files)?;
+            let seams = inventory_seams_from_index(&[PathBuf::from("src/pricing.rs")], &index);
+            let predicate = seams
+                .iter()
+                .find(|s| s.kind() == SeamKind::PredicateBoundary)
+                .ok_or_else(|| "predicate seam present".to_string())?;
+            let evidence = evidence_for_seam(predicate, &index);
+            for grip in &evidence.related_tests {
+                assert_ne!(
+                    grip.relation_reason,
+                    RelationReason::ImportPathAffinity,
+                    "qualified path inside comment/string in {path} must not match \
+                     ImportPathAffinity; got {grip:?}"
+                );
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn given_owner_and_module_tokens_without_import_path_when_related_tests_are_ranked_then_import_path_affinity_does_not_fire()
+    -> Result<(), String> {
+        // Body contains `pricing` and `discounted_total` as bare
+        // identifiers but never as a `::path::owner_name` shape and
+        // never on a `use ...` line. The pre-tightening detector
+        // would have fired (owner token + parent dir token both
+        // present); the tightened detector must not.
+        //
+        // The test name embeds "discounted_total" — that is OK because
+        // it triggers `owner_named_test`, a *different* reason. The
+        // contract under test is "ImportPathAffinity does not fire on
+        // mere token co-occurrence".
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/billing.rs",
+            "#[test] fn discounted_total_token_smoke() { \
+                let pricing = \"pricing\"; let discounted_total = 5; \
+                let _ = (pricing, discounted_total); assert_eq!(1, 1); \
+            }\n",
+        );
+        let files: Vec<(PathBuf, &str)> = vec![
+            (PathBuf::from("src/pricing.rs"), prod_src),
+            (PathBuf::from(test.0), test.1),
+        ];
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pricing.rs")], &index);
+        let predicate = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::PredicateBoundary)
+            .ok_or_else(|| "predicate seam present".to_string())?;
+        let evidence = evidence_for_seam(predicate, &index);
+        for grip in &evidence.related_tests {
+            assert_ne!(
+                grip.relation_reason,
+                RelationReason::ImportPathAffinity,
+                "token co-occurrence (`pricing` + `discounted_total` in body without \
+                 `::` path syntax) must not match ImportPathAffinity; got {grip:?}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn given_same_module_test_without_direct_call_when_related_tests_are_ranked_then_confidence_is_medium()
+    -> Result<(), String> {
+        // Owner sits in `src/pricing/discount.rs`; test sits in
+        // `tests/pricing/integration.rs`. Different file stem (no
+        // same_test_file). Same parent module (`pricing`) so
+        // `same_module` is the right reason. No direct call, no
+        // owner-named test, no qualified path / use line.
+        let prod_src = "pub fn apply_discount(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/pricing/integration.rs",
+            "#[test] fn module_neighbour() { assert_eq!(1, 1); }\n",
+        );
+        let files: Vec<(PathBuf, &str)> = vec![
+            (PathBuf::from("src/pricing/discount.rs"), prod_src),
+            (PathBuf::from(test.0), test.1),
+        ];
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pricing/discount.rs")], &index);
+        let predicate = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::PredicateBoundary)
+            .ok_or_else(|| "predicate seam present".to_string())?;
+        let evidence = evidence_for_seam(predicate, &index);
+        let grip = evidence.related_tests.first().ok_or_else(|| {
+            "expected at least one related test for same-module pairing".to_string()
+        })?;
+        assert_eq!(grip.relation_reason, RelationReason::SameModule);
+        assert_eq!(grip.relation_confidence, RelationConfidence::Medium);
+        Ok(())
+    }
+
+    // -- helper coverage ---------------------------------------------
+    //
+    // Targeted unit tests for the small private helpers introduced by
+    // analysis/related-test-precision-v1. The integration BDD tests
+    // above exercise the most common paths through `find_related_tests`,
+    // but each helper has a few branches that are not naturally hit by
+    // a single BDD scenario. The tests below pin those branches so
+    // codecov coverage reflects intent rather than scenario count.
+
+    #[test]
+    fn relation_reason_as_str_priority_and_confidence_are_pinned_per_variant() {
+        // Pin the (variant -> "string", priority, confidence) mapping
+        // for every reason. Catches accidental swaps in the match arms
+        // of `as_str` / `priority` / `confidence`.
+        let table = [
+            (
+                RelationReason::DirectOwnerCall,
+                "direct_owner_call",
+                0u8,
+                RelationConfidence::High,
+            ),
+            (
+                RelationReason::AssertionTargetAffinity,
+                "assertion_target_affinity",
+                1,
+                RelationConfidence::High,
+            ),
+            (
+                RelationReason::SameTestFile,
+                "same_test_file",
+                2,
+                RelationConfidence::Medium,
+            ),
+            (
+                RelationReason::SameModule,
+                "same_module",
+                3,
+                RelationConfidence::Medium,
+            ),
+            (
+                RelationReason::OwnerNamedTest,
+                "owner_named_test",
+                4,
+                RelationConfidence::Medium,
+            ),
+            (
+                RelationReason::ImportPathAffinity,
+                "import_path_affinity",
+                5,
+                RelationConfidence::Medium,
+            ),
+            (
+                RelationReason::FixtureOwnerAffinity,
+                "fixture_owner_affinity",
+                6,
+                RelationConfidence::Low,
+            ),
+        ];
+        for (reason, name, prio, conf) in table {
+            assert_eq!(reason.as_str(), name, "{reason:?}.as_str()");
+            assert_eq!(reason.priority(), prio, "{reason:?}.priority()");
+            assert_eq!(reason.confidence(), conf, "{reason:?}.confidence()");
+        }
+    }
+
+    #[test]
+    fn relation_confidence_as_str_and_rank_are_pinned_per_variant() {
+        let table = [
+            (RelationConfidence::High, "high", 0u8),
+            (RelationConfidence::Medium, "medium", 1),
+            (RelationConfidence::Low, "low", 2),
+            (RelationConfidence::Opaque, "opaque", 3),
+        ];
+        for (conf, name, rank) in table {
+            assert_eq!(conf.as_str(), name, "{conf:?}.as_str()");
+            assert_eq!(conf.rank(), rank, "{conf:?}.rank()");
+        }
+    }
+
+    #[test]
+    fn required_discriminator_tokens_extracts_text_from_every_variant() {
+        use crate::analysis::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator};
+        let make = |rd: RequiredDiscriminator| {
+            RepoSeam::new(
+                "src/x.rs",
+                "x::owner",
+                SeamKind::PredicateBoundary,
+                0,
+                1,
+                "irrelevant",
+                rd,
+                ExpectedSink::ReturnValue,
+            )
+        };
+        // Each arm carries a distinctive token so we can confirm the
+        // right field was picked. Tokens longer than 2 chars survive
+        // `is_interesting_token`.
+        let cases: Vec<(RequiredDiscriminator, &str)> = vec![
+            (
+                RequiredDiscriminator::BoundaryValue {
+                    description: "boundary_token".to_string(),
+                },
+                "boundary_token",
+            ),
+            (
+                RequiredDiscriminator::ReturnValue {
+                    description: "returnval_token".to_string(),
+                },
+                "returnval_token",
+            ),
+            (
+                RequiredDiscriminator::ErrorVariant {
+                    variant: "errvar_token".to_string(),
+                },
+                "errvar_token",
+            ),
+            (
+                RequiredDiscriminator::FieldValue {
+                    field: "fieldval_token".to_string(),
+                },
+                "fieldval_token",
+            ),
+            (
+                RequiredDiscriminator::Effect {
+                    sink: "effect_token".to_string(),
+                },
+                "effect_token",
+            ),
+            (
+                RequiredDiscriminator::MatchArmTaken {
+                    arm: "matcharm_token".to_string(),
+                },
+                "matcharm_token",
+            ),
+            (
+                RequiredDiscriminator::CallSite {
+                    target: "callsite_token".to_string(),
+                },
+                "callsite_token",
+            ),
+        ];
+        for (rd, expected_token) in cases {
+            let seam = make(rd.clone());
+            let tokens = required_discriminator_tokens(&seam);
+            assert!(
+                tokens.iter().any(|t| t == expected_token),
+                "{rd:?} -> tokens {tokens:?} must contain {expected_token}"
+            );
+        }
+    }
+
+    #[test]
+    fn same_test_file_accepts_stem_match_and_test_suffixes() {
+        assert!(same_test_file(Path::new("tests/foo.rs"), "foo"));
+        assert!(same_test_file(Path::new("tests/foo_test.rs"), "foo"));
+        assert!(same_test_file(Path::new("tests/foo_tests.rs"), "foo"));
+        assert!(!same_test_file(Path::new("tests/bar.rs"), "foo"));
+        assert!(!same_test_file(Path::new(""), "foo"));
+    }
+
+    #[test]
+    fn module_path_for_handles_every_root_shape() {
+        let cases: Vec<(&str, Option<&str>)> = vec![
+            ("src/foo.rs", Some("foo")),
+            ("tests/cli_smoke.rs", Some("cli_smoke")),
+            ("crates/ripr/src/auth/login.rs", Some("auth/login")),
+            ("crates/ripr/tests/integration.rs", Some("integration")),
+            ("docs/note.rs", None),
+            // `body = ".rs"` after stripping `src/`; trimmed = "" → None.
+            ("src/.rs", None),
+        ];
+        for (input, expected) in cases {
+            let got = module_path_for(Path::new(input));
+            let want = expected.map(str::to_string);
+            assert_eq!(got, want, "module_path_for({input})");
+        }
+    }
+
+    #[test]
+    fn same_module_matches_parent_prefix_and_underscore_form() {
+        assert!(same_module("pricing/discount", "pricing/integration"));
+        assert!(same_module("a/b/c", "a_b/d"));
+        assert!(!same_module("flat", "anything"));
+        assert!(!same_module("pricing/discount", "billing/integration"));
+    }
+
+    #[test]
+    fn is_fixture_named_recognises_each_prefix_and_suffix() {
+        let positives = [
+            "fixture_quote",
+            "setup_db",
+            "make_quote",
+            "build_request",
+            "new_user",
+            "mock_clock",
+            "quote_fixture",
+            "quote_factory",
+        ];
+        for name in positives {
+            assert!(is_fixture_named(name), "{name} should be fixture-named");
+        }
+        for name in ["compute_total", "discount", "verify"] {
+            assert!(
+                !is_fixture_named(name),
+                "{name} should NOT be fixture-named"
+            );
+        }
+    }
+
+    #[test]
+    fn given_assertion_target_token_in_test_assertion_when_related_tests_are_ranked_then_assertion_target_affinity_fires()
+    -> Result<(), String> {
+        // Positive case for `assertion_target_affinity`: the seam's
+        // `RequiredDiscriminator::BoundaryValue.description` carries
+        // the identifier `discount_threshold`; a test assertion that
+        // mentions `discount_threshold` as a whole identifier matches.
+        // The test does not call the owner directly, the test file
+        // stem is unrelated, and the test name does not embed the
+        // owner — so this is the only reason that fires.
+        let prod_src = "pub fn discounted_total(amount: i32, discount_threshold: i32) -> i32 \
+                        { if amount >= discount_threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/billing.rs",
+            "fn other() -> i32 { 0 }\n\
+             #[test] fn smoke() { let discount_threshold = 5; assert_eq!(discount_threshold, 5); }\n",
+        );
+        let grip = first_grip_for("src/pricing.rs", prod_src, &[test])?;
+        assert_eq!(
+            grip.relation_reason,
+            RelationReason::AssertionTargetAffinity
+        );
+        assert_eq!(grip.relation_confidence, RelationConfidence::High);
+        Ok(())
+    }
+
+    #[test]
+    fn assertion_targets_seam_returns_false_for_empty_token_list() {
+        // The `tokens.is_empty()` early-return is the cheap escape
+        // hatch when a seam's `RequiredDiscriminator` carries no
+        // interesting tokens (e.g. a one-character variable name).
+        use crate::analysis::rust_index::TestFact;
+        let test = TestFact {
+            name: "synth".to_string(),
+            file: PathBuf::from("tests/x.rs"),
+            start_line: 1,
+            end_line: 5,
+            body: "assert_eq!(1, 1);".to_string(),
+            calls: Vec::new(),
+            assertions: Vec::new(),
+            literals: Vec::new(),
+        };
+        assert!(!assertion_targets_seam(&test, &[]));
+    }
+
+    #[test]
+    fn package_prefix_resolves_crates_and_nested_src_tests_layouts() {
+        // `crates/<name>/src/...` form returns the `crates/<name>/` prefix.
+        assert_eq!(
+            package_prefix(Path::new("crates/ripr/src/auth/login.rs")).as_deref(),
+            Some("crates/ripr/")
+        );
+        // `crates/<name>/tests/...` form (the second branch of the
+        // strip_prefix-and-or guard) also returns the package prefix.
+        assert_eq!(
+            package_prefix(Path::new("crates/ripr/tests/integration.rs")).as_deref(),
+            Some("crates/ripr/")
+        );
+        // Nested workspace path (rfind branch): the marker scan falls
+        // through to the `/src/` rfind path.
+        assert_eq!(
+            package_prefix(Path::new("workspaces/foo/src/auth/login.rs")).as_deref(),
+            Some("workspaces/foo/")
+        );
+        // Bare `src/...` returns None (prefix would be empty).
+        assert_eq!(package_prefix(Path::new("src/foo.rs")), None);
+        // Path under neither root.
+        assert_eq!(package_prefix(Path::new("docs/note.rs")), None);
+    }
+
+    #[test]
+    fn given_owner_in_workspace_crate_when_test_is_in_other_crate_then_it_is_filtered_out()
+    -> Result<(), String> {
+        // Owner lives in `crates/ripr_pricing/src/discount.rs`; a test
+        // in a different package (`crates/ripr_other/tests/x.rs`)
+        // must not appear as a related test, even if it would
+        // otherwise satisfy a reason. Exercises the package-prefix
+        // skip branch in `find_related_tests`.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let other_pkg_test = (
+            "crates/ripr_other/tests/x.rs",
+            "#[test] fn discounted_total_other_pkg() { assert_eq!(1, 1); }\n",
+        );
+        let files: Vec<(PathBuf, &str)> = vec![
+            (
+                PathBuf::from("crates/ripr_pricing/src/discount.rs"),
+                prod_src,
+            ),
+            (PathBuf::from(other_pkg_test.0), other_pkg_test.1),
+        ];
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(
+            &[PathBuf::from("crates/ripr_pricing/src/discount.rs")],
+            &index,
+        );
+        let predicate = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::PredicateBoundary)
+            .ok_or_else(|| "predicate seam present".to_string())?;
+        let evidence = evidence_for_seam(predicate, &index);
+        for grip in &evidence.related_tests {
+            assert_ne!(
+                grip.file,
+                Path::new("crates/ripr_other/tests/x.rs"),
+                "test in unrelated package should be filtered by package_prefix; \
+                 got {grip:?}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn given_test_calls_helper_with_fixture_attribute_then_fixture_owner_affinity_fires()
+    -> Result<(), String> {
+        // `test_uses_owner_fixture` accepts EITHER a fixture-named
+        // helper OR a helper whose body contains `#[fixture]`. The
+        // earlier `given_fixture_only_affinity_…` test exercises the
+        // name-based branch (`make_quote`); this one exercises the
+        // body-marker branch by using a non-fixture helper name but
+        // placing the `#[fixture]` marker as an inline comment inside
+        // the body. `FunctionFact.body` slices from the `fn` keyword
+        // to the end of the function, so attributes ABOVE the `fn`
+        // line are not captured — the marker must live inside the
+        // body block.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n\
+                        pub fn provide_quote() -> i32 {\n    // #[fixture]\n    100\n}\n";
+        let test = (
+            "tests/integration.rs",
+            "#[test] fn quote_smoke() { let _ = provide_quote(); assert!(true); }\n",
+        );
+        let grip = first_grip_for("src/pricing.rs", prod_src, &[test])?;
+        assert_eq!(grip.relation_reason, RelationReason::FixtureOwnerAffinity);
         Ok(())
     }
 }

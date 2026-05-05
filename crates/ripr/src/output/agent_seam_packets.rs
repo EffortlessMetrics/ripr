@@ -22,7 +22,7 @@ use crate::analysis::seams::{ExpectedSink, RequiredDiscriminator, SeamGripClass,
 use crate::analysis::test_grip_evidence::TestGripEvidence;
 use crate::output::json::escape as json_escape;
 
-pub(crate) const AGENT_SEAM_PACKET_SCHEMA_VERSION: &str = "0.2";
+pub(crate) const AGENT_SEAM_PACKET_SCHEMA_VERSION: &str = "0.3";
 
 /// Cap on related-tests rendered per packet. Mirrors the JSON-side
 /// limit in `output::repo_exposure` so an agent inspecting the same
@@ -207,8 +207,16 @@ fn push_packet_json(out: &mut String, entry: &ClassifiedSeam) {
                 grip.oracle_strength.as_str()
             ));
             out.push_str(&format!(
-                "\"evidence_summary\": \"{}\"",
+                "\"evidence_summary\": \"{}\", ",
                 json_escape(grip.evidence_summary.as_str())
+            ));
+            out.push_str(&format!(
+                "\"relation_reason\": \"{}\", ",
+                grip.relation_reason.as_str()
+            ));
+            out.push_str(&format!(
+                "\"relation_confidence\": \"{}\"",
+                grip.relation_confidence.as_str()
             ));
             out.push('}');
             if idx + 1 != cap {
@@ -383,6 +391,9 @@ mod tests {
                 oracle_kind: OracleKind::ExactValue,
                 oracle_strength: OracleStrength::Strong,
                 evidence_summary: "exact value assertion".to_string(),
+                relation_reason:
+                    crate::analysis::test_grip_evidence::RelationReason::DirectOwnerCall,
+                relation_confidence: crate::analysis::test_grip_evidence::RelationConfidence::High,
             }],
             reach: stage(StageState::Yes),
             activate: stage(StageState::Yes),
@@ -586,11 +597,75 @@ mod tests {
     }
 
     #[test]
-    fn schema_version_is_pinned_to_zero_two() {
+    fn given_agent_packet_with_related_tests_when_rendered_then_relation_fields_are_emitted() {
         let json = render_agent_seam_packets_json(&[weakly_gripped_classified()]);
         assert!(
-            json.contains("\"schema_version\": \"0.2\""),
-            "expected schema_version 0.2: {json}"
+            json.contains("\"relation_reason\": \"direct_owner_call\""),
+            "relation_reason missing: {json}"
+        );
+        assert!(
+            json.contains("\"relation_confidence\": \"high\""),
+            "relation_confidence missing: {json}"
+        );
+    }
+
+    #[test]
+    fn given_agent_packet_with_related_tests_when_rendered_then_highest_confidence_test_is_first()
+    -> Result<(), String> {
+        // Build an evidence record with two related tests where the
+        // first by file/name order is low-confidence and the second is
+        // high-confidence. The renderer iterates `related_tests` in
+        // order, so the *order in the vec* is what determines which
+        // appears first in the packet — confirm the Vec is already
+        // ranked.
+        use crate::analysis::test_grip_evidence::{RelationConfidence, RelationReason};
+        let mut entry = weakly_gripped_classified();
+        let high = RelatedTestGrip {
+            test_name: "z_high_confidence".to_string(),
+            file: PathBuf::from("tests/zeta.rs"),
+            line: 1,
+            oracle_kind: OracleKind::ExactValue,
+            oracle_strength: OracleStrength::Strong,
+            evidence_summary: "exact value assertion".to_string(),
+            relation_reason: RelationReason::DirectOwnerCall,
+            relation_confidence: RelationConfidence::High,
+        };
+        let low = RelatedTestGrip {
+            test_name: "a_low_confidence".to_string(),
+            file: PathBuf::from("tests/alpha.rs"),
+            line: 1,
+            oracle_kind: OracleKind::Unknown,
+            oracle_strength: OracleStrength::None,
+            evidence_summary: "no oracle in test body".to_string(),
+            relation_reason: RelationReason::FixtureOwnerAffinity,
+            relation_confidence: RelationConfidence::Low,
+        };
+        // Caller provides a ranked vec — `evidence_for_seam` always
+        // emits ranked, so this mirrors the production path.
+        entry.evidence.related_tests = vec![high, low];
+
+        let json = render_agent_seam_packets_json(&[entry]);
+        let high_idx = json
+            .find("\"name\": \"z_high_confidence\"")
+            .ok_or_else(|| "high-confidence test missing".to_string())?;
+        let low_idx = json
+            .find("\"name\": \"a_low_confidence\"")
+            .ok_or_else(|| "low-confidence test missing".to_string())?;
+        if high_idx >= low_idx {
+            return Err(format!(
+                "high-confidence test must render before low-confidence; \
+                 high@{high_idx} low@{low_idx}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn schema_version_is_pinned_to_zero_three() {
+        let json = render_agent_seam_packets_json(&[weakly_gripped_classified()]);
+        assert!(
+            json.contains("\"schema_version\": \"0.3\""),
+            "expected schema_version 0.3: {json}"
         );
     }
 
@@ -599,7 +674,7 @@ mod tests {
         let json = render_agent_seam_packets_json(&[]);
         assert!(json.contains("\"packets_total\": 0"));
         assert!(json.contains("\"packets\": []"));
-        assert!(json.contains("\"schema_version\": \"0.2\""));
+        assert!(json.contains("\"schema_version\": \"0.3\""));
     }
 
     #[test]
