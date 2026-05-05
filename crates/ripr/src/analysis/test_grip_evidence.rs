@@ -436,12 +436,19 @@ fn test_imports_owner(test: &TestSummary, owner_name: &str) -> bool {
         return false;
     }
     let qualified = format!("::{owner_name}");
-    if test.body.contains(&qualified) {
-        return true;
-    }
-    for line in test.body.lines() {
-        if line.trim_start().starts_with("use ")
-            && extract_identifier_tokens(line)
+    for raw_line in test.body.lines() {
+        // Strip line comments and string-literal contents before
+        // looking at the line. Without this, doc comments like
+        // `// see crate::pricing::owner` or string literals like
+        // `let s = "crate::pricing::owner";` would falsely match the
+        // `::owner` marker — defeating the whole point of the
+        // tightening that #310 added. Caught by CodeRabbit.
+        let code = strip_comments_and_strings(raw_line);
+        if code.contains(&qualified) {
+            return true;
+        }
+        if code.trim_start().starts_with("use ")
+            && extract_identifier_tokens(&code)
                 .iter()
                 .any(|t| t == owner_name)
         {
@@ -449,6 +456,43 @@ fn test_imports_owner(test: &TestSummary, owner_name: &str) -> bool {
         }
     }
     false
+}
+
+/// Drop everything after a `//` line comment and replace string-literal
+/// contents with empty strings. v1 best-effort: handles `"..."` with
+/// `\\` and `\"` escapes; raw strings (`r#"..."#`), char literals
+/// (`'a'`), and block comments (`/* ... */`) are out of scope — those
+/// shapes are rare inside test bodies and treating them as code is a
+/// safe over-match (the previous helper accepted them all).
+fn strip_comments_and_strings(line: &str) -> String {
+    // Strip `//` line comments first; everything after is non-code.
+    let without_comment = match line.find("//") {
+        Some(idx) => &line[..idx],
+        None => line,
+    };
+    let mut out = String::with_capacity(without_comment.len());
+    let mut in_string = false;
+    let mut escaped = false;
+    for ch in without_comment.chars() {
+        if in_string {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            match ch {
+                '\\' => escaped = true,
+                '"' => in_string = false,
+                _ => {}
+            }
+            continue;
+        }
+        if ch == '"' {
+            in_string = true;
+            continue;
+        }
+        out.push(ch);
+    }
+    out
 }
 
 /// Test calls a non-test function that lives in the owner's source
@@ -1385,12 +1429,13 @@ fn below_case() {
     }
 
     #[test]
-    fn given_fixture_only_affinity_when_related_tests_are_ranked_then_confidence_is_low_or_opaque()
+    fn given_fixture_only_affinity_when_related_tests_are_ranked_then_confidence_is_low()
     -> Result<(), String> {
         // Test calls a fixture-named helper in the owner's source file
         // but never the owner itself, and the test name does not embed
         // the owner. Should classify as fixture_owner_affinity with
-        // low confidence.
+        // exactly Low confidence (Opaque is reserved for cases the
+        // detector does not yet emit).
         let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
                         { if amount >= threshold { amount - 10 } else { amount } }\n\
                         pub fn make_quote() -> i32 { 100 }\n";
@@ -1400,14 +1445,7 @@ fn below_case() {
         );
         let grip = first_grip_for("src/pricing.rs", prod_src, &[test])?;
         assert_eq!(grip.relation_reason, RelationReason::FixtureOwnerAffinity);
-        assert!(
-            matches!(
-                grip.relation_confidence,
-                RelationConfidence::Low | RelationConfidence::Opaque
-            ),
-            "expected Low or Opaque confidence, got {:?}",
-            grip.relation_confidence
-        );
+        assert_eq!(grip.relation_confidence, RelationConfidence::Low);
         Ok(())
     }
 
@@ -1561,6 +1599,57 @@ fn below_case() {
         let grip = first_grip_for("src/pricing.rs", prod_src, &[test])?;
         assert_eq!(grip.relation_reason, RelationReason::ImportPathAffinity);
         assert_eq!(grip.relation_confidence, RelationConfidence::Medium);
+        Ok(())
+    }
+
+    #[test]
+    fn given_qualified_owner_path_only_in_comment_or_string_when_related_tests_are_ranked_then_import_path_affinity_does_not_fire()
+    -> Result<(), String> {
+        // Per CodeRabbit on #310: `test_imports_owner` previously did
+        // a raw `body.contains("::owner")` which matched substrings
+        // inside `// ...` comments and `"..."` string literals. That
+        // re-introduced the noise the detector was meant to avoid.
+        // After the fix, neither shape should match.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        // Comment carries the qualified path; code does not. Test name
+        // and file are both neutral so no other reason fires.
+        let comment_only = (
+            "tests/integration_a.rs",
+            "#[test] fn smoke_a() { \
+                // see crate::pricing::discounted_total for background \n\
+                assert_eq!(1, 1); \
+            }\n",
+        );
+        // String literal carries the qualified path.
+        let string_only = (
+            "tests/integration_b.rs",
+            "#[test] fn smoke_b() { \
+                let _doc = \"crate::pricing::discounted_total\"; \
+                let _ = _doc; assert_eq!(1, 1); \
+            }\n",
+        );
+        for (path, src) in [comment_only, string_only] {
+            let files: Vec<(PathBuf, &str)> = vec![
+                (PathBuf::from("src/pricing.rs"), prod_src),
+                (PathBuf::from(path), src),
+            ];
+            let index = index_from_files(&files)?;
+            let seams = inventory_seams_from_index(&[PathBuf::from("src/pricing.rs")], &index);
+            let predicate = seams
+                .iter()
+                .find(|s| s.kind() == SeamKind::PredicateBoundary)
+                .ok_or_else(|| "predicate seam present".to_string())?;
+            let evidence = evidence_for_seam(predicate, &index);
+            for grip in &evidence.related_tests {
+                assert_ne!(
+                    grip.relation_reason,
+                    RelationReason::ImportPathAffinity,
+                    "qualified path inside comment/string in {path} must not match \
+                     ImportPathAffinity; got {grip:?}"
+                );
+            }
+        }
         Ok(())
     }
 
