@@ -1,6 +1,7 @@
 use crate::app::CheckOutput;
 use crate::domain::Finding;
 
+/// Render the complete check report in the human-readable CLI format.
 pub fn render(output: &CheckOutput) -> String {
     let mut out = String::new();
     out.push_str(&format!(
@@ -32,6 +33,7 @@ pub fn render(output: &CheckOutput) -> String {
     out
 }
 
+/// Render one finding section for the human-readable CLI output.
 pub fn render_finding(finding: &Finding) -> String {
     let mut out = String::new();
     out.push_str(&format!(

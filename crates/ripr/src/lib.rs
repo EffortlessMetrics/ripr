@@ -17,12 +17,15 @@
 //! 3. For a specific probe id, call [`explain_finding`] to inspect evidence.
 //! 4. Use [`collect_context`] when you need neighboring source context for UX.
 //!
-//! - Use [`check_workspace`] for end-to-end analysis.
-//! - Use [`explain_finding`] to retrieve focused evidence for one probe.
-//! - Use [`collect_context`] to retrieve neighboring context around a probe.
-//!
 //! The CLI wraps these same APIs and renders the resulting model in human,
 //! JSON, and annotation formats.
+//!
+//! # Output and compatibility
+//!
+//! [`CheckOutput`] and the domain re-exports in this crate are the intended
+//! integration surface for editor tooling, CI automation, and custom reporting.
+//! Prefer consuming these typed values over parsing CLI output so integrations
+//! remain resilient as human-readable formatting evolves.
 //!
 //! # Exposure language
 //!
