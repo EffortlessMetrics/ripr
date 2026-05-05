@@ -688,9 +688,7 @@ fn unknown_command_message(command: &str) -> String {
     let suggestion = known_commands()
         .into_iter()
         .filter_map(|candidate| {
-            let root = candidate
-                .split_once(' ')
-                .map_or(candidate, |(prefix, _)| prefix);
+            let root = known_command_root(candidate);
             let distance = levenshtein(normalized, root);
             (distance <= 3).then_some((root, distance))
         })
@@ -704,6 +702,12 @@ fn unknown_command_message(command: &str) -> String {
             "unknown xtask command `{normalized}`.\nRun `cargo xtask help` for the full list."
         ),
     }
+}
+
+fn known_command_root(command: &str) -> &str {
+    command
+        .split_once(' ')
+        .map_or(command, |(prefix, _)| prefix)
 }
 
 fn levenshtein(lhs: &str, rhs: &str) -> usize {
@@ -8700,66 +8704,10 @@ fn is_known_campaign_command(command: &str) -> bool {
 }
 
 fn known_xtask_command(command: &str) -> bool {
-    matches!(
-        command,
-        "shape"
-            | "fix-pr"
-            | "pr-summary"
-            | "precommit"
-            | "check-pr"
-            | "fixtures"
-            | "goldens"
-            | "golden-drift"
-            | "metrics"
-            | "test-oracle-report"
-            | "check-test-oracles"
-            | "test-efficiency-report"
-            | "badge-artifacts"
-            | "repo-badge-artifacts"
-            | "repo-seam-inventory"
-            | "repo-exposure-report"
-            | "agent-seam-packets"
-            | "mutation-calibration"
-            | "update-badge-endpoints"
-            | "check-badge-endpoints"
-            | "dogfood"
-            | "critic"
-            | "goals"
-            | "reports"
-            | "receipts"
-            | "ci-fast"
-            | "ci-full"
-            | "check-static-language"
-            | "check-no-panic-family"
-            | "check-allow-attributes"
-            | "check-local-context"
-            | "check-file-policy"
-            | "check-executable-files"
-            | "check-workflows"
-            | "check-spec-format"
-            | "check-fixture-contracts"
-            | "check-traceability"
-            | "check-spec-ids"
-            | "check-behavior-manifest"
-            | "check-capabilities"
-            | "check-workspace-shape"
-            | "check-architecture"
-            | "check-public-api"
-            | "check-output-contracts"
-            | "check-doc-index"
-            | "check-readme-state"
-            | "markdown-links"
-            | "check-campaign"
-            | "check-goals"
-            | "check-pr-shape"
-            | "check-generated"
-            | "check-dependencies"
-            | "check-supply-chain"
-            | "check-process-policy"
-            | "check-network-policy"
-            | "package"
-            | "publish-dry-run"
-    )
+    known_commands()
+        .into_iter()
+        .map(known_command_root)
+        .any(|known| known == command)
 }
 
 fn require_index_mentions_files(
@@ -13035,7 +12983,7 @@ mod tests {
         guarded_allow_attributes_in_text, is_bdd_test_name, is_dependency_surface_candidate,
         is_evidence_path, is_generated_candidate, is_known_campaign_command, is_policy_path,
         is_production_path, is_receipt_status, is_snake_case_id, is_spec_id, json_escape,
-        json_number_after, json_string_values_for_key, known_xtask_command,
+        json_number_after, json_string_values_for_key, known_commands, known_xtask_command,
         local_context_line_findings, local_markdown_target, markdown_links_in_text,
         mutation_calibration_report_json, mutation_calibration_report_markdown,
         next_checkpoints_from_capabilities, normalize_fixture_human_output,
@@ -18646,6 +18594,34 @@ settings: |
         let message = unknown_command_message("totally-unknown-command");
         assert!(!message.contains("Did you mean"));
         assert!(message.contains("cargo xtask help"));
+    }
+
+    #[test]
+    fn known_xtask_command_accepts_every_help_catalog_root() {
+        let commands = known_commands();
+        assert!(
+            commands
+                .iter()
+                .map(|command| command.split_once(' ').map_or(*command, |(root, _)| root))
+                .all(known_xtask_command)
+        );
+    }
+
+    #[test]
+    fn known_commands_has_no_duplicate_entries() {
+        let commands = known_commands();
+        let unique = commands.iter().collect::<BTreeSet<_>>();
+        assert_eq!(commands.len(), unique.len());
+    }
+
+    #[test]
+    fn known_commands_include_current_report_and_policy_commands() {
+        let commands = known_commands();
+        assert!(commands.contains(&"repo-seam-inventory"));
+        assert!(commands.contains(&"repo-exposure-report"));
+        assert!(commands.contains(&"agent-seam-packets [root]"));
+        assert!(commands.contains(&"mutation-calibration [root] --mutants-json <path>"));
+        assert!(commands.contains(&"check-droid-review-config"));
     }
 
     #[test]
