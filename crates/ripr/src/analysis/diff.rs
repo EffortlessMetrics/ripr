@@ -222,20 +222,40 @@ mod tests {
 
     #[test]
     fn parser_is_robust_against_fuzz_like_inputs() {
-        let mut seed = 0xC0FFEE_u64;
+        const SEEDS: &[u64] = &[
+            0xC0FFEE,
+            0xDEADBEEF,
+            0xBAD5EED,
+            0x9E3779B97F4A7C15,
+            0xA5A5A5A5A5A5A5A5,
+        ];
 
-        for case in 0..1_024 {
-            let text = if case % 2 == 0 {
-                fuzz_case_as_raw_bytes(&mut seed)
-            } else {
-                fuzz_case_as_diff_like_lines(&mut seed)
+        for &seed in SEEDS {
+            run_fuzz_round(seed);
+        }
+
+        for case in adversarial_diff_samples() {
+            assert_parser_output_is_well_formed(parse_unified_diff(case));
+        }
+    }
+
+    fn run_fuzz_round(seed: u64) {
+        let mut state = seed;
+        for case in 0..2_048 {
+            let text = match case % 3 {
+                0 => fuzz_case_as_raw_bytes(&mut state),
+                1 => fuzz_case_as_diff_like_lines(&mut state),
+                _ => fuzz_case_as_mixed_sections(&mut state),
             };
-            let files = parse_unified_diff(&text);
-            for file in files {
-                assert!(!file.path.as_os_str().is_empty());
-                assert!(file.added_lines.iter().all(|line| !line.text.contains('\n')));
-                assert!(file.removed_lines.iter().all(|line| !line.text.contains('\n')));
-            }
+            assert_parser_output_is_well_formed(parse_unified_diff(&text));
+        }
+    }
+
+    fn assert_parser_output_is_well_formed(files: Vec<ChangedFile>) {
+        for file in files {
+            assert!(!file.path.as_os_str().is_empty());
+            assert!(file.added_lines.iter().all(|line| !line.text.contains('\n')));
+            assert!(file.removed_lines.iter().all(|line| !line.text.contains('\n')));
         }
     }
 
@@ -277,6 +297,59 @@ mod tests {
             out.push('\n');
         }
         out
+    }
+
+    fn fuzz_case_as_mixed_sections(seed: &mut u64) -> String {
+        let file_count = (next_u64(seed) % 6 + 1) as usize;
+        let mut out = String::new();
+        for file_idx in 0..file_count {
+            let module = next_u64(seed) % 32;
+            out.push_str(&format!(
+                "diff --git a/src/m{module}_{file_idx}.rs b/src/m{module}_{file_idx}.rs\n"
+            ));
+            out.push_str(&format!("--- a/src/m{module}_{file_idx}.rs\n"));
+            out.push_str(&format!("+++ b/src/m{module}_{file_idx}.rs\n"));
+
+            let hunk_count = (next_u64(seed) % 4 + 1) as usize;
+            let mut old_line = (next_u64(seed) % 20) as usize;
+            let mut new_line = (next_u64(seed) % 20) as usize;
+            for _ in 0..hunk_count {
+                out.push_str(&format!("@@ -{},2 +{},2 @@\n", old_line, new_line));
+                out.push('-');
+                out.push_str(&fuzz_atom(seed));
+                out.push('\n');
+                out.push('+');
+                out.push_str(&fuzz_atom(seed));
+                out.push('\n');
+                out.push(' ');
+                out.push_str(&fuzz_atom(seed));
+                out.push('\n');
+                old_line = old_line.saturating_add(3);
+                new_line = new_line.saturating_add(3);
+            }
+        }
+        out
+    }
+
+    fn fuzz_atom(seed: &mut u64) -> String {
+        let len = (next_u64(seed) % 24) as usize;
+        let mut text = String::with_capacity(len);
+        for _ in 0..len {
+            let byte = (next_u64(seed) & 0x7F) as u8;
+            if byte != b'\n' {
+                text.push(byte as char);
+            }
+        }
+        text
+    }
+
+    fn adversarial_diff_samples() -> &'static [&'static str] {
+        &[
+            "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,1 +1,1 @@\n-\0\n+\u{0}\n",
+            "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1 +1 @@\n-\\\\\\\\\\\n+\\\\\\\\\\\n",
+            "diff --git a/src/lib.rs b/src/lib.rs\nrename from src/old.rs\nrename to src/new.rs\n--- a/src/old.rs\n+++ b/src/new.rs\n@@ -0,0 +1,2 @@\n+line\n+line\n",
+            "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -99999999999999999999999,1 +99999999999999999999999,1 @@\n-old\n+new\n",
+        ]
     }
 
     #[test]
