@@ -86,6 +86,57 @@ mod tests {
         assert!(rendered.contains("Stop reason%3A static_probe_unknown"));
     }
 
+    #[test]
+    fn render_uses_warning_for_exposed_and_default_message_without_stop_reason() {
+        let output = CheckOutput {
+            schema_version: "0.1".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: PathBuf::from("repo"),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![Finding {
+                id: "probe:src_lib_rs:21:error_path".to_string(),
+                probe: Probe {
+                    id: ProbeId("probe:src_lib_rs:21:error_path".to_string()),
+                    location: SourceLocation::new("src/lib.rs", 21, 1),
+                    owner: None,
+                    family: ProbeFamily::ErrorPath,
+                    delta: DeltaKind::Control,
+                    before: Some("ok".to_string()),
+                    after: Some("err".to_string()),
+                    expression: "result".to_string(),
+                    expected_sinks: vec![],
+                    required_oracles: vec![],
+                },
+                class: ExposureClass::Exposed,
+                ripr: RiprEvidence {
+                    reach: stage(StageState::Yes, "reachable"),
+                    infect: stage(StageState::Yes, "infected"),
+                    propagate: stage(StageState::Yes, "propagated"),
+                    reveal: RevealEvidence {
+                        observe: stage(StageState::Yes, "observed"),
+                        discriminate: stage(StageState::Yes, "discriminated"),
+                    },
+                },
+                confidence: 1.0,
+                evidence: vec![],
+                missing: vec![],
+                flow_sinks: vec![],
+                activation: crate::domain::ActivationEvidence::default(),
+                stop_reasons: vec![],
+                related_tests: vec![],
+                recommended_next_step: None,
+            }],
+        };
+
+        let rendered = render(&output);
+
+        assert!(rendered.contains("::notice file=src/lib.rs,line=21,title=ripr exposed::"));
+        assert!(rendered.contains("Static RIPR exposure finding"));
+        assert!(!rendered.contains("Stop reason"));
+    }
+
     fn output_with_unknown_finding() -> CheckOutput {
         CheckOutput {
             schema_version: "0.1".to_string(),
