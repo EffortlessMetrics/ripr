@@ -30,6 +30,11 @@ pub struct FileFacts {
     pub returns: Vec<ReturnFact>,
     pub literals: Vec<LiteralFact>,
     pub probe_shapes: Vec<ProbeShapeFact>,
+    /// Original file source text. Held so `analysis/value-extraction-v2`
+    /// can scan for top-level `const`/`static` declarations without
+    /// re-reading the file at evidence-build time. Not part of any
+    /// cached envelope (the cache stores `ClassifiedSeam` only).
+    pub source: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -44,6 +49,12 @@ pub struct FunctionFact {
     pub returns: Vec<ReturnFact>,
     pub literals: Vec<LiteralFact>,
     pub is_test: bool,
+    /// Attribute syntax lines (e.g., `#[rstest]`, `#[case(100, 100)]`,
+    /// `#[test]`) captured from the AST `attrs()` iterator. Used by
+    /// `analysis/value-extraction-v2` to read rstest case parameters
+    /// without re-reading the file. The lexical fallback path
+    /// populates this as empty.
+    pub attrs: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -56,6 +67,11 @@ pub struct TestFact {
     pub calls: Vec<CallFact>,
     pub assertions: Vec<OracleFact>,
     pub literals: Vec<LiteralFact>,
+    /// Attribute syntax lines on the test fn. Mirrors
+    /// `FunctionFact.attrs`. Carries `#[rstest]` and `#[case(...)]` for
+    /// case-driven tests so value resolution can map case literals to
+    /// test parameters.
+    pub attrs: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -181,6 +197,7 @@ fn summarize_file(path: PathBuf, text: String) -> FileFacts {
 }
 
 fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts {
+    let source = text.clone();
     let lines: Vec<&str> = text.lines().collect();
     let mut functions = Vec::new();
     let mut tests = Vec::new();
@@ -229,6 +246,10 @@ fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts {
                 returns: returns.clone(),
                 literals: literals.clone(),
                 is_test: pending_test,
+                // Lexical fallback path: no parser, no AST attrs
+                // iterator, so attrs stay empty. Value-extraction-v2's
+                // rstest support is parser-only.
+                attrs: Vec::new(),
             };
             if pending_test || is_test_file(&path) {
                 tests.push(TestFact {
@@ -240,6 +261,7 @@ fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts {
                     calls,
                     assertions: extract_assertions(&body, start_line),
                     literals,
+                    attrs: Vec::new(),
                 });
             }
             functions.push(function);
@@ -269,6 +291,7 @@ fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts {
         returns: file_returns,
         literals: file_literals,
         probe_shapes: Vec::new(),
+        source,
     }
 }
 
@@ -306,6 +329,7 @@ fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, Stri
         let literals = extract_literal_facts(&body, start_line);
         let probe_shapes = extract_parser_probe_shapes(&function, text, &line_index);
         let is_test = has_test_attribute(&function);
+        let attrs = collect_attr_syntax(&function);
 
         file_calls.extend(calls.clone());
         file_returns.extend(returns.clone());
@@ -323,6 +347,7 @@ fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, Stri
             returns: returns.clone(),
             literals: literals.clone(),
             is_test,
+            attrs: attrs.clone(),
         };
 
         if is_test || is_test_file(path) {
@@ -335,6 +360,7 @@ fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, Stri
                 calls,
                 assertions: extract_parser_oracles(&function, text, &line_index),
                 literals,
+                attrs,
             });
         }
 
@@ -371,6 +397,7 @@ fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, Stri
         returns: file_returns,
         literals: file_literals,
         probe_shapes: file_probe_shapes,
+        source: text.to_string(),
     })
 }
 
@@ -453,6 +480,18 @@ fn has_test_attribute(function: &ast::Fn) -> bool {
             || compact.starts_with("#[tokio::test")
             || compact.starts_with("#[async_std::test")
     })
+}
+
+/// Capture every attribute attached to `function` as its source text
+/// (one entry per `#[...]`). Used by `analysis/value-extraction-v2`
+/// to read `#[case(...)]` parameter literals without re-reading the
+/// file. Order follows the AST `attrs()` iterator (top-to-bottom in
+/// source).
+fn collect_attr_syntax(function: &ast::Fn) -> Vec<String> {
+    function
+        .attrs()
+        .map(|attr| attr.syntax().text().to_string())
+        .collect()
 }
 
 fn extract_parser_probe_shapes(
