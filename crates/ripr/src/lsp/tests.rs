@@ -1237,6 +1237,25 @@ fn file_uri_to_path_decodes_spaces_and_windows_drive_prefix() -> Result<(), Stri
 }
 
 #[test]
+fn file_uri_to_path_returns_none_for_non_file_scheme() -> Result<(), String> {
+    let uri = test_uri("https://example.com/workspace/src/lib.rs")?;
+
+    assert!(path_from_file_uri(&uri).is_none());
+    Ok(())
+}
+
+#[test]
+fn file_uri_to_path_decodes_uppercase_hex_escape() -> Result<(), String> {
+    let uri = test_uri("file:///workspace/src%2Dlib.rs")?;
+
+    let Some(path) = path_from_file_uri(&uri) else {
+        return Err("expected path from file URI".to_string());
+    };
+    assert_eq!(path, PathBuf::from("/workspace/src-lib.rs"));
+    Ok(())
+}
+
+#[test]
 fn file_uri_for_path_uses_valid_encoded_file_uri() -> Result<(), String> {
     let uri = file_uri_for_path(&PathBuf::from("src lib.rs"))?;
 
