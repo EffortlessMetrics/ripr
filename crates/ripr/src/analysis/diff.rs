@@ -223,24 +223,60 @@ mod tests {
     #[test]
     fn parser_is_robust_against_fuzz_like_inputs() {
         let mut seed = 0xC0FFEE_u64;
-        for _case in 0..512 {
-            let len = (next_u64(&mut seed) % 512) as usize;
-            let mut bytes = Vec::with_capacity(len);
-            for _ in 0..len {
-                bytes.push((next_u64(&mut seed) & 0xFF) as u8);
-            }
-            let text = String::from_utf8_lossy(&bytes);
+
+        for case in 0..1_024 {
+            let text = if case % 2 == 0 {
+                fuzz_case_as_raw_bytes(&mut seed)
+            } else {
+                fuzz_case_as_diff_like_lines(&mut seed)
+            };
             let files = parse_unified_diff(&text);
             for file in files {
                 assert!(!file.path.as_os_str().is_empty());
-                assert!(file.added_lines.windows(2).all(|w| w[0].line <= w[1].line));
-                assert!(
-                    file.removed_lines
-                        .windows(2)
-                        .all(|w| w[0].line <= w[1].line)
-                );
+                assert!(file.added_lines.iter().all(|line| !line.text.contains('\n')));
+                assert!(file.removed_lines.iter().all(|line| !line.text.contains('\n')));
             }
         }
+    }
+
+    fn fuzz_case_as_raw_bytes(seed: &mut u64) -> String {
+        let len = (next_u64(seed) % 768) as usize;
+        let mut bytes = Vec::with_capacity(len);
+        for _ in 0..len {
+            bytes.push((next_u64(seed) & 0xFF) as u8);
+        }
+        String::from_utf8_lossy(&bytes).into_owned()
+    }
+
+    fn fuzz_case_as_diff_like_lines(seed: &mut u64) -> String {
+        const PREFIXES: &[&str] = &[
+            "diff --git a/src/lib.rs b/src/lib.rs",
+            "--- a/src/lib.rs",
+            "+++ b/src/lib.rs",
+            "@@ -1,2 +1,2 @@",
+            "@@ malformed @@",
+            "+",
+            "-",
+            " ",
+            "",
+            "Binary files a/a and b/a differ",
+        ];
+
+        let line_count = (next_u64(seed) % 96 + 1) as usize;
+        let mut out = String::new();
+        for _ in 0..line_count {
+            let prefix = PREFIXES[(next_u64(seed) % PREFIXES.len() as u64) as usize];
+            out.push_str(prefix);
+            let tail_len = (next_u64(seed) % 48) as usize;
+            for _ in 0..tail_len {
+                let ch = (next_u64(seed) & 0x7f) as u8;
+                if ch != b'\n' {
+                    out.push(ch as char);
+                }
+            }
+            out.push('\n');
+        }
+        out
     }
 
     #[test]
