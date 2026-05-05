@@ -47,6 +47,19 @@ impl ExposureClass {
 #[cfg(test)]
 mod tests {
     use super::ExposureClass;
+    use proptest::prelude::*;
+
+    fn any_exposure_class() -> impl Strategy<Value = ExposureClass> {
+        prop_oneof![
+            Just(ExposureClass::Exposed),
+            Just(ExposureClass::WeaklyExposed),
+            Just(ExposureClass::ReachableUnrevealed),
+            Just(ExposureClass::NoStaticPath),
+            Just(ExposureClass::InfectionUnknown),
+            Just(ExposureClass::PropagationUnknown),
+            Just(ExposureClass::StaticUnknown),
+        ]
+    }
 
     #[test]
     fn exposure_class_strings_match_contract_terms() {
@@ -91,5 +104,27 @@ mod tests {
         assert!(ExposureClass::InfectionUnknown.requires_stop_reason());
         assert!(ExposureClass::PropagationUnknown.requires_stop_reason());
         assert!(ExposureClass::StaticUnknown.requires_stop_reason());
+    }
+
+    proptest! {
+        #[test]
+        fn exposure_class_labels_use_safe_contract_characters(class in any_exposure_class()) {
+            let label = class.as_str();
+            prop_assert!(!label.is_empty());
+            prop_assert!(label.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'));
+        }
+
+        #[test]
+        fn exposure_class_unknown_suffix_matches_stop_reason(class in any_exposure_class()) {
+            let has_unknown_suffix = class.as_str().ends_with("_unknown");
+            prop_assert_eq!(class.requires_stop_reason(), has_unknown_suffix);
+        }
+
+        #[test]
+        fn exposure_class_stop_reason_never_uses_info_severity(class in any_exposure_class()) {
+            if class.requires_stop_reason() {
+                prop_assert_ne!(class.severity(), "info");
+            }
+        }
     }
 }

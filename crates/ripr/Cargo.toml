@@ -35,3 +35,6 @@ tower-lsp-server = "0.23.0"
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+proptest = "1.9.0"
