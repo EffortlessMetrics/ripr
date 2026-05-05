@@ -251,26 +251,29 @@ deleted file mode 100644
     fn parser_is_robust_against_fuzz_like_inputs() {
         let mut seed = 0xC0FFEE_u64;
 
-        for case in 0..1_024 {
+        for case in 0..4_096 {
             let text = if case % 2 == 0 {
                 fuzz_case_as_raw_bytes(&mut seed)
             } else {
                 fuzz_case_as_diff_like_lines(&mut seed)
             };
-            let files = parse_unified_diff(&text);
-            for file in files {
-                assert!(!file.path.as_os_str().is_empty());
-                assert!(
-                    file.added_lines
-                        .iter()
-                        .all(|line| !line.text.contains('\n'))
-                );
-                assert!(
-                    file.removed_lines
-                        .iter()
-                        .all(|line| !line.text.contains('\n'))
-                );
-            }
+            assert_parser_invariants(&text);
+        }
+    }
+
+    #[test]
+    fn parser_is_robust_against_adversarial_diff_corpus() {
+        let mut seed = 0xDEADBEEF_u64;
+        for _ in 0..512 {
+            let text = fuzz_case_as_adversarial_diff(&mut seed);
+            assert_parser_invariants(&text);
+        }
+    }
+
+    #[test]
+    fn parser_preserves_invariants_for_structured_adversarial_regressions() {
+        for text in structured_adversarial_diff_regressions() {
+            assert_parser_invariants(&text);
         }
     }
 
@@ -312,6 +315,88 @@ deleted file mode 100644
             out.push('\n');
         }
         out
+    }
+
+    fn fuzz_case_as_adversarial_diff(seed: &mut u64) -> String {
+        const FILE_PATHS: &[&str] = &[
+            "src/lib.rs",
+            "src/mod.rs",
+            "src/nested/deep/file.rs",
+            "src/unicode_named.rs",
+            "src/contains spaces.rs",
+        ];
+        const HUNK_HEADERS: &[&str] = &[
+            "@@ -1,1 +1,1 @@",
+            "@@ -0,0 +1,99999999 @@",
+            "@@ -99999999,1 +0,0 @@",
+            "@@ -18446744073709551615,2 +18446744073709551615,2 @@",
+            "@@ malformed @@",
+            "@@ -x,y +q,z @@",
+        ];
+        const CONTENT_PREFIXES: &[&str] = &["+ ", "- ", "  ", "", "\\ No newline at end of file"];
+
+        let file_count = (next_u64(seed) % 6 + 1) as usize;
+        let mut out = String::new();
+        for _ in 0..file_count {
+            let path = FILE_PATHS[(next_u64(seed) % FILE_PATHS.len() as u64) as usize];
+            out.push_str(&format!("diff --git a/{path} b/{path}\n"));
+            out.push_str(&format!("--- a/{path}\n"));
+            out.push_str(&format!("+++ b/{path}\n"));
+
+            let hunk_count = (next_u64(seed) % 4 + 1) as usize;
+            for _ in 0..hunk_count {
+                let header = HUNK_HEADERS[(next_u64(seed) % HUNK_HEADERS.len() as u64) as usize];
+                out.push_str(header);
+                out.push('\n');
+
+                let line_count = (next_u64(seed) % 20 + 1) as usize;
+                for _ in 0..line_count {
+                    let prefix =
+                        CONTENT_PREFIXES[(next_u64(seed) % CONTENT_PREFIXES.len() as u64) as usize];
+                    out.push_str(prefix);
+                    let tail_len = (next_u64(seed) % 40) as usize;
+                    for _ in 0..tail_len {
+                        let byte = (next_u64(seed) & 0xFF) as u8;
+                        if byte != b'\n' {
+                            out.push(byte as char);
+                        }
+                    }
+                    out.push('\n');
+                }
+            }
+        }
+        out
+    }
+
+    fn structured_adversarial_diff_regressions() -> Vec<String> {
+        vec![
+            format!(
+                "diff --git a/{name} b/{name}\n--- a/{name}\n+++ b/{name}\n@@ -1,1 +1,1 @@\n-{removed}\n+{added}\n",
+                name = "src/".to_string() + &"a".repeat(512) + ".rs",
+                removed = "x".repeat(4096),
+                added = "y".repeat(4096)
+            ),
+            "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,3 +1,3 @@\n-a\r\n+b\r\n c\r\n".to_string(),
+            "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,4 +1,4 @@\n-diff --git not a real header\n+@@ -999,999 +999,999 @@\n-+++ should stay payload\n+--- should stay payload\n".to_string(),
+            "diff --git a/src/a.rs b/src/z.rs\nsimilarity index 80%\nrename from src/a.rs\nrename to src/z.rs\n--- a/src/a.rs\n+++ b/src/z.rs\n@@ malformed @@\n+line\n-dropped\ndiff --git a/src/b.rs b/src/b.rs\n--- a/src/b.rs\n+++ b/src/b.rs\n@@ -0,0 +1,1 @@\n+new\n".to_string(),
+        ]
+    }
+
+    fn assert_parser_invariants(text: &str) {
+        let files = parse_unified_diff(text);
+        for file in files {
+            assert!(!file.path.as_os_str().is_empty());
+            assert!(
+                file.added_lines
+                    .iter()
+                    .all(|line| !line.text.contains('\n'))
+            );
+            assert!(
+                file.removed_lines
+                    .iter()
+                    .all(|line| !line.text.contains('\n'))
+            );
+        }
     }
 
     #[test]
