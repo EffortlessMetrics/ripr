@@ -534,8 +534,8 @@ Work items:
 | Work item | Status | Notes |
 | --- | --- | --- |
 | `cache/repo-seam-facts-v1` | done | Landed in #255. Workspace-level `Vec<ClassifiedSeam>` fact cache at `target/ripr/cache/repo-seam-facts/{schema_version}/{key_hash}.json`. `serde_json` behind a codec module boundary; never bincode. Cache key hashes the same Rust file set fed to `build_index` (production seam sources + test evidence sources), workspace root, cfg/features, config, test intent, suppressions, analyzer version, and schema version — so test-only edits invalidate. Cold path on miss / corrupt; store failures never fail analysis. Renders (JSON, Markdown, diagnostics, hover, packets) stay outside the cache. |
-| `analysis/related-test-precision-v1` | ready | Add `relation_reason` and `relation_confidence` to related tests; rank related tests in repo exposure report, agent packets, and LSP hover. Reduce noisy fanout without removing `related_tests_total`. |
-| `analysis/value-extraction-v2` | ready | Extract test values from let bindings, constants, builder methods, table-driven cases, rstest cases, enum variants, `Option`/`Result` constructors, fixture factories. Reduce `activation_unknown` without new false positives. |
+| `analysis/related-test-precision-v1` | done | Landed in #310. Adds `relation_reason` and `relation_confidence` to related tests; ranks related tests in repo exposure report, agent packets, and LSP hover. Reduces noisy fanout without removing `related_tests_total`. Schema bumps: cache `0.1→0.2`, agent_seam_packets `0.2→0.3`, repo_exposure `0.1→0.2`. Comment/string-stripping defense added for `import_path_affinity`. |
+| `analysis/value-extraction-v2` | done | Adds syntactic value resolution for let bindings, same-file constants/statics, builder and fixture-override methods, table-driven loops, rstest cases, enum variants, and one-level `Option`/`Result` constructors. Keeps string/comment shadows, cross-file constants, and unrelated builder tokens from inflating observed values. |
 | `analysis/oracle-shape-v2` | ready | Detect `assert_matches` exact variants, field assertions, whole-object equality, snapshot calls with visible field names, mock expectations, event/state/persistence assertions, simple custom assertion helpers. |
 | `context/agent-seam-packets-v2` | ready | Schema 0.3: add `recommended_test`, `candidate_values`, `assertion_shape` (kind + example), `patterns_to_imitate`, `patterns_to_avoid`, `confidence`. Uses ranked related tests from `analysis/related-test-precision-v1` when available. |
 | `lsp/seam-code-actions-v1` | ready | Code actions: copy seam packet, copy suggested assertion, open related test, refresh ripr analysis. No automatic edits, no generated tests, no CodeLens. |
@@ -550,8 +550,9 @@ Dependencies:
 - `analysis/related-test-precision-v1` should land before
   `context/agent-seam-packets-v2` so v2 packets can use ranked
   related tests as `patterns_to_imitate` / `patterns_to_avoid`.
-- `analysis/value-extraction-v2` and `analysis/oracle-shape-v2` are
-  independent and can land in either order.
+- `analysis/oracle-shape-v2` can land independently now that
+  `analysis/value-extraction-v2` has stabilized the value evidence
+  floor.
 - `lsp/seam-code-actions-v1` should land after
   `context/agent-seam-packets-v2` so the "Copy suggested assertion"
   action can use the v2 `assertion_shape` field.

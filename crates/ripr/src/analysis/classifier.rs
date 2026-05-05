@@ -1857,6 +1857,7 @@ mod tests {
                     line: 1,
                     value: "\"discount_threshold\"".to_string(),
                 }],
+                attrs: vec![],
             }],
             ..RustIndex::default()
         };
@@ -1905,6 +1906,7 @@ mod tests {
                     line: 1,
                     value: "100".to_string(),
                 }],
+                attrs: vec![],
             }],
             ..RustIndex::default()
         };
@@ -3054,6 +3056,7 @@ assert_eq!(input.amount, 100);"#
                 OracleStrength::Strong,
             )],
             literals: vec![],
+            attrs: vec![],
         };
 
         let facts = value_facts_for_test(&test, None);
@@ -3213,6 +3216,7 @@ assert_eq!(input.amount, 100);"#
             returns: vec![],
             literals: vec![],
             is_test: false,
+            attrs: vec![],
         }
     }
 
@@ -3243,6 +3247,7 @@ assert_eq!(input.amount, 100);"#
                 line: 1,
                 value: "1".to_string(),
             }],
+            attrs: vec![],
         }
     }
 

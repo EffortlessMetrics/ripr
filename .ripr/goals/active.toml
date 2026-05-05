@@ -64,7 +64,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/related-test-precision-v1"
-status = "ready"
+status = "done"
 branch = "analysis/related-test-precision-v1"
 stackable = false
 requires_human_merge = true
@@ -78,7 +78,7 @@ commands = [
 
 [[work_item]]
 id = "analysis/value-extraction-v2"
-status = "ready"
+status = "done"
 branch = "analysis/value-extraction-v2"
 stackable = false
 requires_human_merge = true

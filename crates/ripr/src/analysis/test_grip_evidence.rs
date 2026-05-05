@@ -153,7 +153,7 @@ pub(crate) fn evidence_for_seam(seam: &RepoSeam, index: &RustIndex) -> TestGripE
 
     let reach = reach_evidence(seam, &related);
     let (activate, observed_values, missing_discriminators) =
-        activate_evidence(seam, &related, owner_fn);
+        activate_evidence(seam, &related, owner_fn, index);
     let propagate = propagate_evidence(seam, &related);
     let observe = observe_evidence(&related);
     let discriminate = discriminate_evidence(seam, &related);
@@ -592,12 +592,18 @@ fn activate_evidence(
     seam: &RepoSeam,
     related: &[&TestSummary],
     owner_fn: Option<&FunctionSummary>,
+    index: &RustIndex,
 ) -> (StageEvidence, Vec<ValueFact>, Vec<MissingDiscriminatorFact>) {
     let owner_name = owner_fn.map(|f| f.name.as_str()).unwrap_or("");
     let mut observed: Vec<ValueFact> = Vec::new();
 
     if !owner_name.is_empty() {
         for test in related {
+            // Per-test resolution env (let bindings, rstest cases,
+            // table rows, same-file consts). Built once and reused
+            // across all owner calls in this test. Per
+            // `analysis/value-extraction-v2`.
+            let env = super::value_resolution::ValueEnv::build(seam, test, index);
             for call in &test.calls {
                 if call.name != owner_name {
                     continue;
@@ -606,6 +612,8 @@ fn activate_evidence(
                     continue;
                 };
                 for arg in args {
+                    let mut emitted = false;
+                    // Direct literal first (matches pre-v2 behavior).
                     for value in scalar_values(&arg) {
                         observed.push(ValueFact {
                             line: call.line,
@@ -613,9 +621,30 @@ fn activate_evidence(
                             value,
                             context: ValueContext::FunctionArgument,
                         });
+                        emitted = true;
+                    }
+                    if emitted {
+                        continue;
+                    }
+                    // value-extraction-v2: try to resolve the arg
+                    // through the priority chain (let / rstest case /
+                    // table row / same-file const / Some/Ok/Err).
+                    for (value, context) in env.resolve(&arg) {
+                        observed.push(ValueFact {
+                            line: call.line,
+                            text: call.text.clone(),
+                            value,
+                            context,
+                        });
                     }
                 }
             }
+            // Builder-method values (e.g.,
+            // `Quote::new().amount(100).threshold(100)`) - collected
+            // separately because they don't fit the per-arg shape.
+            // These only count when method names align with seam
+            // tokens; the env enforces that filter.
+            observed.extend(env.builder_facts());
         }
     }
     sort_value_facts(&mut observed);
@@ -1980,6 +2009,7 @@ fn below_case() {
             calls: Vec::new(),
             assertions: Vec::new(),
             literals: Vec::new(),
+            attrs: Vec::new(),
         };
         assert!(!assertion_targets_seam(&test, &[]));
     }
@@ -2073,6 +2103,320 @@ fn below_case() {
         );
         let grip = first_grip_for("src/pricing.rs", prod_src, &[test])?;
         assert_eq!(grip.relation_reason, RelationReason::FixtureOwnerAffinity);
+        Ok(())
+    }
+
+    // -- value-extraction-v2 ------------------------------------------
+    //
+    // Each test exercises one resolution path through `activate_evidence`:
+    // a related test calls the seam owner, the call arg is something
+    // `scalar_values` would reject (bare identifier, builder method,
+    // table row, rstest case, Some/Err wrapper), and the resolver in
+    // `analysis::value_resolution` should turn it into observed values
+    // - which `evidence_for_seam` then exposes via
+    // `TestGripEvidence.observed_values`. The negative tests pin the
+    // false-positive guards for comment/string shadows and unrelated
+    // identifiers.
+
+    fn observed_values_for(prod_src: &str, tests: &[(&str, &str)]) -> Result<Vec<String>, String> {
+        let mut files: Vec<(PathBuf, &str)> = vec![(PathBuf::from("src/pricing.rs"), prod_src)];
+        for (path, src) in tests {
+            files.push((PathBuf::from(*path), *src));
+        }
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pricing.rs")], &index);
+        let predicate = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::PredicateBoundary)
+            .ok_or_else(|| "predicate seam present".to_string())?;
+        let evidence = evidence_for_seam(predicate, &index);
+        Ok(evidence
+            .observed_values
+            .into_iter()
+            .map(|v| v.value)
+            .collect())
+    }
+
+    #[test]
+    fn given_let_binding_values_when_owner_call_uses_identifiers_then_observed_values_are_resolved()
+    -> Result<(), String> {
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[test] fn at_threshold() { let amount = 100; let threshold = 100; \
+             assert_eq!(discounted_total(amount, threshold), 90); }\n",
+        );
+        let values = observed_values_for(prod_src, &[test])?;
+        assert!(
+            values.iter().any(|v| v == "100"),
+            "let-resolved 100 must appear in observed values; got {values:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_same_file_const_when_owner_call_uses_identifier_then_observed_value_is_resolved()
+    -> Result<(), String> {
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/pricing_tests.rs",
+            "const THRESHOLD: i32 = 100;\n\
+             #[test] fn at_threshold() { \
+                 assert_eq!(discounted_total(THRESHOLD, THRESHOLD), 90); \
+             }\n",
+        );
+        let values = observed_values_for(prod_src, &[test])?;
+        assert!(
+            values.iter().any(|v| v == "100"),
+            "const-resolved 100 must appear; got {values:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_table_driven_cases_when_owner_call_uses_row_values_then_each_case_value_is_recorded()
+    -> Result<(), String> {
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[test] fn table() { \
+                 for (amount, threshold, expected) in [(50, 100, 50), (100, 100, 90)] { \
+                     assert_eq!(discounted_total(amount, threshold), expected); \
+                 } \
+             }\n",
+        );
+        let values = observed_values_for(prod_src, &[test])?;
+        assert!(
+            values.iter().any(|v| v == "50"),
+            "table row value 50 must appear; got {values:?}"
+        );
+        assert!(
+            values.iter().any(|v| v == "100"),
+            "table row value 100 must appear; got {values:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_option_result_constructor_when_owner_call_uses_shape_then_inner_value_is_recorded()
+    -> Result<(), String> {
+        // Owner takes a wrapped value; test calls with Some(literal).
+        // Resolver should peel one level and emit the inner literal.
+        let prod_src = "pub fn process(value: Option<i32>, threshold: i32) -> i32 \
+                        { match value { Some(v) if v >= threshold => v - 10, _ => 0 } }\n";
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[test] fn at_boundary() { \
+                 assert_eq!(process(Some(100), 100), 90); \
+             }\n",
+        );
+        // The seam in this case is the predicate inside `process`.
+        let mut files: Vec<(PathBuf, &str)> = vec![(PathBuf::from("src/pricing.rs"), prod_src)];
+        files.push((PathBuf::from(test.0), test.1));
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pricing.rs")], &index);
+        let predicate = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::PredicateBoundary)
+            .ok_or_else(|| "predicate seam present".to_string())?;
+        let evidence = evidence_for_seam(predicate, &index);
+        let values: Vec<String> = evidence
+            .observed_values
+            .iter()
+            .map(|v| v.value.clone())
+            .collect();
+        assert!(
+            values.iter().any(|v| v == "100"),
+            "Some(100) must unwrap and contribute 100; got {values:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_builder_methods_matching_parameter_tokens_then_observed_values_are_recorded()
+    -> Result<(), String> {
+        // The seam's required-discriminator description carries the
+        // identifiers `amount` and `discount_threshold`. A test that
+        // builds a value via `.amount(100).discount_threshold(100)`
+        // should have those literals counted as observed via the
+        // BuilderMethod context. Owner name unused inside the builder
+        // call — the test references the owner directly elsewhere so
+        // it qualifies as related.
+        let prod_src = "pub fn discounted_total(amount: i32, discount_threshold: i32) -> i32 \
+                        { if amount >= discount_threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[test] fn via_builder() { \
+                 let q = Quote::new().amount(100).discount_threshold(100).build(); \
+                 assert_eq!(discounted_total(q.amount, q.discount_threshold), 90); \
+             }\n",
+        );
+        let values = observed_values_for(prod_src, &[test])?;
+        // `amount` and `discount_threshold` are seam-discriminator
+        // tokens, so the builder method facts should land.
+        assert!(
+            values.iter().filter(|v| v.as_str() == "100").count() >= 1,
+            "builder method 100 must be recorded; got {values:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_fixture_factory_override_methods_matching_seam_tokens_then_values_are_recorded()
+    -> Result<(), String> {
+        // Fixture factories often use explicit override method names
+        // like `with_amount`. These should count when the wrapped
+        // method token aligns with the changed seam.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[test] fn via_fixture_override() { \
+                 let q = QuoteFixture::default().with_amount(100).with_threshold(100).build(); \
+                 assert_eq!(discounted_total(q.amount, q.threshold), 90); \
+             }\n",
+        );
+        let values = observed_values_for(prod_src, &[test])?;
+        assert!(
+            values.iter().filter(|v| v.as_str() == "100").count() >= 1,
+            "fixture override 100 must be recorded; got {values:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_builder_method_with_unrelated_name_then_value_is_not_counted_for_seam_activation()
+    -> Result<(), String> {
+        // `.with_seed(42)` is a builder method whose name does NOT
+        // align with any seam token. The value 42 must NOT appear
+        // among observed values for this seam, even though the test
+        // directly calls the owner.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[test] fn via_unrelated_builder() { \
+                 let _q = Foo::new().with_seed(42).build(); \
+                 assert_eq!(discounted_total(50, 100), 50); \
+             }\n",
+        );
+        let values = observed_values_for(prod_src, &[test])?;
+        assert!(
+            !values.iter().any(|v| v == "42"),
+            "unrelated builder literal 42 must NOT count; got {values:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_unrelated_string_literal_mentions_value_when_extracting_values_then_no_observed_discriminator_is_recorded()
+    -> Result<(), String> {
+        // String literal in the body mentions `100` and `threshold`
+        // but the call site uses an unresolved identifier. v2 must
+        // not pull literals out of strings.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[test] fn string_only() { \
+                 let _doc = \"threshold = 100\"; \
+                 let unresolved = make_amount(); \
+                 assert_eq!(discounted_total(unresolved, unresolved), 0); \
+             }\n",
+        );
+        let values = observed_values_for(prod_src, &[test])?;
+        assert!(
+            !values.iter().any(|v| v == "100"),
+            "string literal 100 must NOT be observed; got {values:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_shared_fixture_module_constant_when_extracting_v2_values_then_no_cross_file_value_is_resolved()
+    -> Result<(), String> {
+        // Strict syntactic scope: cross-file constants must NOT
+        // resolve. The const lives in tests/common/mod.rs; the test
+        // lives in tests/pricing_tests.rs. v2 is single-file scope -
+        // cross-file resolution is a future item and must not creep
+        // in via "helpful" expansion.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let common = (
+            "tests/common/mod.rs",
+            "pub const SHARED_THRESHOLD: i32 = 100;\n",
+        );
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[test] fn cross_file() { \
+                 assert_eq!(discounted_total(SHARED_THRESHOLD, SHARED_THRESHOLD), 90); \
+             }\n",
+        );
+        let values = observed_values_for(prod_src, &[test, common])?;
+        assert!(
+            !values.iter().any(|v| v == "100"),
+            "cross-file SHARED_THRESHOLD = 100 must NOT resolve in v2; got {values:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_let_binding_shadowed_by_comment_when_extracting_then_real_binding_wins()
+    -> Result<(), String> {
+        // Mirrors #310's comment-stripping defense: a `// let amount = 999;`
+        // comment must NOT shadow the real `let amount = 100;` binding.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[test] fn at_threshold() { \
+                 // let amount = 999; let threshold = 999;\n\
+                 let amount = 100; let threshold = 100; \
+                 assert_eq!(discounted_total(amount, threshold), 90); \
+             }\n",
+        );
+        let values = observed_values_for(prod_src, &[test])?;
+        assert!(
+            values.iter().any(|v| v == "100"),
+            "real let binding 100 must be observed; got {values:?}"
+        );
+        assert!(
+            !values.iter().any(|v| v == "999"),
+            "commented-out let binding 999 must NOT be observed; got {values:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_unresolved_identifier_arg_when_extracting_values_then_no_observed_value_is_recorded()
+    -> Result<(), String> {
+        // Identifier resolved through a helper call (no `let` binding,
+        // no const, no rstest case, no table row, no Some wrapper).
+        // Must stay opaque — the previous behavior is preserved for
+        // the unresolved case.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[test] fn opaque() { \
+                 let amount = make_amount(); \
+                 let threshold = make_threshold(); \
+                 assert_eq!(discounted_total(amount, threshold), 0); \
+             }\n",
+        );
+        let values = observed_values_for(prod_src, &[test])?;
+        // The let RHS isn't a literal, so the binding shouldn't
+        // resolve. observed_values for these args should stay empty.
+        assert!(
+            values.is_empty()
+                || values
+                    .iter()
+                    .all(|v| !matches!(v.as_str(), "100" | "0" | "make_amount")),
+            "opaque args must not produce a fake observed value; got {values:?}"
+        );
         Ok(())
     }
 }

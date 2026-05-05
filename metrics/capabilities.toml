@@ -424,6 +424,8 @@ evidence = [
   "boundary_gap fixture",
   "weak_error_oracle fixture",
   "snapshot_oracle fixture",
+  "syntactic value resolution for let bindings, same-file constants, table rows, rstest cases, builder/fixture overrides, enum variants, and Option/Result constructors",
+  "negative guards for comment/string shadows, cross-file constants, unresolved helpers, and unrelated builder methods",
   "evidence-first activation output"
 ]
 fixtures = [
@@ -477,12 +479,14 @@ status = "alpha"
 spec = "RIPR-SPEC-0005"
 evidence = [
   "crates/ripr/src/analysis/test_grip_evidence.rs",
+  "crates/ripr/src/analysis/value_resolution.rs",
   "reach activate propagate observe discriminate per seam",
   "RelatedTestGrip with oracle kind and strength",
-  "BDD coverage for boundary equality, error variant, side effect, opaque helper"
+  "BDD coverage for boundary equality, error variant, side effect, opaque helper",
+  "value-extraction-v2 BDD coverage for bindings, constants, rstest cases, table rows, builder and fixture override methods, Option/Result constructors, and negative false-positive guards"
 ]
 fixtures = []
-next = "analysis/value-extraction-v2"
+next = "analysis/oracle-shape-v2"
 metric = "per-stage evidence cited per seam"
 
 [[capability]]

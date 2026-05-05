@@ -7,6 +7,7 @@ mod seam_classification;
 mod seam_inventory;
 pub(crate) mod seams;
 pub(crate) mod test_grip_evidence;
+mod value_resolution;
 mod workspace;
 
 pub(crate) use seam_classification::ClassifiedSeam;

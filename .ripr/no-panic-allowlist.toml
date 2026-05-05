@@ -204,7 +204,7 @@ callee = "unwrap"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 170
+line = 171
 column = 21
 family = "unwrap"
 classification = "test_only"
@@ -212,15 +212,7 @@ explanation = "Test helper function for creating temporary directories"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 175
-column = 9
-family = "unwrap"
-classification = "test_only"
-explanation = "Test helper function for creating temporary directories"
-
-[[allow]]
-path = "crates/ripr/src/analysis/mod.rs"
-line = 182
+line = 176
 column = 9
 family = "unwrap"
 classification = "test_only"
@@ -244,7 +236,15 @@ explanation = "Test helper function for creating temporary directories"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 189
+line = 185
+column = 9
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for creating temporary directories"
+
+[[allow]]
+path = "crates/ripr/src/analysis/mod.rs"
+line = 190
 column = 9
 family = "unwrap"
 classification = "test_only"
@@ -252,7 +252,7 @@ explanation = "Test helper function for writing test files"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 198
+line = 199
 column = 9
 family = "unwrap"
 classification = "test_only"
@@ -260,7 +260,7 @@ explanation = "Test helper function for writing test files"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 209
+line = 210
 column = 9
 family = "unwrap"
 classification = "test_only"
@@ -268,7 +268,7 @@ explanation = "Test helper function for writing test files"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 222
+line = 223
 column = 19
 family = "unwrap"
 classification = "test_only"
@@ -276,7 +276,7 @@ explanation = "Test helper function for writing test files"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 238
+line = 239
 column = 23
 family = "unwrap"
 classification = "test_only"
