@@ -38,9 +38,10 @@ jobs:
 
       - name: Upload test results to Codecov
         if: ${{ !cancelled() && env.CODECOV_TOKEN != '' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) }}
-        uses: codecov/test-results-action@v1
+        uses: codecov/codecov-action@v5
         with:
           files: target/nextest/ci/junit.xml
+          report_type: test_results
           token: ${{ env.CODECOV_TOKEN }}
 
       - name: Explain skipped Codecov test-results upload
