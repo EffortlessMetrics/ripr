@@ -65,7 +65,15 @@ pub(super) fn print_context_help() {
 }
 
 pub(super) fn print_doctor_help() {
-    println!("Usage: ripr doctor [--root PATH]");
+    println!(
+        r#"Usage: ripr doctor [--root PATH]
+
+Checks:
+  - root directory exists
+  - Cargo.toml is present at the selected root
+  - git, cargo, and rustc are available
+"#
+    );
 }
 
 pub(super) fn print_lsp_help() {

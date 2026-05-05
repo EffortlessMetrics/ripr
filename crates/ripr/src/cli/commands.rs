@@ -153,6 +153,15 @@ pub(super) fn doctor(args: &[String]) -> Result<(), String> {
 
     let mut ok = true;
     println!("ripr doctor");
+    println!("- root: {}", root.display());
+
+    if root.is_dir() {
+        println!("✓ root directory exists");
+    } else {
+        println!("! root directory does not exist");
+        ok = false;
+    }
+
     if root.join("Cargo.toml").exists() {
         println!(
             "✓ Cargo.toml found at {}",
@@ -162,30 +171,28 @@ pub(super) fn doctor(args: &[String]) -> Result<(), String> {
         println!("! no Cargo.toml found at {}", root.display());
         ok = false;
     }
-    match std::process::Command::new("git").arg("--version").output() {
-        Ok(output) if output.status.success() => {
-            println!("✓ {}", String::from_utf8_lossy(&output.stdout).trim())
-        }
-        _ => {
-            println!("! git not available");
-            ok = false;
-        }
-    }
-    match std::process::Command::new("cargo")
-        .arg("--version")
-        .output()
-    {
-        Ok(output) if output.status.success() => {
-            println!("✓ {}", String::from_utf8_lossy(&output.stdout).trim())
-        }
-        _ => {
-            println!("! cargo not available");
-            ok = false;
+
+    for (tool, args) in [
+        ("git", vec!["--version"]),
+        ("cargo", vec!["--version"]),
+        ("rustc", vec!["--version"]),
+    ] {
+        match std::process::Command::new(tool).args(&args).output() {
+            Ok(output) if output.status.success() => {
+                println!("✓ {}", String::from_utf8_lossy(&output.stdout).trim())
+            }
+            _ => {
+                println!("! {tool} not available");
+                ok = false;
+            }
         }
     }
+
     if ok {
+        println!("✓ doctor checks passed");
         Ok(())
     } else {
+        println!("! doctor checks failed; run `ripr doctor --help` for usage");
         Err("doctor found issues".to_string())
     }
 }
