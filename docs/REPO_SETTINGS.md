@@ -29,8 +29,12 @@ Repository files:
 - `.github/workflows/security.yml`
 - `deny.toml`
 
-Routine Dependabot version-update PRs are limited to minor and patch updates.
-Major updates are handled as deliberate scoped PRs.
+Dependabot version updates run weekly for Cargo, the VS Code extension npm
+package, and GitHub Actions. Routine updates are grouped by ecosystem and
+limited to minor/patch changes. Major dependency updates are handled as scoped
+human-reviewed PRs because they may affect MSRV, release behavior, CI runtime
+policy, or extension compatibility. Dependabot PRs are not auto-merged; they
+must pass normal CI, security, coverage, and `xtask` checks.
 
 ## Secret Scanning
 
