@@ -105,12 +105,6 @@ export class RiprClientController {
       return;
     }
 
-    const workspaceFolder = vscode.workspace.getWorkspaceFolder(documentUri);
-    if (!workspaceFolder) {
-      vscode.window.showInformationMessage('ripr context requires a workspace folder.');
-      return;
-    }
-
     const client = this.client;
     if (client && (target?.finding_id || target?.seam_id)) {
       try {
@@ -134,6 +128,12 @@ export class RiprClientController {
         const message = error instanceof Error ? error.message : String(error);
         this.output.appendLine(`ripr collectContext via LSP failed: ${message}`);
       }
+    }
+
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(documentUri);
+    if (!workspaceFolder) {
+      vscode.window.showInformationMessage('ripr context requires a workspace folder.');
+      return;
     }
 
     const config = getConfig();
@@ -173,8 +173,14 @@ export class RiprClientController {
       vscode.window.showInformationMessage('No ripr suggested assertion is available for this diagnostic.');
       return;
     }
-    await vscode.env.clipboard.writeText(assertion);
-    vscode.window.showInformationMessage('Copied ripr suggested assertion to clipboard.');
+    try {
+      await vscode.env.clipboard.writeText(assertion);
+      vscode.window.showInformationMessage('Copied ripr suggested assertion to clipboard.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(`ripr copy suggested assertion failed: ${message}`);
+      vscode.window.showWarningMessage('ripr could not copy the suggested assertion. See ripr output for details.');
+    }
   }
 
   async openRelatedTest(target?: RiprRelatedTestTarget): Promise<void> {

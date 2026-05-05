@@ -826,6 +826,46 @@ fn seam_code_actions_surface_packet_assertion_related_test_and_refresh() -> Resu
 }
 
 #[test]
+fn seam_code_actions_keep_legacy_finding_context_when_both_diagnostics_are_present()
+-> Result<(), String> {
+    let seam = sample_classified_seam();
+    let seam_diagnostic = diagnostic_for_classified_seam(Path::new("/workspace"), &seam)
+        .ok_or_else(|| "expected seam diagnostic".to_string())?;
+    let finding_diagnostic = diagnostic_for_finding(Path::new("/workspace"), &sample_finding());
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let mut snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri,
+        vec![seam_diagnostic.clone(), finding_diagnostic.clone()],
+        vec![sample_finding()],
+    );
+    snapshot.classified_seams = vec![seam.clone()];
+    let actions = code_action_response(
+        &code_action_params(vec![seam_diagnostic, finding_diagnostic])?,
+        Some(&snapshot),
+    );
+
+    let commands = code_action_commands(&actions)?;
+    assert_eq!(
+        commands
+            .iter()
+            .map(|(title, _, _)| title.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "Copy seam packet",
+            "Copy suggested assertion",
+            "Open related test",
+            "Copy ripr context packet",
+            "Refresh ripr analysis",
+        ]
+    );
+    assert_eq!(commands[0].2[0]["seam_id"], seam.seam.id().as_str());
+    assert_eq!(commands[3].2[0]["finding_id"], "probe:pricing:88:predicate");
+    assert_eq!(commands[3].2[0]["probe_id"], "probe:pricing:88:predicate");
+    Ok(())
+}
+
+#[test]
 fn seam_code_actions_omit_assertion_and_related_test_when_evidence_is_missing() -> Result<(), String>
 {
     let seam = sample_side_effect_seam_without_related_tests();

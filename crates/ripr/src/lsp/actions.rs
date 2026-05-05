@@ -20,7 +20,8 @@ pub(super) fn code_action_response(
     let mut actions = Vec::new();
     if let Some(context) = seam_action_context(params, snapshot) {
         push_seam_actions(&mut actions, params, snapshot, context);
-    } else if let Some(diagnostic) = params
+    }
+    if let Some(diagnostic) = params
         .context
         .diagnostics
         .iter()

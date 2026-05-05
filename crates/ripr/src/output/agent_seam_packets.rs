@@ -75,12 +75,10 @@ pub(crate) fn render_agent_seam_packets_json(classified: &[ClassifiedSeam]) -> S
 }
 
 /// Return the first concrete assertion example carried by the agent
-/// seam packet v2 shape, when the seam is actionable and the example
-/// is a literal assertion rather than prose guidance.
+/// seam packet v2 shape. This follows the packet content itself:
+/// any seam with a concrete assertion template can expose the editor
+/// action, while prose-only guidance remains hidden.
 pub(crate) fn suggested_assertion_for_classified_seam(entry: &ClassifiedSeam) -> Option<String> {
-    if !entry.class.is_headline_eligible() {
-        return None;
-    }
     suggested_assertions_for(entry.seam.kind(), entry.seam.owner(), &entry.evidence)
         .into_iter()
         .find(|suggestion| {
@@ -1315,6 +1313,18 @@ mod tests {
             SeamGripClass::WeaklyGripped,
             Vec::new(),
         );
+        let opaque_field = classified_with(
+            seam_with(
+                "pricing::build_quote",
+                SeamKind::FieldConstruction,
+                RequiredDiscriminator::FieldValue {
+                    field: "quote.total".to_string(),
+                },
+                ExpectedSink::OutputField,
+            ),
+            SeamGripClass::Opaque,
+            Vec::new(),
+        );
         let side_effect = classified_with(
             seam_with(
                 "service::publish_event",
@@ -1334,6 +1344,10 @@ mod tests {
         assert!(
             assertion.contains("assert_eq!(result.field"),
             "unexpected field assertion: {assertion}"
+        );
+        assert!(
+            suggested_assertion_for_classified_seam(&opaque_field).is_some(),
+            "opaque packet with concrete assertion guidance should expose the same assertion action"
         );
         assert!(suggested_assertion_for_classified_seam(&side_effect).is_none());
         Ok(())
