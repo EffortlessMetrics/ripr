@@ -249,23 +249,21 @@ Current capabilities:
 | Capability | Current state | Next checkpoint |
 | --- | --- | --- |
 | Distribution | Crate and extension packaging paths exist. | Verify one-click editor install from a fresh profile. |
-| Diff analysis | Evidence-first Voice A findings with syntax-backed changed-line probes, probe-relative oracle strength, local flow sinks, observed/missing activation values, and explicit stop reasons. | Campaign 5A closeout. |
-| Repo seam inventory | First-class `RepoSeam` model with deterministic seam IDs, cached seam fact layers, test-grip evidence across the five RIPR stages, and 11-class `SeamGripClass` classification. | Campaign 5A closeout. |
-| Test discovery | Parser-backed test and assertion facts with exact, broad, relational, snapshot, mock, smoke, custom-helper, side-effect observer, and unknown oracle kinds; per-test efficiency ledger with smoke/broad/disconnected/opaque/circular/likely-vacuous reasons and duplicate-discriminator groups. | Campaign 5A closeout. |
-| Output | Human, JSON, context, and GitHub formats render evidence-first findings with stop reasons; repo exposure report and v2 agent seam packets render classified seam evidence; `ripr` and `ripr+` Shields badges publish unresolved gap counts. | Campaign 5A closeout. |
-| LSP | Experimental `tower-lsp-server` sidecar with evidence-aware Finding diagnostics, related-test links, hovers, server-side context packets, seam-native diagnostics + hover, and seam code actions for copying packets/assertions and opening related tests (seam diagnostics remain off by default). | Campaign 5A closeout. |
-| Agent context | Compact context packet plus per-seam `write_targeted_test` and `inspect_static_limitation` packets carrying recommended test placement, nearest tests to imitate, candidate values, missing discriminators, patterns to imitate/avoid, and assertion templates. Documented agent dispatch workflow in `docs/AGENT_DISPATCH_WORKFLOW.md`. | Campaign 5A closeout. |
-| Calibration | Advisory `cargo xtask mutation-calibration` joins imported cargo-mutants runtime data to static seam evidence by `seam_id` or unambiguous file/line and writes `target/ripr/reports/mutation-calibration.{json,md}`; ambiguous file/line candidates stay unassigned. | Campaign 5A closeout; runtime mutation language stays inside calibration/runtime reports. |
+| Diff analysis | Evidence-first Voice A findings with syntax-backed changed-line probes, probe-relative oracle strength, local flow sinks, observed/missing activation values, and explicit stop reasons. | Campaign 5B config and policy. |
+| Repo seam inventory | First-class `RepoSeam` model with deterministic seam IDs, cached seam fact layers, test-grip evidence across the five RIPR stages, and 11-class `SeamGripClass` classification. | Campaign 5B config and policy. |
+| Test discovery | Parser-backed test and assertion facts with exact, broad, relational, snapshot, mock, smoke, custom-helper, side-effect observer, and unknown oracle kinds; per-test efficiency ledger with smoke/broad/disconnected/opaque/circular/likely-vacuous reasons and duplicate-discriminator groups. | Campaign 5B config and policy. |
+| Output | Human, JSON, context, and GitHub formats render evidence-first findings with stop reasons; repo exposure report and v2 agent seam packets render classified seam evidence; `ripr` and `ripr+` Shields badges publish unresolved gap counts. | Seam-native badge count mapping after config. |
+| LSP | Experimental `tower-lsp-server` sidecar with evidence-aware Finding diagnostics, related-test links, hovers, server-side context packets, seam-native diagnostics + hover, and seam code actions for copying packets/assertions and opening related tests (seam diagnostics remain off by default). | `ripr.toml` seam-diagnostic defaults. |
+| Agent context | Compact context packet plus per-seam `write_targeted_test` and `inspect_static_limitation` packets carrying recommended test placement, nearest tests to imitate, candidate values, missing discriminators, patterns to imitate/avoid, and assertion templates. Documented agent dispatch workflow in `docs/AGENT_DISPATCH_WORKFLOW.md`. | Campaign 5B config and policy. |
+| Calibration | Advisory `cargo xtask mutation-calibration` joins imported cargo-mutants runtime data to static seam evidence by `seam_id` or unambiguous file/line and writes `target/ripr/reports/mutation-calibration.{json,md}`; ambiguous file/line candidates stay unassigned. | Future calibration fixtures; runtime mutation language stays inside calibration/runtime reports. |
 
-The active product work is Campaign 5 — making the seam evidence fast, precise,
-and easy to act on:
+Campaign 5A is complete. The active product work is Campaign 5B —
+operationalizing the seam evidence:
 
 ```text
-cache seam fact layers
-sharpen related-test, value, and oracle-shape precision
-seam-native LSP code actions
-runtime calibration against cargo-mutants
-close Campaign 5A and move operationalization into Campaign 5B
+ripr.toml config
+SARIF and opt-in CI policy
+seam-native badge count mapping
 ```
 
 Deeper capability state lives in [Capability matrix](docs/CAPABILITY_MATRIX.md)

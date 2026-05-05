@@ -90,6 +90,12 @@ are scoped or reviewed.
   mutant locations are imported, and ambiguous file/line candidates remain
   unassigned. Runtime mutation vocabulary stays confined to calibration/runtime
   reports.
+- Closed Campaign 5A (Seam Evidence Usability and Precision) after the cache,
+  related-test precision, value extraction, oracle-shape, agent packet, LSP code
+  action, and cargo-mutants calibration chain landed (#255, #310, #313, #314,
+  #315, #316, #327). The active manifest now moves to Campaign 5B
+  Operationalization with `config/ripr-config-v1` as the next ready item and
+  SARIF / seam-native badge policy blocked behind config.
 
 ## 0.3.0 - 2026-05-02
 

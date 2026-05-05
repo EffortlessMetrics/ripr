@@ -342,7 +342,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "context/agent-seam-packets-v2"
+next = "config/ripr-config-v1"
 metric = "oracle kind recognition rate"
 
 [[capability]]
@@ -470,7 +470,7 @@ evidence = [
   "target/ripr/reports/repo-seams.json and repo-seams.md"
 ]
 fixtures = []
-next = "cache/repo-seam-facts-v1"
+next = "config/ripr-config-v1"
 metric = "seams classified per production file"
 
 [[capability]]
@@ -488,7 +488,7 @@ evidence = [
   "oracle-shape-v2 side-effect observer seam evidence"
 ]
 fixtures = []
-next = "context/agent-seam-packets-v2"
+next = "config/ripr-config-v1"
 metric = "per-stage evidence cited per seam"
 
 [[capability]]
@@ -504,7 +504,7 @@ evidence = [
   "BDD coverage per class plus headline-mapping pin"
 ]
 fixtures = []
-next = "calibration/cargo-mutants-v1"
+next = "config/ripr-config-v1"
 metric = "classification matches priority-ordered rules"
 
 [[capability]]
@@ -520,7 +520,7 @@ evidence = [
   "OUTPUT_SCHEMA.md Repo Exposure Report section"
 ]
 fixtures = []
-next = "cache/repo-seam-facts-v1"
+next = "config/ripr-config-v1"
 metric = "per-class metric buckets stable across runs"
 
 [[capability]]
@@ -539,7 +539,7 @@ evidence = [
   "OUTPUT_SCHEMA.md Agent Seam Packets section"
 ]
 fixtures = []
-next = "calibration/cargo-mutants-v1"
+next = "config/ripr-config-v1"
 metric = "packet carries missing discriminator + suggested assertion templates"
 
 [[capability]]
@@ -556,7 +556,7 @@ evidence = [
   "OUTPUT_SCHEMA.md LSP Seam Diagnostics section"
 ]
 fixtures = []
-next = "cache/repo-seam-facts-v1"
+next = "config/ripr-config-v1"
 metric = "seam_id in diagnostic.data is the hover lookup key"
 
 [[capability]]
@@ -572,7 +572,7 @@ evidence = [
   "preserves pre-4B Finding hover fallback"
 ]
 fixtures = []
-next = "calibration/cargo-mutants-v1"
+next = "config/ripr-config-v1"
 metric = "hover renders evidence path from ClassifiedSeam, never parses diagnostic message"
 
 [[capability]]
@@ -589,7 +589,7 @@ evidence = [
   "pre-4B Finding code actions remain available"
 ]
 fixtures = []
-next = "calibration/cargo-mutants-v1"
+next = "config/ripr-config-v1"
 metric = "seam diagnostics expose packet/assertion/test actions without automatic edits"
 
 [[capability]]
@@ -605,5 +605,5 @@ evidence = [
   "xtask mutation-calibration importer and join unit tests"
 ]
 fixtures = []
-next = "campaign/seam-evidence-usability-closeout"
+next = "calibration/runtime-fixtures-v1"
 metric = "static seam classes joined to imported runtime mutation outcomes by seam_id or unambiguous file_line; ambiguous file_line candidates remain unassigned"

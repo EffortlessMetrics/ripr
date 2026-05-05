@@ -463,7 +463,7 @@ inline once authorized.
 
 Campaign ID: `seam-evidence-usability-and-precision`
 
-Status: active
+Status: done
 
 Objective:
 
@@ -540,7 +540,7 @@ Work items:
 | `context/agent-seam-packets-v2` | done | Schema 0.3 packets now carry `recommended_test`, `nearest_strong_test_to_imitate`, `candidate_values`, `assertion_shape` (kind + example), `patterns_to_imitate`, `patterns_to_avoid`, and recommendation `confidence`. Uses ranked related tests from `analysis/related-test-precision-v1` when available; no automatic edits or generated test skeletons. |
 | `lsp/seam-code-actions-v1` | done | Seam diagnostics now surface code actions for copying the selected seam packet, copying a concrete suggested assertion when the agent packet assertion shape is available, opening the nearest related test when a related-test location is present, and refreshing ripr analysis. Finding diagnostic context-copy actions still work. No automatic edits, generated tests, CodeLens, or in-memory overlays. |
 | `calibration/cargo-mutants-v1` | done | Adds advisory `cargo xtask mutation-calibration` report generation. Imported cargo-mutants JSON/output is joined to static `SeamGripClass` evidence by `seam_id` first and unambiguous normalized file/line second; span-based locations are imported, ambiguous file/line candidates stay unassigned, and unmatched runtime mutants remain visible; runtime mutation vocabulary stays inside `target/ripr/reports/mutation-calibration.{json,md}`. |
-| `campaign/seam-evidence-usability-closeout` | ready | Final Campaign 5A state transition; rolls remaining items into 5B / future. |
+| `campaign/seam-evidence-usability-closeout` | done | Final Campaign 5A state transition. Closed the campaign after #255, #310, #313, #314, #315, #316, and #327 landed; operationalization items moved to Campaign 5B. |
 
 Dependencies:
 
@@ -584,11 +584,27 @@ This campaign is product work, not refactor work. Each work item
 should preserve the spec/test/code/output trail. PRs that mix
 implementation with refactoring should be split.
 
+Closeout:
+
+Campaign 5A is complete. Landed PR chain:
+
+- #255 `cache/repo-seam-facts-v1`
+- #310 `analysis/related-test-precision-v1`
+- #313 `analysis/value-extraction-v2`
+- #314 `analysis/oracle-shape-v2`
+- #315 `context/agent-seam-packets-v2`
+- #316 `lsp/seam-code-actions-v1`
+- #327 `calibration/cargo-mutants-v1`
+
+The active campaign now moves to Campaign 5B. Config, SARIF, and
+badge count remapping are operationalization work, not unfinished
+5A precision work.
+
 ## Campaign 5B: Operationalization
 
 Campaign ID: `operationalization`
 
-Status: planned (blocked behind Campaign 5A precision work)
+Status: active
 
 Objective:
 
@@ -602,15 +618,15 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `config/ripr-config-v1` | blocked | Blocked by `cache/repo-seam-facts-v1` (defaults need warm-path cost) and `analysis/oracle-shape-v2` (severity policy needs stable oracle taxonomy). |
+| `config/ripr-config-v1` | ready | Next operationalization item. Defaults must account for warm-path cost and stable oracle taxonomy from Campaign 5A. |
 | `ci/sarif-ci-policy` | blocked | Blocked by `config/ripr-config-v1` (severity + suppression). |
-| `badge/seam-native-count-mapping` | planned | Map `ripr` and `ripr+` badge counts onto seam-native counts after seam report and calibration semantics settle. |
+| `badge/seam-native-count-mapping` | blocked | Map `ripr` and `ripr+` badge counts onto seam-native counts after config establishes severity and suppression semantics. |
 
 Review policy:
 
-5B work cannot land before Campaign 5A's cache and oracle-shape
-items, so opening 5B PRs before then is out-of-scope and should be
-held in draft.
+5B work starts with `config/ripr-config-v1`. SARIF policy and badge
+count remapping should not land before config establishes severity
+and suppression semantics.
 
 ## Campaign 6: Module SRP Refactoring
 
