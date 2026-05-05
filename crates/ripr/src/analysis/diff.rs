@@ -229,18 +229,38 @@ mod tests {
             for _ in 0..len {
                 bytes.push((next_u64(&mut seed) & 0xFF) as u8);
             }
-            let text = String::from_utf8_lossy(&bytes);
-            let files = parse_unified_diff(&text);
-            for file in files {
-                assert!(!file.path.as_os_str().is_empty());
-                assert!(file.added_lines.windows(2).all(|w| w[0].line <= w[1].line));
-                assert!(
-                    file.removed_lines
-                        .windows(2)
-                        .all(|w| w[0].line <= w[1].line)
-                );
+            for text in fuzz_candidates(&bytes) {
+                let first = parse_unified_diff(&text);
+                let second = parse_unified_diff(&text);
+                assert_eq!(first.len(), second.len());
+
+                for file in first {
+                    assert!(!file.path.as_os_str().is_empty());
+                    assert!(file.added_lines.windows(2).all(|w| w[0].line <= w[1].line));
+                    assert!(
+                        file.removed_lines
+                            .windows(2)
+                            .all(|w| w[0].line <= w[1].line)
+                    );
+                }
             }
         }
+    }
+
+    fn fuzz_candidates(bytes: &[u8]) -> Vec<String> {
+        let payload = String::from_utf8_lossy(bytes);
+        vec![
+            payload.to_string(),
+            format!(
+                "diff --git a/src/fuzz.rs b/src/fuzz.rs\n--- a/src/fuzz.rs\n+++ b/src/fuzz.rs\n@@ -1,1 +1,1 @@\n-legacy\n+{payload}\n"
+            ),
+            format!(
+                "diff --git a/src/fuzz.rs b/src/fuzz.rs\nnew file mode 100644\n--- /dev/null\n+++ b/src/fuzz.rs\n@@ -0,0 +1,2 @@\n+{payload}\n+tail\n"
+            ),
+            format!(
+                "diff --git a/src/fuzz.rs b/src/fuzz.rs\n--- a/src/fuzz.rs\n+++ b/src/fuzz.rs\n@@ -18446744073709551615,2 +18446744073709551615,2 @@\n-{payload}\n+{payload}\n"
+            ),
+        ]
     }
 
     #[test]
