@@ -892,6 +892,13 @@ fn extract_parser_oracles(
         });
     }
 
+    let function_start = line_index.line(function.syntax().text_range().start());
+    for oracle in
+        extract_line_scanned_oracles(&function.syntax().text().to_string(), function_start)
+    {
+        assertions.push(oracle);
+    }
+
     assertions.sort_by(|a, b| a.line.cmp(&b.line).then(a.text.cmp(&b.text)));
     assertions.dedup_by(|a, b| a.line == b.line && a.text == b.text);
     assertions
@@ -1144,10 +1151,37 @@ fn is_assertion_line(line: &str) -> bool {
         || line.contains("assert_matches!")
         || line.contains("matches!")
         || is_snapshot_assertion(line)
+        || is_custom_assertion_helper(line)
+        || is_side_effect_observer_assertion(line)
         || line.contains("expect_")
         || line.contains(".expect(")
         || line.contains(".unwrap(")
         || line.contains("should_panic")
+}
+
+fn extract_line_scanned_oracles(body: &str, start_line: usize) -> Vec<OracleFact> {
+    let mut out = Vec::new();
+    for (offset, line) in body.lines().enumerate() {
+        let trimmed = line.trim();
+        if !is_line_scanned_oracle(trimmed) {
+            continue;
+        }
+        let classification = classify_assertion(trimmed);
+        out.push(OracleFact {
+            line: start_line + offset,
+            text: trimmed.to_string(),
+            kind: classification.kind,
+            strength: classification.strength,
+            observed_tokens: extract_identifier_tokens(trimmed),
+        });
+    }
+    out
+}
+
+fn is_line_scanned_oracle(line: &str) -> bool {
+    is_custom_assertion_helper(line)
+        || is_side_effect_observer_assertion(line)
+        || is_mock_expectation_line(line)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1166,6 +1200,11 @@ fn classify_assertion(line: &str) -> OracleClassification {
         OracleClassification {
             kind: OracleKind::BroadError,
             strength: OracleStrength::Weak,
+        }
+    } else if is_whole_object_equality_assertion(line) {
+        OracleClassification {
+            kind: OracleKind::WholeObjectEquality,
+            strength: OracleStrength::Strong,
         }
     } else if is_exact_value_assertion(line) {
         OracleClassification {
@@ -1187,10 +1226,15 @@ fn classify_assertion(line: &str) -> OracleClassification {
             kind: OracleKind::SmokeOnly,
             strength: OracleStrength::Smoke,
         }
-    } else if line.contains("expect_") || line.contains("mock") {
+    } else if is_mock_expectation_line(line) || is_side_effect_observer_assertion(line) {
         OracleClassification {
             kind: OracleKind::MockExpectation,
             strength: OracleStrength::Medium,
+        }
+    } else if is_custom_assertion_helper(line) {
+        OracleClassification {
+            kind: OracleKind::ExactValue,
+            strength: OracleStrength::Strong,
         }
     } else if line.contains("> 0")
         || line.contains("<")
@@ -1242,11 +1286,60 @@ fn is_broad_error_assertion(line: &str) -> bool {
     line.contains("is_err") || line.contains("Err(_)")
 }
 
+fn is_whole_object_equality_assertion(line: &str) -> bool {
+    (line.contains("assert_eq!") || line.contains("assert_ne!")) && line.contains('{')
+}
+
 fn is_exact_value_assertion(line: &str) -> bool {
     line.contains("assert_eq!")
         || line.contains("assert_ne!")
         || line.contains("assert_matches!")
         || line.contains("matches!")
+}
+
+fn is_mock_expectation_line(line: &str) -> bool {
+    let lower = line.to_ascii_lowercase();
+    let has_expectation_call = lower.contains("expect_") && lower.contains('(');
+    let has_mock_verification_call = lower.contains("mock")
+        && [
+            ".assert_",
+            ".checkpoint(",
+            ".times(",
+            ".verify(",
+            "assert_expectations(",
+        ]
+        .iter()
+        .any(|token| lower.contains(token));
+    has_expectation_call || has_mock_verification_call
+}
+
+fn is_side_effect_observer_assertion(line: &str) -> bool {
+    let lower = line.to_ascii_lowercase();
+    let has_observer_token = [
+        "event",
+        "emitted",
+        "published",
+        "sent",
+        "saved",
+        "persist",
+        "state",
+        "stored",
+        "metric",
+        "counter",
+        "recorded",
+    ]
+    .iter()
+    .any(|token| lower.contains(token));
+    has_observer_token && (lower.contains("assert") || lower.contains("expect"))
+}
+
+fn is_custom_assertion_helper(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    !trimmed.contains('!')
+        && (trimmed.starts_with("assert_")
+            || trimmed.contains("::assert_")
+            || trimmed.contains(".assert_"))
+        && trimmed.contains('(')
 }
 
 fn extract_call_facts(body: &str, start_line: usize) -> Vec<CallFact> {
@@ -1479,6 +1572,74 @@ fn checks_error() {
         assert_eq!(smoke.strength, OracleStrength::Smoke);
         assert_eq!(unknown.kind, OracleKind::Unknown);
         assert_eq!(unknown.strength, OracleStrength::Unknown);
+    }
+
+    #[test]
+    fn classifies_field_whole_object_side_effect_and_custom_helper_oracles() {
+        let field = classify_assertion("assert_eq!(quote.total, 100);");
+        let whole_object = classify_assertion("assert_eq!(quote, Quote { total: 100 });");
+        let side_effect = classify_assertion("assert!(events.published().contains(&Event::Sent));");
+        let custom_helper = classify_assertion("assert_total_matches(&quote, 100);");
+        let mock_setup = classify_assertion("let mock_service = MockPublisher::new();");
+        let mock_expectation = classify_assertion("mock_service.expect_publish().times(1);");
+
+        assert_eq!(field.kind, OracleKind::ExactValue);
+        assert_eq!(field.strength, OracleStrength::Strong);
+        assert_eq!(whole_object.kind, OracleKind::WholeObjectEquality);
+        assert_eq!(whole_object.strength, OracleStrength::Strong);
+        assert_eq!(side_effect.kind, OracleKind::MockExpectation);
+        assert_eq!(side_effect.strength, OracleStrength::Medium);
+        assert_eq!(custom_helper.kind, OracleKind::ExactValue);
+        assert_eq!(custom_helper.strength, OracleStrength::Strong);
+        assert_eq!(mock_setup.kind, OracleKind::Unknown);
+        assert_eq!(mock_setup.strength, OracleStrength::Unknown);
+        assert_eq!(mock_expectation.kind, OracleKind::MockExpectation);
+        assert_eq!(mock_expectation.strength, OracleStrength::Medium);
+    }
+
+    #[test]
+    fn parser_adapter_extracts_custom_helper_and_side_effect_oracles() -> Result<(), String> {
+        let adapter = RaRustSyntaxAdapter;
+        let facts = adapter.summarize_file(
+            Path::new("tests/oracle_shape.rs"),
+            r#"
+#[test]
+fn event_is_published() {
+    publish_message();
+    let mock_service = MockPublisher::new();
+    assert_event_published("invoice.created");
+    mock_service.expect_publish().times(1);
+}
+"#,
+        )?;
+
+        let test = facts
+            .tests
+            .iter()
+            .find(|test| test.name == "event_is_published")
+            .ok_or_else(|| "expected test fact".to_string())?;
+        assert!(
+            test.assertions
+                .iter()
+                .any(|oracle| oracle.kind == OracleKind::MockExpectation),
+            "parser path should extract side-effect observer oracles: {:?}",
+            test.assertions
+        );
+        assert!(
+            test.assertions
+                .iter()
+                .any(|oracle| oracle.text.contains("assert_event_published")),
+            "custom assertion helper should be captured: {:?}",
+            test.assertions
+        );
+        assert!(
+            test.assertions
+                .iter()
+                .all(|oracle| !oracle.text.contains("MockPublisher::new")),
+            "mock setup should not be captured as an oracle: {:?}",
+            test.assertions
+        );
+        Ok(())
     }
 
     #[test]
