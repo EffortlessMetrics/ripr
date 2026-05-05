@@ -280,6 +280,40 @@ mod tests {
     }
 
     #[test]
+    fn render_finding_uses_expr_and_fallback_evidence_when_no_before_after() {
+        let mut finding = sample_finding();
+        finding.probe.before = None;
+        finding.probe.after = None;
+        finding.flow_sinks.clear();
+        finding.related_tests.clear();
+        finding.activation.observed_values.clear();
+        finding.evidence = vec!["fallback evidence line".to_string()];
+
+        let rendered = render_finding(&finding);
+
+        assert!(rendered.contains("expr:   enabled"));
+        assert!(rendered.contains("  - fallback evidence line"));
+    }
+
+    #[test]
+    fn render_finding_deduplicates_missing_discriminator_value_line() {
+        let mut finding = sample_finding();
+        finding.missing = vec![
+            "Missing discriminator value: enabled == false".to_string(),
+            "another gap".to_string(),
+        ];
+
+        let rendered = render_finding(&finding);
+
+        assert_eq!(
+            rendered
+                .matches("missing discriminator enabled == false")
+                .count(),
+            1
+        );
+        assert!(rendered.contains("  - another gap"));
+    }
+    #[test]
     fn human_output_includes_effective_stop_reasons_for_unknowns() {
         let output = render_finding(&unknown_finding());
 
