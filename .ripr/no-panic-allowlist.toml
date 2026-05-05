@@ -200,100 +200,196 @@ kind = "method_call"
 container = "v0_2_missing_selector_and_missing_coordinates_fails_clearly"
 callee = "unwrap"
 
-# crates/ripr entries (v0.1 format with updated line numbers from semantic extractor)
+# crates/ripr entries (v0.2 semantic selectors)
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for creating temporary directories"
+
+[allow.selector]
+kind = "method_call"
+container = "temp_dir"
+callee = "unwrap"
+receiver_fingerprint = "SystemTime::now() .duration_since(UNIX_EPOCH)"
+
+[allow.last_seen]
 line = 171
 column = 21
+
+[[allow]]
+path = "crates/ripr/src/analysis/mod.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test helper function for creating temporary directories"
 
-[[allow]]
-path = "crates/ripr/src/analysis/mod.rs"
+[allow.selector]
+kind = "method_call"
+container = "temp_dir"
+callee = "unwrap"
+receiver_fingerprint = "fs::create_dir_all(&dir)"
+
+[allow.last_seen]
 line = 176
 column = 9
-family = "unwrap"
-classification = "test_only"
-explanation = "Test helper function for creating temporary directories"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for creating temporary directories in test"
+
+[allow.selector]
+kind = "method_call"
+container = "analyzes_simple_predicate_gap"
+callee = "unwrap"
+receiver_fingerprint = "fs::create_dir_all(root.join(\"src\"))"
+
+[allow.last_seen]
 line = 183
 column = 9
-family = "unwrap"
-classification = "test_only"
-explanation = "Test helper function for creating temporary directories"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for creating temporary directories in test"
+
+[allow.selector]
+kind = "method_call"
+container = "analyzes_simple_predicate_gap"
+callee = "unwrap"
+receiver_fingerprint = "fs::create_dir_all(root.join(\"tests\"))"
+
+[allow.last_seen]
 line = 184
 column = 9
-family = "unwrap"
-classification = "test_only"
-explanation = "Test helper function for creating temporary directories"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for creating temporary directories in test"
+
+[allow.selector]
+kind = "method_call"
+container = "analyzes_simple_predicate_gap"
+callee = "unwrap"
+receiver_fingerprint = "fs::write( root.join(\"Cargo.toml\"), \"[package]\\nname='x'\\nversion='0.1.0'\\nedition='2024'\\n\", )"
+
+[allow.last_seen]
 line = 185
 column = 9
-family = "unwrap"
-classification = "test_only"
-explanation = "Test helper function for creating temporary directories"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for writing test files"
+
+[allow.selector]
+kind = "method_call"
+container = "analyzes_simple_predicate_gap"
+callee = "unwrap"
+receiver_fingerprint = "fs::write( root.join(\"src/lib.rs\"), r#\" pub fn price(amount: i32, threshold: i32) -> i32 { if amount >= threshold { amount - 10 } else { amount } } \"#, )"
+
+[allow.last_seen]
 line = 190
 column = 9
+
+[[allow]]
+path = "crates/ripr/src/analysis/mod.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test helper function for writing test files"
 
-[[allow]]
-path = "crates/ripr/src/analysis/mod.rs"
+[allow.selector]
+kind = "method_call"
+container = "analyzes_simple_predicate_gap"
+callee = "unwrap"
+receiver_fingerprint = "fs::write( root.join(\"tests/pricing.rs\"), r#\" #[test] fn premium_customer_gets_discount() { let total = x::price(10000, 100); assert!(total > 0); } \"#, )"
+
+[allow.last_seen]
 line = 199
 column = 9
+
+[[allow]]
+path = "crates/ripr/src/analysis/mod.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test helper function for writing test files"
 
-[[allow]]
-path = "crates/ripr/src/analysis/mod.rs"
+[allow.selector]
+kind = "method_call"
+container = "analyzes_simple_predicate_gap"
+callee = "unwrap"
+receiver_fingerprint = "fs::write( root.join(\"diff.patch\"), r#\"diff --git a/src/lib.rs b/src/lib.rs index 0000000..1111111 100644 --- a/src/lib.rs +++ b/src/lib.rs @@ -1,3 +1,3 @@ pub fn price(amount: i32, threshold: i32) -> i32 { + if amount >= threshold { amount - 10 } else { amount } } \"#, )"
+
+[allow.last_seen]
 line = 210
 column = 9
+
+[[allow]]
+path = "crates/ripr/src/analysis/mod.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test helper function for writing test files"
 
-[[allow]]
-path = "crates/ripr/src/analysis/mod.rs"
+[allow.selector]
+kind = "method_call"
+container = "analyzes_simple_predicate_gap"
+callee = "unwrap"
+receiver_fingerprint = "run_analysis(&AnalysisOptions { root: root.clone(), base: None, diff_file: Some(root.join(\"diff.patch\")), mode: AnalysisMode::Draft, include_unchanged_tests: true, })"
+
+[allow.last_seen]
 line = 223
 column = 19
-family = "unwrap"
-classification = "test_only"
-explanation = "Test helper function for writing test files"
 
 [[allow]]
 path = "crates/ripr/src/analysis/mod.rs"
-line = 239
-column = 23
 family = "unwrap"
 classification = "test_only"
 explanation = "Test helper function for writing test files"
 
+[allow.selector]
+kind = "method_call"
+container = "analyzes_simple_predicate_gap"
+callee = "unwrap"
+receiver_fingerprint = "run_analysis(&AnalysisOptions { root: root.clone(), base: None, diff_file: Some(root.join(\"diff.patch\")), mode: AnalysisMode::Instant, include_unchanged_tests: true, })"
+
+[allow.last_seen]
+line = 239
+column = 23
+
 [[allow]]
 path = "crates/ripr/tests/cli_smoke.rs"
-line = 6
-column = 5
 family = "unwrap"
 classification = "test_only"
 explanation = "Test helper function for running CLI tests"
 
+[allow.selector]
+kind = "method_call"
+container = "run_ripr"
+callee = "unwrap"
+receiver_fingerprint = "Command::new(bin).args(args).output()"
+
+[allow.last_seen]
+line = 6
+column = 5
+
 [[allow]]
 path = "crates/ripr/tests/cli_smoke.rs"
-line = 10
-column = 5
 family = "unwrap"
 classification = "test_only"
-explanation = "Test helper function for running CLI tests"
+explanation = "Test helper function for finding workspace root"
+
+[allow.selector]
+kind = "method_call"
+container = "workspace_root"
+callee = "unwrap"
+receiver_fingerprint = "Path::new(env!(\"CARGO_MANIFEST_DIR\")) .parent() .and_then(Path::parent)"
+
+[allow.last_seen]
+line = 10
+column = 5
