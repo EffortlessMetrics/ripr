@@ -1426,13 +1426,26 @@ fn first_line_difference(expected: &str, actual: &str) -> Option<String> {
             return Some(format!(
                 "line {} expected `{}` vs actual `{}`",
                 index + 1,
-                expected_line,
-                actual_line
+                snapshot_line(expected_line),
+                snapshot_line(actual_line)
             ));
         }
     }
 
     None
+}
+
+fn snapshot_line(value: &str) -> String {
+    const MAX_CHARS: usize = 120;
+
+    let mut escaped = value.replace('`', "\\`");
+    if escaped.chars().count() <= MAX_CHARS {
+        return escaped;
+    }
+
+    escaped = escaped.chars().take(MAX_CHARS).collect();
+    escaped.push('…');
+    escaped
 }
 
 fn normalize_fixture_json_output(value: &str) -> String {
@@ -12282,6 +12295,29 @@ jobs:
             Some("line 3 expected `<missing>` vs actual `c`".to_string())
         );
         assert_eq!(first_line_difference("a\nb", "a\nb"), None);
+    }
+
+    #[test]
+    fn first_line_difference_escapes_backticks_for_snapshot_messages() {
+        assert_eq!(
+            first_line_difference("value with `tick`", "value with plain tick"),
+            Some(
+                "line 1 expected `value with \\`tick\\`` vs actual `value with plain tick`"
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn first_line_difference_truncates_very_long_snapshot_lines() {
+        let expected = format!("prefix-{}", "x".repeat(140));
+        let actual = format!("prefix-{}", "y".repeat(140));
+
+        let message = first_line_difference(&expected, &actual)
+            .expect("expected snapshot difference for long lines");
+        assert!(message.contains('…'));
+        assert!(message.contains("line 1 expected `prefix-"));
+        assert!(message.contains("vs actual `prefix-"));
     }
 
     #[test]
