@@ -1598,13 +1598,28 @@ fn first_line_difference(expected: &str, actual: &str) -> Option<String> {
             return Some(format!(
                 "line {} expected `{}` vs actual `{}`",
                 index + 1,
-                expected_line,
-                actual_line
+                snapshot_line_preview(expected_line),
+                snapshot_line_preview(actual_line)
             ));
         }
     }
 
     None
+}
+
+fn snapshot_line_preview(line: &str) -> String {
+    const MAX_PREVIEW_CHARS: usize = 120;
+
+    if line == "<missing>" {
+        return line.to_string();
+    }
+
+    let escaped = line.escape_debug().to_string().replace('`', "\\`");
+    let mut preview: String = escaped.chars().take(MAX_PREVIEW_CHARS).collect();
+    if escaped.chars().count() > MAX_PREVIEW_CHARS {
+        preview.push('…');
+    }
+    preview
 }
 
 fn normalize_fixture_json_output(value: &str) -> String {
@@ -14809,6 +14824,37 @@ jobs:
             Some("line 3 expected `<missing>` vs actual `c`".to_string())
         );
         assert_eq!(first_line_difference("a\nb", "a\nb"), None);
+    }
+
+    #[test]
+    fn first_line_difference_escapes_control_characters_for_snapshot_diffs() {
+        assert_eq!(
+            first_line_difference("ok\nline\tone", "ok\nline\rone"),
+            Some("line 2 expected `line\\tone` vs actual `line\\rone`".to_string())
+        );
+    }
+
+    #[test]
+    fn first_line_difference_escapes_backticks_for_snapshot_diffs() {
+        assert_eq!(
+            first_line_difference("value with `tick`", "value with plain tick"),
+            Some(
+                "line 1 expected `value with \\`tick\\`` vs actual `value with plain tick`"
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn first_line_difference_truncates_very_long_snapshot_lines() {
+        let expected = format!("ok\n{}", "a".repeat(130));
+        let actual = format!("ok\n{}", "b".repeat(130));
+        let diff = first_line_difference(&expected, &actual);
+        assert!(matches!(
+            diff.as_deref(),
+            Some(message)
+                if message.contains("expected `") && message.contains("…` vs actual `")
+        ));
     }
 
     #[test]
