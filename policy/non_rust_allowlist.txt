@@ -29,6 +29,7 @@ README.md|documentation|docs|Repository README.
 assets/**|asset|brand/docs|Non-code assets.
 badges/*.json|badge_endpoint|repo-policy|Repo-scoped Shields endpoint JSON committed under main; refreshed by `cargo xtask update-badge-endpoints`. v1 dogfood self-hosted endpoint per docs/BADGE_POLICY.md and deferred/hosted-badge-service.
 codecov.yml|ci_coverage_policy|release/ci|Codecov configuration for coverage status checks and reporting.
+.config/nextest.toml|ci_test_config|release/ci|Nextest JUnit output configuration for Test Analytics workflow.
 crates/**/Cargo.toml|rust_manifest|rust|Cargo package manifests.
 crates/ripr/examples/**|fixture_input|analysis-fixtures|Packaged sample workspace and diff are analyzed inputs.
 deny.toml|supply_chain_policy|security|Cargo-deny policy for advisories, licenses, bans, and source registries.

@@ -1,0 +1,49 @@
+name: Test Analytics
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  rust-tests:
+    name: rust-tests-junit
+    runs-on: ubuntu-latest
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: taiki-e/install-action@nextest
+
+      - name: Run Rust tests with JUnit output
+        run: cargo nextest run --workspace --all-features --profile ci
+
+      - name: Run doc tests
+        run: cargo test --workspace --doc
+
+      - name: Upload test results artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rust-junit
+          path: target/nextest/ci/junit.xml
+          if-no-files-found: warn
+
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() && env.CODECOV_TOKEN != '' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) }}
+        uses: codecov/codecov-action@v5
+        with:
+          files: target/nextest/ci/junit.xml
+          report_type: test_results
+          token: ${{ env.CODECOV_TOKEN }}
+
+      - name: Explain skipped Codecov test-results upload
+        if: ${{ !cancelled() && (env.CODECOV_TOKEN == '' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)) }}
+        run: echo "Skipping Codecov test-results upload because CODECOV_TOKEN is unavailable for this run."

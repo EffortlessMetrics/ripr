@@ -118,3 +118,21 @@ When changing user-visible output, update or add golden coverage for:
 
 Golden updates must preserve the static language boundary: draft static output
 does not use mutation-runtime terms such as `killed` or `survived`.
+
+## CI Test Results
+
+CI uploads Rust test results to Codecov Test Analytics from JUnit XML generated
+by `cargo nextest`:
+
+```bash
+cargo nextest run --workspace --all-features --profile ci
+```
+
+Doc tests remain a separate Cargo test step:
+
+```bash
+cargo test --workspace --doc
+```
+
+The JUnit output path is configured in `.config/nextest.toml` at
+`target/nextest/ci/junit.xml`.
