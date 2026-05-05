@@ -106,7 +106,7 @@ commands = [
 
 [[work_item]]
 id = "context/agent-seam-packets-v2"
-status = "ready"
+status = "done"
 branch = "context/agent-seam-packets-v2"
 stackable = false
 requires_human_merge = true

@@ -129,9 +129,10 @@ pub enum OutputFormat {
     RepoExposureMd,
     /// Agent-ready seam packets per RIPR-SPEC-0005 — one
     /// `write_targeted_test` packet per headline-eligible classified
-    /// seam. Schema 0.2 in `docs/OUTPUT_SCHEMA.md` § "Agent Seam
-    /// Packets". Strongly-gripped, opaque, intentional, and
-    /// suppressed seams emit no packet.
+    /// seam, plus conservative `inspect_static_limitation` packets for
+    /// opaque seams. Schema 0.3 in `docs/OUTPUT_SCHEMA.md` § "Agent
+    /// Seam Packets". Strongly-gripped, intentional, and suppressed
+    /// seams emit no packet.
     AgentSeamPacketsJson,
 }
 

@@ -530,11 +530,12 @@ status = "alpha"
 spec = "RIPR-SPEC-0005"
 evidence = [
   "crates/ripr/src/output/agent_seam_packets.rs",
-  "schema 0.2 with write_targeted_test and inspect_static_limitation tasks",
+  "schema 0.3 with write_targeted_test and inspect_static_limitation tasks",
   "cargo xtask agent-seam-packets",
   "target/ripr/reports/agent-seam-packets.json",
   "missing_discriminators with value+reason objects",
   "suggested_assertions assertion templates with placeholders",
+  "context/agent-seam-packets-v2 recommended_test, candidate_values, assertion_shape, patterns_to_imitate, patterns_to_avoid, and confidence",
   "OUTPUT_SCHEMA.md Agent Seam Packets section"
 ]
 fixtures = []

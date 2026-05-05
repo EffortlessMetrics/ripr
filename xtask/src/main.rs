@@ -393,6 +393,7 @@ fn main() {
         Some("repo-badge-artifacts") => repo_badge_artifacts(),
         Some("repo-seam-inventory") => repo_seam_inventory(),
         Some("repo-exposure-report") => repo_exposure_report(),
+        Some("agent-seam-packets") => agent_seam_packets_report(args.get(2)),
         Some("update-badge-endpoints") => update_badge_endpoints(),
         Some("check-badge-endpoints") => check_badge_endpoints(),
         Some("dogfood") => dogfood(),
@@ -575,6 +576,9 @@ fn known_commands() -> Vec<&'static str> {
         "test-efficiency-report",
         "badge-artifacts",
         "repo-badge-artifacts",
+        "repo-seam-inventory",
+        "repo-exposure-report",
+        "agent-seam-packets [root]",
         "update-badge-endpoints",
         "check-badge-endpoints",
         "dogfood",
@@ -5474,6 +5478,10 @@ fn repo_seam_inventory() -> Result<(), String> {
 }
 
 fn repo_seam_inventory_command_args(format: &str) -> Vec<String> {
+    repo_seam_inventory_command_args_for_root(format, ".")
+}
+
+fn repo_seam_inventory_command_args_for_root(format: &str, root: &str) -> Vec<String> {
     // Mirrors `repo_badge_artifact_command_args`: no `--diff` / `--base`
     // because the seam inventory must not depend on
     // `git diff origin/main...HEAD`.
@@ -5485,7 +5493,7 @@ fn repo_seam_inventory_command_args(format: &str) -> Vec<String> {
         "--".to_string(),
         "check".to_string(),
         "--root".to_string(),
-        ".".to_string(),
+        root.to_string(),
         "--format".to_string(),
         format.to_string(),
     ]
@@ -5505,6 +5513,15 @@ fn repo_exposure_report() -> Result<(), String> {
     let md_args = repo_seam_inventory_command_args("repo-exposure-md");
     let md_output = run_output_owned("cargo", &md_args)?;
     write_report("repo-exposure.md", &md_output)
+}
+
+/// Run the agent seam packet renderer and write
+/// `target/ripr/reports/agent-seam-packets.json`.
+fn agent_seam_packets_report(root: Option<&String>) -> Result<(), String> {
+    let root = root.map_or(".", String::as_str);
+    let json_args = repo_seam_inventory_command_args_for_root("agent-seam-packets-json", root);
+    let json_output = run_output_owned("cargo", &json_args)?;
+    write_report("agent-seam-packets.json", &json_output)
 }
 
 fn repo_badge_artifacts() -> Result<(), String> {
@@ -7671,6 +7688,7 @@ fn known_xtask_command(command: &str) -> bool {
             | "repo-badge-artifacts"
             | "repo-seam-inventory"
             | "repo-exposure-report"
+            | "agent-seam-packets"
             | "update-badge-endpoints"
             | "check-badge-endpoints"
             | "dogfood"
@@ -11939,7 +11957,8 @@ mod tests {
         parse_no_panic_allowlist_toml_v2, parse_reason, parse_static_language_allowlist,
         pr_shape_warnings, precommit_report_body, public_contract_rows, receipt_json,
         receipt_specs, receipt_status_from_reports, repo_badge_artifact_command_args,
-        repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown, report_index_markdown,
+        repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown,
+        repo_seam_inventory_command_args_for_root, report_index_markdown,
         report_index_missing_expected, report_status_from_text, semantic_selector_matches,
         should_scan_static_language_path, sorted_allowlist_content, spec_id_from_path,
         static_language_allowlist_covers, status_for_report, suspicious_runtime_file_names,
@@ -17456,5 +17475,27 @@ settings: |
         let message = unknown_command_message("totally-unknown-command");
         assert!(!message.contains("Did you mean"));
         assert!(message.contains("cargo xtask help"));
+    }
+
+    #[test]
+    fn agent_seam_packet_command_args_use_requested_root_and_format() {
+        let args =
+            repo_seam_inventory_command_args_for_root("agent-seam-packets-json", "fixtures/demo");
+        assert_eq!(
+            args,
+            vec![
+                "run",
+                "-p",
+                "ripr",
+                "--quiet",
+                "--",
+                "check",
+                "--root",
+                "fixtures/demo",
+                "--format",
+                "agent-seam-packets-json",
+            ]
+        );
+        assert!(known_xtask_command("agent-seam-packets"));
     }
 }
