@@ -47,6 +47,19 @@ impl ExposureClass {
 #[cfg(test)]
 mod tests {
     use super::ExposureClass;
+    use std::collections::HashSet;
+
+    fn all_exposure_classes() -> [ExposureClass; 7] {
+        [
+            ExposureClass::Exposed,
+            ExposureClass::WeaklyExposed,
+            ExposureClass::ReachableUnrevealed,
+            ExposureClass::NoStaticPath,
+            ExposureClass::InfectionUnknown,
+            ExposureClass::PropagationUnknown,
+            ExposureClass::StaticUnknown,
+        ]
+    }
 
     #[test]
     fn exposure_class_strings_match_contract_terms() {
@@ -91,5 +104,33 @@ mod tests {
         assert!(ExposureClass::InfectionUnknown.requires_stop_reason());
         assert!(ExposureClass::PropagationUnknown.requires_stop_reason());
         assert!(ExposureClass::StaticUnknown.requires_stop_reason());
+    }
+
+    #[test]
+    fn exposure_class_contract_terms_are_unique() {
+        let mut seen = HashSet::new();
+
+        for class in all_exposure_classes() {
+            assert!(
+                seen.insert(class.as_str()),
+                "duplicate contract term found for {}",
+                class.as_str()
+            );
+        }
+
+        assert_eq!(seen.len(), 7, "every class should map to a unique term");
+    }
+
+    #[test]
+    fn exposure_class_severity_values_stay_in_supported_set() {
+        let supported = HashSet::from(["info", "warning", "note"]);
+        for class in all_exposure_classes() {
+            assert!(
+                supported.contains(class.severity()),
+                "unsupported severity {} for {}",
+                class.severity(),
+                class.as_str()
+            );
+        }
     }
 }
