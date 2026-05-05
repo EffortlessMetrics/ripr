@@ -183,12 +183,18 @@ export class RiprClientController {
       vscode.window.showInformationMessage('No ripr related test location is available for this diagnostic.');
       return;
     }
-    const document = await vscode.workspace.openTextDocument(uri);
-    const editor = await vscode.window.showTextDocument(document);
-    const line = lineFromTarget(target) ?? 1;
-    const position = new vscode.Position(Math.max(0, line - 1), 0);
-    editor.selection = new vscode.Selection(position, position);
-    editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
+    try {
+      const document = await vscode.workspace.openTextDocument(uri);
+      const editor = await vscode.window.showTextDocument(document);
+      const line = lineFromTarget(target) ?? 1;
+      const position = new vscode.Position(Math.max(0, line - 1), 0);
+      editor.selection = new vscode.Selection(position, position);
+      editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(`ripr open related test failed: ${message}`);
+      vscode.window.showWarningMessage('ripr could not open the related test. See ripr output for details.');
+    }
   }
 
   showOutput(): void {
