@@ -394,6 +394,7 @@ fn main() {
         Some("repo-seam-inventory") => repo_seam_inventory(),
         Some("repo-exposure-report") => repo_exposure_report(),
         Some("agent-seam-packets") => agent_seam_packets_report(args.get(2)),
+        Some("mutation-calibration") => mutation_calibration(&args[2..]),
         Some("update-badge-endpoints") => update_badge_endpoints(),
         Some("check-badge-endpoints") => check_badge_endpoints(),
         Some("dogfood") => dogfood(),
@@ -579,6 +580,7 @@ fn known_commands() -> Vec<&'static str> {
         "repo-seam-inventory",
         "repo-exposure-report",
         "agent-seam-packets [root]",
+        "mutation-calibration <mutations.json>",
         "update-badge-endpoints",
         "check-badge-endpoints",
         "dogfood",
@@ -5522,6 +5524,40 @@ fn agent_seam_packets_report(root: Option<&String>) -> Result<(), String> {
     let json_args = repo_seam_inventory_command_args_for_root("agent-seam-packets-json", root);
     let json_output = run_output_owned("cargo", &json_args)?;
     write_report("agent-seam-packets.json", &json_output)
+}
+
+/// Generate mutation calibration reports by comparing static seam classes
+/// against cargo-mutants outcomes.
+///
+/// Usage: cargo xtask mutation-calibration <path-to-mutations.json>
+fn mutation_calibration(args: &[String]) -> Result<(), String> {
+    if args.is_empty() {
+        return Err("mutation-calibration requires <mutations.json> path".to_string());
+    }
+
+    let mutations_path = &args[0];
+    if !Path::new(mutations_path).exists() {
+        return Err(format!("mutations file not found: {}", mutations_path));
+    }
+
+    let _mutations_json = fs::read_to_string(mutations_path)
+        .map_err(|err| format!("failed to read mutations file: {err}"))?;
+
+    // First, generate the repo seam inventory (needed for joining)
+    eprintln!("Generating seam inventory for calibration...");
+    let json_args = repo_seam_inventory_command_args("repo-exposure-json");
+    let _json_output = run_output_owned("cargo", &json_args)
+        .map_err(|err| format!("failed to generate seam inventory: {err}"))?;
+
+    // For now, we output a placeholder report. Full integration requires:
+    // 1. CLI support in the binary for mutation-calibration command
+    // 2. Parsing the seam inventory JSON from the binary output
+    // 3. Calling the mutation_calibration module to join and render
+    eprintln!("Mutation calibration scaffold is ready (integration pending)");
+    eprintln!("Mutations file: {}", mutations_path);
+    eprintln!("Output will be written to target/ripr/reports/mutation-calibration.{{json,md}}");
+
+    Ok(())
 }
 
 fn repo_badge_artifacts() -> Result<(), String> {
