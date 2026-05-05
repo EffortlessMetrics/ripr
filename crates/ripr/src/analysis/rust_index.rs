@@ -1284,11 +1284,11 @@ fn contains_macro_invocation(line: &str, macro_name: &str) -> bool {
                 .next_back()
                 .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_');
         let suffix_start = index + macro_name.len();
-        let suffix_ok = suffix_start == line.len()
-            || line[suffix_start..]
-                .chars()
-                .next()
-                .is_some_and(|ch| ch == '(' || ch.is_whitespace());
+        let suffix_ok = line[suffix_start..]
+            .trim_start()
+            .chars()
+            .next()
+            .is_some_and(|ch| matches!(ch, '(' | '[' | '{'));
         prefix_ok && suffix_ok
     })
 }
@@ -1547,11 +1547,38 @@ fn checks_error() {
 
     #[test]
     fn snapshot_macro_detection_uses_invocation_boundaries() {
-        assert!(contains_macro_invocation("insta::assert_snapshot!(value)", "assert_snapshot!"));
-        assert!(contains_macro_invocation("assert_snapshot! (value)", "assert_snapshot!"));
-        assert!(!contains_macro_invocation("my_assert_snapshot!(value)", "assert_snapshot!"));
-        assert!(!contains_macro_invocation("assert_snapshot_extra!(value)", "assert_snapshot!"));
-        assert!(!contains_macro_invocation("assert_snapshot!value", "assert_snapshot!"));
+        assert!(contains_macro_invocation(
+            "insta::assert_snapshot!(value)",
+            "assert_snapshot!"
+        ));
+        assert!(contains_macro_invocation(
+            "assert_snapshot! (value)",
+            "assert_snapshot!"
+        ));
+        assert!(contains_macro_invocation(
+            "assert_snapshot![value]",
+            "assert_snapshot!"
+        ));
+        assert!(contains_macro_invocation(
+            "assert_snapshot!{value}",
+            "assert_snapshot!"
+        ));
+        assert!(!contains_macro_invocation(
+            "my_assert_snapshot!(value)",
+            "assert_snapshot!"
+        ));
+        assert!(!contains_macro_invocation(
+            "assert_snapshot_extra!(value)",
+            "assert_snapshot!"
+        ));
+        assert!(!contains_macro_invocation(
+            "assert_snapshot!value",
+            "assert_snapshot!"
+        ));
+        assert!(!contains_macro_invocation(
+            "assert_snapshot! value",
+            "assert_snapshot!"
+        ));
     }
 
     #[test]
