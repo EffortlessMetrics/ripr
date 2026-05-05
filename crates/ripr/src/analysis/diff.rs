@@ -233,8 +233,16 @@ mod tests {
             let files = parse_unified_diff(&text);
             for file in files {
                 assert!(!file.path.as_os_str().is_empty());
-                assert!(file.added_lines.iter().all(|line| !line.text.contains('\n')));
-                assert!(file.removed_lines.iter().all(|line| !line.text.contains('\n')));
+                assert!(
+                    file.added_lines
+                        .iter()
+                        .all(|line| !line.text.contains('\n'))
+                );
+                assert!(
+                    file.removed_lines
+                        .iter()
+                        .all(|line| !line.text.contains('\n'))
+                );
             }
         }
     }
