@@ -8,8 +8,8 @@
 //!
 //! Schema is documented in `docs/OUTPUT_SCHEMA.md` under `mutation-calibration.json`.
 
-use crate::analysis::seams::{SeamGripClass, SeamKind};
 use crate::analysis::ClassifiedSeam;
+use crate::analysis::seams::{SeamGripClass, SeamKind};
 use crate::domain::{OracleKind, OracleStrength};
 use std::collections::HashMap;
 
@@ -108,62 +108,72 @@ pub struct CalibrationMetrics {
 ///
 /// Expects the cargo-mutants `mutants.json` format with an array of mutation records.
 pub fn parse_mutants_json(json_str: &str) -> Result<Vec<ParsedMutation>, String> {
-    let value: serde_json::Value = serde_json::from_str(json_str)
-        .map_err(|e| format!("Failed to parse JSON: {}", e))?;
+    let value: serde_json::Value =
+        serde_json::from_str(json_str).map_err(|e| format!("Failed to parse JSON: {}", e))?;
 
-    let array = value.as_array()
-        .ok_or("Expected JSON array of mutations")?;
+    let array = value.as_array().ok_or("Expected JSON array of mutations")?;
 
     let mut mutations = Vec::new();
     for (idx, item) in array.iter().enumerate() {
-        let obj = item.as_object()
+        let obj = item
+            .as_object()
             .ok_or_else(|| format!("Mutation {} is not a JSON object", idx))?;
 
-        let mutation_id = obj.get("id")
+        let mutation_id = obj
+            .get("id")
             .and_then(|v| v.as_str())
             .ok_or_else(|| format!("Mutation {} missing 'id'", idx))?
             .to_string();
 
-        let file = obj.get("file")
+        let file = obj
+            .get("file")
             .and_then(|v| v.as_str())
             .ok_or_else(|| format!("Mutation {} missing 'file'", idx))?
             .to_string();
 
-        let line = obj.get("line")
+        let line = obj
+            .get("line")
             .and_then(|v| v.as_u64())
             .ok_or_else(|| format!("Mutation {} missing 'line'", idx))? as usize;
 
-        let column = obj.get("column")
-            .and_then(|v| v.as_u64())
-            .ok_or_else(|| format!("Mutation {} missing 'column'", idx))? as usize;
+        let column =
+            obj.get("column")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| format!("Mutation {} missing 'column'", idx))? as usize;
 
-        let mutation_operator = obj.get("operator")
+        let mutation_operator = obj
+            .get("operator")
             .and_then(|v| v.as_str())
             .ok_or_else(|| format!("Mutation {} missing 'operator'", idx))?
             .to_string();
 
-        let text = obj.get("text")
+        let text = obj
+            .get("text")
             .and_then(|v| v.as_str())
             .ok_or_else(|| format!("Mutation {} missing 'text'", idx))?
             .to_string();
 
-        let replacement = obj.get("replacement")
+        let replacement = obj
+            .get("replacement")
             .and_then(|v| v.as_str())
             .ok_or_else(|| format!("Mutation {} missing 'replacement'", idx))?
             .to_string();
 
-        let outcome_str = obj.get("outcome")
+        let outcome_str = obj
+            .get("outcome")
             .and_then(|v| v.as_str())
             .ok_or_else(|| format!("Mutation {} missing 'outcome'", idx))?;
 
         let outcome = MutationOutcome::from_str(outcome_str)
             .ok_or_else(|| format!("Unknown outcome '{}' for mutation {}", outcome_str, idx))?;
 
-        let duration_ms = obj.get("duration_ms")
+        let duration_ms = obj
+            .get("duration_ms")
             .and_then(|v| v.as_u64())
             .ok_or_else(|| format!("Mutation {} missing 'duration_ms'", idx))?;
 
-        let test_command = obj.get("test_command")
+        let test_command = obj
+            .get("test_command")
             .and_then(|v| v.as_str())
             .unwrap_or("(unknown)")
             .to_string();
@@ -203,11 +213,15 @@ pub fn join_mutations_to_seams(
 
     for mutation in mutations {
         if let Some(seam) = seam_index.get(&(mutation.file.clone(), mutation.line)) {
-            let (oracle_kind, oracle_strength) = if let Some(related_test) = seam.evidence.related_tests.first() {
-                (Some(related_test.oracle_kind.clone()), Some(related_test.oracle_strength.clone()))
-            } else {
-                (None, None)
-            };
+            let (oracle_kind, oracle_strength) =
+                if let Some(related_test) = seam.evidence.related_tests.first() {
+                    (
+                        Some(related_test.oracle_kind.clone()),
+                        Some(related_test.oracle_strength.clone()),
+                    )
+                } else {
+                    (None, None)
+                };
 
             let matched_mutation = MatchedMutation {
                 mutation_id: mutation.mutation_id,
@@ -253,9 +267,13 @@ fn calculate_metrics(matched: &[MatchedMutation]) -> CalibrationMetrics {
     metrics.matched_count = matched.len();
 
     for mutation in matched {
-        *metrics.outcome_distribution.entry(mutation.outcome).or_insert(0) += 1;
+        *metrics
+            .outcome_distribution
+            .entry(mutation.outcome)
+            .or_insert(0) += 1;
 
-        metrics.class_outcome_distribution
+        metrics
+            .class_outcome_distribution
             .entry(mutation.grip_class)
             .or_insert_with(HashMap::new)
             .entry(mutation.outcome)
@@ -278,8 +296,14 @@ pub(crate) fn render_calibration_json(results: &CalibrationResults) -> String {
     out.push_str("  \"note\": \"Advisory only. Runtime mutation vocabulary appears in calibration reports; static seam reports use audit vocabulary (test_grip, missing_discriminator, etc.)\",\n");
 
     out.push_str("  \"metrics\": {\n");
-    out.push_str(&format!("    \"matched_mutations\": {},\n", results.metrics.matched_count));
-    out.push_str(&format!("    \"unmatched_mutations\": {}\n", results.metrics.unmatched_count));
+    out.push_str(&format!(
+        "    \"matched_mutations\": {},\n",
+        results.metrics.matched_count
+    ));
+    out.push_str(&format!(
+        "    \"unmatched_mutations\": {}\n",
+        results.metrics.unmatched_count
+    ));
     out.push_str("  },\n");
 
     out.push_str("  \"matched_mutations\": [\n");
@@ -309,33 +333,75 @@ pub(crate) fn render_calibration_json(results: &CalibrationResults) -> String {
 
 fn push_matched_mutation_json(out: &mut String, mutation: &MatchedMutation) {
     out.push_str("    {\n");
-    out.push_str(&format!("      \"mutation_id\": \"{}\",\n", escape_json(&mutation.mutation_id)));
-    out.push_str(&format!("      \"seam_id\": \"{}\",\n", escape_json(&mutation.seam_id)));
-    out.push_str(&format!("      \"seam_kind\": \"{}\",\n", mutation.seam_kind.as_str()));
-    out.push_str(&format!("      \"grip_class\": \"{}\",\n", mutation.grip_class.as_str()));
+    out.push_str(&format!(
+        "      \"mutation_id\": \"{}\",\n",
+        escape_json(&mutation.mutation_id)
+    ));
+    out.push_str(&format!(
+        "      \"seam_id\": \"{}\",\n",
+        escape_json(&mutation.seam_id)
+    ));
+    out.push_str(&format!(
+        "      \"seam_kind\": \"{}\",\n",
+        mutation.seam_kind.as_str()
+    ));
+    out.push_str(&format!(
+        "      \"grip_class\": \"{}\",\n",
+        mutation.grip_class.as_str()
+    ));
     if let Some(kind) = &mutation.oracle_kind {
         out.push_str(&format!("      \"oracle_kind\": \"{}\",\n", kind.as_str()));
     }
     if let Some(strength) = &mutation.oracle_strength {
-        out.push_str(&format!("      \"oracle_strength\": \"{}\",\n", strength.as_str()));
+        out.push_str(&format!(
+            "      \"oracle_strength\": \"{}\",\n",
+            strength.as_str()
+        ));
     }
-    out.push_str(&format!("      \"observed_values_count\": {},\n", mutation.observed_values_count));
-    out.push_str(&format!("      \"missing_discriminators_count\": {},\n", mutation.missing_discriminators_count));
-    out.push_str(&format!("      \"mutation_operator\": \"{}\",\n", escape_json(&mutation.mutation_operator)));
-    out.push_str(&format!("      \"outcome\": \"{}\",\n", mutation.outcome.as_str()));
+    out.push_str(&format!(
+        "      \"observed_values_count\": {},\n",
+        mutation.observed_values_count
+    ));
+    out.push_str(&format!(
+        "      \"missing_discriminators_count\": {},\n",
+        mutation.missing_discriminators_count
+    ));
+    out.push_str(&format!(
+        "      \"mutation_operator\": \"{}\",\n",
+        escape_json(&mutation.mutation_operator)
+    ));
+    out.push_str(&format!(
+        "      \"outcome\": \"{}\",\n",
+        mutation.outcome.as_str()
+    ));
     out.push_str(&format!("      \"duration_ms\": {}", mutation.duration_ms));
     out.push_str("\n    }");
 }
 
 fn push_unmatched_mutation_json(out: &mut String, mutation: &UnmatchedMutation) {
     out.push_str("    {\n");
-    out.push_str(&format!("      \"mutation_id\": \"{}\",\n", escape_json(&mutation.mutation_id)));
-    out.push_str(&format!("      \"file\": \"{}\",\n", escape_json(&mutation.file)));
+    out.push_str(&format!(
+        "      \"mutation_id\": \"{}\",\n",
+        escape_json(&mutation.mutation_id)
+    ));
+    out.push_str(&format!(
+        "      \"file\": \"{}\",\n",
+        escape_json(&mutation.file)
+    ));
     out.push_str(&format!("      \"line\": {},\n", mutation.line));
     out.push_str(&format!("      \"column\": {},\n", mutation.column));
-    out.push_str(&format!("      \"mutation_operator\": \"{}\",\n", escape_json(&mutation.mutation_operator)));
-    out.push_str(&format!("      \"outcome\": \"{}\",\n", mutation.outcome.as_str()));
-    out.push_str(&format!("      \"reason\": \"{}\"\n", escape_json(&mutation.reason)));
+    out.push_str(&format!(
+        "      \"mutation_operator\": \"{}\",\n",
+        escape_json(&mutation.mutation_operator)
+    ));
+    out.push_str(&format!(
+        "      \"outcome\": \"{}\",\n",
+        mutation.outcome.as_str()
+    ));
+    out.push_str(&format!(
+        "      \"reason\": \"{}\"\n",
+        escape_json(&mutation.reason)
+    ));
     out.push_str("    }");
 }
 
@@ -361,8 +427,14 @@ pub(crate) fn render_calibration_markdown(results: &CalibrationResults) -> Strin
     out.push_str("> **Advisory only.** Runtime mutation vocabulary (killed, survived, timeout, unchosen) appears in calibration reports. Static seam reports use audit vocabulary (test_grip, missing_discriminator, static_evidence, runtime_confirmation).\n\n");
 
     out.push_str("## Summary\n\n");
-    out.push_str(&format!("- **Matched mutations**: {}\n", results.metrics.matched_count));
-    out.push_str(&format!("- **Unmatched mutations**: {}\n\n", results.metrics.unmatched_count));
+    out.push_str(&format!(
+        "- **Matched mutations**: {}\n",
+        results.metrics.matched_count
+    ));
+    out.push_str(&format!(
+        "- **Unmatched mutations**: {}\n\n",
+        results.metrics.unmatched_count
+    ));
 
     out.push_str("## Outcome Distribution\n\n");
     out.push_str("| Outcome | Count |\n");
@@ -399,7 +471,10 @@ pub(crate) fn render_calibration_markdown(results: &CalibrationResults) -> Strin
     if results.unmatched.is_empty() {
         out.push_str("All mutations were matched to seams.\n");
     } else {
-        out.push_str(&format!("Found {} unmatched mutations:\n\n", results.unmatched.len()));
+        out.push_str(&format!(
+            "Found {} unmatched mutations:\n\n",
+            results.unmatched.len()
+        ));
         for mutation in &results.unmatched {
             out.push_str(&format!(
                 "- `{}` at {}:{} — {}\n",
@@ -448,7 +523,12 @@ mod tests {
 
     #[test]
     fn mutation_outcome_round_trip() {
-        for outcome in [MutationOutcome::Killed, MutationOutcome::Survived, MutationOutcome::Timeout, MutationOutcome::Unchosen] {
+        for outcome in [
+            MutationOutcome::Killed,
+            MutationOutcome::Survived,
+            MutationOutcome::Timeout,
+            MutationOutcome::Unchosen,
+        ] {
             let s = outcome.as_str();
             assert_eq!(MutationOutcome::from_str(s), Some(outcome));
         }
