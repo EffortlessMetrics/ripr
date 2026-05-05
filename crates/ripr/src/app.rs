@@ -37,6 +37,12 @@ impl Default for CheckInput {
     }
 }
 
+/// Public analysis effort profile used by both CLI flags and library
+/// integrations.
+///
+/// Modes tune static evidence collection cost versus depth, while keeping
+/// result language in terms of exposure estimates (`exposed`,
+/// `weakly_exposed`, unknown classes) rather than runtime mutation outcomes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Mode {
     /// Minimal-latency local feedback.
@@ -75,6 +81,11 @@ impl Mode {
     }
 }
 
+/// Output renderer selection for [`render_check`].
+///
+/// Most automation should prefer [`OutputFormat::Json`] for stable
+/// machine-readable data. Badge and repo-inventory formats exist for specific
+/// downstream integrations and may require additional artifacts.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OutputFormat {
     /// Human-readable plain text report.
@@ -137,11 +148,12 @@ pub enum OutputFormat {
 }
 
 impl OutputFormat {
-    /// Whether this format renders against the full-repo baseline rather
-    /// than a diff. Repo-scope formats route through
-    /// [`check_workspace_repo`] and emit native badge JSON with
-    /// `scope: "repo"`. The Shields projection stays four-field for both
-    /// scopes.
+    /// Returns `true` when the format targets full-repo scope rather than
+    /// diff scope.
+    ///
+    /// Repo-scope formats route through [`check_workspace_repo`] and emit
+    /// native badge JSON with `scope: "repo"`. The Shields projection stays
+    /// four-field for both scopes.
     pub fn is_repo_scope(&self) -> bool {
         matches!(
             self,
@@ -157,10 +169,11 @@ impl OutputFormat {
         )
     }
 
-    /// Whether this format renders the repo seam inventory, classified
-    /// exposure report, or agent packets rather than the diff/badge
-    /// `Findings` pipeline. These formats short-circuit
-    /// `check_workspace_repo` since they do not consume `Findings`.
+    /// Returns `true` when the format renders repo seam inventory,
+    /// classified exposure, or agent packet artifacts.
+    ///
+    /// These formats short-circuit `check_workspace_repo` because they do not
+    /// consume the diff/badge `Findings` pipeline.
     pub fn is_repo_seam_inventory(&self) -> bool {
         matches!(
             self,
@@ -193,6 +206,21 @@ pub struct CheckOutput {
 }
 
 /// Runs the end-to-end static exposure analysis for a workspace.
+///
+/// # Errors
+///
+/// Returns `Err(String)` when diff acquisition, syntax indexing, or static
+/// analysis cannot complete for the requested workspace/input pair.
+///
+/// # Examples
+///
+/// ```no_run
+/// use ripr::{check_workspace, CheckInput};
+///
+/// let output = check_workspace(CheckInput::default())?;
+/// println!("schema={}, findings={}", output.schema_version, output.findings.len());
+/// # Ok::<(), String>(())
+/// ```
 pub fn check_workspace(input: CheckInput) -> Result<CheckOutput, String> {
     let options = AnalysisOptions {
         root: input.root.clone(),
@@ -220,6 +248,11 @@ pub fn check_workspace(input: CheckInput) -> Result<CheckOutput, String> {
 /// repo's static exposure clean?" should not depend on the contents of
 /// `git diff origin/main...HEAD` — for example, when rendering a
 /// public README badge from `main`.
+///
+/// # Errors
+///
+/// Returns `Err(String)` when repository traversal, syntax indexing, or
+/// classification cannot complete for the requested workspace.
 pub fn check_workspace_repo(input: CheckInput) -> Result<CheckOutput, String> {
     let options = AnalysisOptions {
         root: input.root.clone(),
