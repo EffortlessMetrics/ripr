@@ -73,5 +73,8 @@ path = "xtask/src/main.rs"
 owner = "devtools"
 reason = "The static-language checker implementation contains the literal prohibited term list and the regression tests that exercise it."
 
-
+[[allow]]
+path = "crates/ripr/src/output/mutation_calibration.rs"
+owner = "campaign-5a"
+reason = "Calibration scaffold implementation parses and renders cargo-mutants mutation outcome vocabulary in advisory-only calibration reports. Module enforces vocabulary isolation: runtime outcome terms appear only in mutation-calibration report outputs; static seam reports maintain the audit vocabulary (test_grip, missing_discriminator, etc.)."
 
