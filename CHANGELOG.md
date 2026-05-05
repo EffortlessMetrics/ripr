@@ -7,7 +7,12 @@ user-visible behavior, compatibility notes, and migration guidance. Internal
 planning, ADR, and spec changes are called out when they affect how future PRs
 are scoped or reviewed.
 
-## Unreleased
+## Unreleased (target: 0.4.0)
+
+This section tracks work merged after `0.3.0` and planned for `0.4.0`.
+The `0.4.0` theme remains **Exposure Truth**: explain what changed behavior
+appears to flow to, what the tests appear to observe, and which discriminator
+is still missing.
 
 ### Added
 
@@ -77,7 +82,20 @@ are scoped or reviewed.
 - Added a framed LSP protocol smoke test for initialize, didOpen, refresh,
   hover, codeAction, shutdown, and exit over the tower server.
 
+### In scope for 0.4.0 (still unreleased)
+
+- Campaign 5A follow-through for Voice B usability and precision:
+  `cache/repo-seam-facts-v1`, `related-test-precision-v1`,
+  `value-extraction-v2`, `oracle-shape-v2`,
+  `agent-seam-packets-v2`, `lsp/seam-code-actions-v1`, and
+  `calibration/cargo-mutants-v1`.
+- Campaign 5B operationalization items remain intentionally blocked behind
+  5A outputs: `config/ripr-config-v1`, `ci/sarif-ci-policy`, and future
+  seam-count mapping surfaces.
+
 ## 0.3.0 - 2026-05-02
+
+Release focus: **Evidence Foundation**.
 
 ### Added
 
@@ -123,6 +141,8 @@ are scoped or reviewed.
 
 ## 0.2.0 - 2026-05-01
 
+Release focus: **Editor distribution and server provisioning**.
+
 - First self-provisioning editor distribution path.
 - Added `ripr lsp --stdio` and `ripr lsp --version`.
 - Added VS Code/Open VSX server resolution:
@@ -133,6 +153,8 @@ are scoped or reviewed.
 - Published the universal VSIX and Open VSX extension.
 
 ## 0.1.0 - 2026-05-01
+
+Release focus: **First publishable alpha**.
 
 - First publishable alpha of `ripr`: static RIPR exposure analysis for
   Rust/Cargo workspaces.

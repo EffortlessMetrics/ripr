@@ -208,9 +208,24 @@ Nice later, not blocking:
 
 ## Release Frames
 
-### `0.3.0` - Evidence Foundation
+### `0.1.0` - First Publishable Alpha (released 2026-05-01)
 
-Ship:
+Shipped:
+
+- first publishable `ripr` alpha for static RIPR exposure analysis on
+  Rust/Cargo workspaces.
+
+### `0.2.0` - Editor Distribution (released 2026-05-01)
+
+Shipped:
+
+- VS Code/Open VSX extension packaging and publish lane
+- server binary release artifacts plus SHA-256 manifest
+- extension server-resolution order with actionable fallback behavior
+
+### `0.3.0` - Evidence Foundation (released 2026-05-02)
+
+Shipped:
 
 - fixture and golden scaffolding
 - fixture laboratory
@@ -227,14 +242,22 @@ Success condition:
 Existing sample findings come from fact objects instead of line-substring guesses.
 ```
 
-### `0.4.0` - Exposure Truth
+### `0.4.0` - Exposure Truth (current unreleased target)
 
-Ship:
+Shipped so far (already merged on main):
 
 - oracle strength v2
 - local delta flow
 - activation and value modeling
 - evidence-first human output
+- campaign 4B repo seam inventory, seam exposure classification, repo exposure
+  reports, agent seam packets, and seam-native LSP diagnostics/hover
+
+Still targeted before cut:
+
+- campaign 5A usability/precision follow-through (cache, related-test
+  precision, value extraction v2, oracle shape v2, seam packet v2, seam code
+  actions, calibration scaffold)
 
 Success condition:
 
