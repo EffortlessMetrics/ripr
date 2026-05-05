@@ -1352,22 +1352,17 @@ fn below_case() {
             .related_tests
             .first()
             .ok_or_else(|| "at least one related test".to_string())?;
-        if first.relation_reason != RelationReason::DirectOwnerCall {
-            return Err(format!(
-                "direct owner call must outrank same-file affinity; got grips {:?}",
-                evidence
-                    .related_tests
-                    .iter()
-                    .map(|g| (g.test_name.clone(), g.relation_reason))
-                    .collect::<Vec<_>>()
-            ));
-        }
-        if first.relation_confidence != RelationConfidence::High {
-            return Err(format!(
-                "expected High confidence for direct owner call, got {:?}",
-                first.relation_confidence
-            ));
-        }
+        let labels: Vec<_> = evidence
+            .related_tests
+            .iter()
+            .map(|g| (g.test_name.clone(), g.relation_reason))
+            .collect();
+        assert_eq!(
+            first.relation_reason,
+            RelationReason::DirectOwnerCall,
+            "direct owner call must outrank same-file affinity; got grips {labels:?}"
+        );
+        assert_eq!(first.relation_confidence, RelationConfidence::High);
         Ok(())
     }
 
@@ -1384,18 +1379,8 @@ fn below_case() {
             "#[test] fn discounted_total_smoke() { assert_eq!(1, 1); }\n",
         );
         let grip = first_grip_for("src/pricing.rs", prod_src, &[test])?;
-        if grip.relation_reason != RelationReason::OwnerNamedTest {
-            return Err(format!(
-                "expected OwnerNamedTest, got {:?}",
-                grip.relation_reason
-            ));
-        }
-        if grip.relation_confidence != RelationConfidence::Medium {
-            return Err(format!(
-                "expected Medium confidence, got {:?}",
-                grip.relation_confidence
-            ));
-        }
+        assert_eq!(grip.relation_reason, RelationReason::OwnerNamedTest);
+        assert_eq!(grip.relation_confidence, RelationConfidence::Medium);
         Ok(())
     }
 
@@ -1414,21 +1399,15 @@ fn below_case() {
             "#[test] fn quote_smoke() { let _ = make_quote(); assert!(true); }\n",
         );
         let grip = first_grip_for("src/pricing.rs", prod_src, &[test])?;
-        if grip.relation_reason != RelationReason::FixtureOwnerAffinity {
-            return Err(format!(
-                "expected FixtureOwnerAffinity, got {:?}",
-                grip.relation_reason
-            ));
-        }
-        if !matches!(
-            grip.relation_confidence,
-            RelationConfidence::Low | RelationConfidence::Opaque
-        ) {
-            return Err(format!(
-                "expected Low or Opaque confidence, got {:?}",
-                grip.relation_confidence
-            ));
-        }
+        assert_eq!(grip.relation_reason, RelationReason::FixtureOwnerAffinity);
+        assert!(
+            matches!(
+                grip.relation_confidence,
+                RelationConfidence::Low | RelationConfidence::Opaque
+            ),
+            "expected Low or Opaque confidence, got {:?}",
+            grip.relation_confidence
+        );
         Ok(())
     }
 
@@ -1467,12 +1446,12 @@ fn below_case() {
         // OK for it to be excluded entirely (no reason fires) — the
         // contract is "do not falsely classify substring hits".
         for grip in &evidence.related_tests {
-            if grip.relation_reason == RelationReason::AssertionTargetAffinity {
-                return Err(format!(
-                    "substring hit (`discount_threshold_factor`) must not match \
-                     assertion_target_affinity; got {grip:?}"
-                ));
-            }
+            assert_ne!(
+                grip.relation_reason,
+                RelationReason::AssertionTargetAffinity,
+                "substring hit (`discount_threshold_factor`) must not match \
+                 assertion_target_affinity; got {grip:?}"
+            );
         }
         Ok(())
     }
@@ -1505,25 +1484,14 @@ fn below_case() {
             .find(|s| s.kind() == SeamKind::PredicateBoundary)
             .ok_or_else(|| "predicate seam present".to_string())?;
         let evidence = evidence_for_seam(predicate, &index);
-        if evidence.related_tests.len() < 2 {
-            return Err(format!(
-                "expected at least 2 related tests, got {}",
-                evidence.related_tests.len()
-            ));
-        }
+        assert!(
+            evidence.related_tests.len() >= 2,
+            "expected at least 2 related tests, got {}",
+            evidence.related_tests.len()
+        );
         // alpha.rs sorts before zeta.rs.
-        if evidence.related_tests[0].file != Path::new("tests/alpha.rs") {
-            return Err(format!(
-                "expected first ranked test in tests/alpha.rs, got {}",
-                evidence.related_tests[0].file.display()
-            ));
-        }
-        if evidence.related_tests[1].file != Path::new("tests/zeta.rs") {
-            return Err(format!(
-                "expected second ranked test in tests/zeta.rs, got {}",
-                evidence.related_tests[1].file.display()
-            ));
-        }
+        assert_eq!(evidence.related_tests[0].file, Path::new("tests/alpha.rs"));
+        assert_eq!(evidence.related_tests[1].file, Path::new("tests/zeta.rs"));
         Ok(())
     }
 
@@ -1563,18 +1531,8 @@ fn below_case() {
             .related_tests
             .first()
             .ok_or_else(|| "at least one related test".to_string())?;
-        if first.relation_reason != RelationReason::DirectOwnerCall {
-            return Err(format!(
-                "expected DirectOwnerCall first, got {:?}",
-                first.relation_reason
-            ));
-        }
-        if first.relation_confidence != RelationConfidence::High {
-            return Err(format!(
-                "expected High confidence first, got {:?}",
-                first.relation_confidence
-            ));
-        }
+        assert_eq!(first.relation_reason, RelationReason::DirectOwnerCall);
+        assert_eq!(first.relation_confidence, RelationConfidence::High);
         Ok(())
     }
 
@@ -1601,18 +1559,8 @@ fn below_case() {
             "#[test] fn smoke() { let _f = crate::pricing::discounted_total; assert_eq!(1, 1); }\n",
         );
         let grip = first_grip_for("src/pricing.rs", prod_src, &[test])?;
-        if grip.relation_reason != RelationReason::ImportPathAffinity {
-            return Err(format!(
-                "expected ImportPathAffinity, got {:?}",
-                grip.relation_reason
-            ));
-        }
-        if grip.relation_confidence != RelationConfidence::Medium {
-            return Err(format!(
-                "expected Medium confidence, got {:?}",
-                grip.relation_confidence
-            ));
-        }
+        assert_eq!(grip.relation_reason, RelationReason::ImportPathAffinity);
+        assert_eq!(grip.relation_confidence, RelationConfidence::Medium);
         Ok(())
     }
 
@@ -1650,13 +1598,12 @@ fn below_case() {
             .ok_or_else(|| "predicate seam present".to_string())?;
         let evidence = evidence_for_seam(predicate, &index);
         for grip in &evidence.related_tests {
-            if grip.relation_reason == RelationReason::ImportPathAffinity {
-                return Err(format!(
-                    "token co-occurrence (`pricing` + `discounted_total` in body \
-                     without `::` path syntax) must not match \
-                     ImportPathAffinity; got {grip:?}"
-                ));
-            }
+            assert_ne!(
+                grip.relation_reason,
+                RelationReason::ImportPathAffinity,
+                "token co-occurrence (`pricing` + `discounted_total` in body without \
+                 `::` path syntax) must not match ImportPathAffinity; got {grip:?}"
+            );
         }
         Ok(())
     }
@@ -1689,18 +1636,8 @@ fn below_case() {
         let grip = evidence.related_tests.first().ok_or_else(|| {
             "expected at least one related test for same-module pairing".to_string()
         })?;
-        if grip.relation_reason != RelationReason::SameModule {
-            return Err(format!(
-                "expected SameModule, got {:?}",
-                grip.relation_reason
-            ));
-        }
-        if grip.relation_confidence != RelationConfidence::Medium {
-            return Err(format!(
-                "expected Medium confidence, got {:?}",
-                grip.relation_confidence
-            ));
-        }
+        assert_eq!(grip.relation_reason, RelationReason::SameModule);
+        assert_eq!(grip.relation_confidence, RelationConfidence::Medium);
         Ok(())
     }
 
@@ -1714,8 +1651,7 @@ fn below_case() {
     // codecov coverage reflects intent rather than scenario count.
 
     #[test]
-    fn relation_reason_as_str_priority_and_confidence_are_pinned_per_variant() -> Result<(), String>
-    {
+    fn relation_reason_as_str_priority_and_confidence_are_pinned_per_variant() {
         // Pin the (variant -> "string", priority, confidence) mapping
         // for every reason. Catches accidental swaps in the match arms
         // of `as_str` / `priority` / `confidence`.
@@ -1764,31 +1700,14 @@ fn below_case() {
             ),
         ];
         for (reason, name, prio, conf) in table {
-            if reason.as_str() != name {
-                return Err(format!(
-                    "{reason:?}.as_str() = {}, want {}",
-                    reason.as_str(),
-                    name
-                ));
-            }
-            if reason.priority() != prio {
-                return Err(format!(
-                    "{reason:?}.priority() = {}, want {prio}",
-                    reason.priority()
-                ));
-            }
-            if reason.confidence() != conf {
-                return Err(format!(
-                    "{reason:?}.confidence() = {:?}, want {conf:?}",
-                    reason.confidence()
-                ));
-            }
+            assert_eq!(reason.as_str(), name, "{reason:?}.as_str()");
+            assert_eq!(reason.priority(), prio, "{reason:?}.priority()");
+            assert_eq!(reason.confidence(), conf, "{reason:?}.confidence()");
         }
-        Ok(())
     }
 
     #[test]
-    fn relation_confidence_as_str_and_rank_are_pinned_per_variant() -> Result<(), String> {
+    fn relation_confidence_as_str_and_rank_are_pinned_per_variant() {
         let table = [
             (RelationConfidence::High, "high", 0u8),
             (RelationConfidence::Medium, "medium", 1),
@@ -1796,22 +1715,13 @@ fn below_case() {
             (RelationConfidence::Opaque, "opaque", 3),
         ];
         for (conf, name, rank) in table {
-            if conf.as_str() != name {
-                return Err(format!(
-                    "{conf:?}.as_str() = {}, want {}",
-                    conf.as_str(),
-                    name
-                ));
-            }
-            if conf.rank() != rank {
-                return Err(format!("{conf:?}.rank() = {}, want {rank}", conf.rank()));
-            }
+            assert_eq!(conf.as_str(), name, "{conf:?}.as_str()");
+            assert_eq!(conf.rank(), rank, "{conf:?}.rank()");
         }
-        Ok(())
     }
 
     #[test]
-    fn required_discriminator_tokens_extracts_text_from_every_variant() -> Result<(), String> {
+    fn required_discriminator_tokens_extracts_text_from_every_variant() {
         use crate::analysis::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator};
         let make = |rd: RequiredDiscriminator| {
             RepoSeam::new(
@@ -1875,38 +1785,24 @@ fn below_case() {
         for (rd, expected_token) in cases {
             let seam = make(rd.clone());
             let tokens = required_discriminator_tokens(&seam);
-            if !tokens.iter().any(|t| t == expected_token) {
-                return Err(format!(
-                    "{:?} -> tokens {:?} must contain {expected_token}",
-                    rd, tokens
-                ));
-            }
+            assert!(
+                tokens.iter().any(|t| t == expected_token),
+                "{rd:?} -> tokens {tokens:?} must contain {expected_token}"
+            );
         }
-        Ok(())
     }
 
     #[test]
-    fn same_test_file_accepts_stem_match_and_test_suffixes() -> Result<(), String> {
-        if !same_test_file(Path::new("tests/foo.rs"), "foo") {
-            return Err("foo == foo should match".into());
-        }
-        if !same_test_file(Path::new("tests/foo_test.rs"), "foo") {
-            return Err("foo_test should match foo".into());
-        }
-        if !same_test_file(Path::new("tests/foo_tests.rs"), "foo") {
-            return Err("foo_tests should match foo".into());
-        }
-        if same_test_file(Path::new("tests/bar.rs"), "foo") {
-            return Err("bar should not match foo".into());
-        }
-        if same_test_file(Path::new(""), "foo") {
-            return Err("empty path should not match".into());
-        }
-        Ok(())
+    fn same_test_file_accepts_stem_match_and_test_suffixes() {
+        assert!(same_test_file(Path::new("tests/foo.rs"), "foo"));
+        assert!(same_test_file(Path::new("tests/foo_test.rs"), "foo"));
+        assert!(same_test_file(Path::new("tests/foo_tests.rs"), "foo"));
+        assert!(!same_test_file(Path::new("tests/bar.rs"), "foo"));
+        assert!(!same_test_file(Path::new(""), "foo"));
     }
 
     #[test]
-    fn module_path_for_handles_every_root_shape() -> Result<(), String> {
+    fn module_path_for_handles_every_root_shape() {
         let cases: Vec<(&str, Option<&str>)> = vec![
             ("src/foo.rs", Some("foo")),
             ("tests/cli_smoke.rs", Some("cli_smoke")),
@@ -1919,32 +1815,20 @@ fn below_case() {
         for (input, expected) in cases {
             let got = module_path_for(Path::new(input));
             let want = expected.map(str::to_string);
-            if got != want {
-                return Err(format!("module_path_for({input}) = {got:?}, want {want:?}"));
-            }
+            assert_eq!(got, want, "module_path_for({input})");
         }
-        Ok(())
     }
 
     #[test]
-    fn same_module_matches_parent_prefix_and_underscore_form() -> Result<(), String> {
-        if !same_module("pricing/discount", "pricing/integration") {
-            return Err("pricing/integration should share parent pricing".into());
-        }
-        if !same_module("a/b/c", "a_b/d") {
-            return Err("flattened parent prefix should match".into());
-        }
-        if same_module("flat", "anything") {
-            return Err("single-segment owner has no parent; must not match".into());
-        }
-        if same_module("pricing/discount", "billing/integration") {
-            return Err("billing should not share pricing parent".into());
-        }
-        Ok(())
+    fn same_module_matches_parent_prefix_and_underscore_form() {
+        assert!(same_module("pricing/discount", "pricing/integration"));
+        assert!(same_module("a/b/c", "a_b/d"));
+        assert!(!same_module("flat", "anything"));
+        assert!(!same_module("pricing/discount", "billing/integration"));
     }
 
     #[test]
-    fn is_fixture_named_recognises_each_prefix_and_suffix() -> Result<(), String> {
+    fn is_fixture_named_recognises_each_prefix_and_suffix() {
         let positives = [
             "fixture_quote",
             "setup_db",
@@ -1956,17 +1840,14 @@ fn below_case() {
             "quote_factory",
         ];
         for name in positives {
-            if !is_fixture_named(name) {
-                return Err(format!("{name} should be fixture-named"));
-            }
+            assert!(is_fixture_named(name), "{name} should be fixture-named");
         }
-        let negatives = ["compute_total", "discount", "verify"];
-        for name in negatives {
-            if is_fixture_named(name) {
-                return Err(format!("{name} should NOT be fixture-named"));
-            }
+        for name in ["compute_total", "discount", "verify"] {
+            assert!(
+                !is_fixture_named(name),
+                "{name} should NOT be fixture-named"
+            );
         }
-        Ok(())
     }
 
     #[test]
@@ -1987,28 +1868,19 @@ fn below_case() {
              #[test] fn smoke() { let discount_threshold = 5; assert_eq!(discount_threshold, 5); }\n",
         );
         let grip = first_grip_for("src/pricing.rs", prod_src, &[test])?;
-        if grip.relation_reason != RelationReason::AssertionTargetAffinity {
-            return Err(format!(
-                "expected AssertionTargetAffinity, got {:?}",
-                grip.relation_reason
-            ));
-        }
-        if grip.relation_confidence != RelationConfidence::High {
-            return Err(format!(
-                "expected High confidence, got {:?}",
-                grip.relation_confidence
-            ));
-        }
+        assert_eq!(
+            grip.relation_reason,
+            RelationReason::AssertionTargetAffinity
+        );
+        assert_eq!(grip.relation_confidence, RelationConfidence::High);
         Ok(())
     }
 
     #[test]
-    fn assertion_targets_seam_returns_false_for_empty_token_list() -> Result<(), String> {
+    fn assertion_targets_seam_returns_false_for_empty_token_list() {
         // The `tokens.is_empty()` early-return is the cheap escape
         // hatch when a seam's `RequiredDiscriminator` carries no
         // interesting tokens (e.g. a one-character variable name).
-        // Use a synthetic TestSummary because we only care about the
-        // helper's input contract.
         use crate::analysis::rust_index::TestFact;
         let test = TestFact {
             name: "synth".to_string(),
@@ -2020,49 +1892,32 @@ fn below_case() {
             assertions: Vec::new(),
             literals: Vec::new(),
         };
-        if assertion_targets_seam(&test, &[]) {
-            return Err("empty token list must short-circuit to false".into());
-        }
-        Ok(())
+        assert!(!assertion_targets_seam(&test, &[]));
     }
 
     #[test]
-    fn package_prefix_resolves_crates_and_nested_src_tests_layouts() -> Result<(), String> {
-        // `crates/<name>/src/...` form returns the `crates/<name>/`
-        // prefix.
-        let crates_form = package_prefix(Path::new("crates/ripr/src/auth/login.rs"));
-        if crates_form.as_deref() != Some("crates/ripr/") {
-            return Err(format!(
-                "crates form: got {crates_form:?}, want Some(\"crates/ripr/\")"
-            ));
-        }
-        // `crates/<name>/tests/...` form also returns the package
-        // prefix (the second branch of the strip_prefix-and-or guard).
-        let crates_tests = package_prefix(Path::new("crates/ripr/tests/integration.rs"));
-        if crates_tests.as_deref() != Some("crates/ripr/") {
-            return Err(format!(
-                "crates tests form: got {crates_tests:?}, want Some(\"crates/ripr/\")"
-            ));
-        }
-        // Nested workspace path (rfind branch): the marker scan
-        // falls through to the `/src/` rfind path.
-        let nested = package_prefix(Path::new("workspaces/foo/src/auth/login.rs"));
-        if nested.as_deref() != Some("workspaces/foo/") {
-            return Err(format!(
-                "nested form: got {nested:?}, want Some(\"workspaces/foo/\")"
-            ));
-        }
+    fn package_prefix_resolves_crates_and_nested_src_tests_layouts() {
+        // `crates/<name>/src/...` form returns the `crates/<name>/` prefix.
+        assert_eq!(
+            package_prefix(Path::new("crates/ripr/src/auth/login.rs")).as_deref(),
+            Some("crates/ripr/")
+        );
+        // `crates/<name>/tests/...` form (the second branch of the
+        // strip_prefix-and-or guard) also returns the package prefix.
+        assert_eq!(
+            package_prefix(Path::new("crates/ripr/tests/integration.rs")).as_deref(),
+            Some("crates/ripr/")
+        );
+        // Nested workspace path (rfind branch): the marker scan falls
+        // through to the `/src/` rfind path.
+        assert_eq!(
+            package_prefix(Path::new("workspaces/foo/src/auth/login.rs")).as_deref(),
+            Some("workspaces/foo/")
+        );
         // Bare `src/...` returns None (prefix would be empty).
-        let bare = package_prefix(Path::new("src/foo.rs"));
-        if bare.is_some() {
-            return Err(format!("bare src/ should return None, got {bare:?}"));
-        }
+        assert_eq!(package_prefix(Path::new("src/foo.rs")), None);
         // Path under neither root.
-        let docs = package_prefix(Path::new("docs/note.rs"));
-        if docs.is_some() {
-            return Err(format!("unrooted path should return None, got {docs:?}"));
-        }
-        Ok(())
+        assert_eq!(package_prefix(Path::new("docs/note.rs")), None);
     }
 
     #[test]
@@ -2097,12 +1952,12 @@ fn below_case() {
             .ok_or_else(|| "predicate seam present".to_string())?;
         let evidence = evidence_for_seam(predicate, &index);
         for grip in &evidence.related_tests {
-            if grip.file == Path::new("crates/ripr_other/tests/x.rs") {
-                return Err(format!(
-                    "test in unrelated package should be filtered by package_prefix; \
-                     got {grip:?}"
-                ));
-            }
+            assert_ne!(
+                grip.file,
+                Path::new("crates/ripr_other/tests/x.rs"),
+                "test in unrelated package should be filtered by package_prefix; \
+                 got {grip:?}"
+            );
         }
         Ok(())
     }
@@ -2128,12 +1983,7 @@ fn below_case() {
             "#[test] fn quote_smoke() { let _ = provide_quote(); assert!(true); }\n",
         );
         let grip = first_grip_for("src/pricing.rs", prod_src, &[test])?;
-        if grip.relation_reason != RelationReason::FixtureOwnerAffinity {
-            return Err(format!(
-                "expected FixtureOwnerAffinity, got {:?}",
-                grip.relation_reason
-            ));
-        }
+        assert_eq!(grip.relation_reason, RelationReason::FixtureOwnerAffinity);
         Ok(())
     }
 }
