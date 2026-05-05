@@ -486,4 +486,80 @@ mod tests {
         assert_eq!(ungripped_record.class, SeamGripClass::Ungripped);
         Ok(())
     }
+    #[test]
+    fn classify_seams_skips_seams_without_matching_evidence() {
+        let seam = sample_seam();
+        let unrelated_seam = RepoSeam::new(
+            "src/other.rs",
+            "other::path",
+            SeamKind::ReturnValue,
+            99,
+            1,
+            "value",
+            RequiredDiscriminator::ReturnValue {
+                description: "value".to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        );
+
+        let evidence = TestGripEvidence {
+            seam_id: unrelated_seam.id().clone(),
+            related_tests: Vec::<RelatedTestGrip>::new(),
+            reach: stage(StageState::Yes),
+            activate: stage(StageState::Yes),
+            propagate: stage(StageState::Yes),
+            observe: stage(StageState::Yes),
+            discriminate: stage(StageState::Yes),
+            observed_values: Vec::<ValueFact>::new(),
+            missing_discriminators: no_missing(),
+        };
+
+        let classified = classify_seams(std::slice::from_ref(&seam), &[evidence]);
+        assert!(classified.is_empty());
+    }
+
+    #[test]
+    fn classify_seams_uses_matching_evidence_when_orphan_evidence_is_present() {
+        let seam = sample_seam();
+        let orphan = RepoSeam::new(
+            "src/orphan.rs",
+            "orphan::path",
+            SeamKind::ReturnValue,
+            111,
+            3,
+            "orphan",
+            RequiredDiscriminator::ReturnValue {
+                description: "orphan".to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        );
+
+        let orphan_evidence = TestGripEvidence {
+            seam_id: orphan.id().clone(),
+            related_tests: Vec::<RelatedTestGrip>::new(),
+            reach: stage(StageState::No),
+            activate: stage(StageState::No),
+            propagate: stage(StageState::No),
+            observe: stage(StageState::No),
+            discriminate: stage(StageState::No),
+            observed_values: Vec::<ValueFact>::new(),
+            missing_discriminators: no_missing(),
+        };
+        let matching_evidence = evidence_with(
+            StageState::Yes,
+            StageState::Yes,
+            StageState::Yes,
+            StageState::Yes,
+            StageState::Weak,
+            no_missing(),
+        );
+
+        let classified = classify_seams(
+            std::slice::from_ref(&seam),
+            &[orphan_evidence, matching_evidence],
+        );
+        assert_eq!(classified.len(), 1);
+        assert_eq!(classified[0].seam.id(), seam.id());
+        assert_eq!(classified[0].class, SeamGripClass::WeaklyGripped);
+    }
 }
