@@ -39,6 +39,27 @@ pub struct AnalysisResult {
     pub findings: Vec<Finding>,
 }
 
+fn summarize_findings(changed_rust_files: usize, findings: &[Finding]) -> Summary {
+    let mut summary = Summary {
+        changed_rust_files,
+        probes: findings.len(),
+        findings: findings.len(),
+        ..Summary::default()
+    };
+    for finding in findings {
+        match finding.class {
+            crate::domain::ExposureClass::Exposed => summary.exposed += 1,
+            crate::domain::ExposureClass::WeaklyExposed => summary.weakly_exposed += 1,
+            crate::domain::ExposureClass::ReachableUnrevealed => summary.reachable_unrevealed += 1,
+            crate::domain::ExposureClass::NoStaticPath => summary.no_static_path += 1,
+            crate::domain::ExposureClass::InfectionUnknown => summary.infection_unknown += 1,
+            crate::domain::ExposureClass::PropagationUnknown => summary.propagation_unknown += 1,
+            crate::domain::ExposureClass::StaticUnknown => summary.static_unknown += 1,
+        }
+    }
+    summary
+}
+
 pub fn run_analysis(options: &AnalysisOptions) -> Result<AnalysisResult, String> {
     let diff_text = diff::load_diff(
         &options.root,
@@ -83,23 +104,7 @@ pub fn run_analysis(options: &AnalysisOptions) -> Result<AnalysisResult, String>
             .then(a.probe.family.as_str().cmp(b.probe.family.as_str()))
     });
 
-    let mut summary = Summary {
-        changed_rust_files,
-        probes: findings.len(),
-        findings: findings.len(),
-        ..Summary::default()
-    };
-    for finding in &findings {
-        match finding.class {
-            crate::domain::ExposureClass::Exposed => summary.exposed += 1,
-            crate::domain::ExposureClass::WeaklyExposed => summary.weakly_exposed += 1,
-            crate::domain::ExposureClass::ReachableUnrevealed => summary.reachable_unrevealed += 1,
-            crate::domain::ExposureClass::NoStaticPath => summary.no_static_path += 1,
-            crate::domain::ExposureClass::InfectionUnknown => summary.infection_unknown += 1,
-            crate::domain::ExposureClass::PropagationUnknown => summary.propagation_unknown += 1,
-            crate::domain::ExposureClass::StaticUnknown => summary.static_unknown += 1,
-        }
-    }
+    let summary = summarize_findings(changed_rust_files, &findings);
 
     Ok(AnalysisResult { summary, findings })
 }
@@ -138,23 +143,7 @@ pub fn run_repo_analysis(options: &AnalysisOptions) -> Result<AnalysisResult, St
             .then(a.probe.family.as_str().cmp(b.probe.family.as_str()))
     });
 
-    let mut summary = Summary {
-        changed_rust_files: production_files.len(),
-        probes: findings.len(),
-        findings: findings.len(),
-        ..Summary::default()
-    };
-    for finding in &findings {
-        match finding.class {
-            crate::domain::ExposureClass::Exposed => summary.exposed += 1,
-            crate::domain::ExposureClass::WeaklyExposed => summary.weakly_exposed += 1,
-            crate::domain::ExposureClass::ReachableUnrevealed => summary.reachable_unrevealed += 1,
-            crate::domain::ExposureClass::NoStaticPath => summary.no_static_path += 1,
-            crate::domain::ExposureClass::InfectionUnknown => summary.infection_unknown += 1,
-            crate::domain::ExposureClass::PropagationUnknown => summary.propagation_unknown += 1,
-            crate::domain::ExposureClass::StaticUnknown => summary.static_unknown += 1,
-        }
-    }
+    let summary = summarize_findings(production_files.len(), &findings);
 
     Ok(AnalysisResult { summary, findings })
 }
@@ -227,6 +216,15 @@ index 0000000..1111111 100644
         })
         .unwrap();
         assert!(!out.findings.is_empty());
+        let class_total = out.summary.exposed
+            + out.summary.weakly_exposed
+            + out.summary.reachable_unrevealed
+            + out.summary.no_static_path
+            + out.summary.infection_unknown
+            + out.summary.propagation_unknown
+            + out.summary.static_unknown;
+        assert_eq!(class_total, out.summary.findings);
+        assert_eq!(out.summary.findings, out.findings.len());
         assert!(
             out.findings
                 .iter()
