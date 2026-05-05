@@ -102,15 +102,16 @@ pub(crate) fn inventory_classified_seams_uncached(
 /// cache key derives from. Reads files once; the build_index path
 /// reads them again, but the cost is minor compared to parsing. A
 /// future optimization can share the file contents.
+///
+/// Hashes the **same Rust file set fed to `build_index`** — production
+/// seam sources *and* test evidence sources. `ClassifiedSeam` carries
+/// `TestGripEvidence` derived from test files, so a test-only edit must
+/// invalidate the cache; filtering to production-only here would let
+/// stale grip evidence survive a test rewrite.
 fn collect_workspace_state(root: &Path) -> Result<OwnedWorkspaceState, String> {
     let rust_files = workspace::discover_rust_files(root)?;
-    let production_files: Vec<PathBuf> = rust_files
-        .iter()
-        .filter(|p| workspace::is_production_rust_path(p))
-        .cloned()
-        .collect();
-    let mut files: Vec<(PathBuf, Vec<u8>)> = Vec::with_capacity(production_files.len());
-    for path in production_files {
+    let mut files: Vec<(PathBuf, Vec<u8>)> = Vec::with_capacity(rust_files.len());
+    for path in rust_files {
         let bytes = std::fs::read(root.join(&path))
             .map_err(|err| format!("read {} failed: {err}", path.display()))?;
         files.push((path, bytes));
@@ -649,6 +650,83 @@ pub fn build_quote(amount: i32, fee: i32) -> Quote {
         let result = inventory_classified_seams_at(&root)?;
         if result.is_empty() {
             return Err("inventory should return real seams even when cache write fails".into());
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn given_cached_classified_seams_when_related_test_changes_then_inventory_recomputes()
+    -> Result<(), String> {
+        // Pins the P1 invalidation contract end-to-end: a test-only
+        // edit (no production change, no .ripr/* change) must bypass
+        // the cache so stale TestGripEvidence cannot leak through.
+        // Companion to the seam_cache::tests unit test that pins it
+        // at the key derivation level.
+        let root = make_tempdir("test-edit-invalidates")?;
+        write_file(
+            &root.join("src/foo.rs"),
+            "pub fn discount(amount: i32, threshold: i32) -> bool { amount >= threshold }\n",
+        )?;
+        write_file(
+            &root.join("tests/foo_test.rs"),
+            "#[test] fn smoke() { assert_eq!(1, 1); }\n",
+        )?;
+
+        // Cold pass — populates the cache.
+        let cold = inventory_classified_seams_at(&root)?;
+        if cold.is_empty() {
+            return Err("cold path should classify at least one seam".into());
+        }
+
+        // Poison the cached envelope's payload. If the next run reads
+        // this file (i.e. the test edit did *not* change the key), it
+        // will return [] and we'll see it.
+        let entries = list_cache_entries(&root)?;
+        if entries.len() != 1 {
+            return Err(format!(
+                "expected exactly 1 cache entry after cold pass, got {}",
+                entries.len()
+            ));
+        }
+        let cache_file = &entries[0];
+        let bytes = std::fs::read(cache_file)
+            .map_err(|err| format!("read {}: {err}", cache_file.display()))?;
+        let mut envelope: serde_json::Value =
+            serde_json::from_slice(&bytes).map_err(|err| format!("parse cache: {err}"))?;
+        envelope["classified_seams"] = serde_json::Value::Array(Vec::new());
+        let rewritten =
+            serde_json::to_vec(&envelope).map_err(|err| format!("encode cache: {err}"))?;
+        std::fs::write(cache_file, rewritten)
+            .map_err(|err| format!("rewrite {}: {err}", cache_file.display()))?;
+
+        // Edit only the test file — production untouched, no .ripr/*
+        // files involved. This must change the cache key so the
+        // poisoned entry is bypassed.
+        write_file(
+            &root.join("tests/foo_test.rs"),
+            "#[test] fn smoke() { assert!(super::discount(10, 5)); }\n",
+        )?;
+
+        let warm = inventory_classified_seams_at(&root)?;
+        if warm.is_empty() {
+            return Err(
+                "test-only edit must invalidate the classified seam cache; got the poisoned \
+                 empty entry, meaning stale TestGripEvidence would have leaked through"
+                    .into(),
+            );
+        }
+
+        // Sanity: a second cache file should now exist (under the new
+        // key), not just the poisoned one.
+        let entries_after = list_cache_entries(&root)?;
+        if entries_after.len() < 2 {
+            return Err(format!(
+                "expected at least 2 cache entries after test-file edit (poisoned + recomputed), \
+                 got {}",
+                entries_after.len()
+            ));
         }
 
         let _ = std::fs::remove_dir_all(&root);

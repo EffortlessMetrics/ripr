@@ -93,9 +93,13 @@ pub(crate) enum CacheLoad<T> {
 /// touching the filesystem.
 pub(crate) struct WorkspaceState<'a> {
     pub(crate) workspace_root: &'a Path,
-    /// `(canonical relative path, content bytes)` for every production
-    /// file the inventory will read. Order does not matter — the hash
-    /// sorts before mixing.
+    /// `(canonical relative path, content bytes)` for every Rust file
+    /// the inventory will index — production **seam sources** plus test
+    /// **evidence sources**. `ClassifiedSeam` carries `TestGripEvidence`
+    /// derived from test files, so a test-only edit must invalidate the
+    /// cache; restricting this to production files would let stale grip
+    /// evidence survive a test rewrite. Order does not matter — the
+    /// hash sorts before mixing.
     pub(crate) files: &'a [(PathBuf, Vec<u8>)],
     pub(crate) cfg_features: Option<&'a str>,
     pub(crate) config_text: Option<&'a str>,
@@ -441,6 +445,68 @@ mod tests {
         };
         let _ = std::fs::remove_dir_all(&dir);
         result
+    }
+
+    #[test]
+    fn given_test_file_content_changes_when_cache_key_is_built_then_classified_seam_cache_is_invalidated()
+    -> Result<(), String> {
+        // The cache hashes the same Rust file set fed to `build_index`
+        // — production *and* test files. `ClassifiedSeam` carries
+        // `TestGripEvidence` derived from test files, so a test-only
+        // edit must change the key. This test pins that contract by
+        // varying only a test file's content (no test_intent.toml,
+        // no suppressions.toml, no production change).
+        let prod = PathBuf::from("src/foo.rs");
+        let prod_bytes = b"pub fn foo() -> i32 { 1 }\n".to_vec();
+        let test_path = PathBuf::from("tests/foo_test.rs");
+
+        let baseline_files = [
+            (prod.clone(), prod_bytes.clone()),
+            (
+                test_path.clone(),
+                b"#[test] fn smoke() { assert_eq!(1, 1); }\n".to_vec(),
+            ),
+        ];
+        let baseline = WorkspaceState {
+            workspace_root: Path::new("/repo"),
+            files: &baseline_files,
+            cfg_features: None,
+            config_text: None,
+            test_intent_text: None,
+            suppressions_text: None,
+        }
+        .cache_key();
+
+        let updated_files = [
+            (prod, prod_bytes),
+            (
+                test_path,
+                b"#[test] fn smoke() { assert_eq!(super::foo(), 1); }\n".to_vec(),
+            ),
+        ];
+        let updated = WorkspaceState {
+            workspace_root: Path::new("/repo"),
+            files: &updated_files,
+            cfg_features: None,
+            config_text: None,
+            test_intent_text: None,
+            suppressions_text: None,
+        }
+        .cache_key();
+
+        if baseline.files_content_hash == updated.files_content_hash {
+            return Err(
+                "test-only file content change must change files_content_hash so stale \
+                 TestGripEvidence cannot survive in the cache"
+                    .into(),
+            );
+        }
+        if baseline.filename() == updated.filename() {
+            return Err(
+                "test-only file content change must produce a different cache filename".into(),
+            );
+        }
+        Ok(())
     }
 
     #[test]
