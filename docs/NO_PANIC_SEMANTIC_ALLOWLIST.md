@@ -64,13 +64,12 @@ column = 17
 | `container` | `[allow.selector]` | Enclosing function or method name |
 | `callee` | `[allow.selector]` | Exact callee name |
 | `receiver_fingerprint` | `[allow.selector]` | Receiver type or expression fingerprint |
-| `text_contains` | `[allow.selector]` | Required for `string_literal` kind |
 | `line` | `[allow.last_seen]` | Advisory: last known line number |
 | `column` | `[allow.last_seen]` | Advisory: last known column number |
 
 ## Selector kinds
 
-The checker supports four selector kinds.
+The checker currently emits three selector kinds for matching against actual call sites in code.
 
 ### method_call
 
@@ -112,43 +111,6 @@ callee = "unwrap"
 Call matching is exact after normalization. Qualified and associated call forms
 such as `Option::unwrap(some_value)` are normalized so the callee is `unwrap`.
 
-### string_literal
-
-Matches a panic-family occurrence inside a string literal. This is the
-recommended kind for fixture text, error message samples, and documentation
-examples that mention panic-family vocabulary but are not actual call sites.
-
-**`string_literal` selectors require `text_contains`.**
-
-```toml
-[allow.selector]
-kind = "string_literal"
-text_contains = "this should never happen"
-```
-
-The checker verifies that the string literal's content contains the
-`text_contains` value. Without `text_contains`, the entry is rejected at parse
-time.
-
-#### Example: fixture false positive
-
-A test file contains a string `"expected unwrap to succeed"` in a fixture
-input. The text mentions `unwrap` but is not a real call. A `string_literal`
-selector suppresses the false positive without tying the exception to a line
-number:
-
-```toml
-[[allow]]
-path = "crates/ripr/tests/integration.rs"
-family = "unwrap"
-classification = "test_only"
-explanation = "Fixture text mentions unwrap in expected output, not a call site"
-
-[allow.selector]
-kind = "string_literal"
-text_contains = "expected unwrap to succeed"
-```
-
 ## last_seen
 
 The `[allow.last_seen]` section records the last known line and column where
@@ -185,8 +147,5 @@ against the actual call site before being committed to the allowlist.
 - **Do not** use `closure_NNNNN` (byte-offset closures) as stable selector
   anchors. Closure offsets are unstable across edits and will produce stale
   entries.
-
-- **Do not** omit `text_contains` on `string_literal` selectors. The checker
-  rejects such entries.
 
 - **Do not** rely on `last_seen` for matching. It is a hint, not identity.
