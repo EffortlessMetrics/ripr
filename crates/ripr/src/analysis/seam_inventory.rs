@@ -491,6 +491,64 @@ pub fn build_quote(amount: i32, fee: i32) -> Quote {
         Ok(())
     }
 
+    #[test]
+    fn seam_inventory_maps_call_sites_to_call_presence_and_side_effect_sink() -> Result<(), String>
+    {
+        let path = PathBuf::from("src/service.rs");
+        let source = r#"
+pub fn run(flag: bool) {
+    if flag {
+        notify();
+    }
+}
+
+fn notify() {}
+"#;
+        let index = index_from_files(&[(path.clone(), source)])?;
+        let seams = inventory_seams_from_index(&[path], &index);
+        let kinds = seams.iter().map(|s| s.kind().as_str()).collect::<Vec<_>>();
+        assert!(
+            kinds.contains(&SeamKind::CallPresence.as_str()),
+            "expected a CallPresence seam, got {kinds:?}"
+        );
+        let call_presence = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::CallPresence)
+            .ok_or("CallPresence seam kind should have a matching seam")?;
+        assert!(matches!(
+            call_presence.required_discriminator(),
+            RequiredDiscriminator::CallSite { .. }
+        ));
+        assert_eq!(call_presence.expected_sink(), ExpectedSink::SideEffect);
+        Ok(())
+    }
+
+    #[test]
+    fn seam_inventory_skips_inline_test_functions_inside_production_files() -> Result<(), String> {
+        let path = PathBuf::from("src/lib.rs");
+        let source = r#"
+pub fn production_fn(x: i32) -> bool {
+    x > 0
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn inline_test() {
+        assert!(2 > 1);
+    }
+}
+"#;
+        let index = index_from_files(&[(path.clone(), source)])?;
+        let seams = inventory_seams_from_index(&[path], &index);
+        let owners = seams.iter().map(|s| s.owner()).collect::<Vec<_>>();
+        assert!(
+            !owners.iter().any(|owner| owner.contains("inline_test")),
+            "expected inline #[test] owner to be filtered out, got owners {owners:?}"
+        );
+        Ok(())
+    }
+
     // -- Cache wiring integration tests -------------------------------
     //
     // These exercise the `inventory_classified_seams_at` -> cache load
