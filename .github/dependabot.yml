@@ -1,15 +1,26 @@
 version: 2
+
 updates:
   - package-ecosystem: cargo
     directory: /
     schedule:
       interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Toronto
+    open-pull-requests-limit: 2
+    labels:
+      - dependencies
+      - rust
+    commit-message:
+      prefix: deps
+      include: scope
     ignore:
       - dependency-name: "*"
         update-types:
           - version-update:semver-major
     groups:
-      cargo-minor-patches:
+      cargo-minor-patch:
         patterns:
           - "*"
         update-types:
@@ -20,12 +31,30 @@ updates:
     directory: /editors/vscode
     schedule:
       interval: weekly
+      day: monday
+      time: "09:30"
+      timezone: America/Toronto
+    open-pull-requests-limit: 2
+    labels:
+      - dependencies
+      - vscode
+      - npm
+    commit-message:
+      prefix: deps
+      include: scope
     ignore:
       - dependency-name: "*"
         update-types:
           - version-update:semver-major
     groups:
-      npm-minor-patches:
+      vscode-runtime:
+        patterns:
+          - "vscode-languageclient"
+        update-types:
+          - minor
+          - patch
+      vscode-dev-tools:
+        dependency-type: development
         patterns:
           - "*"
         update-types:
@@ -36,12 +65,23 @@ updates:
     directory: /
     schedule:
       interval: weekly
+      day: monday
+      time: "10:00"
+      timezone: America/Toronto
+    open-pull-requests-limit: 1
+    labels:
+      - dependencies
+      - github-actions
+      - ci
+    commit-message:
+      prefix: deps
+      include: scope
     ignore:
       - dependency-name: "*"
         update-types:
           - version-update:semver-major
     groups:
-      github-actions:
+      github-actions-minor-patch:
         patterns:
           - "*"
         update-types:

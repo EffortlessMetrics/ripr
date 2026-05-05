@@ -212,6 +212,13 @@ Pull requests also run GitHub Dependency Review for high-severity vulnerability
 alerts and denied license families. Dependency Graph is enabled for the
 repository, so Dependency Review is a blocking security gate.
 
+Dependabot version updates run weekly for Cargo, the VS Code extension npm
+package, and GitHub Actions. Routine updates are grouped by ecosystem and
+limited to minor and patch changes. Major dependency updates are handled as
+scoped human-reviewed PRs because they may affect MSRV, release behavior, CI
+runtime policy, or extension compatibility. Dependabot PRs are not
+auto-merged; they must pass normal CI, security, coverage, and `xtask` checks.
+
 ## GitHub Actions Runtime Policy
 
 GitHub-hosted action majors should use Node-24-backed releases where official
