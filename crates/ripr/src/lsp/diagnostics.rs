@@ -88,7 +88,7 @@ pub(super) fn workspace_diagnostics_with_config(
             .push(diagnostic_for_finding(&root, finding));
     }
 
-    // Voice B seam diagnostics. Gated by config because the
+    // Repo seam evidence diagnostics. Gated by config because the
     // `inventory_classified_seams_at` walk classifies the entire
     // production tree (~12k seams on the ripr repo) and would add
     // multi-second latency to every editor refresh otherwise. Future

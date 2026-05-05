@@ -242,7 +242,7 @@ crate boundaries can be added later if external consumers need them.
 ## Current Capability Snapshot
 
 `ripr` is currently strongest as a fast, syntax-backed draft signal with
-first-class repo seam evidence (Voice B).
+first-class repo seam evidence.
 
 Current capabilities:
 
@@ -250,9 +250,9 @@ Current capabilities:
 | --- | --- | --- |
 | Distribution | Crate and extension packaging paths exist. | Verify one-click editor install from a fresh profile. |
 | Diff analysis | Evidence-first Voice A findings with syntax-backed changed-line probes, probe-relative oracle strength, local flow sinks, observed/missing activation values, and explicit stop reasons. | Sharper activation/value extraction (`analysis/value-extraction-v2`). |
-| Repo seam inventory | First-class Voice B `RepoSeam` model with deterministic seam IDs, test-grip evidence across the five RIPR stages, and 11-class `SeamGripClass` classification. | Cache seam fact layers so the inventory is fast on warm path (`cache/repo-seam-facts-v1`). |
+| Repo seam inventory | First-class `RepoSeam` model with deterministic seam IDs, test-grip evidence across the five RIPR stages, and 11-class `SeamGripClass` classification. | Cache seam fact layers so the inventory is fast on warm path (`cache/repo-seam-facts-v1`). |
 | Test discovery | Parser-backed test and assertion facts with exact, broad, relational, snapshot, mock, smoke, and unknown oracle kinds; per-test efficiency ledger with smoke/broad/disconnected/opaque/circular/likely-vacuous reasons and duplicate-discriminator groups. | Stronger oracle-shape detection (`analysis/oracle-shape-v2`). |
-| Output | Human, JSON, context, and GitHub formats render evidence-first findings with stop reasons; repo exposure report and agent seam packets render Voice B classified seams; `ripr` and `ripr+` Shields badges publish unresolved gap counts. | Better related-test ranking (`analysis/related-test-precision-v1`). |
+| Output | Human, JSON, context, and GitHub formats render evidence-first findings with stop reasons; repo exposure report and agent seam packets render classified seam evidence; `ripr` and `ripr+` Shields badges publish unresolved gap counts. | Better related-test ranking (`analysis/related-test-precision-v1`). |
 | LSP | Experimental `tower-lsp-server` sidecar with evidence-aware Finding diagnostics, related-test links, hovers, server-side context packets, and seam-native diagnostics + hover (off by default behind `seamDiagnostics: true`). | Seam code actions: copy packet, copy suggested assertion, open related test (`lsp/seam-code-actions-v1`). |
 | Agent context | Compact context packet plus per-seam `write_targeted_test` and `inspect_static_limitation` packets carrying observed values, missing discriminators, related tests, and assertion templates. Documented agent dispatch workflow in `docs/AGENT_DISPATCH_WORKFLOW.md`. | Surface packets and assertion templates through editor code actions (`lsp/seam-code-actions-v1`). |
 | Calibration | Not yet connected to real mutation outcomes; static reports continue using the audit vocabulary (test grip, missing discriminator, static evidence, runtime confirmation). | `cargo-mutants` calibration scaffold (`calibration/cargo-mutants-v1`); runtime mutation language stays inside calibration/runtime reports. |

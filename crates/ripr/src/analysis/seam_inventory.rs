@@ -1,4 +1,4 @@
-//! Voice B repo seam inventory walker per RIPR-SPEC-0005.
+//! Repo seam inventory walker per RIPR-SPEC-0005.
 //!
 //! Walks production Rust files via the existing syntax adapter
 //! (`rust_index::build_index`) and emits a deterministic
@@ -243,9 +243,9 @@ fn seam_kind_from_probe_shape(kind: &str) -> Option<SeamKind> {
         PROBE_SHAPE_SIDE_EFFECT => Some(SeamKind::SideEffect),
         PROBE_SHAPE_MATCH_ARM => Some(SeamKind::MatchArm),
         // The diff-scoped probe shape "call_deletion" represents the
-        // syntax of a call site. In repo (Voice B) scope the same shape
-        // is the seam asking "are tests verifying this call happens at
-        // all?" — i.e. `SeamKind::CallPresence`.
+        // syntax of a call site. In repo scope the same shape is the
+        // seam asking "are tests verifying this call happens at all?"
+        // — i.e. `SeamKind::CallPresence`.
         PROBE_SHAPE_CALL_DELETION => Some(SeamKind::CallPresence),
         _ => None,
     }

@@ -15,7 +15,7 @@ pub(super) struct AnalysisSnapshot {
     pub(super) base: Option<String>,
     pub(super) mode: Mode,
     pub(super) findings: Vec<Finding>,
-    /// Voice B classified seams. Empty when `seamDiagnostics` is off
+    /// Classified seam evidence. Empty when `seamDiagnostics` is off
     /// (the default). Populated lazily on workspace refresh when the
     /// flag is enabled.
     pub(super) classified_seams: Vec<ClassifiedSeam>,
@@ -66,7 +66,7 @@ impl AnalysisSnapshot {
 
     /// Look up the classified seam matching a diagnostic's
     /// `data.seam_id` field, if present. Mirrors
-    /// `finding_for_diagnostic` for the Voice B seam diagnostics
+    /// `finding_for_diagnostic` for the seam evidence diagnostics
     /// introduced by `lsp/repo-seam-diagnostics-v1`. Returns `None`
     /// when the diagnostic carries a `finding_id` instead, or when
     /// the snapshot was built without seam diagnostics enabled.

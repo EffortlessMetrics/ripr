@@ -112,24 +112,22 @@ pub enum OutputFormat {
     RepoBadgePlusJson,
     /// Repo-scoped Shields projection for the `ripr+` badge.
     RepoBadgePlusShields,
-    /// Voice B repo seam inventory rendered as JSON. Walks production
-    /// Rust files and emits `RepoSeam` records per RIPR-SPEC-0005. Schema
+    /// Repo seam inventory rendered as JSON. Walks production Rust
+    /// files and emits `RepoSeam` records per RIPR-SPEC-0005. Schema
     /// version is documented in `docs/OUTPUT_SCHEMA.md` under
     /// `repo-seams.json`. Independent of the diff-scoped `Findings`
     /// pipeline.
     RepoSeamsJson,
-    /// Voice B repo seam inventory rendered as Markdown for human
-    /// review.
+    /// Repo seam inventory rendered as Markdown for human review.
     RepoSeamsMd,
-    /// Voice B classified seam inventory rendered as a repo exposure
-    /// JSON report. Adds per-seam grip class and per-class metrics on
-    /// top of the seam inventory. Schema in `docs/OUTPUT_SCHEMA.md`
-    /// under `repo-exposure.json`.
+    /// Classified seam inventory rendered as a repo exposure JSON
+    /// report. Adds per-seam grip class and per-class metrics on top
+    /// of the seam inventory. Schema in `docs/OUTPUT_SCHEMA.md` under
+    /// `repo-exposure.json`.
     RepoExposureJson,
-    /// Voice B repo exposure report rendered as Markdown for human
-    /// review.
+    /// Repo exposure report rendered as Markdown for human review.
     RepoExposureMd,
-    /// Voice B agent-ready seam packets per RIPR-SPEC-0005 — one
+    /// Agent-ready seam packets per RIPR-SPEC-0005 — one
     /// `write_targeted_test` packet per headline-eligible classified
     /// seam. Schema 0.2 in `docs/OUTPUT_SCHEMA.md` § "Agent Seam
     /// Packets". Strongly-gripped, opaque, intentional, and
@@ -158,9 +156,9 @@ impl OutputFormat {
         )
     }
 
-    /// Whether this format renders the Voice B seam inventory,
-    /// classified exposure report, or agent packets rather than the
-    /// diff/badge `Findings` pipeline. These formats short-circuit
+    /// Whether this format renders the repo seam inventory, classified
+    /// exposure report, or agent packets rather than the diff/badge
+    /// `Findings` pipeline. These formats short-circuit
     /// `check_workspace_repo` since they do not consume `Findings`.
     pub fn is_repo_seam_inventory(&self) -> bool {
         matches!(

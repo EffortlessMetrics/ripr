@@ -1,4 +1,4 @@
-//! Voice B seam classification per RIPR-SPEC-0005, v1.
+//! Seam classification per RIPR-SPEC-0005, v1.
 //!
 //! Maps `TestGripEvidence` produced by `analysis::test_grip_evidence`
 //! into a single `SeamGripClass` per seam. Pure data transformation:

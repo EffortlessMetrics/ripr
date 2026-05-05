@@ -7,11 +7,11 @@ pub(super) struct LspAnalysisConfig {
     pub(super) base_ref: Option<String>,
     pub(super) mode: Mode,
     pub(super) include_unchanged_tests: bool,
-    /// Enable Voice B seam diagnostics. Off by default because the
-    /// `inventory_classified_seams_at` walk is whole-repo and can add
-    /// multi-second latency to every editor refresh on large workspaces.
-    /// `cache/repo-seam-facts-v1` will lift the default to `true` once
-    /// the underlying classification is cached.
+    /// Enable repo seam evidence diagnostics. Off by default because
+    /// the `inventory_classified_seams_at` walk is whole-repo and can
+    /// add multi-second latency to every editor refresh on large
+    /// workspaces. `cache/repo-seam-facts-v1` will lift the default
+    /// to `true` once the underlying classification is cached.
     pub(super) enable_seam_diagnostics: bool,
 }
 

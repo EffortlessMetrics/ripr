@@ -11,8 +11,9 @@ are scoped or reviewed.
 
 ### Added
 
-- Closed Campaign 4B (Repo Seam Inventory and Test Grip) and made Voice B
-  real: `RepoSeam` / `SeamId` / `SeamKind` / `RequiredDiscriminator` /
+- Closed Campaign 4B (Repo Seam Inventory and Test Grip) and made repo
+  seam evidence first-class: `RepoSeam` / `SeamId` / `SeamKind` /
+  `RequiredDiscriminator` /
   `ExpectedSink` / `SeamGripClass` data model with deterministic 16-char
   FNV-1a seam IDs (#229); production-file seam inventory walker writing
   `target/ripr/reports/repo-seams.{json,md}` (#235); `TestGripEvidence`
@@ -36,7 +37,7 @@ are scoped or reviewed.
   and `calibration/cargo-mutants-v1` carry forward from Campaign 4B as
   ready items; `config/ripr-config-v1` and `ci/sarif-ci-policy` remain
   blocked on the cache and config respectively.
-- Reframed Campaign 5 as Campaign 5A (Voice B Usability and Precision)
+- Reframed Campaign 5 as Campaign 5A (Seam Evidence Usability and Precision)
   to focus the queue on four product axes — fast (cache), precise
   (related-test-precision-v1, value-extraction-v2, oracle-shape-v2),
   actionable (agent-seam-packets-v2, lsp/seam-code-actions-v1), and
@@ -46,6 +47,12 @@ are scoped or reviewed.
   blocked behind 5A's cache and oracle-shape work. Cache
   serialization policy: never bincode; postcard if binary; fact
   layers only.
+- Renamed durable Campaign 5A wording from "Voice B" to "seam
+  evidence" across manifest, docs, README, and rendered report
+  Markdown; marked `cache/repo-seam-facts-v1` done after #255 merged.
+  State-only PR; no analyzer behavior, cache behavior, or output
+  schema changes. The manifest campaign id is now
+  `seam-evidence-usability-and-precision`.
 - Added internal local flow sink facts for changed expressions, including
   return values, error variants, struct fields, call effects, and match-arm
   results.

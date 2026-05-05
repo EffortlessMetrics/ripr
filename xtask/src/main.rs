@@ -5229,7 +5229,7 @@ fn badge_artifacts_summary_markdown(ripr_native_json: &str, ripr_plus_native_jso
     markdown
 }
 
-/// Run the Voice B repo seam inventory and write
+/// Run the repo seam inventory and write
 /// `target/ripr/reports/repo-seams.{json,md}` per RIPR-SPEC-0005.
 /// Shells out to the ripr CLI's `check --format repo-seams-*` paths
 /// (the inventory walker is crate-private, so xtask cannot call it
@@ -5262,8 +5262,8 @@ fn repo_seam_inventory_command_args(format: &str) -> Vec<String> {
     ]
 }
 
-/// Run the Voice B repo exposure report (classified seam inventory)
-/// and write `target/ripr/reports/repo-exposure.{json,md}` per
+/// Run the repo exposure report (classified seam inventory) and
+/// write `target/ripr/reports/repo-exposure.{json,md}` per
 /// RIPR-SPEC-0005. Same CLI shell-out pattern as
 /// `repo_seam_inventory`, but routes through the
 /// `repo-exposure-json|md` formats which compute test-grip evidence
