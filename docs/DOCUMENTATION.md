@@ -54,6 +54,7 @@ Current reference docs:
 - [File policy](FILE_POLICY.md)
 - [Changelog policy](CHANGELOG_POLICY.md)
 - [Capability matrix](CAPABILITY_MATRIX.md)
+- [No-panic semantic allowlist](NO_PANIC_SEMANTIC_ALLOWLIST.md)
 
 Planned reference docs:
 
