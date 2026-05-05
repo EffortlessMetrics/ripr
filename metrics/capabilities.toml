@@ -539,7 +539,7 @@ evidence = [
   "OUTPUT_SCHEMA.md Agent Seam Packets section"
 ]
 fixtures = []
-next = "lsp/seam-code-actions-v1"
+next = "calibration/cargo-mutants-v1"
 metric = "packet carries missing discriminator + suggested assertion templates"
 
 [[capability]]
@@ -572,5 +572,22 @@ evidence = [
   "preserves pre-4B Finding hover fallback"
 ]
 fixtures = []
-next = "lsp/seam-code-actions-v1"
+next = "calibration/cargo-mutants-v1"
 metric = "hover renders evidence path from ClassifiedSeam, never parses diagnostic message"
+
+[[capability]]
+id = "lsp_seam_code_actions"
+name = "LSP seam code actions"
+status = "alpha"
+spec = "RIPR-SPEC-0005"
+evidence = [
+  "crates/ripr/src/lsp/actions.rs seam-aware code_action_response",
+  "crates/ripr/src/lsp/backend.rs collectContext returns agent seam packets for seam_id",
+  "editors/vscode/src/client.ts copySuggestedAssertion and openRelatedTest handlers",
+  "diagnostics carrying seam_id surface Copy seam packet, Copy suggested assertion, Open related test, and Refresh ripr analysis",
+  "copy suggested assertion uses agent seam packet v2 assertion shape when available",
+  "pre-4B Finding code actions remain available"
+]
+fixtures = []
+next = "calibration/cargo-mutants-v1"
+metric = "seam diagnostics expose packet/assertion/test actions without automatic edits"

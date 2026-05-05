@@ -14,7 +14,9 @@ pub use diagnostics::{DiagnosticBatch, workspace_diagnostic_batches};
 use tower_lsp_server::{LspService, Server};
 
 const COPY_CONTEXT_COMMAND: &str = "ripr.copyContext";
+const COPY_SUGGESTED_ASSERTION_COMMAND: &str = "ripr.copySuggestedAssertion";
 const COLLECT_CONTEXT_COMMAND: &str = "ripr.collectContext";
+const OPEN_RELATED_TEST_COMMAND: &str = "ripr.openRelatedTest";
 const REFRESH_COMMAND: &str = "ripr.refresh";
 const HOVER_TEXT: &str = "ripr estimates static RIPR exposure for changed Rust behavior. Run `ripr check --format json` for current findings.";
 

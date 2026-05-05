@@ -74,6 +74,19 @@ pub(crate) fn render_agent_seam_packets_json(classified: &[ClassifiedSeam]) -> S
     out
 }
 
+/// Return the first concrete assertion example carried by the agent
+/// seam packet v2 shape. This follows the packet content itself:
+/// any seam with a concrete assertion template can expose the editor
+/// action, while prose-only guidance remains hidden.
+pub(crate) fn suggested_assertion_for_classified_seam(entry: &ClassifiedSeam) -> Option<String> {
+    suggested_assertions_for(entry.seam.kind(), entry.seam.owner(), &entry.evidence)
+        .into_iter()
+        .find(|suggestion| {
+            let trimmed = suggestion.trim_start();
+            !trimmed.starts_with("//") && trimmed.contains("assert")
+        })
+}
+
 fn is_actionable(class: SeamGripClass) -> bool {
     // Headline-eligible classes are the natural agent targets.
     // `Opaque` is also actionable as `inspect_static_limitation`.
@@ -1282,6 +1295,61 @@ mod tests {
                 return Err(format!("missing confidence case {needle:?} in: {json}"));
             }
         }
+        Ok(())
+    }
+
+    #[test]
+    fn suggested_assertion_helper_keeps_setup_assertions_but_omits_comment_guidance()
+    -> Result<(), String> {
+        let field = classified_with(
+            seam_with(
+                "pricing::build_quote",
+                SeamKind::FieldConstruction,
+                RequiredDiscriminator::FieldValue {
+                    field: "quote.total".to_string(),
+                },
+                ExpectedSink::OutputField,
+            ),
+            SeamGripClass::WeaklyGripped,
+            Vec::new(),
+        );
+        let opaque_field = classified_with(
+            seam_with(
+                "pricing::build_quote",
+                SeamKind::FieldConstruction,
+                RequiredDiscriminator::FieldValue {
+                    field: "quote.total".to_string(),
+                },
+                ExpectedSink::OutputField,
+            ),
+            SeamGripClass::Opaque,
+            Vec::new(),
+        );
+        let side_effect = classified_with(
+            seam_with(
+                "service::publish_event",
+                SeamKind::SideEffect,
+                RequiredDiscriminator::Effect {
+                    sink: "event bus publish".to_string(),
+                },
+                ExpectedSink::SideEffect,
+            ),
+            SeamGripClass::WeaklyGripped,
+            Vec::new(),
+        );
+
+        let Some(assertion) = suggested_assertion_for_classified_seam(&field) else {
+            return Err("expected field construction assertion".to_string());
+        };
+        assert!(
+            assertion.contains("assert_eq!(result.field"),
+            "unexpected field assertion: {assertion}"
+        );
+        assert!(
+            suggested_assertion_for_classified_seam(&opaque_field).is_some(),
+            "opaque packet with concrete assertion guidance should expose the same assertion action"
+        );
+        assert!(suggested_assertion_for_classified_seam(&side_effect).is_none());
         Ok(())
     }
 

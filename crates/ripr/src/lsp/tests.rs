@@ -3,13 +3,17 @@ use super::backend::Backend;
 use super::capabilities::{initialize_result, root_from_initialize_params};
 use super::config::LspAnalysisConfig;
 use super::diagnostics::{
-    DiagnosticBatch, WorkspaceDiagnostics, diagnostic_for_finding, diagnostic_refresh_plan,
-    diagnostic_severity_for_class, take_all_uris, workspace_diagnostic_batches,
+    DiagnosticBatch, WorkspaceDiagnostics, diagnostic_for_classified_seam, diagnostic_for_finding,
+    diagnostic_refresh_plan, diagnostic_severity_for_class, take_all_uris,
+    workspace_diagnostic_batches,
 };
 use super::hover::hover_response;
 use super::state::{AnalysisSnapshot, DocumentStore};
 use super::uri::{encode_uri_path, file_uri_for_path, path_from_file_uri};
-use super::{COLLECT_CONTEXT_COMMAND, COPY_CONTEXT_COMMAND, HOVER_TEXT, REFRESH_COMMAND};
+use super::{
+    COLLECT_CONTEXT_COMMAND, COPY_CONTEXT_COMMAND, COPY_SUGGESTED_ASSERTION_COMMAND, HOVER_TEXT,
+    OPEN_RELATED_TEST_COMMAND, REFRESH_COMMAND,
+};
 use crate::app::Mode;
 use crate::domain::{
     Confidence, DeltaKind, ExposureClass, Finding, OracleKind, OracleStrength, Probe, ProbeFamily,
@@ -175,7 +179,7 @@ fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
         )
         .await?;
         let actions = read_lsp_response(&mut client_read, 4).await?;
-        assert_eq!(actions["result"][0]["title"], "Run ripr check");
+        assert_eq!(actions["result"][0]["title"], "Refresh ripr analysis");
         assert_eq!(actions["result"][0]["command"]["command"], REFRESH_COMMAND);
 
         write_lsp_message(
@@ -703,7 +707,7 @@ fn code_action_response_keeps_current_commands() -> Result<(), String> {
     let mut finding = sample_finding();
     finding.related_tests.clear();
     let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
-    let actions = code_action_response(&code_action_params(vec![diagnostic])?);
+    let actions = code_action_response(&code_action_params(vec![diagnostic])?, None);
 
     let mut titles_kinds_and_commands = Vec::new();
     let mut command_arguments = Vec::new();
@@ -740,7 +744,7 @@ fn code_action_response_keeps_current_commands() -> Result<(), String> {
                 COPY_CONTEXT_COMMAND,
             ),
             (
-                "Run ripr check",
+                "Refresh ripr analysis",
                 "source",
                 "Refresh ripr analysis",
                 REFRESH_COMMAND,
@@ -759,7 +763,7 @@ fn code_action_response_keeps_current_commands() -> Result<(), String> {
 
 #[test]
 fn code_action_response_omits_context_action_without_ripr_diagnostic() -> Result<(), String> {
-    let actions = code_action_response(&code_action_params(Vec::new())?);
+    let actions = code_action_response(&code_action_params(Vec::new())?, None);
 
     assert_eq!(actions.len(), 1);
     let CodeActionOrCommand::CodeAction(action) = &actions[0] else {
@@ -769,6 +773,123 @@ fn code_action_response_omits_context_action_without_ripr_diagnostic() -> Result
         return Err("expected refresh command".to_string());
     };
     assert_eq!(command.command, REFRESH_COMMAND);
+    Ok(())
+}
+
+#[test]
+fn seam_code_actions_surface_packet_assertion_related_test_and_refresh() -> Result<(), String> {
+    let seam = sample_classified_seam();
+    let diagnostic = diagnostic_for_classified_seam(Path::new("/workspace"), &seam)
+        .ok_or_else(|| "expected seam diagnostic".to_string())?;
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let mut snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri,
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.classified_seams = vec![seam.clone()];
+    let actions = code_action_response(&code_action_params(vec![diagnostic])?, Some(&snapshot));
+
+    let commands = code_action_commands(&actions)?;
+    assert_eq!(
+        commands
+            .iter()
+            .map(|(_, command, _)| command.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            COPY_CONTEXT_COMMAND,
+            COPY_SUGGESTED_ASSERTION_COMMAND,
+            OPEN_RELATED_TEST_COMMAND,
+            REFRESH_COMMAND,
+        ]
+    );
+    assert_eq!(commands[0].0, "Copy seam packet");
+    assert_eq!(commands[0].2[0]["seam_id"], seam.seam.id().as_str());
+    assert_eq!(commands[0].2[0]["seam_kind"], "predicate_boundary");
+    assert_eq!(commands[0].2[0]["line"], 88);
+    assert_eq!(commands[1].0, "Copy suggested assertion");
+    assert!(
+        commands[1].2[0]["assertion"]
+            .as_str()
+            .is_some_and(|value| value.contains("assert_eq!(discounted_total")),
+        "expected assertion argument, got {:?}",
+        commands[1].2
+    );
+    assert_eq!(commands[2].0, "Open related test");
+    assert_eq!(
+        commands[2].2[0]["uri"],
+        "file:///workspace/tests/pricing.rs"
+    );
+    assert_eq!(commands[2].2[0]["line"], 12);
+    Ok(())
+}
+
+#[test]
+fn seam_code_actions_keep_legacy_finding_context_when_both_diagnostics_are_present()
+-> Result<(), String> {
+    let seam = sample_classified_seam();
+    let seam_diagnostic = diagnostic_for_classified_seam(Path::new("/workspace"), &seam)
+        .ok_or_else(|| "expected seam diagnostic".to_string())?;
+    let finding_diagnostic = diagnostic_for_finding(Path::new("/workspace"), &sample_finding());
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let mut snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri,
+        vec![seam_diagnostic.clone(), finding_diagnostic.clone()],
+        vec![sample_finding()],
+    );
+    snapshot.classified_seams = vec![seam.clone()];
+    let actions = code_action_response(
+        &code_action_params(vec![seam_diagnostic, finding_diagnostic])?,
+        Some(&snapshot),
+    );
+
+    let commands = code_action_commands(&actions)?;
+    assert_eq!(
+        commands
+            .iter()
+            .map(|(title, _, _)| title.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "Copy seam packet",
+            "Copy suggested assertion",
+            "Open related test",
+            "Copy ripr context packet",
+            "Refresh ripr analysis",
+        ]
+    );
+    assert_eq!(commands[0].2[0]["seam_id"], seam.seam.id().as_str());
+    assert_eq!(commands[3].2[0]["finding_id"], "probe:pricing:88:predicate");
+    assert_eq!(commands[3].2[0]["probe_id"], "probe:pricing:88:predicate");
+    Ok(())
+}
+
+#[test]
+fn seam_code_actions_omit_assertion_and_related_test_when_evidence_is_missing() -> Result<(), String>
+{
+    let seam = sample_side_effect_seam_without_related_tests();
+    let diagnostic = diagnostic_for_classified_seam(Path::new("/workspace"), &seam)
+        .ok_or_else(|| "expected seam diagnostic".to_string())?;
+    let uri = test_uri("file:///workspace/src/service.rs")?;
+    let mut snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri,
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.classified_seams = vec![seam];
+    let actions = code_action_response(&code_action_params(vec![diagnostic])?, Some(&snapshot));
+
+    let commands = code_action_commands(&actions)?;
+    assert_eq!(
+        commands
+            .iter()
+            .map(|(_, command, _)| command.as_str())
+            .collect::<Vec<_>>(),
+        vec![COPY_CONTEXT_COMMAND, REFRESH_COMMAND]
+    );
+    assert_eq!(commands[0].0, "Copy seam packet");
     Ok(())
 }
 
@@ -1397,6 +1518,26 @@ fn code_action_params(
     })
 }
 
+fn code_action_commands(
+    actions: &[CodeActionOrCommand],
+) -> Result<Vec<(String, String, Vec<serde_json::Value>)>, String> {
+    let mut commands = Vec::new();
+    for action in actions {
+        let CodeActionOrCommand::CodeAction(action) = action else {
+            return Err("expected code action".to_string());
+        };
+        let Some(command) = &action.command else {
+            return Err(format!("expected command for action {}", action.title));
+        };
+        commands.push((
+            action.title.clone(),
+            command.command.clone(),
+            command.arguments.clone().unwrap_or_default(),
+        ));
+    }
+    Ok(commands)
+}
+
 fn hover_params(uri: tower_lsp_server::ls_types::Uri, line: u32, character: u32) -> HoverParams {
     HoverParams {
         text_document_position_params: TextDocumentPositionParams {
@@ -1472,6 +1613,107 @@ fn sample_finding() -> Finding {
         stop_reasons: Vec::new(),
         related_tests: Vec::new(),
         recommended_next_step: Some("Add an exact boundary assertion.".to_string()),
+    }
+}
+
+fn sample_classified_seam() -> crate::analysis::ClassifiedSeam {
+    use crate::analysis::seams::{
+        ExpectedSink, RepoSeam, RequiredDiscriminator, SeamGripClass, SeamKind,
+    };
+    use crate::analysis::test_grip_evidence::{
+        RelatedTestGrip, RelationConfidence, RelationReason, TestGripEvidence,
+    };
+    use crate::domain::{MissingDiscriminatorFact, ValueContext, ValueFact};
+
+    let seam = RepoSeam::new(
+        "src/pricing.rs",
+        "pricing::discounted_total",
+        SeamKind::PredicateBoundary,
+        42,
+        88,
+        "amount >= discount_threshold",
+        RequiredDiscriminator::BoundaryValue {
+            description: "amount >= discount_threshold".to_string(),
+        },
+        ExpectedSink::ReturnValue,
+    );
+    let seam_id = seam.id().clone();
+    crate::analysis::ClassifiedSeam {
+        seam,
+        evidence: TestGripEvidence {
+            seam_id,
+            related_tests: vec![RelatedTestGrip {
+                test_name: "below_threshold_has_no_discount".to_string(),
+                file: PathBuf::from("tests/pricing.rs"),
+                line: 12,
+                oracle_kind: OracleKind::ExactValue,
+                oracle_strength: OracleStrength::Strong,
+                evidence_summary: "exact value assertion".to_string(),
+                relation_reason: RelationReason::DirectOwnerCall,
+                relation_confidence: RelationConfidence::High,
+            }],
+            reach: StageEvidence::new(
+                StageState::Yes,
+                Confidence::High,
+                "related test calls owner",
+            ),
+            activate: StageEvidence::new(StageState::Yes, Confidence::High, "test reaches branch"),
+            propagate: StageEvidence::new(StageState::Yes, Confidence::Medium, "return value sink"),
+            observe: StageEvidence::new(StageState::Yes, Confidence::Medium, "exact assertion"),
+            discriminate: StageEvidence::new(
+                StageState::Weak,
+                Confidence::Medium,
+                "boundary value missing",
+            ),
+            observed_values: vec![ValueFact {
+                line: 12,
+                text: "discounted_total(50, 100)".to_string(),
+                value: "50".to_string(),
+                context: ValueContext::FunctionArgument,
+            }],
+            missing_discriminators: vec![MissingDiscriminatorFact {
+                value: "discount_threshold (equality boundary)".to_string(),
+                reason: "observed values skip equality boundary".to_string(),
+                flow_sink: None,
+            }],
+        },
+        class: SeamGripClass::WeaklyGripped,
+    }
+}
+
+fn sample_side_effect_seam_without_related_tests() -> crate::analysis::ClassifiedSeam {
+    use crate::analysis::seams::{
+        ExpectedSink, RepoSeam, RequiredDiscriminator, SeamGripClass, SeamKind,
+    };
+    use crate::analysis::test_grip_evidence::TestGripEvidence;
+
+    let seam = RepoSeam::new(
+        "src/service.rs",
+        "service::publish_event",
+        SeamKind::SideEffect,
+        7,
+        14,
+        "event_bus.publish(event)",
+        RequiredDiscriminator::Effect {
+            sink: "event bus publish".to_string(),
+        },
+        ExpectedSink::SideEffect,
+    );
+    let seam_id = seam.id().clone();
+    crate::analysis::ClassifiedSeam {
+        seam,
+        evidence: TestGripEvidence {
+            seam_id,
+            related_tests: Vec::new(),
+            reach: StageEvidence::new(StageState::No, Confidence::Low, "no related test"),
+            activate: StageEvidence::new(StageState::No, Confidence::Low, "no activation value"),
+            propagate: StageEvidence::new(StageState::Unknown, Confidence::Low, "unknown sink"),
+            observe: StageEvidence::new(StageState::No, Confidence::Low, "no observer"),
+            discriminate: StageEvidence::new(StageState::No, Confidence::Low, "no discriminator"),
+            observed_values: Vec::new(),
+            missing_discriminators: Vec::new(),
+        },
+        class: SeamGripClass::Ungripped,
     }
 }
 
@@ -1679,6 +1921,57 @@ fn execute_command_collect_context_returns_packet_for_known_finding() -> Result<
         assert!(packet_str.contains("\"version\""));
         assert!(packet_str.contains("\"tool\""));
         assert!(packet_str.contains("probe:pricing:88:predicate"));
+        Ok(())
+    })
+}
+
+#[test]
+fn execute_command_collect_context_returns_agent_seam_packet_for_known_seam() -> Result<(), String>
+{
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let seam = sample_classified_seam();
+        let seam_id = seam.seam.id().as_str().to_string();
+        let diagnostic = diagnostic_for_classified_seam(Path::new("/workspace"), &seam)
+            .ok_or_else(|| "expected seam diagnostic".to_string())?;
+        let uri = test_uri("file:///workspace/src/pricing.rs")?;
+        let mut diagnostics = sample_workspace_diagnostics(
+            PathBuf::from("/workspace"),
+            uri,
+            vec![diagnostic],
+            Vec::new(),
+        );
+        diagnostics.snapshot.classified_seams = vec![seam];
+        let Some(_) = backend.refresh_plan(diagnostics) else {
+            return Err("expected refresh plan".to_string());
+        };
+
+        let params = ExecuteCommandParams {
+            command: COLLECT_CONTEXT_COMMAND.to_string(),
+            arguments: vec![serde_json::json!({
+                "seam_id": seam_id,
+                "uri": "file:///workspace/src/pricing.rs",
+                "line": 88,
+            })],
+            work_done_progress_params: Default::default(),
+        };
+        let result = backend.execute_command(params).await;
+        let packet = result.map_err(|err| format!("execute_command failed: {err}"))?;
+        let Some(packet) = packet else {
+            return Err("expected seam packet".to_string());
+        };
+        assert_eq!(packet["schema_version"], "0.3");
+        assert_eq!(packet["packets_total"], 1);
+        assert_eq!(packet["packets"][0]["seam_id"], seam_id);
+        assert_eq!(
+            packet["packets"][0]["assertion_shape"]["kind"],
+            "exact_return_value"
+        );
         Ok(())
     })
 }

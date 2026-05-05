@@ -14,6 +14,20 @@ import { resolveServer, ResolvedServer } from './serverResolver';
 export interface RiprContextTarget {
   uri?: string;
   line?: number;
+  finding_id?: string;
+  probe_id?: string;
+  seam_id?: string;
+  seam_kind?: string;
+}
+
+export interface RiprSuggestedAssertionTarget {
+  assertion?: string;
+}
+
+export interface RiprRelatedTestTarget {
+  uri?: string;
+  line?: number;
+  test_name?: string;
 }
 
 export class RiprClientController {
@@ -82,7 +96,7 @@ export class RiprClientController {
     }
   }
 
-  async copyContext(target?: RiprContextTarget & { finding_id?: string; probe_id?: string }): Promise<void> {
+  async copyContext(target?: RiprContextTarget): Promise<void> {
     const targetUri = uriFromTarget(target);
     const editor = vscode.window.activeTextEditor;
     const documentUri = targetUri ?? editor?.document.uri;
@@ -91,20 +105,16 @@ export class RiprClientController {
       return;
     }
 
-    const workspaceFolder = vscode.workspace.getWorkspaceFolder(documentUri);
-    if (!workspaceFolder) {
-      vscode.window.showInformationMessage('ripr context requires a workspace folder.');
-      return;
-    }
-
     const client = this.client;
-    if (client && target?.finding_id) {
+    if (client && (target?.finding_id || target?.seam_id)) {
       try {
         const packet = await client.sendRequest('workspace/executeCommand', {
           command: 'ripr.collectContext',
           arguments: [{
             finding_id: target.finding_id,
             probe_id: target.probe_id,
+            seam_id: target.seam_id,
+            seam_kind: target.seam_kind,
             uri: target.uri,
             line: target.line,
           }],
@@ -118,6 +128,12 @@ export class RiprClientController {
         const message = error instanceof Error ? error.message : String(error);
         this.output.appendLine(`ripr collectContext via LSP failed: ${message}`);
       }
+    }
+
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(documentUri);
+    if (!workspaceFolder) {
+      vscode.window.showInformationMessage('ripr context requires a workspace folder.');
+      return;
     }
 
     const config = getConfig();
@@ -148,6 +164,42 @@ export class RiprClientController {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr context failed: ${message}`);
       vscode.window.showWarningMessage(`ripr context failed for ${selector}. See ripr output for details.`);
+    }
+  }
+
+  async copySuggestedAssertion(target?: RiprSuggestedAssertionTarget): Promise<void> {
+    const assertion = typeof target?.assertion === 'string' ? target.assertion.trim() : '';
+    if (!assertion) {
+      vscode.window.showInformationMessage('No ripr suggested assertion is available for this diagnostic.');
+      return;
+    }
+    try {
+      await vscode.env.clipboard.writeText(assertion);
+      vscode.window.showInformationMessage('Copied ripr suggested assertion to clipboard.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(`ripr copy suggested assertion failed: ${message}`);
+      vscode.window.showWarningMessage('ripr could not copy the suggested assertion. See ripr output for details.');
+    }
+  }
+
+  async openRelatedTest(target?: RiprRelatedTestTarget): Promise<void> {
+    const uri = uriFromTarget(target);
+    if (!uri) {
+      vscode.window.showInformationMessage('No ripr related test location is available for this diagnostic.');
+      return;
+    }
+    try {
+      const document = await vscode.workspace.openTextDocument(uri);
+      const editor = await vscode.window.showTextDocument(document);
+      const line = lineFromTarget(target) ?? 1;
+      const position = new vscode.Position(Math.max(0, line - 1), 0);
+      editor.selection = new vscode.Selection(position, position);
+      editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(`ripr open related test failed: ${message}`);
+      vscode.window.showWarningMessage('ripr could not open the related test. See ripr output for details.');
     }
   }
 
