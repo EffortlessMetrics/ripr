@@ -352,6 +352,8 @@ struct AmbiguousMutationCalibrationMatch {
     candidates: Vec<StaticSeamRecord>,
 }
 
+const MUTATION_CALIBRATION_STATIC_WITHOUT_RUNTIME_SAMPLE_LIMIT: usize = 50;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct CriticFinding {
     id: &'static str,
@@ -6202,7 +6204,6 @@ fn build_mutation_calibration_report(
 }
 
 fn mutation_calibration_report_json(report: &MutationCalibrationReport) -> Result<String, String> {
-    const STATIC_WITHOUT_RUNTIME_SAMPLE_LIMIT: usize = 50;
     let value = serde_json::json!({
         "schema_version": "0.1",
         "scope": "repo",
@@ -6235,7 +6236,7 @@ fn mutation_calibration_report_json(report: &MutationCalibrationReport) -> Resul
         "static_without_runtime_sample": report
             .static_without_runtime
             .iter()
-            .take(STATIC_WITHOUT_RUNTIME_SAMPLE_LIMIT)
+            .take(MUTATION_CALIBRATION_STATIC_WITHOUT_RUNTIME_SAMPLE_LIMIT)
             .map(static_seam_json)
             .collect::<Vec<_>>(),
     });
@@ -6499,7 +6500,11 @@ fn mutation_calibration_report_markdown(report: &MutationCalibrationReport) -> S
         );
         out.push_str("| Seam | Kind | Class | Location |\n");
         out.push_str("| --- | --- | --- | --- |\n");
-        for seam in report.static_without_runtime.iter().take(25) {
+        for seam in report
+            .static_without_runtime
+            .iter()
+            .take(MUTATION_CALIBRATION_STATIC_WITHOUT_RUNTIME_SAMPLE_LIMIT)
+        {
             out.push_str(&format!(
                 "| `{}` | `{}` | `{}` | {}:{} |\n",
                 markdown_cell(&seam.seam_id),
@@ -12981,8 +12986,9 @@ mod tests {
         windows_absolute_path_tokens, workflow_runtime_violations,
     };
     use super::{
-        DeclaredIntent, LocalContextFinding, TestEfficiencyEntry, TestEfficiencyValue,
-        TestIntentDeclaration, TestIntentKind, TestIntentReportSummary,
+        DeclaredIntent, LocalContextFinding,
+        MUTATION_CALIBRATION_STATIC_WITHOUT_RUNTIME_SAMPLE_LIMIT, TestEfficiencyEntry,
+        TestEfficiencyValue, TestIntentDeclaration, TestIntentKind, TestIntentReportSummary,
         apply_duplicate_discriminator_groups, apply_test_intent_to_entries,
         build_mutation_calibration_report, parse_test_intent_manifest, test_efficiency_metrics,
     };
@@ -18822,6 +18828,47 @@ settings: |
         assert_eq!(report.ambiguous_file_line[0].candidates.len(), 2);
         assert!(report.unmatched_mutants.is_empty());
         assert!(report.static_without_runtime.is_empty());
+    }
+
+    #[test]
+    fn mutation_calibration_uses_same_static_without_runtime_sample_limit_for_json_and_markdown()
+    -> Result<(), String> {
+        let seams = (0..51)
+            .map(|idx| StaticSeamRecord {
+                seam_id: format!("seam-{idx:02}"),
+                seam_kind: "predicate_boundary".to_string(),
+                file: "src/pricing.rs".to_string(),
+                line: idx + 1,
+                seam_grip_class: "weakly_gripped".to_string(),
+                oracle_kind: "exact_value".to_string(),
+                oracle_strength: "strong".to_string(),
+                observed_values: Vec::new(),
+                missing_discriminators: Vec::new(),
+            })
+            .collect::<Vec<_>>();
+        let report = build_mutation_calibration_report(seams, Vec::new());
+
+        let json = mutation_calibration_report_json(&report)?;
+        let value: serde_json::Value = serde_json::from_str(&json)
+            .map_err(|err| format!("failed to parse calibration JSON: {err}"))?;
+        let Some(sample) = value["static_without_runtime_sample"].as_array() else {
+            return Err("missing static_without_runtime_sample array".to_string());
+        };
+        let markdown = mutation_calibration_report_markdown(&report);
+        let markdown_rows = markdown
+            .lines()
+            .filter(|line| line.starts_with("| `seam-"))
+            .count();
+
+        assert_eq!(
+            sample.len(),
+            MUTATION_CALIBRATION_STATIC_WITHOUT_RUNTIME_SAMPLE_LIMIT
+        );
+        assert_eq!(
+            markdown_rows,
+            MUTATION_CALIBRATION_STATIC_WITHOUT_RUNTIME_SAMPLE_LIMIT
+        );
+        Ok(())
     }
 
     #[test]
