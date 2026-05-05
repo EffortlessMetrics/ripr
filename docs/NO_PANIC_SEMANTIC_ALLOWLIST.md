@@ -147,7 +147,7 @@ the entry identity.
 
 The checker emits a hint when `last_seen` drifts from the current location:
 
-```
+```text
 allowed by semantic selector; last_seen changed from line 42 to line 55 (src/file.rs:55:17)
 ```
 
