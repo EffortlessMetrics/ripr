@@ -127,6 +127,45 @@ mod tests {
     }
 
     #[test]
+    fn finding_json_falls_back_to_unknown_oracle_summary_without_related_tests() {
+        let finding = unknown_finding();
+        let mut out = String::new();
+
+        finding_json(&mut out, &finding, 0);
+
+        assert!(out.contains("\"oracle_strength\": \"none\""));
+        assert!(out.contains("\"oracle_kind\": \"unknown\""));
+    }
+
+    #[test]
+    fn finding_json_limits_evidence_path_related_tests_to_five_entries() {
+        let mut finding = unknown_finding();
+        finding.related_tests = (0..6)
+            .map(|idx| RelatedTest {
+                name: format!("test_case_{idx}"),
+                file: PathBuf::from("tests/edge_cases.rs"),
+                line: 100 + idx,
+                oracle: Some(format!("assert!(case_{idx}())")),
+                oracle_kind: OracleKind::RelationalCheck,
+                oracle_strength: OracleStrength::Weak,
+            })
+            .collect();
+
+        let mut out = String::new();
+        finding_json(&mut out, &finding, 0);
+
+        assert!(out.contains(
+            "related test tests/edge_cases.rs:100 test_case_0 uses weak relational check oracle"
+        ));
+        assert!(out.contains(
+            "related test tests/edge_cases.rs:104 test_case_4 uses weak relational check oracle"
+        ));
+        assert!(!out.contains(
+            "related test tests/edge_cases.rs:105 test_case_5 uses weak relational check oracle"
+        ));
+    }
+
+    #[test]
     fn finding_json_formats_observed_value_context_labels() {
         let mut finding = unknown_finding();
         finding.activation.observed_values.push(ValueFact {
