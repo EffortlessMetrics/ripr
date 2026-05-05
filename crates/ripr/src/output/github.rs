@@ -1,12 +1,24 @@
 use crate::app::CheckOutput;
+use crate::config::RiprConfig;
 
 /// Render findings as GitHub Actions workflow command annotations.
 ///
 /// Each finding is emitted as one escaped annotation line so newlines and
 /// punctuation survive GitHub's workflow-command parser.
 pub fn render(output: &CheckOutput) -> String {
+    render_with_config(output, &RiprConfig::default())
+}
+
+pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> String {
     let mut out = String::new();
     for finding in &output.findings {
+        let Some(annotation_level) = config
+            .severity()
+            .for_exposure(&finding.class)
+            .github_annotation_level()
+        else {
+            continue;
+        };
         let title = format!("ripr {}", finding.class.as_str());
         let mut message = finding
             .recommended_next_step
@@ -23,11 +35,6 @@ pub fn render(output: &CheckOutput) -> String {
             message.push_str(" Stop reason: ");
             message.push_str(&reasons);
         }
-        let annotation_level = match finding.class.severity() {
-            "info" => "notice",
-            "note" => "notice",
-            _ => "warning",
-        };
         out.push_str(&format!(
             "::{annotation_level} file={},line={},title={}::{}\n",
             finding.probe.location.file.display(),

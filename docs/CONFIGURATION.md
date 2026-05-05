@@ -1,7 +1,7 @@
 # Configuration
 
-This is the reference for every setting `ripr` reads today, plus the planned
-shape of the `ripr.toml` file. It pairs with:
+This is the reference for every setting `ripr` reads today, including the
+repo-root `ripr.toml` file. It pairs with:
 
 - [Static exposure model](STATIC_EXPOSURE_MODEL.md) for what the analysis modes mean.
 - [Output schema](OUTPUT_SCHEMA.md) for what each output format produces.
@@ -9,22 +9,17 @@ shape of the `ripr.toml` file. It pairs with:
 
 ## What can be configured today
 
-`ripr` currently reads configuration from four surfaces:
+`ripr` currently reads configuration from five surfaces:
 
 1. **CLI flags** on the `ripr` binary.
-2. **LSP `initializationOptions`** sent by an LSP client (e.g. the VS Code extension) on `initialize`.
-3. **VS Code extension settings** under the `ripr.*` namespace, which the extension translates into server arguments and LSP options.
-4. **Repo policy files** under `.ripr/`, currently just the static-language allowlist; planned narrow files for test intent and suppressions land before any general loader.
+2. **Repo config** in `ripr.toml` at the workspace root.
+3. **LSP `initializationOptions`** sent by an LSP client (e.g. the VS Code extension) on `initialize`.
+4. **VS Code extension settings** under the `ripr.*` namespace, which the extension translates into server arguments and LSP options.
+5. **Repo policy files** under `.ripr/`, including static-language allowlists,
+   test intent, and suppressions.
 
-There is **no** general `ripr.toml` loader in the current alpha. The
-[`ripr.toml.example`](../ripr.toml.example) file at the repo root is a
-forward-looking sketch of the planned config format; nothing in the binary
-parses it yet. The "Planned: `ripr.toml`" section below documents the intended
-shape so contributors can wire it up consistently when the loader lands.
-
-If a finding's `recommended_next_step` mentions teaching `ripr` about a fixture
-or builder "in `ripr.toml`", treat that as planned guidance — today the same
-intent is expressed only by adding tests with stronger oracles.
+`ripr.toml` is repo-root scoped only. `ripr` does not read global user config,
+environment variables, or hidden alternate config files.
 
 ## CLI flags
 
@@ -48,10 +43,10 @@ Runs the static exposure analysis and renders findings.
 | `--root PATH` | current directory | Workspace root used for diff and source discovery. |
 | `--base REV` | `origin/main` | Git revision used as the diff base when `--diff` is not given. |
 | `--diff PATH` | _(unset)_ | Path to a unified diff file. Overrides `--base`. |
-| `--mode MODE` | `draft` | One of `instant`, `draft`, `fast`, `deep`, `ready`. See the [mode reference](#analysis-modes). |
+| `--mode MODE` | `ripr.toml` `analysis.mode`, otherwise `draft` | One of `instant`, `draft`, `fast`, `deep`, `ready`. See the [mode reference](#analysis-modes). |
 | `--format FORMAT` | `human` | One of `human` (alias `text`), `json`, `github`. |
 | `--json` | _(off)_ | Shortcut for `--format json`. |
-| `--no-unchanged-tests` | _(off; tests included)_ | Limits the source index to changed Rust files. By default unchanged tests are part of the index so `Reach` evidence can find them. |
+| `--no-unchanged-tests` | `ripr.toml` `analysis.include_unchanged_tests`, otherwise tests included | Limits the source index to changed Rust files. By default unchanged tests are part of the index so `Reach` evidence can find them. |
 
 ### `ripr explain`
 
@@ -80,7 +75,7 @@ ripr context [--root PATH] [--base REV | --diff PATH]
 | Flag | Default | Notes |
 | --- | --- | --- |
 | `--at SELECTOR` | _(required)_ | Same selector grammar as `explain`. |
-| `--max-related-tests N` | implementation default | Caps the number of related tests embedded in the packet. |
+| `--max-related-tests N` | `ripr.toml` `reports.max_related_tests`, otherwise `5` | Caps the number of related tests embedded in the packet. |
 | `--json` | _(off)_ | Forces JSON; `context` already returns JSON-shaped output, this flag is for parity with `check`. |
 
 ### `ripr doctor`
@@ -109,17 +104,19 @@ LSP runtime behavior is not configured by CLI flags; clients pass options via
 
 When an LSP client starts `ripr lsp --stdio`, it can shape analysis by sending
 an `initializationOptions` object on the `initialize` request. The server
-reads three keys; everything else is ignored. The schema lives in
+reads four keys; everything else is ignored. The schema lives in
 [`crates/ripr/src/lsp/config.rs`](../crates/ripr/src/lsp/config.rs).
 
 | Key | Type | Default | Effect |
 | --- | --- | --- | --- |
 | `baseRef` | string | `"origin/main"` | Git base ref for editor-triggered diffs. Empty string disables base-ref diffing. |
-| `checkMode` | string | `"draft"` | One of `instant`, `draft`, `fast`, `deep`, `ready`. Unknown values fall back to the default. |
-| `includeUnchangedTests` | boolean | `true` | Mirror of the CLI's `--no-unchanged-tests` (inverted). |
+| `checkMode` | string | `ripr.toml` `analysis.mode`, otherwise `"draft"` | One of `instant`, `draft`, `fast`, `deep`, `ready`. Unknown values fall back to the repo config/default. |
+| `includeUnchangedTests` | boolean | `ripr.toml` `analysis.include_unchanged_tests`, otherwise `true` | Mirror of the CLI's `--no-unchanged-tests` (inverted). |
+| `seamDiagnostics` | boolean | `ripr.toml` `lsp.seam_diagnostics`, otherwise `false` | Enables repo seam evidence diagnostics in addition to diff-derived Finding diagnostics. |
 
-Defaults match `CheckInput::default()` so omitting `initializationOptions`
-yields the same behavior as `ripr check` with no flags except `--format json`.
+Initialization options are treated as explicit LSP settings and override
+`ripr.toml`. Defaults match `CheckInput::default()` when no repo config is
+present, except that LSP diagnostics render JSON-shaped data internally.
 
 ## VS Code extension settings
 
@@ -358,93 +355,131 @@ calibration or mutation adapter is explicitly invoked.
 The `context` command always returns JSON-shaped output regardless of
 `--format`.
 
-## Planned: `ripr.toml`
+## `ripr.toml`
 
-> **Status: planned, not implemented.** No code in the current binary parses
-> `ripr.toml`. The shape below describes the intended config surface so
-> contributors can wire it up consistently when the loader lands. Until then,
-> the file at the repo root is example-only.
+`ripr` discovers `ripr.toml` at the workspace root passed by `--root` or by the
+LSP initialization root. Missing config is normal and preserves current
+built-in defaults. Unknown keys are errors so policy typos do not silently
+change analysis intent.
 
-The intended discovery rule is: walk up from `--root` until a `ripr.toml` is
-found, falling back to no project-level config. Workspace-level keys would
-default to whatever `CheckInput::default()` produces today.
-
-The example file ([`ripr.toml.example`](../ripr.toml.example)) sketches three
-sections.
+The example file ([`ripr.toml.example`](../ripr.toml.example)) is kept in sync
+with the supported v1 shape.
 
 ### `[analysis]`
 
-| Key | Planned type | Planned default | Intended effect |
+| Key | Type | Default | Effect |
 | --- | --- | --- | --- |
-| `default_mode` | string | `"draft"` | Mode used when neither CLI nor LSP options set one. |
-| `max_call_depth` | integer | `5` | Forward call-graph depth used by future propagation analysis. |
-| `max_reverse_call_depth` | integer | `4` | Reverse call-graph depth used by future reachability analysis. |
-| `max_paths_per_probe` | integer | `20` | Cap on enumerated paths per probe, to keep static analysis bounded. |
-| `unknowns_are_warnings` | boolean | `false` | When true, opaque/unknown findings would surface as warnings rather than informational entries. |
+| `mode` | enum: `instant` \| `draft` \| `fast` \| `deep` \| `ready` | `draft` | Default analysis mode when not set by a CLI flag or LSP initialization option. |
+| `include_unchanged_tests` | boolean | `true` | Whether unchanged tests may be indexed as static evidence. |
 
-These keys map to bounded-graph work that is on the roadmap (see
-[`docs/IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)). Until that work
-lands, propagation analysis is shallow and these values have nothing to clamp.
+### `[oracles]`
 
-### `[oracles.snapshots]`
+These settings adjust repo policy for oracle shapes whose strength can vary by
+team convention. Exact value and exact error-variant assertions remain strong;
+smoke-only assertions remain smoke.
 
-| Key | Planned type | Planned default | Intended effect |
+| Key | Type | Default | Effect |
 | --- | --- | --- | --- |
-| `default` | enum: `low` \| `medium` \| `high` | `medium` | Default strength assigned to snapshot-style oracles when no per-pattern entry matches. |
+| `snapshot_strength` | enum: `strong` \| `medium` \| `weak` \| `smoke` \| `none` \| `unknown` | `medium` | Strength assigned to snapshot-style oracles. |
+| `mock_expectation_strength` | same enum | `medium` | Strength assigned to mock/side-effect expectation oracles. |
+| `broad_error_strength` | same enum | `weak` | Strength assigned to broad error checks such as `is_err()`. |
 
-### `[oracles.mocks]`
+### `[severity.findings]`
 
-| Key | Planned type | Intended effect |
-| --- | --- | --- |
-| `patterns` | array of `{ path, strength, sink }` | Teach `ripr` that a specific mock-method call counts as a strong oracle for a named sink. `path` is a glob over qualified call paths; `strength` is `low`/`medium`/`high`; `sink` is a logical sink name (e.g. `published_event`, `persisted_state`). |
+Finding severities affect human output, JSON `severity`, GitHub annotations,
+and LSP Finding diagnostics. Valid values are `info`, `warning`, and `note`.
+Use suppressions for accepted debt; Finding severities cannot be `off`.
 
-### `[external_boundaries]`
+| Key | Default |
+| --- | --- |
+| `exposed` | `info` |
+| `weakly_exposed` | `warning` |
+| `reachable_unrevealed` | `warning` |
+| `no_static_path` | `warning` |
+| `infection_unknown` | `warning` |
+| `propagation_unknown` | `note` |
+| `static_unknown` | `note` |
 
-| Key | Planned type | Intended effect |
-| --- | --- | --- |
-| `patterns` | array of `{ path, kind }` | Teach `ripr` that a call (matched by glob) crosses a known external boundary, so propagation can assign it a sink kind. `kind` is one of the recognized sink labels (`persisted_state`, `published_event`, `metric`, …). |
+### `[severity.seams]`
+
+Seam severities affect LSP seam diagnostics. Valid values are `off`, `info`,
+`warning`, and `note`. Classes set to `off` do not publish diagnostics.
+
+| Key | Default |
+| --- | --- |
+| `strongly_gripped` | `off` |
+| `weakly_gripped` | `warning` |
+| `ungripped` | `warning` |
+| `reachable_unrevealed` | `warning` |
+| `activation_unknown` | `info` |
+| `propagation_unknown` | `info` |
+| `observation_unknown` | `info` |
+| `discrimination_unknown` | `info` |
+| `opaque` | `info` |
+| `intentional` | `off` |
+| `suppressed` | `off` |
+
+### `[lsp]`
+
+| Key | Type | Default | Effect |
+| --- | --- | --- | --- |
+| `seam_diagnostics` | boolean | `false` | Default for repo seam diagnostics. LSP `initializationOptions.seamDiagnostics` still wins. |
+
+### `[reports]`
+
+| Key | Type | Default | Effect |
+| --- | --- | --- | --- |
+| `max_related_tests` | integer | `5` | Default cap for context packets and server-side collect-context commands. |
+
+### `[suppressions]`
+
+| Key | Type | Default | Effect |
+| --- | --- | --- | --- |
+| `path` | repo-relative path | `.ripr/suppressions.toml` | Badge renderers load suppressions from this path. Absolute paths, `..`, and backslashes are rejected. |
 
 ### Worked example
 
-The current example, with planned-only annotations:
-
 ```toml
-# All keys below are planned; the current binary does not read this file.
-
 [analysis]
-default_mode = "draft"           # planned
-max_call_depth = 5               # planned
-max_reverse_call_depth = 4       # planned
-max_paths_per_probe = 20         # planned
-unknowns_are_warnings = false    # planned
+mode = "draft"
+include_unchanged_tests = true
 
-[oracles.snapshots]
-default = "medium"               # planned
+[oracles]
+snapshot_strength = "medium"
+mock_expectation_strength = "medium"
+broad_error_strength = "weak"
 
-[oracles.mocks]
-patterns = [                     # planned
-  { path = "MockPublisher::expect_publish", strength = "high", sink = "published_event" },
-  { path = "MockRepo::expect_save",         strength = "high", sink = "persisted_state" },
-]
+[severity.findings]
+weakly_exposed = "warning"
+static_unknown = "note"
 
-[external_boundaries]
-patterns = [                     # planned
-  { path = "*.save",       kind = "persisted_state" },
-  { path = "*.publish",    kind = "published_event" },
-  { path = "metrics.*",    kind = "metric" },
-]
+[severity.seams]
+weakly_gripped = "warning"
+opaque = "info"
+
+[lsp]
+seam_diagnostics = false
+
+[reports]
+max_related_tests = 5
+
+[suppressions]
+path = ".ripr/suppressions.toml"
 ```
 
-## Precedence (planned)
+## Precedence
 
-When `ripr.toml` is wired up, the precedence rule will be:
+For CLI commands:
 
 ```
-CLI flag  >  LSP initializationOptions  >  ripr.toml [analysis]  >  CheckInput::default()
+CLI flag  >  ripr.toml  >  CheckInput::default()
 ```
 
-Until then, only the first and last apply on the CLI path, and the first two
-apply on the LSP path.
+For LSP:
+
+```
+LSP initializationOptions  >  ripr.toml  >  CheckInput::default()
+```
 
 ## See also
 

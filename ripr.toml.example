@@ -1,22 +1,50 @@
 [analysis]
-default_mode = "draft"
-max_call_depth = 5
-max_reverse_call_depth = 4
-max_paths_per_probe = 20
-unknowns_are_warnings = false
+# Default analysis mode when CLI flags or LSP initialization options do not
+# set one explicitly. Valid: instant, draft, fast, deep, ready.
+mode = "draft"
+include_unchanged_tests = true
 
-[oracles.snapshots]
-default = "medium"
+[oracles]
+# Probe-relative defaults for oracle shapes that are repo-policy-sensitive.
+# Valid strengths: strong, medium, weak, smoke, none, unknown.
+snapshot_strength = "medium"
+mock_expectation_strength = "medium"
+broad_error_strength = "weak"
 
-[oracles.mocks]
-patterns = [
-  { path = "MockPublisher::expect_publish", strength = "high", sink = "published_event" },
-  { path = "MockRepo::expect_save", strength = "high", sink = "persisted_state" }
-]
+[severity.findings]
+# Valid severities: info, warning, note.
+exposed = "info"
+weakly_exposed = "warning"
+reachable_unrevealed = "warning"
+no_static_path = "warning"
+infection_unknown = "warning"
+propagation_unknown = "note"
+static_unknown = "note"
 
-[external_boundaries]
-patterns = [
-  { path = "*.save", kind = "persisted_state" },
-  { path = "*.publish", kind = "published_event" },
-  { path = "metrics.*", kind = "metric" }
-]
+[severity.seams]
+# Valid severities: off, info, warning, note.
+strongly_gripped = "off"
+weakly_gripped = "warning"
+ungripped = "warning"
+reachable_unrevealed = "warning"
+activation_unknown = "info"
+propagation_unknown = "info"
+observation_unknown = "info"
+discrimination_unknown = "info"
+opaque = "info"
+intentional = "off"
+suppressed = "off"
+
+[lsp]
+# Whole-repo seam diagnostics are opt-in because they can be expensive on cold
+# workspaces. LSP initializationOptions.seamDiagnostics still wins explicitly.
+seam_diagnostics = false
+
+[reports]
+# Default for context packets and editor collect-context commands when no
+# explicit --max-related-tests argument is supplied.
+max_related_tests = 5
+
+[suppressions]
+# Repo-relative, slash-separated path. Badge renderers load this path.
+path = ".ripr/suppressions.toml"

@@ -1,4 +1,8 @@
-use crate::analysis::{self, AnalysisMode, AnalysisOptions, run_analysis, run_repo_analysis};
+use crate::analysis::{
+    self, AnalysisMode, AnalysisOptions, run_analysis_with_oracle_policy,
+    run_repo_analysis_with_oracle_policy,
+};
+use crate::config::RiprConfig;
 use crate::domain::{Finding, Summary};
 use crate::output;
 use crate::output::badge::BadgeScope;
@@ -222,6 +226,13 @@ pub struct CheckOutput {
 /// # Ok::<(), String>(())
 /// ```
 pub fn check_workspace(input: CheckInput) -> Result<CheckOutput, String> {
+    check_workspace_with_config(input, &RiprConfig::default())
+}
+
+pub(crate) fn check_workspace_with_config(
+    input: CheckInput,
+    config: &RiprConfig,
+) -> Result<CheckOutput, String> {
     let options = AnalysisOptions {
         root: input.root.clone(),
         base: input.base.clone(),
@@ -229,7 +240,7 @@ pub fn check_workspace(input: CheckInput) -> Result<CheckOutput, String> {
         mode: input.mode.analysis_mode(),
         include_unchanged_tests: input.include_unchanged_tests,
     };
-    let analysis = run_analysis(&options)?;
+    let analysis = run_analysis_with_oracle_policy(&options, config.oracles())?;
     Ok(CheckOutput {
         schema_version: "0.1".to_string(),
         tool: "ripr".to_string(),
@@ -254,6 +265,13 @@ pub fn check_workspace(input: CheckInput) -> Result<CheckOutput, String> {
 /// Returns `Err(String)` when repository traversal, syntax indexing, or
 /// classification cannot complete for the requested workspace.
 pub fn check_workspace_repo(input: CheckInput) -> Result<CheckOutput, String> {
+    check_workspace_repo_with_config(input, &RiprConfig::default())
+}
+
+pub(crate) fn check_workspace_repo_with_config(
+    input: CheckInput,
+    config: &RiprConfig,
+) -> Result<CheckOutput, String> {
     let options = AnalysisOptions {
         root: input.root.clone(),
         base: input.base.clone(),
@@ -261,7 +279,7 @@ pub fn check_workspace_repo(input: CheckInput) -> Result<CheckOutput, String> {
         mode: input.mode.analysis_mode(),
         include_unchanged_tests: input.include_unchanged_tests,
     };
-    let analysis = run_repo_analysis(&options)?;
+    let analysis = run_repo_analysis_with_oracle_policy(&options, config.oracles())?;
     Ok(CheckOutput {
         schema_version: "0.1".to_string(),
         tool: "ripr".to_string(),
@@ -302,33 +320,41 @@ pub(crate) const TEST_EFFICIENCY_REPORT_RELATIVE: &str = "target/ripr/reports/te
 /// the test-efficiency report. The other formats are infallible and
 /// always return `Ok`.
 pub fn render_check(output: &CheckOutput, format: &OutputFormat) -> Result<String, String> {
+    render_check_with_config(output, format, &RiprConfig::default())
+}
+
+pub(crate) fn render_check_with_config(
+    output: &CheckOutput,
+    format: &OutputFormat,
+    config: &RiprConfig,
+) -> Result<String, String> {
     match format {
-        OutputFormat::Human => Ok(output::human::render(output)),
-        OutputFormat::Json => Ok(output::json::render(output)),
-        OutputFormat::Github => Ok(output::github::render(output)),
+        OutputFormat::Human => Ok(output::human::render_with_config(output, config)),
+        OutputFormat::Json => Ok(output::json::render_with_config(output, config)),
+        OutputFormat::Github => Ok(output::github::render_with_config(output, config)),
         OutputFormat::BadgeJson | OutputFormat::RepoBadgeJson => {
-            let mut summary = ripr_summary_with_suppressions(output)?;
+            let mut summary = ripr_summary_with_suppressions(output, config)?;
             if format.is_repo_scope() {
                 summary.scope = BadgeScope::Repo;
             }
             Ok(output::badge::render_native_json(&summary))
         }
         OutputFormat::BadgeShields | OutputFormat::RepoBadgeShields => {
-            let mut summary = ripr_summary_with_suppressions(output)?;
+            let mut summary = ripr_summary_with_suppressions(output, config)?;
             if format.is_repo_scope() {
                 summary.scope = BadgeScope::Repo;
             }
             Ok(output::badge::render_shields_json(&summary))
         }
         OutputFormat::BadgePlusJson | OutputFormat::RepoBadgePlusJson => {
-            let mut summary = ripr_plus_summary_from_disk(output, format.is_repo_scope())?;
+            let mut summary = ripr_plus_summary_from_disk(output, format.is_repo_scope(), config)?;
             if format.is_repo_scope() {
                 summary.scope = BadgeScope::Repo;
             }
             Ok(output::badge::render_native_json(&summary))
         }
         OutputFormat::BadgePlusShields | OutputFormat::RepoBadgePlusShields => {
-            let mut summary = ripr_plus_summary_from_disk(output, format.is_repo_scope())?;
+            let mut summary = ripr_plus_summary_from_disk(output, format.is_repo_scope(), config)?;
             if format.is_repo_scope() {
                 summary.scope = BadgeScope::Repo;
             }
@@ -343,17 +369,20 @@ pub fn render_check(output: &CheckOutput, format: &OutputFormat) -> Result<Strin
             Ok(output::repo_seams::render_repo_seams_md(&seams))
         }
         OutputFormat::RepoExposureJson => {
-            let classified = analysis::inventory_classified_seams_at(&output.root)?;
+            let classified =
+                analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
             Ok(output::repo_exposure::render_repo_exposure_json(
                 &classified,
             ))
         }
         OutputFormat::RepoExposureMd => {
-            let classified = analysis::inventory_classified_seams_at(&output.root)?;
+            let classified =
+                analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
             Ok(output::repo_exposure::render_repo_exposure_md(&classified))
         }
         OutputFormat::AgentSeamPacketsJson => {
-            let classified = analysis::inventory_classified_seams_at(&output.root)?;
+            let classified =
+                analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
             Ok(output::agent_seam_packets::render_agent_seam_packets_json(
                 &classified,
             ))
@@ -363,31 +392,40 @@ pub fn render_check(output: &CheckOutput, format: &OutputFormat) -> Result<Strin
 
 fn load_suppressions(
     output: &CheckOutput,
+    config: &RiprConfig,
 ) -> Result<Vec<output::suppressions::SuppressionEntry>, String> {
-    output::suppressions::load_suppressions_for_root(&output.root).map_err(|violations| {
-        format!(
-            ".ripr/suppressions.toml validation failed:\n{}",
-            violations.join("\n")
-        )
-    })
+    output::suppressions::load_suppressions_for_root_at(&output.root, config.suppressions().path())
+        .map_err(|violations| {
+            format!(
+                "{} validation failed:\n{}",
+                config.suppressions().display_path(),
+                violations.join("\n")
+            )
+        })
 }
 
 fn ripr_summary_with_suppressions(
     output: &CheckOutput,
+    config: &RiprConfig,
 ) -> Result<output::badge::BadgeSummary, String> {
-    let suppressions = load_suppressions(output)?;
+    let suppressions = load_suppressions(output, config)?;
     let today = output::suppressions::current_iso_date();
+    let policy = output::badge::BadgePolicy {
+        suppressions_path: config.suppressions().display_path(),
+        ..output::badge::BadgePolicy::default()
+    };
     Ok(output::badge::ripr_badge_summary_with_suppressions(
         output,
         &suppressions,
         &today,
-        output::badge::BadgePolicy::default(),
+        policy,
     ))
 }
 
 fn ripr_plus_summary_from_disk(
     output: &CheckOutput,
     repo_scope: bool,
+    config: &RiprConfig,
 ) -> Result<output::badge::BadgeSummary, String> {
     let report_path = output.root.join(TEST_EFFICIENCY_REPORT_RELATIVE);
     if !report_path.exists() {
@@ -399,7 +437,7 @@ fn ripr_plus_summary_from_disk(
     let text = std::fs::read_to_string(&report_path)
         .map_err(|err| format!("failed to read {}: {err}", report_path.display()))?;
     let test_efficiency = output::badge::parse_test_efficiency_badge_summary(&text)?;
-    let suppressions = load_suppressions(output)?;
+    let suppressions = load_suppressions(output, config)?;
     let today = output::suppressions::current_iso_date();
     // `cargo xtask test-efficiency-report` is repo-wide as a fact source.
     // Diff-scoped `ripr+` filters that ledger to entries related to the
@@ -415,12 +453,16 @@ fn ripr_plus_summary_from_disk(
         Some(filter) => output::badge::TestEfficiencyAggregationScope::Diff(filter),
         None => output::badge::TestEfficiencyAggregationScope::Repo,
     };
+    let policy = output::badge::BadgePolicy {
+        suppressions_path: config.suppressions().display_path(),
+        ..output::badge::BadgePolicy::default()
+    };
     Ok(output::badge::ripr_plus_badge_summary_with_suppressions(
         output,
         test_efficiency,
         &suppressions,
         &today,
-        output::badge::BadgePolicy::default(),
+        policy,
         scope,
     ))
 }
@@ -441,14 +483,22 @@ pub fn explain_finding(root: &Path, selector: &str) -> Result<String, String> {
 
 /// Like [`explain_finding`] but allows overriding the full check input.
 pub fn explain_finding_with_input(input: CheckInput, selector: &str) -> Result<String, String> {
-    let output = check_workspace(input)?;
+    explain_finding_with_config(input, selector, &RiprConfig::default())
+}
+
+pub(crate) fn explain_finding_with_config(
+    input: CheckInput,
+    selector: &str,
+    config: &RiprConfig,
+) -> Result<String, String> {
+    let output = check_workspace_with_config(input, config)?;
     let selected = output
         .findings
         .iter()
         .find(|finding| finding.id == selector || selector_matches_location(selector, finding));
 
     match selected {
-        Some(finding) => Ok(output::human::render_finding(finding)),
+        Some(finding) => Ok(output::human::render_finding_with_config(finding, config)),
         None => Err(format!("no finding matched {selector:?}")),
     }
 }
@@ -476,11 +526,20 @@ pub fn collect_context_with_input(
     selector: &str,
     max_related_tests: usize,
 ) -> Result<String, String> {
+    collect_context_with_config(input, selector, max_related_tests, &RiprConfig::default())
+}
+
+pub(crate) fn collect_context_with_config(
+    input: CheckInput,
+    selector: &str,
+    max_related_tests: usize,
+    config: &RiprConfig,
+) -> Result<String, String> {
     let input = CheckInput {
         format: OutputFormat::Json,
         ..input
     };
-    let output = check_workspace(input)?;
+    let output = check_workspace_with_config(input, config)?;
     let selected = output
         .findings
         .iter()
@@ -504,7 +563,10 @@ fn selector_matches_location(selector: &str, finding: &Finding) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{CheckOutput, Mode, OutputFormat, render_check, selector_matches_location};
+    use super::{
+        CheckOutput, Mode, OutputFormat, render_check, render_check_with_config,
+        selector_matches_location,
+    };
     use crate::analysis::AnalysisMode;
     use crate::domain::{
         ActivationEvidence, Confidence, ExposureClass, Finding, OracleStrength, Probe, ProbeFamily,
@@ -609,6 +671,28 @@ mod tests {
             summary: Summary::default(),
             findings,
         }
+    }
+
+    #[test]
+    fn configured_finding_severity_applies_to_human_json_and_github() -> Result<(), String> {
+        let output = check_output_with(vec![sample_finding("src/lib.rs", 1)]);
+        let config =
+            crate::config::tests_only_parse("[severity.findings]\nweakly_exposed = \"info\"\n")?;
+
+        let human = render_check_with_config(&output, &OutputFormat::Human, &config)?;
+        let json = render_check_with_config(&output, &OutputFormat::Json, &config)?;
+        let github = render_check_with_config(&output, &OutputFormat::Github, &config)?;
+
+        if !human.contains("INFO src/lib.rs:1") {
+            return Err(format!("human severity was not configured: {human}"));
+        }
+        if !json.contains("\"severity\": \"info\"") {
+            return Err(format!("json severity was not configured: {json}"));
+        }
+        if !github.starts_with("::notice ") {
+            return Err(format!("github severity was not configured: {github}"));
+        }
+        Ok(())
     }
 
     #[test]

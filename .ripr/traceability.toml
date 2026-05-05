@@ -342,3 +342,46 @@ metrics = [
   "runtime_outcome_counts",
   "join_method_counts"
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0007"
+name = "repository configuration"
+spec = "docs/specs/RIPR-SPEC-0007-repository-configuration.md"
+tests = [
+  "crates/ripr/src/config.rs::tests::missing_config_uses_behavior_preserving_defaults",
+  "crates/ripr/src/config.rs::tests::config_file_sets_core_operational_defaults",
+  "crates/ripr/src/config.rs::tests::explicit_cli_mode_wins_over_config_mode",
+  "crates/ripr/src/config.rs::tests::config_mode_applies_when_cli_mode_is_not_explicit",
+  "crates/ripr/src/config.rs::tests::malformed_or_unknown_config_is_actionable",
+  "crates/ripr/src/config.rs::tests::config_rejects_unsafe_suppression_paths",
+  "crates/ripr/src/config.rs::tests::oracle_policy_rewrites_configurable_oracle_strengths",
+  "crates/ripr/src/lsp/config.rs::tests::repo_config_sets_defaults_when_initialization_options_are_missing",
+  "crates/ripr/src/lsp/config.rs::tests::initialization_options_override_repo_config_defaults",
+  "crates/ripr/src/app.rs::tests::configured_finding_severity_applies_to_human_json_and_github",
+  "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::configured_seam_severity_can_disable_a_class"
+]
+fixtures = []
+code = [
+  "crates/ripr/src/config.rs",
+  "crates/ripr/src/app.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/lsp/config.rs",
+  "crates/ripr/src/lsp/backend.rs",
+  "crates/ripr/src/lsp/diagnostics.rs",
+  "crates/ripr/src/analysis/mod.rs",
+  "crates/ripr/src/analysis/rust_index.rs",
+  "crates/ripr/src/analysis/seam_inventory.rs",
+  "crates/ripr/src/output/human.rs",
+  "crates/ripr/src/output/json/report.rs",
+  "crates/ripr/src/output/github.rs",
+  "crates/ripr/src/output/suppressions.rs"
+]
+outputs = [
+  "docs/CONFIGURATION.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "ripr.toml.example"
+]
+metrics = [
+  "repository_config"
+]

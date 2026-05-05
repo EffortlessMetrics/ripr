@@ -11,9 +11,10 @@ mod value_resolution;
 mod workspace;
 
 pub(crate) use seam_classification::ClassifiedSeam;
-pub(crate) use seam_inventory::{inventory_classified_seams_at, inventory_seams_at};
+pub(crate) use seam_inventory::{inventory_classified_seams_at_with_config, inventory_seams_at};
 pub(crate) use seams::{RepoSeam, RequiredDiscriminator};
 
+use crate::config::OraclePolicy;
 use crate::domain::{Finding, Summary};
 use std::path::PathBuf;
 
@@ -42,6 +43,13 @@ pub struct AnalysisResult {
 }
 
 pub fn run_analysis(options: &AnalysisOptions) -> Result<AnalysisResult, String> {
+    run_analysis_with_oracle_policy(options, &OraclePolicy::default())
+}
+
+pub(crate) fn run_analysis_with_oracle_policy(
+    options: &AnalysisOptions,
+    oracle_policy: &OraclePolicy,
+) -> Result<AnalysisResult, String> {
     let diff_text = diff::load_diff(
         &options.root,
         options.base.as_deref(),
@@ -60,7 +68,8 @@ pub fn run_analysis(options: &AnalysisOptions) -> Result<AnalysisResult, String>
         options.mode,
         options.include_unchanged_tests,
     );
-    let index = rust_index::build_index(&options.root, &index_files)?;
+    let mut index = rust_index::build_index(&options.root, &index_files)?;
+    rust_index::apply_oracle_policy(&mut index, oracle_policy);
 
     let mut findings = Vec::new();
     let mut changed_rust_files = 0usize;
@@ -107,6 +116,13 @@ pub fn run_analysis(options: &AnalysisOptions) -> Result<AnalysisResult, String>
 }
 
 pub fn run_repo_analysis(options: &AnalysisOptions) -> Result<AnalysisResult, String> {
+    run_repo_analysis_with_oracle_policy(options, &OraclePolicy::default())
+}
+
+pub(crate) fn run_repo_analysis_with_oracle_policy(
+    options: &AnalysisOptions,
+    oracle_policy: &OraclePolicy,
+) -> Result<AnalysisResult, String> {
     let rust_files = workspace::discover_rust_files(&options.root)?;
     let production_files = rust_files
         .iter()
@@ -120,7 +136,8 @@ pub fn run_repo_analysis(options: &AnalysisOptions) -> Result<AnalysisResult, St
     // inflates `no_static_path` for owners that *are* exercised by
     // integration tests under `tests/` or `examples/`. Probe seeding
     // stays production-only so test bodies do not generate findings.
-    let index = rust_index::build_index(&options.root, &rust_files)?;
+    let mut index = rust_index::build_index(&options.root, &rust_files)?;
+    rust_index::apply_oracle_policy(&mut index, oracle_policy);
 
     let mut findings = Vec::new();
 

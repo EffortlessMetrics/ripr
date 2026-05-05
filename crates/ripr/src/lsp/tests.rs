@@ -1231,7 +1231,8 @@ fn initialization_options_override_lsp_analysis_config() {
         "includeUnchangedTests": false,
     }));
 
-    let config = LspAnalysisConfig::from_initialize_params(&params);
+    let config =
+        LspAnalysisConfig::from_initialize_params(&params, crate::config::RiprConfig::default());
     let input = config.check_input(Path::new("/workspace"));
 
     assert_eq!(config.base_ref.as_deref(), Some("origin/release"));
@@ -1251,7 +1252,8 @@ fn initialization_options_allow_empty_base_ref_and_invalid_mode_falls_back() {
         "checkMode": "surprise",
     }));
 
-    let config = LspAnalysisConfig::from_initialize_params(&params);
+    let config =
+        LspAnalysisConfig::from_initialize_params(&params, crate::config::RiprConfig::default());
 
     assert_eq!(config.base_ref, None);
     assert_eq!(config.mode, Mode::Draft);
@@ -1274,7 +1276,10 @@ fn initialization_options_accept_all_analysis_mode_labels() {
             "checkMode": label,
         }));
 
-        let config = LspAnalysisConfig::from_initialize_params(&params);
+        let config = LspAnalysisConfig::from_initialize_params(
+            &params,
+            crate::config::RiprConfig::default(),
+        );
 
         assert_eq!(config.mode, expected);
     }

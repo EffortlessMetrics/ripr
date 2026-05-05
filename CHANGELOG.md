@@ -96,6 +96,12 @@ are scoped or reviewed.
   #315, #316, #327). The active manifest now moves to Campaign 5B
   Operationalization with `config/ripr-config-v1` as the next ready item and
   SARIF / seam-native badge policy blocked behind config.
+- Added repo-root `ripr.toml` configuration for Campaign 5B. Config can set
+  analysis mode, oracle policy for snapshots/mocks/broad errors, finding and
+  seam severity mapping, suppressions path, related-test report caps, and LSP
+  seam-diagnostic defaults. Missing config preserves existing defaults, unknown
+  keys fail loudly, and explicit CLI flags or LSP initialization options still
+  win. SARIF and seam-native badge remapping remain out of scope for this PR.
 
 ## 0.3.0 - 2026-05-02
 

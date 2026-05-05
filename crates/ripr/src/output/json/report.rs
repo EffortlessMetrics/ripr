@@ -1,4 +1,5 @@
 use crate::app::CheckOutput;
+use crate::config::RiprConfig;
 use crate::domain::{
     Finding, FlowSinkFact, MissingDiscriminatorFact, RelatedTest, StageEvidence, ValueFact,
 };
@@ -6,6 +7,10 @@ use crate::domain::{
 use super::{array_field, escape, field, float_field, number_field};
 
 pub fn render(output: &CheckOutput) -> String {
+    render_with_config(output, &RiprConfig::default())
+}
+
+pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> String {
     let mut out = String::new();
     out.push_str("{\n");
     field(&mut out, 1, "schema_version", &output.schema_version, true);
@@ -26,7 +31,7 @@ pub fn render(output: &CheckOutput) -> String {
     out.push_str(",\n");
     out.push_str("  \"findings\": [\n");
     for (idx, finding) in output.findings.iter().enumerate() {
-        finding_json(&mut out, finding, 2);
+        finding_json_with_config(&mut out, finding, 2, config);
         if idx + 1 != output.findings.len() {
             out.push(',');
         }
@@ -54,7 +59,17 @@ fn summary_json(out: &mut String, output: &CheckOutput) {
     ));
 }
 
+#[cfg(test)]
 pub(super) fn finding_json(out: &mut String, finding: &Finding, indent: usize) {
+    finding_json_with_config(out, finding, indent, &RiprConfig::default());
+}
+
+pub(super) fn finding_json_with_config(
+    out: &mut String,
+    finding: &Finding,
+    indent: usize,
+    config: &RiprConfig,
+) {
     let sp = "  ".repeat(indent);
     out.push_str(&format!("{sp}{{\n"));
     field(out, indent + 1, "id", &finding.id, true);
@@ -65,7 +80,13 @@ pub(super) fn finding_json(out: &mut String, finding: &Finding, indent: usize) {
         finding.class.as_str(),
         true,
     );
-    field(out, indent + 1, "severity", finding.class.severity(), true);
+    field(
+        out,
+        indent + 1,
+        "severity",
+        config.severity().for_exposure(&finding.class).as_str(),
+        true,
+    );
     float_field(out, indent + 1, "confidence", finding.confidence, true);
     out.push_str(&format!("{}\"probe\": {{\n", "  ".repeat(indent + 1)));
     field(out, indent + 2, "id", &finding.probe.id.0, true);
