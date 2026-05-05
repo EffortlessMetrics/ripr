@@ -7,7 +7,15 @@ user-visible behavior, compatibility notes, and migration guidance. Internal
 planning, ADR, and spec changes are called out when they affect how future PRs
 are scoped or reviewed.
 
-## Unreleased
+## Unreleased (target: 0.4.0)
+
+### Summary
+
+- This unreleased line is focused on Campaign 4B closure and Campaign 5A
+  adoption/calibration groundwork: seam-native evidence, repo-scale seam
+  reporting, agent dispatch packets, and LSP seam diagnostics/hover.
+- The guiding intent remains unchanged: improve static exposure evidence quality
+  and operator actionability without claiming runtime mutation outcomes.
 
 ### Added
 
@@ -76,6 +84,17 @@ are scoped or reviewed.
   instead of marking a fixed line prefix.
 - Added a framed LSP protocol smoke test for initialize, didOpen, refresh,
   hover, codeAction, shutdown, and exit over the tower server.
+
+## Release history at a glance
+
+- **0.3.0 (2026-05-02):** syntax-backed analyzer and evidence-quality
+  foundations, deeper automation/quality gates, typed `tower-lsp-server`
+  sidecar migration, richer LSP evidence surfaces, and CI/release hardening.
+- **0.2.0 (2026-05-01):** first self-provisioning editor distribution flow,
+  `ripr lsp` entrypoints, server binary resolution chain, release archives +
+  checksums for downloader verification, and VSIX/Open VSX publication.
+- **0.1.0 (2026-05-01):** first publishable alpha for static RIPR exposure
+  analysis in Rust/Cargo workspaces.
 
 ## 0.3.0 - 2026-05-02
 

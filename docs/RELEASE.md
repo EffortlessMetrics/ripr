@@ -2,6 +2,19 @@
 
 This document is the release checklist for publishing `ripr`.
 
+## Release history and current line
+
+- **Current unreleased target: 0.4.0.** Track ongoing work in
+  `CHANGELOG.md` under `Unreleased (target: 0.4.0)`.
+- **0.3.0 (2026-05-02):** syntax-backed analyzer + evidence-quality
+  foundations, expanded automation and policy checks, typed LSP sidecar, and
+  CI/release hardening.
+- **0.2.0 (2026-05-01):** first self-provisioning editor extension
+  distribution path, `ripr lsp` CLI entrypoints, and release binary/checksum
+  distribution consumed by the extension downloader.
+- **0.1.0 (2026-05-01):** first publishable alpha for static mutation-exposure
+  analysis in Rust/Cargo workspaces.
+
 ## Preconditions
 
 - The release branch has been reviewed and merged.
