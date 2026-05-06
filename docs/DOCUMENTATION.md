@@ -29,6 +29,7 @@ Current how-to docs:
 - [PR automation](PR_AUTOMATION.md)
 - [Dogfooding](DOGFOODING.md)
 - [Targeted test workflow](TARGETED_TEST_WORKFLOW.md)
+- [Targeted test boundary-gap case study](case-studies/TARGETED_TEST_BOUNDARY_GAP.md)
 - [Agent workflows](AGENT_WORKFLOWS.md)
 - [Release](RELEASE.md)
 - [Publishing](PUBLISHING.md)

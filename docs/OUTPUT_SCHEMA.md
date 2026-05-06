@@ -844,8 +844,10 @@ Field contract:
 - `new[]` / `removed[]` — seam identity and grip class for seam IDs present in
   only one input.
 
-The Markdown sibling prints the same summary and highlights moved, regressed,
-new, and removed seams for human review.
+The Markdown sibling prints the same summary and highlights moved, unchanged,
+regressed, new, and removed seams for human review. Unchanged seams can still
+carry evidence-delta hints, such as a new observed value, so reviewers can see
+when a targeted test improved rendered evidence without changing the grip class.
 
 ## Agent Seam Packets
 

@@ -73,6 +73,11 @@ cargo xtask agent-seam-packets .
 Archive the JSON snapshot you want to compare before adding the test. The
 targeted outcome report compares two files; it does not rerun analysis.
 
+A small dogfood example lives in
+[Targeted test boundary-gap case study](case-studies/TARGETED_TEST_BOUNDARY_GAP.md).
+It shows a focused test that changed rendered static evidence while the seam
+class stayed `weakly_gripped`.
+
 ## 2. Pick One Seam
 
 Open `target/ripr/workflow/before.repo-exposure.md` or

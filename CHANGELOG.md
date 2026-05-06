@@ -187,6 +187,12 @@ are scoped or reviewed.
   alignment checks without changing fixture execution.
 - Documented a copyable, non-blocking GitHub Actions recipe for rendering RIPR
   SARIF and uploading it to GitHub code scanning.
+- Updated targeted-test outcome Markdown to show unchanged seams and their
+  evidence deltas, so a receipt can show static evidence movement even when the
+  grip class does not change.
+- Added a boundary-gap targeted-test case study showing one focused test, the
+  before/after receipt, and the current static evidence gap when the class stays
+  `weakly_gripped`.
 
 ## 0.3.0 - 2026-05-02
 
