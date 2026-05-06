@@ -42,6 +42,8 @@ editors/vscode/test-fixtures/**|fixture_input|lsp/editor|Fixture workspace for V
 editors/vscode/tsconfig.json|editor_extension_config|lsp/editor|VS Code TypeScript compiler config.
 fixtures/**|fixture_input|analysis-fixtures|Fixture workspaces may intentionally contain analyzed source files.
 metrics/*.toml|policy_metadata|repo-policy|Machine-readable capability and metrics metadata.
+ops/droid-rollout/*.md|documentation|repo-process|Droid rollout pack documentation templates.
+ops/droid-rollout/*.yml|template|repo-process|Droid rollout pack workflow templates; not active workflows, copied into target repos.
 ripr.toml.example|config_example|config|Example ripr configuration.
 rust-toolchain.toml|rust_toolchain|rust|Pinned local Rust toolchain and components for repository development.
 xtask/Cargo.toml|rust_manifest|rust|xtask package manifest.
