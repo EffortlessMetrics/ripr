@@ -705,8 +705,8 @@ Work items:
 | `extract/fact-extraction` | done | PR 11: Moved call, return, literal, oracle, and text extraction helpers plus probe-shape constants into `analysis/extract/*` while keeping `rust_index` as the compatibility facade. |
 | `probes/family-extraction` | done | PR 12: Moved probe-family mapping, changed-line family heuristics, and delta metadata into `analysis/probes/family.rs`. |
 | `probes/expectations-extraction` | done | PR 13: Moved expected sink and required oracle helpers into `analysis/probes/expectations.rs`. |
-| `probes/id-extraction` | ready | PR 14: Create `analysis/probes/ids.rs` |
-| `probes/lexical-extraction` | pending | PR 15: Create `analysis/probes/lexical.rs` |
+| `probes/id-extraction` | done | PR 14: Moved probe ID construction and path sanitization helpers into `analysis/probes/ids.rs`. |
+| `probes/lexical-extraction` | ready | PR 15: Create `analysis/probes/lexical.rs` |
 | `probes/diff-repo-split` | pending | PR 16: Split diff and repo probe seeding |
 | `classify/context-extraction` | pending | PR 17: Create `analysis/classify/context.rs` with `ProbeContext` |
 | `classify/related-tests` | pending | PR 18: Move related-test discovery into stage module |

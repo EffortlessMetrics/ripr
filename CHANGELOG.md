@@ -166,6 +166,9 @@ are scoped or reviewed.
 - Moved probe expected-sink and required-oracle helpers into
   `analysis/probes/expectations.rs` while preserving probe generation behavior.
   The next ready seam is probe ID helper extraction.
+- Moved probe ID construction and path sanitization helpers into
+  `analysis/probes/ids.rs` while preserving diff and repo probe ID formats.
+  The next ready seam is lexical probe fallback extraction.
 - Added `cargo xtask targeted-test-outcome` as an advisory receipt for comparing
   before/after `repo-exposure-json` artifacts. The report writes
   `target/ripr/reports/targeted-test-outcome.{json,md}`, matches seams by

@@ -278,11 +278,29 @@ commands = [
 
 [[work_item]]
 id = "probes/id-extraction"
-status = "ready"
+status = "done"
 branch = "probe-id-extraction"
 stackable = false
 requires_human_merge = true
 acceptance = "probe ID construction and path sanitization helpers move into analysis/probes/ids.rs after expectation extraction; probe generation behavior stays stable with sanitize_path behavior pinned and no output, API, or schema drift"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-public-api",
+  "cargo xtask check-architecture",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-no-panic-family",
+  "cargo test --workspace"
+]
+
+[[work_item]]
+id = "probes/lexical-extraction"
+status = "ready"
+branch = "probe-lexical-extraction"
+stackable = false
+requires_human_merge = true
+acceptance = "lexical changed-line probe fallback helpers move into analysis/probes/lexical.rs after probe ID extraction; probe generation behavior stays stable with no output, API, or schema drift"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
