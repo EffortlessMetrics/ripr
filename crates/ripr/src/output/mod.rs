@@ -4,6 +4,7 @@ pub(crate) mod format;
 pub mod github;
 pub mod human;
 pub mod json;
+pub(crate) mod mutation_calibration;
 pub(crate) mod outcome;
 pub(crate) mod pilot;
 pub(crate) mod render;

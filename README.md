@@ -155,6 +155,15 @@ ripr check --root . --mode ready --format repo-exposure-json > target/ripr/pilot
 ripr outcome --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json
 ```
 
+When runtime mutation data already exists, import it as an advisory calibration
+check:
+
+```bash
+ripr calibrate cargo-mutants \
+  --mutants-json target/mutants/outcomes.json \
+  --repo-exposure-json target/ripr/pilot/after.repo-exposure.json
+```
+
 Check the current Git diff against `origin/main` with built-in defaults:
 
 ```bash
@@ -283,12 +292,12 @@ Current capabilities:
 | Diff analysis | Evidence-first Voice A findings with syntax-backed changed-line probes, probe-relative oracle strength, local flow sinks, observed/missing activation values, and explicit stop reasons. | Campaign 6 stack audit. |
 | Repo seam inventory | First-class `RepoSeam` model with deterministic seam IDs, cached seam fact layers, test-grip evidence across the five RIPR stages, and 11-class `SeamGripClass` classification. | Campaign 6 stack audit. |
 | Test discovery | Parser-backed test and assertion facts with exact, broad, relational, snapshot, mock, smoke, custom-helper, side-effect observer, and unknown oracle kinds; per-test efficiency ledger with smoke/broad/disconnected/opaque/circular/likely-vacuous reasons and duplicate-discriminator groups. | Campaign 6 stack audit. |
-| Output | Human, JSON, context, and GitHub formats render evidence-first findings with stop reasons; `ripr pilot` writes a zero-config first-run packet; `ripr outcome` compares before/after repo exposure snapshots; repo exposure report and v2 agent seam packets render classified seam evidence; public `ripr` and `ripr+` Shields badges publish seam-native unresolved gap counts while diff badge artifacts remain finding-exposure based. | Public calibration import command. |
+| Output | Human, JSON, context, and GitHub formats render evidence-first findings with stop reasons; `ripr pilot` writes a zero-config first-run packet; `ripr outcome` compares before/after repo exposure snapshots; repo exposure report and v2 agent seam packets render classified seam evidence; public `ripr` and `ripr+` Shields badges publish seam-native unresolved gap counts while diff badge artifacts remain finding-exposure based. | Campaign 6 stack audit. |
 | LSP | Experimental `tower-lsp-server` sidecar with evidence-aware Finding diagnostics, related-test links, hovers, server-side context packets, seam-native diagnostics + hover, and seam code actions for copying packets/assertions and opening related tests. Saved-workspace diagnostics remain advisory; unsaved-buffer overlays are not default behavior. | Campaign 6 stack audit. |
 | Agent context | Compact context packet plus per-seam `write_targeted_test` and `inspect_static_limitation` packets carrying recommended test placement, nearest tests to imitate, candidate values, missing discriminators, patterns to imitate/avoid, and assertion templates. Documented agent dispatch workflow in `docs/AGENT_DISPATCH_WORKFLOW.md`. | Campaign 6 stack audit. |
 | Repository config | Repo-root `ripr.toml` can set analysis mode, oracle policy, severity mapping, suppressions path, report related-test caps, and LSP seam-diagnostic defaults. Explicit CLI flags and LSP initialization options still win. | Campaign 6 stack audit. |
 | SARIF and CI policy | `ripr check --format sarif` emits diff-scoped Finding SARIF and `--format repo-sarif` emits repo seam SARIF with configured severity, suppression metadata, stable rule IDs, and stable fingerprints. `cargo xtask sarif-policy` compares current SARIF to a baseline and only fails when explicitly requested. `docs/CI.md` includes a copyable non-blocking GitHub Actions upload recipe. | Campaign 6 stack audit. |
-| Calibration | Advisory `cargo xtask mutation-calibration` joins imported cargo-mutants runtime data to static seam evidence by `seam_id` or unambiguous file/line and writes `target/ripr/reports/mutation-calibration.{json,md}`; ambiguous file/line candidates stay unassigned. `fixtures/CALIBRATION_CORPUS.md` maps current fixtures to controlled calibration scenarios. | Future runtime calibration artifacts; runtime mutation language stays inside calibration/runtime reports. |
+| Calibration | Advisory `ripr calibrate cargo-mutants` and repo-local `cargo xtask mutation-calibration` join imported cargo-mutants runtime data to static seam evidence by `seam_id` or unambiguous file/line; ambiguous file/line candidates stay unassigned. `fixtures/CALIBRATION_CORPUS.md` maps current fixtures to controlled calibration scenarios. | Future runtime calibration artifacts; runtime mutation language stays inside calibration/runtime reports. |
 
 Campaign 5A and 5B are complete. Campaign 5B landed repository config,
 SARIF/CI policy, and seam-native badge count mapping. The next active item is

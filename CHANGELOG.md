@@ -19,11 +19,15 @@ are scoped or reviewed.
 - Added `ripr outcome` to compare before/after `repo-exposure-json` snapshots
   from the installed binary, printing an advisory targeted-test receipt by
   default with `--format json` and `--out` for tool/file output.
+- Added `ripr calibrate cargo-mutants` to import already-produced
+  cargo-mutants JSON from the installed binary, join it to a
+  `repo-exposure-json` snapshot, and render advisory Markdown/JSON calibration
+  output without running mutation testing.
 - Added `ripr init` to write a conservative repo-local `ripr.toml`, with
   `--dry-run` for previewing and `--force` for explicit overwrite.
-- Added RIPR-SPEC-0009 to define defaults-first adoption behavior for `init`
-  and future `pilot`, `outcome`, calibration import, editor, SARIF, badge, and
-  config work.
+- Added RIPR-SPEC-0009 to define defaults-first adoption behavior for `init`,
+  `pilot`, `outcome`, calibration import, editor, SARIF, badge, and config
+  work.
 
 ### Changed
 

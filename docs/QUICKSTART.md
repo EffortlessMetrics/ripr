@@ -85,6 +85,20 @@ ripr outcome \
 Use `--format json` for tools, or `--out target/ripr/pilot/outcome.md` to write
 the receipt instead of printing Markdown to stdout.
 
+## Optional Runtime Calibration
+
+If cargo-mutants data already exists, import it without running mutation tests:
+
+```bash
+ripr calibrate cargo-mutants \
+  --mutants-json target/mutants/outcomes.json \
+  --repo-exposure-json target/ripr/pilot/after.repo-exposure.json
+```
+
+Use `--format json` for tools, or `--out target/ripr/pilot/mutation-calibration.md`
+to write the advisory calibration report to disk. Runtime vocabulary is kept in
+this calibration report and does not change static RIPR classifications.
+
 ## Optional Editor and CI Paths
 
 In VS Code, open a Rust file and use RIPR diagnostics, hovers, Copy Targeted

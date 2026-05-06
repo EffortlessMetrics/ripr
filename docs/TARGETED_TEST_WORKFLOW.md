@@ -34,18 +34,19 @@ The workflow uses these artifacts:
 | `mutation-calibration.{json,md}` | Optional runtime calibration join when cargo-mutants data exists. |
 | [`fixtures/CALIBRATION_CORPUS.md`](../fixtures/CALIBRATION_CORPUS.md) | Controlled fixture index for trying the loop on known seam scenarios. |
 
-`ripr pilot`, `ripr check`, and `ripr outcome` work from an installed `ripr`
-binary. Cockpit, badge-endpoint, and calibration summary commands shown here
-remain repo-local `cargo xtask` automation today.
+`ripr pilot`, `ripr check`, `ripr outcome`, and
+`ripr calibrate cargo-mutants` work from an installed `ripr` binary. Cockpit
+and badge-endpoint commands shown here remain repo-local `cargo xtask`
+automation today.
 
 Run `ripr init` when you want to pin repo policy before starting the loop. It
 materializes the conservative defaults for review and tuning; missing config is
 still a healthy first-run state.
 
 [RIPR-SPEC-0009](specs/RIPR-SPEC-0009-defaults-first-adoption.md) tracks the
-remaining public CLI path for this loop. `ripr outcome` now owns the
-before/after receipt; `ripr calibrate cargo-mutants` remains the planned
-advisory runtime calibration import.
+remaining public CLI path for this loop. `ripr outcome` owns the before/after
+receipt, and `ripr calibrate cargo-mutants` owns the advisory runtime
+calibration import.
 
 Use a local scratch directory for before/after snapshots:
 
@@ -298,7 +299,7 @@ They are not coverage or runtime mutation confirmation.
 When cargo-mutants output exists, join it to the after static snapshot:
 
 ```bash
-cargo xtask mutation-calibration . \
+ripr calibrate cargo-mutants \
   --mutants-json target/ripr/workflow/cargo-mutants.json \
   --repo-exposure-json target/ripr/workflow/after.repo-exposure.json
 ```
@@ -307,7 +308,7 @@ The boundary-gap case study has a checked-in sample for trying this without
 running mutation tests:
 
 ```bash
-cargo xtask mutation-calibration . \
+ripr calibrate cargo-mutants \
   --mutants-json fixtures/boundary_gap/calibration/runtime-mutants.json \
   --repo-exposure-json fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json
 ```

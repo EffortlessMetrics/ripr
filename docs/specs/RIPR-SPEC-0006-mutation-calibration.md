@@ -93,7 +93,7 @@ This spec does not require:
 ```text
 Given a repo exposure seam with seam_id = abc123,
 and imported cargo-mutants JSON has a runtime record with seam_id = abc123,
-when cargo xtask mutation-calibration runs,
+when ripr calibrate cargo-mutants runs,
 then the report emits one matched row with join_method = seam_id.
 ```
 
@@ -103,7 +103,7 @@ then the report emits one matched row with join_method = seam_id.
 Given a repo exposure seam at src/pricing.rs:42,
 and imported cargo-mutants JSON has no seam_id but has file = src/pricing.rs
 and line = 42,
-when cargo xtask mutation-calibration runs,
+when ripr calibrate cargo-mutants runs,
 then the report emits one matched row with join_method = file_line.
 ```
 
@@ -112,7 +112,7 @@ then the report emits one matched row with join_method = file_line.
 ```text
 Given imported runtime data for src/other.rs:99,
 and no static seam matches that seam_id or file/line,
-when cargo xtask mutation-calibration runs,
+when ripr calibrate cargo-mutants runs,
 then the report lists the runtime mutant under unmatched_mutants.
 ```
 
@@ -122,7 +122,7 @@ then the report lists the runtime mutant under unmatched_mutants.
 Given two repo exposure seams at src/pricing.rs:42,
 and imported cargo-mutants JSON has no seam_id but has file = src/pricing.rs
 and line = 42,
-when cargo xtask mutation-calibration runs,
+when ripr calibrate cargo-mutants runs,
 then the report lists the runtime mutant under ambiguous_file_line_matches
 and does not pick the first seam as a definitive match.
 ```
@@ -132,7 +132,7 @@ and does not pick the first seam as a definitive match.
 ```text
 Given matched runtime data with static gaps, static-clean seams, runtime gap
 signals, runtime-clean labels, and runtime-inconclusive labels,
-when cargo xtask mutation-calibration runs,
+when ripr calibrate cargo-mutants runs,
 then the report emits agreement counts, precision notes, static-only finding
 samples, and missed-runtime-signal samples without changing static seam classes.
 ```
@@ -141,6 +141,15 @@ samples, and missed-runtime-signal samples without changing static seam classes.
 
 Current tests:
 
+- `crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_summarizes_static_runtime_agreement`
+- `crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_joins_by_seam_id_then_file_line_and_keeps_ambiguous`
+- `crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_parses_repo_exposure_and_cargo_mutants_json`
+- `crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_merges_mutants_and_outcomes_by_id`
+- `crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_reports_are_advisory_and_structured`
+- `crates/ripr/src/cli/commands.rs::tests::calibrate_parses_required_inputs_format_and_out`
+- `crates/ripr/src/cli/commands.rs::tests::calibrate_command_writes_json_file`
+- `crates/ripr/tests/cli_smoke.rs::calibrate_cargo_mutants_prints_markdown_by_default`
+- `crates/ripr/tests/cli_smoke.rs::calibrate_cargo_mutants_writes_json_when_requested`
 - `xtask/src/main.rs::mutation_calibration_args_parse_root_and_input_paths`
 - `xtask/src/main.rs::mutation_calibration_imports_static_seams_and_runtime_outcomes`
 - `xtask/src/main.rs::mutation_calibration_merges_mutants_and_outcomes_by_mutant_id`
@@ -164,15 +173,19 @@ Planned tests:
 
 Current implementation:
 
-- `xtask/src/main.rs` implements `cargo xtask mutation-calibration`.
-- `xtask/src/main.rs` parses repo exposure JSON and imported cargo-mutants JSON.
-- `xtask/src/main.rs` accepts either a JSON file path or a `mutants.out`
-  directory containing `outcomes.json` or `mutants.json`.
-- `xtask/src/main.rs` renders Markdown and JSON reports under
-  `target/ripr/reports/`.
+- `crates/ripr/src/cli/commands.rs` implements
+  `ripr calibrate cargo-mutants`.
+- `crates/ripr/src/output/mutation_calibration.rs` parses repo exposure JSON
+  and imported cargo-mutants JSON.
+- `ripr calibrate cargo-mutants` accepts either a JSON file path or a
+  cargo-mutants output directory containing `outcomes.json` or `mutants.json`.
+- `ripr calibrate cargo-mutants` renders Markdown by default and supports
+  `--format json` plus `--out`.
+- `xtask/src/main.rs` keeps repo-local `cargo xtask mutation-calibration`
+  automation for generated reports under `target/ripr/reports/`.
 
-The command intentionally lives in `xtask` first because it is a repo calibration
-artifact, not a stable product output surface or public library API yet.
+The public command is an installed-binary adoption surface. It remains
+advisory and does not make calibration a public library API.
 
 ## Metrics
 

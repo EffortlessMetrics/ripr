@@ -304,6 +304,11 @@ Current tests and reports that support the contract:
 - `crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_from_repo_exposure_json_parses_static_evidence`
 - `crates/ripr/tests/cli_smoke.rs::outcome_prints_markdown_receipt_by_default`
 - `crates/ripr/tests/cli_smoke.rs::outcome_writes_json_receipt_when_requested`
+- `crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_summarizes_static_runtime_agreement`
+- `crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_joins_by_seam_id_then_file_line_and_keeps_ambiguous`
+- `crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_reports_are_advisory_and_structured`
+- `crates/ripr/tests/cli_smoke.rs::calibrate_cargo_mutants_prints_markdown_by_default`
+- `crates/ripr/tests/cli_smoke.rs::calibrate_cargo_mutants_writes_json_when_requested`
 - `xtask/src/main.rs::tests::targeted_test_outcome_report_buckets_seam_movement`
 - `xtask/src/main.rs::tests::targeted_test_outcome_json_and_markdown_are_structured`
 - `xtask/src/main.rs::tests::mutation_calibration_summarizes_static_runtime_agreement`
@@ -313,8 +318,6 @@ Current tests and reports that support the contract:
 
 Planned tests:
 
-- `ripr calibrate cargo-mutants` matches mutation-calibration agreement
-  buckets;
 - generated GitHub Actions workflow is advisory by default.
 
 ## Implementation Mapping
@@ -332,15 +335,16 @@ Current implementation pieces:
   pilot summary files.
 - `crates/ripr/src/output/outcome.rs` compares before/after repo-exposure
   snapshots and renders the public targeted-test outcome receipt.
-- `xtask/src/main.rs` currently owns the repo-local targeted-test outcome
-  report writer plus mutation calibration, LSP cockpit, SARIF policy, badge
-  artifact, and report-index automation.
+- `crates/ripr/src/output/mutation_calibration.rs` imports supplied
+  cargo-mutants JSON, joins it to repo-exposure snapshots, and renders the
+  public advisory calibration report.
+- `xtask/src/main.rs` currently owns repo-local mutation calibration, LSP
+  cockpit, SARIF policy, badge artifact, and report-index automation.
 - `docs/TARGETED_TEST_WORKFLOW.md`, `docs/CI.md`, `docs/CONFIGURATION.md`,
   and `docs/EDITOR_EXTENSION.md` document the current adoption path.
 
 Planned implementation pieces:
 
-- public `ripr calibrate cargo-mutants`;
 - optional generated advisory GitHub Actions workflow.
 
 ## Metrics

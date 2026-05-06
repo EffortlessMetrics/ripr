@@ -692,6 +692,9 @@ status = "alpha"
 spec = "RIPR-SPEC-0006"
 evidence = [
   "docs/specs/RIPR-SPEC-0006-mutation-calibration.md",
+  "ripr calibrate cargo-mutants",
+  "crates/ripr/src/output/mutation_calibration.rs",
+  "crates/ripr/tests/cli_smoke.rs calibrate cargo-mutants smoke tests",
   "cargo xtask mutation-calibration",
   "target/ripr/reports/mutation-calibration.json",
   "target/ripr/reports/mutation-calibration.md",

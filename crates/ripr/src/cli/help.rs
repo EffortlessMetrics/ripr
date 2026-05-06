@@ -4,6 +4,7 @@ Usage:
   ripr init [--root PATH] [--dry-run] [--force]
   ripr pilot [--root PATH] [--out PATH] [--mode draft] [--max-seams 5]
   ripr outcome --before PATH --after PATH [--format md|json] [--out PATH]
+  ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
   ripr check [--base origin/main] [--diff PATH] [--mode draft] [--format FORMAT]
   ripr explain [--base REV|--diff PATH] <finding-id|file:line>
   ripr context [--base REV|--diff PATH] --at <finding-id|file:line>
@@ -19,6 +20,7 @@ Quick start:
   ripr doctor
   ripr pilot
   ripr outcome --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json
+  ripr calibrate cargo-mutants --mutants-json target/mutants/outcomes.json --repo-exposure-json target/ripr/pilot/after.repo-exposure.json
   ripr check --diff crates/ripr/examples/sample/example.diff
   ripr check --diff crates/ripr/examples/sample/example.diff --json
   ripr explain --diff crates/ripr/examples/sample/example.diff <finding-id>
@@ -68,6 +70,20 @@ Options:
 The outcome receipt is advisory. It compares static repo-exposure snapshots by
 seam_id and reports moved, unchanged, regressed, new, and removed seams; it
 does not run analysis, mutation testing, or CI policy.
+"#;
+
+const CALIBRATE_HELP: &str = r#"Usage: ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
+
+Options:
+  --mutants-json PATH          cargo-mutants JSON file, or directory containing outcomes.json and/or mutants.json.
+  --repo-exposure-json PATH    RIPR repo-exposure-json snapshot to join against.
+  --format FORMAT             md, markdown, text, or json. Defaults to md.
+  --out PATH                  Write the rendered calibration report to a file instead of stdout.
+
+The calibration report is advisory. It imports already-produced runtime
+mutation data and joins it to static seam evidence by seam_id first, then by
+unambiguous file/line. It does not run mutation testing, alter static
+classifications, or configure CI policy.
 "#;
 
 const CHECK_HELP: &str = r#"Usage: ripr check [OPTIONS]
@@ -137,6 +153,10 @@ pub(super) fn print_outcome_help() {
     println!("{OUTCOME_HELP}");
 }
 
+pub(super) fn print_calibrate_help() {
+    println!("{CALIBRATE_HELP}");
+}
+
 pub(super) fn print_explain_help() {
     println!("{EXPLAIN_HELP}");
 }
@@ -156,8 +176,8 @@ pub(super) fn print_lsp_help() {
 #[cfg(test)]
 mod tests {
     use super::{
-        CHECK_HELP, CONTEXT_HELP, DOCTOR_HELP, EXPLAIN_HELP, HELP, INIT_HELP, LSP_HELP,
-        OUTCOME_HELP, PILOT_HELP,
+        CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP, DOCTOR_HELP, EXPLAIN_HELP, HELP, INIT_HELP,
+        LSP_HELP, OUTCOME_HELP, PILOT_HELP,
     };
 
     #[test]
@@ -165,6 +185,7 @@ mod tests {
         assert!(HELP.contains("ripr init"));
         assert!(HELP.contains("ripr pilot"));
         assert!(HELP.contains("ripr outcome"));
+        assert!(HELP.contains("ripr calibrate"));
         assert!(HELP.contains("ripr check"));
         assert!(HELP.contains("ripr explain"));
         assert!(HELP.contains("ripr context"));
@@ -190,6 +211,8 @@ mod tests {
         assert!(PILOT_HELP.contains("pilot-summary.json"));
         assert!(OUTCOME_HELP.starts_with("Usage: ripr outcome"));
         assert!(OUTCOME_HELP.contains("--before PATH"));
+        assert!(CALIBRATE_HELP.starts_with("Usage: ripr calibrate cargo-mutants"));
+        assert!(CALIBRATE_HELP.contains("--mutants-json PATH"));
         assert!(EXPLAIN_HELP.starts_with("Usage: ripr explain"));
         assert!(CONTEXT_HELP.starts_with("Usage: ripr context"));
         assert!(DOCTOR_HELP.starts_with("Usage: ripr doctor [--root PATH]"));
