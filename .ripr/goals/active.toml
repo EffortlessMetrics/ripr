@@ -446,11 +446,30 @@ commands = [
 
 [[work_item]]
 id = "app/usecase-split"
-status = "ready"
+status = "done"
 branch = "app-usecase-split"
 stackable = false
 requires_human_merge = true
 acceptance = "check, explain, and context use-case orchestration moves out of app.rs into focused app modules while preserving the public ripr library API, CLI output, LSP behavior, output contracts, and schema"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-public-api",
+  "cargo xtask check-architecture",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-no-panic-family",
+  "cargo xtask lsp-cockpit-report",
+  "cargo test --workspace"
+]
+
+[[work_item]]
+id = "output/format-extraction"
+status = "ready"
+branch = "output-format-extraction"
+stackable = false
+requires_human_merge = true
+acceptance = "OutputFormat moves out of app.rs into a focused output format module while preserving public ripr library API, CLI output, LSP behavior, output contracts, and schema"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",

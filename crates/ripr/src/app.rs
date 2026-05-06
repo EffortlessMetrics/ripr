@@ -1,11 +1,20 @@
-use crate::analysis::{
-    self, AnalysisMode, AnalysisOptions, run_analysis_with_oracle_policy,
-    run_repo_analysis_with_oracle_policy,
-};
+mod check;
+mod context;
+mod explain;
+mod selector;
+
+pub use check::{check_workspace, check_workspace_repo, repo_seam_inventory_input};
+pub(crate) use check::{check_workspace_repo_with_config, check_workspace_with_config};
+pub(crate) use context::collect_context_with_config;
+pub use context::{collect_context, collect_context_with_input};
+pub(crate) use explain::explain_finding_with_config;
+pub use explain::{explain_finding, explain_finding_with_input};
+
+use crate::analysis::{self, AnalysisMode};
 use crate::config::RiprConfig;
 use crate::domain::{Finding, Summary};
 use crate::output;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Input contract for [`check_workspace`].
 ///
@@ -221,105 +230,6 @@ pub struct CheckOutput {
     pub findings: Vec<Finding>,
 }
 
-/// Runs the end-to-end static exposure analysis for a workspace.
-///
-/// # Errors
-///
-/// Returns `Err(String)` when diff acquisition, syntax indexing, or static
-/// analysis cannot complete for the requested workspace/input pair.
-///
-/// # Examples
-///
-/// ```no_run
-/// use ripr::{check_workspace, CheckInput};
-///
-/// let output = check_workspace(CheckInput::default())?;
-/// println!("schema={}, findings={}", output.schema_version, output.findings.len());
-/// # Ok::<(), String>(())
-/// ```
-pub fn check_workspace(input: CheckInput) -> Result<CheckOutput, String> {
-    check_workspace_with_config(input, &RiprConfig::default())
-}
-
-pub(crate) fn check_workspace_with_config(
-    input: CheckInput,
-    config: &RiprConfig,
-) -> Result<CheckOutput, String> {
-    let options = AnalysisOptions {
-        root: input.root.clone(),
-        base: input.base.clone(),
-        diff_file: input.diff_file.clone(),
-        mode: input.mode.analysis_mode(),
-        include_unchanged_tests: input.include_unchanged_tests,
-    };
-    let analysis = run_analysis_with_oracle_policy(&options, config.oracles())?;
-    Ok(CheckOutput {
-        schema_version: "0.1".to_string(),
-        tool: "ripr".to_string(),
-        mode: input.mode,
-        root: input.root,
-        base: input.base,
-        summary: analysis.summary,
-        findings: analysis.findings,
-    })
-}
-
-/// Runs the repo-baseline static exposure analysis for a workspace. This
-/// seeds probes from every currently-probeable production syntax shape
-/// rather than from a diff. Use this when the answer to "is the repo's
-/// static exposure clean?" should not depend on the contents of
-/// `git diff origin/main...HEAD`.
-///
-/// # Errors
-///
-/// Returns `Err(String)` when repository traversal, syntax indexing, or
-/// classification cannot complete for the requested workspace.
-pub fn check_workspace_repo(input: CheckInput) -> Result<CheckOutput, String> {
-    check_workspace_repo_with_config(input, &RiprConfig::default())
-}
-
-pub(crate) fn check_workspace_repo_with_config(
-    input: CheckInput,
-    config: &RiprConfig,
-) -> Result<CheckOutput, String> {
-    let options = AnalysisOptions {
-        root: input.root.clone(),
-        base: input.base.clone(),
-        diff_file: input.diff_file.clone(),
-        mode: input.mode.analysis_mode(),
-        include_unchanged_tests: input.include_unchanged_tests,
-    };
-    let analysis = run_repo_analysis_with_oracle_policy(&options, config.oracles())?;
-    Ok(CheckOutput {
-        schema_version: "0.1".to_string(),
-        tool: "ripr".to_string(),
-        mode: input.mode,
-        root: input.root,
-        base: input.base,
-        summary: analysis.summary,
-        findings: analysis.findings,
-    })
-}
-
-/// Build a minimal [`CheckOutput`] for repo seam-driven rendering.
-///
-/// The seam inventory, repo exposure, agent packet, SARIF seam, and
-/// seam-native badge renderers read only `output.root` plus auxiliary
-/// disk artifacts as needed, so this avoids running `run_repo_analysis`
-/// to compute legacy `Findings` those formats discard. The rest of the
-/// fields are populated for schema-consistency only.
-pub fn repo_seam_inventory_input(input: CheckInput) -> CheckOutput {
-    CheckOutput {
-        schema_version: "0.1".to_string(),
-        tool: "ripr".to_string(),
-        mode: input.mode,
-        root: input.root,
-        base: input.base,
-        summary: Summary::default(),
-        findings: Vec::new(),
-    }
-}
-
 /// Path (relative to the analyzed workspace root) where the
 /// test-efficiency report is expected when rendering `ripr+` badge formats.
 pub(crate) const TEST_EFFICIENCY_REPORT_RELATIVE: &str = "target/ripr/reports/test-efficiency.json";
@@ -520,105 +430,11 @@ fn ripr_plus_summary_from_disk(
     }
 }
 
-/// Computes findings and renders a single selected finding in human format.
-///
-/// The selector can be either a finding identifier (for example
-/// `probe:path_to_file.rs:42:family`) or a `file:line` location.
-pub fn explain_finding(root: &Path, selector: &str) -> Result<String, String> {
-    explain_finding_with_input(
-        CheckInput {
-            root: root.to_path_buf(),
-            ..CheckInput::default()
-        },
-        selector,
-    )
-}
-
-/// Like [`explain_finding`] but allows overriding the full check input.
-pub fn explain_finding_with_input(input: CheckInput, selector: &str) -> Result<String, String> {
-    explain_finding_with_config(input, selector, &RiprConfig::default())
-}
-
-pub(crate) fn explain_finding_with_config(
-    input: CheckInput,
-    selector: &str,
-    config: &RiprConfig,
-) -> Result<String, String> {
-    let output = check_workspace_with_config(input, config)?;
-    let selected = output
-        .findings
-        .iter()
-        .find(|finding| finding.id == selector || selector_matches_location(selector, finding));
-
-    match selected {
-        Some(finding) => Ok(output::human::render_finding_with_config(finding, config)),
-        None => Err(format!("no finding matched {selector:?}")),
-    }
-}
-
-/// Produces a compact JSON context packet for one selected finding.
-pub fn collect_context(
-    root: &Path,
-    selector: &str,
-    max_related_tests: usize,
-) -> Result<String, String> {
-    collect_context_with_input(
-        CheckInput {
-            root: root.to_path_buf(),
-            format: OutputFormat::Json,
-            ..CheckInput::default()
-        },
-        selector,
-        max_related_tests,
-    )
-}
-
-/// Like [`collect_context`] but allows overriding the full check input.
-pub fn collect_context_with_input(
-    input: CheckInput,
-    selector: &str,
-    max_related_tests: usize,
-) -> Result<String, String> {
-    collect_context_with_config(input, selector, max_related_tests, &RiprConfig::default())
-}
-
-pub(crate) fn collect_context_with_config(
-    input: CheckInput,
-    selector: &str,
-    max_related_tests: usize,
-    config: &RiprConfig,
-) -> Result<String, String> {
-    let input = CheckInput {
-        format: OutputFormat::Json,
-        ..input
-    };
-    let output = check_workspace_with_config(input, config)?;
-    let selected = output
-        .findings
-        .iter()
-        .find(|finding| finding.id == selector || selector_matches_location(selector, finding));
-
-    match selected {
-        Some(finding) => Ok(output::json::render_context_packet(
-            finding,
-            max_related_tests,
-        )),
-        None => Err(format!("no finding matched {selector:?}")),
-    }
-}
-
-fn selector_matches_location(selector: &str, finding: &Finding) -> bool {
-    let file = finding.probe.location.file.to_string_lossy();
-    let line = finding.probe.location.line;
-    selector == format!("{file}:{line}")
-        || selector.ends_with(&format!(":{line}")) && selector.contains(file.as_ref())
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         CheckOutput, Mode, OutputFormat, render_check, render_check_with_config,
-        selector_matches_location,
+        selector::selector_matches_location,
     };
     use crate::analysis::AnalysisMode;
     use crate::domain::{
