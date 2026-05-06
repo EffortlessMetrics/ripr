@@ -560,11 +560,30 @@ commands = [
 
 [[work_item]]
 id = "domain/context-packet-dto"
-status = "ready"
+status = "done"
 branch = "domain-context-packet-dto"
 stackable = false
 requires_human_merge = true
 acceptance = "Context packet DTO shape moves into domain/context_packet.rs while preserving public ripr library API, CLI behavior, LSP behavior, output contracts, and schema"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-public-api",
+  "cargo xtask check-architecture",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-no-panic-family",
+  "cargo xtask lsp-cockpit-report",
+  "cargo test --workspace"
+]
+
+[[work_item]]
+id = "output/json-context-dto"
+status = "ready"
+branch = "output-json-context-dto"
+stackable = false
+requires_human_merge = true
+acceptance = "JSON context packet renderer uses the domain ContextPacket DTO while preserving CLI behavior, LSP behavior, output contracts, and schema"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",

@@ -232,6 +232,9 @@ are scoped or reviewed.
 - Moved CLI command execution dispatch into `cli/execute.rs` while preserving
   parsed argument and handler behavior. The next ready seam is context packet
   DTO extraction.
+- Added the domain-owned `ContextPacket` DTO shape in `domain/context_packet.rs`
+  without changing context packet JSON rendering. The next ready seam is wiring
+  JSON context rendering through the DTO.
 - Added `cargo xtask targeted-test-outcome` as an advisory receipt for comparing
   before/after `repo-exposure-json` artifacts. The report writes
   `target/ripr/reports/targeted-test-outcome.{json,md}`, matches seams by
