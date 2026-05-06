@@ -24,6 +24,10 @@ export interface RiprSuggestedAssertionTarget {
   assertion?: string;
 }
 
+export interface RiprTargetedTestBriefTarget {
+  brief?: string;
+}
+
 export interface RiprRelatedTestTarget {
   uri?: string;
   line?: number;
@@ -210,6 +214,22 @@ export class RiprClientController {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copy suggested assertion failed: ${message}`);
       vscode.window.showWarningMessage('ripr could not copy the suggested assertion. See ripr output for details.');
+    }
+  }
+
+  async copyTargetedTestBrief(target?: RiprTargetedTestBriefTarget): Promise<void> {
+    const brief = typeof target?.brief === 'string' ? target.brief.trim() : '';
+    if (!brief) {
+      vscode.window.showInformationMessage('No ripr targeted test brief is available for this diagnostic.');
+      return;
+    }
+    try {
+      await vscode.env.clipboard.writeText(brief);
+      vscode.window.showInformationMessage('Copied ripr targeted test brief to clipboard.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(`ripr copy targeted test brief failed: ${message}`);
+      vscode.window.showWarningMessage('ripr could not copy the targeted test brief. See ripr output for details.');
     }
   }
 

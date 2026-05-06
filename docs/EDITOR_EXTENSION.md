@@ -72,6 +72,7 @@ restarts the client so the next diagnostic refresh uses the new configuration.
 - `ripr: Show Output`
 - `ripr: Copy Finding Context`
 - `ripr: Copy Suggested Assertion`
+- `ripr: Copy Targeted Test Brief`
 - `ripr: Open Related Test`
 - `ripr: Open Settings`
 
@@ -95,6 +96,8 @@ server can provide seam-aware code actions:
 
 - `Copy seam packet`: copies the server-owned agent seam packet for the
   selected seam through `ripr.collectContext`.
+- `Copy targeted test brief`: copies a plain-language work order for adding one
+  focused test from the same seam packet guidance.
 - `Copy suggested assertion`: copies a concrete assertion suggestion from the
   seam packet.
 - `Open related test`: opens the first related test location attached to the
@@ -105,8 +108,11 @@ server can provide seam-aware code actions:
 The assertion and related-test actions are conditional. `Copy suggested
 assertion` is shown only when the seam has a concrete assertion suggestion, and
 `Open related test` is shown only when the current analysis snapshot can resolve
-a related test location. Refresh remains available even when no diagnostic is
-selected.
+a related test location. The targeted-test brief remains available for seam
+diagnostics even when there is no concrete assertion snippet, because it can
+still summarize the missing discriminator, suggested file/name, candidate value,
+and imitation or avoid patterns. Refresh remains available even when no
+diagnostic is selected.
 
 ## Missing Server Behavior
 

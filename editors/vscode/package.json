@@ -138,6 +138,10 @@
         "title": "ripr: Copy Suggested Assertion"
       },
       {
+        "command": "ripr.copyTargetedTestBrief",
+        "title": "ripr: Copy Targeted Test Brief"
+      },
+      {
         "command": "ripr.openRelatedTest",
         "title": "ripr: Open Related Test"
       },

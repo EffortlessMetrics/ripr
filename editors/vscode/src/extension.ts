@@ -3,7 +3,8 @@ import {
   RiprClientController,
   RiprContextTarget,
   RiprRelatedTestTarget,
-  RiprSuggestedAssertionTarget
+  RiprSuggestedAssertionTarget,
+  RiprTargetedTestBriefTarget
 } from './client';
 
 let controller: RiprClientController | undefined;
@@ -22,6 +23,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand(
       'ripr.copySuggestedAssertion',
       async (target?: RiprSuggestedAssertionTarget) => controller?.copySuggestedAssertion(target)
+    ),
+    vscode.commands.registerCommand(
+      'ripr.copyTargetedTestBrief',
+      async (target?: RiprTargetedTestBriefTarget) => controller?.copyTargetedTestBrief(target)
     ),
     vscode.commands.registerCommand('ripr.openRelatedTest', async (target?: RiprRelatedTestTarget) =>
       controller?.openRelatedTest(target)

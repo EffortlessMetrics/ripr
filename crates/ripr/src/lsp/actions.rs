@@ -1,12 +1,14 @@
 use super::state::AnalysisSnapshot;
 use super::uri::file_uri_for_path;
 use super::{
-    COPY_CONTEXT_COMMAND, COPY_SUGGESTED_ASSERTION_COMMAND, OPEN_RELATED_TEST_COMMAND,
-    REFRESH_COMMAND,
+    COPY_CONTEXT_COMMAND, COPY_SUGGESTED_ASSERTION_COMMAND, COPY_TARGETED_TEST_BRIEF_COMMAND,
+    OPEN_RELATED_TEST_COMMAND, REFRESH_COMMAND,
 };
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::test_grip_evidence::RelatedTestGrip;
-use crate::output::agent_seam_packets::suggested_assertion_for_classified_seam;
+use crate::output::agent_seam_packets::{
+    suggested_assertion_for_classified_seam, targeted_test_brief_for_classified_seam,
+};
 use std::path::PathBuf;
 use tower_lsp_server::ls_types::{
     CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams, CodeActionResponse, Command,
@@ -79,6 +81,10 @@ fn push_seam_actions(
         "Copy seam packet",
         copy_seam_packet_target(params, context.diagnostic, context.seam),
     ));
+    actions.push(copy_targeted_test_brief_action(
+        context.seam,
+        targeted_test_brief_for_classified_seam(context.seam),
+    ));
     if let Some(assertion) = suggested_assertion_for_classified_seam(context.seam) {
         actions.push(copy_suggested_assertion_action(context.seam, assertion));
     }
@@ -98,6 +104,22 @@ fn copy_context_action(title: &str, command_title: &str, target: LSPAny) -> Code
             title: command_title.to_string(),
             command: COPY_CONTEXT_COMMAND.to_string(),
             arguments: Some(vec![target]),
+        }),
+        ..CodeAction::default()
+    })
+}
+
+fn copy_targeted_test_brief_action(seam: &ClassifiedSeam, brief: String) -> CodeActionOrCommand {
+    CodeActionOrCommand::CodeAction(CodeAction {
+        title: "Copy targeted test brief".to_string(),
+        kind: Some(CodeActionKind::QUICKFIX),
+        command: Some(Command {
+            title: "Copy targeted test brief".to_string(),
+            command: COPY_TARGETED_TEST_BRIEF_COMMAND.to_string(),
+            arguments: Some(vec![serde_json::json!({
+                "seam_id": seam.seam.id().as_str(),
+                "brief": brief,
+            })]),
         }),
         ..CodeAction::default()
     })
