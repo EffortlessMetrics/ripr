@@ -4,16 +4,47 @@ use crate::app::Mode;
 use crate::domain::Finding;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::time::{Duration, SystemTime};
 use tower_lsp_server::ls_types::{
     Diagnostic, DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
     Uri,
 };
 
 #[derive(Clone, Debug)]
+pub(super) struct RefreshMetadata {
+    pub(super) generated_at: SystemTime,
+    pub(super) duration: Option<Duration>,
+}
+
+impl RefreshMetadata {
+    pub(super) fn generated_now() -> Self {
+        Self {
+            generated_at: SystemTime::now(),
+            duration: None,
+        }
+    }
+
+    pub(super) fn record_duration(&mut self, duration: Duration) {
+        self.duration = Some(duration);
+    }
+
+    pub(super) fn age(&self) -> Option<Duration> {
+        SystemTime::now().duration_since(self.generated_at).ok()
+    }
+}
+
+impl Default for RefreshMetadata {
+    fn default() -> Self {
+        Self::generated_now()
+    }
+}
+
+#[derive(Clone, Debug)]
 pub(super) struct AnalysisSnapshot {
     pub(super) root: PathBuf,
     pub(super) base: Option<String>,
     pub(super) mode: Mode,
+    pub(super) refresh: RefreshMetadata,
     pub(super) findings: Vec<Finding>,
     /// Classified seam evidence. Empty when `seamDiagnostics` is off
     /// (the default). Populated lazily on workspace refresh when the
@@ -47,6 +78,25 @@ impl AnalysisSnapshot {
 
     pub(super) fn diagnostics_for_uri(&self, uri: &Uri) -> Option<&[Diagnostic]> {
         self.diagnostics_by_uri.get(uri).map(Vec::as_slice)
+    }
+
+    pub(super) fn diagnostic_count(&self) -> usize {
+        self.diagnostics_by_uri
+            .values()
+            .map(Vec::len)
+            .sum::<usize>()
+    }
+
+    pub(super) fn diagnostic_uri_count(&self) -> usize {
+        self.diagnostics_by_uri.len()
+    }
+
+    pub(super) fn finding_count(&self) -> usize {
+        self.findings.len()
+    }
+
+    pub(super) fn seam_diagnostic_count(&self) -> usize {
+        self.classified_seams.len()
     }
 
     pub(super) fn finding_by_id(&self, finding_id: &str) -> Option<&Finding> {
@@ -150,4 +200,14 @@ impl DocumentStore {
 
 fn document_path(uri: &Uri) -> PathBuf {
     path_from_file_uri(uri).unwrap_or_else(|| PathBuf::from(uri.as_str()))
+}
+
+pub(super) fn format_duration(duration: Duration) -> String {
+    if duration.as_secs() == 0 {
+        return format!("{} ms", duration.as_millis());
+    }
+    if duration.as_secs() == 1 {
+        return "1 second".to_string();
+    }
+    format!("{} seconds", duration.as_secs())
 }
