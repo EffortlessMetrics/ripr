@@ -1,4 +1,5 @@
 import * as path from 'path';
+import * as fs from 'fs';
 import { runTests } from '@vscode/test-electron';
 
 async function main() {
@@ -9,8 +10,14 @@ async function main() {
       __dirname,
       '../../test-fixtures/workspace'
     );
+    const cachePath = path.resolve(
+      __dirname,
+      '../../../../target/ripr/vscode-test-cache'
+    );
+    fs.mkdirSync(cachePath, { recursive: true });
 
     await runTests({
+      cachePath,
       extensionDevelopmentPath,
       extensionTestsPath,
       launchArgs: [workspacePath, '--disable-extensions'],

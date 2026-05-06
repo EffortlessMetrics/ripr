@@ -84,12 +84,17 @@ commands = [
 
 [[work_item]]
 id = "editor/install-polish"
-status = "ready"
+status = "done"
 branch = "editor-install-polish"
 stackable = false
 requires_human_merge = true
 acceptance = "The VS Code install path and existing commands are documented and verified without adding unsaved-buffer overlays, CodeLens, inlay hints, semantic tokens, or new editor behavior"
 commands = [
+  "npm --prefix editors/vscode ci",
+  "npm --prefix editors/vscode run compile",
+  "npm --prefix editors/vscode run package",
+  "npm --prefix editors/vscode run test:e2e",
+  "cargo xtask lsp-cockpit-report",
   "cargo xtask check-pr",
   "cargo xtask check-public-api",
   "cargo xtask check-architecture",
@@ -102,12 +107,21 @@ commands = [
 
 [[work_item]]
 id = "fixtures/example-corpus"
-status = "blocked"
+status = "ready"
 branch = "example-corpus"
 stackable = false
 requires_human_merge = true
 acceptance = "A small public example corpus demonstrates boundary gap, weak oracle, missing equality boundary, exact error variant, opaque fixture/builder, and one calibration sample with expected CLI, LSP, targeted-test outcome, and optional calibration artifacts"
-blocked_by = ["editor/install-polish"]
+commands = [
+  "cargo xtask fixtures",
+  "cargo xtask goldens check",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
+  "cargo test --workspace"
+]
 
 [[work_item]]
 id = "release/install-polish"

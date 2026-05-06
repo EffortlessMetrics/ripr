@@ -593,7 +593,7 @@ evidence = [
   "docs/TARGETED_TEST_WORKFLOW.md repo-local cockpit guidance"
 ]
 fixtures = []
-next = "editor/install-polish"
+next = "fixtures/example-corpus"
 metric = "operator_cockpit_available"
 
 [[capability]]
@@ -609,10 +609,11 @@ evidence = [
   "bounded saved-workspace seam diagnostics default on under RIPR-SPEC-0009",
   "VS Code ripr.check.mode defaults to draft so the extension does not override missing-config defaults with instant mode",
   "explicit seamDiagnostics: false override",
-  "OUTPUT_SCHEMA.md LSP Seam Diagnostics section"
+  "OUTPUT_SCHEMA.md LSP Seam Diagnostics section",
+  "docs/EDITOR_EXTENSION.md documents the install path and saved-workspace default"
 ]
 fixtures = []
-next = "campaign/modularization-stack-audit"
+next = "fixtures/example-corpus"
 metric = "seam_id in diagnostic.data is the hover lookup key"
 
 [[capability]]
@@ -625,10 +626,11 @@ evidence = [
   "looks up ClassifiedSeam via data.seam_id",
   "renders Grip class plus RIPR evidence path plus observed values plus missing discriminator plus related tests plus per-kind next step",
   "prefers seam-bearing diagnostics on overlap (chatgpt-codex review fix)",
-  "preserves pre-4B Finding hover fallback"
+  "preserves pre-4B Finding hover fallback",
+  "VS Code e2e keeps the extension surface active in a fixture Rust workspace"
 ]
 fixtures = []
-next = "campaign/modularization-stack-audit"
+next = "fixtures/example-corpus"
 metric = "hover renders evidence path from ClassifiedSeam, never parses diagnostic message"
 
 [[capability]]
@@ -640,12 +642,13 @@ evidence = [
   "crates/ripr/src/lsp/actions.rs seam-aware code_action_response",
   "crates/ripr/src/lsp/backend.rs collectContext returns agent seam packets for seam_id",
   "editors/vscode/src/client.ts copySuggestedAssertion and openRelatedTest handlers",
-  "diagnostics carrying seam_id surface Copy seam packet, Copy suggested assertion, Open related test, and Refresh ripr analysis",
+  "diagnostics carrying seam_id surface Copy seam packet, Copy suggested assertion, Copy targeted test brief, Open best related test, and Refresh ripr analysis",
   "copy suggested assertion uses agent seam packet v2 assertion shape when available",
-  "pre-4B Finding code actions remain available"
+  "pre-4B Finding code actions remain available",
+  "docs/TESTING.md documents VS Code e2e coverage for command registration, LSP-first seam context, targeted-test brief copying, suggested assertions, related-test opening, malformed argument handling, and restart behavior"
 ]
 fixtures = []
-next = "campaign/modularization-stack-audit"
+next = "fixtures/example-corpus"
 metric = "seam diagnostics expose packet/assertion/test actions without automatic edits"
 
 [[capability]]
@@ -690,7 +693,7 @@ evidence = [
   "SARIF policy tests cover pass, new warning detection, warning-threshold note filtering, missing baseline advisory behavior, parsing, and report shape"
 ]
 fixtures = []
-next = "editor/install-polish"
+next = "fixtures/example-corpus"
 metric = "SARIF result counts by rule/level, new configured-warning results, and advisory_ci_workflow_generated"
 
 [[capability]]

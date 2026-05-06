@@ -45,6 +45,21 @@ still supported for offline or controlled environments:
 cargo install ripr
 ```
 
+## Install Paths
+
+Normal editor installs should not require a separate `cargo install ripr` step.
+Use one of these surfaces:
+
+- VS Code Marketplace: install `EffortlessMetrics.ripr`.
+- Open VSX: install `EffortlessMetrics.ripr`.
+- Local VSIX smoke: run `npm run package`, then install
+  `editors/vscode/dist/ripr-0.3.0.vsix`.
+
+On activation, the extension resolves a configured, bundled, cached,
+downloaded, or PATH server and writes the selected source to the `ripr` output
+channel. `cargo install ripr` remains the manual fallback for offline, pinned,
+or controlled environments.
+
 ## Settings
 
 - `ripr.server.path`: explicit path to the `ripr` executable. Empty by default.
@@ -153,6 +168,7 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
+npm run test:e2e
 code --install-extension dist/ripr-0.3.0.vsix --force
 ```
 
@@ -161,10 +177,13 @@ Manual smoke:
 ```text
 Open a Rust workspace with Cargo.toml.
 Confirm the extension activates.
+Open the ripr output channel.
+Confirm the resolved server source is logged.
 Confirm ripr lsp --stdio starts.
-Confirm diagnostics can arrive from the server.
-Confirm missing ripr path gives a useful message.
-Confirm restart and output commands work.
+Confirm diagnostics can arrive from saved-workspace analysis.
+Confirm hover evidence, Copy Targeted Test Brief, and Open Best Related Test are available on seam diagnostics when the analysis snapshot includes the required data.
+Confirm missing-server state gives the documented actionable message.
+Confirm Restart Server, Show Output, and Open Settings work.
 ```
 
 ## Diagnostic Refresh Model
@@ -283,8 +302,10 @@ npm run test:e2e
 ```
 
 The suite activates the extension in a fixture Rust workspace and verifies
-command registration, `copyContext` input handling, and `restartServer`
-callability. CI runs the suite headless with `xvfb-run`.
+command registration, defaults-first `draft` mode, LSP-first seam context
+collection with CLI fallback, targeted-test brief copying, suggested assertion
+copying, related-test opening, malformed command argument handling, and
+`restartServer` callability. CI runs the suite headless with `xvfb-run`.
 
 ## Current Limitations
 

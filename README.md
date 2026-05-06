@@ -306,12 +306,13 @@ Current capabilities:
 | SARIF and CI policy | `ripr check --format sarif` emits diff-scoped Finding SARIF and `--format repo-sarif` emits repo seam SARIF with configured severity, suppression metadata, stable rule IDs, and stable fingerprints. `ripr init --ci github` generates a non-blocking GitHub Actions report workflow with pilot/report artifacts, repo badge JSON, and optional SARIF rendering/upload; `cargo xtask sarif-policy` compares current SARIF to a baseline only when explicitly requested. | Campaign 7 defaults-first operator adoption. |
 | Calibration | Advisory `ripr calibrate cargo-mutants` and repo-local `cargo xtask mutation-calibration` join imported cargo-mutants runtime data to static seam evidence by `seam_id` or unambiguous file/line; ambiguous file/line candidates stay unassigned. `fixtures/CALIBRATION_CORPUS.md` maps current fixtures to controlled calibration scenarios. | Future runtime calibration artifacts; runtime mutation language stays inside calibration/runtime reports. |
 
-Campaign 5A and 5B are complete. Campaign 5B landed repository config,
-SARIF/CI policy, and seam-native badge count mapping. The next active item is
-the Campaign 6 draft-stack audit:
+Campaigns 5A, 5B, and 6 are complete. Campaign 7 is the defaults-first adoption
+lane: `ripr pilot`, `ripr outcome`, advisory calibration import, the operator
+cockpit, the generated GitHub Action entrypoint, and the documented VS Code
+install path are in place. The next active item is the public example corpus:
 
 ```text
-campaign/modularization-stack-audit
+fixtures/example-corpus
 ```
 
 Deeper capability state lives in [Capability matrix](docs/CAPABILITY_MATRIX.md)
@@ -329,6 +330,9 @@ The VS Code extension starts `ripr lsp --stdio` and can resolve the server from:
 5. ripr on PATH
 6. actionable error
 ```
+
+Normal editor install should not require `cargo install ripr`. The Cargo install
+path remains available for offline, pinned, or controlled environments.
 
 See:
 

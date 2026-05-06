@@ -77,6 +77,24 @@ aarch64-unknown-linux-gnu
 Alpine and musl targets are intentionally separate. If no compatible prebuilt
 server exists, users can set `ripr.server.path` or install `ripr` manually.
 
+## Verification
+
+For local extension smoke before release:
+
+```bash
+npm --prefix editors/vscode ci
+npm --prefix editors/vscode run compile
+npm --prefix editors/vscode run package
+npm --prefix editors/vscode run test:e2e
+```
+
+The e2e suite runs in a fixture Rust workspace and covers extension activation,
+defaults-first `draft` mode, command registration, LSP-first seam context
+collection with CLI fallback, targeted-test brief copying, suggested assertion
+copying, related-test opening, malformed command arguments, and restart
+behavior. Release verification of published server archives and marketplace
+install paths belongs to `release/install-polish`.
+
 ## Future Bundled VSIXs
 
 The universal VSIX plus downloader is the first one-click path. Platform-specific

@@ -922,8 +922,8 @@ Work items:
 | `defaults/config-init` | done | Built-in defaults, generated `ripr.toml`, repo-mode exclusions, seam-diagnostic policy, badge/report defaults, and fast/normal/deep mode behavior are documented and test-pinned without output schema or LSP drift. |
 | `reports/operator-cockpit` | done | `cargo xtask operator-cockpit` writes `target/ripr/reports/operator-cockpit.{json,md}` by joining existing repo exposure, LSP cockpit, SARIF policy, badge status, targeted-test outcome, and optional mutation calibration artifacts into one next-action surface. `operator-cockpit-report` remains an alias for existing automation. Missing inputs stay visible with generator commands; top weak seams carry why-it-matters text, a suggested targeted test, and best related-test context when available. The command does not rerun analysis or change static classifications. |
 | `ci/github-action-entrypoint` | done | `ripr init --ci github` generates the copyable defaults-first GitHub Action entrypoint. It runs `ripr pilot`, renders diff/repo SARIF only when `RIPR_UPLOAD_SARIF` is true, writes repo badge JSON and Shields artifacts, uploads the pilot/report directories, and keeps the job plus upload steps advisory. |
-| `editor/install-polish` | ready | Document and verify the VS Code install path and existing commands after the GitHub Action entrypoint exists, without adding unsaved-buffer overlays, CodeLens, inlay hints, semantic tokens, or new editor behavior. |
-| `fixtures/example-corpus` | blocked | Add a small public corpus for boundary gap, weak oracle, missing equality boundary, exact error variant, opaque fixture/builder, and one calibration sample. |
+| `editor/install-polish` | done | Documented the normal VS Code/Open VSX install path, server-resolution fallback, local VSIX smoke path, saved-workspace default, and existing command coverage. The docs now reflect the current e2e coverage for command registration, draft-mode defaults, LSP-first seam context, targeted-test brief copying, suggested assertions, related-test opening, malformed argument handling, and restart behavior without adding editor features. |
+| `fixtures/example-corpus` | ready | Add a small public corpus for boundary gap, weak oracle, missing equality boundary, exact error variant, opaque fixture/builder, and one calibration sample. |
 | `release/install-polish` | blocked | Verify `cargo install`, GitHub Release binaries, VS Code server provisioning, README quickstart, and known-limits docs against the operator loop. |
 | `campaign/defaults-first-closeout` | blocked | Close the campaign after the install-to-targeted-test loop is demonstrated and the manifest points at the next real lane. |
 
@@ -938,13 +938,17 @@ Dependencies:
   docs can point reviewers toward.
 - `editor/install-polish` should remain documentation/verification unless a
   regression appears in the existing saved-workspace contract.
+- `fixtures/example-corpus` follows editor install polish so the public examples
+  can point to the documented editor and CI adoption paths.
 
 Commands:
 
 ```bash
-cargo test -p ripr init_generated_github_workflow
-cargo test -p ripr --test cli_smoke init_ci_github
-cargo run -p ripr -- init --ci github --dry-run
+npm --prefix editors/vscode ci
+npm --prefix editors/vscode run compile
+npm --prefix editors/vscode run package
+npm --prefix editors/vscode run test:e2e
+cargo xtask lsp-cockpit-report
 cargo xtask check-pr
 cargo xtask check-public-api
 cargo xtask check-architecture

@@ -93,7 +93,7 @@ suite('Extension Smoke', () => {
         }]
       });
       assert.strictEqual(context.runRiprCalls.length, 0);
-      assert.deepStrictEqual(JSON.parse(await vscode.env.clipboard.readText()), {
+      assert.deepStrictEqual(JSON.parse(context.clipboardWrites[0]), {
         seam_packets: [{ seam_id: 'abc123' }]
       });
     } finally {
@@ -116,7 +116,7 @@ suite('Extension Smoke', () => {
 
       assert.strictEqual(context.client.requests.length, 1);
       assert.strictEqual(context.runRiprCalls.length, 1);
-      assert.deepStrictEqual(JSON.parse(await vscode.env.clipboard.readText()), {
+      assert.deepStrictEqual(JSON.parse(context.clipboardWrites[0]), {
         fallback: true
       });
     } finally {
@@ -139,7 +139,7 @@ suite('Extension Smoke', () => {
 
       assert.strictEqual(context.client.requests.length, 1);
       assert.strictEqual(context.runRiprCalls.length, 1);
-      assert.deepStrictEqual(JSON.parse(await vscode.env.clipboard.readText()), {
+      assert.deepStrictEqual(JSON.parse(context.clipboardWrites[0]), {
         fallback: 'after-error'
       });
     } finally {
@@ -148,14 +148,19 @@ suite('Extension Smoke', () => {
   });
 
   test('copySuggestedAssertion copies assertion text', async () => {
-    await vscode.commands.executeCommand('ripr.copySuggestedAssertion', {
-      assertion: 'assert_eq!(quote.discount_applied, true);'
-    });
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.copySuggestedAssertion({
+        assertion: 'assert_eq!(quote.discount_applied, true);'
+      });
 
-    assert.strictEqual(
-      await vscode.env.clipboard.readText(),
-      'assert_eq!(quote.discount_applied, true);'
-    );
+      assert.strictEqual(
+        context.clipboardWrites[0],
+        'assert_eq!(quote.discount_applied, true);'
+      );
+    } finally {
+      await context.dispose();
+    }
   });
 
   test('copySuggestedAssertion ignores malformed args without throwing', async () => {
@@ -177,9 +182,14 @@ suite('Extension Smoke', () => {
       '- Suggested name: discounted_total_boundary_discriminator'
     ].join('\n');
 
-    await vscode.commands.executeCommand('ripr.copyTargetedTestBrief', { brief });
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.copyTargetedTestBrief({ brief });
 
-    assert.strictEqual(await vscode.env.clipboard.readText(), brief);
+      assert.strictEqual(context.clipboardWrites[0], brief);
+    } finally {
+      await context.dispose();
+    }
   });
 
   test('copyTargetedTestBrief ignores malformed args without throwing', async () => {
@@ -246,6 +256,7 @@ function createControllerTestContext(options: ControllerTestOptions) {
   const client = new FakeLanguageClient(options);
   const output = vscode.window.createOutputChannel('ripr test');
   const runRiprCalls: Array<{ command: string; args: string[]; cwd: string }> = [];
+  const clipboardWrites: string[] = [];
   const runtime: RiprClientRuntime = {
     getConfig: () => ({
       serverPath: '',
@@ -266,13 +277,17 @@ function createControllerTestContext(options: ControllerTestOptions) {
     runRipr: async (command, args, cwd) => {
       runRiprCalls.push({ command, args, cwd });
       return options.cliResult ?? '{}';
-    }
+    },
+    writeClipboard: async (text) => {
+      clipboardWrites.push(text);
+    },
   };
   const controller = new RiprClientController({} as vscode.ExtensionContext, output, runtime);
   return {
     client,
     controller,
     runRiprCalls,
+    clipboardWrites,
     dispose: async () => {
       await controller.stop();
       output.dispose();

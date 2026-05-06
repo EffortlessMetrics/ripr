@@ -1454,9 +1454,34 @@ JSON shape:
   ],
   "vscode_e2e": {
     "test_file": "editors/vscode/test/suite/extension.test.ts",
-    "contributed_commands": ["ripr.copyContext"],
-    "covered_commands": ["ripr.collectContext", "ripr.copyContext"],
-    "covered_contributed_commands": ["ripr.copyContext"],
+    "contributed_commands": [
+      "ripr.copyContext",
+      "ripr.copySuggestedAssertion",
+      "ripr.copyTargetedTestBrief",
+      "ripr.openRelatedTest",
+      "ripr.openSettings",
+      "ripr.restartServer",
+      "ripr.showOutput"
+    ],
+    "covered_commands": [
+      "ripr.collectContext",
+      "ripr.copyContext",
+      "ripr.copySuggestedAssertion",
+      "ripr.copyTargetedTestBrief",
+      "ripr.openRelatedTest",
+      "ripr.openSettings",
+      "ripr.restartServer",
+      "ripr.showOutput"
+    ],
+    "covered_contributed_commands": [
+      "ripr.copyContext",
+      "ripr.copySuggestedAssertion",
+      "ripr.copyTargetedTestBrief",
+      "ripr.openRelatedTest",
+      "ripr.openSettings",
+      "ripr.restartServer",
+      "ripr.showOutput"
+    ],
     "uncovered_contributed_commands": []
   }
 }
