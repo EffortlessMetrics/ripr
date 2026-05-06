@@ -14552,6 +14552,7 @@ fn check_droid_review_config() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::XtaskCommand;
+    use super::run::{capture_output, run, run_output, run_output_optional, run_output_owned};
     use super::{
         BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, CheckReport,
         CheckStatus, CheckViolation, CiFullEvidenceGate, DogfoodRun, FixKind, LocalContextAllow,
@@ -20289,6 +20290,72 @@ settings: |
             XtaskCommand::parse(std::iter::empty::<String>()),
             XtaskCommand::Help
         );
+    }
+
+    #[test]
+    fn xtask_run_helpers_report_success_failure_and_optional_output() -> Result<(), String> {
+        let version = run_output("cargo", &["--version"])?;
+        if !version.contains("cargo") {
+            return Err(format!("expected cargo version output, got {version:?}"));
+        }
+
+        let owned_version = run_output_owned("cargo", &["--version".to_string()])?;
+        if !owned_version.contains("cargo") {
+            return Err(format!(
+                "expected owned cargo version output, got {owned_version:?}"
+            ));
+        }
+
+        let status = run("cargo", &["--version"])?;
+        if !status.success() {
+            return Err(format!("expected cargo --version to succeed, got {status}"));
+        }
+
+        let captured = capture_output("cargo", &["--version"], "cargo version")?;
+        if !captured.status.success() || !captured.stdout.contains("cargo") {
+            return Err(format!(
+                "expected captured cargo version output, got status={} stdout={:?}",
+                captured.status, captured.stdout
+            ));
+        }
+
+        let failed_capture = capture_output(
+            "cargo",
+            &["--definitely-not-a-real-cargo-flag"],
+            "cargo invalid flag",
+        )?;
+        if failed_capture.status.success() {
+            return Err("expected invalid cargo flag to fail".to_string());
+        }
+
+        let optional = run_output_optional("cargo", &["--definitely-not-a-real-cargo-flag"])?;
+        if !optional.is_empty() {
+            return Err(format!(
+                "expected optional failure to return empty output, got {optional:?}"
+            ));
+        }
+
+        let failure = run_output("cargo", &["--definitely-not-a-real-cargo-flag"]).is_err();
+        if !failure {
+            return Err("expected run_output to report non-zero exit".to_string());
+        }
+
+        let owned_failure =
+            run_output_owned("cargo", &["--definitely-not-a-real-cargo-flag".to_string()]).is_err();
+        if !owned_failure {
+            return Err("expected run_output_owned to report non-zero exit".to_string());
+        }
+
+        let missing_program = capture_output(
+            "definitely-missing-ripr-test-binary",
+            &[],
+            "missing test binary",
+        );
+        if missing_program.is_ok() {
+            return Err("expected missing executable to report spawn error".to_string());
+        }
+
+        Ok(())
     }
 
     #[test]
