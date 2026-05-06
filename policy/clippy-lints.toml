@@ -1,0 +1,139 @@
+schema_version = "0.1"
+msrv = "1.93"
+
+# Declarative ledger of the Rust/Clippy lint policy enforced by ripr.
+#
+# This file documents intent. The authoritative configuration lives in
+# `[workspace.lints.rust]` and `[workspace.lints.clippy]` in `Cargo.toml`,
+# applied to every crate via `[lints] workspace = true`.
+#
+# See docs/CLIPPY_POLICY.md for the dual-rail design (Clippy as the local
+# code-shape rail; `cargo xtask check-no-panic-family` as the authoritative
+# semantic rail with `.ripr/no-panic-allowlist.toml`).
+
+[policy]
+panic_free_tests = true
+allow_test_carveouts = false
+suppression_style = "expect-or-allow-with-reason"
+blanket_categories = false
+unsafe = "forbid"
+
+# Active panic-family Clippy lints at MSRV 1.93. Code-shape rail only;
+# semantic enforcement (selector + allowlist) lives in
+# `cargo xtask check-no-panic-family`.
+[[active.panic_family]]
+name = "clippy::dbg_macro"
+level = "deny"
+
+[[active.panic_family]]
+name = "clippy::todo"
+level = "deny"
+
+[[active.panic_family]]
+name = "clippy::unimplemented"
+level = "deny"
+
+[[active.panic_family]]
+name = "clippy::panic"
+level = "deny"
+
+[[active.panic_family]]
+name = "clippy::unreachable"
+level = "deny"
+
+[[active.panic_family]]
+name = "clippy::should_panic_without_expect"
+level = "deny"
+
+[[active.memory]]
+name = "clippy::mem_forget"
+level = "deny"
+
+[[active.memory]]
+name = "clippy::forget_non_drop"
+level = "deny"
+
+[[active.memory]]
+name = "clippy::drop_non_drop"
+level = "deny"
+
+[[active.numeric]]
+name = "clippy::float_cmp"
+level = "deny"
+
+[[active.numeric]]
+name = "clippy::float_cmp_const"
+level = "deny"
+
+[[active.governance]]
+name = "clippy::allow_attributes_without_reason"
+level = "deny"
+note = "Every `#[allow(...)]` and `#[expect(...)]` must include `reason = \"...\"`."
+
+[[active.governance]]
+name = "clippy::blanket_clippy_restriction_lints"
+level = "deny"
+note = "Disallow blanket-enabling the `clippy::restriction` group."
+
+[[active.rust]]
+name = "unsafe_code"
+level = "forbid"
+
+[[active.rust]]
+name = "const_item_interior_mutations"
+level = "deny"
+
+[[active.rust]]
+name = "function_casts_as_integer"
+level = "deny"
+
+[[active.rust]]
+name = "unused_must_use"
+level = "deny"
+
+# Lints planned for activation when MSRV advances. Recorded here so reviewers
+# can see the trajectory without scanning Cargo.toml history. They are not
+# active until MSRV reaches the listed version and the matching xtask gate is
+# updated to verify the move.
+
+[[planned]]
+name = "clippy::same_length_and_capacity"
+level = "deny"
+activate_when_msrv = "1.94"
+reason = "Catch raw-parts reconstruction mistakes."
+
+[[planned]]
+name = "clippy::manual_ilog2"
+level = "warn"
+activate_when_msrv = "1.94"
+reason = "Prefer the standard integer log helper."
+
+[[planned]]
+name = "clippy::needless_type_cast"
+level = "warn"
+activate_when_msrv = "1.94"
+reason = "Avoid stale numeric type drift."
+
+[[planned]]
+name = "clippy::manual_checked_ops"
+level = "warn"
+activate_when_msrv = "1.95"
+reason = "Prefer checked arithmetic over manual divide-by-zero guards."
+
+[[planned]]
+name = "clippy::manual_take"
+level = "warn"
+activate_when_msrv = "1.95"
+reason = "Use the standard ownership helper instead of a local reimplementation."
+
+[[planned]]
+name = "clippy::manual_pop_if"
+level = "warn"
+activate_when_msrv = "1.95"
+reason = "Use collection APIs that encode predicate-and-pop intent."
+
+[[planned]]
+name = "clippy::duration_suboptimal_units"
+level = "warn"
+activate_when_msrv = "1.95"
+reason = "Make durations legible without mental unit conversion."

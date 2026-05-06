@@ -232,7 +232,10 @@ mod tests {
             &ExposureClass::NoStaticPath,
         );
 
-        assert_eq!(score, 0.64);
+        assert!(
+            (score - 0.64).abs() < f32::EPSILON,
+            "confidence score should equal 0.64 (got {score})"
+        );
     }
 
     #[test]

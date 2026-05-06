@@ -19663,10 +19663,10 @@ requires_human_merge = false
             violations: vec![],
         };
         assert_eq!(report.check, "coverage");
-        match report.status {
-            CheckStatus::Fail => {}
-            _ => panic!("expected Fail status"),
-        }
+        assert!(
+            matches!(report.status, CheckStatus::Fail),
+            "expected Fail status"
+        );
     }
 
     // ============================================================================

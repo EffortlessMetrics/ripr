@@ -14,11 +14,37 @@ homepage = "https://github.com/EffortlessMetrics/ripr/"
 unsafe_code = "forbid"
 const_item_interior_mutations = "deny"
 function_casts_as_integer = "deny"
+unused_must_use = "deny"
 
+# Panic-safety policy: clippy is the fast IDE rail for panic-family code shapes;
+# `cargo xtask check-no-panic-family` is the authoritative semantic gate that
+# matches against `.ripr/no-panic-allowlist.toml` (path + family + selector).
+# See docs/CLIPPY_POLICY.md.
 [workspace.lints.clippy]
+# Panic family (code-shape rail).
 dbg_macro = "deny"
 todo = "deny"
 unimplemented = "deny"
+panic = "deny"
+unreachable = "deny"
+should_panic_without_expect = "deny"
+
+# Memory / drop footguns.
+mem_forget = "deny"
+forget_non_drop = "deny"
+drop_non_drop = "deny"
+
+# Numeric correctness.
+float_cmp = "deny"
+float_cmp_const = "deny"
+
+# Suppression governance.
+# `allow_attributes` itself stays advisory: some `#[expect]` migrations
+# would fail because the underlying lint only fires in some builds (e.g.
+# `unused_imports` on a public re-export). `allow_attributes_without_reason`
+# is the firm rule — every suppression must carry a written justification.
+allow_attributes_without_reason = "deny"
+blanket_clippy_restriction_lints = "deny"
 
 [profile.release]
 lto = true
