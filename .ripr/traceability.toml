@@ -507,7 +507,8 @@ tests = [
   "xtask/src/main.rs::tests::mutation_calibration_summarizes_static_runtime_agreement",
   "xtask/src/main.rs::tests::mutation_calibration_reports_are_advisory_and_structured",
   "xtask/src/main.rs::tests::sarif_policy_missing_baseline_is_advisory_by_default",
-  "xtask/src/main.rs::tests::lsp_cockpit_report_json_and_markdown_are_structured"
+  "xtask/src/main.rs::tests::lsp_cockpit_report_json_and_markdown_are_structured",
+  "editors/vscode/test/suite/extension.test.ts::defaults-first check mode is draft"
 ]
 fixtures = [
   "fixtures/boundary_gap"
@@ -525,6 +526,9 @@ code = [
   "crates/ripr/src/output/outcome.rs",
   "crates/ripr/src/output/mutation_calibration.rs",
   "crates/ripr/src/lsp",
+  "editors/vscode/package.json",
+  "editors/vscode/src/config.ts",
+  "editors/vscode/src/client.ts",
   "xtask/src/main.rs"
 ]
 outputs = [

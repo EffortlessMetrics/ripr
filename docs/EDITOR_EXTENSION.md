@@ -57,7 +57,7 @@ cargo install ripr
 - `ripr.server.downloadBaseUrl`: override the manifest base URL for internal
   mirrors.
 - `ripr.check.mode`: preferred editor check mode for LSP diagnostics and
-  context commands. Defaults to `instant`.
+  context commands. Defaults to `draft`.
 - `ripr.baseRef`: Git base ref used by LSP diagnostics and context commands.
   Defaults to `origin/main`.
 - `ripr.trace.server`: language-server trace setting.

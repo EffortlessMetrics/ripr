@@ -38,7 +38,7 @@ confirmation.
   version.
 - `ripr.server.downloadBaseUrl`: override the manifest location for internal
   mirrors.
-- `ripr.check.mode`: preferred editor check mode. Defaults to `instant`.
+- `ripr.check.mode`: preferred editor check mode. Defaults to `draft`.
 - `ripr.baseRef`: Git base ref used by context commands. Defaults to
   `origin/main`.
 - `ripr.trace.server`: language-server trace setting.
@@ -48,6 +48,9 @@ confirmation.
 - `ripr: Restart Server`
 - `ripr: Show Output`
 - `ripr: Copy Finding Context`
+- `ripr: Copy Suggested Assertion`
+- `ripr: Copy Targeted Test Brief`
+- `ripr: Open Related Test`
 - `ripr: Open Settings`
 
 ## Preview Limitations

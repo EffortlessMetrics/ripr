@@ -322,6 +322,7 @@ Current tests and reports that support the contract:
 - `xtask/src/main.rs::tests::mutation_calibration_reports_are_advisory_and_structured`
 - `xtask/src/main.rs::tests::sarif_policy_missing_baseline_is_advisory_by_default`
 - `xtask/src/main.rs::tests::lsp_cockpit_report_json_and_markdown_are_structured`
+- `editors/vscode/test/suite/extension.test.ts::defaults-first check mode is draft`
 
 ## Implementation Mapping
 
@@ -342,6 +343,8 @@ Current implementation pieces:
 - `crates/ripr/src/output/mutation_calibration.rs` imports supplied
   cargo-mutants JSON, joins it to repo-exposure snapshots, and renders the
   public advisory calibration report.
+- `editors/vscode/package.json` exposes `ripr.check.mode` with the same
+  `draft` default as the CLI and LSP missing-config path.
 - `xtask/src/main.rs` currently owns repo-local mutation calibration, LSP
   cockpit, SARIF policy, badge artifact, and report-index automation.
 - `docs/TARGETED_TEST_WORKFLOW.md`, `docs/CI.md`, `docs/CONFIGURATION.md`,

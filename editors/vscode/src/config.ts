@@ -8,7 +8,7 @@ export interface RiprConfig {
   autoDownload: boolean;
   serverVersion: string;
   downloadBaseUrl: string;
-  checkMode: 'instant' | 'fast' | 'deep';
+  checkMode: 'instant' | 'draft' | 'fast' | 'deep' | 'ready';
   baseRef: string;
   traceServer: TraceSetting;
 }
@@ -21,7 +21,7 @@ export function getConfig(): RiprConfig {
     autoDownload: config.get<boolean>('server.autoDownload', true),
     serverVersion: config.get<string>('server.version', ''),
     downloadBaseUrl: config.get<string>('server.downloadBaseUrl', ''),
-    checkMode: config.get<'instant' | 'fast' | 'deep'>('check.mode', 'instant'),
+    checkMode: config.get<'instant' | 'draft' | 'fast' | 'deep' | 'ready'>('check.mode', 'draft'),
     baseRef: config.get<string>('baseRef', 'origin/main'),
     traceServer: config.get<TraceSetting>('trace.server', 'off')
   };

@@ -33,6 +33,11 @@ are scoped or reviewed.
 
 ### Changed
 
+- Aligned the VS Code extension's default `ripr.check.mode` with the
+  defaults-first posture by switching it to `draft` and exposing the full LSP
+  mode enum.
+- Ignored generated `.vscode-test` editor-host artifacts in repo file scans so
+  local extension smoke runs do not pollute Rust policy gates.
 - Split `xtask` command parsing, help/catalog, and execution dispatch into
   focused modules while preserving existing `cargo xtask` command behavior.
 - Routed xtask policy checks through focused `xtask/src/policy/` checker modules

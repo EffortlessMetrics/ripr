@@ -12328,6 +12328,8 @@ fn should_skip_path(path: &str) -> bool {
         || path.starts_with("target/")
         || path == ".ripr/release"
         || path.starts_with(".ripr/release/")
+        || path.ends_with("/.vscode-test")
+        || path.contains("/.vscode-test/")
         || path.ends_with("/node_modules")
         || path.contains("/node_modules/")
         || path.ends_with("/out")
@@ -14604,13 +14606,13 @@ mod tests {
         report_index_missing_expected, report_status_from_text, ripr_command_literals_in_text,
         ripr_pre_commit_hook, run_ci_full_evidence_gates, sarif_policy_report_json,
         sarif_policy_report_markdown, semantic_selector_matches, should_scan_static_language_path,
-        sorted_allowlist_content, spec_id_from_path, static_language_allowlist_covers,
-        status_for_report, suspicious_runtime_file_names, targeted_test_outcome,
-        targeted_test_outcome_report_json, targeted_test_outcome_report_markdown,
-        test_efficiency_entry, test_efficiency_report_json, test_efficiency_report_markdown,
-        test_oracle_report_json, test_oracle_report_markdown, test_oracle_tests_in_text,
-        unknown_command_message, validate_local_context_allowlist, windows_absolute_path_tokens,
-        workflow_runtime_violations,
+        should_skip_path, sorted_allowlist_content, spec_id_from_path,
+        static_language_allowlist_covers, status_for_report, suspicious_runtime_file_names,
+        targeted_test_outcome, targeted_test_outcome_report_json,
+        targeted_test_outcome_report_markdown, test_efficiency_entry, test_efficiency_report_json,
+        test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
+        test_oracle_tests_in_text, unknown_command_message, validate_local_context_allowlist,
+        windows_absolute_path_tokens, workflow_runtime_violations,
     };
     use super::{
         DeclaredIntent, LocalContextFinding,
@@ -15742,6 +15744,20 @@ fn has_unwrap_in_name() -> bool {
             &allowlist,
             "fixtures/boundary_gap/input/src/lib.rs"
         ));
+    }
+
+    #[test]
+    fn should_skip_path_ignores_generated_editor_test_artifacts() {
+        assert!(should_skip_path("editors/vscode/.vscode-test"));
+        assert!(should_skip_path(
+            "editors/vscode/.vscode-test/vscode-win32-x64-archive-1.119.0/resources/app/package.json"
+        ));
+        assert!(should_skip_path(
+            "editors/vscode/node_modules/vscode/package.json"
+        ));
+        assert!(should_skip_path("editors/vscode/out/src/extension.js"));
+        assert!(should_skip_path("editors/vscode/dist/ripr-0.3.0.vsix"));
+        assert!(!should_skip_path("editors/vscode/src/config.ts"));
     }
 
     #[test]
