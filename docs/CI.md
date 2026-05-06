@@ -265,10 +265,82 @@ Policy modes:
 | `baseline-check` | no | Report new configured-warning results relative to a baseline. |
 | `fail-on-new-warning` | no | Exit non-zero when new configured-warning results appear. |
 
+### Copyable RIPR SARIF Workflow
+
+External repositories can start with a non-blocking pull-request workflow that
+installs `ripr`, renders SARIF, and uploads it to GitHub code scanning. The
+official GitHub SARIF upload documentation uses
+`github/codeql-action/upload-sarif@v4`; keep the upload step advisory until the
+repository has chosen a baseline policy.
+
+```yaml
+name: RIPR
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  ripr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install ripr
+        run: cargo install ripr --locked
+
+      - name: Capture pull request diff
+        run: |
+          mkdir -p target/ripr/reports
+          git diff --binary "origin/${{ github.base_ref }}...HEAD" > target/ripr/reports/pr.diff
+
+      - name: Render diff SARIF
+        run: |
+          ripr check \
+            --root . \
+            --diff target/ripr/reports/pr.diff \
+            --format sarif \
+            > target/ripr/reports/ripr-findings.sarif
+
+      - name: Render repo seam SARIF
+        run: |
+          ripr check \
+            --root . \
+            --mode ready \
+            --format repo-sarif \
+            > target/ripr/reports/ripr-seams.sarif
+
+      - name: Upload RIPR diff findings
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: target/ripr/reports/ripr-findings.sarif
+          category: ripr-findings
+
+      - name: Upload RIPR repo seams
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: target/ripr/reports/ripr-seams.sarif
+          category: ripr-seams
+```
+
+For a first rollout, treat code-scanning annotations as review guidance. Do not
+make the job blocking until the repository has reviewed its initial SARIF
+baseline, tuned `ripr.toml`, and decided which configured-warning results should
+fail CI. The `cargo xtask sarif-policy` baseline modes shown above are
+repo-local automation today; a public package-level policy command is a future
+adoption surface.
+
 The policy implementation lives in `cargo xtask` rather than a public `ripr`
 CLI policy command. It does not add a default workflow that blocks pull
-requests. A later workflow PR may document or add an opt-in GitHub code-scanning
-upload path after the Campaign 6 stack audit.
+requests. The copyable workflow above is the adoption recipe; this repository
+does not install that workflow by default.
 
 The security workflow currently runs:
 

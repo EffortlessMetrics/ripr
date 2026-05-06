@@ -233,6 +233,9 @@ cargo xtask sarif-policy \
 Use `--mode baseline-check` or `--mode fail-on-new-warning` only when the
 repository has deliberately adopted an opt-in baseline policy.
 
+For a copyable GitHub Actions recipe, see
+[CI strategy](CI.md#copyable-ripr-sarif-workflow).
+
 ### Badges
 
 For this repository's checked-in badge endpoints:

@@ -160,6 +160,8 @@ are scoped or reviewed.
 - Added `fixtures/CALIBRATION_CORPUS.md` as a controlled-scenario index for
   targeted-test receipts, static/runtime calibration, SARIF, badges, and LSP
   alignment checks without changing fixture execution.
+- Documented a copyable, non-blocking GitHub Actions recipe for rendering RIPR
+  SARIF and uploading it to GitHub code scanning.
 
 ## 0.3.0 - 2026-05-02
 
