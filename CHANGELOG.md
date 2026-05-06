@@ -183,9 +183,9 @@ are scoped or reviewed.
   the classifier's probe, owner, and related-test inputs, setting up later
   RIPR stage module extraction without changing classification behavior. The
   next ready seam is related-test discovery extraction.
-- Moved related-test discovery into `analysis/classify/related_tests.rs` after
-  `ProbeContext` extraction while preserving classification behavior. The next
-  ready seam is reach evidence extraction.
+- Moved related-test discovery into `analysis/classify/related_tests.rs` while
+  preserving classification behavior. The next ready seam is reach evidence
+  extraction.
 - Added `cargo xtask targeted-test-outcome` as an advisory receipt for comparing
   before/after `repo-exposure-json` artifacts. The report writes
   `target/ripr/reports/targeted-test-outcome.{json,md}`, matches seams by

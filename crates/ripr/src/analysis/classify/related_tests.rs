@@ -77,6 +77,54 @@ fn package_prefix(path: &Path) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::analysis::rust_index::CallFact;
+    use crate::domain::{DeltaKind, ProbeFamily, ProbeId, SourceLocation, SymbolId};
+    use std::path::PathBuf;
+
+    #[test]
+    fn given_owner_function_when_tests_share_name_across_packages_then_filters_to_package() {
+        let owner = function("crates/crate_a/src/lib.rs", "score");
+        let index = RustIndex {
+            tests: vec![
+                test(
+                    "crates/crate_b/tests/score.rs",
+                    "crate_b_score_test",
+                    "score(2)",
+                ),
+                test(
+                    "crates/crate_a/tests/score.rs",
+                    "crate_a_score_test",
+                    "score(1)",
+                ),
+            ],
+            ..RustIndex::default()
+        };
+        let probe = probe("crates/crate_a/src/lib.rs", "score + 1");
+
+        let related = find_related_tests(&probe, Some(&owner), &index);
+
+        assert_eq!(related.len(), 1);
+        assert_eq!(related[0].name, "crate_a_score_test");
+    }
+
+    #[test]
+    fn given_probe_token_in_test_name_when_owner_is_not_called_then_test_is_related() {
+        let owner = function("src/lib.rs", "tax_total");
+        let index = RustIndex {
+            tests: vec![test(
+                "tests/tax.rs",
+                "vat_boundary_is_checked_by_macro",
+                "assert_eq!(macro_tax_case!(100), 120);",
+            )],
+            ..RustIndex::default()
+        };
+        let probe = probe("src/lib.rs", "vat >= threshold");
+
+        let related = find_related_tests(&probe, Some(&owner), &index);
+
+        assert_eq!(related.len(), 1);
+        assert_eq!(related[0].name, "vat_boundary_is_checked_by_macro");
+    }
 
     #[test]
     fn given_workspace_paths_when_extracting_package_prefix_then_handles_nested_markers() {
@@ -109,5 +157,54 @@ mod tests {
     fn given_mixed_separator_path_when_normalizing_then_uses_workspace_relative_form() {
         let normalized = normalize_path(Path::new("./crates\\ripr\\src\\lib.rs"));
         assert_eq!(normalized, "crates/ripr/src/lib.rs");
+    }
+
+    fn function(file: &str, name: &str) -> FunctionSummary {
+        FunctionSummary {
+            id: SymbolId(format!("{file}::{name}")),
+            name: name.to_string(),
+            file: PathBuf::from(file),
+            start_line: 1,
+            end_line: 3,
+            body: String::new(),
+            calls: Vec::new(),
+            returns: Vec::new(),
+            literals: Vec::new(),
+            is_test: false,
+            attrs: Vec::new(),
+        }
+    }
+
+    fn test(file: &str, name: &str, body: &str) -> TestSummary {
+        TestSummary {
+            name: name.to_string(),
+            file: PathBuf::from(file),
+            start_line: 1,
+            end_line: 4,
+            body: body.to_string(),
+            calls: vec![CallFact {
+                line: 1,
+                name: "score".to_string(),
+                text: body.to_string(),
+            }],
+            assertions: Vec::new(),
+            literals: Vec::new(),
+            attrs: Vec::new(),
+        }
+    }
+
+    fn probe(file: &str, expression: &str) -> Probe {
+        Probe {
+            id: ProbeId("probe:test".to_string()),
+            location: SourceLocation::new(file, 2, 1),
+            owner: Some(SymbolId(format!("{file}::owner"))),
+            family: ProbeFamily::Predicate,
+            delta: DeltaKind::Control,
+            before: None,
+            after: Some(expression.to_string()),
+            expression: expression.to_string(),
+            expected_sinks: Vec::new(),
+            required_oracles: Vec::new(),
+        }
     }
 }
