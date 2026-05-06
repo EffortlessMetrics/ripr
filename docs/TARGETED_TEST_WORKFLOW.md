@@ -38,8 +38,12 @@ The workflow uses these artifacts:
 cockpit, badge-endpoint, and calibration summary commands shown here are
 repo-local `cargo xtask` automation today.
 
+Run `ripr init` when you want to pin repo policy before starting the loop. The
+generated config keeps the workflow advisory and enables saved-workspace editor
+seam diagnostics for initialized repositories.
+
 [RIPR-SPEC-0009](specs/RIPR-SPEC-0009-defaults-first-adoption.md) tracks the
-future public CLI path for this loop: `ripr pilot` for the first packet,
+remaining public CLI path for this loop: `ripr pilot` for the first packet,
 `ripr outcome` for before/after receipts, and `ripr calibrate cargo-mutants`
 for advisory runtime calibration imports. Until those commands exist, this
 document names the installed `ripr check` commands and the repo-local xtask

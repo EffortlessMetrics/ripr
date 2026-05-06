@@ -1,6 +1,7 @@
 const HELP: &str = r#"ripr — static RIPR mutation exposure analysis for Rust
 
 Usage:
+  ripr init [--root PATH] [--dry-run] [--force]
   ripr check [--base origin/main] [--diff PATH] [--mode draft] [--format FORMAT]
   ripr explain [--base REV|--diff PATH] <finding-id|file:line>
   ripr context [--base REV|--diff PATH] --at <finding-id|file:line>
@@ -14,9 +15,25 @@ What it does:
 
 Quick start:
   ripr doctor
+  ripr init
   ripr check --diff crates/ripr/examples/sample/example.diff
   ripr check --diff crates/ripr/examples/sample/example.diff --json
   ripr explain --diff crates/ripr/examples/sample/example.diff <finding-id>
+"#;
+
+const INIT_HELP: &str = r#"Usage: ripr init [--root PATH] [--dry-run] [--force]
+
+Options:
+  --root PATH      Workspace root where ripr.toml should be written. Defaults to current directory.
+  --dry-run        Print the generated config without writing.
+  --force          Overwrite an existing ripr.toml.
+
+Generated config:
+  - uses draft analysis mode and includes unchanged tests
+  - shows actionable weak or missing seams with conservative severities
+  - hides strongly_gripped, intentional, and suppressed seams
+  - enables saved-workspace LSP seam diagnostics for initialized repositories
+  - remains advisory and does not configure CI blocking or mutation execution
 "#;
 
 const CHECK_HELP: &str = r#"Usage: ripr check [OPTIONS]
@@ -74,6 +91,10 @@ pub(super) fn print_check_help() {
     println!("{CHECK_HELP}");
 }
 
+pub(super) fn print_init_help() {
+    println!("{INIT_HELP}");
+}
+
 pub(super) fn print_explain_help() {
     println!("{EXPLAIN_HELP}");
 }
@@ -92,10 +113,11 @@ pub(super) fn print_lsp_help() {
 
 #[cfg(test)]
 mod tests {
-    use super::{CHECK_HELP, CONTEXT_HELP, DOCTOR_HELP, EXPLAIN_HELP, HELP, LSP_HELP};
+    use super::{CHECK_HELP, CONTEXT_HELP, DOCTOR_HELP, EXPLAIN_HELP, HELP, INIT_HELP, LSP_HELP};
 
     #[test]
     fn top_level_help_mentions_supported_commands() {
+        assert!(HELP.contains("ripr init"));
         assert!(HELP.contains("ripr check"));
         assert!(HELP.contains("ripr explain"));
         assert!(HELP.contains("ripr context"));
@@ -114,6 +136,9 @@ mod tests {
 
     #[test]
     fn command_specific_help_usage_lines_are_stable() {
+        assert!(INIT_HELP.starts_with("Usage: ripr init"));
+        assert!(INIT_HELP.contains("--dry-run"));
+        assert!(INIT_HELP.contains("--force"));
         assert!(EXPLAIN_HELP.starts_with("Usage: ripr explain"));
         assert!(CONTEXT_HELP.starts_with("Usage: ripr context"));
         assert!(DOCTOR_HELP.starts_with("Usage: ripr doctor [--root PATH]"));

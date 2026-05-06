@@ -138,6 +138,12 @@ Check local tooling and workspace shape:
 ripr doctor
 ```
 
+Initialize conservative repo policy:
+
+```bash
+ripr init
+```
+
 Check the current Git diff against `origin/main`:
 
 ```bash

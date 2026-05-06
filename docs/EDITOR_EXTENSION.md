@@ -76,8 +76,8 @@ every report artifact first.
 
 The current LSP model remains saved-workspace analysis. Unsaved-buffer overlays
 are not enabled by default. When a repository adds `ripr.toml`, that repo
-policy should make editor behavior explicit; the future generated `ripr init`
-profile may opt that repository into seam diagnostics while keeping diagnostics
+policy should make editor behavior explicit. `ripr init` generates an
+editor-ready repo config with seam diagnostics enabled while keeping diagnostics
 advisory.
 
 ## Commands

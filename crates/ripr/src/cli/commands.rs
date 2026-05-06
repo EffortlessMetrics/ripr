@@ -1,8 +1,69 @@
 use crate::app::{self, CheckInput, Mode, OutputFormat};
 use crate::cli::help;
 use crate::cli::parse::{expect_value, parse_format, parse_mode};
-use crate::config::{CONFIG_FILE_NAME, CheckInputExplicit, apply_to_check_input, load_for_root};
+use crate::config::{
+    CONFIG_FILE_NAME, CheckInputExplicit, apply_to_check_input, generated_init_config,
+    load_for_root,
+};
 use std::path::{Path, PathBuf};
+
+#[derive(Debug, PartialEq, Eq)]
+struct InitOptions {
+    root: PathBuf,
+    dry_run: bool,
+    force: bool,
+}
+
+pub(super) fn init(args: &[String]) -> Result<(), String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        help::print_init_help();
+        return Ok(());
+    }
+    let options = parse_init_options(args)?;
+    if options.dry_run {
+        print!("{}", generated_init_config());
+        return Ok(());
+    }
+    if !options.root.is_dir() {
+        return Err(format!(
+            "init root {} is not a directory",
+            options.root.display()
+        ));
+    }
+    let config_path = options.root.join(CONFIG_FILE_NAME);
+    if config_path.exists() && !options.force {
+        return Err(format!(
+            "{} already exists; rerun `ripr init --force` to overwrite it",
+            config_path.display()
+        ));
+    }
+    std::fs::write(&config_path, generated_init_config())
+        .map_err(|err| format!("write {} failed: {err}", config_path.display()))?;
+    println!("Wrote {}", config_path.display());
+    Ok(())
+}
+
+fn parse_init_options(args: &[String]) -> Result<InitOptions, String> {
+    let mut options = InitOptions {
+        root: PathBuf::from("."),
+        dry_run: false,
+        force: false,
+    };
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                options.root = PathBuf::from(expect_value(args, i, "--root")?);
+            }
+            "--dry-run" => options.dry_run = true,
+            "--force" => options.force = true,
+            other => return Err(format!("unknown init argument {other:?}")),
+        }
+        i += 1;
+    }
+    Ok(options)
+}
 
 pub(super) fn check(args: &[String]) -> Result<(), String> {
     let mut input = CheckInput::default();
@@ -296,6 +357,7 @@ mod tests {
 
     #[test]
     fn command_help_branches_return_ok() {
+        assert_eq!(init(&args(&["--help"])), Ok(()));
         assert_eq!(check(&args(&["--help"])), Ok(()));
         assert_eq!(explain(&args(&["--help"])), Ok(()));
         assert_eq!(context(&args(&["--help"])), Ok(()));
@@ -321,6 +383,34 @@ mod tests {
         assert_eq!(
             doctor(&args(&["--root"])),
             Err("missing value for --root".to_string())
+        );
+    }
+
+    #[test]
+    fn init_requires_root_value() {
+        assert_eq!(
+            init(&args(&["--root"])),
+            Err("missing value for --root".to_string())
+        );
+    }
+
+    #[test]
+    fn init_rejects_unknown_arguments() {
+        assert_eq!(
+            init(&args(&["--ci", "github"])),
+            Err("unknown init argument \"--ci\"".to_string())
+        );
+    }
+
+    #[test]
+    fn init_parses_root_dry_run_and_force() {
+        assert_eq!(
+            parse_init_options(&args(&["--root", "repo", "--dry-run", "--force"])),
+            Ok(InitOptions {
+                root: PathBuf::from("repo"),
+                dry_run: true,
+                force: true,
+            })
         );
     }
 
