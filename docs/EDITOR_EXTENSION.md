@@ -236,8 +236,26 @@ Fallback behavior preserves three levels:
 3. **No diagnostic at position** — generic guidance hover.
 
 Seam hovers use the same snapshot footer when a matching seam diagnostic is
-available. This keeps saved-workspace staleness visible without claiming that
-unsaved document text has been analyzed.
+available. They also include a `Why this diagnostic?` section that makes the
+static classification legible:
+
+```text
+## Why this diagnostic?
+Grip class: `weakly_gripped` — the current static evidence has a weak discriminator or a named missing discriminator.
+
+Strong evidence:
+- reach yes: related tests reach discounted_total
+- observation yes: exact value assertion exists
+
+Weak / missing evidence:
+- discrimination weak: equality boundary missing
+- missing discriminator `discount_threshold (equality boundary)`: observed values do not include the equality-boundary case
+
+Recommended next move: Add an exact-value assertion for the equality boundary.
+```
+
+This keeps saved-workspace staleness visible without claiming that unsaved
+document text has been analyzed.
 
 ## VS Code Extension Tests
 
