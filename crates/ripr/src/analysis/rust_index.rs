@@ -17,7 +17,7 @@ pub const PROBE_SHAPE_MATCH_ARM: &str = "match_arm";
 
 pub use super::facts::{
     CallFact, FileFacts, FunctionFact, FunctionSummary, LiteralFact, OracleFact, ProbeShapeFact,
-    ReturnFact, RustIndex, TestFact, TestSummary,
+    ReturnFact, RustIndex, TestFact, TestSummary, build_index,
 };
 pub use super::syntax::{
     LexicalRustSyntaxAdapter, RaRustSyntaxAdapter, RustSyntaxAdapter, SyntaxNodeFact, TextRange,
@@ -44,24 +44,6 @@ impl RustSyntaxAdapter for RaRustSyntaxAdapter {
     fn changed_nodes(&self, facts: &FileFacts, ranges: &[TextRange]) -> Vec<SyntaxNodeFact> {
         owner_changed_nodes(facts, ranges)
     }
-}
-
-pub fn build_index(root: &Path, files: &[PathBuf]) -> Result<RustIndex, String> {
-    let mut index = RustIndex::default();
-    let adapter = RaRustSyntaxAdapter;
-    let fallback = LexicalRustSyntaxAdapter;
-    for file in files {
-        let full = root.join(file);
-        let text = std::fs::read_to_string(&full)
-            .map_err(|err| format!("failed to read {}: {err}", full.display()))?;
-        let summary = adapter
-            .summarize_file(file, &text)
-            .or_else(|_| fallback.summarize_file(file, &text))?;
-        index.tests.extend(summary.tests.clone());
-        index.functions.extend(summary.functions.clone());
-        index.files.insert(file.clone(), summary);
-    }
-    Ok(index)
 }
 
 pub(crate) fn apply_oracle_policy(index: &mut RustIndex, policy: &OraclePolicy) {

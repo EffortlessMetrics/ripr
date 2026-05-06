@@ -144,6 +144,10 @@ are scoped or reviewed.
   `analysis/syntax/adapter.rs` while keeping builders, parser-backed extraction,
   lexical fallback, and query logic in `analysis/rust_index.rs`. The next ready
   seam is build-index extraction.
+- Moved Rust index construction into `analysis/facts/build.rs` while keeping
+  parser-backed extraction, lexical fallback, and query helpers in
+  `analysis/rust_index.rs`. The next ready seam is parser-backed RA syntax
+  extraction.
 - Added `cargo xtask targeted-test-outcome` as an advisory receipt for comparing
   before/after `repo-exposure-json` artifacts. The report writes
   `target/ripr/reports/targeted-test-outcome.{json,md}`, matches seams by
