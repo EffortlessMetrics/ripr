@@ -213,6 +213,9 @@ are scoped or reviewed.
 - Split check, explain, and context use-case orchestration into focused `app`
   modules while preserving public API and output behavior. The next ready seam
   is output format extraction.
+- Moved `OutputFormat` into `output/format.rs` while preserving the
+  `app::OutputFormat` public path and output behavior. The next ready seam is
+  render dispatch extraction.
 - Added `cargo xtask targeted-test-outcome` as an advisory receipt for comparing
   before/after `repo-exposure-json` artifacts. The report writes
   `target/ripr/reports/targeted-test-outcome.{json,md}`, matches seams by
