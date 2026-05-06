@@ -41,14 +41,14 @@ reason = "Table-driven test of classify_assertion across the 5 supported oracle 
 
 [[test_intent]]
 test = "instant_indexes_changed_rust_files_only"
-path = "crates/ripr/src/analysis/workspace.rs"
+path = "crates/ripr/src/analysis/workspace/select.rs"
 intent = "integration_contract"
 owner = "ripr"
 reason = "Table-driven test of select_rust_files_for_mode for AnalysisMode::Instant. Setup uses a files() helper to construct file lists; the helper is shared with the assertion side, which the analyzer flags as possibly_circular. The shape is intentional — workspace-mode behavior is asserted by enumerating inputs and the expected subset."
 
 [[test_intent]]
 test = "no_unchanged_tests_limits_any_mode_to_changed_files"
-path = "crates/ripr/src/analysis/workspace.rs"
+path = "crates/ripr/src/analysis/workspace/select.rs"
 intent = "integration_contract"
 owner = "ripr"
 reason = "Same table-driven shape as instant_indexes_changed_rust_files_only, asserting the include_unchanged_tests flag's effect across modes. Helper-vs-SUT separation is intact; possibly_circular flag is conservative."
