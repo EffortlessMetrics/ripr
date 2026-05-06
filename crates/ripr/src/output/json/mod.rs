@@ -4,6 +4,7 @@ mod report;
 
 pub use context_packet::render_context_packet;
 pub use report::render;
+pub(crate) use report::render_with_config;
 
 pub(crate) use formatter::{array_field, escape, field, float_field, number_field};
 

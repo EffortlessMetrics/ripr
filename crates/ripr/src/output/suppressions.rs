@@ -410,8 +410,11 @@ pub fn is_iso_date(value: &str) -> bool {
 /// projects with no accepted debt). Parse violations are returned via
 /// `Err` so the orchestrator can surface them through the existing
 /// badge-rendering error path.
-pub fn load_suppressions_for_root(root: &Path) -> Result<Vec<SuppressionEntry>, Vec<String>> {
-    let path = root.join(SUPPRESSIONS_PATH);
+pub fn load_suppressions_for_root_at(
+    root: &Path,
+    relative_path: &Path,
+) -> Result<Vec<SuppressionEntry>, Vec<String>> {
+    let path = root.join(relative_path);
     if !path.exists() {
         return Ok(Vec::new());
     }

@@ -618,14 +618,14 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `config/ripr-config-v1` | ready | Next operationalization item. Defaults must account for warm-path cost and stable oracle taxonomy from Campaign 5A. |
-| `ci/sarif-ci-policy` | blocked | Blocked by `config/ripr-config-v1` (severity + suppression). |
-| `badge/seam-native-count-mapping` | blocked | Map `ripr` and `ripr+` badge counts onto seam-native counts after config establishes severity and suppression semantics. |
+| `config/ripr-config-v1` | done | Repo-root `ripr.toml` governs analysis mode, oracle policy, severity mapping, suppressions path, report caps, and LSP seam-diagnostic defaults while explicit CLI/LSP options still win. |
+| `ci/sarif-ci-policy` | ready | SARIF and policy modes consume configured severity and suppression policy. |
+| `badge/seam-native-count-mapping` | blocked | Map `ripr` and `ripr+` badge counts onto seam-native counts after SARIF consumes configured severity and suppression semantics. |
 
 Review policy:
 
-5B work starts with `config/ripr-config-v1`. SARIF policy and badge
-count remapping should not land before config establishes severity
+5B started with `config/ripr-config-v1`. SARIF policy is the next ready item;
+badge count remapping should not land before SARIF consumes configured severity
 and suppression semantics.
 
 ## Campaign 6: Module SRP Refactoring

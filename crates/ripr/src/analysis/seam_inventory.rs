@@ -26,6 +26,7 @@ use super::seam_classification::{self, ClassifiedSeam};
 use super::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator, SeamKind};
 use super::test_grip_evidence;
 use super::workspace;
+use crate::config::RiprConfig;
 use std::path::{Path, PathBuf};
 
 /// Walk production Rust files at `root` and emit the raw seam inventory.
@@ -58,9 +59,17 @@ pub(crate) fn inventory_seams_at(root: &Path) -> Result<Vec<RepoSeam>, String> {
 /// pipeline entirely. Misses and corrupt entries fall through to a
 /// fresh compute and write the result for the next run. Cache
 /// failures never fail the analysis.
+#[cfg(test)]
 pub(crate) fn inventory_classified_seams_at(root: &Path) -> Result<Vec<ClassifiedSeam>, String> {
+    inventory_classified_seams_at_with_config(root, &RiprConfig::default())
+}
+
+pub(crate) fn inventory_classified_seams_at_with_config(
+    root: &Path,
+    config: &RiprConfig,
+) -> Result<Vec<ClassifiedSeam>, String> {
     let cache = RepoSeamFactCache::at(root);
-    let state = collect_workspace_state(root)?;
+    let state = collect_workspace_state(root, config)?;
     let key = state.cache_key();
     match cache.load_classified_seams(&key) {
         CacheLoad::Hit(cached) => return Ok(cached),
@@ -71,7 +80,7 @@ pub(crate) fn inventory_classified_seams_at(root: &Path) -> Result<Vec<Classifie
             eprintln!("ripr: repo seam cache entry ignored ({reason})");
         }
     }
-    let classified = inventory_classified_seams_uncached(root)?;
+    let classified = inventory_classified_seams_uncached_with_config(root, config)?;
     // Best-effort write: a write failure does not fail analysis. The
     // result is already in memory; the next run just sees a miss again.
     let _ = cache.store_classified_seams(&key, &classified);
@@ -82,8 +91,9 @@ pub(crate) fn inventory_classified_seams_at(root: &Path) -> Result<Vec<Classifie
 /// entry point on miss and by tests that want to drive the pipeline
 /// directly. Stays crate-private; the public entry is the cached
 /// function above.
-pub(crate) fn inventory_classified_seams_uncached(
+pub(crate) fn inventory_classified_seams_uncached_with_config(
     root: &Path,
+    config: &RiprConfig,
 ) -> Result<Vec<ClassifiedSeam>, String> {
     let rust_files = workspace::discover_rust_files(root)?;
     let production_files: Vec<PathBuf> = rust_files
@@ -92,7 +102,8 @@ pub(crate) fn inventory_classified_seams_uncached(
         .cloned()
         .collect();
 
-    let index = rust_index::build_index(root, &rust_files)?;
+    let mut index = rust_index::build_index(root, &rust_files)?;
+    rust_index::apply_oracle_policy(&mut index, config.oracles());
     let seams = inventory_seams_from_index(&production_files, &index);
     let evidence = test_grip_evidence::evidence_for_seams(&seams, &index);
     Ok(seam_classification::classify_seams(&seams, &evidence))
@@ -108,7 +119,10 @@ pub(crate) fn inventory_classified_seams_uncached(
 /// `TestGripEvidence` derived from test files, so a test-only edit must
 /// invalidate the cache; filtering to production-only here would let
 /// stale grip evidence survive a test rewrite.
-fn collect_workspace_state(root: &Path) -> Result<OwnedWorkspaceState, String> {
+fn collect_workspace_state(
+    root: &Path,
+    config: &RiprConfig,
+) -> Result<OwnedWorkspaceState, String> {
     let rust_files = workspace::discover_rust_files(root)?;
     let mut files: Vec<(PathBuf, Vec<u8>)> = Vec::with_capacity(rust_files.len());
     for path in rust_files {
@@ -119,8 +133,9 @@ fn collect_workspace_state(root: &Path) -> Result<OwnedWorkspaceState, String> {
     Ok(OwnedWorkspaceState {
         workspace_root: root.to_path_buf(),
         files,
+        config_text: config.source_text().map(str::to_string),
         test_intent_text: read_optional(&root.join(".ripr").join("test_intent.toml")),
-        suppressions_text: read_optional(&root.join(".ripr").join("suppressions.toml")),
+        suppressions_text: read_optional(&root.join(config.suppressions().path())),
     })
 }
 
@@ -134,6 +149,7 @@ fn read_optional(path: &Path) -> Option<String> {
 struct OwnedWorkspaceState {
     workspace_root: PathBuf,
     files: Vec<(PathBuf, Vec<u8>)>,
+    config_text: Option<String>,
     test_intent_text: Option<String>,
     suppressions_text: Option<String>,
 }
@@ -144,7 +160,7 @@ impl OwnedWorkspaceState {
             workspace_root: &self.workspace_root,
             files: &self.files,
             cfg_features: None,
-            config_text: None,
+            config_text: self.config_text.as_deref(),
             test_intent_text: self.test_intent_text.as_deref(),
             suppressions_text: self.suppressions_text.as_deref(),
         }
@@ -668,7 +684,7 @@ mod tests {
         // Pre-populate the cache file (under the exact key the
         // inventory will compute) with garbage so the loader returns
         // `CorruptIgnored` and the inventory falls through to compute.
-        let state = collect_workspace_state(&root)?;
+        let state = collect_workspace_state(&root, &RiprConfig::default())?;
         let key = state.cache_key();
         let dir = cache_dir_under(&root);
         std::fs::create_dir_all(&dir).map_err(|err| format!("mkdir {}: {err}", dir.display()))?;
@@ -699,7 +715,7 @@ mod tests {
         // `std::fs::write` to a path that is a directory fails on
         // both POSIX and Windows; the inventory must still return
         // its in-memory result.
-        let state = collect_workspace_state(&root)?;
+        let state = collect_workspace_state(&root, &RiprConfig::default())?;
         let key = state.cache_key();
         let dir = cache_dir_under(&root);
         std::fs::create_dir_all(dir.join(key.filename()))
@@ -800,7 +816,7 @@ mod tests {
             "pub fn discount(amount: i32, threshold: i32) -> bool { amount >= threshold }\n",
         )?;
 
-        let baseline = collect_workspace_state(&root)?.cache_key();
+        let baseline = collect_workspace_state(&root, &RiprConfig::default())?.cache_key();
 
         // Add a `.ripr/test_intent.toml` and re-derive the key.
         write_file(
@@ -813,7 +829,7 @@ mod tests {
                 "reason = \"bar\"\n"
             ),
         )?;
-        let with_intent = collect_workspace_state(&root)?.cache_key();
+        let with_intent = collect_workspace_state(&root, &RiprConfig::default())?.cache_key();
         if baseline.test_intent_hash == with_intent.test_intent_hash {
             return Err("adding test_intent.toml should change test_intent_hash".into());
         }
@@ -831,7 +847,7 @@ mod tests {
                 "reason = \"bar\"\n"
             ),
         )?;
-        let with_both = collect_workspace_state(&root)?.cache_key();
+        let with_both = collect_workspace_state(&root, &RiprConfig::default())?.cache_key();
         if with_intent.suppressions_hash == with_both.suppressions_hash {
             return Err("adding suppressions.toml should change suppressions_hash".into());
         }

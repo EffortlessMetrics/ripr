@@ -24,9 +24,10 @@ through multiple work items in a campaign, but each work item should follow the
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
 through 5A are complete. The active queue is now Campaign 5B
-Operationalization, starting with `config/ripr-config-v1`. `ci/sarif-ci-policy`
-and `badge/seam-native-count-mapping` remain blocked until config establishes
-severity and suppression semantics.
+Operationalization. `config/ripr-config-v1` established the repo-root
+configuration surface; `ci/sarif-ci-policy` is the next ready item, and
+`badge/seam-native-count-mapping` remains blocked until SARIF consumes
+configured severity and suppression semantics.
 
 ## PR 0: `planning-and-tracking-docs`
 

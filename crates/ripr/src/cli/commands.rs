@@ -1,10 +1,12 @@
 use crate::app::{self, CheckInput, OutputFormat};
 use crate::cli::help;
 use crate::cli::parse::{expect_value, parse_format, parse_mode};
+use crate::config::{CheckInputExplicit, apply_to_check_input, load_for_root};
 use std::path::PathBuf;
 
 pub(super) fn check(args: &[String]) -> Result<(), String> {
     let mut input = CheckInput::default();
+    let mut explicit = CheckInputExplicit::default();
     let mut i = 0usize;
     while i < args.len() {
         match args[i].as_str() {
@@ -23,13 +25,17 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
             "--mode" => {
                 i += 1;
                 input.mode = parse_mode(expect_value(args, i, "--mode")?)?;
+                explicit.mode = true;
             }
             "--json" => input.format = OutputFormat::Json,
             "--format" => {
                 i += 1;
                 input.format = parse_format(expect_value(args, i, "--format")?)?;
             }
-            "--no-unchanged-tests" => input.include_unchanged_tests = false,
+            "--no-unchanged-tests" => {
+                input.include_unchanged_tests = false;
+                explicit.include_unchanged_tests = true;
+            }
             "--help" | "-h" => {
                 help::print_check_help();
                 return Ok(());
@@ -38,6 +44,8 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
         }
         i += 1;
     }
+    let config = load_for_root(&input.root)?;
+    apply_to_check_input(&mut input, &config, explicit);
     let format = input.format.clone();
     let output = if format.is_repo_seam_inventory() {
         // The repo seam inventory does not consume `Findings`, so we
@@ -46,11 +54,14 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
         // `CheckOutput` carries only the fields the renderer reads.
         app::repo_seam_inventory_input(input)
     } else if format.is_repo_scope() {
-        app::check_workspace_repo(input)?
+        app::check_workspace_repo_with_config(input, &config)?
     } else {
-        app::check_workspace(input)?
+        app::check_workspace_with_config(input, &config)?
     };
-    print!("{}", app::render_check(&output, &format)?);
+    print!(
+        "{}",
+        app::render_check_with_config(&output, &format, &config)?
+    );
     Ok(())
 }
 
@@ -82,7 +93,12 @@ pub(super) fn explain(args: &[String]) -> Result<(), String> {
         i += 1;
     }
     let selector = selector.ok_or_else(|| "missing finding selector".to_string())?;
-    println!("{}", app::explain_finding_with_input(input, &selector)?);
+    let config = load_for_root(&input.root)?;
+    apply_to_check_input(&mut input, &config, CheckInputExplicit::default());
+    println!(
+        "{}",
+        app::explain_finding_with_config(input, &selector, &config)?
+    );
     Ok(())
 }
 
@@ -92,7 +108,8 @@ pub(super) fn context(args: &[String]) -> Result<(), String> {
         ..CheckInput::default()
     };
     let mut selector: Option<String> = None;
-    let mut max_tests = 5usize;
+    let mut max_tests = crate::config::DEFAULT_CONTEXT_RELATED_TESTS;
+    let mut explicit_max_tests = false;
     let mut i = 0usize;
     while i < args.len() {
         match args[i].as_str() {
@@ -121,6 +138,7 @@ pub(super) fn context(args: &[String]) -> Result<(), String> {
                 max_tests = expect_value(args, i, "--max-related-tests")?
                     .parse::<usize>()
                     .map_err(|err| format!("invalid --max-related-tests: {err}"))?;
+                explicit_max_tests = true;
             }
             "--json" => input.format = OutputFormat::Json,
             "--help" | "-h" => {
@@ -132,9 +150,14 @@ pub(super) fn context(args: &[String]) -> Result<(), String> {
         i += 1;
     }
     let selector = selector.ok_or_else(|| "missing --at or --finding selector".to_string())?;
+    let config = load_for_root(&input.root)?;
+    apply_to_check_input(&mut input, &config, CheckInputExplicit::default());
+    if !explicit_max_tests {
+        max_tests = config.reports().max_related_tests();
+    }
     println!(
         "{}",
-        app::collect_context_with_input(input, &selector, max_tests)?
+        app::collect_context_with_config(input, &selector, max_tests, &config)?
     );
     Ok(())
 }

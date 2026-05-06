@@ -1543,7 +1543,7 @@ fn probe_relative_oracle_strength(family: &ProbeFamily, assertion: &OracleFact) 
     match family {
         ProbeFamily::ErrorPath => match assertion.kind {
             OracleKind::ExactErrorVariant => OracleStrength::Strong,
-            OracleKind::BroadError => OracleStrength::Weak,
+            OracleKind::BroadError => assertion.strength.clone(),
             OracleKind::SmokeOnly => OracleStrength::Smoke,
             _ => assertion.strength.clone(),
         },
@@ -1554,18 +1554,20 @@ fn probe_relative_oracle_strength(family: &ProbeFamily, assertion: &OracleFact) 
             OracleKind::ExactValue
             | OracleKind::ExactErrorVariant
             | OracleKind::WholeObjectEquality => OracleStrength::Strong,
-            OracleKind::Snapshot | OracleKind::MockExpectation => OracleStrength::Medium,
-            OracleKind::RelationalCheck | OracleKind::BroadError => OracleStrength::Weak,
+            OracleKind::Snapshot
+            | OracleKind::MockExpectation
+            | OracleKind::RelationalCheck
+            | OracleKind::BroadError => assertion.strength.clone(),
             OracleKind::SmokeOnly => OracleStrength::Smoke,
             OracleKind::Unknown => OracleStrength::Unknown,
         },
         ProbeFamily::SideEffect | ProbeFamily::CallDeletion => match assertion.kind {
-            OracleKind::MockExpectation => OracleStrength::Medium,
+            OracleKind::MockExpectation => assertion.strength.clone(),
             OracleKind::ExactValue | OracleKind::WholeObjectEquality => OracleStrength::Strong,
-            OracleKind::RelationalCheck | OracleKind::BroadError => OracleStrength::Weak,
+            OracleKind::RelationalCheck | OracleKind::BroadError => assertion.strength.clone(),
             OracleKind::SmokeOnly => OracleStrength::Smoke,
             OracleKind::ExactErrorVariant => OracleStrength::Medium,
-            OracleKind::Snapshot => OracleStrength::Medium,
+            OracleKind::Snapshot => assertion.strength.clone(),
             OracleKind::Unknown => OracleStrength::Unknown,
         },
         ProbeFamily::StaticUnknown => OracleStrength::Unknown,

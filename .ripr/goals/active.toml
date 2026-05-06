@@ -36,7 +36,7 @@ end_state = [
 
 [[work_item]]
 id = "config/ripr-config-v1"
-status = "ready"
+status = "done"
 branch = "config/ripr-config-v1"
 stackable = false
 requires_human_merge = true
@@ -50,12 +50,10 @@ commands = [
 
 [[work_item]]
 id = "ci/sarif-ci-policy"
-status = "blocked"
+status = "ready"
 branch = "ci/sarif-ci-policy"
 stackable = false
 requires_human_merge = true
-blocked_by = ["config/ripr-config-v1"]
-blocked_reason = "SARIF and policy modes should consume ripr-config-v1 severity and suppression policy."
 acceptance = "ripr emits SARIF for seam diagnostics and Findings; opt-in baseline-aware blocking policy compares new unresolved gaps against a baseline; existing JSON schema is unchanged; documented in docs/OUTPUT_SCHEMA.md and docs/CI.md"
 commands = [
   "cargo xtask shape",
@@ -71,8 +69,8 @@ status = "blocked"
 branch = "badge/seam-native-count-mapping"
 stackable = false
 requires_human_merge = true
-blocked_by = ["config/ripr-config-v1"]
-blocked_reason = "Badge count semantics should be decided after config establishes severity, suppression, and seam diagnostic policy."
+blocked_by = ["ci/sarif-ci-policy"]
+blocked_reason = "Badge count semantics should be decided after SARIF consumes the configured severity and suppression policy."
 acceptance = "ripr and ripr+ badge artifacts map to seam-native unresolved gap counts; legacy finding count behavior remains documented or versioned; badge docs and endpoint artifacts are updated together"
 commands = [
   "cargo xtask shape",

@@ -12,6 +12,11 @@ The current schema version is:
 Schema changes that remove fields, rename fields, or change field meanings
 should bump `schema_version`.
 
+Repository config in `ripr.toml` does not add a new field to the `check`
+schema. It can change the rendered `mode` and configured `severity` values,
+because those fields already describe the effective analysis mode and reporting
+policy for the current run. See [Configuration](CONFIGURATION.md).
+
 ## Check Output
 
 `ripr check --json` emits:

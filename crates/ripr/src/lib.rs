@@ -57,6 +57,7 @@ pub mod analysis;
 pub mod app;
 /// Command-line adapter layer for the `ripr` binary.
 pub mod cli;
+pub(crate) mod config;
 /// Core domain model for probes, RIPR evidence, and exposure classes.
 pub mod domain;
 /// Experimental language-server sidecar adapter.

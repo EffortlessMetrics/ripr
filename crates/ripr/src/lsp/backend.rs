@@ -274,8 +274,24 @@ impl LanguageServer for Backend {
         let fallback_root = self
             .root()
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
-        self.set_root(root_from_initialize_params(&params, &fallback_root));
-        self.set_analysis_config(LspAnalysisConfig::from_initialize_params(&params));
+        let root = root_from_initialize_params(&params, &fallback_root);
+        let repo_config = match crate::config::load_for_root(&root) {
+            Ok(config) => config,
+            Err(err) => {
+                self.client
+                    .log_message(
+                        MessageType::WARNING,
+                        format!("ripr config load failed; using defaults: {err}"),
+                    )
+                    .await;
+                crate::config::RiprConfig::default()
+            }
+        };
+        self.set_root(root);
+        self.set_analysis_config(LspAnalysisConfig::from_initialize_params(
+            &params,
+            repo_config,
+        ));
         Ok(initialize_result())
     }
 
@@ -347,7 +363,11 @@ impl Backend {
         }
         let finding_id = args.get("finding_id").and_then(|v| v.as_str())?;
         let finding = snapshot.finding_by_id(finding_id)?;
-        let packet = crate::output::json::render_context_packet(finding, 5);
+        let max_related_tests = self
+            .analysis_config()
+            .map(|config| config.repo_config().reports().max_related_tests())
+            .unwrap_or(crate::config::DEFAULT_CONTEXT_RELATED_TESTS);
+        let packet = crate::output::json::render_context_packet(finding, max_related_tests);
         serde_json::from_str(&packet).ok()
     }
 }

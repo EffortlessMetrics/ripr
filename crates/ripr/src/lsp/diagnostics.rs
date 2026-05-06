@@ -2,10 +2,11 @@ use super::config::LspAnalysisConfig;
 use super::state::AnalysisSnapshot;
 use super::uri::file_uri_for_path;
 use crate::analysis::ClassifiedSeam;
-use crate::analysis::inventory_classified_seams_at;
+use crate::analysis::inventory_classified_seams_at_with_config;
 use crate::analysis::seams::SeamGripClass;
-use crate::app::check_workspace;
-use crate::domain::{ExposureClass, Finding, RelatedTest};
+use crate::app::check_workspace_with_config;
+use crate::config::{ConfigSeverity, SeverityConfig};
+use crate::domain::{Finding, RelatedTest};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use tower_lsp_server::ls_types::{
@@ -72,8 +73,8 @@ pub(super) fn workspace_diagnostics_with_config(
     config: &LspAnalysisConfig,
 ) -> Result<WorkspaceDiagnostics, String> {
     let input = config.check_input(root);
-    let output =
-        check_workspace(input).map_err(|err| format!("workspace analysis failed: {err}"))?;
+    let output = check_workspace_with_config(input, config.repo_config())
+        .map_err(|err| format!("workspace analysis failed: {err}"))?;
     let root = output.root;
     let base = output.base;
     let mode = output.mode;
@@ -85,7 +86,11 @@ pub(super) fn workspace_diagnostics_with_config(
         grouped
             .entry(uri)
             .or_default()
-            .push(diagnostic_for_finding(&root, finding));
+            .push(diagnostic_for_finding_with_config(
+                &root,
+                finding,
+                config.repo_config().severity(),
+            ));
     }
 
     // Repo seam evidence diagnostics. Gated by config because the
@@ -101,7 +106,7 @@ pub(super) fn workspace_diagnostics_with_config(
     // some unrelated repo file confuses the walker. Caught by
     // chatgpt-codex on PR #241.
     let classified_seams = if config.enable_seam_diagnostics {
-        match inventory_classified_seams_at(&root) {
+        match inventory_classified_seams_at_with_config(&root, config.repo_config()) {
             Ok(seams) => {
                 seams
                     .into_iter()
@@ -111,14 +116,23 @@ pub(super) fn workspace_diagnostics_with_config(
                         // the snapshot accurately. URI-resolution
                         // failures are silent here on purpose: they
                         // are operational noise, not analysis errors.
-                        if diagnostic_severity_for_grip_class(entry.class).is_none() {
+                        if diagnostic_severity_for_grip_class_with_config(
+                            entry.class,
+                            config.repo_config().severity(),
+                        )
+                        .is_none()
+                        {
                             return false;
                         }
                         let path = absolute_seam_path(&root, &entry.seam);
                         let Ok(uri) = file_uri_for_path(&path) else {
                             return false;
                         };
-                        if let Some(diagnostic) = diagnostic_for_classified_seam(&root, entry) {
+                        if let Some(diagnostic) = diagnostic_for_classified_seam_with_config(
+                            &root,
+                            entry,
+                            config.repo_config().severity(),
+                        ) {
                             grouped.entry(uri).or_default().push(diagnostic);
                             true
                         } else {
@@ -160,19 +174,14 @@ pub(super) fn workspace_diagnostics_with_config(
 pub(super) fn diagnostic_severity_for_grip_class(
     class: SeamGripClass,
 ) -> Option<DiagnosticSeverity> {
-    match class {
-        SeamGripClass::WeaklyGripped
-        | SeamGripClass::Ungripped
-        | SeamGripClass::ReachableUnrevealed => Some(DiagnosticSeverity::WARNING),
-        SeamGripClass::ActivationUnknown
-        | SeamGripClass::PropagationUnknown
-        | SeamGripClass::ObservationUnknown
-        | SeamGripClass::DiscriminationUnknown
-        | SeamGripClass::Opaque => Some(DiagnosticSeverity::INFORMATION),
-        SeamGripClass::StronglyGripped | SeamGripClass::Intentional | SeamGripClass::Suppressed => {
-            None
-        }
-    }
+    diagnostic_severity_for_grip_class_with_config(class, &SeverityConfig::default())
+}
+
+pub(super) fn diagnostic_severity_for_grip_class_with_config(
+    class: SeamGripClass,
+    config: &SeverityConfig,
+) -> Option<DiagnosticSeverity> {
+    lsp_severity(config.for_seam(class))
 }
 
 /// Build the LSP `Diagnostic` for a single classified seam, or `None`
@@ -187,11 +196,20 @@ pub(super) fn diagnostic_severity_for_grip_class(
 /// expressions — caught by chatgpt-codex on PR #241. When seams gain
 /// a stored column, this function can read the source via `_root` to
 /// produce a tighter range.
+#[cfg(test)]
 pub(super) fn diagnostic_for_classified_seam(
     _root: &Path,
     entry: &ClassifiedSeam,
 ) -> Option<Diagnostic> {
-    let severity = diagnostic_severity_for_grip_class(entry.class)?;
+    diagnostic_for_classified_seam_with_config(_root, entry, &SeverityConfig::default())
+}
+
+pub(super) fn diagnostic_for_classified_seam_with_config(
+    _root: &Path,
+    entry: &ClassifiedSeam,
+    config: &SeverityConfig,
+) -> Option<Diagnostic> {
+    let severity = diagnostic_severity_for_grip_class_with_config(entry.class, config)?;
     let seam = &entry.seam;
     let evidence = &entry.evidence;
     let line = seam.display_line().saturating_sub(1) as u32;
@@ -269,10 +287,19 @@ fn absolute_seam_path(root: &Path, seam: &crate::analysis::seams::RepoSeam) -> P
     }
 }
 
+#[cfg(test)]
 pub(super) fn diagnostic_for_finding(root: &Path, finding: &Finding) -> Diagnostic {
+    diagnostic_for_finding_with_config(root, finding, &SeverityConfig::default())
+}
+
+pub(super) fn diagnostic_for_finding_with_config(
+    root: &Path,
+    finding: &Finding,
+    config: &SeverityConfig,
+) -> Diagnostic {
     Diagnostic {
         range: diagnostic_range_for_finding(finding),
-        severity: Some(diagnostic_severity_for_class(&finding.class)),
+        severity: lsp_severity(config.for_exposure(&finding.class)),
         code: Some(NumberOrString::String(finding.class.as_str().to_string())),
         code_description: None,
         source: Some("ripr".to_string()),
@@ -368,15 +395,19 @@ fn related_test_message(test: &RelatedTest) -> String {
     }
 }
 
-pub(super) fn diagnostic_severity_for_class(class: &ExposureClass) -> DiagnosticSeverity {
-    match class {
-        ExposureClass::Exposed
-        | ExposureClass::PropagationUnknown
-        | ExposureClass::StaticUnknown => DiagnosticSeverity::INFORMATION,
-        ExposureClass::WeaklyExposed
-        | ExposureClass::ReachableUnrevealed
-        | ExposureClass::NoStaticPath
-        | ExposureClass::InfectionUnknown => DiagnosticSeverity::WARNING,
+#[cfg(test)]
+pub(super) fn diagnostic_severity_for_class(
+    class: &crate::domain::ExposureClass,
+) -> DiagnosticSeverity {
+    lsp_severity(SeverityConfig::default().for_exposure(class))
+        .unwrap_or(DiagnosticSeverity::INFORMATION)
+}
+
+fn lsp_severity(severity: ConfigSeverity) -> Option<DiagnosticSeverity> {
+    match severity {
+        ConfigSeverity::Off => None,
+        ConfigSeverity::Info | ConfigSeverity::Note => Some(DiagnosticSeverity::INFORMATION),
+        ConfigSeverity::Warning => Some(DiagnosticSeverity::WARNING),
     }
 }
 
@@ -507,6 +538,22 @@ mod seam_diagnostic_tests {
             .ok_or_else(|| "expected diagnostic for opaque".to_string())?;
         if diag.severity != Some(DiagnosticSeverity::INFORMATION) {
             return Err(format!("expected INFORMATION, got {:?}", diag.severity));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn configured_seam_severity_can_disable_a_class() -> Result<(), String> {
+        let config =
+            crate::config::tests_only_parse("[severity.seams]\nweakly_gripped = \"off\"\n")?;
+        let entry = classified(SeamGripClass::WeaklyGripped);
+        let diagnostic = diagnostic_for_classified_seam_with_config(
+            Path::new("/repo"),
+            &entry,
+            config.severity(),
+        );
+        if diagnostic.is_some() {
+            return Err("configured off severity should suppress seam diagnostic".to_string());
         }
         Ok(())
     }

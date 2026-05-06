@@ -9,10 +9,10 @@
 
 .github/workflows/ci.yml|3|CI run blocks call direct Cargo or npm commands.
 .github/workflows/coverage.yml|1|Coverage workflow keeps each run block to one coverage command.
-.github/workflows/test-analytics.yml|1|Test analytics workflow keeps each run block to one cargo or echo command.
 .github/workflows/droid-review.yml|20|Droid auto-review workflow writes local Factory BYOK settings, then uses reusable actions.
 .github/workflows/droid-security-scan.yml|20|Droid scheduled security scan writes local Factory BYOK settings, then uses reusable actions.
 .github/workflows/droid.yml|20|Droid tag-response workflow writes local Factory BYOK settings, then uses reusable actions.
 .github/workflows/publish-extension.yml|20|Release workflow includes marketplace packaging and publishing orchestration.
 .github/workflows/release-server-binaries.yml|30|Release workflow packages platform server binaries.
 .github/workflows/security.yml|0|Security workflow uses standard cargo-deny and dependency-review actions without shell run blocks.
+.github/workflows/test-analytics.yml|1|Test analytics workflow keeps each run block to one cargo or echo command.

@@ -1,3 +1,4 @@
+use crate::config::OraclePolicy;
 use crate::domain::{OracleKind, OracleStrength, SymbolId};
 use ra_ap_syntax::{
     AstNode, Edition, SourceFile, TextSize,
@@ -186,6 +187,23 @@ pub fn build_index(root: &Path, files: &[PathBuf]) -> Result<RustIndex, String> 
         index.files.insert(file.clone(), summary);
     }
     Ok(index)
+}
+
+pub(crate) fn apply_oracle_policy(index: &mut RustIndex, policy: &OraclePolicy) {
+    for test in &mut index.tests {
+        apply_oracle_policy_to_assertions(&mut test.assertions, policy);
+    }
+    for facts in index.files.values_mut() {
+        for test in &mut facts.tests {
+            apply_oracle_policy_to_assertions(&mut test.assertions, policy);
+        }
+    }
+}
+
+fn apply_oracle_policy_to_assertions(assertions: &mut [OracleFact], policy: &OraclePolicy) {
+    for assertion in assertions {
+        assertion.strength = policy.strength_for_kind(&assertion.kind, assertion.strength.clone());
+    }
 }
 
 #[cfg(test)]

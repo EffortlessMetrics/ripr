@@ -1,8 +1,13 @@
 use crate::app::CheckOutput;
+use crate::config::RiprConfig;
 use crate::domain::Finding;
 
 /// Render the complete check report in the human-readable CLI format.
 pub fn render(output: &CheckOutput) -> String {
+    render_with_config(output, &RiprConfig::default())
+}
+
+pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> String {
     let mut out = String::new();
     out.push_str(&format!(
         "ripr static RIPR exposure analysis\nmode: {}\nroot: {}\n\n",
@@ -27,7 +32,7 @@ pub fn render(output: &CheckOutput) -> String {
     }
 
     for finding in &output.findings {
-        out.push_str(&render_finding(finding));
+        out.push_str(&render_finding_with_config(finding, config));
         out.push('\n');
     }
     out
@@ -35,10 +40,15 @@ pub fn render(output: &CheckOutput) -> String {
 
 /// Render one finding section for the human-readable CLI output.
 pub fn render_finding(finding: &Finding) -> String {
+    render_finding_with_config(finding, &RiprConfig::default())
+}
+
+pub(crate) fn render_finding_with_config(finding: &Finding, config: &RiprConfig) -> String {
     let mut out = String::new();
+    let severity = config.severity().for_exposure(&finding.class).as_str();
     out.push_str(&format!(
         "{} {}:{}\n",
-        finding.class.severity().to_ascii_uppercase(),
+        severity.to_ascii_uppercase(),
         finding.probe.location.file.display(),
         finding.probe.location.line
     ));
@@ -67,7 +77,7 @@ pub fn render_finding(finding: &Finding) -> String {
     out.push_str(&format!(
         "  {} ({}, confidence {:.2})\n",
         finding.class.as_str(),
-        finding.class.severity(),
+        severity,
         finding.confidence
     ));
 
