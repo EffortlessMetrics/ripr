@@ -118,7 +118,7 @@ fn function_name(trimmed: &str) -> Option<String> {
         cleaned = rest;
     } else if cleaned.starts_with("pub(") {
         if let Some(end_idx) = cleaned.find(')') {
-            cleaned = &cleaned[end_idx + 1..].trim_start();
+            cleaned = cleaned[end_idx + 1..].trim_start();
         }
     } else if let Some(rest) = cleaned.strip_prefix("pub ") {
         cleaned = rest;
