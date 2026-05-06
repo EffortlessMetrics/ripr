@@ -1,0 +1,38 @@
+{
+  "diagnostics": [
+    {
+      "code": "ripr-seam-weakly-gripped",
+      "data": {
+        "evidence": {
+          "activate": "yes",
+          "discriminate": "yes",
+          "observe": "yes",
+          "propagate": "yes",
+          "reach": "yes"
+        },
+        "expected_sink": "return_value",
+        "grip_class": "weakly_gripped",
+        "headline_eligible": true,
+        "owner": "src/lib.rs::discounted_total",
+        "schema_version": "0.1",
+        "seam_id": "67fc764ba37d77bd",
+        "seam_kind": "predicate_boundary"
+      },
+      "message": "Weakly gripped behavioral seam (predicate_boundary): amount >= discount_threshold",
+      "range": {
+        "end": {
+          "character": 120,
+          "line": 1
+        },
+        "start": {
+          "character": 0,
+          "line": 1
+        }
+      },
+      "severity": "warning",
+      "source": "ripr",
+      "uri": "src/lib.rs"
+    }
+  ],
+  "fixture": "boundary_gap"
+}

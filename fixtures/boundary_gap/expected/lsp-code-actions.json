@@ -1,0 +1,43 @@
+{
+  "actions": [
+    {
+      "arguments": [
+        {
+          "line": 2,
+          "seam_id": "67fc764ba37d77bd",
+          "seam_kind": "predicate_boundary",
+          "uri": "src/lib.rs"
+        }
+      ],
+      "command": "ripr.copyContext",
+      "title": "Copy seam packet"
+    },
+    {
+      "arguments": [
+        {
+          "assertion": "assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)",
+          "seam_id": "67fc764ba37d77bd"
+        }
+      ],
+      "command": "ripr.copySuggestedAssertion",
+      "title": "Copy suggested assertion"
+    },
+    {
+      "arguments": [
+        {
+          "line": 4,
+          "test_name": "below_threshold_has_no_discount",
+          "uri": "tests/pricing.rs"
+        }
+      ],
+      "command": "ripr.openRelatedTest",
+      "title": "Open related test"
+    },
+    {
+      "arguments": [],
+      "command": "ripr.refresh",
+      "title": "Refresh ripr analysis"
+    }
+  ],
+  "fixture": "boundary_gap"
+}
