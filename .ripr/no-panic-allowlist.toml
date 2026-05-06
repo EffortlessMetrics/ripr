@@ -81,38 +81,6 @@ classification = "test_only"
 explanation = "Test helper function for writing test files"
 
 [[allow]]
-path = "crates/ripr/src/analysis/rust_index.rs"
-line = 316
-column = 28
-family = "expect"
-classification = "false_positive"
-explanation = "Static pattern matching detects text in analyzed Rust source, not a runtime call"
-
-[[allow]]
-path = "crates/ripr/src/analysis/rust_index.rs"
-line = 317
-column = 28
-family = "unwrap"
-classification = "false_positive"
-explanation = "Static pattern matching detects text in analyzed Rust source, not a runtime call"
-
-[[allow]]
-path = "crates/ripr/src/analysis/rust_index.rs"
-line = 348
-column = 31
-family = "unwrap"
-classification = "false_positive"
-explanation = "Static pattern matching detects text in analyzed Rust source, not a runtime call"
-
-[[allow]]
-path = "crates/ripr/src/analysis/rust_index.rs"
-line = 349
-column = 28
-family = "expect"
-classification = "false_positive"
-explanation = "Static pattern matching detects text in analyzed Rust source, not a runtime call"
-
-[[allow]]
 path = "crates/ripr/tests/cli_smoke.rs"
 line = 6
 column = 43
@@ -703,3 +671,211 @@ column = 46
 family = "unwrap"
 classification = "test_only"
 explanation = "Test helper function: writes test files"
+
+[[allow]]
+path = "crates/ripr/src/analysis/rust_index.rs"
+line = 103
+column = 31
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function: creates temporary directory"
+
+[[allow]]
+path = "crates/ripr/src/analysis/rust_index.rs"
+line = 104
+column = 28
+family = "expect"
+classification = "test_only"
+explanation = "Test helper function: creates temporary directory"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/lexical.rs"
+line = 190
+column = 28
+family = "expect"
+classification = "test_only"
+explanation = "Test helper: is_assertion_line checks for expect patterns"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/lexical.rs"
+line = 191
+column = 28
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper: is_assertion_line checks for unwrap patterns"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/lexical.rs"
+line = 295
+column = 14
+family = "unwrap"
+classification = "test_only"
+explanation = "Test: lexical_adapter_parses_simple_functions"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/lexical.rs"
+line = 298
+column = 34
+family = "unwrap"
+classification = "test_only"
+explanation = "Test: lexical_adapter_parses_simple_functions"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/lexical.rs"
+line = 305
+column = 46
+family = "unwrap"
+classification = "test_only"
+explanation = "Test: lexical_adapter_extracts_assertions"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/lexical.rs"
+line = 310
+column = 10
+family = "unwrap"
+classification = "test_only"
+explanation = "Test: lexical_adapter_extracts_assertions"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/lexical.rs"
+line = 324
+column = 10
+family = "unwrap"
+classification = "test_only"
+explanation = "Test: lexical_adapter_handles_async_tests"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/lexical.rs"
+line = 327
+column = 64
+family = "unwrap"
+classification = "test_only"
+explanation = "Test: lexical_adapter_handles_async_tests"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/lexical.rs"
+line = 331
+column = 28
+family = "unwrap"
+classification = "test_only"
+explanation = "Test: lexical_adapter_changed_nodes_identifies_owners"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/lexical.rs"
+line = 339
+column = 46
+family = "unwrap"
+classification = "test_only"
+explanation = "Test: lexical_adapter_changed_nodes_identifies_owners"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/lexical.rs"
+line = 344
+column = 10
+family = "unwrap"
+classification = "test_only"
+explanation = "Test: lexical_adapter_changed_nodes_identifies_owners"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/lexical.rs"
+line = 356
+column = 10
+family = "unwrap"
+classification = "test_only"
+explanation = "Test: lexical_adapter_changed_nodes_identifies_owners"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/lexical.rs"
+line = 359
+column = 64
+family = "unwrap"
+classification = "test_only"
+explanation = "Test: lexical_adapter_changed_nodes_identifies_owners"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/lexical.rs"
+line = 362
+column = 14
+family = "unwrap"
+classification = "test_only"
+explanation = "Test: lexical_adapter_changed_nodes_identifies_owners"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/lexical.rs"
+line = 372
+column = 46
+family = "unwrap"
+classification = "test_only"
+explanation = "Test: lexical_adapter_changed_nodes_identifies_owners"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/lexical.rs"
+line = 377
+column = 10
+family = "unwrap"
+classification = "test_only"
+explanation = "Test: lexical_adapter_changed_nodes_identifies_owners"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/lexical.rs"
+line = 393
+column = 10
+family = "unwrap"
+classification = "test_only"
+explanation = "Test: lexical_adapter_changed_nodes_identifies_owners"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/lexical.rs"
+line = 396
+column = 64
+family = "unwrap"
+classification = "test_only"
+explanation = "Test: lexical_adapter_changed_nodes_identifies_owners"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/lexical.rs"
+line = 399
+column = 14
+family = "unwrap"
+classification = "test_only"
+explanation = "Test: lexical_adapter_changed_nodes_identifies_owners"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/lexical.rs"
+line = 409
+column = 46
+family = "unwrap"
+classification = "test_only"
+explanation = "Test: lexical_adapter_changed_nodes_identifies_owners"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/lexical.rs"
+line = 414
+column = 10
+family = "unwrap"
+classification = "test_only"
+explanation = "Test: lexical_adapter_changed_nodes_identifies_owners"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/lexical.rs"
+line = 425
+column = 10
+family = "unwrap"
+classification = "test_only"
+explanation = "Test: lexical_adapter_changed_nodes_identifies_owners"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/lexical.rs"
+line = 428
+column = 64
+family = "unwrap"
+classification = "test_only"
+explanation = "Test: lexical_adapter_changed_nodes_identifies_owners"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/lexical.rs"
+line = 431
+column = 14
+family = "unwrap"
+classification = "test_only"
+explanation = "Test: lexical_adapter_changed_nodes_identifies_owners"

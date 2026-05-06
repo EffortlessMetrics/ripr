@@ -1,5 +1,8 @@
-use crate::domain::{OracleKind, OracleStrength, SymbolId};
-use std::path::{Path, PathBuf};
+use crate::domain::{OracleKind, OracleStrength};
+use std::path::Path;
+
+#[cfg(test)]
+use std::path::PathBuf;
 
 pub const PROBE_SHAPE_PREDICATE: &str = "predicate";
 pub const PROBE_SHAPE_RETURN_VALUE: &str = "return_value";
@@ -10,123 +13,21 @@ pub const PROBE_SHAPE_SIDE_EFFECT: &str = "side_effect";
 pub const PROBE_SHAPE_MATCH_ARM: &str = "match_arm";
 
 pub use super::facts::{
-    CallFact, FileFacts, FunctionFact, FunctionSummary, LiteralFact, OracleFact, ProbeShapeFact,
-    ReturnFact, RustIndex, TestFact, TestSummary, build_index,
+    CallFact, FunctionFact, FunctionSummary, LiteralFact, OracleFact, ProbeShapeFact, ReturnFact,
+    RustIndex, TestFact, TestSummary, build_index,
 };
-pub use super::syntax::{
-    LexicalRustSyntaxAdapter, RaRustSyntaxAdapter, RustSyntaxAdapter, SyntaxNodeFact, TextRange,
-};
+pub use super::syntax::{RaRustSyntaxAdapter, RustSyntaxAdapter, SyntaxNodeFact, TextRange};
 
-impl RustSyntaxAdapter for LexicalRustSyntaxAdapter {
-    fn summarize_file(&self, path: &Path, text: &str) -> Result<FileFacts, String> {
-        Ok(summarize_file_lexically(
-            path.to_path_buf(),
-            text.to_string(),
-        ))
-    }
-
-    fn changed_nodes(&self, facts: &FileFacts, ranges: &[TextRange]) -> Vec<SyntaxNodeFact> {
-        owner_changed_nodes(facts, ranges)
-    }
-}
+#[cfg(test)]
+use super::facts::FileFacts;
+#[cfg(test)]
+use super::syntax::LexicalRustSyntaxAdapter;
 
 #[cfg(test)]
 fn summarize_file(path: PathBuf, text: String) -> FileFacts {
     match RaRustSyntaxAdapter.summarize_file(&path, &text) {
         Ok(facts) => facts,
-        Err(_) => summarize_file_lexically(path, text),
-    }
-}
-
-fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts {
-    let lines: Vec<&str> = text.lines().collect();
-    let mut functions = Vec::new();
-    let mut tests = Vec::new();
-    let mut file_calls = Vec::new();
-    let mut file_returns = Vec::new();
-    let mut file_literals = Vec::new();
-    let mut pending_test = false;
-    let mut i = 0usize;
-
-    while i < lines.len() {
-        let trimmed = lines[i].trim();
-        if trimmed.starts_with("#[test]")
-            || trimmed.starts_with("#[tokio::test]")
-            || trimmed.starts_with("#[async_std::test]")
-        {
-            pending_test = true;
-            i += 1;
-            continue;
-        }
-        if pending_test && trimmed.starts_with("#[") {
-            i += 1;
-            continue;
-        }
-        if pending_test && trimmed.is_empty() {
-            i += 1;
-            continue;
-        }
-
-        if let Some(name) = function_name(trimmed) {
-            let start_line = i + 1;
-            let (end_line, body) = collect_function_body(&lines, i);
-            let calls = extract_call_facts(&body, start_line);
-            let returns = extract_return_facts(&body, start_line);
-            let literals = extract_literal_facts(&body, start_line);
-            file_calls.extend(calls.clone());
-            file_returns.extend(returns.clone());
-            file_literals.extend(literals.clone());
-            let function = FunctionFact {
-                id: SymbolId(format!("{}::{name}", path.display())),
-                name: name.clone(),
-                file: path.clone(),
-                start_line,
-                end_line,
-                body: body.clone(),
-                calls: calls.clone(),
-                returns: returns.clone(),
-                literals: literals.clone(),
-                is_test: pending_test,
-            };
-            if pending_test || is_test_file(&path) {
-                tests.push(TestFact {
-                    name: name.clone(),
-                    file: path.clone(),
-                    start_line,
-                    end_line,
-                    body: body.clone(),
-                    calls,
-                    assertions: extract_assertions(&body, start_line),
-                    literals,
-                });
-            }
-            functions.push(function);
-            pending_test = false;
-            i = end_line;
-            continue;
-        }
-
-        if !trimmed.is_empty() {
-            pending_test = false;
-        }
-        i += 1;
-    }
-
-    file_calls.sort_by(|a, b| a.line.cmp(&b.line).then(a.name.cmp(&b.name)));
-    file_calls.dedup_by(|a, b| a.line == b.line && a.name == b.name && a.text == b.text);
-    file_returns.sort_by(|a, b| a.line.cmp(&b.line).then(a.text.cmp(&b.text)));
-    file_returns.dedup_by(|a, b| a.line == b.line && a.text == b.text);
-    file_literals.sort_by(|a, b| a.line.cmp(&b.line).then(a.value.cmp(&b.value)));
-    file_literals.dedup_by(|a, b| a.line == b.line && a.value == b.value);
-
-    FileFacts {
-        path,
-        functions,
-        tests,
-        calls: file_calls,
-        returns: file_returns,
-        literals: file_literals,
-        probe_shapes: Vec::new(),
+        Err(_) => super::syntax::summarize_file_lexically(path, text),
     }
 }
 
@@ -164,158 +65,12 @@ pub fn changed_nodes_for_lines(
     RaRustSyntaxAdapter.changed_nodes(facts, &ranges)
 }
 
-fn owner_changed_nodes(facts: &FileFacts, ranges: &[TextRange]) -> Vec<SyntaxNodeFact> {
-    let mut nodes = Vec::new();
-    for range in ranges {
-        let mut owners = facts
-            .functions
-            .iter()
-            .filter(|function| {
-                ranges_overlap(
-                    range.start_line,
-                    range.end_line,
-                    function.start_line,
-                    function.end_line,
-                )
-            })
-            .collect::<Vec<_>>();
-        owners.sort_by(|left, right| {
-            function_span(left)
-                .cmp(&function_span(right))
-                .then(right.start_line.cmp(&left.start_line))
-                .then(left.id.0.cmp(&right.id.0))
-        });
-        if let Some(function) = owners.first() {
-            nodes.push(SyntaxNodeFact {
-                file: function.file.clone(),
-                kind: if function.is_test {
-                    "test_function".to_string()
-                } else {
-                    "function".to_string()
-                },
-                start_line: function.start_line,
-                end_line: function.end_line,
-                text: function.body.clone(),
-                owner: Some(function.id.clone()),
-            });
-        }
-    }
-    nodes.sort_by(|left, right| {
-        left.file
-            .cmp(&right.file)
-            .then(left.start_line.cmp(&right.start_line))
-            .then(left.end_line.cmp(&right.end_line))
-            .then(left.kind.cmp(&right.kind))
-            .then(left.owner.cmp(&right.owner))
-    });
-    nodes.dedup_by(|left, right| {
-        left.file == right.file
-            && left.start_line == right.start_line
-            && left.end_line == right.end_line
-            && left.kind == right.kind
-            && left.owner == right.owner
-    });
-    nodes
-}
-
-fn function_span(function: &FunctionFact) -> usize {
-    function.end_line.saturating_sub(function.start_line)
-}
-
-fn ranges_overlap(
-    left_start: usize,
-    left_end: usize,
-    right_start: usize,
-    right_end: usize,
-) -> bool {
-    left_start <= right_end && right_start <= left_end
-}
-
-fn function_name(trimmed: &str) -> Option<String> {
-    let mut cleaned = trimmed;
-    if let Some(rest) = cleaned.strip_prefix("pub(crate) ") {
-        cleaned = rest;
-    } else if let Some(rest) = cleaned.strip_prefix("pub ") {
-        cleaned = rest;
-    }
-    if let Some(rest) = cleaned.strip_prefix("async ") {
-        cleaned = rest;
-    }
-    let cleaned = cleaned.strip_prefix("fn ")?;
-    let mut name = String::new();
-    for ch in cleaned.chars() {
-        if ch.is_alphanumeric() || ch == '_' {
-            name.push(ch);
-        } else {
-            break;
-        }
-    }
-    if name.is_empty() { None } else { Some(name) }
-}
-
 pub fn is_test_file(path: &Path) -> bool {
     path.starts_with("tests")
         || path
             .to_string_lossy()
             .replace('\\', "/")
             .contains("/tests/")
-}
-
-fn collect_function_body(lines: &[&str], start: usize) -> (usize, String) {
-    let mut body = String::new();
-    let mut depth = 0isize;
-    let mut saw_open = false;
-    let mut end = start + 1;
-
-    for (idx, line) in lines.iter().enumerate().skip(start) {
-        body.push_str(line);
-        body.push('\n');
-        for ch in line.chars() {
-            if ch == '{' {
-                depth += 1;
-                saw_open = true;
-            } else if ch == '}' {
-                depth -= 1;
-            }
-        }
-        end = idx + 1;
-        if saw_open && depth <= 0 {
-            break;
-        }
-    }
-
-    (end, body)
-}
-
-fn extract_assertions(body: &str, start_line: usize) -> Vec<OracleFact> {
-    let mut out = Vec::new();
-    for (offset, line) in body.lines().enumerate() {
-        let trimmed = line.trim();
-        if is_assertion_line(trimmed) {
-            let classification = classify_assertion(trimmed);
-            out.push(OracleFact {
-                line: start_line + offset,
-                text: trimmed.to_string(),
-                kind: classification.kind,
-                strength: classification.strength,
-                observed_tokens: extract_identifier_tokens(trimmed),
-            });
-        }
-    }
-    out
-}
-
-fn is_assertion_line(line: &str) -> bool {
-    line.contains("assert!")
-        || line.contains("assert_eq!")
-        || line.contains("assert_ne!")
-        || line.contains("assert_matches!")
-        || line.contains("matches!")
-        || is_snapshot_assertion(line)
-        || line.contains("expect_")
-        || line.contains(".expect(")
-        || line.contains(".unwrap(")
-        || line.contains("should_panic")
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
