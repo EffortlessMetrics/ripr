@@ -71,6 +71,8 @@ restarts the client so the next diagnostic refresh uses the new configuration.
 - `ripr: Restart Server`
 - `ripr: Show Output`
 - `ripr: Copy Finding Context`
+- `ripr: Copy Suggested Assertion`
+- `ripr: Open Related Test`
 - `ripr: Open Settings`
 
 ### Copy Finding Context
@@ -85,6 +87,26 @@ CLI (`ripr context --at <selector> --json`).
 The code action `Copy ripr context packet` includes `finding_id` and
 `probe_id` from the diagnostic data so the server can resolve the finding
 without re-running workspace analysis.
+
+### Seam Code Actions
+
+When seam diagnostics are enabled and a diagnostic carries `seam_id`, the LSP
+server can provide seam-aware code actions:
+
+- `Copy seam packet`: copies the server-owned agent seam packet for the
+  selected seam through `ripr.collectContext`.
+- `Copy suggested assertion`: copies a concrete assertion suggestion from the
+  seam packet.
+- `Open related test`: opens the first related test location attached to the
+  seam evidence.
+- `Refresh ripr analysis`: asks the LSP server to refresh diagnostics with
+  `ripr.refresh`.
+
+The assertion and related-test actions are conditional. `Copy suggested
+assertion` is shown only when the seam has a concrete assertion suggestion, and
+`Open related test` is shown only when the current analysis snapshot can resolve
+a related test location. Refresh remains available even when no diagnostic is
+selected.
 
 ## Missing Server Behavior
 
@@ -215,7 +237,6 @@ The preview extension does not yet provide:
 - bundled native server binaries
 - platform-specific VSIX packages
 - automatic Rust or Cargo installation
-- deep editor UI beyond diagnostics, evidence hovers, and basic commands
-- server-owned context packet commands
-- evidence-aware code actions
+- deep editor UI beyond diagnostics, evidence hovers, code actions, and basic
+  commands
 - unsaved-buffer analysis overlays
