@@ -929,8 +929,8 @@ Work items:
 
 Dependencies:
 
-- `defaults/config-init` should land first so every later surface can use the
-  same default profile and mode vocabulary.
+- `defaults/config-init` landed first so every later surface can use the same
+  default profile and mode vocabulary.
 - `reports/operator-cockpit` should land before GitHub Action and example-corpus
   work so the CI and demo paths have one canonical next-action artifact.
 - `editor/install-polish` should remain documentation/verification unless a

@@ -112,6 +112,25 @@ draft-mode behavior, diagnostic caps, lazy refresh, and clear status messaging,
 but they should not be inert by default. Repository config can still disable
 surfaces explicitly when a team wants a quieter policy.
 
+## Default Scope And Mode Vocabulary
+
+Defaults-first surfaces use operator vocabulary, but every user-facing word maps
+to a concrete analysis mode:
+
+| Operator stance | Concrete mode | Current scope |
+| --- | --- | --- |
+| Fastest feedback | `instant` | Changed Rust files only. |
+| Normal/default | `draft` | Rust files in packages touched by the diff, including unchanged tests. |
+| PR fast scan | `fast` | Same package-local scope as `draft` for now. |
+| Deep static scan | `deep` | All Rust files in the workspace. |
+| Ready preflight | `ready` | All Rust files in the workspace before separate mutation confirmation. |
+
+Repo-scoped reports and badges must represent the published Rust package
+surface. They exclude repository automation and non-production trees such as
+`xtask/`, top-level fixtures, editor-extension sources, `target/`,
+`node_modules/`, tests, examples, benches, and `src/tests.rs`. Passing a
+fixture workspace as `--root` remains valid and analyzes that fixture normally.
+
 ## Pilot Packet
 
 The first public pilot path should converge on these user-facing files:
@@ -193,6 +212,10 @@ Defaults-first adoption evidence should cover:
 - documentation for every default surface listed above;
 - built-in missing-config behavior matching the generated init profile's
   default policy behavior;
+- fast/normal/deep operator mode vocabulary pinned to concrete analysis scopes;
+- repo-scoped report and badge inputs excluding repository automation and
+  non-production trees while fixture roots still work;
+- default badge and report behavior staying advisory and configured-visible;
 - `ripr init` generated config preserving conservative defaults;
 - default repo discovery excluding generated, policy-only, fixture-only, and
   package-manager directories before mode-specific scope is applied;
@@ -299,10 +322,19 @@ Current tests and reports that support the contract:
 - `crates/ripr/tests/cli_smoke.rs::init_ci_github_refuses_existing_workflow_without_force`
 - `crates/ripr/tests/cli_smoke.rs::init_refuses_existing_config_without_force`
 - `crates/ripr/tests/cli_smoke.rs::init_force_overwrites_existing_config`
+- `crates/ripr/src/config.rs::tests::generated_init_config_matches_builtin_defaults`
 - `crates/ripr/src/config.rs::tests::missing_config_uses_behavior_preserving_defaults`
 - `crates/ripr/src/config.rs::tests::malformed_or_unknown_config_is_actionable`
 - `crates/ripr/tests/cli_smoke.rs::doctor_reports_missing_config_defaults`
 - `crates/ripr/tests/cli_smoke.rs::doctor_reports_loaded_config_path`
+- `crates/ripr/src/analysis/workspace/select.rs::tests::operator_mode_tiers_are_pinned_for_defaults_first_adoption`
+- `crates/ripr/src/analysis/workspace/classify.rs::tests::production_path_excludes_repository_automation_fixture_and_non_production_trees`
+- `crates/ripr/src/analysis/workspace/select.rs::tests::repo_discovery_skips_fixture_tree_but_fixture_roots_still_work`
+- `crates/ripr/src/output/badge.rs::tests::seam_badge_summary_counts_visible_headline_eligible_seams`
+- `crates/ripr/src/output/badge.rs::tests::seam_badge_summary_respects_configured_off_severity`
+- `crates/ripr/tests/cli_smoke.rs::check_repo_badge_json_emits_repo_scope_metadata`
+- `crates/ripr/tests/cli_smoke.rs::check_repo_badge_does_not_consult_diff_arg_when_supplied`
+- `crates/ripr/tests/cli_smoke.rs::check_repo_badge_plus_json_emits_repo_scope_metadata`
 - `crates/ripr/src/output/pilot.rs::tests::pilot_ranking_prefers_actionable_class_order_before_tie_breakers`
 - `crates/ripr/src/output/pilot.rs::tests::pilot_ranking_uses_evidence_tie_breakers_then_stable_location`
 - `crates/ripr/src/output/pilot.rs::tests::pilot_ranking_excludes_solved_governed_classes`

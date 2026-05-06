@@ -277,10 +277,12 @@ name = "Analysis modes"
 status = "alpha"
 spec = "RIPR-SPEC-0001"
 evidence = [
-  "mode scope tests"
+  "crates/ripr/src/analysis/workspace/select.rs mode scope tests",
+  "operator_mode_tiers_are_pinned_for_defaults_first_adoption pins instant, draft, fast, deep, and ready scopes",
+  "docs/CONFIGURATION.md maps fast, normal/default, and deep operator stances to concrete modes"
 ]
 fixtures = []
-next = "capability-metrics-report"
+next = "reports/operator-cockpit"
 metric = "runtime and scope by mode"
 
 [[capability]]
@@ -644,10 +646,12 @@ evidence = [
   "configured suppressions path feeds badge renderers",
   "ripr doctor reports loaded, missing, and malformed config state",
   "ripr init writes the conservative defaults-first repo config with dry-run and force guards",
+  "generated_init_config_matches_builtin_defaults pins missing config and generated ripr.toml policy equivalence",
+  "repo-mode production filters exclude repository automation and non-production trees while fixture roots still work",
   "ripr.toml.example documents the supported v1 shape"
 ]
 fixtures = []
-next = "campaign/modularization-stack-audit"
+next = "reports/operator-cockpit"
 metric = "configured analysis mode, oracle policy, severity, suppressions, and seam diagnostics apply across CLI, reports, and LSP"
 
 [[capability]]
