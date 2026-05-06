@@ -72,3 +72,4 @@ jobs:
           security_block_on_high: false
 
           include_suggestions: true
+          show_full_output: false
