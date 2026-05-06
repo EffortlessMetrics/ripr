@@ -457,6 +457,133 @@ mod tests {
         );
     }
 
+    #[test]
+    fn propagation_is_unknown_when_only_unknown_flow_sink_exists() {
+        let probe = probe(ProbeFamily::ReturnValue, "opaque_value", 2);
+        let sinks = vec![FlowSinkFact {
+            kind: FlowSinkKind::Unknown,
+            text: "unknown sink".to_string(),
+            line: 2,
+            owner: None,
+        }];
+
+        let evidence = propagation_evidence(&probe, &sinks);
+
+        assert_eq!(evidence.state, StageState::Unknown);
+        assert_eq!(
+            evidence.summary,
+            "Propagation is not statically obvious from syntax-first analysis"
+        );
+    }
+
+    #[test]
+    fn static_unknown_flow_returns_unknown_sink() {
+        let probe = probe(ProbeFamily::StaticUnknown, "let value = total;", 2);
+
+        let sinks = local_flow_sinks(&probe, None);
+
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::Unknown);
+        assert_eq!(sinks[0].text, "unknown sink");
+    }
+
+    #[test]
+    fn side_effect_flow_distinguishes_error_return_and_call_effect() {
+        let error_probe = probe(
+            ProbeFamily::SideEffect,
+            "return Err(AuthError::ExpiredToken);",
+            2,
+        );
+        let call_probe = probe(ProbeFamily::SideEffect, "metrics.increment();", 2);
+
+        let error_sinks = local_flow_sinks(&error_probe, None);
+        let call_sinks = local_flow_sinks(&call_probe, None);
+
+        assert_eq!(error_sinks[0].kind, FlowSinkKind::ErrorVariant);
+        assert_eq!(error_sinks[0].text, "Result::Err(AuthError::ExpiredToken)");
+        assert_eq!(call_sinks[0].kind, FlowSinkKind::CallEffect);
+        assert_eq!(call_sinks[0].text, "metrics.increment()");
+    }
+
+    #[test]
+    fn call_deletion_flow_distinguishes_return_value() {
+        let probe = probe(ProbeFamily::CallDeletion, "return Ok(total);", 2);
+
+        let sinks = local_flow_sinks(&probe, None);
+
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::ReturnValue);
+        assert_eq!(sinks[0].text, "Ok(total)");
+    }
+
+    #[test]
+    fn field_construction_flow_reports_struct_field() {
+        let probe = probe(ProbeFamily::FieldConstruction, "status: Status::Ready", 2);
+
+        let sinks = local_flow_sinks(&probe, None);
+
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::StructField);
+        assert_eq!(sinks[0].text, "status: Status::Ready");
+    }
+
+    #[test]
+    fn match_arm_flow_distinguishes_error_variant_and_match_result() {
+        let error_probe = probe(
+            ProbeFamily::MatchArm,
+            "State::Bad => Err(AuthError::Bad),",
+            2,
+        );
+        let value_probe = probe(ProbeFamily::MatchArm, "State::Good => total + 1,", 2);
+
+        let error_sinks = local_flow_sinks(&error_probe, None);
+        let value_sinks = local_flow_sinks(&value_probe, None);
+
+        assert_eq!(error_sinks[0].kind, FlowSinkKind::ErrorVariant);
+        assert_eq!(error_sinks[0].text, "Result::Err(AuthError::Bad)");
+        assert_eq!(value_sinks[0].kind, FlowSinkKind::MatchArm);
+        assert_eq!(value_sinks[0].text, "total + 1");
+    }
+
+    #[test]
+    fn return_value_flow_distinguishes_unknown_and_obvious_expression() {
+        let unknown_probe = probe(ProbeFamily::ReturnValue, "opaque_value", 2);
+        let value_probe = probe(ProbeFamily::ReturnValue, "total + 1", 2);
+
+        let unknown_sinks = local_flow_sinks(&unknown_probe, None);
+        let value_sinks = local_flow_sinks(&value_probe, None);
+
+        assert_eq!(unknown_sinks[0].kind, FlowSinkKind::Unknown);
+        assert_eq!(unknown_sinks[0].text, "unknown sink");
+        assert_eq!(value_sinks[0].kind, FlowSinkKind::ReturnValue);
+        assert_eq!(value_sinks[0].text, "total + 1");
+    }
+
+    #[test]
+    fn predicate_flow_uses_field_construction_when_no_return_is_available() {
+        let owner = FunctionSummary {
+            id: SymbolId("src/lib.rs::score".to_string()),
+            name: "score".to_string(),
+            file: PathBuf::from("src/lib.rs"),
+            start_line: 1,
+            end_line: 5,
+            body: "pub fn score(amount: i32) -> Response {\n    if amount > 10 {\n        status: ready,\n    }\n}"
+                .to_string(),
+            calls: Vec::new(),
+            returns: Vec::new(),
+            literals: Vec::new(),
+            is_test: false,
+            attrs: Vec::new(),
+        };
+        let probe = probe(ProbeFamily::Predicate, "amount > 10", 2);
+
+        let sinks = local_flow_sinks(&probe, Some(&owner));
+
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::StructField);
+        assert_eq!(sinks[0].text, "status: ready");
+    }
+
     fn function(body: &str) -> FunctionSummary {
         FunctionSummary {
             id: SymbolId("src/lib.rs::score".to_string()),

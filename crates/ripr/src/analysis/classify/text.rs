@@ -74,12 +74,23 @@ mod tests {
     }
 
     #[test]
+    fn exact_error_variant_returns_none_without_result_error() {
+        assert_eq!(exact_error_variant("return Ok(value);"), None);
+    }
+
+    #[test]
     fn delimited_contents_at_handles_nested_calls_and_strings() {
         let text = r#"score(Ok("a)b"), other(1, 2))"#;
 
         let contents = delimited_contents_at(text, "score".len());
 
         assert_eq!(contents.as_deref(), Some(r#"Ok("a)b"), other(1, 2)"#));
+    }
+
+    #[test]
+    fn delimited_contents_at_returns_none_for_non_delimiter_or_unclosed_text() {
+        assert_eq!(delimited_contents_at("score(value)", 0), None);
+        assert_eq!(delimited_contents_at("score(value", "score".len()), None);
     }
 
     #[test]
@@ -94,6 +105,14 @@ mod tests {
                 "AuthError::ExpiredToken".to_string(),
                 "AuthError::RevokedToken".to_string()
             ]
+        );
+    }
+
+    #[test]
+    fn enum_variant_values_ignores_lowercase_and_unqualified_tokens() {
+        assert_eq!(
+            enum_variant_values("err(auth_error::revoked) Revoked"),
+            Vec::<String>::new()
         );
     }
 }
