@@ -45,10 +45,29 @@ Expected:
 
 ## Full security scan
 
-Not yet implemented. A future PR will add a scheduled or manual security scan workflow.
+Implemented by `.github/workflows/droid-security-scan.yml`.
 
-When implemented, validate:
+Triggers:
+- `workflow_dispatch`
+- weekly Monday 08:00 UTC schedule
 
-- scan runs without printing secrets;
-- findings are posted as review comments with severity and fix direction;
-- report path is documented and matches actual workflow output.
+Expected:
+- scan uses `custom:MiniMax-M2.7-0`;
+- scan window is 7 days;
+- severity threshold is `medium`;
+- critical findings block (`security_block_on_critical: true`);
+- high findings do not block (`security_block_on_high: false`);
+- no secrets are printed in output;
+- `show_full_output: false` keeps artifact exposure minimal.
+
+Validate after triggering manually:
+- no secrets appear in workflow logs;
+- findings include severity and fix direction.
+
+## Artifact hygiene
+
+After changing any Droid workflow, inspect one completed run artifact and confirm:
+- generated Factory settings (`~/.factory/settings.local.json`) do not contain expanded secrets — `${MINIMAX_API_KEY}` must remain unexpanded in the heredoc;
+- prompt and debug artifacts do not contain unexpected secrets;
+- `show_full_output: false` is in effect for all Droid action steps;
+- artifact retention and download permissions are appropriate for this repo.

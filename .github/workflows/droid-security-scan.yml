@@ -5,6 +5,10 @@ on:
   schedule:
     - cron: "0 8 * * 1"
 
+concurrency:
+  group: droid-security-scan-${{ github.repository }}
+  cancel-in-progress: false
+
 jobs:
   droid-security-scan:
     runs-on: ubuntu-latest
@@ -58,3 +62,4 @@ jobs:
           security_severity_threshold: medium
           security_block_on_critical: true
           security_block_on_high: false
+          show_full_output: false

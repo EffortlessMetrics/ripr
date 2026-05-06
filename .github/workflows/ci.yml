@@ -22,6 +22,7 @@ jobs:
       - run: cargo xtask check-file-policy
       - run: cargo xtask check-executable-files
       - run: cargo xtask check-workflows
+      - run: cargo xtask check-droid-review-config
       - run: cargo xtask check-spec-format
       - run: cargo xtask check-fixture-contracts
       - run: cargo xtask check-generated

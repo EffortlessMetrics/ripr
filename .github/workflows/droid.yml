@@ -91,3 +91,4 @@ jobs:
           review_depth: shallow
           review_model: "custom:MiniMax-M2.7-0"
           security_model: "custom:MiniMax-M2.7-0"
+          show_full_output: false
