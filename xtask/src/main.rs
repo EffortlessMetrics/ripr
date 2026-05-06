@@ -6597,6 +6597,7 @@ fn targeted_test_outcome_report_markdown(report: &TargetedTestOutcomeReport) -> 
     }
 
     push_targeted_outcome_movements_md(&mut out, "Moved", &report.moved);
+    push_targeted_outcome_movements_md(&mut out, "Unchanged", &report.unchanged);
     push_targeted_outcome_movements_md(&mut out, "Regressed", &report.regressed);
     push_targeted_outcome_seams_md(&mut out, "New", &report.new);
     push_targeted_outcome_seams_md(&mut out, "Removed", &report.removed);
@@ -20687,8 +20688,16 @@ settings: |
 
     #[test]
     fn targeted_test_outcome_json_and_markdown_are_structured() -> Result<(), String> {
-        let before = vec![targeted_static_seam("seam-a", "weakly_gripped")];
-        let after = vec![targeted_static_seam("seam-a", "strongly_gripped")];
+        let before = vec![
+            targeted_static_seam("seam-a", "weakly_gripped"),
+            targeted_static_seam("seam-same", "weakly_gripped"),
+        ];
+        let mut after_same = targeted_static_seam("seam-same", "weakly_gripped");
+        after_same.observed_values = vec!["50".to_string(), "100".to_string()];
+        let after = vec![
+            targeted_static_seam("seam-a", "strongly_gripped"),
+            after_same,
+        ];
         let report = build_targeted_test_outcome_report(
             &before,
             &after,
@@ -20706,6 +20715,9 @@ settings: |
         let markdown = targeted_test_outcome_report_markdown(&report);
         assert!(markdown.contains("# ripr targeted-test outcome report"));
         assert!(markdown.contains("| moved | 1 |"));
+        assert!(markdown.contains("## Unchanged"));
+        assert!(markdown.contains("seam-same"));
+        assert!(markdown.contains("new observed value: 100"));
         assert!(markdown.contains("weakly_gripped -> strongly_gripped"));
         Ok(())
     }
