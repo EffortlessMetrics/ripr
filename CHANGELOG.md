@@ -16,6 +16,12 @@ are scoped or reviewed.
 - Added RIPR-SPEC-0009 to define defaults-first adoption behavior for `init`
   and future `pilot`, `outcome`, calibration import, editor, SARIF, badge, and
   config work.
+
+### Changed
+
+- Tightened RIPR-SPEC-0009 so missing `ripr.toml` means useful built-in
+  defaults, while `ripr init` records repo policy instead of unlocking basic
+  CLI or editor usefulness.
 - Added a boundary-gap runtime calibration sample so the targeted-test case
   study can demonstrate a static-gap/runtime-clean join without running
   mutation testing.

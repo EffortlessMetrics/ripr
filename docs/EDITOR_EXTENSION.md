@@ -75,10 +75,11 @@ and refresh status should be discoverable without forcing users to understand
 every report artifact first.
 
 The current LSP model remains saved-workspace analysis. Unsaved-buffer overlays
-are not enabled by default. When a repository adds `ripr.toml`, that repo
-policy should make editor behavior explicit. `ripr init` generates an
-editor-ready repo config with seam diagnostics enabled while keeping diagnostics
-advisory.
+are not enabled by default. The defaults-first target is useful bounded editor
+feedback without requiring `ripr init`: saved-workspace diagnostics, hovers,
+briefs, related-test navigation, and refresh status should be available through
+conservative built-in defaults. When a repository adds `ripr.toml`, that repo
+policy makes the same defaults explicit and reviewable, or tunes them quieter.
 
 ## Commands
 
