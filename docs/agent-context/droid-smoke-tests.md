@@ -1,6 +1,7 @@
 # Droid Smoke Tests
 
 Run these after changing Droid workflows, Droid review guidance, or Droid model configuration.
+For cross-repository rollout discipline, see [Droid Rollout Guide](droid-rollout.md).
 
 ## Automatic review
 
