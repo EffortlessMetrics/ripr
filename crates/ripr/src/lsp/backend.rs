@@ -11,6 +11,7 @@ use super::hover::{
 };
 use super::state::{AnalysisSnapshot, DocumentStore, format_duration};
 use super::{COLLECT_CONTEXT_COMMAND, REFRESH_COMMAND};
+use crate::domain::context_packet::ContextPacket;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -474,7 +475,13 @@ impl Backend {
             .analysis_config()
             .map(|config| config.repo_config().reports().max_related_tests())
             .unwrap_or(crate::config::DEFAULT_CONTEXT_RELATED_TESTS);
-        let packet = crate::output::json::render_context_packet(finding, max_related_tests);
-        serde_json::from_str(&packet).ok()
+        let stop_reasons = finding
+            .effective_stop_reasons()
+            .iter()
+            .map(|reason| reason.as_str().to_string())
+            .collect();
+        let packet = ContextPacket::from_finding(finding, max_related_tests, stop_reasons);
+        let rendered = crate::output::json::render_context_packet_dto(&packet);
+        serde_json::from_str(&rendered).ok()
     }
 }

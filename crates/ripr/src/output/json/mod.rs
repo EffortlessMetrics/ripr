@@ -3,6 +3,7 @@ mod formatter;
 mod report;
 
 pub use context_packet::render_context_packet;
+pub(crate) use context_packet::render_context_packet_dto;
 pub use report::render;
 pub(crate) use report::render_with_config;
 
