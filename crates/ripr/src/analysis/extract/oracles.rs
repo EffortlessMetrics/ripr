@@ -1,0 +1,240 @@
+use crate::analysis::facts::OracleFact;
+use crate::domain::{OracleKind, OracleStrength};
+
+use super::text::extract_identifier_tokens;
+
+pub(crate) fn extract_assertions(body: &str, start_line: usize) -> Vec<OracleFact> {
+    let mut out = Vec::new();
+    for (offset, line) in body.lines().enumerate() {
+        let trimmed = line.trim();
+        if is_assertion_line(trimmed) {
+            let classification = classify_assertion(trimmed);
+            out.push(OracleFact {
+                line: start_line + offset,
+                text: trimmed.to_string(),
+                kind: classification.kind,
+                strength: classification.strength,
+                observed_tokens: extract_identifier_tokens(trimmed),
+            });
+        }
+    }
+    out
+}
+
+fn is_assertion_line(line: &str) -> bool {
+    line.contains("assert!")
+        || line.contains("assert_eq!")
+        || line.contains("assert_ne!")
+        || line.contains("assert_matches!")
+        || line.contains("matches!")
+        || is_snapshot_assertion(line)
+        || is_custom_assertion_helper(line)
+        || is_side_effect_observer_assertion(line)
+        || line.contains("expect_")
+        || line.contains(".expect(")
+        || line.contains(".unwrap(")
+        || line.contains("should_panic")
+}
+
+pub(crate) fn extract_line_scanned_oracles(body: &str, start_line: usize) -> Vec<OracleFact> {
+    let mut out = Vec::new();
+    for (offset, line) in body.lines().enumerate() {
+        let trimmed = line.trim();
+        if !is_line_scanned_oracle(trimmed) {
+            continue;
+        }
+        let classification = classify_assertion(trimmed);
+        out.push(OracleFact {
+            line: start_line + offset,
+            text: trimmed.to_string(),
+            kind: classification.kind,
+            strength: classification.strength,
+            observed_tokens: extract_identifier_tokens(trimmed),
+        });
+    }
+    out
+}
+
+fn is_line_scanned_oracle(line: &str) -> bool {
+    is_custom_assertion_helper(line)
+        || is_side_effect_observer_assertion(line)
+        || is_mock_expectation_line(line)
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct OracleClassification {
+    pub(crate) kind: OracleKind,
+    pub(crate) strength: OracleStrength,
+}
+
+pub(crate) fn classify_assertion(line: &str) -> OracleClassification {
+    if is_exact_error_variant_assertion(line) {
+        OracleClassification {
+            kind: OracleKind::ExactErrorVariant,
+            strength: OracleStrength::Strong,
+        }
+    } else if is_broad_error_assertion(line) {
+        OracleClassification {
+            kind: OracleKind::BroadError,
+            strength: OracleStrength::Weak,
+        }
+    } else if is_whole_object_equality_assertion(line) {
+        OracleClassification {
+            kind: OracleKind::WholeObjectEquality,
+            strength: OracleStrength::Strong,
+        }
+    } else if is_exact_value_assertion(line) {
+        OracleClassification {
+            kind: OracleKind::ExactValue,
+            strength: OracleStrength::Strong,
+        }
+    } else if is_snapshot_assertion(line) {
+        OracleClassification {
+            kind: OracleKind::Snapshot,
+            strength: OracleStrength::Medium,
+        }
+    } else if line.contains(".unwrap(")
+        || line.contains(".expect(")
+        || line.contains("is_ok")
+        || line.contains("is_some")
+        || line.contains("is_none")
+    {
+        OracleClassification {
+            kind: OracleKind::SmokeOnly,
+            strength: OracleStrength::Smoke,
+        }
+    } else if is_mock_expectation_line(line) || is_side_effect_observer_assertion(line) {
+        OracleClassification {
+            kind: OracleKind::MockExpectation,
+            strength: OracleStrength::Medium,
+        }
+    } else if is_custom_assertion_helper(line) {
+        OracleClassification {
+            kind: OracleKind::ExactValue,
+            strength: OracleStrength::Strong,
+        }
+    } else if line.contains("> 0")
+        || line.contains("<")
+        || line.contains(">")
+        || line.contains("is_empty")
+        || line.contains("contains")
+        || line.contains("assert!")
+    {
+        OracleClassification {
+            kind: OracleKind::RelationalCheck,
+            strength: OracleStrength::Weak,
+        }
+    } else {
+        OracleClassification {
+            kind: OracleKind::Unknown,
+            strength: OracleStrength::Unknown,
+        }
+    }
+}
+
+fn is_snapshot_assertion(line: &str) -> bool {
+    let expect_test_comparison = (line.contains("expect![[") || line.contains("expect_file!["))
+        && (line.contains(".assert_eq(")
+            || line.contains(".assert_debug_eq(")
+            || line.contains(".assert_json_eq("));
+    let known_snapshot_macros = [
+        "assert_snapshot!",
+        "assert_yaml_snapshot!",
+        "assert_json_snapshot!",
+        "assert_debug_snapshot!",
+        "assert_display_snapshot!",
+        "assert_csv_snapshot!",
+        "assert_ron_snapshot!",
+        "assert_toml_snapshot!",
+        "assert_compact_debug_snapshot!",
+        "assert_compact_json_snapshot!",
+        "assert_binary_snapshot!",
+    ];
+    known_snapshot_macros
+        .iter()
+        .any(|macro_name| contains_macro_invocation(line, macro_name))
+        || expect_test_comparison
+}
+
+pub(crate) fn contains_macro_invocation(line: &str, macro_name: &str) -> bool {
+    line.match_indices(macro_name).any(|(index, _)| {
+        let prefix_ok = index == 0
+            || !line[..index]
+                .chars()
+                .next_back()
+                .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_');
+        let suffix_start = index + macro_name.len();
+        let suffix_ok = line[suffix_start..]
+            .trim_start()
+            .chars()
+            .next()
+            .is_some_and(|ch| matches!(ch, '(' | '[' | '{'));
+        prefix_ok && suffix_ok
+    })
+}
+
+fn is_exact_error_variant_assertion(line: &str) -> bool {
+    (line.contains("assert_matches!") || line.contains("matches!") || line.contains("assert_eq!"))
+        && line.contains("Err(")
+        && !line.contains("Err(_")
+}
+
+fn is_broad_error_assertion(line: &str) -> bool {
+    line.contains("is_err") || line.contains("Err(_)")
+}
+
+fn is_whole_object_equality_assertion(line: &str) -> bool {
+    (line.contains("assert_eq!") || line.contains("assert_ne!")) && line.contains('{')
+}
+
+fn is_exact_value_assertion(line: &str) -> bool {
+    line.contains("assert_eq!")
+        || line.contains("assert_ne!")
+        || line.contains("assert_matches!")
+        || line.contains("matches!")
+}
+
+fn is_mock_expectation_line(line: &str) -> bool {
+    let lower = line.to_ascii_lowercase();
+    let has_expectation_call = lower.contains("expect_") && lower.contains('(');
+    let has_mock_verification_call = lower.contains("mock")
+        && [
+            ".assert_",
+            ".checkpoint(",
+            ".times(",
+            ".verify(",
+            "assert_expectations(",
+        ]
+        .iter()
+        .any(|token| lower.contains(token));
+    has_expectation_call || has_mock_verification_call
+}
+
+fn is_side_effect_observer_assertion(line: &str) -> bool {
+    let lower = line.to_ascii_lowercase();
+    let has_observer_token = [
+        "event",
+        "emitted",
+        "published",
+        "sent",
+        "saved",
+        "persist",
+        "state",
+        "stored",
+        "metric",
+        "counter",
+        "recorded",
+    ]
+    .iter()
+    .any(|token| lower.contains(token));
+    has_observer_token && (lower.contains("assert") || lower.contains("expect"))
+}
+
+fn is_custom_assertion_helper(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    !trimmed.contains('!')
+        && (trimmed.starts_with("assert_")
+            || trimmed.contains("::assert_")
+            || trimmed.contains(".assert_"))
+        && trimmed.contains('(')
+}

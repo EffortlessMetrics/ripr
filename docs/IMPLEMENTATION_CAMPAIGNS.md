@@ -702,24 +702,24 @@ Work items:
 | `facts/builder-extraction` | done | PR 8 (#253): Moved index construction into `analysis/facts/build.rs` after syntax adapter type extraction. |
 | `syntax/ra-extraction` | done | PR 9: Parser-backed RA syntax adapter implementation moved into `analysis/syntax/ra.rs` after build-index extraction. |
 | `syntax/lexical-extraction` | done | PR 10: Lexical syntax fallback implementation moved into `analysis/syntax/lexical.rs` after RA extraction. |
-| `extract/fact-extraction` | ready | PR 11: Move extractors into `analysis/extract/{calls,literals,oracles,probe_shapes,text}.rs` |
-| `probes/family-extraction` | pending | PR 11: Create `analysis/probes/family.rs` |
-| `probes/expectations-extraction` | pending | PR 12: Create `analysis/probes/expectations.rs` |
-| `probes/id-extraction` | pending | PR 13: Create `analysis/probes/ids.rs` |
-| `probes/lexical-extraction` | pending | PR 14: Create `analysis/probes/lexical.rs` |
-| `probes/diff-repo-split` | pending | PR 15: Split diff and repo probe seeding |
-| `classify/context-extraction` | pending | PR 16: Create `analysis/classify/context.rs` with `ProbeContext` |
-| `classify/related-tests` | pending | PR 17: Move related-test discovery into stage module |
-| `classify/reach-stage` | pending | PR 18: Move reach evidence into stage module |
-| `classify/flow-propagation` | pending | PR 19: Move flow and propagation stages |
-| `classify/activation-stage` | pending | PR 20: Move activation stage |
-| `classify/remaining-stages` | pending | PR 21: Move infection, reveal, decision, confidence, missing, stop reasons |
-| `app/usecase-split` | pending | PR 22: Split `app.rs` into use-case modules (check, explain, context) |
-| `output/format-extraction` | pending | PR 23: Move `OutputFormat` to `output/format.rs` |
-| `output/render-dispatch` | pending | PR 24: Move rendering logic to `output/render.rs` |
-| `cli/command-model` | pending | PR 25: Create `cli/command.rs` with `CliCommand` enum |
-| `cli/parse-command` | pending | PR 26: Update `cli/parse.rs` to return `CliCommand` |
-| `cli/execute-command` | pending | PR 27: Create `cli/execute.rs` for command execution |
+| `extract/fact-extraction` | done | PR 11: Moved call, return, literal, oracle, and text extraction helpers plus probe-shape constants into `analysis/extract/*` while keeping `rust_index` as the compatibility facade. |
+| `probes/family-extraction` | ready | PR 12: Create `analysis/probes/family.rs` |
+| `probes/expectations-extraction` | pending | PR 13: Create `analysis/probes/expectations.rs` |
+| `probes/id-extraction` | pending | PR 14: Create `analysis/probes/ids.rs` |
+| `probes/lexical-extraction` | pending | PR 15: Create `analysis/probes/lexical.rs` |
+| `probes/diff-repo-split` | pending | PR 16: Split diff and repo probe seeding |
+| `classify/context-extraction` | pending | PR 17: Create `analysis/classify/context.rs` with `ProbeContext` |
+| `classify/related-tests` | pending | PR 18: Move related-test discovery into stage module |
+| `classify/reach-stage` | pending | PR 19: Move reach evidence into stage module |
+| `classify/flow-propagation` | pending | PR 20: Move flow and propagation stages |
+| `classify/activation-stage` | pending | PR 21: Move activation stage |
+| `classify/remaining-stages` | pending | PR 22: Move infection, reveal, decision, confidence, missing, stop reasons |
+| `app/usecase-split` | pending | PR 23: Split `app.rs` into use-case modules (check, explain, context) |
+| `output/format-extraction` | pending | PR 24: Move `OutputFormat` to `output/format.rs` |
+| `output/render-dispatch` | pending | PR 25: Move rendering logic to `output/render.rs` |
+| `cli/command-model` | pending | PR 26: Create `cli/command.rs` with `CliCommand` enum |
+| `cli/parse-command` | pending | PR 27: Update `cli/parse.rs` to return `CliCommand` |
+| `cli/execute-command` | pending | PR 28: Create `cli/execute.rs` for command execution |
 | `domain/context-packet-dto` | pending | PR 28: Create `domain/context_packet.rs` with `ContextPacket` struct |
 | `output/json-context-dto` | pending | PR 29: Update JSON context renderer to use `ContextPacket` |
 | `lsp/context-packet-usage` | pending | PR 30: Update LSP to use `ContextPacket` |
