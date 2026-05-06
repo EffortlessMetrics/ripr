@@ -598,7 +598,7 @@ commands = [
 
 [[work_item]]
 id = "lsp/context-packet-usage"
-status = "ready"
+status = "done"
 branch = "lsp-context-packet-usage"
 stackable = false
 requires_human_merge = true
@@ -612,5 +612,24 @@ commands = [
   "cargo xtask check-output-contracts",
   "cargo xtask check-no-panic-family",
   "cargo xtask lsp-cockpit-report",
+  "cargo test --workspace"
+]
+
+[[work_item]]
+id = "api/doc-hidden-internals"
+status = "ready"
+branch = "api-doc-hidden-internals"
+stackable = false
+requires_human_merge = true
+acceptance = "Internal modules are marked doc-hidden without changing public API, CLI behavior, LSP behavior, output contracts, or schema"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-public-api",
+  "cargo xtask check-architecture",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-no-panic-family",
+  "cargo doc --workspace --no-deps",
   "cargo test --workspace"
 ]

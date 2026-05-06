@@ -13,7 +13,7 @@ pub fn render_context_packet(finding: &Finding, max_related_tests: usize) -> Str
     render_context_packet_dto(&packet)
 }
 
-fn render_context_packet_dto(packet: &ContextPacket) -> String {
+pub(crate) fn render_context_packet_dto(packet: &ContextPacket) -> String {
     let _context_packet_version_contract = CONTEXT_PACKET_VERSION_CONTRACT;
     let mut out = String::new();
     out.push_str("{\n");

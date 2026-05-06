@@ -238,6 +238,9 @@ are scoped or reviewed.
 - Updated JSON context packet rendering to build from the domain `ContextPacket`
   DTO while preserving the emitted packet schema. The next ready seam is LSP
   context packet usage.
+- Updated LSP context packet lookup to build finding packets through the domain
+  `ContextPacket` DTO while preserving the emitted packet schema. The next
+  ready seam is doc-hidden internal modules.
 - Added `cargo xtask targeted-test-outcome` as an advisory receipt for comparing
   before/after `repo-exposure-json` artifacts. The report writes
   `target/ripr/reports/targeted-test-outcome.{json,md}`, matches seams by
