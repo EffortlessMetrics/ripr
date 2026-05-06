@@ -119,6 +119,8 @@ wants PR code-scanning guidance:
 ripr init --ci github
 ```
 
-The generated workflow is advisory by default. It uploads static RIPR SARIF and
-uses `continue-on-error`; CI blocking policy remains opt-in. The copyable recipe
-and policy details live in [CI](CI.md).
+The generated workflow is advisory by default. It uploads the pilot packet,
+report artifacts, and repo badge JSON; SARIF upload is controlled by the
+workflow's `RIPR_UPLOAD_SARIF` setting and remains non-blocking. CI blocking
+policy remains opt-in. The copyable recipe and policy details live in
+[CI](CI.md).

@@ -585,7 +585,7 @@ name = "Operator cockpit"
 status = "alpha"
 spec = "RIPR-SPEC-0009"
 evidence = [
-  "cargo xtask operator-cockpit-report",
+  "cargo xtask operator-cockpit with operator-cockpit-report alias",
   "target/ripr/reports/operator-cockpit.json",
   "target/ripr/reports/operator-cockpit.md",
   "xtask/src/reports/operator.rs joins repo exposure, LSP cockpit, SARIF policy, badge status, targeted-test outcome, and optional mutation calibration",
@@ -593,7 +593,7 @@ evidence = [
   "docs/TARGETED_TEST_WORKFLOW.md repo-local cockpit guidance"
 ]
 fixtures = []
-next = "ci/github-action-entrypoint"
+next = "editor/install-polish"
 metric = "operator_cockpit_available"
 
 [[capability]]
@@ -682,15 +682,15 @@ evidence = [
   "docs/OUTPUT_SCHEMA.md SARIF contract section",
   "docs/CI.md SARIF and Policy Contract section",
   "crates/ripr/src/output/sarif.rs renders diff-scoped Finding SARIF and repo-scoped seam SARIF",
-  "ripr init --ci github generates an advisory GitHub code-scanning workflow",
-  "crates/ripr/src/cli/commands.rs init CI generation tests cover advisory workflow content and overwrite guards",
+  "ripr init --ci github generates an advisory GitHub workflow that runs ripr pilot, uploads pilot/report artifacts, writes repo badge JSON and Shields artifacts, and makes SARIF upload optional through RIPR_UPLOAD_SARIF",
+  "crates/ripr/src/cli/commands.rs init CI generation tests cover advisory workflow content, report upload, optional SARIF, and overwrite guards",
   "crates/ripr/tests/cli_smoke.rs init --ci github smoke tests cover dry-run, generated workflow, and existing workflow protection",
   "SARIF renderer tests cover stable rule IDs, configured severity, off severity omission, suppression metadata, valid JSON, and static language",
   "cargo xtask sarif-policy compares current SARIF against a baseline and only fails on new warning-level results when explicitly requested",
   "SARIF policy tests cover pass, new warning detection, warning-threshold note filtering, missing baseline advisory behavior, parsing, and report shape"
 ]
 fixtures = []
-next = "campaign/modularization-stack-audit"
+next = "editor/install-polish"
 metric = "SARIF result counts by rule/level, new configured-warning results, and advisory_ci_workflow_generated"
 
 [[capability]]

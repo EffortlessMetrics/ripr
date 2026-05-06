@@ -194,9 +194,12 @@ permissions:
   contents: read
   security-events: write
 
+env:
+  RIPR_UPLOAD_SARIF: "true"
+
 jobs:
   ripr:
-    name: RIPR advisory SARIF
+    name: RIPR advisory reports
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
@@ -208,6 +211,15 @@ jobs:
 
       - name: Install ripr
         run: cargo install ripr --locked
+
+      - name: Generate RIPR pilot packet
+        continue-on-error: true
+        run: |
+          ripr pilot \
+            --root . \
+            --out target/ripr/pilot \
+            --mode ready \
+            --max-seams 5
 
       - name: Capture pull request diff
         if: github.event_name == 'pull_request'
@@ -235,8 +247,40 @@ jobs:
             --format repo-sarif \
             > target/ripr/reports/ripr-seams.sarif
 
+      - name: Render RIPR repo badge artifacts
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          ripr check \
+            --root . \
+            --mode ready \
+            --format repo-badge-json \
+            > target/ripr/reports/repo-ripr-badge.json
+          ripr check \
+            --root . \
+            --mode ready \
+            --format repo-badge-shields \
+            > target/ripr/reports/repo-ripr-badge-shields.json
+
+      - name: Add RIPR pilot summary
+        if: always() && hashFiles('target/ripr/pilot/pilot-summary.md') != ''
+        continue-on-error: true
+        run: cat target/ripr/pilot/pilot-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload RIPR report artifacts
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: ripr-reports
+          path: |
+            target/ripr/pilot
+            target/ripr/reports
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Upload RIPR diff findings
-        if: github.event_name == 'pull_request' && hashFiles('target/ripr/reports/ripr-findings.sarif') != ''
+        if: env.RIPR_UPLOAD_SARIF == 'true' && github.event_name == 'pull_request' && hashFiles('target/ripr/reports/ripr-findings.sarif') != ''
         continue-on-error: true
         uses: github/codeql-action/upload-sarif@v4
         with:
@@ -244,7 +288,7 @@ jobs:
           category: ripr-findings
 
       - name: Upload RIPR repo seams
-        if: hashFiles('target/ripr/reports/ripr-seams.sarif') != ''
+        if: env.RIPR_UPLOAD_SARIF == 'true' && hashFiles('target/ripr/reports/ripr-seams.sarif') != ''
         continue-on-error: true
         uses: github/codeql-action/upload-sarif@v4
         with:
@@ -1335,10 +1379,25 @@ mod tests {
         let workflow = generated_github_actions_workflow();
         assert!(workflow.contains("continue-on-error: true"));
         assert!(workflow.contains("github/codeql-action/upload-sarif@v4"));
+        assert!(workflow.contains("actions/upload-artifact@v7"));
+        assert!(workflow.contains("RIPR_UPLOAD_SARIF"));
         assert!(workflow.contains("--format sarif"));
         assert!(workflow.contains("--format repo-sarif"));
+        assert!(workflow.contains("--format repo-badge-json"));
+        assert!(workflow.contains("ripr pilot"));
         assert!(!workflow.contains("fail-on-new-warning"));
         assert!(!workflow.contains("sarif-policy"));
+    }
+
+    #[test]
+    fn init_generated_github_workflow_uploads_reports_and_makes_sarif_optional() {
+        let workflow = generated_github_actions_workflow();
+        assert!(workflow.contains("name: RIPR advisory reports"));
+        assert!(workflow.contains("target/ripr/pilot"));
+        assert!(workflow.contains("target/ripr/reports"));
+        assert!(workflow.contains("name: ripr-reports"));
+        assert!(workflow.contains("if: env.RIPR_UPLOAD_SARIF == 'true'"));
+        assert!(workflow.contains("cat target/ripr/pilot/pilot-summary.md"));
     }
 
     #[test]
@@ -1362,8 +1421,9 @@ mod tests {
         let workflow = std::fs::read_to_string(&workflow_path)
             .map_err(|err| format!("read workflow: {err}"))?;
         assert_eq!(config_text, "# existing policy\n");
-        assert!(workflow.contains("RIPR advisory SARIF"));
+        assert!(workflow.contains("RIPR advisory reports"));
         assert!(workflow.contains("continue-on-error: true"));
+        assert!(workflow.contains("actions/upload-artifact@v7"));
         let _ = std::fs::remove_dir_all(&dir);
         Ok(())
     }

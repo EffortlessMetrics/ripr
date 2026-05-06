@@ -321,8 +321,10 @@ fn init_ci_github_dry_run_prints_config_and_workflow_without_writing() -> Result
     assert!(stdout.contains("# ripr.toml"));
     assert!(stdout.contains("# "));
     assert!(stdout.contains(".github"));
-    assert!(stdout.contains("RIPR advisory SARIF"));
+    assert!(stdout.contains("RIPR advisory reports"));
     assert!(stdout.contains("continue-on-error: true"));
+    assert!(stdout.contains("RIPR_UPLOAD_SARIF"));
+    assert!(stdout.contains("actions/upload-artifact@v7"));
     assert!(stdout.contains("github/codeql-action/upload-sarif@v4"));
     assert!(!workspace.join("ripr.toml").exists());
     assert!(!workspace.join(".github/workflows/ripr.yml").exists());
@@ -371,9 +373,13 @@ fn init_ci_github_writes_non_blocking_sarif_workflow() -> Result<(), String> {
     assert!(workflow.contains("pull_request:"));
     assert!(workflow.contains("workflow_dispatch:"));
     assert!(workflow.contains("cargo install ripr --locked"));
+    assert!(workflow.contains("ripr pilot"));
     assert!(workflow.contains("--format sarif"));
     assert!(workflow.contains("--format repo-sarif"));
+    assert!(workflow.contains("--format repo-badge-json"));
     assert!(workflow.contains("continue-on-error: true"));
+    assert!(workflow.contains("actions/upload-artifact@v7"));
+    assert!(workflow.contains("RIPR_UPLOAD_SARIF"));
     assert!(workflow.contains("github/codeql-action/upload-sarif@v4"));
     assert!(!workflow.contains("fail-on-new-warning"));
     assert!(!workflow.contains("sarif-policy"));

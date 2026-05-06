@@ -293,8 +293,11 @@ To generate the advisory GitHub Actions SARIF workflow, run:
 ripr init --ci github
 ```
 
-The copyable recipe and policy details are in
-[CI strategy](CI.md#copyable-ripr-sarif-workflow).
+The generated workflow uploads a `ripr-reports` artifact containing the pilot
+packet, report artifacts, and repo badge JSON. SARIF upload is enabled by the
+workflow's `RIPR_UPLOAD_SARIF` setting and can be set to `"false"` without
+removing the report artifact path. The copyable recipe and policy details are in
+[CI strategy](CI.md#copyable-ripr-advisory-workflow).
 
 ### Badges
 
