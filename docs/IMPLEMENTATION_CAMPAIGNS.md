@@ -692,9 +692,9 @@ Work items:
 | --- | --- | --- |
 | `campaign/modularization-stack-audit` | done | Audited the old Campaign 6 draft stack against current `main` after Campaign 5B closeout. Canonical order is #244 -> #245 -> #246 -> #247 -> #249 -> #251 -> new PR 6 syntax-adapter extraction -> #253; #250 stays parked and should close or rewrite after the facts/syntax/build-index path stabilizes. |
 | `modularization/infrastructure-and-planning` | done | Documentation, campaign outline, first-PR pattern, and the post-5B stack audit exist; implementation resumes with the canonical stack order below. |
-| `analysis/summary-extraction` | ready | PR 1: Rebase #244 against current `main`, extract duplicated summary and sort logic from `analysis/mod.rs`, and remove stale policy churn unless still justified by focused tests. |
-| `analysis/pipeline-extraction` | pending | PR 2: Make `analysis/mod.rs` a façade over pipeline.rs |
-| `diff/module-split` | pending | PR 3: Split `analysis/diff.rs` into `diff/{mod,model,load,parse}.rs` |
+| `analysis/summary-extraction` | done | PR 1 (#244): Extracted duplicated summary and sort logic from `analysis/mod.rs` into focused helper modules with no output/API/schema drift. |
+| `analysis/pipeline-extraction` | done | PR 2 (#245): Extracted diff and repo pipeline orchestration into `analysis/pipeline.rs` while preserving `run_analysis` and `run_repo_analysis` as stable facades. |
+| `diff/module-split` | ready | PR 3 (#246): Rebase after #245 and split `analysis/diff.rs` into `diff/{mod,model,load,parse}.rs`; add cheap `diff/load.rs` coverage only when simple existing branches need pinning. |
 | `workspace/module-split` | pending | PR 4: Split workspace concerns into `workspace/{mod,discover,scope,production,paths}.rs` |
 | `facts/model-extraction` | pending | PR 5: Move fact DTOs into `analysis/facts/model.rs` |
 | `syntax/adapter-extraction` | pending | PR 6: Move syntax adapters into `analysis/syntax/adapter.rs` |

@@ -51,11 +51,45 @@ commands = [
 
 [[work_item]]
 id = "analysis/summary-extraction"
-status = "ready"
+status = "done"
 branch = "analysis-summary-extraction"
 stackable = false
 requires_human_merge = true
 acceptance = "summary and sort logic move out of analysis/mod.rs with no behavior, output, API, or schema drift; rebase PR #244 against current main and remove stale policy churn unless still justified by focused tests"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-public-api",
+  "cargo xtask check-architecture",
+  "cargo xtask check-output-contracts",
+  "cargo test --workspace"
+]
+
+[[work_item]]
+id = "analysis/pipeline-extraction"
+status = "done"
+branch = "analysis-pipeline-extraction"
+stackable = false
+requires_human_merge = true
+acceptance = "diff and repo pipeline orchestration move out of analysis/mod.rs with run_analysis and run_repo_analysis preserved as behavior-stable facades"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-public-api",
+  "cargo xtask check-architecture",
+  "cargo xtask check-output-contracts",
+  "cargo test --workspace"
+]
+
+[[work_item]]
+id = "diff/module-split"
+status = "ready"
+branch = "diff-module-split"
+stackable = false
+requires_human_merge = true
+acceptance = "analysis/diff.rs splits into diff/{mod,model,load,parse}.rs with no parser behavior, output, API, or schema drift; add cheap diff/load.rs coverage only when the existing branch logic is simple to pin"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
