@@ -210,6 +210,45 @@ the same file to Codecov Test Analytics only when `CODECOV_TOKEN` is available
 on trusted runs. Fork pull requests still run tests and upload the artifact, but
 skip the Codecov test-results upload because repository secrets are unavailable.
 
+## SARIF and Policy Contract
+
+Campaign 5B SARIF work is governed by
+[RIPR-SPEC-0008](specs/RIPR-SPEC-0008-sarif-ci-policy.md). The contract is
+advisory by default: generating SARIF must not make ordinary pull requests
+block unless an explicit baseline policy mode is requested.
+
+Planned artifact commands:
+
+```bash
+cargo run -p ripr -- check --format sarif > target/ripr/reports/ripr-findings.sarif.json
+cargo run -p ripr -- check --format repo-sarif > target/ripr/reports/ripr-seams.sarif.json
+```
+
+SARIF consumes configured severity from `ripr.toml`:
+
+| Config severity | SARIF behavior |
+| --- | --- |
+| `warning` | `level: "warning"` |
+| `info` | `level: "note"` |
+| `note` | `level: "note"` |
+| `off` | omitted |
+
+Opt-in baseline policy should compare current SARIF against a checked-in
+baseline using `ruleId` plus `partialFingerprints.riprFingerprintV1`.
+
+Policy modes:
+
+| Mode | Default? | Behavior |
+| --- | --- | --- |
+| `advisory` | yes | Emit reports and exit successfully. |
+| `baseline-check` | no | Report new configured-warning results relative to a baseline. |
+| `fail-on-new-warning` | no | Exit non-zero when new configured-warning results appear. |
+
+The first policy implementation should live in `cargo xtask` rather than a
+public `ripr` CLI policy command. It should not add a default workflow that
+blocks pull requests. A later workflow PR may document or add an opt-in GitHub
+code-scanning upload path after the renderer and baseline policy are stable.
+
 The security workflow currently runs:
 
 ```bash
