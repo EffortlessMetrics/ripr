@@ -1030,9 +1030,11 @@ Seam diagnostics also drive editor code actions:
 
 - `Copy seam packet` calls `ripr.collectContext` with `seam_id` and
   copies the selected agent seam packet JSON.
+- `Copy targeted test brief` copies a plain-language work order derived
+  from the same seam packet guidance.
 - `Copy suggested assertion` appears only when the agent seam packet
   assertion shape contains a concrete assertion example.
-- `Open related test` appears only when ranked related-test evidence
+- `Open best related test` appears only when ranked related-test evidence
   has a visible file/line.
 - `Refresh ripr analysis` remains available for every request.
 
@@ -1040,6 +1042,89 @@ These actions do not edit files, generate tests, or add CodeLens
 surface. The pre-4B `Finding`/`AnalysisSnapshot` hover and context
 actions continue to work for diff-scoped diagnostics; seam diagnostics
 live alongside them.
+
+## LSP Cockpit Report
+
+`cargo xtask lsp-cockpit-report` writes:
+
+```text
+target/ripr/reports/lsp-cockpit.json
+target/ripr/reports/lsp-cockpit.md
+```
+
+The report is an advisory dogfood artifact for the editor loop. It reads the
+committed LSP fixture expectations, plus the VS Code e2e smoke test file, and
+summarizes the editor surface without opening VS Code.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "pass",
+  "fixtures": [
+    {
+      "fixture": "boundary_gap",
+      "diagnostics_path": "fixtures/boundary_gap/expected/lsp-diagnostics.json",
+      "code_actions_path": "fixtures/boundary_gap/expected/lsp-code-actions.json",
+      "diagnostics": {
+        "total": 1,
+        "seams": 1,
+        "findings": 0,
+        "seam_ids": ["67fc764ba37d77bd"],
+        "grip_classes": ["weakly_gripped"]
+      },
+      "actions": {
+        "titles": [
+          "Copy seam packet",
+          "Copy targeted test brief",
+          "Copy suggested assertion",
+          "Open best related test",
+          "Refresh ripr analysis"
+        ],
+        "commands": [
+          "ripr.copyContext",
+          "ripr.copyTargetedTestBrief",
+          "ripr.copySuggestedAssertion",
+          "ripr.openRelatedTest",
+          "ripr.refresh"
+        ],
+        "argument_fields": [
+          "assertion",
+          "brief",
+          "line",
+          "seam_id",
+          "seam_kind",
+          "test_name",
+          "uri"
+        ]
+      },
+      "context": {
+        "seam_packet_available": true,
+        "targeted_test_brief_available": true,
+        "assertion_available": true,
+        "related_test_available": true,
+        "refresh_available": true
+      }
+    }
+  ],
+  "vscode_e2e": {
+    "test_file": "editors/vscode/test/suite/extension.test.ts",
+    "contributed_commands": ["ripr.copyContext"],
+    "covered_commands": ["ripr.collectContext", "ripr.copyContext"],
+    "covered_contributed_commands": ["ripr.copyContext"],
+    "uncovered_contributed_commands": []
+  }
+}
+```
+
+`status` is `pass` when at least one fixture pins LSP diagnostics/actions and
+all contributed VS Code commands are represented in the e2e command coverage
+scan. It is `warn` when no LSP fixture expectations are present or a contributed
+command is not represented in the e2e command scan. The report is not a schema
+for LSP protocol messages; those remain pinned by fixture expectations and LSP
+unit tests.
 
 ## Mutation Calibration Reports
 
