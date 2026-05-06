@@ -1,7 +1,7 @@
 const HELP: &str = r#"ripr — static RIPR mutation exposure analysis for Rust
 
 Usage:
-  ripr init [--root PATH] [--dry-run] [--force]
+  ripr init [--root PATH] [--ci github] [--dry-run] [--force]
   ripr pilot [--root PATH] [--out PATH] [--mode draft] [--max-seams 5]
   ripr outcome --before PATH --after PATH [--format md|json] [--out PATH]
   ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
@@ -26,12 +26,13 @@ Quick start:
   ripr explain --diff crates/ripr/examples/sample/example.diff <finding-id>
 "#;
 
-const INIT_HELP: &str = r#"Usage: ripr init [--root PATH] [--dry-run] [--force]
+const INIT_HELP: &str = r#"Usage: ripr init [--root PATH] [--ci github] [--dry-run] [--force]
 
 Options:
   --root PATH      Workspace root where ripr.toml should be written. Defaults to current directory.
+  --ci github      Also write .github/workflows/ripr.yml with an advisory SARIF upload workflow.
   --dry-run        Print the generated config without writing.
-  --force          Overwrite an existing ripr.toml.
+  --force          Overwrite an existing ripr.toml or generated workflow.
 
 Generated config:
   - uses draft analysis mode and includes unchanged tests
@@ -39,6 +40,11 @@ Generated config:
   - hides strongly_gripped, intentional, and suppressed seams
   - records the built-in saved-workspace LSP seam diagnostic default
   - remains advisory and does not configure CI blocking or mutation execution
+
+Generated GitHub workflow:
+  - installs ripr and uploads diff/repo SARIF as code-scanning guidance
+  - uses continue-on-error for the advisory RIPR job and upload steps
+  - does not enable baseline failure policy by default
 "#;
 
 const PILOT_HELP: &str = r#"Usage: ripr pilot [--root PATH] [--out PATH] [--mode MODE] [--max-seams N]
@@ -205,6 +211,7 @@ mod tests {
     #[test]
     fn command_specific_help_usage_lines_are_stable() {
         assert!(INIT_HELP.starts_with("Usage: ripr init"));
+        assert!(INIT_HELP.contains("--ci github"));
         assert!(INIT_HELP.contains("--dry-run"));
         assert!(INIT_HELP.contains("--force"));
         assert!(PILOT_HELP.starts_with("Usage: ripr pilot"));

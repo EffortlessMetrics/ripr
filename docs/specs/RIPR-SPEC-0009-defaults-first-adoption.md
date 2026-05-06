@@ -60,7 +60,7 @@ The default contract is:
 | --- | --- | --- |
 | CLI | Produce readable static evidence and next-step guidance from ordinary commands. | Require format knowledge or repo config before first value. |
 | `ripr doctor` | Show config state, server/tooling availability, and whether defaults or repo policy are active. | Print config source text or silently ignore malformed policy. |
-| `ripr init` | Materialize the conservative built-in defaults into `ripr.toml` when requested. | Unlock basic usefulness, overwrite repo policy without `--force`, or create blocking CI by default. |
+| `ripr init` | Materialize the conservative built-in defaults into `ripr.toml` when requested, and optionally generate advisory GitHub SARIF CI with `--ci github`. | Unlock basic usefulness, overwrite repo policy or generated workflow files without `--force`, or create blocking CI by default. |
 | `ripr pilot` | Generate a standard pilot packet and print the top actionable next step. | Run mutation testing, edit files, or require users to know internal report names. |
 | `ripr outcome` | Compare two repo-exposure snapshots and explain whether evidence moved. | Require the `ripr` source repo or `cargo xtask`. |
 | Calibration import | Join supplied runtime data to static seam evidence and explain agreement buckets. | Run mutation testing or change static classifications. |
@@ -196,6 +196,7 @@ Defaults-first adoption evidence should cover:
 - `ripr init` generated config preserving conservative defaults;
 - `ripr init --dry-run` printing without writing;
 - `ripr init --force` being required to overwrite existing `ripr.toml`;
+- `ripr init --ci github` generating a non-blocking advisory GitHub workflow;
 - `ripr pilot` generating the pilot packet and top actionable next step;
 - `ripr outcome` producing the same movement buckets as the xtask receipt;
 - calibration import producing the same agreement buckets as the xtask report;
@@ -284,8 +285,14 @@ Current tests and reports that support the contract:
 - `crates/ripr/src/cli/commands.rs::tests::init_parses_root_dry_run_and_force`
 - `crates/ripr/src/cli/commands.rs::tests::init_requires_root_value`
 - `crates/ripr/src/cli/commands.rs::tests::init_rejects_unknown_arguments`
+- `crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_is_advisory`
+- `crates/ripr/src/cli/commands.rs::tests::init_ci_github_writes_workflow_and_preserves_existing_config`
+- `crates/ripr/src/cli/commands.rs::tests::init_ci_github_refuses_existing_workflow_without_force`
 - `crates/ripr/tests/cli_smoke.rs::init_writes_conservative_config_and_doctor_loads_it`
 - `crates/ripr/tests/cli_smoke.rs::init_dry_run_prints_config_without_writing`
+- `crates/ripr/tests/cli_smoke.rs::init_ci_github_dry_run_prints_config_and_workflow_without_writing`
+- `crates/ripr/tests/cli_smoke.rs::init_ci_github_writes_non_blocking_sarif_workflow`
+- `crates/ripr/tests/cli_smoke.rs::init_ci_github_refuses_existing_workflow_without_force`
 - `crates/ripr/tests/cli_smoke.rs::init_refuses_existing_config_without_force`
 - `crates/ripr/tests/cli_smoke.rs::init_force_overwrites_existing_config`
 - `crates/ripr/src/config.rs::tests::missing_config_uses_behavior_preserving_defaults`
@@ -316,10 +323,6 @@ Current tests and reports that support the contract:
 - `xtask/src/main.rs::tests::sarif_policy_missing_baseline_is_advisory_by_default`
 - `xtask/src/main.rs::tests::lsp_cockpit_report_json_and_markdown_are_structured`
 
-Planned tests:
-
-- generated GitHub Actions workflow is advisory by default.
-
 ## Implementation Mapping
 
 Current implementation pieces:
@@ -327,7 +330,8 @@ Current implementation pieces:
 - `crates/ripr/src/config.rs` owns repo config defaults, validation, and
   precedence, plus the conservative generated `ripr init` config text.
 - `crates/ripr/src/cli/commands.rs` exposes `init`, `pilot`, `outcome`, `check`,
-  `explain`, `context`, `doctor`, and `lsp`.
+  `explain`, `context`, `doctor`, and `lsp`; `init --ci github` writes the
+  advisory GitHub Actions SARIF workflow.
 - `crates/ripr/src/app.rs` orchestrates config-aware analysis entry points.
 - `crates/ripr/src/output/agent_seam_packets.rs` renders targeted-test work
   orders.
@@ -342,10 +346,6 @@ Current implementation pieces:
   cockpit, SARIF policy, badge artifact, and report-index automation.
 - `docs/TARGETED_TEST_WORKFLOW.md`, `docs/CI.md`, `docs/CONFIGURATION.md`,
   and `docs/EDITOR_EXTENSION.md` document the current adoption path.
-
-Planned implementation pieces:
-
-- optional generated advisory GitHub Actions workflow.
 
 ## Metrics
 

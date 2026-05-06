@@ -46,18 +46,20 @@ and [`crates/ripr/src/app.rs`](../crates/ripr/src/app.rs).
 
 Creates a conservative repo-local `ripr.toml` at the selected workspace root.
 The generated profile records the built-in conservative defaults as repo policy
-so they can be reviewed and changed. It does not run mutation testing, create
-CI workflows, enable CI blocking policy, or unlock basic CLI usefulness.
+so they can be reviewed and changed. With `--ci github`, it also writes a
+non-blocking GitHub Actions SARIF upload workflow. It does not run mutation
+testing, enable CI blocking policy, or unlock basic CLI usefulness.
 
 ```text
-ripr init [--root PATH] [--dry-run] [--force]
+ripr init [--root PATH] [--ci github] [--dry-run] [--force]
 ```
 
 | Flag | Default | Notes |
 | --- | --- | --- |
 | `--root PATH` | current directory | Workspace root where `ripr.toml` should be written. |
+| `--ci github` | _(off)_ | Also write `.github/workflows/ripr.yml`. The workflow installs `ripr`, renders diff and repo SARIF, uploads code-scanning guidance, and uses `continue-on-error` so the default path is advisory. |
 | `--dry-run` | _(off)_ | Print the generated config to stdout without writing. |
-| `--force` | _(off)_ | Overwrite an existing `ripr.toml`. Without this flag, existing repo policy is left unchanged. |
+| `--force` | _(off)_ | Overwrite an existing `ripr.toml` or generated workflow. Without this flag, existing repo policy and workflow files are left unchanged. |
 
 ### `ripr pilot`
 

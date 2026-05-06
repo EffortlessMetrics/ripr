@@ -311,6 +311,27 @@ fn init_dry_run_prints_config_without_writing() -> Result<(), String> {
 }
 
 #[test]
+fn init_ci_github_dry_run_prints_config_and_workflow_without_writing() -> Result<(), String> {
+    let workspace = make_temp_workspace(None)?;
+    let root = workspace.display().to_string();
+    let output = run_ripr(&["init", "--root", &root, "--ci", "github", "--dry-run"]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("# ripr.toml"));
+    assert!(stdout.contains("# "));
+    assert!(stdout.contains(".github"));
+    assert!(stdout.contains("RIPR advisory SARIF"));
+    assert!(stdout.contains("continue-on-error: true"));
+    assert!(stdout.contains("github/codeql-action/upload-sarif@v4"));
+    assert!(!workspace.join("ripr.toml").exists());
+    assert!(!workspace.join(".github/workflows/ripr.yml").exists());
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
 fn init_refuses_existing_config_without_force() -> Result<(), String> {
     let workspace = make_temp_workspace(None)?;
     std::fs::write(workspace.join("ripr.toml"), "[analysis]\nmode = \"deep\"\n")
@@ -331,6 +352,56 @@ fn init_refuses_existing_config_without_force() -> Result<(), String> {
         .map_err(|e| format!("read existing ripr.toml: {e}"))?;
     assert!(config.contains("mode = \"deep\""));
     assert!(!config.contains("seam_diagnostics = true"));
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn init_ci_github_writes_non_blocking_sarif_workflow() -> Result<(), String> {
+    let workspace = make_temp_workspace(None)?;
+    let root = workspace.display().to_string();
+    let output = run_ripr(&["init", "--root", &root, "--ci", "github"]);
+    assert_success(&output);
+
+    let workflow_path = workspace.join(".github/workflows/ripr.yml");
+    let workflow = std::fs::read_to_string(&workflow_path)
+        .map_err(|e| format!("read generated workflow: {e}"))?;
+    assert!(workspace.join("ripr.toml").exists());
+    assert!(workflow.contains("pull_request:"));
+    assert!(workflow.contains("workflow_dispatch:"));
+    assert!(workflow.contains("cargo install ripr --locked"));
+    assert!(workflow.contains("--format sarif"));
+    assert!(workflow.contains("--format repo-sarif"));
+    assert!(workflow.contains("continue-on-error: true"));
+    assert!(workflow.contains("github/codeql-action/upload-sarif@v4"));
+    assert!(!workflow.contains("fail-on-new-warning"));
+    assert!(!workflow.contains("sarif-policy"));
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn init_ci_github_refuses_existing_workflow_without_force() -> Result<(), String> {
+    let workspace = make_temp_workspace(None)?;
+    let workflow_dir = workspace.join(".github/workflows");
+    std::fs::create_dir_all(&workflow_dir).map_err(|e| format!("create workflow dir: {e}"))?;
+    std::fs::write(workflow_dir.join("ripr.yml"), "name: Existing\n")
+        .map_err(|e| format!("write existing workflow: {e}"))?;
+
+    let root = workspace.display().to_string();
+    let output = run_ripr(&["init", "--root", &root, "--ci", "github"]);
+    assert!(
+        !output.status.success(),
+        "init should refuse to overwrite workflow without --force\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains(".github"));
+    assert!(stderr.contains("--force"));
+    assert!(!workspace.join("ripr.toml").exists());
 
     let _ = std::fs::remove_dir_all(&workspace);
     Ok(())
