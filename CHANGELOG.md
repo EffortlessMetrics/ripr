@@ -135,8 +135,11 @@ are scoped or reviewed.
 - Started the Campaign 6 refactor stack by extracting summary/sort helpers,
   pipeline orchestration, diff load/model/parse modules, workspace
   classify/discover/select modules, and probe classify/config/diff/repo modules
-  without output, schema, or public API drift. The next ready seam is the #251
-  facts model extraction.
+  without output, schema, or public API drift.
+- Moved neutral Rust analysis fact DTOs into `analysis/facts/model.rs` for the
+  Campaign 6 facts model extraction while leaving syntax adapters, builders,
+  extraction, and query logic in place. The next ready seam is syntax adapter
+  type extraction.
 - Added `cargo xtask targeted-test-outcome` as an advisory receipt for comparing
   before/after `repo-exposure-json` artifacts. The report writes
   `target/ripr/reports/targeted-test-outcome.{json,md}`, matches seams by
