@@ -20,15 +20,15 @@ through multiple work items in a campaign, but each work item should follow the
 | Repo Seam Inventory and Test Grip (4B) | Inventory behavior seams, classify test-grip per seam, and turn actionable gaps into editor diagnostics and agent-ready packets. | `spec/repo-seam-inventory`, `analysis/repo-seam-model-v1`, `analysis/repo-seam-inventory-v1`, `analysis/test-grip-evidence-v1`, `analysis/repo-ripr-classification-v1`, `output/repo-exposure-report-v1`, `lsp/repo-seam-diagnostics-v1`, `lsp/seam-evidence-hover-v1`, `context/agent-seam-packets-v1`, `docs/agent-dispatch-workflow-v1` |
 | Seam Evidence Usability and Precision (5A) | Make repo seam evidence fast, precise, and directly actionable for developers and coding agents. | Complete: #255, #310, #313, #314, #315, #316, #327, and `campaign/seam-evidence-usability-closeout`. |
 | Operationalization (5B) | Govern analyzer behavior with repository config, integrate SARIF/CI policy modes, and remap badges onto seam-native counts. | Complete: `config/ripr-config-v1`, `ci/sarif-ci-policy`, `badge/seam-native-count-mapping`, and `campaign/operationalization-closeout`. |
-| Module SRP Refactoring (6) | Refactor internal modules under `crates/ripr/src/` so each module has one product responsibility, without splitting the package. | Starts with `campaign/modularization-stack-audit`, then the Campaign 6 refactor stack. |
+| Module SRP Refactoring (6) | Refactor internal modules under `crates/ripr/src/` so each module has one product responsibility, without splitting the package. | Complete: #347, the Campaign 6 refactor chain through #405, and `campaign/modularization-closeout`. |
+| Defaults-First Operator Adoption (7) | Make a clean install useful through conservative defaults, one operator cockpit, CI artifacts, editor install docs, examples, and install/release proof. | Active: starts with `defaults/config-init`, then `reports/operator-cockpit`. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
-through 5B are complete. `config/ripr-config-v1` established the repo-root
-configuration surface; `ci/sarif-ci-policy` added SARIF rendering and an
-opt-in baseline policy; `badge/seam-native-count-mapping` remapped public repo
-badges onto seam-native unresolved gap counts. The active queue is now Campaign
-6, starting with `campaign/modularization-stack-audit` before structural
-refactors resume.
+through 6 are complete. Campaign 6 closed after the internal module SRP chain
+landed through #405 while preserving the saved-workspace LSP cockpit contract,
+output schemas, public API, SARIF, and badge behavior. The active queue is now
+Campaign 7, starting with `defaults/config-init` before the operator cockpit and
+CI adoption path.
 
 ## PR 0: `planning-and-tracking-docs`
 
