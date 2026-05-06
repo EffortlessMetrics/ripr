@@ -663,7 +663,7 @@ commands = [
 
 [[work_item]]
 id = "xtask/policy-modules"
-status = "ready"
+status = "done"
 branch = "xtask-policy-modules"
 stackable = false
 requires_human_merge = true
@@ -676,5 +676,42 @@ commands = [
   "cargo xtask check-architecture",
   "cargo xtask check-output-contracts",
   "cargo xtask check-no-panic-family",
+  "cargo test --workspace"
+]
+
+[[work_item]]
+id = "xtask/report-modules"
+status = "ready"
+branch = "xtask-report-modules"
+stackable = false
+requires_human_merge = true
+acceptance = "xtask report generation is organized into focused report modules while preserving every cargo xtask report command behavior"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-public-api",
+  "cargo xtask check-architecture",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-no-panic-family",
+  "cargo test --workspace"
+]
+
+[[work_item]]
+id = "campaign/modularization-closeout"
+status = "blocked"
+branch = "campaign-modularization-closeout"
+stackable = false
+requires_human_merge = true
+acceptance = "Campaign 6 modularization is reviewed, stale forks are closed or documented, and the manifest points at the next real lane"
+blocked_reason = "Wait until xtask/report-modules lands, then run final Campaign 6 closeout proof."
+commands = [
+  "cargo xtask check-pr",
+  "cargo xtask check-public-api",
+  "cargo xtask check-architecture",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-no-panic-family",
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
   "cargo test --workspace"
 ]

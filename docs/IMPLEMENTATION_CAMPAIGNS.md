@@ -727,9 +727,9 @@ Work items:
 | `api/doc-hidden-internals` | done | PR 32: Marked compatibility module exports `#[doc(hidden)]` while preserving public API paths. |
 | `api/private-internals` | blocked | PR 33: Make internal modules private (breaking, optional) |
 | `xtask/command-dispatch` | done | PR 34: Split xtask into command and run modules |
-| `xtask/policy-modules` | ready | PR 35: Organize policy checks into `xtask/src/policy/` |
-| `xtask/report-modules` | pending | PR 36: Organize reports into `xtask/src/reports/` |
-| `campaign/modularization-closeout` | pending | Final review and closure of Campaign 6 |
+| `xtask/policy-modules` | done | PR 35: Organize policy checks into `xtask/src/policy/` |
+| `xtask/report-modules` | ready | PR 36: Organize reports into `xtask/src/reports/` |
+| `campaign/modularization-closeout` | blocked | Final review and closure of Campaign 6 after `xtask/report-modules` |
 
 Stack audit:
 

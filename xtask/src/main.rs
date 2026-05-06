@@ -9,11 +9,17 @@ use serde_json::Value;
 
 mod command;
 mod dispatch;
+mod policy;
 mod run;
 
 #[cfg(test)]
 use command::unknown_command_message;
 use command::{XtaskCommand, known_command_root, known_commands};
+use policy::{
+    check_allow_attributes, check_droid_review_config, check_executable_files, check_file_policy,
+    check_local_context, check_network_policy, check_no_panic_family, check_process_policy,
+    check_static_language, check_workflows,
+};
 use run::{capture_output, run, run_output, run_output_optional, run_output_owned};
 
 #[derive(Debug)]
@@ -2338,7 +2344,7 @@ fn fix_kind_name(fix_kind: &FixKind) -> &'static str {
     }
 }
 
-fn check_static_language() -> Result<(), String> {
+fn check_static_language_impl() -> Result<(), String> {
     let report_spec = PolicyReportSpec {
         report_file: "static-language.md",
         check: "check-static-language",
@@ -2383,7 +2389,7 @@ fn check_static_language() -> Result<(), String> {
     finish_policy_report(report_spec, &violations)
 }
 
-fn check_no_panic_family() -> Result<(), String> {
+fn check_no_panic_family_impl() -> Result<(), String> {
     check_old_panic_allowlist_exists()?;
 
     let roots = [
@@ -2584,7 +2590,7 @@ fn check_no_panic_family() -> Result<(), String> {
     )
 }
 
-fn check_allow_attributes() -> Result<(), String> {
+fn check_allow_attributes_impl() -> Result<(), String> {
     let allowlist = read_count_allowlist(".ripr/allow-attributes.txt")?;
     let guarded = guarded_allow_attribute_lints();
     let mut counts = BTreeMap::<(String, String), Vec<usize>>::new();
@@ -2659,7 +2665,7 @@ fn check_allow_attributes() -> Result<(), String> {
     )
 }
 
-fn check_local_context() -> Result<(), String> {
+fn check_local_context_impl() -> Result<(), String> {
     let allowlist = read_local_context_allowlist("policy/local_context_allowlist.txt")?;
     let mut violations = validate_local_context_allowlist(&allowlist);
     let mut grouped = BTreeMap::<(String, String), (BTreeSet<String>, Vec<Option<usize>>)>::new();
@@ -2722,7 +2728,7 @@ fn check_local_context() -> Result<(), String> {
     )
 }
 
-fn check_file_policy() -> Result<(), String> {
+fn check_file_policy_impl() -> Result<(), String> {
     let allowlist = read_glob_allowlist("policy/non_rust_allowlist.txt")?;
     let mut violations = Vec::new();
 
@@ -2760,7 +2766,7 @@ fn check_file_policy() -> Result<(), String> {
     )
 }
 
-fn check_executable_files() -> Result<(), String> {
+fn check_executable_files_impl() -> Result<(), String> {
     let allowlist = read_path_allowlist_optional("policy/executable_allowlist.txt")?;
     let output = run_output("git", &["ls-files", "--stage"])?;
     let mut violations = Vec::new();
@@ -2795,7 +2801,7 @@ fn check_executable_files() -> Result<(), String> {
     )
 }
 
-fn check_workflows() -> Result<(), String> {
+fn check_workflows_impl() -> Result<(), String> {
     let budgets = read_workflow_budgets("policy/workflow_allowlist.txt")?;
     let runtime_allowlist = read_count_allowlist("policy/workflow_action_runtime_allowlist.txt")?;
     let mut violations = Vec::new();
@@ -10498,7 +10504,7 @@ fn redact_current_dir(text: &str) -> String {
     text.replace(&current_dir, ".").replace(&slash_dir, ".")
 }
 
-fn check_process_policy() -> Result<(), String> {
+fn check_process_policy_impl() -> Result<(), String> {
     check_count_policy(
         "process policy",
         "policy/process_allowlist.txt",
@@ -10507,7 +10513,7 @@ fn check_process_policy() -> Result<(), String> {
     )
 }
 
-fn check_network_policy() -> Result<(), String> {
+fn check_network_policy_impl() -> Result<(), String> {
     check_count_policy(
         "network policy",
         "policy/network_allowlist.txt",
@@ -14440,7 +14446,7 @@ fn check_droid_common(violations: &mut Vec<String>, path_label: &str, text: &str
     check_droid_action_refs(violations, path_label, text);
 }
 
-fn check_droid_review_config() -> Result<(), String> {
+fn check_droid_review_config_impl() -> Result<(), String> {
     let mut violations = Vec::new();
 
     let droid_review_path = ".github/workflows/droid-review.yml";
@@ -14560,11 +14566,13 @@ mod tests {
         SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher,
         TestOracleClass, badge_artifact_command_args, badge_artifact_jobs,
         badge_artifact_native_slot, badge_artifacts_summary_markdown, build_lsp_cockpit_report,
-        build_targeted_test_outcome_report, ci_full_evidence_gates, collect_panic_findings,
-        collect_semantic_panic_findings, critic_findings, dogfood_class_counts,
-        dogfood_report_json, dogfood_report_markdown, extract_json_object_usize_map,
-        extract_json_string, extract_json_warnings, extract_workflow_run_blocks,
-        first_line_difference, forbidden_panic_patterns, glob_matches,
+        build_targeted_test_outcome_report, check_allow_attributes, check_droid_review_config,
+        check_executable_files, check_file_policy, check_local_context, check_network_policy,
+        check_no_panic_family, check_process_policy, check_static_language, check_workflows,
+        ci_full_evidence_gates, collect_panic_findings, collect_semantic_panic_findings,
+        critic_findings, dogfood_class_counts, dogfood_report_json, dogfood_report_markdown,
+        extract_json_object_usize_map, extract_json_string, extract_json_warnings,
+        extract_workflow_run_blocks, first_line_difference, forbidden_panic_patterns, glob_matches,
         golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
         guarded_allow_attributes_in_text, install_hooks_in, is_bdd_test_name,
         is_dependency_surface_candidate, is_evidence_path, is_generated_candidate,
@@ -20356,6 +20364,22 @@ settings: |
         }
 
         Ok(())
+    }
+
+    #[test]
+    fn policy_checker_facade_runs_current_repo_checks() -> Result<(), String> {
+        with_repo_cwd(|| {
+            check_static_language()?;
+            check_no_panic_family()?;
+            check_allow_attributes()?;
+            check_local_context()?;
+            check_file_policy()?;
+            check_executable_files()?;
+            check_workflows()?;
+            check_droid_review_config()?;
+            check_process_policy()?;
+            check_network_policy()
+        })
     }
 
     #[test]
