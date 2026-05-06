@@ -1,0 +1,62 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/opaque_fixture_builder/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":1,"propagation_unknown":0,"static_unknown":0},
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:2:predicate",
+      "classification": "infection_unknown",
+      "severity": "warning",
+      "confidence": 0.87,
+      "probe": {
+        "id": "probe:src_lib.rs:2:predicate",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/opaque_fixture_builder/input/src/lib.rs",
+        "line": 2,
+        "expression": "if amount >= 100 {"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach discounted_total: fixture_builder_case_has_no_discount"},
+        "infect": {"state":"unknown","confidence":"low","summary":"Related tests use opaque fixtures; activation/infection is unknown"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: amount - 10"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach discounted_total: fixture_builder_case_has_no_discount", "infection unknown: Related tests use opaque fixtures; activation/infection is unknown", "propagation yes: Changed behavior appears to influence returned value: amount - 10", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: amount - 10 (line 3)", "related test tests/pricing.rs:16 fixture_builder_case_has_no_discount uses strong exact value oracle: assert_eq!(discounted_total(case.amount), case.expected);"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"amount - 10","line":3}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: amount - 10", "Related tests appear to reach discounted_total: fixture_builder_case_has_no_discount", "Related tests use opaque fixtures; activation/infection is unknown", "Strong oracle found: exact value or pattern assertion"],
+      "missing": ["No detected boundary input for the changed predicate", "Related tests use opaque fixtures; activation/infection is unknown"],
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests": [
+        {
+          "name": "fixture_builder_case_has_no_discount",
+          "file": "tests/pricing.rs",
+          "line": 16,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(discounted_total(case.amount), case.expected);"
+        }
+      ],
+      "stop_reasons": ["fixture_opaque"],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.",
+      "suggested_next_action": "Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml."
+    }
+  ]
+}

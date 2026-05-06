@@ -20568,6 +20568,50 @@ settings: |
     }
 
     #[test]
+    fn defaults_first_example_corpus_index_names_required_operator_artifacts() -> Result<(), String>
+    {
+        with_repo_cwd(|| {
+            let text = fs::read_to_string("fixtures/EXAMPLE_CORPUS.md")
+                .map_err(|err| format!("failed to read example corpus index: {err}"))?;
+            for required_text in [
+                "Boundary gap",
+                "Missing equality boundary",
+                "Weak oracle",
+                "Exact error variant",
+                "Opaque fixture/builder",
+                "Optional calibration",
+                "targeted-test-outcome.json",
+                "mutation-calibration.json",
+                "lsp-code-actions.json",
+            ] {
+                assert!(
+                    text.contains(required_text),
+                    "example corpus index should mention {required_text}"
+                );
+            }
+            for required_path in [
+                "fixtures/boundary_gap/expected/lsp-diagnostics.json",
+                "fixtures/boundary_gap/expected/lsp-code-actions.json",
+                "fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json",
+                "fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json",
+                "fixtures/boundary_gap/calibration/targeted-test-outcome.json",
+                "fixtures/boundary_gap/calibration/targeted-test-outcome.md",
+                "fixtures/boundary_gap/calibration/runtime-mutants.json",
+                "fixtures/boundary_gap/calibration/mutation-calibration.json",
+                "fixtures/boundary_gap/calibration/mutation-calibration.md",
+                "fixtures/opaque_fixture_builder/expected/check.json",
+                "fixtures/opaque_fixture_builder/expected/human.txt",
+            ] {
+                assert!(
+                    Path::new(required_path).exists(),
+                    "example corpus artifact should exist: {required_path}"
+                );
+            }
+            Ok(())
+        })
+    }
+
+    #[test]
     fn vscode_command_literal_extraction_finds_ripr_commands() {
         let commands = ripr_command_literals_in_text(
             "await vscode.commands.executeCommand('ripr.copyContext');\ncommand: \"ripr.collectContext\"",

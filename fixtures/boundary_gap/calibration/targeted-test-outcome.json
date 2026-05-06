@@ -1,0 +1,62 @@
+{
+  "after": {
+    "activation_unknown": 0,
+    "discrimination_unknown": 0,
+    "intentional": 0,
+    "observation_unknown": 0,
+    "opaque": 0,
+    "propagation_unknown": 0,
+    "reachable_unrevealed": 0,
+    "seams_total": 1,
+    "strongly_gripped": 0,
+    "suppressed": 0,
+    "ungripped": 0,
+    "weakly_gripped": 1
+  },
+  "before": {
+    "activation_unknown": 0,
+    "discrimination_unknown": 0,
+    "intentional": 0,
+    "observation_unknown": 0,
+    "opaque": 0,
+    "propagation_unknown": 0,
+    "reachable_unrevealed": 0,
+    "seams_total": 1,
+    "strongly_gripped": 0,
+    "suppressed": 0,
+    "ungripped": 0,
+    "weakly_gripped": 1
+  },
+  "inputs": {
+    "after": "fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json",
+    "before": "fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json"
+  },
+  "moved": [],
+  "new": [],
+  "regressed": [],
+  "removed": [],
+  "schema_version": "0.1",
+  "status": "advisory",
+  "summary": {
+    "moved": 0,
+    "new": 0,
+    "regressed": 0,
+    "removed": 0,
+    "unchanged": 1
+  },
+  "tool": "ripr",
+  "unchanged": [
+    {
+      "after": "weakly_gripped",
+      "before": "weakly_gripped",
+      "direction": "unchanged",
+      "evidence_delta": [
+        "new observed value: 100"
+      ],
+      "file": "src/lib.rs",
+      "line": 2,
+      "seam_id": "67fc764ba37d77bd",
+      "seam_kind": "predicate_boundary"
+    }
+  ]
+}

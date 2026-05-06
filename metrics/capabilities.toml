@@ -158,6 +158,8 @@ evidence = [
   "fixture/golden runner commands",
   "boundary_gap fixture",
   "weak_error_oracle fixture",
+  "opaque_fixture_builder fixture",
+  "fixtures/EXAMPLE_CORPUS.md defaults-first example index",
   "negative fixture baseline",
   "metamorphic fixture baseline",
   "FileFacts DTOs",
@@ -175,6 +177,7 @@ fixtures = [
   "fixtures/comment_only_diff",
   "fixtures/format_only_diff",
   "fixtures/import_only_diff",
+  "fixtures/opaque_fixture_builder",
   "fixtures/snapshot_oracle",
   "fixtures/strong_boundary_oracle",
   "fixtures/strong_error_oracle",
@@ -195,6 +198,7 @@ evidence = [
   "goldens check runner",
   "boundary_gap check.json",
   "weak_error_oracle check.json",
+  "opaque_fixture_builder check.json",
   "evidence-first finding fields in check JSON",
   "negative and metamorphic fixture check.json goldens"
 ]
@@ -206,6 +210,7 @@ fixtures = [
   "fixtures/comment_only_diff",
   "fixtures/format_only_diff",
   "fixtures/import_only_diff",
+  "fixtures/opaque_fixture_builder",
   "fixtures/snapshot_oracle",
   "fixtures/strong_boundary_oracle",
   "fixtures/strong_error_oracle",
@@ -226,6 +231,7 @@ evidence = [
   "goldens check runner",
   "boundary_gap human.txt",
   "weak_error_oracle human.txt",
+  "opaque_fixture_builder human.txt",
   "evidence-first human finding sections",
   "negative and metamorphic fixture human.txt goldens"
 ]
@@ -237,6 +243,7 @@ fixtures = [
   "fixtures/comment_only_diff",
   "fixtures/format_only_diff",
   "fixtures/import_only_diff",
+  "fixtures/opaque_fixture_builder",
   "fixtures/snapshot_oracle",
   "fixtures/strong_boundary_oracle",
   "fixtures/strong_error_oracle",
@@ -571,12 +578,14 @@ evidence = [
   "crates/ripr/src/cli/commands.rs exposes ripr outcome",
   "crates/ripr/src/output/outcome.rs compares before/after repo-exposure JSON by seam_id",
   "ripr outcome prints Markdown by default and supports --format json plus --out",
+  "fixtures/boundary_gap/calibration/targeted-test-outcome.json",
+  "fixtures/boundary_gap/calibration/targeted-test-outcome.md",
   "crates/ripr/tests/cli_smoke.rs outcome smoke tests"
 ]
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "campaign/modularization-stack-audit"
+next = "release/install-polish"
 metric = "targeted_test_outcome_available"
 
 [[capability]]
@@ -590,10 +599,14 @@ evidence = [
   "target/ripr/reports/operator-cockpit.md",
   "xtask/src/reports/operator.rs joins repo exposure, LSP cockpit, SARIF policy, badge status, targeted-test outcome, and optional mutation calibration",
   "docs/OUTPUT_SCHEMA.md Operator Cockpit Report section",
-  "docs/TARGETED_TEST_WORKFLOW.md repo-local cockpit guidance"
+  "docs/TARGETED_TEST_WORKFLOW.md repo-local cockpit guidance",
+  "fixtures/EXAMPLE_CORPUS.md public operator corpus"
 ]
-fixtures = []
-next = "fixtures/example-corpus"
+fixtures = [
+  "fixtures/boundary_gap",
+  "fixtures/opaque_fixture_builder"
+]
+next = "release/install-polish"
 metric = "operator_cockpit_available"
 
 [[capability]]
@@ -610,10 +623,13 @@ evidence = [
   "VS Code ripr.check.mode defaults to draft so the extension does not override missing-config defaults with instant mode",
   "explicit seamDiagnostics: false override",
   "OUTPUT_SCHEMA.md LSP Seam Diagnostics section",
-  "docs/EDITOR_EXTENSION.md documents the install path and saved-workspace default"
+  "docs/EDITOR_EXTENSION.md documents the install path and saved-workspace default",
+  "fixtures/boundary_gap/expected/lsp-diagnostics.json"
 ]
-fixtures = []
-next = "fixtures/example-corpus"
+fixtures = [
+  "fixtures/boundary_gap"
+]
+next = "release/install-polish"
 metric = "seam_id in diagnostic.data is the hover lookup key"
 
 [[capability]]
@@ -627,10 +643,13 @@ evidence = [
   "renders Grip class plus RIPR evidence path plus observed values plus missing discriminator plus related tests plus per-kind next step",
   "prefers seam-bearing diagnostics on overlap (chatgpt-codex review fix)",
   "preserves pre-4B Finding hover fallback",
-  "VS Code e2e keeps the extension surface active in a fixture Rust workspace"
+  "VS Code e2e keeps the extension surface active in a fixture Rust workspace",
+  "fixtures/boundary_gap/expected/lsp-diagnostics.json"
 ]
-fixtures = []
-next = "fixtures/example-corpus"
+fixtures = [
+  "fixtures/boundary_gap"
+]
+next = "release/install-polish"
 metric = "hover renders evidence path from ClassifiedSeam, never parses diagnostic message"
 
 [[capability]]
@@ -645,10 +664,13 @@ evidence = [
   "diagnostics carrying seam_id surface Copy seam packet, Copy suggested assertion, Copy targeted test brief, Open best related test, and Refresh ripr analysis",
   "copy suggested assertion uses agent seam packet v2 assertion shape when available",
   "pre-4B Finding code actions remain available",
-  "docs/TESTING.md documents VS Code e2e coverage for command registration, LSP-first seam context, targeted-test brief copying, suggested assertions, related-test opening, malformed argument handling, and restart behavior"
+  "docs/TESTING.md documents VS Code e2e coverage for command registration, LSP-first seam context, targeted-test brief copying, suggested assertions, related-test opening, malformed argument handling, and restart behavior",
+  "fixtures/boundary_gap/expected/lsp-code-actions.json"
 ]
-fixtures = []
-next = "fixtures/example-corpus"
+fixtures = [
+  "fixtures/boundary_gap"
+]
+next = "release/install-polish"
 metric = "seam diagnostics expose packet/assertion/test actions without automatic edits"
 
 [[capability]]
@@ -693,7 +715,7 @@ evidence = [
   "SARIF policy tests cover pass, new warning detection, warning-threshold note filtering, missing baseline advisory behavior, parsing, and report shape"
 ]
 fixtures = []
-next = "fixtures/example-corpus"
+next = "release/install-polish"
 metric = "SARIF result counts by rule/level, new configured-warning results, and advisory_ci_workflow_generated"
 
 [[capability]]
@@ -728,7 +750,9 @@ evidence = [
   "target/ripr/reports/mutation-calibration.json",
   "target/ripr/reports/mutation-calibration.md",
   "xtask mutation-calibration importer and join unit tests",
-  "fixtures/boundary_gap/calibration/runtime-mutants.json"
+  "fixtures/boundary_gap/calibration/runtime-mutants.json",
+  "fixtures/boundary_gap/calibration/mutation-calibration.json",
+  "fixtures/boundary_gap/calibration/mutation-calibration.md"
 ]
 fixtures = ["fixtures/boundary_gap"]
 next = "calibration/runtime-fixtures-v1"

@@ -32,6 +32,7 @@ The workflow uses these artifacts:
 | `repo-sarif` / `sarif-policy` | Optional CI/code-scanning projection with the same seam semantics. |
 | repo badge artifacts | Optional public count projection under badge policy. |
 | `mutation-calibration.{json,md}` | Optional runtime calibration join when cargo-mutants data exists. |
+| [`fixtures/EXAMPLE_CORPUS.md`](../fixtures/EXAMPLE_CORPUS.md) | Public defaults-first example corpus with CLI, LSP, receipt, and optional calibration artifacts. |
 | [`fixtures/CALIBRATION_CORPUS.md`](../fixtures/CALIBRATION_CORPUS.md) | Controlled fixture index for trying the loop on known seam scenarios. |
 
 `ripr pilot`, `ripr check`, `ripr outcome`, and
@@ -122,6 +123,8 @@ A small dogfood example lives in
 [Targeted test boundary-gap case study](case-studies/TARGETED_TEST_BOUNDARY_GAP.md).
 It shows a focused test that changed rendered static evidence while the seam
 class stayed `weakly_gripped`.
+The checked example corpus index lives in
+[`fixtures/EXAMPLE_CORPUS.md`](../fixtures/EXAMPLE_CORPUS.md).
 
 ## 2. Pick One Seam
 

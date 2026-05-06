@@ -107,7 +107,7 @@ commands = [
 
 [[work_item]]
 id = "fixtures/example-corpus"
-status = "ready"
+status = "done"
 branch = "example-corpus"
 stackable = false
 requires_human_merge = true
@@ -125,12 +125,22 @@ commands = [
 
 [[work_item]]
 id = "release/install-polish"
-status = "blocked"
+status = "ready"
 branch = "release-install-polish"
 stackable = false
 requires_human_merge = true
 acceptance = "cargo install, GitHub Release binary, VS Code server provisioning, README quickstart, and known-limits docs are verified against the defaults-first operator loop"
-blocked_by = ["fixtures/example-corpus"]
+commands = [
+  "cargo package -p ripr --list",
+  "cargo publish -p ripr --dry-run",
+  "npm --prefix editors/vscode run package",
+  "cargo xtask check-pr",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
+  "cargo test --workspace"
+]
 
 [[work_item]]
 id = "campaign/defaults-first-closeout"

@@ -1,0 +1,90 @@
+{
+  "agreement": {
+    "runtime_inconclusive": 0,
+    "runtime_signal_without_static_gap": 0,
+    "static_clean_and_runtime_clean": 0,
+    "static_gap_and_runtime_signal": 0,
+    "static_gap_without_runtime_signal": 1
+  },
+  "ambiguous_file_line_matches": [],
+  "matches": [
+    {
+      "join_method": "seam_id",
+      "runtime": {
+        "duration": "37ms",
+        "file": "src/lib.rs",
+        "line": 2,
+        "mutant_id": "boundary-gap-ge-to-gt-after",
+        "mutation_operator": "replace >= with >",
+        "runtime_outcome": "caught",
+        "seam_id": "67fc764ba37d77bd",
+        "test_command": "cargo test equality_boundary_discounts"
+      },
+      "static": {
+        "file": "src/lib.rs",
+        "line": 2,
+        "missing_discriminators": [
+          "discount_threshold (equality boundary) (observed values do not include the equality-boundary case for this predicate)"
+        ],
+        "observed_values": [
+          "50",
+          "10_000",
+          "100"
+        ],
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "seam_grip_class": "weakly_gripped",
+        "seam_id": "67fc764ba37d77bd",
+        "seam_kind": "predicate_boundary"
+      }
+    }
+  ],
+  "metrics": {
+    "ambiguous_file_line_total": 0,
+    "join_method_counts": {
+      "seam_id": 1
+    },
+    "matched_total": 1,
+    "mutants_total": 1,
+    "runtime_outcome_counts": {
+      "caught": 1
+    },
+    "static_seams_total": 1,
+    "static_without_runtime_total": 0,
+    "unmatched_mutants_total": 0
+  },
+  "missed_runtime_signals": [],
+  "precision_notes": [
+    "runtime gap signals are imported runtime labels such as missed, survived, not_caught, or uncaught",
+    "runtime clean signals are imported runtime labels such as caught or timeout",
+    "static_gap_without_runtime_signal includes static gap seams with no matched runtime gap signal in this import",
+    "ambiguous file/line runtime gap signals are counted as runtime_inconclusive until a seam_id or unambiguous location is available"
+  ],
+  "schema_version": "0.1",
+  "scope": "repo",
+  "static_only_findings": [
+    {
+      "reason": "static gap seam matched runtime data without a runtime gap signal",
+      "static": {
+        "file": "src/lib.rs",
+        "line": 2,
+        "missing_discriminators": [
+          "discount_threshold (equality boundary) (observed values do not include the equality-boundary case for this predicate)"
+        ],
+        "observed_values": [
+          "50",
+          "10_000",
+          "100"
+        ],
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "seam_grip_class": "weakly_gripped",
+        "seam_id": "67fc764ba37d77bd",
+        "seam_kind": "predicate_boundary"
+      }
+    }
+  ],
+  "static_without_runtime_sample": [],
+  "status": "advisory",
+  "unmatched_mutants": []
+}
