@@ -63,4 +63,22 @@ mod tests {
             Err("missing value for --root".to_string())
         );
     }
+
+    #[test]
+    fn run_dispatches_remaining_top_level_commands() {
+        assert_eq!(run(args(&["ripr"])), Ok(()));
+        assert_eq!(run(args(&["ripr", "--version"])), Ok(()));
+        assert_eq!(
+            run(args(&["ripr", "explain"])),
+            Err("missing finding selector".to_string())
+        );
+        assert_eq!(
+            run(args(&["ripr", "context"])),
+            Err("missing --at or --finding selector".to_string())
+        );
+        assert_eq!(
+            run(args(&["ripr", "lsp", "--bad"])),
+            Err("unknown lsp argument \"--bad\"".to_string())
+        );
+    }
 }
