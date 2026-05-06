@@ -9,7 +9,7 @@ import {
   Trace
 } from 'vscode-languageclient/node';
 import { getConfig, RiprConfig } from './config';
-import { resolveServer, ResolvedServer } from './serverResolver';
+import { resolveServer, ResolveFailure, ResolvedServer } from './serverResolver';
 
 export interface RiprContextTarget {
   uri?: string;
@@ -30,13 +30,43 @@ export interface RiprRelatedTestTarget {
   test_name?: string;
 }
 
+interface RiprLanguageClient {
+  sendRequest(method: string, params: unknown): Promise<unknown>;
+  setTrace(trace: Trace): void;
+  start(): Promise<void>;
+  stop(): Promise<void>;
+}
+
+export interface RiprClientRuntime {
+  getConfig(): RiprConfig;
+  resolveServer(
+    context: vscode.ExtensionContext,
+    config: RiprConfig,
+    output: vscode.OutputChannel
+  ): Promise<ResolvedServer | ResolveFailure>;
+  createLanguageClient(
+    serverOptions: ServerOptions,
+    clientOptions: LanguageClientOptions
+  ): RiprLanguageClient;
+  runRipr(command: string, args: string[], cwd: string): Promise<string>;
+}
+
+const defaultRuntime: RiprClientRuntime = {
+  getConfig,
+  resolveServer,
+  createLanguageClient: (serverOptions, clientOptions) =>
+    new LanguageClient('ripr', 'ripr', serverOptions, clientOptions),
+  runRipr
+};
+
 export class RiprClientController {
-  private client: LanguageClient | undefined;
+  private client: RiprLanguageClient | undefined;
   private server: ResolvedServer | undefined;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
-    private readonly output: vscode.OutputChannel
+    private readonly output: vscode.OutputChannel,
+    private readonly runtime: RiprClientRuntime = defaultRuntime
   ) {}
 
   async start(): Promise<void> {
@@ -44,8 +74,8 @@ export class RiprClientController {
       return;
     }
 
-    const config = getConfig();
-    const server = await resolveServer(this.context, config, this.output);
+    const config = this.runtime.getConfig();
+    const server = await this.runtime.resolveServer(this.context, config, this.output);
     if (!('command' in server)) {
       await this.showMissingServerMessage(server.message, server.detail);
       return;
@@ -77,7 +107,7 @@ export class RiprClientController {
 
     this.output.appendLine(`Resolved ripr server from ${server.source}: ${server.detail}`);
     this.output.appendLine(`Starting ripr language server: ${server.command} ${config.serverArgs.join(' ')}`);
-    this.client = new LanguageClient('ripr', 'ripr', serverOptions, clientOptions);
+    this.client = this.runtime.createLanguageClient(serverOptions, clientOptions);
     this.client.setTrace(traceFromConfig(config.traceServer));
     await this.client.start();
   }
@@ -136,7 +166,7 @@ export class RiprClientController {
       return;
     }
 
-    const config = getConfig();
+    const config = this.runtime.getConfig();
     const server = this.server ?? await this.resolveServerForCommand(config);
     if (!server) {
       return;
@@ -157,7 +187,7 @@ export class RiprClientController {
     ];
 
     try {
-      const context = await runRipr(server.command, args, workspaceFolder.uri.fsPath);
+      const context = await this.runtime.runRipr(server.command, args, workspaceFolder.uri.fsPath);
       await vscode.env.clipboard.writeText(context.trim());
       vscode.window.showInformationMessage('Copied ripr context to clipboard.');
     } catch (error) {
@@ -208,7 +238,7 @@ export class RiprClientController {
   }
 
   private async resolveServerForCommand(config: RiprConfig): Promise<ResolvedServer | undefined> {
-    const server = await resolveServer(this.context, config, this.output);
+    const server = await this.runtime.resolveServer(this.context, config, this.output);
     if ('command' in server) {
       this.server = server;
       return server;
