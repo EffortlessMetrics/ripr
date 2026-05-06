@@ -10,10 +10,8 @@
 //! evidence record, `related_tests` are sorted by `(name, file)` and
 //! deduped.
 
-use super::rust_index::{
-    self, FunctionSummary, OracleFact, RustIndex, TestSummary,
-};
 use super::extract::extract_identifier_tokens;
+use super::rust_index::{self, FunctionSummary, OracleFact, RustIndex, TestSummary};
 use super::seams::{ExpectedSink, RepoSeam, SeamId, SeamKind};
 use crate::domain::{
     Confidence, MissingDiscriminatorFact, OracleKind, OracleStrength, StageEvidence, StageState,

@@ -1,7 +1,5 @@
-use super::rust_index::{
-    FunctionSummary, OracleFact, RustIndex, TestSummary,
-};
 use super::extract::{extract_identifier_tokens, extract_literals};
+use super::rust_index::{FunctionSummary, OracleFact, RustIndex, TestSummary};
 use crate::domain::*;
 use std::path::Path;
 

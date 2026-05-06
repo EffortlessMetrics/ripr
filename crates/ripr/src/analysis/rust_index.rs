@@ -1,6 +1,6 @@
+use super::extract::{extract_identifier_tokens, extract_literal_facts};
 use crate::config::OraclePolicy;
 use crate::domain::{OracleKind, OracleStrength, SymbolId};
-use super::extract::{extract_identifier_tokens, extract_literal_facts};
 use ra_ap_syntax::{
     AstNode, Edition, SourceFile, TextSize,
     ast::{self, HasAttrs, HasName},
@@ -1446,7 +1446,6 @@ fn extract_return_facts(body: &str, start_line: usize) -> Vec<ReturnFact> {
     returns.dedup_by(|a, b| a.line == b.line && a.text == b.text);
     returns
 }
-
 
 #[cfg(test)]
 mod tests {
