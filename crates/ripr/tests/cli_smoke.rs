@@ -460,6 +460,105 @@ fn pilot_uses_repo_config_mode_without_explicit_flag() -> Result<(), String> {
     Ok(())
 }
 
+#[test]
+fn outcome_prints_markdown_receipt_by_default() -> Result<(), String> {
+    let workspace = unique_temp_workspace("outcome-stdout");
+    std::fs::create_dir_all(&workspace).map_err(|e| format!("create outcome workspace: {e}"))?;
+    write_outcome_snapshots(&workspace)?;
+
+    let output = run_ripr(&[
+        "outcome",
+        "--before",
+        &workspace.join("before.json").display().to_string(),
+        "--after",
+        &workspace.join("after.json").display().to_string(),
+    ]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("# ripr targeted-test outcome report"));
+    assert!(stdout.contains("| moved | 1 |"));
+    assert!(stdout.contains("weakly_gripped -> strongly_gripped"));
+    assert!(stdout.contains("does not run mutation testing"));
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn outcome_writes_json_receipt_when_requested() -> Result<(), String> {
+    let workspace = unique_temp_workspace("outcome-json");
+    std::fs::create_dir_all(&workspace).map_err(|e| format!("create outcome workspace: {e}"))?;
+    write_outcome_snapshots(&workspace)?;
+    let out_path = workspace.join("target/ripr/outcome/targeted-test-outcome.json");
+
+    let output = run_ripr(&[
+        "outcome",
+        "--before",
+        &workspace.join("before.json").display().to_string(),
+        "--after",
+        &workspace.join("after.json").display().to_string(),
+        "--format",
+        "json",
+        "--out",
+        &out_path.display().to_string(),
+    ]);
+    assert_success(&output);
+
+    let json = std::fs::read_to_string(&out_path).map_err(|e| format!("read outcome json: {e}"))?;
+    assert!(json.contains(r#""schema_version": "0.1""#));
+    assert!(json.contains(r#""status": "advisory""#));
+    assert!(json.contains(r#""moved": 1"#));
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+fn write_outcome_snapshots(workspace: &Path) -> Result<(), String> {
+    let before = r#"{
+  "schema_version": "0.2",
+  "scope": "repo",
+  "seams": [
+    {
+      "seam_id": "seam-a",
+      "kind": "predicate_boundary",
+      "file": "src/pricing.rs",
+      "line": 42,
+      "grip_class": "weakly_gripped",
+      "related_tests": [
+        {"oracle_kind": "exact_value", "oracle_strength": "weak"}
+      ],
+      "observed_values": ["50"],
+      "missing_discriminators": [
+        {"value": "threshold equality", "reason": "not observed"}
+      ]
+    }
+  ]
+}"#;
+    let after = r#"{
+  "schema_version": "0.2",
+  "scope": "repo",
+  "seams": [
+    {
+      "seam_id": "seam-a",
+      "kind": "predicate_boundary",
+      "file": "src/pricing.rs",
+      "line": 42,
+      "grip_class": "strongly_gripped",
+      "related_tests": [
+        {"oracle_kind": "exact_value", "oracle_strength": "strong"}
+      ],
+      "observed_values": ["50", "100"],
+      "missing_discriminators": []
+    }
+  ]
+}"#;
+    std::fs::write(workspace.join("before.json"), before)
+        .map_err(|e| format!("write before snapshot: {e}"))?;
+    std::fs::write(workspace.join("after.json"), after)
+        .map_err(|e| format!("write after snapshot: {e}"))
+}
+
 fn make_temp_workspace_with_production_seam() -> Result<PathBuf, String> {
     make_temp_workspace_with_production_seam_and_report_opt(None)
 }

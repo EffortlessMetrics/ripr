@@ -28,25 +28,24 @@ The workflow uses these artifacts:
 | `repo-exposure.md` | Human-readable seam list for picking the next gap. |
 | `agent-seam-packets.json` | Tool-readable work orders for targeted tests. |
 | LSP seam diagnostics and hovers | Editor path for inspecting evidence and copying briefs. |
-| `targeted-test-outcome.{json,md}` | Advisory receipt comparing before and after snapshots. |
+| `ripr outcome` receipt | Advisory receipt comparing before and after snapshots. |
 | `repo-sarif` / `sarif-policy` | Optional CI/code-scanning projection with the same seam semantics. |
 | repo badge artifacts | Optional public count projection under badge policy. |
 | `mutation-calibration.{json,md}` | Optional runtime calibration join when cargo-mutants data exists. |
 | [`fixtures/CALIBRATION_CORPUS.md`](../fixtures/CALIBRATION_CORPUS.md) | Controlled fixture index for trying the loop on known seam scenarios. |
 
-`ripr pilot` and `ripr check` commands work from an installed `ripr` binary.
-The before/after receipt, cockpit, badge-endpoint, and calibration summary
-commands shown here are repo-local `cargo xtask` automation today.
+`ripr pilot`, `ripr check`, and `ripr outcome` work from an installed `ripr`
+binary. Cockpit, badge-endpoint, and calibration summary commands shown here
+remain repo-local `cargo xtask` automation today.
 
 Run `ripr init` when you want to pin repo policy before starting the loop. It
 materializes the conservative defaults for review and tuning; missing config is
 still a healthy first-run state.
 
 [RIPR-SPEC-0009](specs/RIPR-SPEC-0009-defaults-first-adoption.md) tracks the
-remaining public CLI path for this loop: `ripr outcome` for before/after
-receipts and `ripr calibrate cargo-mutants` for advisory runtime calibration
-imports. Until those commands exist, this document names the installed
-`ripr check` commands and the repo-local xtask wrappers separately.
+remaining public CLI path for this loop. `ripr outcome` now owns the
+before/after receipt; `ripr calibrate cargo-mutants` remains the planned
+advisory runtime calibration import.
 
 Use a local scratch directory for before/after snapshots:
 
@@ -219,16 +218,19 @@ cargo run -p ripr -- check --root . --mode ready --format repo-exposure-md > tar
 Compare before and after:
 
 ```bash
-cargo xtask targeted-test-outcome \
+ripr outcome \
   --before target/ripr/workflow/before.repo-exposure.json \
   --after target/ripr/workflow/after.repo-exposure.json
 ```
 
-Read:
+Use JSON or file output when needed:
 
-```text
-target/ripr/reports/targeted-test-outcome.md
-target/ripr/reports/targeted-test-outcome.json
+```bash
+ripr outcome \
+  --before target/ripr/workflow/before.repo-exposure.json \
+  --after target/ripr/workflow/after.repo-exposure.json \
+  --format json \
+  --out target/ripr/workflow/targeted-test-outcome.json
 ```
 
 Interpretation:

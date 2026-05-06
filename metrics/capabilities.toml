@@ -557,8 +557,25 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "cli/public-outcome-command"
+next = "cli/public-calibration-import"
 metric = "pilot_packet_generated"
+
+[[capability]]
+id = "targeted_test_outcome"
+name = "Targeted-test outcome receipt"
+status = "alpha"
+spec = "RIPR-SPEC-0009"
+evidence = [
+  "crates/ripr/src/cli/commands.rs exposes ripr outcome",
+  "crates/ripr/src/output/outcome.rs compares before/after repo-exposure JSON by seam_id",
+  "ripr outcome prints Markdown by default and supports --format json plus --out",
+  "crates/ripr/tests/cli_smoke.rs outcome smoke tests"
+]
+fixtures = [
+  "fixtures/boundary_gap"
+]
+next = "cli/public-calibration-import"
+metric = "targeted_test_outcome_available"
 
 [[capability]]
 id = "lsp_seam_diagnostics"

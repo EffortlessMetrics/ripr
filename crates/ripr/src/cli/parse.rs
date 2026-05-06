@@ -75,6 +75,10 @@ mod tests {
             parse_args(args(&["ripr", "pilot", "--max-seams", "3"])),
             Ok(CliCommand::Pilot(args(&["--max-seams", "3"])))
         );
+        assert_eq!(
+            parse_args(args(&["ripr", "outcome", "--format", "json"])),
+            Ok(CliCommand::Outcome(args(&["--format", "json"])))
+        );
     }
 
     #[test]

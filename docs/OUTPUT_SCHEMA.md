@@ -757,12 +757,15 @@ outcome words.
 
 ## Targeted-Test Outcome Report
 
-`cargo xtask targeted-test-outcome --before <repo-exposure-json> --after <repo-exposure-json>`
-compares two repo exposure snapshots and writes:
+`ripr outcome --before <repo-exposure-json> --after <repo-exposure-json>`
+compares two repo exposure snapshots and prints Markdown by default. Use
+`--format json` for the machine-readable shape, or `--out <path>` to write the
+rendered receipt to disk.
 
 ```text
-target/ripr/reports/targeted-test-outcome.json
-target/ripr/reports/targeted-test-outcome.md
+ripr outcome --before before.json --after after.json
+ripr outcome --before before.json --after after.json --format json
+ripr outcome --before before.json --after after.json --out target/ripr/outcome/targeted-test-outcome.md
 ```
 
 The report is an advisory receipt for the targeted-test loop. It does not run
@@ -844,7 +847,7 @@ Field contract:
 - `new[]` / `removed[]` — seam identity and grip class for seam IDs present in
   only one input.
 
-The Markdown sibling prints the same summary and highlights moved, unchanged,
+The Markdown surface prints the same summary and highlights moved, unchanged,
 regressed, new, and removed seams for human review. Unchanged seams can still
 carry evidence-delta hints, such as a new observed value, so reviewers can see
 when a targeted test improved rendered evidence without changing the grip class.
@@ -1135,9 +1138,8 @@ Field contract:
 - `top_actionable_seams[].targeted_test_brief` — human-readable work order
   derived from the same fields as the agent seam packet. Placeholders are
   intentional; RIPR does not invent expected values.
-- `next` — advisory follow-up commands. `ripr outcome` is the planned public
-  before/after receipt command; until it lands, repo dogfooding uses
-  `cargo xtask targeted-test-outcome`.
+- `next` — advisory follow-up commands, including the public `ripr outcome`
+  before/after receipt command.
 
 The Markdown sibling prints the same summary, includes the top seam's targeted
 test brief, and remains advisory.

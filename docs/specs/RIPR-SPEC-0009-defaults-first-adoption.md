@@ -299,6 +299,11 @@ Current tests and reports that support the contract:
 - `crates/ripr/tests/cli_smoke.rs::pilot_writes_default_packet_outputs_for_boundary_gap_fixture`
 - `crates/ripr/tests/cli_smoke.rs::pilot_uses_repo_config_mode_without_explicit_flag`
 - `crates/ripr/tests/cli_smoke.rs::pilot_honors_explicit_mode_over_repo_config`
+- `crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_report_buckets_seam_movement`
+- `crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_json_and_markdown_are_structured`
+- `crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_from_repo_exposure_json_parses_static_evidence`
+- `crates/ripr/tests/cli_smoke.rs::outcome_prints_markdown_receipt_by_default`
+- `crates/ripr/tests/cli_smoke.rs::outcome_writes_json_receipt_when_requested`
 - `xtask/src/main.rs::tests::targeted_test_outcome_report_buckets_seam_movement`
 - `xtask/src/main.rs::tests::targeted_test_outcome_json_and_markdown_are_structured`
 - `xtask/src/main.rs::tests::mutation_calibration_summarizes_static_runtime_agreement`
@@ -308,7 +313,6 @@ Current tests and reports that support the contract:
 
 Planned tests:
 
-- `ripr outcome` matches targeted-test outcome buckets;
 - `ripr calibrate cargo-mutants` matches mutation-calibration agreement
   buckets;
 - generated GitHub Actions workflow is advisory by default.
@@ -319,22 +323,23 @@ Current implementation pieces:
 
 - `crates/ripr/src/config.rs` owns repo config defaults, validation, and
   precedence, plus the conservative generated `ripr init` config text.
-- `crates/ripr/src/cli/commands.rs` exposes `init`, `pilot`, `check`,
+- `crates/ripr/src/cli/commands.rs` exposes `init`, `pilot`, `outcome`, `check`,
   `explain`, `context`, `doctor`, and `lsp`.
 - `crates/ripr/src/app.rs` orchestrates config-aware analysis entry points.
 - `crates/ripr/src/output/agent_seam_packets.rs` renders targeted-test work
   orders.
 - `crates/ripr/src/output/pilot.rs` ranks actionable seams and renders the
   pilot summary files.
-- `xtask/src/main.rs` currently owns targeted-test outcome, mutation
-  calibration, LSP cockpit, SARIF policy, badge artifact, and report-index
-  automation.
+- `crates/ripr/src/output/outcome.rs` compares before/after repo-exposure
+  snapshots and renders the public targeted-test outcome receipt.
+- `xtask/src/main.rs` currently owns the repo-local targeted-test outcome
+  report writer plus mutation calibration, LSP cockpit, SARIF policy, badge
+  artifact, and report-index automation.
 - `docs/TARGETED_TEST_WORKFLOW.md`, `docs/CI.md`, `docs/CONFIGURATION.md`,
   and `docs/EDITOR_EXTENSION.md` document the current adoption path.
 
 Planned implementation pieces:
 
-- public `ripr outcome`;
 - public `ripr calibrate cargo-mutants`;
 - optional generated advisory GitHub Actions workflow.
 

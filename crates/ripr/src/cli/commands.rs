@@ -25,6 +25,20 @@ struct PilotOptions {
     max_seams: usize,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct OutcomeOptions {
+    before: PathBuf,
+    after: PathBuf,
+    format: OutcomeFormat,
+    out: Option<PathBuf>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum OutcomeFormat {
+    Markdown,
+    Json,
+}
+
 pub(super) fn init(args: &[String]) -> Result<(), String> {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         help::print_init_help();
@@ -222,6 +236,107 @@ fn pilot_artifacts(out_dir: &Path) -> output::pilot::PilotArtifacts {
         agent_seam_packets_json: out_dir.join("agent-seam-packets.json"),
         pilot_summary_json: out_dir.join("pilot-summary.json"),
         pilot_summary_md: out_dir.join("pilot-summary.md"),
+    }
+}
+
+pub(super) fn outcome(args: &[String]) -> Result<(), String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        help::print_outcome_help();
+        return Ok(());
+    }
+
+    let options = parse_outcome_options(args)?;
+    let before_json = std::fs::read_to_string(&options.before).map_err(|err| {
+        format!(
+            "read {} failed: {err}",
+            output::outcome::display_path(&options.before)
+        )
+    })?;
+    let after_json = std::fs::read_to_string(&options.after).map_err(|err| {
+        format!(
+            "read {} failed: {err}",
+            output::outcome::display_path(&options.after)
+        )
+    })?;
+    let report = output::outcome::targeted_test_outcome_report_from_json(
+        &before_json,
+        &after_json,
+        output::outcome::display_path(&options.before),
+        output::outcome::display_path(&options.after),
+    )?;
+    let rendered = match options.format {
+        OutcomeFormat::Markdown => output::outcome::render_targeted_test_outcome_md(&report),
+        OutcomeFormat::Json => output::outcome::render_targeted_test_outcome_json(&report)?,
+    };
+
+    match options.out {
+        Some(path) => {
+            if let Some(parent) = path
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+            {
+                std::fs::create_dir_all(parent)
+                    .map_err(|err| format!("create {} failed: {err}", parent.display()))?;
+            }
+            std::fs::write(&path, rendered).map_err(|err| {
+                format!(
+                    "write {} failed: {err}",
+                    output::outcome::display_path(&path)
+                )
+            })
+        }
+        None => {
+            print!("{rendered}");
+            Ok(())
+        }
+    }
+}
+
+fn parse_outcome_options(args: &[String]) -> Result<OutcomeOptions, String> {
+    let mut before: Option<PathBuf> = None;
+    let mut after: Option<PathBuf> = None;
+    let mut format = OutcomeFormat::Markdown;
+    let mut out: Option<PathBuf> = None;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--before" => {
+                i += 1;
+                before = Some(PathBuf::from(expect_value(args, i, "--before")?));
+            }
+            "--after" => {
+                i += 1;
+                after = Some(PathBuf::from(expect_value(args, i, "--after")?));
+            }
+            "--format" => {
+                i += 1;
+                format = parse_outcome_format(expect_value(args, i, "--format")?)?;
+            }
+            "--out" => {
+                i += 1;
+                out = Some(PathBuf::from(expect_value(args, i, "--out")?));
+            }
+            other => return Err(format!("unknown outcome argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    let before = before.ok_or_else(|| "outcome requires --before <path>".to_string())?;
+    let after = after.ok_or_else(|| "outcome requires --after <path>".to_string())?;
+    Ok(OutcomeOptions {
+        before,
+        after,
+        format,
+        out,
+    })
+}
+
+fn parse_outcome_format(value: &str) -> Result<OutcomeFormat, String> {
+    match value {
+        "md" | "markdown" | "text" => Ok(OutcomeFormat::Markdown),
+        "json" => Ok(OutcomeFormat::Json),
+        _ => Err(format!("unknown outcome format {value:?}")),
     }
 }
 
@@ -506,6 +621,17 @@ mod tests {
         values.iter().map(|value| value.to_string()).collect()
     }
 
+    fn unique_command_test_dir(label: &str) -> PathBuf {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!(
+            "ripr-command-{label}-{}-{stamp}",
+            std::process::id()
+        ))
+    }
+
     #[test]
     fn check_requires_values_for_value_flags() {
         assert_eq!(
@@ -591,6 +717,120 @@ mod tests {
                 max_seams: 3,
             })
         );
+    }
+
+    #[test]
+    fn outcome_parses_required_paths_format_and_out() {
+        assert_eq!(
+            parse_outcome_options(&args(&[
+                "--before",
+                "before.json",
+                "--after",
+                "after.json",
+                "--format",
+                "json",
+                "--out",
+                "target/ripr/outcome/targeted-test-outcome.json",
+            ])),
+            Ok(OutcomeOptions {
+                before: PathBuf::from("before.json"),
+                after: PathBuf::from("after.json"),
+                format: OutcomeFormat::Json,
+                out: Some(PathBuf::from(
+                    "target/ripr/outcome/targeted-test-outcome.json"
+                )),
+            })
+        );
+    }
+
+    #[test]
+    fn outcome_defaults_to_markdown_stdout_shape() {
+        assert_eq!(
+            parse_outcome_options(&args(
+                &["--before", "before.json", "--after", "after.json",]
+            )),
+            Ok(OutcomeOptions {
+                before: PathBuf::from("before.json"),
+                after: PathBuf::from("after.json"),
+                format: OutcomeFormat::Markdown,
+                out: None,
+            })
+        );
+    }
+
+    #[test]
+    fn outcome_requires_before_and_after() {
+        assert_eq!(
+            parse_outcome_options(&args(&["--after", "after.json"])),
+            Err("outcome requires --before <path>".to_string())
+        );
+        assert_eq!(
+            parse_outcome_options(&args(&["--before", "before.json"])),
+            Err("outcome requires --after <path>".to_string())
+        );
+    }
+
+    #[test]
+    fn outcome_help_returns_ok() {
+        assert_eq!(outcome(&args(&["--help"])), Ok(()));
+    }
+
+    #[test]
+    fn outcome_command_writes_json_file() -> Result<(), String> {
+        let dir = unique_command_test_dir("outcome");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create temp dir: {err}"))?;
+        let before = dir.join("before.json");
+        let after = dir.join("after.json");
+        let out = dir.join("nested/targeted-test-outcome.json");
+        std::fs::write(&before, outcome_before_json())
+            .map_err(|err| format!("write before snapshot: {err}"))?;
+        std::fs::write(&after, outcome_after_json())
+            .map_err(|err| format!("write after snapshot: {err}"))?;
+
+        outcome(&args(&[
+            "--before",
+            &before.display().to_string(),
+            "--after",
+            &after.display().to_string(),
+            "--format",
+            "json",
+            "--out",
+            &out.display().to_string(),
+        ]))?;
+
+        let rendered =
+            std::fs::read_to_string(&out).map_err(|err| format!("read outcome output: {err}"))?;
+        assert!(rendered.contains(r#""schema_version": "0.1""#));
+        assert!(rendered.contains(r#""moved": 1"#));
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn outcome_command_reports_read_failures() -> Result<(), String> {
+        let dir = unique_command_test_dir("outcome-read");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create temp dir: {err}"))?;
+        let before = dir.join("before.json");
+        std::fs::write(&before, outcome_before_json())
+            .map_err(|err| format!("write before snapshot: {err}"))?;
+
+        let missing_before = outcome(&args(&[
+            "--before",
+            &dir.join("missing-before.json").display().to_string(),
+            "--after",
+            &dir.join("missing-after.json").display().to_string(),
+        ]));
+        assert!(matches!(missing_before, Err(message) if message.contains("read")));
+
+        let missing_after = outcome(&args(&[
+            "--before",
+            &before.display().to_string(),
+            "--after",
+            &dir.join("missing-after.json").display().to_string(),
+        ]));
+        assert!(matches!(missing_after, Err(message) if message.contains("read")));
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
     }
 
     #[test]
@@ -765,5 +1005,49 @@ mod tests {
     #[test]
     fn lsp_version_returns_ok_with_short_flag() {
         assert_eq!(lsp(&args(&["-V"])), Ok(()));
+    }
+
+    fn outcome_before_json() -> &'static str {
+        r#"{
+  "schema_version": "0.2",
+  "scope": "repo",
+  "seams": [
+    {
+      "seam_id": "seam-a",
+      "kind": "predicate_boundary",
+      "file": "src/pricing.rs",
+      "line": 42,
+      "grip_class": "weakly_gripped",
+      "related_tests": [
+        {"oracle_kind": "exact_value", "oracle_strength": "weak"}
+      ],
+      "observed_values": ["50"],
+      "missing_discriminators": [
+        {"value": "threshold equality", "reason": "not observed"}
+      ]
+    }
+  ]
+}"#
+    }
+
+    fn outcome_after_json() -> &'static str {
+        r#"{
+  "schema_version": "0.2",
+  "scope": "repo",
+  "seams": [
+    {
+      "seam_id": "seam-a",
+      "kind": "predicate_boundary",
+      "file": "src/pricing.rs",
+      "line": 42,
+      "grip_class": "strongly_gripped",
+      "related_tests": [
+        {"oracle_kind": "exact_value", "oracle_strength": "strong"}
+      ],
+      "observed_values": ["50", "100"],
+      "missing_discriminators": []
+    }
+  ]
+}"#
     }
 }

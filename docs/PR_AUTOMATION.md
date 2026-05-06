@@ -121,6 +121,11 @@ are present, and which VS Code commands are covered by e2e tests.
 unchanged, new, removed, and regressed seams as an advisory targeted-test
 receipt. It does not run mutation testing and does not block CI.
 
+The installed CLI exposes the same receipt loop as `ripr outcome --before
+<path> --after <path>` so users do not need this repository checked out. The
+xtask command remains the repo-local report writer for automation packets under
+`target/ripr/reports/`.
+
 `critic` writes an advisory adversarial review packet to
 `target/ripr/reports/critic.md` and `target/ripr/reports/critic.json`. It reads
 the current diff plus generated reports and receipts, then flags likely missing
