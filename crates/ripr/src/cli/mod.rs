@@ -1,24 +1,26 @@
+mod command;
 mod commands;
 mod help;
 mod parse;
 
+use command::CliCommand;
+
 pub fn run(args: Vec<String>) -> Result<(), String> {
-    match args.get(1).map(|s| s.as_str()) {
-        None | Some("--help" | "-h") => {
+    match CliCommand::from_arg(args.get(1).map(|s| s.as_str()))? {
+        CliCommand::Help => {
             help::print_help();
             Ok(())
         }
-        Some("--version" | "-V") => {
+        CliCommand::Version => {
             println!("ripr {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
-        Some("init") => commands::init(&args[2..]),
-        Some("check") => commands::check(&args[2..]),
-        Some("explain") => commands::explain(&args[2..]),
-        Some("context") => commands::context(&args[2..]),
-        Some("doctor") => commands::doctor(&args[2..]),
-        Some("lsp") => commands::lsp(&args[2..]),
-        Some(command) => Err(format!("unknown command {command:?}. Run `ripr --help`.")),
+        CliCommand::Init => commands::init(&args[2..]),
+        CliCommand::Check => commands::check(&args[2..]),
+        CliCommand::Explain => commands::explain(&args[2..]),
+        CliCommand::Context => commands::context(&args[2..]),
+        CliCommand::Doctor => commands::doctor(&args[2..]),
+        CliCommand::Lsp => commands::lsp(&args[2..]),
     }
 }
 
