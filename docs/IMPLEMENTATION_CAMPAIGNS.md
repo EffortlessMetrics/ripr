@@ -726,8 +726,8 @@ Work items:
 | `lsp/context-packet-usage` | done | PR 31: Updated LSP context packet lookup to use `ContextPacket` while preserving packet output. |
 | `api/doc-hidden-internals` | done | PR 32: Marked compatibility module exports `#[doc(hidden)]` while preserving public API paths. |
 | `api/private-internals` | blocked | PR 33: Make internal modules private (breaking, optional) |
-| `xtask/command-dispatch` | ready | PR 34: Split xtask into command and run modules |
-| `xtask/policy-modules` | pending | PR 35: Organize policy checks into `xtask/src/policy/` |
+| `xtask/command-dispatch` | done | PR 34: Split xtask into command and run modules |
+| `xtask/policy-modules` | ready | PR 35: Organize policy checks into `xtask/src/policy/` |
 | `xtask/report-modules` | pending | PR 36: Organize reports into `xtask/src/reports/` |
 | `campaign/modularization-closeout` | pending | Final review and closure of Campaign 6 |
 

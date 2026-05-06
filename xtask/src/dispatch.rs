@@ -1,0 +1,73 @@
+use crate::command::{XtaskCommand, print_help, unknown_command_message};
+
+pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
+    match command {
+        XtaskCommand::Shape => super::shape(),
+        XtaskCommand::FixPr => super::fix_pr(),
+        XtaskCommand::InstallHooks(args) => super::install_hooks(&args),
+        XtaskCommand::PrSummary => super::pr_summary(),
+        XtaskCommand::Precommit => super::precommit(),
+        XtaskCommand::CheckPr => super::check_pr(),
+        XtaskCommand::Fixtures(name) => super::fixtures(name.as_ref()),
+        XtaskCommand::Goldens(args) => super::goldens(&args),
+        XtaskCommand::Metrics => super::metrics_report(),
+        XtaskCommand::TestOracleReport => super::test_oracle_report(),
+        XtaskCommand::TestEfficiencyReport => super::test_efficiency_report(),
+        XtaskCommand::BadgeArtifacts => super::badge_artifacts(),
+        XtaskCommand::RepoBadgeArtifacts => super::repo_badge_artifacts(),
+        XtaskCommand::RepoSeamInventory => super::repo_seam_inventory(),
+        XtaskCommand::RepoExposureReport => super::repo_exposure_report(),
+        XtaskCommand::AgentSeamPackets(root) => super::agent_seam_packets_report(root.as_ref()),
+        XtaskCommand::LspCockpitReport => super::lsp_cockpit_report(),
+        XtaskCommand::TargetedTestOutcome(args) => super::targeted_test_outcome(&args),
+        XtaskCommand::MutationCalibration(args) => super::mutation_calibration(&args),
+        XtaskCommand::SarifPolicy(args) => super::sarif_policy(&args),
+        XtaskCommand::UpdateBadgeEndpoints => super::update_badge_endpoints(),
+        XtaskCommand::CheckBadgeEndpoints => super::check_badge_endpoints(),
+        XtaskCommand::Dogfood => super::dogfood(),
+        XtaskCommand::Critic => super::critic(),
+        XtaskCommand::Goals(args) => super::goals(&args),
+        XtaskCommand::Reports(args) => super::reports(&args),
+        XtaskCommand::Receipts(args) => super::receipts(&args),
+        XtaskCommand::GoldenDrift => super::golden_drift(),
+        XtaskCommand::CiFast => super::ci_fast(),
+        XtaskCommand::CiFull => super::ci_full(),
+        XtaskCommand::CheckStaticLanguage => super::check_static_language(),
+        XtaskCommand::CheckNoPanicFamily => super::check_no_panic_family(),
+        XtaskCommand::CheckAllowAttributes => super::check_allow_attributes(),
+        XtaskCommand::CheckLocalContext => super::check_local_context(),
+        XtaskCommand::CheckFilePolicy => super::check_file_policy(),
+        XtaskCommand::CheckExecutableFiles => super::check_executable_files(),
+        XtaskCommand::CheckWorkflows => super::check_workflows(),
+        XtaskCommand::CheckDroidReviewConfig => super::check_droid_review_config(),
+        XtaskCommand::CheckSpecFormat => super::check_spec_format(),
+        XtaskCommand::CheckFixtureContracts => super::check_fixture_contracts(),
+        XtaskCommand::CheckTraceability => super::check_traceability(),
+        XtaskCommand::CheckCapabilities => super::check_capabilities(),
+        XtaskCommand::CheckWorkspaceShape => super::check_workspace_shape(),
+        XtaskCommand::CheckArchitecture => super::check_architecture(),
+        XtaskCommand::CheckPublicApi => super::check_public_api(),
+        XtaskCommand::CheckOutputContracts => super::check_output_contracts(),
+        XtaskCommand::CheckDocIndex => super::check_doc_index(),
+        XtaskCommand::CheckReadmeState => super::check_readme_state(),
+        XtaskCommand::MarkdownLinks => super::markdown_links(),
+        XtaskCommand::CheckCampaign => super::check_campaign(),
+        XtaskCommand::CheckPrShape => super::check_pr_shape(),
+        XtaskCommand::CheckGenerated => super::check_generated(),
+        XtaskCommand::CheckDependencies => super::check_dependencies(),
+        XtaskCommand::CheckSupplyChain => super::check_supply_chain(),
+        XtaskCommand::CheckProcessPolicy => super::check_process_policy(),
+        XtaskCommand::CheckNetworkPolicy => super::check_network_policy(),
+        XtaskCommand::Package => {
+            super::run("cargo", &["package", "-p", "ripr", "--list"]).map(|_| ())
+        }
+        XtaskCommand::PublishDryRun => {
+            super::run("cargo", &["publish", "-p", "ripr", "--dry-run"]).map(|_| ())
+        }
+        XtaskCommand::Help => {
+            print_help();
+            Ok(())
+        }
+        XtaskCommand::Unknown(command) => Err(unknown_command_message(&command)),
+    }
+}

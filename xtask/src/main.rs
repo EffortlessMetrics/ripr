@@ -3,10 +3,18 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitStatus};
 use std::time::Instant;
 
 use serde_json::Value;
+
+mod command;
+mod dispatch;
+mod run;
+
+#[cfg(test)]
+use command::unknown_command_message;
+use command::{XtaskCommand, known_command_root, known_commands};
+use run::{capture_output, run, run_output, run_output_optional, run_output_owned};
 
 #[derive(Debug)]
 struct GlobAllow {
@@ -509,76 +517,8 @@ struct LocalContextAllow {
 }
 
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    let result = match args.get(1).map(|s| s.as_str()) {
-        Some("shape") => shape(),
-        Some("fix-pr") => fix_pr(),
-        Some("install-hooks") => install_hooks(&args[2..]),
-        Some("pr-summary") => pr_summary(),
-        Some("precommit") => precommit(),
-        Some("check-pr") => check_pr(),
-        Some("fixtures") => fixtures(args.get(2)),
-        Some("goldens") => goldens(&args[2..]),
-        Some("metrics") => metrics_report(),
-        Some("test-oracle-report") | Some("check-test-oracles") => test_oracle_report(),
-        Some("test-efficiency-report") => test_efficiency_report(),
-        Some("badge-artifacts") => badge_artifacts(),
-        Some("repo-badge-artifacts") => repo_badge_artifacts(),
-        Some("repo-seam-inventory") => repo_seam_inventory(),
-        Some("repo-exposure-report") => repo_exposure_report(),
-        Some("agent-seam-packets") => agent_seam_packets_report(args.get(2)),
-        Some("lsp-cockpit-report") => lsp_cockpit_report(),
-        Some("targeted-test-outcome") => targeted_test_outcome(&args[2..]),
-        Some("mutation-calibration") => mutation_calibration(&args[2..]),
-        Some("sarif-policy") => sarif_policy(&args[2..]),
-        Some("update-badge-endpoints") => update_badge_endpoints(),
-        Some("check-badge-endpoints") => check_badge_endpoints(),
-        Some("dogfood") => dogfood(),
-        Some("critic") => critic(),
-        Some("goals") => goals(&args[2..]),
-        Some("reports") => reports(&args[2..]),
-        Some("receipts") => receipts(&args[2..]),
-        Some("golden-drift") => golden_drift(),
-        Some("ci-fast") => ci_fast(),
-        Some("ci-full") => ci_full(),
-        Some("check-static-language") => check_static_language(),
-        Some("check-no-panic-family") => check_no_panic_family(),
-        Some("check-allow-attributes") => check_allow_attributes(),
-        Some("check-local-context") => check_local_context(),
-        Some("check-file-policy") => check_file_policy(),
-        Some("check-executable-files") => check_executable_files(),
-        Some("check-workflows") => check_workflows(),
-        Some("check-droid-review-config") => check_droid_review_config(),
-        Some("check-spec-format") => check_spec_format(),
-        Some("check-fixture-contracts") => check_fixture_contracts(),
-        Some("check-traceability") | Some("check-spec-ids") | Some("check-behavior-manifest") => {
-            check_traceability()
-        }
-        Some("check-capabilities") => check_capabilities(),
-        Some("check-workspace-shape") => check_workspace_shape(),
-        Some("check-architecture") => check_architecture(),
-        Some("check-public-api") => check_public_api(),
-        Some("check-output-contracts") => check_output_contracts(),
-        Some("check-doc-index") => check_doc_index(),
-        Some("check-readme-state") => check_readme_state(),
-        Some("markdown-links") => markdown_links(),
-        Some("check-campaign") | Some("check-goals") => check_campaign(),
-        Some("check-pr-shape") => check_pr_shape(),
-        Some("check-generated") => check_generated(),
-        Some("check-dependencies") => check_dependencies(),
-        Some("check-supply-chain") => check_supply_chain(),
-        Some("check-process-policy") => check_process_policy(),
-        Some("check-network-policy") => check_network_policy(),
-        Some("package") => run("cargo", &["package", "-p", "ripr", "--list"]).map(|_| ()),
-        Some("publish-dry-run") => {
-            run("cargo", &["publish", "-p", "ripr", "--dry-run"]).map(|_| ())
-        }
-        Some("help") | None => {
-            print_help();
-            Ok(())
-        }
-        Some(other) => Err(unknown_command_message(other)),
-    };
+    let command = XtaskCommand::parse(std::env::args().skip(1));
+    let result = dispatch::execute(command);
     if let Err(err) = result {
         eprintln!("xtask: {err}");
         std::process::exit(1);
@@ -716,19 +656,6 @@ fn run_ci_full_evidence_gates(gates: &[CiFullEvidenceGate]) -> Result<(), String
     Ok(())
 }
 
-fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
-    eprintln!("$ {} {}", program, args.join(" "));
-    let status = Command::new(program)
-        .args(args)
-        .status()
-        .map_err(|err| format!("failed to run {program}: {err}"))?;
-    if status.success() {
-        Ok(status)
-    } else {
-        Err(format!("{program} {} failed with {status}", args.join(" ")))
-    }
-}
-
 const RIPR_MANAGED_PRE_COMMIT_MARKER: &str = "# ripr-managed pre-commit hook";
 
 fn install_hooks(args: &[String]) -> Result<(), String> {
@@ -795,131 +722,6 @@ fn make_hook_executable(path: &Path) -> Result<(), String> {
 #[cfg(not(unix))]
 fn make_hook_executable(_path: &Path) -> Result<(), String> {
     Ok(())
-}
-
-fn print_help() {
-    let commands = known_commands().join("\n  ");
-    println!("xtask commands:\n  {commands}");
-}
-
-fn known_commands() -> Vec<&'static str> {
-    vec![
-        "shape",
-        "fix-pr",
-        "install-hooks",
-        "pr-summary",
-        "precommit",
-        "check-pr",
-        "fixtures [name]",
-        "goldens check",
-        "goldens bless <name> --reason <reason>",
-        "golden-drift",
-        "metrics",
-        "test-oracle-report",
-        "check-test-oracles",
-        "test-efficiency-report",
-        "badge-artifacts",
-        "repo-badge-artifacts",
-        "repo-seam-inventory",
-        "repo-exposure-report",
-        "agent-seam-packets [root]",
-        "lsp-cockpit-report",
-        "targeted-test-outcome --before <path> --after <path>",
-        "mutation-calibration [root] --mutants-json <path>",
-        "sarif-policy --current <path> [--baseline <path>]",
-        "update-badge-endpoints",
-        "check-badge-endpoints",
-        "dogfood",
-        "critic",
-        "goals status|next|report",
-        "reports index",
-        "receipts [check]",
-        "ci-fast",
-        "ci-full",
-        "check-static-language",
-        "check-no-panic-family",
-        "check-allow-attributes",
-        "check-local-context",
-        "check-file-policy",
-        "check-executable-files",
-        "check-workflows",
-        "check-droid-review-config",
-        "check-spec-format",
-        "check-fixture-contracts",
-        "check-traceability",
-        "check-spec-ids",
-        "check-behavior-manifest",
-        "check-capabilities",
-        "check-workspace-shape",
-        "check-architecture",
-        "check-public-api",
-        "check-output-contracts",
-        "check-doc-index",
-        "check-readme-state",
-        "markdown-links",
-        "check-campaign",
-        "check-goals",
-        "check-pr-shape",
-        "check-generated",
-        "check-dependencies",
-        "check-supply-chain",
-        "check-process-policy",
-        "check-network-policy",
-        "package",
-        "publish-dry-run",
-    ]
-}
-
-fn unknown_command_message(command: &str) -> String {
-    let normalized = command.trim();
-    let suggestion = known_commands()
-        .into_iter()
-        .filter_map(|candidate| {
-            let root = known_command_root(candidate);
-            let distance = levenshtein(normalized, root);
-            (distance <= 3).then_some((root, distance))
-        })
-        .min_by_key(|(_, distance)| *distance)
-        .map(|(root, _)| root);
-    match suggestion {
-        Some(suggestion) => format!(
-            "unknown xtask command `{normalized}`.\nDid you mean `{suggestion}`?\nRun `cargo xtask help` for the full list."
-        ),
-        None => format!(
-            "unknown xtask command `{normalized}`.\nRun `cargo xtask help` for the full list."
-        ),
-    }
-}
-
-fn known_command_root(command: &str) -> &str {
-    command
-        .split_once(' ')
-        .map_or(command, |(prefix, _)| prefix)
-}
-
-fn levenshtein(lhs: &str, rhs: &str) -> usize {
-    if lhs.is_empty() {
-        return rhs.chars().count();
-    }
-    if rhs.is_empty() {
-        return lhs.chars().count();
-    }
-
-    let rhs_len = rhs.chars().count();
-    let mut previous_row: Vec<usize> = (0..=rhs_len).collect();
-
-    for (left_index, left_char) in lhs.chars().enumerate() {
-        let mut current_row = vec![left_index + 1];
-        for (right_index, right_char) in rhs.chars().enumerate() {
-            let insertion = current_row[right_index] + 1;
-            let deletion = previous_row[right_index + 1] + 1;
-            let substitution = previous_row[right_index] + usize::from(left_char != right_char);
-            current_row.push(insertion.min(deletion).min(substitution));
-        }
-        previous_row = current_row;
-    }
-
-    previous_row[rhs_len]
 }
 
 fn shape() -> Result<(), String> {
@@ -10642,18 +10444,15 @@ fn check_supply_chain() -> Result<(), String> {
 
     let args = ["deny", "check", "advisories", "licenses", "bans", "sources"];
     eprintln!("$ cargo {}", args.join(" "));
-    let output = Command::new("cargo")
-        .args(args)
-        .output()
-        .map_err(|err| format!("failed to run cargo deny: {err}"))?;
+    let output = capture_output("cargo", &args, "cargo deny")?;
 
     let status = if output.status.success() {
         "pass"
     } else {
         "fail"
     };
-    let stdout = redact_current_dir(&String::from_utf8_lossy(&output.stdout));
-    let stderr = redact_current_dir(&String::from_utf8_lossy(&output.stderr));
+    let stdout = redact_current_dir(&output.stdout);
+    let stderr = redact_current_dir(&output.stderr);
     let mut body = format!(
         "# ripr supply-chain report\n\nStatus: {status}\n\nCommand:\n\n```bash\ncargo deny check advisories licenses bans sources\n```\n\n"
     );
@@ -13572,52 +13371,6 @@ fn workflow_run_value(trimmed_line: &str) -> Option<&str> {
         .or_else(|| trimmed_line.strip_prefix("- run:"))
 }
 
-fn run_output(program: &str, args: &[&str]) -> Result<String, String> {
-    let output = Command::new(program)
-        .args(args)
-        .output()
-        .map_err(|err| format!("failed to run {program}: {err}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "{program} {} failed with {}",
-            args.join(" "),
-            output.status
-        ));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
-}
-
-fn run_output_owned(program: &str, args: &[String]) -> Result<String, String> {
-    let output = Command::new(program)
-        .args(args)
-        .output()
-        .map_err(|err| format!("failed to run {program}: {err}"))?;
-    if !output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!(
-            "{program} {} failed with {}\nstdout:\n{}\nstderr:\n{}",
-            args.join(" "),
-            output.status,
-            stdout.trim(),
-            stderr.trim()
-        ));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
-}
-
-fn run_output_optional(program: &str, args: &[&str]) -> Result<String, String> {
-    let output = Command::new(program)
-        .args(args)
-        .output()
-        .map_err(|err| format!("failed to run {program}: {err}"))?;
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
-    } else {
-        Ok(String::new())
-    }
-}
-
 fn forbidden_static_terms() -> Vec<String> {
     ["killed", "survived", "untested", "proven", "adequate"]
         .iter()
@@ -14798,6 +14551,8 @@ fn check_droid_review_config() -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    use super::XtaskCommand;
+    use super::run::{capture_output, run, run_output, run_output_optional, run_output_owned};
     use super::{
         BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, CheckReport,
         CheckStatus, CheckViolation, CiFullEvidenceGate, DogfoodRun, FixKind, LocalContextAllow,
@@ -20499,6 +20254,108 @@ settings: |
         let message = unknown_command_message("totally-unknown-command");
         assert!(!message.contains("Did you mean"));
         assert!(message.contains("cargo xtask help"));
+    }
+
+    #[test]
+    fn xtask_command_parse_preserves_subcommand_arguments() {
+        assert_eq!(
+            XtaskCommand::parse([
+                "goldens".to_string(),
+                "bless".to_string(),
+                "boundary_gap".to_string(),
+            ]),
+            XtaskCommand::Goldens(vec!["bless".to_string(), "boundary_gap".to_string()])
+        );
+        assert_eq!(
+            XtaskCommand::parse(["fixtures".to_string(), "boundary_gap".to_string()]),
+            XtaskCommand::Fixtures(Some("boundary_gap".to_string()))
+        );
+    }
+
+    #[test]
+    fn xtask_command_parse_preserves_compatibility_aliases() {
+        assert_eq!(
+            XtaskCommand::parse(["check-test-oracles".to_string()]),
+            XtaskCommand::TestOracleReport
+        );
+        assert_eq!(
+            XtaskCommand::parse(["check-spec-ids".to_string()]),
+            XtaskCommand::CheckTraceability
+        );
+        assert_eq!(
+            XtaskCommand::parse(["check-goals".to_string()]),
+            XtaskCommand::CheckCampaign
+        );
+        assert_eq!(
+            XtaskCommand::parse(std::iter::empty::<String>()),
+            XtaskCommand::Help
+        );
+    }
+
+    #[test]
+    fn xtask_run_helpers_report_success_failure_and_optional_output() -> Result<(), String> {
+        let version = run_output("cargo", &["--version"])?;
+        if !version.contains("cargo") {
+            return Err(format!("expected cargo version output, got {version:?}"));
+        }
+
+        let owned_version = run_output_owned("cargo", &["--version".to_string()])?;
+        if !owned_version.contains("cargo") {
+            return Err(format!(
+                "expected owned cargo version output, got {owned_version:?}"
+            ));
+        }
+
+        let status = run("cargo", &["--version"])?;
+        if !status.success() {
+            return Err(format!("expected cargo --version to succeed, got {status}"));
+        }
+
+        let captured = capture_output("cargo", &["--version"], "cargo version")?;
+        if !captured.status.success() || !captured.stdout.contains("cargo") {
+            return Err(format!(
+                "expected captured cargo version output, got status={} stdout={:?}",
+                captured.status, captured.stdout
+            ));
+        }
+
+        let failed_capture = capture_output(
+            "cargo",
+            &["--definitely-not-a-real-cargo-flag"],
+            "cargo invalid flag",
+        )?;
+        if failed_capture.status.success() {
+            return Err("expected invalid cargo flag to fail".to_string());
+        }
+
+        let optional = run_output_optional("cargo", &["--definitely-not-a-real-cargo-flag"])?;
+        if !optional.is_empty() {
+            return Err(format!(
+                "expected optional failure to return empty output, got {optional:?}"
+            ));
+        }
+
+        let failure = run_output("cargo", &["--definitely-not-a-real-cargo-flag"]).is_err();
+        if !failure {
+            return Err("expected run_output to report non-zero exit".to_string());
+        }
+
+        let owned_failure =
+            run_output_owned("cargo", &["--definitely-not-a-real-cargo-flag".to_string()]).is_err();
+        if !owned_failure {
+            return Err("expected run_output_owned to report non-zero exit".to_string());
+        }
+
+        let missing_program = capture_output(
+            "definitely-missing-ripr-test-binary",
+            &[],
+            "missing test binary",
+        );
+        if missing_program.is_ok() {
+            return Err("expected missing executable to report spawn error".to_string());
+        }
+
+        Ok(())
     }
 
     #[test]
