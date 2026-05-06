@@ -35,6 +35,8 @@ are scoped or reviewed.
   focused modules while preserving existing `cargo xtask` command behavior.
 - Routed xtask policy checks through focused `xtask/src/policy/` checker modules
   while preserving existing `cargo xtask check-*` policy command behavior.
+- Routed xtask report commands through focused `xtask/src/reports/` modules
+  while preserving existing report command behavior.
 - Aligned built-in defaults with the `ripr init` profile for LSP seam
   diagnostics: missing config now uses the same bounded saved-workspace default
   as the generated policy file, while explicit LSP options or `ripr.toml` can

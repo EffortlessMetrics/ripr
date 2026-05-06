@@ -681,7 +681,7 @@ commands = [
 
 [[work_item]]
 id = "xtask/report-modules"
-status = "ready"
+status = "done"
 branch = "xtask-report-modules"
 stackable = false
 requires_human_merge = true
@@ -699,12 +699,11 @@ commands = [
 
 [[work_item]]
 id = "campaign/modularization-closeout"
-status = "blocked"
+status = "ready"
 branch = "campaign-modularization-closeout"
 stackable = false
 requires_human_merge = true
 acceptance = "Campaign 6 modularization is reviewed, stale forks are closed or documented, and the manifest points at the next real lane"
-blocked_reason = "Wait until xtask/report-modules lands, then run final Campaign 6 closeout proof."
 commands = [
   "cargo xtask check-pr",
   "cargo xtask check-public-api",
