@@ -408,11 +408,30 @@ commands = [
 
 [[work_item]]
 id = "classify/activation-stage"
-status = "ready"
+status = "done"
 branch = "classify-activation-stage"
 stackable = false
 requires_human_merge = true
 acceptance = "activation evidence moves into analysis/classify/activation.rs after flow and propagation extraction; classification behavior stays stable with no LSP, output, API, or schema drift"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-public-api",
+  "cargo xtask check-architecture",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-no-panic-family",
+  "cargo xtask lsp-cockpit-report",
+  "cargo test --workspace"
+]
+
+[[work_item]]
+id = "classify/remaining-stages"
+status = "ready"
+branch = "classify-remaining-stages"
+stackable = false
+requires_human_merge = true
+acceptance = "infection, reveal, decision, confidence, missing-evidence, and stop-reason helpers move into focused classify modules after activation extraction; classification behavior stays stable with no LSP, output, API, or schema drift"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",

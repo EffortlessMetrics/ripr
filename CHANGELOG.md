@@ -197,6 +197,10 @@ are scoped or reviewed.
 - Moved local flow and propagation evidence into `analysis/classify/flow.rs`
   while preserving classification behavior. The next ready seam is activation
   evidence extraction.
+- Moved activation evidence, observed-value extraction, and missing
+  discriminator helpers into `analysis/classify/activation.rs` while preserving
+  classification behavior. The next ready seam is remaining classifier stage
+  extraction.
 - Added `cargo xtask targeted-test-outcome` as an advisory receipt for comparing
   before/after `repo-exposure-json` artifacts. The report writes
   `target/ripr/reports/targeted-test-outcome.{json,md}`, matches seams by

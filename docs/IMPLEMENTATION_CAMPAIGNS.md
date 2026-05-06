@@ -712,8 +712,8 @@ Work items:
 | `classify/related-tests` | done | PR 18: Moved related-test discovery into `analysis/classify/related_tests.rs` while preserving classification behavior. |
 | `classify/reach-stage` | done | PR 19: Moved reach evidence into `analysis/classify/reach.rs` while preserving classification behavior. |
 | `classify/flow-propagation` | done | PR 20: Moved local flow and propagation evidence into `analysis/classify/flow.rs` while preserving classification behavior. |
-| `classify/activation-stage` | ready | PR 21: Move activation stage |
-| `classify/remaining-stages` | pending | PR 22: Move infection, reveal, decision, confidence, missing, stop reasons |
+| `classify/activation-stage` | done | PR 21: Moved activation evidence into `analysis/classify/activation.rs` while preserving classification behavior. |
+| `classify/remaining-stages` | ready | PR 22: Move infection, reveal, decision, confidence, missing, stop reasons |
 | `app/usecase-split` | pending | PR 23: Split `app.rs` into use-case modules (check, explain, context) |
 | `output/format-extraction` | pending | PR 24: Move `OutputFormat` to `output/format.rs` |
 | `output/render-dispatch` | pending | PR 25: Move rendering logic to `output/render.rs` |
