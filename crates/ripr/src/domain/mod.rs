@@ -1,4 +1,5 @@
 mod classification;
+#[doc(hidden)]
 pub mod context_packet;
 mod evidence;
 mod probe;
