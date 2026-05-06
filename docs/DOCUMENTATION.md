@@ -28,6 +28,7 @@ Current how-to docs:
 - [Run Codex Goals](how-to/run-codex-goals.md)
 - [PR automation](PR_AUTOMATION.md)
 - [Dogfooding](DOGFOODING.md)
+- [Targeted test workflow](TARGETED_TEST_WORKFLOW.md)
 - [Agent workflows](AGENT_WORKFLOWS.md)
 - [Release](RELEASE.md)
 - [Publishing](PUBLISHING.md)

@@ -40,11 +40,11 @@ testing, which is a separate calibration step.
 1. Run ripr.
 2. Inspect the repo exposure report or editor diagnostic.
 3. Read the seam evidence hover.
-4. Copy the seam packet for the gap you want to close.
+4. Copy the targeted test brief or seam packet for the gap you want to close.
 5. Hand the packet to a coding agent (or to yourself).
 6. Agent writes the targeted test.
-7. Rerun ripr.
-8. Optionally confirm with cargo-mutants when the PR is ready.
+7. Rerun ripr and generate a targeted-test outcome receipt.
+8. Optionally align SARIF, badge, and cargo-mutants calibration artifacts.
 ```
 
 Each step has a concrete `ripr` command or LSP capability behind it.
@@ -62,6 +62,7 @@ Two entry points:
 - **Repo scope** (full inventory):
   ```bash
   cargo xtask repo-exposure-report
+  cargo xtask agent-seam-packets .
   ```
   Walks every production Rust file, classifies every behavioral seam,
   and writes `target/ripr/reports/repo-exposure.{json,md}` plus
@@ -71,6 +72,14 @@ The repo-scope report is multi-second on large workspaces today.
 `cache/repo-seam-facts-v1` will make it cheap enough to run on every
 keystroke; until then, treat it as a checkpoint pass, not a
 hot-path command.
+
+If you want the before/after receipt, preserve the before JSON before
+editing tests:
+
+```bash
+mkdir -p target/ripr/workflow
+cargo run -p ripr -- check --root . --mode ready --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json
+```
 
 ### 2. Inspect the report
 
@@ -129,8 +138,13 @@ Two ways to get the packet for a specific seam:
 - From the bulk artifact:
   `target/ripr/reports/agent-seam-packets.json` contains one packet
   per actionable seam. Find the one matching your `seam_id`.
-- From the editor: a future code action will copy the packet for the
-  seam under the cursor. Until then, copy from the bulk artifact.
+- From the editor: `Copy seam packet` copies the server-owned JSON packet,
+  while `Copy targeted test brief` copies a plain-language work order for
+  the seam under the cursor. `Copy suggested assertion` and `Open best
+  related test` appear when the analysis snapshot has those fields.
+
+For the end-to-end human path, see
+[Targeted test workflow](TARGETED_TEST_WORKFLOW.md).
 
 A packet looks like this:
 
@@ -206,28 +220,39 @@ The agent commits the new test in the repo's normal test layout. No
 auto-edits, no CodeLens; just a pull request that adds the
 test.
 
-### 7. Rerun `ripr`
+### 7. Rerun `ripr` and write the receipt
 
 After the test lands locally:
 
 ```bash
-cargo run -p ripr -- check --diff $(git diff main --name-only) --json | jq '.findings[]'
-cargo xtask repo-exposure-report
+cargo run -p ripr -- check --root . --mode ready --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json
+cargo xtask targeted-test-outcome \
+  --before target/ripr/workflow/before.repo-exposure.json \
+  --after target/ripr/workflow/after.repo-exposure.json
 ```
 
-The seam should now classify as `strongly_gripped`, or as one of the
-`*_unknown` classes if the new test reaches the seam through a helper
-that hides activation evidence. Both are progress over `weakly_gripped`.
+The receipt at `target/ripr/reports/targeted-test-outcome.md` shows whether
+the matched seam moved, stayed unchanged, regressed, appeared, or disappeared.
+The cleanest result is a matched seam moving toward `strongly_gripped` with
+evidence deltas such as a missing discriminator no longer reported or a
+stronger related oracle becoming visible.
 
-### 8. Optional: confirm with cargo-mutants
+### 8. Optional: align SARIF, badges, and cargo-mutants calibration
 
-`ripr` makes no mutation-runtime claim. If the PR is a high-stakes
-behavior change, run `cargo-mutants` against the affected files. If
-mutants survive in a region `ripr` classified as `strongly_gripped`,
-that is calibration data — file an issue or update
-`.ripr/intents.toml` if the test design is intentional. The
-`calibration/cargo-mutants-v1` work item formalizes this loop; until
-it lands, treat mutation runs as a separate confirmation step.
+`ripr` makes no mutation-runtime claim. Use SARIF, badge, and calibration
+reports only when those surfaces matter for the review:
+
+```bash
+cargo run -p ripr -- check --root . --mode ready --format repo-sarif > target/ripr/workflow/after.repo-sarif.json
+cargo xtask sarif-policy --current target/ripr/workflow/after.repo-sarif.json --mode advisory
+cargo xtask repo-badge-artifacts
+cargo xtask mutation-calibration . \
+  --mutants-json target/ripr/workflow/cargo-mutants.json \
+  --repo-exposure-json target/ripr/workflow/after.repo-exposure.json
+```
+
+Runtime mutation vocabulary stays in the calibration report. The normal
+targeted-test receipt remains a static evidence movement receipt.
 
 ## Examples by seam kind
 

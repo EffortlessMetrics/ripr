@@ -344,6 +344,7 @@ Start here:
 | --- | --- |
 | Understand the model | [Static exposure model](docs/STATIC_EXPOSURE_MODEL.md) |
 | Understand JSON/context output | [Output schema](docs/OUTPUT_SCHEMA.md) |
+| Turn seam evidence into a test | [Targeted test workflow](docs/TARGETED_TEST_WORKFLOW.md) |
 | See current product direction | [Roadmap](docs/ROADMAP.md) |
 | See active campaigns | [Implementation campaigns](docs/IMPLEMENTATION_CAMPAIGNS.md) |
 | See implementation checkpoints | [Implementation plan](docs/IMPLEMENTATION_PLAN.md) |

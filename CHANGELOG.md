@@ -141,6 +141,11 @@ are scoped or reviewed.
   `target/ripr/reports/targeted-test-outcome.{json,md}`, matches seams by
   `seam_id`, summarizes grip-class movement, and keeps runtime mutation
   confirmation as a separate calibration step.
+- Added `docs/TARGETED_TEST_WORKFLOW.md` to join repo exposure snapshots, LSP
+  seam actions, targeted-test receipts, SARIF policy, badge artifacts, and
+  mutation calibration into one operator loop for adding a focused test.
+- Updated `ripr check --help` to list the repo seam, repo exposure, repo SARIF,
+  and agent seam packet formats used by the targeted-test workflow.
 
 ## 0.3.0 - 2026-05-02
 
