@@ -30,6 +30,7 @@ Current how-to docs:
 - [Dogfooding](DOGFOODING.md)
 - [Targeted test workflow](TARGETED_TEST_WORKFLOW.md)
 - [Agent workflows](AGENT_WORKFLOWS.md)
+- [Droid rollout template](agent-context/droid-rollout-template.md)
 - [Release](RELEASE.md)
 - [Publishing](PUBLISHING.md)
 - [Editor extension](EDITOR_EXTENSION.md)
