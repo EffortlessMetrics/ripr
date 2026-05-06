@@ -33,6 +33,10 @@ are scoped or reviewed.
 - Added focused defaults-first guardrails that pin the generated `ripr.toml`
   against `ripr.toml.example` and test default repo discovery exclusions for
   generated, policy-only, fixture-only, and package-manager directories.
+- Added `cargo xtask operator-cockpit-report`, which writes
+  `target/ripr/reports/operator-cockpit.{json,md}` by joining repo exposure,
+  LSP cockpit, SARIF policy, badge status, targeted-test outcome, and optional
+  mutation calibration artifacts into one next-action report.
 
 ### Changed
 
@@ -57,6 +61,8 @@ are scoped or reviewed.
   moved the active manifest to Campaign 7 defaults-first operator adoption.
 - Completed the Campaign 7 `defaults/config-init` baseline and advanced the
   active manifest to `reports/operator-cockpit` as the next ready work item.
+- Completed the Campaign 7 `reports/operator-cockpit` surface and advanced the
+  active manifest to `ci/github-action-entrypoint` as the next ready work item.
 - Aligned built-in defaults with the `ripr init` profile for LSP seam
   diagnostics: missing config now uses the same bounded saved-workspace default
   as the generated policy file, while explicit LSP options or `ripr.toml` can

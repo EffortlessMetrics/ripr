@@ -53,8 +53,9 @@ badge count mapping. Campaign 6 then completed the internal module SRP refactor
 chain through #405 without changing output schemas, public API, SARIF, badge, or
 saved-workspace LSP behavior. The next adoption work is one clean path from
 install to weak seam, targeted-test brief, rerun, and receipt; Campaign 7 has
-now pinned the defaults/config baseline and is ready for the operator cockpit
-report.
+now pinned the defaults/config baseline and added the operator cockpit report.
+The next ready work is the GitHub Action entrypoint that uploads the cockpit and
+related advisory artifacts.
 
 ## Strategic Sequence
 

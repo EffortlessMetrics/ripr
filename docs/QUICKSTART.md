@@ -38,6 +38,12 @@ The terminal summary shows the top actionable seam, why RIPR ranked it, where
 the structured packet lives, and the command to run after a focused test is
 added.
 
+From the `ripr` source repository, `cargo xtask operator-cockpit` joins the
+repo-local report artifacts into `target/ripr/reports/operator-cockpit.md` and
+`.json` when you want one cockpit for repo exposure, LSP, SARIF, badges,
+receipts, and optional calibration. `cargo xtask operator-cockpit-report`
+remains an alias for existing automation.
+
 Useful flags:
 
 ```bash

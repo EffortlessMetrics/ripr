@@ -105,7 +105,15 @@ families under `target/ripr/reports/`:
 ```bash
 cargo xtask repo-exposure-report
 cargo xtask agent-seam-packets .
+cargo xtask operator-cockpit
 ```
+
+`operator-cockpit` reads the reports that already exist under
+`target/ripr/reports/` and writes `operator-cockpit.{json,md}`. It joins repo
+exposure, the LSP cockpit, SARIF policy, badges, targeted-test receipts, and
+optional calibration into one next-action view. Missing inputs remain visible
+with the command that should generate them. `operator-cockpit-report` remains
+an alias for existing repo automation.
 
 Archive the JSON snapshot you want to compare before adding the test. The
 targeted outcome report compares two files; it does not rerun analysis.
