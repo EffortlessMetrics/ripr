@@ -14632,20 +14632,8 @@ fn check_droid_action_refs(violations: &mut Vec<String>, path_label: &str, text:
     }
 }
 
-fn check_droid_common(violations: &mut Vec<String>, path_label: &str, text: &str) {
+fn check_droid_byok_baseline(violations: &mut Vec<String>, path_label: &str, text: &str) {
     let lines = active_yaml_lines(text);
-
-    if !has_active_line(&lines, "head.repo.full_name == github.repository") {
-        violations.push(format!(
-            "{path_label}: same-repo guard (head.repo.full_name == github.repository) is required"
-        ));
-    }
-
-    if !has_active_line(&lines, "review_model: \"custom:MiniMax-M2.7-0\"") {
-        violations.push(format!(
-            "{path_label}: review_model must be custom:MiniMax-M2.7-0"
-        ));
-    }
 
     if !has_active_line(&lines, "security_model: \"custom:MiniMax-M2.7-0\"") {
         violations.push(format!(
@@ -14687,11 +14675,102 @@ fn check_droid_common(violations: &mut Vec<String>, path_label: &str, text: &str
     check_droid_action_refs(violations, path_label, text);
 }
 
+fn check_droid_common(violations: &mut Vec<String>, path_label: &str, text: &str) {
+    let lines = active_yaml_lines(text);
+
+    if !has_active_line(&lines, "head.repo.full_name == github.repository") {
+        violations.push(format!(
+            "{path_label}: same-repo guard (head.repo.full_name == github.repository) is required"
+        ));
+    }
+
+    if !has_active_line(&lines, "review_model: \"custom:MiniMax-M2.7-0\"") {
+        violations.push(format!(
+            "{path_label}: review_model must be custom:MiniMax-M2.7-0"
+        ));
+    }
+
+    check_droid_byok_baseline(violations, path_label, text);
+}
+
+fn check_droid_security_scan(violations: &mut Vec<String>, path_label: &str, text: &str) {
+    let lines = active_yaml_lines(text);
+
+    if !has_active_line(&lines, "workflow_dispatch:") {
+        violations.push(format!(
+            "{path_label}: must support workflow_dispatch trigger"
+        ));
+    }
+
+    let has_schedule = has_active_line(&lines, "schedule:");
+    let has_cron = lines.iter().any(|l| l.contains("cron:"));
+    if !has_schedule || !has_cron {
+        violations.push(format!(
+            "{path_label}: must run on a weekly schedule (schedule + cron)"
+        ));
+    }
+
+    if !has_active_line(&lines, "droid-security-scan-${{ github.repository }}") {
+        violations.push(format!(
+            "{path_label}: concurrency group must be droid-security-scan-${{{{ github.repository }}}}"
+        ));
+    }
+
+    if !has_active_line(&lines, "cancel-in-progress: false") {
+        violations.push(format!(
+            "{path_label}: concurrency cancel-in-progress must be false"
+        ));
+    }
+
+    if !has_active_line(&lines, "runs-on: ubuntu-latest") {
+        violations.push(format!("{path_label}: must run on ubuntu-latest"));
+    }
+
+    if !has_active_line(&lines, "MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}") {
+        violations.push(format!(
+            "{path_label}: MINIMAX_API_KEY must be job-level env"
+        ));
+    }
+
+    if !has_active_line(&lines, "security_scan_schedule: true") {
+        violations.push(format!("{path_label}: security_scan_schedule must be true"));
+    }
+
+    if !has_active_line(&lines, "security_scan_days: 7") {
+        violations.push(format!("{path_label}: security_scan_days must be 7"));
+    }
+
+    if !has_active_line(&lines, "security_severity_threshold: medium") {
+        violations.push(format!(
+            "{path_label}: security_severity_threshold must be medium"
+        ));
+    }
+
+    if !has_active_line(&lines, "security_block_on_critical: true") {
+        violations.push(format!(
+            "{path_label}: security_block_on_critical must be true"
+        ));
+    }
+
+    if !has_active_line(&lines, "security_block_on_high: false") {
+        violations.push(format!(
+            "{path_label}: security_block_on_high must be false"
+        ));
+    }
+
+    if !has_active_line(&lines, "show_full_output: false") {
+        violations.push(format!("{path_label}: must keep show_full_output: false"));
+    }
+
+    check_droid_byok_baseline(violations, path_label, text);
+}
+
 fn check_droid_review_config() -> Result<(), String> {
     let mut violations = Vec::new();
 
     let droid_review_path = ".github/workflows/droid-review.yml";
     let droid_path = ".github/workflows/droid.yml";
+    let droid_security_scan_path = ".github/workflows/droid-security-scan.yml";
 
     if let Ok(text) = read_text_lossy(Path::new(droid_review_path)) {
         let lines = active_yaml_lines(&text);
@@ -14779,11 +14858,19 @@ fn check_droid_review_config() -> Result<(), String> {
         violations.push(format!("{droid_path}: file not found or unreadable"));
     }
 
+    if let Ok(text) = read_text_lossy(Path::new(droid_security_scan_path)) {
+        check_droid_security_scan(&mut violations, droid_security_scan_path, &text);
+    } else {
+        violations.push(format!(
+            "{droid_security_scan_path}: file not found or unreadable"
+        ));
+    }
+
     finish_policy_report(
         PolicyReportSpec {
             report_file: "droid-review-config.md",
             check: "check-droid-review-config",
-            why_it_matters: "Droid review workflows handle repository secrets and automated review output; invariant drift can expose secrets, break BYOK model selection, or degrade review quality.",
+            why_it_matters: "Droid review and security-scan workflows handle repository secrets and automated review output; invariant drift can expose secrets, break BYOK model selection, weaken security gating, or degrade review quality.",
             fix_kind: FixKind::PolicyExceptionRequired,
             recommended_fixes: &[
                 "Restore the required invariant in the workflow YAML.",
@@ -14852,8 +14939,8 @@ mod tests {
     use super::{PanicAllowEntryVersioned, PanicFamilySelector, SemanticPanicFinding};
     use super::{SarifMissingBaseline, build_sarif_policy_report};
     use super::{
-        active_yaml_lines, check_droid_action_refs, check_droid_common, forbids_active_line,
-        has_active_line, strip_yaml_comment,
+        active_yaml_lines, check_droid_action_refs, check_droid_byok_baseline, check_droid_common,
+        check_droid_security_scan, forbids_active_line, has_active_line, strip_yaml_comment,
     };
     use serde_json::Value;
     use std::collections::{BTreeMap, BTreeSet};
@@ -20438,6 +20525,255 @@ settings: |
         let yaml = "show_full_output: true\n";
         check_droid_common(&mut violations, "test.yml", yaml);
         assert!(violations.iter().any(|v| v.contains("show_full_output")));
+    }
+
+    fn valid_security_scan_yaml() -> &'static str {
+        "\
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: \"0 8 * * 1\"
+
+concurrency:
+  group: droid-security-scan-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  droid-security-scan:
+    runs-on: ubuntu-latest
+
+    env:
+      MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Configure MiniMax BYOK for Factory Droid
+        shell: bash
+        run: |
+          mkdir -p \"$HOME/.factory\"
+          cat > \"$HOME/.factory/settings.local.json\" <<'JSON'
+          {
+            \"apiKey\": \"${MINIMAX_API_KEY}\"
+          }
+          JSON
+
+      - name: Run Droid scheduled security scan
+        uses: Factory-AI/droid-action@e3d1f5e7861c36fe4a9c4dca3edec87b964b2bc4 # v5
+        with:
+          security_scan_schedule: true
+          security_scan_days: 7
+          security_model: \"custom:MiniMax-M2.7-0\"
+          security_severity_threshold: medium
+          security_block_on_critical: true
+          security_block_on_high: false
+          show_full_output: false
+"
+    }
+
+    #[test]
+    fn check_droid_security_scan_accepts_valid_workflow() {
+        let mut violations = Vec::new();
+        check_droid_security_scan(
+            &mut violations,
+            "droid-security-scan.yml",
+            valid_security_scan_yaml(),
+        );
+        assert!(
+            violations.is_empty(),
+            "expected no violations, got: {violations:?}"
+        );
+    }
+
+    #[test]
+    fn check_droid_security_scan_flags_missing_workflow_dispatch() {
+        let mut violations = Vec::new();
+        let yaml = valid_security_scan_yaml().replace("workflow_dispatch:\n  ", "");
+        check_droid_security_scan(&mut violations, "droid-security-scan.yml", &yaml);
+        assert!(violations.iter().any(|v| v.contains("workflow_dispatch")));
+    }
+
+    #[test]
+    fn check_droid_security_scan_flags_missing_schedule() {
+        let mut violations = Vec::new();
+        let yaml =
+            valid_security_scan_yaml().replace("  schedule:\n    - cron: \"0 8 * * 1\"\n", "");
+        check_droid_security_scan(&mut violations, "droid-security-scan.yml", &yaml);
+        assert!(violations.iter().any(|v| v.contains("weekly schedule")));
+    }
+
+    #[test]
+    fn check_droid_security_scan_flags_missing_concurrency_group() {
+        let mut violations = Vec::new();
+        let yaml = valid_security_scan_yaml().replace(
+            "droid-security-scan-${{ github.repository }}",
+            "scan-${{ github.repository }}",
+        );
+        check_droid_security_scan(&mut violations, "droid-security-scan.yml", &yaml);
+        assert!(violations.iter().any(|v| v.contains("concurrency group")));
+    }
+
+    #[test]
+    fn check_droid_security_scan_flags_cancel_in_progress_true() {
+        let mut violations = Vec::new();
+        let yaml = valid_security_scan_yaml()
+            .replace("cancel-in-progress: false", "cancel-in-progress: true");
+        check_droid_security_scan(&mut violations, "droid-security-scan.yml", &yaml);
+        assert!(violations.iter().any(|v| v.contains("cancel-in-progress")));
+    }
+
+    #[test]
+    fn check_droid_security_scan_flags_missing_runner() {
+        let mut violations = Vec::new();
+        let yaml =
+            valid_security_scan_yaml().replace("runs-on: ubuntu-latest", "runs-on: self-hosted");
+        check_droid_security_scan(&mut violations, "droid-security-scan.yml", &yaml);
+        assert!(violations.iter().any(|v| v.contains("ubuntu-latest")));
+    }
+
+    #[test]
+    fn check_droid_security_scan_flags_missing_minimax_env() {
+        let mut violations = Vec::new();
+        let yaml = valid_security_scan_yaml().replace(
+            "MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}",
+            "OTHER: value",
+        );
+        check_droid_security_scan(&mut violations, "droid-security-scan.yml", &yaml);
+        assert!(violations.iter().any(|v| v.contains("MINIMAX_API_KEY")));
+    }
+
+    #[test]
+    fn check_droid_security_scan_flags_changed_severity_threshold() {
+        let mut violations = Vec::new();
+        let yaml = valid_security_scan_yaml().replace(
+            "security_severity_threshold: medium",
+            "security_severity_threshold: high",
+        );
+        check_droid_security_scan(&mut violations, "droid-security-scan.yml", &yaml);
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("security_severity_threshold"))
+        );
+    }
+
+    #[test]
+    fn check_droid_security_scan_flags_block_on_critical_false() {
+        let mut violations = Vec::new();
+        let yaml = valid_security_scan_yaml().replace(
+            "security_block_on_critical: true",
+            "security_block_on_critical: false",
+        );
+        check_droid_security_scan(&mut violations, "droid-security-scan.yml", &yaml);
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("security_block_on_critical"))
+        );
+    }
+
+    #[test]
+    fn check_droid_security_scan_flags_block_on_high_true() {
+        let mut violations = Vec::new();
+        let yaml = valid_security_scan_yaml().replace(
+            "security_block_on_high: false",
+            "security_block_on_high: true",
+        );
+        check_droid_security_scan(&mut violations, "droid-security-scan.yml", &yaml);
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("security_block_on_high"))
+        );
+    }
+
+    #[test]
+    fn check_droid_security_scan_flags_missing_show_full_output_false() {
+        let mut violations = Vec::new();
+        let yaml = valid_security_scan_yaml().replace("show_full_output: false\n", "");
+        check_droid_security_scan(&mut violations, "droid-security-scan.yml", &yaml);
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("show_full_output: false"))
+        );
+    }
+
+    #[test]
+    fn check_droid_security_scan_flags_show_full_output_true() {
+        let mut violations = Vec::new();
+        let yaml =
+            valid_security_scan_yaml().replace("show_full_output: false", "show_full_output: true");
+        check_droid_security_scan(&mut violations, "droid-security-scan.yml", &yaml);
+        assert!(violations.iter().any(|v| v.contains("show_full_output")));
+    }
+
+    #[test]
+    fn check_droid_security_scan_flags_non_sha_action_ref() {
+        let mut violations = Vec::new();
+        let yaml = valid_security_scan_yaml().replace(
+            "Factory-AI/droid-action@e3d1f5e7861c36fe4a9c4dca3edec87b964b2bc4",
+            "Factory-AI/droid-action@v5",
+        );
+        check_droid_security_scan(&mut violations, "droid-security-scan.yml", &yaml);
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("immutable commit SHA"))
+        );
+    }
+
+    #[test]
+    fn check_droid_security_scan_flags_missing_literal_minimax_key() {
+        let mut violations = Vec::new();
+        let yaml =
+            valid_security_scan_yaml().replace("${MINIMAX_API_KEY}", "expanded-secret-value");
+        check_droid_security_scan(&mut violations, "droid-security-scan.yml", &yaml);
+        assert!(violations.iter().any(|v| v.contains("${MINIMAX_API_KEY}")));
+    }
+
+    #[test]
+    fn check_droid_security_scan_flags_active_settings_input() {
+        let mut violations = Vec::new();
+        let mut yaml = valid_security_scan_yaml().to_string();
+        yaml.push_str("          settings: |\n            some: value\n");
+        check_droid_security_scan(&mut violations, "droid-security-scan.yml", &yaml);
+        assert!(violations.iter().any(|v| v.contains("settings:")));
+    }
+
+    #[test]
+    fn check_droid_security_scan_flags_anthropic_auth_token() {
+        let mut violations = Vec::new();
+        let mut yaml = valid_security_scan_yaml().to_string();
+        yaml.push_str("      ANTHROPIC_AUTH_TOKEN: something\n");
+        check_droid_security_scan(&mut violations, "droid-security-scan.yml", &yaml);
+        assert!(violations.iter().any(|v| v.contains("ANTHROPIC")));
+    }
+
+    #[test]
+    fn check_droid_security_scan_flags_anthropic_base_url() {
+        let mut violations = Vec::new();
+        let mut yaml = valid_security_scan_yaml().to_string();
+        yaml.push_str("      ANTHROPIC_BASE_URL: https://example.com\n");
+        check_droid_security_scan(&mut violations, "droid-security-scan.yml", &yaml);
+        assert!(violations.iter().any(|v| v.contains("ANTHROPIC")));
+    }
+
+    #[test]
+    fn check_droid_byok_baseline_accepts_minimal_valid_block() {
+        let mut violations = Vec::new();
+        let yaml = "\
+security_model: \"custom:MiniMax-M2.7-0\"
+run: cat > \"$HOME/.factory/settings.local.json\" <<'JSON'
+apiKey: ${MINIMAX_API_KEY}
+uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+";
+        check_droid_byok_baseline(&mut violations, "test.yml", yaml);
+        assert!(
+            violations.is_empty(),
+            "expected no violations, got: {violations:?}"
+        );
     }
 
     #[test]

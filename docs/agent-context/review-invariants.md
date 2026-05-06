@@ -66,6 +66,27 @@ For Droid review workflows:
 - The manual workflow (`droid.yml`) must have trusted actor guards (`OWNER`, `MEMBER`, `COLLABORATOR`).
 - These invariants are enforced by `cargo xtask check-droid-review-config`.
 
+## Droid security scan invariants
+
+For `.github/workflows/droid-security-scan.yml`:
+
+- Must support `workflow_dispatch`.
+- Must run on the documented weekly schedule (`schedule:` + `cron:`) unless intentionally changed.
+- Must use repo-level concurrency group `droid-security-scan-${{ github.repository }}` with `cancel-in-progress: false`.
+- Must run on `ubuntu-latest`.
+- Must use the MiniMax BYOK model path (runtime `~/.factory/settings.local.json`, literal `${MINIMAX_API_KEY}`).
+- Must set `security_model: "custom:MiniMax-M2.7-0"`.
+- Must set `security_scan_schedule: true`.
+- Must set `security_scan_days: 7`.
+- Must set `security_severity_threshold: medium`.
+- Must set `security_block_on_critical: true`.
+- Must set `security_block_on_high: false`.
+- Must keep `show_full_output: false`.
+- Must not use the Droid Action `settings:` input for BYOK.
+- Must not set `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_BASE_URL`.
+- Must keep action refs pinned to immutable 40-character SHAs.
+- These invariants are enforced by `cargo xtask check-droid-review-config`.
+
 ## Queueing invariants
 
 For automatic Droid PR review:
