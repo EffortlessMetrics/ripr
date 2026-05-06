@@ -1,3 +1,4 @@
+use crate::analysis;
 use crate::app::{self, CheckInput, Mode, OutputFormat};
 use crate::cli::help;
 use crate::cli::parse::{expect_value, parse_format, parse_mode};
@@ -5,6 +6,7 @@ use crate::config::{
     CONFIG_FILE_NAME, CheckInputExplicit, DEFAULT_LSP_SEAM_DIAGNOSTICS, apply_to_check_input,
     generated_init_config, load_for_root,
 };
+use crate::output;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -12,6 +14,15 @@ struct InitOptions {
     root: PathBuf,
     dry_run: bool,
     force: bool,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct PilotOptions {
+    root: PathBuf,
+    out_dir: PathBuf,
+    mode: Mode,
+    explicit: CheckInputExplicit,
+    max_seams: usize,
 }
 
 pub(super) fn init(args: &[String]) -> Result<(), String> {
@@ -63,6 +74,155 @@ fn parse_init_options(args: &[String]) -> Result<InitOptions, String> {
         i += 1;
     }
     Ok(options)
+}
+
+pub(super) fn pilot(args: &[String]) -> Result<(), String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        help::print_pilot_help();
+        return Ok(());
+    }
+
+    let options = parse_pilot_options(args)?;
+    if !options.root.is_dir() {
+        return Err(format!(
+            "pilot root {} is not a directory",
+            options.root.display()
+        ));
+    }
+
+    let config = load_for_root(&options.root)?;
+    let mut input = CheckInput {
+        root: options.root.clone(),
+        mode: options.mode.clone(),
+        ..CheckInput::default()
+    };
+    apply_to_check_input(&mut input, &config, options.explicit);
+
+    let classified = analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
+    let artifacts = pilot_artifacts(&options.out_dir);
+
+    std::fs::create_dir_all(&options.out_dir)
+        .map_err(|err| format!("create {} failed: {err}", options.out_dir.display()))?;
+    std::fs::write(
+        &artifacts.repo_exposure_json,
+        output::repo_exposure::render_repo_exposure_json(&classified),
+    )
+    .map_err(|err| {
+        format!(
+            "write {} failed: {err}",
+            artifacts.repo_exposure_json.display()
+        )
+    })?;
+    std::fs::write(
+        &artifacts.repo_exposure_md,
+        output::repo_exposure::render_repo_exposure_md(&classified),
+    )
+    .map_err(|err| {
+        format!(
+            "write {} failed: {err}",
+            artifacts.repo_exposure_md.display()
+        )
+    })?;
+    std::fs::write(
+        &artifacts.agent_seam_packets_json,
+        output::agent_seam_packets::render_agent_seam_packets_json(&classified),
+    )
+    .map_err(|err| {
+        format!(
+            "write {} failed: {err}",
+            artifacts.agent_seam_packets_json.display()
+        )
+    })?;
+
+    let context = output::pilot::PilotSummaryContext {
+        root: &input.root,
+        mode: &input.mode,
+        config_path: config.source_path(),
+        max_seams: options.max_seams,
+        artifacts: &artifacts,
+    };
+    std::fs::write(
+        &artifacts.pilot_summary_json,
+        output::pilot::render_pilot_summary_json(&classified, context),
+    )
+    .map_err(|err| {
+        format!(
+            "write {} failed: {err}",
+            artifacts.pilot_summary_json.display()
+        )
+    })?;
+    std::fs::write(
+        &artifacts.pilot_summary_md,
+        output::pilot::render_pilot_summary_md(&classified, context),
+    )
+    .map_err(|err| {
+        format!(
+            "write {} failed: {err}",
+            artifacts.pilot_summary_md.display()
+        )
+    })?;
+
+    print!(
+        "{}",
+        output::pilot::render_pilot_terminal(&classified, context)
+    );
+    Ok(())
+}
+
+fn parse_pilot_options(args: &[String]) -> Result<PilotOptions, String> {
+    let mut options = PilotOptions {
+        root: PathBuf::from("."),
+        out_dir: PathBuf::from("target/ripr/pilot"),
+        mode: Mode::Draft,
+        explicit: CheckInputExplicit::default(),
+        max_seams: 5,
+    };
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                options.root = PathBuf::from(expect_value(args, i, "--root")?);
+            }
+            "--out" => {
+                i += 1;
+                options.out_dir = PathBuf::from(expect_value(args, i, "--out")?);
+            }
+            "--mode" => {
+                i += 1;
+                options.mode = parse_mode(expect_value(args, i, "--mode")?)?;
+                options.explicit.mode = true;
+            }
+            "--max-seams" => {
+                i += 1;
+                options.max_seams =
+                    parse_positive_usize(expect_value(args, i, "--max-seams")?, "--max-seams")?;
+            }
+            other => return Err(format!("unknown pilot argument {other:?}")),
+        }
+        i += 1;
+    }
+    Ok(options)
+}
+
+fn parse_positive_usize(value: &str, flag: &str) -> Result<usize, String> {
+    let parsed = value
+        .parse::<usize>()
+        .map_err(|err| format!("invalid {flag}: {err}"))?;
+    if parsed == 0 {
+        return Err(format!("invalid {flag}: expected a positive integer"));
+    }
+    Ok(parsed)
+}
+
+fn pilot_artifacts(out_dir: &Path) -> output::pilot::PilotArtifacts {
+    output::pilot::PilotArtifacts {
+        repo_exposure_json: out_dir.join("repo-exposure.json"),
+        repo_exposure_md: out_dir.join("repo-exposure.md"),
+        agent_seam_packets_json: out_dir.join("agent-seam-packets.json"),
+        pilot_summary_json: out_dir.join("pilot-summary.json"),
+        pilot_summary_md: out_dir.join("pilot-summary.md"),
+    }
 }
 
 pub(super) fn check(args: &[String]) -> Result<(), String> {
@@ -361,11 +521,76 @@ mod tests {
     #[test]
     fn command_help_branches_return_ok() {
         assert_eq!(init(&args(&["--help"])), Ok(()));
+        assert_eq!(pilot(&args(&["--help"])), Ok(()));
         assert_eq!(check(&args(&["--help"])), Ok(()));
         assert_eq!(explain(&args(&["--help"])), Ok(()));
         assert_eq!(context(&args(&["--help"])), Ok(()));
         assert_eq!(doctor(&args(&["--help"])), Ok(()));
         assert_eq!(lsp(&args(&["--help"])), Ok(()));
+    }
+
+    #[test]
+    fn pilot_requires_values_for_value_flags() {
+        assert_eq!(
+            pilot(&args(&["--root"])),
+            Err("missing value for --root".to_string())
+        );
+        assert_eq!(
+            pilot(&args(&["--out"])),
+            Err("missing value for --out".to_string())
+        );
+        assert_eq!(
+            pilot(&args(&["--mode"])),
+            Err("missing value for --mode".to_string())
+        );
+        assert_eq!(
+            pilot(&args(&["--max-seams"])),
+            Err("missing value for --max-seams".to_string())
+        );
+    }
+
+    #[test]
+    fn pilot_rejects_unknown_arguments() {
+        assert_eq!(
+            pilot(&args(&["--wat"])),
+            Err("unknown pilot argument \"--wat\"".to_string())
+        );
+    }
+
+    #[test]
+    fn pilot_rejects_non_positive_max_seams() {
+        assert_eq!(
+            parse_pilot_options(&args(&["--max-seams", "0"])),
+            Err("invalid --max-seams: expected a positive integer".to_string())
+        );
+    }
+
+    #[test]
+    fn pilot_parses_root_out_mode_and_max_seams() {
+        let options = parse_pilot_options(&args(&[
+            "--root",
+            "repo",
+            "--out",
+            "target/pilot",
+            "--mode",
+            "ready",
+            "--max-seams",
+            "3",
+        ]));
+
+        assert_eq!(
+            options,
+            Ok(PilotOptions {
+                root: PathBuf::from("repo"),
+                out_dir: PathBuf::from("target/pilot"),
+                mode: Mode::Ready,
+                explicit: CheckInputExplicit {
+                    mode: true,
+                    include_unchanged_tests: false,
+                },
+                max_seams: 3,
+            })
+        );
     }
 
     #[test]

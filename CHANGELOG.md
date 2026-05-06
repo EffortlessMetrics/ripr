@@ -11,6 +11,11 @@ are scoped or reviewed.
 
 ### Added
 
+- Added `ripr pilot`, a zero-config first-run command that writes
+  `target/ripr/pilot/repo-exposure.{json,md}`,
+  `target/ripr/pilot/agent-seam-packets.json`, and
+  `target/ripr/pilot/pilot-summary.{json,md}` while printing the top
+  actionable seam and after-test commands.
 - Added `ripr init` to write a conservative repo-local `ripr.toml`, with
   `--dry-run` for previewing and `--force` for explicit overwrite.
 - Added RIPR-SPEC-0009 to define defaults-first adoption behavior for `init`

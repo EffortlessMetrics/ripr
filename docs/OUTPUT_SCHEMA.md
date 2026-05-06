@@ -1050,6 +1050,98 @@ discriminator, the oracle shape, and an assertion template — but never
 generates the test itself. Composition with a coding agent closes the
 loop.
 
+## Pilot Summary
+
+`ripr pilot` writes a first-run operator packet under `target/ripr/pilot/` by
+default. It reuses the repo-exposure and agent seam packet renderers, then adds
+a small summary that ranks the next actionable seams.
+
+Pilot files:
+
+```text
+target/ripr/pilot/repo-exposure.json
+target/ripr/pilot/repo-exposure.md
+target/ripr/pilot/agent-seam-packets.json
+target/ripr/pilot/pilot-summary.json
+target/ripr/pilot/pilot-summary.md
+```
+
+`pilot-summary.json` uses schema `0.1`:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "scope": "repo",
+  "root": ".",
+  "mode": "draft",
+  "config": {
+    "state": "missing",
+    "path": null
+  },
+  "outputs": {
+    "repo_exposure_json": "target/ripr/pilot/repo-exposure.json",
+    "repo_exposure_md": "target/ripr/pilot/repo-exposure.md",
+    "agent_seam_packets_json": "target/ripr/pilot/agent-seam-packets.json",
+    "pilot_summary_json": "target/ripr/pilot/pilot-summary.json",
+    "pilot_summary_md": "target/ripr/pilot/pilot-summary.md"
+  },
+  "max_seams": 5,
+  "actionable_seams_total": 1,
+  "top_actionable_seams": [
+    {
+      "seam_id": "67fc764ba37d77bd",
+      "file": "src/lib.rs",
+      "line": 2,
+      "kind": "predicate_boundary",
+      "owner": "src/lib.rs::discounted_total",
+      "grip_class": "weakly_gripped",
+      "why": "missing discriminator: discount_threshold (equality boundary)",
+      "missing_discriminator": {
+        "value": "discount_threshold (equality boundary)",
+        "reason": "observed values do not include the equality-boundary case"
+      },
+      "related_test_present": true,
+      "suggested_assertion_present": true,
+      "targeted_test_brief": "Target seam:\n- src/lib.rs:2\n..."
+    }
+  ],
+  "next": {
+    "inspect_packet": "target/ripr/pilot/agent-seam-packets.json",
+    "after_snapshot_command": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json",
+    "outcome_command": "ripr outcome --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json"
+  }
+}
+```
+
+Field contract:
+
+- `schema_version` — currently `"0.1"`.
+- `scope` — always `"repo"`.
+- `root` — analyzed workspace root as supplied to `ripr pilot`.
+- `mode` — effective analysis mode after explicit CLI flags and repo config are
+  applied.
+- `config.state` — `"loaded"` when `ripr.toml` was loaded, otherwise
+  `"missing"`. Missing config is healthy and means built-in conservative
+  defaults were used.
+- `outputs` — paths to the generated pilot packet files.
+- `max_seams` — cap requested by `--max-seams`.
+- `actionable_seams_total` — number of seams considered actionable by the pilot
+  ranking policy.
+- `top_actionable_seams[]` — ranked seams using class order
+  `weakly_gripped`, `ungripped`, `reachable_unrevealed`, unknown-stage classes,
+  then `opaque`, with evidence tie-breakers for missing discriminator, related
+  test, suggested assertion, and stable location.
+- `top_actionable_seams[].targeted_test_brief` — human-readable work order
+  derived from the same fields as the agent seam packet. Placeholders are
+  intentional; RIPR does not invent expected values.
+- `next` — advisory follow-up commands. `ripr outcome` is the planned public
+  before/after receipt command; until it lands, repo dogfooding uses
+  `cargo xtask targeted-test-outcome`.
+
+The Markdown sibling prints the same summary, includes the top seam's targeted
+test brief, and remains advisory.
+
 ## LSP Seam Diagnostics
 
 The LSP server publishes a `Diagnostic` for every actionable

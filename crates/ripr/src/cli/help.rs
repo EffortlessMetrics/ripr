@@ -2,6 +2,7 @@ const HELP: &str = r#"ripr — static RIPR mutation exposure analysis for Rust
 
 Usage:
   ripr init [--root PATH] [--dry-run] [--force]
+  ripr pilot [--root PATH] [--out PATH] [--mode draft] [--max-seams 5]
   ripr check [--base origin/main] [--diff PATH] [--mode draft] [--format FORMAT]
   ripr explain [--base REV|--diff PATH] <finding-id|file:line>
   ripr context [--base REV|--diff PATH] --at <finding-id|file:line>
@@ -15,7 +16,7 @@ What it does:
 
 Quick start:
   ripr doctor
-  ripr init
+  ripr pilot
   ripr check --diff crates/ripr/examples/sample/example.diff
   ripr check --diff crates/ripr/examples/sample/example.diff --json
   ripr explain --diff crates/ripr/examples/sample/example.diff <finding-id>
@@ -34,6 +35,24 @@ Generated config:
   - hides strongly_gripped, intentional, and suppressed seams
   - records the built-in saved-workspace LSP seam diagnostic default
   - remains advisory and does not configure CI blocking or mutation execution
+"#;
+
+const PILOT_HELP: &str = r#"Usage: ripr pilot [--root PATH] [--out PATH] [--mode MODE] [--max-seams N]
+
+Options:
+  --root PATH       Workspace root to analyze. Defaults to current directory.
+  --out PATH        Output directory for the pilot packet. Defaults to target/ripr/pilot.
+  --mode MODE       instant, draft, fast, deep, or ready. Defaults to draft unless ripr.toml sets one.
+  --max-seams N     Maximum ranked seams in the pilot summary. Defaults to 5.
+
+Outputs:
+  - repo-exposure.json and repo-exposure.md
+  - agent-seam-packets.json
+  - pilot-summary.json and pilot-summary.md
+
+The pilot packet is advisory. It reports saved-workspace static seam evidence
+and points to one next focused test action; it does not run mutation testing,
+edit source files, or configure CI policy.
 "#;
 
 const CHECK_HELP: &str = r#"Usage: ripr check [OPTIONS]
@@ -95,6 +114,10 @@ pub(super) fn print_init_help() {
     println!("{INIT_HELP}");
 }
 
+pub(super) fn print_pilot_help() {
+    println!("{PILOT_HELP}");
+}
+
 pub(super) fn print_explain_help() {
     println!("{EXPLAIN_HELP}");
 }
@@ -113,11 +136,14 @@ pub(super) fn print_lsp_help() {
 
 #[cfg(test)]
 mod tests {
-    use super::{CHECK_HELP, CONTEXT_HELP, DOCTOR_HELP, EXPLAIN_HELP, HELP, INIT_HELP, LSP_HELP};
+    use super::{
+        CHECK_HELP, CONTEXT_HELP, DOCTOR_HELP, EXPLAIN_HELP, HELP, INIT_HELP, LSP_HELP, PILOT_HELP,
+    };
 
     #[test]
     fn top_level_help_mentions_supported_commands() {
         assert!(HELP.contains("ripr init"));
+        assert!(HELP.contains("ripr pilot"));
         assert!(HELP.contains("ripr check"));
         assert!(HELP.contains("ripr explain"));
         assert!(HELP.contains("ripr context"));
@@ -139,6 +165,8 @@ mod tests {
         assert!(INIT_HELP.starts_with("Usage: ripr init"));
         assert!(INIT_HELP.contains("--dry-run"));
         assert!(INIT_HELP.contains("--force"));
+        assert!(PILOT_HELP.starts_with("Usage: ripr pilot"));
+        assert!(PILOT_HELP.contains("pilot-summary.json"));
         assert!(EXPLAIN_HELP.starts_with("Usage: ripr explain"));
         assert!(CONTEXT_HELP.starts_with("Usage: ripr context"));
         assert!(DOCTOR_HELP.starts_with("Usage: ripr doctor [--root PATH]"));
