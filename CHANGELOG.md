@@ -210,6 +210,9 @@ are scoped or reviewed.
 - Moved remaining classifier stage and decision helpers into
   `analysis/classify/{infection,reveal,decision}.rs` while preserving
   classification behavior. The next ready seam is app use-case splitting.
+- Split check, explain, and context use-case orchestration into focused `app`
+  modules while preserving public API and output behavior. The next ready seam
+  is output format extraction.
 - Added `cargo xtask targeted-test-outcome` as an advisory receipt for comparing
   before/after `repo-exposure-json` artifacts. The report writes
   `target/ripr/reports/targeted-test-outcome.{json,md}`, matches seams by
