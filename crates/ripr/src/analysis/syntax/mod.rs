@@ -1,4 +1,5 @@
 mod adapter;
+pub(crate) mod lexical;
 mod ra;
 
 pub use adapter::{

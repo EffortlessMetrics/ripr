@@ -206,11 +206,29 @@ commands = [
 
 [[work_item]]
 id = "syntax/lexical-extraction"
-status = "ready"
+status = "done"
 branch = "lexical-syntax-fallback-extraction"
 stackable = false
 requires_human_merge = true
 acceptance = "lexical syntax fallback implementation moves into analysis/syntax/lexical.rs after RA extraction; rust_index query helpers and oracle/extractor helpers stay behavior-stable with no output, API, or schema drift"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-public-api",
+  "cargo xtask check-architecture",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-no-panic-family",
+  "cargo test --workspace"
+]
+
+[[work_item]]
+id = "extract/fact-extraction"
+status = "ready"
+branch = "fact-extraction"
+stackable = false
+requires_human_merge = true
+acceptance = "call, return, literal, oracle, probe-shape, and text extraction helpers move into analysis/extract/* after lexical extraction; rust_index remains a compatibility facade with no behavior, output, API, or schema drift"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",

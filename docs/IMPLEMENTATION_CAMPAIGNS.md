@@ -701,8 +701,8 @@ Work items:
 | `syntax/adapter-extraction` | done | PR 7: Moved syntax adapter traits and shared syntax facts into `analysis/syntax/adapter.rs` without moving builders or extraction logic yet. |
 | `facts/builder-extraction` | done | PR 8 (#253): Moved index construction into `analysis/facts/build.rs` after syntax adapter type extraction. |
 | `syntax/ra-extraction` | done | PR 9: Parser-backed RA syntax adapter implementation moved into `analysis/syntax/ra.rs` after build-index extraction. |
-| `syntax/lexical-extraction` | ready | PR 9: Move lexical fallback into `analysis/syntax/lexical.rs` after RA extraction. |
-| `extract/fact-extraction` | pending | PR 10: Move extractors into `analysis/extract/{calls,literals,oracles,probe_shapes,text}.rs` |
+| `syntax/lexical-extraction` | done | PR 10: Lexical syntax fallback implementation moved into `analysis/syntax/lexical.rs` after RA extraction. |
+| `extract/fact-extraction` | ready | PR 11: Move extractors into `analysis/extract/{calls,literals,oracles,probe_shapes,text}.rs` |
 | `probes/family-extraction` | pending | PR 11: Create `analysis/probes/family.rs` |
 | `probes/expectations-extraction` | pending | PR 12: Create `analysis/probes/expectations.rs` |
 | `probes/id-extraction` | pending | PR 13: Create `analysis/probes/ids.rs` |
