@@ -50,19 +50,27 @@
 //! ```
 //!
 
-/// Static analysis pipeline: diff loading, syntax indexing, probe generation,
-/// and finding classification.
+// Kept public for compatibility; prefer the crate-root re-exports for new
+// integrations.
+#[doc(hidden)]
 pub mod analysis;
-/// Public application orchestration and library-level use cases.
+// Kept public for compatibility; prefer the crate-root re-exports for new
+// integrations.
+#[doc(hidden)]
 pub mod app;
-/// Command-line adapter layer for the `ripr` binary.
+// Kept public for compatibility with existing embedders.
+#[doc(hidden)]
 pub mod cli;
 pub(crate) mod config;
-/// Core domain model for probes, RIPR evidence, and exposure classes.
+// Kept public for compatibility; prefer the crate-root domain type re-exports
+// for new integrations.
+#[doc(hidden)]
 pub mod domain;
-/// Experimental language-server sidecar adapter.
+// Kept public for compatibility with experimental editor integrations.
+#[doc(hidden)]
 pub mod lsp;
-/// Output renderers for human-readable, JSON, and annotation formats.
+// Kept public for compatibility with existing render integrations.
+#[doc(hidden)]
 pub mod output;
 
 /// Analyze a workspace diff using the default RIPR static pipeline.

@@ -241,6 +241,9 @@ are scoped or reviewed.
 - Updated LSP context packet lookup to build finding packets through the domain
   `ContextPacket` DTO while preserving the emitted packet schema. The next
   ready seam is doc-hidden internal modules.
+- Marked compatibility module exports as doc-hidden so generated Rust docs point
+  new integrations at crate-root re-exports. The optional private-internals seam
+  remains blocked behind an explicit breaking public API decision.
 - Added `cargo xtask targeted-test-outcome` as an advisory receipt for comparing
   before/after `repo-exposure-json` artifacts. The report writes
   `target/ripr/reports/targeted-test-outcome.{json,md}`, matches seams by
