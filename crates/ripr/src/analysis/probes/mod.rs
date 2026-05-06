@@ -3,6 +3,7 @@ mod diff;
 mod expectations;
 mod family;
 mod ids;
+mod lexical;
 mod repo;
 
 pub use diff::probes_for_file;

@@ -4,8 +4,9 @@ use super::super::rust_index::{
 };
 use super::classify::{classify_changed_syntax, should_ignore_changed_line};
 use super::expectations::{expected_sinks, required_oracles};
-use super::family::{classify_changed_line, delta_for_family};
+use super::family::delta_for_family;
 use super::ids::diff_probe_id;
+use super::lexical::classify_changed_line;
 use crate::domain::{Probe, SourceLocation};
 use std::path::Path;
 

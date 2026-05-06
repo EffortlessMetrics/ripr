@@ -169,6 +169,9 @@ are scoped or reviewed.
 - Moved probe ID construction and path sanitization helpers into
   `analysis/probes/ids.rs` while preserving diff and repo probe ID formats.
   The next ready seam is lexical probe fallback extraction.
+- Moved lexical changed-line probe fallback helpers into
+  `analysis/probes/lexical.rs` while preserving probe generation behavior.
+  The next ready seam is diff/repo probe seeding split.
 - Added `cargo xtask targeted-test-outcome` as an advisory receipt for comparing
   before/after `repo-exposure-json` artifacts. The report writes
   `target/ripr/reports/targeted-test-outcome.{json,md}`, matches seams by
