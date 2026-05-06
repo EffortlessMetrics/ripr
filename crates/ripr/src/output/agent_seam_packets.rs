@@ -87,6 +87,91 @@ pub(crate) fn suggested_assertion_for_classified_seam(entry: &ClassifiedSeam) ->
         })
 }
 
+/// Render a compact human/agent work order for the next targeted test.
+/// This is intentionally derived from the same fields as the structured
+/// agent seam packet so editor actions and JSON packets stay aligned.
+pub(crate) fn targeted_test_brief_for_classified_seam(entry: &ClassifiedSeam) -> String {
+    let seam = &entry.seam;
+    let evidence = &entry.evidence;
+    let recommended = recommended_test_for(entry);
+    let missing = missing_discriminator_records_for(entry);
+    let candidate_values = candidate_values_for(entry, &missing);
+    let assertion_shape = assertion_shape_for(seam.kind(), seam.owner(), evidence);
+    let patterns_to_imitate = patterns_to_imitate_for(evidence);
+    let patterns_to_avoid = patterns_to_avoid_for(entry);
+
+    let mut out = String::new();
+    out.push_str("Target seam:\n");
+    out.push_str(&format!(
+        "- {}:{}\n",
+        display_path(seam.file()),
+        seam.display_line()
+    ));
+    out.push_str(&format!("- {}\n", seam.kind().as_str()));
+    out.push_str(&format!("- {}\n", entry.class.as_str()));
+    out.push_str(&format!("- owner: {}\n", seam.owner()));
+
+    out.push_str("\nWhy it matters:\n");
+    if let Some(test) = evidence.related_tests.first() {
+        out.push_str(&format!(
+            "- Related test evidence: {} uses {} {} oracle.\n",
+            test.test_name,
+            test.oracle_strength.as_str(),
+            test.oracle_kind.as_str()
+        ));
+    } else {
+        out.push_str("- No related test location is visible in saved-workspace analysis.\n");
+    }
+    out.push_str(&format!(
+        "- Static discriminator summary: {}\n",
+        evidence.discriminate.summary
+    ));
+    for record in missing.iter().take(3) {
+        out.push_str(&format!(
+            "- Missing discriminator: {} ({})\n",
+            record.value, record.reason
+        ));
+    }
+
+    out.push_str("\nAdd a targeted test:\n");
+    out.push_str(&format!(
+        "- Suggested file: {}\n",
+        display_path_text(&recommended.file)
+    ));
+    out.push_str(&format!("- Suggested name: {}\n", recommended.name));
+    if let Some(value) = candidate_values.first() {
+        out.push_str(&format!("- Candidate value: {}\n", value.value));
+    }
+    out.push_str(&format!("- Assertion shape: {}\n", assertion_shape.example));
+
+    if !patterns_to_imitate.is_empty() {
+        out.push_str("\nImitate:\n");
+        for pattern in patterns_to_imitate.iter().take(3) {
+            out.push_str(&format!(
+                "- {} ({})\n",
+                pattern.test.test_name, pattern.reason
+            ));
+        }
+    }
+
+    if !patterns_to_avoid.is_empty() {
+        out.push_str("\nAvoid:\n");
+        for pattern in patterns_to_avoid.iter().take(3) {
+            out.push_str(&format!("- {} ({})\n", pattern.pattern, pattern.reason));
+        }
+    }
+
+    out
+}
+
+fn display_path(path: &std::path::Path) -> String {
+    display_path_text(&path.to_string_lossy())
+}
+
+fn display_path_text(path: &str) -> String {
+    path.replace('\\', "/")
+}
+
 fn is_actionable(class: SeamGripClass) -> bool {
     // Headline-eligible classes are the natural agent targets.
     // `Opaque` is also actionable as `inspect_static_limitation`.
@@ -1158,6 +1243,53 @@ mod tests {
         ] {
             if !json.contains(needle) {
                 return Err(format!("missing pattern field {needle:?} in: {json}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn targeted_test_brief_carries_plain_text_work_order() -> Result<(), String> {
+        let brief = targeted_test_brief_for_classified_seam(&weakly_gripped_classified());
+        for needle in [
+            "Target seam:",
+            "- src/pricing.rs:88",
+            "- predicate_boundary",
+            "- weakly_gripped",
+            "- owner: pricing::discounted_total",
+            "Why it matters:",
+            "- Related test evidence: below_threshold_has_no_discount uses strong exact_value oracle.",
+            "- Missing discriminator: discount_threshold (equality boundary)",
+            "Add a targeted test:",
+            "- Suggested file: tests/pricing.rs",
+            "- Suggested name: discounted_total_boundary_discriminator",
+            "- Candidate value: discount_threshold (equality boundary)",
+            "- Assertion shape: assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)",
+            "Imitate:",
+            "- below_threshold_has_no_discount (strong exact_value oracle with high relation)",
+            "Avoid:",
+            "- adding another test with only already-observed values",
+        ] {
+            if !brief.contains(needle) {
+                return Err(format!("missing brief text {needle:?} in:\n{brief}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn targeted_test_brief_uses_inferred_file_when_no_related_test_exists() -> Result<(), String> {
+        let brief = targeted_test_brief_for_classified_seam(&ungripped_classified());
+        for needle in [
+            "- No related test location is visible in saved-workspace analysis.",
+            "- Suggested file: tests/pricing_tests.rs",
+            "- Candidate value: input that hits the boundary: amount >= discount_threshold",
+            "- copying a smoke-only test shape",
+        ] {
+            if !brief.contains(needle) {
+                return Err(format!(
+                    "missing inferred brief text {needle:?} in:\n{brief}"
+                ));
             }
         }
         Ok(())

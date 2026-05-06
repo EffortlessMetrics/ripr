@@ -27,6 +27,7 @@ suite('Extension Smoke', () => {
     assert.ok(commands.includes('ripr.showOutput'));
     assert.ok(commands.includes('ripr.copyContext'));
     assert.ok(commands.includes('ripr.copySuggestedAssertion'));
+    assert.ok(commands.includes('ripr.copyTargetedTestBrief'));
     assert.ok(commands.includes('ripr.openRelatedTest'));
     assert.ok(commands.includes('ripr.openSettings'));
   });
@@ -160,6 +161,30 @@ suite('Extension Smoke', () => {
       assertion: 42
     });
     await vscode.commands.executeCommand('ripr.copySuggestedAssertion');
+  });
+
+  test('copyTargetedTestBrief copies brief text', async () => {
+    const brief = [
+      'Target seam:',
+      '- src/pricing.rs:88',
+      '',
+      'Add a targeted test:',
+      '- Suggested name: discounted_total_boundary_discriminator'
+    ].join('\n');
+
+    await vscode.commands.executeCommand('ripr.copyTargetedTestBrief', { brief });
+
+    assert.strictEqual(await vscode.env.clipboard.readText(), brief);
+  });
+
+  test('copyTargetedTestBrief ignores malformed args without throwing', async () => {
+    await vscode.commands.executeCommand('ripr.copyTargetedTestBrief', {
+      brief: ''
+    });
+    await vscode.commands.executeCommand('ripr.copyTargetedTestBrief', {
+      brief: 42
+    });
+    await vscode.commands.executeCommand('ripr.copyTargetedTestBrief');
   });
 
   test('openRelatedTest opens the target uri and line', async () => {
