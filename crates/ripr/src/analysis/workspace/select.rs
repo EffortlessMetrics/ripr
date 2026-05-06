@@ -48,10 +48,11 @@ fn sorted_unique(files: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
     out.dedup();
     out
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::analysis::workspace::{is_production_rust_path, discover_rust_files};
+    use crate::analysis::workspace::{discover_rust_files, is_production_rust_path};
     use std::fs;
     use std::path::Path;
     use std::time::{SystemTime, UNIX_EPOCH};
