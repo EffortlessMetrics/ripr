@@ -604,7 +604,7 @@ badge count remapping are operationalization work, not unfinished
 
 Campaign ID: `operationalization`
 
-Status: active
+Status: complete
 
 Objective:
 
@@ -621,20 +621,20 @@ Work items:
 | `config/ripr-config-v1` | done | Repo-root `ripr.toml` governs analysis mode, oracle policy, severity mapping, suppressions path, report caps, and LSP seam-diagnostic defaults while explicit CLI/LSP options still win. |
 | `ci/sarif-ci-policy` | done | SARIF and policy modes consume configured severity and suppression policy; RIPR-SPEC-0008 pins the rule IDs, severity mapping, suppression visibility, advisory default, renderer, and opt-in baseline policy. |
 | `badge/seam-native-count-mapping` | done | Repo-scoped `ripr` and `ripr+` badges now count configured-visible seam-native unresolved gaps, while diff-scoped badge artifacts remain versioned as legacy finding-exposure counts. Native badge JSON is schema `0.3` with `basis` and `counts.analyzed_seams`; Shields endpoint artifacts were refreshed together. |
-| `campaign/operationalization-closeout` | ready | Close Campaign 5B after config, SARIF/CI policy, and seam-native badge count mapping have landed. |
+| `campaign/operationalization-closeout` | done | Closed Campaign 5B after config, SARIF/CI policy, and seam-native badge count mapping landed. The next active campaign is Campaign 6, starting with a draft-stack audit before structural refactors. |
 
 Review policy:
 
 5B started with `config/ripr-config-v1`, then landed SARIF rendering and the
 opt-in baseline policy, then remapped public repo badges onto seam-native counts.
-The next ready item is the Campaign 5B closeout. Keep it docs/manifest only:
-no analyzer behavior, output schema, SARIF policy, or badge mapping changes.
+The closeout is docs/manifest only: no analyzer behavior, output schema, SARIF
+policy, or badge mapping changes.
 
 ## Campaign 6: Module SRP Refactoring
 
 Campaign ID: `modularize-ripr-submodules`
 
-Status: planned (ready to start after Campaign 4B stabilizes)
+Status: active
 
 Objective:
 
@@ -690,8 +690,9 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `modularization/infrastructure-and-planning` | in-progress | This PR: lay down documentation, infrastructure, and establish first-PR pattern |
-| `analysis/summary-extraction` | pending | PR 1: Extract duplicated summary and sort logic from `analysis/mod.rs` |
+| `campaign/modularization-stack-audit` | ready | Audit the old Campaign 6 draft stack against current `main` after Campaign 5B closeout; record canonical order, stale branches, conflicts, output/API drift risks, and close/rebase/rewrite recommendations before merging structural refactors. |
+| `modularization/infrastructure-and-planning` | done | Documentation, campaign outline, and first-PR pattern exist; the old draft stack now needs audit before implementation resumes. |
+| `analysis/summary-extraction` | blocked | PR 1: Extract duplicated summary and sort logic from `analysis/mod.rs`; blocked on `campaign/modularization-stack-audit`. |
 | `analysis/pipeline-extraction` | pending | PR 2: Make `analysis/mod.rs` a façade over pipeline.rs |
 | `diff/module-split` | pending | PR 3: Split `analysis/diff.rs` into `diff/{mod,model,load,parse}.rs` |
 | `workspace/module-split` | pending | PR 4: Split workspace concerns into `workspace/{mod,discover,scope,production,paths}.rs` |

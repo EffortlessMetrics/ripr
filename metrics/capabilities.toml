@@ -342,7 +342,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "campaign/operationalization-closeout"
+next = "campaign/modularization-stack-audit"
 metric = "oracle kind recognition rate"
 
 [[capability]]
@@ -454,7 +454,7 @@ evidence = [
   "stable metrics object with tests_scanned, class_counts, reason_counts, and duplicate_discriminator_group_count"
 ]
 fixtures = []
-next = "campaign/operationalization-closeout"
+next = "campaign/modularization-stack-audit"
 metric = "tests_scanned, class_counts (strong_discriminator, useful_but_broad, smoke_only, likely_vacuous, possibly_circular, duplicative, opaque), reason_counts (including duplicate_activation_and_oracle_shape), and duplicate_discriminator_group_count"
 
 [[capability]]
@@ -470,7 +470,7 @@ evidence = [
   "target/ripr/reports/repo-seams.json and repo-seams.md"
 ]
 fixtures = []
-next = "campaign/operationalization-closeout"
+next = "campaign/modularization-stack-audit"
 metric = "seams classified per production file"
 
 [[capability]]
@@ -488,7 +488,7 @@ evidence = [
   "oracle-shape-v2 side-effect observer seam evidence"
 ]
 fixtures = []
-next = "campaign/operationalization-closeout"
+next = "campaign/modularization-stack-audit"
 metric = "per-stage evidence cited per seam"
 
 [[capability]]
@@ -504,7 +504,7 @@ evidence = [
   "BDD coverage per class plus headline-mapping pin"
 ]
 fixtures = []
-next = "campaign/operationalization-closeout"
+next = "campaign/modularization-stack-audit"
 metric = "classification matches priority-ordered rules"
 
 [[capability]]
@@ -520,7 +520,7 @@ evidence = [
   "OUTPUT_SCHEMA.md Repo Exposure Report section"
 ]
 fixtures = []
-next = "campaign/operationalization-closeout"
+next = "campaign/modularization-stack-audit"
 metric = "per-class metric buckets stable across runs"
 
 [[capability]]
@@ -539,7 +539,7 @@ evidence = [
   "OUTPUT_SCHEMA.md Agent Seam Packets section"
 ]
 fixtures = []
-next = "campaign/operationalization-closeout"
+next = "campaign/modularization-stack-audit"
 metric = "packet carries missing discriminator + suggested assertion templates"
 
 [[capability]]
@@ -556,7 +556,7 @@ evidence = [
   "OUTPUT_SCHEMA.md LSP Seam Diagnostics section"
 ]
 fixtures = []
-next = "campaign/operationalization-closeout"
+next = "campaign/modularization-stack-audit"
 metric = "seam_id in diagnostic.data is the hover lookup key"
 
 [[capability]]
@@ -572,7 +572,7 @@ evidence = [
   "preserves pre-4B Finding hover fallback"
 ]
 fixtures = []
-next = "campaign/operationalization-closeout"
+next = "campaign/modularization-stack-audit"
 metric = "hover renders evidence path from ClassifiedSeam, never parses diagnostic message"
 
 [[capability]]
@@ -589,7 +589,7 @@ evidence = [
   "pre-4B Finding code actions remain available"
 ]
 fixtures = []
-next = "campaign/operationalization-closeout"
+next = "campaign/modularization-stack-audit"
 metric = "seam diagnostics expose packet/assertion/test actions without automatic edits"
 
 [[capability]]
@@ -609,7 +609,7 @@ evidence = [
   "ripr.toml.example documents the supported v1 shape"
 ]
 fixtures = []
-next = "campaign/operationalization-closeout"
+next = "campaign/modularization-stack-audit"
 metric = "configured analysis mode, oracle policy, severity, suppressions, and seam diagnostics apply across CLI, reports, and LSP"
 
 [[capability]]
@@ -627,7 +627,7 @@ evidence = [
   "SARIF policy tests cover pass, new warning detection, warning-threshold note filtering, missing baseline advisory behavior, parsing, and report shape"
 ]
 fixtures = []
-next = "campaign/operationalization-closeout"
+next = "campaign/modularization-stack-audit"
 metric = "SARIF result counts by rule/level and new configured-warning results"
 
 [[capability]]
@@ -645,7 +645,7 @@ evidence = [
   "checked-in badges/ripr.json and badges/ripr-plus.json refreshed from repo-badge-artifacts"
 ]
 fixtures = []
-next = "campaign/operationalization-closeout"
+next = "campaign/modularization-stack-audit"
 metric = "repo badge headline counts configured-visible headline-eligible seam classes; native JSON distinguishes analyzed_seams from analyzed_findings"
 
 [[capability]]

@@ -1,89 +1,44 @@
-id = "operationalization"
-title = "Operationalization"
+id = "modularize-ripr-submodules"
+title = "Module SRP Refactoring"
 status = "active"
 
-# This is Campaign 5B in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
-# Campaign 5A (`seam-evidence-usability-and-precision`) closed after the
-# following chain landed:
+# This is Campaign 6 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+# Campaign 5B (`operationalization`) closed after the following chain landed:
 #
-# - #255 cache/repo-seam-facts-v1
-# - #310 analysis/related-test-precision-v1
-# - #313 analysis/value-extraction-v2
-# - #314 analysis/oracle-shape-v2
-# - #315 context/agent-seam-packets-v2
-# - #316 lsp/seam-code-actions-v1
-# - #327 calibration/cargo-mutants-v1
+# - #331 config/ripr-config-v1
+# - #333 spec/sarif-ci-policy
+# - #336 output/sarif-renderer
+# - #338 ci/sarif-baseline-policy
+# - #342 badge/seam-native-count-mapping
 #
-# The 5A closeout is intentionally docs/manifest only. It does not change
-# analyzer behavior, output schemas, calibration behavior, or LSP behavior.
+# The 5B closeout is intentionally docs/manifest only. It does not change
+# analyzer behavior, output schemas, SARIF policy, badge semantics, or LSP
+# behavior.
 
 objective = """
-Make ripr deployable in real repositories. Repository config should govern
-analysis mode, oracle policy, severity, suppressions, and seam-diagnostic
-defaults. SARIF and CI policy modes should consume that config and remain
-opt-in. Badge counts should eventually remap from legacy finding counts onto
-seam-native unresolved gap counts without changing static audit vocabulary.
+Refactor internal modules under crates/ripr/src so each module has one
+product responsibility, improving maintainability, testability, and reasoning
+without splitting the package. Start by auditing the old Campaign 6 draft stack
+against the now-closed operationalization surface before merging structural PRs.
 """
 
 end_state = [
-  "ripr.toml configures analysis mode, oracle policy, severity mapping, suppressions, and seam diagnostics defaults across CLI, reports, and LSP",
-  "config defaults are conservative and preserve existing CLI flags and output schemas unless explicitly versioned",
-  "SARIF output uses configured severity and suppression policy and is advisory by default",
-  "CI policy modes are opt-in, baseline-aware, and do not block by default",
-  "badge counts can be remapped onto seam-native unresolved gap counts after config and SARIF semantics are stable",
-  "runtime mutation vocabulary remains confined to calibration/runtime reports; static reports keep audit vocabulary"
+  "Every internal module has a single, clear product responsibility",
+  "Module boundaries align with RIPR analysis stages and rendering surfaces",
+  "analysis/mod.rs is a thin orchestration facade, not implementation",
+  "app.rs and CLI command handling are easier to reason about without public API drift",
+  "LSP, SARIF, badge, context, and calibration surfaces remain behaviorally stable through refactors",
+  "Public package shape stays one crate and one binary; no ripr-core/ripr-cli/ripr-lsp split",
+  "Architecture and public API guards pass without output schema churn"
 ]
 
 [[work_item]]
-id = "config/ripr-config-v1"
-status = "done"
-branch = "config/ripr-config-v1"
-stackable = false
-requires_human_merge = true
-acceptance = "ripr-config-v1 covers analysis mode, oracle policy, severity mapping, suppressions, and seam-diagnostics defaults; configured rules apply across CLI, LSP, and reports; existing flags continue to work; defaults are conservative; documented in docs/OUTPUT_SCHEMA.md and docs/CAPABILITY_MATRIX.md; no SARIF policy in this PR"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-output-contracts"
-]
-
-[[work_item]]
-id = "ci/sarif-ci-policy"
-status = "done"
-branch = "ci/sarif-ci-policy"
-stackable = false
-requires_human_merge = true
-acceptance = "ripr emits SARIF for seam diagnostics and Findings; opt-in baseline-aware blocking policy compares new unresolved gaps against a baseline; existing JSON schema is unchanged; documented in docs/OUTPUT_SCHEMA.md and docs/CI.md"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-workflows"
-]
-
-[[work_item]]
-id = "badge/seam-native-count-mapping"
-status = "done"
-branch = "badge/seam-native-count-mapping"
-stackable = false
-requires_human_merge = true
-acceptance = "ripr and ripr+ badge artifacts map to seam-native unresolved gap counts; legacy finding count behavior remains documented or versioned; badge docs and endpoint artifacts are updated together"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-output-contracts"
-]
-
-[[work_item]]
-id = "campaign/operationalization-closeout"
+id = "campaign/modularization-stack-audit"
 status = "ready"
-branch = "campaign/operationalization-closeout"
+branch = "campaign/modularization-stack-audit"
 stackable = false
 requires_human_merge = true
-acceptance = "Campaign 5B is closed after config, SARIF/CI policy, and seam-native badge count mapping are landed; docs, metrics, traceability, changelog, and roadmap identify the next campaign boundary without changing analyzer behavior"
+acceptance = "Campaign 6 draft PR stack is audited against current main after Campaign 5B closeout; canonical order, stale branches, conflicts, output/API drift risks, and close/rebase/rewrite recommendations are recorded without changing production code"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
@@ -93,3 +48,14 @@ commands = [
   "cargo xtask check-traceability",
   "cargo xtask check-static-language"
 ]
+
+[[work_item]]
+id = "analysis/summary-extraction"
+status = "blocked"
+branch = "analysis-summary-extraction"
+stackable = false
+requires_human_merge = true
+blocked_by = ["campaign/modularization-stack-audit"]
+blocked_reason = "The old Campaign 6 draft branches predate Campaign 5B config, SARIF, badge, and LSP action work; audit the stack before rebasing or merging structural refactors."
+acceptance = "summary and sort logic move out of analysis/mod.rs with no behavior, output, API, or schema drift; this starts only after the Campaign 6 stack audit"
+commands = []

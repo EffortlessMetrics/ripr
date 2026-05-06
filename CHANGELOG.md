@@ -123,6 +123,10 @@ are scoped or reviewed.
   remain legacy finding-exposure summaries for PRs. Native badge JSON is now
   schema `0.3` with `basis` and `counts.analyzed_seams`; the checked-in
   Shields endpoint artifacts in `badges/` were refreshed together.
+- Closed Campaign 5B (Operationalization) after repository config, SARIF/CI
+  policy, and seam-native badge count mapping landed (#331, #333, #336, #338,
+  #342). The active manifest now moves to Campaign 6 with a draft-stack audit
+  before structural refactors resume.
 
 ## 0.3.0 - 2026-05-02
 
