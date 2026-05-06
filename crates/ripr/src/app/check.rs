@@ -103,3 +103,67 @@ pub fn repo_seam_inventory_input(input: CheckInput) -> CheckOutput {
         findings: Vec::new(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::{Mode, OutputFormat};
+    use std::path::PathBuf;
+
+    fn sample_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/sample")
+    }
+
+    fn sample_diff_input() -> CheckInput {
+        let root = sample_root();
+        CheckInput {
+            root: root.clone(),
+            diff_file: Some(root.join("example.diff")),
+            mode: Mode::Draft,
+            format: OutputFormat::Json,
+            ..CheckInput::default()
+        }
+    }
+
+    #[test]
+    fn check_workspace_runs_diff_use_case_from_input() -> Result<(), String> {
+        let output = check_workspace(sample_diff_input())?;
+
+        assert_eq!(output.schema_version, "0.1");
+        assert_eq!(output.tool, "ripr");
+        assert_eq!(output.mode, Mode::Draft);
+        assert_eq!(output.summary.findings, output.findings.len());
+        assert!(
+            output.findings.iter().any(|finding| finding.id
+                == "probe:crates_ripr_examples_sample_src_lib.rs:21:error_path")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn check_workspace_repo_runs_repo_use_case_from_input() -> Result<(), String> {
+        let mut input = sample_diff_input();
+        input.diff_file = None;
+
+        let output = check_workspace_repo(input)?;
+
+        assert_eq!(output.schema_version, "0.1");
+        assert_eq!(output.tool, "ripr");
+        assert_eq!(output.mode, Mode::Draft);
+        assert_eq!(output.root, sample_root());
+        Ok(())
+    }
+
+    #[test]
+    fn repo_seam_inventory_input_synthesizes_minimal_output_without_analysis() {
+        let input = sample_diff_input();
+        let output = repo_seam_inventory_input(input);
+
+        assert_eq!(output.schema_version, "0.1");
+        assert_eq!(output.tool, "ripr");
+        assert_eq!(output.mode, Mode::Draft);
+        assert_eq!(output.root, sample_root());
+        assert_eq!(output.summary, Summary::default());
+        assert!(output.findings.is_empty());
+    }
+}
