@@ -34,25 +34,51 @@ The workflow uses these artifacts:
 | `mutation-calibration.{json,md}` | Optional runtime calibration join when cargo-mutants data exists. |
 | [`fixtures/CALIBRATION_CORPUS.md`](../fixtures/CALIBRATION_CORPUS.md) | Controlled fixture index for trying the loop on known seam scenarios. |
 
-`ripr check` commands work from an installed `ripr` binary. The receipt,
-cockpit, badge-endpoint, and calibration summary commands shown here are
-repo-local `cargo xtask` automation today.
+`ripr pilot` and `ripr check` commands work from an installed `ripr` binary.
+The before/after receipt, cockpit, badge-endpoint, and calibration summary
+commands shown here are repo-local `cargo xtask` automation today.
 
 Run `ripr init` when you want to pin repo policy before starting the loop. It
 materializes the conservative defaults for review and tuning; missing config is
 still a healthy first-run state.
 
 [RIPR-SPEC-0009](specs/RIPR-SPEC-0009-defaults-first-adoption.md) tracks the
-remaining public CLI path for this loop: `ripr pilot` for the first packet,
-`ripr outcome` for before/after receipts, and `ripr calibrate cargo-mutants`
-for advisory runtime calibration imports. Until those commands exist, this
-document names the installed `ripr check` commands and the repo-local xtask
-wrappers separately.
+remaining public CLI path for this loop: `ripr outcome` for before/after
+receipts and `ripr calibrate cargo-mutants` for advisory runtime calibration
+imports. Until those commands exist, this document names the installed
+`ripr check` commands and the repo-local xtask wrappers separately.
 
 Use a local scratch directory for before/after snapshots:
 
 ```bash
 mkdir -p target/ripr/workflow
+```
+
+## 0. Generate a Pilot Packet
+
+For a first run, start with the installed CLI:
+
+```bash
+ripr pilot
+```
+
+Missing `ripr.toml` is a healthy state. The command uses built-in conservative
+defaults and writes:
+
+```text
+target/ripr/pilot/repo-exposure.json
+target/ripr/pilot/repo-exposure.md
+target/ripr/pilot/agent-seam-packets.json
+target/ripr/pilot/pilot-summary.json
+target/ripr/pilot/pilot-summary.md
+```
+
+Use `pilot-summary.md` as the front panel: it lists the top actionable seam,
+why RIPR ranked it, the targeted test brief, and the after-snapshot command.
+If you want a custom workflow directory or stronger mode:
+
+```bash
+ripr pilot --root . --out target/ripr/workflow --mode ready
 ```
 
 ## 1. Capture the Before Snapshot

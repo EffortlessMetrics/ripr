@@ -12,6 +12,7 @@ pub(super) fn execute(command: CliCommand) -> Result<(), String> {
             Ok(())
         }
         CliCommand::Init(args) => commands::init(&args),
+        CliCommand::Pilot(args) => commands::pilot(&args),
         CliCommand::Check(args) => commands::check(&args),
         CliCommand::Explain(args) => commands::explain(&args),
         CliCommand::Context(args) => commands::context(&args),
@@ -47,6 +48,10 @@ mod tests {
         assert_eq!(
             execute(CliCommand::Init(args(&["--root"]))),
             Err("missing value for --root".to_string())
+        );
+        assert_eq!(
+            execute(CliCommand::Pilot(args(&["--max-seams", "0"]))),
+            Err("invalid --max-seams: expected a positive integer".to_string())
         );
     }
 

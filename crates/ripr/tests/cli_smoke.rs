@@ -355,6 +355,111 @@ fn init_force_overwrites_existing_config() -> Result<(), String> {
     Ok(())
 }
 
+#[test]
+fn pilot_writes_default_packet_outputs_for_boundary_gap_fixture() -> Result<(), String> {
+    let root = workspace_root().join("fixtures/boundary_gap/input");
+    let out_dir = unique_temp_workspace("pilot");
+    let output = run_ripr(&[
+        "pilot",
+        "--root",
+        &root.display().to_string(),
+        "--out",
+        &out_dir.display().to_string(),
+    ]);
+    assert_success(&output);
+
+    for file in [
+        "repo-exposure.json",
+        "repo-exposure.md",
+        "agent-seam-packets.json",
+        "pilot-summary.json",
+        "pilot-summary.md",
+    ] {
+        let path = out_dir.join(file);
+        assert!(path.exists(), "pilot output missing {}", path.display());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("RIPR pilot complete."));
+    assert!(stdout.contains("missing: using built-in defaults"));
+    assert!(stdout.contains("Top actionable seam:"));
+    assert!(stdout.contains("After adding one focused test:"));
+
+    let summary_json = std::fs::read_to_string(out_dir.join("pilot-summary.json"))
+        .map_err(|e| format!("read pilot summary json: {e}"))?;
+    assert!(summary_json.contains(r#""schema_version": "0.1""#));
+    assert!(summary_json.contains(r#""scope": "repo""#));
+    assert!(summary_json.contains(r#""state": "missing""#));
+    assert!(summary_json.contains(r#""top_actionable_seams""#));
+    assert!(summary_json.contains("ripr outcome --before"));
+
+    let packets = std::fs::read_to_string(out_dir.join("agent-seam-packets.json"))
+        .map_err(|e| format!("read agent seam packets: {e}"))?;
+    assert!(packets.contains(r#""packets_total""#));
+    assert!(packets.contains(r#""task": "write_targeted_test""#));
+
+    let _ = std::fs::remove_dir_all(&out_dir);
+    Ok(())
+}
+
+#[test]
+fn pilot_honors_explicit_mode_over_repo_config() -> Result<(), String> {
+    let workspace = make_temp_workspace_with_production_seam()?;
+    std::fs::write(
+        workspace.join("ripr.toml"),
+        "[analysis]\nmode = \"ready\"\n\n[lsp]\nseam_diagnostics = true\n",
+    )
+    .map_err(|e| format!("write ripr.toml: {e}"))?;
+    let out_dir = unique_temp_workspace("pilot-mode");
+    let output = run_ripr(&[
+        "pilot",
+        "--root",
+        &workspace.display().to_string(),
+        "--out",
+        &out_dir.display().to_string(),
+        "--mode",
+        "draft",
+    ]);
+    assert_success(&output);
+
+    let summary_json = std::fs::read_to_string(out_dir.join("pilot-summary.json"))
+        .map_err(|e| format!("read pilot summary json: {e}"))?;
+    assert!(summary_json.contains(r#""mode": "draft""#));
+    assert!(summary_json.contains(r#""state": "loaded""#));
+
+    let _ = std::fs::remove_dir_all(&out_dir);
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn pilot_uses_repo_config_mode_without_explicit_flag() -> Result<(), String> {
+    let workspace = make_temp_workspace_with_production_seam()?;
+    std::fs::write(
+        workspace.join("ripr.toml"),
+        "[analysis]\nmode = \"ready\"\n\n[lsp]\nseam_diagnostics = true\n",
+    )
+    .map_err(|e| format!("write ripr.toml: {e}"))?;
+    let out_dir = unique_temp_workspace("pilot-config-mode");
+    let output = run_ripr(&[
+        "pilot",
+        "--root",
+        &workspace.display().to_string(),
+        "--out",
+        &out_dir.display().to_string(),
+    ]);
+    assert_success(&output);
+
+    let summary_json = std::fs::read_to_string(out_dir.join("pilot-summary.json"))
+        .map_err(|e| format!("read pilot summary json: {e}"))?;
+    assert!(summary_json.contains(r#""mode": "ready""#));
+    assert!(summary_json.contains(r#""state": "loaded""#));
+
+    let _ = std::fs::remove_dir_all(&out_dir);
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
 fn make_temp_workspace_with_production_seam() -> Result<PathBuf, String> {
     make_temp_workspace_with_production_seam_and_report_opt(None)
 }

@@ -120,7 +120,8 @@ The first public pilot path should converge on these user-facing files:
 target/ripr/pilot/repo-exposure.json
 target/ripr/pilot/repo-exposure.md
 target/ripr/pilot/agent-seam-packets.json
-target/ripr/pilot/operator-summary.md
+target/ripr/pilot/pilot-summary.json
+target/ripr/pilot/pilot-summary.md
 ```
 
 The pilot terminal summary should answer:
@@ -291,6 +292,13 @@ Current tests and reports that support the contract:
 - `crates/ripr/src/config.rs::tests::malformed_or_unknown_config_is_actionable`
 - `crates/ripr/tests/cli_smoke.rs::doctor_reports_missing_config_defaults`
 - `crates/ripr/tests/cli_smoke.rs::doctor_reports_loaded_config_path`
+- `crates/ripr/src/output/pilot.rs::tests::pilot_ranking_prefers_actionable_class_order_before_tie_breakers`
+- `crates/ripr/src/output/pilot.rs::tests::pilot_ranking_uses_evidence_tie_breakers_then_stable_location`
+- `crates/ripr/src/output/pilot.rs::tests::pilot_ranking_excludes_solved_governed_classes`
+- `crates/ripr/src/output/pilot.rs::tests::pilot_summary_json_contains_config_state_artifacts_and_next_commands`
+- `crates/ripr/tests/cli_smoke.rs::pilot_writes_default_packet_outputs_for_boundary_gap_fixture`
+- `crates/ripr/tests/cli_smoke.rs::pilot_uses_repo_config_mode_without_explicit_flag`
+- `crates/ripr/tests/cli_smoke.rs::pilot_honors_explicit_mode_over_repo_config`
 - `xtask/src/main.rs::tests::targeted_test_outcome_report_buckets_seam_movement`
 - `xtask/src/main.rs::tests::targeted_test_outcome_json_and_markdown_are_structured`
 - `xtask/src/main.rs::tests::mutation_calibration_summarizes_static_runtime_agreement`
@@ -300,7 +308,6 @@ Current tests and reports that support the contract:
 
 Planned tests:
 
-- `ripr pilot` writes the pilot packet and operator summary;
 - `ripr outcome` matches targeted-test outcome buckets;
 - `ripr calibrate cargo-mutants` matches mutation-calibration agreement
   buckets;
@@ -312,11 +319,13 @@ Current implementation pieces:
 
 - `crates/ripr/src/config.rs` owns repo config defaults, validation, and
   precedence, plus the conservative generated `ripr init` config text.
-- `crates/ripr/src/cli/commands.rs` exposes `init`, `check`, `explain`,
-  `context`, `doctor`, and `lsp`.
+- `crates/ripr/src/cli/commands.rs` exposes `init`, `pilot`, `check`,
+  `explain`, `context`, `doctor`, and `lsp`.
 - `crates/ripr/src/app.rs` orchestrates config-aware analysis entry points.
 - `crates/ripr/src/output/agent_seam_packets.rs` renders targeted-test work
   orders.
+- `crates/ripr/src/output/pilot.rs` ranks actionable seams and renders the
+  pilot summary files.
 - `xtask/src/main.rs` currently owns targeted-test outcome, mutation
   calibration, LSP cockpit, SARIF policy, badge artifact, and report-index
   automation.
@@ -325,7 +334,6 @@ Current implementation pieces:
 
 Planned implementation pieces:
 
-- public `ripr pilot`;
 - public `ripr outcome`;
 - public `ripr calibrate cargo-mutants`;
 - optional generated advisory GitHub Actions workflow.

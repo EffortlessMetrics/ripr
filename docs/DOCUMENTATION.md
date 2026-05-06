@@ -9,6 +9,7 @@ Tutorials help a new user succeed once.
 
 Current and planned tutorial docs:
 
+- [Quickstart](QUICKSTART.md)
 - README quick start
 - future first-extension-install walkthrough
 - future first-fixture walkthrough

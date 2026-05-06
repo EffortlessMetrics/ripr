@@ -59,6 +59,23 @@ ripr init [--root PATH] [--dry-run] [--force]
 | `--dry-run` | _(off)_ | Print the generated config to stdout without writing. |
 | `--force` | _(off)_ | Overwrite an existing `ripr.toml`. Without this flag, existing repo policy is left unchanged. |
 
+### `ripr pilot`
+
+Runs the zero-config first-run repo evidence path and writes a pilot packet.
+Missing `ripr.toml` is healthy; the command uses built-in conservative defaults
+unless repo policy or explicit flags override them.
+
+```text
+ripr pilot [--root PATH] [--out PATH] [--mode MODE] [--max-seams N]
+```
+
+| Flag | Default | Notes |
+| --- | --- | --- |
+| `--root PATH` | current directory | Workspace root to analyze. |
+| `--out PATH` | `target/ripr/pilot` | Directory for `repo-exposure.{json,md}`, `agent-seam-packets.json`, and `pilot-summary.{json,md}`. |
+| `--mode MODE` | `ripr.toml` `analysis.mode`, otherwise `draft` | One of `instant`, `draft`, `fast`, `deep`, `ready`. |
+| `--max-seams N` | `5` | Maximum ranked seams shown in the pilot summary. Must be positive. |
+
 ### `ripr check`
 
 Runs the static exposure analysis and renders findings.

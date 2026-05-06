@@ -543,6 +543,24 @@ next = "campaign/modularization-stack-audit"
 metric = "packet carries missing discriminator + suggested assertion templates"
 
 [[capability]]
+id = "pilot_packet"
+name = "Pilot packet"
+status = "alpha"
+spec = "RIPR-SPEC-0009"
+evidence = [
+  "crates/ripr/src/cli/commands.rs exposes ripr pilot",
+  "crates/ripr/src/output/pilot.rs ranks top actionable seams and renders pilot-summary.json/md",
+  "ripr pilot writes repo-exposure.json, repo-exposure.md, agent-seam-packets.json, pilot-summary.json, and pilot-summary.md",
+  "docs/OUTPUT_SCHEMA.md Pilot Summary section",
+  "docs/QUICKSTART.md zero-config first-run pilot path"
+]
+fixtures = [
+  "fixtures/boundary_gap"
+]
+next = "cli/public-outcome-command"
+metric = "pilot_packet_generated"
+
+[[capability]]
 id = "lsp_seam_diagnostics"
 name = "LSP seam diagnostics"
 status = "alpha"
