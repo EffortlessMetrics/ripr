@@ -658,8 +658,9 @@ evidence = [
   "cargo xtask mutation-calibration",
   "target/ripr/reports/mutation-calibration.json",
   "target/ripr/reports/mutation-calibration.md",
-  "xtask mutation-calibration importer and join unit tests"
+  "xtask mutation-calibration importer and join unit tests",
+  "fixtures/boundary_gap/calibration/runtime-mutants.json"
 ]
-fixtures = []
+fixtures = ["fixtures/boundary_gap"]
 next = "calibration/runtime-fixtures-v1"
-metric = "static seam classes joined to imported runtime mutation outcomes by seam_id or unambiguous file_line; ambiguous file_line candidates remain unassigned"
+metric = "static seam classes joined to imported runtime mutation outcomes by seam_id or unambiguous file_line; ambiguous file_line candidates remain unassigned; boundary_gap sample covers a static-gap/runtime-clean join"

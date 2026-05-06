@@ -1,0 +1,82 @@
+{
+  "schema_version": "0.2",
+  "scope": "repo",
+  "metrics": {
+    "seams_total": 1,
+    "headline_eligible": 1,
+    "strongly_gripped": 0,
+    "weakly_gripped": 1,
+    "ungripped": 0,
+    "reachable_unrevealed": 0,
+    "activation_unknown": 0,
+    "propagation_unknown": 0,
+    "observation_unknown": 0,
+    "discrimination_unknown": 0,
+    "opaque": 0,
+    "intentional": 0,
+    "suppressed": 0
+  },
+  "seams": [
+    {
+      "seam_id": "67fc764ba37d77bd",
+      "kind": "predicate_boundary",
+      "file": "src/lib.rs",
+      "line": 2,
+      "owner": "src/lib.rs::discounted_total",
+      "expression": "amount >= discount_threshold",
+      "grip_class": "weakly_gripped",
+      "headline_eligible": true,
+      "evidence": {
+        "reach": "yes",
+        "activate": "yes",
+        "propagate": "yes",
+        "observe": "yes",
+        "discriminate": "yes"
+      },
+      "related_tests_total": 3,
+      "related_tests": [
+        {
+          "name": "below_threshold_has_no_discount",
+          "file": "tests/pricing.rs",
+          "line": 4,
+          "oracle_kind": "exact_value",
+          "oracle_strength": "strong",
+          "evidence_summary": "exact value assertion",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "equality_boundary_discounts",
+          "file": "tests/pricing.rs",
+          "line": 14,
+          "oracle_kind": "exact_value",
+          "oracle_strength": "strong",
+          "evidence_summary": "exact value assertion",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "far_above_threshold_discounts",
+          "file": "tests/pricing.rs",
+          "line": 9,
+          "oracle_kind": "exact_value",
+          "oracle_strength": "strong",
+          "evidence_summary": "exact value assertion",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "observed_values": [
+        "50",
+        "10_000",
+        "100"
+      ],
+      "missing_discriminators": [
+        {
+          "value": "discount_threshold (equality boundary)",
+          "reason": "observed values do not include the equality-boundary case for this predicate"
+        }
+      ]
+    }
+  ]
+}
