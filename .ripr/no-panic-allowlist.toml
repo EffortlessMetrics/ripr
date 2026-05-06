@@ -82,7 +82,7 @@ explanation = "Test helper function for writing test files"
 
 [[allow]]
 path = "crates/ripr/src/analysis/rust_index.rs"
-line = 982
+line = 316
 column = 28
 family = "expect"
 classification = "false_positive"
@@ -90,7 +90,7 @@ explanation = "Static pattern matching detects text in analyzed Rust source, not
 
 [[allow]]
 path = "crates/ripr/src/analysis/rust_index.rs"
-line = 983
+line = 317
 column = 28
 family = "unwrap"
 classification = "false_positive"
@@ -98,7 +98,7 @@ explanation = "Static pattern matching detects text in analyzed Rust source, not
 
 [[allow]]
 path = "crates/ripr/src/analysis/rust_index.rs"
-line = 1014
+line = 348
 column = 31
 family = "unwrap"
 classification = "false_positive"
@@ -106,7 +106,7 @@ explanation = "Static pattern matching detects text in analyzed Rust source, not
 
 [[allow]]
 path = "crates/ripr/src/analysis/rust_index.rs"
-line = 1015
+line = 349
 column = 28
 family = "expect"
 classification = "false_positive"
@@ -471,6 +471,102 @@ column = 28
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: verifies file discovery works"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/ra.rs"
+line = 751
+column = 14
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function: creates temporary directory"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/ra.rs"
+line = 754
+column = 34
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function: creates src directory"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/ra.rs"
+line = 761
+column = 46
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function: writes test files"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/ra.rs"
+line = 766
+column = 10
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: verifies RA adapter parsing"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/ra.rs"
+line = 780
+column = 10
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function: creates temporary directory"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/ra.rs"
+line = 783
+column = 64
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function: creates src directory"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/ra.rs"
+line = 787
+column = 28
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function: writes test files"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/ra.rs"
+line = 796
+column = 46
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function: writes test files"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/ra.rs"
+line = 801
+column = 10
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: verifies probe shape extraction"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/ra.rs"
+line = 814
+column = 10
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function: creates temporary directory"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/ra.rs"
+line = 817
+column = 64
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function: creates src directory"
+
+[[allow]]
+path = "crates/ripr/src/analysis/syntax/ra.rs"
+line = 820
+column = 14
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: verifies error handling"
 
 [[allow]]
 path = "crates/ripr/src/analysis/facts/build.rs"
