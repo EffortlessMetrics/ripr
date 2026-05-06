@@ -50,7 +50,7 @@ commands = [
 
 [[work_item]]
 id = "ci/sarif-ci-policy"
-status = "ready"
+status = "done"
 branch = "ci/sarif-ci-policy"
 stackable = false
 requires_human_merge = true
@@ -65,12 +65,10 @@ commands = [
 
 [[work_item]]
 id = "badge/seam-native-count-mapping"
-status = "blocked"
+status = "ready"
 branch = "badge/seam-native-count-mapping"
 stackable = false
 requires_human_merge = true
-blocked_by = ["ci/sarif-ci-policy"]
-blocked_reason = "Badge count semantics should be decided after SARIF consumes the configured severity and suppression policy."
 acceptance = "ripr and ripr+ badge artifacts map to seam-native unresolved gap counts; legacy finding count behavior remains documented or versioned; badge docs and endpoint artifacts are updated together"
 commands = [
   "cargo xtask shape",

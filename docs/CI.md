@@ -233,8 +233,29 @@ SARIF consumes configured severity from `ripr.toml`:
 | `note` | `level: "note"` |
 | `off` | omitted |
 
-Opt-in baseline policy should compare current SARIF against a checked-in
-baseline using `ruleId` plus `partialFingerprints.riprFingerprintV1`.
+The opt-in baseline policy compares current SARIF against a checked-in baseline
+using `ruleId` plus `partialFingerprints.riprFingerprintV1`.
+
+The local policy command writes `target/ripr/reports/sarif-policy.{json,md}`:
+
+```bash
+cargo xtask sarif-policy \
+  --current target/ripr/reports/ripr-seams.sarif.json \
+  --baseline .ripr/sarif-baseline.json \
+  --mode baseline-check
+```
+
+To make new warning-level results blocking, opt in explicitly:
+
+```bash
+cargo xtask sarif-policy \
+  --current target/ripr/reports/ripr-seams.sarif.json \
+  --baseline .ripr/sarif-baseline.json \
+  --mode fail-on-new-warning
+```
+
+Missing baselines remain advisory by default. Use `--missing-baseline error`
+only when the repository has deliberately adopted a required SARIF baseline.
 
 Policy modes:
 
@@ -244,10 +265,10 @@ Policy modes:
 | `baseline-check` | no | Report new configured-warning results relative to a baseline. |
 | `fail-on-new-warning` | no | Exit non-zero when new configured-warning results appear. |
 
-The first policy implementation should live in `cargo xtask` rather than a
-public `ripr` CLI policy command. It should not add a default workflow that
-blocks pull requests. A later workflow PR may document or add an opt-in GitHub
-code-scanning upload path after the renderer and baseline policy are stable.
+The policy implementation lives in `cargo xtask` rather than a public `ripr`
+CLI policy command. It does not add a default workflow that blocks pull
+requests. A later workflow PR may document or add an opt-in GitHub code-scanning
+upload path after badge semantics settle.
 
 The security workflow currently runs:
 
@@ -306,8 +327,9 @@ Release workflows handle extension publishing and server binary releases.
   down.
 - Rust-first file policy keeps repo automation in `xtask` instead of ad hoc
   scripts.
-- Blocking `ripr` findings are opt-in until SARIF policy, baselines, and
-  calibration exist.
+- Blocking `ripr` findings remain opt-in. Use `cargo xtask sarif-policy` with
+  an explicit baseline and failure mode only after the repository has adopted
+  that gate.
 - CI changes require documentation updates.
 
 ## Future Improvements
@@ -324,14 +346,9 @@ Planned CI work:
   coverage baseline
 - decide when duplicate dependency findings should become blocking after the
   cargo-deny baseline is stable
-- add SARIF validation when SARIF output exists
-- add opt-in policy modes:
-  - advisory
-  - warn-only
-  - fail-on-no-static-path
-  - fail-on-high-confidence-gap
-  - top-N-only
-  - baseline-aware
+- add SARIF schema validation for generated artifacts
+- decide when to promote the opt-in SARIF baseline policy into repository
+  workflows
 
 ## Merge Criteria
 

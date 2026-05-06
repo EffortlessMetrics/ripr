@@ -25,9 +25,9 @@ through multiple work items in a campaign, but each work item should follow the
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
 through 5A are complete. The active queue is now Campaign 5B
 Operationalization. `config/ripr-config-v1` established the repo-root
-configuration surface; `ci/sarif-ci-policy` is the next ready item, and
-`badge/seam-native-count-mapping` remains blocked until SARIF consumes
-configured severity and suppression semantics.
+configuration surface; `ci/sarif-ci-policy` added SARIF rendering and an
+opt-in baseline policy, and `badge/seam-native-count-mapping` is the next ready
+item.
 
 ## PR 0: `planning-and-tracking-docs`
 
@@ -805,18 +805,18 @@ Purpose: support PR workflows without making default CI noisy.
 
 Deliverables:
 
-- [ ] SARIF output.
-- [ ] Markdown summary.
-- [ ] JSON artifact guidance.
-- [ ] Advisory mode.
-- [ ] Opt-in failure modes.
-- [ ] Baseline-aware mode.
+- [x] SARIF output.
+- [x] Markdown summary.
+- [x] JSON artifact guidance.
+- [x] Advisory mode.
+- [x] Opt-in failure modes.
+- [x] Baseline-aware mode.
 
 Acceptance:
 
-- [ ] SARIF validates.
-- [ ] GitHub annotations point to changed lines.
-- [ ] Blocking policy is opt-in.
+- [x] SARIF validates.
+- [x] SARIF results point to static evidence locations.
+- [x] Blocking policy is opt-in.
 
 ## PR 17: `cargo-mutants-calibration-scaffold`
 

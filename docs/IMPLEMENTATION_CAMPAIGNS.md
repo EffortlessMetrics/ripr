@@ -619,14 +619,14 @@ Work items:
 | Work item | Status | Notes |
 | --- | --- | --- |
 | `config/ripr-config-v1` | done | Repo-root `ripr.toml` governs analysis mode, oracle policy, severity mapping, suppressions path, report caps, and LSP seam-diagnostic defaults while explicit CLI/LSP options still win. |
-| `ci/sarif-ci-policy` | ready | SARIF and policy modes consume configured severity and suppression policy; RIPR-SPEC-0008 pins the rule IDs, severity mapping, suppression visibility, and advisory default. |
-| `badge/seam-native-count-mapping` | blocked | Map `ripr` and `ripr+` badge counts onto seam-native counts after SARIF consumes configured severity and suppression semantics. |
+| `ci/sarif-ci-policy` | done | SARIF and policy modes consume configured severity and suppression policy; RIPR-SPEC-0008 pins the rule IDs, severity mapping, suppression visibility, advisory default, renderer, and opt-in baseline policy. |
+| `badge/seam-native-count-mapping` | ready | Map `ripr` and `ripr+` badge counts onto seam-native counts after SARIF consumes configured severity and suppression semantics. |
 
 Review policy:
 
-5B started with `config/ripr-config-v1`. SARIF policy is the next ready item;
-badge count remapping should not land before SARIF consumes configured severity
-and suppression semantics.
+5B started with `config/ripr-config-v1`, then landed SARIF rendering and the
+opt-in baseline policy. Badge count remapping is now the next ready item and
+should reuse the configured severity and suppression semantics SARIF consumes.
 
 ## Campaign 6: Module SRP Refactoring
 

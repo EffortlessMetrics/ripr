@@ -241,11 +241,12 @@ Implemented renderer tests:
 - `crates/ripr/src/output/sarif.rs::tests::sarif_omits_off_seam_class`
 - `crates/ripr/src/output/sarif.rs::tests::sarif_attaches_suppression_metadata`
 
-Planned policy tests:
+Implemented policy tests:
 
 - `xtask/src/main.rs::tests::sarif_policy_passes_when_no_new_results`
 - `xtask/src/main.rs::tests::sarif_policy_flags_new_warning_result`
 - `xtask/src/main.rs::tests::sarif_policy_ignores_note_when_threshold_warning`
+- `xtask/src/main.rs::tests::sarif_policy_missing_baseline_is_advisory_by_default`
 
 ## Implementation Mapping
 
@@ -257,7 +258,7 @@ Implemented renderer:
   JSON schemas.
 - `crates/ripr/src/cli/parse.rs` accepts SARIF output format names.
 
-Planned policy implementation:
+Implemented policy:
 
 - `xtask/src/main.rs` owns baseline-aware policy comparison.
 - `docs/OUTPUT_SCHEMA.md` and `docs/CI.md` document the emitted SARIF and

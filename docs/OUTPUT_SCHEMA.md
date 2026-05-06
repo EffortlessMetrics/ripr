@@ -376,6 +376,50 @@ when their configured severity is visible. Results whose configured severity is
 `off` are omitted. See RIPR-SPEC-0008 for the full suppression and baseline
 policy contract.
 
+`cargo xtask sarif-policy` compares current SARIF against an optional baseline
+and writes:
+
+```text
+target/ripr/reports/sarif-policy.json
+target/ripr/reports/sarif-policy.md
+```
+
+The JSON report is repo automation output with schema version `"0.1"`:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "new_results",
+  "mode": "baseline-check",
+  "threshold": "warning",
+  "current": {
+    "path": "target/ripr/reports/ripr-seams.sarif.json",
+    "results_total": 12,
+    "compared_results": 3
+  },
+  "baseline": {
+    "path": ".ripr/sarif-baseline.json",
+    "missing": false,
+    "results_total": 10,
+    "compared_results": 2
+  },
+  "new_results_total": 1,
+  "new_results": [
+    {
+      "rule_id": "ripr.seam.weakly_gripped",
+      "level": "warning",
+      "fingerprint": "ripr.seam.weakly_gripped|abc123|src/lib.rs|42",
+      "uri": "src/lib.rs",
+      "line": 42,
+      "message": "weakly_gripped seam grip for predicate_boundary"
+    }
+  ]
+}
+```
+
+Policy reports are advisory unless `--mode fail-on-new-warning` is used.
+
 ## Context Packet
 
 `ripr context --json` emits compact test intent for agents:

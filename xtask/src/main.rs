@@ -461,6 +461,7 @@ fn main() {
         Some("repo-exposure-report") => repo_exposure_report(),
         Some("agent-seam-packets") => agent_seam_packets_report(args.get(2)),
         Some("mutation-calibration") => mutation_calibration(&args[2..]),
+        Some("sarif-policy") => sarif_policy(&args[2..]),
         Some("update-badge-endpoints") => update_badge_endpoints(),
         Some("check-badge-endpoints") => check_badge_endpoints(),
         Some("dogfood") => dogfood(),
@@ -754,6 +755,7 @@ fn known_commands() -> Vec<&'static str> {
         "repo-exposure-report",
         "agent-seam-packets [root]",
         "mutation-calibration [root] --mutants-json <path>",
+        "sarif-policy --current <path> [--baseline <path>]",
         "update-badge-endpoints",
         "check-badge-endpoints",
         "dogfood",
@@ -5810,6 +5812,524 @@ fn parse_mutation_calibration_args(args: &[String]) -> Result<MutationCalibratio
 fn mutation_calibration_usage() -> String {
     "usage: cargo xtask mutation-calibration [root] --mutants-json <path> [--repo-exposure-json <path>]"
         .to_string()
+}
+
+#[derive(Clone, Debug)]
+struct SarifPolicyArgs {
+    current: PathBuf,
+    baseline: Option<PathBuf>,
+    mode: SarifPolicyMode,
+    threshold: SarifPolicyThreshold,
+    missing_baseline: SarifMissingBaseline,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SarifPolicyMode {
+    Advisory,
+    BaselineCheck,
+    FailOnNewWarning,
+}
+
+impl SarifPolicyMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Advisory => "advisory",
+            Self::BaselineCheck => "baseline-check",
+            Self::FailOnNewWarning => "fail-on-new-warning",
+        }
+    }
+
+    fn from_str(value: &str) -> Option<Self> {
+        match value {
+            "advisory" => Some(Self::Advisory),
+            "baseline-check" => Some(Self::BaselineCheck),
+            "fail-on-new-warning" => Some(Self::FailOnNewWarning),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SarifPolicyThreshold {
+    Warning,
+    Note,
+}
+
+impl SarifPolicyThreshold {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Warning => "warning",
+            Self::Note => "note",
+        }
+    }
+
+    fn from_str(value: &str) -> Option<Self> {
+        match value {
+            "warning" => Some(Self::Warning),
+            "note" => Some(Self::Note),
+            _ => None,
+        }
+    }
+
+    fn includes(self, level: &str) -> bool {
+        match self {
+            Self::Warning => level == "warning",
+            Self::Note => matches!(level, "warning" | "note"),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SarifMissingBaseline {
+    Advisory,
+    Error,
+}
+
+impl SarifMissingBaseline {
+    fn from_str(value: &str) -> Option<Self> {
+        match value {
+            "advisory" => Some(Self::Advisory),
+            "error" => Some(Self::Error),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct SarifPolicyResult {
+    key: String,
+    rule_id: String,
+    level: String,
+    fingerprint: String,
+    uri: String,
+    line: Option<usize>,
+    message: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct SarifPolicyReport {
+    mode: SarifPolicyMode,
+    threshold: SarifPolicyThreshold,
+    status: String,
+    current_path: String,
+    baseline_path: Option<String>,
+    baseline_missing: bool,
+    current_results_total: usize,
+    current_compared_results: usize,
+    baseline_results_total: usize,
+    baseline_compared_results: usize,
+    new_results: Vec<SarifPolicyResult>,
+}
+
+fn sarif_policy(args: &[String]) -> Result<(), String> {
+    let parsed = parse_sarif_policy_args(args)?;
+    let current_text = read_text_lossy(&parsed.current)?;
+    let current_results = parse_sarif_policy_results(&current_text, "current SARIF")?;
+
+    let (baseline_results, baseline_missing) = match parsed.baseline.as_ref() {
+        Some(path) if path.exists() => {
+            let baseline_text = read_text_lossy(path)?;
+            (
+                Some(parse_sarif_policy_results(
+                    &baseline_text,
+                    "baseline SARIF",
+                )?),
+                false,
+            )
+        }
+        Some(_) | None => (None, true),
+    };
+
+    let report = build_sarif_policy_report(
+        parsed.mode,
+        parsed.threshold,
+        normalize_path(&parsed.current),
+        parsed.baseline.as_ref().map(|path| normalize_path(path)),
+        &current_results,
+        baseline_results.as_deref(),
+        baseline_missing,
+    );
+
+    write_report("sarif-policy.json", &sarif_policy_report_json(&report)?)?;
+    write_report("sarif-policy.md", &sarif_policy_report_markdown(&report))?;
+
+    if report.baseline_missing && parsed.missing_baseline == SarifMissingBaseline::Error {
+        return Err("SARIF policy baseline is missing".to_string());
+    }
+    if parsed.mode == SarifPolicyMode::FailOnNewWarning && !report.new_results.is_empty() {
+        return Err(format!(
+            "SARIF policy found {} new {} result(s)",
+            report.new_results.len(),
+            parsed.threshold.as_str()
+        ));
+    }
+    Ok(())
+}
+
+fn parse_sarif_policy_args(args: &[String]) -> Result<SarifPolicyArgs, String> {
+    let mut current: Option<PathBuf> = None;
+    let mut baseline: Option<PathBuf> = None;
+    let mut mode = SarifPolicyMode::Advisory;
+    let mut threshold = SarifPolicyThreshold::Warning;
+    let mut missing_baseline = SarifMissingBaseline::Advisory;
+    let mut index = 0;
+
+    while index < args.len() {
+        let arg = args[index].as_str();
+        match arg {
+            "--current" | "--sarif" => {
+                index += 1;
+                let Some(path) = args.get(index) else {
+                    return Err(format!(
+                        "missing value for `{arg}`\n{}",
+                        sarif_policy_usage()
+                    ));
+                };
+                current = Some(PathBuf::from(path));
+            }
+            "--baseline" => {
+                index += 1;
+                let Some(path) = args.get(index) else {
+                    return Err(format!(
+                        "missing value for `{arg}`\n{}",
+                        sarif_policy_usage()
+                    ));
+                };
+                baseline = Some(PathBuf::from(path));
+            }
+            "--mode" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    return Err(format!(
+                        "missing value for `{arg}`\n{}",
+                        sarif_policy_usage()
+                    ));
+                };
+                let Some(parsed) = SarifPolicyMode::from_str(value) else {
+                    return Err(format!(
+                        "unsupported SARIF policy mode `{value}`; expected advisory, baseline-check, or fail-on-new-warning"
+                    ));
+                };
+                mode = parsed;
+            }
+            "--threshold" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    return Err(format!(
+                        "missing value for `{arg}`\n{}",
+                        sarif_policy_usage()
+                    ));
+                };
+                let Some(parsed) = SarifPolicyThreshold::from_str(value) else {
+                    return Err(
+                        "unsupported SARIF policy threshold; expected warning or note".to_string(),
+                    );
+                };
+                threshold = parsed;
+            }
+            "--missing-baseline" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    return Err(format!(
+                        "missing value for `{arg}`\n{}",
+                        sarif_policy_usage()
+                    ));
+                };
+                let Some(parsed) = SarifMissingBaseline::from_str(value) else {
+                    return Err(
+                        "unsupported missing-baseline behavior; expected advisory or error"
+                            .to_string(),
+                    );
+                };
+                missing_baseline = parsed;
+            }
+            "--help" | "-h" => return Err(sarif_policy_usage()),
+            flag if flag.starts_with('-') => {
+                return Err(format!(
+                    "unknown sarif-policy option `{flag}`\n{}",
+                    sarif_policy_usage()
+                ));
+            }
+            other => {
+                return Err(format!(
+                    "unexpected positional argument `{other}`\n{}",
+                    sarif_policy_usage()
+                ));
+            }
+        }
+        index += 1;
+    }
+
+    let Some(current) = current else {
+        return Err(format!(
+            "sarif-policy requires `--current <path>`\n{}",
+            sarif_policy_usage()
+        ));
+    };
+
+    Ok(SarifPolicyArgs {
+        current,
+        baseline,
+        mode,
+        threshold,
+        missing_baseline,
+    })
+}
+
+fn sarif_policy_usage() -> String {
+    "usage: cargo xtask sarif-policy --current <path> [--baseline <path>] [--mode advisory|baseline-check|fail-on-new-warning] [--threshold warning|note] [--missing-baseline advisory|error]"
+        .to_string()
+}
+
+fn parse_sarif_policy_results(text: &str, label: &str) -> Result<Vec<SarifPolicyResult>, String> {
+    let value: Value =
+        serde_json::from_str(text).map_err(|err| format!("failed to parse {label}: {err}"))?;
+    let runs = value
+        .get("runs")
+        .and_then(Value::as_array)
+        .ok_or_else(|| format!("{label} is missing SARIF `runs` array"))?;
+    let mut out = Vec::new();
+    for run in runs {
+        let Some(results) = run.get("results").and_then(Value::as_array) else {
+            continue;
+        };
+        for result in results {
+            if result_has_suppression(result) {
+                continue;
+            }
+            let rule_id = json_string_field(result, "ruleId").unwrap_or_else(|| "unknown".into());
+            let level = json_string_field(result, "level").unwrap_or_else(|| "warning".into());
+            let fingerprint = sarif_policy_fingerprint(result);
+            let location = sarif_policy_location(result);
+            let message = result
+                .get("message")
+                .and_then(|message| json_string_field(message, "text"))
+                .unwrap_or_else(|| "ripr SARIF result".to_string());
+            let key = format!("{rule_id}|{fingerprint}");
+            out.push(SarifPolicyResult {
+                key,
+                rule_id,
+                level,
+                fingerprint,
+                uri: location.0,
+                line: location.1,
+                message,
+            });
+        }
+    }
+    out.sort_by(|a, b| a.key.cmp(&b.key));
+    out.dedup_by(|a, b| a.key == b.key);
+    Ok(out)
+}
+
+fn build_sarif_policy_report(
+    mode: SarifPolicyMode,
+    threshold: SarifPolicyThreshold,
+    current_path: String,
+    baseline_path: Option<String>,
+    current_results: &[SarifPolicyResult],
+    baseline_results: Option<&[SarifPolicyResult]>,
+    baseline_missing: bool,
+) -> SarifPolicyReport {
+    let current_compared = filtered_sarif_policy_results(current_results, threshold);
+    let baseline_compared = baseline_results
+        .map(|results| filtered_sarif_policy_results(results, threshold))
+        .unwrap_or_default();
+    let baseline_keys = baseline_compared
+        .iter()
+        .map(|result| result.key.as_str())
+        .collect::<BTreeSet<_>>();
+    let new_results = if baseline_missing {
+        Vec::new()
+    } else {
+        current_compared
+            .iter()
+            .filter(|result| !baseline_keys.contains(result.key.as_str()))
+            .map(|result| (*result).clone())
+            .collect::<Vec<_>>()
+    };
+    let status = if baseline_missing {
+        "advisory_missing_baseline"
+    } else if new_results.is_empty() {
+        "pass"
+    } else if mode == SarifPolicyMode::FailOnNewWarning {
+        "fail"
+    } else {
+        "new_results"
+    };
+
+    SarifPolicyReport {
+        mode,
+        threshold,
+        status: status.to_string(),
+        current_path,
+        baseline_path,
+        baseline_missing,
+        current_results_total: current_results.len(),
+        current_compared_results: current_compared.len(),
+        baseline_results_total: baseline_results.map_or(0, <[SarifPolicyResult]>::len),
+        baseline_compared_results: baseline_compared.len(),
+        new_results,
+    }
+}
+
+fn filtered_sarif_policy_results(
+    results: &[SarifPolicyResult],
+    threshold: SarifPolicyThreshold,
+) -> Vec<&SarifPolicyResult> {
+    results
+        .iter()
+        .filter(|result| threshold.includes(&result.level))
+        .collect()
+}
+
+fn sarif_policy_report_json(report: &SarifPolicyReport) -> Result<String, String> {
+    let value = serde_json::json!({
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "status": report.status,
+        "mode": report.mode.as_str(),
+        "threshold": report.threshold.as_str(),
+        "current": {
+            "path": report.current_path,
+            "results_total": report.current_results_total,
+            "compared_results": report.current_compared_results
+        },
+        "baseline": {
+            "path": report.baseline_path,
+            "missing": report.baseline_missing,
+            "results_total": report.baseline_results_total,
+            "compared_results": report.baseline_compared_results
+        },
+        "new_results_total": report.new_results.len(),
+        "new_results": report.new_results.iter().map(|result| {
+            serde_json::json!({
+                "rule_id": result.rule_id,
+                "level": result.level,
+                "fingerprint": result.fingerprint,
+                "uri": result.uri,
+                "line": result.line,
+                "message": result.message
+            })
+        }).collect::<Vec<_>>()
+    });
+    serde_json::to_string_pretty(&value)
+        .map(|mut rendered| {
+            rendered.push('\n');
+            rendered
+        })
+        .map_err(|err| format!("failed to render SARIF policy JSON: {err}"))
+}
+
+fn sarif_policy_report_markdown(report: &SarifPolicyReport) -> String {
+    let mut out = String::new();
+    out.push_str("# ripr SARIF policy report\n\n");
+    out.push_str(&format!("Status: {}\n\n", report.status));
+    out.push_str(&format!("- mode: `{}`\n", report.mode.as_str()));
+    out.push_str(&format!("- threshold: `{}`\n", report.threshold.as_str()));
+    out.push_str(&format!(
+        "- current: `{}`\n",
+        md_escape(&report.current_path)
+    ));
+    match &report.baseline_path {
+        Some(path) => out.push_str(&format!("- baseline: `{}`\n", md_escape(path))),
+        None => out.push_str("- baseline: not provided\n"),
+    }
+    out.push_str(&format!(
+        "- current compared results: {}\n",
+        report.current_compared_results
+    ));
+    out.push_str(&format!(
+        "- baseline compared results: {}\n",
+        report.baseline_compared_results
+    ));
+    if report.baseline_missing {
+        out.push_str(
+            "\nBaseline is missing; this is advisory unless `--missing-baseline error` is set.\n",
+        );
+        return out;
+    }
+    if report.new_results.is_empty() {
+        out.push_str("\nNo new configured-threshold SARIF results were detected.\n");
+        return out;
+    }
+    out.push_str("\n## New results\n\n");
+    for result in &report.new_results {
+        out.push_str(&format!(
+            "- `{}` `{}` {}:{} — {}\n",
+            result.rule_id,
+            result.level,
+            md_escape(&result.uri),
+            result.line.map_or("?".to_string(), |line| line.to_string()),
+            md_escape(&result.message)
+        ));
+    }
+    out
+}
+
+fn result_has_suppression(result: &Value) -> bool {
+    result
+        .get("suppressions")
+        .and_then(Value::as_array)
+        .is_some_and(|suppressions| !suppressions.is_empty())
+}
+
+fn sarif_policy_fingerprint(result: &Value) -> String {
+    if let Some(fingerprint) = result
+        .get("partialFingerprints")
+        .and_then(|fingerprints| json_string_field(fingerprints, "riprFingerprintV1"))
+    {
+        return fingerprint;
+    }
+    if let Some(fingerprints) = result.get("partialFingerprints").and_then(Value::as_object) {
+        for value in fingerprints.values() {
+            if let Some(fingerprint) = value.as_str() {
+                return fingerprint.to_string();
+            }
+        }
+    }
+    let (uri, line) = sarif_policy_location(result);
+    let message = result
+        .get("message")
+        .and_then(|message| json_string_field(message, "text"))
+        .unwrap_or_default();
+    format!(
+        "{}|{}|{}",
+        normalize_path(Path::new(&uri)),
+        line.map_or(0, |line| line),
+        message
+    )
+}
+
+fn sarif_policy_location(result: &Value) -> (String, Option<usize>) {
+    let Some(location) = result
+        .get("locations")
+        .and_then(Value::as_array)
+        .and_then(|locations| locations.first())
+    else {
+        return ("unknown".to_string(), None);
+    };
+    let physical = location.get("physicalLocation");
+    let uri = physical
+        .and_then(|physical| physical.get("artifactLocation"))
+        .and_then(|artifact| json_string_field(artifact, "uri"))
+        .unwrap_or_else(|| "unknown".to_string());
+    let line = physical
+        .and_then(|physical| physical.get("region"))
+        .and_then(|region| json_usize_field(region, "startLine"));
+    (uri, line)
+}
+
+fn json_string_field(value: &Value, key: &str) -> Option<String> {
+    value.get(key).and_then(json_scalar_as_string)
+}
+
+fn json_usize_field(value: &Value, key: &str) -> Option<usize> {
+    value.get(key).and_then(json_scalar_as_usize)
+}
+
+fn md_escape(value: &str) -> String {
+    value.replace('`', "\\`").replace(['\r', '\n'], " ")
 }
 
 fn read_mutation_input_json(path: &Path) -> Result<String, String> {
@@ -13086,14 +13606,14 @@ mod tests {
     use super::{
         BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, CheckReport,
         CheckStatus, CheckViolation, CiFullEvidenceGate, DogfoodRun, FixKind, LocalContextAllow,
-        MarkdownLink, ReceiptRecord, ReportIndexCampaign, ReportIndexEntry,
-        StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass,
-        badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
-        badge_artifacts_summary_markdown, ci_full_evidence_gates, collect_panic_findings,
-        collect_semantic_panic_findings, critic_findings, dogfood_class_counts,
-        dogfood_report_json, dogfood_report_markdown, extract_json_object_usize_map,
-        extract_json_string, extract_json_warnings, extract_workflow_run_blocks,
-        first_line_difference, forbidden_panic_patterns, glob_matches,
+        MarkdownLink, ReceiptRecord, ReportIndexCampaign, ReportIndexEntry, SarifPolicyMode,
+        SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher,
+        TestOracleClass, badge_artifact_command_args, badge_artifact_jobs,
+        badge_artifact_native_slot, badge_artifacts_summary_markdown, ci_full_evidence_gates,
+        collect_panic_findings, collect_semantic_panic_findings, critic_findings,
+        dogfood_class_counts, dogfood_report_json, dogfood_report_markdown,
+        extract_json_object_usize_map, extract_json_string, extract_json_warnings,
+        extract_workflow_run_blocks, first_line_difference, forbidden_panic_patterns, glob_matches,
         golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
         guarded_allow_attributes_in_text, install_hooks_in, is_bdd_test_name,
         is_dependency_surface_candidate, is_evidence_path, is_generated_candidate,
@@ -13107,13 +13627,14 @@ mod tests {
         parse_campaign_manifest, parse_inline_array, parse_mutation_calibration_args,
         parse_mutation_outcomes_json, parse_no_panic_allowlist_toml,
         parse_no_panic_allowlist_toml_v2, parse_reason, parse_repo_exposure_static_seams,
-        parse_static_language_allowlist, parse_string_value, pr_shape_warnings,
-        precommit_report_body, public_contract_rows, read_mutation_input_json, receipt_json,
-        receipt_specs, receipt_status_from_reports, repo_badge_artifact_command_args,
-        repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown,
-        repo_seam_inventory_command_args_for_root, report_index_markdown,
-        report_index_missing_expected, report_status_from_text, ripr_pre_commit_hook,
-        run_ci_full_evidence_gates, semantic_selector_matches, should_scan_static_language_path,
+        parse_sarif_policy_args, parse_sarif_policy_results, parse_static_language_allowlist,
+        parse_string_value, pr_shape_warnings, precommit_report_body, public_contract_rows,
+        read_mutation_input_json, receipt_json, receipt_specs, receipt_status_from_reports,
+        repo_badge_artifact_command_args, repo_badge_artifact_jobs,
+        repo_badge_artifacts_summary_markdown, repo_seam_inventory_command_args_for_root,
+        report_index_markdown, report_index_missing_expected, report_status_from_text,
+        ripr_pre_commit_hook, run_ci_full_evidence_gates, sarif_policy_report_json,
+        sarif_policy_report_markdown, semantic_selector_matches, should_scan_static_language_path,
         sorted_allowlist_content, spec_id_from_path, static_language_allowlist_covers,
         status_for_report, suspicious_runtime_file_names, test_efficiency_entry,
         test_efficiency_report_json, test_efficiency_report_markdown, test_oracle_report_json,
@@ -13130,10 +13651,12 @@ mod tests {
     };
     use super::{MutationOutcomeRecord, StaticSeamRecord};
     use super::{PanicAllowEntryVersioned, PanicFamilySelector, SemanticPanicFinding};
+    use super::{SarifMissingBaseline, build_sarif_policy_report};
     use super::{
         active_yaml_lines, check_droid_action_refs, check_droid_common, forbids_active_line,
         has_active_line, strip_yaml_comment,
     };
+    use serde_json::Value;
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -18739,6 +19262,7 @@ settings: |
         assert!(commands.contains(&"repo-exposure-report"));
         assert!(commands.contains(&"agent-seam-packets [root]"));
         assert!(commands.contains(&"mutation-calibration [root] --mutants-json <path>"));
+        assert!(commands.contains(&"sarif-policy --current <path> [--baseline <path>]"));
         assert!(commands.contains(&"check-droid-review-config"));
     }
 
@@ -18802,6 +19326,217 @@ settings: |
         assert!(error.contains("`bad`"));
         assert!(error.contains("boom"));
         Ok(())
+    }
+
+    #[test]
+    fn sarif_policy_passes_when_no_new_results() {
+        let current = vec![sarif_policy_result(
+            "ripr.finding.weakly_exposed",
+            "warning",
+            "same",
+        )];
+        let baseline = current.clone();
+        let report = build_sarif_policy_report(
+            SarifPolicyMode::BaselineCheck,
+            SarifPolicyThreshold::Warning,
+            "current.sarif.json".to_string(),
+            Some("baseline.sarif.json".to_string()),
+            &current,
+            Some(&baseline),
+            false,
+        );
+
+        assert_eq!(report.status, "pass");
+        assert!(report.new_results.is_empty());
+        assert_eq!(report.current_compared_results, 1);
+        assert_eq!(report.baseline_compared_results, 1);
+    }
+
+    #[test]
+    fn sarif_policy_flags_new_warning_result() {
+        let current = vec![sarif_policy_result(
+            "ripr.seam.weakly_gripped",
+            "warning",
+            "new",
+        )];
+        let baseline = vec![sarif_policy_result(
+            "ripr.seam.weakly_gripped",
+            "warning",
+            "old",
+        )];
+        let report = build_sarif_policy_report(
+            SarifPolicyMode::BaselineCheck,
+            SarifPolicyThreshold::Warning,
+            "current.sarif.json".to_string(),
+            Some("baseline.sarif.json".to_string()),
+            &current,
+            Some(&baseline),
+            false,
+        );
+
+        assert_eq!(report.status, "new_results");
+        assert_eq!(report.new_results.len(), 1);
+        assert_eq!(report.new_results[0].fingerprint, "new");
+    }
+
+    #[test]
+    fn sarif_policy_ignores_note_when_threshold_warning() {
+        let current = vec![sarif_policy_result("ripr.seam.opaque", "note", "new-note")];
+        let baseline: Vec<SarifPolicyResult> = Vec::new();
+        let report = build_sarif_policy_report(
+            SarifPolicyMode::BaselineCheck,
+            SarifPolicyThreshold::Warning,
+            "current.sarif.json".to_string(),
+            Some("baseline.sarif.json".to_string()),
+            &current,
+            Some(&baseline),
+            false,
+        );
+
+        assert_eq!(report.status, "pass");
+        assert!(report.new_results.is_empty());
+        assert_eq!(report.current_compared_results, 0);
+    }
+
+    #[test]
+    fn sarif_policy_missing_baseline_is_advisory_by_default() {
+        let current = vec![sarif_policy_result("ripr.seam.ungripped", "warning", "new")];
+        let report = build_sarif_policy_report(
+            SarifPolicyMode::FailOnNewWarning,
+            SarifPolicyThreshold::Warning,
+            "current.sarif.json".to_string(),
+            Some("missing-baseline.sarif.json".to_string()),
+            &current,
+            None,
+            true,
+        );
+
+        assert_eq!(report.status, "advisory_missing_baseline");
+        assert!(report.new_results.is_empty());
+        assert!(report.baseline_missing);
+    }
+
+    #[test]
+    fn sarif_policy_parses_results_and_skips_suppressions() -> Result<(), String> {
+        let text = sarif_policy_test_sarif(vec![
+            sarif_policy_json_result("ripr.finding.weakly_exposed", "warning", "visible", false),
+            sarif_policy_json_result("ripr.finding.weakly_exposed", "warning", "hidden", true),
+        ])?;
+        let results = parse_sarif_policy_results(&text, "test SARIF")?;
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].fingerprint, "visible");
+        assert_eq!(results[0].uri, "src/lib.rs");
+        assert_eq!(results[0].line, Some(12));
+        Ok(())
+    }
+
+    #[test]
+    fn sarif_policy_args_parse_mode_threshold_and_missing_baseline() -> Result<(), String> {
+        let args = vec![
+            "--current".to_string(),
+            "current.sarif.json".to_string(),
+            "--baseline".to_string(),
+            "baseline.sarif.json".to_string(),
+            "--mode".to_string(),
+            "fail-on-new-warning".to_string(),
+            "--threshold".to_string(),
+            "note".to_string(),
+            "--missing-baseline".to_string(),
+            "error".to_string(),
+        ];
+
+        let parsed = parse_sarif_policy_args(&args)?;
+
+        assert_eq!(parsed.current, PathBuf::from("current.sarif.json"));
+        assert_eq!(parsed.baseline, Some(PathBuf::from("baseline.sarif.json")));
+        assert_eq!(parsed.mode, SarifPolicyMode::FailOnNewWarning);
+        assert_eq!(parsed.threshold, SarifPolicyThreshold::Note);
+        assert_eq!(parsed.missing_baseline, SarifMissingBaseline::Error);
+        Ok(())
+    }
+
+    #[test]
+    fn sarif_policy_report_json_and_markdown_are_structured() -> Result<(), String> {
+        let current = vec![sarif_policy_result(
+            "ripr.seam.weakly_gripped",
+            "warning",
+            "new",
+        )];
+        let baseline: Vec<SarifPolicyResult> = Vec::new();
+        let report = build_sarif_policy_report(
+            SarifPolicyMode::BaselineCheck,
+            SarifPolicyThreshold::Warning,
+            "current.sarif.json".to_string(),
+            Some("baseline.sarif.json".to_string()),
+            &current,
+            Some(&baseline),
+            false,
+        );
+
+        let json = sarif_policy_report_json(&report)?;
+        let markdown = sarif_policy_report_markdown(&report);
+
+        assert!(json.contains("\"schema_version\": \"0.1\""));
+        assert!(json.contains("\"new_results_total\": 1"));
+        assert!(markdown.contains("# ripr SARIF policy report"));
+        assert!(markdown.contains("ripr.seam.weakly_gripped"));
+        Ok(())
+    }
+
+    fn sarif_policy_result(rule_id: &str, level: &str, fingerprint: &str) -> SarifPolicyResult {
+        SarifPolicyResult {
+            key: format!("{rule_id}|{fingerprint}"),
+            rule_id: rule_id.to_string(),
+            level: level.to_string(),
+            fingerprint: fingerprint.to_string(),
+            uri: "src/lib.rs".to_string(),
+            line: Some(12),
+            message: "static exposure result".to_string(),
+        }
+    }
+
+    fn sarif_policy_json_result(
+        rule_id: &str,
+        level: &str,
+        fingerprint: &str,
+        suppressed: bool,
+    ) -> Value {
+        let mut result = serde_json::json!({
+            "ruleId": rule_id,
+            "level": level,
+            "message": { "text": "static exposure result" },
+            "partialFingerprints": {
+                "riprFingerprintV1": fingerprint
+            },
+            "locations": [
+                {
+                    "physicalLocation": {
+                        "artifactLocation": { "uri": "src/lib.rs" },
+                        "region": { "startLine": 12 }
+                    }
+                }
+            ]
+        });
+        if suppressed && let Some(object) = result.as_object_mut() {
+            object.insert(
+                "suppressions".to_string(),
+                serde_json::json!([{ "kind": "external" }]),
+            );
+        }
+        result
+    }
+
+    fn sarif_policy_test_sarif(results: Vec<Value>) -> Result<String, String> {
+        let value = serde_json::json!({
+            "version": "2.1.0",
+            "runs": [
+                {
+                    "results": results
+                }
+            ]
+        });
+        serde_json::to_string(&value).map_err(|err| err.to_string())
     }
 
     #[test]

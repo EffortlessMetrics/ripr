@@ -399,7 +399,11 @@ tests = [
   "crates/ripr/src/output/sarif.rs::tests::sarif_uses_configured_finding_severity",
   "crates/ripr/src/output/sarif.rs::tests::sarif_uses_configured_seam_severity",
   "crates/ripr/src/output/sarif.rs::tests::sarif_omits_off_seam_class",
-  "crates/ripr/src/output/sarif.rs::tests::sarif_attaches_suppression_metadata"
+  "crates/ripr/src/output/sarif.rs::tests::sarif_attaches_suppression_metadata",
+  "xtask/src/main.rs::tests::sarif_policy_passes_when_no_new_results",
+  "xtask/src/main.rs::tests::sarif_policy_flags_new_warning_result",
+  "xtask/src/main.rs::tests::sarif_policy_ignores_note_when_threshold_warning",
+  "xtask/src/main.rs::tests::sarif_policy_missing_baseline_is_advisory_by_default"
 ]
 fixtures = []
 code = [
