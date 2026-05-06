@@ -194,6 +194,8 @@ Defaults-first adoption evidence should cover:
 - built-in missing-config behavior matching the generated init profile's
   default policy behavior;
 - `ripr init` generated config preserving conservative defaults;
+- default repo discovery excluding generated, policy-only, fixture-only, and
+  package-manager directories before mode-specific scope is applied;
 - `ripr init --dry-run` printing without writing;
 - `ripr init --force` being required to overwrite existing `ripr.toml`;
 - `ripr init --ci github` generating a non-blocking advisory GitHub workflow;
@@ -282,6 +284,8 @@ into a baseline failure policy.
 Current tests and reports that support the contract:
 
 - `crates/ripr/src/config.rs::tests::generated_init_config_is_conservative_and_parseable`
+- `crates/ripr/src/config.rs::tests::generated_init_config_matches_checked_in_example`
+- `crates/ripr/src/analysis/workspace/discover.rs::tests::discover_skips_default_excluded_directories`
 - `crates/ripr/src/cli/commands.rs::tests::init_parses_root_dry_run_and_force`
 - `crates/ripr/src/cli/commands.rs::tests::init_requires_root_value`
 - `crates/ripr/src/cli/commands.rs::tests::init_rejects_unknown_arguments`
@@ -329,6 +333,8 @@ Current implementation pieces:
 
 - `crates/ripr/src/config.rs` owns repo config defaults, validation, and
   precedence, plus the conservative generated `ripr init` config text.
+- `crates/ripr/src/analysis/workspace/discover.rs` owns default repo discovery
+  exclusions before mode-specific file selection.
 - `crates/ripr/src/cli/commands.rs` exposes `init`, `pilot`, `outcome`, `check`,
   `explain`, `context`, `doctor`, and `lsp`; `init --ci github` writes the
   advisory GitHub Actions SARIF workflow.

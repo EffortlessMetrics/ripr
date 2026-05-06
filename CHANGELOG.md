@@ -30,6 +30,9 @@ are scoped or reviewed.
 - Added RIPR-SPEC-0009 to define defaults-first adoption behavior for `init`,
   `pilot`, `outcome`, calibration import, editor, SARIF, badge, and config
   work.
+- Added focused defaults-first guardrails that pin the generated `ripr.toml`
+  against `ripr.toml.example` and test default repo discovery exclusions for
+  generated, policy-only, fixture-only, and package-manager directories.
 
 ### Changed
 
@@ -42,6 +45,8 @@ are scoped or reviewed.
 - Closed Campaign 6 after the internal module SRP refactor chain landed through
   #405, confirmed stale forks #250, #253, and #352 are closed unmerged, and
   moved the active manifest to Campaign 7 defaults-first operator adoption.
+- Completed the Campaign 7 `defaults/config-init` baseline and advanced the
+  active manifest to `reports/operator-cockpit` as the next ready work item.
 - Aligned built-in defaults with the `ripr init` profile for LSP seam
   diagnostics: missing config now uses the same bounded saved-workspace default
   as the generated policy file, while explicit LSP options or `ripr.toml` can

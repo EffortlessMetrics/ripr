@@ -467,6 +467,8 @@ name = "defaults-first adoption"
 spec = "docs/specs/RIPR-SPEC-0009-defaults-first-adoption.md"
 tests = [
   "crates/ripr/src/config.rs::tests::generated_init_config_is_conservative_and_parseable",
+  "crates/ripr/src/config.rs::tests::generated_init_config_matches_checked_in_example",
+  "crates/ripr/src/analysis/workspace/discover.rs::tests::discover_skips_default_excluded_directories",
   "crates/ripr/src/cli/commands.rs::tests::init_parses_root_dry_run_and_force",
   "crates/ripr/src/cli/commands.rs::tests::init_requires_root_value",
   "crates/ripr/src/cli/commands.rs::tests::init_rejects_unknown_arguments",
@@ -513,6 +515,7 @@ fixtures = [
   "fixtures/boundary_gap"
 ]
 code = [
+  "crates/ripr/src/analysis/workspace/discover.rs",
   "crates/ripr/src/config.rs",
   "crates/ripr/src/cli/mod.rs",
   "crates/ripr/src/cli/command.rs",

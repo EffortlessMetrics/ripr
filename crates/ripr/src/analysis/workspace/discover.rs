@@ -1,5 +1,14 @@
 use std::path::{Path, PathBuf};
 
+const DEFAULT_IGNORED_DIRS: &[&str] = &[
+    ".git",
+    "target",
+    ".ripr",
+    ".direnv",
+    "fixtures",
+    "node_modules",
+];
+
 pub fn discover_rust_files(root: &Path) -> Result<Vec<PathBuf>, String> {
     let mut out = Vec::new();
     visit(root, root, &mut out)?;
@@ -15,10 +24,7 @@ fn visit(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> 
         let path = entry.path();
         let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
         if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-            if matches!(
-                name,
-                ".git" | "target" | ".ripr" | ".direnv" | "fixtures" | "node_modules"
-            ) {
+            if DEFAULT_IGNORED_DIRS.contains(&name) {
                 continue;
             }
             visit(root, &path, out)?;
@@ -48,6 +54,29 @@ mod tests {
 
         let result = discover_rust_files(&dir)?;
         assert!(result.iter().any(|p| p.ends_with("src/lib.rs")));
+
+        let _ = fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn discover_skips_default_excluded_directories() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-discover-default-exclusions-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("src"))?;
+        fs::write(dir.join("src/lib.rs"), "")?;
+
+        for ignored in DEFAULT_IGNORED_DIRS {
+            let ignored_src = dir.join(ignored).join("src");
+            fs::create_dir_all(&ignored_src)?;
+            fs::write(ignored_src.join("lib.rs"), "")?;
+        }
+
+        let result = discover_rust_files(&dir)?;
+        assert_eq!(result, vec![PathBuf::from("src/lib.rs")]);
 
         let _ = fs::remove_dir_all(&dir);
         Ok(())
