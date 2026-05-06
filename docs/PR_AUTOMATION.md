@@ -37,6 +37,7 @@ cargo xtask golden-drift
 cargo xtask test-oracle-report
 cargo xtask check-test-oracles
 cargo xtask dogfood
+cargo xtask lsp-cockpit-report
 cargo xtask critic
 cargo xtask reports index
 cargo xtask receipts
@@ -105,6 +106,12 @@ aid and does not block CI.
 `dogfood` runs `ripr check --mode fast` against stable in-repo fixture diffs,
 writes actual outputs under `target/ripr/dogfood/`, and writes advisory
 Markdown and JSON reports under `target/ripr/reports/`.
+
+`lsp-cockpit-report` reads committed LSP fixture expectations plus the VS Code
+e2e smoke test file and writes `target/ripr/reports/lsp-cockpit.md` and
+`target/ripr/reports/lsp-cockpit.json`. It summarizes which fixtures produce
+editor diagnostics, which code actions are exposed, which context/action fields
+are present, and which VS Code commands are covered by e2e tests.
 
 `critic` writes an advisory adversarial review packet to
 `target/ripr/reports/critic.md` and `target/ripr/reports/critic.json`. It reads
@@ -217,6 +224,7 @@ cargo xtask golden-drift
 cargo xtask test-oracle-report
 cargo xtask check-test-oracles
 cargo xtask dogfood
+cargo xtask lsp-cockpit-report
 cargo xtask critic
 cargo xtask reports index
 cargo xtask receipts

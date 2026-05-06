@@ -460,6 +460,7 @@ fn main() {
         Some("repo-seam-inventory") => repo_seam_inventory(),
         Some("repo-exposure-report") => repo_exposure_report(),
         Some("agent-seam-packets") => agent_seam_packets_report(args.get(2)),
+        Some("lsp-cockpit-report") => lsp_cockpit_report(),
         Some("mutation-calibration") => mutation_calibration(&args[2..]),
         Some("sarif-policy") => sarif_policy(&args[2..]),
         Some("update-badge-endpoints") => update_badge_endpoints(),
@@ -754,6 +755,7 @@ fn known_commands() -> Vec<&'static str> {
         "repo-seam-inventory",
         "repo-exposure-report",
         "agent-seam-packets [root]",
+        "lsp-cockpit-report",
         "mutation-calibration [root] --mutants-json <path>",
         "sarif-policy --current <path> [--baseline <path>]",
         "update-badge-endpoints",
@@ -5718,6 +5720,428 @@ fn agent_seam_packets_report(root: Option<&String>) -> Result<(), String> {
     let json_args = repo_seam_inventory_command_args_for_root("agent-seam-packets-json", root);
     let json_output = run_output_owned("cargo", &json_args)?;
     write_report("agent-seam-packets.json", &json_output)
+}
+
+#[derive(Clone, Debug)]
+struct LspCockpitReport {
+    status: String,
+    fixtures: Vec<LspCockpitFixture>,
+    vscode: LspCockpitVscodeCoverage,
+}
+
+#[derive(Clone, Debug)]
+struct LspCockpitFixture {
+    fixture: String,
+    diagnostics_path: String,
+    code_actions_path: String,
+    diagnostic_count: usize,
+    seam_diagnostic_count: usize,
+    finding_diagnostic_count: usize,
+    seam_ids: Vec<String>,
+    grip_classes: Vec<String>,
+    action_titles: Vec<String>,
+    action_commands: Vec<String>,
+    action_argument_fields: Vec<String>,
+    context: LspCockpitContext,
+}
+
+#[derive(Clone, Debug, Default)]
+struct LspCockpitContext {
+    seam_packet_available: bool,
+    targeted_test_brief_available: bool,
+    assertion_available: bool,
+    related_test_available: bool,
+    refresh_available: bool,
+}
+
+#[derive(Clone, Debug)]
+struct LspCockpitVscodeCoverage {
+    test_file: String,
+    contributed_commands: Vec<String>,
+    covered_commands: Vec<String>,
+    covered_contributed_commands: Vec<String>,
+    uncovered_contributed_commands: Vec<String>,
+}
+
+fn lsp_cockpit_report() -> Result<(), String> {
+    let report = build_lsp_cockpit_report()?;
+    write_report("lsp-cockpit.json", &lsp_cockpit_report_json(&report)?)?;
+    write_report("lsp-cockpit.md", &lsp_cockpit_report_markdown(&report))
+}
+
+fn build_lsp_cockpit_report() -> Result<LspCockpitReport, String> {
+    let mut fixtures = Vec::new();
+    for fixture in fixture_dirs()? {
+        if let Some(report) = lsp_cockpit_fixture_report(&fixture)? {
+            fixtures.push(report);
+        }
+    }
+    let vscode = lsp_cockpit_vscode_coverage()?;
+    let status = if fixtures.is_empty() || !vscode.uncovered_contributed_commands.is_empty() {
+        "warn"
+    } else {
+        "pass"
+    }
+    .to_string();
+    Ok(LspCockpitReport {
+        status,
+        fixtures,
+        vscode,
+    })
+}
+
+fn lsp_cockpit_fixture_report(fixture: &Path) -> Result<Option<LspCockpitFixture>, String> {
+    let expected = fixture.join("expected");
+    let diagnostics_path = expected.join("lsp-diagnostics.json");
+    let code_actions_path = expected.join("lsp-code-actions.json");
+    if !diagnostics_path.exists() && !code_actions_path.exists() {
+        return Ok(None);
+    }
+    if !diagnostics_path.exists() || !code_actions_path.exists() {
+        return Err(format!(
+            "{} has partial LSP cockpit fixtures; expected both lsp-diagnostics.json and lsp-code-actions.json",
+            normalize_path(fixture)
+        ));
+    }
+
+    let diagnostics_json = read_lsp_cockpit_json_value(&diagnostics_path)?;
+    let code_actions_json = read_lsp_cockpit_json_value(&code_actions_path)?;
+    let diagnostics = diagnostics_json
+        .get("diagnostics")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            format!(
+                "{} is missing a diagnostics array",
+                normalize_path(&diagnostics_path)
+            )
+        })?;
+    let actions = code_actions_json
+        .get("actions")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            format!(
+                "{} is missing an actions array",
+                normalize_path(&code_actions_path)
+            )
+        })?;
+
+    let fixture_name = fixture
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| format!("invalid fixture path {}", fixture.display()))?
+        .to_string();
+    let mut seam_ids = BTreeSet::new();
+    let mut grip_classes = BTreeSet::new();
+    let mut seam_diagnostic_count = 0;
+    let mut finding_diagnostic_count = 0;
+    for diagnostic in diagnostics {
+        let data = diagnostic.get("data").unwrap_or(&Value::Null);
+        if let Some(seam_id) = json_str_field(data, "seam_id") {
+            seam_diagnostic_count += 1;
+            seam_ids.insert(seam_id.to_string());
+        }
+        if json_str_field(data, "finding_id").is_some() {
+            finding_diagnostic_count += 1;
+        }
+        if let Some(class) =
+            json_str_field(data, "grip_class").or_else(|| json_str_field(data, "classification"))
+        {
+            grip_classes.insert(class.to_string());
+        }
+    }
+
+    let mut action_titles = Vec::new();
+    let mut action_commands = Vec::new();
+    let mut action_argument_fields = BTreeSet::new();
+    let mut context = LspCockpitContext::default();
+    for action in actions {
+        let title = json_str_field(action, "title").unwrap_or("unknown");
+        let command = json_str_field(action, "command").unwrap_or("unknown");
+        action_titles.push(title.to_string());
+        action_commands.push(command.to_string());
+        if let Some(arguments) = action.get("arguments").and_then(Value::as_array) {
+            for argument in arguments {
+                if let Some(object) = argument.as_object() {
+                    for key in object.keys() {
+                        action_argument_fields.insert(key.clone());
+                    }
+                }
+            }
+        }
+        match command {
+            "ripr.copyContext" if title == "Copy seam packet" => {
+                context.seam_packet_available = true;
+            }
+            "ripr.copyTargetedTestBrief" => {
+                context.targeted_test_brief_available = action_has_string_argument(action, "brief");
+            }
+            "ripr.copySuggestedAssertion" => {
+                context.assertion_available = action_has_string_argument(action, "assertion");
+            }
+            "ripr.openRelatedTest" => {
+                context.related_test_available = action_has_string_argument(action, "uri");
+            }
+            "ripr.refresh" => {
+                context.refresh_available = true;
+            }
+            _ => {}
+        }
+    }
+
+    Ok(Some(LspCockpitFixture {
+        fixture: fixture_name,
+        diagnostics_path: normalize_path(&diagnostics_path),
+        code_actions_path: normalize_path(&code_actions_path),
+        diagnostic_count: diagnostics.len(),
+        seam_diagnostic_count,
+        finding_diagnostic_count,
+        seam_ids: seam_ids.into_iter().collect(),
+        grip_classes: grip_classes.into_iter().collect(),
+        action_titles,
+        action_commands,
+        action_argument_fields: action_argument_fields.into_iter().collect(),
+        context,
+    }))
+}
+
+fn read_lsp_cockpit_json_value(path: &Path) -> Result<Value, String> {
+    let text = read_text_lossy(path)?;
+    serde_json::from_str(&text)
+        .map_err(|err| format!("failed to parse {} as JSON: {err}", normalize_path(path)))
+}
+
+fn json_str_field<'a>(value: &'a Value, field: &str) -> Option<&'a str> {
+    value.get(field).and_then(Value::as_str)
+}
+
+fn action_has_string_argument(action: &Value, field: &str) -> bool {
+    action
+        .get("arguments")
+        .and_then(Value::as_array)
+        .is_some_and(|arguments| {
+            arguments
+                .iter()
+                .any(|argument| json_str_field(argument, field).is_some())
+        })
+}
+
+fn lsp_cockpit_vscode_coverage() -> Result<LspCockpitVscodeCoverage, String> {
+    let test_file = Path::new("editors/vscode/test/suite/extension.test.ts");
+    let test_text = read_text_lossy(test_file)?;
+    let contributed_commands = vscode_contributed_commands()?;
+    let covered_commands = ripr_command_literals_in_text(&test_text);
+    let covered_set = covered_commands.iter().collect::<BTreeSet<_>>();
+    let covered_contributed_commands = contributed_commands
+        .iter()
+        .filter(|command| covered_set.contains(command))
+        .cloned()
+        .collect::<Vec<_>>();
+    let uncovered_contributed_commands = contributed_commands
+        .iter()
+        .filter(|command| !covered_set.contains(command))
+        .cloned()
+        .collect::<Vec<_>>();
+    Ok(LspCockpitVscodeCoverage {
+        test_file: normalize_path(test_file),
+        contributed_commands,
+        covered_commands,
+        covered_contributed_commands,
+        uncovered_contributed_commands,
+    })
+}
+
+fn vscode_contributed_commands() -> Result<Vec<String>, String> {
+    let package = read_lsp_cockpit_json_value(Path::new("editors/vscode/package.json"))?;
+    let commands = package
+        .get("contributes")
+        .and_then(|value| value.get("commands"))
+        .and_then(Value::as_array)
+        .ok_or_else(|| "editors/vscode/package.json is missing contributes.commands".to_string())?;
+    let mut out = BTreeSet::new();
+    for command in commands {
+        if let Some(id) = json_str_field(command, "command")
+            && id.starts_with("ripr.")
+        {
+            out.insert(id.to_string());
+        }
+    }
+    Ok(out.into_iter().collect())
+}
+
+fn ripr_command_literals_in_text(text: &str) -> Vec<String> {
+    let mut out = BTreeSet::new();
+    collect_quoted_prefixed_strings(text, "ripr.", '\'', &mut out);
+    collect_quoted_prefixed_strings(text, "ripr.", '"', &mut out);
+    out.into_iter().collect()
+}
+
+fn collect_quoted_prefixed_strings(
+    text: &str,
+    prefix: &str,
+    quote: char,
+    out: &mut BTreeSet<String>,
+) {
+    let marker = format!("{quote}{prefix}");
+    let mut search_start = 0;
+    while let Some(relative_start) = text[search_start..].find(&marker) {
+        let value_start = search_start + relative_start + quote.len_utf8();
+        let after_start = &text[value_start..];
+        let Some(relative_end) = after_start.find(quote) else {
+            break;
+        };
+        out.insert(after_start[..relative_end].to_string());
+        search_start = value_start + relative_end + quote.len_utf8();
+    }
+}
+
+fn lsp_cockpit_report_json(report: &LspCockpitReport) -> Result<String, String> {
+    let value = serde_json::json!({
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "status": report.status.as_str(),
+        "fixtures": report.fixtures.iter().map(|fixture| {
+            serde_json::json!({
+                "fixture": fixture.fixture.as_str(),
+                "diagnostics_path": fixture.diagnostics_path.as_str(),
+                "code_actions_path": fixture.code_actions_path.as_str(),
+                "diagnostics": {
+                    "total": fixture.diagnostic_count,
+                    "seams": fixture.seam_diagnostic_count,
+                    "findings": fixture.finding_diagnostic_count,
+                    "seam_ids": fixture.seam_ids,
+                    "grip_classes": fixture.grip_classes
+                },
+                "actions": {
+                    "titles": fixture.action_titles,
+                    "commands": fixture.action_commands,
+                    "argument_fields": fixture.action_argument_fields
+                },
+                "context": {
+                    "seam_packet_available": fixture.context.seam_packet_available,
+                    "targeted_test_brief_available": fixture.context.targeted_test_brief_available,
+                    "assertion_available": fixture.context.assertion_available,
+                    "related_test_available": fixture.context.related_test_available,
+                    "refresh_available": fixture.context.refresh_available
+                }
+            })
+        }).collect::<Vec<_>>(),
+        "vscode_e2e": {
+            "test_file": report.vscode.test_file.as_str(),
+            "contributed_commands": report.vscode.contributed_commands,
+            "covered_commands": report.vscode.covered_commands,
+            "covered_contributed_commands": report.vscode.covered_contributed_commands,
+            "uncovered_contributed_commands": report.vscode.uncovered_contributed_commands
+        }
+    });
+    serde_json::to_string_pretty(&value)
+        .map(|mut rendered| {
+            rendered.push('\n');
+            rendered
+        })
+        .map_err(|err| format!("failed to render LSP cockpit JSON: {err}"))
+}
+
+fn lsp_cockpit_report_markdown(report: &LspCockpitReport) -> String {
+    let mut out = String::new();
+    out.push_str("# ripr LSP cockpit report\n\n");
+    out.push_str(&format!("Status: {}\n\n", report.status));
+    if report.fixtures.is_empty() {
+        out.push_str("No fixtures with pinned LSP diagnostics/actions were found.\n\n");
+    }
+    for fixture in &report.fixtures {
+        out.push_str(&format!("## Fixture: {}\n\n", md_escape(&fixture.fixture)));
+        out.push_str("Diagnostics:\n");
+        out.push_str(&format!("- total: {}\n", fixture.diagnostic_count));
+        out.push_str(&format!(
+            "- seam diagnostics: {}\n",
+            fixture.seam_diagnostic_count
+        ));
+        out.push_str(&format!(
+            "- finding diagnostics: {}\n",
+            fixture.finding_diagnostic_count
+        ));
+        push_markdown_list_line(&mut out, "seam ids", &fixture.seam_ids);
+        push_markdown_list_line(&mut out, "grip classes", &fixture.grip_classes);
+
+        out.push_str("\nActions:\n");
+        for (title, command) in fixture.action_titles.iter().zip(&fixture.action_commands) {
+            out.push_str(&format!(
+                "- {} (`{}`)\n",
+                md_escape(title),
+                md_escape(command)
+            ));
+        }
+        push_markdown_list_line(
+            &mut out,
+            "action argument fields",
+            &fixture.action_argument_fields,
+        );
+
+        out.push_str("\nContext:\n");
+        out.push_str(&format!(
+            "- seam packet available: {}\n",
+            yes_no(fixture.context.seam_packet_available)
+        ));
+        out.push_str(&format!(
+            "- targeted test brief available: {}\n",
+            yes_no(fixture.context.targeted_test_brief_available)
+        ));
+        out.push_str(&format!(
+            "- assertion available: {}\n",
+            yes_no(fixture.context.assertion_available)
+        ));
+        out.push_str(&format!(
+            "- related test available: {}\n",
+            yes_no(fixture.context.related_test_available)
+        ));
+        out.push_str(&format!(
+            "- refresh available: {}\n",
+            yes_no(fixture.context.refresh_available)
+        ));
+        out.push('\n');
+    }
+
+    out.push_str("## VS Code e2e\n\n");
+    out.push_str(&format!(
+        "- test file: `{}`\n",
+        md_escape(&report.vscode.test_file)
+    ));
+    push_markdown_list_line(
+        &mut out,
+        "contributed commands",
+        &report.vscode.contributed_commands,
+    );
+    push_markdown_list_line(
+        &mut out,
+        "covered commands",
+        &report.vscode.covered_commands,
+    );
+    push_markdown_list_line(
+        &mut out,
+        "covered contributed commands",
+        &report.vscode.covered_contributed_commands,
+    );
+    push_markdown_list_line(
+        &mut out,
+        "uncovered contributed commands",
+        &report.vscode.uncovered_contributed_commands,
+    );
+    out
+}
+
+fn push_markdown_list_line(out: &mut String, label: &str, values: &[String]) {
+    if values.is_empty() {
+        out.push_str(&format!("- {label}: none\n"));
+    } else {
+        out.push_str(&format!(
+            "- {label}: {}\n",
+            values
+                .iter()
+                .map(|value| format!("`{}`", md_escape(value)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
 }
 
 fn mutation_calibration(args: &[String]) -> Result<(), String> {
@@ -13606,9 +14030,9 @@ mod tests {
         MarkdownLink, ReceiptRecord, ReportIndexCampaign, ReportIndexEntry, SarifPolicyMode,
         SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher,
         TestOracleClass, badge_artifact_command_args, badge_artifact_jobs,
-        badge_artifact_native_slot, badge_artifacts_summary_markdown, ci_full_evidence_gates,
-        collect_panic_findings, collect_semantic_panic_findings, critic_findings,
-        dogfood_class_counts, dogfood_report_json, dogfood_report_markdown,
+        badge_artifact_native_slot, badge_artifacts_summary_markdown, build_lsp_cockpit_report,
+        ci_full_evidence_gates, collect_panic_findings, collect_semantic_panic_findings,
+        critic_findings, dogfood_class_counts, dogfood_report_json, dogfood_report_markdown,
         extract_json_object_usize_map, extract_json_string, extract_json_warnings,
         extract_workflow_run_blocks, first_line_difference, forbidden_panic_patterns, glob_matches,
         golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
@@ -13617,7 +14041,8 @@ mod tests {
         is_known_campaign_command, is_policy_path, is_production_path, is_receipt_status,
         is_ripr_managed_hook, is_snake_case_id, is_spec_id, json_escape, json_number_after,
         json_string_values_for_key, known_commands, known_xtask_command,
-        local_context_line_findings, local_markdown_target, markdown_links_in_text,
+        local_context_line_findings, local_markdown_target, lsp_cockpit_report,
+        lsp_cockpit_report_json, lsp_cockpit_report_markdown, markdown_links_in_text,
         mutation_calibration_report_json, mutation_calibration_report_markdown,
         next_checkpoints_from_capabilities, normalize_fixture_human_output,
         normalize_fixture_json_output, normalize_golden_text, panic_family_from_pattern,
@@ -13630,13 +14055,13 @@ mod tests {
         repo_badge_artifact_command_args, repo_badge_artifact_jobs,
         repo_badge_artifacts_summary_markdown, repo_seam_inventory_command_args_for_root,
         report_index_markdown, report_index_missing_expected, report_status_from_text,
-        ripr_pre_commit_hook, run_ci_full_evidence_gates, sarif_policy_report_json,
-        sarif_policy_report_markdown, semantic_selector_matches, should_scan_static_language_path,
-        sorted_allowlist_content, spec_id_from_path, static_language_allowlist_covers,
-        status_for_report, suspicious_runtime_file_names, test_efficiency_entry,
-        test_efficiency_report_json, test_efficiency_report_markdown, test_oracle_report_json,
-        test_oracle_report_markdown, test_oracle_tests_in_text, unknown_command_message,
-        validate_local_context_allowlist, windows_absolute_path_tokens,
+        ripr_command_literals_in_text, ripr_pre_commit_hook, run_ci_full_evidence_gates,
+        sarif_policy_report_json, sarif_policy_report_markdown, semantic_selector_matches,
+        should_scan_static_language_path, sorted_allowlist_content, spec_id_from_path,
+        static_language_allowlist_covers, status_for_report, suspicious_runtime_file_names,
+        test_efficiency_entry, test_efficiency_report_json, test_efficiency_report_markdown,
+        test_oracle_report_json, test_oracle_report_markdown, test_oracle_tests_in_text,
+        unknown_command_message, validate_local_context_allowlist, windows_absolute_path_tokens,
         workflow_runtime_violations,
     };
     use super::{
@@ -13699,6 +14124,31 @@ mod tests {
         drop(lock);
         let _ = fs::remove_dir_all(&root);
         out
+    }
+
+    fn with_repo_cwd<T>(f: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+        let mutex = CWD_LOCK.get_or_init(|| Mutex::new(()));
+        let guard = mutex
+            .lock()
+            .map_err(|err| format!("failed to lock cwd mutex: {err}"))?;
+        let old = std::env::current_dir()
+            .map_err(|err| format!("failed to capture current dir: {err}"))?;
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let Some(repo_root) = manifest_dir.parent() else {
+            drop(guard);
+            return Err(format!(
+                "failed to resolve repo root from {}",
+                manifest_dir.display()
+            ));
+        };
+        std::env::set_current_dir(repo_root)
+            .map_err(|err| format!("failed to set repo cwd: {err}"))?;
+        let result = f();
+        let restore =
+            std::env::set_current_dir(&old).map_err(|err| format!("failed to restore cwd: {err}"));
+        drop(guard);
+        restore?;
+        result
     }
 
     // ============================================================================
@@ -19258,9 +19708,97 @@ settings: |
         assert!(commands.contains(&"repo-seam-inventory"));
         assert!(commands.contains(&"repo-exposure-report"));
         assert!(commands.contains(&"agent-seam-packets [root]"));
+        assert!(commands.contains(&"lsp-cockpit-report"));
         assert!(commands.contains(&"mutation-calibration [root] --mutants-json <path>"));
         assert!(commands.contains(&"sarif-policy --current <path> [--baseline <path>]"));
         assert!(commands.contains(&"check-droid-review-config"));
+    }
+
+    #[test]
+    fn lsp_cockpit_report_reads_boundary_gap_fixture_expectations() -> Result<(), String> {
+        let report = with_repo_cwd(build_lsp_cockpit_report)?;
+        let Some(boundary_gap) = report
+            .fixtures
+            .iter()
+            .find(|fixture| fixture.fixture == "boundary_gap")
+        else {
+            return Err("expected boundary_gap LSP cockpit fixture".to_string());
+        };
+
+        assert_eq!(boundary_gap.diagnostic_count, 1);
+        assert_eq!(boundary_gap.seam_diagnostic_count, 1);
+        assert!(
+            boundary_gap
+                .action_titles
+                .contains(&"Copy seam packet".to_string())
+        );
+        assert!(
+            boundary_gap
+                .action_titles
+                .contains(&"Copy targeted test brief".to_string())
+        );
+        assert!(
+            boundary_gap
+                .action_titles
+                .contains(&"Open best related test".to_string())
+        );
+        assert!(boundary_gap.context.seam_packet_available);
+        assert!(boundary_gap.context.targeted_test_brief_available);
+        assert!(boundary_gap.context.assertion_available);
+        assert!(boundary_gap.context.related_test_available);
+        assert!(boundary_gap.context.refresh_available);
+        assert!(
+            boundary_gap
+                .action_argument_fields
+                .contains(&"seam_id".to_string())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn lsp_cockpit_report_json_and_markdown_are_structured() -> Result<(), String> {
+        let report = with_repo_cwd(build_lsp_cockpit_report)?;
+        let json = lsp_cockpit_report_json(&report)?;
+        let value: Value = serde_json::from_str(&json)
+            .map_err(|err| format!("cockpit JSON should parse: {err}"))?;
+        assert_eq!(value["schema_version"], "0.1");
+        assert_eq!(value["tool"], "ripr");
+        assert!(json.contains("Copy targeted test brief"));
+
+        let markdown = lsp_cockpit_report_markdown(&report);
+        assert!(markdown.contains("# ripr LSP cockpit report"));
+        assert!(markdown.contains("## Fixture: boundary_gap"));
+        assert!(markdown.contains("seam packet available: yes"));
+        assert!(markdown.contains("ripr.collectContext"));
+        Ok(())
+    }
+
+    #[test]
+    fn lsp_cockpit_report_command_writes_markdown_and_json() -> Result<(), String> {
+        with_repo_cwd(|| {
+            lsp_cockpit_report()?;
+            let markdown = fs::read_to_string("target/ripr/reports/lsp-cockpit.md")
+                .map_err(|err| format!("failed to read lsp cockpit markdown: {err}"))?;
+            let json = fs::read_to_string("target/ripr/reports/lsp-cockpit.json")
+                .map_err(|err| format!("failed to read lsp cockpit JSON: {err}"))?;
+            assert!(markdown.contains("# ripr LSP cockpit report"));
+            assert!(json.contains("\"schema_version\": \"0.1\""));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn vscode_command_literal_extraction_finds_ripr_commands() {
+        let commands = ripr_command_literals_in_text(
+            "await vscode.commands.executeCommand('ripr.copyContext');\ncommand: \"ripr.collectContext\"",
+        );
+        assert_eq!(
+            commands,
+            vec![
+                "ripr.collectContext".to_string(),
+                "ripr.copyContext".to_string()
+            ]
+        );
     }
 
     fn ci_full_ok_gate() -> Result<(), String> {
