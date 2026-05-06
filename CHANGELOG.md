@@ -148,6 +148,10 @@ are scoped or reviewed.
   parser-backed extraction, lexical fallback, and query helpers in
   `analysis/rust_index.rs`. The next ready seam is parser-backed RA syntax
   extraction.
+- Moved parser-backed RA syntax adapter implementation into
+  `analysis/syntax/ra.rs` while keeping lexical fallback and Rust index query
+  helpers behavior-stable. The next ready seam is lexical syntax fallback
+  extraction.
 - Added `cargo xtask targeted-test-outcome` as an advisory receipt for comparing
   before/after `repo-exposure-json` artifacts. The report writes
   `target/ripr/reports/targeted-test-outcome.{json,md}`, matches seams by
