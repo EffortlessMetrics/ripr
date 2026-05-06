@@ -29,9 +29,9 @@ mod tests {
 
     #[test]
     fn sanitize_path_handles_windows_paths() {
-        let path = PathBuf::from("C:\\src\\lib.rs");
+        let path = PathBuf::from("workspace\\src\\lib.rs");
         let sanitized = sanitize_path(&path);
-        assert_eq!(sanitized, "C__src_lib.rs");
+        assert_eq!(sanitized, "workspace_src_lib.rs");
     }
 
     #[test]
