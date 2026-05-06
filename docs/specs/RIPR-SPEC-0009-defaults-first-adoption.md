@@ -60,7 +60,7 @@ The default contract is:
 | --- | --- | --- |
 | CLI | Produce readable static evidence and next-step guidance from ordinary commands. | Require format knowledge or repo config before first value. |
 | `ripr doctor` | Show config state, server/tooling availability, and whether defaults or repo policy are active. | Print config source text or silently ignore malformed policy. |
-| `ripr init` | Materialize the conservative built-in defaults into `ripr.toml` when requested, and optionally generate advisory GitHub CI with report artifacts and optional SARIF upload through `--ci github`. | Unlock basic usefulness, overwrite repo policy or generated workflow files without `--force`, or create blocking CI by default. |
+| `ripr init` | Materialize the conservative built-in defaults into `ripr.toml` when requested, and optionally generate advisory GitHub CI with report artifacts and optional SARIF rendering/upload through `--ci github`. | Unlock basic usefulness, overwrite repo policy or generated workflow files without `--force`, or create blocking CI by default. |
 | `ripr pilot` | Generate a standard pilot packet and print the top actionable next step. | Run mutation testing, edit files, or require users to know internal report names. |
 | `ripr outcome` | Compare two repo-exposure snapshots and explain whether evidence moved. | Require the `ripr` source repo or `cargo xtask`. |
 | Operator cockpit | Join existing repo-local reports into one next-action view. | Rerun analysis implicitly, edit code, or replace the public `ripr pilot` path. |
@@ -260,7 +260,7 @@ Defaults-first adoption evidence should cover:
 - `ripr init --force` being required to overwrite existing `ripr.toml`;
 - `ripr init --ci github` generating a non-blocking advisory GitHub workflow
   that uploads pilot/report artifacts, documents repo badge artifacts, and keeps
-  SARIF upload behind an explicit workflow setting;
+  SARIF rendering/upload behind an explicit workflow setting;
 - `ripr pilot` generating the pilot packet and top actionable next step;
 - `ripr outcome` producing the same movement buckets as the xtask receipt;
 - `cargo xtask operator-cockpit` joining repo exposure, LSP cockpit,
@@ -350,9 +350,9 @@ loop command.
 ```text
 Given a generated GitHub Actions workflow,
 when the workflow runs on a pull request,
-then it uploads review artifacts, keeps SARIF upload optional, and does not fail
-the pull request unless the repository explicitly opts into a baseline failure
-policy.
+then it uploads review artifacts, keeps SARIF rendering/upload optional, and
+does not fail the pull request unless the repository explicitly opts into a
+baseline failure policy.
 ```
 
 ## Test Mapping
@@ -372,7 +372,7 @@ Current tests and reports that support the contract:
 - `crates/ripr/tests/cli_smoke.rs::init_writes_conservative_config_and_doctor_loads_it`
 - `crates/ripr/tests/cli_smoke.rs::init_dry_run_prints_config_without_writing`
 - `crates/ripr/tests/cli_smoke.rs::init_ci_github_dry_run_prints_config_and_workflow_without_writing`
-- `crates/ripr/tests/cli_smoke.rs::init_ci_github_writes_non_blocking_sarif_workflow`
+- `crates/ripr/tests/cli_smoke.rs::init_ci_github_writes_non_blocking_report_workflow`
 - `crates/ripr/tests/cli_smoke.rs::init_ci_github_refuses_existing_workflow_without_force`
 - `crates/ripr/tests/cli_smoke.rs::init_refuses_existing_config_without_force`
 - `crates/ripr/tests/cli_smoke.rs::init_force_overwrites_existing_config`
@@ -426,7 +426,7 @@ Current implementation pieces:
   exclusions before mode-specific file selection.
 - `crates/ripr/src/cli/commands.rs` exposes `init`, `pilot`, `outcome`, `check`,
   `explain`, `context`, `doctor`, and `lsp`; `init --ci github` writes the
-  advisory GitHub Actions report workflow with optional SARIF upload.
+  advisory GitHub Actions report workflow with optional SARIF rendering/upload.
 - `crates/ripr/src/app.rs` orchestrates config-aware analysis entry points.
 - `crates/ripr/src/output/agent_seam_packets.rs` renders targeted-test work
   orders.

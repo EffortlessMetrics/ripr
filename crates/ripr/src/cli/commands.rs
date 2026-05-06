@@ -228,7 +228,7 @@ jobs:
           git diff --binary "origin/${{ github.base_ref }}...HEAD" > target/ripr/reports/pr.diff
 
       - name: Render RIPR diff SARIF
-        if: github.event_name == 'pull_request'
+        if: env.RIPR_UPLOAD_SARIF == 'true' && github.event_name == 'pull_request'
         continue-on-error: true
         run: |
           ripr check \
@@ -238,6 +238,7 @@ jobs:
             > target/ripr/reports/ripr-findings.sarif
 
       - name: Render RIPR repo seam SARIF
+        if: env.RIPR_UPLOAD_SARIF == 'true'
         continue-on-error: true
         run: |
           mkdir -p target/ripr/reports
@@ -1397,6 +1398,9 @@ mod tests {
         assert!(workflow.contains("target/ripr/reports"));
         assert!(workflow.contains("name: ripr-reports"));
         assert!(workflow.contains("if: env.RIPR_UPLOAD_SARIF == 'true'"));
+        assert!(workflow.contains(
+            "if: env.RIPR_UPLOAD_SARIF == 'true' && github.event_name == 'pull_request'"
+        ));
         assert!(workflow.contains("cat target/ripr/pilot/pilot-summary.md"));
     }
 

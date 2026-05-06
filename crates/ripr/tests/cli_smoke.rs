@@ -360,7 +360,7 @@ fn init_refuses_existing_config_without_force() -> Result<(), String> {
 }
 
 #[test]
-fn init_ci_github_writes_non_blocking_sarif_workflow() -> Result<(), String> {
+fn init_ci_github_writes_non_blocking_report_workflow() -> Result<(), String> {
     let workspace = make_temp_workspace(None)?;
     let root = workspace.display().to_string();
     let output = run_ripr(&["init", "--root", &root, "--ci", "github"]);

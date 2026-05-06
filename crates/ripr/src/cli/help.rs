@@ -30,7 +30,7 @@ const INIT_HELP: &str = r#"Usage: ripr init [--root PATH] [--ci github] [--dry-r
 
 Options:
   --root PATH      Workspace root where ripr.toml should be written. Defaults to current directory.
-  --ci github      Also write .github/workflows/ripr.yml with advisory reports and optional SARIF upload.
+  --ci github      Also write .github/workflows/ripr.yml with advisory reports and optional SARIF rendering/upload.
   --dry-run        Print the generated config without writing.
   --force          Overwrite an existing ripr.toml or generated workflow.
 
@@ -44,7 +44,7 @@ Generated config:
 Generated GitHub workflow:
   - installs ripr and writes a pilot packet plus repo report artifacts
   - uploads report artifacts for review and adds the pilot summary to the job
-  - uploads diff/repo SARIF only while RIPR_UPLOAD_SARIF is true
+  - renders and uploads diff/repo SARIF only while RIPR_UPLOAD_SARIF is true
   - uses continue-on-error for advisory RIPR work and upload steps
   - does not enable baseline failure policy by default
 "#;
