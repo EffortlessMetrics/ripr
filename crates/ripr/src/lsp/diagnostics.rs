@@ -1,5 +1,5 @@
 use super::config::LspAnalysisConfig;
-use super::state::AnalysisSnapshot;
+use super::state::{AnalysisSnapshot, RefreshMetadata};
 use super::uri::file_uri_for_path;
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::inventory_classified_seams_at_with_config;
@@ -159,6 +159,7 @@ pub(super) fn workspace_diagnostics_with_config(
         root,
         base,
         mode,
+        refresh: RefreshMetadata::generated_now(),
         findings,
         classified_seams,
         diagnostics_by_uri,

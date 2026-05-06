@@ -157,6 +157,16 @@ Diagnostics refresh when a document opens, when a document is saved, or when the
 do not trigger full workspace analysis until the change is saved or refreshed
 explicitly.
 
+The server logs refresh lifecycle messages to the LSP output stream. A normal
+refresh logs when analysis starts and when it completes. Completion logs include
+the refresh duration, total diagnostic count, finding count, seam diagnostic
+count, published file count, and cleared file count. If a newer refresh
+supersedes an older one, the older result is not published.
+
+Refresh failures clear previously published diagnostics and log a warning with
+the failure reason. Normal refreshes and one-off failures do not show user-facing
+popups; the output stream is the intended place to inspect refresh state.
+
 ## Diagnostic Data
 
 LSP diagnostics include a stable JSON `data` payload for editor commands:
@@ -206,15 +216,22 @@ Add an exact boundary assertion.
 ## Weakness
 
 - no equality-boundary case was found
+
+---
+Analysis snapshot: generated 2 seconds ago; last refresh took 138 ms.
 ```
 
 Fallback behavior preserves three levels:
 
 1. **Snapshot + matching finding** — evidence-rich hover with RIPR stage
-   summaries, related tests, and weakness notes.
+   summaries, related tests, weakness notes, and snapshot age.
 2. **Diagnostic without matching finding** — diagnostic-only hover showing the
    classification, message, and finding or probe identifiers.
 3. **No diagnostic at position** — generic guidance hover.
+
+Seam hovers use the same snapshot footer when a matching seam diagnostic is
+available. This keeps saved-workspace staleness visible without claiming that
+unsaved document text has been analyzed.
 
 ## VS Code Extension Tests
 

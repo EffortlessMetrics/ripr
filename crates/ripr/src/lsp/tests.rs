@@ -1,5 +1,7 @@
 use super::actions::code_action_response;
-use super::backend::Backend;
+use super::backend::{
+    Backend, RefreshLogSummary, refresh_completed_log_message, refresh_failed_log_message,
+};
 use super::capabilities::{initialize_result, root_from_initialize_params};
 use super::config::LspAnalysisConfig;
 use super::diagnostics::{
@@ -7,8 +9,8 @@ use super::diagnostics::{
     diagnostic_refresh_plan, diagnostic_severity_for_class, take_all_uris,
     workspace_diagnostic_batches,
 };
-use super::hover::hover_response;
-use super::state::{AnalysisSnapshot, DocumentStore};
+use super::hover::{hover_response, hover_with_snapshot_status};
+use super::state::{AnalysisSnapshot, DocumentStore, RefreshMetadata, format_duration};
 use super::uri::{encode_uri_path, file_uri_for_path, path_from_file_uri};
 use super::{
     COLLECT_CONTEXT_COMMAND, COPY_CONTEXT_COMMAND, COPY_SUGGESTED_ASSERTION_COMMAND, HOVER_TEXT,
@@ -21,15 +23,17 @@ use crate::domain::{
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tower_lsp_server::LanguageServer;
 use tower_lsp_server::ls_types::{
     CodeActionContext, CodeActionOrCommand, CodeActionParams, DiagnosticSeverity,
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
     ExecuteCommandParams, HoverContents, HoverParams, HoverProviderCapability, InitializeParams,
-    NumberOrString, Position, Range, TextDocumentContentChangeEvent, TextDocumentIdentifier,
-    TextDocumentItem, TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind,
-    VersionedTextDocumentIdentifier, WorkspaceFolder,
+    MarkedString, NumberOrString, Position, Range, TextDocumentContentChangeEvent,
+    TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams,
+    TextDocumentSyncCapability, TextDocumentSyncKind, VersionedTextDocumentIdentifier,
+    WorkspaceFolder,
 };
 use tower_lsp_server::{LspService, Server};
 
@@ -139,8 +143,21 @@ fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
             }),
         )
         .await?;
-        let refresh = read_lsp_response(&mut client_read, 2).await?;
+        let (refresh, notifications) =
+            read_lsp_response_with_notifications(&mut client_read, 2).await?;
         assert!(refresh.get("error").is_none());
+        assert_eq!(refresh["result"], serde_json::Value::Null);
+        let notification_messages = log_notification_messages(&notifications);
+        assert!(
+            notification_messages
+                .iter()
+                .any(|message| message.contains("ripr analysis refresh started"))
+        );
+        assert!(
+            notification_messages
+                .iter()
+                .any(|message| message.contains("ripr analysis refresh failed after"))
+        );
 
         write_lsp_message(
             &mut client_write,
@@ -193,6 +210,115 @@ fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
         )
         .await?;
         let shutdown = read_lsp_response(&mut client_read, 5).await?;
+        assert!(shutdown.get("error").is_none());
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "exit",
+                "params": null
+            }),
+        )
+        .await?;
+        client_write
+            .shutdown()
+            .await
+            .map_err(|err| format!("failed to close test client: {err}"))?;
+        match tokio::time::timeout(std::time::Duration::from_secs(2), &mut server_task).await {
+            Ok(join_result) => {
+                join_result.map_err(|err| format!("LSP server task failed: {err}"))?;
+            }
+            Err(_) => {
+                server_task.abort();
+                return Err("LSP server did not stop after exit notification".to_string());
+            }
+        }
+        Ok(())
+    })
+}
+
+#[test]
+fn framed_lsp_protocol_smoke_logs_successful_refresh_completion() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+
+    runtime.block_on(async {
+        let (client_io, server_io) = tokio::io::duplex(64 * 1024);
+        let (client_read, mut client_write) = tokio::io::split(client_io);
+        let (server_read, server_write) = tokio::io::split(server_io);
+        let (service, socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let mut server_task = tokio::spawn(async move {
+            Server::new(server_read, server_write, socket)
+                .serve(service)
+                .await;
+        });
+        let mut client_read = client_read;
+        let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let root_uri = file_uri_for_path(&repo_root)?;
+
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "processId": null,
+                    "rootUri": root_uri.as_str(),
+                    "initializationOptions": {
+                        "baseRef": "HEAD",
+                        "checkMode": "instant"
+                    },
+                    "capabilities": {}
+                }
+            }),
+        )
+        .await?;
+        let initialize = read_lsp_response(&mut client_read, 1).await?;
+        assert!(initialize.get("error").is_none());
+
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "workspace/executeCommand",
+                "params": {
+                    "command": REFRESH_COMMAND,
+                    "arguments": []
+                }
+            }),
+        )
+        .await?;
+        let (refresh, notifications) =
+            read_lsp_response_with_notifications(&mut client_read, 2).await?;
+        assert!(refresh.get("error").is_none());
+        assert_eq!(refresh["result"], serde_json::Value::Null);
+        let notification_messages = log_notification_messages(&notifications);
+        assert!(
+            notification_messages
+                .iter()
+                .any(|message| message.contains("ripr analysis refresh started"))
+        );
+        assert!(
+            notification_messages
+                .iter()
+                .any(|message| message.contains("ripr analysis refresh completed in"))
+        );
+
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "shutdown",
+                "params": null
+            }),
+        )
+        .await?;
+        let shutdown = read_lsp_response(&mut client_read, 3).await?;
         assert!(shutdown.get("error").is_none());
         write_lsp_message(
             &mut client_write,
@@ -283,6 +409,102 @@ fn hover_for_position_uses_latest_matching_diagnostic() -> Result<(), String> {
             Ok(())
         }
         _ => Err("expected markup hover".to_string()),
+    }
+}
+
+#[test]
+fn hover_for_position_shows_snapshot_age_and_refresh_duration() -> Result<(), String> {
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    let finding = sample_finding();
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let mut diagnostics = sample_workspace_diagnostics(
+        PathBuf::from("/workspace"),
+        uri.clone(),
+        vec![diagnostic],
+        vec![finding],
+    );
+    diagnostics
+        .snapshot
+        .refresh
+        .record_duration(Duration::from_millis(42));
+    let Some(_) = backend.refresh_plan(diagnostics) else {
+        return Err("expected refresh plan".to_string());
+    };
+
+    let Some(hover) = backend.hover_for_position(&hover_params(uri, 87, 1)) else {
+        return Err("expected diagnostic hover".to_string());
+    };
+
+    match hover.contents {
+        HoverContents::Markup(markup) => {
+            assert!(markup.value.contains("Analysis snapshot: generated "));
+            assert!(markup.value.contains(" ago; last refresh took 42 ms."));
+            Ok(())
+        }
+        _ => Err("expected markup hover".to_string()),
+    }
+}
+
+#[test]
+fn hover_for_position_adds_snapshot_status_to_seam_hover() -> Result<(), String> {
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    let seam = sample_classified_seam();
+    let diagnostic = diagnostic_for_classified_seam(Path::new("/workspace"), &seam)
+        .ok_or_else(|| "expected seam diagnostic".to_string())?;
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let line = diagnostic.range.start.line;
+    let mut diagnostics = sample_workspace_diagnostics(
+        PathBuf::from("/workspace"),
+        uri.clone(),
+        vec![diagnostic],
+        Vec::new(),
+    );
+    diagnostics.snapshot.classified_seams = vec![seam];
+    diagnostics
+        .snapshot
+        .refresh
+        .record_duration(Duration::from_millis(11));
+    let Some(_) = backend.refresh_plan(diagnostics) else {
+        return Err("expected refresh plan".to_string());
+    };
+
+    let Some(hover) = backend.hover_for_position(&hover_params(uri, line, 1)) else {
+        return Err("expected seam hover".to_string());
+    };
+
+    match hover.contents {
+        HoverContents::Markup(markup) => {
+            assert!(markup.value.contains("**ripr** behavioral seam"));
+            assert!(markup.value.contains("`weakly_gripped`"));
+            assert!(markup.value.contains("Analysis snapshot: generated "));
+            assert!(markup.value.contains(" ago; last refresh took 11 ms."));
+            Ok(())
+        }
+        _ => Err("expected markup hover".to_string()),
+    }
+}
+
+#[test]
+fn snapshot_status_leaves_non_markup_hover_content_unchanged() -> Result<(), String> {
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let snapshot =
+        sample_analysis_snapshot(PathBuf::from("/workspace"), uri, Vec::new(), Vec::new());
+    let hover = tower_lsp_server::ls_types::Hover {
+        contents: HoverContents::Scalar(MarkedString::String("plain".to_string())),
+        range: None,
+    };
+
+    let hover = hover_with_snapshot_status(hover, &snapshot);
+
+    match hover.contents {
+        HoverContents::Scalar(MarkedString::String(value)) => {
+            assert_eq!(value, "plain");
+            Ok(())
+        }
+        _ => Err("expected scalar hover".to_string()),
     }
 }
 
@@ -663,6 +885,161 @@ fn refresh_plan_stores_latest_analysis_snapshot() -> Result<(), String> {
     assert_eq!(latest.mode, Mode::Draft);
     assert_eq!(latest.findings.len(), 1);
     assert_eq!(latest.diagnostics_by_uri.len(), 1);
+    Ok(())
+}
+
+#[test]
+fn refresh_plan_stores_snapshot_refresh_metadata() -> Result<(), String> {
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    let finding = sample_finding();
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let mut diagnostics = sample_workspace_diagnostics(
+        PathBuf::from("/workspace"),
+        uri,
+        vec![diagnostic],
+        vec![finding],
+    );
+    diagnostics
+        .snapshot
+        .refresh
+        .record_duration(Duration::from_millis(42));
+
+    let Some(_) = backend.refresh_plan(diagnostics) else {
+        return Err("expected refresh plan".to_string());
+    };
+    let Some(latest) = backend.latest_analysis_snapshot() else {
+        return Err("expected latest analysis snapshot".to_string());
+    };
+
+    assert_eq!(latest.refresh.duration, Some(Duration::from_millis(42)));
+    assert!(latest.refresh.age().is_some());
+    assert_eq!(latest.diagnostic_count(), 1);
+    assert_eq!(latest.diagnostic_uri_count(), 1);
+    assert_eq!(latest.finding_count(), 1);
+    assert_eq!(latest.seam_diagnostic_count(), 0);
+    Ok(())
+}
+
+#[test]
+fn refresh_completion_log_message_includes_duration_and_counts() -> Result<(), String> {
+    let seam = sample_classified_seam();
+    let diagnostic = diagnostic_for_classified_seam(Path::new("/workspace"), &seam)
+        .ok_or_else(|| "expected seam diagnostic".to_string())?;
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let mut snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri,
+        vec![diagnostic],
+        Vec::new(),
+    );
+    snapshot.classified_seams = vec![seam];
+    snapshot.refresh.record_duration(Duration::from_millis(17));
+
+    let summary = RefreshLogSummary::from_snapshot(7, &snapshot);
+    let message = refresh_completed_log_message(&summary, 1, 2);
+
+    assert!(message.contains("ripr analysis refresh completed in 17 ms"));
+    assert!(message.contains("generation=7"));
+    assert!(message.contains("diagnostics=1"));
+    assert!(message.contains("files=1"));
+    assert!(message.contains("findings=0"));
+    assert!(message.contains("seam_diagnostics=1"));
+    assert!(message.contains("published_files=1"));
+    assert!(message.contains("cleared_files=2"));
+    Ok(())
+}
+
+#[test]
+fn refresh_completion_log_message_defaults_missing_duration_to_zero() -> Result<(), String> {
+    let finding = sample_finding();
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri,
+        vec![diagnostic],
+        vec![finding],
+    );
+
+    let summary = RefreshLogSummary::from_snapshot(3, &snapshot);
+    let message = refresh_completed_log_message(&summary, 1, 0);
+
+    assert!(message.contains("ripr analysis refresh completed in 0 ms"));
+    Ok(())
+}
+
+#[test]
+fn refresh_failure_log_message_includes_actionable_duration() {
+    let message = refresh_failed_log_message(
+        "workspace analysis failed: Cargo.toml not found",
+        Duration::from_millis(9),
+    );
+
+    assert_eq!(
+        message,
+        "ripr analysis refresh failed after 9 ms: workspace analysis failed: Cargo.toml not found"
+    );
+}
+
+#[test]
+fn format_duration_renders_milliseconds_and_whole_seconds() {
+    assert_eq!(format_duration(Duration::from_millis(9)), "9 ms");
+    assert_eq!(format_duration(Duration::from_secs(1)), "1 second");
+    assert_eq!(format_duration(Duration::from_secs(2)), "2 seconds");
+}
+
+#[test]
+fn refresh_metadata_default_records_generation_time() {
+    let metadata = RefreshMetadata::default();
+
+    assert!(metadata.age().is_some());
+    assert_eq!(metadata.duration, None);
+}
+
+#[test]
+fn stale_refresh_generation_does_not_store_older_snapshot() -> Result<(), String> {
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    let Some(first_generation) = backend.next_refresh_generation() else {
+        return Err("expected first generation".to_string());
+    };
+    let Some(second_generation) = backend.next_refresh_generation() else {
+        return Err("expected second generation".to_string());
+    };
+    assert!(!backend.is_current_refresh_generation(first_generation));
+    assert!(backend.is_current_refresh_generation(second_generation));
+
+    let finding = sample_finding();
+    let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
+    let current_uri = test_uri("file:///workspace/src/current.rs")?;
+    let current = sample_workspace_diagnostics(
+        PathBuf::from("/workspace/current"),
+        current_uri,
+        vec![diagnostic],
+        vec![finding],
+    );
+    let Some(_) = backend.refresh_plan(current) else {
+        return Err("expected current refresh plan".to_string());
+    };
+
+    if backend.is_current_refresh_generation(first_generation) {
+        let stale = sample_workspace_diagnostics(
+            PathBuf::from("/workspace/stale"),
+            test_uri("file:///workspace/src/stale.rs")?,
+            Vec::new(),
+            Vec::new(),
+        );
+        let Some(_) = backend.refresh_plan(stale) else {
+            return Err("expected stale refresh plan".to_string());
+        };
+    }
+
+    let Some(latest) = backend.latest_analysis_snapshot() else {
+        return Err("expected latest analysis snapshot".to_string());
+    };
+    assert_eq!(latest.root, PathBuf::from("/workspace/current"));
     Ok(())
 }
 
@@ -1057,34 +1434,26 @@ fn take_all_uris_returns_and_clears_previous_diagnostic_uris() -> Result<(), Str
 }
 
 #[test]
-fn refresh_failure_reports_and_clears_tracked_diagnostics() -> Result<(), String> {
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|err| format!("failed to start test runtime: {err}"))?;
-    runtime.block_on(async {
-        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
-        let backend = service.inner();
-        let tracked_uri = test_uri("file:///workspace/src/stale.rs")?;
-        let diagnostics = sample_workspace_diagnostics(
-            PathBuf::from("/workspace"),
-            tracked_uri.clone(),
-            Vec::new(),
-            Vec::new(),
-        );
-        let Some(_) = backend.refresh_plan(diagnostics) else {
-            return Err("expected refresh plan".to_string());
-        };
-        assert!(backend.latest_analysis_snapshot().is_some());
+fn refresh_failure_clear_helper_clears_tracked_diagnostics() -> Result<(), String> {
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
+    let tracked_uri = test_uri("file:///workspace/src/stale.rs")?;
+    let diagnostics = sample_workspace_diagnostics(
+        PathBuf::from("/workspace"),
+        tracked_uri.clone(),
+        Vec::new(),
+        Vec::new(),
+    );
+    let Some(_) = backend.refresh_plan(diagnostics) else {
+        return Err("expected refresh plan".to_string());
+    };
+    assert!(backend.latest_analysis_snapshot().is_some());
 
-        backend
-            .report_refresh_failure("simulated analysis failure".to_string())
-            .await;
+    assert_eq!(backend.clear_all_diagnostic_uris(), vec![tracked_uri]);
 
-        assert!(backend.clear_all_diagnostic_uris().is_empty());
-        assert!(backend.latest_analysis_snapshot().is_none());
-        Ok(())
-    })
+    assert!(backend.clear_all_diagnostic_uris().is_empty());
+    assert!(backend.latest_analysis_snapshot().is_none());
+    Ok(())
 }
 
 #[test]
@@ -1108,20 +1477,17 @@ fn refresh_generation_marks_older_requests_stale() -> Result<(), String> {
 
 #[test]
 fn refresh_diagnostics_advances_generation_before_analysis() -> Result<(), String> {
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|err| format!("failed to start test runtime: {err}"))?;
-    runtime.block_on(async {
-        let (service, _socket) =
-            LspService::new(|client| Backend::new(client, PathBuf::from("Cargo.toml")));
-        let backend = service.inner();
+    let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+    let backend = service.inner();
 
-        backend.refresh_diagnostics().await;
+    let Some(generation) = backend.next_refresh_generation() else {
+        return Err("expected refresh generation".to_string());
+    };
 
-        assert!(backend.is_current_refresh_generation(1));
-        Ok(())
-    })
+    assert_eq!(generation, 1);
+    assert!(backend.is_current_refresh_generation(generation));
+    assert!(backend.latest_analysis_snapshot().is_none());
+    Ok(())
 }
 
 #[test]
@@ -1447,6 +1813,39 @@ where
     }
 }
 
+async fn read_lsp_response_with_notifications<R>(
+    reader: &mut R,
+    id: u64,
+) -> Result<(serde_json::Value, Vec<serde_json::Value>), String>
+where
+    R: AsyncRead + Unpin,
+{
+    let mut notifications = Vec::new();
+    loop {
+        let message = read_lsp_message(reader).await?;
+        if message.get("id").and_then(serde_json::Value::as_u64) == Some(id) {
+            return Ok((message, notifications));
+        }
+        notifications.push(message);
+    }
+}
+
+fn log_notification_messages(messages: &[serde_json::Value]) -> Vec<String> {
+    messages
+        .iter()
+        .filter(|message| {
+            message.get("method").and_then(serde_json::Value::as_str) == Some("window/logMessage")
+        })
+        .filter_map(|message| {
+            message
+                .get("params")
+                .and_then(|params| params.get("message"))
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+        })
+        .collect()
+}
+
 async fn read_lsp_message<R>(reader: &mut R) -> Result<serde_json::Value, String>
 where
     R: AsyncRead + Unpin,
@@ -1491,6 +1890,7 @@ fn sample_analysis_snapshot(
         root,
         base: Some("origin/main".to_string()),
         mode: Mode::Draft,
+        refresh: RefreshMetadata::generated_now(),
         findings,
         classified_seams: Vec::new(),
         diagnostics_by_uri,
@@ -2249,22 +2649,15 @@ fn execute_command_collect_context_returns_none_for_unknown_finding() -> Result<
 
 #[test]
 fn execute_command_refresh_remains_unchanged() -> Result<(), String> {
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|err| format!("failed to start test runtime: {err}"))?;
-    runtime.block_on(async {
-        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
-        let backend = service.inner();
+    let Some(provider) = initialize_result().capabilities.execute_command_provider else {
+        return Err("expected execute command provider".to_string());
+    };
 
-        let params = ExecuteCommandParams {
-            command: REFRESH_COMMAND.to_string(),
-            arguments: Vec::new(),
-            work_done_progress_params: Default::default(),
-        };
-        let result = backend.execute_command(params).await;
-        let packet = result.map_err(|err| format!("execute_command failed: {err}"))?;
-        assert_eq!(packet, None);
-        Ok(())
-    })
+    assert!(
+        provider
+            .commands
+            .iter()
+            .any(|command| command == REFRESH_COMMAND)
+    );
+    Ok(())
 }

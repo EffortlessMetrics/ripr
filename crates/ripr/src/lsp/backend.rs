@@ -7,13 +7,15 @@ use super::diagnostics::{
 };
 use super::hover::{
     classified_seam_hover_response, diagnostic_at_position, diagnostic_covers_position,
-    diagnostic_hover_response, finding_hover_response, hover_response,
+    diagnostic_hover_response, finding_hover_response, hover_response, hover_with_snapshot_status,
 };
-use super::state::{AnalysisSnapshot, DocumentStore};
+use super::state::{AnalysisSnapshot, DocumentStore, format_duration};
 use super::{COLLECT_CONTEXT_COMMAND, REFRESH_COMMAND};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::time::Duration;
+use std::time::Instant;
 use tokio::sync::Mutex as AsyncMutex;
 use tower_lsp_server::jsonrpc::Result as LspResult;
 use tower_lsp_server::ls_types::{
@@ -65,28 +67,48 @@ impl Backend {
         let Some(config) = self.analysis_config() else {
             return;
         };
+        let started = Instant::now();
+        self.log_refresh_started(generation).await;
         let diagnostics = match tokio::task::spawn_blocking(move || {
             workspace_diagnostics_with_config(&root, &config)
         })
         .await
         {
-            Ok(Ok(diagnostics)) => diagnostics,
+            Ok(Ok(mut diagnostics)) => {
+                diagnostics
+                    .snapshot
+                    .refresh
+                    .record_duration(started.elapsed());
+                diagnostics
+            }
             Ok(Err(err)) => {
-                self.report_refresh_failure(err).await;
+                self.report_refresh_failure_after(err, started.elapsed())
+                    .await;
                 return;
             }
             Err(err) => {
-                self.report_refresh_failure(format!("analysis task failed: {err}"))
-                    .await;
+                self.report_refresh_failure_after(
+                    format!("analysis task failed: {err}"),
+                    started.elapsed(),
+                )
+                .await;
                 return;
             }
         };
         if !self.is_current_refresh_generation(generation) {
             return;
         }
+        let summary = RefreshLogSummary::from_snapshot(generation, &diagnostics.snapshot);
         let Some(refresh) = self.refresh_plan(diagnostics) else {
+            self.report_refresh_failure_after(
+                "diagnostic snapshot was inconsistent with publish batches".to_string(),
+                started.elapsed(),
+            )
+            .await;
             return;
         };
+        let published_uri_count = refresh.publish_batches.len();
+        let cleared_uri_count = refresh.clear_uris.len();
         for batch in refresh.publish_batches {
             self.client
                 .publish_diagnostics(batch.uri, batch.diagnostics, None)
@@ -95,13 +117,15 @@ impl Backend {
         for uri in refresh.clear_uris {
             self.client.publish_diagnostics(uri, Vec::new(), None).await;
         }
+        self.log_refresh_completed(summary, published_uri_count, cleared_uri_count)
+            .await;
     }
 
-    pub(super) async fn report_refresh_failure(&self, message: String) {
+    pub(super) async fn report_refresh_failure_after(&self, message: String, duration: Duration) {
         self.client
             .log_message(
                 MessageType::WARNING,
-                format!("ripr analysis refresh failed: {message}"),
+                refresh_failed_log_message(&message, duration),
             )
             .await;
         for uri in self.clear_all_diagnostic_uris() {
@@ -244,12 +268,18 @@ impl Backend {
                 .collect();
             for diagnostic in &overlapping {
                 if let Some(seam) = snapshot.classified_seam_for_diagnostic(diagnostic) {
-                    return Some(classified_seam_hover_response(seam, diagnostic));
+                    return Some(hover_with_snapshot_status(
+                        classified_seam_hover_response(seam, diagnostic),
+                        snapshot,
+                    ));
                 }
             }
             for diagnostic in &overlapping {
                 if let Some(finding) = snapshot.finding_for_diagnostic(diagnostic) {
-                    return Some(finding_hover_response(finding, diagnostic));
+                    return Some(hover_with_snapshot_status(
+                        finding_hover_response(finding, diagnostic),
+                        snapshot,
+                    ));
                 }
             }
         }
@@ -260,6 +290,83 @@ impl Backend {
         let diagnostics = last_diagnostics.get(uri)?;
         diagnostic_at_position(diagnostics, position).map(diagnostic_hover_response)
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct RefreshLogSummary {
+    generation: u64,
+    duration: Duration,
+    diagnostics: usize,
+    files: usize,
+    findings: usize,
+    seam_diagnostics: usize,
+}
+
+impl RefreshLogSummary {
+    pub(super) fn from_snapshot(generation: u64, snapshot: &AnalysisSnapshot) -> Self {
+        let duration = match snapshot.refresh.duration {
+            Some(duration) => duration,
+            None => Duration::ZERO,
+        };
+        Self {
+            generation,
+            duration,
+            diagnostics: snapshot.diagnostic_count(),
+            files: snapshot.diagnostic_uri_count(),
+            findings: snapshot.finding_count(),
+            seam_diagnostics: snapshot.seam_diagnostic_count(),
+        }
+    }
+}
+
+impl Backend {
+    async fn log_refresh_started(&self, generation: u64) {
+        self.client
+            .log_message(
+                MessageType::INFO,
+                format!("ripr analysis refresh started: generation={generation}"),
+            )
+            .await;
+    }
+
+    async fn log_refresh_completed(
+        &self,
+        summary: RefreshLogSummary,
+        published_uri_count: usize,
+        cleared_uri_count: usize,
+    ) {
+        self.client
+            .log_message(
+                MessageType::INFO,
+                refresh_completed_log_message(&summary, published_uri_count, cleared_uri_count),
+            )
+            .await;
+    }
+}
+
+pub(super) fn refresh_completed_log_message(
+    summary: &RefreshLogSummary,
+    published_uri_count: usize,
+    cleared_uri_count: usize,
+) -> String {
+    let duration = format_duration(summary.duration);
+    format!(
+        "ripr analysis refresh completed in {duration}: generation={}, diagnostics={}, files={}, findings={}, seam_diagnostics={}, published_files={}, cleared_files={}",
+        summary.generation,
+        summary.diagnostics,
+        summary.files,
+        summary.findings,
+        summary.seam_diagnostics,
+        published_uri_count,
+        cleared_uri_count
+    )
+}
+
+pub(super) fn refresh_failed_log_message(message: &str, duration: Duration) -> String {
+    format!(
+        "ripr analysis refresh failed after {}: {message}",
+        format_duration(duration)
+    )
 }
 
 fn diagnostics_by_uri_from_batches(batches: &[DiagnosticBatch]) -> BTreeMap<Uri, Vec<Diagnostic>> {

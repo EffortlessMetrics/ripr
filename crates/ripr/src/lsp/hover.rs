@@ -1,4 +1,5 @@
 use super::HOVER_TEXT;
+use super::state::{AnalysisSnapshot, format_duration};
 use crate::analysis::ClassifiedSeam;
 use crate::domain::{Finding, StageEvidence};
 use tower_lsp_server::ls_types::{
@@ -52,6 +53,28 @@ pub(super) fn classified_seam_hover_response(
         }),
         range: Some(diagnostic.range),
     }
+}
+
+pub(super) fn hover_with_snapshot_status(mut hover: Hover, snapshot: &AnalysisSnapshot) -> Hover {
+    let HoverContents::Markup(content) = &mut hover.contents else {
+        return hover;
+    };
+    content.value.push_str("\n\n---\n");
+    content.value.push_str("Analysis snapshot: generated ");
+    let age_duration = snapshot.refresh.age();
+    let age = age_duration
+        .map(format_duration)
+        .unwrap_or_else(|| "at an unknown time".to_string());
+    content.value.push_str(&age);
+    if age_duration.is_some() {
+        content.value.push_str(" ago");
+    }
+    if let Some(duration) = snapshot.refresh.duration {
+        content.value.push_str("; last refresh took ");
+        content.value.push_str(&format_duration(duration));
+    }
+    content.value.push('.');
+    hover
 }
 
 pub(super) fn diagnostic_at_position<'a>(
