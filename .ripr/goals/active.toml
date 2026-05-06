@@ -314,7 +314,7 @@ commands = [
 
 [[work_item]]
 id = "probes/diff-repo-split"
-status = "ready"
+status = "done"
 branch = "probe-diff-repo-split"
 stackable = false
 requires_human_merge = true
@@ -327,5 +327,24 @@ commands = [
   "cargo xtask check-architecture",
   "cargo xtask check-output-contracts",
   "cargo xtask check-no-panic-family",
+  "cargo test --workspace"
+]
+
+[[work_item]]
+id = "classify/context-extraction"
+status = "ready"
+branch = "classify-context-extraction"
+stackable = false
+requires_human_merge = true
+acceptance = "classification context shared by later RIPR stage modules moves into analysis/classify/context.rs after probe seeding is reconciled; classification behavior stays stable with no LSP, output, API, or schema drift"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-public-api",
+  "cargo xtask check-architecture",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-no-panic-family",
+  "cargo xtask lsp-cockpit-report",
   "cargo test --workspace"
 ]

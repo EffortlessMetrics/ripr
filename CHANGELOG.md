@@ -172,6 +172,10 @@ are scoped or reviewed.
 - Moved lexical changed-line probe fallback helpers into
   `analysis/probes/lexical.rs` while preserving probe generation behavior.
   The next ready seam is diff/repo probe seeding split.
+- Reconciled the Campaign 6 probe seeding manifest after confirming diff and
+  repo probe seeding already lives in `analysis/probes/diff.rs` and
+  `analysis/probes/repo.rs`. The next ready seam is classification context
+  extraction.
 - Added `cargo xtask targeted-test-outcome` as an advisory receipt for comparing
   before/after `repo-exposure-json` artifacts. The report writes
   `target/ripr/reports/targeted-test-outcome.{json,md}`, matches seams by
