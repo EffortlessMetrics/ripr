@@ -1,6 +1,7 @@
 mod classify;
 mod config;
 mod diff;
+mod family;
 mod repo;
 
 pub use diff::probes_for_file;

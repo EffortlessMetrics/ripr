@@ -703,8 +703,8 @@ Work items:
 | `syntax/ra-extraction` | done | PR 9: Parser-backed RA syntax adapter implementation moved into `analysis/syntax/ra.rs` after build-index extraction. |
 | `syntax/lexical-extraction` | done | PR 10: Lexical syntax fallback implementation moved into `analysis/syntax/lexical.rs` after RA extraction. |
 | `extract/fact-extraction` | done | PR 11: Moved call, return, literal, oracle, and text extraction helpers plus probe-shape constants into `analysis/extract/*` while keeping `rust_index` as the compatibility facade. |
-| `probes/family-extraction` | ready | PR 12: Create `analysis/probes/family.rs` |
-| `probes/expectations-extraction` | pending | PR 13: Create `analysis/probes/expectations.rs` |
+| `probes/family-extraction` | done | PR 12: Moved probe-family mapping, changed-line family heuristics, and delta metadata into `analysis/probes/family.rs`. |
+| `probes/expectations-extraction` | ready | PR 13: Create `analysis/probes/expectations.rs` |
 | `probes/id-extraction` | pending | PR 14: Create `analysis/probes/ids.rs` |
 | `probes/lexical-extraction` | pending | PR 15: Create `analysis/probes/lexical.rs` |
 | `probes/diff-repo-split` | pending | PR 16: Split diff and repo probe seeding |

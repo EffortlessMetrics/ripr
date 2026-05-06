@@ -1,6 +1,6 @@
 use super::super::rust_index::{RustIndex, find_owner_function};
-use super::classify::family_for_probe_shape;
 use super::config::{expected_sinks, required_oracles};
+use super::family::family_for_probe_shape;
 use super::sanitize_path;
 use crate::domain::{DeltaKind, Probe, ProbeId, SourceLocation};
 use std::path::Path;

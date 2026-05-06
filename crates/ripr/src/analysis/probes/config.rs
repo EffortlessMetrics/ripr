@@ -1,16 +1,5 @@
 use super::super::rust_index::extract_identifier_tokens;
-use crate::domain::{DeltaKind, ProbeFamily};
-
-pub fn delta_for_family(family: &ProbeFamily) -> DeltaKind {
-    match family {
-        ProbeFamily::Predicate | ProbeFamily::MatchArm => DeltaKind::Control,
-        ProbeFamily::SideEffect | ProbeFamily::CallDeletion => DeltaKind::Effect,
-        ProbeFamily::ReturnValue | ProbeFamily::ErrorPath | ProbeFamily::FieldConstruction => {
-            DeltaKind::Value
-        }
-        ProbeFamily::StaticUnknown => DeltaKind::Unknown,
-    }
-}
+use crate::domain::ProbeFamily;
 
 pub fn expected_sinks(text: &str, family: &ProbeFamily) -> Vec<String> {
     let mut sinks = Vec::new();
@@ -81,7 +70,9 @@ pub fn required_oracles(text: &str, family: &ProbeFamily) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::family::delta_for_family;
     use super::*;
+    use crate::domain::DeltaKind;
 
     #[test]
     fn config_functions_are_callable() {

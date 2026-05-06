@@ -2,8 +2,9 @@ use super::super::diff::ChangedFile;
 use super::super::rust_index::{
     RustIndex, changed_nodes_for_lines, extract_identifier_tokens, find_owner_function,
 };
-use super::classify::{classify_changed_line, classify_changed_syntax, should_ignore_changed_line};
-use super::config::{delta_for_family, expected_sinks, required_oracles};
+use super::classify::{classify_changed_syntax, should_ignore_changed_line};
+use super::config::{expected_sinks, required_oracles};
+use super::family::{classify_changed_line, delta_for_family};
 use super::sanitize_path;
 use crate::domain::{Probe, ProbeId, SourceLocation};
 use std::path::Path;
