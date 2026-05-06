@@ -98,6 +98,8 @@ pub enum OutputFormat {
     Json,
     /// GitHub annotation output suitable for CI logs.
     Github,
+    /// SARIF 2.1.0 report for diff-scoped static exposure Findings.
+    Sarif,
     /// Native `ripr` badge JSON (snake_case wire shape with full counts,
     /// reason counts, and policy). Consumed by tools and CI artifacts.
     BadgeJson,
@@ -142,6 +144,8 @@ pub enum OutputFormat {
     RepoExposureJson,
     /// Repo exposure report rendered as Markdown for human review.
     RepoExposureMd,
+    /// SARIF 2.1.0 report for repo-scoped classified seam evidence.
+    RepoSarif,
     /// Agent-ready seam packets per RIPR-SPEC-0005 — one
     /// `write_targeted_test` packet per headline-eligible classified
     /// seam, plus conservative `inspect_static_limitation` packets for
@@ -169,6 +173,7 @@ impl OutputFormat {
                 | OutputFormat::RepoSeamsMd
                 | OutputFormat::RepoExposureJson
                 | OutputFormat::RepoExposureMd
+                | OutputFormat::RepoSarif
                 | OutputFormat::AgentSeamPacketsJson
         )
     }
@@ -185,6 +190,7 @@ impl OutputFormat {
                 | OutputFormat::RepoSeamsMd
                 | OutputFormat::RepoExposureJson
                 | OutputFormat::RepoExposureMd
+                | OutputFormat::RepoSarif
                 | OutputFormat::AgentSeamPacketsJson
         )
     }
@@ -332,6 +338,14 @@ pub(crate) fn render_check_with_config(
         OutputFormat::Human => Ok(output::human::render_with_config(output, config)),
         OutputFormat::Json => Ok(output::json::render_with_config(output, config)),
         OutputFormat::Github => Ok(output::github::render_with_config(output, config)),
+        OutputFormat::Sarif => {
+            let suppressions = load_suppressions(output, config)?;
+            Ok(output::sarif::render_findings_sarif(
+                output,
+                config,
+                &suppressions,
+            ))
+        }
         OutputFormat::BadgeJson | OutputFormat::RepoBadgeJson => {
             let mut summary = ripr_summary_with_suppressions(output, config)?;
             if format.is_repo_scope() {
@@ -379,6 +393,11 @@ pub(crate) fn render_check_with_config(
             let classified =
                 analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
             Ok(output::repo_exposure::render_repo_exposure_md(&classified))
+        }
+        OutputFormat::RepoSarif => {
+            let classified =
+                analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
+            Ok(output::sarif::render_repo_seams_sarif(&classified, config))
         }
         OutputFormat::AgentSeamPacketsJson => {
             let classified =

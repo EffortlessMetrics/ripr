@@ -615,15 +615,17 @@ metric = "configured analysis mode, oracle policy, severity, suppressions, and s
 [[capability]]
 id = "sarif_ci_policy"
 name = "SARIF and CI policy"
-status = "planned"
+status = "alpha"
 spec = "RIPR-SPEC-0008"
 evidence = [
   "docs/specs/RIPR-SPEC-0008-sarif-ci-policy.md",
   "docs/OUTPUT_SCHEMA.md SARIF contract section",
-  "docs/CI.md SARIF and Policy Contract section"
+  "docs/CI.md SARIF and Policy Contract section",
+  "crates/ripr/src/output/sarif.rs renders diff-scoped Finding SARIF and repo-scoped seam SARIF",
+  "SARIF renderer tests cover stable rule IDs, configured severity, off severity omission, suppression metadata, valid JSON, and static language"
 ]
 fixtures = []
-next = "output-sarif-renderer-v1"
+next = "sarif-baseline-policy-v1"
 metric = "SARIF result counts by rule/level and new configured-warning results"
 
 [[capability]]
