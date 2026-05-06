@@ -645,11 +645,29 @@ blocked_reason = "Optional breaking change; hold until release policy explicitly
 
 [[work_item]]
 id = "xtask/command-dispatch"
-status = "ready"
+status = "done"
 branch = "xtask-command-dispatch"
 stackable = false
 requires_human_merge = true
 acceptance = "xtask command dispatch is split into focused command/run modules while preserving every cargo xtask command behavior"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-public-api",
+  "cargo xtask check-architecture",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-no-panic-family",
+  "cargo test --workspace"
+]
+
+[[work_item]]
+id = "xtask/policy-modules"
+status = "ready"
+branch = "xtask-policy-modules"
+stackable = false
+requires_human_merge = true
+acceptance = "xtask policy checks are organized into focused policy modules while preserving every cargo xtask policy command behavior"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
