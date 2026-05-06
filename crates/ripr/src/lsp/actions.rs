@@ -5,7 +5,8 @@ use super::{
     OPEN_RELATED_TEST_COMMAND, REFRESH_COMMAND,
 };
 use crate::analysis::ClassifiedSeam;
-use crate::analysis::test_grip_evidence::RelatedTestGrip;
+use crate::analysis::test_grip_evidence::{RelatedTestGrip, RelationConfidence};
+use crate::domain::OracleStrength;
 use crate::output::agent_seam_packets::{
     suggested_assertion_for_classified_seam, targeted_test_brief_for_classified_seam,
 };
@@ -89,7 +90,7 @@ fn push_seam_actions(
         actions.push(copy_suggested_assertion_action(context.seam, assertion));
     }
     if let Some(snapshot) = snapshot
-        && let Some(related) = context.seam.evidence.related_tests.first()
+        && let Some(related) = best_related_test_for_editor(context.seam)
         && let Some(target) = related_test_target(snapshot, related)
     {
         actions.push(open_related_test_action(target));
@@ -146,10 +147,10 @@ fn copy_suggested_assertion_action(
 
 fn open_related_test_action(target: LSPAny) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
-        title: "Open related test".to_string(),
+        title: "Open best related test".to_string(),
         kind: Some(CodeActionKind::QUICKFIX),
         command: Some(Command {
-            title: "Open related test".to_string(),
+            title: "Open best related test".to_string(),
             command: OPEN_RELATED_TEST_COMMAND.to_string(),
             arguments: Some(vec![target]),
         }),
@@ -234,6 +235,28 @@ fn copy_seam_packet_target(
         );
     }
     target
+}
+
+fn best_related_test_for_editor(seam: &ClassifiedSeam) -> Option<&RelatedTestGrip> {
+    seam.evidence
+        .related_tests
+        .iter()
+        .find(|test| test.oracle_strength == OracleStrength::Strong)
+        .or_else(|| {
+            seam.evidence
+                .related_tests
+                .iter()
+                .min_by_key(|test| relation_confidence_rank(test.relation_confidence))
+        })
+}
+
+fn relation_confidence_rank(confidence: RelationConfidence) -> u8 {
+    match confidence {
+        RelationConfidence::High => 0,
+        RelationConfidence::Medium => 1,
+        RelationConfidence::Low => 2,
+        RelationConfidence::Opaque => 3,
+    }
 }
 
 fn related_test_target(snapshot: &AnalysisSnapshot, related: &RelatedTestGrip) -> Option<LSPAny> {
