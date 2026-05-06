@@ -605,11 +605,26 @@ evidence = [
   "configured oracle policy rewrites snapshot, mock expectation, and broad error oracle strengths",
   "configured severity maps human, JSON, GitHub, and LSP diagnostics",
   "configured suppressions path feeds badge renderers",
+  "ripr doctor reports loaded, missing, and malformed config state",
   "ripr.toml.example documents the supported v1 shape"
 ]
 fixtures = []
 next = "ci/sarif-ci-policy"
 metric = "configured analysis mode, oracle policy, severity, suppressions, and seam diagnostics apply across CLI, reports, and LSP"
+
+[[capability]]
+id = "sarif_ci_policy"
+name = "SARIF and CI policy"
+status = "planned"
+spec = "RIPR-SPEC-0008"
+evidence = [
+  "docs/specs/RIPR-SPEC-0008-sarif-ci-policy.md",
+  "docs/OUTPUT_SCHEMA.md SARIF contract section",
+  "docs/CI.md SARIF and Policy Contract section"
+]
+fixtures = []
+next = "output-sarif-renderer-v1"
+metric = "SARIF result counts by rule/level and new configured-warning results"
 
 [[capability]]
 id = "cargo_mutants_calibration"

@@ -105,6 +105,9 @@ are scoped or reviewed.
 - Added `ripr doctor` visibility for repository config. Doctor now reports
   whether `ripr.toml` was loaded, which effective defaults are active, and
   malformed config errors without printing config source text.
+- Added RIPR-SPEC-0008 to define the Campaign 5B SARIF and CI policy contract:
+  stable Finding and seam rule IDs, configured severity mapping, suppression
+  visibility, advisory defaults, and opt-in baseline policy modes.
 
 ## 0.3.0 - 2026-05-02
 

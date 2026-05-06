@@ -388,3 +388,27 @@ outputs = [
 metrics = [
   "repository_config"
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0008"
+name = "SARIF and CI policy"
+spec = "docs/specs/RIPR-SPEC-0008-sarif-ci-policy.md"
+tests = []
+fixtures = []
+code = [
+  "crates/ripr/src/output",
+  "crates/ripr/src/app.rs",
+  "crates/ripr/src/cli/parse.rs",
+  "xtask/src/main.rs"
+]
+outputs = [
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/CI.md",
+  "docs/CAPABILITY_MATRIX.md"
+]
+metrics = [
+  "sarif_results_total",
+  "sarif_results_by_rule",
+  "sarif_results_by_level",
+  "sarif_new_warning_results"
+]

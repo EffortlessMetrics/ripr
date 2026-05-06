@@ -17,6 +17,12 @@ schema. It can change the rendered `mode` and configured `severity` values,
 because those fields already describe the effective analysis mode and reporting
 policy for the current run. See [Configuration](CONFIGURATION.md).
 
+SARIF output is governed by
+[RIPR-SPEC-0008](specs/RIPR-SPEC-0008-sarif-ci-policy.md). SARIF uses the
+standard SARIF `version: "2.1.0"` envelope rather than `schema_version: "0.1"`.
+Adding SARIF must not change the existing human, JSON, GitHub annotation,
+badge, LSP, or context schemas.
+
 ## Check Output
 
 `ripr check --json` emits:
@@ -285,6 +291,90 @@ contract language.
 - `infection_evidence_unknown`
 - `propagation_evidence_unknown`
 - `static_probe_unknown`
+
+## SARIF Output
+
+Planned Campaign 5B SARIF formats:
+
+```bash
+ripr check --format sarif
+ripr check --format repo-sarif
+```
+
+`sarif` is the diff-scoped Finding SARIF surface. `repo-sarif` is the
+repo-scoped classified seam SARIF surface. Both use SARIF 2.1.0:
+
+```json
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "ripr",
+          "rules": []
+        }
+      },
+      "results": []
+    }
+  ]
+}
+```
+
+Rule IDs are stable public integration strings.
+
+Finding rule IDs:
+
+- `ripr.finding.exposed`
+- `ripr.finding.weakly_exposed`
+- `ripr.finding.reachable_unrevealed`
+- `ripr.finding.no_static_path`
+- `ripr.finding.infection_unknown`
+- `ripr.finding.propagation_unknown`
+- `ripr.finding.static_unknown`
+
+Seam rule IDs:
+
+- `ripr.seam.strongly_gripped`
+- `ripr.seam.weakly_gripped`
+- `ripr.seam.ungripped`
+- `ripr.seam.reachable_unrevealed`
+- `ripr.seam.activation_unknown`
+- `ripr.seam.propagation_unknown`
+- `ripr.seam.observation_unknown`
+- `ripr.seam.discrimination_unknown`
+- `ripr.seam.opaque`
+- `ripr.seam.intentional`
+- `ripr.seam.suppressed`
+
+Configured severity maps into SARIF as:
+
+| `ripr.toml` severity | SARIF result behavior |
+| --- | --- |
+| `warning` | emit `level: "warning"` |
+| `info` | emit `level: "note"` |
+| `note` | emit `level: "note"` |
+| `off` | omit the result |
+
+SARIF v1 does not emit `level: "error"`. CI blocking is a separate opt-in
+policy decision, not a property of the static SARIF renderer.
+
+Every result should carry:
+
+- `ruleId`;
+- `level`;
+- a primary physical location when file and line are known;
+- `partialFingerprints.riprFingerprintV1`;
+- `properties.kind` (`finding` or `seam`);
+- stable IDs (`finding_id`, `probe_id`, or `seam_id`) when available;
+- class metadata (`classification`, `probe_family`, `grip_class`, or
+  `seam_kind`) when available.
+
+Suppressed exposure-gap Findings remain visible with SARIF suppression metadata
+when their configured severity is visible. Results whose configured severity is
+`off` are omitted. See RIPR-SPEC-0008 for the full suppression and baseline
+policy contract.
 
 ## Context Packet
 

@@ -619,7 +619,7 @@ Work items:
 | Work item | Status | Notes |
 | --- | --- | --- |
 | `config/ripr-config-v1` | done | Repo-root `ripr.toml` governs analysis mode, oracle policy, severity mapping, suppressions path, report caps, and LSP seam-diagnostic defaults while explicit CLI/LSP options still win. |
-| `ci/sarif-ci-policy` | ready | SARIF and policy modes consume configured severity and suppression policy. |
+| `ci/sarif-ci-policy` | ready | SARIF and policy modes consume configured severity and suppression policy; RIPR-SPEC-0008 pins the rule IDs, severity mapping, suppression visibility, and advisory default. |
 | `badge/seam-native-count-mapping` | blocked | Map `ripr` and `ripr+` badge counts onto seam-native counts after SARIF consumes configured severity and suppression semantics. |
 
 Review policy:

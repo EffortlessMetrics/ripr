@@ -18,3 +18,4 @@ observable behavior.
 | [RIPR-SPEC-0005](RIPR-SPEC-0005-repo-seam-inventory.md) | proposed | Repo seam inventory and test grip |
 | [RIPR-SPEC-0006](RIPR-SPEC-0006-mutation-calibration.md) | proposed | Mutation calibration reports |
 | [RIPR-SPEC-0007](RIPR-SPEC-0007-repository-configuration.md) | proposed | Repository configuration |
+| [RIPR-SPEC-0008](RIPR-SPEC-0008-sarif-ci-policy.md) | proposed | SARIF and CI policy |
