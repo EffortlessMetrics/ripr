@@ -19,36 +19,9 @@ pub use super::facts::{
     CallFact, FileFacts, FunctionFact, FunctionSummary, LiteralFact, OracleFact, ProbeShapeFact,
     ReturnFact, RustIndex, TestFact, TestSummary,
 };
-
-pub trait RustSyntaxAdapter {
-    fn summarize_file(&self, path: &Path, text: &str) -> Result<FileFacts, String>;
-
-    fn changed_nodes(&self, facts: &FileFacts, ranges: &[TextRange]) -> Vec<SyntaxNodeFact>;
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct LexicalRustSyntaxAdapter;
-
-#[derive(Clone, Debug, Default)]
-pub struct RaRustSyntaxAdapter;
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct TextRange {
-    pub start_line: usize,
-    pub start_column: usize,
-    pub end_line: usize,
-    pub end_column: usize,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SyntaxNodeFact {
-    pub file: PathBuf,
-    pub kind: String,
-    pub start_line: usize,
-    pub end_line: usize,
-    pub text: String,
-    pub owner: Option<SymbolId>,
-}
+pub use super::syntax::{
+    LexicalRustSyntaxAdapter, RaRustSyntaxAdapter, RustSyntaxAdapter, SyntaxNodeFact, TextRange,
+};
 
 impl RustSyntaxAdapter for LexicalRustSyntaxAdapter {
     fn summarize_file(&self, path: &Path, text: &str) -> Result<FileFacts, String> {

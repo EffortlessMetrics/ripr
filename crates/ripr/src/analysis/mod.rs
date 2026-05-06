@@ -10,6 +10,7 @@ mod seam_inventory;
 pub(crate) mod seams;
 mod sort;
 mod summary;
+mod syntax;
 pub(crate) mod test_grip_evidence;
 mod value_resolution;
 mod workspace;

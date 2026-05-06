@@ -140,6 +140,10 @@ are scoped or reviewed.
   Campaign 6 facts model extraction while leaving syntax adapters, builders,
   extraction, and query logic in place. The next ready seam is syntax adapter
   type extraction.
+- Moved syntax adapter traits and shared syntax facts into
+  `analysis/syntax/adapter.rs` while keeping builders, parser-backed extraction,
+  lexical fallback, and query logic in `analysis/rust_index.rs`. The next ready
+  seam is build-index extraction.
 - Added `cargo xtask targeted-test-outcome` as an advisory receipt for comparing
   before/after `repo-exposure-json` artifacts. The report writes
   `target/ripr/reports/targeted-test-outcome.{json,md}`, matches seams by
