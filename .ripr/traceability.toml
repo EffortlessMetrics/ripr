@@ -305,7 +305,9 @@ outputs = [
   "docs/OUTPUT_SCHEMA.md",
   "docs/BADGE_POLICY.md",
   "docs/AGENT_DISPATCH_WORKFLOW.md",
-  "docs/CAPABILITY_MATRIX.md"
+  "docs/CAPABILITY_MATRIX.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md"
 ]
 metrics = [
   "seam_inventory_count",
@@ -391,6 +393,8 @@ outputs = [
   "docs/CONFIGURATION.md",
   "docs/OUTPUT_SCHEMA.md",
   "docs/CAPABILITY_MATRIX.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
   "ripr.toml.example"
 ]
 metrics = [
@@ -423,7 +427,9 @@ code = [
 outputs = [
   "docs/OUTPUT_SCHEMA.md",
   "docs/CI.md",
-  "docs/CAPABILITY_MATRIX.md"
+  "docs/CAPABILITY_MATRIX.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md"
 ]
 metrics = [
   "sarif_results_total",
