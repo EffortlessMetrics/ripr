@@ -44,7 +44,7 @@ more useful mode than the zero-config default.
 | Report caps | Context packets and collect-context commands include up to `5` related tests by default. |
 | Suppressions | Badge renderers look for `.ripr/suppressions.toml`; a missing file is normal. |
 | Badges | Repo badges count configured-visible unresolved seam gaps and stay advisory unless an explicit failure policy is selected. |
-| CI | Generated GitHub workflows upload advisory pilot/report artifacts, keep SARIF upload optional, and use `continue-on-error` by default. |
+| CI | Generated GitHub workflows upload advisory pilot/report artifacts, keep SARIF rendering/upload optional, and use `continue-on-error` by default. |
 | Calibration | Runtime data is imported only when explicitly supplied; `ripr` does not run mutation testing by default. |
 
 Operator mode vocabulary maps to concrete analysis modes:
@@ -83,8 +83,8 @@ Creates a conservative repo-local `ripr.toml` at the selected workspace root.
 The generated profile records the built-in conservative defaults as repo policy
 so they can be reviewed and changed. With `--ci github`, it also writes a
 non-blocking GitHub Actions workflow for pilot/report artifacts and optional
-SARIF upload. It does not run mutation testing, enable CI blocking policy, or
-unlock basic CLI usefulness.
+SARIF rendering/upload. It does not run mutation testing, enable CI blocking
+policy, or unlock basic CLI usefulness.
 
 ```text
 ripr init [--root PATH] [--ci github] [--dry-run] [--force]
@@ -93,7 +93,7 @@ ripr init [--root PATH] [--ci github] [--dry-run] [--force]
 | Flag | Default | Notes |
 | --- | --- | --- |
 | `--root PATH` | current directory | Workspace root where `ripr.toml` should be written. |
-| `--ci github` | _(off)_ | Also write `.github/workflows/ripr.yml`. The workflow installs `ripr`, runs `ripr pilot`, uploads pilot/report artifacts, writes repo badge JSON, optionally uploads SARIF when `RIPR_UPLOAD_SARIF` is true, and uses `continue-on-error` so the default path is advisory. |
+| `--ci github` | _(off)_ | Also write `.github/workflows/ripr.yml`. The workflow installs `ripr`, runs `ripr pilot`, uploads pilot/report artifacts, writes repo badge JSON, optionally renders and uploads SARIF when `RIPR_UPLOAD_SARIF` is true, and uses `continue-on-error` so the default path is advisory. |
 | `--dry-run` | _(off)_ | Print the generated config to stdout without writing. |
 | `--force` | _(off)_ | Overwrite an existing `ripr.toml` or generated workflow. Without this flag, existing repo policy and workflow files are left unchanged. |
 

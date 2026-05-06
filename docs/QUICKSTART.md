@@ -112,15 +112,15 @@ Test Brief, and Open Best Related Test from the editor. The editor uses
 saved-workspace analysis by default; unsaved-buffer overlays are not enabled by
 default.
 
-For CI, generate the non-blocking GitHub Actions SARIF workflow when the team
-wants PR code-scanning guidance:
+For CI, generate the non-blocking GitHub Actions workflow when the team wants
+PR report artifacts and optional code-scanning guidance:
 
 ```bash
 ripr init --ci github
 ```
 
 The generated workflow is advisory by default. It uploads the pilot packet,
-report artifacts, and repo badge JSON; SARIF upload is controlled by the
-workflow's `RIPR_UPLOAD_SARIF` setting and remains non-blocking. CI blocking
-policy remains opt-in. The copyable recipe and policy details live in
+report artifacts, and repo badge JSON; SARIF rendering/upload is controlled by
+the workflow's `RIPR_UPLOAD_SARIF` setting and remains non-blocking. CI
+blocking policy remains opt-in. The copyable recipe and policy details live in
 [CI](CI.md).

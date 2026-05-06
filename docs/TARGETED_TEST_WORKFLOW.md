@@ -287,17 +287,17 @@ cargo xtask sarif-policy \
 Use `--mode baseline-check` or `--mode fail-on-new-warning` only when the
 repository has deliberately adopted an opt-in baseline policy.
 
-To generate the advisory GitHub Actions SARIF workflow, run:
+To generate the advisory GitHub Actions workflow, run:
 
 ```bash
 ripr init --ci github
 ```
 
 The generated workflow uploads a `ripr-reports` artifact containing the pilot
-packet, report artifacts, and repo badge JSON. SARIF upload is enabled by the
-workflow's `RIPR_UPLOAD_SARIF` setting and can be set to `"false"` without
-removing the report artifact path. The copyable recipe and policy details are in
-[CI strategy](CI.md#copyable-ripr-advisory-workflow).
+packet, report artifacts, and repo badge JSON. SARIF rendering/upload is
+enabled by the workflow's `RIPR_UPLOAD_SARIF` setting and can be set to
+`"false"` without removing the report artifact path. The copyable recipe and
+policy details are in [CI strategy](CI.md#copyable-ripr-advisory-workflow).
 
 ### Badges
 

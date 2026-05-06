@@ -910,7 +910,7 @@ End state:
 - built-in defaults and generated `ripr.toml` are documented and conservative
 - fast, normal, and deep mode behavior is clear without hand tuning
 - one operator cockpit joins the existing report surfaces into next action
-- GitHub Actions use a copyable workflow with artifacts and optional SARIF upload
+- GitHub Actions use a copyable workflow with artifacts and optional SARIF rendering/upload
 - editor install and command docs cover the existing saved-workspace loop only
 - example corpus demonstrates the targeted-test loop and optional calibration
 - install/release paths are verified enough for a new user to run the loop
@@ -921,7 +921,7 @@ Work items:
 | --- | --- | --- |
 | `defaults/config-init` | done | Built-in defaults, generated `ripr.toml`, repo-mode exclusions, seam-diagnostic policy, badge/report defaults, and fast/normal/deep mode behavior are documented and test-pinned without output schema or LSP drift. |
 | `reports/operator-cockpit` | done | `cargo xtask operator-cockpit` writes `target/ripr/reports/operator-cockpit.{json,md}` by joining existing repo exposure, LSP cockpit, SARIF policy, badge status, targeted-test outcome, and optional mutation calibration artifacts into one next-action surface. `operator-cockpit-report` remains an alias for existing automation. Missing inputs stay visible with generator commands; top weak seams carry why-it-matters text, a suggested targeted test, and best related-test context when available. The command does not rerun analysis or change static classifications. |
-| `ci/github-action-entrypoint` | done | `ripr init --ci github` generates the copyable defaults-first GitHub Action entrypoint. It runs `ripr pilot`, renders diff/repo SARIF, writes repo badge JSON and Shields artifacts, uploads the pilot/report directories, exposes `RIPR_UPLOAD_SARIF` as the SARIF upload toggle, and keeps the job plus upload steps advisory. |
+| `ci/github-action-entrypoint` | done | `ripr init --ci github` generates the copyable defaults-first GitHub Action entrypoint. It runs `ripr pilot`, renders diff/repo SARIF only when `RIPR_UPLOAD_SARIF` is true, writes repo badge JSON and Shields artifacts, uploads the pilot/report directories, and keeps the job plus upload steps advisory. |
 | `editor/install-polish` | ready | Document and verify the VS Code install path and existing commands after the GitHub Action entrypoint exists, without adding unsaved-buffer overlays, CodeLens, inlay hints, semantic tokens, or new editor behavior. |
 | `fixtures/example-corpus` | blocked | Add a small public corpus for boundary gap, weak oracle, missing equality boundary, exact error variant, opaque fixture/builder, and one calibration sample. |
 | `release/install-polish` | blocked | Verify `cargo install`, GitHub Release binaries, VS Code server provisioning, README quickstart, and known-limits docs against the operator loop. |

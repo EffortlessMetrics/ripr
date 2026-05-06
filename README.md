@@ -178,7 +178,7 @@ ripr init
 ```
 
 Or add an advisory GitHub Actions workflow that uploads pilot/report artifacts
-and can optionally upload SARIF:
+and can optionally render and upload SARIF:
 
 ```bash
 ripr init --ci github
@@ -303,7 +303,7 @@ Current capabilities:
 | LSP | Experimental `tower-lsp-server` sidecar with evidence-aware Finding diagnostics, related-test links, hovers, server-side context packets, seam-native diagnostics + hover, and seam code actions for copying packets/assertions and opening related tests. Saved-workspace diagnostics remain advisory; unsaved-buffer overlays are not default behavior. | Campaign 6 stack audit. |
 | Agent context | Compact context packet plus per-seam `write_targeted_test` and `inspect_static_limitation` packets carrying recommended test placement, nearest tests to imitate, candidate values, missing discriminators, patterns to imitate/avoid, and assertion templates. Documented agent dispatch workflow in `docs/AGENT_DISPATCH_WORKFLOW.md`. | Campaign 6 stack audit. |
 | Repository config | Repo-root `ripr.toml` can set analysis mode, oracle policy, severity mapping, suppressions path, report related-test caps, and LSP seam-diagnostic defaults. Explicit CLI flags and LSP initialization options still win. | Campaign 6 stack audit. |
-| SARIF and CI policy | `ripr check --format sarif` emits diff-scoped Finding SARIF and `--format repo-sarif` emits repo seam SARIF with configured severity, suppression metadata, stable rule IDs, and stable fingerprints. `ripr init --ci github` generates a non-blocking GitHub Actions upload workflow, and `cargo xtask sarif-policy` compares current SARIF to a baseline only when explicitly requested. | Campaign 6 stack audit. |
+| SARIF and CI policy | `ripr check --format sarif` emits diff-scoped Finding SARIF and `--format repo-sarif` emits repo seam SARIF with configured severity, suppression metadata, stable rule IDs, and stable fingerprints. `ripr init --ci github` generates a non-blocking GitHub Actions report workflow with pilot/report artifacts, repo badge JSON, and optional SARIF rendering/upload; `cargo xtask sarif-policy` compares current SARIF to a baseline only when explicitly requested. | Campaign 7 defaults-first operator adoption. |
 | Calibration | Advisory `ripr calibrate cargo-mutants` and repo-local `cargo xtask mutation-calibration` join imported cargo-mutants runtime data to static seam evidence by `seam_id` or unambiguous file/line; ambiguous file/line candidates stay unassigned. `fixtures/CALIBRATION_CORPUS.md` maps current fixtures to controlled calibration scenarios. | Future runtime calibration artifacts; runtime mutation language stays inside calibration/runtime reports. |
 
 Campaign 5A and 5B are complete. Campaign 5B landed repository config,

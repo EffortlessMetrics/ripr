@@ -25,7 +25,8 @@ are scoped or reviewed.
   output without running mutation testing.
 - Added `ripr init --ci github` to generate a non-blocking GitHub Actions
   workflow that runs `ripr pilot`, uploads pilot/report artifacts, writes repo
-  badge JSON, and keeps SARIF upload optional through `RIPR_UPLOAD_SARIF`.
+  badge JSON, and keeps SARIF rendering/upload optional through
+  `RIPR_UPLOAD_SARIF`.
 - Added `ripr init` to write a conservative repo-local `ripr.toml`, with
   `--dry-run` for previewing and `--force` for explicit overwrite.
 - Added RIPR-SPEC-0009 to define defaults-first adoption behavior for `init`,

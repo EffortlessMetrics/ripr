@@ -274,7 +274,9 @@ Policy modes:
 ### Copyable RIPR Advisory Workflow
 
 External repositories can start with a non-blocking pull-request workflow that
-installs `ripr`, renders SARIF, and uploads it to GitHub code scanning:
+installs `ripr`, runs the defaults-first pilot loop, writes repo report and
+badge artifacts, uploads them for review, and optionally publishes SARIF to
+GitHub code scanning:
 
 ```bash
 ripr init --ci github
@@ -282,8 +284,8 @@ ripr init --ci github
 
 The generated workflow matches the recipe below. The official GitHub SARIF
 upload documentation uses `github/codeql-action/upload-sarif@v4`; keep the RIPR
-job and upload steps advisory until the repository has chosen a baseline
-policy.
+job, artifact upload, and optional SARIF steps advisory until the repository
+has chosen a baseline policy.
 
 ```yaml
 name: RIPR
@@ -330,7 +332,7 @@ jobs:
           git diff --binary "origin/${{ github.base_ref }}...HEAD" > target/ripr/reports/pr.diff
 
       - name: Render diff SARIF
-        if: github.event_name == 'pull_request'
+        if: env.RIPR_UPLOAD_SARIF == 'true' && github.event_name == 'pull_request'
         continue-on-error: true
         run: |
           ripr check \
@@ -340,6 +342,7 @@ jobs:
             > target/ripr/reports/ripr-findings.sarif
 
       - name: Render repo seam SARIF
+        if: env.RIPR_UPLOAD_SARIF == 'true'
         continue-on-error: true
         run: |
           mkdir -p target/ripr/reports
@@ -415,9 +418,9 @@ badge files in that artifact are:
 
 The generated workflow sets `RIPR_UPLOAD_SARIF` to `"true"` so first-run
 repositories get code-scanning guidance. Set it to `"false"` in the copied
-workflow to keep the report artifact path while skipping SARIF upload. This is
-useful for repositories that do not want GitHub code scanning permissions or
-want to review the report artifacts before enabling annotations.
+workflow to keep the report artifact path while skipping SARIF rendering and
+upload. This is useful for repositories that do not want GitHub code scanning
+permissions or want to review the report artifacts before enabling annotations.
 
 The policy implementation lives in `cargo xtask` rather than a public `ripr`
 CLI policy command. The generated workflow above does not block pull requests

@@ -55,8 +55,8 @@ saved-workspace LSP behavior. The next adoption work is one clean path from
 install to weak seam, targeted-test brief, rerun, and receipt; Campaign 7 has
 now pinned the defaults/config baseline, added the operator cockpit report, and
 made the generated GitHub Action upload pilot/report artifacts with optional
-SARIF. The next ready work is editor install polish for the existing
-saved-workspace loop.
+SARIF rendering/upload. The next ready work is editor install polish for the
+existing saved-workspace loop.
 
 ## Strategic Sequence
 
