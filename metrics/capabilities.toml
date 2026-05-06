@@ -588,6 +588,7 @@ evidence = [
   "severity table (Warning for headline-eligible, Information for unknowns and opaque)",
   "data.seam_id as hover lookup key",
   "bounded saved-workspace seam diagnostics default on under RIPR-SPEC-0009",
+  "VS Code ripr.check.mode defaults to draft so the extension does not override missing-config defaults with instant mode",
   "explicit seamDiagnostics: false override",
   "OUTPUT_SCHEMA.md LSP Seam Diagnostics section"
 ]

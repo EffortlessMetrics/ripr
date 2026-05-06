@@ -207,11 +207,11 @@ download → `PATH`), see
 
 | Setting | Type | Default | Effect |
 | --- | --- | --- | --- |
-| `ripr.check.mode` | enum: `instant` \| `fast` \| `deep` | `instant` | Editor-side analysis mode. The extension exposes a narrower set than the CLI; the server still accepts all five modes via `initializationOptions.checkMode`. |
+| `ripr.check.mode` | enum: `instant` \| `draft` \| `fast` \| `deep` \| `ready` | `draft` | Editor-side analysis mode. Forwarded as `initializationOptions.checkMode`. |
 | `ripr.baseRef` | string | `"origin/main"` | Git base ref used by editor diagnostics and the context commands. Forwarded as `initializationOptions.baseRef`. |
 
-Note that the editor default is `instant`, not `draft`. CLI invocations and
-direct LSP clients still default to `draft`.
+The editor default matches the CLI and direct LSP missing-config default:
+`draft`.
 
 ### Diagnostics
 

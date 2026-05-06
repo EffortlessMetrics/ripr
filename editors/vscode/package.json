@@ -97,10 +97,12 @@
           "type": "string",
           "enum": [
             "instant",
+            "draft",
             "fast",
-            "deep"
+            "deep",
+            "ready"
           ],
-          "default": "instant",
+          "default": "draft",
           "description": "Preferred ripr check mode for editor-triggered analysis."
         },
         "ripr.baseRef": {

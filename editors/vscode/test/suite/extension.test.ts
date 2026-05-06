@@ -32,6 +32,11 @@ suite('Extension Smoke', () => {
     assert.ok(commands.includes('ripr.openSettings'));
   });
 
+  test('defaults-first check mode is draft', () => {
+    const config = vscode.workspace.getConfiguration('ripr');
+    assert.strictEqual(config.get('check.mode'), 'draft');
+  });
+
   test('restartServer command is callable', async () => {
     // The command will fail because no ripr server is available in the
     // test environment, but it should not crash the extension.
@@ -248,7 +253,7 @@ function createControllerTestContext(options: ControllerTestOptions) {
       autoDownload: false,
       serverVersion: '',
       downloadBaseUrl: '',
-      checkMode: 'instant',
+      checkMode: 'draft',
       baseRef: 'origin/main',
       traceServer: 'off'
     }),
