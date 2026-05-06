@@ -106,5 +106,13 @@ Test Brief, and Open Best Related Test from the editor. The editor uses
 saved-workspace analysis by default; unsaved-buffer overlays are not enabled by
 default.
 
-For CI, start with the non-blocking SARIF recipe in [CI](CI.md). CI blocking
-policy remains opt-in.
+For CI, generate the non-blocking GitHub Actions SARIF workflow when the team
+wants PR code-scanning guidance:
+
+```bash
+ripr init --ci github
+```
+
+The generated workflow is advisory by default. It uploads static RIPR SARIF and
+uses `continue-on-error`; CI blocking policy remains opt-in. The copyable recipe
+and policy details live in [CI](CI.md).

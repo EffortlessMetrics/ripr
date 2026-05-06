@@ -23,6 +23,8 @@ are scoped or reviewed.
   cargo-mutants JSON from the installed binary, join it to a
   `repo-exposure-json` snapshot, and render advisory Markdown/JSON calibration
   output without running mutation testing.
+- Added `ripr init --ci github` to generate a non-blocking GitHub Actions SARIF
+  upload workflow for advisory code-scanning guidance.
 - Added `ripr init` to write a conservative repo-local `ripr.toml`, with
   `--dry-run` for previewing and `--force` for explicit overwrite.
 - Added RIPR-SPEC-0009 to define defaults-first adoption behavior for `init`,

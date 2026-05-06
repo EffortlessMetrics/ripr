@@ -14,6 +14,12 @@ struct InitOptions {
     root: PathBuf,
     dry_run: bool,
     force: bool,
+    ci: Option<InitCi>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum InitCi {
+    Github,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -60,7 +66,7 @@ pub(super) fn init(args: &[String]) -> Result<(), String> {
     }
     let options = parse_init_options(args)?;
     if options.dry_run {
-        print!("{}", generated_init_config());
+        print_init_dry_run(&options);
         return Ok(());
     }
     if !options.root.is_dir() {
@@ -70,15 +76,39 @@ pub(super) fn init(args: &[String]) -> Result<(), String> {
         ));
     }
     let config_path = options.root.join(CONFIG_FILE_NAME);
-    if config_path.exists() && !options.force {
+    let workflow_path = options
+        .ci
+        .as_ref()
+        .map(|ci| init_ci_workflow_path(&options.root, ci));
+
+    if config_path.exists() && !options.force && options.ci.is_none() {
         return Err(format!(
             "{} already exists; rerun `ripr init --force` to overwrite it",
             config_path.display()
         ));
     }
-    std::fs::write(&config_path, generated_init_config())
-        .map_err(|err| format!("write {} failed: {err}", config_path.display()))?;
-    println!("Wrote {}", config_path.display());
+    if let Some(path) = workflow_path
+        .as_ref()
+        .filter(|path| path.exists())
+        .filter(|_| !options.force)
+    {
+        return Err(format!(
+            "{} already exists; rerun `ripr init --ci github --force` to overwrite it",
+            path.display()
+        ));
+    }
+
+    if config_path.exists() && !options.force {
+        println!("Left existing {} unchanged", config_path.display());
+    } else {
+        std::fs::write(&config_path, generated_init_config())
+            .map_err(|err| format!("write {} failed: {err}", config_path.display()))?;
+        println!("Wrote {}", config_path.display());
+    }
+
+    if let Some(ci) = options.ci.as_ref() {
+        write_init_ci_workflow(&options.root, ci)?;
+    }
     Ok(())
 }
 
@@ -87,6 +117,7 @@ fn parse_init_options(args: &[String]) -> Result<InitOptions, String> {
         root: PathBuf::from("."),
         dry_run: false,
         force: false,
+        ci: None,
     };
     let mut i = 0usize;
     while i < args.len() {
@@ -95,6 +126,10 @@ fn parse_init_options(args: &[String]) -> Result<InitOptions, String> {
                 i += 1;
                 options.root = PathBuf::from(expect_value(args, i, "--root")?);
             }
+            "--ci" => {
+                i += 1;
+                options.ci = Some(parse_init_ci(expect_value(args, i, "--ci")?)?);
+            }
             "--dry-run" => options.dry_run = true,
             "--force" => options.force = true,
             other => return Err(format!("unknown init argument {other:?}")),
@@ -102,6 +137,120 @@ fn parse_init_options(args: &[String]) -> Result<InitOptions, String> {
         i += 1;
     }
     Ok(options)
+}
+
+fn parse_init_ci(value: &str) -> Result<InitCi, String> {
+    match value {
+        "github" => Ok(InitCi::Github),
+        _ => Err(format!("unknown init --ci provider {value:?}")),
+    }
+}
+
+fn print_init_dry_run(options: &InitOptions) {
+    if let Some(ci) = options.ci.as_ref() {
+        println!("# {}", CONFIG_FILE_NAME);
+        print!("{}", generated_init_config());
+        println!();
+        println!("# {}", init_ci_workflow_path(&options.root, ci).display());
+        print!("{}", generated_github_actions_workflow());
+    } else {
+        print!("{}", generated_init_config());
+    }
+}
+
+fn init_ci_workflow_path(root: &Path, ci: &InitCi) -> PathBuf {
+    match ci {
+        InitCi::Github => root.join(".github/workflows/ripr.yml"),
+    }
+}
+
+fn write_init_ci_workflow(root: &Path, ci: &InitCi) -> Result<(), String> {
+    match ci {
+        InitCi::Github => {
+            let path = init_ci_workflow_path(root, ci);
+            if let Some(parent) = path
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+            {
+                std::fs::create_dir_all(parent)
+                    .map_err(|err| format!("create {} failed: {err}", parent.display()))?;
+            }
+            std::fs::write(&path, generated_github_actions_workflow())
+                .map_err(|err| format!("write {} failed: {err}", path.display()))?;
+            println!("Wrote {}", path.display());
+            Ok(())
+        }
+    }
+}
+
+fn generated_github_actions_workflow() -> &'static str {
+    r#"name: RIPR
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  ripr:
+    name: RIPR advisory SARIF
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install ripr
+        run: cargo install ripr --locked
+
+      - name: Capture pull request diff
+        if: github.event_name == 'pull_request'
+        run: |
+          mkdir -p target/ripr/reports
+          git diff --binary "origin/${{ github.base_ref }}...HEAD" > target/ripr/reports/pr.diff
+
+      - name: Render RIPR diff SARIF
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          ripr check \
+            --root . \
+            --diff target/ripr/reports/pr.diff \
+            --format sarif \
+            > target/ripr/reports/ripr-findings.sarif
+
+      - name: Render RIPR repo seam SARIF
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          ripr check \
+            --root . \
+            --mode ready \
+            --format repo-sarif \
+            > target/ripr/reports/ripr-seams.sarif
+
+      - name: Upload RIPR diff findings
+        if: github.event_name == 'pull_request' && hashFiles('target/ripr/reports/ripr-findings.sarif') != ''
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: target/ripr/reports/ripr-findings.sarif
+          category: ripr-findings
+
+      - name: Upload RIPR repo seams
+        if: hashFiles('target/ripr/reports/ripr-seams.sarif') != ''
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: target/ripr/reports/ripr-seams.sarif
+          category: ripr-seams
+"#
 }
 
 pub(super) fn pilot(args: &[String]) -> Result<(), String> {
@@ -1143,26 +1292,102 @@ mod tests {
             init(&args(&["--root"])),
             Err("missing value for --root".to_string())
         );
+        assert_eq!(
+            init(&args(&["--ci"])),
+            Err("missing value for --ci".to_string())
+        );
     }
 
     #[test]
     fn init_rejects_unknown_arguments() {
         assert_eq!(
-            init(&args(&["--ci", "github"])),
-            Err("unknown init argument \"--ci\"".to_string())
+            init(&args(&["--wat"])),
+            Err("unknown init argument \"--wat\"".to_string())
+        );
+        assert_eq!(
+            init(&args(&["--ci", "gitlab"])),
+            Err("unknown init --ci provider \"gitlab\"".to_string())
         );
     }
 
     #[test]
     fn init_parses_root_dry_run_and_force() {
         assert_eq!(
-            parse_init_options(&args(&["--root", "repo", "--dry-run", "--force"])),
+            parse_init_options(&args(&[
+                "--root",
+                "repo",
+                "--dry-run",
+                "--force",
+                "--ci",
+                "github",
+            ])),
             Ok(InitOptions {
                 root: PathBuf::from("repo"),
                 dry_run: true,
                 force: true,
+                ci: Some(InitCi::Github),
             })
         );
+    }
+
+    #[test]
+    fn init_generated_github_workflow_is_advisory() {
+        let workflow = generated_github_actions_workflow();
+        assert!(workflow.contains("continue-on-error: true"));
+        assert!(workflow.contains("github/codeql-action/upload-sarif@v4"));
+        assert!(workflow.contains("--format sarif"));
+        assert!(workflow.contains("--format repo-sarif"));
+        assert!(!workflow.contains("fail-on-new-warning"));
+        assert!(!workflow.contains("sarif-policy"));
+    }
+
+    #[test]
+    fn init_ci_github_writes_workflow_and_preserves_existing_config() -> Result<(), String> {
+        let dir = unique_command_test_dir("init-ci");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create temp dir: {err}"))?;
+        let config = dir.join(CONFIG_FILE_NAME);
+        std::fs::write(&config, "# existing policy\n")
+            .map_err(|err| format!("write existing config: {err}"))?;
+
+        init(&args(&[
+            "--root",
+            &dir.display().to_string(),
+            "--ci",
+            "github",
+        ]))?;
+
+        let config_text =
+            std::fs::read_to_string(&config).map_err(|err| format!("read config: {err}"))?;
+        let workflow_path = dir.join(".github/workflows/ripr.yml");
+        let workflow = std::fs::read_to_string(&workflow_path)
+            .map_err(|err| format!("read workflow: {err}"))?;
+        assert_eq!(config_text, "# existing policy\n");
+        assert!(workflow.contains("RIPR advisory SARIF"));
+        assert!(workflow.contains("continue-on-error: true"));
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn init_ci_github_refuses_existing_workflow_without_force() -> Result<(), String> {
+        let dir = unique_command_test_dir("init-ci-existing");
+        let workflow_dir = dir.join(".github/workflows");
+        std::fs::create_dir_all(&workflow_dir)
+            .map_err(|err| format!("create workflow dir: {err}"))?;
+        let workflow = workflow_dir.join("ripr.yml");
+        std::fs::write(&workflow, "name: Existing\n")
+            .map_err(|err| format!("write existing workflow: {err}"))?;
+
+        let result = init(&args(&[
+            "--root",
+            &dir.display().to_string(),
+            "--ci",
+            "github",
+        ]));
+        assert!(matches!(result, Err(message) if message.contains("already exists")));
+        assert!(!dir.join(CONFIG_FILE_NAME).exists());
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
     }
 
     #[test]

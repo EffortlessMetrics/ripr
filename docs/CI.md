@@ -274,16 +274,23 @@ Policy modes:
 ### Copyable RIPR SARIF Workflow
 
 External repositories can start with a non-blocking pull-request workflow that
-installs `ripr`, renders SARIF, and uploads it to GitHub code scanning. The
-official GitHub SARIF upload documentation uses
-`github/codeql-action/upload-sarif@v4`; keep the upload step advisory until the
-repository has chosen a baseline policy.
+installs `ripr`, renders SARIF, and uploads it to GitHub code scanning:
+
+```bash
+ripr init --ci github
+```
+
+The generated workflow matches the recipe below. The official GitHub SARIF
+upload documentation uses `github/codeql-action/upload-sarif@v4`; keep the RIPR
+job and upload steps advisory until the repository has chosen a baseline
+policy.
 
 ```yaml
 name: RIPR
 
 on:
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -291,7 +298,9 @@ permissions:
 
 jobs:
   ripr:
+    name: RIPR advisory SARIF
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v6
         with:
@@ -303,11 +312,14 @@ jobs:
         run: cargo install ripr --locked
 
       - name: Capture pull request diff
+        if: github.event_name == 'pull_request'
         run: |
           mkdir -p target/ripr/reports
           git diff --binary "origin/${{ github.base_ref }}...HEAD" > target/ripr/reports/pr.diff
 
       - name: Render diff SARIF
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
         run: |
           ripr check \
             --root . \
@@ -316,7 +328,9 @@ jobs:
             > target/ripr/reports/ripr-findings.sarif
 
       - name: Render repo seam SARIF
+        continue-on-error: true
         run: |
+          mkdir -p target/ripr/reports
           ripr check \
             --root . \
             --mode ready \
@@ -324,12 +338,16 @@ jobs:
             > target/ripr/reports/ripr-seams.sarif
 
       - name: Upload RIPR diff findings
+        if: github.event_name == 'pull_request' && hashFiles('target/ripr/reports/ripr-findings.sarif') != ''
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: target/ripr/reports/ripr-findings.sarif
           category: ripr-findings
 
       - name: Upload RIPR repo seams
+        if: hashFiles('target/ripr/reports/ripr-seams.sarif') != ''
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: target/ripr/reports/ripr-seams.sarif
@@ -344,12 +362,8 @@ repo-local automation today; a public package-level policy command is a future
 adoption surface.
 
 The policy implementation lives in `cargo xtask` rather than a public `ripr`
-CLI policy command. It does not add a default workflow that blocks pull
-requests. The copyable workflow above is the adoption recipe; this repository
-does not install that workflow by default.
-
-A future `ripr init --ci github` command should generate the same non-blocking
-shape first. Blocking policy remains an explicit follow-up decision.
+CLI policy command. The generated workflow above does not block pull requests
+by default; blocking policy remains an explicit follow-up decision.
 
 The security workflow currently runs:
 
