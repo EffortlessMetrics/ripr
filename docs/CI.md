@@ -217,6 +217,12 @@ Campaign 5B SARIF work is governed by
 advisory by default: generating SARIF must not make ordinary pull requests
 block unless an explicit baseline policy mode is requested.
 
+The defaults-first adoption contract in
+[RIPR-SPEC-0009](specs/RIPR-SPEC-0009-defaults-first-adoption.md) keeps that
+stance for first-run CI recipes: copyable or generated GitHub Actions should
+upload review guidance by default, not fail CI unless the repository opts into
+a baseline policy.
+
 SARIF artifact commands:
 
 ```bash
@@ -341,6 +347,9 @@ The policy implementation lives in `cargo xtask` rather than a public `ripr`
 CLI policy command. It does not add a default workflow that blocks pull
 requests. The copyable workflow above is the adoption recipe; this repository
 does not install that workflow by default.
+
+A future `ripr init --ci github` command should generate the same non-blocking
+shape first. Blocking policy remains an explicit follow-up decision.
 
 The security workflow currently runs:
 

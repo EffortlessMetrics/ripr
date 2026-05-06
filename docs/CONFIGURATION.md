@@ -21,6 +21,13 @@ repo-root `ripr.toml` file. It pairs with:
 `ripr.toml` is repo-root scoped only. `ripr` does not read global user config,
 environment variables, or hidden alternate config files.
 
+Configuration is for policy and tuning, not a prerequisite for first value.
+Missing `ripr.toml` is healthy and uses built-in conservative defaults. The
+defaults-first adoption contract in
+[RIPR-SPEC-0009](specs/RIPR-SPEC-0009-defaults-first-adoption.md) defines the
+future generated baseline for `ripr init` and the install-surface defaults that
+must remain advisory.
+
 ## CLI flags
 
 The CLI is the canonical, fully-supported configuration surface. All defaults
@@ -383,6 +390,11 @@ change analysis intent.
 
 The example file ([`ripr.toml.example`](../ripr.toml.example)) is kept in sync
 with the supported v1 shape.
+
+The future `ripr init` command should generate a conservative profile aligned
+with [RIPR-SPEC-0009](specs/RIPR-SPEC-0009-defaults-first-adoption.md). That
+generated profile can opt a repository into editor seam diagnostics, but it
+must not enable runtime mutation execution or CI blocking policy.
 
 ### `[analysis]`
 
