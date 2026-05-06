@@ -1,4 +1,5 @@
 /target
+fixtures/**/target/
 .ripr/release/
 *.profraw
 .DS_Store
