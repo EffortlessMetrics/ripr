@@ -18,6 +18,13 @@ pub(crate) fn run_diff_pipeline_with_oracle_policy(
         .filter(|file| file.path.extension().and_then(|e| e.to_str()) == Some("rs"))
         .map(|file| file.path.clone())
         .collect::<Vec<_>>();
+    if changed_rust_paths.is_empty() {
+        let findings = Vec::new();
+        return Ok(AnalysisResult {
+            summary: summary::summarize_findings(0, &findings),
+            findings,
+        });
+    }
     let rust_files = workspace::discover_rust_files(&options.root)?;
     let index_files = workspace::select_rust_files_for_mode(
         &rust_files,
