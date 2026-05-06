@@ -163,6 +163,9 @@ are scoped or reviewed.
 - Moved probe-family mapping, changed-line family heuristics, and delta metadata
   into `analysis/probes/family.rs` while preserving probe generation behavior.
   The next ready seam is probe expectation helper extraction.
+- Moved probe expected-sink and required-oracle helpers into
+  `analysis/probes/expectations.rs` while preserving probe generation behavior.
+  The next ready seam is probe ID helper extraction.
 - Added `cargo xtask targeted-test-outcome` as an advisory receipt for comparing
   before/after `repo-exposure-json` artifacts. The report writes
   `target/ripr/reports/targeted-test-outcome.{json,md}`, matches seams by
