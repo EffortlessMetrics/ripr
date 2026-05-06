@@ -465,11 +465,30 @@ commands = [
 
 [[work_item]]
 id = "output/format-extraction"
-status = "ready"
+status = "done"
 branch = "output-format-extraction"
 stackable = false
 requires_human_merge = true
 acceptance = "OutputFormat moves out of app.rs into a focused output format module while preserving public ripr library API, CLI output, LSP behavior, output contracts, and schema"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-public-api",
+  "cargo xtask check-architecture",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-no-panic-family",
+  "cargo xtask lsp-cockpit-report",
+  "cargo test --workspace"
+]
+
+[[work_item]]
+id = "output/render-dispatch"
+status = "ready"
+branch = "output-render-dispatch"
+stackable = false
+requires_human_merge = true
+acceptance = "render_check dispatch moves out of app.rs into a focused output render module while preserving public ripr library API, CLI output, LSP behavior, output contracts, and schema"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
