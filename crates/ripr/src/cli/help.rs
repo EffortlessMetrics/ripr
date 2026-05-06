@@ -54,6 +54,7 @@ const DOCTOR_HELP: &str = r#"Usage: ripr doctor [--root PATH]
 Checks:
   - root directory exists
   - Cargo.toml is present at the selected root
+  - ripr.toml load status and effective defaults are visible
   - git, cargo, and rustc are available
 "#;
 const LSP_HELP: &str = r#"Usage: ripr lsp [--stdio] [--version]

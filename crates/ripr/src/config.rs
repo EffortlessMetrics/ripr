@@ -28,7 +28,6 @@ pub(crate) struct RiprConfig {
 }
 
 impl RiprConfig {
-    #[cfg(test)]
     pub(crate) fn analysis(&self) -> &AnalysisConfig {
         &self.analysis
     }
@@ -57,7 +56,6 @@ impl RiprConfig {
         self.source_text.as_deref()
     }
 
-    #[cfg(test)]
     pub(crate) fn source_path(&self) -> Option<&Path> {
         self.source_path.as_deref()
     }

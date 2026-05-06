@@ -102,6 +102,9 @@ are scoped or reviewed.
   seam-diagnostic defaults. Missing config preserves existing defaults, unknown
   keys fail loudly, and explicit CLI flags or LSP initialization options still
   win. SARIF and seam-native badge remapping remain out of scope for this PR.
+- Added `ripr doctor` visibility for repository config. Doctor now reports
+  whether `ripr.toml` was loaded, which effective defaults are active, and
+  malformed config errors without printing config source text.
 
 ## 0.3.0 - 2026-05-02
 
