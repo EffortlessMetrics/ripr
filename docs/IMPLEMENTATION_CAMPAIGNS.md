@@ -713,8 +713,8 @@ Work items:
 | `classify/reach-stage` | done | PR 19: Moved reach evidence into `analysis/classify/reach.rs` while preserving classification behavior. |
 | `classify/flow-propagation` | done | PR 20: Moved local flow and propagation evidence into `analysis/classify/flow.rs` while preserving classification behavior. |
 | `classify/activation-stage` | done | PR 21: Moved activation evidence into `analysis/classify/activation.rs` while preserving classification behavior. |
-| `classify/remaining-stages` | ready | PR 22: Move infection, reveal, decision, confidence, missing, stop reasons |
-| `app/usecase-split` | pending | PR 23: Split `app.rs` into use-case modules (check, explain, context) |
+| `classify/remaining-stages` | done | PR 22: Moved infection, reveal, decision, confidence, missing, stop reasons, and next-step helpers into focused `analysis/classify` modules while preserving classification behavior. |
+| `app/usecase-split` | ready | PR 23: Split `app.rs` into use-case modules (check, explain, context) |
 | `output/format-extraction` | pending | PR 24: Move `OutputFormat` to `output/format.rs` |
 | `output/render-dispatch` | pending | PR 25: Move rendering logic to `output/render.rs` |
 | `cli/command-model` | pending | PR 26: Create `cli/command.rs` with `CliCommand` enum |

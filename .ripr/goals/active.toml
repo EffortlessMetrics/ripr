@@ -427,11 +427,30 @@ commands = [
 
 [[work_item]]
 id = "classify/remaining-stages"
-status = "ready"
+status = "done"
 branch = "classify-remaining-stages"
 stackable = false
 requires_human_merge = true
 acceptance = "infection, reveal, decision, confidence, missing-evidence, and stop-reason helpers move into focused classify modules after activation extraction; classification behavior stays stable with no LSP, output, API, or schema drift"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-public-api",
+  "cargo xtask check-architecture",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-no-panic-family",
+  "cargo xtask lsp-cockpit-report",
+  "cargo test --workspace"
+]
+
+[[work_item]]
+id = "app/usecase-split"
+status = "ready"
+branch = "app-usecase-split"
+stackable = false
+requires_human_merge = true
+acceptance = "check, explain, and context use-case orchestration moves out of app.rs into focused app modules while preserving the public ripr library API, CLI output, LSP behavior, output contracts, and schema"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
