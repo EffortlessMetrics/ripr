@@ -41,7 +41,7 @@
         }
       ],
       "command": "ripr.openRelatedTest",
-      "title": "Open related test"
+      "title": "Open best related test"
     },
     {
       "arguments": [],

@@ -1203,7 +1203,7 @@ fn seam_code_actions_surface_packet_assertion_related_test_and_refresh() -> Resu
         "expected assertion argument, got {:?}",
         commands[2].2
     );
-    assert_eq!(commands[3].0, "Open related test");
+    assert_eq!(commands[3].0, "Open best related test");
     assert_eq!(
         commands[3].2[0]["uri"],
         "file:///workspace/tests/pricing.rs"
@@ -1242,7 +1242,7 @@ fn seam_code_actions_keep_legacy_finding_context_when_both_diagnostics_are_prese
             "Copy seam packet",
             "Copy targeted test brief",
             "Copy suggested assertion",
-            "Open related test",
+            "Open best related test",
             "Copy ripr context packet",
             "Refresh ripr analysis",
         ]
@@ -1250,6 +1250,141 @@ fn seam_code_actions_keep_legacy_finding_context_when_both_diagnostics_are_prese
     assert_eq!(commands[0].2[0]["seam_id"], seam.seam.id().as_str());
     assert_eq!(commands[4].2[0]["finding_id"], "probe:pricing:88:predicate");
     assert_eq!(commands[4].2[0]["probe_id"], "probe:pricing:88:predicate");
+    Ok(())
+}
+
+#[test]
+fn seam_code_actions_open_strong_related_test_before_first_related_test() -> Result<(), String> {
+    use crate::analysis::test_grip_evidence::{
+        RelatedTestGrip, RelationConfidence, RelationReason,
+    };
+
+    let mut seam = sample_classified_seam();
+    seam.evidence.related_tests = vec![
+        RelatedTestGrip {
+            test_name: "nearby_smoke_reaches_owner".to_string(),
+            file: PathBuf::from("tests/smoke.rs"),
+            line: 7,
+            oracle_kind: OracleKind::SmokeOnly,
+            oracle_strength: OracleStrength::Smoke,
+            evidence_summary: "smoke-only assertion".to_string(),
+            relation_reason: RelationReason::DirectOwnerCall,
+            relation_confidence: RelationConfidence::High,
+        },
+        RelatedTestGrip {
+            test_name: "below_threshold_has_no_discount".to_string(),
+            file: PathBuf::from("tests/pricing.rs"),
+            line: 12,
+            oracle_kind: OracleKind::ExactValue,
+            oracle_strength: OracleStrength::Strong,
+            evidence_summary: "exact value assertion".to_string(),
+            relation_reason: RelationReason::DirectOwnerCall,
+            relation_confidence: RelationConfidence::Medium,
+        },
+    ];
+    let diagnostic = diagnostic_for_classified_seam(Path::new("/workspace"), &seam)
+        .ok_or_else(|| "expected seam diagnostic".to_string())?;
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let mut snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri,
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.classified_seams = vec![seam];
+    let actions = code_action_response(&code_action_params(vec![diagnostic])?, Some(&snapshot));
+
+    let commands = code_action_commands(&actions)?;
+    let Some((_, command, args)) = commands
+        .iter()
+        .find(|(title, _, _)| title == "Open best related test")
+    else {
+        return Err(format!(
+            "expected open related test action, got {commands:?}"
+        ));
+    };
+
+    assert_eq!(command, OPEN_RELATED_TEST_COMMAND);
+    assert_eq!(args[0]["uri"], "file:///workspace/tests/pricing.rs");
+    assert_eq!(args[0]["test_name"], "below_threshold_has_no_discount");
+    Ok(())
+}
+
+#[test]
+fn seam_code_actions_open_highest_confidence_related_test_when_no_strong_test_exists()
+-> Result<(), String> {
+    use crate::analysis::test_grip_evidence::{
+        RelatedTestGrip, RelationConfidence, RelationReason,
+    };
+
+    let mut seam = sample_classified_seam();
+    seam.evidence.related_tests = vec![
+        RelatedTestGrip {
+            test_name: "opaque_fixture_hint".to_string(),
+            file: PathBuf::from("tests/opaque.rs"),
+            line: 3,
+            oracle_kind: OracleKind::Unknown,
+            oracle_strength: OracleStrength::None,
+            evidence_summary: "opaque relation".to_string(),
+            relation_reason: RelationReason::FixtureOwnerAffinity,
+            relation_confidence: RelationConfidence::Opaque,
+        },
+        RelatedTestGrip {
+            test_name: "low_confidence_smoke".to_string(),
+            file: PathBuf::from("tests/low.rs"),
+            line: 5,
+            oracle_kind: OracleKind::SmokeOnly,
+            oracle_strength: OracleStrength::Smoke,
+            evidence_summary: "smoke-only assertion".to_string(),
+            relation_reason: RelationReason::FixtureOwnerAffinity,
+            relation_confidence: RelationConfidence::Low,
+        },
+        RelatedTestGrip {
+            test_name: "medium_confidence_property".to_string(),
+            file: PathBuf::from("tests/medium.rs"),
+            line: 9,
+            oracle_kind: OracleKind::RelationalCheck,
+            oracle_strength: OracleStrength::Medium,
+            evidence_summary: "medium oracle".to_string(),
+            relation_reason: RelationReason::SameModule,
+            relation_confidence: RelationConfidence::Medium,
+        },
+        RelatedTestGrip {
+            test_name: "high_confidence_weak_assertion".to_string(),
+            file: PathBuf::from("tests/high.rs"),
+            line: 11,
+            oracle_kind: OracleKind::RelationalCheck,
+            oracle_strength: OracleStrength::Weak,
+            evidence_summary: "weak oracle".to_string(),
+            relation_reason: RelationReason::DirectOwnerCall,
+            relation_confidence: RelationConfidence::High,
+        },
+    ];
+    let diagnostic = diagnostic_for_classified_seam(Path::new("/workspace"), &seam)
+        .ok_or_else(|| "expected seam diagnostic".to_string())?;
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let mut snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri,
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.classified_seams = vec![seam];
+    let actions = code_action_response(&code_action_params(vec![diagnostic])?, Some(&snapshot));
+
+    let commands = code_action_commands(&actions)?;
+    let Some((_, command, args)) = commands
+        .iter()
+        .find(|(title, _, _)| title == "Open best related test")
+    else {
+        return Err(format!(
+            "expected open related test action, got {commands:?}"
+        ));
+    };
+
+    assert_eq!(command, OPEN_RELATED_TEST_COMMAND);
+    assert_eq!(args[0]["uri"], "file:///workspace/tests/high.rs");
+    assert_eq!(args[0]["test_name"], "high_confidence_weak_assertion");
     Ok(())
 }
 

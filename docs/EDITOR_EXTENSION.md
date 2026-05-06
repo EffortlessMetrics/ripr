@@ -100,15 +100,15 @@ server can provide seam-aware code actions:
   focused test from the same seam packet guidance.
 - `Copy suggested assertion`: copies a concrete assertion suggestion from the
   seam packet.
-- `Open related test`: opens the first related test location attached to the
-  seam evidence.
+- `Open best related test`: opens the strongest related test to imitate when
+  one is available, then falls back to the highest-confidence related test.
 - `Refresh ripr analysis`: asks the LSP server to refresh diagnostics with
   `ripr.refresh`.
 
 The assertion and related-test actions are conditional. `Copy suggested
 assertion` is shown only when the seam has a concrete assertion suggestion, and
-`Open related test` is shown only when the current analysis snapshot can resolve
-a related test location. The targeted-test brief remains available for seam
+`Open best related test` is shown only when the current analysis snapshot can
+resolve a related test location. The targeted-test brief remains available for seam
 diagnostics even when there is no concrete assertion snippet, because it can
 still summarize the missing discriminator, suggested file/name, candidate value,
 and imitation or avoid patterns. Refresh remains available even when no
