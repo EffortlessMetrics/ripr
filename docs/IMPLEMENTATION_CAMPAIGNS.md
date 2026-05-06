@@ -709,8 +709,8 @@ Work items:
 | `probes/lexical-extraction` | done | PR 15: Moved lexical changed-line probe fallback helpers into `analysis/probes/lexical.rs`. |
 | `probes/diff-repo-split` | done | PR 16: Confirmed diff and repo probe seeding already live in `analysis/probes/diff.rs` and `analysis/probes/repo.rs` after the probe module split and helper extractions. |
 | `classify/context-extraction` | done | PR 17: Created `analysis/classify/context.rs` with `ProbeContext` as the shared classifier input for later stage extraction. |
-| `classify/related-tests` | ready | PR 18: Move related-test discovery into stage module |
-| `classify/reach-stage` | pending | PR 19: Move reach evidence into stage module |
+| `classify/related-tests` | done | PR 18: Moved related-test discovery into `analysis/classify/related_tests.rs` after `ProbeContext` extraction. |
+| `classify/reach-stage` | ready | PR 19: Move reach evidence into stage module |
 | `classify/flow-propagation` | pending | PR 20: Move flow and propagation stages |
 | `classify/activation-stage` | pending | PR 21: Move activation stage |
 | `classify/remaining-stages` | pending | PR 22: Move infection, reveal, decision, confidence, missing, stop reasons |
