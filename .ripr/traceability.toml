@@ -452,6 +452,14 @@ id = "RIPR-SPEC-0009"
 name = "defaults-first adoption"
 spec = "docs/specs/RIPR-SPEC-0009-defaults-first-adoption.md"
 tests = [
+  "crates/ripr/src/config.rs::tests::generated_init_config_is_conservative_and_parseable",
+  "crates/ripr/src/cli/commands.rs::tests::init_parses_root_dry_run_and_force",
+  "crates/ripr/src/cli/commands.rs::tests::init_requires_root_value",
+  "crates/ripr/src/cli/commands.rs::tests::init_rejects_unknown_arguments",
+  "crates/ripr/tests/cli_smoke.rs::init_writes_conservative_config_and_doctor_loads_it",
+  "crates/ripr/tests/cli_smoke.rs::init_dry_run_prints_config_without_writing",
+  "crates/ripr/tests/cli_smoke.rs::init_refuses_existing_config_without_force",
+  "crates/ripr/tests/cli_smoke.rs::init_force_overwrites_existing_config",
   "crates/ripr/src/config.rs::tests::missing_config_uses_behavior_preserving_defaults",
   "crates/ripr/src/config.rs::tests::malformed_or_unknown_config_is_actionable",
   "crates/ripr/tests/cli_smoke.rs::doctor_reports_missing_config_defaults",
@@ -468,6 +476,8 @@ fixtures = [
 ]
 code = [
   "crates/ripr/src/config.rs",
+  "crates/ripr/src/cli/mod.rs",
+  "crates/ripr/src/cli/help.rs",
   "crates/ripr/src/cli/commands.rs",
   "crates/ripr/src/app.rs",
   "crates/ripr/src/lsp",
@@ -480,7 +490,9 @@ outputs = [
   "docs/CI.md",
   "docs/TARGETED_TEST_WORKFLOW.md",
   "README.md",
-  "docs/DOCUMENTATION.md"
+  "docs/DOCUMENTATION.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "metrics/capabilities.toml"
 ]
 metrics = [
   "time_to_first_actionable_seam",

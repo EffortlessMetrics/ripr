@@ -12,6 +12,7 @@ pub fn run(args: Vec<String>) -> Result<(), String> {
             println!("ripr {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
+        Some("init") => commands::init(&args[2..]),
         Some("check") => commands::check(&args[2..]),
         Some("explain") => commands::explain(&args[2..]),
         Some("context") => commands::context(&args[2..]),
@@ -49,6 +50,14 @@ mod tests {
     fn run_dispatches_doctor_root_parse_errors() {
         assert_eq!(
             run(args(&["ripr", "doctor", "--root"])),
+            Err("missing value for --root".to_string())
+        );
+    }
+
+    #[test]
+    fn run_dispatches_init_parse_errors() {
+        assert_eq!(
+            run(args(&["ripr", "init", "--root"])),
             Err("missing value for --root".to_string())
         );
     }

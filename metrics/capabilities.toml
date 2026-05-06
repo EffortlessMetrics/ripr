@@ -606,6 +606,7 @@ evidence = [
   "configured severity maps human, JSON, GitHub, and LSP diagnostics",
   "configured suppressions path feeds badge renderers",
   "ripr doctor reports loaded, missing, and malformed config state",
+  "ripr init writes the conservative defaults-first repo config with dry-run and force guards",
   "ripr.toml.example documents the supported v1 shape"
 ]
 fixtures = []

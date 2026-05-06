@@ -25,8 +25,8 @@ Configuration is for policy and tuning, not a prerequisite for first value.
 Missing `ripr.toml` is healthy and uses built-in conservative defaults. The
 defaults-first adoption contract in
 [RIPR-SPEC-0009](specs/RIPR-SPEC-0009-defaults-first-adoption.md) defines the
-future generated baseline for `ripr init` and the install-surface defaults that
-must remain advisory.
+generated baseline for `ripr init` and the install-surface defaults that must
+remain advisory.
 
 ## CLI flags
 
@@ -40,6 +40,22 @@ and [`crates/ripr/src/app.rs`](../crates/ripr/src/app.rs).
 | --- | --- |
 | `--help`, `-h` | Print top-level help. |
 | `--version`, `-V` | Print the `ripr` version. |
+
+### `ripr init`
+
+Creates a conservative repo-local `ripr.toml` at the selected workspace root.
+The generated profile is editor-useful but still advisory: it does not run
+mutation testing, create CI workflows, or enable CI blocking policy.
+
+```text
+ripr init [--root PATH] [--dry-run] [--force]
+```
+
+| Flag | Default | Notes |
+| --- | --- | --- |
+| `--root PATH` | current directory | Workspace root where `ripr.toml` should be written. |
+| `--dry-run` | _(off)_ | Print the generated config to stdout without writing. |
+| `--force` | _(off)_ | Overwrite an existing `ripr.toml`. Without this flag, existing repo policy is left unchanged. |
 
 ### `ripr check`
 
@@ -391,10 +407,10 @@ change analysis intent.
 The example file ([`ripr.toml.example`](../ripr.toml.example)) is kept in sync
 with the supported v1 shape.
 
-The future `ripr init` command should generate a conservative profile aligned
-with [RIPR-SPEC-0009](specs/RIPR-SPEC-0009-defaults-first-adoption.md). That
-generated profile can opt a repository into editor seam diagnostics, but it
-must not enable runtime mutation execution or CI blocking policy.
+`ripr init` generates a conservative profile aligned with
+[RIPR-SPEC-0009](specs/RIPR-SPEC-0009-defaults-first-adoption.md). That
+generated profile opts an initialized repository into editor seam diagnostics,
+but it does not enable runtime mutation execution or CI blocking policy.
 
 ### `[analysis]`
 
@@ -454,7 +470,7 @@ Seam severities affect LSP seam diagnostics. Valid values are `off`, `info`,
 
 | Key | Type | Default | Effect |
 | --- | --- | --- | --- |
-| `seam_diagnostics` | boolean | `false` | Default for repo seam diagnostics. LSP `initializationOptions.seamDiagnostics` still wins. |
+| `seam_diagnostics` | boolean | `false` built-in; `true` in `ripr init` output | Default for repo seam diagnostics. LSP `initializationOptions.seamDiagnostics` still wins. |
 
 ### `[reports]`
 

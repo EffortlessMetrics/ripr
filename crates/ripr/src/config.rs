@@ -14,6 +14,57 @@ use std::path::{Component, Path, PathBuf};
 pub(crate) const CONFIG_FILE_NAME: &str = "ripr.toml";
 pub(crate) const DEFAULT_CONTEXT_RELATED_TESTS: usize = 5;
 const DEFAULT_SUPPRESSIONS_PATH: &str = ".ripr/suppressions.toml";
+const INIT_CONFIG_TEXT: &str = r#"[analysis]
+# Default analysis mode when CLI flags or LSP initialization options do not
+# set one explicitly. Valid: instant, draft, fast, deep, ready.
+mode = "draft"
+include_unchanged_tests = true
+
+[oracles]
+# Probe-relative defaults for oracle shapes that are repo-policy-sensitive.
+# Valid strengths: strong, medium, weak, smoke, none, unknown.
+snapshot_strength = "medium"
+mock_expectation_strength = "medium"
+broad_error_strength = "weak"
+
+[severity.findings]
+# Valid severities: info, warning, note.
+exposed = "info"
+weakly_exposed = "warning"
+reachable_unrevealed = "warning"
+no_static_path = "warning"
+infection_unknown = "warning"
+propagation_unknown = "note"
+static_unknown = "note"
+
+[severity.seams]
+# Valid severities: off, info, warning, note.
+strongly_gripped = "off"
+weakly_gripped = "warning"
+ungripped = "warning"
+reachable_unrevealed = "warning"
+activation_unknown = "info"
+propagation_unknown = "info"
+observation_unknown = "info"
+discrimination_unknown = "info"
+opaque = "info"
+intentional = "off"
+suppressed = "off"
+
+[lsp]
+# Initialized repositories opt into saved-workspace seam diagnostics. LSP
+# initializationOptions.seamDiagnostics still wins explicitly.
+seam_diagnostics = true
+
+[reports]
+# Default for context packets and editor collect-context commands when no
+# explicit --max-related-tests argument is supplied.
+max_related_tests = 5
+
+[suppressions]
+# Repo-relative, slash-separated path. Badge renderers load this path.
+path = ".ripr/suppressions.toml"
+"#;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct RiprConfig {
@@ -327,6 +378,10 @@ pub(crate) fn load_for_root(root: &Path) -> Result<RiprConfig, String> {
     config.source_path = Some(path);
     config.source_text = Some(text);
     Ok(config)
+}
+
+pub(crate) fn generated_init_config() -> &'static str {
+    INIT_CONFIG_TEXT
 }
 
 pub(crate) fn apply_to_check_input(
@@ -874,6 +929,62 @@ suppressed = "off"
         assert_eq!(
             config.severity().for_seam(SeamGripClass::Opaque),
             ConfigSeverity::Note
+        );
+        assert_eq!(
+            config.severity().for_seam(SeamGripClass::Intentional),
+            ConfigSeverity::Off
+        );
+        assert_eq!(
+            config.severity().for_seam(SeamGripClass::Suppressed),
+            ConfigSeverity::Off
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn generated_init_config_is_conservative_and_parseable() -> Result<(), String> {
+        let config = parse_config(generated_init_config())?;
+
+        assert_eq!(config.analysis().mode(), Some(&Mode::Draft));
+        assert_eq!(config.analysis().include_unchanged_tests(), Some(true));
+        assert_eq!(
+            config.oracles().snapshot_strength(),
+            &OracleStrength::Medium
+        );
+        assert_eq!(
+            config.oracles().mock_expectation_strength(),
+            &OracleStrength::Medium
+        );
+        assert_eq!(
+            config.oracles().broad_error_strength(),
+            &OracleStrength::Weak
+        );
+        assert_eq!(config.lsp().seam_diagnostics(), Some(true));
+        assert_eq!(
+            config.reports().max_related_tests(),
+            DEFAULT_CONTEXT_RELATED_TESTS
+        );
+        assert_eq!(
+            config.suppressions().display_path(),
+            DEFAULT_SUPPRESSIONS_PATH
+        );
+        assert_eq!(
+            config.severity().for_seam(SeamGripClass::StronglyGripped),
+            ConfigSeverity::Off
+        );
+        assert_eq!(
+            config.severity().for_seam(SeamGripClass::WeaklyGripped),
+            ConfigSeverity::Warning
+        );
+        assert_eq!(
+            config.severity().for_seam(SeamGripClass::Ungripped),
+            ConfigSeverity::Warning
+        );
+        assert_eq!(
+            config
+                .severity()
+                .for_seam(SeamGripClass::ReachableUnrevealed),
+            ConfigSeverity::Warning
         );
         assert_eq!(
             config.severity().for_seam(SeamGripClass::Intentional),

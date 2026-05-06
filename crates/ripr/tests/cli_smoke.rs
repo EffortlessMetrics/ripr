@@ -263,6 +263,98 @@ fn doctor_reports_malformed_config_error() -> Result<(), String> {
     Ok(())
 }
 
+#[test]
+fn init_writes_conservative_config_and_doctor_loads_it() -> Result<(), String> {
+    let workspace = make_temp_workspace(None)?;
+    let root = workspace.display().to_string();
+    let output = run_ripr(&["init", "--root", &root]);
+    assert_success(&output);
+
+    let config_path = workspace.join("ripr.toml");
+    let config = std::fs::read_to_string(&config_path)
+        .map_err(|e| format!("read generated ripr.toml: {e}"))?;
+    assert!(config.contains("mode = \"draft\""));
+    assert!(config.contains("include_unchanged_tests = true"));
+    assert!(config.contains("weakly_gripped = \"warning\""));
+    assert!(config.contains("strongly_gripped = \"off\""));
+    assert!(config.contains("intentional = \"off\""));
+    assert!(config.contains("suppressed = \"off\""));
+    assert!(config.contains("seam_diagnostics = true"));
+    assert!(config.contains("max_related_tests = 5"));
+
+    let doctor = run_ripr(&["doctor", "--root", &root]);
+    assert_success(&doctor);
+    let stdout = String::from_utf8_lossy(&doctor.stdout);
+    assert!(stdout.contains("Config: loaded ripr.toml"));
+    assert!(stdout.contains("Analysis mode default: draft"));
+    assert!(stdout.contains("LSP seam diagnostics default: true"));
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn init_dry_run_prints_config_without_writing() -> Result<(), String> {
+    let workspace = make_temp_workspace(None)?;
+    let root = workspace.display().to_string();
+    let output = run_ripr(&["init", "--root", &root, "--dry-run"]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("[analysis]"));
+    assert!(stdout.contains("mode = \"draft\""));
+    assert!(stdout.contains("seam_diagnostics = true"));
+    assert!(!workspace.join("ripr.toml").exists());
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn init_refuses_existing_config_without_force() -> Result<(), String> {
+    let workspace = make_temp_workspace(None)?;
+    std::fs::write(workspace.join("ripr.toml"), "[analysis]\nmode = \"deep\"\n")
+        .map_err(|e| format!("write existing ripr.toml: {e}"))?;
+
+    let root = workspace.display().to_string();
+    let output = run_ripr(&["init", "--root", &root]);
+    assert!(
+        !output.status.success(),
+        "init should refuse to overwrite without --force\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("already exists"));
+    assert!(stderr.contains("--force"));
+    let config = std::fs::read_to_string(workspace.join("ripr.toml"))
+        .map_err(|e| format!("read existing ripr.toml: {e}"))?;
+    assert!(config.contains("mode = \"deep\""));
+    assert!(!config.contains("seam_diagnostics = true"));
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn init_force_overwrites_existing_config() -> Result<(), String> {
+    let workspace = make_temp_workspace(None)?;
+    std::fs::write(workspace.join("ripr.toml"), "[analysis]\nmode = \"deep\"\n")
+        .map_err(|e| format!("write existing ripr.toml: {e}"))?;
+
+    let root = workspace.display().to_string();
+    let output = run_ripr(&["init", "--root", &root, "--force"]);
+    assert_success(&output);
+    let config = std::fs::read_to_string(workspace.join("ripr.toml"))
+        .map_err(|e| format!("read overwritten ripr.toml: {e}"))?;
+    assert!(config.contains("mode = \"draft\""));
+    assert!(config.contains("seam_diagnostics = true"));
+    assert!(!config.contains("mode = \"deep\""));
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
 fn make_temp_workspace_with_production_seam() -> Result<PathBuf, String> {
     make_temp_workspace_with_production_seam_and_report_opt(None)
 }

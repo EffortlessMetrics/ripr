@@ -269,6 +269,14 @@ into a baseline failure policy.
 
 Current tests and reports that support the contract:
 
+- `crates/ripr/src/config.rs::tests::generated_init_config_is_conservative_and_parseable`
+- `crates/ripr/src/cli/commands.rs::tests::init_parses_root_dry_run_and_force`
+- `crates/ripr/src/cli/commands.rs::tests::init_requires_root_value`
+- `crates/ripr/src/cli/commands.rs::tests::init_rejects_unknown_arguments`
+- `crates/ripr/tests/cli_smoke.rs::init_writes_conservative_config_and_doctor_loads_it`
+- `crates/ripr/tests/cli_smoke.rs::init_dry_run_prints_config_without_writing`
+- `crates/ripr/tests/cli_smoke.rs::init_refuses_existing_config_without_force`
+- `crates/ripr/tests/cli_smoke.rs::init_force_overwrites_existing_config`
 - `crates/ripr/src/config.rs::tests::missing_config_uses_behavior_preserving_defaults`
 - `crates/ripr/src/config.rs::tests::malformed_or_unknown_config_is_actionable`
 - `crates/ripr/tests/cli_smoke.rs::doctor_reports_missing_config_defaults`
@@ -282,9 +290,6 @@ Current tests and reports that support the contract:
 
 Planned tests:
 
-- `ripr init` writes conservative config;
-- `ripr init --dry-run` prints the same config without writing;
-- `ripr init` refuses to overwrite without `--force`;
 - `ripr pilot` writes the pilot packet and operator summary;
 - `ripr outcome` matches targeted-test outcome buckets;
 - `ripr calibrate cargo-mutants` matches mutation-calibration agreement
@@ -296,9 +301,9 @@ Planned tests:
 Current implementation pieces:
 
 - `crates/ripr/src/config.rs` owns repo config defaults, validation, and
-  precedence.
-- `crates/ripr/src/cli/commands.rs` exposes `check`, `explain`, `context`,
-  `doctor`, and `lsp`.
+  precedence, plus the conservative generated `ripr init` config text.
+- `crates/ripr/src/cli/commands.rs` exposes `init`, `check`, `explain`,
+  `context`, `doctor`, and `lsp`.
 - `crates/ripr/src/app.rs` orchestrates config-aware analysis entry points.
 - `crates/ripr/src/output/agent_seam_packets.rs` renders targeted-test work
   orders.
@@ -310,7 +315,6 @@ Current implementation pieces:
 
 Planned implementation pieces:
 
-- public `ripr init`;
 - public `ripr pilot`;
 - public `ripr outcome`;
 - public `ripr calibrate cargo-mutants`;
