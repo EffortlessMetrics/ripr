@@ -80,14 +80,117 @@ fn nearby_removed_line(added: &str, changed: &ChangedFile) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use crate::domain::Probe;
+    use super::super::super::diff::ChangedLine;
+    use super::super::super::rust_index::{
+        FileFacts, FunctionFact, PROBE_SHAPE_PREDICATE, ProbeShapeFact, RustIndex,
+    };
+    use super::*;
+    use crate::domain::{ProbeFamily, SymbolId};
+    use std::collections::BTreeMap;
+    use std::path::{Path, PathBuf};
 
     #[test]
-    fn probes_for_file_is_callable() {
-        // Seam test: verify the function signature and basic error handling.
-        // Integration tests in analysis::tests verify actual probe generation.
-        // Would be called with actual index, but empty file produces empty probes.
-        let _probes: Vec<Probe> = vec![]; // placeholder for actual call when index is available
-        assert!(_probes.is_empty());
+    fn probes_for_file_uses_syntax_shape_owner_and_removed_context() {
+        let path = PathBuf::from("src/lib.rs");
+        let changed = ChangedFile {
+            path: path.clone(),
+            added_lines: vec![ChangedLine {
+                line: 3,
+                text: "if amount >= threshold {".to_string(),
+            }],
+            removed_lines: vec![ChangedLine {
+                line: 3,
+                text: "if amount > threshold {".to_string(),
+            }],
+        };
+        let index = RustIndex {
+            files: BTreeMap::from([(
+                path.clone(),
+                FileFacts {
+                    path: path.clone(),
+                    functions: vec![FunctionFact {
+                        id: SymbolId("pricing::discounted_total".to_string()),
+                        name: "discounted_total".to_string(),
+                        file: path.clone(),
+                        start_line: 1,
+                        end_line: 5,
+                        body: "fn discounted_total() { if amount >= threshold {} }".to_string(),
+                        calls: vec![],
+                        returns: vec![],
+                        literals: vec![],
+                        is_test: false,
+                        attrs: vec![],
+                    }],
+                    probe_shapes: vec![ProbeShapeFact {
+                        start_line: 3,
+                        end_line: 3,
+                        start_byte: 20,
+                        kind: PROBE_SHAPE_PREDICATE.to_string(),
+                        text: "if amount >= threshold {".to_string(),
+                    }],
+                    ..FileFacts::default()
+                },
+            )]),
+            ..RustIndex::default()
+        };
+
+        let probes = probes_for_file(Path::new("workspace"), &changed, &index);
+
+        assert_eq!(probes.len(), 1);
+        let probe = &probes[0];
+        assert_eq!(probe.id.0, "probe:src_lib.rs:3:predicate");
+        assert_eq!(probe.family, ProbeFamily::Predicate);
+        assert_eq!(
+            probe.owner,
+            Some(SymbolId("pricing::discounted_total".to_string()))
+        );
+        assert_eq!(probe.before, Some("if amount > threshold {".to_string()));
+        assert_eq!(probe.after, Some("if amount >= threshold {".to_string()));
+        assert!(
+            probe
+                .expected_sinks
+                .iter()
+                .any(|sink| sink == "branch result")
+        );
+    }
+
+    #[test]
+    fn probes_for_file_falls_back_to_static_unknown_without_syntax_shape() {
+        let changed = ChangedFile {
+            path: PathBuf::from("src/lib.rs"),
+            added_lines: vec![ChangedLine {
+                line: 10,
+                text: "let total = discounted;".to_string(),
+            }],
+            removed_lines: vec![],
+        };
+
+        let probes = probes_for_file(Path::new("workspace"), &changed, &RustIndex::default());
+
+        assert_eq!(probes.len(), 1);
+        assert_eq!(probes[0].id.0, "probe:src_lib.rs:10:static_unknown");
+        assert_eq!(probes[0].family, ProbeFamily::StaticUnknown);
+        assert_eq!(probes[0].before, None);
+    }
+
+    #[test]
+    fn probes_for_file_ignores_non_behavior_lines() {
+        let changed = ChangedFile {
+            path: PathBuf::from("src/lib.rs"),
+            added_lines: vec![
+                ChangedLine {
+                    line: 1,
+                    text: "use crate::pricing;".to_string(),
+                },
+                ChangedLine {
+                    line: 2,
+                    text: "// comment".to_string(),
+                },
+            ],
+            removed_lines: vec![],
+        };
+
+        let probes = probes_for_file(Path::new("workspace"), &changed, &RustIndex::default());
+        assert!(probes.is_empty());
     }
 }

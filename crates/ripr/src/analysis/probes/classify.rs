@@ -163,7 +163,12 @@ fn has_field_shape(text: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::super::super::rust_index::{
+        FileFacts, PROBE_SHAPE_ERROR_PATH, PROBE_SHAPE_PREDICATE, ProbeShapeFact, RustIndex,
+    };
     use super::*;
+    use std::collections::BTreeMap;
+    use std::path::PathBuf;
 
     #[test]
     fn classify_functions_are_callable() {
@@ -172,5 +177,87 @@ mod tests {
 
         let families = classify_changed_line("if x > 5 { }");
         assert!(families.contains(&ProbeFamily::Predicate));
+    }
+
+    #[test]
+    fn classify_changed_line_detects_core_probe_shapes() {
+        let cases = [
+            ("return Ok(total)", ProbeFamily::ReturnValue),
+            ("Err(AuthError::Revoked)", ProbeFamily::ErrorPath),
+            ("events.publish(invoice)", ProbeFamily::SideEffect),
+            ("send_invoice(invoice)", ProbeFamily::CallDeletion),
+            ("total: discounted_total", ProbeFamily::FieldConstruction),
+            ("match status {", ProbeFamily::MatchArm),
+            ("Status::Ready => total", ProbeFamily::MatchArm),
+            ("let value = total;", ProbeFamily::StaticUnknown),
+        ];
+
+        for (text, expected) in cases {
+            let families = classify_changed_line(text);
+            assert!(
+                families.contains(&expected),
+                "{text} did not classify as {}",
+                expected.as_str()
+            );
+        }
+    }
+
+    #[test]
+    fn classify_changed_syntax_uses_matching_probe_shape() {
+        let path = PathBuf::from("src/lib.rs");
+        let index = RustIndex {
+            files: BTreeMap::from([(
+                path.clone(),
+                FileFacts {
+                    path: path.clone(),
+                    probe_shapes: vec![
+                        ProbeShapeFact {
+                            start_line: 3,
+                            end_line: 3,
+                            start_byte: 0,
+                            kind: PROBE_SHAPE_PREDICATE.to_string(),
+                            text: "if amount >= threshold {".to_string(),
+                        },
+                        ProbeShapeFact {
+                            start_line: 7,
+                            end_line: 7,
+                            start_byte: 20,
+                            kind: PROBE_SHAPE_ERROR_PATH.to_string(),
+                            text: "Err(AuthError::Revoked)".to_string(),
+                        },
+                    ],
+                    ..FileFacts::default()
+                },
+            )]),
+            ..RustIndex::default()
+        };
+
+        let families = classify_changed_syntax(&index, &path, 3, "amount >= threshold;");
+        assert_eq!(families, Some(vec![ProbeFamily::Predicate]));
+    }
+
+    #[test]
+    fn classify_changed_syntax_returns_none_without_matching_shape() {
+        let path = PathBuf::from("src/lib.rs");
+        let index = RustIndex {
+            files: BTreeMap::from([(
+                path.clone(),
+                FileFacts {
+                    path: path.clone(),
+                    probe_shapes: vec![ProbeShapeFact {
+                        start_line: 3,
+                        end_line: 3,
+                        start_byte: 0,
+                        kind: PROBE_SHAPE_PREDICATE.to_string(),
+                        text: "if amount >= threshold {".to_string(),
+                    }],
+                    ..FileFacts::default()
+                },
+            )]),
+            ..RustIndex::default()
+        };
+
+        let families = classify_changed_syntax(&index, &path, 4, "return total");
+        assert_eq!(families, None);
     }
 }

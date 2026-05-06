@@ -95,4 +95,50 @@ mod tests {
         let oracles = required_oracles("if x > 5", &ProbeFamily::Predicate);
         assert!(!oracles.is_empty());
     }
+
+    #[test]
+    fn config_functions_cover_every_probe_family() {
+        let cases = [
+            (ProbeFamily::Predicate, DeltaKind::Control, "branch result"),
+            (ProbeFamily::ReturnValue, DeltaKind::Value, "return value"),
+            (ProbeFamily::ErrorPath, DeltaKind::Value, "error variant"),
+            (ProbeFamily::CallDeletion, DeltaKind::Effect, "call effect"),
+            (
+                ProbeFamily::FieldConstruction,
+                DeltaKind::Value,
+                "field:status",
+            ),
+            (
+                ProbeFamily::SideEffect,
+                DeltaKind::Effect,
+                "published event",
+            ),
+            (
+                ProbeFamily::MatchArm,
+                DeltaKind::Control,
+                "selected variant",
+            ),
+            (
+                ProbeFamily::StaticUnknown,
+                DeltaKind::Unknown,
+                "unknown sink",
+            ),
+        ];
+
+        for (family, delta, sink) in cases {
+            assert_eq!(delta_for_family(&family), delta);
+            assert!(
+                expected_sinks("status: Status::Ready", &family)
+                    .iter()
+                    .any(|candidate| candidate == sink),
+                "{} did not include expected sink {sink}",
+                family.as_str()
+            );
+            assert!(
+                !required_oracles("Status::Ready", &family).is_empty(),
+                "{} had no required oracle",
+                family.as_str()
+            );
+        }
+    }
 }
