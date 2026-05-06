@@ -125,7 +125,7 @@ commands = [
 
 [[work_item]]
 id = "release/install-polish"
-status = "ready"
+status = "done"
 branch = "release-install-polish"
 stackable = false
 requires_human_merge = true
@@ -144,16 +144,19 @@ commands = [
 
 [[work_item]]
 id = "campaign/defaults-first-closeout"
-status = "blocked"
+status = "ready"
 branch = "defaults-first-closeout"
 stackable = false
 requires_human_merge = true
 acceptance = "Defaults-first operator adoption is reviewed, docs and manifests point at the next lane, and a clean install-to-targeted-test loop is demonstrated"
-blocked_by = [
-  "defaults/config-init",
-  "reports/operator-cockpit",
-  "ci/github-action-entrypoint",
-  "editor/install-polish",
-  "fixtures/example-corpus",
-  "release/install-polish"
+commands = [
+  "cargo xtask check-pr",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
+  "cargo xtask check-doc-index",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo test --workspace"
 ]

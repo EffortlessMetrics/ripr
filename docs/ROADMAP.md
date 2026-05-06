@@ -57,8 +57,9 @@ now pinned the defaults/config baseline, added the operator cockpit report, made
 the generated GitHub Action upload pilot/report artifacts with optional SARIF
 rendering/upload, documented and verified the existing VS Code install path and
 command coverage, and added the public example corpus for the defaults-first
-operator path. The next ready work is install and release-path proof against
-that loop.
+operator path. Install and release-path proof is now complete for the crate
+install path, public GitHub Release server assets, and VSIX package path. The
+next ready work is Campaign 7 closeout against that loop.
 
 ## Strategic Sequence
 

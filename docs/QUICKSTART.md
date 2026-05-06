@@ -15,6 +15,10 @@ For local development from this repository:
 cargo install --path crates/ripr
 ```
 
+Cargo install is the normal CLI path. The VS Code/Open VSX extension should
+self-provision a matching server from GitHub Releases; installing the CLI
+separately is only a fallback for offline, pinned, or controlled environments.
+
 ## Run a Pilot Packet
 
 ```bash
@@ -131,3 +135,10 @@ report artifacts, and repo badge JSON; SARIF rendering/upload is controlled by
 the workflow's `RIPR_UPLOAD_SARIF` setting and remains non-blocking. CI
 blocking policy remains opt-in. The copyable recipe and policy details live in
 [CI](CI.md).
+
+## Known Limits
+
+RIPR reports static exposure evidence. It does not run mutation tests, prove
+test adequacy, or replace execution-backed mutation testing. Runtime mutation
+vocabulary belongs only in explicit calibration reports supplied with runtime
+data.

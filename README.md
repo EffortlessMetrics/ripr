@@ -295,7 +295,7 @@ Current capabilities:
 
 | Capability | Current state | Next checkpoint |
 | --- | --- | --- |
-| Distribution | Crate and extension packaging paths exist. | `release/install-polish`: verify install and release paths against the defaults-first loop. |
+| Distribution | Crate install, package dry-run, publish dry-run, public GitHub Release server assets, server manifest, and VSIX package path are verified for `v0.3.0`. | `campaign/defaults-first-closeout`: demonstrate the full install-to-targeted-test loop from public docs. |
 | Diff analysis | Evidence-first Voice A findings with syntax-backed changed-line probes, probe-relative oracle strength, local flow sinks, observed/missing activation values, and explicit stop reasons. | Campaign 6 stack audit. |
 | Repo seam inventory | First-class `RepoSeam` model with deterministic seam IDs, cached seam fact layers, test-grip evidence across the five RIPR stages, and 11-class `SeamGripClass` classification. | Campaign 6 stack audit. |
 | Test discovery | Parser-backed test and assertion facts with exact, broad, relational, snapshot, mock, smoke, custom-helper, side-effect observer, and unknown oracle kinds; per-test efficiency ledger with smoke/broad/disconnected/opaque/circular/likely-vacuous reasons and duplicate-discriminator groups. | Campaign 6 stack audit. |
@@ -311,10 +311,12 @@ lane: `ripr pilot`, `ripr outcome`, advisory calibration import, the operator
 cockpit, the generated GitHub Action entrypoint, and the documented VS Code
 install path are in place. The public example corpus is now checked in at
 `fixtures/EXAMPLE_CORPUS.md` with CLI, LSP, receipt, and optional calibration
-artifacts. The next active item is install and release-path proof:
+artifacts. Install and release-path proof is complete for the `v0.3.0` crate,
+GitHub Release server assets, and VSIX package path. The next active item is
+campaign closeout:
 
 ```text
-release/install-polish
+campaign/defaults-first-closeout
 ```
 
 Deeper capability state lives in [Capability matrix](docs/CAPABILITY_MATRIX.md)
@@ -334,7 +336,9 @@ The VS Code extension starts `ripr lsp --stdio` and can resolve the server from:
 ```
 
 Normal editor install should not require `cargo install ripr`. The Cargo install
-path remains available for offline, pinned, or controlled environments.
+path remains available for offline, pinned, or controlled environments. The
+`v0.3.0` GitHub Release includes the server manifest, per-target server
+archives, checksums, and VSIX needed for this default path.
 
 See:
 

@@ -449,7 +449,9 @@ Current implementation pieces:
 - `xtask/src/reports/operator.rs` joins those report artifacts into
   `operator-cockpit.{json,md}` without changing analyzer behavior.
 - `docs/TARGETED_TEST_WORKFLOW.md`, `docs/CI.md`, `docs/CONFIGURATION.md`,
-  and `docs/EDITOR_EXTENSION.md` document the current adoption path.
+  `docs/EDITOR_EXTENSION.md`, `docs/QUICKSTART.md`, `docs/RELEASE.md`,
+  `docs/RELEASE_BINARIES.md`, and `docs/SERVER_PROVISIONING.md` document the
+  current adoption and install path.
 - `fixtures/EXAMPLE_CORPUS.md` indexes the defaults-first example corpus,
   including CLI goldens, LSP action expectations, targeted-test receipts, and
   optional calibration artifacts.

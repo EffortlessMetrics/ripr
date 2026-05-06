@@ -235,7 +235,7 @@ test, and comparing before/after evidence.
 
 | Capability | Current state | Next checkpoint |
 | --- | --- | --- |
-| Distribution | Crate and extension packaging paths exist. | `release/install-polish`: verify install and release paths against the defaults-first loop. |
+| Distribution | Crate install, package dry-run, publish dry-run, public GitHub Release server assets, server manifest, and VSIX package path are verified for `v0.3.0`. | `campaign/defaults-first-closeout`: demonstrate the full install-to-targeted-test loop from public docs. |
 | Diff analysis | Syntax-backed changed-line probes with owner symbols, parser-backed probe facts, explicit stop reasons for unknowns, probe-relative oracle strength, and local flow sink facts. | Campaign 6 stack audit. |
 | Test discovery | Parser-backed test and assertion facts with exact, broad, relational, snapshot, mock, smoke, and unknown oracle kinds. | Campaign 6 stack audit. |
 | Output | Human, JSON, context, GitHub/SARIF, repo seam, pilot, outcome, and badge formats include evidence-first stop reasons and advisory next actions. | Campaign 6 stack audit. |
