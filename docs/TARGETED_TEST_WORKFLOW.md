@@ -32,6 +32,7 @@ The workflow uses these artifacts:
 | `repo-sarif` / `sarif-policy` | Optional CI/code-scanning projection with the same seam semantics. |
 | repo badge artifacts | Optional public count projection under badge policy. |
 | `mutation-calibration.{json,md}` | Optional runtime calibration join when cargo-mutants data exists. |
+| [`fixtures/CALIBRATION_CORPUS.md`](../fixtures/CALIBRATION_CORPUS.md) | Controlled fixture index for trying the loop on known seam scenarios. |
 
 `ripr check` commands work from an installed `ripr` binary. The receipt,
 cockpit, badge-endpoint, and calibration summary commands shown here are

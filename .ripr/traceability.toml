@@ -159,7 +159,9 @@ tests = [
   "xtask/src/main.rs::test_efficiency_reports_are_advisory",
   "xtask/src/main.rs::test_efficiency_signals_likely_vacuous_and_possibly_circular_tests"
 ]
-fixtures = []
+fixtures = [
+  "fixtures/CALIBRATION_CORPUS.md"
+]
 code = [
   "xtask/src/main.rs"
 ]
@@ -341,7 +343,8 @@ code = [
 ]
 outputs = [
   "docs/OUTPUT_SCHEMA.md",
-  "docs/CAPABILITY_MATRIX.md"
+  "docs/CAPABILITY_MATRIX.md",
+  "fixtures/CALIBRATION_CORPUS.md"
 ]
 metrics = [
   "static_seams_total",
@@ -350,6 +353,11 @@ metrics = [
   "ambiguous_file_line_total",
   "unmatched_mutants_total",
   "static_without_runtime_total",
+  "static_gap_and_runtime_signal",
+  "static_gap_without_runtime_signal",
+  "runtime_signal_without_static_gap",
+  "static_clean_and_runtime_clean",
+  "runtime_inconclusive",
   "runtime_outcome_counts",
   "join_method_counts"
 ]

@@ -153,6 +153,9 @@ are scoped or reviewed.
 - Extended `cargo xtask mutation-calibration` with advisory static/runtime
   agreement buckets, precision notes, static-only finding samples, and runtime
   gap signals that did not line up with a static gap.
+- Added `fixtures/CALIBRATION_CORPUS.md` as a controlled-scenario index for
+  targeted-test receipts, static/runtime calibration, SARIF, badges, and LSP
+  alignment checks without changing fixture execution.
 
 ## 0.3.0 - 2026-05-02
 
