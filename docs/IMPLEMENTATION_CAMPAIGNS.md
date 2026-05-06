@@ -690,9 +690,9 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `campaign/modularization-stack-audit` | ready | Audit the old Campaign 6 draft stack against current `main` after Campaign 5B closeout; record canonical order, stale branches, conflicts, output/API drift risks, and close/rebase/rewrite recommendations before merging structural refactors. |
-| `modularization/infrastructure-and-planning` | done | Documentation, campaign outline, and first-PR pattern exist; the old draft stack now needs audit before implementation resumes. |
-| `analysis/summary-extraction` | blocked | PR 1: Extract duplicated summary and sort logic from `analysis/mod.rs`; blocked on `campaign/modularization-stack-audit`. |
+| `campaign/modularization-stack-audit` | done | Audited the old Campaign 6 draft stack against current `main` after Campaign 5B closeout. Canonical order is #244 -> #245 -> #246 -> #247 -> #251 -> new PR 6 syntax-adapter extraction -> #253; #249 is held for later probes extraction, and #250 should close or rewrite if #251 remains canonical. |
+| `modularization/infrastructure-and-planning` | done | Documentation, campaign outline, first-PR pattern, and the post-5B stack audit exist; implementation resumes with the canonical stack order below. |
+| `analysis/summary-extraction` | ready | PR 1: Rebase #244 against current `main`, extract duplicated summary and sort logic from `analysis/mod.rs`, and remove stale policy churn unless still justified by focused tests. |
 | `analysis/pipeline-extraction` | pending | PR 2: Make `analysis/mod.rs` a façade over pipeline.rs |
 | `diff/module-split` | pending | PR 3: Split `analysis/diff.rs` into `diff/{mod,model,load,parse}.rs` |
 | `workspace/module-split` | pending | PR 4: Split workspace concerns into `workspace/{mod,discover,scope,production,paths}.rs` |
@@ -729,13 +729,72 @@ Work items:
 | `xtask/report-modules` | pending | PR 35: Organize reports into `xtask/src/reports/` |
 | `campaign/modularization-closeout` | pending | Final review and closure of Campaign 6 |
 
+Stack audit:
+
+The Campaign 6 draft PRs were opened before Campaign 5B config, SARIF, badge,
+and saved-workspace LSP cockpit work landed. Audit snapshot: 2026-05-06 against
+`main` at `e2648b6`.
+
+| PR | Branch | Current base | GitHub state | Disposition |
+| --- | --- | --- | --- | --- |
+| #244 | `claude/c6-01-analysis-summary-extraction` | `main` | draft, conflicting | Keep as the canonical first refactor, but rebase onto current `main`; preserve the summary/sort extraction only and remove `.ripr/no-panic-allowlist.toml` churn unless focused tests still need it. |
+| #245 | `claude/c6-02-analysis-pipeline-extraction` | `main` | draft, conflicting | Keep after #244; rebase on the merged summary extraction so `analysis/mod.rs` becomes a thin facade without changing analyzer behavior. |
+| #246 | `claude/c6-03-diff-module-split` | `main` | draft, conflicting | Keep after #245; rebase and restrict the diff split to `diff/{mod,model,load,parse}.rs`. Any `#[allow(unused_imports)]` re-export must stay narrow and documented, and policy allowlist changes need explicit justification. |
+| #247 | `claude/c6-04-workspace-module-split` | `main` | draft, conflicting | Keep after #246; rebase and preserve current analysis-mode scope semantics for `instant`, `draft` / `fast`, `deep` / `ready`, and `--no-unchanged-tests`. |
+| #251 | `claude/c6-05-facts-model-extraction` | `claude/c6-04-workspace-module-split` | draft, stacked | Keep as the canonical facts model extraction after #247; rebase through the stack and keep syntax adapters, builders, extractors, and query logic out of the facts model PR. |
+| new PR 6 | `claude/c6-06-syntax-adapter-type-extraction` exists without an open PR | #251 successor | branch-only | Open or recreate this as the missing syntax-adapter extraction after #251; it must establish the `analysis/syntax` seam before #253 moves index building. |
+| #253 | `claude/c6-07-index-builder-extraction` | `claude/c6-06-syntax-adapter-type-extraction` | draft, stacked | Hold until the missing PR 6 base exists and merges; then rebase and keep the PR scoped to `build_index` movement into `analysis/facts/build.rs`. |
+| #249 | `claude/c6-05-probes-module-split` | `main` | draft, mergeable but unstable | Hold out of sequence. It overlaps the later probes phase and should close or rewrite after the analysis/facts/syntax seams are stable. |
+| #250 | `claude/c6-06-rust-index-module-split` | `main` | draft, conflicting | Do not repair as-is if #251 remains canonical. It overlaps facts-model extraction; close or rewrite later, salvaging only useful tests or notes. |
+
+Canonical merge path:
+
+```text
+#244 -> #245 -> #246 -> #247 -> #251 -> new PR 6 syntax-adapter extraction -> #253
+```
+
+Hold or rewrite path:
+
+```text
+#249: later probes extraction, after earlier analysis seams stabilize
+#250: close or rewrite if #251 remains the facts-model path
+```
+
+Per-refactor acceptance bar:
+
+```text
+- move code only
+- preserve behavior
+- add focused seam tests for the moved boundary
+- no output drift
+- no public API drift
+- no schema drift
+- no analyzer semantic changes
+```
+
+Required gates for each refactor PR:
+
+```bash
+cargo xtask shape
+cargo xtask fix-pr
+cargo xtask check-pr
+cargo xtask check-public-api
+cargo xtask check-architecture
+cargo xtask check-output-contracts
+cargo test --workspace
+git diff --check
+```
+
 Dependencies:
 
 - Phase 1 (summary, pipeline) establishes the extraction pattern and should merge before Phase 2
-- Phases 2–5 (analysis breakdown) are lowest-risk and can proceed in parallel if CI capacity allows
+- Phases 2–5 (analysis breakdown) should follow the audited stack order until
+  the draft stack is retired
 - Phase 6–7 (app/CLI split) should follow analysis stabilization
 - Phase 8–9 (API tightening) should follow all internal movement
 - Phase 10 (xtask) is lowest-priority and can happen any time after Phase 1
+- LSP, SARIF, and badge surfaces are frozen except defect fixes while Campaign 6
+  structural refactors are in flight
 
 Commands:
 
