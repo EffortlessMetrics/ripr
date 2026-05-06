@@ -724,9 +724,9 @@ Work items:
 | `domain/context-packet-dto` | done | PR 29: Created `domain/context_packet.rs` with the context packet DTO shape. |
 | `output/json-context-dto` | done | PR 30: Updated JSON context renderer to use `ContextPacket` without changing packet output. |
 | `lsp/context-packet-usage` | done | PR 31: Updated LSP context packet lookup to use `ContextPacket` while preserving packet output. |
-| `api/doc-hidden-internals` | ready | PR 32: Mark internal modules `#[doc(hidden)]` |
-| `api/private-internals` | pending | PR 33: Make internal modules private (breaking, optional) |
-| `xtask/command-dispatch` | pending | PR 34: Split xtask into command and run modules |
+| `api/doc-hidden-internals` | done | PR 32: Marked compatibility module exports `#[doc(hidden)]` while preserving public API paths. |
+| `api/private-internals` | blocked | PR 33: Make internal modules private (breaking, optional) |
+| `xtask/command-dispatch` | ready | PR 34: Split xtask into command and run modules |
 | `xtask/policy-modules` | pending | PR 35: Organize policy checks into `xtask/src/policy/` |
 | `xtask/report-modules` | pending | PR 36: Organize reports into `xtask/src/reports/` |
 | `campaign/modularization-closeout` | pending | Final review and closure of Campaign 6 |

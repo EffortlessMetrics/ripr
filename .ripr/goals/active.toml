@@ -617,7 +617,7 @@ commands = [
 
 [[work_item]]
 id = "api/doc-hidden-internals"
-status = "ready"
+status = "done"
 branch = "api-doc-hidden-internals"
 stackable = false
 requires_human_merge = true
@@ -631,5 +631,32 @@ commands = [
   "cargo xtask check-output-contracts",
   "cargo xtask check-no-panic-family",
   "cargo doc --workspace --no-deps",
+  "cargo test --workspace"
+]
+
+[[work_item]]
+id = "api/private-internals"
+status = "blocked"
+branch = "api-private-internals"
+stackable = false
+requires_human_merge = true
+acceptance = "Internal modules are made private only after an explicit breaking public API decision"
+blocked_reason = "Optional breaking change; hold until release policy explicitly allows removing compatibility module exports."
+
+[[work_item]]
+id = "xtask/command-dispatch"
+status = "ready"
+branch = "xtask-command-dispatch"
+stackable = false
+requires_human_merge = true
+acceptance = "xtask command dispatch is split into focused command/run modules while preserving every cargo xtask command behavior"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-public-api",
+  "cargo xtask check-architecture",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-no-panic-family",
   "cargo test --workspace"
 ]
