@@ -579,11 +579,30 @@ commands = [
 
 [[work_item]]
 id = "output/json-context-dto"
-status = "ready"
+status = "done"
 branch = "output-json-context-dto"
 stackable = false
 requires_human_merge = true
 acceptance = "JSON context packet renderer uses the domain ContextPacket DTO while preserving CLI behavior, LSP behavior, output contracts, and schema"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-public-api",
+  "cargo xtask check-architecture",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-no-panic-family",
+  "cargo xtask lsp-cockpit-report",
+  "cargo test --workspace"
+]
+
+[[work_item]]
+id = "lsp/context-packet-usage"
+status = "ready"
+branch = "lsp-context-packet-usage"
+stackable = false
+requires_human_merge = true
+acceptance = "LSP context packet lookup uses the domain ContextPacket DTO path while preserving CLI behavior, LSP behavior, output contracts, and schema"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",

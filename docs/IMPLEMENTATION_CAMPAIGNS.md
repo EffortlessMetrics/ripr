@@ -722,8 +722,8 @@ Work items:
 | `cli/parse-command` | done | PR 27: Updated `cli/parse.rs` to return the parsed command shape while preserving argument behavior. |
 | `cli/execute-command` | done | PR 28: Created `cli/execute.rs` for command execution while preserving argument and handler behavior. |
 | `domain/context-packet-dto` | done | PR 29: Created `domain/context_packet.rs` with the context packet DTO shape. |
-| `output/json-context-dto` | ready | PR 30: Update JSON context renderer to use `ContextPacket` |
-| `lsp/context-packet-usage` | pending | PR 31: Update LSP to use `ContextPacket` |
+| `output/json-context-dto` | done | PR 30: Updated JSON context renderer to use `ContextPacket` without changing packet output. |
+| `lsp/context-packet-usage` | ready | PR 31: Update LSP to use `ContextPacket` |
 | `api/doc-hidden-internals` | pending | PR 32: Mark internal modules `#[doc(hidden)]` |
 | `api/private-internals` | pending | PR 33: Make internal modules private (breaking, optional) |
 | `xtask/command-dispatch` | pending | PR 34: Split xtask into command and run modules |
