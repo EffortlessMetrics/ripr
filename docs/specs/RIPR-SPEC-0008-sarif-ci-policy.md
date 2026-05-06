@@ -263,6 +263,8 @@ Implemented policy:
 - `xtask/src/main.rs` owns baseline-aware policy comparison.
 - `docs/OUTPUT_SCHEMA.md` and `docs/CI.md` document the emitted SARIF and
   policy usage.
+- `docs/CI.md` also documents the copyable non-blocking GitHub code-scanning
+  upload workflow for adopters.
 
 ## Metrics
 
