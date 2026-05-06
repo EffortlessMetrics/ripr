@@ -179,6 +179,10 @@ are scoped or reviewed.
   repo probe seeding already lives in `analysis/probes/diff.rs` and
   `analysis/probes/repo.rs`. The next ready seam is classification context
   extraction.
+- Added a private `analysis/classify/context.rs` `ProbeContext` carrier for
+  the classifier's probe, owner, and related-test inputs, setting up later
+  RIPR stage module extraction without changing classification behavior. The
+  next ready seam is related-test discovery extraction.
 - Added `cargo xtask targeted-test-outcome` as an advisory receipt for comparing
   before/after `repo-exposure-json` artifacts. The report writes
   `target/ripr/reports/targeted-test-outcome.{json,md}`, matches seams by

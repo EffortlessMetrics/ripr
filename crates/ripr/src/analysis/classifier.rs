@@ -1,3 +1,4 @@
+use super::classify::ProbeContext;
 use super::rust_index::{
     FunctionSummary, OracleFact, RustIndex, TestSummary, extract_identifier_tokens,
     extract_literals,
@@ -14,12 +15,18 @@ pub fn classify_probe(probe: &Probe, index: &RustIndex) -> Finding {
     });
 
     let related_tests = find_related_tests(probe, owner_fn, index);
-    let reach = reach_evidence(&related_tests, owner_fn);
-    let flow_sinks = local_flow_sinks(probe, owner_fn);
-    let activation = activation_evidence(probe, owner_fn, &related_tests, &flow_sinks);
-    let infect = infection_evidence(probe, &related_tests, &activation);
-    let propagate = propagation_evidence(probe, &flow_sinks);
-    let (observe, discriminate, related) = reveal_evidence(probe, &related_tests);
+    let context = ProbeContext::new(probe, owner_fn, related_tests);
+    let reach = reach_evidence(&context.related_tests, context.owner_fn);
+    let flow_sinks = local_flow_sinks(context.probe, context.owner_fn);
+    let activation = activation_evidence(
+        context.probe,
+        context.owner_fn,
+        &context.related_tests,
+        &flow_sinks,
+    );
+    let infect = infection_evidence(context.probe, &context.related_tests, &activation);
+    let propagate = propagation_evidence(context.probe, &flow_sinks);
+    let (observe, discriminate, related) = reveal_evidence(context.probe, &context.related_tests);
 
     let ripr = RiprEvidence {
         reach: reach.clone(),
@@ -31,7 +38,14 @@ pub fn classify_probe(probe: &Probe, index: &RustIndex) -> Finding {
         },
     };
 
-    let class = classify(&reach, &infect, &propagate, &observe, &discriminate, probe);
+    let class = classify(
+        &reach,
+        &infect,
+        &propagate,
+        &observe,
+        &discriminate,
+        context.probe,
+    );
     let confidence = confidence_score(&reach, &infect, &propagate, &observe, &discriminate, &class);
     let mut evidence = Vec::new();
     evidence.push(reach.summary.clone());
@@ -50,14 +64,21 @@ pub fn classify_probe(probe: &Probe, index: &RustIndex) -> Finding {
     evidence.sort();
     evidence.dedup();
 
-    let missing = missing_evidence(probe, &class, &infect, &observe, &discriminate, &activation);
-    let mut stop_reasons = stop_reasons(probe, owner_fn, &related_tests);
+    let missing = missing_evidence(
+        context.probe,
+        &class,
+        &infect,
+        &observe,
+        &discriminate,
+        &activation,
+    );
+    let mut stop_reasons = stop_reasons(context.probe, context.owner_fn, &context.related_tests);
     ensure_unknown_stop_reason(&class, &mut stop_reasons);
-    let recommended_next_step = recommended_next_step(probe, &class);
+    let recommended_next_step = recommended_next_step(context.probe, &class);
 
     Finding {
-        id: probe.id.0.clone(),
-        probe: probe.clone(),
+        id: context.probe.id.0.clone(),
+        probe: context.probe.clone(),
         class,
         ripr,
         confidence,
