@@ -38,6 +38,7 @@ cargo xtask test-oracle-report
 cargo xtask check-test-oracles
 cargo xtask dogfood
 cargo xtask lsp-cockpit-report
+cargo xtask targeted-test-outcome --before <path> --after <path>
 cargo xtask critic
 cargo xtask reports index
 cargo xtask receipts
@@ -112,6 +113,13 @@ e2e smoke test file and writes `target/ripr/reports/lsp-cockpit.md` and
 `target/ripr/reports/lsp-cockpit.json`. It summarizes which fixtures produce
 editor diagnostics, which code actions are exposed, which context/action fields
 are present, and which VS Code commands are covered by e2e tests.
+
+`targeted-test-outcome` compares two `repo-exposure-json` artifacts and writes
+`target/ripr/reports/targeted-test-outcome.md` and
+`target/ripr/reports/targeted-test-outcome.json`. It matches seams by
+`seam_id`, summarizes before/after grip-class counts, and reports moved,
+unchanged, new, removed, and regressed seams as an advisory targeted-test
+receipt. It does not run mutation testing and does not block CI.
 
 `critic` writes an advisory adversarial review packet to
 `target/ripr/reports/critic.md` and `target/ripr/reports/critic.json`. It reads
@@ -225,6 +233,7 @@ cargo xtask test-oracle-report
 cargo xtask check-test-oracles
 cargo xtask dogfood
 cargo xtask lsp-cockpit-report
+cargo xtask targeted-test-outcome --before <path> --after <path>
 cargo xtask critic
 cargo xtask reports index
 cargo xtask receipts
@@ -265,6 +274,7 @@ cargo xtask golden-drift
 cargo xtask test-oracle-report
 cargo xtask check-test-oracles
 cargo xtask dogfood
+cargo xtask targeted-test-outcome --before <path> --after <path>
 cargo xtask critic
 cargo xtask reports index
 cargo xtask receipts
