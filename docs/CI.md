@@ -217,7 +217,7 @@ Campaign 5B SARIF work is governed by
 advisory by default: generating SARIF must not make ordinary pull requests
 block unless an explicit baseline policy mode is requested.
 
-Planned artifact commands:
+SARIF artifact commands:
 
 ```bash
 cargo run -p ripr -- check --format sarif > target/ripr/reports/ripr-findings.sarif.json

@@ -5,4 +5,5 @@ pub mod human;
 pub mod json;
 pub(crate) mod repo_exposure;
 pub(crate) mod repo_seams;
+pub(crate) mod sarif;
 pub(crate) mod suppressions;

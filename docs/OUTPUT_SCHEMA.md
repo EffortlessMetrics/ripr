@@ -294,7 +294,7 @@ contract language.
 
 ## SARIF Output
 
-Planned Campaign 5B SARIF formats:
+Campaign 5B SARIF formats:
 
 ```bash
 ripr check --format sarif
@@ -360,7 +360,7 @@ Configured severity maps into SARIF as:
 SARIF v1 does not emit `level: "error"`. CI blocking is a separate opt-in
 policy decision, not a property of the static SARIF renderer.
 
-Every result should carry:
+Every result carries:
 
 - `ruleId`;
 - `level`;

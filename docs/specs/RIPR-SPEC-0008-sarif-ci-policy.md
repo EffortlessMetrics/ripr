@@ -232,7 +232,7 @@ then fail-on-new-warning mode reports the new result and exits non-zero.
 
 ## Test Mapping
 
-Planned tests:
+Implemented renderer tests:
 
 - `crates/ripr/src/output/sarif.rs::tests::sarif_renders_findings_with_stable_rule_ids`
 - `crates/ripr/src/output/sarif.rs::tests::sarif_renders_seams_with_stable_rule_ids`
@@ -240,19 +240,25 @@ Planned tests:
 - `crates/ripr/src/output/sarif.rs::tests::sarif_uses_configured_seam_severity`
 - `crates/ripr/src/output/sarif.rs::tests::sarif_omits_off_seam_class`
 - `crates/ripr/src/output/sarif.rs::tests::sarif_attaches_suppression_metadata`
+
+Planned policy tests:
+
 - `xtask/src/main.rs::tests::sarif_policy_passes_when_no_new_results`
 - `xtask/src/main.rs::tests::sarif_policy_flags_new_warning_result`
 - `xtask/src/main.rs::tests::sarif_policy_ignores_note_when_threshold_warning`
 
 ## Implementation Mapping
 
-Planned implementation:
+Implemented renderer:
 
 - `crates/ripr/src/output/sarif.rs` renders SARIF.
 - `crates/ripr/src/output/mod.rs` exposes the private renderer to `app`.
 - `crates/ripr/src/app.rs` dispatches SARIF formats without changing existing
   JSON schemas.
 - `crates/ripr/src/cli/parse.rs` accepts SARIF output format names.
+
+Planned policy implementation:
+
 - `xtask/src/main.rs` owns baseline-aware policy comparison.
 - `docs/OUTPUT_SCHEMA.md` and `docs/CI.md` document the emitted SARIF and
   policy usage.

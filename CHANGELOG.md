@@ -108,6 +108,11 @@ are scoped or reviewed.
 - Added RIPR-SPEC-0008 to define the Campaign 5B SARIF and CI policy contract:
   stable Finding and seam rule IDs, configured severity mapping, suppression
   visibility, advisory defaults, and opt-in baseline policy modes.
+- Added SARIF output formats for Campaign 5B. `ripr check --format sarif`
+  renders diff-scoped Finding SARIF and `--format repo-sarif` renders
+  repo-scoped seam SARIF with configured severity, visible suppression metadata,
+  stable rule IDs, and stable fingerprints. CI baseline policy remains opt-in
+  and pending.
 
 ## 0.3.0 - 2026-05-02
 

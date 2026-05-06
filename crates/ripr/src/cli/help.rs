@@ -26,10 +26,10 @@ Options:
   --base REV               Base revision for git diff. Defaults to origin/main.
   --diff PATH              Read a unified diff file instead of running git diff.
   --mode MODE              instant, draft, fast, deep, or ready. Defaults to draft.
-  --format FORMAT          human, json, github, badge-json, badge-shields,
+  --format FORMAT          human, json, github, sarif, badge-json, badge-shields,
                            badge-plus-json, badge-plus-shields, repo-badge-json,
-                           repo-badge-shields, repo-badge-plus-json, or
-                           repo-badge-plus-shields. Defaults to human.
+                           repo-badge-shields, repo-badge-plus-json,
+                           repo-badge-plus-shields, repo-sarif. Defaults to human.
                            badge-plus-* and repo-badge-plus-* formats require
                            target/ripr/reports/test-efficiency.json (run
                            `cargo xtask test-efficiency-report` first).
@@ -103,6 +103,7 @@ mod tests {
     #[test]
     fn check_help_mentions_repo_badge_formats_and_examples() {
         assert!(CHECK_HELP.contains("repo-badge-plus-shields"));
+        assert!(CHECK_HELP.contains("repo-sarif"));
         assert!(CHECK_HELP.contains("test-efficiency-report"));
         assert!(CHECK_HELP.contains("--mode ready --json"));
     }

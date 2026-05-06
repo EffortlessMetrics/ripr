@@ -393,10 +393,17 @@ metrics = [
 id = "RIPR-SPEC-0008"
 name = "SARIF and CI policy"
 spec = "docs/specs/RIPR-SPEC-0008-sarif-ci-policy.md"
-tests = []
+tests = [
+  "crates/ripr/src/output/sarif.rs::tests::sarif_renders_findings_with_stable_rule_ids",
+  "crates/ripr/src/output/sarif.rs::tests::sarif_renders_seams_with_stable_rule_ids",
+  "crates/ripr/src/output/sarif.rs::tests::sarif_uses_configured_finding_severity",
+  "crates/ripr/src/output/sarif.rs::tests::sarif_uses_configured_seam_severity",
+  "crates/ripr/src/output/sarif.rs::tests::sarif_omits_off_seam_class",
+  "crates/ripr/src/output/sarif.rs::tests::sarif_attaches_suppression_metadata"
+]
 fixtures = []
 code = [
-  "crates/ripr/src/output",
+  "crates/ripr/src/output/sarif.rs",
   "crates/ripr/src/app.rs",
   "crates/ripr/src/cli/parse.rs",
   "xtask/src/main.rs"
