@@ -1071,6 +1071,15 @@ suppressed = "off"
     }
 
     #[test]
+    fn generated_init_config_matches_checked_in_example() -> Result<(), String> {
+        let example_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ripr.toml.example");
+        let example = fs::read_to_string(&example_path)
+            .map_err(|err| format!("read {} failed: {err}", example_path.display()))?;
+        assert_eq!(generated_init_config(), example.as_str());
+        Ok(())
+    }
+
+    #[test]
     fn config_file_discovery_records_source_metadata() -> Result<(), String> {
         let root = temp_root("present")?;
         let config_path = root.join(CONFIG_FILE_NAME);

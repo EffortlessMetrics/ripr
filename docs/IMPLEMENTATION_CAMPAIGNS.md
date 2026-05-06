@@ -919,10 +919,10 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `defaults/config-init` | ready | Document and test-pin built-in defaults, generated `ripr.toml`, repo-mode exclusions, seam-diagnostic policy, badge/report defaults, and fast/normal/deep mode behavior without output schema or LSP drift. |
-| `reports/operator-cockpit` | blocked | Add `target/ripr/reports/operator-cockpit.md` and `.json` after defaults are pinned, joining repo exposure, LSP cockpit, SARIF policy, badges, targeted-test outcome, and optional mutation calibration into one next-action surface. |
+| `defaults/config-init` | done | Built-in defaults, generated `ripr.toml`, repo-mode exclusions, seam-diagnostic policy, badge/report defaults, and fast/normal/deep mode behavior are documented and test-pinned without output schema or LSP drift. |
+| `reports/operator-cockpit` | ready | Add `target/ripr/reports/operator-cockpit.md` and `.json`, joining repo exposure, LSP cockpit, SARIF policy, badges, targeted-test outcome, and optional mutation calibration into one next-action surface. |
 | `ci/github-action-entrypoint` | blocked | Document a copyable GitHub Actions workflow that runs the defaults-first loop, uploads reports, keeps SARIF optional, documents badge artifacts, and separates advisory reporting from blocking policy. |
-| `editor/install-polish` | blocked | Document and verify the VS Code install path and existing commands without adding unsaved-buffer overlays, CodeLens, inlay hints, semantic tokens, or new editor behavior. |
+| `editor/install-polish` | blocked | Document and verify the VS Code install path and existing commands after the operator cockpit exists, without adding unsaved-buffer overlays, CodeLens, inlay hints, semantic tokens, or new editor behavior. |
 | `fixtures/example-corpus` | blocked | Add a small public corpus for boundary gap, weak oracle, missing equality boundary, exact error variant, opaque fixture/builder, and one calibration sample. |
 | `release/install-polish` | blocked | Verify `cargo install`, GitHub Release binaries, VS Code server provisioning, README quickstart, and known-limits docs against the operator loop. |
 | `campaign/defaults-first-closeout` | blocked | Close the campaign after the install-to-targeted-test loop is demonstrated and the manifest points at the next real lane. |

@@ -25,7 +25,7 @@ end_state = [
 
 [[work_item]]
 id = "defaults/config-init"
-status = "ready"
+status = "done"
 branch = "defaults-config-init"
 stackable = false
 requires_human_merge = true
@@ -43,12 +43,21 @@ commands = [
 
 [[work_item]]
 id = "reports/operator-cockpit"
-status = "blocked"
+status = "ready"
 branch = "operator-cockpit-report"
 stackable = false
 requires_human_merge = true
 acceptance = "target/ripr/reports/operator-cockpit.md and .json join repo exposure, LSP cockpit, SARIF policy, badge status, targeted-test outcome, and optional mutation calibration into a next-action report"
-blocked_by = ["defaults/config-init"]
+commands = [
+  "cargo xtask check-pr",
+  "cargo xtask check-public-api",
+  "cargo xtask check-architecture",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
+  "cargo test --workspace"
+]
 
 [[work_item]]
 id = "ci/github-action-entrypoint"
@@ -66,7 +75,7 @@ branch = "editor-install-polish"
 stackable = false
 requires_human_merge = true
 acceptance = "The VS Code install path and existing commands are documented and verified without adding unsaved-buffer overlays, CodeLens, inlay hints, semantic tokens, or new editor behavior"
-blocked_by = ["defaults/config-init"]
+blocked_by = ["reports/operator-cockpit"]
 
 [[work_item]]
 id = "fixtures/example-corpus"

@@ -407,6 +407,25 @@ classification. They do **not** change the meaning of any
 `ready` does not run mutants. It remains static exposure analysis until a
 calibration or mutation adapter is explicitly invoked.
 
+## Repo discovery defaults
+
+Repo-mode commands discover Rust files from the selected `--root`, then apply
+the analysis mode scope above. Discovery skips directories that are normally
+generated, policy-only, fixture-only, or editor/package-manager state:
+
+- `.git`
+- `target`
+- `.ripr`
+- `.direnv`
+- `fixtures`
+- `node_modules`
+
+When repo seam inventory decides whether a Rust file is production code, it also
+excludes tests, examples, benches, `target`, top-level fixtures, editor
+extension code, package-manager directories, and `xtask` automation. Test files
+can still be indexed as evidence when `include_unchanged_tests = true`; they are
+not treated as production seams.
+
 ## Output formats
 
 | Format | Selector | When to use |
