@@ -15,6 +15,18 @@ Updated:
 ## Pending
 
 Reason:
+RIPR-SPEC-0005: pin editor-facing seam diagnostic and code-action expectations for the boundary-gap fixture
+
+Command:
+`cargo test -p ripr boundary_gap_lsp`
+
+Updated:
+- `expected/lsp-diagnostics.json`
+- `expected/lsp-code-actions.json`
+
+## Pending
+
+Reason:
 RIPR-SPEC-0001: unknown findings must include stop reasons
 
 Command:

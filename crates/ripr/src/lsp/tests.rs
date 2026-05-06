@@ -894,6 +894,18 @@ fn seam_code_actions_omit_assertion_and_related_test_when_evidence_is_missing() 
 }
 
 #[test]
+fn boundary_gap_lsp_diagnostics_match_fixture_expectation() -> Result<(), String> {
+    let (diagnostics, _) = boundary_gap_lsp_fixture_outputs()?;
+    assert_json_fixture("lsp-diagnostics.json", diagnostics)
+}
+
+#[test]
+fn boundary_gap_lsp_code_actions_match_fixture_expectation() -> Result<(), String> {
+    let (_, actions) = boundary_gap_lsp_fixture_outputs()?;
+    assert_json_fixture("lsp-code-actions.json", actions)
+}
+
+#[test]
 fn diagnostic_for_finding_preserves_lsp_payload_shape() -> Result<(), String> {
     let finding = sample_finding();
     let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
@@ -1541,6 +1553,224 @@ fn code_action_commands(
         ));
     }
     Ok(commands)
+}
+
+fn boundary_gap_lsp_fixture_outputs() -> Result<(serde_json::Value, serde_json::Value), String> {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let fixture_root = repo_root.join("fixtures/boundary_gap/input");
+    let mut seams = crate::analysis::inventory_classified_seams_at_with_config(
+        &fixture_root,
+        &crate::config::RiprConfig::default(),
+    )?;
+    seams.sort_by(|left, right| left.seam.id().as_str().cmp(right.seam.id().as_str()));
+    if seams.len() != 1 {
+        return Err(format!(
+            "expected one boundary_gap classified seam, got {}",
+            seams.len()
+        ));
+    }
+    let seam = seams
+        .into_iter()
+        .next()
+        .ok_or_else(|| "expected classified seam".to_string())?;
+    let diagnostic = diagnostic_for_classified_seam(&fixture_root, &seam)
+        .ok_or_else(|| "expected seam diagnostic".to_string())?;
+    let uri = file_uri_for_path(&fixture_root.join(seam.seam.file()))?;
+    let mut snapshot = sample_analysis_snapshot(
+        fixture_root.clone(),
+        uri.clone(),
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.mode = Mode::Fast;
+    snapshot.classified_seams = vec![seam.clone()];
+    let actions = code_action_response(
+        &code_action_params_for(
+            uri.clone(),
+            diagnostic.range.start.line,
+            vec![diagnostic.clone()],
+        )?,
+        Some(&snapshot),
+    );
+
+    Ok((
+        serde_json::json!({
+            "fixture": "boundary_gap",
+            "diagnostics": [project_diagnostic(&fixture_root, &uri, &diagnostic)?],
+        }),
+        serde_json::json!({
+            "fixture": "boundary_gap",
+            "actions": project_code_actions(&fixture_root, &actions)?,
+        }),
+    ))
+}
+
+fn assert_json_fixture(name: &str, actual: serde_json::Value) -> Result<(), String> {
+    let path = Path::new("fixtures")
+        .join("boundary_gap")
+        .join("expected")
+        .join(name);
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(path);
+    let text = std::fs::read_to_string(&path).map_err(|err| {
+        format!(
+            "failed to read {}: {err}\nactual:\n{}",
+            path.display(),
+            pretty_json(&actual)
+        )
+    })?;
+    let expected: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|err| format!("failed to parse {}: {err}", path.display()))?;
+    if expected != actual {
+        return Err(format!(
+            "{} drifted\nexpected:\n{}\nactual:\n{}",
+            path.display(),
+            pretty_json(&expected),
+            pretty_json(&actual)
+        ));
+    }
+    Ok(())
+}
+
+fn project_diagnostic(
+    root: &Path,
+    uri: &tower_lsp_server::ls_types::Uri,
+    diagnostic: &tower_lsp_server::ls_types::Diagnostic,
+) -> Result<serde_json::Value, String> {
+    Ok(serde_json::json!({
+        "uri": relative_uri_path(root, uri)?,
+        "range": {
+            "start": {
+                "line": diagnostic.range.start.line,
+                "character": diagnostic.range.start.character,
+            },
+            "end": {
+                "line": diagnostic.range.end.line,
+                "character": diagnostic.range.end.character,
+            },
+        },
+        "severity": diagnostic.severity.map(diagnostic_severity_label),
+        "code": diagnostic.code.as_ref().map(diagnostic_code_value),
+        "source": diagnostic.source.clone(),
+        "message": diagnostic.message,
+        "data": diagnostic.data.clone(),
+    }))
+}
+
+fn project_code_actions(
+    root: &Path,
+    actions: &[CodeActionOrCommand],
+) -> Result<Vec<serde_json::Value>, String> {
+    let commands = code_action_commands(actions)?;
+    commands
+        .into_iter()
+        .map(|(title, command, arguments)| {
+            let arguments = arguments
+                .iter()
+                .map(|argument| normalize_lsp_action_argument(root, argument))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(serde_json::json!({
+                "title": title,
+                "command": command,
+                "arguments": arguments,
+            }))
+        })
+        .collect()
+}
+
+fn normalize_lsp_action_argument(
+    root: &Path,
+    argument: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let Some(object) = argument.as_object() else {
+        return Ok(argument.clone());
+    };
+    let mut normalized = serde_json::Map::new();
+    for (key, value) in object {
+        if key == "uri"
+            && let Some(uri) = value.as_str()
+            && uri.starts_with("file://")
+        {
+            let parsed = uri
+                .parse()
+                .map_err(|err| format!("failed to parse action uri {uri}: {err}"))?;
+            normalized.insert(
+                key.clone(),
+                serde_json::json!(relative_uri_path(root, &parsed)?),
+            );
+        } else {
+            normalized.insert(key.clone(), value.clone());
+        }
+    }
+    Ok(serde_json::Value::Object(normalized))
+}
+
+fn code_action_params_for(
+    uri: tower_lsp_server::ls_types::Uri,
+    line: u32,
+    diagnostics: Vec<tower_lsp_server::ls_types::Diagnostic>,
+) -> Result<CodeActionParams, String> {
+    Ok(CodeActionParams {
+        text_document: TextDocumentIdentifier::new(uri),
+        range: Range {
+            start: Position { line, character: 0 },
+            end: Position {
+                line,
+                character: 120,
+            },
+        },
+        context: CodeActionContext {
+            diagnostics,
+            only: None,
+            trigger_kind: None,
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+    })
+}
+
+fn diagnostic_severity_label(severity: DiagnosticSeverity) -> &'static str {
+    match severity {
+        DiagnosticSeverity::ERROR => "error",
+        DiagnosticSeverity::WARNING => "warning",
+        DiagnosticSeverity::INFORMATION => "information",
+        DiagnosticSeverity::HINT => "hint",
+        _ => "unknown",
+    }
+}
+
+fn diagnostic_code_value(code: &NumberOrString) -> String {
+    match code {
+        NumberOrString::Number(value) => value.to_string(),
+        NumberOrString::String(value) => value.clone(),
+    }
+}
+
+fn relative_uri_path(root: &Path, uri: &tower_lsp_server::ls_types::Uri) -> Result<String, String> {
+    let path =
+        path_from_file_uri(uri).ok_or_else(|| format!("expected file uri: {}", uri.as_str()))?;
+    relative_path(root, &path)
+}
+
+fn relative_path(root: &Path, path: &Path) -> Result<String, String> {
+    let root = normalize_fixture_path(root);
+    let path = normalize_fixture_path(path);
+    if path == root {
+        return Ok(".".to_string());
+    }
+    let prefix = format!("{root}/");
+    path.strip_prefix(&prefix)
+        .map(str::to_string)
+        .ok_or_else(|| format!("path {path} is not under fixture root {root}"))
+}
+
+fn normalize_fixture_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+fn pretty_json(value: &serde_json::Value) -> String {
+    serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
 }
 
 fn hover_params(uri: tower_lsp_server::ls_types::Uri, line: u32, character: u32) -> HoverParams {
