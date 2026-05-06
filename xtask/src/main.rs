@@ -323,6 +323,46 @@ struct StaticSeamRecord {
     missing_discriminators: Vec<String>,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct TargetedTestOutcomeArgs {
+    before: PathBuf,
+    after: PathBuf,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct TargetedTestOutcomeReport {
+    before_path: String,
+    after_path: String,
+    before_counts: BTreeMap<String, usize>,
+    after_counts: BTreeMap<String, usize>,
+    moved: Vec<TargetedTestOutcomeMovement>,
+    unchanged: Vec<TargetedTestOutcomeMovement>,
+    regressed: Vec<TargetedTestOutcomeMovement>,
+    new: Vec<TargetedTestOutcomeSeam>,
+    removed: Vec<TargetedTestOutcomeSeam>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct TargetedTestOutcomeMovement {
+    seam_id: String,
+    seam_kind: String,
+    file: String,
+    line: usize,
+    before: String,
+    after: String,
+    direction: String,
+    evidence_delta: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct TargetedTestOutcomeSeam {
+    seam_id: String,
+    seam_kind: String,
+    file: String,
+    line: usize,
+    grip_class: String,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct MutationOutcomeRecord {
     mutant_id: Option<String>,
@@ -461,6 +501,7 @@ fn main() {
         Some("repo-exposure-report") => repo_exposure_report(),
         Some("agent-seam-packets") => agent_seam_packets_report(args.get(2)),
         Some("lsp-cockpit-report") => lsp_cockpit_report(),
+        Some("targeted-test-outcome") => targeted_test_outcome(&args[2..]),
         Some("mutation-calibration") => mutation_calibration(&args[2..]),
         Some("sarif-policy") => sarif_policy(&args[2..]),
         Some("update-badge-endpoints") => update_badge_endpoints(),
@@ -756,6 +797,7 @@ fn known_commands() -> Vec<&'static str> {
         "repo-exposure-report",
         "agent-seam-packets [root]",
         "lsp-cockpit-report",
+        "targeted-test-outcome --before <path> --after <path>",
         "mutation-calibration [root] --mutants-json <path>",
         "sarif-policy --current <path> [--baseline <path>]",
         "update-badge-endpoints",
@@ -6140,6 +6182,447 @@ fn push_markdown_list_line(out: &mut String, label: &str, values: &[String]) {
                 .map(|value| format!("`{}`", md_escape(value)))
                 .collect::<Vec<_>>()
                 .join(", ")
+        ));
+    }
+}
+
+const SEAM_GRIP_CLASS_ORDER: &[&str] = &[
+    "strongly_gripped",
+    "weakly_gripped",
+    "ungripped",
+    "reachable_unrevealed",
+    "activation_unknown",
+    "propagation_unknown",
+    "observation_unknown",
+    "discrimination_unknown",
+    "opaque",
+    "intentional",
+    "suppressed",
+];
+
+fn targeted_test_outcome(args: &[String]) -> Result<(), String> {
+    let parsed = parse_targeted_test_outcome_args(args)?;
+    let before_text = read_text_lossy(&parsed.before)?;
+    let after_text = read_text_lossy(&parsed.after)?;
+    let before = parse_repo_exposure_static_seams(&before_text)?;
+    let after = parse_repo_exposure_static_seams(&after_text)?;
+    let report = build_targeted_test_outcome_report(
+        &before,
+        &after,
+        normalize_path(&parsed.before),
+        normalize_path(&parsed.after),
+    )?;
+    write_report(
+        "targeted-test-outcome.json",
+        &targeted_test_outcome_report_json(&report)?,
+    )?;
+    write_report(
+        "targeted-test-outcome.md",
+        &targeted_test_outcome_report_markdown(&report),
+    )
+}
+
+fn parse_targeted_test_outcome_args(args: &[String]) -> Result<TargetedTestOutcomeArgs, String> {
+    let mut before: Option<PathBuf> = None;
+    let mut after: Option<PathBuf> = None;
+    let mut index = 0;
+
+    while index < args.len() {
+        let arg = args[index].as_str();
+        match arg {
+            "--before" => {
+                index += 1;
+                let Some(path) = args.get(index) else {
+                    return Err(format!(
+                        "missing value for `{arg}`\n{}",
+                        targeted_test_outcome_usage()
+                    ));
+                };
+                before = Some(PathBuf::from(path));
+            }
+            "--after" => {
+                index += 1;
+                let Some(path) = args.get(index) else {
+                    return Err(format!(
+                        "missing value for `{arg}`\n{}",
+                        targeted_test_outcome_usage()
+                    ));
+                };
+                after = Some(PathBuf::from(path));
+            }
+            "--help" | "-h" => return Err(targeted_test_outcome_usage()),
+            flag if flag.starts_with('-') => {
+                return Err(format!(
+                    "unknown targeted-test-outcome option `{flag}`\n{}",
+                    targeted_test_outcome_usage()
+                ));
+            }
+            other => {
+                return Err(format!(
+                    "unexpected positional argument `{other}`\n{}",
+                    targeted_test_outcome_usage()
+                ));
+            }
+        }
+        index += 1;
+    }
+
+    let Some(before) = before else {
+        return Err(format!(
+            "targeted-test-outcome requires `--before <path>`\n{}",
+            targeted_test_outcome_usage()
+        ));
+    };
+    let Some(after) = after else {
+        return Err(format!(
+            "targeted-test-outcome requires `--after <path>`\n{}",
+            targeted_test_outcome_usage()
+        ));
+    };
+
+    Ok(TargetedTestOutcomeArgs { before, after })
+}
+
+fn targeted_test_outcome_usage() -> String {
+    "usage: cargo xtask targeted-test-outcome --before <repo-exposure-json> --after <repo-exposure-json>"
+        .to_string()
+}
+
+fn build_targeted_test_outcome_report(
+    before: &[StaticSeamRecord],
+    after: &[StaticSeamRecord],
+    before_path: String,
+    after_path: String,
+) -> Result<TargetedTestOutcomeReport, String> {
+    let before_by_id = targeted_outcome_seams_by_id(before, "before")?;
+    let after_by_id = targeted_outcome_seams_by_id(after, "after")?;
+    let mut moved = Vec::new();
+    let mut unchanged = Vec::new();
+    let mut regressed = Vec::new();
+    let mut removed = Vec::new();
+
+    for (seam_id, before_seam) in &before_by_id {
+        match after_by_id.get(seam_id) {
+            Some(after_seam) => {
+                let movement = targeted_test_outcome_movement(before_seam, after_seam);
+                if movement.before == movement.after {
+                    unchanged.push(movement);
+                } else if targeted_outcome_grip_rank(&movement.after)
+                    < targeted_outcome_grip_rank(&movement.before)
+                {
+                    regressed.push(movement);
+                } else {
+                    moved.push(movement);
+                }
+            }
+            None => removed.push(targeted_test_outcome_seam(before_seam)),
+        }
+    }
+
+    let mut new = Vec::new();
+    for (seam_id, after_seam) in &after_by_id {
+        if !before_by_id.contains_key(seam_id) {
+            new.push(targeted_test_outcome_seam(after_seam));
+        }
+    }
+
+    Ok(TargetedTestOutcomeReport {
+        before_path,
+        after_path,
+        before_counts: targeted_outcome_class_counts(before),
+        after_counts: targeted_outcome_class_counts(after),
+        moved,
+        unchanged,
+        regressed,
+        new,
+        removed,
+    })
+}
+
+fn targeted_outcome_seams_by_id(
+    seams: &[StaticSeamRecord],
+    label: &str,
+) -> Result<BTreeMap<String, StaticSeamRecord>, String> {
+    let mut out = BTreeMap::new();
+    for seam in seams {
+        if out.insert(seam.seam_id.clone(), seam.clone()).is_some() {
+            return Err(format!(
+                "{label} repo exposure JSON contains duplicate seam_id `{}`",
+                seam.seam_id
+            ));
+        }
+    }
+    Ok(out)
+}
+
+fn targeted_outcome_class_counts(seams: &[StaticSeamRecord]) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::new();
+    counts.insert("seams_total".to_string(), seams.len());
+    for class in SEAM_GRIP_CLASS_ORDER {
+        counts.insert((*class).to_string(), 0);
+    }
+    for seam in seams {
+        *counts.entry(seam.seam_grip_class.clone()).or_insert(0) += 1;
+    }
+    counts
+}
+
+fn targeted_test_outcome_movement(
+    before: &StaticSeamRecord,
+    after: &StaticSeamRecord,
+) -> TargetedTestOutcomeMovement {
+    let before_rank = targeted_outcome_grip_rank(&before.seam_grip_class);
+    let after_rank = targeted_outcome_grip_rank(&after.seam_grip_class);
+    let direction = if before.seam_grip_class == after.seam_grip_class {
+        "unchanged"
+    } else if after_rank > before_rank {
+        "improved"
+    } else if after_rank < before_rank {
+        "regressed"
+    } else {
+        "changed"
+    };
+    let evidence_delta = targeted_outcome_evidence_delta(before, after);
+    TargetedTestOutcomeMovement {
+        seam_id: before.seam_id.clone(),
+        seam_kind: before.seam_kind.clone(),
+        file: before.file.clone(),
+        line: before.line,
+        before: before.seam_grip_class.clone(),
+        after: after.seam_grip_class.clone(),
+        direction: direction.to_string(),
+        evidence_delta,
+    }
+}
+
+fn targeted_test_outcome_seam(seam: &StaticSeamRecord) -> TargetedTestOutcomeSeam {
+    TargetedTestOutcomeSeam {
+        seam_id: seam.seam_id.clone(),
+        seam_kind: seam.seam_kind.clone(),
+        file: seam.file.clone(),
+        line: seam.line,
+        grip_class: seam.seam_grip_class.clone(),
+    }
+}
+
+fn targeted_outcome_grip_rank(class: &str) -> u8 {
+    match class {
+        "strongly_gripped" | "intentional" | "suppressed" => 7,
+        "weakly_gripped" => 5,
+        "reachable_unrevealed" => 4,
+        "activation_unknown"
+        | "propagation_unknown"
+        | "observation_unknown"
+        | "discrimination_unknown" => 3,
+        "opaque" => 2,
+        "ungripped" => 1,
+        _ => 0,
+    }
+}
+
+fn targeted_outcome_evidence_delta(
+    before: &StaticSeamRecord,
+    after: &StaticSeamRecord,
+) -> Vec<String> {
+    let mut deltas = Vec::new();
+    if before.seam_grip_class != after.seam_grip_class {
+        deltas.push(format!(
+            "grip class moved from {} to {}",
+            before.seam_grip_class, after.seam_grip_class
+        ));
+    }
+
+    let before_missing = before
+        .missing_discriminators
+        .iter()
+        .collect::<BTreeSet<_>>();
+    let after_missing = after.missing_discriminators.iter().collect::<BTreeSet<_>>();
+    for value in before_missing.difference(&after_missing) {
+        deltas.push(format!(
+            "missing discriminator no longer reported: {}",
+            md_escape(value)
+        ));
+    }
+    for value in after_missing.difference(&before_missing) {
+        deltas.push(format!(
+            "new missing discriminator reported: {}",
+            md_escape(value)
+        ));
+    }
+
+    let before_values = before.observed_values.iter().collect::<BTreeSet<_>>();
+    let after_values = after.observed_values.iter().collect::<BTreeSet<_>>();
+    for value in after_values.difference(&before_values) {
+        deltas.push(format!("new observed value: {}", md_escape(value)));
+    }
+    for value in before_values.difference(&after_values) {
+        deltas.push(format!(
+            "previous observed value absent: {}",
+            md_escape(value)
+        ));
+    }
+
+    let before_oracle_rank = oracle_strength_rank(&before.oracle_strength);
+    let after_oracle_rank = oracle_strength_rank(&after.oracle_strength);
+    if after_oracle_rank > before_oracle_rank {
+        deltas.push(format!(
+            "stronger related oracle visible: {} -> {}",
+            before.oracle_strength, after.oracle_strength
+        ));
+    } else if after_oracle_rank < before_oracle_rank {
+        deltas.push(format!(
+            "related oracle strength decreased: {} -> {}",
+            before.oracle_strength, after.oracle_strength
+        ));
+    } else if before.oracle_kind != after.oracle_kind {
+        deltas.push(format!(
+            "related oracle kind changed: {} -> {}",
+            before.oracle_kind, after.oracle_kind
+        ));
+    }
+
+    if deltas.is_empty() && before.seam_grip_class != after.seam_grip_class {
+        deltas.push("grip class changed without rendered evidence details".to_string());
+    }
+    deltas
+}
+
+fn targeted_test_outcome_report_json(report: &TargetedTestOutcomeReport) -> Result<String, String> {
+    let value = serde_json::json!({
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "status": "advisory",
+        "inputs": {
+            "before": report.before_path.as_str(),
+            "after": report.after_path.as_str()
+        },
+        "before": report.before_counts,
+        "after": report.after_counts,
+        "summary": {
+            "moved": report.moved.len(),
+            "unchanged": report.unchanged.len(),
+            "regressed": report.regressed.len(),
+            "new": report.new.len(),
+            "removed": report.removed.len()
+        },
+        "moved": report.moved.iter().map(targeted_test_outcome_movement_json).collect::<Vec<_>>(),
+        "unchanged": report.unchanged.iter().map(targeted_test_outcome_movement_json).collect::<Vec<_>>(),
+        "regressed": report.regressed.iter().map(targeted_test_outcome_movement_json).collect::<Vec<_>>(),
+        "new": report.new.iter().map(targeted_test_outcome_seam_json).collect::<Vec<_>>(),
+        "removed": report.removed.iter().map(targeted_test_outcome_seam_json).collect::<Vec<_>>()
+    });
+    serde_json::to_string_pretty(&value)
+        .map(|mut rendered| {
+            rendered.push('\n');
+            rendered
+        })
+        .map_err(|err| format!("failed to render targeted-test outcome JSON: {err}"))
+}
+
+fn targeted_test_outcome_movement_json(movement: &TargetedTestOutcomeMovement) -> Value {
+    serde_json::json!({
+        "seam_id": movement.seam_id.as_str(),
+        "seam_kind": movement.seam_kind.as_str(),
+        "file": movement.file.as_str(),
+        "line": movement.line,
+        "before": movement.before.as_str(),
+        "after": movement.after.as_str(),
+        "direction": movement.direction.as_str(),
+        "evidence_delta": movement.evidence_delta
+    })
+}
+
+fn targeted_test_outcome_seam_json(seam: &TargetedTestOutcomeSeam) -> Value {
+    serde_json::json!({
+        "seam_id": seam.seam_id.as_str(),
+        "seam_kind": seam.seam_kind.as_str(),
+        "file": seam.file.as_str(),
+        "line": seam.line,
+        "grip_class": seam.grip_class.as_str()
+    })
+}
+
+fn targeted_test_outcome_report_markdown(report: &TargetedTestOutcomeReport) -> String {
+    let mut out = String::new();
+    out.push_str("# ripr targeted-test outcome report\n\n");
+    out.push_str("Status: advisory\n\n");
+    out.push_str("Inputs:\n");
+    out.push_str(&format!("- before: `{}`\n", md_escape(&report.before_path)));
+    out.push_str(&format!("- after: `{}`\n\n", md_escape(&report.after_path)));
+
+    out.push_str("## Summary\n\n");
+    out.push_str("| Bucket | Count |\n| --- | ---: |\n");
+    out.push_str(&format!("| moved | {} |\n", report.moved.len()));
+    out.push_str(&format!("| unchanged | {} |\n", report.unchanged.len()));
+    out.push_str(&format!("| regressed | {} |\n", report.regressed.len()));
+    out.push_str(&format!("| new | {} |\n", report.new.len()));
+    out.push_str(&format!("| removed | {} |\n", report.removed.len()));
+
+    out.push_str("\n## Grip Counts\n\n");
+    out.push_str("| Class | Before | After |\n| --- | ---: | ---: |\n");
+    for class in std::iter::once("seams_total").chain(SEAM_GRIP_CLASS_ORDER.iter().copied()) {
+        out.push_str(&format!(
+            "| {} | {} | {} |\n",
+            class,
+            report.before_counts.get(class).copied().unwrap_or(0),
+            report.after_counts.get(class).copied().unwrap_or(0)
+        ));
+    }
+
+    push_targeted_outcome_movements_md(&mut out, "Moved", &report.moved);
+    push_targeted_outcome_movements_md(&mut out, "Regressed", &report.regressed);
+    push_targeted_outcome_seams_md(&mut out, "New", &report.new);
+    push_targeted_outcome_seams_md(&mut out, "Removed", &report.removed);
+    out.push_str(
+        "\nThis report compares two static repo-exposure snapshots. It is advisory and does not run mutation testing.\n",
+    );
+    out
+}
+
+fn push_targeted_outcome_movements_md(
+    out: &mut String,
+    title: &str,
+    movements: &[TargetedTestOutcomeMovement],
+) {
+    out.push_str(&format!("\n## {title}\n\n"));
+    if movements.is_empty() {
+        out.push_str("None.\n");
+        return;
+    }
+    for movement in movements {
+        out.push_str(&format!(
+            "- `{}` {}:{} {} -> {} ({})\n",
+            md_escape(&movement.seam_id),
+            md_escape(&movement.file),
+            movement.line,
+            movement.before,
+            movement.after,
+            movement.direction
+        ));
+        for delta in &movement.evidence_delta {
+            out.push_str(&format!("  - {}\n", md_escape(delta)));
+        }
+    }
+}
+
+fn push_targeted_outcome_seams_md(
+    out: &mut String,
+    title: &str,
+    seams: &[TargetedTestOutcomeSeam],
+) {
+    out.push_str(&format!("\n## {title}\n\n"));
+    if seams.is_empty() {
+        out.push_str("None.\n");
+        return;
+    }
+    for seam in seams {
+        out.push_str(&format!(
+            "- `{}` {}:{} {} ({})\n",
+            md_escape(&seam.seam_id),
+            md_escape(&seam.file),
+            seam.line,
+            seam.grip_class,
+            seam.seam_kind
         ));
     }
 }
@@ -14031,10 +14514,11 @@ mod tests {
         SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher,
         TestOracleClass, badge_artifact_command_args, badge_artifact_jobs,
         badge_artifact_native_slot, badge_artifacts_summary_markdown, build_lsp_cockpit_report,
-        ci_full_evidence_gates, collect_panic_findings, collect_semantic_panic_findings,
-        critic_findings, dogfood_class_counts, dogfood_report_json, dogfood_report_markdown,
-        extract_json_object_usize_map, extract_json_string, extract_json_warnings,
-        extract_workflow_run_blocks, first_line_difference, forbidden_panic_patterns, glob_matches,
+        build_targeted_test_outcome_report, ci_full_evidence_gates, collect_panic_findings,
+        collect_semantic_panic_findings, critic_findings, dogfood_class_counts,
+        dogfood_report_json, dogfood_report_markdown, extract_json_object_usize_map,
+        extract_json_string, extract_json_warnings, extract_workflow_run_blocks,
+        first_line_difference, forbidden_panic_patterns, glob_matches,
         golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
         guarded_allow_attributes_in_text, install_hooks_in, is_bdd_test_name,
         is_dependency_surface_candidate, is_evidence_path, is_generated_candidate,
@@ -14050,15 +14534,17 @@ mod tests {
         parse_mutation_outcomes_json, parse_no_panic_allowlist_toml,
         parse_no_panic_allowlist_toml_v2, parse_reason, parse_repo_exposure_static_seams,
         parse_sarif_policy_args, parse_sarif_policy_results, parse_static_language_allowlist,
-        parse_string_value, pr_shape_warnings, precommit_report_body, public_contract_rows,
-        read_mutation_input_json, receipt_json, receipt_specs, receipt_status_from_reports,
-        repo_badge_artifact_command_args, repo_badge_artifact_jobs,
-        repo_badge_artifacts_summary_markdown, repo_seam_inventory_command_args_for_root,
-        report_index_markdown, report_index_missing_expected, report_status_from_text,
-        ripr_command_literals_in_text, ripr_pre_commit_hook, run_ci_full_evidence_gates,
-        sarif_policy_report_json, sarif_policy_report_markdown, semantic_selector_matches,
-        should_scan_static_language_path, sorted_allowlist_content, spec_id_from_path,
-        static_language_allowlist_covers, status_for_report, suspicious_runtime_file_names,
+        parse_string_value, parse_targeted_test_outcome_args, pr_shape_warnings,
+        precommit_report_body, public_contract_rows, read_mutation_input_json, receipt_json,
+        receipt_specs, receipt_status_from_reports, repo_badge_artifact_command_args,
+        repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown,
+        repo_seam_inventory_command_args_for_root, report_index_markdown,
+        report_index_missing_expected, report_status_from_text, ripr_command_literals_in_text,
+        ripr_pre_commit_hook, run_ci_full_evidence_gates, sarif_policy_report_json,
+        sarif_policy_report_markdown, semantic_selector_matches, should_scan_static_language_path,
+        sorted_allowlist_content, spec_id_from_path, static_language_allowlist_covers,
+        status_for_report, suspicious_runtime_file_names, targeted_test_outcome,
+        targeted_test_outcome_report_json, targeted_test_outcome_report_markdown,
         test_efficiency_entry, test_efficiency_report_json, test_efficiency_report_markdown,
         test_oracle_report_json, test_oracle_report_markdown, test_oracle_tests_in_text,
         unknown_command_message, validate_local_context_allowlist, windows_absolute_path_tokens,
@@ -14149,6 +14635,20 @@ mod tests {
         drop(guard);
         restore?;
         result
+    }
+
+    fn targeted_static_seam(id: &str, grip_class: &str) -> StaticSeamRecord {
+        StaticSeamRecord {
+            seam_id: id.to_string(),
+            seam_kind: "predicate_boundary".to_string(),
+            file: "src/pricing.rs".to_string(),
+            line: 42,
+            seam_grip_class: grip_class.to_string(),
+            oracle_kind: "exact_value".to_string(),
+            oracle_strength: "weak".to_string(),
+            observed_values: vec!["50".to_string()],
+            missing_discriminators: Vec::new(),
+        }
     }
 
     // ============================================================================
@@ -19709,6 +20209,7 @@ settings: |
         assert!(commands.contains(&"repo-exposure-report"));
         assert!(commands.contains(&"agent-seam-packets [root]"));
         assert!(commands.contains(&"lsp-cockpit-report"));
+        assert!(commands.contains(&"targeted-test-outcome --before <path> --after <path>"));
         assert!(commands.contains(&"mutation-calibration [root] --mutants-json <path>"));
         assert!(commands.contains(&"sarif-policy --current <path> [--baseline <path>]"));
         assert!(commands.contains(&"check-droid-review-config"));
@@ -19799,6 +20300,157 @@ settings: |
                 "ripr.copyContext".to_string()
             ]
         );
+    }
+
+    #[test]
+    fn targeted_test_outcome_args_parse_before_and_after() -> Result<(), String> {
+        let args = vec![
+            "--before".to_string(),
+            "before.json".to_string(),
+            "--after".to_string(),
+            "after.json".to_string(),
+        ];
+        let parsed = parse_targeted_test_outcome_args(&args)?;
+        assert_eq!(parsed.before, PathBuf::from("before.json"));
+        assert_eq!(parsed.after, PathBuf::from("after.json"));
+        Ok(())
+    }
+
+    #[test]
+    fn targeted_test_outcome_report_buckets_seam_movement() -> Result<(), String> {
+        let mut before_moved = targeted_static_seam("seam-moved", "weakly_gripped");
+        before_moved.missing_discriminators = vec!["threshold equality".to_string()];
+        before_moved.oracle_strength = "weak".to_string();
+        let before = vec![
+            before_moved,
+            targeted_static_seam("seam-regressed", "weakly_gripped"),
+            targeted_static_seam("seam-same", "strongly_gripped"),
+            targeted_static_seam("seam-removed", "ungripped"),
+        ];
+
+        let mut after_moved = targeted_static_seam("seam-moved", "strongly_gripped");
+        after_moved.observed_values = vec!["50".to_string(), "100".to_string()];
+        after_moved.oracle_strength = "strong".to_string();
+        let after = vec![
+            after_moved,
+            targeted_static_seam("seam-regressed", "ungripped"),
+            targeted_static_seam("seam-same", "strongly_gripped"),
+            targeted_static_seam("seam-new", "weakly_gripped"),
+        ];
+
+        let report = build_targeted_test_outcome_report(
+            &before,
+            &after,
+            "before.json".to_string(),
+            "after.json".to_string(),
+        )?;
+        assert_eq!(report.moved.len(), 1);
+        assert_eq!(report.moved[0].seam_id, "seam-moved");
+        assert_eq!(report.moved[0].direction, "improved");
+        assert!(
+            report.moved[0]
+                .evidence_delta
+                .iter()
+                .any(|delta| delta.contains("missing discriminator no longer reported"))
+        );
+        assert!(
+            report.moved[0]
+                .evidence_delta
+                .iter()
+                .any(|delta| delta.contains("stronger related oracle visible"))
+        );
+        assert_eq!(report.regressed.len(), 1);
+        assert_eq!(report.unchanged.len(), 1);
+        assert_eq!(report.new.len(), 1);
+        assert_eq!(report.removed.len(), 1);
+        assert_eq!(report.before_counts.get("weakly_gripped"), Some(&2));
+        assert_eq!(report.after_counts.get("strongly_gripped"), Some(&2));
+        Ok(())
+    }
+
+    #[test]
+    fn targeted_test_outcome_json_and_markdown_are_structured() -> Result<(), String> {
+        let before = vec![targeted_static_seam("seam-a", "weakly_gripped")];
+        let after = vec![targeted_static_seam("seam-a", "strongly_gripped")];
+        let report = build_targeted_test_outcome_report(
+            &before,
+            &after,
+            "target/ripr/before.json".to_string(),
+            "target/ripr/after.json".to_string(),
+        )?;
+
+        let json = targeted_test_outcome_report_json(&report)?;
+        let value: Value = serde_json::from_str(&json)
+            .map_err(|err| format!("targeted-test outcome JSON should parse: {err}"))?;
+        assert_eq!(value["schema_version"], "0.1");
+        assert_eq!(value["status"], "advisory");
+        assert_eq!(value["summary"]["moved"], 1);
+
+        let markdown = targeted_test_outcome_report_markdown(&report);
+        assert!(markdown.contains("# ripr targeted-test outcome report"));
+        assert!(markdown.contains("| moved | 1 |"));
+        assert!(markdown.contains("weakly_gripped -> strongly_gripped"));
+        Ok(())
+    }
+
+    #[test]
+    fn targeted_test_outcome_command_writes_markdown_and_json() -> Result<(), String> {
+        with_temp_cwd("targeted-test-outcome", |_root| {
+            let before = r#"{
+  "schema_version": "0.2",
+  "scope": "repo",
+  "seams": [
+    {
+      "seam_id": "seam-a",
+      "kind": "predicate_boundary",
+      "file": "src/pricing.rs",
+      "line": 42,
+      "grip_class": "weakly_gripped",
+      "related_tests": [
+        {"oracle_kind": "exact_value", "oracle_strength": "weak"}
+      ],
+      "observed_values": ["50"],
+      "missing_discriminators": [
+        {"value": "threshold equality", "reason": "not observed"}
+      ]
+    }
+  ]
+}"#;
+            let after = r#"{
+  "schema_version": "0.2",
+  "scope": "repo",
+  "seams": [
+    {
+      "seam_id": "seam-a",
+      "kind": "predicate_boundary",
+      "file": "src/pricing.rs",
+      "line": 42,
+      "grip_class": "strongly_gripped",
+      "related_tests": [
+        {"oracle_kind": "exact_value", "oracle_strength": "strong"}
+      ],
+      "observed_values": ["50", "100"],
+      "missing_discriminators": []
+    }
+  ]
+}"#;
+            write(Path::new("before.json"), before);
+            write(Path::new("after.json"), after);
+            targeted_test_outcome(&[
+                "--before".to_string(),
+                "before.json".to_string(),
+                "--after".to_string(),
+                "after.json".to_string(),
+            ])?;
+            let markdown = fs::read_to_string("target/ripr/reports/targeted-test-outcome.md")
+                .map_err(|err| format!("failed to read targeted-test outcome markdown: {err}"))?;
+            let json = fs::read_to_string("target/ripr/reports/targeted-test-outcome.json")
+                .map_err(|err| format!("failed to read targeted-test outcome JSON: {err}"))?;
+            assert!(markdown.contains("# ripr targeted-test outcome report"));
+            assert!(json.contains("\"schema_version\": \"0.1\""));
+            assert!(json.contains("\"moved\": 1"));
+            Ok(())
+        })
     }
 
     fn ci_full_ok_gate() -> Result<(), String> {

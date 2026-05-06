@@ -755,6 +755,98 @@ confirmation via `cargo-mutants` is a separate calibration step
 RIPR-SPEC-0005 still apply: the report never uses runtime-mutation
 outcome words.
 
+## Targeted-Test Outcome Report
+
+`cargo xtask targeted-test-outcome --before <repo-exposure-json> --after <repo-exposure-json>`
+compares two repo exposure snapshots and writes:
+
+```text
+target/ripr/reports/targeted-test-outcome.json
+target/ripr/reports/targeted-test-outcome.md
+```
+
+The report is an advisory receipt for the targeted-test loop. It does not run
+analysis, mutation testing, SARIF policy, or badge generation; it only compares
+the two supplied `repo-exposure-json` artifacts.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "advisory",
+  "inputs": {
+    "before": "target/ripr/before.json",
+    "after": "target/ripr/after.json"
+  },
+  "before": {
+    "seams_total": 15,
+    "strongly_gripped": 3,
+    "weakly_gripped": 9,
+    "ungripped": 3
+  },
+  "after": {
+    "seams_total": 15,
+    "strongly_gripped": 5,
+    "weakly_gripped": 7,
+    "ungripped": 3
+  },
+  "summary": {
+    "moved": 2,
+    "unchanged": 12,
+    "regressed": 0,
+    "new": 0,
+    "removed": 1
+  },
+  "moved": [
+    {
+      "seam_id": "67fc764ba37d77bd",
+      "seam_kind": "predicate_boundary",
+      "file": "src/pricing.rs",
+      "line": 88,
+      "before": "weakly_gripped",
+      "after": "strongly_gripped",
+      "direction": "improved",
+      "evidence_delta": [
+        "grip class moved from weakly_gripped to strongly_gripped",
+        "missing discriminator no longer reported: discount_threshold (equality boundary)",
+        "stronger related oracle visible: weak -> strong"
+      ]
+    }
+  ],
+  "unchanged": [],
+  "regressed": [],
+  "new": [],
+  "removed": []
+}
+```
+
+Field contract:
+
+- `schema_version` — currently `"0.1"`.
+- `status` — always `"advisory"`; this report is a receipt, not a CI policy.
+- `inputs.before` / `inputs.after` — normalized paths to the compared
+  `repo-exposure-json` artifacts.
+- `before` / `after` — grip-class counts computed from the supplied seams. The
+  report emits `seams_total` plus every known `SeamGripClass` bucket, even when
+  a bucket is zero.
+- `summary` — movement bucket counts. `moved` means the seam matched by
+  `seam_id` changed grip class without ranking lower; `regressed` means the
+  after class ranked lower than the before class; `unchanged` means the class
+  stayed the same; `new` and `removed` cover seam IDs present in only one input.
+- `moved[]` / `unchanged[]` / `regressed[]` — matched seams with before/after
+  grip classes, a direction string, and evidence-delta hints derived from
+  rendered repo-exposure fields.
+- `evidence_delta[]` — advisory hints such as missing discriminators no longer
+  reported, new observed values, or stronger related oracles. These hints are
+  based on the rendered static artifact and do not claim runtime confirmation.
+- `new[]` / `removed[]` — seam identity and grip class for seam IDs present in
+  only one input.
+
+The Markdown sibling prints the same summary and highlights moved, regressed,
+new, and removed seams for human review.
+
 ## Agent Seam Packets
 
 `ripr check --root . --format agent-seam-packets-json` emits per-seam

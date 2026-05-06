@@ -136,6 +136,11 @@ are scoped or reviewed.
   pipeline orchestration, and the diff load/model/parse modules without output,
   schema, or public API drift. The next ready seam is the #247 workspace module
   split.
+- Added `cargo xtask targeted-test-outcome` as an advisory receipt for comparing
+  before/after `repo-exposure-json` artifacts. The report writes
+  `target/ripr/reports/targeted-test-outcome.{json,md}`, matches seams by
+  `seam_id`, summarizes grip-class movement, and keeps runtime mutation
+  confirmation as a separate calibration step.
 
 ## 0.3.0 - 2026-05-02
 
