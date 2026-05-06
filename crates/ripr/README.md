@@ -229,19 +229,19 @@ crate boundaries can be added later if external consumers need them.
 
 ## Current Capability Snapshot
 
-`ripr` is currently strongest as a fast, syntax-backed draft signal. The next
-planned work is to make findings more grounded through activation/value modeling
-and evidence-first output.
+`ripr` is currently strongest as a fast, syntax-backed draft signal with a
+defaults-first operator loop for finding one weak seam, adding one focused
+test, and comparing before/after evidence.
 
 | Capability | Current state | Next checkpoint |
 | --- | --- | --- |
 | Distribution | Crate and extension packaging paths exist. | Verify one-click editor install from a fresh profile. |
-| Diff analysis | Syntax-backed changed-line probes with owner symbols, parser-backed probe facts, explicit stop reasons for unknowns, probe-relative oracle strength, and local flow sink facts. | Activation values tied to local flow. |
-| Test discovery | Parser-backed test and assertion facts with exact, broad, relational, snapshot, mock, smoke, and unknown oracle kinds. | Activation values tied to changed behavior. |
-| Output | Human, JSON, context, and GitHub annotation formats include stop reasons for unknown findings. | Evidence-first output. |
-| LSP | Experimental `tower-lsp-server` sidecar with evidence-aware diagnostic metadata, related test links, targeted context actions, and diagnostic hovers. | Server-owned context packets, config propagation, and open-related-test actions. |
-| Agent context | Compact context packet. | Test-writing brief with missing values and assertion shape. |
-| Calibration | Not yet connected to real mutation outcomes. | `cargo-mutants` import after static facts improve. |
+| Diff analysis | Syntax-backed changed-line probes with owner symbols, parser-backed probe facts, explicit stop reasons for unknowns, probe-relative oracle strength, and local flow sink facts. | Campaign 6 stack audit. |
+| Test discovery | Parser-backed test and assertion facts with exact, broad, relational, snapshot, mock, smoke, and unknown oracle kinds. | Campaign 6 stack audit. |
+| Output | Human, JSON, context, GitHub/SARIF, repo seam, pilot, outcome, and badge formats include evidence-first stop reasons and advisory next actions. | Campaign 6 stack audit. |
+| LSP | Experimental `tower-lsp-server` sidecar with saved-workspace seam diagnostics, hovers, targeted context actions, refresh status, and related-test actions. | Campaign 6 stack audit. |
+| Agent context | Context packets and agent seam packets include targeted-test briefs with missing values and assertion shape. | Campaign 6 stack audit. |
+| Calibration | `ripr calibrate cargo-mutants` imports supplied runtime mutation data and joins it to repo seam evidence for advisory static/runtime calibration. | Runtime fixture growth. |
 
 ## Development
 

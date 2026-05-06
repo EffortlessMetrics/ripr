@@ -114,7 +114,7 @@ did not, without claiming runtime confirmation or hiding a static-model gap.
 The fixture also includes a tiny imported runtime sample:
 
 ```bash
-cargo xtask mutation-calibration . \
+ripr calibrate cargo-mutants \
   --mutants-json fixtures/boundary_gap/calibration/runtime-mutants.json \
   --repo-exposure-json fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json
 ```

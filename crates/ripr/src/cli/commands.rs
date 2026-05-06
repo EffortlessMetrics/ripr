@@ -39,6 +39,20 @@ enum OutcomeFormat {
     Json,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct CalibrateOptions {
+    mutants_json: PathBuf,
+    repo_exposure_json: PathBuf,
+    format: CalibrateFormat,
+    out: Option<PathBuf>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum CalibrateFormat {
+    Markdown,
+    Json,
+}
+
 pub(super) fn init(args: &[String]) -> Result<(), String> {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         help::print_init_help();
@@ -290,6 +304,168 @@ pub(super) fn outcome(args: &[String]) -> Result<(), String> {
             Ok(())
         }
     }
+}
+
+pub(super) fn calibrate(args: &[String]) -> Result<(), String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        help::print_calibrate_help();
+        return Ok(());
+    }
+
+    let Some((subcommand, rest)) = args.split_first() else {
+        return Err("calibrate requires subcommand `cargo-mutants`".to_string());
+    };
+    if subcommand != "cargo-mutants" {
+        return Err(format!(
+            "unknown calibrate subcommand {subcommand:?}; expected `cargo-mutants`"
+        ));
+    }
+
+    let options = parse_calibrate_cargo_mutants_options(rest)?;
+    let repo_exposure_json =
+        std::fs::read_to_string(&options.repo_exposure_json).map_err(|err| {
+            format!(
+                "read {} failed: {err}",
+                output::outcome::display_path(&options.repo_exposure_json)
+            )
+        })?;
+    let mutants_json = read_calibration_mutants_json(&options.mutants_json)?;
+    let report = output::mutation_calibration::mutation_calibration_report_from_json(
+        &repo_exposure_json,
+        &mutants_json,
+    )?;
+    let rendered = match options.format {
+        CalibrateFormat::Markdown => {
+            output::mutation_calibration::render_mutation_calibration_md(&report)
+        }
+        CalibrateFormat::Json => {
+            output::mutation_calibration::render_mutation_calibration_json(&report)?
+        }
+    };
+
+    match options.out {
+        Some(path) => {
+            if let Some(parent) = path
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+            {
+                std::fs::create_dir_all(parent)
+                    .map_err(|err| format!("create {} failed: {err}", parent.display()))?;
+            }
+            std::fs::write(&path, rendered).map_err(|err| {
+                format!(
+                    "write {} failed: {err}",
+                    output::outcome::display_path(&path)
+                )
+            })
+        }
+        None => {
+            print!("{rendered}");
+            Ok(())
+        }
+    }
+}
+
+fn parse_calibrate_cargo_mutants_options(args: &[String]) -> Result<CalibrateOptions, String> {
+    let mut mutants_json: Option<PathBuf> = None;
+    let mut repo_exposure_json: Option<PathBuf> = None;
+    let mut format = CalibrateFormat::Markdown;
+    let mut out: Option<PathBuf> = None;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--mutants-json" | "--cargo-mutants-json" | "--input" => {
+                i += 1;
+                mutants_json = Some(PathBuf::from(expect_value(args, i, "--mutants-json")?));
+            }
+            "--repo-exposure-json" | "--static-json" => {
+                i += 1;
+                repo_exposure_json = Some(PathBuf::from(expect_value(
+                    args,
+                    i,
+                    "--repo-exposure-json",
+                )?));
+            }
+            "--format" => {
+                i += 1;
+                format = parse_calibrate_format(expect_value(args, i, "--format")?)?;
+            }
+            "--out" => {
+                i += 1;
+                out = Some(PathBuf::from(expect_value(args, i, "--out")?));
+            }
+            other => {
+                return Err(format!(
+                    "unknown calibrate cargo-mutants argument {other:?}"
+                ));
+            }
+        }
+        i += 1;
+    }
+
+    let mutants_json = mutants_json
+        .ok_or_else(|| "calibrate cargo-mutants requires --mutants-json <path>".to_string())?;
+    let repo_exposure_json = repo_exposure_json.ok_or_else(|| {
+        "calibrate cargo-mutants requires --repo-exposure-json <path>".to_string()
+    })?;
+    Ok(CalibrateOptions {
+        mutants_json,
+        repo_exposure_json,
+        format,
+        out,
+    })
+}
+
+fn parse_calibrate_format(value: &str) -> Result<CalibrateFormat, String> {
+    match value {
+        "md" | "markdown" | "text" => Ok(CalibrateFormat::Markdown),
+        "json" => Ok(CalibrateFormat::Json),
+        _ => Err(format!("unknown calibrate format {value:?}")),
+    }
+}
+
+fn read_calibration_mutants_json(path: &Path) -> Result<String, String> {
+    if path.is_dir() {
+        let outcomes_path = path.join("outcomes.json");
+        let mutants_path = path.join("mutants.json");
+        let outcomes_exists = outcomes_path.exists();
+        let mutants_exists = mutants_path.exists();
+
+        if outcomes_exists && mutants_exists {
+            let outcomes = read_json_value(&outcomes_path)?;
+            let mutants = read_json_value(&mutants_path)?;
+            return serde_json::to_string(&serde_json::Value::Array(vec![outcomes, mutants]))
+                .map_err(|err| format!("failed to combine cargo-mutants directory JSON: {err}"));
+        }
+
+        if outcomes_exists {
+            return read_calibration_text(&outcomes_path);
+        }
+        if mutants_exists {
+            return read_calibration_text(&mutants_path);
+        }
+        return Err(format!(
+            "{} is a directory but contains neither outcomes.json nor mutants.json",
+            output::outcome::display_path(path)
+        ));
+    }
+    read_calibration_text(path)
+}
+
+fn read_json_value(path: &Path) -> Result<serde_json::Value, String> {
+    let text = read_calibration_text(path)?;
+    serde_json::from_str(&text).map_err(|err| {
+        format!(
+            "failed to parse JSON from {}: {err}",
+            output::outcome::display_path(path)
+        )
+    })
+}
+
+fn read_calibration_text(path: &Path) -> Result<String, String> {
+    std::fs::read_to_string(path)
+        .map_err(|err| format!("read {} failed: {err}", output::outcome::display_path(path)))
 }
 
 fn parse_outcome_options(args: &[String]) -> Result<OutcomeOptions, String> {
@@ -648,6 +824,7 @@ mod tests {
     fn command_help_branches_return_ok() {
         assert_eq!(init(&args(&["--help"])), Ok(()));
         assert_eq!(pilot(&args(&["--help"])), Ok(()));
+        assert_eq!(calibrate(&args(&["--help"])), Ok(()));
         assert_eq!(check(&args(&["--help"])), Ok(()));
         assert_eq!(explain(&args(&["--help"])), Ok(()));
         assert_eq!(context(&args(&["--help"])), Ok(()));
@@ -829,6 +1006,112 @@ mod tests {
             &dir.join("missing-after.json").display().to_string(),
         ]));
         assert!(matches!(missing_after, Err(message) if message.contains("read")));
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn calibrate_parses_required_inputs_format_and_out() {
+        assert_eq!(
+            parse_calibrate_cargo_mutants_options(&args(&[
+                "--mutants-json",
+                "target/mutants/outcomes.json",
+                "--repo-exposure-json",
+                "target/ripr/after.repo-exposure.json",
+                "--format",
+                "json",
+                "--out",
+                "target/ripr/calibration/mutation-calibration.json",
+            ])),
+            Ok(CalibrateOptions {
+                mutants_json: PathBuf::from("target/mutants/outcomes.json"),
+                repo_exposure_json: PathBuf::from("target/ripr/after.repo-exposure.json"),
+                format: CalibrateFormat::Json,
+                out: Some(PathBuf::from(
+                    "target/ripr/calibration/mutation-calibration.json"
+                )),
+            })
+        );
+    }
+
+    #[test]
+    fn calibrate_requires_subcommand_and_inputs() {
+        assert_eq!(
+            calibrate(&args(&[])),
+            Err("calibrate requires subcommand `cargo-mutants`".to_string())
+        );
+        assert_eq!(
+            calibrate(&args(&["runtime"])),
+            Err("unknown calibrate subcommand \"runtime\"; expected `cargo-mutants`".to_string())
+        );
+        assert_eq!(
+            parse_calibrate_cargo_mutants_options(&args(&["--repo-exposure-json", "repo.json"])),
+            Err("calibrate cargo-mutants requires --mutants-json <path>".to_string())
+        );
+        assert_eq!(
+            parse_calibrate_cargo_mutants_options(&args(&["--mutants-json", "mutants.json"])),
+            Err("calibrate cargo-mutants requires --repo-exposure-json <path>".to_string())
+        );
+    }
+
+    #[test]
+    fn calibrate_help_returns_ok() {
+        assert_eq!(calibrate(&args(&["--help"])), Ok(()));
+        assert_eq!(calibrate(&args(&["cargo-mutants", "--help"])), Ok(()));
+    }
+
+    #[test]
+    fn calibrate_command_writes_json_file() -> Result<(), String> {
+        let dir = unique_command_test_dir("calibrate");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create temp dir: {err}"))?;
+        let repo = dir.join("repo-exposure.json");
+        let mutants = dir.join("mutants.json");
+        let out = dir.join("nested/mutation-calibration.json");
+        std::fs::write(&repo, calibration_repo_json())
+            .map_err(|err| format!("write repo exposure: {err}"))?;
+        std::fs::write(&mutants, calibration_mutants_json())
+            .map_err(|err| format!("write mutants: {err}"))?;
+
+        calibrate(&args(&[
+            "cargo-mutants",
+            "--mutants-json",
+            &mutants.display().to_string(),
+            "--repo-exposure-json",
+            &repo.display().to_string(),
+            "--format",
+            "json",
+            "--out",
+            &out.display().to_string(),
+        ]))?;
+
+        let rendered = std::fs::read_to_string(&out)
+            .map_err(|err| format!("read calibration output: {err}"))?;
+        assert!(rendered.contains(r#""schema_version": "0.1""#));
+        assert!(rendered.contains(r#""static_gap_and_runtime_signal": 1"#));
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn calibrate_reads_cargo_mutants_directory() -> Result<(), String> {
+        let dir = unique_command_test_dir("calibrate-dir");
+        let mutants_dir = dir.join("cargo-mutants");
+        std::fs::create_dir_all(&mutants_dir)
+            .map_err(|err| format!("create mutants dir: {err}"))?;
+        std::fs::write(
+            mutants_dir.join("mutants.json"),
+            r#"{"mutants":[{"id":"m1","seam_id":"seam-a","operator":"replace"}]}"#,
+        )
+        .map_err(|err| format!("write mutants.json: {err}"))?;
+        std::fs::write(
+            mutants_dir.join("outcomes.json"),
+            r#"{"outcomes":[{"id":"m1","outcome":"missed"}]}"#,
+        )
+        .map_err(|err| format!("write outcomes.json: {err}"))?;
+
+        let combined = read_calibration_mutants_json(&mutants_dir)?;
+        assert!(combined.contains("mutants"));
+        assert!(combined.contains("outcomes"));
         let _ = std::fs::remove_dir_all(&dir);
         Ok(())
     }
@@ -1049,5 +1332,28 @@ mod tests {
     }
   ]
 }"#
+    }
+
+    fn calibration_repo_json() -> &'static str {
+        r#"{
+  "schema_version": "0.2",
+  "scope": "repo",
+  "seams": [
+    {
+      "seam_id": "seam-a",
+      "kind": "predicate_boundary",
+      "file": "src/pricing.rs",
+      "line": 42,
+      "grip_class": "weakly_gripped",
+      "related_tests": [],
+      "observed_values": [],
+      "missing_discriminators": []
+    }
+  ]
+}"#
+    }
+
+    fn calibration_mutants_json() -> &'static str {
+        r#"[{"id":"m1","seam_id":"seam-a","outcome":"missed","operator":"replace"}]"#
     }
 }

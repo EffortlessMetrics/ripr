@@ -1311,18 +1311,25 @@ unit tests.
 
 ## Mutation Calibration Reports
 
-`cargo xtask mutation-calibration [root] --mutants-json <path>` joins the
-current repo exposure report with imported cargo-mutants JSON/output and writes:
+`ripr calibrate cargo-mutants --mutants-json <path> --repo-exposure-json <repo-exposure-json>`
+joins an existing repo exposure report with imported cargo-mutants JSON/output
+and prints Markdown by default:
 
-```text
-target/ripr/reports/mutation-calibration.json
-target/ripr/reports/mutation-calibration.md
+```bash
+ripr calibrate cargo-mutants \
+  --mutants-json target/mutants/outcomes.json \
+  --repo-exposure-json target/ripr/pilot/after.repo-exposure.json
 ```
 
-`<path>` may point directly at a JSON file or at a `mutants.out` directory. When
-given a directory, the command reads and combines `outcomes.json` and
-`mutants.json` when both are present, preserving runtime outcomes and generated
-mutant locations for matching.
+Use `--format json` for the JSON shape below, and `--out <path>` to write the
+rendered report to a file. Repo-local automation can still write
+`target/ripr/reports/mutation-calibration.{json,md}` through
+`cargo xtask mutation-calibration`.
+
+`<path>` may point directly at a JSON file or at a cargo-mutants output
+directory. When given a directory, the command reads and combines
+`outcomes.json` and `mutants.json` when both are present, preserving runtime
+outcomes and generated mutant locations for matching.
 
 This is an advisory runtime calibration report, not a static finding surface.
 Runtime outcome labels come from the supplied mutation output and are kept under

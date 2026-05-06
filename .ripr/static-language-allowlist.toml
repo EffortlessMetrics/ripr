@@ -54,6 +54,11 @@ owner = "maintainers"
 reason = "Published crate README needs the same product-language boundary as the root README."
 
 [[allow]]
+path = "crates/ripr/src/output/mutation_calibration.rs"
+owner = "product"
+reason = "Public calibration import isolates runtime mutation vocabulary to reports built from supplied runtime data."
+
+[[allow]]
 glob = "docs/*.md"
 owner = "docs"
 reason = "Top-level reference documentation may describe static-language policy, badge vocabulary, specs, and calibration caveats."
@@ -72,6 +77,5 @@ reason = "Store-facing extension README explains what ripr does and does not cla
 path = "xtask/src/main.rs"
 owner = "devtools"
 reason = "The static-language checker implementation contains the literal prohibited term list and the regression tests that exercise it."
-
 
 

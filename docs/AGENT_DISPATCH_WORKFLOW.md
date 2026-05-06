@@ -248,7 +248,7 @@ reports only when those surfaces matter for the review:
 cargo run -p ripr -- check --root . --mode ready --format repo-sarif > target/ripr/workflow/after.repo-sarif.json
 cargo xtask sarif-policy --current target/ripr/workflow/after.repo-sarif.json --mode advisory
 cargo xtask repo-badge-artifacts
-cargo xtask mutation-calibration . \
+ripr calibrate cargo-mutants \
   --mutants-json target/ripr/workflow/cargo-mutants.json \
   --repo-exposure-json target/ripr/workflow/after.repo-exposure.json
 ```
@@ -359,10 +359,10 @@ it is the recorded acceptance of one.
 ### Runtime confirmation
 
 After enough seams reach `strongly_gripped`, run `cargo-mutants`
-against the affected modules. Use the `calibration/cargo-mutants-v1`
-output (when it lands) to compare static `SeamGripClass` to runtime
-mutant outcomes. Calibration tightens the per-repo oracle priors;
-static reports do not adopt mutation-runtime vocabulary.
+against the affected modules. Use `ripr calibrate cargo-mutants` to
+compare static `SeamGripClass` to supplied runtime mutant outcomes.
+Calibration tightens the per-repo oracle priors; static reports do not
+adopt mutation-runtime vocabulary.
 
 ## What to push back on
 
@@ -385,8 +385,8 @@ static reports do not adopt mutation-runtime vocabulary.
   RIPR-SPEC-0009)
 - LSP seam evidence hover (PR #242)
 - `inventory_classified_seams_at` plus `ClassifiedSeam` API (PR #237)
+- Public `ripr calibrate cargo-mutants` advisory import.
 
-The only piece of the practical loop that does not yet exist is the
-**copy seam packet** code action in the editor, and a
-`cargo-mutants` calibration import. Both are deferred to follow-up
-work items (`cache/repo-seam-facts-v1`, `calibration/cargo-mutants-v1`).
+The practical loop now exists across CLI and editor surfaces. Remaining
+follow-ups are product-depth work such as cache hardening, runtime fixture
+growth, and optional live editor overlays.

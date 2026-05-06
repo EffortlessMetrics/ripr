@@ -514,6 +514,74 @@ fn outcome_writes_json_receipt_when_requested() -> Result<(), String> {
     Ok(())
 }
 
+#[test]
+fn calibrate_cargo_mutants_prints_markdown_by_default() {
+    let root = workspace_root();
+    let mutants = root
+        .join("fixtures/boundary_gap/calibration/runtime-mutants.json")
+        .display()
+        .to_string();
+    let repo = root
+        .join("fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json")
+        .display()
+        .to_string();
+
+    let output = run_ripr(&[
+        "calibrate",
+        "cargo-mutants",
+        "--mutants-json",
+        &mutants,
+        "--repo-exposure-json",
+        &repo,
+    ]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("# ripr mutation calibration report"));
+    assert!(stdout.contains("Status: advisory"));
+    assert!(stdout.contains("Static/runtime agreement"));
+    assert!(stdout.contains("Runtime Outcome Counts"));
+}
+
+#[test]
+fn calibrate_cargo_mutants_writes_json_when_requested() -> Result<(), String> {
+    let root = workspace_root();
+    let out_dir = unique_temp_workspace("calibrate-json");
+    let out_path = out_dir.join("mutation-calibration.json");
+    let mutants = root
+        .join("fixtures/boundary_gap/calibration/runtime-mutants.json")
+        .display()
+        .to_string();
+    let repo = root
+        .join("fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json")
+        .display()
+        .to_string();
+
+    let output = run_ripr(&[
+        "calibrate",
+        "cargo-mutants",
+        "--mutants-json",
+        &mutants,
+        "--repo-exposure-json",
+        &repo,
+        "--format",
+        "json",
+        "--out",
+        &out_path.display().to_string(),
+    ]);
+    assert_success(&output);
+
+    let json =
+        std::fs::read_to_string(&out_path).map_err(|e| format!("read calibration json: {e}"))?;
+    assert!(json.contains(r#""schema_version": "0.1""#));
+    assert!(json.contains(r#""status": "advisory""#));
+    assert!(json.contains(r#""agreement""#));
+    assert!(json.contains(r#""matches""#));
+
+    let _ = std::fs::remove_dir_all(&out_dir);
+    Ok(())
+}
+
 fn write_outcome_snapshots(workspace: &Path) -> Result<(), String> {
     let before = r#"{
   "schema_version": "0.2",

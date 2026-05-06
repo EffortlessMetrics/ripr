@@ -326,6 +326,15 @@ id = "RIPR-SPEC-0006"
 name = "mutation calibration reports"
 spec = "docs/specs/RIPR-SPEC-0006-mutation-calibration.md"
 tests = [
+  "crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_summarizes_static_runtime_agreement",
+  "crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_joins_by_seam_id_then_file_line_and_keeps_ambiguous",
+  "crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_parses_repo_exposure_and_cargo_mutants_json",
+  "crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_merges_mutants_and_outcomes_by_id",
+  "crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_reports_are_advisory_and_structured",
+  "crates/ripr/src/cli/commands.rs::tests::calibrate_parses_required_inputs_format_and_out",
+  "crates/ripr/src/cli/commands.rs::tests::calibrate_command_writes_json_file",
+  "crates/ripr/tests/cli_smoke.rs::calibrate_cargo_mutants_prints_markdown_by_default",
+  "crates/ripr/tests/cli_smoke.rs::calibrate_cargo_mutants_writes_json_when_requested",
   "xtask/src/main.rs::mutation_calibration_args_parse_root_and_input_paths",
   "xtask/src/main.rs::mutation_calibration_imports_static_seams_and_runtime_outcomes",
   "xtask/src/main.rs::mutation_calibration_merges_mutants_and_outcomes_by_mutant_id",
@@ -339,6 +348,11 @@ tests = [
 ]
 fixtures = []
 code = [
+  "crates/ripr/src/cli/command.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/execute.rs",
+  "crates/ripr/src/cli/help.rs",
+  "crates/ripr/src/output/mutation_calibration.rs",
   "xtask/src/main.rs"
 ]
 outputs = [
@@ -477,6 +491,11 @@ tests = [
   "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_from_repo_exposure_json_parses_static_evidence",
   "crates/ripr/tests/cli_smoke.rs::outcome_prints_markdown_receipt_by_default",
   "crates/ripr/tests/cli_smoke.rs::outcome_writes_json_receipt_when_requested",
+  "crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_summarizes_static_runtime_agreement",
+  "crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_joins_by_seam_id_then_file_line_and_keeps_ambiguous",
+  "crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_reports_are_advisory_and_structured",
+  "crates/ripr/tests/cli_smoke.rs::calibrate_cargo_mutants_prints_markdown_by_default",
+  "crates/ripr/tests/cli_smoke.rs::calibrate_cargo_mutants_writes_json_when_requested",
   "xtask/src/main.rs::tests::targeted_test_outcome_report_buckets_seam_movement",
   "xtask/src/main.rs::tests::targeted_test_outcome_json_and_markdown_are_structured",
   "xtask/src/main.rs::tests::mutation_calibration_summarizes_static_runtime_agreement",
@@ -498,6 +517,7 @@ code = [
   "crates/ripr/src/app.rs",
   "crates/ripr/src/output/pilot.rs",
   "crates/ripr/src/output/outcome.rs",
+  "crates/ripr/src/output/mutation_calibration.rs",
   "crates/ripr/src/lsp",
   "xtask/src/main.rs"
 ]

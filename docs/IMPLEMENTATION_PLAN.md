@@ -825,7 +825,8 @@ Purpose: compare static predictions with real mutation results.
 
 Deliverables:
 
-- [x] Import cargo-mutants output through `cargo xtask mutation-calibration`.
+- [x] Import cargo-mutants output through `cargo xtask mutation-calibration`
+  and public `ripr calibrate cargo-mutants`.
 - [x] Match static seam evidence to runtime records by `seam_id` first and
   unambiguous normalized file/line second; report ambiguous file/line
   candidates separately.
