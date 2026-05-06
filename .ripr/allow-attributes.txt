@@ -6,3 +6,5 @@
 # Suppressions for guarded lints should be rare and temporary. Prefer fixing
 # the underlying warning. Do not use this file to normalize panic-family,
 # unsafe, dead-code, or broad warning suppressions.
+
+crates/ripr/src/analysis/diff/mod.rs|allow(unused_imports)|1|ChangedLine is re-exported for use by probes.rs and other external modules; not used within diff module itself.
