@@ -255,7 +255,10 @@ fn framed_lsp_protocol_smoke_logs_successful_refresh_completion() -> Result<(), 
                 .await;
         });
         let mut client_read = client_read;
-        let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        // Keep this protocol smoke bounded now that seam diagnostics default on;
+        // whole-repo inventory behavior is covered by fixture and report tests.
+        let repo_root =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/boundary_gap/input");
         let root_uri = file_uri_for_path(&repo_root)?;
 
         write_lsp_message(
@@ -1823,6 +1826,7 @@ fn default_lsp_analysis_config_matches_check_input_defaults() {
     assert_eq!(input.base.as_deref(), Some("origin/main"));
     assert_eq!(input.mode, Mode::Draft);
     assert!(input.include_unchanged_tests);
+    assert!(config.enable_seam_diagnostics);
 }
 
 #[test]
@@ -1866,6 +1870,7 @@ fn backend_starts_with_default_lsp_analysis_config() -> Result<(), String> {
     assert_eq!(config.base_ref.as_deref(), Some("origin/main"));
     assert_eq!(config.mode, Mode::Draft);
     assert!(config.include_unchanged_tests);
+    assert!(config.enable_seam_diagnostics);
     Ok(())
 }
 

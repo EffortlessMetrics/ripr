@@ -396,7 +396,7 @@ Work items:
 | `analysis/test-grip-evidence-v1` | done | Crate-private `TestGripEvidence` + `RelatedTestGrip` attaching reach/activate/propagate/observe/discriminate evidence per inventoried seam. No classification, no public report. Built from existing `RustIndex` / `OracleFact` / `ValueFact` facts. |
 | `analysis/repo-ripr-classification-v1` | done | Crate-private `SeamGripClass` (re-introduced) + `classify_seam(seam, evidence)` mapping `TestGripEvidence` to one of 11 spec classes. Headline-vs-visible table on `is_headline_eligible`. Replaces the stage-zero discard hook from #236 with a real classifier consumer. |
 | `output/repo-exposure-report-v1` | done | `cargo xtask repo-exposure-report` writes `target/ripr/reports/repo-exposure.{json,md}` from the classified seam inventory; `repo-exposure-json` / `repo-exposure-md` formats live in `crates/ripr/src/output/repo_exposure.rs`. Schema 0.1 documented in `docs/OUTPUT_SCHEMA.md` § "Repo Exposure Report". Replaces the stage-zero classification discard from #237 with the real renderer consumer. |
-| `lsp/repo-seam-diagnostics-v1` | done | LSP publishes seam diagnostics with stable `ripr-seam-{class}` codes when `seamDiagnostics: true` is set in initialization options. WARNING for `weakly_gripped`/`ungripped`/`reachable_unrevealed`; INFORMATION for the four `*_unknown` classes and `opaque`. `strongly_gripped`/`intentional`/`suppressed` produce no diagnostic. Off by default until `cache/repo-seam-facts-v1` lands. Diagnostic data carries `seam_id` for hover lookup. |
+| `lsp/repo-seam-diagnostics-v1` | done | LSP publishes seam diagnostics with stable `ripr-seam-{class}` codes under the bounded saved-workspace default, with `seamDiagnostics: false` available as an explicit initialization option override. WARNING for `weakly_gripped`/`ungripped`/`reachable_unrevealed`; INFORMATION for the four `*_unknown` classes and `opaque`. `strongly_gripped`/`intentional`/`suppressed` produce no diagnostic. Diagnostic data carries `seam_id` for hover lookup. |
 | `lsp/seam-evidence-hover-v1` | done | LSP hover for seam diagnostics: looks up `ClassifiedSeam` via `data.seam_id` and renders the seam evidence path (grip class, all five RIPR stages with summary, observed values, missing discriminator, related tests with oracle kind/strength, per-kind next step). Pre-4B Finding hover still works for diff-scoped diagnostics — backend prefers seam hover when `seam_id` is present, otherwise falls through to Finding hover. Code-action work deferred. |
 | `context/agent-seam-packets-v1` | done | `cargo xtask agent-seam-packets` writes `target/ripr/reports/agent-seam-packets.json`. Schema 0.2 in `crates/ripr/src/output/agent_seam_packets.rs`. Each headline-eligible classified seam emits one `write_targeted_test` packet with seam_id, owner, kind, expression, current_grip, RIPR evidence, observed values, missing input values, missing oracle shape, related tests, and assertion templates. Strongly-gripped/opaque/intentional/suppressed seams emit no packet. |
 | `docs/agent-dispatch-workflow-v1` | done | `docs/AGENT_DISPATCH_WORKFLOW.md` documents the practical loop: run ripr → inspect report/diagnostic → read seam evidence hover → copy seam packet → hand to agent → agent writes targeted test → rerun ripr → optional cargo-mutants confirmation. Includes per-kind examples (predicate boundary, error variant, return value, field construction, side effect, opaque, intentional, suppressed) and explicit pushback against "add more tests" / "coverage is fine" / "this is proven". Linked from `docs/DOCUMENTATION.md`. |
@@ -479,8 +479,8 @@ Campaign 4B made repo seam evidence first-class (RepoSeam,
 TestGripEvidence, SeamGripClass, repo exposure report, agent seam
 packets, LSP diagnostics, hover, agent dispatch docs). The signal is
 visible but not yet useful every day: full-repo seam classification
-adds multi-second editor latency (so `seamDiagnostics` ships off by
-default), related-test fanout is broad, many seams classify as
+adds multi-second editor latency before the cache/defaults-first work,
+related-test fanout is broad, many seams classify as
 `activation_unknown` because value extraction does not yet cover
 common Rust test data patterns, oracle-shape detection misses
 real-world assertion shapes (field assertions, whole-object equality,
@@ -576,7 +576,8 @@ Blocking conditions:
 - mutation-runtime language (`killed`, `survived`, `proven`,
   `adequate`) leaking from calibration into static reports
 - output drift without golden evidence
-- `seamDiagnostics` flipped on by default before cache lands
+- default-on seam diagnostics without the repo-seam cache and bounded
+  saved-workspace defaults
 
 Review policy:
 

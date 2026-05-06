@@ -1,5 +1,7 @@
 use crate::app::{CheckInput, Mode, OutputFormat};
-use crate::config::{CheckInputExplicit, RiprConfig, apply_to_check_input};
+use crate::config::{
+    CheckInputExplicit, DEFAULT_LSP_SEAM_DIAGNOSTICS, RiprConfig, apply_to_check_input,
+};
 use std::path::Path;
 use tower_lsp_server::ls_types::InitializeParams;
 
@@ -9,11 +11,9 @@ pub(super) struct LspAnalysisConfig {
     pub(super) mode: Mode,
     pub(super) include_unchanged_tests: bool,
     pub(super) repo_config: RiprConfig,
-    /// Enable repo seam evidence diagnostics. Off by default because
-    /// the `inventory_classified_seams_at` walk is whole-repo and can
-    /// add multi-second latency to every editor refresh on large
-    /// workspaces. `cache/repo-seam-facts-v1` will lift the default
-    /// to `true` once the underlying classification is cached.
+    /// Enable repo seam evidence diagnostics. The default is bounded to
+    /// saved-workspace, draft-mode analysis so the installed editor surface is
+    /// useful without requiring `ripr init`.
     pub(super) enable_seam_diagnostics: bool,
 }
 
@@ -25,7 +25,7 @@ impl Default for LspAnalysisConfig {
             mode: defaults.mode,
             include_unchanged_tests: defaults.include_unchanged_tests,
             repo_config: RiprConfig::default(),
-            enable_seam_diagnostics: false,
+            enable_seam_diagnostics: DEFAULT_LSP_SEAM_DIAGNOSTICS,
         }
     }
 }
@@ -84,7 +84,10 @@ impl LspAnalysisConfig {
             base_ref: input.base,
             mode: input.mode,
             include_unchanged_tests: input.include_unchanged_tests,
-            enable_seam_diagnostics: repo_config.lsp().seam_diagnostics().unwrap_or(false),
+            enable_seam_diagnostics: repo_config
+                .lsp()
+                .seam_diagnostics()
+                .unwrap_or(DEFAULT_LSP_SEAM_DIAGNOSTICS),
             repo_config,
         }
     }
@@ -131,10 +134,10 @@ mod tests {
     }
 
     #[test]
-    fn seam_diagnostics_defaults_to_false_when_option_is_missing() {
+    fn seam_diagnostics_defaults_to_true_when_option_is_missing() {
         let params = params_with(json!({}));
         let config = LspAnalysisConfig::from_initialize_params(&params, RiprConfig::default());
-        assert!(!config.enable_seam_diagnostics);
+        assert!(config.enable_seam_diagnostics);
     }
 
     #[test]
@@ -145,7 +148,7 @@ mod tests {
     }
 
     #[test]
-    fn seam_diagnostics_false_in_init_options_keeps_default() {
+    fn seam_diagnostics_false_in_init_options_disables_default() {
         let params = params_with(json!({"seamDiagnostics": false}));
         let config = LspAnalysisConfig::from_initialize_params(&params, RiprConfig::default());
         assert!(!config.enable_seam_diagnostics);
@@ -157,7 +160,7 @@ mod tests {
         let config = LspAnalysisConfig::from_initialize_params(&params, RiprConfig::default());
         // Falls back to the default rather than misinterpreting a
         // string as truthy.
-        assert!(!config.enable_seam_diagnostics);
+        assert!(config.enable_seam_diagnostics);
     }
 
     #[test]

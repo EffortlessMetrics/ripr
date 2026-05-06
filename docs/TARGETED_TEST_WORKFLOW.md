@@ -118,9 +118,10 @@ fixture, macro, or dynamic boundary that hides evidence from static analysis.
 
 ### Editor Path
 
-In VS Code, enable seam diagnostics through `ripr.toml`, initialization options,
-or extension settings. Save the file before refreshing; the current LSP model is
-saved-workspace analysis.
+In VS Code, seam diagnostics use the built-in saved-workspace defaults when no
+`ripr.toml` exists. `ripr.toml`, initialization options, or extension settings
+can still tune or disable them. Save the file before refreshing; the current
+LSP model is saved-workspace analysis.
 
 For the selected seam diagnostic:
 

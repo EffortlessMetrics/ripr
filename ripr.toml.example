@@ -36,9 +36,10 @@ intentional = "off"
 suppressed = "off"
 
 [lsp]
-# Whole-repo seam diagnostics are opt-in because they can be expensive on cold
-# workspaces. LSP initializationOptions.seamDiagnostics still wins explicitly.
-seam_diagnostics = false
+# Built-in defaults enable bounded saved-workspace seam diagnostics. LSP
+# initializationOptions.seamDiagnostics still wins explicitly, and repo policy
+# may disable this with seam_diagnostics = false.
+seam_diagnostics = true
 
 [reports]
 # Default for context packets and editor collect-context commands when no

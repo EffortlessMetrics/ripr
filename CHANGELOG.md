@@ -19,6 +19,10 @@ are scoped or reviewed.
 
 ### Changed
 
+- Aligned built-in defaults with the `ripr init` profile for LSP seam
+  diagnostics: missing config now uses the same bounded saved-workspace default
+  as the generated policy file, while explicit LSP options or `ripr.toml` can
+  still disable seam diagnostics.
 - Tightened RIPR-SPEC-0009 so missing `ripr.toml` means useful built-in
   defaults, while `ripr init` records repo policy instead of unlocking basic
   CLI or editor usefulness.

@@ -205,7 +205,7 @@ fn doctor_reports_missing_config_defaults() -> Result<(), String> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Config: not found; using built-in defaults"));
     assert!(stdout.contains("Analysis mode default: draft"));
-    assert!(stdout.contains("LSP seam diagnostics default: false"));
+    assert!(stdout.contains("LSP seam diagnostics default: true"));
     assert!(stdout.contains("Suppressions path: .ripr/suppressions.toml"));
 
     let _ = std::fs::remove_dir_all(&workspace);

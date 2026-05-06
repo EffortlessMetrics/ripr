@@ -552,7 +552,8 @@ evidence = [
   "stable ripr-seam-{class} codes",
   "severity table (Warning for headline-eligible, Information for unknowns and opaque)",
   "data.seam_id as hover lookup key",
-  "off by default behind seamDiagnostics: true",
+  "bounded saved-workspace seam diagnostics default on under RIPR-SPEC-0009",
+  "explicit seamDiagnostics: false override",
   "OUTPUT_SCHEMA.md LSP Seam Diagnostics section"
 ]
 fixtures = []

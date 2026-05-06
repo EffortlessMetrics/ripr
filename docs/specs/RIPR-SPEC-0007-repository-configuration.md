@@ -71,7 +71,7 @@ This spec does not require:
 - hidden `.ripr/ripr.toml` discovery;
 - automatic config migration;
 - broad analyzer refactors;
-- default-on seam diagnostics without explicit configuration.
+- unsaved-buffer overlays or deep editor analysis by default.
 
 ## Acceptance Examples
 
@@ -80,8 +80,8 @@ This spec does not require:
 ```text
 Given a workspace without ripr.toml,
 when ripr check runs,
-then the command uses the same built-in defaults it used before repository
-configuration existed.
+then the command uses built-in defaults that match the generated conservative
+policy profile.
 ```
 
 ### Repository config sets defaults

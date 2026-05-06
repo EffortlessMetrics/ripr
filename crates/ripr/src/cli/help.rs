@@ -32,7 +32,7 @@ Generated config:
   - uses draft analysis mode and includes unchanged tests
   - shows actionable weak or missing seams with conservative severities
   - hides strongly_gripped, intentional, and suppressed seams
-  - enables saved-workspace LSP seam diagnostics for initialized repositories
+  - records the built-in saved-workspace LSP seam diagnostic default
   - remains advisory and does not configure CI blocking or mutation execution
 "#;
 
