@@ -16,6 +16,9 @@ are scoped or reviewed.
   `target/ripr/pilot/agent-seam-packets.json`, and
   `target/ripr/pilot/pilot-summary.{json,md}` while printing the top
   actionable seam and after-test commands.
+- Added `ripr outcome` to compare before/after `repo-exposure-json` snapshots
+  from the installed binary, printing an advisory targeted-test receipt by
+  default with `--format json` and `--out` for tool/file output.
 - Added `ripr init` to write a conservative repo-local `ripr.toml`, with
   `--dry-run` for previewing and `--force` for explicit overwrite.
 - Added RIPR-SPEC-0009 to define defaults-first adoption behavior for `init`

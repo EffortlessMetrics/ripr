@@ -74,14 +74,16 @@ After adding the test, rerun repo exposure:
 ripr check --root . --mode ready --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json
 ```
 
-The public `ripr outcome` command is the planned portable receipt for comparing
-before and after snapshots. Until it lands, repository dogfooding can use:
+Then compare the before and after snapshots:
 
 ```bash
-cargo xtask targeted-test-outcome \
+ripr outcome \
   --before target/ripr/pilot/repo-exposure.json \
   --after target/ripr/pilot/after.repo-exposure.json
 ```
+
+Use `--format json` for tools, or `--out target/ripr/pilot/outcome.md` to write
+the receipt instead of printing Markdown to stdout.
 
 ## Optional Editor and CI Paths
 

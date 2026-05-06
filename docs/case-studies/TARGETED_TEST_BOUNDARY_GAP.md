@@ -68,7 +68,7 @@ cargo run -p ripr -- check \
 Receipt:
 
 ```bash
-cargo xtask targeted-test-outcome \
+cargo run -p ripr -- outcome \
   --before target/ripr/case-study/boundary-gap/reports/before.repo-exposure.json \
   --after target/ripr/case-study/boundary-gap/reports/after.repo-exposure.json
 ```

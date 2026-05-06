@@ -227,13 +227,14 @@ After the test lands locally:
 
 ```bash
 cargo run -p ripr -- check --root . --mode ready --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json
-cargo xtask targeted-test-outcome \
+cargo run -p ripr -- outcome \
   --before target/ripr/workflow/before.repo-exposure.json \
   --after target/ripr/workflow/after.repo-exposure.json
 ```
 
-The receipt at `target/ripr/reports/targeted-test-outcome.md` shows whether
-the matched seam moved, stayed unchanged, regressed, appeared, or disappeared.
+The Markdown receipt printed by `ripr outcome` shows whether the matched seam
+moved, stayed unchanged, regressed, appeared, or disappeared. Use `--out` when
+the review needs a checked artifact.
 The cleanest result is a matched seam moving toward `strongly_gripped` with
 evidence deltas such as a missing discriminator no longer reported or a
 stronger related oracle becoming visible.

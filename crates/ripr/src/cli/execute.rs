@@ -13,6 +13,7 @@ pub(super) fn execute(command: CliCommand) -> Result<(), String> {
         }
         CliCommand::Init(args) => commands::init(&args),
         CliCommand::Pilot(args) => commands::pilot(&args),
+        CliCommand::Outcome(args) => commands::outcome(&args),
         CliCommand::Check(args) => commands::check(&args),
         CliCommand::Explain(args) => commands::explain(&args),
         CliCommand::Context(args) => commands::context(&args),
@@ -52,6 +53,10 @@ mod tests {
         assert_eq!(
             execute(CliCommand::Pilot(args(&["--max-seams", "0"]))),
             Err("invalid --max-seams: expected a positive integer".to_string())
+        );
+        assert_eq!(
+            execute(CliCommand::Outcome(args(&["--format", "xml"]))),
+            Err("unknown outcome format \"xml\"".to_string())
         );
     }
 
