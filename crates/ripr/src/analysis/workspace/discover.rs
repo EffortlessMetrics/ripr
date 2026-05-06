@@ -36,21 +36,20 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn discover_rust_files_is_callable() {
+    fn discover_rust_files_is_callable() -> Result<(), Box<dyn std::error::Error>> {
         let dir = std::env::temp_dir().join(format!(
             "ripr-discover-test-{:?}",
             std::thread::current().id()
         ));
         let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        fs::create_dir(dir.join("src")).unwrap();
-        fs::write(dir.join("src/lib.rs"), "").unwrap();
+        fs::create_dir_all(&dir)?;
+        fs::create_dir(dir.join("src"))?;
+        fs::write(dir.join("src/lib.rs"), "")?;
 
-        let result = discover_rust_files(&dir);
-        assert!(result.is_ok());
-        let files = result.unwrap();
-        assert!(files.iter().any(|p| p.ends_with("src/lib.rs")));
+        let result = discover_rust_files(&dir)?;
+        assert!(result.iter().any(|p| p.ends_with("src/lib.rs")));
 
         let _ = fs::remove_dir_all(&dir);
+        Ok(())
     }
 }
