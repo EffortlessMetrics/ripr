@@ -66,6 +66,20 @@ The extension passes `ripr.check.mode` and `ripr.baseRef` to the language server
 as initialization options. Changing server, check, base-ref, or trace settings
 restarts the client so the next diagnostic refresh uses the new configuration.
 
+## Defaults-First Stance
+
+The editor surface follows the defaults-first adoption contract in
+[RIPR-SPEC-0009](specs/RIPR-SPEC-0009-defaults-first-adoption.md): diagnostics,
+hovers, targeted-test briefs, context packets, best related-test navigation,
+and refresh status should be discoverable without forcing users to understand
+every report artifact first.
+
+The current LSP model remains saved-workspace analysis. Unsaved-buffer overlays
+are not enabled by default. When a repository adds `ripr.toml`, that repo
+policy should make editor behavior explicit; the future generated `ripr init`
+profile may opt that repository into seam diagnostics while keeping diagnostics
+advisory.
+
 ## Commands
 
 - `ripr: Restart Server`
