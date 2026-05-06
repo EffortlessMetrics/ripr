@@ -718,8 +718,8 @@ Work items:
 | `output/format-extraction` | done | PR 24: Moved `OutputFormat` to `output/format.rs` while preserving the `app::OutputFormat` public path. |
 | `output/render-dispatch` | done | PR 25: Moved `render_check` dispatch into `output/render.rs` while preserving the `app::render_check` public facade. |
 | `cli/command-model` | done | PR 26: Created `cli/command.rs` with a focused `CliCommand` enum while preserving top-level CLI dispatch behavior. |
-| `cli/parse-command` | ready | PR 27: Update `cli/parse.rs` to return the parsed command shape |
-| `cli/execute-command` | pending | PR 28: Create `cli/execute.rs` for command execution |
+| `cli/parse-command` | done | PR 27: Updated `cli/parse.rs` to return the parsed command shape while preserving argument behavior. |
+| `cli/execute-command` | ready | PR 28: Create `cli/execute.rs` for command execution |
 | `domain/context-packet-dto` | pending | PR 28: Create `domain/context_packet.rs` with `ContextPacket` struct |
 | `output/json-context-dto` | pending | PR 29: Update JSON context renderer to use `ContextPacket` |
 | `lsp/context-packet-usage` | pending | PR 30: Update LSP to use `ContextPacket` |

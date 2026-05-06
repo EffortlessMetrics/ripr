@@ -1,26 +1,26 @@
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum CliCommand {
     Help,
     Version,
-    Init,
-    Check,
-    Explain,
-    Context,
-    Doctor,
-    Lsp,
+    Init(Vec<String>),
+    Check(Vec<String>),
+    Explain(Vec<String>),
+    Context(Vec<String>),
+    Doctor(Vec<String>),
+    Lsp(Vec<String>),
 }
 
 impl CliCommand {
-    pub(super) fn from_arg(arg: Option<&str>) -> Result<Self, String> {
+    pub(super) fn from_parts(arg: Option<&str>, command_args: Vec<String>) -> Result<Self, String> {
         match arg {
             None | Some("--help" | "-h") => Ok(Self::Help),
             Some("--version" | "-V") => Ok(Self::Version),
-            Some("init") => Ok(Self::Init),
-            Some("check") => Ok(Self::Check),
-            Some("explain") => Ok(Self::Explain),
-            Some("context") => Ok(Self::Context),
-            Some("doctor") => Ok(Self::Doctor),
-            Some("lsp") => Ok(Self::Lsp),
+            Some("init") => Ok(Self::Init(command_args)),
+            Some("check") => Ok(Self::Check(command_args)),
+            Some("explain") => Ok(Self::Explain(command_args)),
+            Some("context") => Ok(Self::Context(command_args)),
+            Some("doctor") => Ok(Self::Doctor(command_args)),
+            Some("lsp") => Ok(Self::Lsp(command_args)),
             Some(command) => Err(format!("unknown command {command:?}. Run `ripr --help`.")),
         }
     }
@@ -30,29 +30,41 @@ impl CliCommand {
 mod tests {
     use super::CliCommand;
 
+    fn args(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| value.to_string()).collect()
+    }
+
     #[test]
-    fn cli_command_from_arg_maps_current_command_surface() {
+    fn cli_command_from_parts_maps_current_command_surface() {
         for (arg, expected) in [
             (None, CliCommand::Help),
             (Some("--help"), CliCommand::Help),
             (Some("-h"), CliCommand::Help),
             (Some("--version"), CliCommand::Version),
             (Some("-V"), CliCommand::Version),
-            (Some("init"), CliCommand::Init),
-            (Some("check"), CliCommand::Check),
-            (Some("explain"), CliCommand::Explain),
-            (Some("context"), CliCommand::Context),
-            (Some("doctor"), CliCommand::Doctor),
-            (Some("lsp"), CliCommand::Lsp),
+            (Some("init"), CliCommand::Init(Vec::new())),
+            (Some("check"), CliCommand::Check(Vec::new())),
+            (Some("explain"), CliCommand::Explain(Vec::new())),
+            (Some("context"), CliCommand::Context(Vec::new())),
+            (Some("doctor"), CliCommand::Doctor(Vec::new())),
+            (Some("lsp"), CliCommand::Lsp(Vec::new())),
         ] {
-            assert_eq!(CliCommand::from_arg(arg), Ok(expected));
+            assert_eq!(CliCommand::from_parts(arg, Vec::new()), Ok(expected));
         }
     }
 
     #[test]
-    fn cli_command_from_arg_preserves_unknown_command_error() {
+    fn cli_command_from_parts_preserves_subcommand_args() {
         assert_eq!(
-            CliCommand::from_arg(Some("unknown")),
+            CliCommand::from_parts(Some("check"), args(&["--format", "json"])),
+            Ok(CliCommand::Check(args(&["--format", "json"])))
+        );
+    }
+
+    #[test]
+    fn cli_command_from_parts_preserves_unknown_command_error() {
+        assert_eq!(
+            CliCommand::from_parts(Some("unknown"), Vec::new()),
             Err("unknown command \"unknown\". Run `ripr --help`.".to_string())
         );
     }

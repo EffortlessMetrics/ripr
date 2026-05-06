@@ -222,6 +222,9 @@ are scoped or reviewed.
 - Added a focused private `cli/command.rs` `CliCommand` enum for top-level CLI
   command shape while preserving CLI parsing and dispatch behavior. The next
   ready seam is parsed-command extraction.
+- Updated CLI parsing so `cli::parse` returns the typed `CliCommand` shape
+  before dispatch, while preserving command argument behavior. The next ready
+  seam is CLI execution extraction.
 - Added `cargo xtask targeted-test-outcome` as an advisory receipt for comparing
   before/after `repo-exposure-json` artifacts. The report writes
   `target/ripr/reports/targeted-test-outcome.{json,md}`, matches seams by
