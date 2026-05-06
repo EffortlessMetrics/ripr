@@ -39,6 +39,9 @@ are scoped or reviewed.
   while preserving existing `cargo xtask check-*` policy command behavior.
 - Routed xtask report commands through focused `xtask/src/reports/` modules
   while preserving existing report command behavior.
+- Closed Campaign 6 after the internal module SRP refactor chain landed through
+  #405, confirmed stale forks #250, #253, and #352 are closed unmerged, and
+  moved the active manifest to Campaign 7 defaults-first operator adoption.
 - Aligned built-in defaults with the `ripr init` profile for LSP seam
   diagnostics: missing config now uses the same bounded saved-workspace default
   as the generated policy file, while explicit LSP options or `ripr.toml` can

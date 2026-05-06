@@ -1,716 +1,103 @@
-id = "modularize-ripr-submodules"
-title = "Module SRP Refactoring"
+id = "defaults-first-operator-adoption"
+title = "Defaults-First Operator Adoption"
 status = "active"
 
-# This is Campaign 6 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
-# Campaign 5B (`operationalization`) closed after the following chain landed:
-#
-# - #331 config/ripr-config-v1
-# - #333 spec/sarif-ci-policy
-# - #336 output/sarif-renderer
-# - #338 ci/sarif-baseline-policy
-# - #342 badge/seam-native-count-mapping
-#
-# The 5B closeout is intentionally docs/manifest only. It does not change
-# analyzer behavior, output schemas, SARIF policy, badge semantics, or LSP
-# behavior.
+# This is Campaign 7 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+# Campaign 6 (`modularize-ripr-submodules`) closed after the refactor chain
+# landed through #405. The next lane is product/operator polish, not more LSP
+# feature work and not more Campaign 6 surgery.
 
 objective = """
-Refactor internal modules under crates/ripr/src so each module has one
-product responsibility, improving maintainability, testability, and reasoning
-without splitting the package. Start by auditing the old Campaign 6 draft stack
-against the now-closed operationalization surface before merging structural PRs.
+Make ripr useful from a clean install by giving CLI, editor, and CI users one
+defaults-first path from static seam evidence to a targeted-test action and a
+receipt that shows the seam improved.
 """
 
 end_state = [
-  "Every internal module has a single, clear product responsibility",
-  "Module boundaries align with RIPR analysis stages and rendering surfaces",
-  "analysis/mod.rs is a thin orchestration facade, not implementation",
-  "app.rs and CLI command handling are easier to reason about without public API drift",
-  "LSP, SARIF, badge, context, and calibration surfaces remain behaviorally stable through refactors",
-  "Public package shape stays one crate and one binary; no ripr-core/ripr-cli/ripr-lsp split",
-  "Architecture and public API guards pass without output schema churn"
+  "Built-in defaults and generated ripr.toml are documented and conservative",
+  "Fast, normal, and deep mode behavior is clear and useful without hand tuning",
+  "One operator cockpit joins repo exposure, LSP cockpit, SARIF, badges, targeted-test outcomes, and calibration when present",
+  "The GitHub Action path uploads useful artifacts and separates advisory reporting from blocking policy",
+  "The editor install path and existing commands are documented without adding speculative LSP features",
+  "A small public example corpus demonstrates weak seams, targeted briefs, receipts, and optional calibration",
+  "Install and release paths are verified enough for a new user to run the loop"
 ]
 
 [[work_item]]
-id = "campaign/modularization-stack-audit"
-status = "done"
-branch = "campaign/modularization-stack-audit"
-stackable = false
-requires_human_merge = true
-acceptance = "Campaign 6 draft PR stack is audited against current main after Campaign 5B closeout; canonical order, stale branches, conflicts, output/API drift risks, and close/rebase/rewrite recommendations are recorded without changing production code"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-campaign",
-  "cargo xtask check-capabilities",
-  "cargo xtask check-traceability",
-  "cargo xtask check-static-language"
-]
-
-[[work_item]]
-id = "analysis/summary-extraction"
-status = "done"
-branch = "analysis-summary-extraction"
-stackable = false
-requires_human_merge = true
-acceptance = "summary and sort logic move out of analysis/mod.rs with no behavior, output, API, or schema drift; rebase PR #244 against current main and remove stale policy churn unless still justified by focused tests"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "analysis/pipeline-extraction"
-status = "done"
-branch = "analysis-pipeline-extraction"
-stackable = false
-requires_human_merge = true
-acceptance = "diff and repo pipeline orchestration move out of analysis/mod.rs with run_analysis and run_repo_analysis preserved as behavior-stable facades"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "diff/module-split"
-status = "done"
-branch = "diff-module-split"
-stackable = false
-requires_human_merge = true
-acceptance = "analysis/diff.rs splits into diff/{mod,model,load,parse}.rs with no parser behavior, output, API, or schema drift; add cheap diff/load.rs coverage only when the existing branch logic is simple to pin"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "workspace/module-split"
-status = "done"
-branch = "workspace-module-split"
-stackable = false
-requires_human_merge = true
-acceptance = "analysis/workspace.rs splits into focused workspace modules with no workspace-selection behavior, output, API, or schema drift"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "probes/module-split"
-status = "done"
-branch = "probes-module-split"
-stackable = false
-requires_human_merge = true
-acceptance = "analysis/probes.rs splits into focused probe modules with no probe generation behavior, output, API, or schema drift; sanitize_path behavior stays pinned for Unix paths, Windows-style paths, colons, and trimming"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "facts/model-extraction"
-status = "done"
-branch = "facts-model-extraction"
-stackable = false
-requires_human_merge = true
-acceptance = "neutral fact DTOs move into analysis/facts/model.rs after the probe split lands; syntax adapters, builders, extraction, and query logic stay in place with no behavior, output, API, or schema drift"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "syntax/adapter-extraction"
-status = "done"
-branch = "syntax-adapter-extraction"
-stackable = false
-requires_human_merge = true
-acceptance = "syntax adapter traits and shared syntax facts move into analysis/syntax/adapter.rs; builders, parser-backed extraction, lexical fallback, and query logic stay in place with no behavior, output, API, or schema drift"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "facts/builder-extraction"
-status = "done"
-branch = "build-index-extraction"
-stackable = false
-requires_human_merge = true
-acceptance = "index construction moves into analysis/facts/build.rs after syntax adapter type extraction; parser-backed extraction, lexical fallback, and query logic remain behavior-stable with no output, API, or schema drift"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "syntax/ra-extraction"
-status = "done"
-branch = "ra-syntax-adapter-extraction"
-stackable = false
-requires_human_merge = true
-acceptance = "parser-backed RA syntax adapter implementation moves into analysis/syntax/ra.rs after build-index extraction; lexical fallback and remaining rust_index query helpers stay behavior-stable with no output, API, or schema drift"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "syntax/lexical-extraction"
-status = "done"
-branch = "lexical-syntax-fallback-extraction"
-stackable = false
-requires_human_merge = true
-acceptance = "lexical syntax fallback implementation moves into analysis/syntax/lexical.rs after RA extraction; rust_index query helpers and oracle/extractor helpers stay behavior-stable with no output, API, or schema drift"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "extract/fact-extraction"
-status = "done"
-branch = "fact-extraction"
-stackable = false
-requires_human_merge = true
-acceptance = "call, return, literal, oracle, and text extraction helpers plus probe-shape constants move into analysis/extract/* after lexical extraction; rust_index remains a compatibility facade with no behavior, output, API, or schema drift"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "probes/family-extraction"
-status = "done"
-branch = "probe-family-extraction"
-stackable = false
-requires_human_merge = true
-acceptance = "probe-family mapping, changed-line family heuristics, and delta metadata move into analysis/probes/family.rs after fact extraction; probe generation behavior stays stable with no output, API, or schema drift"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "probes/expectations-extraction"
-status = "done"
-branch = "probe-expectations-extraction"
-stackable = false
-requires_human_merge = true
-acceptance = "probe expected sink and required oracle helpers move into analysis/probes/expectations.rs after family extraction; probe generation behavior stays stable with no output, API, or schema drift"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "probes/id-extraction"
-status = "done"
-branch = "probe-id-extraction"
-stackable = false
-requires_human_merge = true
-acceptance = "probe ID construction and path sanitization helpers move into analysis/probes/ids.rs after expectation extraction; probe generation behavior stays stable with sanitize_path behavior pinned and no output, API, or schema drift"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "probes/lexical-extraction"
-status = "done"
-branch = "probe-lexical-extraction"
-stackable = false
-requires_human_merge = true
-acceptance = "lexical changed-line probe fallback helpers move into analysis/probes/lexical.rs after probe ID extraction; probe generation behavior stays stable with no output, API, or schema drift"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "probes/diff-repo-split"
-status = "done"
-branch = "probe-diff-repo-split"
-stackable = false
-requires_human_merge = true
-acceptance = "diff and repo probe seeding stay in focused probe modules after lexical fallback extraction; probe generation behavior stays stable with no output, API, or schema drift"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "classify/context-extraction"
-status = "done"
-branch = "classify-context-extraction"
-stackable = false
-requires_human_merge = true
-acceptance = "classification context shared by later RIPR stage modules moves into analysis/classify/context.rs after probe seeding is reconciled; classification behavior stays stable with no LSP, output, API, or schema drift"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
-  "cargo xtask lsp-cockpit-report",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "classify/related-tests"
-status = "done"
-branch = "classify-related-tests"
-stackable = false
-requires_human_merge = true
-acceptance = "related-test discovery moves into analysis/classify/related_tests.rs after ProbeContext extraction; classification behavior stays stable with no LSP, output, API, or schema drift"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
-  "cargo xtask lsp-cockpit-report",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "classify/reach-stage"
-status = "done"
-branch = "classify-reach-stage"
-stackable = false
-requires_human_merge = true
-acceptance = "reach evidence moves into analysis/classify/reach.rs after related-test discovery extraction; classification behavior stays stable with no LSP, output, API, or schema drift"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
-  "cargo xtask lsp-cockpit-report",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "classify/flow-propagation"
-status = "done"
-branch = "classify-flow-propagation"
-stackable = false
-requires_human_merge = true
-acceptance = "local flow and propagation evidence move into focused classify stage modules after reach extraction; classification behavior stays stable with no LSP, output, API, or schema drift"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
-  "cargo xtask lsp-cockpit-report",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "classify/activation-stage"
-status = "done"
-branch = "classify-activation-stage"
-stackable = false
-requires_human_merge = true
-acceptance = "activation evidence moves into analysis/classify/activation.rs after flow and propagation extraction; classification behavior stays stable with no LSP, output, API, or schema drift"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
-  "cargo xtask lsp-cockpit-report",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "classify/remaining-stages"
-status = "done"
-branch = "classify-remaining-stages"
-stackable = false
-requires_human_merge = true
-acceptance = "infection, reveal, decision, confidence, missing-evidence, and stop-reason helpers move into focused classify modules after activation extraction; classification behavior stays stable with no LSP, output, API, or schema drift"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
-  "cargo xtask lsp-cockpit-report",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "app/usecase-split"
-status = "done"
-branch = "app-usecase-split"
-stackable = false
-requires_human_merge = true
-acceptance = "check, explain, and context use-case orchestration moves out of app.rs into focused app modules while preserving the public ripr library API, CLI output, LSP behavior, output contracts, and schema"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
-  "cargo xtask lsp-cockpit-report",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "output/format-extraction"
-status = "done"
-branch = "output-format-extraction"
-stackable = false
-requires_human_merge = true
-acceptance = "OutputFormat moves out of app.rs into a focused output format module while preserving public ripr library API, CLI output, LSP behavior, output contracts, and schema"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
-  "cargo xtask lsp-cockpit-report",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "output/render-dispatch"
-status = "done"
-branch = "output-render-dispatch"
-stackable = false
-requires_human_merge = true
-acceptance = "render_check dispatch moves out of app.rs into a focused output render module while preserving public ripr library API, CLI output, LSP behavior, output contracts, and schema"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
-  "cargo xtask lsp-cockpit-report",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "cli/command-model"
-status = "done"
-branch = "cli-command-model"
-stackable = false
-requires_human_merge = true
-acceptance = "CLI command shape moves into cli/command.rs as a focused CliCommand enum while preserving CLI parsing, execution behavior, public ripr library API, LSP behavior, output contracts, and schema"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
-  "cargo xtask lsp-cockpit-report",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "cli/parse-command"
-status = "done"
-branch = "cli-parse-command"
-stackable = false
-requires_human_merge = true
-acceptance = "CLI parsing returns a focused parsed command shape while preserving CLI argument behavior, execution behavior, public ripr library API, LSP behavior, output contracts, and schema"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
-  "cargo xtask lsp-cockpit-report",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "cli/execute-command"
-status = "done"
-branch = "cli-execute-command"
-stackable = false
-requires_human_merge = true
-acceptance = "CLI command execution moves into cli/execute.rs while preserving CLI argument behavior, execution behavior, public ripr library API, LSP behavior, output contracts, and schema"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
-  "cargo xtask lsp-cockpit-report",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "domain/context-packet-dto"
-status = "done"
-branch = "domain-context-packet-dto"
-stackable = false
-requires_human_merge = true
-acceptance = "Context packet DTO shape moves into domain/context_packet.rs while preserving public ripr library API, CLI behavior, LSP behavior, output contracts, and schema"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
-  "cargo xtask lsp-cockpit-report",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "output/json-context-dto"
-status = "done"
-branch = "output-json-context-dto"
-stackable = false
-requires_human_merge = true
-acceptance = "JSON context packet renderer uses the domain ContextPacket DTO while preserving CLI behavior, LSP behavior, output contracts, and schema"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
-  "cargo xtask lsp-cockpit-report",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "lsp/context-packet-usage"
-status = "done"
-branch = "lsp-context-packet-usage"
-stackable = false
-requires_human_merge = true
-acceptance = "LSP context packet lookup uses the domain ContextPacket DTO path while preserving CLI behavior, LSP behavior, output contracts, and schema"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
-  "cargo xtask lsp-cockpit-report",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "api/doc-hidden-internals"
-status = "done"
-branch = "api-doc-hidden-internals"
-stackable = false
-requires_human_merge = true
-acceptance = "Internal modules are marked doc-hidden without changing public API, CLI behavior, LSP behavior, output contracts, or schema"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
-  "cargo doc --workspace --no-deps",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "api/private-internals"
-status = "blocked"
-branch = "api-private-internals"
-stackable = false
-requires_human_merge = true
-acceptance = "Internal modules are made private only after an explicit breaking public API decision"
-blocked_reason = "Optional breaking change; hold until release policy explicitly allows removing compatibility module exports."
-
-[[work_item]]
-id = "xtask/command-dispatch"
-status = "done"
-branch = "xtask-command-dispatch"
-stackable = false
-requires_human_merge = true
-acceptance = "xtask command dispatch is split into focused command/run modules while preserving every cargo xtask command behavior"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "xtask/policy-modules"
-status = "done"
-branch = "xtask-policy-modules"
-stackable = false
-requires_human_merge = true
-acceptance = "xtask policy checks are organized into focused policy modules while preserving every cargo xtask policy command behavior"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "xtask/report-modules"
-status = "done"
-branch = "xtask-report-modules"
-stackable = false
-requires_human_merge = true
-acceptance = "xtask report generation is organized into focused report modules while preserving every cargo xtask report command behavior"
-commands = [
-  "cargo xtask shape",
-  "cargo xtask fix-pr",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "campaign/modularization-closeout"
+id = "defaults/config-init"
 status = "ready"
-branch = "campaign-modularization-closeout"
+branch = "defaults-config-init"
 stackable = false
 requires_human_merge = true
-acceptance = "Campaign 6 modularization is reviewed, stale forks are closed or documented, and the manifest points at the next real lane"
+acceptance = "Built-in defaults, generated ripr.toml, repo-mode exclusions, seam-diagnostic policy, badge/report defaults, and fast/normal/deep mode behavior are documented and test-pinned without changing output schemas or LSP behavior"
 commands = [
   "cargo xtask check-pr",
   "cargo xtask check-public-api",
   "cargo xtask check-architecture",
   "cargo xtask check-output-contracts",
-  "cargo xtask check-no-panic-family",
+  "cargo xtask check-static-language",
   "cargo xtask check-campaign",
   "cargo xtask goals next",
   "cargo test --workspace"
+]
+
+[[work_item]]
+id = "reports/operator-cockpit"
+status = "blocked"
+branch = "operator-cockpit-report"
+stackable = false
+requires_human_merge = true
+acceptance = "target/ripr/reports/operator-cockpit.md and .json join repo exposure, LSP cockpit, SARIF policy, badge status, targeted-test outcome, and optional mutation calibration into a next-action report"
+blocked_by = ["defaults/config-init"]
+
+[[work_item]]
+id = "ci/github-action-entrypoint"
+status = "blocked"
+branch = "github-action-entrypoint"
+stackable = false
+requires_human_merge = true
+acceptance = "A copyable GitHub Actions workflow runs the defaults-first RIPR loop in a Rust repo, uploads reports, makes SARIF optional, documents badge artifacts, and keeps advisory reporting separate from blocking policy"
+blocked_by = ["reports/operator-cockpit"]
+
+[[work_item]]
+id = "editor/install-polish"
+status = "blocked"
+branch = "editor-install-polish"
+stackable = false
+requires_human_merge = true
+acceptance = "The VS Code install path and existing commands are documented and verified without adding unsaved-buffer overlays, CodeLens, inlay hints, semantic tokens, or new editor behavior"
+blocked_by = ["defaults/config-init"]
+
+[[work_item]]
+id = "fixtures/example-corpus"
+status = "blocked"
+branch = "example-corpus"
+stackable = false
+requires_human_merge = true
+acceptance = "A small public example corpus demonstrates boundary gap, weak oracle, missing equality boundary, exact error variant, opaque fixture/builder, and one calibration sample with expected CLI, LSP, targeted-test outcome, and optional calibration artifacts"
+blocked_by = ["reports/operator-cockpit"]
+
+[[work_item]]
+id = "release/install-polish"
+status = "blocked"
+branch = "release-install-polish"
+stackable = false
+requires_human_merge = true
+acceptance = "cargo install, GitHub Release binary, VS Code server provisioning, README quickstart, and known-limits docs are verified against the defaults-first operator loop"
+blocked_by = ["editor/install-polish"]
+
+[[work_item]]
+id = "campaign/defaults-first-closeout"
+status = "blocked"
+branch = "defaults-first-closeout"
+stackable = false
+requires_human_merge = true
+acceptance = "Defaults-first operator adoption is reviewed, docs and manifests point at the next lane, and a clean install-to-targeted-test loop is demonstrated"
+blocked_by = [
+  "defaults/config-init",
+  "reports/operator-cockpit",
+  "ci/github-action-entrypoint",
+  "editor/install-polish",
+  "fixtures/example-corpus",
+  "release/install-polish"
 ]

@@ -635,7 +635,7 @@ policy, or badge mapping changes.
 
 Campaign ID: `modularize-ripr-submodules`
 
-Status: active
+Status: complete
 
 Objective:
 
@@ -691,45 +691,45 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `campaign/modularization-stack-audit` | done | Audited the old Campaign 6 draft stack against current `main` after Campaign 5B closeout. Canonical order is #244 -> #245 -> #246 -> #247 -> #249 -> #251 -> new PR 6 syntax-adapter extraction -> #253; #250 stays parked and should close or rewrite after the facts/syntax/build-index path stabilizes. |
+| `campaign/modularization-stack-audit` | done | Audited the old Campaign 6 draft stack against current `main` after Campaign 5B closeout. That audit was the starting snapshot; the final landed chain replaced the stale #251/#253 path with current-base PRs and closed the parked forks. |
 | `modularization/infrastructure-and-planning` | done | Documentation, campaign outline, first-PR pattern, and the post-5B stack audit exist; implementation resumes with the canonical stack order below. |
 | `analysis/summary-extraction` | done | PR 1 (#244): Extracted duplicated summary and sort logic from `analysis/mod.rs` into focused helper modules with no output/API/schema drift. |
 | `analysis/pipeline-extraction` | done | PR 2 (#245): Extracted diff and repo pipeline orchestration into `analysis/pipeline.rs` while preserving `run_analysis` and `run_repo_analysis` as stable facades. |
 | `diff/module-split` | done | PR 3 (#246): Split `analysis/diff.rs` into `diff/{mod,model,load,parse}.rs` with the parser and git-diff adapter behavior preserved. |
 | `workspace/module-split` | done | PR 4 (#247): Split workspace concerns into focused modules without changing workspace selection behavior. |
 | `probes/module-split` | done | PR 5 (#249): Split probe concerns into focused modules and preserved `sanitize_path` behavior for Unix paths, Windows-style paths, colons, and trimming. |
-| `facts/model-extraction` | done | PR 6 (#251): Moved neutral fact DTOs into `analysis/facts/model.rs` while leaving syntax adapters, builders, extraction, and query logic in place. |
-| `syntax/adapter-extraction` | done | PR 7: Moved syntax adapter traits and shared syntax facts into `analysis/syntax/adapter.rs` without moving builders or extraction logic yet. |
-| `facts/builder-extraction` | done | PR 8 (#253): Moved index construction into `analysis/facts/build.rs` after syntax adapter type extraction. |
-| `syntax/ra-extraction` | done | PR 9: Parser-backed RA syntax adapter implementation moved into `analysis/syntax/ra.rs` after build-index extraction. |
-| `syntax/lexical-extraction` | done | PR 10: Lexical syntax fallback implementation moved into `analysis/syntax/lexical.rs` after RA extraction. |
-| `extract/fact-extraction` | done | PR 11: Moved call, return, literal, oracle, and text extraction helpers plus probe-shape constants into `analysis/extract/*` while keeping `rust_index` as the compatibility facade. |
-| `probes/family-extraction` | done | PR 12: Moved probe-family mapping, changed-line family heuristics, and delta metadata into `analysis/probes/family.rs`. |
-| `probes/expectations-extraction` | done | PR 13: Moved expected sink and required oracle helpers into `analysis/probes/expectations.rs`. |
-| `probes/id-extraction` | done | PR 14: Moved probe ID construction and path sanitization helpers into `analysis/probes/ids.rs`. |
-| `probes/lexical-extraction` | done | PR 15: Moved lexical changed-line probe fallback helpers into `analysis/probes/lexical.rs`. |
-| `probes/diff-repo-split` | done | PR 16: Confirmed diff and repo probe seeding already live in `analysis/probes/diff.rs` and `analysis/probes/repo.rs` after the probe module split and helper extractions. |
-| `classify/context-extraction` | done | PR 17: Created `analysis/classify/context.rs` with `ProbeContext` as the shared classifier input for later stage extraction. |
-| `classify/related-tests` | done | PR 18: Moved related-test discovery into `analysis/classify/related_tests.rs` while preserving classification behavior. |
-| `classify/reach-stage` | done | PR 19: Moved reach evidence into `analysis/classify/reach.rs` while preserving classification behavior. |
-| `classify/flow-propagation` | done | PR 20: Moved local flow and propagation evidence into `analysis/classify/flow.rs` while preserving classification behavior. |
-| `classify/activation-stage` | done | PR 21: Moved activation evidence into `analysis/classify/activation.rs` while preserving classification behavior. |
-| `classify/remaining-stages` | done | PR 22: Moved infection, reveal, decision, confidence, missing, stop reasons, and next-step helpers into focused `analysis/classify` modules while preserving classification behavior. |
-| `app/usecase-split` | done | PR 23: Split check, explain, and context use-case orchestration into focused `app` modules while preserving public API, CLI, LSP, output, and schema behavior. |
-| `output/format-extraction` | done | PR 24: Moved `OutputFormat` to `output/format.rs` while preserving the `app::OutputFormat` public path. |
-| `output/render-dispatch` | done | PR 25: Moved `render_check` dispatch into `output/render.rs` while preserving the `app::render_check` public facade. |
-| `cli/command-model` | done | PR 26: Created `cli/command.rs` with a focused `CliCommand` enum while preserving top-level CLI dispatch behavior. |
-| `cli/parse-command` | done | PR 27: Updated `cli/parse.rs` to return the parsed command shape while preserving argument behavior. |
-| `cli/execute-command` | done | PR 28: Created `cli/execute.rs` for command execution while preserving argument and handler behavior. |
-| `domain/context-packet-dto` | done | PR 29: Created `domain/context_packet.rs` with the context packet DTO shape. |
-| `output/json-context-dto` | done | PR 30: Updated JSON context renderer to use `ContextPacket` without changing packet output. |
-| `lsp/context-packet-usage` | done | PR 31: Updated LSP context packet lookup to use `ContextPacket` while preserving packet output. |
-| `api/doc-hidden-internals` | done | PR 32: Marked compatibility module exports `#[doc(hidden)]` while preserving public API paths. |
+| `facts/model-extraction` | done | PR 6 (#354): Moved neutral fact DTOs into `analysis/facts/model.rs` while leaving syntax adapters, builders, extraction, and query logic in place. |
+| `syntax/adapter-extraction` | done | PR 7 (#357): Moved syntax adapter traits and shared syntax facts into `analysis/syntax/adapter.rs` without moving builders or extraction logic yet. |
+| `facts/builder-extraction` | done | PR 8 (#359): Moved index construction into `analysis/facts/build.rs` after syntax adapter type extraction. |
+| `syntax/ra-extraction` | done | PR 9 (#361): Parser-backed RA syntax adapter implementation moved into `analysis/syntax/ra.rs` after build-index extraction. |
+| `syntax/lexical-extraction` | done | PR 10 (#367): Lexical syntax fallback implementation moved into `analysis/syntax/lexical.rs` after RA extraction. |
+| `extract/fact-extraction` | done | PR 11 (#369): Moved call, return, literal, oracle, and text extraction helpers plus probe-shape constants into `analysis/extract/*` while keeping `rust_index` as the compatibility facade. |
+| `probes/family-extraction` | done | PR 12 (#370): Moved probe-family mapping, changed-line family heuristics, and delta metadata into `analysis/probes/family.rs`. |
+| `probes/expectations-extraction` | done | PR 13 (#371): Moved expected sink and required oracle helpers into `analysis/probes/expectations.rs`. |
+| `probes/id-extraction` | done | PR 14 (#372): Moved probe ID construction and path sanitization helpers into `analysis/probes/ids.rs`. |
+| `probes/lexical-extraction` | done | PR 15 (#373): Moved lexical changed-line probe fallback helpers into `analysis/probes/lexical.rs`. |
+| `probes/diff-repo-split` | done | PR 16 (#376): Confirmed diff and repo probe seeding already live in `analysis/probes/diff.rs` and `analysis/probes/repo.rs` after the probe module split and helper extractions. |
+| `classify/context-extraction` | done | PR 17 (#377): Created `analysis/classify/context.rs` with `ProbeContext` as the shared classifier input for later stage extraction. |
+| `classify/related-tests` | done | PR 18 (#379): Moved related-test discovery into `analysis/classify/related_tests.rs` while preserving classification behavior. |
+| `classify/reach-stage` | done | PR 19 (#380): Moved reach evidence into `analysis/classify/reach.rs` while preserving classification behavior. |
+| `classify/flow-propagation` | done | PR 20 (#381): Moved local flow and propagation evidence into `analysis/classify/flow.rs` while preserving classification behavior. |
+| `classify/activation-stage` | done | PR 21 (#383): Moved activation evidence into `analysis/classify/activation.rs` while preserving classification behavior. |
+| `classify/remaining-stages` | done | PR 22 (#385): Moved infection, reveal, decision, confidence, missing, stop reasons, and next-step helpers into focused `analysis/classify` modules while preserving classification behavior. |
+| `app/usecase-split` | done | PR 23 (#387): Split check, explain, and context use-case orchestration into focused `app` modules while preserving public API, CLI, LSP, output, and schema behavior. |
+| `output/format-extraction` | done | PR 24 (#388): Moved `OutputFormat` to `output/format.rs` while preserving the `app::OutputFormat` public path. |
+| `output/render-dispatch` | done | PR 25 (#390): Moved `render_check` dispatch into `output/render.rs` while preserving the `app::render_check` public facade. |
+| `cli/command-model` | done | PR 26 (#391): Created `cli/command.rs` with a focused `CliCommand` enum while preserving top-level CLI dispatch behavior. |
+| `cli/parse-command` | done | PR 27 (#392): Updated `cli/parse.rs` to return the parsed command shape while preserving argument behavior. |
+| `cli/execute-command` | done | PR 28 (#394): Created `cli/execute.rs` for command execution while preserving argument and handler behavior. |
+| `domain/context-packet-dto` | done | PR 29 (#397): Created `domain/context_packet.rs` with the context packet DTO shape. |
+| `output/json-context-dto` | done | PR 30 (#398): Updated JSON context renderer to use `ContextPacket` without changing packet output. |
+| `lsp/context-packet-usage` | done | PR 31 (#399): Updated LSP context packet lookup to use `ContextPacket` while preserving packet output. |
+| `api/doc-hidden-internals` | done | PR 32 (#400): Marked compatibility module exports `#[doc(hidden)]` while preserving public API paths. |
 | `api/private-internals` | blocked | PR 33: Make internal modules private (breaking, optional) |
-| `xtask/command-dispatch` | done | PR 34: Split xtask into command and run modules |
-| `xtask/policy-modules` | done | PR 35: Organize policy checks into `xtask/src/policy/` |
-| `xtask/report-modules` | done | PR 36: Organize reports into `xtask/src/reports/` |
-| `campaign/modularization-closeout` | ready | Final review and closure of Campaign 6 |
+| `xtask/command-dispatch` | done | PR 34 (#401): Split xtask into command and run modules. |
+| `xtask/policy-modules` | done | PR 35 (#403): Organize policy checks into `xtask/src/policy/`. |
+| `xtask/report-modules` | done | PR 36 (#405): Organize reports into `xtask/src/reports/`. |
+| `campaign/modularization-closeout` | done | Final review closed Campaign 6, confirmed stale forks #250, #253, and #352 are closed unmerged, and moved the active manifest to Campaign 7 defaults-first operator adoption. |
 
 Stack audit:
 
@@ -826,3 +826,133 @@ Each modularization PR should be a pure movement with zero behavior change. Incl
 a production-delta summary noting which responsibilities moved to which modules. No
 refactoring or cleanup in the same PR. Include the standard acceptance checklist in
 the PR template.
+
+Closeout:
+
+Campaign 6 is complete. Landed PR chain:
+
+- #347 `campaign/modularization-stack-audit`
+- #244 `analysis/summary-extraction`
+- #245 `analysis/pipeline-extraction`
+- #246 `diff/module-split`
+- #247 `workspace/module-split`
+- #249 `probes/module-split`
+- #354 `facts/model-extraction`
+- #357 `syntax/adapter-extraction`
+- #359 `facts/builder-extraction`
+- #361 `syntax/ra-extraction`
+- #367 `syntax/lexical-extraction`
+- #369 `extract/fact-extraction`
+- #370 `probes/family-extraction`
+- #371 `probes/expectations-extraction`
+- #372 `probes/id-extraction`
+- #373 `probes/lexical-extraction`
+- #376 `probes/diff-repo-split`
+- #377 `classify/context-extraction`
+- #379 `classify/related-tests`
+- #380 `classify/reach-stage`
+- #381 `classify/flow-propagation`
+- #383 `classify/activation-stage`
+- #385 `classify/remaining-stages`
+- #387 `app/usecase-split`
+- #388 `output/format-extraction`
+- #390 `output/render-dispatch`
+- #391 `cli/command-model`
+- #392 `cli/parse-command`
+- #394 `cli/execute-command`
+- #397 `domain/context-packet-dto`
+- #398 `output/json-context-dto`
+- #399 `lsp/context-packet-usage`
+- #400 `api/doc-hidden-internals`
+- #401 `xtask/command-dispatch`
+- #403 `xtask/policy-modules`
+- #405 `xtask/report-modules`
+
+Stale fork disposition at closeout:
+
+- #250 closed unmerged as the old `rust_index.rs` module-directory fork.
+- #253 closed unmerged as the old stacked build-index PR; #359 is the landed current-base replacement.
+- #352 closed unmerged as the old draft PR #10 extractor modularization branch.
+- #351 remains a separate policy lane, not Campaign 6 closeout work.
+
+`api/private-internals` remains explicitly blocked because making compatibility
+module exports private is a breaking public API decision, not required for the
+Campaign 6 internal SRP boundary. The saved-workspace LSP cockpit contract stayed
+green through every analyzer-affecting refactor; post-merge proof for the final
+xtask report seam passed on `main` at `72ee398`.
+
+The active campaign now moves to Campaign 7. Operator adoption work should build
+on the modularized internals without adding speculative LSP features.
+
+## Campaign 7: Defaults-First Operator Adoption
+
+Campaign ID: `defaults-first-operator-adoption`
+
+Status: active
+
+Objective:
+
+```text
+Make ripr useful from a clean install by giving CLI, editor, and CI users one
+defaults-first path from static seam evidence to a targeted-test action and a
+receipt that shows the seam improved.
+```
+
+Why it matters:
+
+The core product surfaces now exist: repo exposure reports, seam-native badges,
+SARIF, LSP diagnostics/hovers/actions, targeted-test briefs, targeted-test
+outcome receipts, and mutation calibration import. Adoption now depends on a
+clear operator loop more than additional analyzer structure.
+
+End state:
+
+- built-in defaults and generated `ripr.toml` are documented and conservative
+- fast, normal, and deep mode behavior is clear without hand tuning
+- one operator cockpit joins the existing report surfaces into next action
+- GitHub Actions use a copyable workflow with artifacts and optional SARIF upload
+- editor install and command docs cover the existing saved-workspace loop only
+- example corpus demonstrates the targeted-test loop and optional calibration
+- install/release paths are verified enough for a new user to run the loop
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `defaults/config-init` | ready | Document and test-pin built-in defaults, generated `ripr.toml`, repo-mode exclusions, seam-diagnostic policy, badge/report defaults, and fast/normal/deep mode behavior without output schema or LSP drift. |
+| `reports/operator-cockpit` | blocked | Add `target/ripr/reports/operator-cockpit.md` and `.json` after defaults are pinned, joining repo exposure, LSP cockpit, SARIF policy, badges, targeted-test outcome, and optional mutation calibration into one next-action surface. |
+| `ci/github-action-entrypoint` | blocked | Document a copyable GitHub Actions workflow that runs the defaults-first loop, uploads reports, keeps SARIF optional, documents badge artifacts, and separates advisory reporting from blocking policy. |
+| `editor/install-polish` | blocked | Document and verify the VS Code install path and existing commands without adding unsaved-buffer overlays, CodeLens, inlay hints, semantic tokens, or new editor behavior. |
+| `fixtures/example-corpus` | blocked | Add a small public corpus for boundary gap, weak oracle, missing equality boundary, exact error variant, opaque fixture/builder, and one calibration sample. |
+| `release/install-polish` | blocked | Verify `cargo install`, GitHub Release binaries, VS Code server provisioning, README quickstart, and known-limits docs against the operator loop. |
+| `campaign/defaults-first-closeout` | blocked | Close the campaign after the install-to-targeted-test loop is demonstrated and the manifest points at the next real lane. |
+
+Dependencies:
+
+- `defaults/config-init` should land first so every later surface can use the
+  same default profile and mode vocabulary.
+- `reports/operator-cockpit` should land before GitHub Action and example-corpus
+  work so the CI and demo paths have one canonical next-action artifact.
+- `editor/install-polish` should remain documentation/verification unless a
+  regression appears in the existing saved-workspace contract.
+
+Commands:
+
+```bash
+cargo xtask check-pr
+cargo xtask check-public-api
+cargo xtask check-architecture
+cargo xtask check-output-contracts
+cargo xtask check-static-language
+cargo xtask check-campaign
+cargo xtask goals next
+cargo test --workspace
+```
+
+Blocking conditions:
+
+- new LSP feature work instead of preserving the existing saved-workspace loop
+- output schema drift without a versioned spec update
+- default policy that makes CI blocking by surprise
+- broad examples that do not prove the targeted-test loop
+- install instructions that require `cargo install ripr` for the normal editor path

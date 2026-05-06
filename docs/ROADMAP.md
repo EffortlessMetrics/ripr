@@ -46,12 +46,13 @@ Mode scope is intentionally cost-aware:
 | `deep` | Whole workspace. |
 | `ready` | Whole workspace static preflight before separate mutation confirmation. |
 
-The main bottleneck is now the Campaign 6 stack audit. Campaign 5A closed the
-cache, precision, actionability, and calibration loop for repo seam evidence.
-Campaign 5B has landed repository configuration, SARIF/CI policy, and
-seam-native badge count mapping. Before structural refactors resume, the old
-Campaign 6 draft stack needs a rebase/drift audit against the current
-operationalized surface.
+The main bottleneck is now defaults-first operator adoption. Campaign 5A closed
+the cache, precision, actionability, and calibration loop for repo seam evidence.
+Campaign 5B landed repository configuration, SARIF/CI policy, and seam-native
+badge count mapping. Campaign 6 then completed the internal module SRP refactor
+chain through #405 without changing output schemas, public API, SARIF, badge, or
+saved-workspace LSP behavior. The next adoption work is one clean path from
+install to weak seam, targeted-test brief, rerun, and receipt.
 
 ## Strategic Sequence
 
@@ -85,6 +86,8 @@ quality rails
 -> seam-native badge counts
 -> operationalization closeout
 -> Campaign 6 stack audit
+-> Campaign 6 modularization closeout
+-> defaults-first operator adoption
 ```
 
 The analyzer path is:
