@@ -1,7 +1,7 @@
 const HELP: &str = r#"ripr — static RIPR mutation exposure analysis for Rust
 
 Usage:
-  ripr check [--base origin/main] [--diff PATH] [--mode draft] [--format human|json|github]
+  ripr check [--base origin/main] [--diff PATH] [--mode draft] [--format FORMAT]
   ripr explain [--base REV|--diff PATH] <finding-id|file:line>
   ripr context [--base REV|--diff PATH] --at <finding-id|file:line>
   ripr lsp [--stdio]
@@ -29,13 +29,15 @@ Options:
   --format FORMAT          human, json, github, sarif, badge-json, badge-shields,
                            badge-plus-json, badge-plus-shields, repo-badge-json,
                            repo-badge-shields, repo-badge-plus-json,
-                           repo-badge-plus-shields, repo-sarif. Defaults to human.
+                           repo-badge-plus-shields, repo-seams-json,
+                           repo-seams-md, repo-exposure-json, repo-exposure-md,
+                           repo-sarif, agent-seam-packets-json. Defaults to human.
                            badge-plus-* and repo-badge-plus-* formats require
                            target/ripr/reports/test-efficiency.json (run
                            `cargo xtask test-efficiency-report` first).
-                           repo-badge-* formats render against the full
-                           repo baseline and emit `scope: "repo"`; the
-                           non-repo badge-* formats remain diff-scoped.
+                           repo-* and agent-seam-packets-json formats render
+                           against the full repo baseline; the non-repo badge-*
+                           formats remain diff-scoped.
   --json                   Shortcut for --format json.
   --no-unchanged-tests     Limit the index to changed Rust files.
 
@@ -103,6 +105,8 @@ mod tests {
     #[test]
     fn check_help_mentions_repo_badge_formats_and_examples() {
         assert!(CHECK_HELP.contains("repo-badge-plus-shields"));
+        assert!(CHECK_HELP.contains("repo-exposure-json"));
+        assert!(CHECK_HELP.contains("agent-seam-packets-json"));
         assert!(CHECK_HELP.contains("repo-sarif"));
         assert!(CHECK_HELP.contains("test-efficiency-report"));
         assert!(CHECK_HELP.contains("--mode ready --json"));
