@@ -76,7 +76,7 @@ mod tests {
     fn text_helpers_are_callable() {
         let text = "fn test() { assert!(x > 5); }";
         let start = TextSize::from(0u32);
-        let end = TextSize::from(10u32);
+        let end = TextSize::from(9u32);
 
         let sliced = slice_text(text, start, end);
         assert_eq!(sliced, "fn test()");
