@@ -20,6 +20,7 @@ pub fn is_production_rust_path(path: &Path) -> bool {
         "fixtures",
         "editors",
         "node_modules",
+        "xtask",
     ];
     if components.iter().any(|c| exclude_components.contains(c)) {
         return false;

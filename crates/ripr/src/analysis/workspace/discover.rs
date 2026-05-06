@@ -17,7 +17,7 @@ fn visit(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> 
         if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
             if matches!(
                 name,
-                ".git" | "target" | ".ripr" | ".direnv" | "node_modules"
+                ".git" | "target" | ".ripr" | ".direnv" | "fixtures" | "node_modules"
             ) {
                 continue;
             }
