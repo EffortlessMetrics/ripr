@@ -14565,6 +14565,7 @@ fn check_droid_review_config_impl() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::XtaskCommand;
+    use super::dispatch;
     use super::run::{capture_output, run, run_output, run_output_optional, run_output_owned};
     use super::{
         BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, CheckReport,
@@ -20305,6 +20306,51 @@ settings: |
             XtaskCommand::parse(std::iter::empty::<String>()),
             XtaskCommand::Help
         );
+    }
+
+    #[test]
+    fn report_commands_dispatch_through_report_facades() -> Result<(), String> {
+        with_temp_cwd("report-dispatch", |_| {
+            let commands = vec![
+                XtaskCommand::PrSummary,
+                XtaskCommand::Fixtures(Some("missing".to_string())),
+                XtaskCommand::Goldens(vec!["unknown".to_string()]),
+                XtaskCommand::Metrics,
+                XtaskCommand::TestOracleReport,
+                XtaskCommand::TestEfficiencyReport,
+                XtaskCommand::BadgeArtifacts,
+                XtaskCommand::RepoBadgeArtifacts,
+                XtaskCommand::RepoSeamInventory,
+                XtaskCommand::RepoExposureReport,
+                XtaskCommand::AgentSeamPackets(Some(".".to_string())),
+                XtaskCommand::LspCockpitReport,
+                XtaskCommand::TargetedTestOutcome(Vec::new()),
+                XtaskCommand::MutationCalibration(Vec::new()),
+                XtaskCommand::SarifPolicy(Vec::new()),
+                XtaskCommand::UpdateBadgeEndpoints,
+                XtaskCommand::CheckBadgeEndpoints,
+                XtaskCommand::Dogfood,
+                XtaskCommand::Critic,
+                XtaskCommand::Reports(vec!["unknown".to_string()]),
+                XtaskCommand::Receipts(vec!["unknown".to_string()]),
+                XtaskCommand::GoldenDrift,
+            ];
+
+            for command in commands {
+                let label = format!("{command:?}");
+                match dispatch::execute(command) {
+                    Ok(()) => {}
+                    Err(message) if !message.is_empty() => {}
+                    Err(_) => {
+                        return Err(format!(
+                            "{label} should either succeed or return an actionable error"
+                        ));
+                    }
+                }
+            }
+
+            Ok(())
+        })
     }
 
     #[test]
