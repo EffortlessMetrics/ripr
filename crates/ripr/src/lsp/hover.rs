@@ -1,7 +1,7 @@
 use super::HOVER_TEXT;
 use super::state::{AnalysisSnapshot, format_duration};
 use crate::analysis::ClassifiedSeam;
-use crate::domain::{Finding, StageEvidence};
+use crate::domain::{Finding, StageEvidence, StageState};
 use tower_lsp_server::ls_types::{
     Diagnostic, Hover, HoverContents, MarkupContent, MarkupKind, NumberOrString, Position, Range,
 };
@@ -196,6 +196,7 @@ fn position_is_before(position: &Position, end: &Position) -> bool {
 fn classified_seam_hover_markdown(entry: &ClassifiedSeam) -> String {
     let seam = &entry.seam;
     let evidence = &entry.evidence;
+    let next_step = seam_next_step_for(entry);
     let mut lines = vec![
         format!("**ripr** behavioral seam"),
         String::new(),
@@ -204,13 +205,23 @@ fn classified_seam_hover_markdown(entry: &ClassifiedSeam) -> String {
         format!("## Grip"),
         format!("`{}`", entry.class.as_str()),
         String::new(),
+        "## Why this diagnostic?".to_string(),
+        format!(
+            "Grip class: `{}` — {}",
+            entry.class.as_str(),
+            seam_class_reason(entry)
+        ),
+    ];
+    push_classification_explanation(&mut lines, entry, &next_step);
+    lines.extend([
+        String::new(),
         "## Evidence".to_string(),
         seam_stage_line("reach", &evidence.reach),
         seam_stage_line("activation", &evidence.activate),
         seam_stage_line("propagation", &evidence.propagate),
         seam_stage_line("observation", &evidence.observe),
         seam_stage_line("discrimination", &evidence.discriminate),
-    ];
+    ]);
 
     if !evidence.observed_values.is_empty() {
         lines.push(String::new());
@@ -248,13 +259,91 @@ fn classified_seam_hover_markdown(entry: &ClassifiedSeam) -> String {
 
     lines.push(String::new());
     lines.push("## Next step".to_string());
-    lines.push(seam_next_step_for(entry));
+    lines.push(next_step);
 
     lines.join("\n")
 }
 
 fn seam_stage_line(name: &str, stage: &StageEvidence) -> String {
     format!("* {name} {}: {}", stage.state.as_str(), stage.summary)
+}
+
+fn push_classification_explanation(
+    lines: &mut Vec<String>,
+    entry: &ClassifiedSeam,
+    next_step: &str,
+) {
+    let evidence = &entry.evidence;
+    let stages = [
+        ("reach", &evidence.reach),
+        ("activation", &evidence.activate),
+        ("propagation", &evidence.propagate),
+        ("observation", &evidence.observe),
+        ("discrimination", &evidence.discriminate),
+    ];
+
+    lines.push(String::new());
+    lines.push("Strong evidence:".to_string());
+    let mut has_strong_evidence = false;
+    for (name, stage) in stages {
+        if stage.state == StageState::Yes {
+            has_strong_evidence = true;
+            lines.push(format!("- {name} yes: {}", stage.summary));
+        }
+    }
+    if !has_strong_evidence {
+        lines.push("- no yes-stage evidence recorded in the current snapshot".to_string());
+    }
+
+    lines.push(String::new());
+    lines.push("Weak / missing evidence:".to_string());
+    let mut has_gap_evidence = false;
+    for (name, stage) in stages {
+        if stage.state != StageState::Yes {
+            has_gap_evidence = true;
+            lines.push(format!(
+                "- {name} {}: {}",
+                stage.state.as_str(),
+                stage.summary
+            ));
+        }
+    }
+    for missing in &evidence.missing_discriminators {
+        has_gap_evidence = true;
+        lines.push(format!(
+            "- missing discriminator `{}`: {}",
+            missing.value, missing.reason
+        ));
+    }
+    if !has_gap_evidence {
+        lines.push("- no weak or missing stage evidence recorded".to_string());
+    }
+
+    lines.push(String::new());
+    lines.push(format!("Recommended next move: {next_step}"));
+}
+
+fn seam_class_reason(entry: &ClassifiedSeam) -> &'static str {
+    use crate::analysis::seams::SeamGripClass;
+    match entry.class {
+        SeamGripClass::StronglyGripped => {
+            "all RIPR stages are yes and no missing discriminator is recorded."
+        }
+        SeamGripClass::WeaklyGripped => {
+            "the current static evidence has a weak discriminator or a named missing discriminator."
+        }
+        SeamGripClass::Ungripped => "reach evidence is missing for this seam.",
+        SeamGripClass::ReachableUnrevealed => {
+            "reach evidence exists, but discriminator evidence is absent."
+        }
+        SeamGripClass::ActivationUnknown => "activation evidence is unknown.",
+        SeamGripClass::PropagationUnknown => "propagation evidence is unknown.",
+        SeamGripClass::ObservationUnknown => "observation evidence is unknown.",
+        SeamGripClass::DiscriminationUnknown => "discriminator evidence is unknown.",
+        SeamGripClass::Opaque => "static evidence hit an opacity limit.",
+        SeamGripClass::Intentional => "declared test intent marks this seam as intentional.",
+        SeamGripClass::Suppressed => "a suppression marks this seam as intentionally hidden.",
+    }
 }
 
 /// Best-effort plain-language next-step prompt derived from the seam
@@ -401,6 +490,11 @@ mod seam_hover_tests {
             "amount >= discount_threshold",
             "## Grip",
             "weakly_gripped",
+            "## Why this diagnostic?",
+            "Grip class: `weakly_gripped`",
+            "Strong evidence:",
+            "Weak / missing evidence:",
+            "Recommended next move:",
             "## Evidence",
             "reach yes:",
             "activation yes:",
@@ -427,6 +521,9 @@ mod seam_hover_tests {
         }
         if !md.contains("discount_threshold (equality boundary)") {
             return Err(format!("missing boundary value in:\n{md}"));
+        }
+        if !md.contains("missing discriminator `discount_threshold (equality boundary)`") {
+            return Err(format!("missing classification explanation in:\n{md}"));
         }
         if !md.contains("## Next step") {
             return Err(format!("missing next-step in:\n{md}"));
@@ -469,6 +566,55 @@ mod seam_hover_tests {
         let md = extract_markup(&hover)?;
         if !md.contains("· direct_owner_call / high") {
             return Err(format!("hover should carry terse relation tag; got:\n{md}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn seam_hover_class_reason_covers_each_grip_class() -> Result<(), String> {
+        let mut seam = weakly_gripped_classified();
+        for class in SeamGripClass::ALL {
+            seam.class = class;
+            let reason = seam_class_reason(&seam);
+            if reason.is_empty() {
+                return Err(format!("missing reason for {}", class.as_str()));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn strongly_gripped_seam_hover_explains_when_no_gap_evidence_is_recorded() -> Result<(), String>
+    {
+        let mut seam = weakly_gripped_classified();
+        seam.class = SeamGripClass::StronglyGripped;
+        seam.evidence.discriminate = stage(StageState::Yes, "Exact boundary assertion exists");
+        seam.evidence.missing_discriminators.clear();
+        let diagnostic = sample_diagnostic();
+        let hover = classified_seam_hover_response(&seam, &diagnostic);
+        let md = extract_markup(&hover)?;
+        if !md.contains("no weak or missing stage evidence recorded") {
+            return Err(format!("expected no-gap explanation in:\n{md}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn ungripped_seam_hover_explains_when_no_yes_stage_evidence_is_recorded() -> Result<(), String>
+    {
+        let mut seam = weakly_gripped_classified();
+        seam.class = SeamGripClass::Ungripped;
+        seam.evidence.reach = stage(StageState::No, "No related test reaches discounted_total");
+        seam.evidence.activate = stage(StageState::No, "No activation evidence recorded");
+        seam.evidence.propagate = stage(StageState::No, "No propagation evidence recorded");
+        seam.evidence.observe = stage(StageState::No, "No observation evidence recorded");
+        seam.evidence.discriminate = stage(StageState::No, "No discriminator evidence recorded");
+        seam.evidence.missing_discriminators.clear();
+        let diagnostic = sample_diagnostic();
+        let hover = classified_seam_hover_response(&seam, &diagnostic);
+        let md = extract_markup(&hover)?;
+        if !md.contains("no yes-stage evidence recorded in the current snapshot") {
+            return Err(format!("expected no-yes-stage explanation in:\n{md}"));
         }
         Ok(())
     }
