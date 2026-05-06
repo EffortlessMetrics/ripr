@@ -68,6 +68,7 @@ updates expected output. It requires an explicit reason and appends
 The current fixture baseline covers:
 
 - primary behavior gaps: `boundary_gap`, `weak_error_oracle`, `snapshot_oracle`
+- defaults-first adoption examples: `opaque_fixture_builder`
 - negative/noise cases: `format_only_diff`, `comment_only_diff`,
   `import_only_diff`, `unrelated_test_mentions_token`
 - strong-oracle controls: `strong_boundary_oracle`, `strong_error_oracle`
@@ -75,7 +76,8 @@ The current fixture baseline covers:
   `boundary_gap_nested_tests`, `boundary_gap_reordered_tests`,
   `weak_error_oracle_assert_matches`
 
-For calibration and adoption scenarios, see
-[`CALIBRATION_CORPUS.md`](CALIBRATION_CORPUS.md). It indexes existing fixtures
-by proof-loop question and names the bounded runtime artifacts still needed for
-`cargo xtask mutation-calibration`.
+For defaults-first adoption examples, see
+[`EXAMPLE_CORPUS.md`](EXAMPLE_CORPUS.md). For calibration scenarios, see
+[`CALIBRATION_CORPUS.md`](CALIBRATION_CORPUS.md). These indexes map existing
+fixtures to proof-loop questions and bounded runtime artifacts without adding a
+new fixture runner surface.

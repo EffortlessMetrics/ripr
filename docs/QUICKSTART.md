@@ -44,6 +44,11 @@ repo-local report artifacts into `target/ripr/reports/operator-cockpit.md` and
 receipts, and optional calibration. `cargo xtask operator-cockpit-report`
 remains an alias for existing automation.
 
+To try the loop on known small examples from this repository, use
+[`fixtures/EXAMPLE_CORPUS.md`](../fixtures/EXAMPLE_CORPUS.md). It maps the
+boundary gap, weak oracle, exact error variant, opaque fixture/builder, LSP
+action, receipt, and optional calibration artifacts.
+
 Useful flags:
 
 ```bash

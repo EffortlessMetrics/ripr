@@ -12,11 +12,15 @@ Use this file when choosing controlled scenarios for:
 - SARIF, badge, LSP, and report alignment checks;
 - future bounded cargo-mutants artifacts.
 
+For the public defaults-first example path that joins CLI, LSP,
+targeted-test receipts, and optional calibration artifacts, see
+[`EXAMPLE_CORPUS.md`](EXAMPLE_CORPUS.md).
+
 ## Scenario Set
 
 | Scenario | Fixture | Static signal | Useful receipt |
 | --- | --- | --- | --- |
-| Boundary gap | `fixtures/boundary_gap` | Equality-boundary discriminator is missing from related tests. | Before/after targeted-test outcome records the new observed boundary value; `fixtures/boundary_gap/calibration/runtime-mutants.json` shows a runtime-clean calibration join for the after snapshot. |
+| Boundary gap | `fixtures/boundary_gap` | Equality-boundary discriminator is missing from related tests. | `fixtures/boundary_gap/calibration/targeted-test-outcome.{json,md}` records the new observed boundary value; `fixtures/boundary_gap/calibration/runtime-mutants.json` and `mutation-calibration.{json,md}` show a runtime-clean calibration join for the after snapshot. |
 | Strong boundary oracle | `fixtures/strong_boundary_oracle` | Exact boundary assertion is present. | Static-clean control for calibration agreement and badge/SARIF alignment. |
 | Strong error oracle | `fixtures/strong_error_oracle` | Exact error variant oracle is present. | Static-clean control for calibration agreement and related-test ranking. |
 | Weak error oracle | `fixtures/weak_error_oracle` | Related tests use broad error assertions without the exact variant. | Targeted-test receipt should show improvement when the exact variant assertion is added. |
@@ -39,6 +43,8 @@ The boundary-gap runtime sample imports one `caught` outcome for seam
 `67fc764ba37d77bd`. It exists to exercise the calibration report path and to
 show the honest disagreement case: the static after snapshot still says
 `weakly_gripped`, while the supplied runtime data is clean for this mutant.
+The checked `mutation-calibration.{json,md}` files pin the expected report
+shape for the defaults-first example corpus.
 
 ## Missing Runtime Calibration Artifacts
 

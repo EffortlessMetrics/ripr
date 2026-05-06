@@ -521,10 +521,14 @@ tests = [
   "xtask/src/main.rs::tests::lsp_cockpit_report_json_and_markdown_are_structured",
   "xtask/src/reports/operator.rs::tests::operator_cockpit_reports_missing_inputs_with_commands",
   "xtask/src/reports/operator.rs::tests::operator_cockpit_json_and_markdown_are_structured",
+  "xtask/src/main.rs::tests::defaults_first_example_corpus_index_names_required_operator_artifacts",
   "editors/vscode/test/suite/extension.test.ts::defaults-first check mode is draft"
 ]
 fixtures = [
-  "fixtures/boundary_gap"
+  "fixtures/boundary_gap",
+  "fixtures/opaque_fixture_builder",
+  "fixtures/strong_error_oracle",
+  "fixtures/weak_error_oracle"
 ]
 code = [
   "crates/ripr/src/analysis/workspace/discover.rs",
@@ -560,6 +564,14 @@ outputs = [
   "README.md",
   "docs/DOCUMENTATION.md",
   "docs/CAPABILITY_MATRIX.md",
+  "fixtures/EXAMPLE_CORPUS.md",
+  "fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json",
+  "fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json",
+  "fixtures/boundary_gap/calibration/runtime-mutants.json",
+  "fixtures/boundary_gap/calibration/targeted-test-outcome.json",
+  "fixtures/boundary_gap/calibration/targeted-test-outcome.md",
+  "fixtures/boundary_gap/calibration/mutation-calibration.json",
+  "fixtures/boundary_gap/calibration/mutation-calibration.md",
   "ripr.toml.example",
   "metrics/capabilities.toml"
 ]

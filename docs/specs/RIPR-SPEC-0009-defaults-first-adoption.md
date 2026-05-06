@@ -267,6 +267,10 @@ Defaults-first adoption evidence should cover:
   SARIF policy, badge status, targeted-test outcome, and optional mutation
   calibration into one next-action report;
 - calibration import producing the same agreement buckets as the xtask report;
+- a public example corpus demonstrating boundary gaps, weak oracles, missing
+  equality-boundary discriminators, exact error variants, opaque
+  fixture/builder paths, targeted-test receipts, LSP action expectations, and
+  optional calibration artifacts;
 - missing config remaining healthy and visible in `ripr doctor`;
 - malformed config failing closed;
 - generated GitHub Actions workflow being advisory by default;
@@ -414,6 +418,7 @@ Current tests and reports that support the contract:
 - `xtask/src/main.rs::tests::lsp_cockpit_report_json_and_markdown_are_structured`
 - `xtask/src/reports/operator.rs::tests::operator_cockpit_reports_missing_inputs_with_commands`
 - `xtask/src/reports/operator.rs::tests::operator_cockpit_json_and_markdown_are_structured`
+- `xtask/src/main.rs::tests::defaults_first_example_corpus_index_names_required_operator_artifacts`
 - `editors/vscode/test/suite/extension.test.ts::defaults-first check mode is draft`
 
 ## Implementation Mapping
@@ -445,6 +450,9 @@ Current implementation pieces:
   `operator-cockpit.{json,md}` without changing analyzer behavior.
 - `docs/TARGETED_TEST_WORKFLOW.md`, `docs/CI.md`, `docs/CONFIGURATION.md`,
   and `docs/EDITOR_EXTENSION.md` document the current adoption path.
+- `fixtures/EXAMPLE_CORPUS.md` indexes the defaults-first example corpus,
+  including CLI goldens, LSP action expectations, targeted-test receipts, and
+  optional calibration artifacts.
 
 ## Metrics
 

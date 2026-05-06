@@ -54,6 +54,7 @@ Current reference docs:
 - [Spec-test-code traceability](SPEC_TEST_CODE.md)
 - [Spec format](SPEC_FORMAT.md)
 - [Fixture contracts](../fixtures/README.md)
+- [Defaults-first example corpus](../fixtures/EXAMPLE_CORPUS.md)
 - [Calibration corpus index](../fixtures/CALIBRATION_CORPUS.md)
 - [Test taxonomy](TEST_TAXONOMY.md)
 - [Engineering rules](ENGINEERING.md)

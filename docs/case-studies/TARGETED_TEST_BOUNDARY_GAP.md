@@ -4,6 +4,11 @@ This case study dogfoods the targeted-test workflow on
 `fixtures/boundary_gap`. It is intentionally small: one weak seam, one focused
 test, one before/after receipt.
 
+The checked public corpus index is
+[`fixtures/EXAMPLE_CORPUS.md`](../../fixtures/EXAMPLE_CORPUS.md). The
+boundary-gap receipt and optional calibration outputs are checked in under
+`fixtures/boundary_gap/calibration/`.
+
 ## Operator Loop
 
 Scratch workspace:
@@ -73,6 +78,14 @@ cargo run -p ripr -- outcome \
   --after target/ripr/case-study/boundary-gap/reports/after.repo-exposure.json
 ```
 
+Checked corpus receipt:
+
+```bash
+cargo run -p ripr -- outcome \
+  --before fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json \
+  --after fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json
+```
+
 ## Receipt Result
 
 The receipt stayed advisory and reported:
@@ -133,3 +146,8 @@ That is the calibration value of this case. The static after snapshot still
 reports a gap, while the supplied runtime data reports the imported mutant as
 `caught`. The report keeps those facts separate instead of upgrading the static
 classification.
+
+Checked corpus calibration outputs:
+
+- `fixtures/boundary_gap/calibration/mutation-calibration.json`
+- `fixtures/boundary_gap/calibration/mutation-calibration.md`

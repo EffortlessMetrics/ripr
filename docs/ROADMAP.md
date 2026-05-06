@@ -53,11 +53,12 @@ badge count mapping. Campaign 6 then completed the internal module SRP refactor
 chain through #405 without changing output schemas, public API, SARIF, badge, or
 saved-workspace LSP behavior. The next adoption work is one clean path from
 install to weak seam, targeted-test brief, rerun, and receipt; Campaign 7 has
-now pinned the defaults/config baseline, added the operator cockpit report, and
-made the generated GitHub Action upload pilot/report artifacts with optional
-SARIF rendering/upload. It also documented and verified the existing VS Code
-install path and command coverage for the saved-workspace loop. The next ready
-work is the public example corpus for the defaults-first operator path.
+now pinned the defaults/config baseline, added the operator cockpit report, made
+the generated GitHub Action upload pilot/report artifacts with optional SARIF
+rendering/upload, documented and verified the existing VS Code install path and
+command coverage, and added the public example corpus for the defaults-first
+operator path. The next ready work is install and release-path proof against
+that loop.
 
 ## Strategic Sequence
 
