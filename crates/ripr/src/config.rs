@@ -677,6 +677,11 @@ fn parse_relative_path(field: &str, value: &str) -> Result<PathBuf, String> {
             "{field} `{value}` uses backslashes; use `/` separators"
         ));
     }
+    if trimmed.contains(':') {
+        return Err(format!(
+            "{field} `{value}` uses a drive or scheme prefix; use a repository-relative path"
+        ));
+    }
     let path = PathBuf::from(trimmed);
     if path.is_absolute() {
         return Err(format!("{field} `{value}` must be repository-relative"));
@@ -853,7 +858,7 @@ opaque = "note"
         for text in [
             "[suppressions]\npath = \"\"\n".to_string(),
             "[suppressions]\npath = \"../outside.toml\"\n".to_string(),
-            "[suppressions]\npath = \"C:/tmp/suppressions.toml\"\n".to_string(),
+            "[suppressions]\npath = \"file:tmp/suppressions.toml\"\n".to_string(),
             "[suppressions]\npath = 'a\\b.toml'\n".to_string(),
         ] {
             assert!(
