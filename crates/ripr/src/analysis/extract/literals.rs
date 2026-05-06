@@ -1,24 +1,12 @@
 use super::super::rust_index::LiteralFact;
 
 pub(crate) fn extract_identifier_tokens(text: &str) -> Vec<String> {
-    let mut tokens = Vec::new();
-    let mut current = String::new();
-    for ch in text.chars() {
-        if ch.is_alphanumeric() || ch == '_' {
-            current.push(ch);
-        } else {
-            if is_interesting_token(&current) {
-                tokens.push(current.clone());
-            }
-            current.clear();
-        }
-    }
-    if is_interesting_token(&current) {
-        tokens.push(current);
-    }
-    tokens.sort();
-    tokens.dedup();
-    tokens
+    text.split(|c: char| !c.is_alphanumeric() && c != '_')
+        .filter(|s| is_interesting_token(s))
+        .map(String::from)
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 fn is_interesting_token(token: &str) -> bool {
@@ -58,25 +46,23 @@ pub(crate) fn extract_literal_facts(body: &str, start_line: usize) -> Vec<Litera
     let mut literals = Vec::new();
     for (offset, line) in body.lines().enumerate() {
         let mut current = String::new();
+        let mut handle_token = |token: &str| {
+            if !token.is_empty() && token != "-" {
+                literals.push(LiteralFact {
+                    line: start_line + offset,
+                    value: token.to_string(),
+                });
+            }
+        };
         for ch in line.chars() {
             if ch.is_ascii_digit() || (ch == '-' && current.is_empty()) {
                 current.push(ch);
             } else if !current.is_empty() {
-                if current != "-" {
-                    literals.push(LiteralFact {
-                        line: start_line + offset,
-                        value: current.clone(),
-                    });
-                }
+                handle_token(&current);
                 current.clear();
             }
         }
-        if !current.is_empty() && current != "-" {
-            literals.push(LiteralFact {
-                line: start_line + offset,
-                value: current,
-            });
-        }
+        handle_token(&current);
     }
     literals.sort_by(|a, b| a.line.cmp(&b.line).then(a.value.cmp(&b.value)));
     literals.dedup_by(|a, b| a.line == b.line && a.value == b.value);

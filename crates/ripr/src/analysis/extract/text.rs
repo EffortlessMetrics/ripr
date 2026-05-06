@@ -33,8 +33,7 @@ pub(crate) fn is_predicate_operator(operator: &str) -> bool {
 }
 
 pub(crate) fn has_effect_text(text: &str) -> bool {
-    let lower = text.to_ascii_lowercase();
-    [
+    static EFFECT_NEEDLES: &[&str] = &[
         ".save(",
         ".publish(",
         ".send(",
@@ -47,9 +46,9 @@ pub(crate) fn has_effect_text(text: &str) -> bool {
         ".increment(",
         "metrics.",
         "log::",
-    ]
-    .iter()
-    .any(|needle| lower.contains(needle))
+    ];
+    let lower = text.to_ascii_lowercase();
+    EFFECT_NEEDLES.iter().any(|needle| lower.contains(needle))
 }
 
 pub(crate) fn is_effect_call_name(name: &str) -> bool {
