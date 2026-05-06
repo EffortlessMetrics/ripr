@@ -1,0 +1,17 @@
+{
+  "schema_version": "0.1",
+  "source": "fixture-runtime-sample",
+  "description": "Tiny imported runtime calibration sample for the boundary-gap targeted-test case study. This file is sample input for cargo xtask mutation-calibration; it is not produced by fixture execution.",
+  "mutants": [
+    {
+      "id": "boundary-gap-ge-to-gt-after",
+      "seam_id": "67fc764ba37d77bd",
+      "file": "src/lib.rs",
+      "line": 2,
+      "operator": "replace >= with >",
+      "outcome": "caught",
+      "duration": "37ms",
+      "test_command": "cargo test equality_boundary_discounts"
+    }
+  ]
+}

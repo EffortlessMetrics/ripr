@@ -11,6 +11,9 @@ are scoped or reviewed.
 
 ### Added
 
+- Added a boundary-gap runtime calibration sample so the targeted-test case
+  study can demonstrate a static-gap/runtime-clean join without running
+  mutation testing.
 - Closed Campaign 4B (Repo Seam Inventory and Test Grip) and made repo
   seam evidence first-class: `RepoSeam` / `SeamId` / `SeamKind` /
   `RequiredDiscriminator` /

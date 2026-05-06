@@ -108,3 +108,28 @@ That is an acceptable dogfood receipt. It tells the operator:
 
 This is the useful product behavior: the receipt records what improved and what
 did not, without claiming runtime confirmation or hiding a static-model gap.
+
+## Optional Runtime Calibration Sample
+
+The fixture also includes a tiny imported runtime sample:
+
+```bash
+cargo xtask mutation-calibration . \
+  --mutants-json fixtures/boundary_gap/calibration/runtime-mutants.json \
+  --repo-exposure-json fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json
+```
+
+Expected agreement summary:
+
+```text
+static_gap_and_runtime_signal: 0
+static_gap_without_runtime_signal: 1
+runtime_signal_without_static_gap: 0
+static_clean_and_runtime_clean: 0
+runtime_inconclusive: 0
+```
+
+That is the calibration value of this case. The static after snapshot still
+reports a gap, while the supplied runtime data reports the imported mutant as
+`caught`. The report keeps those facts separate instead of upgrading the static
+classification.

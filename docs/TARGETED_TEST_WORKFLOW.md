@@ -263,6 +263,15 @@ cargo xtask mutation-calibration . \
   --repo-exposure-json target/ripr/workflow/after.repo-exposure.json
 ```
 
+The boundary-gap case study has a checked-in sample for trying this without
+running mutation tests:
+
+```bash
+cargo xtask mutation-calibration . \
+  --mutants-json fixtures/boundary_gap/calibration/runtime-mutants.json \
+  --repo-exposure-json fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json
+```
+
 Runtime mutation vocabulary belongs in calibration reports only. A static
 movement receipt is a good reason to run less blind mutation work, not a
 replacement for runtime confirmation.
