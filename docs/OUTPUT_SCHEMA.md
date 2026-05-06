@@ -1262,6 +1262,58 @@ JSON shape:
       "file_line": 2
     }
   },
+  "agreement": {
+    "static_gap_and_runtime_signal": 18,
+    "static_gap_without_runtime_signal": 4,
+    "runtime_signal_without_static_gap": 3,
+    "static_clean_and_runtime_clean": 41,
+    "runtime_inconclusive": 2
+  },
+  "precision_notes": [
+    "runtime gap signals are imported runtime labels such as missed, survived, not_caught, or uncaught"
+  ],
+  "missed_runtime_signals": [
+    {
+      "runtime": {
+        "mutant_id": "m9",
+        "seam_id": "f3c9e4d21a0b7c88",
+        "file": "src/pricing.rs",
+        "line": 88,
+        "mutation_operator": "replace >= with >",
+        "runtime_outcome": "missed",
+        "duration": "123",
+        "test_command": "cargo test pricing"
+      },
+      "static": {
+        "seam_id": "f3c9e4d21a0b7c88",
+        "seam_kind": "predicate_boundary",
+        "file": "src/pricing.rs",
+        "line": 88,
+        "seam_grip_class": "strongly_gripped",
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "observed_values": ["50", "10000"],
+        "missing_discriminators": []
+      },
+      "reason": "runtime gap signal joined to a static-clean seam"
+    }
+  ],
+  "static_only_findings": [
+    {
+      "static": {
+        "seam_id": "a1b2c3d4e5f60718",
+        "seam_kind": "return_value",
+        "file": "src/pricing.rs",
+        "line": 90,
+        "seam_grip_class": "weakly_gripped",
+        "oracle_kind": "smoke",
+        "oracle_strength": "smoke",
+        "observed_values": [],
+        "missing_discriminators": ["exact returned value assertion"]
+      },
+      "reason": "static gap seam matched runtime data without a runtime gap signal"
+    }
+  ],
   "matches": [
     {
       "join_method": "seam_id",
@@ -1352,6 +1404,27 @@ Field contract:
 - `metrics.runtime_outcome_counts` — counts keyed by normalized runtime outcome
   label from the imported data.
 - `metrics.join_method_counts` — counts for `seam_id` and `file_line` joins.
+- `agreement.static_gap_and_runtime_signal` — static gap seams that also have at
+  least one matched runtime gap signal in this import.
+- `agreement.static_gap_without_runtime_signal` — static gap seams with no
+  matched runtime gap signal in this import. This includes seams with only
+  runtime-clean labels, only runtime-inconclusive labels, or no matched runtime
+  record.
+- `agreement.runtime_signal_without_static_gap` — runtime gap signals joined to
+  static-clean seams, plus unmatched runtime gap signals.
+- `agreement.static_clean_and_runtime_clean` — static-clean seams with matched
+  runtime-clean labels and no matched runtime gap signal.
+- `agreement.runtime_inconclusive` — matched or ambiguous runtime records whose
+  imported labels are neither runtime gap signals nor runtime-clean signals.
+- `precision_notes[]` — short notes explaining the report's advisory agreement
+  mapping. The report treats imported labels such as `missed`, `survived`,
+  `not_caught`, and `uncaught` as runtime gap signals, and labels such as
+  `caught` and `timeout` as runtime-clean signals.
+- `missed_runtime_signals[]` — capped sample of runtime gap signals that did
+  not correspond to a static gap. `static` is `null` when the runtime record did
+  not join to a seam.
+- `static_only_findings[]` — capped sample of static gap seams without a
+  matched runtime gap signal.
 - `matches[].join_method` — `seam_id` when the runtime record carries a matching
   seam/probe ID; otherwise `file_line` when normalized path and line match.
 - `matches[].static` — static seam evidence copied from `repo-exposure.json`:

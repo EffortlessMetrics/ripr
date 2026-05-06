@@ -147,6 +147,9 @@ are scoped or reviewed.
   mutation calibration into one operator loop for adding a focused test.
 - Updated `ripr check --help` to list the repo seam, repo exposure, repo SARIF,
   and agent seam packet formats used by the targeted-test workflow.
+- Extended `cargo xtask mutation-calibration` with advisory static/runtime
+  agreement buckets, precision notes, static-only finding samples, and runtime
+  gap signals that did not line up with a static gap.
 
 ## 0.3.0 - 2026-05-02
 

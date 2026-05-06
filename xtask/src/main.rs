@@ -379,10 +379,36 @@ struct MutationOutcomeRecord {
 struct MutationCalibrationReport {
     static_seams_total: usize,
     mutants_total: usize,
+    agreement: MutationCalibrationAgreement,
+    precision_notes: Vec<String>,
+    missed_runtime_signals: Vec<MutationCalibrationRuntimeSignal>,
+    static_only_findings: Vec<MutationCalibrationStaticOnlyFinding>,
     matched: Vec<MutationCalibrationMatch>,
     ambiguous_file_line: Vec<AmbiguousMutationCalibrationMatch>,
     unmatched_mutants: Vec<MutationOutcomeRecord>,
     static_without_runtime: Vec<StaticSeamRecord>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct MutationCalibrationAgreement {
+    static_gap_and_runtime_signal: usize,
+    static_gap_without_runtime_signal: usize,
+    runtime_signal_without_static_gap: usize,
+    static_clean_and_runtime_clean: usize,
+    runtime_inconclusive: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct MutationCalibrationRuntimeSignal {
+    runtime: MutationOutcomeRecord,
+    static_seam: Option<StaticSeamRecord>,
+    reason: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct MutationCalibrationStaticOnlyFinding {
+    seam: StaticSeamRecord,
+    reason: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -399,6 +425,7 @@ struct AmbiguousMutationCalibrationMatch {
 }
 
 const MUTATION_CALIBRATION_STATIC_WITHOUT_RUNTIME_SAMPLE_LIMIT: usize = 50;
+const MUTATION_CALIBRATION_AGREEMENT_SAMPLE_LIMIT: usize = 50;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct CriticFinding {
@@ -7753,14 +7780,169 @@ fn build_mutation_calibration_report(
         .cloned()
         .collect::<Vec<_>>();
 
+    let (agreement, precision_notes, missed_runtime_signals, static_only_findings) =
+        mutation_calibration_agreement(
+            &static_seams,
+            &matched,
+            &ambiguous_file_line,
+            &unmatched_mutants,
+        );
+
     MutationCalibrationReport {
         static_seams_total: static_seams.len(),
         mutants_total: matched.len() + ambiguous_file_line.len() + unmatched_mutants.len(),
+        agreement,
+        precision_notes,
+        missed_runtime_signals,
+        static_only_findings,
         matched,
         ambiguous_file_line,
         unmatched_mutants,
         static_without_runtime,
     }
+}
+
+fn mutation_calibration_agreement(
+    static_seams: &[StaticSeamRecord],
+    matched: &[MutationCalibrationMatch],
+    ambiguous_file_line: &[AmbiguousMutationCalibrationMatch],
+    unmatched_mutants: &[MutationOutcomeRecord],
+) -> (
+    MutationCalibrationAgreement,
+    Vec<String>,
+    Vec<MutationCalibrationRuntimeSignal>,
+    Vec<MutationCalibrationStaticOnlyFinding>,
+) {
+    let mut matches_by_seam: BTreeMap<&str, Vec<&MutationCalibrationMatch>> = BTreeMap::new();
+    for record in matched {
+        matches_by_seam
+            .entry(record.seam.seam_id.as_str())
+            .or_default()
+            .push(record);
+    }
+
+    let mut agreement = MutationCalibrationAgreement::default();
+    let mut missed_runtime_signals = Vec::new();
+    let mut static_only_findings = Vec::new();
+
+    for seam in static_seams {
+        let records = matches_by_seam
+            .get(seam.seam_id.as_str())
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        let has_runtime_gap = records
+            .iter()
+            .any(|record| runtime_gap_signal(&record.mutation.runtime_outcome));
+        let has_runtime_clean = records
+            .iter()
+            .any(|record| runtime_clean_signal(&record.mutation.runtime_outcome));
+        let has_runtime_inconclusive = records.iter().any(|record| {
+            !runtime_gap_signal(&record.mutation.runtime_outcome)
+                && !runtime_clean_signal(&record.mutation.runtime_outcome)
+        });
+        let has_static_gap = static_gap_signal(seam);
+
+        match (has_static_gap, has_runtime_gap, has_runtime_clean) {
+            (true, true, _) => agreement.static_gap_and_runtime_signal += 1,
+            (true, false, _) => {
+                agreement.static_gap_without_runtime_signal += 1;
+                static_only_findings.push(MutationCalibrationStaticOnlyFinding {
+                    seam: seam.clone(),
+                    reason: static_only_reason(records),
+                });
+            }
+            (false, true, _) => {
+                agreement.runtime_signal_without_static_gap += 1;
+                for record in records
+                    .iter()
+                    .filter(|record| runtime_gap_signal(&record.mutation.runtime_outcome))
+                {
+                    missed_runtime_signals.push(MutationCalibrationRuntimeSignal {
+                        runtime: record.mutation.clone(),
+                        static_seam: Some(seam.clone()),
+                        reason: "runtime gap signal joined to a static-clean seam".to_string(),
+                    });
+                }
+            }
+            (false, false, true) => agreement.static_clean_and_runtime_clean += 1,
+            (false, false, false) => {}
+        }
+
+        if has_runtime_inconclusive {
+            agreement.runtime_inconclusive += 1;
+        }
+    }
+
+    for record in unmatched_mutants
+        .iter()
+        .filter(|record| runtime_gap_signal(&record.runtime_outcome))
+    {
+        agreement.runtime_signal_without_static_gap += 1;
+        missed_runtime_signals.push(MutationCalibrationRuntimeSignal {
+            runtime: record.clone(),
+            static_seam: None,
+            reason: "runtime gap signal did not join to a static seam".to_string(),
+        });
+    }
+
+    for record in ambiguous_file_line {
+        if runtime_gap_signal(&record.mutation.runtime_outcome) {
+            agreement.runtime_inconclusive += 1;
+        }
+    }
+
+    missed_runtime_signals.truncate(MUTATION_CALIBRATION_AGREEMENT_SAMPLE_LIMIT);
+    static_only_findings.truncate(MUTATION_CALIBRATION_AGREEMENT_SAMPLE_LIMIT);
+
+    (
+        agreement,
+        mutation_calibration_precision_notes(),
+        missed_runtime_signals,
+        static_only_findings,
+    )
+}
+
+fn mutation_calibration_precision_notes() -> Vec<String> {
+    vec![
+        "runtime gap signals are imported runtime labels such as missed, survived, not_caught, or uncaught".to_string(),
+        "runtime clean signals are imported runtime labels such as caught or timeout".to_string(),
+        "static_gap_without_runtime_signal includes static gap seams with no matched runtime gap signal in this import".to_string(),
+        "ambiguous file/line runtime gap signals are counted as runtime_inconclusive until a seam_id or unambiguous location is available".to_string(),
+    ]
+}
+
+fn static_only_reason(records: &[&MutationCalibrationMatch]) -> String {
+    if records.is_empty() {
+        "static gap seam has no matched runtime record in this import".to_string()
+    } else if records
+        .iter()
+        .any(|record| runtime_clean_signal(&record.mutation.runtime_outcome))
+    {
+        "static gap seam matched runtime data without a runtime gap signal".to_string()
+    } else {
+        "static gap seam matched only runtime-inconclusive labels".to_string()
+    }
+}
+
+fn static_gap_signal(seam: &StaticSeamRecord) -> bool {
+    !matches!(
+        seam.seam_grip_class.as_str(),
+        "strongly_gripped" | "intentional" | "suppressed"
+    )
+}
+
+fn runtime_gap_signal(outcome: &str) -> bool {
+    matches!(
+        normalize_runtime_label(outcome).as_str(),
+        "missed" | "survived" | "survive" | "not_caught" | "uncaught"
+    )
+}
+
+fn runtime_clean_signal(outcome: &str) -> bool {
+    matches!(
+        normalize_runtime_label(outcome).as_str(),
+        "caught" | "timeout" | "timed_out" | "killed"
+    )
 }
 
 fn mutation_calibration_report_json(report: &MutationCalibrationReport) -> Result<String, String> {
@@ -7778,6 +7960,18 @@ fn mutation_calibration_report_json(report: &MutationCalibrationReport) -> Resul
             "runtime_outcome_counts": runtime_outcome_counts(report),
             "join_method_counts": join_method_counts(report),
         },
+        "agreement": mutation_calibration_agreement_json(&report.agreement),
+        "precision_notes": &report.precision_notes,
+        "missed_runtime_signals": report
+            .missed_runtime_signals
+            .iter()
+            .map(mutation_calibration_runtime_signal_json)
+            .collect::<Vec<_>>(),
+        "static_only_findings": report
+            .static_only_findings
+            .iter()
+            .map(mutation_calibration_static_only_json)
+            .collect::<Vec<_>>(),
         "matches": report
             .matched
             .iter()
@@ -7806,6 +8000,31 @@ fn mutation_calibration_report_json(report: &MutationCalibrationReport) -> Resul
             json
         })
         .map_err(|err| format!("failed to render mutation calibration JSON: {err}"))
+}
+
+fn mutation_calibration_agreement_json(agreement: &MutationCalibrationAgreement) -> Value {
+    serde_json::json!({
+        "static_gap_and_runtime_signal": agreement.static_gap_and_runtime_signal,
+        "static_gap_without_runtime_signal": agreement.static_gap_without_runtime_signal,
+        "runtime_signal_without_static_gap": agreement.runtime_signal_without_static_gap,
+        "static_clean_and_runtime_clean": agreement.static_clean_and_runtime_clean,
+        "runtime_inconclusive": agreement.runtime_inconclusive,
+    })
+}
+
+fn mutation_calibration_runtime_signal_json(record: &MutationCalibrationRuntimeSignal) -> Value {
+    serde_json::json!({
+        "runtime": mutation_outcome_json(&record.runtime),
+        "static": record.static_seam.as_ref().map(static_seam_json),
+        "reason": record.reason.as_str(),
+    })
+}
+
+fn mutation_calibration_static_only_json(record: &MutationCalibrationStaticOnlyFinding) -> Value {
+    serde_json::json!({
+        "static": static_seam_json(&record.seam),
+        "reason": record.reason.as_str(),
+    })
 }
 
 fn mutation_calibration_match_json(record: &MutationCalibrationMatch) -> Value {
@@ -7971,6 +8190,77 @@ fn mutation_calibration_report_markdown(report: &MutationCalibrationReport) -> S
         "| static_without_runtime_total | {} |\n",
         report.static_without_runtime.len()
     ));
+
+    out.push_str("\n## Static/runtime agreement\n\n");
+    out.push_str("| Agreement bucket | Count |\n| --- | ---: |\n");
+    out.push_str(&format!(
+        "| static_gap_and_runtime_signal | {} |\n",
+        report.agreement.static_gap_and_runtime_signal
+    ));
+    out.push_str(&format!(
+        "| static_gap_without_runtime_signal | {} |\n",
+        report.agreement.static_gap_without_runtime_signal
+    ));
+    out.push_str(&format!(
+        "| runtime_signal_without_static_gap | {} |\n",
+        report.agreement.runtime_signal_without_static_gap
+    ));
+    out.push_str(&format!(
+        "| static_clean_and_runtime_clean | {} |\n",
+        report.agreement.static_clean_and_runtime_clean
+    ));
+    out.push_str(&format!(
+        "| runtime_inconclusive | {} |\n",
+        report.agreement.runtime_inconclusive
+    ));
+
+    out.push_str("\nPrecision notes:\n\n");
+    for note in &report.precision_notes {
+        out.push_str(&format!("- {}\n", markdown_cell(note)));
+    }
+
+    out.push_str("\n### Runtime signals without static gaps\n\n");
+    if report.missed_runtime_signals.is_empty() {
+        out.push_str("No imported runtime gap signals lacked a matching static gap.\n");
+    } else {
+        out.push_str("| Runtime mutant | Location | Runtime outcome | Static class | Reason |\n");
+        out.push_str("| --- | --- | --- | --- | --- |\n");
+        for record in &report.missed_runtime_signals {
+            let mutant = record.runtime.mutant_id.as_deref().unwrap_or("unknown");
+            let location = mutation_location_label(&record.runtime);
+            let static_class = record
+                .static_seam
+                .as_ref()
+                .map(|seam| seam.seam_grip_class.as_str())
+                .unwrap_or("unmatched");
+            out.push_str(&format!(
+                "| `{}` | {} | {} | `{}` | {} |\n",
+                markdown_cell(mutant),
+                markdown_cell(&location),
+                markdown_cell(&record.runtime.runtime_outcome),
+                markdown_cell(static_class),
+                markdown_cell(&record.reason)
+            ));
+        }
+    }
+
+    out.push_str("\n### Static gaps without runtime signals\n\n");
+    if report.static_only_findings.is_empty() {
+        out.push_str("No static gap seams lacked a runtime gap signal in this import.\n");
+    } else {
+        out.push_str("| Seam | Class | Location | Reason |\n");
+        out.push_str("| --- | --- | --- | --- |\n");
+        for record in &report.static_only_findings {
+            let location = format!("{}:{}", record.seam.file, record.seam.line);
+            out.push_str(&format!(
+                "| `{}` | `{}` | {} | {} |\n",
+                markdown_cell(&record.seam.seam_id),
+                markdown_cell(&record.seam.seam_grip_class),
+                markdown_cell(&location),
+                markdown_cell(&record.reason)
+            ));
+        }
+    }
 
     out.push_str("\n## Runtime Outcome Counts\n\n");
     out.push_str("| Runtime outcome | Count |\n| --- | ---: |\n");
@@ -14651,6 +14941,33 @@ mod tests {
         }
     }
 
+    fn mutation_record(
+        mutant_id: &str,
+        seam_id: Option<&str>,
+        runtime_outcome: &str,
+    ) -> MutationOutcomeRecord {
+        mutation_record_at(mutant_id, seam_id, "src/pricing.rs", 42, runtime_outcome)
+    }
+
+    fn mutation_record_at(
+        mutant_id: &str,
+        seam_id: Option<&str>,
+        file: &str,
+        line: usize,
+        runtime_outcome: &str,
+    ) -> MutationOutcomeRecord {
+        MutationOutcomeRecord {
+            mutant_id: Some(mutant_id.to_string()),
+            seam_id: seam_id.map(str::to_string),
+            file: Some(file.to_string()),
+            line: Some(line),
+            mutation_operator: "replace >= with >".to_string(),
+            runtime_outcome: runtime_outcome.to_string(),
+            duration: None,
+            test_command: Some("cargo test pricing".to_string()),
+        }
+    }
+
     // ============================================================================
     // Panic allowlist TOML tests
     // ============================================================================
@@ -21079,6 +21396,56 @@ settings: |
     }
 
     #[test]
+    fn mutation_calibration_summarizes_static_runtime_agreement() -> Result<(), String> {
+        let static_seams = vec![
+            targeted_static_seam("gap-runtime-signal", "weakly_gripped"),
+            targeted_static_seam("gap-runtime-clean", "ungripped"),
+            targeted_static_seam("gap-inconclusive", "reachable_unrevealed"),
+            targeted_static_seam("clean-runtime-clean", "strongly_gripped"),
+            targeted_static_seam("clean-runtime-signal", "strongly_gripped"),
+        ];
+        let runtime_mutants = vec![
+            mutation_record("m1", Some("gap-runtime-signal"), "missed"),
+            mutation_record("m2", Some("gap-runtime-clean"), "caught"),
+            mutation_record("m3", Some("gap-inconclusive"), "unviable"),
+            mutation_record("m4", Some("clean-runtime-clean"), "caught"),
+            mutation_record("m5", Some("clean-runtime-signal"), "missed"),
+            mutation_record_at("m6", None, "src/other.rs", 99, "missed"),
+        ];
+
+        let report = build_mutation_calibration_report(static_seams, runtime_mutants);
+
+        assert_eq!(report.agreement.static_gap_and_runtime_signal, 1);
+        assert_eq!(report.agreement.static_gap_without_runtime_signal, 2);
+        assert_eq!(report.agreement.runtime_signal_without_static_gap, 2);
+        assert_eq!(report.agreement.static_clean_and_runtime_clean, 1);
+        assert_eq!(report.agreement.runtime_inconclusive, 1);
+        assert_eq!(report.static_only_findings.len(), 2);
+        assert_eq!(report.missed_runtime_signals.len(), 2);
+
+        let json = mutation_calibration_report_json(&report)?;
+        let value: serde_json::Value = serde_json::from_str(&json)
+            .map_err(|err| format!("failed to parse calibration JSON: {err}"))?;
+        assert_eq!(value["agreement"]["static_gap_and_runtime_signal"], 1);
+        assert_eq!(value["agreement"]["runtime_signal_without_static_gap"], 2);
+        assert_eq!(
+            value["missed_runtime_signals"].as_array().map(Vec::len),
+            Some(2)
+        );
+        assert_eq!(
+            value["static_only_findings"].as_array().map(Vec::len),
+            Some(2)
+        );
+
+        let markdown = mutation_calibration_report_markdown(&report);
+        assert!(markdown.contains("## Static/runtime agreement"));
+        assert!(markdown.contains("static_gap_and_runtime_signal"));
+        assert!(markdown.contains("Runtime signals without static gaps"));
+        assert!(markdown.contains("Static gaps without runtime signals"));
+        Ok(())
+    }
+
+    #[test]
     fn mutation_calibration_reports_ambiguous_file_line_without_selecting_first() {
         let static_seams = vec![
             StaticSeamRecord {
@@ -21149,7 +21516,13 @@ settings: |
             return Err("missing static_without_runtime_sample array".to_string());
         };
         let markdown = mutation_calibration_report_markdown(&report);
-        let markdown_rows = markdown
+        let Some(static_without_runtime_section) = markdown
+            .split("## Static Seams Without Runtime Data")
+            .nth(1)
+        else {
+            return Err("missing Static Seams Without Runtime Data section".to_string());
+        };
+        let markdown_rows = static_without_runtime_section
             .lines()
             .filter(|line| line.starts_with("| `seam-"))
             .count();
