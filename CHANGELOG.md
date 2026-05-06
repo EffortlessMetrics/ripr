@@ -127,6 +127,11 @@ are scoped or reviewed.
   policy, and seam-native badge count mapping landed (#331, #333, #336, #338,
   #342). The active manifest now moves to Campaign 6 with a draft-stack audit
   before structural refactors resume.
+- Audited the Campaign 6 modularization draft stack against current `main` and
+  recorded the canonical rebase path before structural refactors resume. The
+  first ready item is the #244 summary/sort extraction; #249 stays in the
+  sequence after the workspace split, while #250 is parked for close or rewrite
+  after the facts/syntax/build-index path stabilizes.
 
 ## 0.3.0 - 2026-05-02
 

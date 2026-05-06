@@ -34,7 +34,7 @@ end_state = [
 
 [[work_item]]
 id = "campaign/modularization-stack-audit"
-status = "ready"
+status = "done"
 branch = "campaign/modularization-stack-audit"
 stackable = false
 requires_human_merge = true
@@ -51,11 +51,17 @@ commands = [
 
 [[work_item]]
 id = "analysis/summary-extraction"
-status = "blocked"
+status = "ready"
 branch = "analysis-summary-extraction"
 stackable = false
 requires_human_merge = true
-blocked_by = ["campaign/modularization-stack-audit"]
-blocked_reason = "The old Campaign 6 draft branches predate Campaign 5B config, SARIF, badge, and LSP action work; audit the stack before rebasing or merging structural refactors."
-acceptance = "summary and sort logic move out of analysis/mod.rs with no behavior, output, API, or schema drift; this starts only after the Campaign 6 stack audit"
-commands = []
+acceptance = "summary and sort logic move out of analysis/mod.rs with no behavior, output, API, or schema drift; rebase PR #244 against current main and remove stale policy churn unless still justified by focused tests"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-public-api",
+  "cargo xtask check-architecture",
+  "cargo xtask check-output-contracts",
+  "cargo test --workspace"
+]
