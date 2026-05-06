@@ -71,3 +71,11 @@ After changing any Droid workflow, inspect one completed run artifact and confir
 - prompt and debug artifacts do not contain unexpected secrets;
 - `show_full_output: false` is in effect for all Droid action steps;
 - artifact retention and download permissions are appropriate for this repo.
+
+## Rollout smoke sequence
+
+When enabling Droid in a new repository, follow
+`docs/agent-context/droid-rollout.md` first. After merge, use one same-repo PR
+to confirm automatic review, `@droid review`, `@droid security`, and manual
+Droid Security Scan all run with `custom:MiniMax-M2.7-0`. Inspect one debug
+artifact before expanding beyond the pilot batch.
