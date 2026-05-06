@@ -342,7 +342,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "ci/sarif-ci-policy"
+next = "badge/seam-native-count-mapping"
 metric = "oracle kind recognition rate"
 
 [[capability]]
@@ -470,7 +470,7 @@ evidence = [
   "target/ripr/reports/repo-seams.json and repo-seams.md"
 ]
 fixtures = []
-next = "ci/sarif-ci-policy"
+next = "badge/seam-native-count-mapping"
 metric = "seams classified per production file"
 
 [[capability]]
@@ -488,7 +488,7 @@ evidence = [
   "oracle-shape-v2 side-effect observer seam evidence"
 ]
 fixtures = []
-next = "ci/sarif-ci-policy"
+next = "badge/seam-native-count-mapping"
 metric = "per-stage evidence cited per seam"
 
 [[capability]]
@@ -504,7 +504,7 @@ evidence = [
   "BDD coverage per class plus headline-mapping pin"
 ]
 fixtures = []
-next = "ci/sarif-ci-policy"
+next = "badge/seam-native-count-mapping"
 metric = "classification matches priority-ordered rules"
 
 [[capability]]
@@ -520,7 +520,7 @@ evidence = [
   "OUTPUT_SCHEMA.md Repo Exposure Report section"
 ]
 fixtures = []
-next = "ci/sarif-ci-policy"
+next = "badge/seam-native-count-mapping"
 metric = "per-class metric buckets stable across runs"
 
 [[capability]]
@@ -539,7 +539,7 @@ evidence = [
   "OUTPUT_SCHEMA.md Agent Seam Packets section"
 ]
 fixtures = []
-next = "ci/sarif-ci-policy"
+next = "badge/seam-native-count-mapping"
 metric = "packet carries missing discriminator + suggested assertion templates"
 
 [[capability]]
@@ -556,7 +556,7 @@ evidence = [
   "OUTPUT_SCHEMA.md LSP Seam Diagnostics section"
 ]
 fixtures = []
-next = "ci/sarif-ci-policy"
+next = "badge/seam-native-count-mapping"
 metric = "seam_id in diagnostic.data is the hover lookup key"
 
 [[capability]]
@@ -572,7 +572,7 @@ evidence = [
   "preserves pre-4B Finding hover fallback"
 ]
 fixtures = []
-next = "ci/sarif-ci-policy"
+next = "badge/seam-native-count-mapping"
 metric = "hover renders evidence path from ClassifiedSeam, never parses diagnostic message"
 
 [[capability]]
@@ -589,7 +589,7 @@ evidence = [
   "pre-4B Finding code actions remain available"
 ]
 fixtures = []
-next = "ci/sarif-ci-policy"
+next = "badge/seam-native-count-mapping"
 metric = "seam diagnostics expose packet/assertion/test actions without automatic edits"
 
 [[capability]]
@@ -609,7 +609,7 @@ evidence = [
   "ripr.toml.example documents the supported v1 shape"
 ]
 fixtures = []
-next = "ci/sarif-ci-policy"
+next = "badge/seam-native-count-mapping"
 metric = "configured analysis mode, oracle policy, severity, suppressions, and seam diagnostics apply across CLI, reports, and LSP"
 
 [[capability]]
@@ -622,10 +622,12 @@ evidence = [
   "docs/OUTPUT_SCHEMA.md SARIF contract section",
   "docs/CI.md SARIF and Policy Contract section",
   "crates/ripr/src/output/sarif.rs renders diff-scoped Finding SARIF and repo-scoped seam SARIF",
-  "SARIF renderer tests cover stable rule IDs, configured severity, off severity omission, suppression metadata, valid JSON, and static language"
+  "SARIF renderer tests cover stable rule IDs, configured severity, off severity omission, suppression metadata, valid JSON, and static language",
+  "cargo xtask sarif-policy compares current SARIF against a baseline and only fails on new warning-level results when explicitly requested",
+  "SARIF policy tests cover pass, new warning detection, warning-threshold note filtering, missing baseline advisory behavior, parsing, and report shape"
 ]
 fixtures = []
-next = "sarif-baseline-policy-v1"
+next = "badge/seam-native-count-mapping"
 metric = "SARIF result counts by rule/level and new configured-warning results"
 
 [[capability]]

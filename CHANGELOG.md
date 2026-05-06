@@ -111,8 +111,12 @@ are scoped or reviewed.
 - Added SARIF output formats for Campaign 5B. `ripr check --format sarif`
   renders diff-scoped Finding SARIF and `--format repo-sarif` renders
   repo-scoped seam SARIF with configured severity, visible suppression metadata,
-  stable rule IDs, and stable fingerprints. CI baseline policy remains opt-in
-  and pending.
+  stable rule IDs, and stable fingerprints.
+- Added `cargo xtask sarif-policy` for opt-in SARIF baseline checks. The
+  command compares current SARIF to a baseline using stable rule IDs and
+  fingerprints, ignores suppressed results, writes
+  `target/ripr/reports/sarif-policy.{json,md}`, and only exits non-zero for
+  new warning-level results when `--mode fail-on-new-warning` is requested.
 
 ## 0.3.0 - 2026-05-02
 
