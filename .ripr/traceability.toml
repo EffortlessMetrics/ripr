@@ -330,6 +330,7 @@ tests = [
   "xtask/src/main.rs::mutation_calibration_imports_span_based_mutant_locations",
   "xtask/src/main.rs::mutation_calibration_directory_input_combines_outcomes_and_mutants",
   "xtask/src/main.rs::mutation_calibration_joins_by_seam_id_then_file_line",
+  "xtask/src/main.rs::mutation_calibration_summarizes_static_runtime_agreement",
   "xtask/src/main.rs::mutation_calibration_reports_ambiguous_file_line_without_selecting_first",
   "xtask/src/main.rs::mutation_calibration_uses_same_static_without_runtime_sample_limit_for_json_and_markdown",
   "xtask/src/main.rs::mutation_calibration_reports_are_advisory_and_structured"

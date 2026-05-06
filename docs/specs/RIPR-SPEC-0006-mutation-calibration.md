@@ -32,6 +32,9 @@ The report should:
 - report file/line matches as ambiguous when multiple static seams share the
   same normalized file and line;
 - report unmatched runtime mutants separately;
+- summarize static/runtime agreement in advisory buckets;
+- preserve samples of runtime gap signals without static gaps;
+- preserve samples of static gap seams without runtime gap signals;
 - keep static seam fields and runtime mutation fields separate;
 - write `target/ripr/reports/mutation-calibration.json`;
 - write `target/ripr/reports/mutation-calibration.md`;
@@ -62,6 +65,14 @@ candidate seams without assigning the runtime outcome to any single seam.
 
 Unmatched runtime mutants should preserve their location, mutation operator,
 runtime outcome, duration, and test command when available.
+
+The agreement summary should count:
+
+- static gap seams with a matched runtime gap signal;
+- static gap seams without a matched runtime gap signal;
+- runtime gap signals without a matching static gap;
+- static-clean seams with runtime-clean labels;
+- inconclusive runtime labels that should not be counted as agreement.
 
 ## Non-Goals
 
@@ -116,6 +127,16 @@ then the report lists the runtime mutant under ambiguous_file_line_matches
 and does not pick the first seam as a definitive match.
 ```
 
+### Agreement summary stays advisory
+
+```text
+Given matched runtime data with static gaps, static-clean seams, runtime gap
+signals, runtime-clean labels, and runtime-inconclusive labels,
+when cargo xtask mutation-calibration runs,
+then the report emits agreement counts, precision notes, static-only finding
+samples, and missed-runtime-signal samples without changing static seam classes.
+```
+
 ## Test Mapping
 
 Current tests:
@@ -126,6 +147,7 @@ Current tests:
 - `xtask/src/main.rs::mutation_calibration_imports_span_based_mutant_locations`
 - `xtask/src/main.rs::mutation_calibration_directory_input_combines_outcomes_and_mutants`
 - `xtask/src/main.rs::mutation_calibration_joins_by_seam_id_then_file_line`
+- `xtask/src/main.rs::mutation_calibration_summarizes_static_runtime_agreement`
 - `xtask/src/main.rs::mutation_calibration_reports_ambiguous_file_line_without_selecting_first`
 - `xtask/src/main.rs::mutation_calibration_uses_same_static_without_runtime_sample_limit_for_json_and_markdown`
 - `xtask/src/main.rs::mutation_calibration_reports_are_advisory_and_structured`
@@ -159,5 +181,10 @@ artifact, not a stable product output surface or public library API yet.
 - `ambiguous_file_line_total`
 - `unmatched_mutants_total`
 - `static_without_runtime_total`
+- `static_gap_and_runtime_signal`
+- `static_gap_without_runtime_signal`
+- `runtime_signal_without_static_gap`
+- `static_clean_and_runtime_clean`
+- `runtime_inconclusive`
 - runtime outcome counts
 - join method counts

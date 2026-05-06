@@ -258,6 +258,12 @@ Runtime mutation vocabulary belongs in calibration reports only. A static
 movement receipt is a good reason to run less blind mutation work, not a
 replacement for runtime confirmation.
 
+The calibration report's agreement section distinguishes static gaps with
+runtime gap signals, static gaps without runtime gap signals, runtime signals
+without static gaps, static-clean/runtime-clean matches, and inconclusive
+runtime labels. Treat those counts as tuning evidence for when to run runtime
+mutation next, not as a replacement for the targeted-test receipt.
+
 ## Review Checklist
 
 Before calling the targeted-test loop handled, make sure the PR or local change
