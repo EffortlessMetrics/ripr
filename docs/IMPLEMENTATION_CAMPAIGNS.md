@@ -690,7 +690,7 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `campaign/modularization-stack-audit` | done | Audited the old Campaign 6 draft stack against current `main` after Campaign 5B closeout. Canonical order is #244 -> #245 -> #246 -> #247 -> #251 -> new PR 6 syntax-adapter extraction -> #253; #249 is held for later probes extraction, and #250 should close or rewrite if #251 remains canonical. |
+| `campaign/modularization-stack-audit` | done | Audited the old Campaign 6 draft stack against current `main` after Campaign 5B closeout. Canonical order is #244 -> #245 -> #246 -> #247 -> #249 -> #251 -> new PR 6 syntax-adapter extraction -> #253; #250 stays parked and should close or rewrite after the facts/syntax/build-index path stabilizes. |
 | `modularization/infrastructure-and-planning` | done | Documentation, campaign outline, first-PR pattern, and the post-5B stack audit exist; implementation resumes with the canonical stack order below. |
 | `analysis/summary-extraction` | ready | PR 1: Rebase #244 against current `main`, extract duplicated summary and sort logic from `analysis/mod.rs`, and remove stale policy churn unless still justified by focused tests. |
 | `analysis/pipeline-extraction` | pending | PR 2: Make `analysis/mod.rs` a façade over pipeline.rs |
@@ -741,22 +741,21 @@ and saved-workspace LSP cockpit work landed. Audit snapshot: 2026-05-06 against
 | #245 | `claude/c6-02-analysis-pipeline-extraction` | `main` | draft, conflicting | Keep after #244; rebase on the merged summary extraction so `analysis/mod.rs` becomes a thin facade without changing analyzer behavior. |
 | #246 | `claude/c6-03-diff-module-split` | `main` | draft, conflicting | Keep after #245; rebase and restrict the diff split to `diff/{mod,model,load,parse}.rs`. Any `#[allow(unused_imports)]` re-export must stay narrow and documented, and policy allowlist changes need explicit justification. |
 | #247 | `claude/c6-04-workspace-module-split` | `main` | draft, conflicting | Keep after #246; rebase and preserve current analysis-mode scope semantics for `instant`, `draft` / `fast`, `deep` / `ready`, and `--no-unchanged-tests`. |
-| #251 | `claude/c6-05-facts-model-extraction` | `claude/c6-04-workspace-module-split` | draft, stacked | Keep as the canonical facts model extraction after #247; rebase through the stack and keep syntax adapters, builders, extractors, and query logic out of the facts model PR. |
+| #249 | `claude/c6-05-probes-module-split` | `main` | draft, mergeable but unstable | Keep after #247 and before #251. Rebase onto the workspace split, confirm `sanitize_path` still replaces `/`, `\`, and `:` with `_`, trims leading/trailing underscores, keeps the Unix, Windows-style, and trimming tests, and resolve the stale review thread before validation. |
+| #251 | `claude/c6-05-facts-model-extraction` | `claude/c6-04-workspace-module-split` | draft, stacked | Keep as the canonical facts model extraction after #249 lands or is deliberately skipped; rebase through the stack and keep syntax adapters, builders, extractors, and query logic out of the facts model PR. |
 | new PR 6 | `claude/c6-06-syntax-adapter-type-extraction` exists without an open PR | #251 successor | branch-only | Open or recreate this as the missing syntax-adapter extraction after #251; it must establish the `analysis/syntax` seam before #253 moves index building. |
 | #253 | `claude/c6-07-index-builder-extraction` | `claude/c6-06-syntax-adapter-type-extraction` | draft, stacked | Hold until the missing PR 6 base exists and merges; then rebase and keep the PR scoped to `build_index` movement into `analysis/facts/build.rs`. |
-| #249 | `claude/c6-05-probes-module-split` | `main` | draft, mergeable but unstable | Hold out of sequence. It overlaps the later probes phase and should close or rewrite after the analysis/facts/syntax seams are stable. |
 | #250 | `claude/c6-06-rust-index-module-split` | `main` | draft, conflicting | Do not repair as-is if #251 remains canonical. It overlaps facts-model extraction; close or rewrite later, salvaging only useful tests or notes. |
 
 Canonical merge path:
 
 ```text
-#244 -> #245 -> #246 -> #247 -> #251 -> new PR 6 syntax-adapter extraction -> #253
+#244 -> #245 -> #246 -> #247 -> #249 -> #251 -> new PR 6 syntax-adapter extraction -> #253
 ```
 
 Hold or rewrite path:
 
 ```text
-#249: later probes extraction, after earlier analysis seams stabilize
 #250: close or rewrite if #251 remains the facts-model path
 ```
 

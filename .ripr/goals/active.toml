@@ -55,7 +55,6 @@ status = "ready"
 branch = "analysis-summary-extraction"
 stackable = false
 requires_human_merge = true
-blocked_by = ["campaign/modularization-stack-audit"]
 acceptance = "summary and sort logic move out of analysis/mod.rs with no behavior, output, API, or schema drift; rebase PR #244 against current main and remove stale policy churn unless still justified by focused tests"
 commands = [
   "cargo xtask shape",
