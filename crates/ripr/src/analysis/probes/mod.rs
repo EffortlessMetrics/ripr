@@ -1,6 +1,6 @@
 mod classify;
-mod config;
 mod diff;
+mod expectations;
 mod family;
 mod repo;
 

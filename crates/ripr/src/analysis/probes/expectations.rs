@@ -70,16 +70,10 @@ pub fn required_oracles(text: &str, family: &ProbeFamily) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::family::delta_for_family;
     use super::*;
-    use crate::domain::DeltaKind;
 
     #[test]
-    fn config_functions_are_callable() {
-        let family = ProbeFamily::Predicate;
-        let delta = delta_for_family(&family);
-        assert_eq!(delta, DeltaKind::Control);
-
+    fn expectations_functions_are_callable() {
         let sinks = expected_sinks("if x > 5", &ProbeFamily::Predicate);
         assert!(!sinks.is_empty());
 
@@ -88,36 +82,19 @@ mod tests {
     }
 
     #[test]
-    fn config_functions_cover_every_probe_family() {
+    fn expectations_functions_cover_every_probe_family() {
         let cases = [
-            (ProbeFamily::Predicate, DeltaKind::Control, "branch result"),
-            (ProbeFamily::ReturnValue, DeltaKind::Value, "return value"),
-            (ProbeFamily::ErrorPath, DeltaKind::Value, "error variant"),
-            (ProbeFamily::CallDeletion, DeltaKind::Effect, "call effect"),
-            (
-                ProbeFamily::FieldConstruction,
-                DeltaKind::Value,
-                "field:status",
-            ),
-            (
-                ProbeFamily::SideEffect,
-                DeltaKind::Effect,
-                "published event",
-            ),
-            (
-                ProbeFamily::MatchArm,
-                DeltaKind::Control,
-                "selected variant",
-            ),
-            (
-                ProbeFamily::StaticUnknown,
-                DeltaKind::Unknown,
-                "unknown sink",
-            ),
+            (ProbeFamily::Predicate, "branch result"),
+            (ProbeFamily::ReturnValue, "return value"),
+            (ProbeFamily::ErrorPath, "error variant"),
+            (ProbeFamily::CallDeletion, "call effect"),
+            (ProbeFamily::FieldConstruction, "field:status"),
+            (ProbeFamily::SideEffect, "published event"),
+            (ProbeFamily::MatchArm, "selected variant"),
+            (ProbeFamily::StaticUnknown, "unknown sink"),
         ];
 
-        for (family, delta, sink) in cases {
-            assert_eq!(delta_for_family(&family), delta);
+        for (family, sink) in cases {
             assert!(
                 expected_sinks("status: Status::Ready", &family)
                     .iter()
