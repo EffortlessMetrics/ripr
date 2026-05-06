@@ -177,7 +177,8 @@ it:
 ripr init
 ```
 
-Or add an advisory GitHub Actions SARIF upload workflow:
+Or add an advisory GitHub Actions workflow that uploads pilot/report artifacts
+and can optionally upload SARIF:
 
 ```bash
 ripr init --ci github

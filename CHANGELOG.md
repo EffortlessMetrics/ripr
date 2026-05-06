@@ -23,8 +23,9 @@ are scoped or reviewed.
   cargo-mutants JSON from the installed binary, join it to a
   `repo-exposure-json` snapshot, and render advisory Markdown/JSON calibration
   output without running mutation testing.
-- Added `ripr init --ci github` to generate a non-blocking GitHub Actions SARIF
-  upload workflow for advisory code-scanning guidance.
+- Added `ripr init --ci github` to generate a non-blocking GitHub Actions
+  workflow that runs `ripr pilot`, uploads pilot/report artifacts, writes repo
+  badge JSON, and keeps SARIF upload optional through `RIPR_UPLOAD_SARIF`.
 - Added `ripr init` to write a conservative repo-local `ripr.toml`, with
   `--dry-run` for previewing and `--force` for explicit overwrite.
 - Added RIPR-SPEC-0009 to define defaults-first adoption behavior for `init`,
@@ -63,6 +64,8 @@ are scoped or reviewed.
   active manifest to `reports/operator-cockpit` as the next ready work item.
 - Completed the Campaign 7 `reports/operator-cockpit` surface and advanced the
   active manifest to `ci/github-action-entrypoint` as the next ready work item.
+- Completed the Campaign 7 `ci/github-action-entrypoint` surface and advanced
+  the active manifest to `editor/install-polish` as the next ready work item.
 - Aligned built-in defaults with the `ripr init` profile for LSP seam
   diagnostics: missing config now uses the same bounded saved-workspace default
   as the generated policy file, while explicit LSP options or `ripr.toml` can

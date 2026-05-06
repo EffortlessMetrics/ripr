@@ -21,14 +21,15 @@ through multiple work items in a campaign, but each work item should follow the
 | Seam Evidence Usability and Precision (5A) | Make repo seam evidence fast, precise, and directly actionable for developers and coding agents. | Complete: #255, #310, #313, #314, #315, #316, #327, and `campaign/seam-evidence-usability-closeout`. |
 | Operationalization (5B) | Govern analyzer behavior with repository config, integrate SARIF/CI policy modes, and remap badges onto seam-native counts. | Complete: `config/ripr-config-v1`, `ci/sarif-ci-policy`, `badge/seam-native-count-mapping`, and `campaign/operationalization-closeout`. |
 | Module SRP Refactoring (6) | Refactor internal modules under `crates/ripr/src/` so each module has one product responsibility, without splitting the package. | Complete: #347, the Campaign 6 refactor chain through #405, and `campaign/modularization-closeout`. |
-| Defaults-First Operator Adoption (7) | Make a clean install useful through conservative defaults, one operator cockpit, CI artifacts, editor install docs, examples, and install/release proof. | Active: `defaults/config-init` and `reports/operator-cockpit` are complete; next ready item is `ci/github-action-entrypoint`. |
+| Defaults-First Operator Adoption (7) | Make a clean install useful through conservative defaults, one operator cockpit, CI artifacts, editor install docs, examples, and install/release proof. | Active: `defaults/config-init`, `reports/operator-cockpit`, and `ci/github-action-entrypoint` are complete; next ready item is `editor/install-polish`. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
 through 6 are complete. Campaign 6 closed after the internal module SRP chain
 landed through #405 while preserving the saved-workspace LSP cockpit contract,
 output schemas, public API, SARIF, and badge behavior. The active queue is now
-Campaign 7; `defaults/config-init` and `reports/operator-cockpit` are complete
-and the next ready work item is `ci/github-action-entrypoint`.
+Campaign 7; `defaults/config-init`, `reports/operator-cockpit`, and
+`ci/github-action-entrypoint` are complete and the next ready work item is
+`editor/install-polish`.
 
 ## PR 0: `planning-and-tracking-docs`
 

@@ -473,6 +473,7 @@ tests = [
   "crates/ripr/src/cli/commands.rs::tests::init_requires_root_value",
   "crates/ripr/src/cli/commands.rs::tests::init_rejects_unknown_arguments",
   "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_is_advisory",
+  "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_uploads_reports_and_makes_sarif_optional",
   "crates/ripr/src/cli/commands.rs::tests::init_ci_github_writes_workflow_and_preserves_existing_config",
   "crates/ripr/src/cli/commands.rs::tests::init_ci_github_refuses_existing_workflow_without_force",
   "crates/ripr/tests/cli_smoke.rs::init_writes_conservative_config_and_doctor_loads_it",
