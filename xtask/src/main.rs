@@ -3,17 +3,18 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitStatus};
 use std::time::Instant;
 
 use serde_json::Value;
 
 mod command;
 mod dispatch;
+mod run;
 
 #[cfg(test)]
 use command::unknown_command_message;
 use command::{XtaskCommand, known_command_root, known_commands};
+use run::{capture_output, run, run_output, run_output_optional, run_output_owned};
 
 #[derive(Debug)]
 struct GlobAllow {
@@ -653,19 +654,6 @@ fn run_ci_full_evidence_gates(gates: &[CiFullEvidenceGate]) -> Result<(), String
             .map_err(|err| format!("ci-full evidence gate `{}` failed: {err}", gate.name))?;
     }
     Ok(())
-}
-
-fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
-    eprintln!("$ {} {}", program, args.join(" "));
-    let status = Command::new(program)
-        .args(args)
-        .status()
-        .map_err(|err| format!("failed to run {program}: {err}"))?;
-    if status.success() {
-        Ok(status)
-    } else {
-        Err(format!("{program} {} failed with {status}", args.join(" ")))
-    }
 }
 
 const RIPR_MANAGED_PRE_COMMIT_MARKER: &str = "# ripr-managed pre-commit hook";
@@ -10456,18 +10444,15 @@ fn check_supply_chain() -> Result<(), String> {
 
     let args = ["deny", "check", "advisories", "licenses", "bans", "sources"];
     eprintln!("$ cargo {}", args.join(" "));
-    let output = Command::new("cargo")
-        .args(args)
-        .output()
-        .map_err(|err| format!("failed to run cargo deny: {err}"))?;
+    let output = capture_output("cargo", &args, "cargo deny")?;
 
     let status = if output.status.success() {
         "pass"
     } else {
         "fail"
     };
-    let stdout = redact_current_dir(&String::from_utf8_lossy(&output.stdout));
-    let stderr = redact_current_dir(&String::from_utf8_lossy(&output.stderr));
+    let stdout = redact_current_dir(&output.stdout);
+    let stderr = redact_current_dir(&output.stderr);
     let mut body = format!(
         "# ripr supply-chain report\n\nStatus: {status}\n\nCommand:\n\n```bash\ncargo deny check advisories licenses bans sources\n```\n\n"
     );
@@ -13384,52 +13369,6 @@ fn workflow_run_value(trimmed_line: &str) -> Option<&str> {
     trimmed_line
         .strip_prefix("run:")
         .or_else(|| trimmed_line.strip_prefix("- run:"))
-}
-
-fn run_output(program: &str, args: &[&str]) -> Result<String, String> {
-    let output = Command::new(program)
-        .args(args)
-        .output()
-        .map_err(|err| format!("failed to run {program}: {err}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "{program} {} failed with {}",
-            args.join(" "),
-            output.status
-        ));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
-}
-
-fn run_output_owned(program: &str, args: &[String]) -> Result<String, String> {
-    let output = Command::new(program)
-        .args(args)
-        .output()
-        .map_err(|err| format!("failed to run {program}: {err}"))?;
-    if !output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!(
-            "{program} {} failed with {}\nstdout:\n{}\nstderr:\n{}",
-            args.join(" "),
-            output.status,
-            stdout.trim(),
-            stderr.trim()
-        ));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
-}
-
-fn run_output_optional(program: &str, args: &[&str]) -> Result<String, String> {
-    let output = Command::new(program)
-        .args(args)
-        .output()
-        .map_err(|err| format!("failed to run {program}: {err}"))?;
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
-    } else {
-        Ok(String::new())
-    }
 }
 
 fn forbidden_static_terms() -> Vec<String> {
