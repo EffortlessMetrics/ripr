@@ -10,10 +10,7 @@ use crate::analysis::rust_index::{
 
 impl RustSyntaxAdapter for LexicalRustSyntaxAdapter {
     fn summarize_file(&self, path: &Path, text: &str) -> Result<FileFacts, String> {
-        Ok(summarize_file_lexically(
-            path.to_path_buf(),
-            text.to_string(),
-        ))
+        Ok(summarize_file_lexically(path.to_path_buf(), text))
     }
 
     fn changed_nodes(&self, facts: &FileFacts, ranges: &[TextRange]) -> Vec<SyntaxNodeFact> {
@@ -21,7 +18,7 @@ impl RustSyntaxAdapter for LexicalRustSyntaxAdapter {
     }
 }
 
-pub fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts {
+pub fn summarize_file_lexically(path: PathBuf, text: &str) -> FileFacts {
     let lines: Vec<&str> = text.lines().collect();
     let mut functions = Vec::new();
     let mut tests = Vec::new();
@@ -89,7 +86,7 @@ pub fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts {
             continue;
         }
 
-        if !trimmed.is_empty() {
+        if !trimmed.is_empty() && !trimmed.starts_with("//") {
             pending_test = false;
         }
         i += 1;
@@ -115,14 +112,33 @@ pub fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts {
 
 fn function_name(trimmed: &str) -> Option<String> {
     let mut cleaned = trimmed;
+
+    // Strip visibility modifiers
     if let Some(rest) = cleaned.strip_prefix("pub(crate) ") {
         cleaned = rest;
+    } else if cleaned.starts_with("pub(") {
+        if let Some(end_idx) = cleaned.find(')') {
+            cleaned = &cleaned[end_idx + 1..].trim_start();
+        }
     } else if let Some(rest) = cleaned.strip_prefix("pub ") {
         cleaned = rest;
     }
-    if let Some(rest) = cleaned.strip_prefix("async ") {
-        cleaned = rest;
+
+    // Strip modifiers (may have multiple like "async unsafe")
+    loop {
+        if let Some(rest) = cleaned.strip_prefix("async ") {
+            cleaned = rest;
+        } else if let Some(rest) = cleaned.strip_prefix("unsafe ") {
+            cleaned = rest;
+        } else if let Some(rest) = cleaned.strip_prefix("const ") {
+            cleaned = rest;
+        } else if let Some(rest) = cleaned.strip_prefix("extern ") {
+            cleaned = rest;
+        } else {
+            break;
+        }
     }
+
     let cleaned = cleaned.strip_prefix("fn ")?;
     let mut name = String::new();
     for ch in cleaned.chars() {

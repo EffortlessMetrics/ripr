@@ -27,7 +27,7 @@ use super::syntax::LexicalRustSyntaxAdapter;
 fn summarize_file(path: PathBuf, text: String) -> FileFacts {
     match RaRustSyntaxAdapter.summarize_file(&path, &text) {
         Ok(facts) => facts,
-        Err(_) => super::syntax::summarize_file_lexically(path, text),
+        Err(_) => super::syntax::summarize_file_lexically(path, &text),
     }
 }
 
