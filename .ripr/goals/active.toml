@@ -99,3 +99,19 @@ commands = [
   "cargo xtask check-output-contracts",
   "cargo test --workspace"
 ]
+
+[[work_item]]
+id = "policy/strict-clippy-profile"
+status = "ready"
+branch = "claude/stricter-test-linting-VWQMw"
+stackable = false
+requires_human_merge = true
+acceptance = "Add a strict Clippy/Rust lint profile, document panic-free production and test policy, add a machine-readable future-lint ledger for Rust 1.94/1.95 flips, and verify active/planned lint consistency through xtask without changing analyzer behavior or public output schemas"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-lint-policy",
+  "cargo clippy --workspace --all-targets --all-features -- -D warnings",
+  "cargo test --workspace"
+]

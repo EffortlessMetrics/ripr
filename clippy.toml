@@ -1,0 +1,10 @@
+# Clippy configuration.
+#
+# We deliberately do NOT enable the `allow-*-in-tests` carve-outs. Tests in
+# this repo are subject to the same panic-free / no-silent-failure bar as
+# production code. See `docs/CLIPPY_POLICY.md` and `policy/clippy-lints.toml`.
+#
+# Pinning msrv here keeps newer Clippy releases from suggesting APIs that
+# violate the workspace's declared minimum supported Rust version even when
+# CI runs an advisory job on a newer toolchain.
+msrv = "1.93"

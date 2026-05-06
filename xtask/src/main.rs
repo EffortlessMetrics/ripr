@@ -501,6 +501,7 @@ fn main() {
         Some("check-supply-chain") => check_supply_chain(),
         Some("check-process-policy") => check_process_policy(),
         Some("check-network-policy") => check_network_policy(),
+        Some("check-lint-policy") => check_lint_policy(),
         Some("package") => run("cargo", &["package", "-p", "ripr", "--list"]).map(|_| ()),
         Some("publish-dry-run") => {
             run("cargo", &["publish", "-p", "ripr", "--dry-run"]).map(|_| ())
@@ -549,6 +550,7 @@ fn precommit() -> Result<(), String> {
     check_campaign()?;
     check_pr_shape()?;
     check_generated()?;
+    check_lint_policy()?;
     let body = precommit_report_body();
     write_report("precommit.md", &body)
 }
@@ -601,7 +603,8 @@ fn run_policy_checks() -> Result<(), String> {
     check_generated()?;
     check_dependencies()?;
     check_process_policy()?;
-    check_network_policy()
+    check_network_policy()?;
+    check_lint_policy()
 }
 
 fn ci_full() -> Result<(), String> {
@@ -796,6 +799,7 @@ fn known_commands() -> Vec<&'static str> {
         "check-supply-chain",
         "check-process-policy",
         "check-network-policy",
+        "check-lint-policy",
         "package",
         "publish-dry-run",
     ]
@@ -10001,6 +10005,491 @@ fn check_count_policy(
         },
         &violations,
     )
+}
+
+// -- check-lint-policy ------------------------------------------------------
+//
+// Cross-checks `policy/clippy-lints.toml` against the actual workspace lint
+// tables in `Cargo.toml` and the workspace MSRV. The ledger is the source of
+// truth for the bar this repo enforces; `cargo xtask check-lint-policy`
+// guarantees Cargo.toml cannot drift away from it.
+//
+// See `docs/CLIPPY_POLICY.md` for the human policy and the promotion
+// workflow used when bumping MSRV.
+
+const CLIPPY_LINT_LEDGER_PATH: &str = "policy/clippy-lints.toml";
+const CLIPPY_TOML_PATH: &str = "clippy.toml";
+
+#[derive(Debug, Clone)]
+struct LintLedgerEntry {
+    name: String,
+    short_name: String,
+    table: String,
+    level: String,
+    status: String,
+    activate_when_msrv: Option<String>,
+    line: usize,
+}
+
+#[derive(Debug, Clone, Default)]
+struct LintLedgerPolicy {
+    panic_free_tests: Option<bool>,
+    allow_test_carveouts: Option<bool>,
+    suppression_style: Option<String>,
+    blanket_categories: Option<bool>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct LintLedger {
+    schema: Option<i64>,
+    msrv: Option<String>,
+    policy: LintLedgerPolicy,
+    lints: Vec<LintLedgerEntry>,
+}
+
+fn check_lint_policy() -> Result<(), String> {
+    let ledger = parse_clippy_lint_ledger(CLIPPY_LINT_LEDGER_PATH)?;
+    let cargo_text = read_text_lossy(Path::new("Cargo.toml"))?;
+    let workspace_lints = parse_workspace_lint_tables(&cargo_text, "Cargo.toml")?;
+    let cargo_msrv = parse_workspace_rust_version(&cargo_text, "Cargo.toml")?;
+
+    let mut violations = Vec::new();
+
+    let Some(ledger_msrv) = ledger.msrv.as_deref() else {
+        violations.push(format!(
+            "{CLIPPY_LINT_LEDGER_PATH}: missing top-level `msrv = \"X.Y\"`"
+        ));
+        return finish_lint_policy_report(violations);
+    };
+
+    if ledger_msrv != cargo_msrv.as_str() {
+        violations.push(format!(
+            "{CLIPPY_LINT_LEDGER_PATH}: policy.msrv = \"{ledger_msrv}\" disagrees with workspace.package.rust-version = \"{cargo_msrv}\"; bump them together"
+        ));
+    }
+
+    if ledger.policy.allow_test_carveouts == Some(true) {
+        violations.push(format!(
+            "{CLIPPY_LINT_LEDGER_PATH}: policy.allow_test_carveouts = true contradicts the panic-free-tests bar; tests are not a panic playground"
+        ));
+    }
+
+    if ledger.policy.panic_free_tests != Some(true) {
+        violations.push(format!(
+            "{CLIPPY_LINT_LEDGER_PATH}: policy.panic_free_tests must be `true`; tests inherit the same panic-free bar as production"
+        ));
+    }
+
+    if Path::new(CLIPPY_TOML_PATH).exists() {
+        let clippy_toml = read_text_lossy(Path::new(CLIPPY_TOML_PATH))?;
+        let lower = clippy_toml.to_ascii_lowercase();
+        for forbidden in [
+            "allow-indexing-slicing-in-tests",
+            "allow-panic-in-tests",
+            "allow-unwrap-in-tests",
+            "allow-expect-in-tests",
+            "allow-dbg-in-tests",
+        ] {
+            if lower.contains(forbidden) {
+                violations.push(format!(
+                    "{CLIPPY_TOML_PATH}: forbidden carve-out `{forbidden}` is set; remove it (tests must stay panic-free)"
+                ));
+            }
+        }
+    }
+
+    let mut active_in_ledger: BTreeSet<(String, String)> = BTreeSet::new();
+    for entry in &ledger.lints {
+        match entry.status.as_str() {
+            "active" => {
+                active_in_ledger.insert((entry.table.clone(), entry.short_name.clone()));
+                match workspace_lints.get(&(entry.table.clone(), entry.short_name.clone())) {
+                    Some(actual_level) if actual_level == &entry.level => {}
+                    Some(actual_level) => violations.push(format!(
+                        "{CLIPPY_LINT_LEDGER_PATH}:{} active lint `{}` is `{}` in [workspace.lints.{}] but ledger says `{}`",
+                        entry.line, entry.name, actual_level, entry.table, entry.level
+                    )),
+                    None => violations.push(format!(
+                        "{CLIPPY_LINT_LEDGER_PATH}:{} active lint `{}` is missing from Cargo.toml [workspace.lints.{}]; add `{} = \"{}\"`",
+                        entry.line, entry.name, entry.table, entry.short_name, entry.level
+                    )),
+                }
+            }
+            "deferred" => {
+                if workspace_lints.contains_key(&(entry.table.clone(), entry.short_name.clone())) {
+                    violations.push(format!(
+                        "{CLIPPY_LINT_LEDGER_PATH}:{} deferred lint `{}` is enabled in Cargo.toml; promote it to status = \"active\" or remove it from Cargo.toml",
+                        entry.line, entry.name
+                    ));
+                }
+            }
+            "planned" => {
+                if workspace_lints.contains_key(&(entry.table.clone(), entry.short_name.clone())) {
+                    violations.push(format!(
+                        "{CLIPPY_LINT_LEDGER_PATH}:{} planned lint `{}` appears in Cargo.toml; do not enable until the workspace MSRV reaches `{}`",
+                        entry.line,
+                        entry.name,
+                        entry.activate_when_msrv.as_deref().unwrap_or("(unspecified)")
+                    ));
+                }
+                let Some(activate) = &entry.activate_when_msrv else {
+                    violations.push(format!(
+                        "{CLIPPY_LINT_LEDGER_PATH}:{} planned lint `{}` is missing `activate_when_msrv`",
+                        entry.line, entry.name
+                    ));
+                    continue;
+                };
+                if msrv_meets(&cargo_msrv, activate) {
+                    violations.push(format!(
+                        "{CLIPPY_LINT_LEDGER_PATH}:{} planned lint `{}` is now within MSRV (workspace = `{}` >= activate_when_msrv = `{}`); promote to status = \"active\"",
+                        entry.line, entry.name, cargo_msrv, activate
+                    ));
+                }
+            }
+            other => violations.push(format!(
+                "{CLIPPY_LINT_LEDGER_PATH}:{} lint `{}` has unknown status `{}` (expected active|deferred|planned)",
+                entry.line, entry.name, other
+            )),
+        }
+    }
+
+    for ((table, short_name), level) in &workspace_lints {
+        if !active_in_ledger.contains(&(table.clone(), short_name.clone())) {
+            violations.push(format!(
+                "Cargo.toml [workspace.lints.{table}]: `{short_name} = \"{level}\"` is not recorded in {CLIPPY_LINT_LEDGER_PATH} as an active lint; add a [[lint]] entry"
+            ));
+        }
+    }
+
+    finish_lint_policy_report(violations)
+}
+
+fn finish_lint_policy_report(violations: Vec<String>) -> Result<(), String> {
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "lint-policy.md",
+            check: "check-lint-policy",
+            why_it_matters: "The lint ledger is the discoverable source of truth for the panic-free / no-silent-failure bar; Cargo.toml must not drift away from it, and planned lints must wait for their MSRV.",
+            fix_kind: FixKind::AuthorDecisionRequired,
+            recommended_fixes: &[
+                "Mirror active ledger entries verbatim in [workspace.lints.rust] / [workspace.lints.clippy].",
+                "Migrate the affected sites and flip a deferred lint to status = \"active\" in policy/clippy-lints.toml.",
+                "Bump rust-toolchain.toml + workspace.package.rust-version + policy.msrv together when promoting a planned lint.",
+                "Do not add `allow-*-in-tests` carve-outs to clippy.toml; tests are not a panic playground.",
+            ],
+            rerun_command: "cargo xtask check-lint-policy",
+            exception_template: Some(
+                "policy/clippy-lints.toml entry:\n[[lint]]\nname = \"clippy::<lint>\"\ntable = \"clippy\"\nlevel = \"deny\"\nstatus = \"active\"\nclass = \"<bucket>\"\nreason = \"<why>\"",
+            ),
+        },
+        &violations,
+    )
+}
+
+fn msrv_meets(actual: &str, required: &str) -> bool {
+    let parse = |value: &str| -> Option<(u64, u64, u64)> {
+        let mut parts = value.split('.').map(str::trim);
+        let major = parts.next()?.parse().ok()?;
+        let minor = parts.next()?.parse().ok()?;
+        let patch = parts.next().unwrap_or("0").parse().ok()?;
+        Some((major, minor, patch))
+    };
+    match (parse(actual), parse(required)) {
+        (Some(a), Some(r)) => a >= r,
+        _ => false,
+    }
+}
+
+fn parse_clippy_lint_ledger(path: &str) -> Result<LintLedger, String> {
+    let text = read_text_lossy(Path::new(path))?;
+    let mut ledger = LintLedger::default();
+    let mut current_section = LedgerSection::Top;
+    let mut current_lint: Option<LintLedgerEntry> = None;
+    let mut entry_start = 0usize;
+
+    for (index, raw_line) in text.lines().enumerate() {
+        let line_number = index + 1;
+        let line = strip_toml_line_comment(raw_line);
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if let Some(header) = trimmed
+            .strip_prefix('[')
+            .and_then(|rest| rest.strip_suffix(']'))
+        {
+            if let Some(active) = current_lint.take() {
+                validate_lint_ledger_entry(&active, path, entry_start)?;
+                ledger.lints.push(active);
+            }
+            let header = header.trim();
+            current_section = match header {
+                "policy" => LedgerSection::Policy,
+                "[lint]" => {
+                    entry_start = line_number;
+                    current_lint = Some(LintLedgerEntry {
+                        name: String::new(),
+                        short_name: String::new(),
+                        table: String::new(),
+                        level: String::new(),
+                        status: String::new(),
+                        activate_when_msrv: None,
+                        line: line_number,
+                    });
+                    LedgerSection::Lint
+                }
+                other => {
+                    return Err(format!(
+                        "{path}:{line_number} unknown section `[{other}]`; expected `[policy]` or `[[lint]]`"
+                    ));
+                }
+            };
+            continue;
+        }
+
+        let Some((key, value)) = parse_toml_key_value(trimmed) else {
+            return Err(format!(
+                "{path}:{line_number} expected `key = value` (got: {trimmed})"
+            ));
+        };
+
+        match current_section {
+            LedgerSection::Top => match key {
+                "schema" => ledger.schema = Some(parse_integer_value(value, path, line_number)?),
+                "msrv" => ledger.msrv = Some(parse_string_value(value, path, line_number)?),
+                other => {
+                    return Err(format!(
+                        "{path}:{line_number} unknown top-level key `{other}`"
+                    ));
+                }
+            },
+            LedgerSection::Policy => match key {
+                "panic_free_tests" => {
+                    ledger.policy.panic_free_tests =
+                        Some(parse_bool_value(value, path, line_number)?);
+                }
+                "allow_test_carveouts" => {
+                    ledger.policy.allow_test_carveouts =
+                        Some(parse_bool_value(value, path, line_number)?);
+                }
+                "suppression_style" => {
+                    ledger.policy.suppression_style =
+                        Some(parse_string_value(value, path, line_number)?);
+                }
+                "blanket_categories" => {
+                    ledger.policy.blanket_categories =
+                        Some(parse_bool_value(value, path, line_number)?);
+                }
+                other => {
+                    return Err(format!(
+                        "{path}:{line_number} unknown [policy] key `{other}`"
+                    ));
+                }
+            },
+            LedgerSection::Lint => {
+                let Some(entry) = current_lint.as_mut() else {
+                    return Err(format!("{path}:{line_number} key outside [[lint]] section"));
+                };
+                match key {
+                    "name" => {
+                        let name = parse_string_value(value, path, line_number)?;
+                        entry.short_name = name
+                            .strip_prefix("clippy::")
+                            .map(str::to_string)
+                            .unwrap_or_else(|| name.clone());
+                        entry.name = name;
+                    }
+                    "table" => entry.table = parse_string_value(value, path, line_number)?,
+                    "level" => entry.level = parse_string_value(value, path, line_number)?,
+                    "status" => entry.status = parse_string_value(value, path, line_number)?,
+                    "activate_when_msrv" => {
+                        entry.activate_when_msrv =
+                            Some(parse_string_value(value, path, line_number)?);
+                    }
+                    "class" | "reason" => {
+                        // Documentation fields; just validate they are strings.
+                        let _ = parse_string_value(value, path, line_number)?;
+                    }
+                    other => {
+                        return Err(format!(
+                            "{path}:{line_number} unknown [[lint]] key `{other}`"
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(active) = current_lint.take() {
+        validate_lint_ledger_entry(&active, path, entry_start)?;
+        ledger.lints.push(active);
+    }
+
+    Ok(ledger)
+}
+
+#[derive(Copy, Clone)]
+enum LedgerSection {
+    Top,
+    Policy,
+    Lint,
+}
+
+fn validate_lint_ledger_entry(
+    entry: &LintLedgerEntry,
+    path: &str,
+    start_line: usize,
+) -> Result<(), String> {
+    if entry.name.is_empty() {
+        return Err(format!("{path}:{start_line} [[lint]] missing `name`"));
+    }
+    if entry.table != "rust" && entry.table != "clippy" {
+        return Err(format!(
+            "{path}:{start_line} [[lint]] `{}` has table = `{}`; expected `rust` or `clippy`",
+            entry.name, entry.table
+        ));
+    }
+    if entry.table == "clippy" && !entry.name.starts_with("clippy::") {
+        return Err(format!(
+            "{path}:{start_line} [[lint]] `{}` has table = `clippy` but name lacks `clippy::` prefix",
+            entry.name
+        ));
+    }
+    if entry.table == "rust" && entry.name.starts_with("clippy::") {
+        return Err(format!(
+            "{path}:{start_line} [[lint]] `{}` has table = `rust` but name has `clippy::` prefix",
+            entry.name
+        ));
+    }
+    if !["forbid", "deny", "warn", "allow"].contains(&entry.level.as_str()) {
+        return Err(format!(
+            "{path}:{start_line} [[lint]] `{}` has level = `{}`; expected forbid|deny|warn|allow",
+            entry.name, entry.level
+        ));
+    }
+    if !["active", "deferred", "planned"].contains(&entry.status.as_str()) {
+        return Err(format!(
+            "{path}:{start_line} [[lint]] `{}` has status = `{}`; expected active|deferred|planned",
+            entry.name, entry.status
+        ));
+    }
+    if entry.status == "planned" && entry.activate_when_msrv.is_none() {
+        return Err(format!(
+            "{path}:{start_line} [[lint]] `{}` is planned but missing `activate_when_msrv`",
+            entry.name
+        ));
+    }
+    Ok(())
+}
+
+fn parse_workspace_lint_tables(
+    cargo_text: &str,
+    path: &str,
+) -> Result<BTreeMap<(String, String), String>, String> {
+    let mut tables = BTreeMap::new();
+    let mut current_table: Option<&'static str> = None;
+
+    for (index, raw_line) in cargo_text.lines().enumerate() {
+        let line_number = index + 1;
+        let line = strip_toml_line_comment(raw_line);
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Some(header) = trimmed
+            .strip_prefix('[')
+            .and_then(|rest| rest.strip_suffix(']'))
+        {
+            current_table = match header.trim() {
+                "workspace.lints.rust" => Some("rust"),
+                "workspace.lints.clippy" => Some("clippy"),
+                _ => None,
+            };
+            continue;
+        }
+        let Some(table) = current_table else {
+            continue;
+        };
+        let Some((key, value)) = parse_toml_key_value(trimmed) else {
+            return Err(format!(
+                "{path}:{line_number} expected `key = value` inside [workspace.lints.{table}]"
+            ));
+        };
+        let level = parse_string_value(value, path, line_number)?;
+        tables.insert((table.to_string(), key.to_string()), level);
+    }
+
+    Ok(tables)
+}
+
+fn parse_workspace_rust_version(cargo_text: &str, path: &str) -> Result<String, String> {
+    let mut in_workspace_package = false;
+    for (index, raw_line) in cargo_text.lines().enumerate() {
+        let line_number = index + 1;
+        let line = strip_toml_line_comment(raw_line);
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Some(header) = trimmed
+            .strip_prefix('[')
+            .and_then(|rest| rest.strip_suffix(']'))
+        {
+            in_workspace_package = header.trim() == "workspace.package";
+            continue;
+        }
+        if !in_workspace_package {
+            continue;
+        }
+        let Some((key, value)) = parse_toml_key_value(trimmed) else {
+            continue;
+        };
+        if key == "rust-version" {
+            return parse_string_value(value, path, line_number);
+        }
+    }
+    Err(format!("{path}: workspace.package.rust-version not found"))
+}
+
+fn strip_toml_line_comment(line: &str) -> &str {
+    let mut in_double = false;
+    let mut escaped = false;
+    for (idx, ch) in line.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if in_double && ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == '"' {
+            in_double = !in_double;
+            continue;
+        }
+        if ch == '#' && !in_double {
+            return &line[..idx];
+        }
+    }
+    line
+}
+
+fn parse_bool_value(value: &str, path: &str, line_number: usize) -> Result<bool, String> {
+    match strip_toml_value_comment(value).trim() {
+        "true" => Ok(true),
+        "false" => Ok(false),
+        other => Err(format!(
+            "{path}:{line_number} expected boolean (true|false), got `{other}`"
+        )),
+    }
+}
+
+fn parse_integer_value(value: &str, path: &str, line_number: usize) -> Result<i64, String> {
+    let trimmed = strip_toml_value_comment(value).trim();
+    trimmed
+        .parse::<i64>()
+        .map_err(|err| format!("{path}:{line_number} expected integer (got `{trimmed}`): {err}"))
 }
 
 fn sort_allowlist_files() -> Result<Vec<String>, String> {

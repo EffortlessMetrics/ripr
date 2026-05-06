@@ -695,6 +695,7 @@ Work items:
 | `analysis/summary-extraction` | done | PR 1 (#244): Extracted duplicated summary and sort logic from `analysis/mod.rs` into focused helper modules with no output/API/schema drift. |
 | `analysis/pipeline-extraction` | done | PR 2 (#245): Extracted diff and repo pipeline orchestration into `analysis/pipeline.rs` while preserving `run_analysis` and `run_repo_analysis` as stable facades. |
 | `diff/module-split` | ready | PR 3 (#246): Rebase after #245 and split `analysis/diff.rs` into `diff/{mod,model,load,parse}.rs`; add cheap `diff/load.rs` coverage only when simple existing branches need pinning. |
+| `policy/strict-clippy-profile` | ready | Standalone policy PR before deeper module movement: introduces `policy/clippy-lints.toml` (active/deferred/planned ledger), `docs/CLIPPY_POLICY.md`, `clippy.toml` with `msrv = "1.93"` and no test carve-outs, a stricter `[workspace.lints.*]` baseline, and `cargo xtask check-lint-policy` to keep them in lockstep. No analyzer or output-schema delta. |
 | `workspace/module-split` | pending | PR 4: Split workspace concerns into `workspace/{mod,discover,scope,production,paths}.rs` |
 | `facts/model-extraction` | pending | PR 5: Move fact DTOs into `analysis/facts/model.rs` |
 | `syntax/adapter-extraction` | pending | PR 6: Move syntax adapters into `analysis/syntax/adapter.rs` |

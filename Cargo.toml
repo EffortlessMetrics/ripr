@@ -10,15 +10,86 @@ rust-version = "1.93"
 repository = "https://github.com/EffortlessMetrics/ripr/"
 homepage = "https://github.com/EffortlessMetrics/ripr/"
 
+# Strict lint baseline. Source of truth for the bar this repository enforces.
+# Active lints are mirrored in `policy/clippy-lints.toml` (see
+# `docs/CLIPPY_POLICY.md`); `cargo xtask check-lint-policy` cross-checks them.
 [workspace.lints.rust]
 unsafe_code = "forbid"
 const_item_interior_mutations = "deny"
 function_casts_as_integer = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+unused_must_use = "deny"
 
 [workspace.lints.clippy]
+# Hygiene: placeholders and debugging shims must not ship.
 dbg_macro = "deny"
 todo = "deny"
 unimplemented = "deny"
+
+# Unsafe / memory rails. (We forbid `unsafe_code` workspace-wide today; these
+# remain in place so that any future, scoped relaxation still has a receipt.)
+mem_forget = "deny"
+forget_non_drop = "deny"
+drop_non_drop = "deny"
+undocumented_unsafe_blocks = "deny"
+multiple_unsafe_ops_per_block = "deny"
+repr_packed_without_abi = "deny"
+
+# Concurrency rails.
+rc_mutex = "deny"
+arc_with_non_send_sync = "deny"
+mutex_atomic = "deny"
+mut_mutex_lock = "deny"
+readonly_write_lock = "deny"
+await_holding_lock = "deny"
+await_holding_refcell_ref = "deny"
+
+# Numeric correctness.
+float_cmp = "deny"
+float_cmp_const = "deny"
+lossy_float_literal = "deny"
+cast_abs_to_unsigned = "deny"
+cast_enum_truncation = "deny"
+cast_nan_to_int = "deny"
+invalid_upcast_comparisons = "deny"
+# `cast_sign_loss` is recorded as deferred: existing i64 -> u32 sites in
+# `output/suppressions.rs` need an explicit conversion before we can flip it.
+
+# Silent-failure rails.
+let_underscore_future = "deny"
+let_underscore_lock = "deny"
+unused_result_ok = "deny"
+lines_filter_map_ok = "deny"
+match_result_ok = "deny"
+# `let_underscore_must_use`, `map_err_ignore`, and `assertions_on_result_states`
+# are recorded as deferred: existing `let _ = fs::remove_dir_all(...)`,
+# `map_err(|_| ...)`, and `assert!(result.is_err())` sites need a focused
+# migration before flipping. See `policy/clippy-lints.toml`.
+
+# Filesystem / path footguns.
+suspicious_open_options = "deny"
+nonsensical_open_options = "deny"
+ineffective_open_options = "deny"
+path_buf_push_overwrite = "deny"
+join_absolute_paths = "deny"
+
+# API / trait correctness.
+iter_not_returning_iterator = "deny"
+expl_impl_clone_on_copy = "deny"
+infallible_try_from = "deny"
+fallible_impl_from = "deny"
+error_impl_error = "deny"
+
+# Format-args hygiene.
+format_in_format_args = "deny"
+to_string_in_format_args = "deny"
+unused_format_specs = "deny"
+
+# Test discipline.
+should_panic_without_expect = "deny"
+
+# Governance.
+blanket_clippy_restriction_lints = "deny"
 
 [profile.release]
 lto = true
