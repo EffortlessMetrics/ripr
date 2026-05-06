@@ -102,11 +102,28 @@ commands = [
 
 [[work_item]]
 id = "workspace/module-split"
-status = "ready"
+status = "done"
 branch = "workspace-module-split"
 stackable = false
 requires_human_merge = true
 acceptance = "analysis/workspace.rs splits into focused workspace modules with no workspace-selection behavior, output, API, or schema drift"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-public-api",
+  "cargo xtask check-architecture",
+  "cargo xtask check-output-contracts",
+  "cargo test --workspace"
+]
+
+[[work_item]]
+id = "probes/module-split"
+status = "ready"
+branch = "probes-module-split"
+stackable = false
+requires_human_merge = true
+acceptance = "analysis/probes.rs splits into focused probe modules with no probe generation behavior, output, API, or schema drift; sanitize_path behavior stays pinned for Unix paths, Windows-style paths, colons, and trimming"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",

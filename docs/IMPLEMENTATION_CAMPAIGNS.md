@@ -695,10 +695,11 @@ Work items:
 | `analysis/summary-extraction` | done | PR 1 (#244): Extracted duplicated summary and sort logic from `analysis/mod.rs` into focused helper modules with no output/API/schema drift. |
 | `analysis/pipeline-extraction` | done | PR 2 (#245): Extracted diff and repo pipeline orchestration into `analysis/pipeline.rs` while preserving `run_analysis` and `run_repo_analysis` as stable facades. |
 | `diff/module-split` | done | PR 3 (#246): Split `analysis/diff.rs` into `diff/{mod,model,load,parse}.rs` with the parser and git-diff adapter behavior preserved. |
-| `workspace/module-split` | ready | PR 4 (#247): Rebase after #246 and split workspace concerns into focused modules without changing workspace selection behavior. |
-| `facts/model-extraction` | pending | PR 5: Move fact DTOs into `analysis/facts/model.rs` |
-| `syntax/adapter-extraction` | pending | PR 6: Move syntax adapters into `analysis/syntax/adapter.rs` |
-| `facts/builder-extraction` | pending | PR 7: Move index construction into `analysis/facts/build.rs` |
+| `workspace/module-split` | done | PR 4 (#247): Split workspace concerns into focused modules without changing workspace selection behavior. |
+| `probes/module-split` | ready | PR 5 (#249): Rebase after #247 and split probe concerns; preserve `sanitize_path` behavior for Unix paths, Windows-style paths, colons, and trimming. |
+| `facts/model-extraction` | pending | PR 6 (#251): Move fact DTOs into `analysis/facts/model.rs` after the probe split lands. |
+| `syntax/adapter-extraction` | pending | PR 7: Move syntax adapters into `analysis/syntax/adapter.rs` |
+| `facts/builder-extraction` | pending | PR 8 (#253): Move index construction into `analysis/facts/build.rs` |
 | `syntax/ra-extraction` | pending | PR 8: Move parser-backed logic into `analysis/syntax/ra.rs` |
 | `syntax/lexical-extraction` | pending | PR 9: Move lexical fallback into `analysis/syntax/lexical.rs` |
 | `extract/fact-extraction` | pending | PR 10: Move extractors into `analysis/extract/{calls,literals,oracles,probe_shapes,text}.rs` |

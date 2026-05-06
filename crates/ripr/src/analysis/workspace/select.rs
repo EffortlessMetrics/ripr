@@ -1,12 +1,6 @@
-use super::AnalysisMode;
-use std::path::{Path, PathBuf};
-
-pub fn discover_rust_files(root: &Path) -> Result<Vec<PathBuf>, String> {
-    let mut out = Vec::new();
-    visit(root, root, &mut out)?;
-    out.sort();
-    Ok(out)
-}
+use super::super::AnalysisMode;
+use super::classify::package_root;
+use std::path::PathBuf;
 
 pub fn select_rust_files_for_mode(
     all_files: &[PathBuf],
@@ -55,100 +49,12 @@ fn sorted_unique(files: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
     out
 }
 
-pub fn is_production_rust_path(path: &Path) -> bool {
-    if path.extension().and_then(|e| e.to_str()) != Some("rs") {
-        return false;
-    }
-
-    let normalized = normalize_path(path);
-    let components = normalized.split('/').collect::<Vec<_>>();
-
-    if !components.iter().any(|c| c == &"src") {
-        return false;
-    }
-
-    let exclude_components = [
-        "tests",
-        "examples",
-        "benches",
-        "target",
-        "fixtures",
-        "editors",
-        "node_modules",
-        "xtask",
-    ];
-    if components.iter().any(|c| exclude_components.contains(c)) {
-        return false;
-    }
-
-    let file_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-    if file_stem == "tests" {
-        return false;
-    }
-
-    true
-}
-
-fn package_root(path: &Path) -> Option<String> {
-    let normalized = normalize_path(path);
-    if normalized.starts_with("src/")
-        || normalized.starts_with("tests/")
-        || normalized.starts_with("examples/")
-        || normalized.starts_with("benches/")
-    {
-        return Some(String::new());
-    }
-    if let Some(rest) = normalized.strip_prefix("crates/")
-        && let Some((crate_name, crate_relative)) = rest.split_once('/')
-        && (crate_relative.starts_with("src/") || crate_relative.starts_with("tests/"))
-    {
-        return Some(format!("crates/{crate_name}/"));
-    }
-    for marker in ["/src/", "/tests/", "/examples/", "/benches/"] {
-        if let Some(idx) = normalized.rfind(marker) {
-            let prefix = &normalized[..idx];
-            if !prefix.is_empty() {
-                return Some(format!("{prefix}/"));
-            }
-        }
-    }
-    None
-}
-
-fn normalize_path(path: &Path) -> String {
-    path.to_string_lossy()
-        .replace('\\', "/")
-        .trim_start_matches("./")
-        .to_string()
-}
-
-fn visit(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
-    let entries =
-        std::fs::read_dir(dir).map_err(|err| format!("failed to read {}: {err}", dir.display()))?;
-    for entry in entries {
-        let entry = entry.map_err(|err| format!("failed to read dir entry: {err}"))?;
-        let path = entry.path();
-        let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
-        if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-            if matches!(
-                name,
-                ".git" | "target" | ".ripr" | ".direnv" | "fixtures" | "node_modules"
-            ) {
-                continue;
-            }
-            visit(root, &path, out)?;
-        } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
-            let relative = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
-            out.push(relative);
-        }
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::analysis::workspace::{discover_rust_files, is_production_rust_path};
     use std::fs;
+    use std::path::Path;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn files(paths: &[&str]) -> Vec<PathBuf> {
