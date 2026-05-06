@@ -20331,8 +20331,8 @@ settings: |
                 XtaskCommand::CheckBadgeEndpoints,
                 XtaskCommand::Dogfood,
                 XtaskCommand::Critic,
-                XtaskCommand::Reports(vec!["unknown".to_string()]),
-                XtaskCommand::Receipts(vec!["unknown".to_string()]),
+                XtaskCommand::Reports(vec!["index".to_string()]),
+                XtaskCommand::Receipts(Vec::new()),
                 XtaskCommand::GoldenDrift,
             ];
 
