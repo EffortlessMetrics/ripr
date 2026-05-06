@@ -719,18 +719,13 @@ mod tests {
         let root = temp_root("missing")?;
         let config = load_for_root(&root)?;
 
-        if config.source_path().is_some() {
-            return Err("missing config should not have a source path".to_string());
-        }
-        if config.analysis().mode().is_some() {
-            return Err("missing config should not override mode".to_string());
-        }
-        if config.lsp().seam_diagnostics().unwrap_or(false) {
-            return Err("seam diagnostics should default off".to_string());
-        }
-        if config.reports().max_related_tests() != DEFAULT_CONTEXT_RELATED_TESTS {
-            return Err("unexpected related-test default".to_string());
-        }
+        assert!(config.source_path().is_none());
+        assert!(config.analysis().mode().is_none());
+        assert!(!config.lsp().seam_diagnostics().unwrap_or(false));
+        assert_eq!(
+            config.reports().max_related_tests(),
+            DEFAULT_CONTEXT_RELATED_TESTS
+        );
         Ok(())
     }
 
@@ -757,57 +752,185 @@ max_related_tests = 9
 path = ".ripr/custom-suppressions.toml"
 
 [severity.findings]
+exposed = "note"
 weakly_exposed = "info"
+reachable_unrevealed = "warning"
+no_static_path = "note"
+infection_unknown = "info"
+propagation_unknown = "warning"
 static_unknown = "warning"
 
 [severity.seams]
 strongly_gripped = "off"
 weakly_gripped = "warning"
+ungripped = "info"
+reachable_unrevealed = "note"
+activation_unknown = "info"
+propagation_unknown = "warning"
+observation_unknown = "note"
+discrimination_unknown = "info"
 opaque = "note"
-"#,
+intentional = "off"
+suppressed = "off"
+        "#,
         )?;
 
-        if config.analysis().mode() != Some(&Mode::Deep) {
-            return Err("analysis.mode did not parse".to_string());
-        }
-        if config.analysis().include_unchanged_tests() != Some(false) {
-            return Err("include_unchanged_tests did not parse".to_string());
-        }
-        if config.oracles().snapshot_strength() != &OracleStrength::Strong {
-            return Err("snapshot oracle policy did not parse".to_string());
-        }
-        if config.oracles().mock_expectation_strength() != &OracleStrength::Strong {
-            return Err("mock oracle policy did not parse".to_string());
-        }
-        if config.oracles().broad_error_strength() != &OracleStrength::Medium {
-            return Err("broad error oracle policy did not parse".to_string());
-        }
-        if config.lsp().seam_diagnostics() != Some(true) {
-            return Err("lsp seam diagnostics did not parse".to_string());
-        }
-        if config.reports().max_related_tests() != 9 {
-            return Err("reports.max_related_tests did not parse".to_string());
-        }
-        if config.suppressions().display_path() != ".ripr/custom-suppressions.toml" {
-            return Err("suppressions path did not parse".to_string());
-        }
-        if config
-            .severity()
-            .for_exposure(&ExposureClass::WeaklyExposed)
-            != ConfigSeverity::Info
-        {
-            return Err("finding severity override did not parse".to_string());
-        }
-        if config
-            .severity()
-            .for_exposure(&ExposureClass::StaticUnknown)
-            != ConfigSeverity::Warning
-        {
-            return Err("unknown severity override did not parse".to_string());
-        }
-        if config.severity().for_seam(SeamGripClass::Opaque) != ConfigSeverity::Note {
-            return Err("seam severity override did not parse".to_string());
-        }
+        assert_eq!(config.analysis().mode(), Some(&Mode::Deep));
+        assert_eq!(config.analysis().include_unchanged_tests(), Some(false));
+        assert_eq!(
+            config.oracles().snapshot_strength(),
+            &OracleStrength::Strong
+        );
+        assert_eq!(
+            config.oracles().mock_expectation_strength(),
+            &OracleStrength::Strong
+        );
+        assert_eq!(
+            config.oracles().broad_error_strength(),
+            &OracleStrength::Medium
+        );
+        assert_eq!(config.lsp().seam_diagnostics(), Some(true));
+        assert_eq!(config.reports().max_related_tests(), 9);
+        assert_eq!(
+            config.suppressions().display_path(),
+            ".ripr/custom-suppressions.toml"
+        );
+        assert_eq!(
+            config.severity().for_exposure(&ExposureClass::Exposed),
+            ConfigSeverity::Note
+        );
+        assert_eq!(
+            config
+                .severity()
+                .for_exposure(&ExposureClass::WeaklyExposed),
+            ConfigSeverity::Info
+        );
+        assert_eq!(
+            config
+                .severity()
+                .for_exposure(&ExposureClass::ReachableUnrevealed),
+            ConfigSeverity::Warning
+        );
+        assert_eq!(
+            config.severity().for_exposure(&ExposureClass::NoStaticPath),
+            ConfigSeverity::Note
+        );
+        assert_eq!(
+            config
+                .severity()
+                .for_exposure(&ExposureClass::InfectionUnknown),
+            ConfigSeverity::Info
+        );
+        assert_eq!(
+            config
+                .severity()
+                .for_exposure(&ExposureClass::PropagationUnknown),
+            ConfigSeverity::Warning
+        );
+        assert_eq!(
+            config
+                .severity()
+                .for_exposure(&ExposureClass::StaticUnknown),
+            ConfigSeverity::Warning
+        );
+        assert_eq!(
+            config.severity().for_seam(SeamGripClass::StronglyGripped),
+            ConfigSeverity::Off
+        );
+        assert_eq!(
+            config.severity().for_seam(SeamGripClass::WeaklyGripped),
+            ConfigSeverity::Warning
+        );
+        assert_eq!(
+            config.severity().for_seam(SeamGripClass::Ungripped),
+            ConfigSeverity::Info
+        );
+        assert_eq!(
+            config
+                .severity()
+                .for_seam(SeamGripClass::ReachableUnrevealed),
+            ConfigSeverity::Note
+        );
+        assert_eq!(
+            config.severity().for_seam(SeamGripClass::ActivationUnknown),
+            ConfigSeverity::Info
+        );
+        assert_eq!(
+            config
+                .severity()
+                .for_seam(SeamGripClass::PropagationUnknown),
+            ConfigSeverity::Warning
+        );
+        assert_eq!(
+            config
+                .severity()
+                .for_seam(SeamGripClass::ObservationUnknown),
+            ConfigSeverity::Note
+        );
+        assert_eq!(
+            config
+                .severity()
+                .for_seam(SeamGripClass::DiscriminationUnknown),
+            ConfigSeverity::Info
+        );
+        assert_eq!(
+            config.severity().for_seam(SeamGripClass::Opaque),
+            ConfigSeverity::Note
+        );
+        assert_eq!(
+            config.severity().for_seam(SeamGripClass::Intentional),
+            ConfigSeverity::Off
+        );
+        assert_eq!(
+            config.severity().for_seam(SeamGripClass::Suppressed),
+            ConfigSeverity::Off
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn config_file_discovery_records_source_metadata() -> Result<(), String> {
+        let root = temp_root("present")?;
+        let config_path = root.join(CONFIG_FILE_NAME);
+        fs::write(&config_path, "[analysis]\nmode = \"fast\"\n")
+            .map_err(|err| format!("write config failed: {err}"))?;
+
+        let config = load_for_root(&root)?;
+
+        assert_eq!(config.source_path(), Some(config_path.as_path()));
+        assert_eq!(config.source_text(), Some("[analysis]\nmode = \"fast\"\n"));
+        assert_eq!(config.analysis().mode(), Some(&Mode::Fast));
+        Ok(())
+    }
+
+    #[test]
+    fn oracle_strength_literals_round_trip_through_config() -> Result<(), String> {
+        let weak_smoke_none = parse_config(
+            r#"
+[oracles]
+snapshot_strength = "weak"
+mock_expectation_strength = "smoke"
+broad_error_strength = "none"
+"#,
+        )?;
+        assert_eq!(
+            weak_smoke_none.oracles().snapshot_strength(),
+            &OracleStrength::Weak
+        );
+        assert_eq!(
+            weak_smoke_none.oracles().mock_expectation_strength(),
+            &OracleStrength::Smoke
+        );
+        assert_eq!(
+            weak_smoke_none.oracles().broad_error_strength(),
+            &OracleStrength::None
+        );
+
+        let unknown = parse_config("[oracles]\nbroad_error_strength = \"unknown\"\n")?;
+        assert_eq!(
+            unknown.oracles().broad_error_strength(),
+            &OracleStrength::Unknown
+        );
         Ok(())
     }
 
@@ -827,9 +950,7 @@ opaque = "note"
                 include_unchanged_tests: false,
             },
         );
-        if input.mode != Mode::Instant {
-            return Err("explicit mode should win over config mode".to_string());
-        }
+        assert_eq!(input.mode, Mode::Instant);
         Ok(())
     }
 
@@ -838,9 +959,7 @@ opaque = "note"
         let config = parse_config("[analysis]\nmode = \"ready\"\n")?;
         let mut input = CheckInput::default();
         apply_to_check_input(&mut input, &config, CheckInputExplicit::default());
-        if input.mode != Mode::Ready {
-            return Err("config mode should apply without explicit mode".to_string());
-        }
+        assert_eq!(input.mode, Mode::Ready);
         Ok(())
     }
 
@@ -851,6 +970,17 @@ opaque = "note"
 
         let unknown_field = parse_config("[analysis]\nunknown = true\n");
         assert!(matches!(unknown_field, Err(message) if message.contains("unknown field")));
+
+        let invalid_oracle = parse_config("[oracles]\nsnapshot_strength = \"mystery\"\n");
+        assert!(matches!(invalid_oracle, Err(message) if message.contains("oracle strength")));
+
+        let finding_off = parse_config("[severity.findings]\nweakly_exposed = \"off\"\n");
+        assert!(matches!(finding_off, Err(message) if message.contains("use suppressions")));
+
+        let bad_severity = parse_config("[severity.findings]\nweakly_exposed = \"loud\"\n");
+        assert!(
+            matches!(bad_severity, Err(message) if message.contains("severity.findings.weakly_exposed"))
+        );
     }
 
     #[test]
@@ -858,6 +988,7 @@ opaque = "note"
         for text in [
             "[suppressions]\npath = \"\"\n".to_string(),
             "[suppressions]\npath = \"../outside.toml\"\n".to_string(),
+            format!("[suppressions]\npath = \"{}tmp/suppressions.toml\"\n", '/'),
             "[suppressions]\npath = \"file:tmp/suppressions.toml\"\n".to_string(),
             "[suppressions]\npath = 'a\\b.toml'\n".to_string(),
         ] {
