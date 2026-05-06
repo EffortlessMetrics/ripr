@@ -10,6 +10,7 @@ use serde_json::Value;
 mod command;
 mod dispatch;
 mod policy;
+mod reports;
 mod run;
 
 #[cfg(test)]
@@ -20,6 +21,12 @@ use policy::{
     check_local_context, check_network_policy, check_no_panic_family, check_process_policy,
     check_static_language, check_workflows,
 };
+use reports::{
+    dogfood, fixtures, metrics_report, pr_summary, receipts_write, repo_badge_artifacts,
+    reports_index, test_oracle_report,
+};
+#[cfg(test)]
+use reports::{lsp_cockpit_report, targeted_test_outcome};
 use run::{capture_output, run, run_output, run_output_optional, run_output_owned};
 
 #[derive(Debug)]
@@ -745,7 +752,7 @@ fn fix_pr() -> Result<(), String> {
     write_report("fix-pr.md", body)
 }
 
-fn pr_summary() -> Result<(), String> {
+pub(crate) fn pr_summary_impl() -> Result<(), String> {
     let changes = collect_pr_changes()?;
     let body = pr_summary_body(&changes);
     write_report("pr-summary.md", &body)
@@ -757,7 +764,7 @@ fn check_pr_shape() -> Result<(), String> {
     write_report("pr-shape.md", &pr_shape_report_body(&warnings))
 }
 
-fn critic() -> Result<(), String> {
+pub(crate) fn critic_impl() -> Result<(), String> {
     ensure_reports_dir()?;
     let changes = collect_pr_changes()?;
     let reports = report_index_entries()?;
@@ -770,7 +777,7 @@ fn critic() -> Result<(), String> {
     write_report("critic.json", &critic_json(&findings, &reports, &receipts))
 }
 
-fn reports(args: &[String]) -> Result<(), String> {
+pub(crate) fn reports_impl(args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("index") => reports_index(),
         Some(other) => Err(format!(
@@ -780,7 +787,7 @@ fn reports(args: &[String]) -> Result<(), String> {
     }
 }
 
-fn receipts(args: &[String]) -> Result<(), String> {
+pub(crate) fn receipts_impl(args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str) {
         None => receipts_write(),
         Some("check") => receipts_check(),
@@ -790,7 +797,7 @@ fn receipts(args: &[String]) -> Result<(), String> {
     }
 }
 
-fn reports_index() -> Result<(), String> {
+pub(crate) fn reports_index_impl() -> Result<(), String> {
     let changes = collect_pr_changes()?;
     let campaign = report_index_campaign();
     let reports = report_index_entries()?;
@@ -819,7 +826,7 @@ fn reports_index() -> Result<(), String> {
     write_report("index.json", &json)
 }
 
-fn receipts_write() -> Result<(), String> {
+pub(crate) fn receipts_write_impl() -> Result<(), String> {
     ensure_receipts_dir()?;
     let git = receipt_git_metadata();
     let mut records = Vec::new();
@@ -1145,7 +1152,7 @@ fn check_pr_report_body() -> String {
     "# ripr check-pr report\n\nStatus: pass\n\nChecks:\n\n- `cargo xtask ci-fast`\n- `cargo clippy --workspace --all-targets -- -D warnings`\n- `cargo doc --workspace --no-deps`\n- `cargo xtask pr-summary`\n\nReports:\n\n- `target/ripr/reports/pr-summary.md`\n- `target/ripr/reports/check-pr.md`\n\nRelease/package gates are intentionally left to `cargo xtask ci-full` or release-specific workflows.\n".to_string()
 }
 
-fn fixtures(name: Option<&String>) -> Result<(), String> {
+pub(crate) fn fixtures_impl(name: Option<&String>) -> Result<(), String> {
     let fixture_dirs = fixture_dirs()?;
     let selected = match name {
         Some(value) => vec![fixture_dir_for_name(value)?],
@@ -1192,7 +1199,7 @@ fn fixtures(name: Option<&String>) -> Result<(), String> {
     }
 }
 
-fn goldens(args: &[String]) -> Result<(), String> {
+pub(crate) fn goldens_impl(args: &[String]) -> Result<(), String> {
     match args.first().map(String::as_str) {
         Some("check") => goldens_check(),
         Some("bless") => {
@@ -1230,7 +1237,7 @@ fn goldens_check() -> Result<(), String> {
     }
 }
 
-fn golden_drift() -> Result<(), String> {
+pub(crate) fn golden_drift_impl() -> Result<(), String> {
     let run_set = collect_golden_runs()?;
     write_golden_drift_reports(&run_set.runs, &run_set.violations)?;
     if run_set
@@ -3525,7 +3532,7 @@ fn parse_quoted_value(value: &str) -> Result<String, String> {
     Ok(trimmed[1..trimmed.len() - 1].to_string())
 }
 
-fn metrics_report() -> Result<(), String> {
+pub(crate) fn metrics_report_impl() -> Result<(), String> {
     let (capabilities, violations) =
         parse_capabilities_manifest(Path::new("metrics/capabilities.toml"))?;
     if !violations.is_empty() {
@@ -3539,7 +3546,7 @@ fn metrics_report() -> Result<(), String> {
     write_report("metrics.json", &capability_metrics_json(&capabilities))
 }
 
-fn test_oracle_report() -> Result<(), String> {
+pub(crate) fn test_oracle_report_impl() -> Result<(), String> {
     let tests = collect_test_oracle_tests()?;
     write_report("test-oracles.md", &test_oracle_report_markdown(&tests))?;
     write_report("test-oracles.json", &test_oracle_report_json(&tests))
@@ -3937,7 +3944,7 @@ fn test_oracle_report_json(tests: &[TestOracleTest]) -> String {
     body
 }
 
-fn test_efficiency_report() -> Result<(), String> {
+pub(crate) fn test_efficiency_report_impl() -> Result<(), String> {
     let tests = collect_test_oracle_tests()?;
     let mut entries = tests.iter().map(test_efficiency_entry).collect::<Vec<_>>();
     let duplicate_groups = apply_duplicate_discriminator_groups(&mut entries);
@@ -5431,7 +5438,7 @@ fn test_efficiency_report_json(
     body
 }
 
-fn badge_artifacts() -> Result<(), String> {
+pub(crate) fn badge_artifacts_impl() -> Result<(), String> {
     let badge_dir = Path::new("target").join("ripr");
     fs::create_dir_all(&badge_dir).map_err(|err| {
         format!(
@@ -5542,7 +5549,7 @@ fn badge_artifacts_summary_markdown(ripr_native_json: &str, ripr_plus_native_jso
 /// Shells out to the ripr CLI's `check --format repo-seams-*` paths
 /// (the inventory walker is crate-private, so xtask cannot call it
 /// directly).
-fn repo_seam_inventory() -> Result<(), String> {
+pub(crate) fn repo_seam_inventory_impl() -> Result<(), String> {
     let json_args = repo_seam_inventory_command_args("repo-seams-json");
     let json_output = run_output_owned("cargo", &json_args)?;
     write_report("repo-seams.json", &json_output)?;
@@ -5580,7 +5587,7 @@ fn repo_seam_inventory_command_args_for_root(format: &str, root: &str) -> Vec<St
 /// `repo_seam_inventory`, but routes through the
 /// `repo-exposure-json|md` formats which compute test-grip evidence
 /// and `SeamGripClass` per seam.
-fn repo_exposure_report() -> Result<(), String> {
+pub(crate) fn repo_exposure_report_impl() -> Result<(), String> {
     let json_args = repo_seam_inventory_command_args("repo-exposure-json");
     let json_output = run_output_owned("cargo", &json_args)?;
     write_report("repo-exposure.json", &json_output)?;
@@ -5592,7 +5599,7 @@ fn repo_exposure_report() -> Result<(), String> {
 
 /// Run the agent seam packet renderer and write
 /// `target/ripr/reports/agent-seam-packets.json`.
-fn agent_seam_packets_report(root: Option<&String>) -> Result<(), String> {
+pub(crate) fn agent_seam_packets_report_impl(root: Option<&String>) -> Result<(), String> {
     let root = root.map_or(".", String::as_str);
     let json_args = repo_seam_inventory_command_args_for_root("agent-seam-packets-json", root);
     let json_output = run_output_owned("cargo", &json_args)?;
@@ -5640,7 +5647,7 @@ struct LspCockpitVscodeCoverage {
     uncovered_contributed_commands: Vec<String>,
 }
 
-fn lsp_cockpit_report() -> Result<(), String> {
+pub(crate) fn lsp_cockpit_report_impl() -> Result<(), String> {
     let report = build_lsp_cockpit_report()?;
     write_report("lsp-cockpit.json", &lsp_cockpit_report_json(&report)?)?;
     write_report("lsp-cockpit.md", &lsp_cockpit_report_markdown(&report))
@@ -6035,7 +6042,7 @@ const SEAM_GRIP_CLASS_ORDER: &[&str] = &[
     "suppressed",
 ];
 
-fn targeted_test_outcome(args: &[String]) -> Result<(), String> {
+pub(crate) fn targeted_test_outcome_impl(args: &[String]) -> Result<(), String> {
     let parsed = parse_targeted_test_outcome_args(args)?;
     let before_text = read_text_lossy(&parsed.before)?;
     let after_text = read_text_lossy(&parsed.after)?;
@@ -6463,7 +6470,7 @@ fn push_targeted_outcome_seams_md(
     }
 }
 
-fn mutation_calibration(args: &[String]) -> Result<(), String> {
+pub(crate) fn mutation_calibration_impl(args: &[String]) -> Result<(), String> {
     let parsed = parse_mutation_calibration_args(args)?;
     let repo_exposure_json = match parsed.repo_exposure_json.as_ref() {
         Some(path) => read_text_lossy(path)?,
@@ -6664,7 +6671,7 @@ struct SarifPolicyReport {
     new_results: Vec<SarifPolicyResult>,
 }
 
-fn sarif_policy(args: &[String]) -> Result<(), String> {
+pub(crate) fn sarif_policy_impl(args: &[String]) -> Result<(), String> {
     let parsed = parse_sarif_policy_args(args)?;
     let current_text = read_text_lossy(&parsed.current)?;
     let current_results = parse_sarif_policy_results(&current_text, "current SARIF")?;
@@ -8198,7 +8205,7 @@ fn normalize_report_path(path: &str) -> String {
         .to_string()
 }
 
-fn repo_badge_artifacts() -> Result<(), String> {
+pub(crate) fn repo_badge_artifacts_impl() -> Result<(), String> {
     let badge_dir = Path::new("target").join("ripr");
     fs::create_dir_all(&badge_dir).map_err(|err| {
         format!(
@@ -8309,7 +8316,7 @@ const BADGE_ENDPOINT_FILES: &[(&str, &str)] = &[
 /// via `repo_badge_artifacts()` and copies the two Shields projections
 /// into the committed `badges/` directory so the README endpoint URLs
 /// reflect the latest repo-scoped state.
-fn update_badge_endpoints() -> Result<(), String> {
+pub(crate) fn update_badge_endpoints_impl() -> Result<(), String> {
     repo_badge_artifacts()?;
     copy_badge_endpoints_from_reports(Path::new("target/ripr/reports"), Path::new("."))
 }
@@ -8395,7 +8402,7 @@ fn badge_endpoint_violation(
 /// requiring every PR to also update `badges/` is too much friction
 /// before the headline stabilizes. Use locally before campaign
 /// closeouts and after material analyzer changes.
-fn check_badge_endpoints() -> Result<(), String> {
+pub(crate) fn check_badge_endpoints_impl() -> Result<(), String> {
     repo_badge_artifacts()?;
     let violations =
         compute_badge_endpoint_violations(Path::new("target/ripr/reports"), Path::new("."))?;
@@ -8537,7 +8544,7 @@ fn extract_json_warnings(json: &str) -> Vec<String> {
     warnings
 }
 
-fn dogfood() -> Result<(), String> {
+pub(crate) fn dogfood_impl() -> Result<(), String> {
     let runs = dogfood_scenarios()
         .into_iter()
         .map(|scenario| dogfood_run(&scenario))
@@ -14558,6 +14565,7 @@ fn check_droid_review_config_impl() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::XtaskCommand;
+    use super::dispatch;
     use super::run::{capture_output, run, run_output, run_output_optional, run_output_owned};
     use super::{
         BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, CheckReport,
@@ -20298,6 +20306,51 @@ settings: |
             XtaskCommand::parse(std::iter::empty::<String>()),
             XtaskCommand::Help
         );
+    }
+
+    #[test]
+    fn report_commands_dispatch_through_report_facades() -> Result<(), String> {
+        with_temp_cwd("report-dispatch", |_| {
+            let commands = vec![
+                XtaskCommand::PrSummary,
+                XtaskCommand::Fixtures(Some("missing".to_string())),
+                XtaskCommand::Goldens(vec!["unknown".to_string()]),
+                XtaskCommand::Metrics,
+                XtaskCommand::TestOracleReport,
+                XtaskCommand::TestEfficiencyReport,
+                XtaskCommand::BadgeArtifacts,
+                XtaskCommand::RepoBadgeArtifacts,
+                XtaskCommand::RepoSeamInventory,
+                XtaskCommand::RepoExposureReport,
+                XtaskCommand::AgentSeamPackets(Some(".".to_string())),
+                XtaskCommand::LspCockpitReport,
+                XtaskCommand::TargetedTestOutcome(Vec::new()),
+                XtaskCommand::MutationCalibration(Vec::new()),
+                XtaskCommand::SarifPolicy(Vec::new()),
+                XtaskCommand::UpdateBadgeEndpoints,
+                XtaskCommand::CheckBadgeEndpoints,
+                XtaskCommand::Dogfood,
+                XtaskCommand::Critic,
+                XtaskCommand::Reports(vec!["unknown".to_string()]),
+                XtaskCommand::Receipts(vec!["unknown".to_string()]),
+                XtaskCommand::GoldenDrift,
+            ];
+
+            for command in commands {
+                let label = format!("{command:?}");
+                match dispatch::execute(command) {
+                    Ok(()) => {}
+                    Err(message) if !message.is_empty() => {}
+                    Err(_) => {
+                        return Err(format!(
+                            "{label} should either succeed or return an actionable error"
+                        ));
+                    }
+                }
+            }
+
+            Ok(())
+        })
     }
 
     #[test]

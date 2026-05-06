@@ -728,8 +728,8 @@ Work items:
 | `api/private-internals` | blocked | PR 33: Make internal modules private (breaking, optional) |
 | `xtask/command-dispatch` | done | PR 34: Split xtask into command and run modules |
 | `xtask/policy-modules` | done | PR 35: Organize policy checks into `xtask/src/policy/` |
-| `xtask/report-modules` | ready | PR 36: Organize reports into `xtask/src/reports/` |
-| `campaign/modularization-closeout` | blocked | Final review and closure of Campaign 6 after `xtask/report-modules` |
+| `xtask/report-modules` | done | PR 36: Organize reports into `xtask/src/reports/` |
+| `campaign/modularization-closeout` | ready | Final review and closure of Campaign 6 |
 
 Stack audit:
 
