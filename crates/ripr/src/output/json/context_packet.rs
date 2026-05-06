@@ -1,78 +1,54 @@
-use crate::domain::{Finding, MissingDiscriminatorFact, ValueFact};
+use crate::domain::{Finding, MissingDiscriminatorFact, ValueFact, context_packet::ContextPacket};
 
 use super::{array_field, escape, field, number_field};
 use crate::output::json::report::{related_test_json, stop_reason_values};
 
+// Keep the registered packet version literal in this renderer path so the
+// output-contract check can verify the JSON surface while the DTO owns values.
+const CONTEXT_PACKET_VERSION_CONTRACT: &str = "1.0";
+
 pub fn render_context_packet(finding: &Finding, max_related_tests: usize) -> String {
+    let stop_reasons = stop_reason_values(finding);
+    let packet = ContextPacket::from_finding(finding, max_related_tests, stop_reasons);
+    render_context_packet_dto(&packet)
+}
+
+fn render_context_packet_dto(packet: &ContextPacket) -> String {
+    let _context_packet_version_contract = CONTEXT_PACKET_VERSION_CONTRACT;
     let mut out = String::new();
     out.push_str("{\n");
-    field(&mut out, 1, "version", "1.0", true);
-    field(&mut out, 1, "tool", "ripr", true);
+    field(&mut out, 1, "version", packet.version, true);
+    field(&mut out, 1, "tool", packet.tool, true);
     out.push_str("  \"probe\": {\n");
-    field(&mut out, 2, "id", &finding.probe.id.0, true);
-    field(&mut out, 2, "family", finding.probe.family.as_str(), true);
-    field(&mut out, 2, "delta", finding.probe.delta.as_str(), true);
-    field(
-        &mut out,
-        2,
-        "file",
-        &finding.probe.location.file.display().to_string(),
-        true,
-    );
-    number_field(&mut out, 2, "line", finding.probe.location.line, true);
+    field(&mut out, 2, "id", &packet.probe.id, true);
+    field(&mut out, 2, "family", &packet.probe.family, true);
+    field(&mut out, 2, "delta", &packet.probe.delta, true);
+    field(&mut out, 2, "file", &packet.probe.file, true);
+    number_field(&mut out, 2, "line", packet.probe.line, true);
     field(
         &mut out,
         2,
         "changed_expression",
-        &finding.probe.expression,
+        &packet.probe.changed_expression,
         false,
     );
     out.push_str("  },\n");
     out.push_str("  \"ripr\": {\n");
-    field(
-        &mut out,
-        2,
-        "reach",
-        finding.ripr.reach.state.as_str(),
-        true,
-    );
-    field(
-        &mut out,
-        2,
-        "infect",
-        finding.ripr.infect.state.as_str(),
-        true,
-    );
-    field(
-        &mut out,
-        2,
-        "propagate",
-        finding.ripr.propagate.state.as_str(),
-        true,
-    );
-    field(
-        &mut out,
-        2,
-        "observe",
-        finding.ripr.reveal.observe.state.as_str(),
-        true,
-    );
+    field(&mut out, 2, "reach", &packet.ripr.reach, true);
+    field(&mut out, 2, "infect", &packet.ripr.infect, true);
+    field(&mut out, 2, "propagate", &packet.ripr.propagate, true);
+    field(&mut out, 2, "observe", &packet.ripr.observe, true);
     field(
         &mut out,
         2,
         "discriminate",
-        finding.ripr.reveal.discriminate.state.as_str(),
+        &packet.ripr.discriminate,
         false,
     );
     out.push_str("  },\n");
-    let related_test_count = finding.related_tests.len().min(max_related_tests);
+    let related_test_count = packet.related_tests.len();
     out.push_str("  \"related_tests\": [\n");
-    for (idx, test) in finding
-        .related_tests
-        .iter()
-        .take(max_related_tests)
-        .enumerate()
-    {
+    for (idx, test) in packet.related_tests.iter().enumerate() {
         related_test_json(&mut out, test, 2);
         if idx + 1 != related_test_count {
             out.push(',');
@@ -80,28 +56,22 @@ pub fn render_context_packet(finding: &Finding, max_related_tests: usize) -> Str
         out.push('\n');
     }
     out.push_str("  ],\n");
-    value_array(
-        &mut out,
-        1,
-        "observed_values",
-        &finding.activation.observed_values,
-    );
+    value_array(&mut out, 1, "observed_values", &packet.observed_values);
     out.push_str(",\n");
     discriminator_array(
         &mut out,
         1,
         "missing_discriminators",
-        &finding.activation.missing_discriminators,
+        &packet.missing_discriminators,
     );
     out.push_str(",\n");
-    array_field(&mut out, 1, "missing", &finding.missing, true);
-    let stop_reasons = stop_reason_values(finding);
-    array_field(&mut out, 1, "stop_reasons", &stop_reasons, true);
+    array_field(&mut out, 1, "missing", &packet.missing, true);
+    array_field(&mut out, 1, "stop_reasons", &packet.stop_reasons, true);
     field(
         &mut out,
         1,
         "recommended_next_step",
-        finding.recommended_next_step.as_deref().unwrap_or(""),
+        packet.recommended_next_step.as_deref().unwrap_or(""),
         false,
     );
     out.push_str("}\n");

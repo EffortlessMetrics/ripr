@@ -235,6 +235,9 @@ are scoped or reviewed.
 - Added the domain-owned `ContextPacket` DTO shape in `domain/context_packet.rs`
   without changing context packet JSON rendering. The next ready seam is wiring
   JSON context rendering through the DTO.
+- Updated JSON context packet rendering to build from the domain `ContextPacket`
+  DTO while preserving the emitted packet schema. The next ready seam is LSP
+  context packet usage.
 - Added `cargo xtask targeted-test-outcome` as an advisory receipt for comparing
   before/after `repo-exposure-json` artifacts. The report writes
   `target/ripr/reports/targeted-test-outcome.{json,md}`, matches seams by
