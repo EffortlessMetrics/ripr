@@ -21,8 +21,8 @@ use super::rust_index::{
     PROBE_SHAPE_MATCH_ARM, PROBE_SHAPE_PREDICATE, PROBE_SHAPE_RETURN_VALUE,
     PROBE_SHAPE_SIDE_EFFECT, ProbeShapeFact, RustIndex,
 };
-use super::seam_cache::{CacheLoad, RepoSeamFactCache, WorkspaceState};
-use super::seam_classification::{self, ClassifiedSeam};
+use super::seam_cache::{CacheLoad, RepoSeamCountCache, RepoSeamFactCache, WorkspaceState};
+use super::seam_classification::{self, ClassifiedSeam, SeamGripClassCounts};
 use super::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator, SeamKind};
 use super::test_grip_evidence;
 use super::workspace;
@@ -107,6 +107,52 @@ pub(crate) fn inventory_classified_seams_uncached_with_config(
     let seams = inventory_seams_from_index(&production_files, &index);
     let evidence = test_grip_evidence::evidence_for_seams(&seams, &index);
     Ok(seam_classification::classify_seams(&seams, &evidence))
+}
+
+/// Walk production Rust files at `root` and return compact seam grip
+/// class counts. Repo badges use this path because they need headline
+/// counts but not full per-seam evidence or related-test payloads.
+pub(crate) fn inventory_seam_grip_class_counts_at_with_config(
+    root: &Path,
+    config: &RiprConfig,
+) -> Result<SeamGripClassCounts, String> {
+    let cache = RepoSeamCountCache::at(root);
+    let state = collect_workspace_state(root, config)?;
+    let key = state.cache_key();
+    match cache.load_counts(&key) {
+        CacheLoad::Hit(cached) => return Ok(cached),
+        CacheLoad::Miss => {}
+        CacheLoad::CorruptIgnored { reason } => {
+            eprintln!("ripr: repo seam count cache entry ignored ({reason})");
+        }
+    }
+    let counts = inventory_seam_grip_class_counts_uncached_with_config(root, config)?;
+    let _ = cache.store_counts(&key, &counts);
+    Ok(counts)
+}
+
+fn inventory_seam_grip_class_counts_uncached_with_config(
+    root: &Path,
+    config: &RiprConfig,
+) -> Result<SeamGripClassCounts, String> {
+    let rust_files = workspace::discover_rust_files(root)?;
+    let production_files: Vec<PathBuf> = rust_files
+        .iter()
+        .filter(|p| workspace::is_production_rust_path(p))
+        .cloned()
+        .collect();
+
+    let mut index = rust_index::build_index(root, &rust_files)?;
+    rust_index::apply_oracle_policy(&mut index, config.oracles());
+    let seams = inventory_seams_from_index(&production_files, &index);
+    let mut counts = SeamGripClassCounts::new(seams.len());
+    let context = test_grip_evidence::CompactGripContext::new(&index);
+    for seam in &seams {
+        let evidence = test_grip_evidence::compact_evidence_for_seam(seam, &context);
+        let class = seam_classification::classify_seam(seam, &evidence);
+        counts.increment(class);
+    }
+    Ok(counts)
 }
 
 /// Collect the per-file content + intent + suppressions inputs the
@@ -607,20 +653,176 @@ mod tests {
             .join(super::super::seam_cache::CACHE_SCHEMA_VERSION)
     }
 
+    fn count_cache_dir_under(root: &Path) -> PathBuf {
+        root.join("target")
+            .join("ripr")
+            .join("cache")
+            .join("repo-seam-counts")
+            .join("0.1")
+    }
+
     fn list_cache_entries(root: &Path) -> Result<Vec<PathBuf>, String> {
         let dir = cache_dir_under(root);
+        list_entries(&dir)
+    }
+
+    fn list_count_cache_entries(root: &Path) -> Result<Vec<PathBuf>, String> {
+        let dir = count_cache_dir_under(root);
+        list_entries(&dir)
+    }
+
+    fn list_entries(dir: &Path) -> Result<Vec<PathBuf>, String> {
         if !dir.exists() {
             return Ok(Vec::new());
         }
         let mut out = Vec::new();
         for entry in
-            std::fs::read_dir(&dir).map_err(|err| format!("read {}: {err}", dir.display()))?
+            std::fs::read_dir(dir).map_err(|err| format!("read {}: {err}", dir.display()))?
         {
             let entry = entry.map_err(|err| format!("read entry: {err}"))?;
             out.push(entry.path());
         }
         out.sort();
         Ok(out)
+    }
+
+    #[test]
+    fn compact_seam_class_counts_match_full_classification_for_small_workspace()
+    -> Result<(), String> {
+        let root = make_tempdir("compact-counts")?;
+        write_file(
+            &root.join("src/foo.rs"),
+            "pub fn discount(amount: i32, threshold: i32) -> bool { amount >= threshold }\n",
+        )?;
+        write_file(
+            &root.join("tests/foo_test.rs"),
+            "#[test] fn discount_calls_owner() { assert!(x::discount(100, 100)); }\n",
+        )?;
+
+        let full = inventory_classified_seams_uncached_with_config(&root, &RiprConfig::default())?;
+        let compact =
+            inventory_seam_grip_class_counts_uncached_with_config(&root, &RiprConfig::default())?;
+        if compact.analyzed_seams() != full.len() {
+            return Err(format!(
+                "compact analyzed count {} did not match full classified count {}",
+                compact.analyzed_seams(),
+                full.len()
+            ));
+        }
+        for class in super::super::seams::SeamGripClass::ALL {
+            let full_count = full.iter().filter(|entry| entry.class == class).count();
+            let compact_count = compact.count_for(class);
+            if compact_count != full_count {
+                return Err(format!(
+                    "compact count for {} was {}, full count was {}",
+                    class.as_str(),
+                    compact_count,
+                    full_count
+                ));
+            }
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn given_cached_seam_class_counts_when_badge_count_runs_then_cached_counts_are_returned()
+    -> Result<(), String> {
+        let root = make_tempdir("count-cache")?;
+        write_file(
+            &root.join("src/foo.rs"),
+            "pub fn discount(amount: i32, threshold: i32) -> bool { amount >= threshold }\n",
+        )?;
+
+        let cold = inventory_seam_grip_class_counts_at_with_config(&root, &RiprConfig::default())?;
+        if cold.analyzed_seams() == 0 {
+            return Err("cold count path should analyze at least one seam".into());
+        }
+
+        let entries = list_count_cache_entries(&root)?;
+        if entries.len() != 1 {
+            return Err(format!(
+                "expected exactly 1 count cache entry, got {}",
+                entries.len()
+            ));
+        }
+        let cache_file = &entries[0];
+        let bytes = std::fs::read(cache_file)
+            .map_err(|err| format!("read {}: {err}", cache_file.display()))?;
+        let mut envelope: serde_json::Value =
+            serde_json::from_slice(&bytes).map_err(|err| format!("parse count cache: {err}"))?;
+        envelope["counts"]["analyzed_seams"] = serde_json::json!(0);
+        envelope["counts"]["counts"] = serde_json::json!({});
+        let rewritten =
+            serde_json::to_vec(&envelope).map_err(|err| format!("encode count cache: {err}"))?;
+        std::fs::write(cache_file, rewritten)
+            .map_err(|err| format!("rewrite {}: {err}", cache_file.display()))?;
+
+        let warm = inventory_seam_grip_class_counts_at_with_config(&root, &RiprConfig::default())?;
+        if warm.analyzed_seams() != 0 {
+            return Err(format!(
+                "warm count path should return cached analyzed_seams=0, got {}",
+                warm.analyzed_seams()
+            ));
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn given_corrupt_count_cache_entry_when_badge_count_runs_then_uncached_path_computes_without_failure()
+    -> Result<(), String> {
+        let root = make_tempdir("count-cache-corrupt")?;
+        write_file(
+            &root.join("src/foo.rs"),
+            "pub fn discount(amount: i32, threshold: i32) -> bool { amount >= threshold }\n",
+        )?;
+
+        let state = collect_workspace_state(&root, &RiprConfig::default())?;
+        let key = state.cache_key();
+        let dir = count_cache_dir_under(&root);
+        std::fs::create_dir_all(&dir).map_err(|err| format!("mkdir {}: {err}", dir.display()))?;
+        let entry = dir.join(key.filename());
+        std::fs::write(&entry, b"{not valid json")
+            .map_err(|err| format!("write corrupt count entry: {err}"))?;
+
+        let result =
+            inventory_seam_grip_class_counts_at_with_config(&root, &RiprConfig::default())?;
+        if result.analyzed_seams() == 0 {
+            return Err("count path should compute real seams when count cache is corrupt".into());
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
+    }
+
+    #[test]
+    fn given_count_cache_store_fails_when_badge_count_runs_then_analysis_result_is_still_returned()
+    -> Result<(), String> {
+        let root = make_tempdir("count-cache-storefail")?;
+        write_file(
+            &root.join("src/foo.rs"),
+            "pub fn discount(amount: i32, threshold: i32) -> bool { amount >= threshold }\n",
+        )?;
+
+        let state = collect_workspace_state(&root, &RiprConfig::default())?;
+        let key = state.cache_key();
+        let dir = count_cache_dir_under(&root);
+        std::fs::create_dir_all(dir.join(key.filename()))
+            .map_err(|err| format!("mkdir count conflict path: {err}"))?;
+
+        let result =
+            inventory_seam_grip_class_counts_at_with_config(&root, &RiprConfig::default())?;
+        if result.analyzed_seams() == 0 {
+            return Err(
+                "count path should return real seams even when count cache write fails".into(),
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
     }
 
     #[test]

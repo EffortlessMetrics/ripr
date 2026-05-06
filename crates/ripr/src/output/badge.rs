@@ -11,7 +11,12 @@
 //! Suppressions, CI artifacts, and the published Shields endpoint live
 //! in their own scoped PRs.
 
+#[cfg(test)]
+use crate::analysis::ClassifiedSeam;
+use crate::analysis::SeamGripClassCounts;
+use crate::analysis::seams::SeamGripClass;
 use crate::app::CheckOutput;
+use crate::config::{ConfigSeverity, RiprConfig};
 use crate::domain::ExposureClass;
 use crate::output::json::escape as json_escape;
 use crate::output::suppressions::{
@@ -62,6 +67,23 @@ impl BadgeStatus {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BadgeBasis {
+    /// Counts legacy diff/repo `Finding` exposure classes.
+    FindingExposure,
+    /// Counts classified repo seams using configured seam severity.
+    SeamNative,
+}
+
+impl BadgeBasis {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            BadgeBasis::FindingExposure => "finding_exposure",
+            BadgeBasis::SeamNative => "seam_native",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BadgeCounts {
     pub unsuppressed_exposure_gaps: usize,
@@ -72,6 +94,7 @@ pub struct BadgeCounts {
     pub unknowns: usize,
     pub unknowns_test_efficiency: usize,
     pub analyzed_findings: usize,
+    pub analyzed_seams: usize,
     pub analyzed_tests: usize,
 }
 
@@ -119,6 +142,7 @@ impl BadgeScope {
 pub struct BadgeSummary {
     pub kind: BadgeKind,
     pub scope: BadgeScope,
+    pub basis: BadgeBasis,
     pub message: String,
     pub status: BadgeStatus,
     pub color: &'static str,
@@ -132,10 +156,10 @@ pub struct BadgeSummary {
 }
 
 /// The schema_version of the native badge JSON. Bumping it is a public
-/// contract change — call it out in the PR. v0.2 added the `scope`
-/// field (`"diff"` or `"repo"`) so consumers can tell PR/diff artifacts
-/// apart from repo/baseline artifacts.
-pub const BADGE_SCHEMA_VERSION: &str = "0.2";
+/// contract change — call it out in the PR. v0.3 added `basis` and
+/// `counts.analyzed_seams` so consumers can distinguish legacy
+/// finding-exposure badges from seam-native repo badges.
+pub const BADGE_SCHEMA_VERSION: &str = "0.3";
 
 /// All test-efficiency reason strings the badge JSON reports as zero
 /// defaults until later PRs read the test-efficiency report. The order
@@ -203,6 +227,7 @@ pub fn ripr_badge_summary_with_suppressions(
         unknowns,
         unknowns_test_efficiency: 0,
         analyzed_findings: output.findings.len(),
+        analyzed_seams: 0,
         analyzed_tests: unique_tests.len(),
     };
 
@@ -222,6 +247,7 @@ pub fn ripr_badge_summary_with_suppressions(
     BadgeSummary {
         kind: BadgeKind::Ripr,
         scope: BadgeScope::Diff,
+        basis: BadgeBasis::FindingExposure,
         message: headline.to_string(),
         status,
         color,
@@ -239,6 +265,90 @@ pub fn ripr_badge_summary_with_suppressions(
 #[cfg(test)]
 pub fn ripr_badge_summary(output: &CheckOutput, policy: BadgePolicy) -> BadgeSummary {
     ripr_badge_summary_with_suppressions(output, &[], "", policy)
+}
+
+/// Builds the repo-scoped `ripr` badge summary from classified seams.
+///
+/// This is the seam-native badge path used by public repo badges. It counts
+/// configured-visible headline-eligible seam classes as unresolved gaps,
+/// keeps opaque seams in the `unknowns` bucket, and omits classes configured
+/// as `off` from both the headline and visible count buckets.
+#[cfg(test)]
+pub(crate) fn ripr_seam_badge_summary(
+    classified: &[ClassifiedSeam],
+    config: &RiprConfig,
+    policy: BadgePolicy,
+) -> BadgeSummary {
+    let mut counts = SeamGripClassCounts::new(classified.len());
+    for entry in classified {
+        counts.increment(entry.class);
+    }
+    ripr_seam_badge_summary_from_counts(&counts, config, policy)
+}
+
+/// Builds the repo-scoped `ripr` badge summary from compact seam grip
+/// class counts.
+pub(crate) fn ripr_seam_badge_summary_from_counts(
+    class_counts: &SeamGripClassCounts,
+    config: &RiprConfig,
+    policy: BadgePolicy,
+) -> BadgeSummary {
+    let mut unresolved = 0usize;
+    let mut suppressed = 0usize;
+    let mut unknowns = 0usize;
+
+    for class in SeamGripClass::ALL {
+        let count = class_counts.count_for(class);
+        if count == 0 || config.severity().for_seam(class) == ConfigSeverity::Off {
+            continue;
+        }
+        if class.is_headline_eligible() {
+            unresolved += count;
+        } else if class == SeamGripClass::Suppressed {
+            suppressed += count;
+        } else if class == SeamGripClass::Opaque {
+            unknowns += count;
+        }
+    }
+
+    let counts = BadgeCounts {
+        unsuppressed_exposure_gaps: unresolved,
+        unsuppressed_test_efficiency_findings: 0,
+        intentional_test_efficiency_findings: 0,
+        suppressed_exposure_gaps: suppressed,
+        suppressed_test_efficiency_findings: 0,
+        unknowns,
+        unknowns_test_efficiency: 0,
+        analyzed_findings: 0,
+        analyzed_seams: class_counts.analyzed_seams(),
+        analyzed_tests: 0,
+    };
+
+    let mut reason_counts: BTreeMap<&'static str, usize> = BTreeMap::new();
+    for key in BADGE_REASON_KEYS {
+        reason_counts.insert(key, 0);
+    }
+
+    let headline = counts.unsuppressed_exposure_gaps
+        + if policy.include_unknowns {
+            counts.unknowns
+        } else {
+            0
+        };
+    let (status, color) = badge_status_color(headline, policy.fail_on_nonzero);
+
+    BadgeSummary {
+        kind: BadgeKind::Ripr,
+        scope: BadgeScope::Repo,
+        basis: BadgeBasis::SeamNative,
+        message: headline.to_string(),
+        status,
+        color,
+        counts,
+        reason_counts,
+        policy,
+        warnings: Vec::new(),
+    }
 }
 
 fn badge_status_color(count: usize, fail_on_nonzero: bool) -> (BadgeStatus, &'static str) {
@@ -546,7 +656,46 @@ pub fn ripr_plus_badge_summary_with_suppressions(
 ) -> BadgeSummary {
     let exposure =
         ripr_badge_summary_with_suppressions(output, suppressions, today, policy.clone());
+    ripr_plus_badge_summary_from_exposure(
+        exposure,
+        test_efficiency,
+        suppressions,
+        today,
+        policy,
+        scope,
+    )
+}
 
+/// Builds the repo-scoped `ripr+` badge summary from compact seam grip
+/// class counts plus the parsed test-efficiency ledger.
+pub(crate) fn ripr_plus_seam_badge_summary_from_counts_with_suppressions(
+    class_counts: &SeamGripClassCounts,
+    config: &RiprConfig,
+    test_efficiency: TestEfficiencyBadgeSummary,
+    suppressions: &[SuppressionEntry],
+    today: &str,
+    policy: BadgePolicy,
+    scope: TestEfficiencyAggregationScope<'_>,
+) -> BadgeSummary {
+    let exposure = ripr_seam_badge_summary_from_counts(class_counts, config, policy.clone());
+    ripr_plus_badge_summary_from_exposure(
+        exposure,
+        test_efficiency,
+        suppressions,
+        today,
+        policy,
+        scope,
+    )
+}
+
+fn ripr_plus_badge_summary_from_exposure(
+    exposure: BadgeSummary,
+    test_efficiency: TestEfficiencyBadgeSummary,
+    suppressions: &[SuppressionEntry],
+    today: &str,
+    policy: BadgePolicy,
+    scope: TestEfficiencyAggregationScope<'_>,
+) -> BadgeSummary {
     // Decide which entries contribute to this scope's headline. For
     // repo scope, take the parser's pre-computed repo-wide totals and
     // the existing actionable list. For diff scope, recompute counts
@@ -608,6 +757,7 @@ pub fn ripr_plus_badge_summary_with_suppressions(
         unknowns: exposure.counts.unknowns,
         unknowns_test_efficiency: unknowns_te,
         analyzed_findings: exposure.counts.analyzed_findings,
+        analyzed_seams: exposure.counts.analyzed_seams,
         analyzed_tests: test_efficiency.analyzed_tests,
     };
 
@@ -626,7 +776,8 @@ pub fn ripr_plus_badge_summary_with_suppressions(
 
     BadgeSummary {
         kind: BadgeKind::RiprPlus,
-        scope: BadgeScope::Diff,
+        scope: exposure.scope,
+        basis: exposure.basis,
         message: headline.to_string(),
         status,
         color,
@@ -667,6 +818,7 @@ pub fn render_native_json(summary: &BadgeSummary) -> String {
     ));
     out.push_str(&format!("  \"kind\": \"{}\",\n", summary.kind.as_str()));
     out.push_str(&format!("  \"scope\": \"{}\",\n", summary.scope.as_str()));
+    out.push_str(&format!("  \"basis\": \"{}\",\n", summary.basis.as_str()));
     out.push_str(&format!(
         "  \"label\": \"{}\",\n",
         json_escape(summary.kind.label())
@@ -708,6 +860,10 @@ pub fn render_native_json(summary: &BadgeSummary) -> String {
     out.push_str(&format!(
         "    \"analyzed_findings\": {},\n",
         counts.analyzed_findings
+    ));
+    out.push_str(&format!(
+        "    \"analyzed_seams\": {},\n",
+        counts.analyzed_seams
     ));
     out.push_str(&format!(
         "    \"analyzed_tests\": {}\n",
@@ -790,9 +946,15 @@ mod tests {
     use super::{
         BADGE_REASON_KEYS, BadgePolicy, BadgeScope, BadgeStatus, TestEfficiencyBadgeSummary,
         badge_status_color, parse_test_efficiency_badge_summary, render_native_json,
-        render_shields_json, ripr_badge_summary, ripr_plus_badge_summary,
+        render_shields_json, ripr_badge_summary, ripr_plus_badge_summary, ripr_seam_badge_summary,
     };
+    use crate::analysis::ClassifiedSeam;
+    use crate::analysis::seams::{
+        ExpectedSink, RepoSeam, RequiredDiscriminator, SeamGripClass, SeamKind,
+    };
+    use crate::analysis::test_grip_evidence::TestGripEvidence;
     use crate::app::{CheckInput, CheckOutput, Mode};
+    use crate::config::RiprConfig;
     use crate::domain::{
         ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, OracleKind,
         OracleStrength, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence, RiprEvidence,
@@ -864,6 +1026,40 @@ mod tests {
         }
     }
 
+    fn stage(state: StageState) -> StageEvidence {
+        StageEvidence::new(state, Confidence::Medium, "stage")
+    }
+
+    fn classified_seam(class: SeamGripClass) -> ClassifiedSeam {
+        let seam = RepoSeam::new(
+            "src/lib.rs",
+            "crate::discounted_total",
+            SeamKind::PredicateBoundary,
+            10,
+            2,
+            "amount >= threshold",
+            RequiredDiscriminator::BoundaryValue {
+                description: "amount == threshold".to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        );
+        ClassifiedSeam {
+            evidence: TestGripEvidence {
+                seam_id: seam.id().clone(),
+                related_tests: Vec::new(),
+                reach: stage(StageState::Yes),
+                activate: stage(StageState::Yes),
+                propagate: stage(StageState::Yes),
+                observe: stage(StageState::Yes),
+                discriminate: stage(StageState::Weak),
+                observed_values: Vec::new(),
+                missing_discriminators: Vec::new(),
+            },
+            seam,
+            class,
+        }
+    }
+
     #[test]
     fn badge_summary_counts_weakly_exposed_reachable_unrevealed_and_no_static_path() {
         let output = check_output(vec![
@@ -909,6 +1105,47 @@ mod tests {
         assert_eq!(summary.counts.unknowns, 3);
         // Headline excludes unknowns by default.
         assert_eq!(summary.message, "1");
+    }
+
+    #[test]
+    fn seam_badge_summary_counts_visible_headline_eligible_seams() {
+        let classified = vec![
+            classified_seam(SeamGripClass::WeaklyGripped),
+            classified_seam(SeamGripClass::Ungripped),
+            classified_seam(SeamGripClass::StronglyGripped),
+            classified_seam(SeamGripClass::Opaque),
+        ];
+
+        let summary =
+            ripr_seam_badge_summary(&classified, &RiprConfig::default(), BadgePolicy::default());
+
+        assert_eq!(summary.scope, BadgeScope::Repo);
+        assert_eq!(summary.basis.as_str(), "seam_native");
+        assert_eq!(summary.counts.unsuppressed_exposure_gaps, 2);
+        assert_eq!(summary.counts.unknowns, 1);
+        assert_eq!(summary.counts.analyzed_findings, 0);
+        assert_eq!(summary.counts.analyzed_seams, 4);
+        assert_eq!(summary.message, "2");
+    }
+
+    #[test]
+    fn seam_badge_summary_respects_configured_off_severity() -> Result<(), String> {
+        let config = crate::config::tests_only_parse(
+            r#"
+[severity.seams]
+weakly_gripped = "off"
+"#,
+        )?;
+        let classified = vec![
+            classified_seam(SeamGripClass::WeaklyGripped),
+            classified_seam(SeamGripClass::Ungripped),
+        ];
+
+        let summary = ripr_seam_badge_summary(&classified, &config, BadgePolicy::default());
+
+        assert_eq!(summary.counts.unsuppressed_exposure_gaps, 1);
+        assert_eq!(summary.message, "1");
+        Ok(())
     }
 
     #[test]
@@ -983,10 +1220,11 @@ mod tests {
         let summary = ripr_badge_summary(&output, BadgePolicy::default());
         let json = render_native_json(&summary);
 
-        assert!(json.contains("\"schema_version\": \"0.2\""));
+        assert!(json.contains("\"schema_version\": \"0.3\""));
         assert!(!json.contains("\"schemaVersion\""));
         assert!(json.contains("\"kind\": \"ripr\""));
         assert!(json.contains("\"scope\": \"diff\""));
+        assert!(json.contains("\"basis\": \"finding_exposure\""));
         assert!(json.contains("\"label\": \"ripr\""));
         assert!(json.contains("\"message\": \"1\""));
         assert!(json.contains("\"status\": \"warn\""));
@@ -1000,6 +1238,7 @@ mod tests {
             "unknowns",
             "unknowns_test_efficiency",
             "analyzed_findings",
+            "analyzed_seams",
             "analyzed_tests",
         ] {
             assert!(
@@ -1033,14 +1272,15 @@ mod tests {
 
     #[test]
     fn badge_shields_projection_omits_scope_field() {
-        // Shields stays exactly four fields after the v0.2 schema bump:
-        // schemaVersion, label, message, color. `scope` is native-only.
+        // Shields stays exactly four fields after the v0.3 schema bump:
+        // schemaVersion, label, message, color. `scope` and `basis` are native-only.
         let output = check_output(vec![finding(ExposureClass::WeaklyExposed, vec![])]);
         let mut summary = ripr_badge_summary(&output, BadgePolicy::default());
         summary.scope = BadgeScope::Repo;
         let shields = render_shields_json(&summary);
 
         assert!(!shields.contains("\"scope\""));
+        assert!(!shields.contains("\"basis\""));
         let top_level_keys = shields
             .lines()
             .filter_map(|line| {
@@ -1090,7 +1330,15 @@ mod tests {
             "Shields projection must have exactly four top-level fields"
         );
         // No native-JSON-only fields leak in.
-        for forbidden in ["counts", "reason_counts", "policy", "kind", "status"] {
+        for forbidden in [
+            "counts",
+            "reason_counts",
+            "policy",
+            "kind",
+            "status",
+            "scope",
+            "basis",
+        ] {
             assert!(
                 !shields.contains(&format!("\"{forbidden}\":")),
                 "Shields projection must not include `{forbidden}`"
@@ -1399,7 +1647,15 @@ mod tests {
             .filter(|line| line.starts_with("  \""))
             .count();
         assert_eq!(top_level_quoted_keys, 4);
-        for forbidden in ["counts", "reason_counts", "policy", "kind", "status"] {
+        for forbidden in [
+            "counts",
+            "reason_counts",
+            "policy",
+            "kind",
+            "status",
+            "scope",
+            "basis",
+        ] {
             assert!(
                 !shields.contains(&format!("\"{forbidden}\":")),
                 "ripr+ Shields projection must not contain `{forbidden}`"

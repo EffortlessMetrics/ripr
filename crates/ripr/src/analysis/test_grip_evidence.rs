@@ -19,6 +19,7 @@ use crate::domain::{
     ValueContext, ValueFact,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 /// Per-seam test-grip evidence record.
@@ -35,6 +36,8 @@ pub(crate) struct TestGripEvidence {
     pub(crate) missing_discriminators: Vec<MissingDiscriminatorFact>,
 }
 
+const COMPACT_RELATED_TEST_LIMIT: usize = 12;
+
 /// Per-related-test grip facts attached to a `TestGripEvidence`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct RelatedTestGrip {
@@ -46,6 +49,61 @@ pub(crate) struct RelatedTestGrip {
     pub(crate) evidence_summary: String,
     pub(crate) relation_reason: RelationReason,
     pub(crate) relation_confidence: RelationConfidence,
+}
+
+/// Precomputed per-test facts for compact consumers that only need
+/// final stage states/classes. This avoids repeatedly tokenizing the
+/// same test assertions and import lines for repo badge counts.
+pub(crate) struct CompactGripContext<'a> {
+    index: &'a RustIndex,
+    tests: Vec<CompactTest<'a>>,
+}
+
+struct CompactTest<'a> {
+    test: &'a TestSummary,
+    path_normalized: String,
+    module_path: Option<String>,
+    name_lower: String,
+    call_names: BTreeSet<String>,
+    assertion_tokens: BTreeSet<String>,
+    code_lines: Vec<String>,
+}
+
+impl<'a> CompactGripContext<'a> {
+    pub(crate) fn new(index: &'a RustIndex) -> Self {
+        let tests = index
+            .tests
+            .iter()
+            .map(|test| {
+                let call_names = test
+                    .calls
+                    .iter()
+                    .map(|call| call.name.clone())
+                    .collect::<BTreeSet<_>>();
+                let mut assertion_tokens = BTreeSet::new();
+                for assertion in &test.assertions {
+                    for token in extract_identifier_tokens(&assertion.text) {
+                        assertion_tokens.insert(token);
+                    }
+                }
+                let code_lines = test
+                    .body
+                    .lines()
+                    .map(strip_comments_and_strings)
+                    .collect::<Vec<_>>();
+                CompactTest {
+                    test,
+                    path_normalized: normalize_path(&test.file),
+                    module_path: module_path_for(&test.file),
+                    name_lower: test.name.to_ascii_lowercase(),
+                    call_names,
+                    assertion_tokens,
+                    code_lines,
+                }
+            })
+            .collect();
+        Self { index, tests }
+    }
 }
 
 /// Why this test is related to the seam. v1: a single highest-priority
@@ -194,6 +252,37 @@ pub(crate) fn evidence_for_seam(seam: &RepoSeam, index: &RustIndex) -> TestGripE
     }
 }
 
+/// Build compact evidence for a single seam. The returned
+/// `TestGripEvidence` preserves the stage states used by classification,
+/// but intentionally omits related-test detail and observed-value
+/// payloads because repo badges only need per-class counts.
+pub(crate) fn compact_evidence_for_seam(
+    seam: &RepoSeam,
+    context: &CompactGripContext<'_>,
+) -> TestGripEvidence {
+    let related = find_related_tests_compact(seam, context);
+    let owner_fn = find_owner_function(seam, context.index);
+
+    let reach = reach_evidence(seam, &related);
+    let (activate, missing_discriminators) =
+        compact_activate_evidence(seam, &related, owner_fn, context.index);
+    let propagate = propagate_evidence(seam, &related);
+    let observe = observe_evidence(&related);
+    let discriminate = discriminate_evidence(seam, &related);
+
+    TestGripEvidence {
+        seam_id: seam.id().clone(),
+        related_tests: Vec::new(),
+        reach,
+        activate,
+        propagate,
+        observe,
+        discriminate,
+        observed_values: Vec::new(),
+        missing_discriminators,
+    }
+}
+
 /// Walk `index.tests` and return tests that plausibly relate to `seam`,
 /// each tagged with the single highest-priority `RelationReason` it
 /// satisfies. The two-step "match then rank" replaces the old binary
@@ -308,6 +397,110 @@ fn find_related_tests<'a>(
         }
     }
     related
+}
+
+fn find_related_tests_compact<'a>(
+    seam: &RepoSeam,
+    context: &'a CompactGripContext<'a>,
+) -> Vec<&'a TestSummary> {
+    let owner_fn = find_owner_function(seam, context.index);
+    let owner_name = owner_fn.map(|f| f.name.as_str()).unwrap_or("");
+    let owner_name_lower = owner_name.to_ascii_lowercase();
+    let owner_file = owner_fn.map(|f| f.file.as_path());
+    let owner_file_stem = owner_file
+        .and_then(|p| p.file_stem())
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
+    let owner_module_path = owner_file.and_then(module_path_for);
+    let prefix = owner_fn.and_then(|f| package_prefix(&f.file));
+    let fixture_names = owner_file
+        .and_then(|file| context.index.files.get(file))
+        .map(fixture_names_for_owner_file)
+        .unwrap_or_default();
+
+    let discriminator_tokens = required_discriminator_tokens(seam);
+    let sink_tokens = extract_identifier_tokens(seam.expected_sink().as_str());
+    let target_tokens: BTreeSet<String> = discriminator_tokens
+        .into_iter()
+        .chain(sink_tokens)
+        .collect();
+
+    let mut related: Vec<(&'a TestSummary, RelationReason)> = Vec::new();
+    let mut seen: std::collections::HashSet<(String, std::path::PathBuf, usize)> =
+        std::collections::HashSet::new();
+
+    for indexed in &context.tests {
+        if let Some(prefix) = &prefix
+            && !indexed.path_normalized.starts_with(prefix)
+        {
+            continue;
+        }
+
+        let reason = if !owner_name.is_empty() && indexed.call_names.contains(owner_name) {
+            Some(RelationReason::DirectOwnerCall)
+        } else if !target_tokens.is_empty()
+            && indexed
+                .assertion_tokens
+                .iter()
+                .any(|token| target_tokens.contains(token))
+        {
+            Some(RelationReason::AssertionTargetAffinity)
+        } else if !owner_file_stem.is_empty() && same_test_file(&indexed.test.file, owner_file_stem)
+        {
+            Some(RelationReason::SameTestFile)
+        } else if let (Some(owner_mod), Some(test_mod)) =
+            (owner_module_path.as_deref(), indexed.module_path.as_deref())
+            && same_module(owner_mod, test_mod)
+        {
+            Some(RelationReason::SameModule)
+        } else if !owner_name_lower.is_empty() && indexed.name_lower.contains(&owner_name_lower) {
+            Some(RelationReason::OwnerNamedTest)
+        } else if !owner_name.is_empty() && test_imports_owner_compact(indexed, owner_name) {
+            Some(RelationReason::ImportPathAffinity)
+        } else if !fixture_names.is_empty()
+            && indexed
+                .call_names
+                .iter()
+                .any(|call| fixture_names.contains(call))
+        {
+            Some(RelationReason::FixtureOwnerAffinity)
+        } else {
+            None
+        };
+        let Some(reason) = reason else { continue };
+        let key = (
+            indexed.test.name.clone(),
+            indexed.test.file.clone(),
+            indexed.test.start_line,
+        );
+        if seen.insert(key) {
+            related.push((indexed.test, reason));
+        }
+    }
+    related.sort_by(|(test_a, reason_a), (test_b, reason_b)| {
+        reason_a
+            .confidence()
+            .rank()
+            .cmp(&reason_b.confidence().rank())
+            .then(reason_a.priority().cmp(&reason_b.priority()))
+            .then(test_a.file.cmp(&test_b.file))
+            .then(test_a.name.cmp(&test_b.name))
+            .then(test_a.start_line.cmp(&test_b.start_line))
+    });
+    related
+        .into_iter()
+        .take(COMPACT_RELATED_TEST_LIMIT)
+        .map(|(test, _reason)| test)
+        .collect()
+}
+
+fn fixture_names_for_owner_file(facts: &rust_index::FileFacts) -> BTreeSet<String> {
+    facts
+        .functions
+        .iter()
+        .filter(|f| !f.is_test && (is_fixture_named(&f.name) || f.body.contains("#[fixture]")))
+        .map(|f| f.name.clone())
+        .collect()
 }
 
 /// Tokens drawn from a `RepoSeam`'s `RequiredDiscriminator`. Filtered
@@ -458,6 +651,26 @@ fn test_imports_owner(test: &TestSummary, owner_name: &str) -> bool {
     false
 }
 
+fn test_imports_owner_compact(test: &CompactTest<'_>, owner_name: &str) -> bool {
+    if owner_name.is_empty() {
+        return false;
+    }
+    let qualified = format!("::{owner_name}");
+    for code in &test.code_lines {
+        if code.contains(&qualified) {
+            return true;
+        }
+        if code.trim_start().starts_with("use ")
+            && extract_identifier_tokens(code)
+                .iter()
+                .any(|token| token == owner_name)
+        {
+            return true;
+        }
+    }
+    false
+}
+
 /// Drop everything after a `//` line comment and replace string-literal
 /// contents with empty strings. v1 best-effort: handles `"..."` with
 /// `\\` and `\"` escapes; raw strings (`r#"..."#`), char literals
@@ -507,11 +720,14 @@ fn test_uses_owner_fixture(
     let Some(owner_file) = owner_file else {
         return false;
     };
+    let Some(owner_facts) = index.files.get(owner_file) else {
+        return false;
+    };
     for call in &test.calls {
-        let Some(target) = index
+        let Some(target) = owner_facts
             .functions
             .iter()
-            .find(|f| f.name == call.name && f.file == owner_file && !f.is_test)
+            .find(|f| f.name == call.name && !f.is_test)
         else {
             continue;
         };
@@ -687,6 +903,48 @@ fn activate_evidence(
         },
     );
     (stage, observed, missing)
+}
+
+fn compact_activate_evidence(
+    seam: &RepoSeam,
+    related: &[&TestSummary],
+    owner_fn: Option<&FunctionSummary>,
+    index: &RustIndex,
+) -> (StageEvidence, Vec<MissingDiscriminatorFact>) {
+    if seam.kind() == SeamKind::PredicateBoundary {
+        let (stage, _observed, missing) = activate_evidence(seam, related, owner_fn, index);
+        return (stage, missing);
+    }
+
+    let owner_name = owner_fn.map(|f| f.name.as_str()).unwrap_or("");
+    let direct_owner_call = !owner_name.is_empty()
+        && related
+            .iter()
+            .any(|test| test.calls.iter().any(|call| call.name == owner_name));
+    let state = if related.is_empty() {
+        StageState::No
+    } else if direct_owner_call {
+        StageState::Yes
+    } else {
+        StageState::Unknown
+    };
+    let stage = StageEvidence::new(
+        state.clone(),
+        if direct_owner_call {
+            Confidence::Medium
+        } else {
+            Confidence::Low
+        },
+        format!(
+            "Compact activation evidence for seam `{}` is `{}`",
+            seam.expression()
+                .lines()
+                .next()
+                .unwrap_or(seam.expression()),
+            state.as_str()
+        ),
+    );
+    (stage, Vec::new())
 }
 
 fn missing_discriminators_for(
@@ -1400,6 +1658,156 @@ fn below_case() {
                 "evidence order is not stable:\n  forward: {forward_ids:?}\n  reversed: {reversed_ids:?}"
             ));
         }
+        Ok(())
+    }
+
+    #[test]
+    fn given_compact_evidence_when_direct_owner_call_reaches_error_seam_then_activation_is_yes()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/parse.rs");
+        let prod_src = r#"
+pub enum AuthError { RevokedToken, Expired }
+
+pub fn parse(value: &str) -> Result<i32, AuthError> {
+    if value.is_empty() {
+        return Err(AuthError::RevokedToken);
+    }
+    Ok(0)
+}
+"#;
+        let tests = PathBuf::from("tests/parse_tests.rs");
+        let tests_src = r#"
+#[test]
+fn parse_rejects_empty() {
+    assert!(parse("").is_err());
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/parse.rs")], &index);
+        let error_seam = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::ErrorVariant)
+            .ok_or_else(|| "expected error_variant seam".to_string())?;
+        let context = CompactGripContext::new(&index);
+
+        let evidence = compact_evidence_for_seam(error_seam, &context);
+
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Yes);
+        assert_eq!(evidence.related_tests.len(), 0);
+        assert_eq!(evidence.observed_values.len(), 0);
+        assert_eq!(evidence.missing_discriminators.len(), 0);
+        Ok(())
+    }
+
+    #[test]
+    fn given_compact_evidence_when_import_affinity_has_no_owner_call_then_activation_is_unknown()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/parse.rs");
+        let prod_src = r#"
+pub enum AuthError { RevokedToken, Expired }
+
+pub fn parse(value: &str) -> Result<i32, AuthError> {
+    if value.is_empty() {
+        return Err(AuthError::RevokedToken);
+    }
+    Ok(0)
+}
+"#;
+        let tests = PathBuf::from("tests/wrapper_tests.rs");
+        let tests_src = r#"
+fn helper() -> Result<i32, AuthError> { Err(AuthError::RevokedToken) }
+
+#[test]
+fn wrapper_rejects_empty() {
+    use crate::parse;
+    assert!(helper().is_err());
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/parse.rs")], &index);
+        let error_seam = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::ErrorVariant)
+            .ok_or_else(|| "expected error_variant seam".to_string())?;
+        let context = CompactGripContext::new(&index);
+
+        let related = find_related_tests_compact(error_seam, &context);
+        assert_eq!(related.len(), 1);
+        assert_eq!(related[0].name, "wrapper_rejects_empty");
+
+        let evidence = compact_evidence_for_seam(error_seam, &context);
+        assert_eq!(evidence.reach.state, StageState::Yes);
+        assert_eq!(evidence.activate.state, StageState::Unknown);
+        Ok(())
+    }
+
+    #[test]
+    fn given_compact_related_tests_when_more_than_limit_match_then_results_are_capped()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/pricing.rs");
+        let prod_src = r#"
+pub fn discounted_total(amount: i32, threshold: i32) -> i32 {
+    if amount >= threshold { amount - 10 } else { amount }
+}
+"#;
+        let mut tests_src = String::new();
+        for idx in 0..14 {
+            tests_src.push_str(&format!(
+                "#[test]\nfn direct_{idx:02}() {{ assert_eq!(discounted_total(100, 100), 90); }}\n"
+            ));
+        }
+        let tests = PathBuf::from("tests/pricing_tests.rs");
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src.as_str())])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pricing.rs")], &index);
+        let predicate = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::PredicateBoundary)
+            .ok_or_else(|| "expected predicate seam".to_string())?;
+        let context = CompactGripContext::new(&index);
+
+        let related = find_related_tests_compact(predicate, &context);
+
+        assert_eq!(related.len(), COMPACT_RELATED_TEST_LIMIT);
+        assert_eq!(related[0].name, "direct_00");
+        assert_eq!(related[COMPACT_RELATED_TEST_LIMIT - 1].name, "direct_11");
+        Ok(())
+    }
+
+    #[test]
+    fn given_compact_import_affinity_when_owner_only_in_comment_or_string_then_no_relation_is_found()
+    -> Result<(), String> {
+        let prod = PathBuf::from("src/parse.rs");
+        let prod_src = r#"
+pub enum AuthError { RevokedToken, Expired }
+
+pub fn parse(value: &str) -> Result<i32, AuthError> {
+    if value.is_empty() {
+        return Err(AuthError::RevokedToken);
+    }
+    Ok(0)
+}
+"#;
+        let tests = PathBuf::from("tests/noise_tests.rs");
+        let tests_src = r#"
+#[test]
+fn wrapper_mentions_owner_only_in_non_code() {
+    // use crate::parse;
+    let _path = "crate::parse";
+    assert!(helper().is_err());
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/parse.rs")], &index);
+        let error_seam = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::ErrorVariant)
+            .ok_or_else(|| "expected error_variant seam".to_string())?;
+        let context = CompactGripContext::new(&index);
+
+        let related = find_related_tests_compact(error_seam, &context);
+
+        assert_eq!(related.len(), 0);
         Ok(())
     }
 

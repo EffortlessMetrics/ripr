@@ -12,7 +12,7 @@
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](Cargo.toml)
 [![MSRV](https://img.shields.io/badge/MSRV-1.93-blue)](https://www.rust-lang.org/)
 
-<!-- The `ripr` and `ripr+` badges count unresolved repo-scoped exposure findings under the configured policy — inbox-zero, not coverage. The v1 baseline reflects currently-probeable production syntax shapes; it is not full seam inventory or mutation adequacy proof. For v1 dogfood, this repo commits the Shields endpoint JSON under `badges/` and Shields fetches it from `raw.githubusercontent.com`; refresh with `cargo xtask update-badge-endpoints`. The ripr product contract is "ripr emits Shields-compatible JSON" — downstream users can self-host the JSON anywhere stable and are not expected to enable GitHub Pages. See [docs/BADGE_POLICY.md](docs/BADGE_POLICY.md) and `deferred/hosted-badge-service` in [docs/DEFERRED.md](docs/DEFERRED.md). -->
+<!-- The public `ripr` and `ripr+` badges count unresolved repo-scoped seam-native exposure gaps under the configured policy — inbox-zero, not coverage. Diff-scoped badge artifacts remain legacy finding-exposure artifacts for PR summaries. This repo commits the Shields endpoint JSON under `badges/` and Shields fetches it from `raw.githubusercontent.com`; refresh with `cargo xtask update-badge-endpoints`. The ripr product contract is "ripr emits Shields-compatible JSON" — downstream users can self-host the JSON anywhere stable and are not expected to enable GitHub Pages. See [docs/BADGE_POLICY.md](docs/BADGE_POLICY.md) and `deferred/hosted-badge-service` in [docs/DEFERRED.md](docs/DEFERRED.md). -->
 
 
 <!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-02 from the public listing. Refresh from publisher metrics after publish. Do not use live VS Marketplace Shields routes. -->
@@ -252,18 +252,19 @@ Current capabilities:
 | Diff analysis | Evidence-first Voice A findings with syntax-backed changed-line probes, probe-relative oracle strength, local flow sinks, observed/missing activation values, and explicit stop reasons. | Campaign 5B config and policy. |
 | Repo seam inventory | First-class `RepoSeam` model with deterministic seam IDs, cached seam fact layers, test-grip evidence across the five RIPR stages, and 11-class `SeamGripClass` classification. | Campaign 5B config and policy. |
 | Test discovery | Parser-backed test and assertion facts with exact, broad, relational, snapshot, mock, smoke, custom-helper, side-effect observer, and unknown oracle kinds; per-test efficiency ledger with smoke/broad/disconnected/opaque/circular/likely-vacuous reasons and duplicate-discriminator groups. | Campaign 5B config and policy. |
-| Output | Human, JSON, context, and GitHub formats render evidence-first findings with stop reasons; repo exposure report and v2 agent seam packets render classified seam evidence; `ripr` and `ripr+` Shields badges publish unresolved gap counts. | Seam-native badge count mapping after config. |
+| Output | Human, JSON, context, and GitHub formats render evidence-first findings with stop reasons; repo exposure report and v2 agent seam packets render classified seam evidence; public `ripr` and `ripr+` Shields badges publish seam-native unresolved gap counts while diff badge artifacts remain finding-exposure based. | Campaign 5B closeout. |
 | LSP | Experimental `tower-lsp-server` sidecar with evidence-aware Finding diagnostics, related-test links, hovers, server-side context packets, seam-native diagnostics + hover, and seam code actions for copying packets/assertions and opening related tests (seam diagnostics remain off unless `ripr.toml` or initialization options enable them). | SARIF/editor policy follow-up. |
 | Agent context | Compact context packet plus per-seam `write_targeted_test` and `inspect_static_limitation` packets carrying recommended test placement, nearest tests to imitate, candidate values, missing discriminators, patterns to imitate/avoid, and assertion templates. Documented agent dispatch workflow in `docs/AGENT_DISPATCH_WORKFLOW.md`. | Campaign 5B config and policy. |
-| Repository config | Repo-root `ripr.toml` can set analysis mode, oracle policy, severity mapping, suppressions path, report related-test caps, and LSP seam-diagnostic defaults. Explicit CLI flags and LSP initialization options still win. | SARIF and opt-in CI policy. |
-| SARIF and CI policy | `ripr check --format sarif` emits diff-scoped Finding SARIF and `--format repo-sarif` emits repo seam SARIF with configured severity, suppression metadata, stable rule IDs, and stable fingerprints. `cargo xtask sarif-policy` compares current SARIF to a baseline and only fails when explicitly requested. | Seam-native badge count mapping. |
+| Repository config | Repo-root `ripr.toml` can set analysis mode, oracle policy, severity mapping, suppressions path, report related-test caps, and LSP seam-diagnostic defaults. Explicit CLI flags and LSP initialization options still win. | Campaign 5B closeout. |
+| SARIF and CI policy | `ripr check --format sarif` emits diff-scoped Finding SARIF and `--format repo-sarif` emits repo seam SARIF with configured severity, suppression metadata, stable rule IDs, and stable fingerprints. `cargo xtask sarif-policy` compares current SARIF to a baseline and only fails when explicitly requested. | Campaign 5B closeout. |
 | Calibration | Advisory `cargo xtask mutation-calibration` joins imported cargo-mutants runtime data to static seam evidence by `seam_id` or unambiguous file/line and writes `target/ripr/reports/mutation-calibration.{json,md}`; ambiguous file/line candidates stay unassigned. | Future calibration fixtures; runtime mutation language stays inside calibration/runtime reports. |
 
-Campaign 5A is complete. The active product work is Campaign 5B —
-operationalizing the seam evidence:
+Campaign 5A is complete. Campaign 5B has landed repository config, SARIF/CI
+policy, and seam-native badge count mapping. The next active item is the
+Campaign 5B closeout:
 
 ```text
-seam-native badge count mapping
+campaign/operationalization-closeout
 ```
 
 Deeper capability state lives in [Capability matrix](docs/CAPABILITY_MATRIX.md)

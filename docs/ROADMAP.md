@@ -46,10 +46,11 @@ Mode scope is intentionally cost-aware:
 | `deep` | Whole workspace. |
 | `ready` | Whole workspace static preflight before separate mutation confirmation. |
 
-The main bottleneck is now operationalization. Campaign 5A closed the cache,
-precision, actionability, and calibration loop for repo seam evidence. The next
-line is repository configuration, SARIF/CI policy, and seam-native badge count
-mapping.
+The main bottleneck is now operationalization closeout. Campaign 5A closed the
+cache, precision, actionability, and calibration loop for repo seam evidence.
+Campaign 5B has landed repository configuration, SARIF/CI policy, and
+seam-native badge count mapping; the remaining work is to close that campaign
+cleanly before the next product lane.
 
 ## Strategic Sequence
 
@@ -81,6 +82,7 @@ quality rails
 -> repository config
 -> SARIF and CI policy
 -> seam-native badge counts
+-> operationalization closeout
 ```
 
 The analyzer path is:

@@ -75,6 +75,7 @@ pub fn is_production_rust_path(path: &Path) -> bool {
         "fixtures",
         "editors",
         "node_modules",
+        "xtask",
     ];
     if components.iter().any(|c| exclude_components.contains(c)) {
         return false;
@@ -131,7 +132,7 @@ fn visit(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> 
         if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
             if matches!(
                 name,
-                ".git" | "target" | ".ripr" | ".direnv" | "node_modules"
+                ".git" | "target" | ".ripr" | ".direnv" | "fixtures" | "node_modules"
             ) {
                 continue;
             }
@@ -147,9 +148,21 @@ fn visit(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn files(paths: &[&str]) -> Vec<PathBuf> {
         paths.iter().map(PathBuf::from).collect()
+    }
+
+    fn temp_dir(name: &str) -> Result<PathBuf, String> {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|err| format!("system clock before unix epoch: {err}"))?
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("ripr-workspace-{name}-{stamp}"));
+        fs::create_dir_all(&dir).map_err(|err| format!("create temp dir failed: {err}"))?;
+        Ok(dir)
     }
 
     #[test]
@@ -194,6 +207,32 @@ mod tests {
                 files(&["crates/other/src/lib.rs", "src/lib.rs", "tests/pricing.rs"])
             );
         }
+    }
+
+    #[test]
+    fn production_path_excludes_xtask_automation() {
+        assert!(!is_production_rust_path(Path::new("xtask/src/main.rs")));
+        assert!(is_production_rust_path(Path::new("crates/ripr/src/lib.rs")));
+    }
+
+    #[test]
+    fn repo_discovery_skips_fixture_tree_but_fixture_roots_still_work() -> Result<(), String> {
+        let root = temp_dir("fixtures")?;
+        fs::create_dir_all(root.join("src"))
+            .map_err(|err| format!("create root src failed: {err}"))?;
+        fs::create_dir_all(root.join("fixtures/boundary/input/src"))
+            .map_err(|err| format!("create fixture src failed: {err}"))?;
+        fs::write(root.join("src/lib.rs"), "")
+            .map_err(|err| format!("write root src failed: {err}"))?;
+        fs::write(root.join("fixtures/boundary/input/src/lib.rs"), "")
+            .map_err(|err| format!("write fixture src failed: {err}"))?;
+
+        assert_eq!(discover_rust_files(&root)?, files(&["src/lib.rs"]));
+        assert_eq!(
+            discover_rust_files(&root.join("fixtures/boundary/input"))?,
+            files(&["src/lib.rs"])
+        );
+        Ok(())
     }
 
     #[test]

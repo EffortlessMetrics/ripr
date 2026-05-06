@@ -48,10 +48,10 @@ pub(super) fn check(args: &[String]) -> Result<(), String> {
     apply_to_check_input(&mut input, &config, explicit);
     let format = input.format.clone();
     let output = if format.is_repo_seam_inventory() {
-        // The repo seam inventory does not consume `Findings`, so we
-        // skip `run_repo_analysis` and let `render_check` drive the
-        // walker directly from `output.root`. The synthesized
-        // `CheckOutput` carries only the fields the renderer reads.
+        // Repo seam-driven formats do not consume legacy repo `Findings`,
+        // so skip `run_repo_analysis` and let `render_check` drive the
+        // seam walker directly from `output.root`. The synthesized
+        // `CheckOutput` carries only the fields these renderers read.
         app::repo_seam_inventory_input(input)
     } else if format.is_repo_scope() {
         app::check_workspace_repo_with_config(input, &config)?

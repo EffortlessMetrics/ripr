@@ -5,7 +5,6 @@ use crate::analysis::{
 use crate::config::RiprConfig;
 use crate::domain::{Finding, Summary};
 use crate::output;
-use crate::output::badge::BadgeScope;
 use std::path::{Path, PathBuf};
 
 /// Input contract for [`check_workspace`].
@@ -113,14 +112,14 @@ pub enum OutputFormat {
     BadgePlusJson,
     /// Shields-compatible projection for the `ripr+` badge.
     BadgePlusShields,
-    /// Repo-scoped native `ripr` badge JSON. Renders against the full
-    /// repo baseline (`run_repo_analysis`) rather than a diff. Carries
-    /// `scope: "repo"` so README/store endpoints can distinguish public
-    /// repo signal from PR/diff artifacts.
+    /// Repo-scoped native `ripr` badge JSON. Renders seam-native repo
+    /// counts rather than diff-scoped `Finding` counts. Carries
+    /// `scope: "repo"` and `basis: "seam_native"` so README/store
+    /// endpoints can distinguish public repo signal from PR/diff artifacts.
     RepoBadgeJson,
     /// Repo-scoped Shields projection for the `ripr` badge. Same four
     /// fields as the diff-scoped Shields shape; native-only fields like
-    /// `scope` do not leak into Shields.
+    /// `scope` and `basis` do not leak into Shields.
     RepoBadgeShields,
     /// Repo-scoped native `ripr+` badge JSON. Same disk requirement as
     /// `BadgePlusJson` (the test-efficiency report) — `cargo xtask
@@ -159,8 +158,9 @@ impl OutputFormat {
     /// Returns `true` when the format targets full-repo scope rather than
     /// diff scope.
     ///
-    /// Repo-scope formats route through [`check_workspace_repo`] and emit
-    /// native badge JSON with `scope: "repo"`. The Shields projection stays
+    /// Repo-scope formats route through [`check_workspace_repo`]. Native
+    /// repo badge JSON carries `scope: "repo"` and seam-native badge
+    /// formats carry `basis: "seam_native"`. The Shields projection stays
     /// four-field for both scopes.
     pub fn is_repo_scope(&self) -> bool {
         matches!(
@@ -178,15 +178,21 @@ impl OutputFormat {
         )
     }
 
-    /// Returns `true` when the format renders repo seam inventory,
-    /// classified exposure, or agent packet artifacts.
+    /// Returns `true` when the format renders repo seam-driven artifacts
+    /// that do not consume legacy repo `Finding` output.
     ///
-    /// These formats short-circuit `check_workspace_repo` because they do not
-    /// consume the diff/badge `Findings` pipeline.
+    /// These formats short-circuit `check_workspace_repo` because they
+    /// either walk/classify repo seams directly or render badge summaries
+    /// from classified seams. Running legacy repo Finding analysis first
+    /// would add cost and then be discarded.
     pub fn is_repo_seam_inventory(&self) -> bool {
         matches!(
             self,
-            OutputFormat::RepoSeamsJson
+            OutputFormat::RepoBadgeJson
+                | OutputFormat::RepoBadgeShields
+                | OutputFormat::RepoBadgePlusJson
+                | OutputFormat::RepoBadgePlusShields
+                | OutputFormat::RepoSeamsJson
                 | OutputFormat::RepoSeamsMd
                 | OutputFormat::RepoExposureJson
                 | OutputFormat::RepoExposureMd
@@ -260,11 +266,9 @@ pub(crate) fn check_workspace_with_config(
 
 /// Runs the repo-baseline static exposure analysis for a workspace. This
 /// seeds probes from every currently-probeable production syntax shape
-/// rather than from a diff, and is the analysis path behind the
-/// `repo-badge-*` output formats. Use this when the answer to "is the
-/// repo's static exposure clean?" should not depend on the contents of
-/// `git diff origin/main...HEAD` — for example, when rendering a
-/// public README badge from `main`.
+/// rather than from a diff. Use this when the answer to "is the repo's
+/// static exposure clean?" should not depend on the contents of
+/// `git diff origin/main...HEAD`.
 ///
 /// # Errors
 ///
@@ -297,12 +301,13 @@ pub(crate) fn check_workspace_repo_with_config(
     })
 }
 
-/// Build a minimal [`CheckOutput`] for repo seam inventory rendering.
+/// Build a minimal [`CheckOutput`] for repo seam-driven rendering.
 ///
-/// The seam inventory walker reads only `output.root`, so this avoids
-/// running `run_repo_analysis` (which would compute Voice A `Findings`
-/// the seam formats discard). The rest of the fields are populated for
-/// schema-consistency only.
+/// The seam inventory, repo exposure, agent packet, SARIF seam, and
+/// seam-native badge renderers read only `output.root` plus auxiliary
+/// disk artifacts as needed, so this avoids running `run_repo_analysis`
+/// to compute legacy `Findings` those formats discard. The rest of the
+/// fields are populated for schema-consistency only.
 pub fn repo_seam_inventory_input(input: CheckInput) -> CheckOutput {
     CheckOutput {
         schema_version: "0.1".to_string(),
@@ -346,32 +351,28 @@ pub(crate) fn render_check_with_config(
                 &suppressions,
             ))
         }
-        OutputFormat::BadgeJson | OutputFormat::RepoBadgeJson => {
-            let mut summary = ripr_summary_with_suppressions(output, config)?;
-            if format.is_repo_scope() {
-                summary.scope = BadgeScope::Repo;
-            }
+        OutputFormat::BadgeJson => {
+            let summary = ripr_summary_with_suppressions(output, config)?;
             Ok(output::badge::render_native_json(&summary))
         }
-        OutputFormat::BadgeShields | OutputFormat::RepoBadgeShields => {
-            let mut summary = ripr_summary_with_suppressions(output, config)?;
-            if format.is_repo_scope() {
-                summary.scope = BadgeScope::Repo;
-            }
+        OutputFormat::RepoBadgeJson => {
+            let summary = ripr_repo_seam_summary(output, config)?;
+            Ok(output::badge::render_native_json(&summary))
+        }
+        OutputFormat::BadgeShields => {
+            let summary = ripr_summary_with_suppressions(output, config)?;
+            Ok(output::badge::render_shields_json(&summary))
+        }
+        OutputFormat::RepoBadgeShields => {
+            let summary = ripr_repo_seam_summary(output, config)?;
             Ok(output::badge::render_shields_json(&summary))
         }
         OutputFormat::BadgePlusJson | OutputFormat::RepoBadgePlusJson => {
-            let mut summary = ripr_plus_summary_from_disk(output, format.is_repo_scope(), config)?;
-            if format.is_repo_scope() {
-                summary.scope = BadgeScope::Repo;
-            }
+            let summary = ripr_plus_summary_from_disk(output, format.is_repo_scope(), config)?;
             Ok(output::badge::render_native_json(&summary))
         }
         OutputFormat::BadgePlusShields | OutputFormat::RepoBadgePlusShields => {
-            let mut summary = ripr_plus_summary_from_disk(output, format.is_repo_scope(), config)?;
-            if format.is_repo_scope() {
-                summary.scope = BadgeScope::Repo;
-            }
+            let summary = ripr_plus_summary_from_disk(output, format.is_repo_scope(), config)?;
             Ok(output::badge::render_shields_json(&summary))
         }
         OutputFormat::RepoSeamsJson => {
@@ -441,6 +442,23 @@ fn ripr_summary_with_suppressions(
     ))
 }
 
+fn ripr_repo_seam_summary(
+    output: &CheckOutput,
+    config: &RiprConfig,
+) -> Result<output::badge::BadgeSummary, String> {
+    let class_counts =
+        analysis::inventory_seam_grip_class_counts_at_with_config(&output.root, config)?;
+    let policy = output::badge::BadgePolicy {
+        suppressions_path: config.suppressions().display_path(),
+        ..output::badge::BadgePolicy::default()
+    };
+    Ok(output::badge::ripr_seam_badge_summary_from_counts(
+        &class_counts,
+        config,
+        policy,
+    ))
+}
+
 fn ripr_plus_summary_from_disk(
     output: &CheckOutput,
     repo_scope: bool,
@@ -476,14 +494,30 @@ fn ripr_plus_summary_from_disk(
         suppressions_path: config.suppressions().display_path(),
         ..output::badge::BadgePolicy::default()
     };
-    Ok(output::badge::ripr_plus_badge_summary_with_suppressions(
-        output,
-        test_efficiency,
-        &suppressions,
-        &today,
-        policy,
-        scope,
-    ))
+    if repo_scope {
+        let class_counts =
+            analysis::inventory_seam_grip_class_counts_at_with_config(&output.root, config)?;
+        Ok(
+            output::badge::ripr_plus_seam_badge_summary_from_counts_with_suppressions(
+                &class_counts,
+                config,
+                test_efficiency,
+                &suppressions,
+                &today,
+                policy,
+                scope,
+            ),
+        )
+    } else {
+        Ok(output::badge::ripr_plus_badge_summary_with_suppressions(
+            output,
+            test_efficiency,
+            &suppressions,
+            &today,
+            policy,
+            scope,
+        ))
+    }
 }
 
 /// Computes findings and renders a single selected finding in human format.
@@ -692,6 +726,32 @@ mod tests {
         }
     }
 
+    fn check_output_with_temp_seam_workspace(
+        findings: Vec<Finding>,
+    ) -> Result<CheckOutput, String> {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let root = std::env::temp_dir().join(format!("ripr-app-repo-badge-{stamp}"));
+        std::fs::create_dir_all(root.join("src"))
+            .map_err(|err| format!("create temp src dir: {err}"))?;
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[package]\nname=\"ripr-app-repo-badge\"\nversion=\"0.1.0\"\nedition=\"2024\"\n",
+        )
+        .map_err(|err| format!("write temp Cargo.toml: {err}"))?;
+        std::fs::write(
+            root.join("src/lib.rs"),
+            "pub fn over_threshold(amount: i32, threshold: i32) -> bool {\n    amount >= threshold\n}\n",
+        )
+        .map_err(|err| format!("write temp src/lib.rs: {err}"))?;
+
+        let mut output = check_output_with(findings);
+        output.root = root;
+        Ok(output)
+    }
+
     #[test]
     fn configured_finding_severity_applies_to_human_json_and_github() -> Result<(), String> {
         let output = check_output_with(vec![sample_finding("src/lib.rs", 1)]);
@@ -720,9 +780,10 @@ mod tests {
         let rendered = render_check(&output, &OutputFormat::BadgeJson)?;
 
         // Native snake_case wire shape with all required top-level keys.
-        assert!(rendered.contains("\"schema_version\": \"0.2\""));
+        assert!(rendered.contains("\"schema_version\": \"0.3\""));
         assert!(rendered.contains("\"kind\": \"ripr\""));
         assert!(rendered.contains("\"scope\": \"diff\""));
+        assert!(rendered.contains("\"basis\": \"finding_exposure\""));
         assert!(rendered.contains("\"counts\":"));
         assert!(rendered.contains("\"reason_counts\":"));
         assert!(rendered.contains("\"policy\":"));
@@ -747,6 +808,8 @@ mod tests {
             "\"policy\"",
             "\"kind\"",
             "\"status\"",
+            "\"scope\"",
+            "\"basis\"",
         ] {
             assert!(
                 !rendered.contains(forbidden),
@@ -814,36 +877,67 @@ mod tests {
     }
 
     #[test]
+    fn repo_badge_formats_use_repo_seam_short_circuit() {
+        for format in [
+            OutputFormat::RepoBadgeJson,
+            OutputFormat::RepoBadgeShields,
+            OutputFormat::RepoBadgePlusJson,
+            OutputFormat::RepoBadgePlusShields,
+        ] {
+            assert!(
+                format.is_repo_seam_inventory(),
+                "expected {:?} to skip legacy repo Finding analysis",
+                format
+            );
+        }
+        assert!(!OutputFormat::BadgeJson.is_repo_seam_inventory());
+        assert!(!OutputFormat::BadgePlusJson.is_repo_seam_inventory());
+    }
+
+    #[test]
     fn render_check_repo_badge_json_paints_scope_repo() -> Result<(), String> {
-        let output = check_output_with(vec![sample_finding("src/lib.rs", 1)]);
+        let output = check_output_with_temp_seam_workspace(vec![sample_finding("src/lib.rs", 1)])?;
         let rendered = render_check(&output, &OutputFormat::RepoBadgeJson)?;
 
-        assert!(rendered.contains("\"schema_version\": \"0.2\""));
+        assert!(rendered.contains("\"schema_version\": \"0.3\""));
         assert!(rendered.contains("\"scope\": \"repo\""));
+        assert!(rendered.contains("\"basis\": \"seam_native\""));
         assert!(!rendered.contains("\"scope\": \"diff\""));
         assert!(rendered.contains("\"kind\": \"ripr\""));
+        assert!(rendered.contains("\"analyzed_findings\": 0"));
+        assert!(!rendered.contains("\"analyzed_seams\": 0"));
+        let _ = std::fs::remove_dir_all(&output.root);
         Ok(())
     }
 
     #[test]
     fn render_check_repo_badge_shields_stays_four_fields_without_scope_leak() -> Result<(), String>
     {
-        let output = check_output_with(vec![sample_finding("src/lib.rs", 1)]);
+        let output = check_output_with_temp_seam_workspace(vec![sample_finding("src/lib.rs", 1)])?;
         let rendered = render_check(&output, &OutputFormat::RepoBadgeShields)?;
 
         // Scope is native-only metadata; Shields stays a four-field projection.
         assert!(!rendered.contains("\"scope\""));
+        assert!(!rendered.contains("\"basis\""));
         let top_level_keys = rendered
             .lines()
             .filter(|line| line.starts_with("  \""))
             .count();
         assert_eq!(top_level_keys, 4);
-        for forbidden in ["\"counts\"", "\"reason_counts\"", "\"policy\"", "\"kind\""] {
+        for forbidden in [
+            "\"counts\"",
+            "\"reason_counts\"",
+            "\"policy\"",
+            "\"kind\"",
+            "\"status\"",
+            "\"schema_version\"",
+        ] {
             assert!(
                 !rendered.contains(forbidden),
                 "Shields projection must not contain `{forbidden}`"
             );
         }
+        let _ = std::fs::remove_dir_all(&output.root);
         Ok(())
     }
 

@@ -1,8 +1,10 @@
 # Badge Policy
 
-`ripr` exposes two badges. Both count **unresolved** static findings —
-inbox-zero, not coverage. This doc fixes the vocabulary, the counting rule,
-the JSON shape, and what the badge does and does not prove.
+`ripr` exposes two badges. Both count **unresolved** static exposure gaps —
+inbox-zero, not coverage. Diff-scoped badges preserve the legacy Finding
+exposure basis; repo-scoped public badges use seam-native classified repo
+seams. This doc fixes the vocabulary, the counting rule, the JSON shape, and
+what the badge does and does not claim.
 
 This is the contract that `ripr check --format badge-json` and
 `--format badge-shields` will render against. It pairs with
@@ -28,8 +30,9 @@ doc and in
 ripr found zero unsuppressed static exposure gaps under the configured policy.
 ```
 
-Counts only exposure-class findings from `ripr check`. It is the same engine
-and the same findings; the badge is a count-and-render policy on top.
+Diff scope counts exposure-class findings from `ripr check`. Repo scope counts
+classified seams from the repo seam inventory, using configured seam severity.
+The badge is a count-and-render policy on top of existing analyzer output.
 
 ### `ripr+ 0`
 
@@ -65,19 +68,21 @@ summaries.
 
 ### Repo scope (`scope: repo`)
 
-The badge counts findings across the entire repo baseline. This is
-the only scope that should be published as a public README, crate
-page, or extension store badge.
+The badge counts classified seams across the entire repo baseline. This is
+the only scope that should be published as a public README, crate page, or
+extension store badge.
 
 - **Audience**: anyone reading the repo cold from outside.
-- **Meaning**: "the current repo baseline has N unresolved findings
-  under policy."
-- Pure `ripr` repo scope is rendered through
-  `app::check_workspace_repo` (analysis path
-  `analysis::run_repo_analysis`), which seeds probes from every
-  currently-probeable production syntax shape and classifies them
-  through the same evidence/classifier pipeline as diff scope. The
-  CLI surface is `--format repo-badge-json`,
+- **Meaning**: "the current repo baseline has N unresolved seam-native
+  exposure gaps under policy."
+- Pure `ripr` repo scope is rendered from compact seam-class counts
+  (`analysis::inventory_seam_grip_class_counts_at_with_config`) and
+  uses `SeamGripClass` plus configured seam severity. The detailed
+  `repo-exposure-*` reports still render full per-seam evidence; badge
+  endpoints use the compact count cache under
+  `target/ripr/cache/repo-seam-counts/` so public badges do not need to
+  deserialize the full evidence cache. The CLI surface is
+  `--format repo-badge-json`,
   `--format repo-badge-shields`, `--format repo-badge-plus-json`,
   and `--format repo-badge-plus-shields`; the xtask wrapper is
   `cargo xtask repo-badge-artifacts`.
@@ -113,29 +118,27 @@ intent). Badge **aggregation** is scope-aware:
   the intended source for public README / store badges.
 
 The split keeps PR badges scoped to the tests that act on the changed
-code while README / store badges remain repo-baseline signals. The
-underlying JSON shape (`schema_version: 0.2`) is unchanged; only the
-**aggregation rule** for diff scope changed.
+code while README / store badges remain repo-baseline signals. Native
+badge JSON carries `basis` so consumers can distinguish
+`finding_exposure` diff artifacts from `seam_native` repo artifacts.
 
-#### What v1 repo scope means — and does not mean
+#### What repo seam-native scope means — and does not mean
 
-The v1 repo baseline counts findings produced from the
-**currently-probeable production syntax shapes** the analyzer knows
-how to detect (predicate, return value, error path, call deletion,
-field construction, side effect, match arm). It is **not**:
+The repo baseline counts classified behavior seams from the seam inventory.
+At repo root, seam discovery excludes repository automation and fixture data
+(`xtask/` and top-level `fixtures/`) so the public badge represents the
+published `ripr` package surface instead of the repository harness. An
+individual fixture workspace is still analyzable when passed as `--root`.
+
+Badge classification uses a compact, ranked related-test sample per seam.
+That keeps public endpoint refreshes operable while preserving the same
+`SeamGripClass` headline mapping as the detailed repo exposure report.
+It is **not**:
 
 - a complete inventory of every behavior seam in the repo
-- proof that every behavior is tested
-- proof of mutation adequacy
+- confirmation that every behavior is tested
+- confirmation of mutation adequacy
 - a coverage metric
-
-A first-class seam-inventory and test-grip model — `RepoSeam` /
-`SeamKind` types, dedicated discriminator classification per seam,
-LSP diagnostics surfacing weakly-gripped seams, and agent dispatch
-packets that close one seam per PR — is tracked as later work and is
-intentionally **not** part of `badge/repo-scope-artifacts`. The
-bounded v1 unblocks honest repo-scoped public artifacts without
-expanding Campaign 4A.
 
 Public README / store badges that derive from
 `cargo xtask badge-artifacts` are unsafe — that task generates
@@ -165,7 +168,7 @@ A denominator reads as a coverage fraction ("2300 things to cover, 0 covered"),
 which is exactly the wrong mental model. `ripr` is not measuring coverage; it
 is measuring whether changed behavior appears exposed to a meaningful oracle.
 
-The badge is an **inbox-zero** counter: zero unresolved findings is the
+The badge is an **inbox-zero** counter: zero unresolved gaps is the
 target, like inbox zero. Scope, unknowns, suppressed findings, intentional
 findings, and total analyzed counts all live in the detailed JSON and
 markdown reports — not in the badge message.
@@ -198,6 +201,10 @@ These come from `ExposureClass` in
 [`crates/ripr/src/domain/`](../crates/ripr/src/domain/) and from the
 classification table in
 [`STATIC_EXPOSURE_MODEL.md`](STATIC_EXPOSURE_MODEL.md#exposure-classes).
+
+Exposure-class counting is the `finding_exposure` basis used by diff-scoped
+badge artifacts. It remains documented and versioned for PR summaries and
+legacy consumers.
 
 | Exposure class | Counts in `ripr` | Counts in `ripr+` | Notes |
 | --- | :---: | :---: | --- |
@@ -293,7 +300,33 @@ The metric label `duplicate_discriminator_group_count` (delivered in
 class. Today the equivalent value is `duplicate_groups.length` in the
 test-efficiency JSON.
 
+## Seam-native repo counting
+
+Repo-scoped badge artifacts use the `seam_native` basis. These counts come
+from `SeamGripClass` in RIPR-SPEC-0005 and consume the configured seam
+severity from `ripr.toml`.
+
+| Seam grip class | Counts in repo `ripr` | Notes |
+| --- | :---: | --- |
+| `weakly_gripped` | yes, unless configured `off` | Headline-eligible seam gap. |
+| `ungripped` | yes, unless configured `off` | Headline-eligible seam gap. |
+| `reachable_unrevealed` | yes, unless configured `off` | Headline-eligible seam gap. |
+| `activation_unknown` | yes, unless configured `off` | Headline-eligible static limitation. |
+| `propagation_unknown` | yes, unless configured `off` | Headline-eligible static limitation. |
+| `observation_unknown` | yes, unless configured `off` | Headline-eligible static limitation. |
+| `discrimination_unknown` | yes, unless configured `off` | Headline-eligible static limitation. |
+| `opaque` | no | Reported separately as `unknowns` when configured visible. |
+| `strongly_gripped` | no | Default severity is `off`. |
+| `intentional` | no | Default severity is `off`. |
+| `suppressed` | no | Default severity is `off`; if configured visible, counted in `suppressed_exposure_gaps`. |
+
+`severity.seams.<class> = "off"` omits that class from the badge headline and
+visible count buckets. Other severities keep the class visible to the badge
+mapping but do not change the badge color thresholds.
+
 ## Counting rule
+
+Diff-scoped `ripr` count:
 
 ```text
 ripr count =
@@ -301,7 +334,20 @@ ripr count =
                                       reachable_unrevealed,
                                       no_static_path }
     minus suppressed exposure-gap findings
+```
 
+Repo-scoped `ripr` count:
+
+```text
+ripr count =
+    seams where seam_grip_class is headline eligible
+    and configured seam severity != off
+```
+
+`ripr+` adds test-efficiency findings to whichever `ripr` exposure basis was
+selected by scope:
+
+```text
 ripr+ count =
     ripr count
   + tests where class ∈ { likely_vacuous,
@@ -313,9 +359,9 @@ ripr+ count =
     not declared intentional and not suppressed
 ```
 
-`ripr` and `ripr+` are computed from the same `CheckOutput` and the same
-test-efficiency JSON. The badge is a rendering policy over those, not a
-separate analysis.
+Diff-scoped `ripr+` uses the diff's related-test filter. Repo-scoped `ripr+`
+uses the repo-wide test-efficiency ledger directly. The badge is a rendering
+policy over analyzer reports, not a separate analysis.
 
 ## JSON wire shape
 
@@ -326,8 +372,10 @@ output boundary; it is never the source of truth.
 
 ```json
 {
-  "schema_version": "0.1",
+  "schema_version": "0.3",
   "kind": "ripr",
+  "scope": "repo",
+  "basis": "seam_native",
   "label": "ripr",
   "message": "0",
   "status": "pass",
@@ -341,6 +389,7 @@ output boundary; it is never the source of truth.
     "unknowns": 0,
     "unknowns_test_efficiency": 0,
     "analyzed_findings": 0,
+    "analyzed_seams": 120,
     "analyzed_tests": 0
   },
   "reason_counts": {
@@ -367,23 +416,21 @@ output boundary; it is never the source of truth.
 `unsuppressed_test_efficiency_findings` to its `message`; the schema is
 otherwise identical so consumers can parse one shape.
 
-`schema_version` is the same scheme as `ripr check --json` so consumers can
-gate on a single version. Bumping it is a public-contract change and must be
-called out in the PR.
+`schema_version` is the badge-native schema. Bumping it is a public-contract
+change and must be called out in the PR. `0.3` adds `basis` and
+`counts.analyzed_seams`.
 
-### Scope metadata (native only)
+### Scope and basis metadata (native only)
 
-A `scope` field is required before public README/store badges go live.
-`badge/repo-scope-artifacts` introduced it on the `schema_version` 0.2
-bump:
+A `scope` field distinguishes PR artifacts from public repo badges. A `basis`
+field distinguishes legacy diff finding counts from seam-native repo counts:
 
 ```json
 {
-  "schema_version": "0.2",
+  "schema_version": "0.3",
   "kind": "ripr",
   "scope": "diff",
-  "base": "origin/main",
-  "head": "HEAD",
+  "basis": "finding_exposure",
   "label": "ripr",
   "message": "3",
   "...": "..."
@@ -393,9 +440,13 @@ bump:
 - `"scope": "diff"` — diff-scoped (PR artifacts). Native JSON SHOULD
   also record `base` and `head` git refs so consumers can reproduce.
 - `"scope": "repo"` — repo-scoped (README / main endpoint).
+- `"basis": "finding_exposure"` — legacy `Finding`/`ExposureClass`
+  aggregation, currently used by diff-scoped badge artifacts.
+- `"basis": "seam_native"` — `RepoSeam`/`SeamGripClass` aggregation,
+  currently used by repo-scoped badge artifacts.
 
-The Shields projection remains exactly four fields. Scope metadata
-lives only in native JSON, docs, and consumer tooling.
+The Shields projection remains exactly four fields. Scope and basis metadata
+live only in native JSON, docs, and consumer tooling.
 
 ### Shields projection (`--format badge-shields`)
 
@@ -664,11 +715,12 @@ into `badges/`. Commit the resulting diff.
   refresh `badges/` would be too much friction before the count
   stabilizes. Use it locally before campaign closeouts and after
   material analyzer changes.
-- The `ripr 0` headline on `main` means: zero unresolved actionable
-  exposure findings under the v1 currently-probeable repo baseline.
+- The `ripr 0` headline on `main` means: zero configured-visible
+  seam-native unresolved exposure gaps under the current repo baseline.
   It does not mean the repo is fully tested, that all behavior seams
-  are gripped by oracles, or that mutation testing would pass — see
-  "What v1 repo scope means — and does not mean" above.
+  are gripped by oracles, or that runtime mutation confirmation would
+  pass — see "What repo seam-native scope means — and does not mean"
+  above.
 
 #### Why checked-in JSON, not GitHub Pages
 
@@ -705,7 +757,7 @@ self-hosting is the v1 path.
 
 ## Implementation status
 
-Tracked alongside Campaign 4A in
+Tracked alongside Campaign 4A and Campaign 5B in
 [`.ripr/goals/active.toml`](../.ripr/goals/active.toml) and
 [`docs/IMPLEMENTATION_CAMPAIGNS.md`](IMPLEMENTATION_CAMPAIGNS.md).
 
@@ -723,7 +775,8 @@ Tracked alongside Campaign 4A in
 | CI badge artifacts (diff-scoped, PR) | done | `ci/badge-artifacts` |
 | Repo-scoped badge artifacts | done | `badge/repo-scope-artifacts` (`cargo xtask repo-badge-artifacts`) |
 | Published Shields endpoint from `main` | done | `badge/publish-main-endpoint` (committed `badges/*.json` served via `raw.githubusercontent.com`; refresh with `cargo xtask update-badge-endpoints`) |
-| Diff-scope `ripr+` related-tests filter | done | `badge/diff-ripr-plus-related-tests` (this PR) |
+| Diff-scope `ripr+` related-tests filter | done | `badge/diff-ripr-plus-related-tests` |
+| Seam-native repo badge mapping | done | `badge/seam-native-count-mapping` |
 
 ## See also
 

@@ -19,15 +19,16 @@ through multiple work items in a campaign, but each work item should follow the
 | Test Efficiency and Vacuity Signals (4A) | Make low-discriminator, smoke-only, broad-oracle, opaque, circular, and duplicate test signals visible as advisory evidence; ship `ripr` and `ripr+` badge artifacts. | `test-efficiency/test-fact-ledger`, `test-efficiency/vacuous-signal-v1`, `test-efficiency/duplicate-discriminator-v1`, `test-efficiency/report-and-metrics`, `badge/ripr-count-v1`, `badge/ripr-plus-count-v1`, `badge/repo-scope-artifacts`, `badge/publish-main-endpoint` |
 | Repo Seam Inventory and Test Grip (4B) | Inventory behavior seams, classify test-grip per seam, and turn actionable gaps into editor diagnostics and agent-ready packets. | `spec/repo-seam-inventory`, `analysis/repo-seam-model-v1`, `analysis/repo-seam-inventory-v1`, `analysis/test-grip-evidence-v1`, `analysis/repo-ripr-classification-v1`, `output/repo-exposure-report-v1`, `lsp/repo-seam-diagnostics-v1`, `lsp/seam-evidence-hover-v1`, `context/agent-seam-packets-v1`, `docs/agent-dispatch-workflow-v1` |
 | Seam Evidence Usability and Precision (5A) | Make repo seam evidence fast, precise, and directly actionable for developers and coding agents. | Complete: #255, #310, #313, #314, #315, #316, #327, and `campaign/seam-evidence-usability-closeout`. |
-| Operationalization (5B) | Govern analyzer behavior with repository config, integrate SARIF/CI policy modes, and remap badges onto seam-native counts. | `config/ripr-config-v1`, `ci/sarif-ci-policy`, `badge/seam-native-count-mapping` |
+| Operationalization (5B) | Govern analyzer behavior with repository config, integrate SARIF/CI policy modes, and remap badges onto seam-native counts. | `config/ripr-config-v1`, `ci/sarif-ci-policy`, `badge/seam-native-count-mapping`, `campaign/operationalization-closeout` |
 | Module SRP Refactoring (6) | Refactor internal modules under `crates/ripr/src/` so each module has one product responsibility, without splitting the package. | See `docs/IMPLEMENTATION_CAMPAIGNS.md` Campaign 6. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
 through 5A are complete. The active queue is now Campaign 5B
 Operationalization. `config/ripr-config-v1` established the repo-root
 configuration surface; `ci/sarif-ci-policy` added SARIF rendering and an
-opt-in baseline policy, and `badge/seam-native-count-mapping` is the next ready
-item.
+opt-in baseline policy; `badge/seam-native-count-mapping` remapped public repo
+badges onto seam-native unresolved gap counts. The next ready item is
+`campaign/operationalization-closeout`.
 
 ## PR 0: `planning-and-tracking-docs`
 

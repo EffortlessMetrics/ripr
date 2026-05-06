@@ -29,6 +29,7 @@ use super::seams::{RepoSeam, SeamGripClass, SeamId};
 use super::test_grip_evidence::TestGripEvidence;
 use crate::domain::StageState;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 
 /// A seam paired with its evidence and the resulting grip class.
@@ -38,6 +39,42 @@ pub(crate) struct ClassifiedSeam {
     pub(crate) seam: RepoSeam,
     pub(crate) evidence: TestGripEvidence,
     pub(crate) class: SeamGripClass,
+}
+
+/// Compact per-class count summary for repo-scoped consumers that only
+/// need headline counts, not full per-seam evidence. This keeps badge
+/// rendering from loading or writing the much larger `ClassifiedSeam`
+/// fact cache.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct SeamGripClassCounts {
+    analyzed_seams: usize,
+    counts: BTreeMap<SeamGripClass, usize>,
+}
+
+impl SeamGripClassCounts {
+    pub(crate) fn new(analyzed_seams: usize) -> Self {
+        let mut counts = BTreeMap::new();
+        for class in SeamGripClass::ALL {
+            counts.insert(class, 0);
+        }
+        Self {
+            analyzed_seams,
+            counts,
+        }
+    }
+
+    pub(crate) fn increment(&mut self, class: SeamGripClass) {
+        let entry = self.counts.entry(class).or_insert(0);
+        *entry += 1;
+    }
+
+    pub(crate) fn analyzed_seams(&self) -> usize {
+        self.analyzed_seams
+    }
+
+    pub(crate) fn count_for(&self, class: SeamGripClass) -> usize {
+        self.counts.get(&class).copied().unwrap_or(0)
+    }
 }
 
 /// Apply the classification rules in priority order.

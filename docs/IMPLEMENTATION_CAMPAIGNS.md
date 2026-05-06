@@ -620,13 +620,15 @@ Work items:
 | --- | --- | --- |
 | `config/ripr-config-v1` | done | Repo-root `ripr.toml` governs analysis mode, oracle policy, severity mapping, suppressions path, report caps, and LSP seam-diagnostic defaults while explicit CLI/LSP options still win. |
 | `ci/sarif-ci-policy` | done | SARIF and policy modes consume configured severity and suppression policy; RIPR-SPEC-0008 pins the rule IDs, severity mapping, suppression visibility, advisory default, renderer, and opt-in baseline policy. |
-| `badge/seam-native-count-mapping` | ready | Map `ripr` and `ripr+` badge counts onto seam-native counts after SARIF consumes configured severity and suppression semantics. |
+| `badge/seam-native-count-mapping` | done | Repo-scoped `ripr` and `ripr+` badges now count configured-visible seam-native unresolved gaps, while diff-scoped badge artifacts remain versioned as legacy finding-exposure counts. Native badge JSON is schema `0.3` with `basis` and `counts.analyzed_seams`; Shields endpoint artifacts were refreshed together. |
+| `campaign/operationalization-closeout` | ready | Close Campaign 5B after config, SARIF/CI policy, and seam-native badge count mapping have landed. |
 
 Review policy:
 
 5B started with `config/ripr-config-v1`, then landed SARIF rendering and the
-opt-in baseline policy. Badge count remapping is now the next ready item and
-should reuse the configured severity and suppression semantics SARIF consumes.
+opt-in baseline policy, then remapped public repo badges onto seam-native counts.
+The next ready item is the Campaign 5B closeout. Keep it docs/manifest only:
+no analyzer behavior, output schema, SARIF policy, or badge mapping changes.
 
 ## Campaign 6: Module SRP Refactoring
 

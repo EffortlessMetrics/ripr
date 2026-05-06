@@ -240,6 +240,11 @@ tests = [
   "crates/ripr/src/output/repo_exposure.rs::tests::markdown_explains_when_inventory_is_empty",
   "crates/ripr/src/output/repo_exposure.rs::tests::markdown_explains_when_no_headline_gaps",
   "crates/ripr/src/output/repo_exposure.rs::tests::markdown_uses_static_exposure_vocabulary",
+  "crates/ripr/src/output/badge.rs::tests::seam_badge_summary_counts_visible_headline_eligible_seams",
+  "crates/ripr/src/output/badge.rs::tests::seam_badge_summary_respects_configured_off_severity",
+  "crates/ripr/tests/cli_smoke.rs::check_repo_badge_json_emits_repo_scope_metadata",
+  "crates/ripr/tests/cli_smoke.rs::check_repo_badge_does_not_consult_diff_arg_when_supplied",
+  "crates/ripr/tests/cli_smoke.rs::check_repo_badge_plus_json_emits_repo_scope_metadata",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::given_weakly_gripped_boundary_seam_when_packet_is_rendered_then_missing_boundary_value_is_present",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::given_ungripped_seam_when_packet_is_rendered_then_task_is_write_targeted_test",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::given_strongly_gripped_seam_when_packets_are_requested_then_no_actionable_packet_is_emitted",
@@ -283,6 +288,7 @@ code = [
   "crates/ripr/src/analysis/seam_classification.rs",
   "crates/ripr/src/output/repo_seams.rs",
   "crates/ripr/src/output/repo_exposure.rs",
+  "crates/ripr/src/output/badge.rs",
   "crates/ripr/src/output/agent_seam_packets.rs",
   "crates/ripr/src/lsp/diagnostics.rs",
   "crates/ripr/src/lsp/config.rs",
@@ -297,6 +303,7 @@ code = [
 outputs = [
   "docs/specs/RIPR-SPEC-0005-repo-seam-inventory.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/BADGE_POLICY.md",
   "docs/AGENT_DISPATCH_WORKFLOW.md",
   "docs/CAPABILITY_MATRIX.md"
 ]
@@ -305,6 +312,7 @@ metrics = [
   "seam_kind_distribution",
   "seam_grip_class_distribution",
   "ungripped_seam_count",
+  "seam_native_badge_unresolved_gap_count",
   "stable_id_collision_rate",
   "seam_to_finding_link_rate"
 ]
