@@ -1,5 +1,7 @@
 use super::extract::{
     extract_call_facts, extract_identifier_tokens, extract_literal_facts, extract_return_facts,
+    has_effect_text, is_effect_call_name, is_predicate_operator, slice_macro_call_text, slice_text,
+    text_size_to_usize,
 };
 use crate::config::OraclePolicy;
 use crate::domain::{OracleKind, OracleStrength, SymbolId};
@@ -785,13 +787,6 @@ fn push_probe_shape(
     });
 }
 
-fn is_predicate_operator(operator: &str) -> bool {
-    matches!(
-        operator,
-        "==" | "!=" | "<=" | ">=" | "<" | ">" | "&&" | "||"
-    )
-}
-
 fn has_return_value_text(text: &str) -> bool {
     let trimmed = text.trim_start();
     trimmed.starts_with("Ok(")
@@ -817,42 +812,6 @@ fn has_error_path_text(text: &str) -> bool {
         || text.contains("map_err")
         || text.contains("bail!")
         || text.contains("anyhow!")
-}
-
-fn has_effect_text(text: &str) -> bool {
-    let lower = text.to_ascii_lowercase();
-    [
-        ".save(",
-        ".publish(",
-        ".send(",
-        ".write(",
-        ".insert(",
-        ".push(",
-        ".remove(",
-        ".delete(",
-        ".emit(",
-        ".increment(",
-        "metrics.",
-        "log::",
-    ]
-    .iter()
-    .any(|needle| lower.contains(needle))
-}
-
-fn is_effect_call_name(name: &str) -> bool {
-    matches!(
-        name.to_ascii_lowercase().as_str(),
-        "save"
-            | "publish"
-            | "send"
-            | "write"
-            | "insert"
-            | "push"
-            | "remove"
-            | "delete"
-            | "emit"
-            | "increment"
-    )
 }
 
 fn extract_parser_oracles(
@@ -1094,31 +1053,6 @@ impl LineIndex {
             Err(index) => index.max(1),
         }
     }
-}
-
-fn text_size_to_usize(offset: TextSize) -> usize {
-    let value: u32 = offset.into();
-    value as usize
-}
-
-fn slice_text(text: &str, start: TextSize, end: TextSize) -> String {
-    let start = text_size_to_usize(start);
-    let end = text_size_to_usize(end);
-    text.get(start..end).unwrap_or("").to_string()
-}
-
-fn slice_macro_call_text(text: &str, start: TextSize, end: TextSize) -> String {
-    let start = text_size_to_usize(start);
-    let mut end = text_size_to_usize(end);
-    let bytes = text.as_bytes();
-    let mut cursor = end;
-    while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() && bytes[cursor] != b'\n' {
-        cursor += 1;
-    }
-    if bytes.get(cursor) == Some(&b';') {
-        end = cursor + 1;
-    }
-    text.get(start..end).unwrap_or("").trim().to_string()
 }
 
 fn collect_function_body(lines: &[&str], start: usize) -> (usize, String) {
