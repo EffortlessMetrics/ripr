@@ -1,4 +1,4 @@
-use super::super::rust_index::extract_identifier_tokens;
+use super::super::extract::extract_identifier_tokens;
 use crate::domain::{DeltaKind, ProbeFamily};
 
 pub fn delta_for_family(family: &ProbeFamily) -> DeltaKind {
