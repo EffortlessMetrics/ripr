@@ -156,6 +156,10 @@ are scoped or reviewed.
   `analysis/syntax/lexical.rs` while keeping `analysis/rust_index.rs` as the
   compatibility facade for query and extractor helpers. The next ready seam is
   fact extraction helper modularization.
+- Moved call, return, literal, oracle, and text extraction helpers plus
+  probe-shape constants into `analysis/extract/*`, with `analysis/rust_index.rs`
+  still re-exporting the compatibility helper surface. The next ready seam is
+  probe family metadata extraction.
 - Added `cargo xtask targeted-test-outcome` as an advisory receipt for comparing
   before/after `repo-exposure-json` artifacts. The report writes
   `target/ripr/reports/targeted-test-outcome.{json,md}`, matches seams by

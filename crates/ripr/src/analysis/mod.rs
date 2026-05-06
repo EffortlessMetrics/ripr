@@ -1,5 +1,6 @@
 mod classifier;
 mod diff;
+mod extract;
 mod facts;
 mod pipeline;
 mod probes;

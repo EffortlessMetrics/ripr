@@ -224,11 +224,29 @@ commands = [
 
 [[work_item]]
 id = "extract/fact-extraction"
-status = "ready"
+status = "done"
 branch = "fact-extraction"
 stackable = false
 requires_human_merge = true
-acceptance = "call, return, literal, oracle, probe-shape, and text extraction helpers move into analysis/extract/* after lexical extraction; rust_index remains a compatibility facade with no behavior, output, API, or schema drift"
+acceptance = "call, return, literal, oracle, and text extraction helpers plus probe-shape constants move into analysis/extract/* after lexical extraction; rust_index remains a compatibility facade with no behavior, output, API, or schema drift"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-public-api",
+  "cargo xtask check-architecture",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-no-panic-family",
+  "cargo test --workspace"
+]
+
+[[work_item]]
+id = "probes/family-extraction"
+status = "ready"
+branch = "probe-family-extraction"
+stackable = false
+requires_human_merge = true
+acceptance = "probe family constants and family-specific metadata move into analysis/probes/family.rs after fact extraction; probe generation behavior stays stable with no output, API, or schema drift"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
