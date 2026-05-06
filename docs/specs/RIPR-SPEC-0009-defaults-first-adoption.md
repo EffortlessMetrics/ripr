@@ -15,10 +15,10 @@ one conservative loop:
 
 ```text
 install ripr
-initialize repo policy when desired
 run one pilot scan
 write one focused test
 compare before and after evidence
+materialize repo policy when the team wants to review or tune defaults
 optionally import runtime calibration data
 ```
 
@@ -34,6 +34,11 @@ The default contract is:
 
 - `ripr.toml` is optional for first value. Missing config uses built-in
   conservative defaults and is reported as such by `ripr doctor`.
+- `ripr init` materializes repo policy. It does not unlock the useful
+  experience.
+- A missing `ripr.toml` and a freshly generated `ripr.toml` should produce
+  equivalent default policy behavior, except for filesystem artifacts
+  intentionally created by `init` or other commands.
 - Explicit CLI flags and LSP initialization options override repo config.
 - Repo config overrides built-in defaults.
 - Malformed or unknown config fails closed with an actionable path and message.
@@ -55,17 +60,18 @@ The default contract is:
 | --- | --- | --- |
 | CLI | Produce readable static evidence and next-step guidance from ordinary commands. | Require format knowledge or repo config before first value. |
 | `ripr doctor` | Show config state, server/tooling availability, and whether defaults or repo policy are active. | Print config source text or silently ignore malformed policy. |
-| `ripr init` | Generate a conservative `ripr.toml` profile when requested. | Overwrite repo policy without `--force` or create blocking CI by default. |
+| `ripr init` | Materialize the conservative built-in defaults into `ripr.toml` when requested. | Unlock basic usefulness, overwrite repo policy without `--force`, or create blocking CI by default. |
 | `ripr pilot` | Generate a standard pilot packet and print the top actionable next step. | Run mutation testing, edit files, or require users to know internal report names. |
 | `ripr outcome` | Compare two repo-exposure snapshots and explain whether evidence moved. | Require the `ripr` source repo or `cargo xtask`. |
 | Calibration import | Join supplied runtime data to static seam evidence and explain agreement buckets. | Run mutation testing or change static classifications. |
-| LSP / VS Code | Make saved-workspace diagnostics, hovers, targeted briefs, context packets, best related test, and refresh status discoverable. | Surprise users with expensive live unsaved-buffer analysis. |
+| LSP / VS Code | Make bounded saved-workspace diagnostics, hovers, targeted briefs, context packets, best related test, and refresh status discoverable. | Stay inert until `ripr init`, surprise users with expensive live unsaved-buffer analysis, or run deep analysis by default. |
 | SARIF / GitHub Actions | Upload advisory code-scanning results from static evidence. | Fail CI without explicit baseline policy. |
 | Badges | Report configured-visible unresolved seam counts. | Present counts as coverage, test completeness, or runtime mutation confirmation. |
 
 ## Default Config Profile
 
-The generated conservative profile for `ripr init` should be close to:
+The generated conservative profile for `ripr init` should materialize the same
+policy defaults that built-in missing-config behavior uses:
 
 ```toml
 [analysis]
@@ -100,9 +106,11 @@ max_related_tests = 5
 path = ".ripr/suppressions.toml"
 ```
 
-The built-in cold-workspace default may keep LSP seam diagnostics off for cost
-control. A generated repo config may turn them on because the user explicitly
-opted into RIPR for that repository.
+Built-in defaults should provide the same conservative operator experience as
+the generated init profile. Surfaces may bound cost with saved-workspace,
+draft-mode behavior, diagnostic caps, lazy refresh, and clear status messaging,
+but they should not be inert by default. Repository config can still disable
+surfaces explicitly when a team wants a quieter policy.
 
 ## Pilot Packet
 
@@ -182,6 +190,8 @@ blocking by default.
 Defaults-first adoption evidence should cover:
 
 - documentation for every default surface listed above;
+- built-in missing-config behavior matching the generated init profile's
+  default policy behavior;
 - `ripr init` generated config preserving conservative defaults;
 - `ripr init --dry-run` printing without writing;
 - `ripr init --force` being required to overwrite existing `ripr.toml`;

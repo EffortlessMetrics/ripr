@@ -138,13 +138,20 @@ Check local tooling and workspace shape:
 ripr doctor
 ```
 
-Initialize conservative repo policy:
+Check the current Git diff against `origin/main` with built-in defaults:
+
+```bash
+ripr check --base origin/main
+```
+
+Optionally materialize conservative repo policy so the team can review and tune
+it:
 
 ```bash
 ripr init
 ```
 
-Check the current Git diff against `origin/main`:
+Then run the same check under repo-owned policy:
 
 ```bash
 ripr check --base origin/main
@@ -259,7 +266,7 @@ Current capabilities:
 | Repo seam inventory | First-class `RepoSeam` model with deterministic seam IDs, cached seam fact layers, test-grip evidence across the five RIPR stages, and 11-class `SeamGripClass` classification. | Campaign 6 stack audit. |
 | Test discovery | Parser-backed test and assertion facts with exact, broad, relational, snapshot, mock, smoke, custom-helper, side-effect observer, and unknown oracle kinds; per-test efficiency ledger with smoke/broad/disconnected/opaque/circular/likely-vacuous reasons and duplicate-discriminator groups. | Campaign 6 stack audit. |
 | Output | Human, JSON, context, and GitHub formats render evidence-first findings with stop reasons; repo exposure report and v2 agent seam packets render classified seam evidence; public `ripr` and `ripr+` Shields badges publish seam-native unresolved gap counts while diff badge artifacts remain finding-exposure based. | Campaign 6 stack audit. |
-| LSP | Experimental `tower-lsp-server` sidecar with evidence-aware Finding diagnostics, related-test links, hovers, server-side context packets, seam-native diagnostics + hover, and seam code actions for copying packets/assertions and opening related tests (seam diagnostics remain off unless `ripr.toml` or initialization options enable them). | Campaign 6 stack audit. |
+| LSP | Experimental `tower-lsp-server` sidecar with evidence-aware Finding diagnostics, related-test links, hovers, server-side context packets, seam-native diagnostics + hover, and seam code actions for copying packets/assertions and opening related tests. Saved-workspace diagnostics remain advisory; unsaved-buffer overlays are not default behavior. | Campaign 6 stack audit. |
 | Agent context | Compact context packet plus per-seam `write_targeted_test` and `inspect_static_limitation` packets carrying recommended test placement, nearest tests to imitate, candidate values, missing discriminators, patterns to imitate/avoid, and assertion templates. Documented agent dispatch workflow in `docs/AGENT_DISPATCH_WORKFLOW.md`. | Campaign 6 stack audit. |
 | Repository config | Repo-root `ripr.toml` can set analysis mode, oracle policy, severity mapping, suppressions path, report related-test caps, and LSP seam-diagnostic defaults. Explicit CLI flags and LSP initialization options still win. | Campaign 6 stack audit. |
 | SARIF and CI policy | `ripr check --format sarif` emits diff-scoped Finding SARIF and `--format repo-sarif` emits repo seam SARIF with configured severity, suppression metadata, stable rule IDs, and stable fingerprints. `cargo xtask sarif-policy` compares current SARIF to a baseline and only fails when explicitly requested. `docs/CI.md` includes a copyable non-blocking GitHub Actions upload recipe. | Campaign 6 stack audit. |

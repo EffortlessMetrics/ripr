@@ -22,11 +22,12 @@ repo-root `ripr.toml` file. It pairs with:
 environment variables, or hidden alternate config files.
 
 Configuration is for policy and tuning, not a prerequisite for first value.
-Missing `ripr.toml` is healthy and uses built-in conservative defaults. The
-defaults-first adoption contract in
+Missing `ripr.toml` is healthy and uses built-in conservative defaults. `ripr
+init` materializes those defaults into repo-owned policy so teams can review
+and tune them; it is not the switch that makes RIPR useful. The defaults-first
+adoption contract in
 [RIPR-SPEC-0009](specs/RIPR-SPEC-0009-defaults-first-adoption.md) defines the
-generated baseline for `ripr init` and the install-surface defaults that must
-remain advisory.
+missing-config and generated-config behavior that must remain advisory.
 
 ## CLI flags
 
@@ -44,8 +45,9 @@ and [`crates/ripr/src/app.rs`](../crates/ripr/src/app.rs).
 ### `ripr init`
 
 Creates a conservative repo-local `ripr.toml` at the selected workspace root.
-The generated profile is editor-useful but still advisory: it does not run
-mutation testing, create CI workflows, or enable CI blocking policy.
+The generated profile records the built-in conservative defaults as repo policy
+so they can be reviewed and changed. It does not run mutation testing, create
+CI workflows, enable CI blocking policy, or unlock basic CLI usefulness.
 
 ```text
 ripr init [--root PATH] [--dry-run] [--force]
@@ -409,8 +411,8 @@ with the supported v1 shape.
 
 `ripr init` generates a conservative profile aligned with
 [RIPR-SPEC-0009](specs/RIPR-SPEC-0009-defaults-first-adoption.md). That
-generated profile opts an initialized repository into editor seam diagnostics,
-but it does not enable runtime mutation execution or CI blocking policy.
+generated profile is a materialized policy file, not an activation step; it
+does not enable runtime mutation execution or CI blocking policy.
 
 ### `[analysis]`
 
@@ -470,7 +472,12 @@ Seam severities affect LSP seam diagnostics. Valid values are `off`, `info`,
 
 | Key | Type | Default | Effect |
 | --- | --- | --- | --- |
-| `seam_diagnostics` | boolean | `false` built-in; `true` in `ripr init` output | Default for repo seam diagnostics. LSP `initializationOptions.seamDiagnostics` still wins. |
+| `seam_diagnostics` | boolean | target default: `true`; current implementation is being aligned | Default for bounded saved-workspace repo seam diagnostics. LSP `initializationOptions.seamDiagnostics` still wins. |
+
+RIPR-SPEC-0009 treats a missing `ripr.toml` and a freshly generated
+`ripr.toml` as equivalent default policy. Any remaining built-in/generated
+split for this setting is a defaults-alignment gap, not intended product
+behavior.
 
 ### `[reports]`
 
