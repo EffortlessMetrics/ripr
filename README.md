@@ -352,7 +352,7 @@ Start here:
 | See behavior contracts | [Specs](docs/specs/README.md) |
 | See design decisions | [ADRs](docs/adr/README.md) |
 | Add or review fixtures | [Testing](docs/TESTING.md) and [Test taxonomy](docs/TEST_TAXONOMY.md) |
-| Understand repo automation | [PR automation](docs/PR_AUTOMATION.md) |
+| Understand repo automation | [PR automation](docs/PR_AUTOMATION.md) and [Droid rollout](docs/DROID_ROLLOUT.md) |
 | Understand architecture | [Architecture](docs/ARCHITECTURE.md) |
 | Review capability state | [Capability matrix](docs/CAPABILITY_MATRIX.md) and [Metrics](docs/METRICS.md) |
 | Contribute a scoped PR | [Contributing](CONTRIBUTING.md) and [Scoped PR contract](docs/SCOPED_PR_CONTRACT.md) |

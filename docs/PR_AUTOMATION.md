@@ -68,7 +68,8 @@ status. It classifies changed paths into production, evidence, docs, policy,
 workflow, extension, and public-contract surfaces.
 
 `precommit` is the cheap non-mutating guardrail. It checks formatting and the
-policy surfaces that should fail quickly before review.
+policy surfaces that should fail quickly before review, including Droid workflow
+invariants through `cargo xtask check-droid-review-config`.
 
 `check-pr` is the review-ready local gate. It runs the current fast CI lane,
 then clippy, docs, and PR summary generation. It intentionally leaves
@@ -427,6 +428,7 @@ cargo xtask check-local-context
 cargo xtask check-file-policy
 cargo xtask check-executable-files
 cargo xtask check-workflows
+cargo xtask check-droid-review-config
 cargo xtask check-spec-format
 cargo xtask check-fixture-contracts
 cargo xtask check-traceability

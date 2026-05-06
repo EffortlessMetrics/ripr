@@ -27,6 +27,7 @@ Current how-to docs:
 - [Fix CI shape failures](how-to/fix-ci-shape-failures.md)
 - [Run Codex Goals](how-to/run-codex-goals.md)
 - [PR automation](PR_AUTOMATION.md)
+- [Droid rollout](DROID_ROLLOUT.md)
 - [Dogfooding](DOGFOODING.md)
 - [Targeted test workflow](TARGETED_TEST_WORKFLOW.md)
 - [Agent workflows](AGENT_WORKFLOWS.md)
