@@ -85,11 +85,28 @@ commands = [
 
 [[work_item]]
 id = "diff/module-split"
-status = "ready"
+status = "done"
 branch = "diff-module-split"
 stackable = false
 requires_human_merge = true
 acceptance = "analysis/diff.rs splits into diff/{mod,model,load,parse}.rs with no parser behavior, output, API, or schema drift; add cheap diff/load.rs coverage only when the existing branch logic is simple to pin"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-public-api",
+  "cargo xtask check-architecture",
+  "cargo xtask check-output-contracts",
+  "cargo test --workspace"
+]
+
+[[work_item]]
+id = "workspace/module-split"
+status = "ready"
+branch = "workspace-module-split"
+stackable = false
+requires_human_merge = true
+acceptance = "analysis/workspace.rs splits into focused workspace modules with no workspace-selection behavior, output, API, or schema drift"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",
