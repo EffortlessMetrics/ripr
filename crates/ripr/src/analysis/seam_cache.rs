@@ -31,7 +31,7 @@
 //! so different keys land in different files and a v1 cache hit on a
 //! v0.5 entry is impossible.
 
-use super::seam_classification::ClassifiedSeam;
+use super::seam_classification::{ClassifiedSeam, SeamGripClassCounts};
 use std::path::{Path, PathBuf};
 
 /// Cache schema version. Bump when the on-disk file shape changes; old
@@ -43,6 +43,12 @@ use std::path::{Path, PathBuf};
 /// of the new shape; the version bump routes new entries to a fresh
 /// directory and lets old entries go orphaned (gc'd on `cargo clean`).
 pub(crate) const CACHE_SCHEMA_VERSION: &str = "0.2";
+
+/// Compact class-count cache used by repo badge rendering. It keys off
+/// the same workspace state as the full fact cache, but stores only
+/// per-class counts so badge endpoints never need to deserialize the
+/// multi-hundred-megabyte evidence cache.
+const COUNT_CACHE_SCHEMA_VERSION: &str = "0.1";
 
 /// Aggregate cache key — every field that, when changed, must invalidate
 /// the workspace-level classified seam cache.
@@ -224,6 +230,67 @@ impl RepoSeamFactCache {
     }
 }
 
+/// Compact cache for [`SeamGripClassCounts`].
+pub(crate) struct RepoSeamCountCache {
+    dir: PathBuf,
+}
+
+impl RepoSeamCountCache {
+    /// Construct a count cache rooted at the workspace's
+    /// `target/ripr/cache/...`.
+    pub(crate) fn at(workspace_root: &Path) -> Self {
+        Self {
+            dir: workspace_root
+                .join("target")
+                .join("ripr")
+                .join("cache")
+                .join("repo-seam-counts")
+                .join(COUNT_CACHE_SCHEMA_VERSION),
+        }
+    }
+
+    pub(crate) fn load_counts(&self, key: &RepoSeamCacheKey) -> CacheLoad<SeamGripClassCounts> {
+        let path = self.entry_path(key);
+        let bytes = match std::fs::read(&path) {
+            Ok(b) => b,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return CacheLoad::Miss,
+            Err(err) => {
+                return CacheLoad::CorruptIgnored {
+                    reason: format!("read failed: {err}"),
+                };
+            }
+        };
+        match codec::decode_counts(&bytes) {
+            Ok(envelope) => {
+                if envelope.matches_key(key) {
+                    CacheLoad::Hit(envelope.counts)
+                } else {
+                    CacheLoad::Miss
+                }
+            }
+            Err(reason) => CacheLoad::CorruptIgnored { reason },
+        }
+    }
+
+    pub(crate) fn store_counts(
+        &self,
+        key: &RepoSeamCacheKey,
+        counts: &SeamGripClassCounts,
+    ) -> Result<(), String> {
+        std::fs::create_dir_all(&self.dir)
+            .map_err(|err| format!("create count cache dir failed: {err}"))?;
+        let envelope = CountCacheEnvelope::new(key.clone(), counts.clone());
+        let bytes = codec::encode_counts(&envelope)?;
+        let path = self.entry_path(key);
+        std::fs::write(&path, &bytes).map_err(|err| format!("write count cache failed: {err}"))?;
+        Ok(())
+    }
+
+    fn entry_path(&self, key: &RepoSeamCacheKey) -> PathBuf {
+        self.dir.join(key.filename())
+    }
+}
+
 /// On-disk shape. The key is embedded so callers can verify on read
 /// even though the filename already encodes a hash of the same fields.
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -237,6 +304,49 @@ struct CacheEnvelope {
     test_intent_hash: String,
     suppressions_hash: String,
     classified_seams: Vec<ClassifiedSeam>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CountCacheEnvelope {
+    count_cache_schema_version: String,
+    schema_version: String,
+    analyzer_version: String,
+    workspace_root_hash: String,
+    files_content_hash: String,
+    cfg_features_hash: String,
+    config_hash: String,
+    test_intent_hash: String,
+    suppressions_hash: String,
+    counts: SeamGripClassCounts,
+}
+
+impl CountCacheEnvelope {
+    fn new(key: RepoSeamCacheKey, counts: SeamGripClassCounts) -> Self {
+        Self {
+            count_cache_schema_version: COUNT_CACHE_SCHEMA_VERSION.to_string(),
+            schema_version: key.schema_version,
+            analyzer_version: key.analyzer_version,
+            workspace_root_hash: key.workspace_root_hash,
+            files_content_hash: key.files_content_hash,
+            cfg_features_hash: key.cfg_features_hash,
+            config_hash: key.config_hash,
+            test_intent_hash: key.test_intent_hash,
+            suppressions_hash: key.suppressions_hash,
+            counts,
+        }
+    }
+
+    fn matches_key(&self, key: &RepoSeamCacheKey) -> bool {
+        self.count_cache_schema_version == COUNT_CACHE_SCHEMA_VERSION
+            && self.schema_version == key.schema_version
+            && self.analyzer_version == key.analyzer_version
+            && self.workspace_root_hash == key.workspace_root_hash
+            && self.files_content_hash == key.files_content_hash
+            && self.cfg_features_hash == key.cfg_features_hash
+            && self.config_hash == key.config_hash
+            && self.test_intent_hash == key.test_intent_hash
+            && self.suppressions_hash == key.suppressions_hash
+    }
 }
 
 impl CacheEnvelope {
@@ -269,7 +379,7 @@ impl CacheEnvelope {
 /// Codec module — the only place serialization format is decided.
 /// Switching to `postcard` for binary v2 is a localized change here.
 mod codec {
-    use super::CacheEnvelope;
+    use super::{CacheEnvelope, CountCacheEnvelope};
 
     pub(super) fn encode(envelope: &CacheEnvelope) -> Result<Vec<u8>, String> {
         serde_json::to_vec_pretty(envelope).map_err(|err| format!("encode failed: {err}"))
@@ -277,6 +387,14 @@ mod codec {
 
     pub(super) fn decode(bytes: &[u8]) -> Result<CacheEnvelope, String> {
         serde_json::from_slice(bytes).map_err(|err| format!("decode failed: {err}"))
+    }
+
+    pub(super) fn encode_counts(envelope: &CountCacheEnvelope) -> Result<Vec<u8>, String> {
+        serde_json::to_vec_pretty(envelope).map_err(|err| format!("encode counts failed: {err}"))
+    }
+
+    pub(super) fn decode_counts(bytes: &[u8]) -> Result<CountCacheEnvelope, String> {
+        serde_json::from_slice(bytes).map_err(|err| format!("decode counts failed: {err}"))
     }
 }
 

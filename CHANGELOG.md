@@ -117,6 +117,12 @@ are scoped or reviewed.
   fingerprints, ignores suppressed results, writes
   `target/ripr/reports/sarif-policy.{json,md}`, and only exits non-zero for
   new warning-level results when `--mode fail-on-new-warning` is requested.
+- Remapped public repo badges onto seam-native counts for Campaign 5B.
+  Repo-scoped `ripr` and `ripr+` badges now count configured-visible
+  headline-eligible `SeamGripClass` values, while diff-scoped badge artifacts
+  remain legacy finding-exposure summaries for PRs. Native badge JSON is now
+  schema `0.3` with `basis` and `counts.analyzed_seams`; the checked-in
+  Shields endpoint artifacts in `badges/` were refreshed together.
 
 ## 0.3.0 - 2026-05-02
 

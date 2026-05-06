@@ -47,6 +47,12 @@ The seam inventory should be deterministic: two runs over the same source tree
 with the same analyzer version and configuration must produce the same seam IDs
 in the same order.
 
+When the analyzed root is the repository root, repo automation and fixture data
+are outside the product seam surface. The walker excludes `xtask/` and the
+top-level `fixtures/` tree so repo-scoped public signals describe the published
+`ripr` package, not its harness. Passing a fixture workspace itself as `--root`
+still analyzes that fixture normally.
+
 ### Stable Seam ID Rules
 
 Seam IDs must be stable across runs and across input file walk reorderings.
@@ -188,7 +194,7 @@ then the seam IDs, order, and counts must be identical.
 Given a seam with seam_grip_class = strongly_gripped,
 when ripr renders the repo badge,
 then the seam appears in detailed reports but does not count toward the
-headline unresolved-finding count.
+headline seam-native unresolved-gap count.
 ```
 
 ## Test Mapping

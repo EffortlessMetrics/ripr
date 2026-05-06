@@ -95,8 +95,9 @@ pub(super) fn workspace_diagnostics_with_config(
 
     // Repo seam evidence diagnostics. Gated by config because the
     // `inventory_classified_seams_at` walk classifies the entire
-    // production tree (~12k seams on the ripr repo) and would add
-    // multi-second latency to every editor refresh otherwise. Future
+    // product tree (~9k seams on the ripr repo, excluding repo
+    // automation and fixture data) and would add multi-second latency
+    // to every editor refresh otherwise. Future
     // PR (`cache/repo-seam-facts-v1`) makes this affordable enough to
     // turn on by default.
     //

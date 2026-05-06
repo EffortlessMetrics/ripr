@@ -1,5 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 fn run_ripr(args: &[&str]) -> Output {
     let bin = env!("CARGO_BIN_EXE_ripr");
@@ -16,6 +19,16 @@ fn workspace_root() -> PathBuf {
 
 fn sample_diff() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/sample/example.diff")
+}
+
+fn unique_temp_workspace(label: &str) -> PathBuf {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let pid = std::process::id();
+    let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!("ripr-{label}-{stamp}-{pid}-{counter}"))
 }
 
 fn assert_success(output: &Output) {
@@ -97,9 +110,10 @@ fn check_badge_json_output_has_native_badge_shape() {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.2""#));
+    assert!(stdout.contains(r#""schema_version": "0.3""#));
     assert!(stdout.contains(r#""kind": "ripr""#));
     assert!(stdout.contains(r#""scope": "diff""#));
+    assert!(stdout.contains(r#""basis": "finding_exposure""#));
     assert!(stdout.contains(r#""label": "ripr""#));
     assert!(stdout.contains(r#""counts""#));
     assert!(stdout.contains(r#""reason_counts""#));
@@ -140,6 +154,8 @@ fn check_badge_shields_output_has_exactly_four_top_level_fields() {
         r#""policy""#,
         r#""kind""#,
         r#""status""#,
+        r#""scope""#,
+        r#""basis""#,
         r#""schema_version""#,
     ] {
         assert!(
@@ -258,12 +274,7 @@ fn make_temp_workspace_with_production_seam_and_report(report: &str) -> Result<P
 fn make_temp_workspace_with_production_seam_and_report_opt(
     report: Option<&str>,
 ) -> Result<PathBuf, String> {
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let pid = std::process::id();
-    let dir = std::env::temp_dir().join(format!("ripr-repo-badge-{stamp}-{pid}"));
+    let dir = unique_temp_workspace("repo-badge");
     std::fs::create_dir_all(&dir).map_err(|e| format!("create_dir_all: {e}"))?;
     std::fs::write(
         dir.join("Cargo.toml"),
@@ -289,12 +300,7 @@ fn make_temp_workspace_with_suppressions(
     report: Option<&str>,
     suppressions: Option<&str>,
 ) -> Result<PathBuf, String> {
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let pid = std::process::id();
-    let dir = std::env::temp_dir().join(format!("ripr-badge-plus-{stamp}-{pid}"));
+    let dir = unique_temp_workspace("badge-plus");
     std::fs::create_dir_all(&dir).map_err(|e| format!("create_dir_all: {e}"))?;
     std::fs::write(
         dir.join("Cargo.toml"),
@@ -360,9 +366,10 @@ fn check_repo_badge_plus_json_emits_native_shape_with_fixture_report() -> Result
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.2""#));
+    assert!(stdout.contains(r#""schema_version": "0.3""#));
     assert!(stdout.contains(r#""kind": "ripr_plus""#));
     assert!(stdout.contains(r#""scope": "repo""#));
+    assert!(stdout.contains(r#""basis": "seam_native""#));
     assert!(stdout.contains(r#""label": "ripr+""#));
     assert!(stdout.contains(r#""counts""#));
     assert!(stdout.contains(r#""reason_counts""#));
@@ -406,6 +413,8 @@ fn check_badge_plus_shields_emits_four_field_shape_with_fixture_report() -> Resu
         r#""policy""#,
         r#""kind""#,
         r#""status""#,
+        r#""scope""#,
+        r#""basis""#,
         r#""schema_version""#,
     ] {
         assert!(
@@ -456,9 +465,10 @@ fn check_repo_badge_json_emits_repo_scope_metadata() -> Result<(), String> {
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.2""#));
+    assert!(stdout.contains(r#""schema_version": "0.3""#));
     assert!(stdout.contains(r#""kind": "ripr""#));
     assert!(stdout.contains(r#""scope": "repo""#));
+    assert!(stdout.contains(r#""basis": "seam_native""#));
     assert!(
         !stdout.contains(r#""scope": "diff""#),
         "repo scope output must not also carry diff scope: {stdout}"
@@ -492,6 +502,7 @@ fn check_repo_badge_shields_keeps_four_fields_without_scope_leak() -> Result<(),
         r#""policy""#,
         r#""kind""#,
         r#""status""#,
+        r#""basis""#,
         r#""schema_version""#,
     ] {
         assert!(
@@ -513,9 +524,10 @@ fn check_repo_badge_plus_json_emits_repo_scope_metadata() -> Result<(), String> 
     assert_success(&output);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains(r#""schema_version": "0.2""#));
+    assert!(stdout.contains(r#""schema_version": "0.3""#));
     assert!(stdout.contains(r#""kind": "ripr_plus""#));
     assert!(stdout.contains(r#""scope": "repo""#));
+    assert!(stdout.contains(r#""basis": "seam_native""#));
     assert!(stdout.contains(r#""label": "ripr+""#));
 
     let _ = std::fs::remove_dir_all(&workspace);
@@ -540,6 +552,7 @@ fn check_repo_badge_plus_shields_keeps_four_fields() -> Result<(), String> {
     assert!(stdout.contains(r#""schemaVersion": 1"#));
     assert!(stdout.contains(r#""label": "ripr+""#));
     assert!(!stdout.contains(r#""scope""#));
+    assert!(!stdout.contains(r#""basis""#));
     let top_level_keys = stdout
         .lines()
         .filter(|line| line.starts_with("  \""))
@@ -585,20 +598,19 @@ index 0000000..1111111 100644
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains(r#""scope": "repo""#));
-    // The temp workspace has a probeable predicate; repo analysis seeds
-    // probes from production syntax shapes so analyzed_findings > 0
-    // even when the diff is empty. Assert the value, not just the key —
-    // a key check alone would also pass for `analyzed_findings: 0`,
-    // which is exactly the diff-scope behavior this regression pins
-    // against.
+    // The temp workspace has a probeable predicate; repo badge scope now
+    // counts classified seams, so analyzed_seams > 0 even when the diff is
+    // empty. Assert the value, not just the key — a key check alone would
+    // also pass for `analyzed_seams: 0`, which is exactly the empty-scope
+    // behavior this regression pins against.
     assert!(
-        stdout.contains(r#""analyzed_findings""#),
-        "repo native JSON must include analyzed_findings: {stdout}"
+        stdout.contains(r#""analyzed_seams""#),
+        "repo native JSON must include analyzed_seams: {stdout}"
     );
     assert!(
-        !stdout.contains(r#""analyzed_findings": 0"#),
-        "repo badge must find ≥1 analyzed finding from the workspace \
-         predicate; got analyzed_findings: 0 — this suggests diff scope \
+        !stdout.contains(r#""analyzed_seams": 0"#),
+        "repo badge must find at least one analyzed seam from the workspace \
+         predicate; got analyzed_seams: 0 — this suggests empty scope \
          was used instead: {stdout}"
     );
 

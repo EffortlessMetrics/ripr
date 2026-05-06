@@ -65,7 +65,7 @@ commands = [
 
 [[work_item]]
 id = "badge/seam-native-count-mapping"
-status = "ready"
+status = "done"
 branch = "badge/seam-native-count-mapping"
 stackable = false
 requires_human_merge = true
@@ -75,4 +75,21 @@ commands = [
   "cargo xtask fix-pr",
   "cargo xtask check-pr",
   "cargo xtask check-output-contracts"
+]
+
+[[work_item]]
+id = "campaign/operationalization-closeout"
+status = "ready"
+branch = "campaign/operationalization-closeout"
+stackable = false
+requires_human_merge = true
+acceptance = "Campaign 5B is closed after config, SARIF/CI policy, and seam-native badge count mapping are landed; docs, metrics, traceability, changelog, and roadmap identify the next campaign boundary without changing analyzer behavior"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-campaign",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-traceability",
+  "cargo xtask check-static-language"
 ]

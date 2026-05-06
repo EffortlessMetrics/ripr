@@ -7201,10 +7201,10 @@ fn repo_badge_artifacts() -> Result<(), String> {
         )
     })?;
 
-    // Repo scope is intentionally diff-free: the analysis comes from
-    // run_repo_analysis (every probeable production syntax shape) rather
-    // than `git diff origin/main...HEAD`. Capturing a diff would silently
-    // make the artifact dependent on branch state.
+    // Repo scope is intentionally diff-free: the badge formats render from
+    // classified repo seams rather than `git diff origin/main...HEAD`.
+    // Capturing a diff would silently make the artifact dependent on branch
+    // state.
     let mut ripr_native_json = String::new();
     let mut ripr_plus_native_json = String::new();
 
@@ -7269,13 +7269,10 @@ fn repo_badge_artifacts_summary_markdown(
 ) -> String {
     let mut markdown = String::from("# ripr repo badges\n\n");
     markdown.push_str(
-        "Repo-scoped artifacts: rendered against the currently-probeable repo \
-baseline (every production syntax shape `ripr` knows how to probe under \
-the current analyzer), not against `git diff origin/main...HEAD`. Counts \
-reflect unresolved exposure gaps and unsuppressed actionable \
-test-efficiency findings under the configured policy. They are not a \
-proof of mutation adequacy; full seam inventory and discriminator \
-classification are tracked as later work.\n\n",
+        "Repo-scoped artifacts: rendered against classified repo seams, not \
+against `git diff origin/main...HEAD`. Counts reflect seam-native unresolved \
+exposure gaps and unsuppressed actionable test-efficiency findings under the \
+configured policy. They are not runtime mutation confirmation.\n\n",
     );
     append_badge_section(&mut markdown, "ripr", ripr_native_json);
     append_badge_section(&mut markdown, "ripr+", ripr_plus_native_json);
@@ -18549,7 +18546,7 @@ requires_human_merge = false
 
         let must_contain = [
             "# ripr repo badges",
-            "currently-probeable repo baseline",
+            "classified repo seams",
             "not against `git diff origin/main...HEAD`",
             "## ripr",
             "## ripr+",

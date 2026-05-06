@@ -292,6 +292,108 @@ contract language.
 - `propagation_evidence_unknown`
 - `static_probe_unknown`
 
+## Badge Output
+
+Badge-native JSON is a separate output contract from `ripr check --json`.
+It is consumed by CI artifacts, public Shields endpoint generation, and
+badge policy tooling. The Shields projection is always exactly four fields;
+the native shape carries the stable metadata consumers need to understand
+scope and count basis.
+
+Formats:
+
+```bash
+ripr check --format badge-json
+ripr check --format badge-plus-json
+ripr check --format repo-badge-json
+ripr check --format repo-badge-plus-json
+```
+
+Native schema `0.3`:
+
+```json
+{
+  "schema_version": "0.3",
+  "kind": "ripr",
+  "scope": "repo",
+  "basis": "seam_native",
+  "label": "ripr",
+  "message": "0",
+  "status": "pass",
+  "color": "brightgreen",
+  "counts": {
+    "unsuppressed_exposure_gaps": 0,
+    "unsuppressed_test_efficiency_findings": 0,
+    "intentional_test_efficiency_findings": 0,
+    "suppressed_exposure_gaps": 0,
+    "suppressed_test_efficiency_findings": 0,
+    "unknowns": 0,
+    "unknowns_test_efficiency": 0,
+    "analyzed_findings": 0,
+    "analyzed_seams": 120,
+    "analyzed_tests": 0
+  },
+  "reason_counts": {
+    "no_assertion_detected": 0,
+    "smoke_oracle_only": 0,
+    "relational_oracle": 0,
+    "broad_oracle": 0,
+    "assertion_may_not_match_detected_owner": 0,
+    "opaque_helper_or_fixture_boundary": 0,
+    "no_activation_literal_detected": 0,
+    "expected_value_computed_from_detected_owner_path": 0,
+    "duplicate_activation_and_oracle_shape": 0
+  },
+  "policy": {
+    "include_unknowns": false,
+    "fail_on_nonzero": false,
+    "test_intent_path": ".ripr/test_intent.toml",
+    "suppressions_path": ".ripr/suppressions.toml"
+  },
+  "warnings": []
+}
+```
+
+Field contract:
+
+- `schema_version` — currently `"0.3"`. `0.2` added `scope`; `0.3` adds
+  `basis` and `counts.analyzed_seams`.
+- `kind` — `"ripr"` or `"ripr_plus"`.
+- `scope` — `"diff"` for PR/diff artifacts, `"repo"` for public repo
+  baseline artifacts.
+- `basis` — `"finding_exposure"` for legacy Finding/ExposureClass count
+  artifacts, `"seam_native"` for RepoSeam/SeamGripClass count artifacts.
+  Diff-scoped badge formats currently use `finding_exposure`; repo-scoped
+  badge formats use `seam_native`.
+- `message` — the headline count rendered as a string for Shields
+  compatibility. It is a count, never a denominator or coverage fraction.
+- `counts.unsuppressed_exposure_gaps` — diff scope: unsuppressed
+  `weakly_exposed`, `reachable_unrevealed`, and `no_static_path` Findings;
+  repo scope: configured-visible headline-eligible seam classes.
+- `counts.unknowns` — diff scope: static unknown Finding classes; repo
+  scope: configured-visible `opaque` seams.
+- `counts.analyzed_findings` — number of Findings considered by the
+  finding-exposure basis; `0` for seam-native repo badges.
+- `counts.analyzed_seams` — number of classified seams considered by the
+  seam-native basis; `0` for finding-exposure diff badges.
+- `warnings` — advisory suppressions/config warnings that remain visible in
+  native JSON. The Shields projection never includes warnings.
+
+Shields projection:
+
+```json
+{
+  "schemaVersion": 1,
+  "label": "ripr",
+  "message": "0",
+  "color": "brightgreen"
+}
+```
+
+The Shields projection drops native-only fields including `schema_version`,
+`kind`, `scope`, `basis`, `status`, `counts`, `reason_counts`, `policy`, and
+`warnings`.
+
 ## SARIF Output
 
 Campaign 5B SARIF formats:
@@ -517,8 +619,12 @@ Field contract:
   kind is detected.
 
 The repo seam inventory v1 captures every probeable production syntax shape
-and does not yet classify test grip; `analysis/repo-ripr-classification-v1`
-adds `SeamGripClass` and the headline-eligibility table per RIPR-SPEC-0005.
+and does not yet classify test grip. When the repository root is analyzed,
+repository automation and fixture data (`xtask/`, top-level `fixtures/`) are
+excluded so repo-scoped public signals represent the published `ripr` package
+surface; passing an individual fixture workspace as `--root` still analyzes
+that fixture normally. `analysis/repo-ripr-classification-v1` adds
+`SeamGripClass` and the headline-eligibility table per RIPR-SPEC-0005.
 Static output continues to forbid runtime-mutation outcome words.
 
 The Markdown sibling (`repo-seams.md`, generated alongside the JSON) is
@@ -537,13 +643,13 @@ lands at `target/ripr/reports/repo-exposure.json` when generated via
   "schema_version": "0.2",
   "scope": "repo",
   "metrics": {
-    "seams_total": 12882,
-    "headline_eligible": 12352,
-    "strongly_gripped": 530,
-    "weakly_gripped": 8102,
-    "ungripped": 45,
-    "reachable_unrevealed": 104,
-    "activation_unknown": 4101,
+    "seams_total": 9355,
+    "headline_eligible": 6114,
+    "strongly_gripped": 3241,
+    "weakly_gripped": 1756,
+    "ungripped": 0,
+    "reachable_unrevealed": 2,
+    "activation_unknown": 4356,
     "propagation_unknown": 0,
     "observation_unknown": 0,
     "discrimination_unknown": 0,
@@ -856,8 +962,9 @@ When `seamDiagnostics: true` is passed in `initializationOptions`, the
 LSP server publishes a `Diagnostic` for every actionable
 `ClassifiedSeam` alongside the existing diff-scoped `Finding`
 diagnostics. The flag is **off by default** because the underlying
-classification walks the entire production tree (~12 k seams on the
-ripr repo) and would add multi-second latency to every editor
+classification walks the entire product tree (~9 k seams on the
+ripr repo, excluding repo automation and fixture data) and would add
+multi-second latency to every editor
 refresh; `cache/repo-seam-facts-v1` will lift the default once the
 classification is cached.
 

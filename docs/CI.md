@@ -268,7 +268,7 @@ Policy modes:
 The policy implementation lives in `cargo xtask` rather than a public `ripr`
 CLI policy command. It does not add a default workflow that blocks pull
 requests. A later workflow PR may document or add an opt-in GitHub code-scanning
-upload path after badge semantics settle.
+upload path after Campaign 5B closeout.
 
 The security workflow currently runs:
 

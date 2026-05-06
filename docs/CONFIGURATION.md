@@ -504,8 +504,8 @@ LSP initializationOptions  >  ripr.toml  >  CheckInput::default()
 
 - [Static exposure model](STATIC_EXPOSURE_MODEL.md) — what each mode and
   exposure class actually means.
-- [Output schema](OUTPUT_SCHEMA.md) — the stable JSON contract for `--json`
-  and the `context` command.
+- [Output schema](OUTPUT_SCHEMA.md) — the stable JSON contracts for `--json`,
+  badges, SARIF, and the `context` command.
 - [Editor extension](EDITOR_EXTENSION.md) and
   [Server provisioning](SERVER_PROVISIONING.md) — how VS Code launches and
   resolves the server.
