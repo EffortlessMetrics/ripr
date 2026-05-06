@@ -225,6 +225,9 @@ are scoped or reviewed.
 - Updated CLI parsing so `cli::parse` returns the typed `CliCommand` shape
   before dispatch, while preserving command argument behavior. The next ready
   seam is CLI execution extraction.
+- Moved CLI command execution dispatch into `cli/execute.rs` while preserving
+  parsed argument and handler behavior. The next ready seam is context packet
+  DTO extraction.
 - Added `cargo xtask targeted-test-outcome` as an advisory receipt for comparing
   before/after `repo-exposure-json` artifacts. The report writes
   `target/ripr/reports/targeted-test-outcome.{json,md}`, matches seams by
