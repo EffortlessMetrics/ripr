@@ -1,4 +1,5 @@
 mod classifier;
+mod classify;
 mod diff;
 mod extract;
 mod facts;
