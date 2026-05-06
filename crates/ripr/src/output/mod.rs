@@ -4,6 +4,7 @@ pub(crate) mod format;
 pub mod github;
 pub mod human;
 pub mod json;
+pub(crate) mod render;
 pub(crate) mod repo_exposure;
 pub(crate) mod repo_seams;
 pub(crate) mod sarif;

@@ -11,7 +11,7 @@ pub use context::{collect_context, collect_context_with_input};
 pub(crate) use explain::explain_finding_with_config;
 pub use explain::{explain_finding, explain_finding_with_input};
 
-use crate::analysis::{self, AnalysisMode};
+use crate::analysis::AnalysisMode;
 use crate::config::RiprConfig;
 use crate::domain::{Finding, Summary};
 use crate::output;
@@ -113,10 +113,6 @@ pub struct CheckOutput {
     pub findings: Vec<Finding>,
 }
 
-/// Path (relative to the analyzed workspace root) where the
-/// test-efficiency report is expected when rendering `ripr+` badge formats.
-pub(crate) const TEST_EFFICIENCY_REPORT_RELATIVE: &str = "target/ripr/reports/test-efficiency.json";
-
 /// Renders a previously computed [`CheckOutput`] in the requested format.
 ///
 /// Returns `Err` when the requested format requires auxiliary inputs that
@@ -132,185 +128,7 @@ pub(crate) fn render_check_with_config(
     format: &OutputFormat,
     config: &RiprConfig,
 ) -> Result<String, String> {
-    match format {
-        OutputFormat::Human => Ok(output::human::render_with_config(output, config)),
-        OutputFormat::Json => Ok(output::json::render_with_config(output, config)),
-        OutputFormat::Github => Ok(output::github::render_with_config(output, config)),
-        OutputFormat::Sarif => {
-            let suppressions = load_suppressions(output, config)?;
-            Ok(output::sarif::render_findings_sarif(
-                output,
-                config,
-                &suppressions,
-            ))
-        }
-        OutputFormat::BadgeJson => {
-            let summary = ripr_summary_with_suppressions(output, config)?;
-            Ok(output::badge::render_native_json(&summary))
-        }
-        OutputFormat::RepoBadgeJson => {
-            let summary = ripr_repo_seam_summary(output, config)?;
-            Ok(output::badge::render_native_json(&summary))
-        }
-        OutputFormat::BadgeShields => {
-            let summary = ripr_summary_with_suppressions(output, config)?;
-            Ok(output::badge::render_shields_json(&summary))
-        }
-        OutputFormat::RepoBadgeShields => {
-            let summary = ripr_repo_seam_summary(output, config)?;
-            Ok(output::badge::render_shields_json(&summary))
-        }
-        OutputFormat::BadgePlusJson | OutputFormat::RepoBadgePlusJson => {
-            let summary = ripr_plus_summary_from_disk(output, format.is_repo_scope(), config)?;
-            Ok(output::badge::render_native_json(&summary))
-        }
-        OutputFormat::BadgePlusShields | OutputFormat::RepoBadgePlusShields => {
-            let summary = ripr_plus_summary_from_disk(output, format.is_repo_scope(), config)?;
-            Ok(output::badge::render_shields_json(&summary))
-        }
-        OutputFormat::RepoSeamsJson => {
-            let seams = analysis::inventory_seams_at(&output.root)?;
-            Ok(output::repo_seams::render_repo_seams_json(&seams))
-        }
-        OutputFormat::RepoSeamsMd => {
-            let seams = analysis::inventory_seams_at(&output.root)?;
-            Ok(output::repo_seams::render_repo_seams_md(&seams))
-        }
-        OutputFormat::RepoExposureJson => {
-            let classified =
-                analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
-            Ok(output::repo_exposure::render_repo_exposure_json(
-                &classified,
-            ))
-        }
-        OutputFormat::RepoExposureMd => {
-            let classified =
-                analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
-            Ok(output::repo_exposure::render_repo_exposure_md(&classified))
-        }
-        OutputFormat::RepoSarif => {
-            let classified =
-                analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
-            Ok(output::sarif::render_repo_seams_sarif(&classified, config))
-        }
-        OutputFormat::AgentSeamPacketsJson => {
-            let classified =
-                analysis::inventory_classified_seams_at_with_config(&output.root, config)?;
-            Ok(output::agent_seam_packets::render_agent_seam_packets_json(
-                &classified,
-            ))
-        }
-    }
-}
-
-fn load_suppressions(
-    output: &CheckOutput,
-    config: &RiprConfig,
-) -> Result<Vec<output::suppressions::SuppressionEntry>, String> {
-    output::suppressions::load_suppressions_for_root_at(&output.root, config.suppressions().path())
-        .map_err(|violations| {
-            format!(
-                "{} validation failed:\n{}",
-                config.suppressions().display_path(),
-                violations.join("\n")
-            )
-        })
-}
-
-fn ripr_summary_with_suppressions(
-    output: &CheckOutput,
-    config: &RiprConfig,
-) -> Result<output::badge::BadgeSummary, String> {
-    let suppressions = load_suppressions(output, config)?;
-    let today = output::suppressions::current_iso_date();
-    let policy = output::badge::BadgePolicy {
-        suppressions_path: config.suppressions().display_path(),
-        ..output::badge::BadgePolicy::default()
-    };
-    Ok(output::badge::ripr_badge_summary_with_suppressions(
-        output,
-        &suppressions,
-        &today,
-        policy,
-    ))
-}
-
-fn ripr_repo_seam_summary(
-    output: &CheckOutput,
-    config: &RiprConfig,
-) -> Result<output::badge::BadgeSummary, String> {
-    let class_counts =
-        analysis::inventory_seam_grip_class_counts_at_with_config(&output.root, config)?;
-    let policy = output::badge::BadgePolicy {
-        suppressions_path: config.suppressions().display_path(),
-        ..output::badge::BadgePolicy::default()
-    };
-    Ok(output::badge::ripr_seam_badge_summary_from_counts(
-        &class_counts,
-        config,
-        policy,
-    ))
-}
-
-fn ripr_plus_summary_from_disk(
-    output: &CheckOutput,
-    repo_scope: bool,
-    config: &RiprConfig,
-) -> Result<output::badge::BadgeSummary, String> {
-    let report_path = output.root.join(TEST_EFFICIENCY_REPORT_RELATIVE);
-    if !report_path.exists() {
-        return Err(format!(
-            "missing {}; run `cargo xtask test-efficiency-report` before requesting badge-plus formats",
-            report_path.display()
-        ));
-    }
-    let text = std::fs::read_to_string(&report_path)
-        .map_err(|err| format!("failed to read {}: {err}", report_path.display()))?;
-    let test_efficiency = output::badge::parse_test_efficiency_badge_summary(&text)?;
-    let suppressions = load_suppressions(output, config)?;
-    let today = output::suppressions::current_iso_date();
-    // `cargo xtask test-efficiency-report` is repo-wide as a fact source.
-    // Diff-scoped `ripr+` filters that ledger to entries related to the
-    // changed code (via `Finding.related_tests` names + `Finding.probe.owner`
-    // intersected with each entry's `reached_owners`); repo-scoped
-    // `ripr+` aggregates the repo-wide ledger directly.
-    let diff_filter = if repo_scope {
-        None
-    } else {
-        Some(output::badge::DiffRelatedTests::from_check_output(output))
-    };
-    let scope = match &diff_filter {
-        Some(filter) => output::badge::TestEfficiencyAggregationScope::Diff(filter),
-        None => output::badge::TestEfficiencyAggregationScope::Repo,
-    };
-    let policy = output::badge::BadgePolicy {
-        suppressions_path: config.suppressions().display_path(),
-        ..output::badge::BadgePolicy::default()
-    };
-    if repo_scope {
-        let class_counts =
-            analysis::inventory_seam_grip_class_counts_at_with_config(&output.root, config)?;
-        Ok(
-            output::badge::ripr_plus_seam_badge_summary_from_counts_with_suppressions(
-                &class_counts,
-                config,
-                test_efficiency,
-                &suppressions,
-                &today,
-                policy,
-                scope,
-            ),
-        )
-    } else {
-        Ok(output::badge::ripr_plus_badge_summary_with_suppressions(
-            output,
-            test_efficiency,
-            &suppressions,
-            &today,
-            policy,
-            scope,
-        ))
-    }
+    output::render::render_check_with_config(output, format, config)
 }
 
 #[cfg(test)]

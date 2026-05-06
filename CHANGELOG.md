@@ -216,6 +216,9 @@ are scoped or reviewed.
 - Moved `OutputFormat` into `output/format.rs` while preserving the
   `app::OutputFormat` public path and output behavior. The next ready seam is
   render dispatch extraction.
+- Moved `render_check` dispatch into `output/render.rs` while preserving the
+  `app::render_check` public facade and output behavior. The next ready seam is
+  CLI command model extraction.
 - Added `cargo xtask targeted-test-outcome` as an advisory receipt for comparing
   before/after `repo-exposure-json` artifacts. The report writes
   `target/ripr/reports/targeted-test-outcome.{json,md}`, matches seams by
