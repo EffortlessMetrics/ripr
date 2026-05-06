@@ -719,15 +719,15 @@ Work items:
 | `output/render-dispatch` | done | PR 25: Moved `render_check` dispatch into `output/render.rs` while preserving the `app::render_check` public facade. |
 | `cli/command-model` | done | PR 26: Created `cli/command.rs` with a focused `CliCommand` enum while preserving top-level CLI dispatch behavior. |
 | `cli/parse-command` | done | PR 27: Updated `cli/parse.rs` to return the parsed command shape while preserving argument behavior. |
-| `cli/execute-command` | ready | PR 28: Create `cli/execute.rs` for command execution |
-| `domain/context-packet-dto` | pending | PR 28: Create `domain/context_packet.rs` with `ContextPacket` struct |
-| `output/json-context-dto` | pending | PR 29: Update JSON context renderer to use `ContextPacket` |
-| `lsp/context-packet-usage` | pending | PR 30: Update LSP to use `ContextPacket` |
-| `api/doc-hidden-internals` | pending | PR 31: Mark internal modules `#[doc(hidden)]` |
-| `api/private-internals` | pending | PR 32: Make internal modules private (breaking, optional) |
-| `xtask/command-dispatch` | pending | PR 33: Split xtask into command and run modules |
-| `xtask/policy-modules` | pending | PR 34: Organize policy checks into `xtask/src/policy/` |
-| `xtask/report-modules` | pending | PR 35: Organize reports into `xtask/src/reports/` |
+| `cli/execute-command` | done | PR 28: Created `cli/execute.rs` for command execution while preserving argument and handler behavior. |
+| `domain/context-packet-dto` | ready | PR 29: Create `domain/context_packet.rs` with `ContextPacket` struct |
+| `output/json-context-dto` | pending | PR 30: Update JSON context renderer to use `ContextPacket` |
+| `lsp/context-packet-usage` | pending | PR 31: Update LSP to use `ContextPacket` |
+| `api/doc-hidden-internals` | pending | PR 32: Mark internal modules `#[doc(hidden)]` |
+| `api/private-internals` | pending | PR 33: Make internal modules private (breaking, optional) |
+| `xtask/command-dispatch` | pending | PR 34: Split xtask into command and run modules |
+| `xtask/policy-modules` | pending | PR 35: Organize policy checks into `xtask/src/policy/` |
+| `xtask/report-modules` | pending | PR 36: Organize reports into `xtask/src/reports/` |
 | `campaign/modularization-closeout` | pending | Final review and closure of Campaign 6 |
 
 Stack audit:
