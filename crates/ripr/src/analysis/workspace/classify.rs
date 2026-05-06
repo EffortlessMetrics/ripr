@@ -80,4 +80,36 @@ mod tests {
         let normalized = normalize_path(&path);
         assert_eq!(normalized, "src/lib.rs");
     }
+
+    #[test]
+    fn production_path_excludes_repository_automation_fixture_and_non_production_trees() {
+        for excluded in [
+            "xtask/src/main.rs",
+            "fixtures/boundary_gap/input/src/lib.rs",
+            "editors/vscode/src/extension.rs",
+            "target/debug/build/example/src/lib.rs",
+            "node_modules/ripr/src/lib.rs",
+            "tests/pricing.rs",
+            "examples/demo/src/lib.rs",
+            "benches/exposure.rs",
+            "src/tests.rs",
+            "README.md",
+        ] {
+            assert!(
+                !is_production_rust_path(&PathBuf::from(excluded)),
+                "expected repo-mode production filter to exclude {excluded}"
+            );
+        }
+
+        for included in [
+            "src/lib.rs",
+            "crates/ripr/src/lib.rs",
+            "tools/audit/src/main.rs",
+        ] {
+            assert!(
+                is_production_rust_path(&PathBuf::from(included)),
+                "expected repo-mode production filter to include {included}"
+            );
+        }
+    }
 }

@@ -116,6 +116,54 @@ mod tests {
     }
 
     #[test]
+    fn operator_mode_tiers_are_pinned_for_defaults_first_adoption() {
+        let all = files(&[
+            "crates/pricing/src/lib.rs",
+            "crates/pricing/tests/pricing.rs",
+            "crates/risk/src/lib.rs",
+            "crates/risk/tests/risk.rs",
+        ]);
+        let changed = files(&["crates/pricing/src/lib.rs"]);
+
+        assert_eq!(
+            select_rust_files_for_mode(&all, &changed, AnalysisMode::Instant, true),
+            files(&["crates/pricing/src/lib.rs"])
+        );
+        assert_eq!(
+            select_rust_files_for_mode(&all, &changed, AnalysisMode::Draft, true),
+            files(&[
+                "crates/pricing/src/lib.rs",
+                "crates/pricing/tests/pricing.rs"
+            ])
+        );
+        assert_eq!(
+            select_rust_files_for_mode(&all, &changed, AnalysisMode::Fast, true),
+            files(&[
+                "crates/pricing/src/lib.rs",
+                "crates/pricing/tests/pricing.rs"
+            ])
+        );
+        assert_eq!(
+            select_rust_files_for_mode(&all, &changed, AnalysisMode::Deep, true),
+            files(&[
+                "crates/pricing/src/lib.rs",
+                "crates/pricing/tests/pricing.rs",
+                "crates/risk/src/lib.rs",
+                "crates/risk/tests/risk.rs"
+            ])
+        );
+        assert_eq!(
+            select_rust_files_for_mode(&all, &changed, AnalysisMode::Ready, true),
+            files(&[
+                "crates/pricing/src/lib.rs",
+                "crates/pricing/tests/pricing.rs",
+                "crates/risk/src/lib.rs",
+                "crates/risk/tests/risk.rs"
+            ])
+        );
+    }
+
+    #[test]
     fn production_path_excludes_xtask_automation() {
         assert!(!is_production_rust_path(Path::new("xtask/src/main.rs")));
         assert!(is_production_rust_path(Path::new("crates/ripr/src/lib.rs")));

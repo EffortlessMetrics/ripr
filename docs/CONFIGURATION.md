@@ -29,6 +29,41 @@ adoption contract in
 [RIPR-SPEC-0009](specs/RIPR-SPEC-0009-defaults-first-adoption.md) defines the
 missing-config and generated-config behavior that must remain advisory.
 
+## Defaults-first operator profile
+
+The built-in missing-config profile and the `ripr init` generated profile are
+intended to be policy-equivalent. `ripr init` writes that policy into
+`ripr.toml` so a team can review and tune it; it does not enable a stronger or
+more useful mode than the zero-config default.
+
+| Surface | Default policy |
+| --- | --- |
+| Analysis | Normal/default scans use `draft` mode and include unchanged tests as static evidence. |
+| Oracles | Snapshot and mock-expectation oracles are `medium`; broad error checks are `weak`. |
+| Seam diagnostics | Saved-workspace LSP seam diagnostics are on, with explicit config or initialization options allowed to disable them. |
+| Report caps | Context packets and collect-context commands include up to `5` related tests by default. |
+| Suppressions | Badge renderers look for `.ripr/suppressions.toml`; a missing file is normal. |
+| Badges | Repo badges count configured-visible unresolved seam gaps and stay advisory unless an explicit failure policy is selected. |
+| CI | Generated GitHub workflows use advisory SARIF uploads and `continue-on-error` by default. |
+| Calibration | Runtime data is imported only when explicitly supplied; `ripr` does not run mutation testing by default. |
+
+Operator mode vocabulary maps to concrete analysis modes:
+
+| Operator stance | Concrete mode | Scope |
+| --- | --- | --- |
+| Fastest feedback | `instant` | Changed Rust files only. |
+| Normal/default | `draft` | Rust files in packages touched by the diff, including unchanged tests. |
+| PR fast scan | `fast` | Same package-local scope as `draft` for now. |
+| Deep static scan | `deep` | All Rust files in the workspace. |
+| Ready preflight | `ready` | All Rust files in the workspace before separate mutation confirmation. |
+
+Repo-scoped public signals intentionally filter out repository automation and
+non-production trees so badges and repo seam reports describe the package
+surface, not the toolchain around it. The production filter excludes paths under
+`xtask/`, top-level fixture data, editor extension sources, `target/`,
+`node_modules/`, test/example/bench trees, and `src/tests.rs`. Passing a fixture
+workspace itself as `--root` still analyzes that fixture normally.
+
 ## CLI flags
 
 The CLI is the canonical, fully-supported configuration surface. All defaults
@@ -395,6 +430,11 @@ remains exactly four fields and never leaks warning text.
 Modes change how much of the workspace is loaded into the syntax index before
 classification. They do **not** change the meaning of any
 [exposure class](STATIC_EXPOSURE_MODEL.md#exposure-classes).
+
+The default operator stance is `draft`: enough package-local context for a
+useful first scan without whole-workspace cost. `instant` is the cheapest
+fast-feedback mode, `fast` currently shares `draft`'s package-local scope, and
+`deep` / `ready` are whole-workspace static scans.
 
 | Mode | Index scope | Intended use |
 | --- | --- | --- |

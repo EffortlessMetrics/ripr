@@ -36,6 +36,11 @@ are scoped or reviewed.
 
 ### Changed
 
+- Documented and test-pinned the defaults-first config profile, including
+  missing-config/generated-config equivalence, repo-mode production exclusions,
+  badge/report defaults, and fast/normal/deep operator mode vocabulary; Campaign
+  7 now moves from `defaults/config-init` to the operator cockpit and editor
+  install polish work items.
 - Aligned the VS Code extension's default `ripr.check.mode` with the
   defaults-first posture by switching it to `draft` and exposing the full LSP
   mode enum.
