@@ -710,8 +710,8 @@ Work items:
 | `probes/diff-repo-split` | done | PR 16: Confirmed diff and repo probe seeding already live in `analysis/probes/diff.rs` and `analysis/probes/repo.rs` after the probe module split and helper extractions. |
 | `classify/context-extraction` | done | PR 17: Created `analysis/classify/context.rs` with `ProbeContext` as the shared classifier input for later stage extraction. |
 | `classify/related-tests` | done | PR 18: Moved related-test discovery into `analysis/classify/related_tests.rs` while preserving classification behavior. |
-| `classify/reach-stage` | ready | PR 19: Move reach evidence into stage module |
-| `classify/flow-propagation` | pending | PR 20: Move flow and propagation stages |
+| `classify/reach-stage` | done | PR 19: Moved reach evidence into `analysis/classify/reach.rs` while preserving classification behavior. |
+| `classify/flow-propagation` | ready | PR 20: Move flow and propagation stages |
 | `classify/activation-stage` | pending | PR 21: Move activation stage |
 | `classify/remaining-stages` | pending | PR 22: Move infection, reveal, decision, confidence, missing, stop reasons |
 | `app/usecase-split` | pending | PR 23: Split `app.rs` into use-case modules (check, explain, context) |

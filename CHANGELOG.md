@@ -186,6 +186,9 @@ are scoped or reviewed.
 - Moved related-test discovery into `analysis/classify/related_tests.rs` while
   preserving classification behavior. The next ready seam is reach evidence
   extraction.
+- Moved reach evidence into `analysis/classify/reach.rs` while preserving
+  classification behavior. The next ready seam is flow and propagation
+  extraction.
 - Added `cargo xtask targeted-test-outcome` as an advisory receipt for comparing
   before/after `repo-exposure-json` artifacts. The report writes
   `target/ripr/reports/targeted-test-outcome.{json,md}`, matches seams by

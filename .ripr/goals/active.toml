@@ -370,11 +370,30 @@ commands = [
 
 [[work_item]]
 id = "classify/reach-stage"
-status = "ready"
+status = "done"
 branch = "classify-reach-stage"
 stackable = false
 requires_human_merge = true
 acceptance = "reach evidence moves into analysis/classify/reach.rs after related-test discovery extraction; classification behavior stays stable with no LSP, output, API, or schema drift"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-public-api",
+  "cargo xtask check-architecture",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-no-panic-family",
+  "cargo xtask lsp-cockpit-report",
+  "cargo test --workspace"
+]
+
+[[work_item]]
+id = "classify/flow-propagation"
+status = "ready"
+branch = "classify-flow-propagation"
+stackable = false
+requires_human_merge = true
+acceptance = "local flow and propagation evidence move into focused classify stage modules after reach extraction; classification behavior stays stable with no LSP, output, API, or schema drift"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",

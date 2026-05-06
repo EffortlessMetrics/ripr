@@ -1,4 +1,4 @@
-use super::classify::{ProbeContext, find_related_tests};
+use super::classify::{ProbeContext, find_related_tests, reach_evidence};
 use super::rust_index::{
     FunctionSummary, OracleFact, RustIndex, TestSummary, extract_identifier_tokens,
     extract_literals,
@@ -97,32 +97,6 @@ fn ensure_unknown_stop_reason(class: &ExposureClass, stop_reasons: &mut Vec<Stop
         && let Some(reason) = StopReason::for_unknown_class(class)
     {
         stop_reasons.push(reason);
-    }
-}
-
-fn reach_evidence(
-    related_tests: &[&TestSummary],
-    owner_fn: Option<&FunctionSummary>,
-) -> StageEvidence {
-    if related_tests.is_empty() {
-        StageEvidence::new(
-            StageState::No,
-            Confidence::Medium,
-            "No static test path found for the changed owner",
-        )
-    } else {
-        let target = owner_fn.map(|f| f.name.as_str()).unwrap_or("changed owner");
-        let names = related_tests
-            .iter()
-            .take(3)
-            .map(|t| t.name.as_str())
-            .collect::<Vec<_>>()
-            .join(", ");
-        StageEvidence::new(
-            StageState::Yes,
-            Confidence::Medium,
-            format!("Related tests appear to reach {target}: {names}"),
-        )
     }
 }
 
