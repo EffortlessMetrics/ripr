@@ -93,10 +93,11 @@ For diff-scope output, the same evidence is in the JSON output of
 
 ### 3. Read the seam evidence hover
 
-When `seamDiagnostics: true` is set in LSP initialization options, the
-editor publishes a `Diagnostic` for every actionable seam with a
-stable `ripr-seam-{class}` code. Hovering over the diagnostic renders
-the full RIPR evidence path:
+The editor publishes a saved-workspace `Diagnostic` for every actionable seam
+under the built-in defaults, unless repo policy or LSP initialization options
+disable seam diagnostics. Each diagnostic carries a stable
+`ripr-seam-{class}` code. Hovering over the diagnostic renders the full RIPR
+evidence path:
 
 ```text
 Behavioral seam
@@ -379,7 +380,8 @@ static reports do not adopt mutation-runtime vocabulary.
 
 - `cargo xtask repo-exposure-report` (PR #239)
 - `cargo xtask agent-seam-packets` (PR #240)
-- LSP `seamDiagnostics: true` opt-in (PR #241)
+- LSP saved-workspace seam diagnostics (PR #241, now default-on under
+  RIPR-SPEC-0009)
 - LSP seam evidence hover (PR #242)
 - `inventory_classified_seams_at` plus `ClassifiedSeam` API (PR #237)
 

@@ -269,9 +269,9 @@ tests = [
   "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::intentional_and_suppressed_emit_no_diagnostic",
   "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::diagnostic_data_field_carries_seam_id_and_grip_class",
   "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::diagnostic_message_names_seam_kind_and_expression",
-  "crates/ripr/src/lsp/config.rs::tests::seam_diagnostics_defaults_to_false_when_option_is_missing",
+  "crates/ripr/src/lsp/config.rs::tests::seam_diagnostics_defaults_to_true_when_option_is_missing",
   "crates/ripr/src/lsp/config.rs::tests::seam_diagnostics_true_in_init_options_enables_flag",
-  "crates/ripr/src/lsp/config.rs::tests::seam_diagnostics_false_in_init_options_keeps_default",
+  "crates/ripr/src/lsp/config.rs::tests::seam_diagnostics_false_in_init_options_disables_default",
   "crates/ripr/src/lsp/config.rs::tests::non_boolean_seam_diagnostics_value_is_ignored",
   "crates/ripr/src/lsp/hover.rs::seam_hover_tests::given_seam_diagnostic_when_hover_is_requested_then_hover_renders_grip_evidence_path",
   "crates/ripr/src/lsp/hover.rs::seam_hover_tests::given_weakly_gripped_boundary_when_hover_is_rendered_then_missing_boundary_discriminator_is_shown",
@@ -460,6 +460,7 @@ tests = [
   "crates/ripr/tests/cli_smoke.rs::init_dry_run_prints_config_without_writing",
   "crates/ripr/tests/cli_smoke.rs::init_refuses_existing_config_without_force",
   "crates/ripr/tests/cli_smoke.rs::init_force_overwrites_existing_config",
+  "crates/ripr/src/config.rs::tests::generated_init_config_matches_builtin_defaults",
   "crates/ripr/src/config.rs::tests::missing_config_uses_behavior_preserving_defaults",
   "crates/ripr/src/config.rs::tests::malformed_or_unknown_config_is_actionable",
   "crates/ripr/tests/cli_smoke.rs::doctor_reports_missing_config_defaults",
@@ -492,6 +493,7 @@ outputs = [
   "README.md",
   "docs/DOCUMENTATION.md",
   "docs/CAPABILITY_MATRIX.md",
+  "ripr.toml.example",
   "metrics/capabilities.toml"
 ]
 metrics = [

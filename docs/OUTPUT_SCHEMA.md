@@ -1052,15 +1052,10 @@ loop.
 
 ## LSP Seam Diagnostics
 
-When `seamDiagnostics: true` is passed in `initializationOptions`, the
-LSP server publishes a `Diagnostic` for every actionable
-`ClassifiedSeam` alongside the existing diff-scoped `Finding`
-diagnostics. The flag is **off by default** because the underlying
-classification walks the entire product tree (~9 k seams on the
-ripr repo, excluding repo automation and fixture data) and would add
-multi-second latency to every editor
-refresh; `cache/repo-seam-facts-v1` will lift the default once the
-classification is cached.
+The LSP server publishes a `Diagnostic` for every actionable
+`ClassifiedSeam` alongside the existing diff-scoped `Finding` diagnostics
+under the built-in saved-workspace default. Clients or repo policy can pass
+`seamDiagnostics: false` to disable seam diagnostics for a session.
 
 Diagnostic shape:
 

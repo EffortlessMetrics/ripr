@@ -13,6 +13,7 @@ use std::path::{Component, Path, PathBuf};
 
 pub(crate) const CONFIG_FILE_NAME: &str = "ripr.toml";
 pub(crate) const DEFAULT_CONTEXT_RELATED_TESTS: usize = 5;
+pub(crate) const DEFAULT_LSP_SEAM_DIAGNOSTICS: bool = true;
 const DEFAULT_SUPPRESSIONS_PATH: &str = ".ripr/suppressions.toml";
 const INIT_CONFIG_TEXT: &str = r#"[analysis]
 # Default analysis mode when CLI flags or LSP initialization options do not
@@ -52,8 +53,9 @@ intentional = "off"
 suppressed = "off"
 
 [lsp]
-# Initialized repositories opt into saved-workspace seam diagnostics. LSP
-# initializationOptions.seamDiagnostics still wins explicitly.
+# Built-in defaults enable bounded saved-workspace seam diagnostics. LSP
+# initializationOptions.seamDiagnostics still wins explicitly, and repo policy
+# may disable this with seam_diagnostics = false.
 seam_diagnostics = true
 
 [reports]
@@ -175,9 +177,17 @@ impl OraclePolicy {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct LspConfig {
     seam_diagnostics: Option<bool>,
+}
+
+impl Default for LspConfig {
+    fn default() -> Self {
+        Self {
+            seam_diagnostics: Some(DEFAULT_LSP_SEAM_DIAGNOSTICS),
+        }
+    }
 }
 
 impl LspConfig {
@@ -434,8 +444,10 @@ impl RiprConfig {
         if let Some(severity) = raw.severity {
             config.severity = merge_severity(config.severity, severity)?;
         }
-        if let Some(lsp) = raw.lsp {
-            config.lsp.seam_diagnostics = lsp.seam_diagnostics;
+        if let Some(lsp) = raw.lsp
+            && let Some(seam_diagnostics) = lsp.seam_diagnostics
+        {
+            config.lsp.seam_diagnostics = Some(seam_diagnostics);
         }
         if let Some(reports) = raw.reports
             && let Some(max) = reports.max_related_tests
@@ -774,7 +786,7 @@ mod tests {
 
         assert!(config.source_path().is_none());
         assert!(config.analysis().mode().is_none());
-        assert!(!config.lsp().seam_diagnostics().unwrap_or(false));
+        assert_eq!(config.lsp().seam_diagnostics(), Some(true));
         assert_eq!(
             config.reports().max_related_tests(),
             DEFAULT_CONTEXT_RELATED_TESTS
@@ -994,6 +1006,67 @@ suppressed = "off"
             config.severity().for_seam(SeamGripClass::Suppressed),
             ConfigSeverity::Off
         );
+        Ok(())
+    }
+
+    #[test]
+    fn generated_init_config_matches_builtin_defaults() -> Result<(), String> {
+        let builtin = RiprConfig::default();
+        let generated = parse_config(generated_init_config())?;
+
+        let mut builtin_input = CheckInput::default();
+        apply_to_check_input(&mut builtin_input, &builtin, CheckInputExplicit::default());
+        let mut generated_input = CheckInput::default();
+        apply_to_check_input(
+            &mut generated_input,
+            &generated,
+            CheckInputExplicit::default(),
+        );
+
+        assert_eq!(builtin_input.mode, generated_input.mode);
+        assert_eq!(
+            builtin_input.include_unchanged_tests,
+            generated_input.include_unchanged_tests
+        );
+        assert_eq!(builtin.oracles(), generated.oracles());
+        assert_eq!(builtin.lsp(), generated.lsp());
+        assert_eq!(builtin.reports(), generated.reports());
+        assert_eq!(builtin.suppressions(), generated.suppressions());
+
+        for class in [
+            ExposureClass::Exposed,
+            ExposureClass::WeaklyExposed,
+            ExposureClass::ReachableUnrevealed,
+            ExposureClass::NoStaticPath,
+            ExposureClass::InfectionUnknown,
+            ExposureClass::PropagationUnknown,
+            ExposureClass::StaticUnknown,
+        ] {
+            assert_eq!(
+                builtin.severity().for_exposure(&class),
+                generated.severity().for_exposure(&class)
+            );
+        }
+
+        for class in [
+            SeamGripClass::StronglyGripped,
+            SeamGripClass::WeaklyGripped,
+            SeamGripClass::Ungripped,
+            SeamGripClass::ReachableUnrevealed,
+            SeamGripClass::ActivationUnknown,
+            SeamGripClass::PropagationUnknown,
+            SeamGripClass::ObservationUnknown,
+            SeamGripClass::DiscriminationUnknown,
+            SeamGripClass::Opaque,
+            SeamGripClass::Intentional,
+            SeamGripClass::Suppressed,
+        ] {
+            assert_eq!(
+                builtin.severity().for_seam(class),
+                generated.severity().for_seam(class)
+            );
+        }
+
         Ok(())
     }
 

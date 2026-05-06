@@ -117,7 +117,7 @@ Reports local tooling and workspace shape. Takes no analysis-shaping flags.
 Config: loaded ripr.toml
 Config path: ./ripr.toml
 Analysis mode default: deep
-LSP seam diagnostics default: false
+LSP seam diagnostics default: true
 Suppressions path: .ripr/suppressions.toml
 ```
 
@@ -156,7 +156,7 @@ reads four keys; everything else is ignored. The schema lives in
 | `baseRef` | string | `"origin/main"` | Git base ref for editor-triggered diffs. Empty string disables base-ref diffing. |
 | `checkMode` | string | `ripr.toml` `analysis.mode`, otherwise `"draft"` | One of `instant`, `draft`, `fast`, `deep`, `ready`. Unknown values fall back to the repo config/default. |
 | `includeUnchangedTests` | boolean | `ripr.toml` `analysis.include_unchanged_tests`, otherwise `true` | Mirror of the CLI's `--no-unchanged-tests` (inverted). |
-| `seamDiagnostics` | boolean | `ripr.toml` `lsp.seam_diagnostics`, otherwise `false` | Enables repo seam evidence diagnostics in addition to diff-derived Finding diagnostics. |
+| `seamDiagnostics` | boolean | `ripr.toml` `lsp.seam_diagnostics`, otherwise `true` | Enables repo seam evidence diagnostics in addition to diff-derived Finding diagnostics. |
 
 Initialization options are treated as explicit LSP settings and override
 `ripr.toml`. Defaults match `CheckInput::default()` when no repo config is
@@ -472,12 +472,7 @@ Seam severities affect LSP seam diagnostics. Valid values are `off`, `info`,
 
 | Key | Type | Default | Effect |
 | --- | --- | --- | --- |
-| `seam_diagnostics` | boolean | target default: `true`; current implementation is being aligned | Default for bounded saved-workspace repo seam diagnostics. LSP `initializationOptions.seamDiagnostics` still wins. |
-
-RIPR-SPEC-0009 treats a missing `ripr.toml` and a freshly generated
-`ripr.toml` as equivalent default policy. Any remaining built-in/generated
-split for this setting is a defaults-alignment gap, not intended product
-behavior.
+| `seam_diagnostics` | boolean | `true` | Default for bounded saved-workspace repo seam diagnostics. LSP `initializationOptions.seamDiagnostics` still wins. |
 
 ### `[reports]`
 
@@ -512,7 +507,7 @@ weakly_gripped = "warning"
 opaque = "info"
 
 [lsp]
-seam_diagnostics = false
+seam_diagnostics = true
 
 [reports]
 max_related_tests = 5

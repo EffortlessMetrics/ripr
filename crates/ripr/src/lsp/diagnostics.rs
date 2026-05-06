@@ -93,13 +93,9 @@ pub(super) fn workspace_diagnostics_with_config(
             ));
     }
 
-    // Repo seam evidence diagnostics. Gated by config because the
-    // `inventory_classified_seams_at` walk classifies the entire
-    // product tree (~9k seams on the ripr repo, excluding repo
-    // automation and fixture data) and would add multi-second latency
-    // to every editor refresh otherwise. Future
-    // PR (`cache/repo-seam-facts-v1`) makes this affordable enough to
-    // turn on by default.
+    // Repo seam evidence diagnostics. Enabled by built-in defaults for the
+    // saved-workspace editor model; explicit LSP options or repo policy can
+    // still disable it for quieter or larger workspaces.
     //
     // Reliability: a seam-walk failure is downgraded to "no seam
     // diagnostics this refresh", not a hard failure. The opt-in

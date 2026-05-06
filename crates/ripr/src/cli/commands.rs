@@ -2,8 +2,8 @@ use crate::app::{self, CheckInput, Mode, OutputFormat};
 use crate::cli::help;
 use crate::cli::parse::{expect_value, parse_format, parse_mode};
 use crate::config::{
-    CONFIG_FILE_NAME, CheckInputExplicit, apply_to_check_input, generated_init_config,
-    load_for_root,
+    CONFIG_FILE_NAME, CheckInputExplicit, DEFAULT_LSP_SEAM_DIAGNOSTICS, apply_to_check_input,
+    generated_init_config, load_for_root,
 };
 use std::path::{Path, PathBuf};
 
@@ -301,7 +301,10 @@ fn report_config_status(root: &Path, ok: &mut bool) {
             println!("- Analysis mode default: {analysis_mode}");
             println!(
                 "- LSP seam diagnostics default: {}",
-                config.lsp().seam_diagnostics().unwrap_or(false)
+                config
+                    .lsp()
+                    .seam_diagnostics()
+                    .unwrap_or(DEFAULT_LSP_SEAM_DIAGNOSTICS)
             );
             println!(
                 "- Suppressions path: {}",
