@@ -707,8 +707,8 @@ Work items:
 | `probes/expectations-extraction` | done | PR 13: Moved expected sink and required oracle helpers into `analysis/probes/expectations.rs`. |
 | `probes/id-extraction` | done | PR 14: Moved probe ID construction and path sanitization helpers into `analysis/probes/ids.rs`. |
 | `probes/lexical-extraction` | done | PR 15: Moved lexical changed-line probe fallback helpers into `analysis/probes/lexical.rs`. |
-| `probes/diff-repo-split` | ready | PR 16: Split diff and repo probe seeding |
-| `classify/context-extraction` | pending | PR 17: Create `analysis/classify/context.rs` with `ProbeContext` |
+| `probes/diff-repo-split` | done | PR 16: Confirmed diff and repo probe seeding already live in `analysis/probes/diff.rs` and `analysis/probes/repo.rs` after the probe module split and helper extractions. |
+| `classify/context-extraction` | ready | PR 17: Create `analysis/classify/context.rs` with `ProbeContext` |
 | `classify/related-tests` | pending | PR 18: Move related-test discovery into stage module |
 | `classify/reach-stage` | pending | PR 19: Move reach evidence into stage module |
 | `classify/flow-propagation` | pending | PR 20: Move flow and propagation stages |
