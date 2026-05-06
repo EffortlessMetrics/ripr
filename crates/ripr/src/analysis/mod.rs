@@ -1,5 +1,6 @@
 mod classifier;
 mod diff;
+mod extract;
 mod pipeline;
 mod probes;
 mod rust_index;
