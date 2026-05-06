@@ -5,8 +5,8 @@ use super::super::rust_index::{
 use super::classify::{classify_changed_syntax, should_ignore_changed_line};
 use super::expectations::{expected_sinks, required_oracles};
 use super::family::{classify_changed_line, delta_for_family};
-use super::sanitize_path;
-use crate::domain::{Probe, ProbeId, SourceLocation};
+use super::ids::diff_probe_id;
+use crate::domain::{Probe, SourceLocation};
 use std::path::Path;
 
 pub fn probes_for_file(root: &Path, changed: &ChangedFile, index: &RustIndex) -> Vec<Probe> {
@@ -33,12 +33,7 @@ pub fn probes_for_file(root: &Path, changed: &ChangedFile, index: &RustIndex) ->
                 .or_else(|| {
                     find_owner_function(index, &changed.path, added.line).map(|f| f.id.clone())
                 });
-            let id = ProbeId(format!(
-                "probe:{}:{}:{}",
-                sanitize_path(&changed.path),
-                added.line,
-                family.as_str()
-            ));
+            let id = diff_probe_id(&changed.path, added.line, &family);
             let expected_sinks = expected_sinks(text, &family);
             let required_oracles = required_oracles(text, &family);
             probes.push(Probe {
