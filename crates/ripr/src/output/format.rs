@@ -36,7 +36,7 @@ pub enum OutputFormat {
     /// `scope` and `basis` do not leak into Shields.
     RepoBadgeShields,
     /// Repo-scoped native `ripr+` badge JSON. Same disk requirement as
-    /// `BadgePlusJson` (the test-efficiency report) — `cargo xtask
+    /// `BadgePlusJson` (the test-efficiency report) - `cargo xtask
     /// test-efficiency-report` already scans the full test suite, so
     /// the report is already repo-scoped.
     RepoBadgePlusJson,
@@ -59,10 +59,10 @@ pub enum OutputFormat {
     RepoExposureMd,
     /// SARIF 2.1.0 report for repo-scoped classified seam evidence.
     RepoSarif,
-    /// Agent-ready seam packets per RIPR-SPEC-0005 — one
+    /// Agent-ready seam packets per RIPR-SPEC-0005 - one
     /// `write_targeted_test` packet per headline-eligible classified
     /// seam, plus conservative `inspect_static_limitation` packets for
-    /// opaque seams. Schema 0.3 in `docs/OUTPUT_SCHEMA.md` § "Agent
+    /// opaque seams. Schema 0.3 in `docs/OUTPUT_SCHEMA.md` section "Agent
     /// Seam Packets". Strongly-gripped, intentional, and suppressed
     /// seams emit no packet.
     AgentSeamPacketsJson,
@@ -72,10 +72,10 @@ impl OutputFormat {
     /// Returns `true` when the format targets full-repo scope rather than
     /// diff scope.
     ///
-    /// Repo-scope formats route through `check_workspace_repo`. Native
-    /// repo badge JSON carries `scope: "repo"` and seam-native badge
-    /// formats carry `basis: "seam_native"`. The Shields projection stays
-    /// four-field for both scopes.
+    /// Repo-scope formats use full-repo inputs. Native repo badge JSON carries
+    /// `scope: "repo"` and seam-native badge formats carry
+    /// `basis: "seam_native"`. The Shields projection stays four-field for
+    /// both scopes.
     pub fn is_repo_scope(&self) -> bool {
         matches!(
             self,
@@ -95,10 +95,10 @@ impl OutputFormat {
     /// Returns `true` when the format renders repo seam-driven artifacts
     /// that do not consume legacy repo `Finding` output.
     ///
-    /// These formats short-circuit `check_workspace_repo` because they
-    /// either walk/classify repo seams directly or render badge summaries
-    /// from classified seams. Running legacy repo Finding analysis first
-    /// would add cost and then be discarded.
+    /// These formats short-circuit legacy repo Finding analysis because they
+    /// either walk/classify repo seams directly or render badge summaries from
+    /// classified seams. Running legacy repo Finding analysis first would add
+    /// cost and then be discarded.
     pub fn is_repo_seam_inventory(&self) -> bool {
         matches!(
             self,
@@ -127,6 +127,12 @@ mod tests {
             OutputFormat::RepoBadgeShields,
             OutputFormat::RepoBadgePlusJson,
             OutputFormat::RepoBadgePlusShields,
+            OutputFormat::RepoSeamsJson,
+            OutputFormat::RepoSeamsMd,
+            OutputFormat::RepoExposureJson,
+            OutputFormat::RepoExposureMd,
+            OutputFormat::RepoSarif,
+            OutputFormat::AgentSeamPacketsJson,
         ] {
             assert!(
                 repo.is_repo_scope(),
@@ -138,6 +144,7 @@ mod tests {
             OutputFormat::Human,
             OutputFormat::Json,
             OutputFormat::Github,
+            OutputFormat::Sarif,
             OutputFormat::BadgeJson,
             OutputFormat::BadgeShields,
             OutputFormat::BadgePlusJson,
@@ -152,12 +159,18 @@ mod tests {
     }
 
     #[test]
-    fn repo_badge_formats_use_repo_seam_short_circuit() {
+    fn repo_artifact_formats_use_repo_seam_short_circuit() {
         for format in [
             OutputFormat::RepoBadgeJson,
             OutputFormat::RepoBadgeShields,
             OutputFormat::RepoBadgePlusJson,
             OutputFormat::RepoBadgePlusShields,
+            OutputFormat::RepoSeamsJson,
+            OutputFormat::RepoSeamsMd,
+            OutputFormat::RepoExposureJson,
+            OutputFormat::RepoExposureMd,
+            OutputFormat::RepoSarif,
+            OutputFormat::AgentSeamPacketsJson,
         ] {
             assert!(
                 format.is_repo_seam_inventory(),
@@ -165,6 +178,8 @@ mod tests {
                 format
             );
         }
+        assert!(!OutputFormat::Human.is_repo_seam_inventory());
+        assert!(!OutputFormat::Json.is_repo_seam_inventory());
         assert!(!OutputFormat::BadgeJson.is_repo_seam_inventory());
         assert!(!OutputFormat::BadgePlusJson.is_repo_seam_inventory());
     }
