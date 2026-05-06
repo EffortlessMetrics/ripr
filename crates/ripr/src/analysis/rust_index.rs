@@ -1,4 +1,6 @@
-use super::extract::{extract_identifier_tokens, extract_literal_facts};
+use super::extract::{
+    extract_call_facts, extract_identifier_tokens, extract_literal_facts, extract_return_facts,
+};
 use crate::config::OraclePolicy;
 use crate::domain::{OracleKind, OracleStrength, SymbolId};
 use ra_ap_syntax::{
@@ -1379,72 +1381,6 @@ fn is_custom_assertion_helper(line: &str) -> bool {
             || trimmed.contains("::assert_")
             || trimmed.contains(".assert_"))
         && trimmed.contains('(')
-}
-
-fn extract_call_facts(body: &str, start_line: usize) -> Vec<CallFact> {
-    let mut calls = Vec::new();
-    for (offset, line) in body.lines().enumerate() {
-        let bytes = line.as_bytes();
-        let mut i = 0usize;
-        while i < bytes.len() {
-            if bytes[i] == b'(' {
-                let mut j = i;
-                while j > 0 && (bytes[j - 1].is_ascii_alphanumeric() || bytes[j - 1] == b'_') {
-                    j -= 1;
-                }
-                if j < i {
-                    let name = &line[j..i];
-                    if is_call_name(name) {
-                        calls.push(CallFact {
-                            line: start_line + offset,
-                            name: name.to_string(),
-                            text: line.trim().to_string(),
-                        });
-                    }
-                }
-            }
-            i += 1;
-        }
-    }
-    calls.sort_by(|a, b| a.line.cmp(&b.line).then(a.name.cmp(&b.name)));
-    calls.dedup_by(|a, b| a.line == b.line && a.name == b.name && a.text == b.text);
-    calls
-}
-
-fn is_call_name(name: &str) -> bool {
-    !matches!(
-        name,
-        "if" | "while"
-            | "match"
-            | "for"
-            | "loop"
-            | "assert"
-            | "assert_eq"
-            | "assert_ne"
-            | "assert_matches"
-    )
-}
-
-fn extract_return_facts(body: &str, start_line: usize) -> Vec<ReturnFact> {
-    let mut returns = Vec::new();
-    for (offset, line) in body.lines().enumerate() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("return ")
-            || trimmed.contains(" return ")
-            || trimmed.contains("Ok(")
-            || trimmed.contains("Err(")
-            || trimmed.contains("Some(")
-            || trimmed.contains("None")
-        {
-            returns.push(ReturnFact {
-                line: start_line + offset,
-                text: trimmed.to_string(),
-            });
-        }
-    }
-    returns.sort_by(|a, b| a.line.cmp(&b.line).then(a.text.cmp(&b.text)));
-    returns.dedup_by(|a, b| a.line == b.line && a.text == b.text);
-    returns
 }
 
 #[cfg(test)]
