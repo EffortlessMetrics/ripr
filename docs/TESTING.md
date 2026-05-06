@@ -99,13 +99,25 @@ The test suite:
 - opens a fixture Rust workspace (`test-fixtures/workspace/Cargo.toml`)
 - activates the extension
 - asserts commands are registered (`ripr.restartServer`, `ripr.showOutput`,
-  `ripr.copyContext`, `ripr.openSettings`)
+  `ripr.copyContext`, `ripr.copySuggestedAssertion`,
+  `ripr.copyTargetedTestBrief`, `ripr.openRelatedTest`,
+  `ripr.openSettings`)
+- verifies the defaults-first editor check mode is `draft`
 - verifies `copyContext` completes without crash when no editor is active
 - verifies `copyContext` accepts a structured target with `finding_id` and
   `probe_id` without crashing
+- verifies `copyContext` asks LSP `ripr.collectContext` first for `seam_id`
+  targets and falls back to the CLI when LSP returns no packet or errors
+- verifies suggested-assertion and targeted-test-brief commands copy valid
+  payloads and ignore malformed arguments without throwing
+- verifies `openRelatedTest` opens URI/line targets and ignores malformed
+  arguments without throwing
 - verifies `restartServer` is callable even when server resolution fails
 
-CI runs the suite headless with `xvfb-run -a npm run test:e2e`.
+CI runs the suite headless with `xvfb-run -a npm run test:e2e`. The test
+runner stores downloaded VS Code archives under
+`target/ripr/vscode-test-cache` so generated editor-host state stays with the
+rest of the repo-local build output.
 
 ## Golden Output
 

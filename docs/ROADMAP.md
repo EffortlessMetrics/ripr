@@ -55,8 +55,9 @@ saved-workspace LSP behavior. The next adoption work is one clean path from
 install to weak seam, targeted-test brief, rerun, and receipt; Campaign 7 has
 now pinned the defaults/config baseline, added the operator cockpit report, and
 made the generated GitHub Action upload pilot/report artifacts with optional
-SARIF rendering/upload. The next ready work is editor install polish for the
-existing saved-workspace loop.
+SARIF rendering/upload. It also documented and verified the existing VS Code
+install path and command coverage for the saved-workspace loop. The next ready
+work is the public example corpus for the defaults-first operator path.
 
 ## Strategic Sequence
 

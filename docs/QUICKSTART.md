@@ -107,10 +107,12 @@ this calibration report and does not change static RIPR classifications.
 
 ## Optional Editor and CI Paths
 
-In VS Code, open a Rust file and use RIPR diagnostics, hovers, Copy Targeted
-Test Brief, and Open Best Related Test from the editor. The editor uses
-saved-workspace analysis by default; unsaved-buffer overlays are not enabled by
-default.
+In VS Code, install `EffortlessMetrics.ripr`, open a Rust/Cargo workspace, and
+use RIPR diagnostics, hovers, Copy Targeted Test Brief, and Open Best Related
+Test from the editor. The extension should resolve the server automatically;
+`cargo install ripr` is only a fallback for offline, pinned, or controlled
+environments. The editor uses saved-workspace analysis by default; unsaved-buffer
+overlays are not enabled by default.
 
 For CI, generate the non-blocking GitHub Actions workflow when the team wants
 PR report artifacts and optional code-scanning guidance:

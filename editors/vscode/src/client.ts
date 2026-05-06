@@ -53,6 +53,7 @@ export interface RiprClientRuntime {
     clientOptions: LanguageClientOptions
   ): RiprLanguageClient;
   runRipr(command: string, args: string[], cwd: string): Promise<string>;
+  writeClipboard(text: string): Promise<void>;
 }
 
 const defaultRuntime: RiprClientRuntime = {
@@ -60,7 +61,10 @@ const defaultRuntime: RiprClientRuntime = {
   resolveServer,
   createLanguageClient: (serverOptions, clientOptions) =>
     new LanguageClient('ripr', 'ripr', serverOptions, clientOptions),
-  runRipr
+  runRipr,
+  writeClipboard: async (text) => {
+    await vscode.env.clipboard.writeText(text);
+  }
 };
 
 export class RiprClientController {
@@ -154,7 +158,7 @@ export class RiprClientController {
           }],
         });
         if (packet && typeof packet === 'object') {
-          await vscode.env.clipboard.writeText(JSON.stringify(packet, null, 2));
+          await this.runtime.writeClipboard(JSON.stringify(packet, null, 2));
           vscode.window.showInformationMessage('Copied ripr context to clipboard.');
           return;
         }
@@ -192,7 +196,7 @@ export class RiprClientController {
 
     try {
       const context = await this.runtime.runRipr(server.command, args, workspaceFolder.uri.fsPath);
-      await vscode.env.clipboard.writeText(context.trim());
+      await this.runtime.writeClipboard(context.trim());
       vscode.window.showInformationMessage('Copied ripr context to clipboard.');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -208,7 +212,7 @@ export class RiprClientController {
       return;
     }
     try {
-      await vscode.env.clipboard.writeText(assertion);
+      await this.runtime.writeClipboard(assertion);
       vscode.window.showInformationMessage('Copied ripr suggested assertion to clipboard.');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -224,7 +228,7 @@ export class RiprClientController {
       return;
     }
     try {
-      await vscode.env.clipboard.writeText(brief);
+      await this.runtime.writeClipboard(brief);
       vscode.window.showInformationMessage('Copied ripr targeted test brief to clipboard.');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -279,7 +283,7 @@ export class RiprClientController {
     if (selection === 'Open Settings') {
       await vscode.commands.executeCommand('workbench.action.openSettings', 'ripr.server');
     } else if (selection === 'Copy Install Command') {
-      await vscode.env.clipboard.writeText('cargo install ripr');
+      await this.runtime.writeClipboard('cargo install ripr');
     } else if (selection === 'Retry') {
       await this.restart();
     }

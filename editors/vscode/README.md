@@ -17,6 +17,16 @@ The extension can download and cache the matching `ripr` server binary from
 GitHub Releases on first activation. Manual installation is still supported for
 offline, pinned, or enterprise-controlled environments.
 
+## Install and First Run
+
+Install `EffortlessMetrics.ripr` from VS Code Marketplace or Open VSX. The
+extension should resolve its server automatically, so `cargo install ripr` is a
+fallback rather than a required first step.
+
+After opening a Rust/Cargo workspace, use the Problems panel, diagnostic hovers,
+and the seam code actions to inspect saved-workspace evidence and copy a
+targeted test brief. Unsaved-buffer overlays are not enabled by default.
+
 ## What ripr Does
 
 `ripr` scans changed Rust code for mutation-shaped probes and reports whether

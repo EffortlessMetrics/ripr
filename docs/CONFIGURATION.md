@@ -262,10 +262,14 @@ The extension contributes:
 - `ripr.restartServer`
 - `ripr.showOutput`
 - `ripr.copyContext`
+- `ripr.copySuggestedAssertion`
+- `ripr.copyTargetedTestBrief`
+- `ripr.openRelatedTest`
 - `ripr.openSettings`
 
-These are not configured directly; they are surfaced through the command
-palette.
+These are not configured directly. They are surfaced through the command
+palette and from LSP code actions when diagnostics carry the required
+finding or seam data.
 
 ## Repo policy files
 

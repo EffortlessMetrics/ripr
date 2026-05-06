@@ -67,6 +67,8 @@ are scoped or reviewed.
   active manifest to `ci/github-action-entrypoint` as the next ready work item.
 - Completed the Campaign 7 `ci/github-action-entrypoint` surface and advanced
   the active manifest to `editor/install-polish` as the next ready work item.
+- Completed the Campaign 7 `editor/install-polish` surface and advanced the
+  active manifest to `fixtures/example-corpus` as the next ready work item.
 - Aligned built-in defaults with the `ripr init` profile for LSP seam
   diagnostics: missing config now uses the same bounded saved-workspace default
   as the generated policy file, while explicit LSP options or `ripr.toml` can
