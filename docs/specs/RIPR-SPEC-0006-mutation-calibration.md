@@ -154,8 +154,9 @@ Current tests:
 
 Planned tests:
 
-- fixture-backed calibration samples once a stable cargo-mutants output fixture is
-  checked in;
+- fixture-backed calibration samples from the
+  [`fixtures` calibration corpus](../../fixtures/CALIBRATION_CORPUS.md) once a
+  stable cargo-mutants output fixture is checked in;
 - end-to-end smoke around a real cargo-mutants output artifact when runtime cost
   is acceptable.
 

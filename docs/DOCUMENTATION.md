@@ -50,6 +50,8 @@ Current reference docs:
 - [Badge policy](BADGE_POLICY.md)
 - [Spec-test-code traceability](SPEC_TEST_CODE.md)
 - [Spec format](SPEC_FORMAT.md)
+- [Fixture contracts](../fixtures/README.md)
+- [Calibration corpus index](../fixtures/CALIBRATION_CORPUS.md)
 - [Test taxonomy](TEST_TAXONOMY.md)
 - [Engineering rules](ENGINEERING.md)
 - [File policy](FILE_POLICY.md)

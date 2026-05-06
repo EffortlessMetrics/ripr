@@ -74,3 +74,8 @@ The current fixture baseline covers:
 - metamorphic syntax variants: `boundary_gap_multiline_assert`,
   `boundary_gap_nested_tests`, `boundary_gap_reordered_tests`,
   `weak_error_oracle_assert_matches`
+
+For calibration and adoption scenarios, see
+[`CALIBRATION_CORPUS.md`](CALIBRATION_CORPUS.md). It indexes existing fixtures
+by proof-loop question and names the bounded runtime artifacts still needed for
+`cargo xtask mutation-calibration`.
