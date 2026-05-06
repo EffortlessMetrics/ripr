@@ -2680,6 +2680,7 @@ fn execute_command_collect_context_returns_packet_for_known_finding() -> Result<
         let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
         let backend = service.inner();
         let finding = sample_finding();
+        let expected_finding = finding.clone();
         let diagnostic = diagnostic_for_finding(Path::new("/workspace"), &finding);
         let uri = test_uri("file:///workspace/src/pricing.rs")?;
         let diagnostics = sample_workspace_diagnostics(
@@ -2707,6 +2708,21 @@ fn execute_command_collect_context_returns_packet_for_known_finding() -> Result<
         let Some(packet) = packet else {
             return Err("expected context packet".to_string());
         };
+        let expected_stop_reasons = expected_finding
+            .effective_stop_reasons()
+            .iter()
+            .map(|reason| reason.as_str().to_string())
+            .collect();
+        let expected_context_packet = crate::domain::context_packet::ContextPacket::from_finding(
+            &expected_finding,
+            crate::config::DEFAULT_CONTEXT_RELATED_TESTS,
+            expected_stop_reasons,
+        );
+        let expected_json =
+            crate::output::json::render_context_packet_dto(&expected_context_packet);
+        let expected_packet: serde_json::Value = serde_json::from_str(&expected_json)
+            .map_err(|err| format!("failed to parse expected packet: {err}"))?;
+        assert_eq!(packet, expected_packet);
         let packet_str = serde_json::to_string(&packet)
             .map_err(|err| format!("failed to serialize packet: {err}"))?;
         assert!(packet_str.contains("\"version\""));
