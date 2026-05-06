@@ -179,6 +179,74 @@ fn make_temp_workspace(report: Option<&str>) -> Result<PathBuf, String> {
     make_temp_workspace_with_suppressions(report, None)
 }
 
+#[test]
+fn doctor_reports_missing_config_defaults() -> Result<(), String> {
+    let workspace = make_temp_workspace(None)?;
+    let root = workspace.display().to_string();
+    let output = run_ripr(&["doctor", "--root", &root]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Config: not found; using built-in defaults"));
+    assert!(stdout.contains("Analysis mode default: draft"));
+    assert!(stdout.contains("LSP seam diagnostics default: false"));
+    assert!(stdout.contains("Suppressions path: .ripr/suppressions.toml"));
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn doctor_reports_loaded_config_path() -> Result<(), String> {
+    let workspace = make_temp_workspace(None)?;
+    std::fs::write(
+        workspace.join("ripr.toml"),
+        "[analysis]\nmode = \"deep\"\n\n[lsp]\nseam_diagnostics = true\n",
+    )
+    .map_err(|e| format!("write ripr.toml: {e}"))?;
+
+    let root = workspace.display().to_string();
+    let output = run_ripr(&["doctor", "--root", &root]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Config: loaded ripr.toml"));
+    assert!(stdout.contains("Config path:"));
+    assert!(stdout.contains("ripr.toml"));
+    assert!(stdout.contains("Analysis mode default: deep"));
+    assert!(stdout.contains("LSP seam diagnostics default: true"));
+    assert!(!stdout.contains("mode = \"deep\""));
+    assert!(!stdout.contains("seam_diagnostics"));
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
+fn doctor_reports_malformed_config_error() -> Result<(), String> {
+    let workspace = make_temp_workspace(None)?;
+    std::fs::write(workspace.join("ripr.toml"), "[analysis]\nmode = \"slow\"\n")
+        .map_err(|e| format!("write ripr.toml: {e}"))?;
+
+    let root = workspace.display().to_string();
+    let output = run_ripr(&["doctor", "--root", &root]);
+    assert!(
+        !output.status.success(),
+        "malformed config should fail doctor\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Config: invalid ripr.toml"));
+    assert!(stdout.contains("ripr.toml"));
+    assert!(stdout.contains("analysis.mode `slow` is not supported"));
+    assert!(!stdout.contains("mode = \"slow\""));
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
 fn make_temp_workspace_with_production_seam() -> Result<PathBuf, String> {
     make_temp_workspace_with_production_seam_and_report_opt(None)
 }

@@ -1,8 +1,8 @@
-use crate::app::{self, CheckInput, OutputFormat};
+use crate::app::{self, CheckInput, Mode, OutputFormat};
 use crate::cli::help;
 use crate::cli::parse::{expect_value, parse_format, parse_mode};
-use crate::config::{CheckInputExplicit, apply_to_check_input, load_for_root};
-use std::path::PathBuf;
+use crate::config::{CONFIG_FILE_NAME, CheckInputExplicit, apply_to_check_input, load_for_root};
+use std::path::{Path, PathBuf};
 
 pub(super) fn check(args: &[String]) -> Result<(), String> {
     let mut input = CheckInput::default();
@@ -195,6 +195,8 @@ pub(super) fn doctor(args: &[String]) -> Result<(), String> {
         ok = false;
     }
 
+    report_config_status(&root, &mut ok);
+
     for (tool, args) in [
         ("git", vec!["--version"]),
         ("cargo", vec!["--version"]),
@@ -217,6 +219,40 @@ pub(super) fn doctor(args: &[String]) -> Result<(), String> {
     } else {
         println!("! doctor checks failed; run `ripr doctor --help` for usage");
         Err("doctor found issues".to_string())
+    }
+}
+
+fn report_config_status(root: &Path, ok: &mut bool) {
+    match load_for_root(root) {
+        Ok(config) => {
+            match config.source_path() {
+                Some(path) => {
+                    println!("✓ Config: loaded {CONFIG_FILE_NAME}");
+                    println!("- Config path: {}", path.display());
+                }
+                None => println!("✓ Config: not found; using built-in defaults"),
+            }
+            let analysis_mode = config
+                .analysis()
+                .mode()
+                .map(Mode::as_str)
+                .unwrap_or_else(|| Mode::Draft.as_str());
+            println!("- Analysis mode default: {analysis_mode}");
+            println!(
+                "- LSP seam diagnostics default: {}",
+                config.lsp().seam_diagnostics().unwrap_or(false)
+            );
+            println!(
+                "- Suppressions path: {}",
+                config.suppressions().display_path()
+            );
+        }
+        Err(err) => {
+            println!("! Config: invalid {CONFIG_FILE_NAME}");
+            println!("- Config path: {}", root.join(CONFIG_FILE_NAME).display());
+            println!("  error: {err}");
+            *ok = false;
+        }
     }
 }
 

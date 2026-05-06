@@ -32,6 +32,8 @@ The configuration layer should:
 - allow repository config to point at a relative suppressions file;
 - allow repository config to set report related-test caps where the command
   supports that cap;
+- make loaded, missing, and malformed config state observable through
+  `ripr doctor`;
 - keep output schemas stable unless a later scoped PR explicitly adds config
   metadata.
 
@@ -52,6 +54,8 @@ Repository configuration evidence should cover:
 - malformed values returning actionable errors;
 - unknown keys failing closed;
 - unsafe relative-path shapes being rejected where paths are configurable;
+- `ripr doctor` reporting loaded config path, missing-config defaults, and
+  malformed config errors without printing config source text;
 - output schemas remaining unchanged when severity or report caps come from
   config;
 - docs and example config staying aligned with supported keys.
@@ -112,6 +116,15 @@ when ripr loads the config,
 then the user-facing error names the config path and parse problem.
 ```
 
+### Doctor makes config state inspectable
+
+```text
+Given ripr doctor runs for a workspace,
+when repo config is loaded, missing, or malformed,
+then doctor reports the config path or default state and never prints the
+config source text.
+```
+
 ## Test Mapping
 
 Current tests:
@@ -127,6 +140,9 @@ Current tests:
 - `crates/ripr/src/lsp/config.rs::tests::initialization_options_override_repo_config_defaults`
 - `crates/ripr/src/app.rs::tests::configured_finding_severity_applies_to_human_json_and_github`
 - `crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::configured_seam_severity_can_disable_a_class`
+- `crates/ripr/tests/cli_smoke.rs::doctor_reports_missing_config_defaults`
+- `crates/ripr/tests/cli_smoke.rs::doctor_reports_loaded_config_path`
+- `crates/ripr/tests/cli_smoke.rs::doctor_reports_malformed_config_error`
 
 Planned tests:
 
@@ -142,7 +158,7 @@ Current implementation:
 - `crates/ripr/src/config.rs` owns config parsing, defaults, validation, and
   precedence helpers.
 - `crates/ripr/src/cli/commands.rs` loads repo config for `check`, `explain`,
-  and `context`.
+  and `context`, and reports config status through `doctor`.
 - `crates/ripr/src/app.rs` provides config-aware orchestration for CLI and LSP
   adapters.
 - `crates/ripr/src/lsp/config.rs` merges repo config with LSP initialization

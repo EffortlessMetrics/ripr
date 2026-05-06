@@ -86,6 +86,25 @@ ripr doctor [--root PATH]
 
 Reports local tooling and workspace shape. Takes no analysis-shaping flags.
 
+`doctor` also reports the repository config status for the selected root:
+
+```text
+Config: loaded ripr.toml
+Config path: ./ripr.toml
+Analysis mode default: deep
+LSP seam diagnostics default: false
+Suppressions path: .ripr/suppressions.toml
+```
+
+When no repo config exists, that is healthy and explicit:
+
+```text
+Config: not found; using built-in defaults
+```
+
+Malformed config makes `doctor` fail with the config path and validation
+problem, but `doctor` does not print the config source text.
+
 ### `ripr lsp`
 
 ```text
