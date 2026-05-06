@@ -522,11 +522,30 @@ commands = [
 
 [[work_item]]
 id = "cli/parse-command"
-status = "ready"
+status = "done"
 branch = "cli-parse-command"
 stackable = false
 requires_human_merge = true
 acceptance = "CLI parsing returns a focused parsed command shape while preserving CLI argument behavior, execution behavior, public ripr library API, LSP behavior, output contracts, and schema"
+commands = [
+  "cargo xtask shape",
+  "cargo xtask fix-pr",
+  "cargo xtask check-pr",
+  "cargo xtask check-public-api",
+  "cargo xtask check-architecture",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-no-panic-family",
+  "cargo xtask lsp-cockpit-report",
+  "cargo test --workspace"
+]
+
+[[work_item]]
+id = "cli/execute-command"
+status = "ready"
+branch = "cli-execute-command"
+stackable = false
+requires_human_merge = true
+acceptance = "CLI command execution moves into cli/execute.rs while preserving CLI argument behavior, execution behavior, public ripr library API, LSP behavior, output contracts, and schema"
 commands = [
   "cargo xtask shape",
   "cargo xtask fix-pr",

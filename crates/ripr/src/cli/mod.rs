@@ -6,7 +6,7 @@ mod parse;
 use command::CliCommand;
 
 pub fn run(args: Vec<String>) -> Result<(), String> {
-    match CliCommand::from_arg(args.get(1).map(|s| s.as_str()))? {
+    match parse::parse_args(args)? {
         CliCommand::Help => {
             help::print_help();
             Ok(())
@@ -15,12 +15,12 @@ pub fn run(args: Vec<String>) -> Result<(), String> {
             println!("ripr {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
-        CliCommand::Init => commands::init(&args[2..]),
-        CliCommand::Check => commands::check(&args[2..]),
-        CliCommand::Explain => commands::explain(&args[2..]),
-        CliCommand::Context => commands::context(&args[2..]),
-        CliCommand::Doctor => commands::doctor(&args[2..]),
-        CliCommand::Lsp => commands::lsp(&args[2..]),
+        CliCommand::Init(args) => commands::init(&args),
+        CliCommand::Check(args) => commands::check(&args),
+        CliCommand::Explain(args) => commands::explain(&args),
+        CliCommand::Context(args) => commands::context(&args),
+        CliCommand::Doctor(args) => commands::doctor(&args),
+        CliCommand::Lsp(args) => commands::lsp(&args),
     }
 }
 

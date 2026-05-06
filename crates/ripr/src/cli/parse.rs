@@ -1,4 +1,11 @@
 use crate::app::{Mode, OutputFormat};
+use crate::cli::command::CliCommand;
+
+pub(super) fn parse_args(args: Vec<String>) -> Result<CliCommand, String> {
+    let command = args.get(1).map(|s| s.as_str());
+    let command_args = args.get(2..).map_or_else(Vec::new, <[String]>::to_vec);
+    CliCommand::from_parts(command, command_args)
+}
 
 pub(super) fn parse_mode(value: &str) -> Result<Mode, String> {
     match value {
@@ -51,6 +58,27 @@ mod tests {
 
     fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
+    }
+
+    #[test]
+    fn parse_args_returns_top_level_command_shape() {
+        assert_eq!(parse_args(args(&["ripr"])), Ok(CliCommand::Help));
+        assert_eq!(
+            parse_args(args(&["ripr", "--version"])),
+            Ok(CliCommand::Version)
+        );
+        assert_eq!(
+            parse_args(args(&["ripr", "check", "--format", "json"])),
+            Ok(CliCommand::Check(args(&["--format", "json"])))
+        );
+    }
+
+    #[test]
+    fn parse_args_preserves_unknown_command_error() {
+        assert_eq!(
+            parse_args(args(&["ripr", "unknown"])),
+            Err("unknown command \"unknown\". Run `ripr --help`.".to_string())
+        );
     }
 
     struct ModeScenario {
