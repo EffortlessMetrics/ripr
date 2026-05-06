@@ -20319,6 +20319,14 @@ settings: |
             XtaskCommand::CheckCampaign
         );
         assert_eq!(
+            XtaskCommand::parse(["operator-cockpit".to_string()]),
+            XtaskCommand::OperatorCockpitReport
+        );
+        assert_eq!(
+            XtaskCommand::parse(["operator-cockpit-report".to_string()]),
+            XtaskCommand::OperatorCockpitReport
+        );
+        assert_eq!(
             XtaskCommand::parse(std::iter::empty::<String>()),
             XtaskCommand::Help
         );
@@ -20340,6 +20348,7 @@ settings: |
                 XtaskCommand::RepoExposureReport,
                 XtaskCommand::AgentSeamPackets(Some(".".to_string())),
                 XtaskCommand::LspCockpitReport,
+                XtaskCommand::OperatorCockpitReport,
                 XtaskCommand::TargetedTestOutcome(Vec::new()),
                 XtaskCommand::MutationCalibration(Vec::new()),
                 XtaskCommand::SarifPolicy(Vec::new()),
@@ -20477,6 +20486,8 @@ settings: |
         assert!(commands.contains(&"repo-exposure-report"));
         assert!(commands.contains(&"agent-seam-packets [root]"));
         assert!(commands.contains(&"lsp-cockpit-report"));
+        assert!(commands.contains(&"operator-cockpit"));
+        assert!(commands.contains(&"operator-cockpit-report"));
         assert!(commands.contains(&"targeted-test-outcome --before <path> --after <path>"));
         assert!(commands.contains(&"mutation-calibration [root] --mutants-json <path>"));
         assert!(commands.contains(&"sarif-policy --current <path> [--baseline <path>]"));

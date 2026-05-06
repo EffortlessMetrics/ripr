@@ -63,6 +63,7 @@ The default contract is:
 | `ripr init` | Materialize the conservative built-in defaults into `ripr.toml` when requested, and optionally generate advisory GitHub SARIF CI with `--ci github`. | Unlock basic usefulness, overwrite repo policy or generated workflow files without `--force`, or create blocking CI by default. |
 | `ripr pilot` | Generate a standard pilot packet and print the top actionable next step. | Run mutation testing, edit files, or require users to know internal report names. |
 | `ripr outcome` | Compare two repo-exposure snapshots and explain whether evidence moved. | Require the `ripr` source repo or `cargo xtask`. |
+| Operator cockpit | Join existing repo-local reports into one next-action view. | Rerun analysis implicitly, edit code, or replace the public `ripr pilot` path. |
 | Calibration import | Join supplied runtime data to static seam evidence and explain agreement buckets. | Run mutation testing or change static classifications. |
 | LSP / VS Code | Make bounded saved-workspace diagnostics, hovers, targeted briefs, context packets, best related test, and refresh status discoverable. | Stay inert until `ripr init`, surprise users with expensive live unsaved-buffer analysis, or run deep analysis by default. |
 | SARIF / GitHub Actions | Upload advisory code-scanning results from static evidence. | Fail CI without explicit baseline policy. |
@@ -181,6 +182,42 @@ The receipt should report:
 The command should default to a human-readable Markdown or text surface, with a
 JSON option for tools.
 
+## Operator Cockpit
+
+The repo-local operator cockpit should join existing report artifacts under
+`target/ripr/reports/` into one "what do I do next?" surface:
+
+```bash
+cargo xtask operator-cockpit
+```
+
+The command writes:
+
+```text
+target/ripr/reports/operator-cockpit.json
+target/ripr/reports/operator-cockpit.md
+```
+
+The cockpit should answer:
+
+- top weak seams;
+- why each listed seam matters;
+- the suggested next targeted test;
+- whether LSP, SARIF, badge, targeted-test receipt, and calibration surfaces
+  are present and aligned with the operator loop;
+- the next command to run.
+
+It should not rerun analysis implicitly. Missing inputs should stay visible with
+their generator command so operators can decide which report to refresh.
+The cockpit should read repo exposure, LSP cockpit, SARIF policy, badge status,
+targeted-test outcome, and optional mutation calibration artifacts. Required
+inputs should be marked with a `required` boolean, while optional calibration
+should remain visible without making the cockpit fail. When an input artifact is
+present but its JSON has no top-level `status` field, the cockpit should report
+that artifact status as `present` instead of treating the missing status as an
+error. Markdown output should include a surface-alignment table with `Surface`,
+`State`, `Status`, `Agreement`, and `Signal` columns.
+
 ## Calibration Import
 
 Calibration import should expose the existing advisory static/runtime join
@@ -224,6 +261,9 @@ Defaults-first adoption evidence should cover:
 - `ripr init --ci github` generating a non-blocking advisory GitHub workflow;
 - `ripr pilot` generating the pilot packet and top actionable next step;
 - `ripr outcome` producing the same movement buckets as the xtask receipt;
+- `cargo xtask operator-cockpit` joining repo exposure, LSP cockpit,
+  SARIF policy, badge status, targeted-test outcome, and optional mutation
+  calibration into one next-action report;
 - calibration import producing the same agreement buckets as the xtask report;
 - missing config remaining healthy and visible in `ripr doctor`;
 - malformed config failing closed;
@@ -293,6 +333,16 @@ then ripr reports moved, unchanged, regressed, new, and removed seams without
 requiring cargo xtask.
 ```
 
+### Operator cockpit points at the next command
+
+```text
+Given repo-local report artifacts under target/ripr/reports,
+when a user runs cargo xtask operator-cockpit,
+then ripr writes operator-cockpit.md and operator-cockpit.json with top weak
+seams, surface alignment, missing-input commands, and the next targeted-test
+loop command.
+```
+
 ### CI remains advisory
 
 ```text
@@ -358,6 +408,8 @@ Current tests and reports that support the contract:
 - `xtask/src/main.rs::tests::mutation_calibration_reports_are_advisory_and_structured`
 - `xtask/src/main.rs::tests::sarif_policy_missing_baseline_is_advisory_by_default`
 - `xtask/src/main.rs::tests::lsp_cockpit_report_json_and_markdown_are_structured`
+- `xtask/src/reports/operator.rs::tests::operator_cockpit_reports_missing_inputs_with_commands`
+- `xtask/src/reports/operator.rs::tests::operator_cockpit_json_and_markdown_are_structured`
 - `editors/vscode/test/suite/extension.test.ts::defaults-first check mode is draft`
 
 ## Implementation Mapping
@@ -385,6 +437,8 @@ Current implementation pieces:
   `draft` default as the CLI and LSP missing-config path.
 - `xtask/src/main.rs` currently owns repo-local mutation calibration, LSP
   cockpit, SARIF policy, badge artifact, and report-index automation.
+- `xtask/src/reports/operator.rs` joins those report artifacts into
+  `operator-cockpit.{json,md}` without changing analyzer behavior.
 - `docs/TARGETED_TEST_WORKFLOW.md`, `docs/CI.md`, `docs/CONFIGURATION.md`,
   and `docs/EDITOR_EXTENSION.md` document the current adoption path.
 
@@ -395,3 +449,4 @@ Current implementation pieces:
 - `targeted_test_outcome_available`
 - `calibration_import_available`
 - `advisory_ci_workflow_generated`
+- `operator_cockpit_available`

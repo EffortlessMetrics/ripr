@@ -43,12 +43,15 @@ commands = [
 
 [[work_item]]
 id = "reports/operator-cockpit"
-status = "ready"
+status = "done"
 branch = "operator-cockpit-report"
 stackable = false
 requires_human_merge = true
 acceptance = "target/ripr/reports/operator-cockpit.md and .json join repo exposure, LSP cockpit, SARIF policy, badge status, targeted-test outcome, and optional mutation calibration into a next-action report"
 commands = [
+  "cargo test -p xtask operator_cockpit",
+  "cargo xtask operator-cockpit",
+  "cargo xtask operator-cockpit-report",
   "cargo xtask check-pr",
   "cargo xtask check-public-api",
   "cargo xtask check-architecture",
@@ -61,12 +64,21 @@ commands = [
 
 [[work_item]]
 id = "ci/github-action-entrypoint"
-status = "blocked"
+status = "ready"
 branch = "github-action-entrypoint"
 stackable = false
 requires_human_merge = true
 acceptance = "A copyable GitHub Actions workflow runs the defaults-first RIPR loop in a Rust repo, uploads reports, makes SARIF optional, documents badge artifacts, and keeps advisory reporting separate from blocking policy"
-blocked_by = ["reports/operator-cockpit"]
+commands = [
+  "cargo xtask check-pr",
+  "cargo xtask check-public-api",
+  "cargo xtask check-architecture",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
+  "cargo test --workspace"
+]
 
 [[work_item]]
 id = "editor/install-polish"
@@ -75,7 +87,7 @@ branch = "editor-install-polish"
 stackable = false
 requires_human_merge = true
 acceptance = "The VS Code install path and existing commands are documented and verified without adding unsaved-buffer overlays, CodeLens, inlay hints, semantic tokens, or new editor behavior"
-blocked_by = ["reports/operator-cockpit"]
+blocked_by = ["ci/github-action-entrypoint"]
 
 [[work_item]]
 id = "fixtures/example-corpus"
@@ -84,7 +96,7 @@ branch = "example-corpus"
 stackable = false
 requires_human_merge = true
 acceptance = "A small public example corpus demonstrates boundary gap, weak oracle, missing equality boundary, exact error variant, opaque fixture/builder, and one calibration sample with expected CLI, LSP, targeted-test outcome, and optional calibration artifacts"
-blocked_by = ["reports/operator-cockpit"]
+blocked_by = ["editor/install-polish"]
 
 [[work_item]]
 id = "release/install-polish"
@@ -93,7 +105,7 @@ branch = "release-install-polish"
 stackable = false
 requires_human_merge = true
 acceptance = "cargo install, GitHub Release binary, VS Code server provisioning, README quickstart, and known-limits docs are verified against the defaults-first operator loop"
-blocked_by = ["editor/install-polish"]
+blocked_by = ["fixtures/example-corpus"]
 
 [[work_item]]
 id = "campaign/defaults-first-closeout"

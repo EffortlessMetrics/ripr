@@ -852,6 +852,166 @@ regressed, new, and removed seams for human review. Unchanged seams can still
 carry evidence-delta hints, such as a new observed value, so reviewers can see
 when a targeted test improved rendered evidence without changing the grip class.
 
+## Operator Cockpit Report
+
+`cargo xtask operator-cockpit` joins existing repo-local report artifacts into
+one next-action cockpit:
+
+```text
+target/ripr/reports/operator-cockpit.json
+target/ripr/reports/operator-cockpit.md
+```
+
+The command reads current artifacts under `target/ripr/reports/`; it does not
+rerun analysis, generate tests, mutate source files, or change static
+classifications. Missing inputs are reported with the command that should
+generate them. `cargo xtask operator-cockpit-report` remains an alias for
+existing repo automation.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "warn",
+  "inputs": [
+    {
+      "name": "repo exposure",
+      "path": "target/ripr/reports/repo-exposure.json",
+      "state": "present",
+      "status": "present",
+      "command": "cargo xtask repo-exposure-report",
+      "required": true,
+      "summary": "2 seams; 1 weakly_gripped, 0 ungripped, 0 reachable_unrevealed."
+    },
+    {
+      "name": "LSP cockpit",
+      "path": "target/ripr/reports/lsp-cockpit.json",
+      "state": "present",
+      "status": "pass",
+      "command": "cargo xtask lsp-cockpit-report",
+      "required": true,
+      "summary": "1 fixture reports; 0 uncovered contributed commands."
+    },
+    {
+      "name": "SARIF policy",
+      "path": "target/ripr/reports/sarif-policy.json",
+      "state": "missing",
+      "status": "missing",
+      "command": "cargo xtask sarif-policy --current target/ripr/workflow/current.repo-sarif.json",
+      "required": true,
+      "summary": "Report has not been generated yet."
+    },
+    {
+      "name": "badge status",
+      "path": "target/ripr/reports/repo-ripr-badge.json",
+      "state": "present",
+      "status": "present",
+      "command": "cargo xtask repo-badge-artifacts",
+      "required": true,
+      "summary": "Badge headline status is available."
+    },
+    {
+      "name": "targeted-test outcome",
+      "path": "target/ripr/reports/targeted-test-outcome.json",
+      "state": "missing",
+      "status": "missing",
+      "command": "cargo xtask targeted-test-outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json",
+      "required": true,
+      "summary": "Report has not been generated yet."
+    },
+    {
+      "name": "mutation calibration",
+      "path": "target/ripr/reports/mutation-calibration.json",
+      "state": "optional_missing",
+      "status": "optional",
+      "command": "cargo xtask mutation-calibration . --mutants-json target/mutants/outcomes.json --repo-exposure-json target/ripr/reports/repo-exposure.json",
+      "required": false,
+      "summary": "Optional calibration report has not been generated."
+    }
+  ],
+  "top_weak_seams": [
+    {
+      "seam_id": "67fc764ba37d77bd",
+      "seam_kind": "predicate_boundary",
+      "file": "src/lib.rs",
+      "line": 42,
+      "owner": "src/lib.rs::discounted_total",
+      "expression": "amount >= discount_threshold",
+      "grip_class": "weakly_gripped",
+      "why_it_matters": "observed values do not include the equality-boundary case for this predicate",
+      "suggested_next_targeted_test": "Add a focused predicate_boundary test for `src/lib.rs::discounted_total` that exercises `discount_threshold (equality boundary)` and asserts the observable result.",
+      "best_related_test": {
+        "name": "below_threshold_has_no_discount",
+        "file": "tests/pricing.rs",
+        "line": 12,
+        "oracle_strength": "strong"
+      }
+    }
+  ],
+  "surface_alignment": [
+    {
+      "surface": "LSP cockpit",
+      "state": "present",
+      "status": "pass",
+      "agreement": "editor_contract_green",
+      "signal": "1 LSP fixture reports; 0 uncovered contributed VS Code commands.",
+      "command": "cargo xtask lsp-cockpit-report"
+    }
+  ],
+  "next_commands": [
+    {
+      "command": "cargo run -p ripr -- pilot --out target/ripr/pilot",
+      "reason": "Open the top actionable seam packet and write one focused targeted test."
+    }
+  ]
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- top-level `status` - `"pass"` when all required inputs are present and no top
+  weak seams require operator attention; `"warn"` when required inputs are
+  missing, stale/unreadable, LSP cockpit status needs review, or actionable
+  weak seams are visible.
+- `inputs[]` - report inventory for repo exposure, LSP cockpit, SARIF policy,
+  badge status, targeted-test outcome, and optional mutation calibration.
+  `state` is `present`, `missing`, `optional_missing`, `unreadable`, or
+  `invalid_json`.
+- `inputs[].required` - `true` for reports expected in the normal operator
+  cockpit loop and `false` for optional mutation calibration.
+- `inputs[].status` - when an artifact is present, this is copied from the
+  artifact's top-level `status` field. If the source JSON has no `status`, the
+  cockpit uses `"present"`. Missing required inputs use `"missing"`; missing
+  optional inputs use `"optional"`; unreadable or invalid JSON inputs use
+  `"warn"`. Source-specific values such as `"pass"`, `"warn"`,
+  `"new_results"`, and `"advisory_missing_baseline"` are preserved.
+- `top_weak_seams[]` - up to five headline-eligible repo exposure seams with
+  operator-attention classes: `weakly_gripped`, `ungripped`,
+  `reachable_unrevealed`, `activation_unknown`, `propagation_unknown`,
+  `observation_unknown`, or `discrimination_unknown`.
+- `surface_alignment[]` - per-surface status and an `agreement` string that
+  states whether LSP, SARIF, badge, receipt, and calibration artifacts are
+  available and aligned with the operator loop.
+- `next_commands[]` - ordered commands to generate missing reports, inspect the
+  top seam packet, capture the after snapshot, and write the before/after
+  targeted-test receipt.
+
+The Markdown sibling prints:
+
+- `Top Weak Seams`, with each seam's ID, class, file, line, kind, why it
+  matters, suggested next targeted test, and best related test when present.
+- `Surface Alignment`, a table with `Surface`, `State`, `Status`, `Agreement`,
+  and `Signal` columns for LSP, SARIF, badge, receipt, and calibration
+  surfaces.
+- `Inputs`, a table with `Report`, `Required`, `State`, and `Path` columns for
+  every input artifact.
+- `Next Commands`, an ordered list of commands to refresh missing reports,
+  inspect the top seam packet, capture the after snapshot, and write the
+  before/after targeted-test receipt.
+
 ## Agent Seam Packets
 
 `ripr check --root . --format agent-seam-packets-json` emits per-seam

@@ -920,9 +920,9 @@ Work items:
 | Work item | Status | Notes |
 | --- | --- | --- |
 | `defaults/config-init` | done | Built-in defaults, generated `ripr.toml`, repo-mode exclusions, seam-diagnostic policy, badge/report defaults, and fast/normal/deep mode behavior are documented and test-pinned without output schema or LSP drift. |
-| `reports/operator-cockpit` | ready | Add `target/ripr/reports/operator-cockpit.md` and `.json`, joining repo exposure, LSP cockpit, SARIF policy, badges, targeted-test outcome, and optional mutation calibration into one next-action surface. |
-| `ci/github-action-entrypoint` | blocked | Document a copyable GitHub Actions workflow that runs the defaults-first loop, uploads reports, keeps SARIF optional, documents badge artifacts, and separates advisory reporting from blocking policy. |
-| `editor/install-polish` | blocked | Document and verify the VS Code install path and existing commands after the operator cockpit exists, without adding unsaved-buffer overlays, CodeLens, inlay hints, semantic tokens, or new editor behavior. |
+| `reports/operator-cockpit` | done | `cargo xtask operator-cockpit` writes `target/ripr/reports/operator-cockpit.{json,md}` by joining existing repo exposure, LSP cockpit, SARIF policy, badge status, targeted-test outcome, and optional mutation calibration artifacts into one next-action surface. `operator-cockpit-report` remains an alias for existing automation. Missing inputs stay visible with generator commands; top weak seams carry why-it-matters text, a suggested targeted test, and best related-test context when available. The command does not rerun analysis or change static classifications. |
+| `ci/github-action-entrypoint` | ready | Document a copyable GitHub Actions workflow that runs the defaults-first loop, uploads reports, keeps SARIF optional, documents badge artifacts, and separates advisory reporting from blocking policy. |
+| `editor/install-polish` | blocked | Document and verify the VS Code install path and existing commands after the GitHub Action entrypoint exists, without adding unsaved-buffer overlays, CodeLens, inlay hints, semantic tokens, or new editor behavior. |
 | `fixtures/example-corpus` | blocked | Add a small public corpus for boundary gap, weak oracle, missing equality boundary, exact error variant, opaque fixture/builder, and one calibration sample. |
 | `release/install-polish` | blocked | Verify `cargo install`, GitHub Release binaries, VS Code server provisioning, README quickstart, and known-limits docs against the operator loop. |
 | `campaign/defaults-first-closeout` | blocked | Close the campaign after the install-to-targeted-test loop is demonstrated and the manifest points at the next real lane. |
@@ -931,7 +931,7 @@ Dependencies:
 
 - `defaults/config-init` landed first so every later surface can use the same
   default profile and mode vocabulary.
-- `reports/operator-cockpit` should land before GitHub Action and example-corpus
+- `reports/operator-cockpit` landed before GitHub Action and example-corpus
   work so the CI and demo paths have one canonical next-action artifact.
 - `editor/install-polish` should remain documentation/verification unless a
   regression appears in the existing saved-workspace contract.
@@ -939,6 +939,7 @@ Dependencies:
 Commands:
 
 ```bash
+cargo xtask operator-cockpit
 cargo xtask check-pr
 cargo xtask check-public-api
 cargo xtask check-architecture

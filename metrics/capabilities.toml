@@ -580,6 +580,23 @@ next = "campaign/modularization-stack-audit"
 metric = "targeted_test_outcome_available"
 
 [[capability]]
+id = "operator_cockpit"
+name = "Operator cockpit"
+status = "alpha"
+spec = "RIPR-SPEC-0009"
+evidence = [
+  "cargo xtask operator-cockpit-report",
+  "target/ripr/reports/operator-cockpit.json",
+  "target/ripr/reports/operator-cockpit.md",
+  "xtask/src/reports/operator.rs joins repo exposure, LSP cockpit, SARIF policy, badge status, targeted-test outcome, and optional mutation calibration",
+  "docs/OUTPUT_SCHEMA.md Operator Cockpit Report section",
+  "docs/TARGETED_TEST_WORKFLOW.md repo-local cockpit guidance"
+]
+fixtures = []
+next = "ci/github-action-entrypoint"
+metric = "operator_cockpit_available"
+
+[[capability]]
 id = "lsp_seam_diagnostics"
 name = "LSP seam diagnostics"
 status = "alpha"
