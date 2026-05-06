@@ -696,8 +696,8 @@ Work items:
 | `analysis/pipeline-extraction` | done | PR 2 (#245): Extracted diff and repo pipeline orchestration into `analysis/pipeline.rs` while preserving `run_analysis` and `run_repo_analysis` as stable facades. |
 | `diff/module-split` | done | PR 3 (#246): Split `analysis/diff.rs` into `diff/{mod,model,load,parse}.rs` with the parser and git-diff adapter behavior preserved. |
 | `workspace/module-split` | done | PR 4 (#247): Split workspace concerns into focused modules without changing workspace selection behavior. |
-| `probes/module-split` | ready | PR 5 (#249): Rebase after #247 and split probe concerns; preserve `sanitize_path` behavior for Unix paths, Windows-style paths, colons, and trimming. |
-| `facts/model-extraction` | pending | PR 6 (#251): Move fact DTOs into `analysis/facts/model.rs` after the probe split lands. |
+| `probes/module-split` | done | PR 5 (#249): Split probe concerns into focused modules and preserved `sanitize_path` behavior for Unix paths, Windows-style paths, colons, and trimming. |
+| `facts/model-extraction` | ready | PR 6 (#251): Move fact DTOs into `analysis/facts/model.rs` after the probe split lands. |
 | `syntax/adapter-extraction` | pending | PR 7: Move syntax adapters into `analysis/syntax/adapter.rs` |
 | `facts/builder-extraction` | pending | PR 8 (#253): Move index construction into `analysis/facts/build.rs` |
 | `syntax/ra-extraction` | pending | PR 8: Move parser-backed logic into `analysis/syntax/ra.rs` |

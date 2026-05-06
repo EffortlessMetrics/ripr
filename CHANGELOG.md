@@ -133,9 +133,10 @@ are scoped or reviewed.
   sequence after the workspace split, while #250 is parked for close or rewrite
   after the facts/syntax/build-index path stabilizes.
 - Started the Campaign 6 refactor stack by extracting summary/sort helpers,
-  pipeline orchestration, diff load/model/parse modules, and workspace
-  classify/discover/select modules without output, schema, or public API drift.
-  The next ready seam is the #249 probes module split.
+  pipeline orchestration, diff load/model/parse modules, workspace
+  classify/discover/select modules, and probe classify/config/diff/repo modules
+  without output, schema, or public API drift. The next ready seam is the #251
+  facts model extraction.
 - Added `cargo xtask targeted-test-outcome` as an advisory receipt for comparing
   before/after `repo-exposure-json` artifacts. The report writes
   `target/ripr/reports/targeted-test-outcome.{json,md}`, matches seams by
