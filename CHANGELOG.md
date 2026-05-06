@@ -219,6 +219,9 @@ are scoped or reviewed.
 - Moved `render_check` dispatch into `output/render.rs` while preserving the
   `app::render_check` public facade and output behavior. The next ready seam is
   CLI command model extraction.
+- Added a focused private `cli/command.rs` `CliCommand` enum for top-level CLI
+  command shape while preserving CLI parsing and dispatch behavior. The next
+  ready seam is parsed-command extraction.
 - Added `cargo xtask targeted-test-outcome` as an advisory receipt for comparing
   before/after `repo-exposure-json` artifacts. The report writes
   `target/ripr/reports/targeted-test-outcome.{json,md}`, matches seams by
