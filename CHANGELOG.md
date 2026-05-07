@@ -62,6 +62,9 @@ are scoped or reviewed.
 - Added operator cockpit status for the editor-agent loop artifacts:
   before/after snapshots, `agent verify`, `agent receipt`, movement counts,
   and missing-input commands aligned with the editor copy-command chain.
+- Added a canonical boundary-gap editor-agent loop fixture that pins agent
+  packet, agent brief, agent verify, agent receipt, and operator cockpit output
+  against the LSP diagnostic/action seam identity.
 
 ### Changed
 
@@ -78,6 +81,8 @@ are scoped or reviewed.
 - Routed `ripr agent brief --diff` and `--base` changed lines through existing
   owner-function facts so same-owner seams can rank as
   `changed_owner_function` before broad file fallback.
+- Normalized agent seam packet file paths to use stable `/` separators in
+  checked JSON, including related-test and recommended-test paths on Windows.
 - Made `ripr pilot` budget-aware with a default 30 second analysis timeout,
   `--timeout-ms` for explicit runs, and a versioned `pilot-summary.json` schema
   update that records complete versus partial timeout status.

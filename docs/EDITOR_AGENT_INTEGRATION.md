@@ -40,7 +40,7 @@ rewrite the active manifest explicitly.
 | Receipt | `ripr agent receipt` | Editor copy command is pinned; cockpit now reports artifact presence and receipt summary |
 | Cockpit | `cargo xtask operator-cockpit` | Joins before/after snapshots, agent verify JSON, agent receipt JSON, and missing-input commands |
 | CI | Generated workflow artifacts | Needs full loop artifacts uploaded |
-| Fixture | Boundary-gap and current examples | Needs canonical editor-agent loop fixture |
+| Fixture | Boundary-gap `expected/editor-agent-loop/` | Pins the canonical editor-agent loop fixture |
 | Install | `cargo install` plus VSIX proof | Needs installed binary plus packaged extension loop proof |
 
 ## Existing Surfaces
@@ -68,19 +68,18 @@ rewrite the active manifest explicitly.
 | --- | --- |
 | `lsp/agent-loop-copy-commands` | Done: seam diagnostics now expose command-oriented editor actions for agent packet, brief, after snapshot, verify, and receipt command text |
 | `operator/verify-receipt-status` | Done: cockpit joins before snapshot, after snapshot, agent verify JSON, agent receipt JSON, movement counts, and next commands |
-| `fixtures/editor-agent-loop` | Next: pin LSP diagnostics/actions, agent brief, agent packet, agent verify, agent receipt, and operator cockpit output in one canonical fixture |
-| `ci/editor-agent-artifacts` | Upload pilot summary, repo exposure, agent brief, agent packet, agent verify, agent receipt, operator cockpit, SARIF when enabled, and badge JSON as visible artifacts |
+| `fixtures/editor-agent-loop` | Done: boundary-gap pins LSP diagnostics/actions, agent brief, agent packet, agent verify, agent receipt, and operator cockpit output in one canonical fixture |
+| `ci/editor-agent-artifacts` | Next: upload pilot summary, repo exposure, agent brief, agent packet, agent verify, agent receipt, operator cockpit, SARIF when enabled, and badge JSON as visible artifacts |
 | `docs/full-evidence-loop` | Make the first-hour path explicit and state that `ripr init` is optional policy materialization, not activation |
 | `release/editor-agent-readiness-proof` | Run the editor-agent loop through installed CLI, packaged VSIX, package dry-run, and known-limits checks before closeout |
 
 ## Fixture Boundary
 
-Behavior-bearing work is blocked until the fixture contract exists. Before
-`fixtures/editor-agent-loop` lands, later PRs may add command surfaces or
-cockpit joins, but they must avoid output schema changes and explain any fixture
-drift. After that fixture lands, LSP diagnostics/actions, agent brief, agent
-packet, agent verify, agent receipt, and operator cockpit output become the
-load-bearing regression rail for this lane.
+The boundary-gap `expected/editor-agent-loop/` fixture is the load-bearing
+regression rail for this lane. Later PRs that change the diagnostic-to-receipt
+loop must explain any fixture drift and keep LSP diagnostics/actions, agent
+brief, agent packet, agent verify, agent receipt, and operator cockpit output
+aligned.
 
 ## Validation Packet
 

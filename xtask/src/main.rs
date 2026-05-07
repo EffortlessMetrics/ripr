@@ -21816,6 +21816,11 @@ jobs:
                 "targeted-test-outcome.json",
                 "mutation-calibration.json",
                 "lsp-code-actions.json",
+                "editor-agent-loop/agent-packet.json",
+                "editor-agent-loop/agent-brief.json",
+                "editor-agent-loop/agent-verify.json",
+                "editor-agent-loop/agent-receipt.json",
+                "editor-agent-loop/operator-cockpit.json",
             ] {
                 assert!(
                     text.contains(required_text),
@@ -21825,6 +21830,12 @@ jobs:
             for required_path in [
                 "fixtures/boundary_gap/expected/lsp-diagnostics.json",
                 "fixtures/boundary_gap/expected/lsp-code-actions.json",
+                "fixtures/boundary_gap/expected/editor-agent-loop/agent-packet.json",
+                "fixtures/boundary_gap/expected/editor-agent-loop/agent-brief.json",
+                "fixtures/boundary_gap/expected/editor-agent-loop/agent-verify.json",
+                "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json",
+                "fixtures/boundary_gap/expected/editor-agent-loop/operator-cockpit.json",
+                "fixtures/boundary_gap/expected/editor-agent-loop/operator-cockpit.md",
                 "fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json",
                 "fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json",
                 "fixtures/boundary_gap/calibration/targeted-test-outcome.json",

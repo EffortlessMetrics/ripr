@@ -1,0 +1,104 @@
+{
+  "config": {
+    "fingerprint": null,
+    "path": null,
+    "state": "missing"
+  },
+  "limits": {
+    "default": 3,
+    "hard_cap": 10,
+    "requested": 3,
+    "returned": 1
+  },
+  "mode": "draft",
+  "next": {
+    "inspect_packet": "ripr check --root fixtures/boundary_gap/input --mode draft --format agent-seam-packets-json > target/ripr/workflow/agent-seam-packets.json",
+    "verify_after_edit": "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+  },
+  "root": "fixtures/boundary_gap/input",
+  "schema_version": "0.1",
+  "scope": "working_set",
+  "tool": "ripr",
+  "top_seams": [
+    {
+      "assertion_shape": {
+        "example": "assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)",
+        "kind": "exact_return_value"
+      },
+      "candidate_values": [
+        {
+          "reason": "observed values do not include the equality-boundary case for this predicate",
+          "value": "discount_threshold (equality boundary)"
+        },
+        {
+          "reason": "predicate uses an equality-bearing operator; tests should exercise the boundary case",
+          "value": "input that hits the boundary: amount >= discount_threshold"
+        }
+      ],
+      "evidence": {
+        "activate": "yes",
+        "discriminate": "yes",
+        "observe": "yes",
+        "propagate": "yes",
+        "reach": "yes"
+      },
+      "expression": "amount >= discount_threshold",
+      "file": "src/lib.rs",
+      "grip_class": "weakly_gripped",
+      "headline_eligible": true,
+      "line": 2,
+      "missing_discriminators": [
+        {
+          "reason": "observed values do not include the equality-boundary case for this predicate",
+          "value": "discount_threshold (equality boundary)"
+        },
+        {
+          "reason": "predicate uses an equality-bearing operator; tests should exercise the boundary case",
+          "value": "input that hits the boundary: amount >= discount_threshold"
+        }
+      ],
+      "nearest_strong_test_to_imitate": {
+        "file": "tests/pricing.rs",
+        "line": 4,
+        "name": "below_threshold_has_no_discount",
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "relation_confidence": "high",
+        "relation_reason": "direct_owner_call"
+      },
+      "owner": "src/lib.rs::discounted_total",
+      "packet_ref": {
+        "format": "agent-seam-packets-json",
+        "seam_id": "67fc764ba37d77bd"
+      },
+      "recommended_test": {
+        "file": "tests/pricing.rs",
+        "name": "discounted_total_boundary_discriminator",
+        "reason": "place the new targeted test next to the nearest strong related test"
+      },
+      "seam_id": "67fc764ba37d77bd",
+      "seam_kind": "predicate_boundary",
+      "severity": "warning",
+      "verification": {
+        "after_snapshot_command": "ripr check --root fixtures/boundary_gap/input --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json",
+        "before_snapshot_command": "ripr check --root fixtures/boundary_gap/input --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json",
+        "suggested_test_command": "cargo test discounted_total_boundary_discriminator",
+        "verify_command": "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+      },
+      "why_now": {
+        "confidence": "high",
+        "evidence": "caller requested seam_id 67fc764ba37d77bd",
+        "reason": "explicit_seam_id"
+      }
+    }
+  ],
+  "warnings": [],
+  "working_set": {
+    "base": null,
+    "changed_lines": [],
+    "diff": null,
+    "files": [],
+    "seam_id": "67fc764ba37d77bd",
+    "source": "seam_id"
+  }
+}

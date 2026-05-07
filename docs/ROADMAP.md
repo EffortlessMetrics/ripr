@@ -75,7 +75,7 @@ bounded cold run can fill the classified-seam cache, after which the default
 The budget-aware pilot path has first-screen Markdown and terminal copy that
 states the inspected seam, why it matters, the focused test to write, and the
 before/after commands. Campaign 10 is now active for editor-agent integration.
-Its next ready item is `operator/verify-receipt-status`, and its goal is to make
+Its next ready item is `ci/editor-agent-artifacts`, and its goal is to make
 the saved-workspace diagnostic, evidence, packet/brief, focused-test,
 after-snapshot, verify, receipt, cockpit, CI, and install surfaces line up as
 one loop. The 0.4 release-surface requirements are a gate inside that lane, not

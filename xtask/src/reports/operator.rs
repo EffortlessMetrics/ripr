@@ -1281,6 +1281,64 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn operator_cockpit_matches_editor_agent_loop_fixture() -> Result<(), String> {
+        let root = temp_report_dir("editor-agent-loop")?;
+        let dir = root.join("target/ripr/reports");
+        fs::create_dir_all(&dir)
+            .map_err(|err| format!("failed to create {}: {err}", dir.display()))?;
+        let repo = repo_root();
+        let fixture = repo.join("fixtures/boundary_gap/expected/editor-agent-loop");
+        let calibration = repo.join("fixtures/boundary_gap/calibration");
+
+        copy_file(
+            &calibration.join("before-targeted-test.repo-exposure.json"),
+            &dir.join("repo-exposure.json"),
+        )?;
+        copy_file(
+            &calibration.join("before-targeted-test.repo-exposure.json"),
+            &workspace_artifact_path(&dir, BEFORE_SNAPSHOT_ARTIFACT),
+        )?;
+        copy_file(
+            &calibration.join("after-targeted-test.repo-exposure.json"),
+            &workspace_artifact_path(&dir, AFTER_SNAPSHOT_ARTIFACT),
+        )?;
+        copy_file(
+            &calibration.join("targeted-test-outcome.json"),
+            &dir.join("targeted-test-outcome.json"),
+        )?;
+        copy_file(
+            &fixture.join("agent-verify.json"),
+            &workspace_artifact_path(&dir, AGENT_VERIFY_ARTIFACT),
+        )?;
+        copy_file(
+            &fixture.join("agent-receipt.json"),
+            &workspace_artifact_path(&dir, AGENT_RECEIPT_ARTIFACT),
+        )?;
+        write_json(
+            &dir,
+            "lsp-cockpit.json",
+            &serde_json::json!({
+                "schema_version": "0.1",
+                "status": "pass",
+                "fixtures": [{"fixture": "boundary_gap"}],
+                "vscode_e2e": {"uncovered_contributed_commands": []}
+            }),
+        )?;
+
+        let report = build_operator_cockpit_report_at(&dir);
+        let json = normalize_fixture_output(&operator_cockpit_json(&report)?, &root);
+        let markdown = normalize_fixture_output(&operator_cockpit_markdown(&report), &root);
+        let expected_json = fs::read_to_string(fixture.join("operator-cockpit.json"))
+            .map_err(|err| format!("failed to read operator cockpit fixture JSON: {err}"))?;
+        let expected_markdown = fs::read_to_string(fixture.join("operator-cockpit.md"))
+            .map_err(|err| format!("failed to read operator cockpit fixture Markdown: {err}"))?;
+
+        assert_eq!(json, normalize_newlines(&expected_json));
+        assert_eq!(markdown, normalize_newlines(&expected_markdown));
+        Ok(())
+    }
+
     fn temp_report_dir(label: &str) -> Result<PathBuf, String> {
         let duration = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1293,6 +1351,13 @@ mod tests {
         fs::create_dir_all(&dir)
             .map_err(|err| format!("failed to create {}: {err}", dir.display()))?;
         Ok(dir)
+    }
+
+    fn repo_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."))
     }
 
     fn write_json(dir: &Path, file: &str, value: &Value) -> Result<(), String> {
@@ -1308,5 +1373,29 @@ mod tests {
             .map_err(|err| format!("failed to render test JSON: {err}"))?;
         fs::write(path, rendered)
             .map_err(|err| format!("failed to write test report {}: {err}", path.display()))
+    }
+
+    fn copy_file(source: &Path, destination: &Path) -> Result<(), String> {
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|err| format!("failed to create {}: {err}", parent.display()))?;
+        }
+        fs::copy(source, destination).map_err(|err| {
+            format!(
+                "failed to copy {} to {}: {err}",
+                source.display(),
+                destination.display()
+            )
+        })?;
+        Ok(())
+    }
+
+    fn normalize_fixture_output(text: &str, root: &Path) -> String {
+        let root_prefix = format!("{}/", normalize_path(root));
+        normalize_newlines(text).replace(&root_prefix, "")
+    }
+
+    fn normalize_newlines(text: &str) -> String {
+        text.replace("\r\n", "\n")
     }
 }
