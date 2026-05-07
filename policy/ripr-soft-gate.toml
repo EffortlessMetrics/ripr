@@ -50,9 +50,13 @@ ignore_finding_classes = [
 # the `pull_request.labels[].name` payload (see "--labels-json contract"
 # in docs/ci/ripr-soft-gate.md).
 #
-# These labels also appear in policy/ci-budget.toml `[labels]`, which is
-# the canonical vocabulary for the wider CI economics rollout. This file
-# duplicates them locally so the soft-gate has a self-contained config.
+# CANONICAL SOURCE: policy/ci-budget.toml `[labels]` is the canonical
+# vocabulary for the wider CI economics rollout (forward reference;
+# ships in PR 02 of the rollout — this file is therefore the canonical
+# source for the soft-gate's view of the vocabulary until PR 02 lands,
+# and a mirror after that). Edits to label names should land in
+# policy/ci-budget.toml first; this file is intentionally a duplicate
+# so the soft-gate config is self-contained.
 [labels]
 waive = "ripr-waive"
 full_ci = "full-ci"

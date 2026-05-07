@@ -69,17 +69,25 @@ reviewers can see when it has been used.
 ## Suppression file
 
 Long-lived suppressions live in `.ripr/suppressions.toml` (canonical;
-loaded by `crates/ripr/src/config.rs`). The entries follow the schema
-documented in `docs/OUTPUT_SCHEMA.md` and `docs/CONFIGURATION.md`. Each
-suppression must record:
+loaded by `crates/ripr/src/config.rs`; parser in
+`crates/ripr/src/output/suppressions.rs`). The entries follow the schema
+documented in `docs/OUTPUT_SCHEMA.md`, `docs/CONFIGURATION.md`, and
+`docs/RIPR_EVIDENCE_POLICY.md`. Each suppression must record:
 
-- a unique `id`,
+- a `kind` (`exposure_gap` or `test_efficiency`),
+- the kind-specific selector — `finding_id` for `exposure_gap`, or
+  `test` (with optional `path` narrowing) for `test_efficiency`,
 - an `owner` (team/area),
-- a `reason`,
-- an `expires` date.
+- a `reason`.
 
-Expired suppressions fail the gate. Suppressions are reviewed at every
-release readiness check.
+`expires` (ISO-8601 `YYYY-MM-DD`) is optional. Expired entries do not
+apply and surface as warnings on the badge (matching the `suppressions/v1`
+policy in `docs/IMPLEMENTATION_CAMPAIGNS.md`); they do not hard-fail the
+gate. Suppressions are reviewed at every release readiness check.
+
+Identity is `(kind, selector)`: for `exposure_gap` the `finding_id`
+itself is the unique key; for `test_efficiency` the `(test, path)` pair
+is. There is no separate top-level `id` field.
 
 ## Implementation posture
 
