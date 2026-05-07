@@ -552,7 +552,7 @@ evidence = [
   "OUTPUT_SCHEMA.md Agent Seam Packets section"
 ]
 fixtures = []
-next = "campaign/modularization-stack-audit"
+next = "fixtures/editor-agent-loop"
 metric = "packet carries missing discriminator + suggested assertion templates"
 
 [[capability]]
@@ -572,7 +572,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "campaign/hot-sidecar-latency-closeout"
+next = "ci/editor-agent-artifacts"
 metric = "pilot_packet_generated"
 
 [[capability]]
@@ -613,7 +613,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/opaque_fixture_builder"
 ]
-next = "campaign/hot-sidecar-latency-closeout"
+next = "operator/verify-receipt-status"
 metric = "operator_cockpit_available"
 
 [[capability]]
@@ -636,7 +636,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "editor-contract-maintenance"
+next = "fixtures/editor-agent-loop"
 metric = "seam_id in diagnostic.data is the hover lookup key"
 
 [[capability]]
@@ -656,7 +656,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "editor-contract-maintenance"
+next = "fixtures/editor-agent-loop"
 metric = "hover renders evidence path from ClassifiedSeam, never parses diagnostic message"
 
 [[capability]]
@@ -677,7 +677,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "editor-contract-maintenance"
+next = "lsp/agent-loop-copy-commands"
 metric = "seam diagnostics expose packet/assertion/test actions without automatic edits"
 
 [[capability]]

@@ -55,6 +55,7 @@ the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 
 ## Current Handoffs
 
+- [Editor agent integration contract audit](2026-05-07-editor-agent-integration-contract-audit.md)
 - [Campaign 7 closeout](2026-05-07-campaign-7-closeout.md)
 - [Campaign 8 closeout](2026-05-07-campaign-8-closeout.md)
 - [Hot sidecar latency audit](2026-05-07-hot-sidecar-latency-audit.md)

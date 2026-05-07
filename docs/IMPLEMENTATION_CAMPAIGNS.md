@@ -1182,7 +1182,7 @@ Audit notes:
   about 33 seconds, stored the classified-seam cache, and the following default
   30-second report passed on cache hits (`repo-exposure-json` about 14.6
   seconds, `repo-exposure-md` about 13.4 seconds). Campaign 9 is closed and the
-  active manifest now moves to Campaign 10 release-surface hardening.
+  active manifest now moves to Campaign 10 editor-agent integration.
 
 Landed PR chain:
 
@@ -1196,59 +1196,74 @@ Landed PR chain:
 - #451 `cache: index repo evidence hot path`
 - #454 `campaign: close hot sidecar latency proof`
 
-## Campaign 10: 0.4 Release Surface Hardening
+## Campaign 10: Editor Agent Integration
 
-Campaign ID: `release-surface-0-4`
+Campaign ID: `editor-agent-integration`
 
 Status: active
 
 Objective:
 
 ```text
-Make RIPR 0.4.0 usable in the first hour by proving the existing install,
-pilot, outcome, agent verify, editor, CI, latency, example, and known-limit
-surfaces from repo artifacts.
+Make the saved-workspace editor loop and the agent CLI loop line up:
+diagnostic -> evidence -> packet or brief -> targeted test -> verify -> receipt
+-> cockpit and CI artifacts.
 ```
 
 Why it matters:
 
-Campaigns 7 through 9 made the defaults-first loop real, bounded, and faster on
-warm paths. The next product risk is not missing analyzer scope; it is whether
-a new user can install RIPR, run `ripr pilot`, add one focused test, run
-`ripr outcome` or `ripr agent verify`, and understand what to show in review
-without reading the internal report taxonomy first.
+Campaigns 4B, 7, 8, and 9 made the major product pieces real:
+saved-workspace seam diagnostics, hovers, copyable packets and briefs, repo
+exposure, operator cockpit, advisory CI, badge artifacts, calibration imports,
+and a bounded pilot path. #457 and #458 added `ripr agent verify` and
+`ripr agent receipt`. The next product risk is not another analyzer capability;
+it is that users and agents still have to stitch the editor, CLI, receipt,
+cockpit, and CI surfaces together by hand.
+
+#463 briefly changed the active lane to `release-surface-0-4`. This campaign
+keeps the active product lane as editor-agent integration and carries the useful
+release-readiness requirements as `release/editor-agent-readiness-proof` before
+closeout.
 
 End state:
 
-- a release-readiness report proves CLI, agent verify, LSP, CI, latency,
-  install, examples, VSIX, and known-limit surfaces from repo artifacts
-- checked real-repo pilot receipts record exactly what RIPR reported, what was
-  useful, what was noisy, and what limits remain
-- the landing path explains install, `ripr pilot`, one focused test,
-  `ripr outcome`, `ripr agent verify`, editor, CI, and known limits before
-  internal report details
-- 0.4.0 release prep is backed by package, publish dry-run, install, VSIX,
-  release-doc, and marketplace proof
+- a saved-workspace seam diagnostic exposes the same evidence and next commands
+  as the agent CLI path
+- users can copy the agent packet or brief, after-snapshot command, verify
+  command, and receipt command without automatic edits
+- `operator-cockpit` joins existing before/after, verify, receipt, SARIF, badge,
+  LSP, and optional calibration reports without rerunning analysis
+- one fixture pins the full editor-agent loop from LSP expectations through
+  agent packet, verify, receipt, and cockpit output
+- generated CI uploads the editor-agent artifacts as visible non-blocking
+  evidence first
+- installed CLI, packaged VSIX, package dry-run, and known-limits proof cover
+  the loop before closeout
 
 Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `release/readiness-report` | ready | Add the 0.4 release-readiness report and its xtask command. It should prove CLI, agent verify, LSP, CI, latency, install, examples, VSIX, and known-limits surfaces from repo artifacts without changing analyzer behavior. The command is intentionally not listed in `.ripr/goals/active.toml` until that PR adds it to the xtask catalog. |
-| `examples/real-repo-pilot-receipts` | blocked | Blocked on `release/readiness-report` so dogfood receipts match the release proof surface and verification command. Include `agent-verify.json` when a before/after agent receipt exists. Do not invent metrics, include sensitive source excerpts, or overclaim. |
-| `docs/0-4-landing-path` | blocked | Blocked on `examples/real-repo-pilot-receipts` so the landing path points at current proof rather than planned artifacts. Rewrite around install, `ripr pilot`, one focused test, `ripr outcome`, `ripr agent verify`, editor, CI, and known limits. |
-| `release/0-4-0-prep` | blocked | Blocked on readiness, dogfood receipts, and landing docs. Prepare 0.4.0 with crate, install, VSIX, release-doc, and marketplace proof. |
-| `campaign/0-4-release-surface-closeout` | blocked | Blocked on `release/0-4-0-prep`. Close the campaign after readiness, receipts, landing docs, and release prep proof are landed. |
+| `editor-agent/integration-contract-audit` | done | Define the editor-agent integration contract and inventory current CLI, LSP, VS Code, agent, receipt, cockpit, CI, fixture, install, and release-readiness surfaces. Docs/manifest only. |
+| `lsp/agent-loop-copy-commands` | ready | Expose command-oriented copy actions for agent packet, brief, after-snapshot, verify, and receipt commands from seam diagnostics. No automatic edits, CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays. |
+| `operator/verify-receipt-status` | blocked | Blocked on `lsp/agent-loop-copy-commands` so `operator-cockpit` can report missing before/after snapshots, agent verify JSON, agent receipt JSON, movement counts, and next commands that match editor copy commands. |
+| `fixtures/editor-agent-loop` | blocked | Blocked on LSP commands and cockpit joins. Add a canonical fixture that pins LSP diagnostics/actions, agent brief, agent packet, agent verify, agent receipt, and operator cockpit outputs for the full evidence loop. |
+| `ci/editor-agent-artifacts` | blocked | Blocked on `fixtures/editor-agent-loop`. Make the generated GitHub workflow upload non-blocking editor-agent loop artifacts: pilot summary, repo exposure, agent brief, agent packet, agent verify, agent receipt, operator cockpit, SARIF when enabled, and badge JSON. |
+| `docs/full-evidence-loop` | blocked | Blocked on fixture and CI artifacts. Update quickstart and installed-user docs around the real diagnostic-to-receipt loop and state that `ripr init` is optional policy materialization, not activation. |
+| `release/editor-agent-readiness-proof` | blocked | Blocked on `docs/full-evidence-loop`. Absorb the release-surface requirements from #463 by showing installed CLI, packaged VSIX, package dry-run, known limits, and the editor-agent loop without replacing the campaign lane. |
+| `campaign/editor-agent-integration-closeout` | blocked | Blocked on `release/editor-agent-readiness-proof`. Close Campaign 10 after editor, agent, cockpit, CI, fixture, docs, and release-readiness proof are aligned with no new public crates, runtime execution, automatic edits, or speculative editor features. |
 
 Commands:
 
 ```bash
-cargo xtask check-output-contracts
-cargo xtask check-static-language
 cargo xtask check-campaign
 cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-output-contracts
+cargo xtask check-static-language
 cargo xtask check-pr
-cargo test --workspace
 ```
 
 Blocking conditions:
@@ -1256,7 +1271,8 @@ Blocking conditions:
 - new analyzer families
 - LSP feature expansion
 - unsaved-buffer overlays
-- runtime mutation execution
+- runtime execution
 - CI blocking by default
 - SARIF or badge schema churn unless explicitly versioned
-- broad refactors mixed into release-surface proof
+- broad refactors mixed into release-readiness proof
+- replacing the editor-agent integration lane without an explicit product pivot

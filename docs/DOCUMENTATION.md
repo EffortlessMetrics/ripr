@@ -101,6 +101,7 @@ Current explanation docs:
 - [Specs](specs/)
 - [Agent workflows](AGENT_WORKFLOWS.md)
 - [Agent dispatch workflow](AGENT_DISPATCH_WORKFLOW.md)
+- [Editor agent integration](EDITOR_AGENT_INTEGRATION.md)
 
 ## README Rule
 
