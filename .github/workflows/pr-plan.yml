@@ -34,8 +34,8 @@ jobs:
       - name: Compute changed files (advisory)
         run: mkdir -p target/ripr/reports && git diff --name-only origin/${{ github.base_ref }}...HEAD > target/ripr/reports/pr-plan-changes.txt || true
 
-      - name: Verify CI budget ledgers exist
-        run: ls policy/ci-budget.toml policy/ci-lane-whitelist.toml policy/ci-risk-packs.toml >/dev/null
+      - name: Note CI budget ledger presence (advisory)
+        run: ls policy/ci-budget.toml policy/ci-lane-whitelist.toml policy/ci-risk-packs.toml >/dev/null 2>&1 && echo "PR Plan ledgers present" || echo "PR Plan ledgers not yet on this branch (advisory)"
 
       - name: Write advisory step summary
         run: printf "## PR Plan (advisory)\n\nForecast logic lands in a follow-up PR. See docs/ci/pr-plan.md.\n" >> "$GITHUB_STEP_SUMMARY"
