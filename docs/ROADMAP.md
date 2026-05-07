@@ -64,19 +64,18 @@ boundary-gap seam packet, outcome receipt, and optional calibration loop.
 Campaign 8 is closed; the runtime calibration fixture expansion now has a
 checked supplied-data sample for the main static/runtime agreement buckets, and
 runtime mutation vocabulary remains confined to explicit calibration reports.
-The active item is a hot-sidecar latency proof lane that measures current cache
-and saved-workspace editor refresh behavior before changing warm-path reuse.
-That audit found the existing LSP/operator proof commands are cheap on a warm
-local build, while `cargo xtask repo-exposure-report` did not finish within a
-20-minute local timeout. Bounded repo-exposure latency reporting now records
-cache collection, cache load hit/miss/corrupt state, file-fact cache reuse,
-cold compute, cache store, and total phase timing without changing repo-exposure
+Campaign 9 is closed; bounded repo-exposure latency reporting now records cache
+collection, cache load hit/miss/corrupt state, file-fact cache reuse, cold
+compute, cache store, and total phase timing without changing repo-exposure
 outputs. File-fact warm reuse improved the measured index-build subphase, and
-full repo evidence now reuses precomputed related-test and value-resolution
-facts. The budget-aware pilot path now has first-screen Markdown and terminal
-copy that states the inspected seam, why it matters, the focused test to write,
-and the before/after commands. The active item is now
-`campaign/hot-sidecar-latency-closeout`.
+the repo evidence hot path now uses indexed related-test candidates, lazy
+value-resolution facts, and owned classification handoff. Current proof shows a
+bounded cold run can fill the classified-seam cache, after which the default
+30-second repo-exposure latency report passes on JSON and Markdown cache hits.
+The budget-aware pilot path has first-screen Markdown and terminal copy that
+states the inspected seam, why it matters, the focused test to write, and the
+before/after commands. No next active product campaign is opened yet; choose it
+explicitly from the remaining roadmap before starting new work.
 
 ## Strategic Sequence
 
