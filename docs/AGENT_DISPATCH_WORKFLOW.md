@@ -77,6 +77,24 @@ The planned surface is intentionally CLI-first. It does not change cache
 semantics, editor refresh behavior, LSP protocol, runtime calibration fixtures,
 or release/install docs.
 
+Static examples in
+[`RIPR-SPEC-0010`](specs/RIPR-SPEC-0010-agent-working-set-brief.md)
+and [`OUTPUT_SCHEMA.md`](OUTPUT_SCHEMA.md#agent-working-set-brief) show the
+expected routing shape:
+
+- a diff-scoped brief ranks the seam on the changed line first with
+  `why_now.reason = changed_line_intersects_seam`;
+- a file-scoped brief returns at most three seams by default and reports the
+  default and hard caps;
+- a seam-ID lookup returns the requested visible seam first and points to the
+  full `agent-seam-packets-json` packet;
+- a configured-off or suppressed seam is omitted from `top_seams` and reported
+  as an advisory warning, not dumped as a hidden packet.
+
+The examples are static documentation examples. They do not require new
+fixture generation and do not imply the CLI command exists before the
+implementation PR.
+
 ### 1. Run `ripr`
 
 Two entry points:
