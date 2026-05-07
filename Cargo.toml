@@ -80,6 +80,19 @@ out_of_bounds_indexing = "deny"
 # AST text ranges that are guaranteed valid. Flipping requires per-call
 # review and is tracked in policy/clippy-lints.toml.
 
+# API and trait correctness: types whose implementations don't match the
+# trait contract are quiet bugs. `iter_not_returning_iterator` catches
+# methods named `iter*` that don't actually return iterators;
+# `expl_impl_clone_on_copy` catches manual Clone over derived Copy;
+# `infallible_try_from` and `fallible_impl_from` catch From/TryFrom
+# mismatches; `error_impl_error` catches types that name themselves
+# `Error` but don't implement the `Error` trait.
+iter_not_returning_iterator = "deny"
+expl_impl_clone_on_copy = "deny"
+infallible_try_from = "deny"
+fallible_impl_from = "deny"
+error_impl_error = "deny"
+
 # Suppression governance.
 # `allow_attributes` itself stays advisory: some `#[expect]` migrations
 # would fail because the underlying lint only fires in some builds (e.g.
