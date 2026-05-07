@@ -486,31 +486,172 @@ but does not write source files or generated tests.
 Planned tests:
 
 - `agent_brief_ranks_changed_line_intersection_first`
+- `agent_brief_ranks_explicit_seam_id_first`
 - `agent_brief_ranks_changed_owner_before_same_file_fallback`
 - `agent_brief_caps_default_to_three_seams`
 - `agent_brief_rejects_or_clamps_above_hard_cap`
 - `agent_brief_respects_configured_off_severity`
 - `agent_brief_omits_suppressed_seams`
 - `agent_brief_includes_config_fingerprint_without_source_text`
+- `agent_brief_reuses_agent_packet_assertion_shape`
 - `agent_brief_includes_verification_commands`
 - `agent_brief_json_shape_is_stable`
 
 ## Implementation Mapping
 
-Planned implementation modules:
+The first implementation should be CLI-first and JSON-only. It should add a
+thin routing layer over existing repo exposure and agent seam packet evidence,
+not a new analyzer. The implementation PR should keep these seams separate so
+reviewers can verify that ranking, rendering, policy filtering, and command
+construction remain behavior-preserving.
 
-- `crates/ripr/src/cli/commands.rs` for the public `ripr agent brief`
-  command entry.
-- `crates/ripr/src/cli/parse.rs` for `agent brief` argument parsing.
-- `crates/ripr/src/app.rs` for config-aware use-case orchestration.
-- `crates/ripr/src/output/agent_brief.rs` for JSON rendering.
-- `crates/ripr/src/output/agent_seam_packets.rs` as the source of full packet
-  fields reused by brief entries.
-- `crates/ripr/src/analysis/seam_inventory.rs` and
-  `crates/ripr/src/analysis/seam_classification.rs` as evidence sources.
+### CLI parsing
 
-Implementation should wait until the latency and cache-observation lane has
-settled or explicitly cleared any shared analysis/cache surfaces.
+Planned files:
+
+- `crates/ripr/src/cli/parse.rs`
+- `crates/ripr/src/cli/commands.rs`
+- `crates/ripr/src/cli/help.rs`
+
+Responsibilities:
+
+- parse `ripr agent brief`;
+- require exactly one of `--diff`, `--base`, `--files`, or `--seam-id`;
+- accept `--json`;
+- accept a future `--max-seams <n>` while enforcing `limits.hard_cap = 10`;
+- keep the command JSON-only until the schema is implemented and pinned.
+
+Parsing should not run analysis or rank seams. It should produce a typed
+request for the app layer.
+
+### App orchestration
+
+Planned files:
+
+- `crates/ripr/src/app.rs` or a narrow `crates/ripr/src/app/agent_brief.rs`
+  module if the app layer is already split;
+- existing config loading code for effective mode, suppressions, severity, and
+  config fingerprint metadata.
+
+Responsibilities:
+
+- load repo config and explicit CLI overrides using the existing precedence
+  rules;
+- resolve the working set from the selected input mode;
+- call existing repo seam exposure and agent seam packet paths;
+- pass classified seams and packet summaries into the working-set selector;
+- return a render-ready model to the output layer.
+
+The app layer may invoke existing analysis/reporting functions. It must not
+change cache invalidation, hot sidecar lifetime, latency reporting, or editor
+refresh behavior.
+
+### Working-set selector
+
+Planned file:
+
+- `crates/ripr/src/analysis/agent_brief.rs` or
+  `crates/ripr/src/app/agent_brief.rs`, depending on whether the selector is
+  kept as pure ranking logic or use-case orchestration.
+
+Responsibilities:
+
+- map `--diff` input to changed file/line records;
+- map `--base` input to changed file/line records through existing diff
+  helpers;
+- map `--files` input to normalized repo-relative paths;
+- map `--seam-id` input to an explicit seam selector;
+- rank visible seams with the reason order from this spec;
+- apply stable tie-breakers;
+- cap default output at three seams and hard-cap requests at ten;
+- produce warning records for capped, hidden, or line-data-limited results.
+
+The selector should use existing seam IDs, owners, line numbers, grip classes,
+related tests, observed values, missing discriminators, and packet fields. It
+should not classify new seam states or infer new oracle semantics.
+
+### Evidence and packet inputs
+
+Existing sources:
+
+- repo exposure / classified seam output for `seam_id`, `owner`, `seam_kind`,
+  `file`, `line`, `expression`, `grip_class`, `headline_eligible`, RIPR stage
+  evidence, related tests, observed values, and missing discriminators;
+- agent seam packets for `recommended_test`, `nearest_strong_test_to_imitate`,
+  `candidate_values`, `assertion_shape`, and full-packet references;
+- repo config for severity, suppressions, and config fingerprint metadata.
+
+If a field is not visible in existing evidence, the brief should omit that
+field or report `unknown` confidence. It should not fabricate test names,
+expected values, or assertion results.
+
+### Policy and suppression filtering
+
+Planned input:
+
+- existing `ripr.toml` severity mapping and suppression handling.
+
+Responsibilities:
+
+- omit configured `off` seams from `top_seams`;
+- omit suppressed seams from `top_seams` unless a future explicit mode asks for
+  hidden results;
+- emit advisory warning strings for hidden matching seams;
+- keep suppressed/off seam packets undisclosed in the brief.
+
+This keeps the brief aligned with SARIF and badge visibility rules while still
+letting the agent understand that policy affected the routing result.
+
+### JSON renderer
+
+Planned file:
+
+- `crates/ripr/src/output/agent_brief.rs`
+
+Responsibilities:
+
+- render schema version `0.1`;
+- preserve the field names and reason vocabulary in this spec;
+- render deterministic ordering;
+- keep output smaller than full agent seam packets;
+- render config fingerprint metadata without config source text;
+- preserve static language and avoid runtime mutation result vocabulary.
+
+The renderer should not compute ranking, policy, or evidence. It renders the
+model it receives.
+
+### Verification command construction
+
+Planned file:
+
+- either the app-layer brief module or a small helper near the output model.
+
+Responsibilities:
+
+- include a before snapshot command using `ripr check --format
+  repo-exposure-json`;
+- include an after snapshot command using the same mode and root;
+- include a receipt command using existing `ripr outcome` behavior;
+- include a focused test command only when a recommended or nearest test name is
+  visible enough to make the command concrete.
+
+Verification commands are advisory. They must not run automatically and must
+not write source files.
+
+### Implementation order
+
+Preferred narrow PR order:
+
+1. CLI parsing and typed request model.
+2. Working-set selector over checked-in or unit-test fixtures.
+3. JSON render model and renderer.
+4. Config/severity/suppression filtering.
+5. Verification command construction.
+6. End-to-end CLI smoke tests.
+
+Each step should preserve the hard boundaries in this spec. Implementation
+should wait until the latency and cache-observation lane has settled or
+explicitly cleared any shared analysis/cache surfaces.
 
 ## Metrics
 

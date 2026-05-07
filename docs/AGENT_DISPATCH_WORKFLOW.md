@@ -95,6 +95,13 @@ The examples are static documentation examples. They do not require new
 fixture generation and do not imply the CLI command exists before the
 implementation PR.
 
+The spec also maps the implementation seams that future PRs should preserve:
+CLI parsing, app orchestration, working-set selection, existing repo
+exposure/agent-packet inputs, policy filtering, JSON rendering, and
+verification command construction. The intended first implementation remains
+CLI-first and JSON-only; LSP and MCP wrappers should wait until this contract
+has stable CLI tests.
+
 ### 1. Run `ripr`
 
 Two entry points:
