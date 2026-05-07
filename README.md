@@ -138,7 +138,7 @@ Check local tooling and workspace shape:
 ripr doctor
 ```
 
-Run a zero-config pilot packet with built-in conservative defaults:
+Run a zero-config pilot packet with built-in defaults (no `ripr.toml` required):
 
 ```bash
 ripr pilot
@@ -172,8 +172,9 @@ Check the current Git diff against `origin/main` with built-in defaults:
 ripr check --base origin/main
 ```
 
-Optionally materialize conservative repo policy so the team can review and tune
-it:
+`ripr.toml` is optional. `ripr init` is **only** for teams that want to commit
+repo-local policy they can review, version, and tune. It writes the same
+built-in defaults to `ripr.toml`; it does not unlock basic usefulness.
 
 ```bash
 ripr init

@@ -92,9 +92,10 @@ every report artifact first.
 The current LSP model remains saved-workspace analysis. Unsaved-buffer overlays
 are not enabled by default. The defaults-first target is useful bounded editor
 feedback without requiring `ripr init`: saved-workspace diagnostics, hovers,
-briefs, related-test navigation, and refresh status should be available through
-conservative built-in defaults. When a repository adds `ripr.toml`, that repo
-policy makes the same defaults explicit and reviewable, or tunes them quieter.
+briefs, related-test navigation, and refresh status are available through
+built-in defaults. `ripr init` is optional; when a team commits `ripr.toml`,
+that repo policy makes the same defaults explicit and reviewable, or tunes them
+quieter.
 
 ## Commands
 

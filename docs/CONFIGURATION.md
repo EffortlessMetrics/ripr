@@ -22,9 +22,10 @@ repo-root `ripr.toml` file. It pairs with:
 environment variables, or hidden alternate config files.
 
 Configuration is for policy and tuning, not a prerequisite for first value.
-Missing `ripr.toml` is healthy and uses built-in conservative defaults. `ripr
-init` materializes those defaults into repo-owned policy so teams can review
-and tune them; it is not the switch that makes RIPR useful. The defaults-first
+`ripr.toml` is optional, and missing config is the normal first-run state — it
+uses built-in defaults. `ripr init` is **only** for teams that want to commit
+those defaults to disk so they can review, version, and tune repo policy; it
+does not unlock basic usefulness or enable a stronger mode. The defaults-first
 adoption contract in
 [RIPR-SPEC-0009](specs/RIPR-SPEC-0009-defaults-first-adoption.md) defines the
 missing-config and generated-config behavior that must remain advisory.
@@ -33,8 +34,9 @@ missing-config and generated-config behavior that must remain advisory.
 
 The built-in missing-config profile and the `ripr init` generated profile are
 intended to be policy-equivalent. `ripr init` writes that policy into
-`ripr.toml` so a team can review and tune it; it does not enable a stronger or
-more useful mode than the zero-config default.
+`ripr.toml` so a team can review, version, and tune it; it does not enable a
+stronger or more useful mode than the zero-config default. Most users do not
+need to run it.
 
 | Surface | Default policy |
 | --- | --- |
@@ -79,12 +81,13 @@ and [`crates/ripr/src/app.rs`](../crates/ripr/src/app.rs).
 
 ### `ripr init`
 
-Creates a conservative repo-local `ripr.toml` at the selected workspace root.
-The generated profile records the built-in conservative defaults as repo policy
-so they can be reviewed and changed. With `--ci github`, it also writes a
-non-blocking GitHub Actions workflow for pilot/report artifacts and optional
-SARIF rendering/upload. It does not run mutation testing, enable CI blocking
-policy, or unlock basic CLI usefulness.
+Optional. Writes a repo-local `ripr.toml` at the selected workspace root that
+materializes the built-in defaults as repo policy so a team can review, commit,
+and tune them. `ripr.toml` is not required — missing config uses the same
+defaults. With `--ci github`, `ripr init` also writes a non-blocking GitHub
+Actions workflow for pilot/report artifacts and optional SARIF rendering/upload.
+It does not run mutation testing, enable CI blocking policy, or unlock basic
+CLI usefulness.
 
 ```text
 ripr init [--root PATH] [--ci github] [--dry-run] [--force]
@@ -100,8 +103,8 @@ ripr init [--root PATH] [--ci github] [--dry-run] [--force]
 ### `ripr pilot`
 
 Runs the zero-config first-run repo evidence path and writes a pilot packet.
-Missing `ripr.toml` is healthy; the command uses built-in conservative defaults
-unless repo policy or explicit flags override them.
+Missing `ripr.toml` is the normal first-run state; the command uses built-in
+defaults unless repo policy or explicit flags override them.
 
 ```text
 ripr pilot [--root PATH] [--out PATH] [--mode MODE] [--max-seams N]
@@ -492,10 +495,11 @@ change analysis intent.
 The example file ([`ripr.toml.example`](../ripr.toml.example)) is kept in sync
 with the supported v1 shape.
 
-`ripr init` generates a conservative profile aligned with
+`ripr init` generates a profile aligned with
 [RIPR-SPEC-0009](specs/RIPR-SPEC-0009-defaults-first-adoption.md). That
-generated profile is a materialized policy file, not an activation step; it
-does not enable runtime mutation execution or CI blocking policy.
+generated profile is a materialized policy file, not an activation step: it
+records the same built-in defaults so a team can review, commit, and tune
+them. It does not enable runtime mutation execution or CI blocking policy.
 
 ### `[analysis]`
 

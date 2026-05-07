@@ -13,7 +13,7 @@ pub(super) struct LspAnalysisConfig {
     pub(super) repo_config: RiprConfig,
     /// Enable repo seam evidence diagnostics. The default is bounded to
     /// saved-workspace, draft-mode analysis so the installed editor surface is
-    /// useful without requiring `ripr init`.
+    /// useful with no `ripr.toml` and without running `ripr init`.
     pub(super) enable_seam_diagnostics: bool,
 }
 

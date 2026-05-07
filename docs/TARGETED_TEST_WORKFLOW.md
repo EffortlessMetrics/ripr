@@ -40,9 +40,10 @@ The workflow uses these artifacts:
 and badge-endpoint commands shown here remain repo-local `cargo xtask`
 automation today.
 
-Run `ripr init` when you want to pin repo policy before starting the loop. It
-materializes the conservative defaults for review and tuning; missing config is
-still a healthy first-run state.
+`ripr init` is optional. Run it only if you want to commit repo-local policy
+before starting the loop — it materializes the built-in defaults into
+`ripr.toml` so the team can review, version, and tune them. Missing config is
+the normal first-run state and uses the same defaults.
 
 [RIPR-SPEC-0009](specs/RIPR-SPEC-0009-defaults-first-adoption.md) tracks the
 remaining public CLI path for this loop. `ripr outcome` owns the before/after
