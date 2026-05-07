@@ -7,7 +7,32 @@
 
 use serde_json::Value;
 
-pub(crate) const AGENT_RECEIPT_SCHEMA_VERSION: &str = "0.1";
+pub(crate) const AGENT_RECEIPT_SCHEMA_VERSION: &str = "0.2";
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AgentReceiptInputPaths {
+    pub(crate) before: String,
+    pub(crate) after: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AgentReceiptArtifactProvenance {
+    pub(crate) path: String,
+    pub(crate) sha256: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AgentReceiptProvenance {
+    pub(crate) ripr_version: String,
+    pub(crate) repo_root: String,
+    pub(crate) config_fingerprint: Option<String>,
+    pub(crate) command_template_version: String,
+    pub(crate) generated_at: String,
+    pub(crate) workflow_artifact: Option<AgentReceiptArtifactProvenance>,
+    pub(crate) before_artifact: AgentReceiptArtifactProvenance,
+    pub(crate) after_artifact: AgentReceiptArtifactProvenance,
+    pub(crate) verify_artifact: AgentReceiptArtifactProvenance,
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct AgentReceiptSeam {
@@ -28,16 +53,14 @@ pub(crate) fn render_agent_receipt_json(
     seam_id: &str,
     test_changed: Option<&str>,
     commands_run: &[String],
+    provenance: AgentReceiptProvenance,
 ) -> Result<String, String> {
     let verify: Value = serde_json::from_str(agent_verify_json)
         .map_err(|err| format!("failed to parse agent verify JSON: {err}"))?;
-    let inputs = verify
-        .get("inputs")
-        .ok_or_else(|| "agent verify JSON is missing `inputs`".to_string())?;
-    let before = required_string(inputs, "before", "agent verify inputs")?;
-    let after = required_string(inputs, "after", "agent verify inputs")?;
+    let input_paths = agent_receipt_input_paths_from_value(&verify)?;
     let seam = find_receipt_seam(&verify, seam_id)?;
     let (remaining_gap, next_recommendation) = receipt_guidance(&seam.change);
+    let provenance = provenance_json(&provenance, &seam);
 
     let value = serde_json::json!({
         "schema_version": AGENT_RECEIPT_SCHEMA_VERSION,
@@ -45,9 +68,10 @@ pub(crate) fn render_agent_receipt_json(
         "status": "advisory",
         "inputs": {
             "agent_verify_json": agent_verify_path,
-            "before": before,
-            "after": after
+            "before": input_paths.before,
+            "after": input_paths.after
         },
+        "provenance": provenance,
         "seam": {
             "seam_id": seam.seam_id,
             "seam_kind": seam.seam_kind,
@@ -74,6 +98,66 @@ pub(crate) fn render_agent_receipt_json(
             rendered
         })
         .map_err(|err| format!("failed to render agent receipt JSON: {err}"))
+}
+
+pub(crate) fn agent_receipt_input_paths(
+    agent_verify_json: &str,
+) -> Result<AgentReceiptInputPaths, String> {
+    let verify: Value = serde_json::from_str(agent_verify_json)
+        .map_err(|err| format!("failed to parse agent verify JSON: {err}"))?;
+    agent_receipt_input_paths_from_value(&verify)
+}
+
+fn agent_receipt_input_paths_from_value(verify: &Value) -> Result<AgentReceiptInputPaths, String> {
+    let inputs = verify
+        .get("inputs")
+        .ok_or_else(|| "agent verify JSON is missing `inputs`".to_string())?;
+    Ok(AgentReceiptInputPaths {
+        before: required_string(inputs, "before", "agent verify inputs")?,
+        after: required_string(inputs, "after", "agent verify inputs")?,
+    })
+}
+
+fn provenance_json(
+    provenance: &AgentReceiptProvenance,
+    seam: &AgentReceiptSeam,
+) -> serde_json::Value {
+    let (before_class, after_class) = receipt_class_pair(seam);
+    serde_json::json!({
+        "ripr_version": provenance.ripr_version.as_str(),
+        "repo_root": provenance.repo_root.as_str(),
+        "config_fingerprint": provenance.config_fingerprint.as_deref(),
+        "command_template_version": provenance.command_template_version.as_str(),
+        "generated_at": provenance.generated_at.as_str(),
+        "workflow_artifact": provenance.workflow_artifact.as_ref().map(artifact_provenance_json),
+        "before_artifact": artifact_provenance_json(&provenance.before_artifact),
+        "after_artifact": artifact_provenance_json(&provenance.after_artifact),
+        "verify_artifact": artifact_provenance_json(&provenance.verify_artifact),
+        "seam_id": seam.seam_id.as_str(),
+        "before_class": before_class,
+        "after_class": after_class,
+        "movement": seam.change.as_str(),
+        "limits": {
+            "static_artifact_relationship": true,
+            "runtime_mutation_execution": false,
+            "runtime_adequacy_claim": false
+        }
+    })
+}
+
+fn artifact_provenance_json(artifact: &AgentReceiptArtifactProvenance) -> serde_json::Value {
+    serde_json::json!({
+        "path": artifact.path.as_str(),
+        "sha256": artifact.sha256.as_str()
+    })
+}
+
+fn receipt_class_pair(seam: &AgentReceiptSeam) -> (Option<String>, Option<String>) {
+    match seam.change.as_str() {
+        "new" => (None, seam.grip_class.clone()),
+        "resolved" => (seam.grip_class.clone(), None),
+        _ => (seam.before.clone(), seam.after.clone()),
+    }
 }
 
 fn find_receipt_seam(verify: &Value, seam_id: &str) -> Result<AgentReceiptSeam, String> {
@@ -263,6 +347,29 @@ mod tests {
 }"#
     }
 
+    fn fixed_provenance() -> AgentReceiptProvenance {
+        AgentReceiptProvenance {
+            ripr_version: "0.4.0".to_string(),
+            repo_root: ".".to_string(),
+            config_fingerprint: Some("fnv1a64:4c94a2f6cfaa5c21".to_string()),
+            command_template_version: "0.1".to_string(),
+            generated_at: "unix_ms:1778179200000".to_string(),
+            workflow_artifact: None,
+            before_artifact: AgentReceiptArtifactProvenance {
+                path: "target/ripr/workflow/before.repo-exposure.json".to_string(),
+                sha256: "sha256:before".to_string(),
+            },
+            after_artifact: AgentReceiptArtifactProvenance {
+                path: "target/ripr/workflow/after.repo-exposure.json".to_string(),
+                sha256: "sha256:after".to_string(),
+            },
+            verify_artifact: AgentReceiptArtifactProvenance {
+                path: "target/ripr/workflow/agent-verify.json".to_string(),
+                sha256: "sha256:verify".to_string(),
+            },
+        }
+    }
+
     #[test]
     fn agent_receipt_json_selects_changed_seam() -> Result<(), String> {
         let rendered = render_agent_receipt_json(
@@ -271,15 +378,35 @@ mod tests {
             "seam-a",
             Some("tests::pricing_boundary"),
             &["cargo test pricing_boundary".to_string()],
+            fixed_provenance(),
         )?;
         let value: Value = serde_json::from_str(&rendered)
             .map_err(|err| format!("receipt JSON should parse: {err}"))?;
 
-        assert_eq!(value["schema_version"], "0.1");
+        assert_eq!(value["schema_version"], "0.2");
         assert_eq!(value["seam"]["seam_id"], "seam-a");
         assert_eq!(value["seam"]["before"], "weakly_gripped");
         assert_eq!(value["seam"]["after"], "strongly_gripped");
         assert_eq!(value["seam"]["change"], "improved");
+        assert_eq!(value["provenance"]["ripr_version"], "0.4.0");
+        assert_eq!(value["provenance"]["repo_root"], ".");
+        assert_eq!(
+            value["provenance"]["config_fingerprint"],
+            "fnv1a64:4c94a2f6cfaa5c21"
+        );
+        assert_eq!(value["provenance"]["command_template_version"], "0.1");
+        assert_eq!(value["provenance"]["generated_at"], "unix_ms:1778179200000");
+        assert_eq!(value["provenance"]["before_class"], "weakly_gripped");
+        assert_eq!(value["provenance"]["after_class"], "strongly_gripped");
+        assert_eq!(value["provenance"]["movement"], "improved");
+        assert_eq!(
+            value["provenance"]["before_artifact"]["sha256"],
+            "sha256:before"
+        );
+        assert_eq!(
+            value["provenance"]["limits"]["runtime_mutation_execution"],
+            false
+        );
         assert_eq!(value["test_changed"], "tests::pricing_boundary");
         assert_eq!(
             value["verification"]["commands_run"][0],
@@ -302,6 +429,7 @@ mod tests {
             "seam-c",
             None,
             &[],
+            fixed_provenance(),
         )?;
         let value: Value = serde_json::from_str(&rendered)
             .map_err(|err| format!("receipt JSON should parse: {err}"))?;
@@ -309,7 +437,21 @@ mod tests {
         assert_eq!(value["seam"]["seam_id"], "seam-c");
         assert_eq!(value["seam"]["grip_class"], "ungripped");
         assert_eq!(value["seam"]["change"], "new");
+        assert_eq!(value["provenance"]["before_class"], Value::Null);
+        assert_eq!(value["provenance"]["after_class"], "ungripped");
         assert_eq!(value["test_changed"], Value::Null);
+        Ok(())
+    }
+
+    #[test]
+    fn agent_receipt_input_paths_extracts_verify_snapshot_paths() -> Result<(), String> {
+        let paths = agent_receipt_input_paths(agent_verify_json())?;
+
+        assert_eq!(
+            paths.before,
+            "target/ripr/workflow/before.repo-exposure.json"
+        );
+        assert_eq!(paths.after, "target/ripr/workflow/after.repo-exposure.json");
         Ok(())
     }
 
@@ -322,6 +464,7 @@ mod tests {
                 "missing",
                 None,
                 &[],
+                fixed_provenance(),
             ),
             Err("agent receipt seam_id missing was not found in agent verify JSON".to_string())
         );

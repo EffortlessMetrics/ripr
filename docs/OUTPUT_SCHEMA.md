@@ -1017,20 +1017,51 @@ ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json
 ```
 
 The command does not run analysis, mutation testing, SARIF policy, badge
-generation, LSP refresh, or cache warm-up. It only reads the supplied
-`agent verify` JSON after validating the path resolves under `--root`.
+generation, LSP refresh, or cache warm-up. It reads the supplied `agent verify`
+JSON after validating that path resolves under `--root`, then reads and hashes
+the `inputs.before` and `inputs.after` snapshot artifacts named by the verify
+JSON after validating those paths also resolve under `--root`.
 
 JSON shape:
 
 ```json
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "status": "advisory",
   "inputs": {
     "agent_verify_json": "target/ripr/workflow/agent-verify.json",
     "before": "target/ripr/workflow/before.repo-exposure.json",
     "after": "target/ripr/workflow/after.repo-exposure.json"
+  },
+  "provenance": {
+    "ripr_version": "0.4.0",
+    "repo_root": ".",
+    "config_fingerprint": "fnv1a64:4c94a2f6cfaa5c21",
+    "command_template_version": "0.1",
+    "generated_at": "unix_ms:1778179200000",
+    "workflow_artifact": null,
+    "before_artifact": {
+      "path": "target/ripr/workflow/before.repo-exposure.json",
+      "sha256": "sha256:..."
+    },
+    "after_artifact": {
+      "path": "target/ripr/workflow/after.repo-exposure.json",
+      "sha256": "sha256:..."
+    },
+    "verify_artifact": {
+      "path": "target/ripr/workflow/agent-verify.json",
+      "sha256": "sha256:..."
+    },
+    "seam_id": "67fc764ba37d77bd",
+    "before_class": "weakly_gripped",
+    "after_class": "strongly_gripped",
+    "movement": "improved",
+    "limits": {
+      "static_artifact_relationship": true,
+      "runtime_mutation_execution": false,
+      "runtime_adequacy_claim": false
+    }
   },
   "seam": {
     "seam_id": "67fc764ba37d77bd",
@@ -1058,10 +1089,39 @@ JSON shape:
 
 Field contract:
 
-- `schema_version` - currently `"0.1"`.
+- `schema_version` - currently `"0.2"`. Version `0.2` adds receipt
+  provenance fields while preserving the selected-seam and handoff fields from
+  `0.1`.
 - `status` - always `"advisory"`; this is a handoff receipt, not a CI policy.
 - `inputs.agent_verify_json` - the verify JSON path supplied to the command.
 - `inputs.before` / `inputs.after` - snapshot paths copied from the verify JSON.
+- `provenance` - identity for the static artifacts behind the receipt. It is
+  produced without rerunning analysis.
+- `provenance.ripr_version` - the `ripr` binary version that rendered the
+  receipt.
+- `provenance.repo_root` - the `--root` argument normalized to forward slashes
+  for reporting.
+- `provenance.config_fingerprint` - stable fingerprint of `ripr.toml` when that
+  file exists under the root, or `null` when no config file is present. The
+  receipt reads the file text only; it does not rerun analysis.
+- `provenance.command_template_version` - version of the internal agent-loop
+  command templates that produced the workflow command strings.
+- `provenance.generated_at` - local render timestamp as `unix_ms:<millis>`.
+- `provenance.workflow_artifact` - reserved workflow manifest artifact identity
+  when a future receipt command is tied to a specific manifest. It is currently
+  `null`.
+- `provenance.before_artifact` / `provenance.after_artifact` /
+  `provenance.verify_artifact` - path and SHA-256 hash for the static before,
+  after, and verify artifacts used by the receipt.
+- `provenance.seam_id` - selected seam identity copied from the receipt seam.
+- `provenance.before_class` / `provenance.after_class` - static grip classes
+  before and after for matched seams. For one-sided gaps, the absent side is
+  `null`.
+- `provenance.movement` - selected verify movement bucket such as `improved`,
+  `changed`, `regressed`, `unchanged`, `new`, or `resolved`.
+- `provenance.limits` - explicit static boundary flags. Receipts prove only the
+  relationship between static before/after artifacts; they do not run mutation
+  testing or claim runtime adequacy.
 - `seam` - the selected seam from `changed_seams`, `unchanged_seams`,
   `new_gaps`, or `resolved_gaps`.
 - `seam.before` / `seam.after` - before/after grip class for matched seams, or
@@ -1249,8 +1309,9 @@ Field contract:
   required artifact is missing.
 - `warnings[]` - stale-looking or unreadable-artifact hints. Timestamp warnings
   are emitted when `agent verify` is older than a before/after snapshot or
-  `agent receipt` is older than `agent verify`. The report does not infer hash
-  mismatches until receipt provenance fields exist.
+  `agent receipt` is older than `agent verify`. Hash mismatch warnings remain a
+  later reviewer-summary/status enhancement now that receipt provenance records
+  artifact SHA-256 values.
 
 ## Agent Workflow Manifest
 
