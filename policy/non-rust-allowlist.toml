@@ -172,6 +172,15 @@ reason = "Dependabot update configuration for Cargo, npm, and GitHub Actions."
 covered_by = []
 
 [[allow]]
+glob = ".github/settings.yml"
+kind = "github_settings_contract"
+owner = "repo-process"
+surface = "ci"
+classification = "config"
+reason = "Repository Settings App contract for merge policy, branch protection, and CI labels."
+covered_by = []
+
+[[allow]]
 glob = ".github/workflows/*.yaml"
 kind = "ci_declarative"
 owner = "release/ci"
