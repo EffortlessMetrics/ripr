@@ -1,0 +1,21 @@
+schema_version = "1.0"
+policy = "ci-whitelist-exceptions"
+owner = "release/ci"
+status = "active"
+
+# Recorded exceptions to the CI lane whitelist (policy/ci-lane-whitelist.toml).
+#
+# Each entry must justify why this lane is allowed to run despite a normal
+# whitelist rule, and must record an expiry. The CI lane whitelist lint
+# (PR 03) reads this file alongside the whitelist.
+#
+# An empty exceptions list is the desired state.
+
+# Example shape (commented out):
+#
+# [[exception]]
+# lane_id = "future_clippy_lane"
+# rule = "default_pr_and_expensive_without_label_gate"
+# owner = "core/rust"
+# reason = "Initial bring-up; lane is gated by clippy-future label, not default."
+# expires = "2026-08-01"

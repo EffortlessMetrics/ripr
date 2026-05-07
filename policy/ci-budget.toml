@@ -1,0 +1,50 @@
+schema_version = "1.0"
+policy = "ci-budget"
+owner = "release/ci"
+status = "active"
+
+# CI economics policy for ripr.
+#
+# This file is the source of truth for LEM (Linux Equivalent Minutes) budget
+# bands, runner multipliers, and the routing/override label vocabulary.
+#
+# See:
+#   docs/ci/lem-budgeting.md
+#   docs/ci/cost-and-verification-policy.md
+#   docs/ci/labels.md
+#
+# This ledger is consumed by:
+#   - the PR Plan job (advisory, PR 07)
+#   - the soft budget guard (PR 12)
+#   - the CI lane whitelist lint (PR 03)
+#
+# Each band corresponds to a verbal severity used in PR Plan output and the
+# soft budget guard. Limits are advisory until ci-actuals.json data exists
+# (PR 11).
+
+[budget]
+preferred_default_lem = 25
+default_limit_lem = 35
+elevated_limit_lem = 75
+hard_limit_lem = 125
+linux_minute_rate_usd = 0.008
+
+[runner_multipliers]
+ubuntu_latest = 1.0
+ubuntu_24_04 = 1.0
+windows_latest = 2.0
+macos_latest = 10.0
+node_extension = 2.0
+external_ai_review = 4.0
+
+[labels]
+full_ci = "full-ci"
+budget_ack = "ci-budget-ack"
+budget_override = "ci-budget-override"
+ripr = "ripr"
+ripr_waive = "ripr-waive"
+coverage = "coverage"
+mutation = "mutation"
+vscode = "vscode"
+release_check = "release-check"
+clippy_future = "clippy-future"

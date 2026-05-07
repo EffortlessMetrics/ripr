@@ -1,0 +1,530 @@
+schema_version = "1.0"
+policy = "ci-lane-whitelist"
+owner = "release/ci"
+status = "active"
+
+# Whitelist of every CI lane this repo is allowed to spend LEM on.
+#
+# Each lane records:
+#   id              stable identifier; referenced by PR Plan, budget guard
+#   workflow        path to the .yml that runs it
+#   job             the job key inside that workflow
+#   kind            test | policy | build | release | report | self-dogfood
+#   tier            frontdoor | deep | release | dogfood | docs
+#   default_pr      true if it runs on every PR
+#   blocking        true if a failure fails the merge
+#   runner          maps to runner_multipliers in policy/ci-budget.toml
+#   base_lem        forecast lower bound for forecast (advisory)
+#   owner           team/code-area who owns the lane
+#   intent          one-line statement of why this lane exists
+#   failure_mode    bug class blocked by this lane
+#   proof_obligation single command/check this lane evaluates
+#   evidence        artifacts/logs the lane uploads
+#   allowed_triggers events that are allowed to run this lane
+#   duplicate_of    other lanes that subsume this one (for retirement)
+#   review_after    date for next review of this lane
+#   expires         date this lane must be re-justified
+#
+# The CI lane whitelist lint (PR 03) reads this file and the matching
+# workflow YAML and verifies that every job/step is accounted for.
+
+# ---------------------------------------------------------------------------
+# Front-door PR gate
+# ---------------------------------------------------------------------------
+
+[[lane]]
+id = "rust_fast_gate"
+workflow = ".github/workflows/ci.yml"
+job = "rust"
+kind = "build"
+tier = "frontdoor"
+default_pr = true
+blocking = true
+runner = "ubuntu_latest"
+base_lem = 8
+owner = "core/rust"
+intent = "Verify the workspace builds, tests pass, fmt is clean, and clippy is silent before deeper validation."
+failure_mode = "Type errors, format drift, clippy regressions, or test regressions land on main."
+proof_obligation = "cargo fmt --check && cargo check --workspace --all-targets && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace"
+evidence = ["job logs", "target/ripr/reports/*"]
+allowed_triggers = ["pull_request", "push"]
+duplicate_of = []
+review_after = "2026-06-07"
+expires = "2026-11-07"
+
+[[lane]]
+id = "msrv"
+workflow = ".github/workflows/ci.yml"
+job = "msrv"
+kind = "build"
+tier = "frontdoor"
+default_pr = true
+blocking = true
+runner = "ubuntu_latest"
+base_lem = 4
+owner = "core/rust"
+intent = "Verify the workspace still builds against the declared MSRV (1.93.1)."
+failure_mode = "Code that requires a newer toolchain than declared lands on main and silently breaks downstream consumers."
+proof_obligation = "cargo +1.93.1 check --workspace --all-targets"
+evidence = ["job logs"]
+allowed_triggers = ["pull_request", "push"]
+duplicate_of = []
+review_after = "2026-06-07"
+expires = "2026-11-07"
+
+# ---------------------------------------------------------------------------
+# Editor extension
+# ---------------------------------------------------------------------------
+
+[[lane]]
+id = "vscode_extension"
+workflow = ".github/workflows/ci.yml"
+job = "vscode"
+kind = "build"
+tier = "frontdoor"
+default_pr = true
+blocking = true
+runner = "ubuntu_latest"
+base_lem = 6
+owner = "lsp/editor"
+intent = "Verify the VS Code extension compiles, packages, and passes its e2e suite."
+failure_mode = "Extension regressions ship to Marketplace via release cadence without being caught at PR time."
+proof_obligation = "npm ci && npm run compile && npm run package && xvfb-run -a npm run test:e2e"
+evidence = ["job logs"]
+allowed_triggers = ["pull_request", "push"]
+duplicate_of = []
+review_after = "2026-06-07"
+expires = "2026-11-07"
+
+# ---------------------------------------------------------------------------
+# Release surface (currently runs on every PR; PR 09 splits this off)
+# ---------------------------------------------------------------------------
+
+[[lane]]
+id = "package_list"
+workflow = ".github/workflows/ci.yml"
+job = "rust"
+kind = "release"
+tier = "release"
+default_pr = true
+blocking = true
+runner = "ubuntu_latest"
+base_lem = 1
+owner = "release/cargo"
+intent = "Verify cargo package -p ripr --list still produces an expected file list."
+failure_mode = "An unintended file (or missing file) ships to crates.io on the next release."
+proof_obligation = "cargo package -p ripr --list"
+evidence = ["job logs"]
+allowed_triggers = ["pull_request", "push"]
+duplicate_of = []
+review_after = "2026-06-07"
+expires = "2026-11-07"
+
+[[lane]]
+id = "publish_dry_run"
+workflow = ".github/workflows/ci.yml"
+job = "rust"
+kind = "release"
+tier = "release"
+default_pr = true
+blocking = true
+runner = "ubuntu_latest"
+base_lem = 2
+owner = "release/cargo"
+intent = "Verify cargo publish -p ripr --dry-run still succeeds."
+failure_mode = "A release-blocking metadata or dep error is discovered only at release time."
+proof_obligation = "cargo publish -p ripr --dry-run"
+evidence = ["job logs"]
+allowed_triggers = ["pull_request", "push"]
+duplicate_of = []
+review_after = "2026-06-07"
+expires = "2026-11-07"
+
+# ---------------------------------------------------------------------------
+# Policy gates (all currently run inside the rust job; tracked here so the
+# lane whitelist lint can verify each one is accounted for).
+# ---------------------------------------------------------------------------
+
+[[lane]]
+id = "check_static_language"
+workflow = ".github/workflows/ci.yml"
+job = "rust"
+kind = "policy"
+tier = "frontdoor"
+default_pr = true
+blocking = true
+runner = "ubuntu_latest"
+base_lem = 1
+owner = "core/policy"
+intent = "Block forbidden runtime-mutation language (killed/survived/etc.) in static output."
+failure_mode = "ripr starts asserting runtime-mutation outcomes it does not actually run."
+proof_obligation = "cargo xtask check-static-language"
+evidence = ["target/ripr/reports/static-language.*"]
+allowed_triggers = ["pull_request", "push"]
+duplicate_of = []
+review_after = "2026-06-07"
+expires = "2026-11-07"
+
+[[lane]]
+id = "check_no_panic_family"
+workflow = ".github/workflows/ci.yml"
+job = "rust"
+kind = "policy"
+tier = "frontdoor"
+default_pr = true
+blocking = true
+runner = "ubuntu_latest"
+base_lem = 1
+owner = "core/policy"
+intent = "Block unreceipted panic-family call sites."
+failure_mode = "Panic-family calls enter production or tests without owner/reason/selector receipt."
+proof_obligation = "cargo xtask check-no-panic-family"
+evidence = ["target/ripr/reports/no-panic.*"]
+allowed_triggers = ["pull_request", "push"]
+duplicate_of = []
+review_after = "2026-06-07"
+expires = "2026-11-07"
+
+[[lane]]
+id = "check_allow_attributes"
+workflow = ".github/workflows/ci.yml"
+job = "rust"
+kind = "policy"
+tier = "frontdoor"
+default_pr = true
+blocking = true
+runner = "ubuntu_latest"
+base_lem = 1
+owner = "core/policy"
+intent = "Track #[allow(..)] suppressions through .ripr/allow-attributes.txt."
+failure_mode = "Silent lint suppression accumulates without owner or rationale."
+proof_obligation = "cargo xtask check-allow-attributes"
+evidence = ["target/ripr/reports/allow-attributes.*"]
+allowed_triggers = ["pull_request", "push"]
+duplicate_of = []
+review_after = "2026-06-07"
+expires = "2026-11-07"
+
+[[lane]]
+id = "check_local_context"
+workflow = ".github/workflows/ci.yml"
+job = "rust"
+kind = "policy"
+tier = "frontdoor"
+default_pr = true
+blocking = true
+runner = "ubuntu_latest"
+base_lem = 1
+owner = "core/policy"
+intent = "Verify local-context allowlist (deny-by-default for unscoped state)."
+failure_mode = "Hidden global state leaks into analysis paths that should be deterministic."
+proof_obligation = "cargo xtask check-local-context"
+evidence = ["target/ripr/reports/local-context.*"]
+allowed_triggers = ["pull_request", "push"]
+duplicate_of = []
+review_after = "2026-06-07"
+expires = "2026-11-07"
+
+[[lane]]
+id = "check_file_policy"
+workflow = ".github/workflows/ci.yml"
+job = "rust"
+kind = "policy"
+tier = "frontdoor"
+default_pr = true
+blocking = true
+runner = "ubuntu_latest"
+base_lem = 1
+owner = "core/policy"
+intent = "Block non-Rust programming files without an owner/reason allowlist entry."
+failure_mode = "Shell, Python, or JS implementation logic enters the repo without a reviewed reason."
+proof_obligation = "cargo xtask check-file-policy"
+evidence = ["target/ripr/reports/file-policy.*"]
+allowed_triggers = ["pull_request", "push"]
+duplicate_of = []
+review_after = "2026-06-07"
+expires = "2026-11-07"
+
+[[lane]]
+id = "check_executable_files"
+workflow = ".github/workflows/ci.yml"
+job = "rust"
+kind = "policy"
+tier = "frontdoor"
+default_pr = true
+blocking = true
+runner = "ubuntu_latest"
+base_lem = 1
+owner = "core/policy"
+intent = "Track executable bits via policy/executable_allowlist.txt."
+failure_mode = "Stray executable file enters the repo without a reviewed reason."
+proof_obligation = "cargo xtask check-executable-files"
+evidence = ["target/ripr/reports/executable-files.*"]
+allowed_triggers = ["pull_request", "push"]
+duplicate_of = []
+review_after = "2026-06-07"
+expires = "2026-11-07"
+
+[[lane]]
+id = "check_workflows"
+workflow = ".github/workflows/ci.yml"
+job = "rust"
+kind = "policy"
+tier = "frontdoor"
+default_pr = true
+blocking = true
+runner = "ubuntu_latest"
+base_lem = 1
+owner = "release/ci"
+intent = "Validate workflow allowlist and action-runtime allowlist."
+failure_mode = "Unsanctioned action or runtime is added to a workflow without review."
+proof_obligation = "cargo xtask check-workflows"
+evidence = ["target/ripr/reports/workflows.*"]
+allowed_triggers = ["pull_request", "push"]
+duplicate_of = []
+review_after = "2026-06-07"
+expires = "2026-11-07"
+
+[[lane]]
+id = "check_droid_review_config"
+workflow = ".github/workflows/ci.yml"
+job = "rust"
+kind = "policy"
+tier = "frontdoor"
+default_pr = true
+blocking = true
+runner = "ubuntu_latest"
+base_lem = 1
+owner = "release/ci"
+intent = "Validate the Droid review configuration matches policy."
+failure_mode = "Droid review settings drift silently and leak secrets or skip required checks."
+proof_obligation = "cargo xtask check-droid-review-config"
+evidence = ["target/ripr/reports/droid-review.*"]
+allowed_triggers = ["pull_request", "push"]
+duplicate_of = []
+review_after = "2026-06-07"
+expires = "2026-11-07"
+
+[[lane]]
+id = "check_spec_format"
+workflow = ".github/workflows/ci.yml"
+job = "rust"
+kind = "policy"
+tier = "frontdoor"
+default_pr = true
+blocking = true
+runner = "ubuntu_latest"
+base_lem = 1
+owner = "core/specs"
+intent = "Validate spec markdown structure under docs/specs."
+failure_mode = "Spec front matter or required sections drift."
+proof_obligation = "cargo xtask check-spec-format"
+evidence = ["target/ripr/reports/spec-format.*"]
+allowed_triggers = ["pull_request", "push"]
+duplicate_of = []
+review_after = "2026-06-07"
+expires = "2026-11-07"
+
+[[lane]]
+id = "check_fixture_contracts"
+workflow = ".github/workflows/ci.yml"
+job = "rust"
+kind = "policy"
+tier = "frontdoor"
+default_pr = true
+blocking = true
+runner = "ubuntu_latest"
+base_lem = 1
+owner = "core/fixtures"
+intent = "Validate fixture metadata and expected outputs are well-formed."
+failure_mode = "Fixture drift goes undetected and golden tests pass against incorrect baselines."
+proof_obligation = "cargo xtask check-fixture-contracts"
+evidence = ["target/ripr/reports/fixture-contracts.*"]
+allowed_triggers = ["pull_request", "push"]
+duplicate_of = []
+review_after = "2026-06-07"
+expires = "2026-11-07"
+
+[[lane]]
+id = "check_generated"
+workflow = ".github/workflows/ci.yml"
+job = "rust"
+kind = "policy"
+tier = "frontdoor"
+default_pr = true
+blocking = true
+runner = "ubuntu_latest"
+base_lem = 1
+owner = "core/policy"
+intent = "Track generated files via policy/generated_allowlist.txt."
+failure_mode = "Hand-edited generated file drift slips through review."
+proof_obligation = "cargo xtask check-generated"
+evidence = ["target/ripr/reports/generated.*"]
+allowed_triggers = ["pull_request", "push"]
+duplicate_of = []
+review_after = "2026-06-07"
+expires = "2026-11-07"
+
+[[lane]]
+id = "check_dependencies"
+workflow = ".github/workflows/ci.yml"
+job = "rust"
+kind = "policy"
+tier = "frontdoor"
+default_pr = true
+blocking = true
+runner = "ubuntu_latest"
+base_lem = 1
+owner = "core/policy"
+intent = "Validate the dependency allowlist."
+failure_mode = "An unsanctioned crate is added without policy review."
+proof_obligation = "cargo xtask check-dependencies"
+evidence = ["target/ripr/reports/dependencies.*"]
+allowed_triggers = ["pull_request", "push"]
+duplicate_of = []
+review_after = "2026-06-07"
+expires = "2026-11-07"
+
+[[lane]]
+id = "check_process_policy"
+workflow = ".github/workflows/ci.yml"
+job = "rust"
+kind = "policy"
+tier = "frontdoor"
+default_pr = true
+blocking = true
+runner = "ubuntu_latest"
+base_lem = 1
+owner = "core/policy"
+intent = "Validate the process-spawn allowlist."
+failure_mode = "An unsanctioned subprocess spawns from production code."
+proof_obligation = "cargo xtask check-process-policy"
+evidence = ["target/ripr/reports/process-policy.*"]
+allowed_triggers = ["pull_request", "push"]
+duplicate_of = []
+review_after = "2026-06-07"
+expires = "2026-11-07"
+
+[[lane]]
+id = "check_network_policy"
+workflow = ".github/workflows/ci.yml"
+job = "rust"
+kind = "policy"
+tier = "frontdoor"
+default_pr = true
+blocking = true
+runner = "ubuntu_latest"
+base_lem = 1
+owner = "core/policy"
+intent = "Validate the network-egress allowlist."
+failure_mode = "An unsanctioned network call leaks from production code."
+proof_obligation = "cargo xtask check-network-policy"
+evidence = ["target/ripr/reports/network-policy.*"]
+allowed_triggers = ["pull_request", "push"]
+duplicate_of = []
+review_after = "2026-06-07"
+expires = "2026-11-07"
+
+# ---------------------------------------------------------------------------
+# Reports (advisory; non-blocking; uploaded as artifacts)
+# ---------------------------------------------------------------------------
+
+[[lane]]
+id = "test_efficiency_report"
+workflow = ".github/workflows/ci.yml"
+job = "rust"
+kind = "report"
+tier = "frontdoor"
+default_pr = true
+blocking = false
+runner = "ubuntu_latest"
+base_lem = 1
+owner = "core/metrics"
+intent = "Advisory ripr test efficiency report."
+failure_mode = "Efficiency drift becomes invisible."
+proof_obligation = "cargo xtask test-efficiency-report"
+evidence = ["target/ripr/reports/test-efficiency.*"]
+allowed_triggers = ["pull_request", "push"]
+duplicate_of = []
+review_after = "2026-06-07"
+expires = "2026-11-07"
+
+[[lane]]
+id = "badge_artifacts"
+workflow = ".github/workflows/ci.yml"
+job = "rust"
+kind = "report"
+tier = "frontdoor"
+default_pr = true
+blocking = false
+runner = "ubuntu_latest"
+base_lem = 1
+owner = "core/metrics"
+intent = "Advisory ripr badge artifact generation."
+failure_mode = "Badge endpoints drift without notice."
+proof_obligation = "cargo xtask badge-artifacts"
+evidence = ["target/ripr/reports/ripr-badges.*"]
+allowed_triggers = ["pull_request", "push"]
+duplicate_of = []
+review_after = "2026-06-07"
+expires = "2026-11-07"
+
+[[lane]]
+id = "pr_summary"
+workflow = ".github/workflows/ci.yml"
+job = "rust"
+kind = "report"
+tier = "frontdoor"
+default_pr = true
+blocking = false
+runner = "ubuntu_latest"
+base_lem = 1
+owner = "core/reports"
+intent = "Write target/ripr/reports/pr-summary.md from git diff/status."
+failure_mode = "PR reviewers lack a quick reviewer front door."
+proof_obligation = "cargo xtask pr-summary"
+evidence = ["target/ripr/reports/pr-summary.md"]
+allowed_triggers = ["pull_request", "push"]
+duplicate_of = []
+review_after = "2026-06-07"
+expires = "2026-11-07"
+
+[[lane]]
+id = "report_index"
+workflow = ".github/workflows/ci.yml"
+job = "rust"
+kind = "report"
+tier = "frontdoor"
+default_pr = true
+blocking = false
+runner = "ubuntu_latest"
+base_lem = 1
+owner = "core/reports"
+intent = "Write target/ripr/reports/index.md (reviewer front door)."
+failure_mode = "Reviewers must hunt for evidence artifacts."
+proof_obligation = "cargo xtask reports index"
+evidence = ["target/ripr/reports/index.md"]
+allowed_triggers = ["pull_request", "push"]
+duplicate_of = []
+review_after = "2026-06-07"
+expires = "2026-11-07"
+
+[[lane]]
+id = "receipts"
+workflow = ".github/workflows/ci.yml"
+job = "rust"
+kind = "report"
+tier = "frontdoor"
+default_pr = true
+blocking = false
+runner = "ubuntu_latest"
+base_lem = 1
+owner = "core/reports"
+intent = "Write machine-readable evidence receipts."
+failure_mode = "Evidence not machine-readable; can't drive downstream tooling."
+proof_obligation = "cargo xtask receipts"
+evidence = ["target/ripr/receipts/*.json"]
+allowed_triggers = ["pull_request", "push"]
+duplicate_of = []
+review_after = "2026-06-07"
+expires = "2026-11-07"

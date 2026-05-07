@@ -1,0 +1,50 @@
+schema_version = "1.0"
+policy = "ci-risk-packs"
+owner = "release/ci"
+status = "active"
+
+# Risk packs map changed paths to the lane sets that should run.
+#
+# A risk pack identifies a behavior surface (e.g. analysis engine, CLI
+# output, LSP). When a PR touches paths in a pack, the PR Plan job
+# (PR 07) selects the listed `lanes` (and optionally `deep_lanes` when
+# the matching label or full-ci is present).
+#
+# Lane ids must exist in policy/ci-lane-whitelist.toml. The CI lane
+# whitelist lint (PR 03) verifies this cross-reference.
+
+[risk_pack.analysis_engine]
+description = "Static analysis engine, facts, probes, classifications, evidence model."
+paths = ["crates/ripr/src/analysis/**", "crates/ripr/src/facts/**", "crates/ripr/src/domain/**"]
+lanes = ["rust_fast_gate", "check_no_panic_family", "ripr_self_dogfood"]
+deep_lanes = ["mutation_calibration"]
+
+[risk_pack.cli_output]
+description = "CLI rendering, JSON, SARIF, GitHub annotation, context packet output."
+paths = ["crates/ripr/src/cli/**", "crates/ripr/src/output/**"]
+lanes = ["rust_fast_gate", "cli_smoke", "ripr_self_dogfood"]
+deep_lanes = ["goldens"]
+
+[risk_pack.lsp_extension]
+description = "LSP sidecar or VS Code extension."
+paths = ["crates/ripr/src/lsp/**", "editors/vscode/**"]
+lanes = ["vscode_extension"]
+deep_lanes = ["vscode_e2e"]
+
+[risk_pack.policy_xtask]
+description = "xtask policy checks, allowlists, generated reports, receipts."
+paths = ["xtask/**", "policy/**", ".ripr/**"]
+lanes = ["policy_gate", "rust_fast_gate"]
+deep_lanes = []
+
+[risk_pack.docs_only]
+description = "Docs-only changes."
+paths = ["docs/**", "*.md"]
+lanes = ["docs_gate"]
+deep_lanes = []
+
+[risk_pack.release_surface]
+description = "Release-bearing surfaces: Cargo manifests, lockfile, README, CHANGELOG."
+paths = ["Cargo.toml", "Cargo.lock", "crates/ripr/Cargo.toml", "README.md", "CHANGELOG.md"]
+lanes = ["rust_fast_gate", "package_list", "publish_dry_run"]
+deep_lanes = ["release_surface_validate"]
