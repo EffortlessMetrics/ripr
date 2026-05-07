@@ -9,6 +9,13 @@ are scoped or reviewed.
 
 ## Unreleased
 
+### Added
+
+- Added `ripr agent status --root . --json`, a read-only LLM work-loop status
+  report that checks existing agent artifacts, recovers a seam id when
+  possible, emits missing-step commands, and warns on stale-looking verify or
+  receipt artifacts without rerunning analysis.
+
 ### Changed
 
 - Documented the CI verification economics policy: required, advisory, and

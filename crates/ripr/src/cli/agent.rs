@@ -9,10 +9,12 @@ pub(super) enum AgentCommand {
     PacketHelp,
     VerifyHelp,
     ReceiptHelp,
+    StatusHelp,
     Brief(AgentBriefOptions),
     Packet(AgentPacketOptions),
     Verify(AgentVerifyOptions),
     Receipt(AgentReceiptOptions),
+    Status(AgentStatusOptions),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -50,6 +52,12 @@ pub(super) struct AgentReceiptOptions {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct AgentStatusOptions {
+    pub(super) root: PathBuf,
+    pub(super) json: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum AgentBriefWorkingSet {
     Diff(PathBuf),
     Base(String),
@@ -83,8 +91,9 @@ pub(super) fn parse_agent_args(args: &[String]) -> Result<AgentCommand, String> 
         Some("packet") => parse_agent_packet_command(&args[1..]),
         Some("verify") => parse_agent_verify_command(&args[1..]),
         Some("receipt") => parse_agent_receipt_command(&args[1..]),
+        Some("status") => parse_agent_status_command(&args[1..]),
         Some(other) => Err(format!(
-            "unknown agent subcommand {other:?}; expected `brief`, `packet`, `verify`, or `receipt`"
+            "unknown agent subcommand {other:?}; expected `brief`, `packet`, `verify`, `receipt`, or `status`"
         )),
     }
 }
@@ -115,6 +124,13 @@ fn parse_agent_receipt_command(args: &[String]) -> Result<AgentCommand, String> 
         return Ok(AgentCommand::ReceiptHelp);
     }
     parse_agent_receipt_options(args).map(AgentCommand::Receipt)
+}
+
+fn parse_agent_status_command(args: &[String]) -> Result<AgentCommand, String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        return Ok(AgentCommand::StatusHelp);
+    }
+    parse_agent_status_options(args).map(AgentCommand::Status)
 }
 
 pub(super) fn parse_agent_brief_options(args: &[String]) -> Result<AgentBriefOptions, String> {
@@ -334,6 +350,30 @@ pub(super) fn parse_agent_receipt_options(args: &[String]) -> Result<AgentReceip
     })
 }
 
+pub(super) fn parse_agent_status_options(args: &[String]) -> Result<AgentStatusOptions, String> {
+    let mut root = PathBuf::from(".");
+    let mut json = false;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = PathBuf::from(expect_value(args, i, "--root")?);
+            }
+            "--json" => json = true,
+            other => return Err(format!("unknown agent status argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    if !json {
+        return Err("agent status requires --json until human output is implemented".to_string());
+    }
+
+    Ok(AgentStatusOptions { root, json })
+}
+
 fn set_working_set(
     current: &mut Option<WorkingSetCandidate>,
     next: WorkingSetCandidate,
@@ -402,6 +442,10 @@ mod tests {
             parse_agent_args(&args(&["receipt", "--help"])),
             Ok(AgentCommand::ReceiptHelp)
         );
+        assert_eq!(
+            parse_agent_args(&args(&["status", "--help"])),
+            Ok(AgentCommand::StatusHelp)
+        );
     }
 
     #[test]
@@ -413,7 +457,7 @@ mod tests {
         assert_eq!(
             parse_agent_args(&args(&["other"])),
             Err(
-                "unknown agent subcommand \"other\"; expected `brief`, `packet`, `verify`, or `receipt`"
+                "unknown agent subcommand \"other\"; expected `brief`, `packet`, `verify`, `receipt`, or `status`"
                     .to_string()
             )
         );
@@ -816,6 +860,40 @@ mod tests {
                 "--json",
             ])),
             Err("agent receipt --command requires a non-empty value".to_string())
+        );
+    }
+
+    #[test]
+    fn agent_status_parses_root_and_json() {
+        assert_eq!(
+            parse_agent_status_options(&args(&["--root", "repo", "--json"])),
+            Ok(AgentStatusOptions {
+                root: PathBuf::from("repo"),
+                json: true,
+            })
+        );
+        assert_eq!(
+            parse_agent_args(&args(&["status", "--root", "repo", "--json"])),
+            Ok(AgentCommand::Status(AgentStatusOptions {
+                root: PathBuf::from("repo"),
+                json: true,
+            }))
+        );
+    }
+
+    #[test]
+    fn agent_status_requires_json_and_rejects_unknown_arguments() {
+        assert_eq!(
+            parse_agent_status_options(&args(&[])),
+            Err("agent status requires --json until human output is implemented".to_string())
+        );
+        assert_eq!(
+            parse_agent_status_options(&args(&["--root"])),
+            Err("missing value for --root".to_string())
+        );
+        assert_eq!(
+            parse_agent_status_options(&args(&["--json", "--xml"])),
+            Err("unknown agent status argument \"--xml\"".to_string())
         );
     }
 }

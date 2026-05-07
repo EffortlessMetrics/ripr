@@ -1,4 +1,5 @@
 pub(crate) mod agent_brief;
+pub(crate) mod agent_status;
 mod check;
 mod context;
 mod explain;

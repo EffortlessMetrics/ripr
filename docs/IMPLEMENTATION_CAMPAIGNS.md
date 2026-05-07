@@ -1293,3 +1293,72 @@ Blocking conditions:
 - SARIF or badge schema churn unless explicitly versioned
 - broad refactors mixed into release-readiness proof
 - replacing the editor-agent integration lane without an explicit product pivot
+
+## Campaign 11: LLM Work Loop
+
+Campaign ID: `llm-work-loop`
+
+Status: active
+
+Objective:
+
+```text
+Make the completed editor-agent loop stateful, deterministic, and useful to LLM
+agents under review pressure: status -> task packet -> edit target -> verify ->
+receipt -> reviewer summary.
+```
+
+Why it matters:
+
+Campaign 10 made the editor-agent loop functionally complete. The next risk is
+operator drift: agents can see the commands and artifacts, but still have to
+infer which step is missing, which seam links the artifacts, and what evidence
+reviewers should inspect. Campaign 11 adds a read-only, artifact-oriented
+control plane around the existing loop.
+
+End state:
+
+- agents can inspect loop state without rerunning analysis or relying on chat
+  history
+- loop commands and artifact paths are centralized across CLI, LSP, cockpit,
+  CI, docs, fixtures, and release proof
+- receipts carry provenance and bounded static next-action guidance
+- a reviewer summary joins status, receipt, cockpit, repo exposure, LSP cockpit
+  when present, and CI artifact state
+- fixtures pin happy, unchanged, regressed, missing-artifact, stale-artifact,
+  configured-off, path-with-spaces, and Windows-separator cases
+- generated CI uploads LLM work-loop packets as advisory evidence
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `agent/loop-status-report` | done | Added `ripr agent status --root . --json` as a read-only artifact status report for before snapshot, after snapshot, agent brief, agent packet, agent verify, and agent receipt, with recoverable seam_id, missing-input commands, and stale-looking warnings. |
+| `agent/centralize-loop-command-templates` | ready | Centralize loop command templates used by agent status, brief next commands, LSP copy actions, cockpit missing-input commands, CI artifacts, docs examples, fixtures, and release-readiness proof without changing behavior. |
+| `agent/workflow-manifest` | blocked | Add `ripr agent start --root . --seam-id <id> --out target/ripr/workflow` after command templates are centralized, writing a source-edit-free workflow manifest with artifact paths and commands. |
+| `agent/receipt-provenance` | blocked | Add receipt provenance fields for ripr version, repo root, config fingerprint, artifact hashes, seam_id, before/after class, command template version, and timestamp. |
+| `agent/next-action-guidance` | blocked | Emit bounded static next-action guidance for improved, unchanged, regressed, resolved, and new-gap receipt states. |
+| `agent/reviewer-summary` | blocked | Add `ripr agent review-summary --root . --json` plus human output that joins status, receipt, cockpit, repo exposure, LSP cockpit when present, and CI artifact status into a compact review packet. |
+| `fixtures/llm-work-loop` | blocked | Add LLM work-loop fixtures for happy, unchanged, regressed, missing-artifact, stale-artifact, configured-off, path-with-spaces, and Windows-separator cases. |
+| `ci/llm-work-packets` | blocked | Generated CI uploads agent status JSON/Markdown, workflow JSON, review summary JSON/Markdown, receipt, and operator cockpit artifacts as advisory evidence. |
+| `docs/llm-operator-guide` | blocked | Document the LLM operator loop from agent status through start, packet or brief, focused test, after snapshot, verify, receipt, and review summary, with anti-goals explicit. |
+| `campaign/llm-work-loop-closeout` | blocked | Close Campaign 11 only after LLM work-loop state, commands, provenance, fixtures, CI artifacts, docs, and review summary are aligned without automatic edits, generated tests, runtime mutation execution, speculative LSP features, or new public crates. |
+
+Commands:
+
+```bash
+cargo test -p ripr agent_status
+cargo xtask check-output-contracts
+cargo xtask check-static-language
+cargo xtask check-pr
+```
+
+Blocking conditions:
+
+- automatic source edits
+- generated tests committed by RIPR
+- runtime mutation execution
+- speculative LSP features
+- new public crates
+- command strings duplicated into new surfaces after the template
+  centralization work item

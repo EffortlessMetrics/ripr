@@ -1,159 +1,133 @@
-id = "editor-agent-integration"
-title = "Editor Agent Integration"
+id = "llm-work-loop"
+title = "LLM Work Loop"
 status = "active"
 
-# This is Campaign 10 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
-# Campaign 9 (`hot-sidecar-latency`) closed after the saved-workspace editor
-# and operator warm paths were measured, bounded, and verified on the default
-# warm-cache latency budget.
-# Campaign 10 briefly moved to a broader 0.4 release-surface lane. This
-# manifest keeps the product lane as editor-agent integration and carries the
-# useful release-readiness requirements as a gate before closeout.
+# This is Campaign 11 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+# Campaign 10 (`editor-agent-integration`) closed after the saved-workspace
+# editor loop, agent CLI loop, cockpit, CI artifacts, docs, and release proof
+# were aligned.
 
 objective = """
-Make the saved-workspace editor loop and the agent CLI loop line up:
-diagnostic to evidence to packet or brief to targeted test to verify to receipt
-to cockpit and CI artifacts.
+Make the completed editor-agent loop stateful, deterministic, and useful to LLM
+agents under review pressure: status to task packet to edit target to verify to
+receipt to reviewer summary.
 """
 
 end_state = [
-  "A saved-workspace seam diagnostic exposes the same evidence, packet, brief, verify, and receipt path as the agent CLI",
-  "Agent verify and receipt artifacts are visible in the operator cockpit and generated CI artifacts without rerunning analysis inside report joins",
-  "A fixture pins the full editor-agent loop from diagnostic/action expectations through agent packet, verify, receipt, and cockpit outputs",
-  "Installed CLI and VSIX proof covers the editor-agent loop without requiring ripr init activation, automatic edits, generated tests, or runtime execution"
+  "An agent can inspect current loop state without rerunning analysis or reading chat history",
+  "Loop commands, artifact paths, and review receipts are centralized enough that CLI, LSP, cockpit, CI, docs, and fixtures do not drift",
+  "Receipts carry enough provenance and next-action guidance for reviewers to trust the static handoff",
+  "Canonical fixtures pin happy, unchanged, regressed, missing-artifact, stale-artifact, configured-off, path-with-spaces, and Windows-separator loop cases",
+  "Generated CI uploads LLM work-loop status, workflow, review summary, receipt, and cockpit artifacts as advisory evidence"
 ]
 
 [[work_item]]
-id = "editor-agent/integration-contract-audit"
+id = "agent/loop-status-report"
 status = "done"
-branch = "editor-agent-integration-contract-audit"
+branch = "agent-loop-status-report"
 stackable = false
 requires_human_merge = true
-acceptance = "Define the editor-agent integration contract and inventory current CLI, LSP, VS Code, agent, receipt, cockpit, CI, fixture, install, and release-readiness surfaces; docs and manifest only"
+acceptance = "Add `ripr agent status --root . --json` as a read-only artifact status report for before snapshot, after snapshot, agent brief, agent packet, agent verify, and agent receipt, with recoverable seam_id, missing-input commands, and stale-looking warnings"
 commands = [
-  "cargo xtask check-campaign",
-  "cargo xtask goals next",
-  "cargo xtask check-doc-index",
-  "cargo xtask check-traceability",
-  "cargo xtask check-capabilities",
-  "cargo xtask check-static-language",
+  "cargo test -p ripr agent_status",
   "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
   "cargo xtask check-pr"
 ]
 
 [[work_item]]
-id = "lsp/agent-loop-copy-commands"
-status = "done"
-branch = "lsp-agent-loop-copy-commands"
+id = "agent/centralize-loop-command-templates"
+status = "ready"
+branch = "agent-centralize-loop-command-templates"
 stackable = false
 requires_human_merge = true
-acceptance = "From a seam diagnostic, users can copy agent packet, brief, after-snapshot, verify, and receipt commands; no automatic edits, CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays"
+acceptance = "Centralize loop command templates used by agent status, brief next commands, LSP copy actions, cockpit missing-input commands, CI artifacts, docs examples, fixtures, and release-readiness proof without changing behavior"
 commands = [
+  "cargo test -p ripr agent",
   "cargo test -p ripr lsp",
-  "cargo test -p ripr lsp::tests",
-  "cargo xtask lsp-cockpit-report",
-  "npm --prefix editors/vscode run compile",
-  "npm --prefix editors/vscode run test:e2e",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-pr"
-]
-
-[[work_item]]
-id = "operator/verify-receipt-status"
-status = "done"
-branch = "operator-verify-receipt-status"
-stackable = false
-requires_human_merge = true
-acceptance = "Operator cockpit reports before/after snapshot, agent verify JSON, and agent receipt JSON presence plus improved, changed, regressed, and unchanged counts with next commands for missing inputs"
-commands = [
-  "cargo xtask operator-cockpit",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr"
-]
-
-[[work_item]]
-id = "fixtures/editor-agent-loop"
-status = "done"
-branch = "fixtures-editor-agent-loop"
-stackable = false
-requires_human_merge = true
-acceptance = "Add a canonical fixture that pins LSP diagnostics/actions, agent brief, agent packet, agent verify, agent receipt, and operator cockpit outputs for the full evidence loop"
-commands = [
-  "cargo test -p ripr lsp::tests",
   "cargo xtask lsp-cockpit-report",
   "cargo xtask operator-cockpit",
-  "cargo xtask fixtures",
-  "cargo xtask goldens check",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-pr"
 ]
 
 [[work_item]]
-id = "ci/editor-agent-artifacts"
-status = "done"
-branch = "ci-editor-agent-artifacts"
+id = "agent/workflow-manifest"
+status = "blocked"
+branch = "agent-workflow-manifest"
 stackable = false
 requires_human_merge = true
-acceptance = "Generated GitHub workflow uploads the non-blocking editor-agent loop artifacts, including pilot summary, repo exposure, agent brief, agent packet, agent verify, agent receipt, operator cockpit, SARIF when enabled, and badge JSON"
-commands = [
-  "cargo test -p ripr init_ci_github",
-  "cargo xtask check-workflows",
-  "cargo xtask check-file-policy",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr"
-]
+blocked_by = ["agent/centralize-loop-command-templates"]
+blocked_reason = "Wait until command templates are centralized so the workflow manifest does not create another command-string source of truth"
+acceptance = "Add `ripr agent start --root . --seam-id <id> --out target/ripr/workflow` to write a source-edit-free workflow manifest containing artifact paths and commands"
 
 [[work_item]]
-id = "docs/full-evidence-loop"
-status = "done"
-branch = "docs-full-evidence-loop"
+id = "agent/receipt-provenance"
+status = "blocked"
+branch = "agent-receipt-provenance"
 stackable = false
 requires_human_merge = true
-acceptance = "Quickstart and installed-user docs lead with the real diagnostic-to-receipt loop and state that ripr init is optional policy materialization, not activation"
-commands = [
-  "cargo xtask markdown-links",
-  "cargo xtask check-doc-index",
-  "cargo xtask check-static-language",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-campaign",
-  "cargo xtask check-pr"
-]
+blocked_by = ["agent/workflow-manifest"]
+blocked_reason = "Wait until workflow artifact paths are explicit before hashing and recording provenance in receipts"
+acceptance = "Add receipt provenance fields for ripr version, repo root, config fingerprint, artifact hashes, seam_id, before/after class, command template version, and timestamp without claiming runtime confirmation"
 
 [[work_item]]
-id = "release/editor-agent-readiness-proof"
-status = "done"
-branch = "release-editor-agent-readiness-proof"
+id = "agent/next-action-guidance"
+status = "blocked"
+branch = "agent-next-action-guidance"
 stackable = false
 requires_human_merge = true
-acceptance = "Prove the installed binary, VSIX package path, package dry-run, known limits, and editor-agent loop readiness over the checked fixture without replacing the integration lane"
-commands = [
-  "cargo xtask release-readiness --version 0.4.0",
-  "cargo package -p ripr --list",
-  "cargo publish -p ripr --dry-run",
-  "npm --prefix editors/vscode run package",
-  "cargo xtask check-static-language",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-campaign",
-  "cargo xtask check-pr"
-]
+blocked_by = ["agent/receipt-provenance"]
+blocked_reason = "Wait until receipt provenance is present so next-action guidance can reference a trustworthy receipt surface"
+acceptance = "Emit bounded static next-action guidance for improved, unchanged, regressed, resolved, and new-gap receipt states"
 
 [[work_item]]
-id = "campaign/editor-agent-integration-closeout"
-status = "done"
-branch = "campaign-editor-agent-integration-closeout"
+id = "agent/reviewer-summary"
+status = "blocked"
+branch = "agent-reviewer-summary"
 stackable = false
 requires_human_merge = true
-acceptance = "Close Campaign 10 after editor, agent, cockpit, CI, fixture, docs, and release-readiness proof are aligned with no new public crates, runtime execution, automatic edits, or speculative editor features"
-commands = [
-  "cargo xtask check-campaign",
-  "cargo xtask goals next",
-  "cargo xtask check-doc-index",
-  "cargo xtask check-traceability",
-  "cargo xtask check-capabilities",
-  "cargo xtask check-static-language",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-pr"
-]
+blocked_by = ["agent/next-action-guidance"]
+blocked_reason = "Wait until status, provenance, and next-action guidance are available to join into one reviewer summary"
+acceptance = "Add `ripr agent review-summary --root . --json` and human output that joins status, receipt, cockpit, repo exposure, LSP cockpit when present, and CI artifact status into a compact review packet"
+
+[[work_item]]
+id = "fixtures/llm-work-loop"
+status = "blocked"
+branch = "fixtures-llm-work-loop"
+stackable = false
+requires_human_merge = true
+blocked_by = ["agent/reviewer-summary"]
+blocked_reason = "Wait until the status, manifest, receipt, and review summary surfaces exist before pinning the full fixture set"
+acceptance = "Add LLM work-loop fixtures for happy, unchanged, regressed, missing-artifact, stale-artifact, configured-off, path-with-spaces, and Windows-separator cases"
+
+[[work_item]]
+id = "ci/llm-work-packets"
+status = "blocked"
+branch = "ci-llm-work-packets"
+stackable = false
+requires_human_merge = true
+blocked_by = ["fixtures/llm-work-loop"]
+blocked_reason = "Wait until the fixture set pins the output contracts before publishing the artifacts from generated CI"
+acceptance = "Generated CI uploads agent status JSON/Markdown, workflow JSON, review summary JSON/Markdown, receipt, and operator cockpit artifacts as advisory evidence"
+
+[[work_item]]
+id = "docs/llm-operator-guide"
+status = "blocked"
+branch = "docs-llm-operator-guide"
+stackable = false
+requires_human_merge = true
+blocked_by = ["ci/llm-work-packets"]
+blocked_reason = "Wait until the command and CI artifact loop is pinned before documenting the full LLM operator path"
+acceptance = "Document the LLM operator loop from agent status through start, packet or brief, focused test, after snapshot, verify, receipt, and review summary, with anti-goals explicit"
+
+[[work_item]]
+id = "campaign/llm-work-loop-closeout"
+status = "blocked"
+branch = "campaign-llm-work-loop-closeout"
+stackable = false
+requires_human_merge = true
+blocked_by = ["docs/llm-operator-guide"]
+blocked_reason = "Close only after the status, command template, manifest, receipt, guidance, review summary, fixtures, CI, and docs work items land"
+acceptance = "Close Campaign 11 after LLM work-loop state, commands, provenance, fixtures, CI artifacts, docs, and review summary are aligned without automatic edits, generated tests, runtime mutation execution, speculative LSP features, or new public crates"

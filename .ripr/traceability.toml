@@ -666,3 +666,33 @@ metrics = [
   "agent_brief_with_assertion_shape_total",
   "agent_brief_with_verification_commands_total"
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0011"
+name = "LLM work loop"
+spec = "docs/specs/RIPR-SPEC-0011-llm-work-loop.md"
+tests = [
+  "crates/ripr/src/app/agent_status.rs::tests::agent_status_reports_missing_artifacts_and_next_commands",
+  "crates/ripr/src/app/agent_status.rs::tests::agent_status_recovers_seam_id_from_receipt",
+  "crates/ripr/src/app/agent_status.rs::tests::agent_status_recovers_seam_id_from_verify_packet_or_brief",
+  "crates/ripr/src/app/agent_status.rs::tests::agent_status_warns_when_verify_or_receipt_look_stale",
+  "crates/ripr/src/app/agent_status.rs::tests::agent_status_quotes_paths_with_spaces",
+  "crates/ripr/src/cli/agent.rs::tests::agent_status_parses_root_and_json",
+  "crates/ripr/src/cli/agent.rs::tests::agent_status_requires_json_and_rejects_unknown_arguments",
+  "crates/ripr/src/cli/commands.rs::tests::agent_status_rejects_missing_root_before_reading_artifacts"
+]
+fixtures = []
+code = [
+  "crates/ripr/src/app/agent_status.rs",
+  "crates/ripr/src/cli/agent.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/help.rs"
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0011-llm-work-loop.md",
+  "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md"
+]
+metrics = [
+  "agent_loop_status_available"
+]

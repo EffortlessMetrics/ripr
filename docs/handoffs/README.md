@@ -58,6 +58,7 @@ the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 - [Campaign 10 closeout](2026-05-07-campaign-10-closeout.md)
 - [Editor agent readiness proof](2026-05-07-editor-agent-readiness-proof.md)
 - [Editor agent integration contract audit](2026-05-07-editor-agent-integration-contract-audit.md)
+- [LLM work loop status report](2026-05-07-llm-work-loop-status.md)
 - [Campaign 7 closeout](2026-05-07-campaign-7-closeout.md)
 - [Campaign 8 closeout](2026-05-07-campaign-8-closeout.md)
 - [Hot sidecar latency audit](2026-05-07-hot-sidecar-latency-audit.md)
