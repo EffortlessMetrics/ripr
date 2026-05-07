@@ -1,8 +1,8 @@
 # CI Actuals
 
 `ci-actuals.json` is the per-job telemetry record that closes the
-forecast → actuals → learned-estimate loop described in
-`docs/ci/lem-budgeting.md`.
+forecast → actuals → learned-estimate loop described in `docs/CI.md`'s
+Verification Economics section.
 
 ## Schema
 
@@ -87,7 +87,7 @@ dedicated retention path is out of scope for this rollout.
 
 ## See also
 
-- `docs/ci/lem-budgeting.md` — LEM definition and budget bands.
-- `docs/ci/pr-plan.md` — forecast schema (`ci-plan.json`).
-- `policy/ci-budget.toml` — bands and runner multipliers.
-- `policy/ci-lane-whitelist.toml` — lane ids and `base_lem` defaults.
+- `docs/CI.md` — Verification Economics policy (LEM definition, bands).
+- `policy/ci-budget.toml` — `[[budget_band]]` and `[[label]]` ledgers.
+- `policy/ci-lane-whitelist.toml` — lane registry.
+- `policy/ci-risk-packs.toml` — changed-paths → lane-set mapping.
