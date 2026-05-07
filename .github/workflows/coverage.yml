@@ -14,8 +14,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -26,29 +24,7 @@ jobs:
       - name: Generate coverage
         run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
 
-      - name: Upload coverage artifact
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: rust-lcov
-          path: lcov.info
-          if-no-files-found: error
-
-      - name: Summarize coverage artifacts
-        if: always()
-        run: |
-          echo "## Coverage" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Artifact | Status |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
-          test -s lcov.info && echo "| lcov.info | present |" >> "$GITHUB_STEP_SUMMARY" || echo "| lcov.info | missing |" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Codecov flag: \`rust\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Claim boundary: execution-surface evidence only." >> "$GITHUB_STEP_SUMMARY"
-
       - name: Upload coverage to Codecov
-        if: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
         uses: codecov/codecov-action@v6
         with:
           files: lcov.info
@@ -56,7 +32,3 @@ jobs:
           name: rust-workspace
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
-
-      - name: Explain skipped Codecov upload
-        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
-        run: echo "Skipping Codecov upload for fork pull requests because repository secrets are unavailable."
