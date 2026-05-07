@@ -25,14 +25,34 @@ end_state = [
 
 [[work_item]]
 id = "calibration/runtime-fixtures-v1"
-status = "ready"
+status = "done"
 branch = "runtime-calibration-fixtures"
 stackable = false
 requires_human_merge = true
 acceptance = "Controlled calibration fixtures exercise the main static/runtime agreement buckets with supplied cargo-mutants data, checked expected reports, and no mutation execution by RIPR"
 commands = [
   "cargo test -p ripr calibration",
-  "cargo xtask mutation-calibration fixtures/boundary_gap/input --mutants-json fixtures/boundary_gap/calibration/runtime-mutants.json --repo-exposure-json fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json",
+  "cargo xtask mutation-calibration fixtures/boundary_gap/input --mutants-json fixtures/boundary_gap/calibration/runtime-fixtures-v1/runtime-mutants.json --repo-exposure-json fixtures/boundary_gap/calibration/runtime-fixtures-v1/repo-exposure.json",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo test --workspace"
+]
+
+[[work_item]]
+id = "campaign/runtime-calibration-closeout"
+status = "ready"
+branch = "runtime-calibration-closeout"
+stackable = false
+requires_human_merge = true
+acceptance = "Campaign 8 is reviewed, docs and manifests point at the next real lane, and runtime calibration remains optional supplied-data context rather than mutation execution"
+commands = [
+  "cargo test -p ripr calibration",
+  "cargo xtask mutation-calibration fixtures/boundary_gap/input --mutants-json fixtures/boundary_gap/calibration/runtime-fixtures-v1/runtime-mutants.json --repo-exposure-json fixtures/boundary_gap/calibration/runtime-fixtures-v1/repo-exposure.json",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-campaign",

@@ -585,7 +585,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "calibration/runtime-fixtures-v1"
+next = "campaign/runtime-calibration-closeout"
 metric = "targeted_test_outcome_available"
 
 [[capability]]
@@ -606,7 +606,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/opaque_fixture_builder"
 ]
-next = "calibration/runtime-fixtures-v1"
+next = "campaign/runtime-calibration-closeout"
 metric = "operator_cockpit_available"
 
 [[capability]]
@@ -746,14 +746,19 @@ evidence = [
   "ripr calibrate cargo-mutants",
   "crates/ripr/src/output/mutation_calibration.rs",
   "crates/ripr/tests/cli_smoke.rs calibrate cargo-mutants smoke tests",
+  "crates/ripr/tests/cli_smoke.rs calibration_runtime_fixture_matches_checked_reports",
   "cargo xtask mutation-calibration",
   "target/ripr/reports/mutation-calibration.json",
   "target/ripr/reports/mutation-calibration.md",
   "xtask mutation-calibration importer and join unit tests",
   "fixtures/boundary_gap/calibration/runtime-mutants.json",
   "fixtures/boundary_gap/calibration/mutation-calibration.json",
-  "fixtures/boundary_gap/calibration/mutation-calibration.md"
+  "fixtures/boundary_gap/calibration/mutation-calibration.md",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v1/repo-exposure.json",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v1/runtime-mutants.json",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v1/mutation-calibration.json",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v1/mutation-calibration.md"
 ]
 fixtures = ["fixtures/boundary_gap"]
-next = "calibration/runtime-fixtures-v1"
-metric = "static seam classes joined to imported runtime mutation outcomes by seam_id or unambiguous file_line; ambiguous file_line candidates remain unassigned; boundary_gap sample covers a static-gap/runtime-clean join"
+next = "campaign/runtime-calibration-closeout"
+metric = "checked calibration fixtures cover static gap plus runtime signal, static gap plus runtime clean, runtime signal without static gap, static clean plus runtime clean, inconclusive runtime labels, ambiguous file_line joins, unmatched runtime data, static seams without runtime data, and seam_id/file_line join methods"

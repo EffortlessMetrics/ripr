@@ -1,0 +1,240 @@
+{
+  "schema_version": "0.2",
+  "scope": "repo",
+  "metrics": {
+    "seams_total": 9,
+    "headline_eligible": 9,
+    "strongly_gripped": 5,
+    "weakly_gripped": 3,
+    "ungripped": 1,
+    "reachable_unrevealed": 0,
+    "activation_unknown": 0,
+    "propagation_unknown": 0,
+    "observation_unknown": 0,
+    "discrimination_unknown": 0,
+    "opaque": 0,
+    "intentional": 0,
+    "suppressed": 0
+  },
+  "seams": [
+    {
+      "seam_id": "cal-static-gap-runtime-signal",
+      "kind": "predicate_boundary",
+      "file": "src/pricing.rs",
+      "line": 10,
+      "owner": "src/pricing.rs::discounted_total",
+      "expression": "amount >= threshold",
+      "grip_class": "weakly_gripped",
+      "headline_eligible": true,
+      "related_tests": [
+        {
+          "name": "discounts_above_threshold",
+          "file": "tests/pricing.rs",
+          "line": 5,
+          "oracle_kind": "exact_value",
+          "oracle_strength": "strong"
+        }
+      ],
+      "observed_values": [
+        "150"
+      ],
+      "missing_discriminators": [
+        {
+          "value": "threshold",
+          "reason": "equality-boundary value is missing"
+        }
+      ]
+    },
+    {
+      "seam_id": "cal-static-gap-runtime-clean",
+      "kind": "predicate_boundary",
+      "file": "src/pricing.rs",
+      "line": 20,
+      "owner": "src/pricing.rs::loyalty_discount",
+      "expression": "visits > 3",
+      "grip_class": "weakly_gripped",
+      "headline_eligible": true,
+      "related_tests": [
+        {
+          "name": "loyalty_discount_above_threshold",
+          "file": "tests/pricing.rs",
+          "line": 17,
+          "oracle_kind": "exact_value",
+          "oracle_strength": "strong"
+        }
+      ],
+      "observed_values": [
+        "4"
+      ],
+      "missing_discriminators": [
+        {
+          "value": "3",
+          "reason": "adjacent boundary value is missing"
+        }
+      ]
+    },
+    {
+      "seam_id": "cal-static-clean-runtime-clean",
+      "kind": "error_variant",
+      "file": "src/pricing.rs",
+      "line": 30,
+      "owner": "src/pricing.rs::parse_discount_code",
+      "expression": "DiscountError::Expired",
+      "grip_class": "strongly_gripped",
+      "headline_eligible": true,
+      "related_tests": [
+        {
+          "name": "expired_code_returns_exact_variant",
+          "file": "tests/pricing.rs",
+          "line": 30,
+          "oracle_kind": "exact_error_variant",
+          "oracle_strength": "strong"
+        }
+      ],
+      "observed_values": [
+        "Expired"
+      ],
+      "missing_discriminators": []
+    },
+    {
+      "seam_id": "cal-static-clean-runtime-signal",
+      "kind": "predicate_boundary",
+      "file": "src/pricing.rs",
+      "line": 40,
+      "owner": "src/pricing.rs::bulk_discount",
+      "expression": "items >= 10",
+      "grip_class": "strongly_gripped",
+      "headline_eligible": true,
+      "related_tests": [
+        {
+          "name": "bulk_discount_boundary",
+          "file": "tests/pricing.rs",
+          "line": 42,
+          "oracle_kind": "exact_value",
+          "oracle_strength": "strong"
+        }
+      ],
+      "observed_values": [
+        "9",
+        "10",
+        "11"
+      ],
+      "missing_discriminators": []
+    },
+    {
+      "seam_id": "cal-static-clean-runtime-inconclusive",
+      "kind": "call_presence",
+      "file": "src/pricing.rs",
+      "line": 50,
+      "owner": "src/pricing.rs::emit_receipt",
+      "expression": "audit.log_discount()",
+      "grip_class": "strongly_gripped",
+      "headline_eligible": true,
+      "related_tests": [
+        {
+          "name": "receipt_logs_discount",
+          "file": "tests/pricing.rs",
+          "line": 55,
+          "oracle_kind": "side_effect_observer",
+          "oracle_strength": "strong"
+        }
+      ],
+      "observed_values": [
+        "log_discount"
+      ],
+      "missing_discriminators": []
+    },
+    {
+      "seam_id": "cal-static-gap-no-runtime",
+      "kind": "predicate_boundary",
+      "file": "src/pricing.rs",
+      "line": 60,
+      "owner": "src/pricing.rs::regional_discount",
+      "expression": "region == Region::West",
+      "grip_class": "ungripped",
+      "headline_eligible": true,
+      "related_tests": [],
+      "observed_values": [],
+      "missing_discriminators": [
+        {
+          "value": "Region::West",
+          "reason": "no related test activates this branch"
+        }
+      ]
+    },
+    {
+      "seam_id": "cal-ambiguous-candidate-a",
+      "kind": "predicate_boundary",
+      "file": "src/pricing.rs",
+      "line": 70,
+      "owner": "src/pricing.rs::tiered_discount",
+      "expression": "tier >= 2",
+      "grip_class": "strongly_gripped",
+      "headline_eligible": true,
+      "related_tests": [
+        {
+          "name": "tier_two_discount",
+          "file": "tests/pricing.rs",
+          "line": 70,
+          "oracle_kind": "exact_value",
+          "oracle_strength": "strong"
+        }
+      ],
+      "observed_values": [
+        "2"
+      ],
+      "missing_discriminators": []
+    },
+    {
+      "seam_id": "cal-ambiguous-candidate-b",
+      "kind": "predicate_boundary",
+      "file": "src/pricing.rs",
+      "line": 70,
+      "owner": "src/pricing.rs::tiered_discount",
+      "expression": "tier <= 4",
+      "grip_class": "strongly_gripped",
+      "headline_eligible": true,
+      "related_tests": [
+        {
+          "name": "tier_four_discount",
+          "file": "tests/pricing.rs",
+          "line": 77,
+          "oracle_kind": "exact_value",
+          "oracle_strength": "strong"
+        }
+      ],
+      "observed_values": [
+        "4"
+      ],
+      "missing_discriminators": []
+    },
+    {
+      "seam_id": "cal-file-line-gap-clean",
+      "kind": "predicate_boundary",
+      "file": "src/pricing.rs",
+      "line": 80,
+      "owner": "src/pricing.rs::coupon_discount",
+      "expression": "coupon.is_some()",
+      "grip_class": "weakly_gripped",
+      "headline_eligible": true,
+      "related_tests": [
+        {
+          "name": "coupon_discount_applies",
+          "file": "tests/pricing.rs",
+          "line": 86,
+          "oracle_kind": "exact_value",
+          "oracle_strength": "strong"
+        }
+      ],
+      "observed_values": [
+        "Some"
+      ],
+      "missing_discriminators": [
+        {
+          "value": "None",
+          "reason": "missing absence case"
+        }
+      ]
+    }
+  ]
+}

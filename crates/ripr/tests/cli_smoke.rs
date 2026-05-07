@@ -659,6 +659,63 @@ fn calibrate_cargo_mutants_writes_json_when_requested() -> Result<(), String> {
     Ok(())
 }
 
+#[test]
+fn calibration_runtime_fixture_matches_checked_reports() -> Result<(), String> {
+    let root = workspace_root();
+    let fixture = root.join("fixtures/boundary_gap/calibration/runtime-fixtures-v1");
+    let mutants = fixture.join("runtime-mutants.json").display().to_string();
+    let repo = fixture.join("repo-exposure.json").display().to_string();
+
+    let json_output = run_ripr(&[
+        "calibrate",
+        "cargo-mutants",
+        "--mutants-json",
+        &mutants,
+        "--repo-exposure-json",
+        &repo,
+        "--format",
+        "json",
+    ]);
+    assert_success(&json_output);
+    let expected_json = std::fs::read_to_string(fixture.join("mutation-calibration.json"))
+        .map_err(|e| format!("read checked calibration json: {e}"))?;
+    let actual_json = String::from_utf8(json_output.stdout)
+        .map_err(|e| format!("decode calibration json stdout: {e}"))?;
+    assert_eq!(actual_json, expected_json);
+
+    let value: serde_json::Value = serde_json::from_str(&expected_json)
+        .map_err(|e| format!("parse checked calibration json: {e}"))?;
+    assert_eq!(value["agreement"]["static_gap_and_runtime_signal"], 1);
+    assert_eq!(value["agreement"]["static_gap_without_runtime_signal"], 3);
+    assert_eq!(value["agreement"]["runtime_signal_without_static_gap"], 2);
+    assert_eq!(value["agreement"]["static_clean_and_runtime_clean"], 1);
+    assert_eq!(value["agreement"]["runtime_inconclusive"], 2);
+    assert_eq!(value["metrics"]["ambiguous_file_line_total"], 1);
+    assert_eq!(value["metrics"]["unmatched_mutants_total"], 1);
+    assert_eq!(value["metrics"]["static_without_runtime_total"], 1);
+    assert_eq!(value["metrics"]["join_method_counts"]["file_line"], 1);
+    assert_eq!(value["metrics"]["join_method_counts"]["seam_id"], 5);
+
+    let md_output = run_ripr(&[
+        "calibrate",
+        "cargo-mutants",
+        "--mutants-json",
+        &mutants,
+        "--repo-exposure-json",
+        &repo,
+        "--format",
+        "md",
+    ]);
+    assert_success(&md_output);
+    let expected_md = std::fs::read_to_string(fixture.join("mutation-calibration.md"))
+        .map_err(|e| format!("read checked calibration markdown: {e}"))?;
+    let actual_md = String::from_utf8(md_output.stdout)
+        .map_err(|e| format!("decode calibration markdown stdout: {e}"))?;
+    assert_eq!(actual_md, expected_md);
+
+    Ok(())
+}
+
 fn write_outcome_snapshots(workspace: &Path) -> Result<(), String> {
     let before = r#"{
   "schema_version": "0.2",

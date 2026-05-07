@@ -1022,13 +1022,14 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `calibration/runtime-fixtures-v1` | ready | Add controlled calibration fixtures for the main static/runtime agreement buckets with supplied cargo-mutants data, checked expected reports, and no mutation execution by RIPR. |
+| `calibration/runtime-fixtures-v1` | done | Added `fixtures/boundary_gap/calibration/runtime-fixtures-v1/` with supplied repo-exposure and cargo-mutants JSON inputs plus checked Markdown/JSON reports. `crates/ripr/tests/cli_smoke.rs::calibration_runtime_fixture_matches_checked_reports` verifies the public command output against those reports and pins the main static/runtime buckets, ambiguous file/line joins, unmatched runtime data, static seams without runtime data, and `seam_id`/`file_line` joins. |
+| `campaign/runtime-calibration-closeout` | ready | Close Campaign 8 after the fixture-backed calibration lane is reviewed and manifests point at the next real lane. |
 
 Commands:
 
 ```bash
 cargo test -p ripr calibration
-cargo xtask mutation-calibration fixtures/boundary_gap/input --mutants-json fixtures/boundary_gap/calibration/runtime-mutants.json --repo-exposure-json fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json
+cargo xtask mutation-calibration fixtures/boundary_gap/input --mutants-json fixtures/boundary_gap/calibration/runtime-fixtures-v1/runtime-mutants.json --repo-exposure-json fixtures/boundary_gap/calibration/runtime-fixtures-v1/repo-exposure.json
 cargo xtask check-output-contracts
 cargo xtask check-static-language
 cargo xtask check-campaign

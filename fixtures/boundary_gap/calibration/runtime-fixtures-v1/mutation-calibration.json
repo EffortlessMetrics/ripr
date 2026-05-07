@@ -1,0 +1,368 @@
+{
+  "agreement": {
+    "runtime_inconclusive": 2,
+    "runtime_signal_without_static_gap": 2,
+    "static_clean_and_runtime_clean": 1,
+    "static_gap_and_runtime_signal": 1,
+    "static_gap_without_runtime_signal": 3
+  },
+  "ambiguous_file_line_matches": [
+    {
+      "candidates": [
+        {
+          "file": "src/pricing.rs",
+          "line": 70,
+          "missing_discriminators": [],
+          "observed_values": [
+            "2"
+          ],
+          "oracle_kind": "exact_value",
+          "oracle_strength": "strong",
+          "seam_grip_class": "strongly_gripped",
+          "seam_id": "cal-ambiguous-candidate-a",
+          "seam_kind": "predicate_boundary"
+        },
+        {
+          "file": "src/pricing.rs",
+          "line": 70,
+          "missing_discriminators": [],
+          "observed_values": [
+            "4"
+          ],
+          "oracle_kind": "exact_value",
+          "oracle_strength": "strong",
+          "seam_grip_class": "strongly_gripped",
+          "seam_id": "cal-ambiguous-candidate-b",
+          "seam_kind": "predicate_boundary"
+        }
+      ],
+      "runtime": {
+        "duration": "39ms",
+        "file": "src/pricing.rs",
+        "line": 70,
+        "mutant_id": "m-ambiguous-file-line",
+        "mutation_operator": "replace boundary comparison",
+        "runtime_outcome": "missed",
+        "seam_id": null,
+        "test_command": "cargo test tiered_discount"
+      }
+    }
+  ],
+  "matches": [
+    {
+      "join_method": "file_line",
+      "runtime": {
+        "duration": "40ms",
+        "file": "src/pricing.rs",
+        "line": 80,
+        "mutant_id": "m-file-line-gap-clean",
+        "mutation_operator": "replace is_some with is_none",
+        "runtime_outcome": "caught",
+        "seam_id": null,
+        "test_command": "cargo test coupon_discount_applies"
+      },
+      "static": {
+        "file": "src/pricing.rs",
+        "line": 80,
+        "missing_discriminators": [
+          "None (missing absence case)"
+        ],
+        "observed_values": [
+          "Some"
+        ],
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "seam_grip_class": "weakly_gripped",
+        "seam_id": "cal-file-line-gap-clean",
+        "seam_kind": "predicate_boundary"
+      }
+    },
+    {
+      "join_method": "seam_id",
+      "runtime": {
+        "duration": "44ms",
+        "file": "src/pricing.rs",
+        "line": 30,
+        "mutant_id": "m-static-clean-runtime-clean",
+        "mutation_operator": "replace error variant",
+        "runtime_outcome": "caught",
+        "seam_id": "cal-static-clean-runtime-clean",
+        "test_command": "cargo test expired_code_returns_exact_variant"
+      },
+      "static": {
+        "file": "src/pricing.rs",
+        "line": 30,
+        "missing_discriminators": [],
+        "observed_values": [
+          "Expired"
+        ],
+        "oracle_kind": "exact_error_variant",
+        "oracle_strength": "strong",
+        "seam_grip_class": "strongly_gripped",
+        "seam_id": "cal-static-clean-runtime-clean",
+        "seam_kind": "error_variant"
+      }
+    },
+    {
+      "join_method": "seam_id",
+      "runtime": {
+        "duration": "2s",
+        "file": "src/pricing.rs",
+        "line": 50,
+        "mutant_id": "m-static-clean-runtime-inconclusive",
+        "mutation_operator": "delete side-effect call",
+        "runtime_outcome": "error",
+        "seam_id": "cal-static-clean-runtime-inconclusive",
+        "test_command": "cargo test receipt_logs_discount"
+      },
+      "static": {
+        "file": "src/pricing.rs",
+        "line": 50,
+        "missing_discriminators": [],
+        "observed_values": [
+          "log_discount"
+        ],
+        "oracle_kind": "side_effect_observer",
+        "oracle_strength": "strong",
+        "seam_grip_class": "strongly_gripped",
+        "seam_id": "cal-static-clean-runtime-inconclusive",
+        "seam_kind": "call_presence"
+      }
+    },
+    {
+      "join_method": "seam_id",
+      "runtime": {
+        "duration": "47ms",
+        "file": "src/pricing.rs",
+        "line": 40,
+        "mutant_id": "m-static-clean-runtime-signal",
+        "mutation_operator": "replace >= with >",
+        "runtime_outcome": "missed",
+        "seam_id": "cal-static-clean-runtime-signal",
+        "test_command": "cargo test bulk_discount_boundary"
+      },
+      "static": {
+        "file": "src/pricing.rs",
+        "line": 40,
+        "missing_discriminators": [],
+        "observed_values": [
+          "9",
+          "10",
+          "11"
+        ],
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "seam_grip_class": "strongly_gripped",
+        "seam_id": "cal-static-clean-runtime-signal",
+        "seam_kind": "predicate_boundary"
+      }
+    },
+    {
+      "join_method": "seam_id",
+      "runtime": {
+        "duration": "38ms",
+        "file": "src/pricing.rs",
+        "line": 20,
+        "mutant_id": "m-static-gap-runtime-clean",
+        "mutation_operator": "replace > with >=",
+        "runtime_outcome": "caught",
+        "seam_id": "cal-static-gap-runtime-clean",
+        "test_command": "cargo test loyalty_discount_above_threshold"
+      },
+      "static": {
+        "file": "src/pricing.rs",
+        "line": 20,
+        "missing_discriminators": [
+          "3 (adjacent boundary value is missing)"
+        ],
+        "observed_values": [
+          "4"
+        ],
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "seam_grip_class": "weakly_gripped",
+        "seam_id": "cal-static-gap-runtime-clean",
+        "seam_kind": "predicate_boundary"
+      }
+    },
+    {
+      "join_method": "seam_id",
+      "runtime": {
+        "duration": "41ms",
+        "file": "src/pricing.rs",
+        "line": 10,
+        "mutant_id": "m-static-gap-runtime-signal",
+        "mutation_operator": "replace >= with >",
+        "runtime_outcome": "missed",
+        "seam_id": "cal-static-gap-runtime-signal",
+        "test_command": "cargo test discounts_above_threshold"
+      },
+      "static": {
+        "file": "src/pricing.rs",
+        "line": 10,
+        "missing_discriminators": [
+          "threshold (equality-boundary value is missing)"
+        ],
+        "observed_values": [
+          "150"
+        ],
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "seam_grip_class": "weakly_gripped",
+        "seam_id": "cal-static-gap-runtime-signal",
+        "seam_kind": "predicate_boundary"
+      }
+    }
+  ],
+  "metrics": {
+    "ambiguous_file_line_total": 1,
+    "join_method_counts": {
+      "file_line": 1,
+      "seam_id": 5
+    },
+    "matched_total": 6,
+    "mutants_total": 8,
+    "runtime_outcome_counts": {
+      "caught": 3,
+      "error": 1,
+      "missed": 4
+    },
+    "static_seams_total": 9,
+    "static_without_runtime_total": 1,
+    "unmatched_mutants_total": 1
+  },
+  "missed_runtime_signals": [
+    {
+      "reason": "runtime gap signal joined to a static-clean seam",
+      "runtime": {
+        "duration": "47ms",
+        "file": "src/pricing.rs",
+        "line": 40,
+        "mutant_id": "m-static-clean-runtime-signal",
+        "mutation_operator": "replace >= with >",
+        "runtime_outcome": "missed",
+        "seam_id": "cal-static-clean-runtime-signal",
+        "test_command": "cargo test bulk_discount_boundary"
+      },
+      "static": {
+        "file": "src/pricing.rs",
+        "line": 40,
+        "missing_discriminators": [],
+        "observed_values": [
+          "9",
+          "10",
+          "11"
+        ],
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "seam_grip_class": "strongly_gripped",
+        "seam_id": "cal-static-clean-runtime-signal",
+        "seam_kind": "predicate_boundary"
+      }
+    },
+    {
+      "reason": "runtime gap signal did not join to a static seam",
+      "runtime": {
+        "duration": "36ms",
+        "file": "src/pricing.rs",
+        "line": 99,
+        "mutant_id": "m-unmatched-runtime-signal",
+        "mutation_operator": "replace arithmetic expression",
+        "runtime_outcome": "missed",
+        "seam_id": null,
+        "test_command": "cargo test external_runtime_signal"
+      },
+      "static": null
+    }
+  ],
+  "precision_notes": [
+    "runtime gap signals are imported runtime labels such as missed, survived, not_caught, or uncaught",
+    "runtime clean signals are imported runtime labels such as caught or timeout",
+    "static_gap_without_runtime_signal includes static gap seams with no matched runtime gap signal in this import",
+    "ambiguous file/line runtime gap signals are counted as runtime_inconclusive until a seam_id or unambiguous location is available"
+  ],
+  "schema_version": "0.1",
+  "scope": "repo",
+  "static_only_findings": [
+    {
+      "reason": "static gap seam matched runtime data without a runtime gap signal",
+      "static": {
+        "file": "src/pricing.rs",
+        "line": 20,
+        "missing_discriminators": [
+          "3 (adjacent boundary value is missing)"
+        ],
+        "observed_values": [
+          "4"
+        ],
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "seam_grip_class": "weakly_gripped",
+        "seam_id": "cal-static-gap-runtime-clean",
+        "seam_kind": "predicate_boundary"
+      }
+    },
+    {
+      "reason": "static gap seam has no matched runtime record in this import",
+      "static": {
+        "file": "src/pricing.rs",
+        "line": 60,
+        "missing_discriminators": [
+          "Region::West (no related test activates this branch)"
+        ],
+        "observed_values": [],
+        "oracle_kind": "unknown",
+        "oracle_strength": "unknown",
+        "seam_grip_class": "ungripped",
+        "seam_id": "cal-static-gap-no-runtime",
+        "seam_kind": "predicate_boundary"
+      }
+    },
+    {
+      "reason": "static gap seam matched runtime data without a runtime gap signal",
+      "static": {
+        "file": "src/pricing.rs",
+        "line": 80,
+        "missing_discriminators": [
+          "None (missing absence case)"
+        ],
+        "observed_values": [
+          "Some"
+        ],
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "seam_grip_class": "weakly_gripped",
+        "seam_id": "cal-file-line-gap-clean",
+        "seam_kind": "predicate_boundary"
+      }
+    }
+  ],
+  "static_without_runtime_sample": [
+    {
+      "file": "src/pricing.rs",
+      "line": 60,
+      "missing_discriminators": [
+        "Region::West (no related test activates this branch)"
+      ],
+      "observed_values": [],
+      "oracle_kind": "unknown",
+      "oracle_strength": "unknown",
+      "seam_grip_class": "ungripped",
+      "seam_id": "cal-static-gap-no-runtime",
+      "seam_kind": "predicate_boundary"
+    }
+  ],
+  "status": "advisory",
+  "unmatched_mutants": [
+    {
+      "duration": "36ms",
+      "file": "src/pricing.rs",
+      "line": 99,
+      "mutant_id": "m-unmatched-runtime-signal",
+      "mutation_operator": "replace arithmetic expression",
+      "runtime_outcome": "missed",
+      "seam_id": null,
+      "test_command": "cargo test external_runtime_signal"
+    }
+  ]
+}
