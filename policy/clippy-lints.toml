@@ -45,6 +45,24 @@ level = "deny"
 name = "clippy::should_panic_without_expect"
 level = "deny"
 
+[[active.panic_family]]
+name = "clippy::unwrap_used"
+level = "deny"
+note = "Receipted dual-rail with `#[expect(clippy::unwrap_used, reason = \"...\")]` mirrors per call site, paired with `.ripr/no-panic-allowlist.toml` entries. Production code paths are forbidden; test fixtures use module-level `#[expect]` blocks listed in `.ripr/allow-attributes.txt`."
+
+[[active.panic_family]]
+name = "clippy::expect_used"
+level = "deny"
+note = "Same dual-rail receipt model as `unwrap_used`."
+
+[[active.panic_family]]
+name = "clippy::get_unwrap"
+level = "deny"
+
+[[active.panic_family]]
+name = "clippy::unwrap_in_result"
+level = "deny"
+
 [[active.memory]]
 name = "clippy::mem_forget"
 level = "deny"

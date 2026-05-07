@@ -75,6 +75,10 @@ pub(crate) fn run_repo_analysis_with_oracle_policy(
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::unwrap_used,
+    reason = "Test fixture builders use unwrap on fs operations against fresh temp dirs; receipted via .ripr/no-panic-allowlist.toml entries for crates/ripr/src/analysis/mod.rs."
+)]
 mod tests {
     use super::*;
     use std::fs;

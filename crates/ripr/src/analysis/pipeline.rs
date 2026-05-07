@@ -90,6 +90,10 @@ pub(crate) fn run_repo_pipeline_with_oracle_policy(
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "Tests assert an expected file-system error via `.expect_err(\"why\")`; the closure-style helper makes the expected failure mode part of the assertion message."
+)]
 mod tests {
     use super::*;
     use std::path::PathBuf;

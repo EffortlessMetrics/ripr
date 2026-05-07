@@ -1,3 +1,8 @@
+#![expect(
+    clippy::unwrap_used,
+    reason = "CLI smoke test: unwrap on Command::output() and CARGO_MANIFEST_DIR's parent chain is the canonical fail-fast pattern for binary integration tests; receipted via .ripr/no-panic-allowlist.toml entries for crates/ripr/tests/cli_smoke.rs."
+)]
+
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};

@@ -22,12 +22,21 @@ unused_must_use = "deny"
 # See docs/CLIPPY_POLICY.md.
 [workspace.lints.clippy]
 # Panic family (code-shape rail).
+# Every `unwrap_used` / `expect_used` call site is receipted with
+# `#[expect(clippy::unwrap_used, reason = "...")]` (or `expect_used`) on
+# the enclosing item, mirroring the entries in
+# `.ripr/no-panic-allowlist.toml`. The semantic checker remains the
+# authoritative gate; clippy is the local code-shape rail.
 dbg_macro = "deny"
 todo = "deny"
 unimplemented = "deny"
 panic = "deny"
 unreachable = "deny"
 should_panic_without_expect = "deny"
+unwrap_used = "deny"
+expect_used = "deny"
+get_unwrap = "deny"
+unwrap_in_result = "deny"
 
 # Memory / drop footguns.
 mem_forget = "deny"

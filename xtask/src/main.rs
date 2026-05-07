@@ -15179,6 +15179,11 @@ fn check_droid_review_config_impl() -> Result<(), String> {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    reason = "xtask test code uses unwrap/expect for fail-fast assertion. Production paths are receipted via .ripr/no-panic-allowlist.toml; the test scope is governed by this single module-level expect."
+)]
 mod tests {
     use super::XtaskCommand;
     use super::dispatch;
