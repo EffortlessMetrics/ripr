@@ -95,6 +95,8 @@ For GitHub Actions:
 - If a workflow adds shell `run:` blocks, the workflow allowlist budget must reflect them.
 - Do not print secrets or generated local settings containing expanded secrets.
 - Keep full Droid output disabled unless debugging in a safe private context.
+- Do not upload raw `$HOME/.factory/**` or raw `droid-prompts/**` from
+  secrets-backed Droid workflows.
 
 ## Droid workflow invariants
 
@@ -107,6 +109,12 @@ For Droid workflows:
 - Keep `${MINIMAX_API_KEY}` literal in checked-in or artifact-prone files.
 - Do not set `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_BASE_URL`.
 - Keep `show_full_output: false`.
+- Use the approved safe action ref
+  `EffortlessMetrics/droid-action-safe@01e76b659e4b1e5f23feedc8cfabf8dc14c7485f`.
+- Set `upload_debug_artifacts: false`.
+- Do not use `Factory-AI/droid-action` directly for MiniMax BYOK workflows
+  unless a future upstream SHA has an explicit debug-artifact disable input and
+  the checker allowlist is updated.
 - `automatic_review: true` and `automatic_security_review: true` must be set.
 - `review_depth: shallow` unless intentionally changed.
 - `cancel-in-progress: false` with per-PR concurrency group.

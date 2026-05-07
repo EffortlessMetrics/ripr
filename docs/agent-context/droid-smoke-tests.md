@@ -64,7 +64,9 @@ Expected:
 - critical findings block (`security_block_on_critical: true`);
 - high findings do not block (`security_block_on_high: false`);
 - no secrets are printed in output;
-- `show_full_output: false` keeps artifact exposure minimal.
+- `show_full_output: false` is set;
+- `upload_debug_artifacts: false` is set;
+- no raw Droid debug artifact is uploaded.
 
 Validate after triggering manually:
 - no secrets appear in workflow logs;
@@ -72,16 +74,22 @@ Validate after triggering manually:
 
 ## Artifact hygiene
 
-After changing any Droid workflow, inspect one completed run artifact and confirm:
-- generated Factory settings (`~/.factory/settings.local.json`) do not contain expanded secrets — `${MINIMAX_API_KEY}` must remain unexpanded in the heredoc;
-- prompt and debug artifacts do not contain unexpected secrets;
+After changing any Droid workflow, inspect one completed run's artifact list and
+confirm:
+- no raw artifact named `droid-review-debug-<run_id>` was uploaded;
+- if sanitized debug artifacts were explicitly enabled for a private manual run,
+  the artifact name is `droid-review-debug-sanitized-*`;
+- sanitized debug artifacts do not contain expanded provider keys, GitHub
+  tokens, authorization headers, or raw prompt files;
+- generated Factory settings (`~/.factory/settings.local.json`) keep
+  `${MINIMAX_API_KEY}` unexpanded in the heredoc;
 - `show_full_output: false` is in effect for all Droid action steps;
-- artifact retention and download permissions are appropriate for this repo.
+- `upload_debug_artifacts: false` is in effect for normal secrets-backed runs.
 
 ## Rollout smoke sequence
 
 When enabling Droid in a new repository, follow the rollout checklist first.
 After merge, use one same-repo PR to confirm automatic review, `@droid review`,
 `@droid security`, and manual Droid Security Scan all run with
-`custom:MiniMax-M2.7-0`. Inspect one debug artifact before expanding beyond the
-pilot batch.
+`custom:MiniMax-M2.7-0`. Inspect artifact behavior before expanding beyond the
+pilot batch; normal runs should not upload raw debug artifacts.

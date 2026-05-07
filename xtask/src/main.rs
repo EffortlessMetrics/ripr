@@ -14921,6 +14921,10 @@ fn forbids_active_line(lines: &[String], pattern: &str) -> bool {
     lines.iter().any(|line| line.contains(pattern))
 }
 
+const DROID_SAFE_ACTION: &str = "EffortlessMetrics/droid-action-safe";
+const DROID_SAFE_ACTION_SHA: &str = "01e76b659e4b1e5f23feedc8cfabf8dc14c7485f";
+const DROID_UNSAFE_UPSTREAM_ACTION: &str = "Factory-AI/droid-action";
+
 fn check_droid_action_refs(violations: &mut Vec<String>, path_label: &str, text: &str) {
     for (line_number, line) in text.lines().enumerate() {
         let trimmed = line.trim();
@@ -14942,6 +14946,20 @@ fn check_droid_action_refs(violations: &mut Vec<String>, path_label: &str, text:
             if !(ref_part.len() == 40 && ref_part.chars().all(|c| c.is_ascii_hexdigit())) {
                 violations.push(format!(
                     "{path_label}:{} action ref must use immutable commit SHA: {action}@{ref_part}",
+                    line_number + 1
+                ));
+            }
+            if action == DROID_UNSAFE_UPSTREAM_ACTION {
+                violations.push(format!(
+                    "{path_label}:{} must not use unsafe upstream Droid action for BYOK workflows: {action}@{ref_part}",
+                    line_number + 1
+                ));
+            }
+            if action.contains("droid-action")
+                && !(action == DROID_SAFE_ACTION && ref_part == DROID_SAFE_ACTION_SHA)
+            {
+                violations.push(format!(
+                    "{path_label}:{} Droid action must use approved safe action ref {DROID_SAFE_ACTION}@{DROID_SAFE_ACTION_SHA}",
                     line_number + 1
                 ));
             }
@@ -15010,6 +15028,16 @@ fn check_droid_common(
     } else if !has_active_line(&lower_lines, "show_full_output: false") {
         violations.push(format!(
             "{path_label}: must explicitly set show_full_output: false"
+        ));
+    }
+
+    if has_active_line(&lower_lines, "upload_debug_artifacts: true") {
+        violations.push(format!(
+            "{path_label}: must not enable Droid debug artifact upload"
+        ));
+    } else if !has_active_line(&lower_lines, "upload_debug_artifacts: false") {
+        violations.push(format!(
+            "{path_label}: must explicitly set upload_debug_artifacts: false"
         ));
     }
 
@@ -20712,9 +20740,9 @@ active: true
         check_droid_action_refs(
             &mut violations,
             "test.yml",
-            "      - uses: Factory-AI/droid-action@v5\n",
+            "      - uses: EffortlessMetrics/droid-action-safe@v5\n",
         );
-        assert_eq!(violations.len(), 1);
+        assert_eq!(violations.len(), 2);
         assert!(violations[0].contains("immutable commit SHA"));
     }
 
@@ -20724,9 +20752,39 @@ active: true
         check_droid_action_refs(
             &mut violations,
             "test.yml",
-            "      - uses: Factory-AI/droid-action@e3d1f5e7861c36fe4a9c4dca3edec87b964b2bc4\n",
+            "      - uses: EffortlessMetrics/droid-action-safe@01e76b659e4b1e5f23feedc8cfabf8dc14c7485f\n",
         );
         assert!(violations.is_empty());
+    }
+
+    #[test]
+    fn check_droid_action_refs_rejects_unsafe_upstream_ref() {
+        let mut violations = Vec::new();
+        check_droid_action_refs(
+            &mut violations,
+            "test.yml",
+            "      - uses: Factory-AI/droid-action@e3d1f5e7861c36fe4a9c4dca3edec87b964b2bc4\n",
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("unsafe upstream Droid action"))
+        );
+    }
+
+    #[test]
+    fn check_droid_action_refs_rejects_unapproved_safe_sha() {
+        let mut violations = Vec::new();
+        check_droid_action_refs(
+            &mut violations,
+            "test.yml",
+            "      - uses: EffortlessMetrics/droid-action-safe@e3d1f5e7861c36fe4a9c4dca3edec87b964b2bc4\n",
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("approved safe action ref"))
+        );
     }
 
     #[test]
@@ -20748,7 +20806,16 @@ active: true
             "test.yml",
             "      - uses: Factory-AI/droid-action@main\n",
         );
-        assert_eq!(violations.len(), 1);
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("immutable commit SHA"))
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("unsafe upstream Droid action"))
+        );
     }
 
     #[test]
@@ -20885,6 +20952,23 @@ ${MINIMAX_API_KEY}
     }
 
     #[test]
+    fn check_droid_common_flags_missing_debug_artifact_disable() {
+        let mut violations = Vec::new();
+        let yaml = "\
+security_model: \"custom:MiniMax-M2.7-0\"
+$HOME/.factory/settings.local.json
+${MINIMAX_API_KEY}
+show_full_output: false
+";
+        check_droid_common(&mut violations, "test.yml", yaml, false, false);
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("upload_debug_artifacts: false"))
+        );
+    }
+
+    #[test]
     fn check_droid_common_allows_security_scan_without_review_model_or_same_repo_guard() {
         let mut violations = Vec::new();
         let yaml = "\
@@ -20892,6 +20976,7 @@ security_model: \"custom:MiniMax-M2.7-0\"
 $HOME/.factory/settings.local.json
 ${MINIMAX_API_KEY}
 show_full_output: false
+upload_debug_artifacts: false
 ";
         check_droid_common(&mut violations, "test.yml", yaml, false, false);
         assert!(
@@ -20921,8 +21006,9 @@ jobs:
           cat > "$HOME/.factory/settings.local.json" <<'JSON'
           {"apiKey": "${MINIMAX_API_KEY}"}
           JSON
-      - uses: Factory-AI/droid-action@e3d1f5e7861c36fe4a9c4dca3edec87b964b2bc4
+      - uses: EffortlessMetrics/droid-action-safe@01e76b659e4b1e5f23feedc8cfabf8dc14c7485f
         with:
+          upload_debug_artifacts: false
           security_scan_schedule: true
           security_scan_days: 7
           security_model: "custom:MiniMax-M2.7-0"
@@ -21058,6 +21144,20 @@ jobs:
             .replace("show_full_output: false", "show_full_output: true");
         let violations = droid_security_scan_violations(&yaml);
         assert!(violations.iter().any(|v| v.contains("show_full_output")));
+    }
+
+    #[test]
+    fn check_droid_security_scan_flags_debug_artifact_upload() {
+        let yaml = valid_droid_security_scan_yaml().replace(
+            "upload_debug_artifacts: false",
+            "upload_debug_artifacts: true",
+        );
+        let violations = droid_security_scan_violations(&yaml);
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("debug artifact upload"))
+        );
     }
 
     #[test]
