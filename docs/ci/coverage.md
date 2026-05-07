@@ -17,7 +17,7 @@ Coverage artifacts are excluded for:
 ## Claim boundaries
 
 The Codecov badge and coverage reports do **not** prove:
-- Test discriminator adequacy (coverage ≠ mutation killing)
+- Test discriminator adequacy (coverage does not equal mutation killing)
 - Seam classification completeness
 - Oracle strength across all five RIPR stages
 - Static analysis correctness (dynamic mutation testing required)
@@ -44,9 +44,12 @@ Use `workflow_dispatch` on the `Coverage` workflow to verify after changing:
 - Test topology that may affect `cargo-llvm-cov`
 
 Expected artifacts after a coverage run:
-- `lcov.info` (uploaded to Codecov as `rust-lcov` artifact)
+- `lcov.info`, uploaded by GitHub Actions as the `rust-lcov` artifact.
 
-Codecov upload requires `CODECOV_TOKEN` secret (only available for trusted runs). Local artifact generation succeeds even if `CODECOV_TOKEN` is unavailable.
+Codecov upload requires the `CODECOV_TOKEN` secret and runs only for trusted
+pushes, manual dispatches, and same-repo pull requests. Fork pull requests still
+generate `lcov.info` and upload the `rust-lcov` artifact, but skip Codecov
+upload because repository secrets are unavailable.
 
 ### Validate locally
 
