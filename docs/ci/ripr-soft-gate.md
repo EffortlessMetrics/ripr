@@ -18,8 +18,8 @@ This document records the contract that the soft-gate must respect:
   of `ci-actuals.json` data has accumulated for the `ripr` lane (so the
   threshold is informed by distribution, not guesswork).
 - The gate uses **only** the static-language vocabulary defined in
-  `docs/RIPR_EVIDENCE_POLICY.md`. It does not claim runtime mutation
-  outcomes.
+  `docs/CI.md`'s Verification Economics section. It does not claim
+  runtime mutation outcomes.
 
 ## Trigger criteria
 
@@ -71,8 +71,8 @@ reviewers can see when it has been used.
 Long-lived suppressions live in `.ripr/suppressions.toml` (canonical;
 loaded by `crates/ripr/src/config.rs`; parser in
 `crates/ripr/src/output/suppressions.rs`). The entries follow the schema
-documented in `docs/CONFIGURATION.md` and
-`docs/RIPR_EVIDENCE_POLICY.md`. Each suppression must record:
+documented in `docs/CONFIGURATION.md` and `docs/CI.md` (Verification
+Economics section). Each suppression must record:
 
 - a `kind` (`exposure_gap` or `test_efficiency`),
 - the kind-specific selector — `finding_id` for `exposure_gap`, or
@@ -202,11 +202,9 @@ without the false-positive damage.
 
 ## See also
 
-- `docs/RIPR_EVIDENCE_POLICY.md`
-- `docs/ci/cost-and-verification-policy.md`
-- `docs/ci/lem-budgeting.md`
-- `docs/ci/labels.md`
-- `docs/ci/ripr-ci-rollout.md`
+- `docs/CI.md` — verification economics policy, LEM bands, labels,
+  and the multi-PR rollout map (the canonical source for the wider
+  CI economics policy).
 - `docs/STATIC_EXPOSURE_MODEL.md`
 - `docs/OUTPUT_SCHEMA.md`
 - `docs/CONFIGURATION.md`
