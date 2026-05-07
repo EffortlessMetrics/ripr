@@ -94,6 +94,41 @@ note = "Use `.expect_err(\"why\")` (or `.unwrap_err()`) instead of `assert!(x.is
 name = "clippy::lines_filter_map_ok"
 level = "deny"
 
+# Format / I/O footguns. Format-arg redundancy hides expression evaluation in
+# the format machinery; path/file APIs have surprising error modes worth
+# making syntactically obvious.
+[[active.format_io]]
+name = "clippy::format_in_format_args"
+level = "deny"
+
+[[active.format_io]]
+name = "clippy::to_string_in_format_args"
+level = "deny"
+
+[[active.format_io]]
+name = "clippy::unused_format_specs"
+level = "deny"
+
+[[active.format_io]]
+name = "clippy::suspicious_open_options"
+level = "deny"
+
+[[active.format_io]]
+name = "clippy::nonsensical_open_options"
+level = "deny"
+
+[[active.format_io]]
+name = "clippy::ineffective_open_options"
+level = "deny"
+
+[[active.format_io]]
+name = "clippy::path_buf_push_overwrite"
+level = "deny"
+
+[[active.format_io]]
+name = "clippy::join_absolute_paths"
+level = "deny"
+
 [[active.governance]]
 name = "clippy::allow_attributes_without_reason"
 level = "deny"

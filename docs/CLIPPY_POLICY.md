@@ -70,6 +70,11 @@ Currently denied at the workspace level (selected highlights):
   (`let _ = fs::remove_dir_all(&dir)`) are pervasive across tests, and the
   flip is tracked as a follow-up. Tests asserting that a `Result` is `Err`
   should use `.expect_err("why")` rather than `assert!(x.is_err())`.
+- Format / I/O footguns: `clippy::format_in_format_args`,
+  `clippy::to_string_in_format_args`, `clippy::unused_format_specs`,
+  `clippy::suspicious_open_options`, `clippy::nonsensical_open_options`,
+  `clippy::ineffective_open_options`, `clippy::path_buf_push_overwrite`,
+  `clippy::join_absolute_paths`.
 - Suppression governance: `clippy::allow_attributes_without_reason`,
   `clippy::blanket_clippy_restriction_lints`.
 - Rust: `unsafe_code = "forbid"`, `unused_must_use`,
