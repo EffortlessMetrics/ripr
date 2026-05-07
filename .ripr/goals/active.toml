@@ -144,6 +144,28 @@ commands = [
 ]
 
 [[work_item]]
+id = "cache/evidence-hot-path-indexes"
+status = "done"
+branch = "cache-evidence-hot-path-indexes"
+stackable = false
+requires_human_merge = true
+acceptance = "Index related-test evidence candidates, build value-resolution facts lazily, and classify owned seam/evidence vectors so repo-exposure warm-cache proof stays within the default latency budget without changing analyzer outputs or public schemas"
+commands = [
+  "cargo test -p ripr analysis::test_grip_evidence --lib",
+  "cargo test -p ripr analysis::seam_classification --lib",
+  "cargo xtask repo-exposure-latency-report",
+  "cargo test -p ripr lsp",
+  "cargo test -p ripr lsp::tests",
+  "cargo xtask lsp-cockpit-report",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
+  "cargo xtask check-pr",
+  "cargo test --workspace"
+]
+
+[[work_item]]
 id = "campaign/hot-sidecar-latency-closeout"
 status = "ready"
 branch = "campaign-hot-sidecar-latency-closeout"

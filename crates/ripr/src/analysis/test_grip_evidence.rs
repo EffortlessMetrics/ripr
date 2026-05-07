@@ -19,7 +19,8 @@ use crate::domain::{
     ValueContext, ValueFact,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::cell::{OnceCell, RefCell};
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -60,6 +61,12 @@ pub(crate) struct RelatedTestGrip {
 pub(crate) struct CompactGripContext<'a> {
     index: &'a RustIndex,
     tests: Vec<CompactTest<'a>>,
+    tests_by_call_name: BTreeMap<String, Vec<usize>>,
+    tests_by_assertion_token: BTreeMap<String, Vec<usize>>,
+    tests_by_file_stem: BTreeMap<String, Vec<usize>>,
+    tests_by_import_token: BTreeMap<String, Vec<usize>>,
+    owner_named_cache: RefCell<BTreeMap<String, Vec<usize>>>,
+    same_module_cache: RefCell<BTreeMap<String, Vec<usize>>>,
 }
 
 struct CompactTest<'a> {
@@ -68,17 +75,21 @@ struct CompactTest<'a> {
     module_path: Option<String>,
     name_lower: String,
     call_names: BTreeSet<String>,
-    assertion_tokens: BTreeSet<String>,
     code_lines: Vec<String>,
-    value_facts: super::value_resolution::ValueEnvFacts,
+    value_facts: OnceCell<super::value_resolution::ValueEnvFacts>,
 }
 
 impl<'a> CompactGripContext<'a> {
     pub(crate) fn new(index: &'a RustIndex) -> Self {
+        let mut tests_by_call_name: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+        let mut tests_by_assertion_token: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+        let mut tests_by_file_stem: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+        let mut tests_by_import_token: BTreeMap<String, Vec<usize>> = BTreeMap::new();
         let tests = index
             .tests
             .iter()
-            .map(|test| {
+            .enumerate()
+            .map(|(test_index, test)| {
                 let call_names = test
                     .calls
                     .iter()
@@ -95,20 +106,94 @@ impl<'a> CompactGripContext<'a> {
                     .lines()
                     .map(strip_comments_and_strings)
                     .collect::<Vec<_>>();
-                let value_facts = super::value_resolution::ValueEnvFacts::build(test, index);
+                for call_name in &call_names {
+                    tests_by_call_name
+                        .entry(call_name.clone())
+                        .or_default()
+                        .push(test_index);
+                }
+                for token in &assertion_tokens {
+                    tests_by_assertion_token
+                        .entry(token.clone())
+                        .or_default()
+                        .push(test_index);
+                }
+                if let Some(stem) = test.file.file_stem().and_then(|stem| stem.to_str()) {
+                    tests_by_file_stem
+                        .entry(stem.to_string())
+                        .or_default()
+                        .push(test_index);
+                }
+                for token in import_affinity_tokens(&code_lines) {
+                    tests_by_import_token
+                        .entry(token)
+                        .or_default()
+                        .push(test_index);
+                }
                 CompactTest {
                     test,
                     path_normalized: normalize_path(&test.file),
                     module_path: module_path_for(&test.file),
                     name_lower: test.name.to_ascii_lowercase(),
                     call_names,
-                    assertion_tokens,
                     code_lines,
-                    value_facts,
+                    value_facts: OnceCell::new(),
                 }
             })
             .collect();
-        Self { index, tests }
+        Self {
+            index,
+            tests,
+            tests_by_call_name,
+            tests_by_assertion_token,
+            tests_by_file_stem,
+            tests_by_import_token,
+            owner_named_cache: RefCell::new(BTreeMap::new()),
+            same_module_cache: RefCell::new(BTreeMap::new()),
+        }
+    }
+
+    fn owner_named_indices(&self, owner_name_lower: &str) -> Vec<usize> {
+        if owner_name_lower.is_empty() {
+            return Vec::new();
+        }
+        if let Some(indices) = self.owner_named_cache.borrow().get(owner_name_lower) {
+            return indices.clone();
+        }
+        let indices = self
+            .tests
+            .iter()
+            .enumerate()
+            .filter_map(|(index, test)| test.name_lower.contains(owner_name_lower).then_some(index))
+            .collect::<Vec<_>>();
+        self.owner_named_cache
+            .borrow_mut()
+            .insert(owner_name_lower.to_string(), indices.clone());
+        indices
+    }
+
+    fn same_module_indices(&self, owner_module: &str) -> Vec<usize> {
+        if owner_module.is_empty() {
+            return Vec::new();
+        }
+        if let Some(indices) = self.same_module_cache.borrow().get(owner_module) {
+            return indices.clone();
+        }
+        let indices = self
+            .tests
+            .iter()
+            .enumerate()
+            .filter_map(|(index, test)| {
+                test.module_path
+                    .as_deref()
+                    .is_some_and(|test_module| same_module(owner_module, test_module))
+                    .then_some(index)
+            })
+            .collect::<Vec<_>>();
+        self.same_module_cache
+            .borrow_mut()
+            .insert(owner_module.to_string(), indices.clone());
+        indices
     }
 }
 
@@ -247,7 +332,7 @@ fn evidence_for_seam_with_context(
 
     let reach = reach_evidence(seam, &related);
     let (activate, observed_values, missing_discriminators) =
-        activate_evidence(seam, &related_indexed, owner_fn);
+        activate_evidence(seam, &related_indexed, context.index, owner_fn);
     let propagate = propagate_evidence(seam, &related);
     let observe = observe_evidence(&related);
     let discriminate = discriminate_evidence(seam, &related);
@@ -315,7 +400,7 @@ pub(crate) fn compact_evidence_for_seam(
 
     let reach = reach_evidence(seam, &related);
     let (activate, missing_discriminators) =
-        compact_activate_evidence(seam, &related_indexed, owner_fn);
+        compact_activate_evidence(seam, &related_indexed, context.index, owner_fn);
     let propagate = propagate_evidence(seam, &related);
     let observe = observe_evidence(&related);
     let discriminate = discriminate_evidence(seam, &related);
@@ -341,10 +426,10 @@ pub(crate) fn compact_evidence_for_seam(
 /// Detection per reason — strict ordering: the first reason that fires
 /// wins, so e.g. a test that both `calls owner` and `is in same file`
 /// carries `direct_owner_call`, never `same_test_file`.
-fn find_related_tests_with_context<'a>(
+fn find_related_tests_with_context<'context, 'index>(
     seam: &RepoSeam,
-    context: &'a CompactGripContext<'_>,
-) -> Vec<(&'a CompactTest<'a>, RelationReason)> {
+    context: &'context CompactGripContext<'index>,
+) -> Vec<(&'context CompactTest<'index>, RelationReason)> {
     let owner_fn = find_owner_function(seam, context.index);
     let owner_name = owner_fn.map(|f| f.name.as_str()).unwrap_or("");
     let owner_name_lower = owner_name.to_ascii_lowercase();
@@ -372,85 +457,122 @@ fn find_related_tests_with_context<'a>(
         .chain(sink_tokens)
         .collect();
 
-    let mut related: Vec<(&'a CompactTest<'a>, RelationReason)> = Vec::new();
+    let mut candidate_reasons: BTreeMap<usize, RelationReason> = BTreeMap::new();
+    let prefix = prefix.as_deref();
+
+    if !owner_name.is_empty()
+        && let Some(indices) = context.tests_by_call_name.get(owner_name)
+    {
+        for test_index in indices {
+            insert_related_candidate(
+                &mut candidate_reasons,
+                context,
+                prefix,
+                *test_index,
+                RelationReason::DirectOwnerCall,
+            );
+        }
+    }
+
+    for token in &target_tokens {
+        if let Some(indices) = context.tests_by_assertion_token.get(token) {
+            for test_index in indices {
+                insert_related_candidate(
+                    &mut candidate_reasons,
+                    context,
+                    prefix,
+                    *test_index,
+                    RelationReason::AssertionTargetAffinity,
+                );
+            }
+        }
+    }
+
+    if !owner_file_stem.is_empty() {
+        for stem in [
+            owner_file_stem.to_string(),
+            format!("{owner_file_stem}_test"),
+            format!("{owner_file_stem}_tests"),
+        ] {
+            if let Some(indices) = context.tests_by_file_stem.get(&stem) {
+                for test_index in indices {
+                    insert_related_candidate(
+                        &mut candidate_reasons,
+                        context,
+                        prefix,
+                        *test_index,
+                        RelationReason::SameTestFile,
+                    );
+                }
+            }
+        }
+    }
+
+    if let Some(owner_module_path) = owner_module_path.as_deref() {
+        for test_index in context.same_module_indices(owner_module_path) {
+            insert_related_candidate(
+                &mut candidate_reasons,
+                context,
+                prefix,
+                test_index,
+                RelationReason::SameModule,
+            );
+        }
+    }
+
+    for test_index in context.owner_named_indices(&owner_name_lower) {
+        insert_related_candidate(
+            &mut candidate_reasons,
+            context,
+            prefix,
+            test_index,
+            RelationReason::OwnerNamedTest,
+        );
+    }
+
+    if !owner_name.is_empty()
+        && let Some(indices) = context.tests_by_import_token.get(owner_name)
+    {
+        for test_index in indices {
+            if !context
+                .tests
+                .get(*test_index)
+                .is_some_and(|indexed| test_imports_owner_compact(indexed, owner_name))
+            {
+                continue;
+            }
+            insert_related_candidate(
+                &mut candidate_reasons,
+                context,
+                prefix,
+                *test_index,
+                RelationReason::ImportPathAffinity,
+            );
+        }
+    }
+
+    for fixture_name in &fixture_names {
+        if let Some(indices) = context.tests_by_call_name.get(fixture_name) {
+            for test_index in indices {
+                insert_related_candidate(
+                    &mut candidate_reasons,
+                    context,
+                    prefix,
+                    *test_index,
+                    RelationReason::FixtureOwnerAffinity,
+                );
+            }
+        }
+    }
+
+    let mut related: Vec<(&'context CompactTest<'index>, RelationReason)> = Vec::new();
     let mut seen: std::collections::HashSet<(String, std::path::PathBuf, usize)> =
         std::collections::HashSet::new();
 
-    for indexed in &context.tests {
-        if let Some(prefix) = &prefix
-            && !indexed.path_normalized.starts_with(prefix)
-        {
+    for (test_index, reason) in candidate_reasons {
+        let Some(indexed) = context.tests.get(test_index) else {
             continue;
-        }
-
-        // Reason resolution — strict priority order.
-        let reason = if !owner_name.is_empty() && indexed.call_names.contains(owner_name) {
-            // `direct_owner_call`: test calls the owner directly. The
-            // call walker captures the bare callee name, which covers
-            // both `owner(...)` and qualified forms like
-            // `module::owner(...)` — `CallFact.name` is the unqualified
-            // tail.
-            Some(RelationReason::DirectOwnerCall)
-        } else if !target_tokens.is_empty()
-            && indexed
-                .assertion_tokens
-                .iter()
-                .any(|token| target_tokens.contains(token))
-        {
-            // `assertion_target_affinity`: at least one assertion in
-            // the test mentions a token from the seam's required
-            // discriminator or expected sink. Token-aware (full
-            // identifier match), so `discount_threshold` does not
-            // match `discount_threshold_factor` or random substring.
-            Some(RelationReason::AssertionTargetAffinity)
-        } else if !owner_file_stem.is_empty() && same_test_file(&indexed.test.file, owner_file_stem)
-        {
-            // `same_test_file`: physical/virtual sibling — a `tests/`
-            // file with the same stem as the owner's source, an inline
-            // `#[cfg(test)] mod tests` (test.file == owner.file), or a
-            // `*_test.rs` / `*_tests.rs` peer.
-            Some(RelationReason::SameTestFile)
-        } else if let (Some(owner_mod), Some(test_mod)) =
-            (owner_module_path.as_deref(), indexed.module_path.as_deref())
-            && same_module(owner_mod, test_mod)
-        {
-            // `same_module`: shares the owner's module path beyond
-            // just the file stem — e.g., `src/auth/login.rs` ↔
-            // `tests/auth/integration.rs`.
-            Some(RelationReason::SameModule)
-        } else if !owner_name_lower.is_empty() && indexed.name_lower.contains(&owner_name_lower) {
-            // `owner_named_test`: test name embeds the owner name.
-            // Conservative: substring on the test name (lowercase),
-            // which does not have the false-positive risk of body
-            // substring.
-            Some(RelationReason::OwnerNamedTest)
-        } else if !owner_name.is_empty() && test_imports_owner_compact(indexed, owner_name) {
-            // `import_path_affinity`: test body mentions the owner
-            // via an explicit qualified-path (`module::owner`) or
-            // inline `use ... owner` shape, without a direct call.
-            // Captures the "test imports it but does not invoke
-            // it" pattern common in higher-level integration
-            // tests. Detection tightened per #310 review — see
-            // the import detector below for the accepted/rejected
-            // shapes.
-            Some(RelationReason::ImportPathAffinity)
-        } else if !fixture_names.is_empty()
-            && indexed
-                .call_names
-                .iter()
-                .any(|call| fixture_names.contains(call))
-        {
-            // `fixture_owner_affinity`: test calls a non-test fn that
-            // lives in the owner's source file and whose name follows
-            // a fixture / builder convention. Narrow on purpose — the
-            // user tightened this to "explicit fixture relationship
-            // only", not "any helper call".
-            Some(RelationReason::FixtureOwnerAffinity)
-        } else {
-            None
         };
-
-        let Some(reason) = reason else { continue };
         let key = (
             indexed.test.name.clone(),
             indexed.test.file.clone(),
@@ -461,6 +583,27 @@ fn find_related_tests_with_context<'a>(
         }
     }
     related
+}
+
+fn insert_related_candidate(
+    candidate_reasons: &mut BTreeMap<usize, RelationReason>,
+    context: &CompactGripContext<'_>,
+    prefix: Option<&str>,
+    test_index: usize,
+    reason: RelationReason,
+) {
+    if candidate_reasons.contains_key(&test_index) {
+        return;
+    }
+    let Some(indexed) = context.tests.get(test_index) else {
+        return;
+    };
+    if let Some(prefix) = prefix
+        && !indexed.path_normalized.starts_with(prefix)
+    {
+        return;
+    }
+    candidate_reasons.insert(test_index, reason);
 }
 
 fn find_related_tests_compact<'a>(
@@ -532,6 +675,7 @@ fn assertion_targets_seam(test: &TestSummary, tokens: &[String]) -> bool {
     false
 }
 
+#[cfg(test)]
 fn same_test_file(test_file: &Path, owner_stem: &str) -> bool {
     let stem = match test_file.file_stem().and_then(|s| s.to_str()) {
         Some(s) => s,
@@ -634,6 +778,17 @@ fn test_imports_owner_compact(test: &CompactTest<'_>, owner_name: &str) -> bool 
         }
     }
     false
+}
+
+fn import_affinity_tokens(code_lines: &[String]) -> BTreeSet<String> {
+    let mut tokens = BTreeSet::new();
+    for code in code_lines {
+        let trimmed = code.trim_start();
+        if code.contains("::") || trimmed.starts_with("use ") {
+            tokens.extend(extract_identifier_tokens(code));
+        }
+    }
+    tokens
 }
 
 /// Drop everything after a `//` line comment and replace string-literal
@@ -742,6 +897,7 @@ fn reach_evidence(seam: &RepoSeam, related: &[&TestSummary]) -> StageEvidence {
 fn activate_evidence(
     seam: &RepoSeam,
     related: &[&CompactTest<'_>],
+    index: &RustIndex,
     owner_fn: Option<&FunctionSummary>,
 ) -> (StageEvidence, Vec<ValueFact>, Vec<MissingDiscriminatorFact>) {
     let owner_name = owner_fn.map(|f| f.name.as_str()).unwrap_or("");
@@ -750,10 +906,13 @@ fn activate_evidence(
     if !owner_name.is_empty() {
         for indexed in related {
             // Per-test resolution facts (let bindings, rstest cases,
-            // table rows, same-file consts) are precomputed in the
-            // context and reused across all owner calls in this test.
-            // Per `analysis/value-extraction-v2`.
-            let env = super::value_resolution::ValueEnv::new(seam, &indexed.value_facts);
+            // table rows, same-file consts) are built lazily and then
+            // reused across all owner calls in this test. Per
+            // `analysis/value-extraction-v2`.
+            let value_facts = indexed
+                .value_facts
+                .get_or_init(|| super::value_resolution::ValueEnvFacts::build(indexed.test, index));
+            let env = super::value_resolution::ValueEnv::new(seam, value_facts);
             for call in &indexed.test.calls {
                 if call.name != owner_name {
                     continue;
@@ -842,10 +1001,11 @@ fn activate_evidence(
 fn compact_activate_evidence(
     seam: &RepoSeam,
     related: &[&CompactTest<'_>],
+    index: &RustIndex,
     owner_fn: Option<&FunctionSummary>,
 ) -> (StageEvidence, Vec<MissingDiscriminatorFact>) {
     if seam.kind() == SeamKind::PredicateBoundary {
-        let (stage, _observed, missing) = activate_evidence(seam, related, owner_fn);
+        let (stage, _observed, missing) = activate_evidence(seam, related, index, owner_fn);
         return (stage, missing);
     }
 

@@ -129,6 +129,7 @@ pub(crate) fn classify_seam(_seam: &RepoSeam, evidence: &TestGripEvidence) -> Se
 /// Seams without a matching evidence record are skipped. The inventory
 /// walker always builds evidence for every seam, so this only filters
 /// out genuinely orphaned input.
+#[cfg(test)]
 pub(crate) fn classify_seams(
     seams: &[RepoSeam],
     evidence: &[TestGripEvidence],
@@ -143,6 +144,28 @@ pub(crate) fn classify_seams(
                 seam: seam.clone(),
                 evidence: (*ev).clone(),
                 class: classify_seam(seam, ev),
+            })
+        })
+        .collect()
+}
+
+pub(crate) fn classify_seams_owned(
+    seams: Vec<RepoSeam>,
+    evidence: Vec<TestGripEvidence>,
+) -> Vec<ClassifiedSeam> {
+    let mut evidence_by_id: HashMap<SeamId, TestGripEvidence> = evidence
+        .into_iter()
+        .map(|ev| (ev.seam_id.clone(), ev))
+        .collect();
+    seams
+        .into_iter()
+        .filter_map(|seam| {
+            let ev = evidence_by_id.remove(seam.id())?;
+            let class = classify_seam(&seam, &ev);
+            Some(ClassifiedSeam {
+                seam,
+                evidence: ev,
+                class,
             })
         })
         .collect()
@@ -598,5 +621,27 @@ mod tests {
         assert_eq!(classified.len(), 1);
         assert_eq!(classified[0].seam.id(), seam.id());
         assert_eq!(classified[0].class, SeamGripClass::WeaklyGripped);
+    }
+
+    #[test]
+    fn classify_seams_owned_matches_borrowed_classification() {
+        let seam = sample_seam();
+        let evidence = evidence_with(
+            StageState::Yes,
+            StageState::Yes,
+            StageState::Yes,
+            StageState::Yes,
+            StageState::Yes,
+            no_missing(),
+        );
+
+        let borrowed = classify_seams(std::slice::from_ref(&seam), std::slice::from_ref(&evidence));
+        let owned = classify_seams_owned(vec![seam], vec![evidence]);
+
+        assert_eq!(borrowed.len(), 1);
+        assert_eq!(owned.len(), 1);
+        assert_eq!(owned[0].seam.id(), borrowed[0].seam.id());
+        assert_eq!(owned[0].evidence.seam_id, borrowed[0].evidence.seam_id);
+        assert_eq!(owned[0].class, borrowed[0].class);
     }
 }

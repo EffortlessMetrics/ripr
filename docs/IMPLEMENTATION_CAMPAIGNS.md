@@ -1098,6 +1098,7 @@ Work items:
 | `pilot/budget-aware` | done | Added a default 30 second `ripr pilot` analysis budget plus `--timeout-ms`. Complete runs keep writing repo exposure, agent seam packets, and summary artifacts with `pilot-summary.json` schema `0.2`; timeout runs write `pilot-summary.{json,md}` with `status: partial`, `reason: timeout`, `outputs_written`, and a retry command instead of waiting silently. |
 | `pilot/first-screen-clarity` | done | Improved `pilot-summary.md` and terminal copy so the top recommendation answers what was inspected, why the seam matters, what focused test to write, and what command to run after without opening JSON. The complete-run JSON schema remains `0.2`; only human-facing Markdown/terminal copy changed. |
 | `cache/evidence-latency-progress` | done | Closeout proof found that the bounded repo-exposure latency report can still time out after `inventory_seams`, even with file-fact cache hits, without identifying how far evidence construction progressed. Added trace-only progress lines inside `evidence_for_seams`; this changes only opt-in latency stderr/report diagnostics and does not change analyzer outputs, schemas, LSP, SARIF, badges, or public API. |
+| `cache/evidence-hot-path-indexes` | done | Replaced the per-seam full test scan with indexed related-test candidate lookup, built value-resolution facts lazily per related test, and used an owned classification path in repo inventory to avoid cloning full evidence records. A long bounded cold run completed and stored the classified-seam cache; the following default 30-second latency report passed on JSON and Markdown cache hits. No analyzer output, schema, LSP, SARIF, badge, or public API changes are intended. |
 | `campaign/hot-sidecar-latency-closeout` | ready | Close Campaign 9 after cache measurement, warm-path reuse, bounded pilot behavior, and first-screen pilot clarity have landed. This should be docs/manifest proof unless closeout validation finds drift. |
 
 Commands:
@@ -1164,5 +1165,12 @@ Audit notes:
   current repo. `cache/evidence-latency-progress` added trace-only progress
   markers inside evidence construction so the latency report can show whether
   future timeouts are stuck before context build, during per-seam evidence, or
-  after evidence classification. The active next item is
+  after evidence classification.
+- `cache/evidence-hot-path-indexes` followed that trace. It moved evidence
+  candidate discovery from per-seam full test scans to precomputed candidate
+  indexes, made value-resolution facts lazy, and classified owned seam/evidence
+  vectors on the repo inventory path. Local proof: a 120-second cold latency
+  run passed and stored the classified-seam cache; the next default 30-second
+  latency report passed with `repo-exposure-json` and `repo-exposure-md` cache
+  hits at about 12 seconds each. The active next item is
   `campaign/hot-sidecar-latency-closeout`.
