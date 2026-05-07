@@ -7,6 +7,8 @@ const INSTALL_ROOT: &str = "target/ripr/release-readiness/install";
 const PILOT_OUT: &str = "target/ripr/release-readiness/pilot";
 const OUTCOME_OUT: &str = "target/ripr/release-readiness/targeted-test-outcome.json";
 const AGENT_VERIFY_OUT: &str = "target/ripr/release-readiness/agent-verify.json";
+const AGENT_RECEIPT_OUT: &str = "target/ripr/release-readiness/agent-receipt.json";
+const BOUNDARY_GAP_SEAM_ID: &str = "67fc764ba37d77bd";
 const BEFORE_EXPOSURE: &str =
     "fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json";
 const AFTER_EXPOSURE: &str =
@@ -106,6 +108,7 @@ fn build_release_readiness_report(version: &str) -> ReleaseReadinessReport {
         pilot_fixture_check(&installed_binary),
         outcome_fixture_check(&installed_binary),
         agent_verify_fixture_check(&installed_binary),
+        agent_receipt_fixture_check(&installed_binary),
         repo_exposure_latency_check(),
         lsp_cockpit_check(),
         github_workflow_check(&installed_binary),
@@ -303,6 +306,7 @@ fn installed_command_surface_check(binary: &Path) -> ReleaseReadinessCheck {
                 "ripr outcome",
                 "ripr calibrate cargo-mutants",
                 "ripr agent verify",
+                "ripr agent receipt",
             ];
             let missing = required
                 .iter()
@@ -565,6 +569,80 @@ fn agent_verify_fixture_check(binary: &Path) -> ReleaseReadinessCheck {
             &command,
             "ripr agent verify could not run",
             vec![AGENT_VERIFY_OUT.to_string()],
+            vec![err],
+        ),
+    }
+}
+
+fn agent_receipt_fixture_check(binary: &Path) -> ReleaseReadinessCheck {
+    let command = format!(
+        "{} agent receipt --root . --verify-json {AGENT_VERIFY_OUT} --seam-id {BOUNDARY_GAP_SEAM_ID} --json --out {AGENT_RECEIPT_OUT}",
+        crate::normalize_path(binary)
+    );
+    if !binary.exists() {
+        return readiness_check(
+            "agent-receipt-boundary-fixture",
+            "fail",
+            true,
+            &command,
+            "installed binary is missing",
+            Vec::new(),
+            Vec::new(),
+        );
+    }
+    if !Path::new(AGENT_VERIFY_OUT).exists() {
+        return readiness_check(
+            "agent-receipt-boundary-fixture",
+            "fail",
+            true,
+            &command,
+            "agent verify artifact is missing",
+            vec![AGENT_VERIFY_OUT.to_string(), AGENT_RECEIPT_OUT.to_string()],
+            vec![format!("missing prerequisite: {AGENT_VERIFY_OUT}")],
+        );
+    }
+    let _ = fs::remove_file(AGENT_RECEIPT_OUT);
+    match run_command_path(
+        binary,
+        &[
+            "agent",
+            "receipt",
+            "--root",
+            ".",
+            "--verify-json",
+            AGENT_VERIFY_OUT,
+            "--seam-id",
+            BOUNDARY_GAP_SEAM_ID,
+            "--json",
+            "--out",
+            AGENT_RECEIPT_OUT,
+        ],
+    ) {
+        Ok(result) if result.success && Path::new(AGENT_RECEIPT_OUT).exists() => readiness_check(
+            "agent-receipt-boundary-fixture",
+            "pass",
+            true,
+            &command,
+            "ripr agent receipt wrote a focused boundary-gap receipt",
+            vec![AGENT_VERIFY_OUT.to_string(), AGENT_RECEIPT_OUT.to_string()],
+            Vec::new(),
+        ),
+        Ok(result) => readiness_check(
+            "agent-receipt-boundary-fixture",
+            "fail",
+            true,
+            &command,
+            "ripr agent receipt failed or did not write its artifact",
+            vec![AGENT_VERIFY_OUT.to_string(), AGENT_RECEIPT_OUT.to_string()],
+            command_details(&result),
+        ),
+        Err(err) => readiness_check(
+            "agent-receipt-boundary-fixture",
+            "fail",
+            true,
+            &command,
+            "ripr agent receipt could not run",
+            vec![AGENT_VERIFY_OUT.to_string(), AGENT_RECEIPT_OUT.to_string()],
             vec![err],
         ),
     }

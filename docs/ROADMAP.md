@@ -75,11 +75,12 @@ bounded cold run can fill the classified-seam cache, after which the default
 The budget-aware pilot path has first-screen Markdown and terminal copy that
 states the inspected seam, why it matters, the focused test to write, and the
 before/after commands. Campaign 10 is now active for editor-agent integration.
-Its next ready item is `release/editor-agent-readiness-proof`, and its goal is to make
-the saved-workspace diagnostic, evidence, packet/brief, focused-test,
-after-snapshot, verify, receipt, cockpit, CI, and install surfaces line up as
-one loop. The 0.4 release-surface requirements are a gate inside that lane, not
-a replacement for the active campaign.
+Its release-readiness gate proves the installed CLI, boundary-gap `pilot`,
+`outcome`, `agent verify`, `agent receipt`, latency, LSP cockpit, advisory
+workflow, VSIX path, and known-limit surfaces. The next ready item is
+`campaign/editor-agent-integration-closeout`, which closes the saved-workspace
+diagnostic, evidence, packet/brief, focused-test, after-snapshot, verify,
+receipt, cockpit, CI, and install loop as one lane.
 
 ## Strategic Sequence
 

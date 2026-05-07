@@ -555,7 +555,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "release/editor-agent-readiness-proof"
+next = "campaign/editor-agent-integration-closeout"
 metric = "packet carries missing discriminator + suggested assertion templates"
 
 [[capability]]
@@ -575,7 +575,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "release/editor-agent-readiness-proof"
+next = "campaign/editor-agent-integration-closeout"
 metric = "pilot_packet_generated"
 
 [[capability]]
@@ -595,7 +595,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "release/editor-agent-readiness-proof"
+next = "campaign/editor-agent-integration-closeout"
 metric = "targeted_test_outcome_available"
 
 [[capability]]
@@ -620,7 +620,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/opaque_fixture_builder"
 ]
-next = "release/editor-agent-readiness-proof"
+next = "campaign/editor-agent-integration-closeout"
 metric = "operator_cockpit_available"
 
 [[capability]]
@@ -644,7 +644,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "release/editor-agent-readiness-proof"
+next = "campaign/editor-agent-integration-closeout"
 metric = "seam_id in diagnostic.data is the hover lookup key"
 
 [[capability]]
@@ -665,7 +665,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "release/editor-agent-readiness-proof"
+next = "campaign/editor-agent-integration-closeout"
 metric = "hover renders evidence path from ClassifiedSeam, never parses diagnostic message"
 
 [[capability]]
@@ -688,7 +688,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "release/editor-agent-readiness-proof"
+next = "campaign/editor-agent-integration-closeout"
 metric = "seam diagnostics expose packet/assertion/test actions without automatic edits"
 
 [[capability]]
