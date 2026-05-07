@@ -4,8 +4,8 @@ use crate::app::agent_brief::{
 };
 use crate::app::{self, CheckInput, Mode, OutputFormat};
 use crate::cli::agent::{
-    AgentBriefOptions, AgentBriefWorkingSet, AgentCommand, AgentPacketOptions, AgentVerifyOptions,
-    parse_agent_args,
+    AgentBriefOptions, AgentBriefWorkingSet, AgentCommand, AgentPacketOptions, AgentReceiptOptions,
+    AgentVerifyOptions, parse_agent_args,
 };
 use crate::cli::help;
 use crate::cli::parse::{expect_value, parse_format, parse_mode};
@@ -89,9 +89,14 @@ pub(super) fn agent(args: &[String]) -> Result<(), String> {
             help::print_agent_verify_help();
             Ok(())
         }
+        AgentCommand::ReceiptHelp => {
+            help::print_agent_receipt_help();
+            Ok(())
+        }
         AgentCommand::Brief(options) => run_agent_brief(options),
         AgentCommand::Packet(options) => run_agent_packet(options),
         AgentCommand::Verify(options) => run_agent_verify(options),
+        AgentCommand::Receipt(options) => run_agent_receipt(options),
     }
 }
 
@@ -169,6 +174,82 @@ fn run_agent_verify(options: AgentVerifyOptions) -> Result<(), String> {
     let rendered = output::outcome::render_agent_verify_json(&report)?;
     println!("{rendered}");
     Ok(())
+}
+
+fn run_agent_receipt(options: AgentReceiptOptions) -> Result<(), String> {
+    if !options.root.is_dir() {
+        return Err(format!(
+            "agent receipt root {} is not a directory",
+            options.root.display()
+        ));
+    }
+
+    let verify_path = validate_agent_receipt_verify_path(&options.root, &options.verify_json)?;
+    let verify_json = std::fs::read_to_string(&verify_path).map_err(|err| {
+        format!(
+            "read agent receipt verify JSON {} failed: {err}",
+            output::outcome::display_path(&verify_path)
+        )
+    })?;
+    let rendered = output::agent_receipt::render_agent_receipt_json(
+        &verify_json,
+        output::outcome::display_path(&options.verify_json),
+        &options.seam_id,
+        options.test_changed.as_deref(),
+        &options.commands_run,
+    )?;
+
+    match options.out {
+        Some(path) => {
+            if let Some(parent) = path
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+            {
+                std::fs::create_dir_all(parent)
+                    .map_err(|err| format!("create {} failed: {err}", parent.display()))?;
+            }
+            std::fs::write(&path, rendered).map_err(|err| {
+                format!(
+                    "write {} failed: {err}",
+                    output::outcome::display_path(&path)
+                )
+            })
+        }
+        None => {
+            print!("{rendered}");
+            Ok(())
+        }
+    }
+}
+
+fn validate_agent_receipt_verify_path(root: &Path, path: &Path) -> Result<PathBuf, String> {
+    let root = root.canonicalize().map_err(|err| {
+        format!(
+            "canonicalize agent receipt root {} failed: {err}",
+            root.display()
+        )
+    })?;
+    let candidate = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        root.join(path)
+    };
+    let candidate = candidate.canonicalize().map_err(|err| {
+        format!(
+            "canonicalize agent receipt --verify-json {} failed: {err}",
+            path.display()
+        )
+    })?;
+
+    if !candidate.starts_with(&root) {
+        return Err(format!(
+            "agent receipt --verify-json {} must stay under root {}",
+            path.display(),
+            root.display()
+        ));
+    }
+
+    Ok(candidate)
 }
 
 fn validate_agent_verify_snapshot_path(
@@ -1635,7 +1716,7 @@ mod tests {
         assert_eq!(
             agent(&args(&["unknown"])),
             Err(
-                "unknown agent subcommand \"unknown\"; expected `brief`, `packet`, or `verify`"
+                "unknown agent subcommand \"unknown\"; expected `brief`, `packet`, `verify`, or `receipt`"
                     .to_string()
             )
         );
@@ -1719,6 +1800,54 @@ mod tests {
             &before.display().to_string(),
             "--after",
             &after.display().to_string(),
+            "--json",
+        ]));
+
+        assert!(matches!(result, Err(message) if message.contains("must stay under root")));
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&outside);
+        Ok(())
+    }
+
+    #[test]
+    fn agent_receipt_reports_read_failures() -> Result<(), String> {
+        let dir = unique_command_test_dir("agent-receipt-read");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create temp dir: {err}"))?;
+
+        let missing = agent(&args(&[
+            "receipt",
+            "--root",
+            &dir.display().to_string(),
+            "--verify-json",
+            &dir.join("missing-agent-verify.json").display().to_string(),
+            "--seam-id",
+            "seam-a",
+            "--json",
+        ]));
+        assert!(
+            matches!(missing, Err(message) if message.contains("canonicalize agent receipt --verify-json"))
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn agent_receipt_rejects_verify_json_outside_root() -> Result<(), String> {
+        let root = unique_command_test_dir("agent-receipt-root");
+        let outside = unique_command_test_dir("agent-receipt-outside");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root dir: {err}"))?;
+        std::fs::create_dir_all(&outside).map_err(|err| format!("create outside dir: {err}"))?;
+        let verify = outside.join("agent-verify.json");
+        std::fs::write(&verify, "{}").map_err(|err| format!("write verify JSON: {err}"))?;
+
+        let result = agent(&args(&[
+            "receipt",
+            "--root",
+            &root.display().to_string(),
+            "--verify-json",
+            &verify.display().to_string(),
+            "--seam-id",
+            "seam-a",
             "--json",
         ]));
 

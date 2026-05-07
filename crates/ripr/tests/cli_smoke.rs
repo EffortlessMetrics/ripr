@@ -328,6 +328,77 @@ fn agent_verify_compares_before_after_repo_exposure_json() -> Result<(), Box<dyn
 }
 
 #[test]
+fn agent_receipt_writes_one_seam_handoff_json() -> Result<(), Box<dyn std::error::Error>> {
+    let root = unique_temp_workspace("agent-receipt");
+    std::fs::create_dir_all(&root)?;
+    let verify = root.join("agent-verify.json");
+    let receipt = root.join("target/ripr/reports/agent-receipt.json");
+    std::fs::write(
+        &verify,
+        r#"{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "advisory",
+  "inputs": {
+    "before": "target/ripr/workflow/before.repo-exposure.json",
+    "after": "target/ripr/workflow/after.repo-exposure.json"
+  },
+  "summary": {
+    "improved": 1,
+    "changed": 0,
+    "regressed": 0,
+    "unchanged": 0,
+    "new": 0,
+    "resolved": 0
+  },
+  "changed_seams": [
+    {
+      "seam_id": "seam-a",
+      "seam_kind": "predicate_boundary",
+      "file": "src/pricing.rs",
+      "line": 42,
+      "before": "weakly_gripped",
+      "after": "strongly_gripped",
+      "change": "improved",
+      "evidence_delta": ["missing discriminator no longer reported: threshold equality"]
+    }
+  ],
+  "unchanged_seams": [],
+  "new_gaps": [],
+  "resolved_gaps": []
+}"#,
+    )?;
+
+    let output = run_ripr(&[
+        "agent",
+        "receipt",
+        "--root",
+        &root.display().to_string(),
+        "--verify-json",
+        &verify.display().to_string(),
+        "--seam-id",
+        "seam-a",
+        "--test",
+        "pricing_boundary",
+        "--command",
+        "cargo test pricing_boundary",
+        "--json",
+        "--out",
+        &receipt.display().to_string(),
+    ]);
+    assert_success(&output);
+
+    let text = std::fs::read_to_string(&receipt)?;
+    assert!(text.contains(r#""schema_version": "0.1""#));
+    assert!(text.contains(r#""seam_id": "seam-a""#));
+    assert!(text.contains(r#""change": "improved""#));
+    assert!(text.contains(r#""test_changed": "pricing_boundary""#));
+    assert!(text.contains(r#""cargo test pricing_boundary""#));
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
 fn check_badge_json_output_has_native_badge_shape() {
     let root = workspace_root().display().to_string();
     let diff = sample_diff().display().to_string();
