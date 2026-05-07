@@ -2,6 +2,8 @@
 
 Run these after changing Droid workflows, Droid review guidance, or Droid model configuration.
 
+Before relying on live smoke tests, run `cargo xtask check-droid-review-config` locally to confirm the automatic review, manual command, and scheduled security-scan workflow invariants still match the checked-in policy.
+
 ## Automatic review
 
 1. Open a same-repo draft PR.
