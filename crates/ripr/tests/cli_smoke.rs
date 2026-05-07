@@ -14,6 +14,14 @@ fn run_ripr(args: &[&str]) -> Output {
     Command::new(bin).args(args).output().unwrap()
 }
 
+fn run_ripr_in_workspace(args: &[&str]) -> Result<Output, std::io::Error> {
+    let bin = env!("CARGO_BIN_EXE_ripr");
+    Command::new(bin)
+        .current_dir(workspace_root())
+        .args(args)
+        .output()
+}
+
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -52,6 +60,25 @@ fn assert_failure(output: &Output) {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+fn assert_stdout_matches_fixture(
+    output: &Output,
+    fixture_path: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    assert_success(output);
+    let expected = std::fs::read_to_string(workspace_root().join(fixture_path))?;
+    let actual = String::from_utf8(output.stdout.clone())?;
+    assert_eq!(
+        normalize_newlines(&actual),
+        normalize_newlines(&expected),
+        "stdout drifted from {fixture_path}"
+    );
+    Ok(())
+}
+
+fn normalize_newlines(value: &str) -> String {
+    value.replace("\r\n", "\n")
 }
 
 fn json_string_field(text: &str, field: &str) -> Option<String> {
@@ -219,6 +246,77 @@ fn agent_packet_expands_one_brief_seam_by_id() -> Result<(), Box<dyn std::error:
     assert!(packet_stdout.contains(&format!(r#""seam_id": "{seam_id}""#)));
     assert!(packet_stdout.contains(r#""task": "write_targeted_test""#));
     std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn editor_agent_loop_fixture_outputs_match_expected() -> Result<(), Box<dyn std::error::Error>> {
+    let base = "fixtures/boundary_gap/expected/editor-agent-loop";
+    let seam_id = "67fc764ba37d77bd";
+
+    let packet = run_ripr_in_workspace(&[
+        "agent",
+        "packet",
+        "--root",
+        "fixtures/boundary_gap/input",
+        "--seam-id",
+        seam_id,
+        "--json",
+    ])?;
+    assert_stdout_matches_fixture(&packet, &format!("{base}/agent-packet.json"))?;
+
+    let brief = run_ripr_in_workspace(&[
+        "agent",
+        "brief",
+        "--root",
+        "fixtures/boundary_gap/input",
+        "--seam-id",
+        seam_id,
+        "--json",
+    ])?;
+    assert_stdout_matches_fixture(&brief, &format!("{base}/agent-brief.json"))?;
+
+    let verify = run_ripr_in_workspace(&[
+        "agent",
+        "verify",
+        "--root",
+        ".",
+        "--before",
+        "fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json",
+        "--after",
+        "fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json",
+        "--json",
+    ])?;
+    assert_stdout_matches_fixture(&verify, &format!("{base}/agent-verify.json"))?;
+
+    let out_dir = unique_temp_workspace("agent-receipt-fixture");
+    std::fs::create_dir_all(&out_dir)?;
+    let receipt_path = out_dir.join("agent-receipt.json");
+    let receipt = run_ripr_in_workspace(&[
+        "agent",
+        "receipt",
+        "--root",
+        ".",
+        "--verify-json",
+        "fixtures/boundary_gap/expected/editor-agent-loop/agent-verify.json",
+        "--seam-id",
+        seam_id,
+        "--json",
+        "--out",
+        receipt_path
+            .to_str()
+            .ok_or("receipt path should be utf-8")?,
+    ])?;
+    assert_success(&receipt);
+    let expected_receipt =
+        std::fs::read_to_string(workspace_root().join(base).join("agent-receipt.json"))?;
+    let actual_receipt = std::fs::read_to_string(&receipt_path)?;
+    assert_eq!(
+        normalize_newlines(&actual_receipt),
+        normalize_newlines(&expected_receipt),
+        "agent receipt fixture drifted"
+    );
+    std::fs::remove_dir_all(out_dir)?;
     Ok(())
 }
 

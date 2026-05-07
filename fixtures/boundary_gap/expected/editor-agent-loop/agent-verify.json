@@ -1,0 +1,35 @@
+{
+  "changed_seams": [],
+  "inputs": {
+    "after": "fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json",
+    "before": "fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json"
+  },
+  "new_gaps": [],
+  "resolved_gaps": [],
+  "schema_version": "0.1",
+  "status": "advisory",
+  "summary": {
+    "changed": 0,
+    "improved": 0,
+    "new": 0,
+    "regressed": 0,
+    "resolved": 0,
+    "unchanged": 1
+  },
+  "tool": "ripr",
+  "unchanged_seams": [
+    {
+      "after": "weakly_gripped",
+      "before": "weakly_gripped",
+      "change": "unchanged",
+      "evidence_delta": [
+        "new observed value: 100"
+      ],
+      "file": "src/lib.rs",
+      "line": 2,
+      "seam_id": "67fc764ba37d77bd",
+      "seam_kind": "predicate_boundary"
+    }
+  ]
+}
+

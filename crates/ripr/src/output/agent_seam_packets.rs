@@ -236,7 +236,7 @@ fn push_packet_json(out: &mut String, entry: &ClassifiedSeam) {
     ));
     out.push_str(&format!(
         "      \"file\": \"{}\",\n",
-        json_escape(&seam.file().to_string_lossy())
+        json_escape(&display_path(seam.file()))
     ));
     out.push_str(&format!("      \"line\": {},\n", seam.display_line()));
     out.push_str(&format!(
@@ -376,7 +376,7 @@ fn push_packet_json(out: &mut String, entry: &ClassifiedSeam) {
             ));
             out.push_str(&format!(
                 "\"file\": \"{}\", ",
-                json_escape(&grip.file.to_string_lossy())
+                json_escape(&display_path(&grip.file))
             ));
             out.push_str(&format!("\"line\": {}, ", grip.line));
             out.push_str(&format!(
@@ -509,7 +509,7 @@ pub(crate) fn recommended_test_for(entry: &ClassifiedSeam) -> RecommendedTest {
     if let Some(test) = nearest_strong_test_to_imitate(&entry.evidence) {
         return RecommendedTest {
             name,
-            file: test.file.to_string_lossy().to_string(),
+            file: display_path(&test.file),
             reason: "place the new targeted test next to the nearest strong related test"
                 .to_string(),
         };
@@ -517,7 +517,7 @@ pub(crate) fn recommended_test_for(entry: &ClassifiedSeam) -> RecommendedTest {
     if let Some(test) = entry.evidence.related_tests.first() {
         return RecommendedTest {
             name,
-            file: test.file.to_string_lossy().to_string(),
+            file: display_path(&test.file),
             reason: "place the new targeted test next to the highest-confidence related test"
                 .to_string(),
         };
@@ -598,7 +598,7 @@ fn push_related_test_reference(
     ));
     out.push_str(&format!(
         "\"file\": \"{}\", ",
-        json_escape(&test.file.to_string_lossy())
+        json_escape(&display_path(&test.file))
     ));
     out.push_str(&format!("\"line\": {}, ", test.line));
     out.push_str(&format!(
@@ -1265,6 +1265,23 @@ mod tests {
                 return Err(format!("missing v2 field {needle:?} in: {json}"));
             }
         }
+        Ok(())
+    }
+
+    #[test]
+    fn packet_v2_normalizes_windows_related_test_paths() -> Result<(), String> {
+        let mut entry = weakly_gripped_classified();
+        entry.evidence.related_tests[0].file = PathBuf::from(r"tests\pricing.rs");
+
+        let json = render_agent_seam_packets_json(&[entry]);
+        assert!(
+            json.contains("\"file\": \"tests/pricing.rs\""),
+            "expected normalized related test file in packet JSON, got {json}"
+        );
+        assert!(
+            !json.contains(r"tests\\pricing.rs"),
+            "expected packet JSON to avoid host-specific separators, got {json}"
+        );
         Ok(())
     }
 

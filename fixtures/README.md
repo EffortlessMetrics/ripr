@@ -42,6 +42,7 @@ Optional expected outputs become required when the fixture claims that surface:
 - agent context: `expected/context.json`
 - LSP diagnostics: `expected/lsp-diagnostics.json`
 - GitHub annotations: `expected/github.txt`
+- editor-agent loop: `expected/editor-agent-loop/`
 
 Run:
 

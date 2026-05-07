@@ -15,7 +15,7 @@ under `fixtures/<name>/` with `SPEC.md`, `diff.patch`, and
 
 | Scenario | Fixture | What it demonstrates | Expected artifacts |
 | --- | --- | --- | --- |
-| Boundary gap | `fixtures/boundary_gap` | A predicate changes from `>` to `>=`; related tests reach and observe the owner but miss the equality-boundary value. | CLI goldens: `expected/check.json`, `expected/human.txt`; LSP expectations: `expected/lsp-diagnostics.json`, `expected/lsp-code-actions.json`; targeted-test receipt and calibration artifacts under `calibration/`. |
+| Boundary gap | `fixtures/boundary_gap` | A predicate changes from `>` to `>=`; related tests reach and observe the owner but miss the equality-boundary value. | CLI goldens: `expected/check.json`, `expected/human.txt`; LSP expectations: `expected/lsp-diagnostics.json`, `expected/lsp-code-actions.json`; editor-agent loop artifacts under `expected/editor-agent-loop/`; targeted-test receipt and calibration artifacts under `calibration/`. |
 | Missing equality boundary | `fixtures/boundary_gap` | The static evidence names `discount_threshold (equality boundary)` as the missing discriminator and suggests an exact returned-value assertion. | `expected/lsp-code-actions.json` contains the copyable targeted-test brief; `calibration/targeted-test-outcome.md` records the after snapshot gaining observed value `100`. |
 | Weak oracle | `fixtures/weak_error_oracle` | A related test reaches an error path but only asserts `is_err()`, so the oracle is broad rather than exact. | CLI goldens: `expected/check.json`, `expected/human.txt`. |
 | Exact error variant | `fixtures/weak_error_oracle`, `fixtures/strong_error_oracle` | The weak fixture shows `AuthError::RevokedToken` as missing; the strong fixture is the control where `matches!` asserts the exact variant. | CLI goldens for both fixtures pin the missing-vs-present exact-variant evidence. |
@@ -46,6 +46,16 @@ Checked artifacts for that loop:
 
 - `fixtures/boundary_gap/expected/lsp-code-actions.json` carries the targeted
   test brief, suggested assertion, and open-related-test action.
+- `fixtures/boundary_gap/expected/editor-agent-loop/agent-packet.json` is the
+  seam-scoped agent packet copied from the editor command path.
+- `fixtures/boundary_gap/expected/editor-agent-loop/agent-brief.json` is the
+  agent working-set brief for the same seam.
+- `fixtures/boundary_gap/expected/editor-agent-loop/agent-verify.json` compares
+  the checked before and after snapshots.
+- `fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json` narrows
+  the verify result to the top seam.
+- `fixtures/boundary_gap/expected/editor-agent-loop/operator-cockpit.json` and
+  `operator-cockpit.md` show the cockpit join over the editor-agent artifacts.
 - `fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json`
   is the static before snapshot.
 - `fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json`

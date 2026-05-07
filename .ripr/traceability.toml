@@ -522,6 +522,7 @@ tests = [
   "crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_reports_are_advisory_and_structured",
   "crates/ripr/tests/cli_smoke.rs::calibrate_cargo_mutants_prints_markdown_by_default",
   "crates/ripr/tests/cli_smoke.rs::calibrate_cargo_mutants_writes_json_when_requested",
+  "crates/ripr/tests/cli_smoke.rs::editor_agent_loop_fixture_outputs_match_expected",
   "xtask/src/main.rs::tests::targeted_test_outcome_report_buckets_seam_movement",
   "xtask/src/main.rs::tests::targeted_test_outcome_json_and_markdown_are_structured",
   "xtask/src/main.rs::tests::mutation_calibration_summarizes_static_runtime_agreement",
@@ -530,6 +531,7 @@ tests = [
   "xtask/src/main.rs::tests::lsp_cockpit_report_json_and_markdown_are_structured",
   "xtask/src/reports/operator.rs::tests::operator_cockpit_reports_missing_inputs_with_commands",
   "xtask/src/reports/operator.rs::tests::operator_cockpit_json_and_markdown_are_structured",
+  "xtask/src/reports/operator.rs::tests::operator_cockpit_matches_editor_agent_loop_fixture",
   "xtask/src/reports/release.rs::tests::release_readiness_args_parse_version",
   "xtask/src/reports/release.rs::tests::release_readiness_args_require_version",
   "xtask/src/reports/release.rs::tests::release_readiness_status_warns_for_not_run_but_fails_required_failures",
@@ -590,6 +592,10 @@ outputs = [
   "fixtures/boundary_gap/calibration/runtime-mutants.json",
   "fixtures/boundary_gap/calibration/targeted-test-outcome.json",
   "fixtures/boundary_gap/calibration/targeted-test-outcome.md",
+  "fixtures/boundary_gap/expected/editor-agent-loop/agent-verify.json",
+  "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json",
+  "fixtures/boundary_gap/expected/editor-agent-loop/operator-cockpit.json",
+  "fixtures/boundary_gap/expected/editor-agent-loop/operator-cockpit.md",
   "fixtures/boundary_gap/calibration/mutation-calibration.json",
   "fixtures/boundary_gap/calibration/mutation-calibration.md",
   "ripr.toml.example",
@@ -624,10 +630,14 @@ tests = [
   "crates/ripr/src/cli/commands.rs::tests::agent_brief_diff_lines_are_normalized_to_requested_root",
   "crates/ripr/src/cli/commands.rs::tests::agent_brief_owner_lines_are_resolved_from_changed_lines",
   "crates/ripr/src/output/agent_brief.rs::tests::agent_brief_json_renders_ranked_seam_summary",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::packet_v2_normalizes_windows_related_test_paths",
   "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_json_selects_changed_seam",
-  "crates/ripr/tests/cli_smoke.rs::agent_receipt_writes_one_seam_handoff_json"
+  "crates/ripr/tests/cli_smoke.rs::agent_receipt_writes_one_seam_handoff_json",
+  "crates/ripr/tests/cli_smoke.rs::editor_agent_loop_fixture_outputs_match_expected"
 ]
-fixtures = []
+fixtures = [
+  "fixtures/boundary_gap"
+]
 code = [
   "crates/ripr/src/app/agent_brief.rs",
   "crates/ripr/src/cli/agent.rs",
@@ -642,7 +652,11 @@ outputs = [
   "docs/specs/RIPR-SPEC-0010-agent-working-set-brief.md",
   "docs/specs/README.md",
   "docs/AGENT_DISPATCH_WORKFLOW.md",
-  "docs/OUTPUT_SCHEMA.md"
+  "docs/OUTPUT_SCHEMA.md",
+  "fixtures/boundary_gap/expected/editor-agent-loop/agent-packet.json",
+  "fixtures/boundary_gap/expected/editor-agent-loop/agent-brief.json",
+  "fixtures/boundary_gap/expected/editor-agent-loop/agent-verify.json",
+  "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json"
 ]
 metrics = [
   "agent_brief_requested_total",

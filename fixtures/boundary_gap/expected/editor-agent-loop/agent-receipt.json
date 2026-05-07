@@ -1,0 +1,31 @@
+{
+  "inputs": {
+    "after": "fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json",
+    "agent_verify_json": "fixtures/boundary_gap/expected/editor-agent-loop/agent-verify.json",
+    "before": "fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json"
+  },
+  "schema_version": "0.1",
+  "seam": {
+    "after": "weakly_gripped",
+    "before": "weakly_gripped",
+    "change": "unchanged",
+    "evidence_delta": [
+      "new observed value: 100"
+    ],
+    "file": "src/lib.rs",
+    "grip_class": null,
+    "line": 2,
+    "seam_id": "67fc764ba37d77bd",
+    "seam_kind": "predicate_boundary"
+  },
+  "status": "advisory",
+  "summary": {
+    "next_recommendation": "Add or strengthen the missing discriminator named by the seam packet, then rerun agent verify.",
+    "remaining_gap": "Static grip class did not move."
+  },
+  "test_changed": null,
+  "tool": "ripr",
+  "verification": {
+    "commands_run": []
+  }
+}

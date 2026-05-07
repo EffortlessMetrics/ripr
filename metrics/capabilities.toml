@@ -549,10 +549,13 @@ evidence = [
   "missing_discriminators with value+reason objects",
   "suggested_assertions assertion templates with placeholders",
   "context/agent-seam-packets-v2 recommended_test, candidate_values, assertion_shape, patterns_to_imitate, patterns_to_avoid, and confidence",
+  "fixtures/boundary_gap/expected/editor-agent-loop/agent-packet.json",
   "OUTPUT_SCHEMA.md Agent Seam Packets section"
 ]
-fixtures = []
-next = "fixtures/editor-agent-loop"
+fixtures = [
+  "fixtures/boundary_gap"
+]
+next = "ci/editor-agent-artifacts"
 metric = "packet carries missing discriminator + suggested assertion templates"
 
 [[capability]]
@@ -607,6 +610,8 @@ evidence = [
   "xtask/src/reports/operator.rs joins repo exposure, LSP cockpit, before/after snapshots, agent verify, agent receipt, SARIF policy, badge status, targeted-test outcome, and optional mutation calibration",
   "agent verify summary counts improved, changed, regressed, and unchanged seams",
   "missing editor-agent loop inputs include next commands aligned with the saved-workspace editor copy actions",
+  "fixtures/boundary_gap/expected/editor-agent-loop/operator-cockpit.json",
+  "fixtures/boundary_gap/expected/editor-agent-loop/operator-cockpit.md",
   "docs/OUTPUT_SCHEMA.md Operator Cockpit Report section",
   "docs/TARGETED_TEST_WORKFLOW.md repo-local cockpit guidance",
   "fixtures/EXAMPLE_CORPUS.md public operator corpus"
@@ -615,7 +620,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/opaque_fixture_builder"
 ]
-next = "fixtures/editor-agent-loop"
+next = "ci/editor-agent-artifacts"
 metric = "operator_cockpit_available"
 
 [[capability]]
@@ -633,12 +638,13 @@ evidence = [
   "explicit seamDiagnostics: false override",
   "OUTPUT_SCHEMA.md LSP Seam Diagnostics section",
   "docs/EDITOR_EXTENSION.md documents the install path and saved-workspace default",
-  "fixtures/boundary_gap/expected/lsp-diagnostics.json"
+  "fixtures/boundary_gap/expected/lsp-diagnostics.json",
+  "fixtures/boundary_gap/expected/editor-agent-loop/agent-packet.json"
 ]
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "fixtures/editor-agent-loop"
+next = "ci/editor-agent-artifacts"
 metric = "seam_id in diagnostic.data is the hover lookup key"
 
 [[capability]]
@@ -653,12 +659,13 @@ evidence = [
   "prefers seam-bearing diagnostics on overlap (chatgpt-codex review fix)",
   "preserves pre-4B Finding hover fallback",
   "VS Code e2e keeps the extension surface active in a fixture Rust workspace",
-  "fixtures/boundary_gap/expected/lsp-diagnostics.json"
+  "fixtures/boundary_gap/expected/lsp-diagnostics.json",
+  "fixtures/boundary_gap/expected/editor-agent-loop/agent-brief.json"
 ]
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "fixtures/editor-agent-loop"
+next = "ci/editor-agent-artifacts"
 metric = "hover renders evidence path from ClassifiedSeam, never parses diagnostic message"
 
 [[capability]]
@@ -674,12 +681,14 @@ evidence = [
   "copy suggested assertion uses agent seam packet v2 assertion shape when available",
   "pre-4B Finding code actions remain available",
   "docs/TESTING.md documents VS Code e2e coverage for command registration, LSP-first seam context, targeted-test brief copying, suggested assertions, related-test opening, malformed argument handling, and restart behavior",
-  "fixtures/boundary_gap/expected/lsp-code-actions.json"
+  "fixtures/boundary_gap/expected/lsp-code-actions.json",
+  "fixtures/boundary_gap/expected/editor-agent-loop/agent-verify.json",
+  "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json"
 ]
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "fixtures/editor-agent-loop"
+next = "ci/editor-agent-artifacts"
 metric = "seam diagnostics expose packet/assertion/test actions without automatic edits"
 
 [[capability]]

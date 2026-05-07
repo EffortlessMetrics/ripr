@@ -74,7 +74,7 @@ commands = [
 
 [[work_item]]
 id = "fixtures/editor-agent-loop"
-status = "ready"
+status = "done"
 branch = "fixtures-editor-agent-loop"
 stackable = false
 requires_human_merge = true
@@ -92,13 +92,19 @@ commands = [
 
 [[work_item]]
 id = "ci/editor-agent-artifacts"
-status = "blocked"
+status = "ready"
 branch = "ci-editor-agent-artifacts"
 stackable = false
 requires_human_merge = true
 acceptance = "Generated GitHub workflow uploads the non-blocking editor-agent loop artifacts, including pilot summary, repo exposure, agent brief, agent packet, agent verify, agent receipt, operator cockpit, SARIF when enabled, and badge JSON"
-blocked_by = ["fixtures/editor-agent-loop"]
-blocked_reason = "Wait for the canonical fixture so CI uploads match a pinned loop instead of planned artifact names."
+commands = [
+  "cargo test -p ripr init_ci_github",
+  "cargo xtask check-workflows",
+  "cargo xtask check-file-policy",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr"
+]
 
 [[work_item]]
 id = "docs/full-evidence-loop"
@@ -107,8 +113,8 @@ branch = "docs-full-evidence-loop"
 stackable = false
 requires_human_merge = true
 acceptance = "Quickstart and installed-user docs lead with the real diagnostic-to-receipt loop and state that ripr init is optional policy materialization, not activation"
-blocked_by = ["fixtures/editor-agent-loop", "ci/editor-agent-artifacts"]
-blocked_reason = "Wait for fixture and CI artifacts so the installed-user path is current and executable."
+blocked_by = ["ci/editor-agent-artifacts"]
+blocked_reason = "Wait for CI artifacts so the installed-user path is current and executable."
 
 [[work_item]]
 id = "release/editor-agent-readiness-proof"

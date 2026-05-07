@@ -1,0 +1,47 @@
+{
+  "schema_version": "0.3",
+  "scope": "repo",
+  "packets_total": 1,
+  "packets": [
+    {
+      "task": "write_targeted_test",
+      "seam_id": "67fc764ba37d77bd",
+      "owner": "src/lib.rs::discounted_total",
+      "seam_kind": "predicate_boundary",
+      "file": "src/lib.rs",
+      "line": 2,
+      "changed_expression": "amount >= discount_threshold",
+      "current_grip": "weakly_gripped",
+      "headline_eligible": true,
+      "recommended_test": {"name": "discounted_total_boundary_discriminator", "file": "tests/pricing.rs", "reason": "place the new targeted test next to the nearest strong related test"},
+      "nearest_strong_test_to_imitate": {"name": "below_threshold_has_no_discount", "file": "tests/pricing.rs", "line": 4, "oracle_kind": "exact_value", "oracle_strength": "strong", "relation_reason": "direct_owner_call", "relation_confidence": "high", "reason": "nearest strong related test by ranked evidence"},
+      "evidence": {"reach": "yes", "activate": "yes", "propagate": "yes", "observe": "yes", "discriminate": "yes"},
+      "observed_values": ["50", "10_000"],
+      "missing_discriminators": [
+        {"value": "discount_threshold (equality boundary)", "reason": "observed values do not include the equality-boundary case for this predicate"},
+        {"value": "input that hits the boundary: amount >= discount_threshold", "reason": "predicate uses an equality-bearing operator; tests should exercise the boundary case"}
+      ],
+      "candidate_values": [
+        {"value": "discount_threshold (equality boundary)", "reason": "observed values do not include the equality-boundary case for this predicate"},
+        {"value": "input that hits the boundary: amount >= discount_threshold", "reason": "predicate uses an equality-bearing operator; tests should exercise the boundary case"}
+      ],
+      "missing_oracle_shape": "exact returned value assertion at the equality boundary",
+      "assertion_shape": {"kind": "exact_return_value", "example": "assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)"},
+      "related_existing_tests": [
+        {"name": "below_threshold_has_no_discount", "file": "tests/pricing.rs", "line": 4, "oracle_kind": "exact_value", "oracle_strength": "strong", "evidence_summary": "exact value assertion", "relation_reason": "direct_owner_call", "relation_confidence": "high"},
+        {"name": "far_above_threshold_discounts", "file": "tests/pricing.rs", "line": 9, "oracle_kind": "exact_value", "oracle_strength": "strong", "evidence_summary": "exact value assertion", "relation_reason": "direct_owner_call", "relation_confidence": "high"}
+      ],
+      "patterns_to_imitate": [
+        {"name": "below_threshold_has_no_discount", "file": "tests/pricing.rs", "line": 4, "oracle_kind": "exact_value", "oracle_strength": "strong", "relation_reason": "direct_owner_call", "relation_confidence": "high", "reason": "strong exact_value oracle with high relation"},
+        {"name": "far_above_threshold_discounts", "file": "tests/pricing.rs", "line": 9, "oracle_kind": "exact_value", "oracle_strength": "strong", "relation_reason": "direct_owner_call", "relation_confidence": "high", "reason": "strong exact_value oracle with high relation"}
+      ],
+      "patterns_to_avoid": [
+        {"pattern": "adding another test with only already-observed values", "reason": "candidate values should include the missing discriminator"}
+      ],
+      "suggested_assertions": ["assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)"],
+      "confidence": "high",
+      "runtime_confirmation": "optional cargo-mutants confirmation; ripr reports static evidence only"
+    }
+  ]
+}
+
