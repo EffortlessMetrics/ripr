@@ -30,8 +30,10 @@ spend where possible. `$1` is a ceiling, not a goal.
 
 ## Runner multipliers
 
-The canonical multipliers are encoded in `policy/ci-budget.toml`. As of this
-document:
+The canonical multipliers will be encoded in `policy/ci-budget.toml`
+(introduced in PR 02 of the rollout; see `docs/ci/ripr-ci-rollout.md`).
+The forward-reference table below is the snapshot the policy file will
+adopt:
 
 | Runner               | Multiplier |
 | -------------------- | ---------: |

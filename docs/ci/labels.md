@@ -46,7 +46,18 @@ summary; override labels turn failures into warnings.
 
 ## Where labels are defined
 
-- Source of truth: `policy/ci-budget.toml`, `[labels]` table.
+- Source of truth (forward reference, ships in PR 02 of the rollout):
+  `policy/ci-budget.toml`, `[labels]` table.
 - Suggested colors and descriptions: this document.
-- Workflow listening: documented per-workflow alongside its lane entry in
+- Workflow listening (forward reference, ships in PR 02): documented
+  per-workflow alongside its lane entry in
   `policy/ci-lane-whitelist.toml`.
+
+## Side effects
+
+| Label                  | Side effect                                              |
+| ---------------------- | -------------------------------------------------------- |
+| `full-ci`              | Demotes the `ripr-waive` requirement on the `ripr` soft-gate (`docs/RIPR_EVIDENCE_POLICY.md`) — the gate's findings are accepted without an explicit waive when this label is present. |
+| `ci-budget-ack`        | Demotes elevated-LEM warnings to notices in the PR Plan step summary. |
+| `ci-budget-override`   | Bypasses the over-ceiling fail (>125 LEM) in the soft budget guard. |
+
