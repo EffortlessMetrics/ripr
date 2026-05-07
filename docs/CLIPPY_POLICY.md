@@ -36,9 +36,12 @@ A panic-family call site is acceptable only if it satisfies **both rails**.
   `unimplemented!`, or `unreachable!` outside an explicit, allowlisted
   exception with a written explanation.
 - Test code follows the same rule. There are no test carveouts.
-  `clippy.toml` does not enable `allow-unwrap-in-tests`,
-  `allow-expect-in-tests`, `allow-panic-in-tests`, or
-  `allow-indexing-slicing-in-tests`.
+  [`clippy.toml`](../clippy.toml) deliberately does not enable
+  `allow-unwrap-in-tests`, `allow-expect-in-tests`, `allow-panic-in-tests`,
+  `allow-dbg-in-tests`, or `allow-indexing-slicing-in-tests`. The same file
+  pins `msrv = "1.93"` so newer Clippy releases — when run via `rustup` or
+  in an advisory CI lane on a more recent toolchain — do not suggest APIs
+  that violate the workspace's declared minimum supported Rust version.
 - Every suppression carries a written reason. `clippy::allow_attributes_without_reason`
   is denied at the workspace level, so `#[allow(...)]` and `#[expect(...)]`
   must include `reason = "..."`.
