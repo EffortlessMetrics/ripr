@@ -11,7 +11,12 @@ const SCHEMA_TOKEN: &str = "schema_version";
 pub(crate) fn check_ci_lane_whitelist() -> Result<(), String> {
     let mut findings: Vec<String> = Vec::new();
 
-    for path in [BUDGET_PATH, WHITELIST_PATH, EXCEPTIONS_PATH, RISK_PACKS_PATH] {
+    for path in [
+        BUDGET_PATH,
+        WHITELIST_PATH,
+        EXCEPTIONS_PATH,
+        RISK_PACKS_PATH,
+    ] {
         verify_ledger(Path::new(path), &mut findings);
     }
 
@@ -20,7 +25,10 @@ pub(crate) fn check_ci_lane_whitelist() -> Result<(), String> {
 
     println!(
         "ci-lane-whitelist: lanes={lane_count}, risk_packs={pack_count}, files={files}",
-        files = 4 - findings.iter().filter(|f| f.starts_with("missing:")).count()
+        files = 4 - findings
+            .iter()
+            .filter(|f| f.starts_with("missing:"))
+            .count()
     );
 
     if lane_count == 0 {
@@ -65,10 +73,7 @@ fn verify_ledger(path: &Path, findings: &mut Vec<String>) {
 
 fn count_blocks(path: &Path, marker: &str) -> Result<usize, String> {
     match fs::read_to_string(path) {
-        Ok(text) => Ok(text
-            .lines()
-            .filter(|line| line.trim() == marker)
-            .count()),
+        Ok(text) => Ok(text.lines().filter(|line| line.trim() == marker).count()),
         Err(_) => Ok(0),
     }
 }
@@ -102,6 +107,9 @@ mod tests {
     #[test]
     fn check_runs_against_repo_ledgers() {
         let result = check_ci_lane_whitelist();
-        assert!(result.is_ok(), "advisory check must not fail; got {result:?}");
+        assert!(
+            result.is_ok(),
+            "advisory check must not fail; got {result:?}"
+        );
     }
 }
