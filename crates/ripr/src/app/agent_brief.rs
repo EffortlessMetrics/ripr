@@ -279,8 +279,9 @@ fn direct_candidates<'a>(
 
     let mut candidates = Vec::new();
     let mut matched_working_set = false;
+    let normalized_working_set = NormalizedAgentBriefWorkingSet::new(working_set);
     for entry in classified {
-        let Some(why_now) = why_now_for(entry, working_set) else {
+        let Some(why_now) = why_now_for(entry, &normalized_working_set) else {
             continue;
         };
         matched_working_set = true;
@@ -352,9 +353,34 @@ fn fallback_candidates<'a>(
         .collect()
 }
 
+struct NormalizedAgentBriefWorkingSet<'a> {
+    changed_lines: Vec<(String, &'a AgentBriefLine)>,
+    files: Vec<String>,
+}
+
+impl<'a> NormalizedAgentBriefWorkingSet<'a> {
+    fn new(working_set: &'a AgentBriefResolvedWorkingSet) -> Self {
+        let changed_lines = working_set
+            .changed_lines
+            .iter()
+            .map(|line| (normalized_path(&line.file), line))
+            .collect();
+        let files = working_set
+            .files
+            .iter()
+            .map(|file| normalized_path(file))
+            .collect();
+
+        Self {
+            changed_lines,
+            files,
+        }
+    }
+}
+
 fn why_now_for(
     entry: &ClassifiedSeam,
-    working_set: &AgentBriefResolvedWorkingSet,
+    working_set: &NormalizedAgentBriefWorkingSet<'_>,
 ) -> Option<AgentBriefWhyNow> {
     if let Some(line) = matching_changed_line(entry, working_set) {
         return Some(AgentBriefWhyNow {
@@ -405,11 +431,8 @@ fn why_now_for(
         });
     }
 
-    if working_set
-        .files
-        .iter()
-        .any(|file| same_file(file, entry.seam.file()))
-    {
+    let seam_file = normalized_path(entry.seam.file());
+    if working_set.files.iter().any(|file| file == &seam_file) {
         return Some(AgentBriefWhyNow {
             reason: AgentBriefWhyNowReason::SameFileSeam,
             confidence: AgentBriefWhyNowConfidence::Medium,
@@ -422,23 +445,27 @@ fn why_now_for(
 
 fn matching_changed_line<'a>(
     entry: &ClassifiedSeam,
-    working_set: &'a AgentBriefResolvedWorkingSet,
+    working_set: &'a NormalizedAgentBriefWorkingSet<'a>,
 ) -> Option<&'a AgentBriefLine> {
-    working_set.changed_lines.iter().find(|line| {
-        same_file(&line.file, entry.seam.file()) && line.line == entry.seam.display_line()
-    })
+    let seam_file = normalized_path(entry.seam.file());
+    working_set
+        .changed_lines
+        .iter()
+        .find_map(|(line_file, line)| {
+            (line_file == &seam_file && line.line == entry.seam.display_line()).then_some(*line)
+        })
 }
 
 fn matching_related_test_exact_line<'a>(
     entry: &'a ClassifiedSeam,
-    working_set: &'a AgentBriefResolvedWorkingSet,
+    working_set: &'a NormalizedAgentBriefWorkingSet<'a>,
 ) -> Option<(&'a RelatedTestGrip, &'a AgentBriefLine)> {
     matching_related_test_line(entry, working_set, |test, line| line.line == test.line)
 }
 
 fn matching_related_test_assertion_line<'a>(
     entry: &'a ClassifiedSeam,
-    working_set: &'a AgentBriefResolvedWorkingSet,
+    working_set: &'a NormalizedAgentBriefWorkingSet<'a>,
 ) -> Option<(&'a RelatedTestGrip, &'a AgentBriefLine)> {
     matching_related_test_line(entry, working_set, |test, line| {
         line.line > test.line
@@ -451,34 +478,35 @@ fn matching_related_test_assertion_line<'a>(
 
 fn matching_related_test_line<'a>(
     entry: &'a ClassifiedSeam,
-    working_set: &'a AgentBriefResolvedWorkingSet,
+    working_set: &'a NormalizedAgentBriefWorkingSet<'a>,
     matches_line: impl Fn(&RelatedTestGrip, &AgentBriefLine) -> bool,
 ) -> Option<(&'a RelatedTestGrip, &'a AgentBriefLine)> {
-    let changed_lines = working_set
-        .changed_lines
-        .iter()
-        .map(|line| (normalized_path(&line.file), line))
-        .collect::<Vec<_>>();
+    if entry.evidence.related_tests.is_empty() {
+        return None;
+    }
+
     entry.evidence.related_tests.iter().find_map(|test| {
         let test_file = normalized_path(&test.file);
-        changed_lines.iter().find_map(|(line_file, line)| {
-            (line_file == &test_file && matches_line(test, line)).then_some((test, *line))
-        })
+        working_set
+            .changed_lines
+            .iter()
+            .find_map(|(line_file, line)| {
+                (line_file == &test_file && matches_line(test, line)).then_some((test, *line))
+            })
     })
 }
 
 fn matching_related_test_file<'a>(
     entry: &'a ClassifiedSeam,
-    working_set: &AgentBriefResolvedWorkingSet,
+    working_set: &NormalizedAgentBriefWorkingSet<'_>,
 ) -> Option<&'a RelatedTestGrip> {
-    let working_set_files = working_set
-        .files
-        .iter()
-        .map(|file| normalized_path(file))
-        .collect::<Vec<_>>();
+    if entry.evidence.related_tests.is_empty() {
+        return None;
+    }
+
     entry.evidence.related_tests.iter().find(|test| {
         let test_file = normalized_path(&test.file);
-        working_set_files.iter().any(|file| file == &test_file)
+        working_set.files.iter().any(|file| file == &test_file)
     })
 }
 
