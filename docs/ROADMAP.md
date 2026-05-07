@@ -74,11 +74,12 @@ bounded cold run can fill the classified-seam cache, after which the default
 30-second repo-exposure latency report passes on JSON and Markdown cache hits.
 The budget-aware pilot path has first-screen Markdown and terminal copy that
 states the inspected seam, why it matters, the focused test to write, and the
-before/after commands. Campaign 10 is now active for 0.4 release-surface
-hardening. Its first ready item is `release/readiness-report`, and its goal is
-to prove the first-hour loop across install, `ripr pilot`, one focused test,
-`ripr outcome` or `ripr agent verify`, editor, CI, latency, examples, and known
-limits.
+before/after commands. Campaign 10 is now active for editor-agent integration.
+Its next ready item is `lsp/agent-loop-copy-commands`, and its goal is to make
+the saved-workspace diagnostic, evidence, packet/brief, focused-test,
+after-snapshot, verify, receipt, cockpit, CI, and install surfaces line up as
+one loop. The 0.4 release-surface requirements are a gate inside that lane, not
+a replacement for the active campaign.
 
 ## Strategic Sequence
 
@@ -117,7 +118,8 @@ quality rails
 -> runtime calibration fixture expansion
 -> Campaign 8 closeout
 -> hot-sidecar latency proof
--> 0.4 release-surface hardening
+-> editor-agent integration
+-> editor-agent release readiness proof
 ```
 
 The analyzer path is:
@@ -273,22 +275,25 @@ Success condition:
 Existing sample findings come from fact objects instead of line-substring guesses.
 ```
 
-### `0.4.0` - Release Surface Hardening
+### `0.4.0` - Editor Agent Integration
 
 Ship:
 
-- release-readiness report for CLI, agent verify, LSP, CI, latency, install,
-  examples, VSIX, and known-limits surfaces
-- checked real-repo pilot receipts that do not invent metrics or overclaim
-- first-hour landing path centered on `ripr pilot`, one focused test,
-  `ripr outcome`, `ripr agent verify`, editor, CI, and known limits
-- release preparation backed by package, publish dry-run, install, VSIX,
-  release-doc, and marketplace proof
+- LSP copy commands for agent packet, brief, after-snapshot, verify, and receipt
+- operator cockpit status for before/after snapshots, agent verify JSON, agent
+  receipt JSON, movement counts, and missing-input next commands
+- one canonical editor-agent loop fixture that pins diagnostics, actions, agent
+  brief, agent packet, verify, receipt, and cockpit output
+- generated CI artifacts for the non-blocking editor-agent loop
+- first-hour docs centered on `ripr pilot`, one focused test, after snapshot,
+  `ripr agent verify`, `ripr agent receipt`, editor, CI, and known limits
+- release-readiness proof for installed CLI, packaged VSIX, package dry-run, and
+  known-limits surfaces after the loop is pinned
 
 Success condition:
 
 ```text
-install -> ripr pilot -> one focused test -> ripr outcome / ripr agent verify -> review-ready artifacts
+saved-workspace diagnostic -> packet/brief -> focused test -> after snapshot -> agent verify -> agent receipt -> cockpit/CI artifact
 ```
 
 ### `0.5.0` - Live Editor Loop
