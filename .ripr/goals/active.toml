@@ -1,161 +1,43 @@
-id = "defaults-first-operator-adoption"
-title = "Defaults-First Operator Adoption"
+id = "runtime-calibration-fixtures"
+title = "Runtime Calibration Fixture Expansion"
 status = "active"
 
-# This is Campaign 7 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
-# Campaign 6 (`modularize-ripr-submodules`) closed after the refactor chain
-# landed through #405. The next lane is product/operator polish, not more LSP
-# feature work and not more Campaign 6 surgery.
+# This is Campaign 8 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+# Campaign 7 (`defaults-first-operator-adoption`) closed after the
+# install-to-targeted-test loop was documented, fixture-backed, and verified
+# through the CLI, editor, CI, release, and report surfaces. The next lane
+# keeps runtime mutation data explicit and supplied; RIPR still does not run
+# mutation tests.
 
 objective = """
-Make ripr useful from a clean install by giving CLI, editor, and CI users one
-defaults-first path from static seam evidence to a targeted-test action and a
-receipt that shows the seam improved.
+Expand the calibration fixture lane so RIPR can compare static test-grip
+evidence with supplied cargo-mutants results across representative agreement
+buckets without turning RIPR into a mutation runner.
 """
 
 end_state = [
-  "Built-in defaults and generated ripr.toml are documented and conservative",
-  "Fast, normal, and deep mode behavior is clear and useful without hand tuning",
-  "One operator cockpit joins repo exposure, LSP cockpit, SARIF, badges, targeted-test outcomes, and calibration when present",
-  "The GitHub Action path uploads useful artifacts and separates advisory reporting from blocking policy",
-  "The editor install path and existing commands are documented without adding speculative LSP features",
-  "A small public example corpus demonstrates weak seams, targeted briefs, receipts, and optional calibration",
-  "Install and release paths are verified enough for a new user to run the loop"
+  "Calibration fixtures cover static gaps with runtime signals and static gaps without runtime signals",
+  "Calibration fixtures cover runtime signals without static gaps, ambiguous file/line joins, and unmatched runtime data",
+  "Every runtime artifact is supplied input or generated calibration output; RIPR does not run mutation tests",
+  "Operator cockpit and docs show calibration as optional advisory context",
+  "Static output vocabulary remains unchanged outside explicit calibration reports"
 ]
 
 [[work_item]]
-id = "defaults/config-init"
-status = "done"
-branch = "defaults-config-init"
-stackable = false
-requires_human_merge = true
-acceptance = "Built-in defaults, generated ripr.toml, repo-mode exclusions, seam-diagnostic policy, badge/report defaults, and fast/normal/deep mode behavior are documented and test-pinned without changing output schemas or LSP behavior"
-commands = [
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-campaign",
-  "cargo xtask goals next",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "reports/operator-cockpit"
-status = "done"
-branch = "operator-cockpit-report"
-stackable = false
-requires_human_merge = true
-acceptance = "target/ripr/reports/operator-cockpit.md and .json join repo exposure, LSP cockpit, SARIF policy, badge status, targeted-test outcome, and optional mutation calibration into a next-action report"
-commands = [
-  "cargo test -p xtask operator_cockpit",
-  "cargo xtask operator-cockpit",
-  "cargo xtask operator-cockpit-report",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-campaign",
-  "cargo xtask goals next",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "ci/github-action-entrypoint"
-status = "done"
-branch = "github-action-entrypoint"
-stackable = false
-requires_human_merge = true
-acceptance = "A copyable GitHub Actions workflow runs the defaults-first RIPR loop in a Rust repo, uploads reports, makes SARIF optional, documents badge artifacts, and keeps advisory reporting separate from blocking policy"
-commands = [
-  "cargo test -p ripr init_generated_github_workflow",
-  "cargo test -p ripr --test cli_smoke init_ci_github",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-campaign",
-  "cargo xtask goals next",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "editor/install-polish"
-status = "done"
-branch = "editor-install-polish"
-stackable = false
-requires_human_merge = true
-acceptance = "The VS Code install path and existing commands are documented and verified without adding unsaved-buffer overlays, CodeLens, inlay hints, semantic tokens, or new editor behavior"
-commands = [
-  "npm --prefix editors/vscode ci",
-  "npm --prefix editors/vscode run compile",
-  "npm --prefix editors/vscode run package",
-  "npm --prefix editors/vscode run test:e2e",
-  "cargo xtask lsp-cockpit-report",
-  "cargo xtask check-pr",
-  "cargo xtask check-public-api",
-  "cargo xtask check-architecture",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-campaign",
-  "cargo xtask goals next",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "fixtures/example-corpus"
-status = "done"
-branch = "example-corpus"
-stackable = false
-requires_human_merge = true
-acceptance = "A small public example corpus demonstrates boundary gap, weak oracle, missing equality boundary, exact error variant, opaque fixture/builder, and one calibration sample with expected CLI, LSP, targeted-test outcome, and optional calibration artifacts"
-commands = [
-  "cargo xtask fixtures",
-  "cargo xtask goldens check",
-  "cargo xtask check-fixture-contracts",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-campaign",
-  "cargo xtask goals next",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "release/install-polish"
-status = "done"
-branch = "release-install-polish"
-stackable = false
-requires_human_merge = true
-acceptance = "cargo install, GitHub Release binary, VS Code server provisioning, README quickstart, and known-limits docs are verified against the defaults-first operator loop"
-commands = [
-  "cargo package -p ripr --list",
-  "cargo publish -p ripr --dry-run",
-  "npm --prefix editors/vscode run package",
-  "cargo xtask check-pr",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-campaign",
-  "cargo xtask goals next",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "campaign/defaults-first-closeout"
+id = "calibration/runtime-fixtures-v1"
 status = "ready"
-branch = "defaults-first-closeout"
+branch = "runtime-calibration-fixtures"
 stackable = false
 requires_human_merge = true
-acceptance = "Defaults-first operator adoption is reviewed, docs and manifests point at the next lane, and a clean install-to-targeted-test loop is demonstrated"
+acceptance = "Controlled calibration fixtures exercise the main static/runtime agreement buckets with supplied cargo-mutants data, checked expected reports, and no mutation execution by RIPR"
 commands = [
-  "cargo xtask check-pr",
+  "cargo test -p ripr calibration",
+  "cargo xtask mutation-calibration fixtures/boundary_gap/input --mutants-json fixtures/boundary_gap/calibration/runtime-mutants.json --repo-exposure-json fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-campaign",
   "cargo xtask goals next",
-  "cargo xtask check-doc-index",
+  "cargo xtask check-fixture-contracts",
   "cargo xtask check-traceability",
   "cargo xtask check-capabilities",
   "cargo test --workspace"

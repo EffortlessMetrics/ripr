@@ -53,6 +53,10 @@ The date prefix sorts handoffs chronologically when a directory listing
 is the index. The `<topic>` slug should match the campaign or PR-cluster
 the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 
+## Current Handoffs
+
+- [Campaign 7 closeout](2026-05-07-campaign-7-closeout.md)
+
 ## Template
 
 ```markdown

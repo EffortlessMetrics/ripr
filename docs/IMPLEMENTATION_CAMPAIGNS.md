@@ -888,7 +888,7 @@ on the modularized internals without adding speculative LSP features.
 
 Campaign ID: `defaults-first-operator-adoption`
 
-Status: active
+Status: done
 
 Objective:
 
@@ -925,7 +925,7 @@ Work items:
 | `editor/install-polish` | done | Documented the normal VS Code/Open VSX install path, server-resolution fallback, local VSIX smoke path, saved-workspace default, and existing command coverage. The docs now reflect the current e2e coverage for command registration, draft-mode defaults, LSP-first seam context, targeted-test brief copying, suggested assertions, related-test opening, malformed argument handling, and restart behavior without adding editor features. |
 | `fixtures/example-corpus` | done | Added `fixtures/EXAMPLE_CORPUS.md`, the `opaque_fixture_builder` executable fixture, checked boundary-gap before/after repo-exposure snapshots, targeted-test outcome receipts, and optional mutation-calibration reports. The corpus maps boundary gap, missing equality boundary, weak oracle, exact error variant, opaque fixture/builder, LSP actions, CLI goldens, receipts, and calibration artifacts. |
 | `release/install-polish` | done | Verified crate package listing, publish dry-run, local `cargo install` smoke, VSIX packaging, public `v0.3.0` GitHub Release server manifest/assets, Windows server archive checksum, and extracted server CLI/LSP smoke against the defaults-first operator loop. |
-| `campaign/defaults-first-closeout` | ready | Close the campaign after the install-to-targeted-test loop is demonstrated and the manifest points at the next real lane. |
+| `campaign/defaults-first-closeout` | done | Closed Campaign 7 after #409 through #417 landed. The closeout audit is recorded in `docs/handoffs/2026-05-07-campaign-7-closeout.md`; the installed binary ran the boundary-gap seam packet, outcome receipt, and optional calibration loop, and the active manifest now points to Campaign 8 runtime calibration fixtures. |
 
 Dependencies:
 
@@ -970,3 +970,78 @@ Blocking conditions:
 - default policy that makes CI blocking by surprise
 - broad examples that do not prove the targeted-test loop
 - install instructions that require `cargo install ripr` for the normal editor path
+
+Landed PR chain:
+
+- #409 `vscode: default editor analysis to draft`
+- #410 `campaign: pin defaults config baseline`
+- #411 `test: pin defaults mode and repo filters`
+- #412 `campaign: add operator cockpit report`
+- #413 `ci: add defaults-first GitHub Action entrypoint`
+- #414 `ci: gate generated SARIF rendering`
+- #415 `vscode: document and verify install polish`
+- #416 `fixtures: add defaults-first example corpus`
+- #417 `docs: verify release install paths`
+
+The active campaign now moves to Campaign 8. Calibration fixture work should
+keep runtime mutation data as explicit supplied input and must not make RIPR run
+mutation tests.
+
+## Campaign 8: Runtime Calibration Fixture Expansion
+
+Campaign ID: `runtime-calibration-fixtures`
+
+Status: active
+
+Objective:
+
+```text
+Expand the calibration fixture lane so RIPR can compare static test-grip
+evidence with supplied cargo-mutants results across representative agreement
+buckets without turning RIPR into a mutation runner.
+```
+
+Why it matters:
+
+Campaign 7 made the operator loop usable from install to targeted-test receipt.
+The next credibility gap is calibration breadth: one boundary-gap sample proves
+the path, but not the range of static/runtime agreement buckets users will see
+when importing cargo-mutants data from real repositories.
+
+End state:
+
+- calibration fixtures cover static gaps with runtime signals and static gaps
+  without runtime signals
+- calibration fixtures cover runtime signals without static gaps, ambiguous
+  file/line joins, and unmatched runtime data
+- every runtime artifact is supplied input or generated calibration output
+- operator cockpit and docs show calibration as optional advisory context
+- static output vocabulary remains unchanged outside explicit calibration reports
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `calibration/runtime-fixtures-v1` | ready | Add controlled calibration fixtures for the main static/runtime agreement buckets with supplied cargo-mutants data, checked expected reports, and no mutation execution by RIPR. |
+
+Commands:
+
+```bash
+cargo test -p ripr calibration
+cargo xtask mutation-calibration fixtures/boundary_gap/input --mutants-json fixtures/boundary_gap/calibration/runtime-mutants.json --repo-exposure-json fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json
+cargo xtask check-output-contracts
+cargo xtask check-static-language
+cargo xtask check-campaign
+cargo xtask goals next
+cargo xtask check-fixture-contracts
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo test --workspace
+```
+
+Blocking conditions:
+
+- adding runtime mutation execution to RIPR
+- changing static classifications to match a runtime sample
+- using runtime outcome vocabulary outside explicit calibration reports
+- making calibration required for the default pilot, LSP, SARIF, or badge paths
