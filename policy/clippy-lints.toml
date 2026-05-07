@@ -319,7 +319,7 @@ reason = "Make bit masks visually inspectable."
 name = "clippy::disallowed_fields"
 level = "deny"
 activate_when_msrv = "1.95"
-reason = "Ban direct field access across protected seams."
+reason = "Ban direct field access across protected seams. Promotion requires landing a `clippy.toml` `disallowed-fields = [...]` list in the same PR — the lint is a no-op without that config."
 
 [[planned]]
 name = "clippy::manual_checked_ops"
