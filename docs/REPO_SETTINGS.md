@@ -16,7 +16,7 @@ Managed from git:
 - merge policy: squash merge enabled, merge commits disabled, rebase merge
   disabled, auto-merge disabled, update branch enabled, and delete branch on
   merge enabled
-- `main` branch protection
+- classic `main` branch protection fields supported by the Settings App
 - required status checks for routine PR merges
 - CI policy labels documented in `docs/CI.md`
 
@@ -28,6 +28,7 @@ Not managed from `.github/settings.yml`:
 - Dependabot alerts and security updates
 - secret scanning and push protection
 - private vulnerability reporting
+- GitHub Rulesets, including the current direct-push block for `main`
 - future advanced security controls unless Settings App support is verified in a
   focused PR
 
@@ -118,18 +119,17 @@ automatically.
 
 ## Branch Protection And Rulesets
 
-Required checks should include:
+Required checks should use the emitted check-run names, not display-style
+workflow prefixes. Current required checks are:
 
-- `CI / rust`
-- `CI / msrv`
-- `CI / vscode`
-- `Coverage / rust-coverage`
-- `Security / cargo-deny`
-- `Security / dependency-review`
+- `rust`
+- `msrv`
+- `vscode`
+- `cargo-deny`
+- `dependency-review`
 
-Rules:
+Settings App managed rules:
 
-- block direct pushes to `main`
 - block force pushes to `main`
 - block branch deletion for `main`
 - require conversation resolution
@@ -139,10 +139,15 @@ Rules:
   exception is documented before changing `.github/settings.yml`
 - require release workflow changes to pass security review
 
+GitHub Rulesets should separately block direct pushes to `main` / require the
+PR merge path. Keep that rule enabled until Settings App support for the same
+invariant is verified and moved into `.github/settings.yml` in a focused PR.
+
 Advisory lanes should not be required by branch protection unless they are
 promoted in a focused policy PR after calibration. This includes Droid review,
-future Clippy candidates, RIPR self-dogfood, SARIF upload, Test Analytics,
-release packaging or publish dry-runs, PR planning, and CI budget forecasts.
+coverage, future Clippy candidates, RIPR self-dogfood, SARIF upload, Test
+Analytics, release packaging or publish dry-runs, PR planning, and CI budget
+forecasts.
 
 ## Release Environments
 
