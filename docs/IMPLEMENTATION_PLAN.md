@@ -23,7 +23,7 @@ through multiple work items in a campaign, but each work item should follow the
 | Module SRP Refactoring (6) | Refactor internal modules under `crates/ripr/src/` so each module has one product responsibility, without splitting the package. | Complete: #347, the Campaign 6 refactor chain through #405, and `campaign/modularization-closeout`. |
 | Defaults-First Operator Adoption (7) | Make a clean install useful through conservative defaults, one operator cockpit, CI artifacts, editor install docs, examples, and install/release proof. | Complete: #409 through #417 plus `campaign/defaults-first-closeout`. |
 | Runtime Calibration Fixture Expansion (8) | Expand supplied-runtime calibration fixtures without making RIPR run mutation tests. | Complete: #420 plus `campaign/runtime-calibration-closeout`. |
-| Hot Sidecar Latency Proof (9) | Measure current cache and saved-workspace editor refresh behavior before changing warm-path reuse. | Active: `cache/current-latency-audit`, `cache/repo-exposure-latency-report`, and `cache/repo-exposure-warm-path-reuse` are complete; next ready item is `pilot/budget-aware`. |
+| Hot Sidecar Latency Proof (9) | Measure current cache and saved-workspace editor refresh behavior before changing warm-path reuse. | Active: cache measurement, bounded repo-exposure latency reporting, warm-path fact reuse, bounded `ripr pilot`, and first-screen pilot clarity are complete; next ready item is `campaign/hot-sidecar-latency-closeout`. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
 through 8 are complete. Campaign 6 closed after the internal module SRP chain
@@ -34,8 +34,10 @@ verified; the closeout audit lives at
 `docs/handoffs/2026-05-07-campaign-7-closeout.md`. Campaign 8 added the checked
 `fixtures/boundary_gap/calibration/runtime-fixtures-v1/` sample for the main
 static/runtime agreement buckets and closed with runtime calibration still
-confined to supplied-data reports. The active queue is now
-`pilot/budget-aware`.
+confined to supplied-data reports. Campaign 9 has measured the cache/editor
+proof surfaces, added bounded latency reporting, reused warm-path facts below
+rendered outputs, bounded `ripr pilot`, and improved first-screen pilot clarity.
+The active queue is now `campaign/hot-sidecar-latency-closeout`.
 
 ## PR 0: `planning-and-tracking-docs`
 

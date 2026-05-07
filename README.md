@@ -319,11 +319,13 @@ The closeout audit lives at
 runtime calibration fixture set for the main agreement buckets and keeps
 runtime data supplied and optional. Campaign 9 has measured the existing cache
 and editor proof surfaces, added bounded repo-exposure latency reporting, and
-verified warm-path fact reuse below the rendered-output layer. The active item
-is now first-screen pilot clarity:
+verified warm-path fact reuse below the rendered-output layer. The bounded
+pilot path now prints the top inspected seam, why it matters, the focused test
+to write, and the before/after commands without requiring JSON inspection. The
+active item is now Campaign 9 closeout:
 
 ```text
-pilot/first-screen-clarity
+campaign/hot-sidecar-latency-closeout
 ```
 
 Deeper capability state lives in [Capability matrix](docs/CAPABILITY_MATRIX.md)

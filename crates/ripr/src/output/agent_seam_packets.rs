@@ -93,12 +93,10 @@ pub(crate) fn suggested_assertion_for_classified_seam(entry: &ClassifiedSeam) ->
 pub(crate) fn targeted_test_brief_for_classified_seam(entry: &ClassifiedSeam) -> String {
     let seam = &entry.seam;
     let evidence = &entry.evidence;
-    let recommended = recommended_test_for(entry);
     let missing = missing_discriminator_records_for(entry);
-    let candidate_values = candidate_values_for(entry, &missing);
-    let assertion_shape = assertion_shape_for(seam.kind(), seam.owner(), evidence);
     let patterns_to_imitate = patterns_to_imitate_for(evidence);
     let patterns_to_avoid = patterns_to_avoid_for(entry);
+    let outline = targeted_test_brief_outline_for_classified_seam(entry);
 
     let mut out = String::new();
     out.push_str("Target seam:\n");
@@ -136,13 +134,13 @@ pub(crate) fn targeted_test_brief_for_classified_seam(entry: &ClassifiedSeam) ->
     out.push_str("\nAdd a targeted test:\n");
     out.push_str(&format!(
         "- Suggested file: {}\n",
-        display_path_text(&recommended.file)
+        display_path_text(&outline.suggested_file)
     ));
-    out.push_str(&format!("- Suggested name: {}\n", recommended.name));
-    if let Some(value) = candidate_values.first() {
-        out.push_str(&format!("- Candidate value: {}\n", value.value));
+    out.push_str(&format!("- Suggested name: {}\n", outline.suggested_name));
+    if let Some(value) = outline.candidate_value.as_ref() {
+        out.push_str(&format!("- Candidate value: {value}\n"));
     }
-    out.push_str(&format!("- Assertion shape: {}\n", assertion_shape.example));
+    out.push_str(&format!("- Assertion shape: {}\n", outline.assertion_shape));
 
     if !patterns_to_imitate.is_empty() {
         out.push_str("\nImitate:\n");
@@ -162,6 +160,33 @@ pub(crate) fn targeted_test_brief_for_classified_seam(entry: &ClassifiedSeam) ->
     }
 
     out
+}
+
+pub(crate) struct TargetedTestBriefOutline {
+    pub(crate) suggested_file: String,
+    pub(crate) suggested_name: String,
+    pub(crate) candidate_value: Option<String>,
+    pub(crate) assertion_shape: String,
+}
+
+pub(crate) fn targeted_test_brief_outline_for_classified_seam(
+    entry: &ClassifiedSeam,
+) -> TargetedTestBriefOutline {
+    let recommended = recommended_test_for(entry);
+    let missing = missing_discriminator_records_for(entry);
+    let candidate_value = candidate_values_for(entry, &missing)
+        .into_iter()
+        .next()
+        .map(|value| value.value);
+    let assertion_shape =
+        assertion_shape_for(entry.seam.kind(), entry.seam.owner(), &entry.evidence);
+
+    TargetedTestBriefOutline {
+        suggested_file: recommended.file,
+        suggested_name: recommended.name,
+        candidate_value,
+        assertion_shape: assertion_shape.example,
+    }
 }
 
 fn display_path(path: &std::path::Path) -> String {

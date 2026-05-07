@@ -73,8 +73,10 @@ cache collection, cache load hit/miss/corrupt state, file-fact cache reuse,
 cold compute, cache store, and total phase timing without changing repo-exposure
 outputs. File-fact warm reuse improved the measured index-build subphase, and
 full repo evidence now reuses precomputed related-test and value-resolution
-facts. The active item is now improving first-screen `ripr pilot` clarity after
-the budget-aware timeout surface landed.
+facts. The budget-aware pilot path now has first-screen Markdown and terminal
+copy that states the inspected seam, why it matters, the focused test to write,
+and the before/after commands. The active item is now
+`campaign/hot-sidecar-latency-closeout`.
 
 ## Strategic Sequence
 
