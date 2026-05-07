@@ -5,6 +5,7 @@ Usage:
   ripr pilot [--root PATH] [--out PATH] [--mode draft] [--max-seams 5] [--timeout-ms 30000]
   ripr outcome --before PATH --after PATH [--format md|json] [--out PATH]
   ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
+  ripr agent start --root . --seam-id ID --out target/ripr/workflow
   ripr agent brief --root . (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json
   ripr agent packet --root . --seam-id ID --json
   ripr agent verify --root . --before before.json --after after.json --json
@@ -26,6 +27,7 @@ Quick start:
   ripr pilot
   ripr outcome --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json
   ripr calibrate cargo-mutants --mutants-json target/mutants/outcomes.json --repo-exposure-json target/ripr/pilot/after.repo-exposure.json
+  ripr agent start --root . --seam-id f3c9e4d21a0b7c88 --out target/ripr/workflow
   ripr agent brief --root . --diff change.diff --json
   ripr agent packet --root . --seam-id f3c9e4d21a0b7c88 --json
   ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json
@@ -115,16 +117,32 @@ classifications, or configure CI policy.
 const AGENT_HELP: &str = r#"Usage: ripr agent <subcommand>
 
 Subcommands:
+  start      Write a source-edit-free agent workflow manifest.
   brief      Rank a working-set brief for the agent-active router.
   packet     Expand one visible seam into the existing agent seam packet JSON.
   verify     Compare before/after repo-exposure JSON for agent verification.
   receipt    Summarize one seam from agent verify JSON for review handoff.
   status     Report existing agent-loop artifacts and the next missing command.
 
-Run `ripr agent brief --help`, `ripr agent packet --help`, or
-`ripr agent verify --help` for JSON-only agent surfaces. Run
-`ripr agent receipt --help` for the verification receipt surface, and
-`ripr agent status --help` for the artifact status lens.
+Run `ripr agent start --help`, `ripr agent brief --help`,
+`ripr agent packet --help`, or `ripr agent verify --help` for JSON-only agent
+surfaces. Run `ripr agent receipt --help` for the verification receipt surface,
+and `ripr agent status --help` for the artifact status lens.
+"#;
+
+const AGENT_START_HELP: &str = r#"Usage: ripr agent start [--root PATH] --seam-id ID --out PATH
+
+Options:
+  --root PATH      Workspace root. Defaults to current directory.
+  --seam-id ID     Seam ID to carry through the workflow checklist.
+  --out PATH       Output directory for agent-workflow.json and agent-workflow.md.
+
+The start command writes a source-edit-free workflow manifest for LLM agents.
+It records the before snapshot, packet, brief, after snapshot, verify, receipt,
+status, and future review-summary artifact paths plus the commands to produce
+them. It remains advisory and static; it does not validate the seam by running
+analysis, run mutation testing, generate tests, edit files, change cache
+behavior, or touch LSP/MCP surfaces.
 "#;
 
 const AGENT_BRIEF_HELP: &str = r#"Usage: ripr agent brief [--root PATH] (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json [--max-seams N]
@@ -277,6 +295,10 @@ pub(super) fn print_agent_help() {
     println!("{AGENT_HELP}");
 }
 
+pub(super) fn print_agent_start_help() {
+    println!("{AGENT_START_HELP}");
+}
+
 pub(super) fn print_agent_brief_help() {
     println!("{AGENT_BRIEF_HELP}");
 }
@@ -316,9 +338,9 @@ pub(super) fn print_lsp_help() {
 #[cfg(test)]
 mod tests {
     use super::{
-        AGENT_BRIEF_HELP, AGENT_HELP, AGENT_PACKET_HELP, AGENT_RECEIPT_HELP, AGENT_STATUS_HELP,
-        AGENT_VERIFY_HELP, CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP, DOCTOR_HELP, EXPLAIN_HELP,
-        HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP,
+        AGENT_BRIEF_HELP, AGENT_HELP, AGENT_PACKET_HELP, AGENT_RECEIPT_HELP, AGENT_START_HELP,
+        AGENT_STATUS_HELP, AGENT_VERIFY_HELP, CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP,
+        DOCTOR_HELP, EXPLAIN_HELP, HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP,
     };
 
     #[test]
@@ -328,6 +350,7 @@ mod tests {
         assert!(HELP.contains("ripr outcome"));
         assert!(HELP.contains("ripr calibrate"));
         assert!(HELP.contains("ripr agent brief"));
+        assert!(HELP.contains("ripr agent start"));
         assert!(HELP.contains("ripr agent packet"));
         assert!(HELP.contains("ripr agent verify"));
         assert!(HELP.contains("ripr agent receipt"));
@@ -362,6 +385,8 @@ mod tests {
         assert!(CALIBRATE_HELP.starts_with("Usage: ripr calibrate cargo-mutants"));
         assert!(CALIBRATE_HELP.contains("--mutants-json PATH"));
         assert!(AGENT_HELP.starts_with("Usage: ripr agent"));
+        assert!(AGENT_START_HELP.starts_with("Usage: ripr agent start"));
+        assert!(AGENT_START_HELP.contains("agent-workflow.json"));
         assert!(AGENT_BRIEF_HELP.starts_with("Usage: ripr agent brief"));
         assert!(AGENT_BRIEF_HELP.contains("--max-seams N"));
         assert!(AGENT_BRIEF_HELP.contains("RIPR-SPEC-0010"));

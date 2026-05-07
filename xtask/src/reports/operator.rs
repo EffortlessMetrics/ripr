@@ -196,7 +196,21 @@ fn build_operator_cockpit_report_at(report_dir: &Path) -> OperatorCockpitReport 
 }
 
 fn keep_shared_loop_templates_reachable() {
+    let workflow_artifacts =
+        loop_commands::agent_workflow_artifacts(Path::new("target/ripr/workflow"));
+    let workflow_commands =
+        loop_commands::agent_workflow_commands(".", "draft", "seam-id", &workflow_artifacts);
+
     drop((
+        loop_commands::WORKFLOW_BEFORE_SNAPSHOT_FILE,
+        loop_commands::WORKFLOW_AFTER_SNAPSHOT_FILE,
+        loop_commands::WORKFLOW_AGENT_PACKET_FILE,
+        loop_commands::WORKFLOW_AGENT_BRIEF_FILE,
+        loop_commands::WORKFLOW_AGENT_VERIFY_FILE,
+        loop_commands::WORKFLOW_AGENT_WORKFLOW_JSON_FILE,
+        loop_commands::WORKFLOW_AGENT_WORKFLOW_MARKDOWN_FILE,
+        loop_commands::WORKFLOW_AGENT_STATUS_FILE,
+        loop_commands::WORKFLOW_AGENT_REVIEW_SUMMARY_FILE,
         loop_commands::WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
         loop_commands::WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
         loop_commands::WORKFLOW_AGENT_SEAM_PACKETS_ARTIFACT,
@@ -235,6 +249,22 @@ fn keep_shared_loop_templates_reachable() {
             ".",
             Some(loop_commands::WORKFLOW_AGENT_REVIEW_SUMMARY_ARTIFACT),
         ),
+        workflow_artifacts.before_snapshot,
+        workflow_artifacts.after_snapshot,
+        workflow_artifacts.agent_packet,
+        workflow_artifacts.agent_brief,
+        workflow_artifacts.agent_verify,
+        workflow_artifacts.agent_receipt,
+        workflow_artifacts.agent_status,
+        workflow_artifacts.review_summary,
+        workflow_commands.before_snapshot,
+        workflow_commands.agent_packet,
+        workflow_commands.agent_brief,
+        workflow_commands.after_snapshot,
+        workflow_commands.agent_verify,
+        workflow_commands.agent_receipt,
+        workflow_commands.agent_status,
+        workflow_commands.review_summary,
         loop_commands::display_path(Path::new(".")),
         loop_commands::shell_path(Path::new(".")),
     ));

@@ -1075,6 +1075,84 @@ Field contract:
   guidance derived from the verify bucket. It does not claim runtime
   confirmation.
 
+## Agent Workflow Manifest
+
+`ripr agent start --root <workspace> --seam-id <id> --out <dir>` writes a
+source-edit-free workflow checklist for LLM agents:
+
+```text
+ripr agent start --root . --seam-id 67fc764ba37d77bd --out target/ripr/workflow
+```
+
+The command writes:
+
+```text
+target/ripr/workflow/agent-workflow.json
+target/ripr/workflow/agent-workflow.md
+```
+
+The command does not run analysis, mutation testing, SARIF policy, badge
+generation, LSP refresh, or cache warm-up. It does not validate the seam id,
+generate tests, or edit source files. It uses the shared agent-loop command
+templates for every artifact path and command string.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "root": ".",
+  "mode": "draft",
+  "seam_id": "67fc764ba37d77bd",
+  "artifacts": {
+    "before_snapshot": "target/ripr/workflow/before.repo-exposure.json",
+    "after_snapshot": "target/ripr/workflow/after.repo-exposure.json",
+    "agent_packet": "target/ripr/workflow/agent-packet.json",
+    "agent_brief": "target/ripr/workflow/agent-brief.json",
+    "agent_verify": "target/ripr/workflow/agent-verify.json",
+    "agent_receipt": "target/ripr/reports/agent-receipt.json",
+    "agent_status": "target/ripr/workflow/agent-status.json",
+    "review_summary": "target/ripr/workflow/agent-review-summary.json"
+  },
+  "commands": {
+    "before_snapshot": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json",
+    "agent_packet": "ripr agent packet --root . --seam-id 67fc764ba37d77bd --json > target/ripr/workflow/agent-packet.json",
+    "agent_brief": "ripr agent brief --root . --seam-id 67fc764ba37d77bd --json > target/ripr/workflow/agent-brief.json",
+    "after_snapshot": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json",
+    "agent_verify": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > target/ripr/workflow/agent-verify.json",
+    "agent_receipt": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 67fc764ba37d77bd --json --out target/ripr/reports/agent-receipt.json",
+    "agent_status": "ripr agent status --root . --json > target/ripr/workflow/agent-status.json",
+    "review_summary": "ripr agent review-summary --root . --json > target/ripr/workflow/agent-review-summary.json"
+  },
+  "next_step": "before_snapshot",
+  "notes": [
+    "This manifest does not edit source files.",
+    "Static evidence only; no runtime mutation execution."
+  ]
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `tool` - always `"ripr"`.
+- `root` - the `--root` argument normalized to forward slashes for reporting
+  and command generation.
+- `mode` - currently `"draft"` for the generated workflow checklist.
+- `seam_id` - the caller-supplied seam id. `agent start` records it without
+  validating it through analysis.
+- `artifacts` - the fixed before snapshot, after snapshot, packet, brief,
+  verify, receipt, status, and future review-summary artifact paths.
+- `commands` - the command sequence in execution order, built from the shared
+  agent-loop command templates.
+- `next_step` - initially `"before_snapshot"`.
+- `notes` - static boundary reminders. The manifest does not claim runtime
+  confirmation or source edits.
+
+The Markdown sibling contains the same target seam, root, mode, ordered steps,
+commands, and static-limit notes in a short human/LLM-readable checklist.
+
 ## Agent Status
 
 `ripr agent status --root <workspace> --json` reads already-written agent-loop

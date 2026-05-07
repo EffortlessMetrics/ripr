@@ -18,6 +18,9 @@ are scoped or reviewed.
 - Added `cargo xtask check-ci-lane-whitelist`, a structural advisory checker
   for the CI lane, risk-pack, budget, artifact-family, and rollout-exception
   ledgers.
+- Added `ripr agent start --root . --seam-id <id> --out target/ripr/workflow`,
+  which writes source-edit-free `agent-workflow.json` and `agent-workflow.md`
+  checklists from the shared LLM work-loop command templates.
 - Queued Campaign 12, First-Hour UX, as the post-LLM-work-loop lane for making
   the VS Code extension and generated CI workflow useful from their first
   screens without requiring users to learn RIPR's internal report topology.

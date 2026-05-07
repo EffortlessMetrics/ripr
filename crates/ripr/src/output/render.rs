@@ -412,7 +412,11 @@ mod tests {
     }
 
     fn remove_temp_root(root: &Path) -> Result<(), String> {
-        std::fs::remove_dir_all(root).map_err(|err| format!("remove temp root: {err}"))
+        match std::fs::remove_dir_all(root) {
+            Ok(()) => Ok(()),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(err) => Err(format!("remove temp root: {err}")),
+        }
     }
 
     fn sample_finding(file: &str, line: usize) -> Finding {

@@ -679,9 +679,17 @@ tests = [
   "crates/ripr/src/app/agent_status.rs::tests::agent_status_quotes_paths_with_spaces",
   "crates/ripr/src/cli/agent.rs::tests::agent_status_parses_root_and_json",
   "crates/ripr/src/cli/agent.rs::tests::agent_status_requires_json_and_rejects_unknown_arguments",
+  "crates/ripr/src/cli/agent.rs::tests::agent_start_parses_workflow_request",
+  "crates/ripr/src/cli/agent.rs::tests::agent_start_requires_seam_id_and_rejects_unknown_arguments",
   "crates/ripr/src/cli/commands.rs::tests::agent_status_rejects_missing_root_before_reading_artifacts",
+  "crates/ripr/src/cli/commands.rs::tests::agent_start_rejects_missing_root_before_writing_manifest",
+  "crates/ripr/src/cli/commands.rs::tests::agent_start_writes_workflow_manifest_files",
+  "crates/ripr/src/app/agent_workflow.rs::tests::agent_workflow_json_pins_artifacts_and_command_sequence",
+  "crates/ripr/src/app/agent_workflow.rs::tests::agent_workflow_markdown_is_short_and_actionable",
+  "crates/ripr/src/app/agent_workflow.rs::tests::agent_workflow_quotes_roots_with_spaces",
   "crates/ripr/src/agent/loop_commands.rs::tests::workflow_commands_match_existing_status_templates",
   "crates/ripr/src/agent/loop_commands.rs::tests::editor_commands_match_existing_lsp_templates",
+  "crates/ripr/src/agent/loop_commands.rs::tests::workflow_artifacts_can_follow_custom_manifest_directory",
   "crates/ripr/src/lsp/tests.rs::agent_loop_command_payloads_stay_workspace_relative_for_platform_roots",
   "xtask/src/reports/operator.rs::tests::operator_cockpit_matches_editor_agent_loop_fixture"
 ]
@@ -689,6 +697,7 @@ fixtures = []
 code = [
   "crates/ripr/src/agent/loop_commands.rs",
   "crates/ripr/src/app/agent_status.rs",
+  "crates/ripr/src/app/agent_workflow.rs",
   "crates/ripr/src/output/agent_brief.rs",
   "crates/ripr/src/output/pilot.rs",
   "crates/ripr/src/lsp/actions.rs",
@@ -703,5 +712,6 @@ outputs = [
   "docs/OUTPUT_SCHEMA.md"
 ]
 metrics = [
-  "agent_loop_status_available"
+  "agent_loop_status_available",
+  "agent_workflow_manifest_available"
 ]
