@@ -39,7 +39,7 @@ branches:
           - cargo-deny
           - dependency-review
       enforce_admins: true
-      required_conversation_resolution: true
+      required_conversation_resolution: false
       required_linear_history: true
       allow_force_pushes: false
       allow_deletions: false
