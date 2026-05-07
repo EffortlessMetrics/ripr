@@ -527,12 +527,13 @@ evidence = [
   "cargo xtask repo-exposure-report",
   "cargo xtask repo-exposure-latency-report writes bounded latency diagnostics without changing repo-exposure output schemas",
   "repo file-fact cache reuses parser/file facts under target/ripr/cache/repo-file-facts/0.1 without caching rendered outputs",
+  "full repo evidence reuses precomputed related-test context and seam-independent value-resolution facts",
   "target/ripr/reports/repo-exposure.json and repo-exposure.md",
   "target/ripr/reports/repo-exposure-latency.json and repo-exposure-latency.md",
   "OUTPUT_SCHEMA.md Repo Exposure Report section"
 ]
 fixtures = []
-next = "pilot/budget-aware"
+next = "pilot/first-screen-clarity"
 metric = "per-class metric buckets stable across runs"
 
 [[capability]]
@@ -570,7 +571,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "pilot/budget-aware"
+next = "pilot/first-screen-clarity"
 metric = "pilot_packet_generated"
 
 [[capability]]
@@ -590,7 +591,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "pilot/budget-aware"
+next = "pilot/first-screen-clarity"
 metric = "targeted_test_outcome_available"
 
 [[capability]]
@@ -611,7 +612,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/opaque_fixture_builder"
 ]
-next = "pilot/budget-aware"
+next = "pilot/first-screen-clarity"
 metric = "operator_cockpit_available"
 
 [[capability]]
@@ -765,5 +766,5 @@ evidence = [
   "fixtures/boundary_gap/calibration/runtime-fixtures-v1/mutation-calibration.md"
 ]
 fixtures = ["fixtures/boundary_gap"]
-next = "pilot/budget-aware"
+next = "pilot/first-screen-clarity"
 metric = "checked calibration fixtures cover static gap plus runtime signal, static gap plus runtime clean, runtime signal without static gap, static clean plus runtime clean, inconclusive runtime labels, ambiguous file_line joins, unmatched runtime data, static seams without runtime data, and seam_id/file_line join methods"

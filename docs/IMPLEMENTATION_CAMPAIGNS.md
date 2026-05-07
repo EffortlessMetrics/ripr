@@ -1094,7 +1094,7 @@ Work items:
 | --- | --- | --- |
 | `cache/current-latency-audit` | done | Measured the current proof surfaces without behavior changes. Unit-level seam cache and seam inventory tests, LSP tests, `lsp-cockpit-report`, and `operator-cockpit` were cheap on a warm local build. LSP cockpit stayed green with the boundary-gap fixture and all contributed VS Code commands covered. Operator cockpit generated quickly and correctly surfaced missing required report inputs when only LSP and optional calibration reports were present. A direct `cargo xtask repo-exposure-report` audit did not finish within a 20-minute local timeout, so the next work should add bounded latency visibility before any cache rewrite. |
 | `cache/repo-exposure-latency-report` | done | Added `cargo xtask repo-exposure-latency-report`, which builds the local debug `ripr` binary, runs `repo-exposure-json` under a bounded timeout, captures opt-in analyzer trace lines from stderr, skips Markdown after a JSON timeout, and writes `target/ripr/reports/repo-exposure-latency.{json,md}`. The report observes cache collection, cache load hit/miss/corrupt state, cold compute, cache store, and total phase timing without changing repo-exposure JSON/Markdown, LSP, SARIF, badge, or public API behavior. |
-| `cache/repo-exposure-warm-path-reuse` | done | Added a repo file-fact cache under `target/ripr/cache/repo-file-facts/0.1` and changed repo-exposure cold compute to build its index from already-collected workspace bytes. The latency report now exposes `file_fact_cache` hit/miss/corrupt/store-error counts; a local rerun moved that phase from `hits_0_misses_134` at about 3065 ms to `hits_134_misses_0` at about 328 ms. Full repo exposure still times out later in cold classification on this workspace, so the next item is a bounded pilot/timeout surface rather than schema or analyzer expansion. |
+| `cache/repo-exposure-warm-path-reuse` | done | Added a repo file-fact cache under `target/ripr/cache/repo-file-facts/0.1`, changed repo-exposure cold compute to build its index from already-collected workspace bytes, and reused precomputed related-test context plus seam-independent value-resolution facts during full repo evidence construction. The latency report now exposes `file_fact_cache` counters and cold sub-phases through classification. Local evidence showed `file_fact_cache` moving from `hits_0_misses_134` at about 3065 ms to `hits_134_misses_0` at about 328 ms, and after a long bounded run populated the classified-seam cache, the default 30-second latency report passed on cache hits. |
 | `pilot/budget-aware` | done | Added a default 30 second `ripr pilot` analysis budget plus `--timeout-ms`. Complete runs keep writing repo exposure, agent seam packets, and summary artifacts with `pilot-summary.json` schema `0.2`; timeout runs write `pilot-summary.{json,md}` with `status: partial`, `reason: timeout`, `outputs_written`, and a retry command instead of waiting silently. |
 | `pilot/first-screen-clarity` | ready | Improve `pilot-summary.md` and terminal copy so the top recommendation answers what was inspected, why the seam matters, what focused test to write, and what command to run after without opening JSON. |
 
@@ -1150,6 +1150,8 @@ Audit notes:
 - `cache/repo-exposure-warm-path-reuse` added file-fact cache reuse below the
   workspace classified-seam cache. The first local latency run populated 134
   file-fact entries and reported `file_fact_cache` at about 3065 ms; the next
-  run reported 134 hits and about 328 ms for that phase. The command still
-  timed out later in repo-exposure classification, so the next product safety
-  valve is `pilot/budget-aware`.
+  run reported 134 hits and about 328 ms for that phase. Full repo evidence
+  also now reuses per-test related and value facts. After one long bounded run
+  populated the classified-seam cache, the default 30-second latency report
+  passed on both JSON and Markdown cache-hit runs. The active next item is
+  `pilot/first-screen-clarity`.

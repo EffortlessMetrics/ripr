@@ -71,9 +71,10 @@ local build, while `cargo xtask repo-exposure-report` did not finish within a
 20-minute local timeout. Bounded repo-exposure latency reporting now records
 cache collection, cache load hit/miss/corrupt state, file-fact cache reuse,
 cold compute, cache store, and total phase timing without changing repo-exposure
-outputs. File-fact warm reuse improved the measured index-build subphase, but
-the full command still times out later on this workspace; the active item is
-now making `ripr pilot` bounded and explicit under timeout.
+outputs. File-fact warm reuse improved the measured index-build subphase, and
+full repo evidence now reuses precomputed related-test and value-resolution
+facts. The active item is now improving first-screen `ripr pilot` clarity after
+the budget-aware timeout surface landed.
 
 ## Strategic Sequence
 
