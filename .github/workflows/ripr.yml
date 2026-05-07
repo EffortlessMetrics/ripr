@@ -58,9 +58,6 @@ jobs:
       - name: Run ripr check (advisory, SARIF)
         run: ./target/release/ripr check --base origin/${{ github.base_ref }} --format sarif > target/ripr/reports/ripr-diff.sarif || true
 
-      - name: Refresh ripr report index
-        run: cargo xtask reports index || true
-
       - name: Write step summary
         run: printf "## ripr self-dogfood (advisory)\n\nFindings (if any) attached as artifacts. See docs/RIPR_EVIDENCE_POLICY.md.\n" >> "$GITHUB_STEP_SUMMARY"
 
@@ -72,5 +69,4 @@ jobs:
           path: |
             target/ripr/reports/ripr-diff.json
             target/ripr/reports/ripr-diff.sarif
-            target/ripr/reports/index.md
           if-no-files-found: ignore
