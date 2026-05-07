@@ -60,8 +60,11 @@ budget_ack = "ci-budget-ack"
 
 # Calibration-window guard: do not fail the gate until the rolling
 # 14-day median of ci-actuals.json datapoints for the
-# `ripr_self_dogfood` lane (registered in policy/ci-lane-whitelist.toml,
-# emitted by .github/workflows/ripr.yml) is at least this many.
+# `ripr_self_dogfood` lane is at least this many.
+#
+# Forward references:
+#   - policy/ci-lane-whitelist.toml (registers the lane; ships in PR 02)
+#   - .github/workflows/ripr.yml    (emits the lane; ships in PR 10)
 [calibration]
 required_actuals_count = 14
 required_window_days = 14

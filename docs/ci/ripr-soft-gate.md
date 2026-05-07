@@ -91,8 +91,10 @@ release readiness check.
   --threshold-config policy/ripr-soft-gate.toml
   --labels-json "$LABELS_JSON"`, then activate the gate after the
   calibration window has produced 2 weeks of `ci-actuals.json` data on
-  the `ripr_self_dogfood` lane (the lane is registered in
-  `policy/ci-lane-whitelist.toml`).
+  the `ripr_self_dogfood` lane. The lane is registered in
+  `policy/ci-lane-whitelist.toml` (forward reference, ships in PR 02 of
+  the rollout) and emitted by `.github/workflows/ripr.yml` (forward
+  reference, ships in PR 10).
 
 ## Confidence field contract
 
