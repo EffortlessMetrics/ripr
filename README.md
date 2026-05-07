@@ -7,7 +7,7 @@
 [![crates.io](https://img.shields.io/crates/v/ripr.svg)](https://crates.io/crates/ripr)
 [![crates.io downloads](https://img.shields.io/crates/d/ripr.svg)](https://crates.io/crates/ripr)
 [![docs.rs](https://docs.rs/ripr/badge.svg)](https://docs.rs/ripr)
-[![VS Marketplace Installs (manual)](https://img.shields.io/badge/VS%20Marketplace-1%20install-0078D4)](https://marketplace.visualstudio.com/items?itemName=EffortlessMetrics.ripr)
+[![VS Marketplace Installs (manual)](https://img.shields.io/badge/VS%20Marketplace-2%20installs-0078D4)](https://marketplace.visualstudio.com/items?itemName=EffortlessMetrics.ripr)
 [![Open VSX Downloads](https://img.shields.io/open-vsx/dt/EffortlessMetrics/ripr?label=Open%20VSX%20downloads)](https://open-vsx.org/extension/EffortlessMetrics/ripr)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](Cargo.toml)
 [![MSRV](https://img.shields.io/badge/MSRV-1.93-blue)](https://www.rust-lang.org/)
@@ -15,7 +15,7 @@
 <!-- The public `ripr` and `ripr+` badges count unresolved repo-scoped seam-native exposure gaps under the configured policy — inbox-zero, not coverage. Diff-scoped badge artifacts remain legacy finding-exposure artifacts for PR summaries. This repo commits the Shields endpoint JSON under `badges/` and Shields fetches it from `raw.githubusercontent.com`; refresh with `cargo xtask update-badge-endpoints`. The ripr product contract is "ripr emits Shields-compatible JSON" — downstream users can self-host the JSON anywhere stable and are not expected to enable GitHub Pages. See [docs/BADGE_POLICY.md](docs/BADGE_POLICY.md) and `deferred/hosted-badge-service` in [docs/DEFERRED.md](docs/DEFERRED.md). -->
 
 
-<!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-02 from the public listing. Refresh from publisher metrics after publish. Do not use live VS Marketplace Shields routes. -->
+<!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-07 from the public listing. Refresh from publisher metrics after publish. Do not use live VS Marketplace Shields routes. -->
 
 `ripr` helps Rust developers and coding agents answer a draft-time testing
 question:
@@ -295,7 +295,7 @@ Current capabilities:
 
 | Capability | Current state | Next checkpoint |
 | --- | --- | --- |
-| Distribution | Crate package and publish dry-run proof passes for `0.3.1`; public `v0.3.0` server assets are verified, while `0.3.1` is the first release line that can satisfy the installed `ripr pilot` -> `ripr outcome` loop. | Release maintenance after the next version bump. |
+| Distribution | Public `ripr 0.3.1` crates.io install, `v0.3.1` GitHub Release server assets, VSIX packaging, and the installed `ripr pilot` -> `ripr outcome` loop are verified. | Release maintenance after the next version bump. |
 | Diff analysis | Evidence-first Voice A findings with syntax-backed changed-line probes, probe-relative oracle strength, local flow sinks, observed/missing activation values, and explicit stop reasons. | Maintenance; no active analyzer-refactor lane. |
 | Repo seam inventory | First-class `RepoSeam` model with deterministic seam IDs, cached seam fact layers, test-grip evidence across the five RIPR stages, and 11-class `SeamGripClass` classification. | Maintenance; no active analyzer-refactor lane. |
 | Test discovery | Parser-backed test and assertion facts with exact, broad, relational, snapshot, mock, smoke, custom-helper, side-effect observer, and unknown oracle kinds; per-test efficiency ledger with smoke/broad/disconnected/opaque/circular/likely-vacuous reasons and duplicate-discriminator groups. | Maintenance; no active analyzer-refactor lane. |
@@ -310,8 +310,8 @@ Campaigns 5A, 5B, 6, 7, and 8 are complete. Campaign 7 closed the defaults-first
 adoption lane: `ripr pilot`, `ripr outcome`, advisory calibration import, the
 operator cockpit, the generated GitHub Action entrypoint, the documented VS Code
 install path, the public example corpus, and release/install proof are in place.
-The public `0.3.0` crate predates `ripr pilot` and `ripr outcome`; `0.3.1`
-is the first public install target for that CLI loop.
+The public `0.3.1` release is the first verified install target for that CLI
+loop.
 The closeout audit lives at
 `docs/handoffs/2026-05-07-campaign-7-closeout.md`. Campaign 8 has a checked
 runtime calibration fixture set for the main agreement buckets and keeps
@@ -341,7 +341,7 @@ The VS Code extension starts `ripr lsp --stdio` and can resolve the server from:
 
 Normal editor install should not require `cargo install ripr`. The Cargo install
 path remains available for offline, pinned, or controlled environments. The
-`v0.3.0` GitHub Release includes the server manifest, per-target server
+`v0.3.1` GitHub Release includes the server manifest, per-target server
 archives, checksums, and VSIX needed for this default path.
 
 See:

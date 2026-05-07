@@ -15,20 +15,12 @@ ripr outcome --before <before.repo-exposure.json> --after <after.repo-exposure.j
 `ripr init` may materialize repo policy, but it must not be required for the
 first useful CLI, editor, or CI experience.
 
-## Current Release Cutover
+## Current Release Proof
 
-The public `ripr 0.3.0` crate installs successfully, but it predates the
-defaults-first CLI commands:
-
-```text
-ripr 0.3.0
-ripr: unknown command "pilot". Run `ripr --help`.
-ripr: unknown command "outcome". Run `ripr --help`.
-```
-
-That makes `0.3.1` the first release that can satisfy the public
-defaults-first install promise. Do not claim that crates.io install is verified
-until a published `0.3.1` or later binary passes the public-install smoke below.
+The public `ripr 0.3.1` crate is the first release verified against the
+defaults-first install promise. It installs from crates.io and runs `ripr
+doctor`, zero-config `ripr pilot`, `ripr outcome`, SARIF output, repo badge
+JSON output, advisory calibration import, and advisory GitHub workflow dry-run.
 
 ## Pre-Publish Local Proof
 
