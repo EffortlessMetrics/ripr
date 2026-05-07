@@ -3,6 +3,18 @@
 Use this path when you want the default RIPR loop without learning every report
 format first.
 
+The first-hour loop is:
+
+```text
+ripr pilot
+-> inspect the top seam, hover, or targeted test brief
+-> add one focused test
+-> capture an after snapshot
+-> ripr outcome
+-> ripr agent verify / ripr agent receipt when handing work to an agent
+-> attach CI, cockpit, SARIF, badge, or calibration artifacts only when useful
+```
+
 ## Install
 
 ```bash
@@ -112,6 +124,27 @@ ripr outcome \
 
 Use `--format json` for tools, or `--out target/ripr/pilot/outcome.md` to write
 the receipt instead of printing Markdown to stdout.
+
+If a coding agent or review handoff needs a machine-readable verification
+packet, write the agent artifacts beside the pilot packet:
+
+```bash
+mkdir -p target/ripr/agent
+ripr agent verify \
+  --root . \
+  --before target/ripr/pilot/repo-exposure.json \
+  --after target/ripr/pilot/after.repo-exposure.json \
+  --json > target/ripr/agent/agent-verify.json
+ripr agent receipt \
+  --root . \
+  --verify-json target/ripr/agent/agent-verify.json \
+  --seam-id <seam_id> \
+  --json \
+  --out target/ripr/agent/agent-receipt.json
+```
+
+The VS Code copy-command actions and generated GitHub workflow use the same
+`target/ripr/pilot` and `target/ripr/agent` artifact paths.
 
 ## Optional Runtime Calibration
 

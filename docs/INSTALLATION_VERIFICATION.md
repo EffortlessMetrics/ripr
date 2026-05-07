@@ -10,6 +10,8 @@ cargo install ripr
 ripr pilot
 # add one focused test
 ripr outcome --before <before.repo-exposure.json> --after <after.repo-exposure.json>
+ripr agent verify --before <before.repo-exposure.json> --after <after.repo-exposure.json> --json
+ripr agent receipt --verify-json <agent-verify.json> --seam-id <seam_id> --json
 ```
 
 `ripr init` may materialize repo policy, but it must not be required for the
@@ -45,6 +47,18 @@ target/ripr/install-smoke-path/bin/ripr pilot \
 target/ripr/install-smoke-path/bin/ripr outcome \
   --before fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json \
   --after fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json
+mkdir -p target/ripr/install-smoke-path/agent
+target/ripr/install-smoke-path/bin/ripr agent verify \
+  --root . \
+  --before fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json \
+  --after fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json \
+  --json > target/ripr/install-smoke-path/agent/agent-verify.json
+target/ripr/install-smoke-path/bin/ripr agent receipt \
+  --root . \
+  --verify-json target/ripr/install-smoke-path/agent/agent-verify.json \
+  --seam-id 67fc764ba37d77bd \
+  --json \
+  --out target/ripr/install-smoke-path/agent/agent-receipt.json
 ```
 
 On Windows, use `target\ripr\install-smoke-path\bin\ripr.exe`.
@@ -64,6 +78,18 @@ target/ripr/install-smoke-cratesio/bin/ripr pilot \
 target/ripr/install-smoke-cratesio/bin/ripr outcome \
   --before fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json \
   --after fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json
+mkdir -p target/ripr/install-smoke-cratesio/agent
+target/ripr/install-smoke-cratesio/bin/ripr agent verify \
+  --root . \
+  --before fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json \
+  --after fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json \
+  --json > target/ripr/install-smoke-cratesio/agent/agent-verify.json
+target/ripr/install-smoke-cratesio/bin/ripr agent receipt \
+  --root . \
+  --verify-json target/ripr/install-smoke-cratesio/agent/agent-verify.json \
+  --seam-id 67fc764ba37d77bd \
+  --json \
+  --out target/ripr/install-smoke-cratesio/agent/agent-receipt.json
 ```
 
 The installed version must be the release being verified. If crates.io still
@@ -97,6 +123,11 @@ ripr pilot --root fixtures/boundary_gap/input --out target/ripr/release-server-s
 ripr outcome \
   --before fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json \
   --after fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json
+ripr agent verify \
+  --root . \
+  --before fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json \
+  --after fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json \
+  --json
 ```
 
 The VS Code extension relies on these assets for first-run self-provisioning.

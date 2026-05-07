@@ -132,12 +132,6 @@ cargo install --path crates/ripr
 
 ## Quick Start
 
-Check local tooling and workspace shape:
-
-```bash
-ripr doctor
-```
-
 Run a zero-config pilot packet with built-in defaults (no `ripr.toml` required):
 
 ```bash
@@ -150,11 +144,23 @@ ranked it, and the command to run after a focused test is added.
 If analysis exceeds the default budget, it writes a partial summary with an
 explicit retry command instead of waiting silently.
 
-After adding one focused test, compare before and after snapshots:
+Read `target/ripr/pilot/pilot-summary.md`, use the editor action to copy the
+targeted test brief, or inspect `target/ripr/pilot/agent-seam-packets.json`.
+Add one focused test for the top missing discriminator, then compare before and
+after snapshots:
 
 ```bash
 ripr check --root . --mode ready --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json
 ripr outcome --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json
+```
+
+For agent handoff or review automation, write the matching verification packet
+and focused receipt:
+
+```bash
+mkdir -p target/ripr/agent
+ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > target/ripr/agent/agent-verify.json
+ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id <seam_id> --json --out target/ripr/agent/agent-receipt.json
 ```
 
 When runtime mutation data already exists, import it as an advisory calibration
@@ -170,6 +176,12 @@ Check the current Git diff against `origin/main` with built-in defaults:
 
 ```bash
 ripr check --base origin/main
+```
+
+If the first run behaves unexpectedly, inspect local tooling and config state:
+
+```bash
+ripr doctor
 ```
 
 `ripr.toml` is optional. `ripr init` is **only** for teams that want to commit

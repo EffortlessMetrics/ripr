@@ -108,7 +108,7 @@ commands = [
 
 [[work_item]]
 id = "docs/full-evidence-loop"
-status = "ready"
+status = "done"
 branch = "docs-full-evidence-loop"
 stackable = false
 requires_human_merge = true
@@ -124,13 +124,21 @@ commands = [
 
 [[work_item]]
 id = "release/editor-agent-readiness-proof"
-status = "blocked"
+status = "ready"
 branch = "release-editor-agent-readiness-proof"
 stackable = false
 requires_human_merge = true
 acceptance = "Prove the installed binary, VSIX package path, package dry-run, known limits, and editor-agent loop readiness over the checked fixture without replacing the integration lane"
-blocked_by = ["docs/full-evidence-loop"]
-blocked_reason = "Wait for the documented loop before adding release-readiness evidence."
+commands = [
+  "cargo xtask release-readiness --version 0.4.0",
+  "cargo package -p ripr --list",
+  "cargo publish -p ripr --dry-run",
+  "npm --prefix editors/vscode run package",
+  "cargo xtask check-static-language",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-campaign",
+  "cargo xtask check-pr"
+]
 
 [[work_item]]
 id = "campaign/editor-agent-integration-closeout"
