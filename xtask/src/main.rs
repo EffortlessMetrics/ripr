@@ -19383,7 +19383,7 @@ reason = "second"
     const STUB_RIPR_NATIVE_JSON: &str = r#"{
   "schema_version": "0.1",
   "kind": "ripr",
-  "label": "ripr",
+  "label": "RIPR gaps",
   "message": "3",
   "status": "warn",
   "color": "yellow",
@@ -19421,7 +19421,7 @@ reason = "second"
     const STUB_RIPR_PLUS_NATIVE_JSON: &str = r#"{
   "schema_version": "0.1",
   "kind": "ripr_plus",
-  "label": "ripr+",
+  "label": "RIPR+ gaps",
   "message": "7",
   "status": "warn",
   "color": "orange",
@@ -19518,7 +19518,7 @@ reason = "second"
     #[test]
     fn badge_artifacts_summary_markdown_is_deterministic_with_sorted_keys() -> Result<(), String> {
         let unsorted_ripr = r#"{
-  "label": "ripr",
+  "label": "RIPR gaps",
   "message": "0",
   "color": "brightgreen",
   "counts": {
@@ -19541,7 +19541,7 @@ reason = "second"
   "warnings": []
 }"#;
         let unsorted_ripr_plus = r#"{
-  "label": "ripr+",
+  "label": "RIPR+ gaps",
   "message": "0",
   "color": "brightgreen",
   "counts": {
@@ -19604,7 +19604,7 @@ reason = "second"
 
     #[test]
     fn extract_json_string_returns_value_for_present_key() -> Result<(), String> {
-        let json = r#"{"label": "ripr", "color": "brightgreen"}"#;
+        let json = r#"{"label": "RIPR gaps", "color": "brightgreen"}"#;
         match extract_json_string(json, "\"color\":") {
             Some(value) if value == "brightgreen" => Ok(()),
             other => Err(format!("expected Some(\"brightgreen\"), got {other:?}")),
@@ -19613,7 +19613,7 @@ reason = "second"
 
     #[test]
     fn extract_json_string_returns_none_for_missing_key() -> Result<(), String> {
-        let json = r#"{"label": "ripr"}"#;
+        let json = r#"{"label": "RIPR gaps"}"#;
         match extract_json_string(json, "\"color\":") {
             None => Ok(()),
             other => Err(format!("expected None, got {other:?}")),
@@ -19622,7 +19622,7 @@ reason = "second"
 
     #[test]
     fn extract_json_string_returns_none_for_unterminated_value() -> Result<(), String> {
-        let json = r#"{"label": "ripr"#;
+        let json = r#"{"label": "RIPR gaps"#;
         match extract_json_string(json, "\"label\":") {
             None => Ok(()),
             other => Err(format!(
@@ -19648,7 +19648,7 @@ reason = "second"
 
     #[test]
     fn extract_json_object_usize_map_returns_empty_for_missing_key() -> Result<(), String> {
-        let json = r#"{"label": "ripr"}"#;
+        let json = r#"{"label": "RIPR gaps"}"#;
         let map = extract_json_object_usize_map(json, "\"counts\":");
         if map.is_empty() {
             Ok(())
@@ -19700,7 +19700,7 @@ reason = "second"
 
     #[test]
     fn extract_json_warnings_returns_empty_for_missing_key() -> Result<(), String> {
-        let json = r#"{"label": "ripr"}"#;
+        let json = r#"{"label": "RIPR gaps"}"#;
         let warnings = extract_json_warnings(json);
         if warnings.is_empty() {
             Ok(())

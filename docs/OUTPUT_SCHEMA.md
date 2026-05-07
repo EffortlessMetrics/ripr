@@ -317,7 +317,7 @@ Native schema `0.3`:
   "kind": "ripr",
   "scope": "repo",
   "basis": "seam_native",
-  "label": "ripr",
+  "label": "RIPR gaps",
   "message": "0",
   "status": "pass",
   "color": "brightgreen",
@@ -359,6 +359,8 @@ Field contract:
 - `schema_version` — currently `"0.3"`. `0.2` added `scope`; `0.3` adds
   `basis` and `counts.analyzed_seams`.
 - `kind` — `"ripr"` or `"ripr_plus"`.
+- `label` — visible Shields label, currently `"RIPR gaps"` or
+  `"RIPR+ gaps"` depending on `kind`.
 - `scope` — `"diff"` for PR/diff artifacts, `"repo"` for public repo
   baseline artifacts.
 - `basis` — `"finding_exposure"` for legacy Finding/ExposureClass count
@@ -384,7 +386,7 @@ Shields projection:
 ```json
 {
   "schemaVersion": 1,
-  "label": "ripr",
+  "label": "RIPR gaps",
   "message": "0",
   "color": "brightgreen"
 }

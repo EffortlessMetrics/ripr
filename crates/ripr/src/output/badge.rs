@@ -44,8 +44,8 @@ impl BadgeKind {
 
     pub fn label(self) -> &'static str {
         match self {
-            BadgeKind::Ripr => "ripr",
-            BadgeKind::RiprPlus => "ripr+",
+            BadgeKind::Ripr => "RIPR gaps",
+            BadgeKind::RiprPlus => "RIPR+ gaps",
         }
     }
 }
@@ -1225,7 +1225,7 @@ weakly_gripped = "off"
         assert!(json.contains("\"kind\": \"ripr\""));
         assert!(json.contains("\"scope\": \"diff\""));
         assert!(json.contains("\"basis\": \"finding_exposure\""));
-        assert!(json.contains("\"label\": \"ripr\""));
+        assert!(json.contains("\"label\": \"RIPR gaps\""));
         assert!(json.contains("\"message\": \"1\""));
         assert!(json.contains("\"status\": \"warn\""));
         assert!(json.contains("\"color\": \"yellow\""));
@@ -1316,7 +1316,7 @@ weakly_gripped = "off"
 
         assert!(shields.contains("\"schemaVersion\": 1"));
         assert!(!shields.contains("\"schema_version\""));
-        assert!(shields.contains("\"label\": \"ripr\""));
+        assert!(shields.contains("\"label\": \"RIPR gaps\""));
         assert!(shields.contains("\"message\": \"1\""));
         assert!(shields.contains("\"color\": \"yellow\""));
 
@@ -1570,7 +1570,7 @@ weakly_gripped = "off"
     // -------- ripr+ summary builder + renderers --------
 
     #[test]
-    fn ripr_plus_native_json_has_kind_ripr_plus_and_label_ripr_plus() {
+    fn ripr_plus_native_json_has_kind_ripr_plus_and_label_ripr_plus_gaps() {
         let summary = ripr_plus_badge_summary(
             &check_output(Vec::new()),
             TestEfficiencyBadgeSummary {
@@ -1593,7 +1593,7 @@ weakly_gripped = "off"
         let json = render_native_json(&summary);
 
         assert!(json.contains("\"kind\": \"ripr_plus\""));
-        assert!(json.contains("\"label\": \"ripr+\""));
+        assert!(json.contains("\"label\": \"RIPR+ gaps\""));
         assert!(json.contains("\"analyzed_tests\": 12"));
         assert!(json.contains("\"message\": \"0\""));
     }
@@ -1629,7 +1629,7 @@ weakly_gripped = "off"
     }
 
     #[test]
-    fn ripr_plus_shields_projection_has_exactly_four_fields_with_ripr_plus_label() {
+    fn ripr_plus_shields_projection_has_exactly_four_fields_with_ripr_plus_gaps_label() {
         let summary = ripr_plus_badge_summary(
             &check_output(vec![finding(ExposureClass::WeaklyExposed, vec![])]),
             TestEfficiencyBadgeSummary::default(),
@@ -1638,7 +1638,7 @@ weakly_gripped = "off"
         let shields = render_shields_json(&summary);
 
         assert!(shields.contains("\"schemaVersion\": 1"));
-        assert!(shields.contains("\"label\": \"ripr+\""));
+        assert!(shields.contains("\"label\": \"RIPR+ gaps\""));
         assert!(shields.contains("\"message\": \"1\""));
         assert!(shields.contains("\"color\":"));
 

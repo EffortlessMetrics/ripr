@@ -24,26 +24,26 @@ doc and in
 
 ## What each badge means
 
-### `ripr 0`
+### `RIPR gaps 0`
 
 ```text
-ripr found zero unsuppressed static exposure gaps under the configured policy.
+RIPR found zero unsuppressed static exposure gaps under the configured policy.
 ```
 
 Diff scope counts exposure-class findings from `ripr check`. Repo scope counts
 classified seams from the repo seam inventory, using configured seam severity.
 The badge is a count-and-render policy on top of existing analyzer output.
 
-### `ripr+ 0`
+### `RIPR+ gaps 0`
 
 ```text
-ripr found zero unsuppressed static exposure gaps and zero unsuppressed
+RIPR found zero unsuppressed static exposure gaps and zero unsuppressed
 actionable test-efficiency findings.
 ```
 
-`ripr+` adds the test-efficiency signals from
-`cargo xtask test-efficiency-report` to the count. A passing `ripr+` is
-strictly stronger than a passing `ripr`.
+`RIPR+ gaps` adds the test-efficiency signals from
+`cargo xtask test-efficiency-report` to the count. A passing `RIPR+ gaps`
+badge is strictly stronger than a passing `RIPR gaps` badge.
 
 ## Scope: diff vs repo
 
@@ -63,7 +63,7 @@ summaries.
   findings under policy."
 - **Not** a meaningful README / marketplace / store badge. On `main`
   itself the diff vs `origin/main` is empty, so a diff-scoped pure
-  `ripr` badge always reports `0`. That is "nothing changed," not
+  `RIPR gaps` badge always reports `0`. That is "nothing changed," not
   "the repo is clean."
 
 ### Repo scope (`scope: repo`)
@@ -184,15 +184,8 @@ ripr uncovered 0   # same problem
 Prefer:
 
 ```text
-ripr 0
-ripr+ 0
-```
-
-Or, if disambiguation is needed in dense badge bars:
-
-```text
-ripr gaps 0
-ripr+ issues 0
+RIPR gaps 0
+RIPR+ gaps 0
 ```
 
 ## Exposure-class counting
@@ -376,7 +369,7 @@ output boundary; it is never the source of truth.
   "kind": "ripr",
   "scope": "repo",
   "basis": "seam_native",
-  "label": "ripr",
+  "label": "RIPR gaps",
   "message": "0",
   "status": "pass",
   "color": "brightgreen",
@@ -431,7 +424,7 @@ field distinguishes legacy diff finding counts from seam-native repo counts:
   "kind": "ripr",
   "scope": "diff",
   "basis": "finding_exposure",
-  "label": "ripr",
+  "label": "RIPR gaps",
   "message": "3",
   "...": "..."
 }
@@ -453,7 +446,7 @@ live only in native JSON, docs, and consumer tooling.
 ```json
 {
   "schemaVersion": 1,
-  "label": "ripr",
+  "label": "RIPR gaps",
   "message": "0",
   "color": "brightgreen"
 }
@@ -649,9 +642,9 @@ Compare to existing badges in this repo's README:
 | Codecov | CI uploads coverage | Codecov |
 | crates.io version | `cargo publish` | crates.io / Shields |
 | Open VSX downloads | registry | Open VSX / Shields |
-| `ripr` / `ripr+` | `ripr` CI computes JSON | self-hosted (see below) |
+| `RIPR gaps` / `RIPR+ gaps` | `ripr` CI computes JSON | self-hosted (see below) |
 
-The `ripr`/`ripr+` row is the one without a third-party host. Long-term
+The RIPR badge row is the one without a third-party host. Long-term
 that gap is intended to close — see `deferred/hosted-badge-service` in
 [`docs/DEFERRED.md`](DEFERRED.md). In the meantime, a self-hosted host
 is required.
@@ -674,7 +667,7 @@ Each is a minimal four-field Shields object, e.g.:
 ```json
 {
   "schemaVersion": 1,
-  "label": "ripr",
+  "label": "RIPR gaps",
   "message": "163",
   "color": "orange"
 }
@@ -715,7 +708,7 @@ into `badges/`. Commit the resulting diff.
   refresh `badges/` would be too much friction before the count
   stabilizes. Use it locally before campaign closeouts and after
   material analyzer changes.
-- The `ripr 0` headline on `main` means: zero configured-visible
+- The `RIPR gaps 0` headline on `main` means: zero configured-visible
   seam-native unresolved exposure gaps under the current repo baseline.
   It does not mean the repo is fully tested, that all behavior seams
   are gripped by oracles, or that runtime mutation confirmation would
@@ -740,7 +733,7 @@ useful while the repo headline is still stabilizing.
 
 #### What downstream users should do
 
-If you want `ripr` and `ripr+` badges in your own README today:
+If you want `RIPR gaps` and `RIPR+ gaps` badges in your own README today:
 
 1. Run `ripr` in your CI.
 2. Pick **any** stable public surface to serve the resulting Shields

@@ -6,9 +6,9 @@ license.workspace = true
 rust-version.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "Static RIPR mutation-exposure analysis for Rust workspaces"
+description = "Find Rust test-oracle gaps before mutation testing with static RIPR evidence"
 readme = "README.md"
-keywords = ["mutation-testing", "testing", "rust", "coverage", "lsp"]
+keywords = ["mutation-testing", "testing", "rust", "static-analysis", "lsp"]
 categories = ["development-tools", "development-tools::testing"]
 include = [
   "src/**",
