@@ -310,6 +310,18 @@ activate_when_msrv = "1.94"
 reason = "Avoid stale numeric type drift."
 
 [[planned]]
+name = "clippy::decimal_bitwise_operands"
+level = "warn"
+activate_when_msrv = "1.94"
+reason = "Make bit masks visually inspectable."
+
+[[planned]]
+name = "clippy::disallowed_fields"
+level = "deny"
+activate_when_msrv = "1.95"
+reason = "Ban direct field access across protected seams."
+
+[[planned]]
 name = "clippy::manual_checked_ops"
 level = "warn"
 activate_when_msrv = "1.95"
@@ -332,3 +344,9 @@ name = "clippy::duration_suboptimal_units"
 level = "warn"
 activate_when_msrv = "1.95"
 reason = "Make durations legible without mental unit conversion."
+
+[[planned]]
+name = "clippy::unnecessary_trailing_comma"
+level = "warn"
+activate_when_msrv = "1.95"
+reason = "Keep format macro calls clean."
