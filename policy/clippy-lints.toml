@@ -129,6 +129,31 @@ level = "deny"
 name = "clippy::join_absolute_paths"
 level = "deny"
 
+# API / trait correctness. These keep the public surface honest: methods
+# named `iter()`/`iter_mut()`/`into_iter()` must return iterators; a
+# manual `Clone` impl on a `Copy` type should derive; `TryFrom` that
+# cannot fail must be `From`; `From` impls must not panic (use
+# `TryFrom`); a type called `Error` must implement `std::error::Error`.
+[[active.api_trait]]
+name = "clippy::iter_not_returning_iterator"
+level = "deny"
+
+[[active.api_trait]]
+name = "clippy::expl_impl_clone_on_copy"
+level = "deny"
+
+[[active.api_trait]]
+name = "clippy::infallible_try_from"
+level = "deny"
+
+[[active.api_trait]]
+name = "clippy::fallible_impl_from"
+level = "deny"
+
+[[active.api_trait]]
+name = "clippy::error_impl_error"
+level = "deny"
+
 [[active.governance]]
 name = "clippy::allow_attributes_without_reason"
 level = "deny"

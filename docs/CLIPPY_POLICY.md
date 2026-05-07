@@ -75,6 +75,9 @@ Currently denied at the workspace level (selected highlights):
   `clippy::suspicious_open_options`, `clippy::nonsensical_open_options`,
   `clippy::ineffective_open_options`, `clippy::path_buf_push_overwrite`,
   `clippy::join_absolute_paths`.
+- API / trait correctness: `clippy::iter_not_returning_iterator`,
+  `clippy::expl_impl_clone_on_copy`, `clippy::infallible_try_from`,
+  `clippy::fallible_impl_from`, `clippy::error_impl_error`.
 - Suppression governance: `clippy::allow_attributes_without_reason`,
   `clippy::blanket_clippy_restriction_lints`.
 - Rust: `unsafe_code = "forbid"`, `unused_must_use`,

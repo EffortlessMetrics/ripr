@@ -61,6 +61,17 @@ ineffective_open_options = "deny"
 path_buf_push_overwrite = "deny"
 join_absolute_paths = "deny"
 
+# API / trait correctness. These keep the public surface honest:
+# `iter()` / `iter_mut()` / `into_iter()` must return iterators;
+# `Clone` impls on `Copy` types should derive; `TryFrom` that cannot
+# fail must be `From`; `From` impls must not panic (use `TryFrom`); a
+# type called `Error` must implement `std::error::Error`.
+iter_not_returning_iterator = "deny"
+expl_impl_clone_on_copy = "deny"
+infallible_try_from = "deny"
+fallible_impl_from = "deny"
+error_impl_error = "deny"
+
 # Suppression governance.
 # `allow_attributes` itself stays advisory: some `#[expect]` migrations
 # would fail because the underlying lint only fires in some builds (e.g.
