@@ -513,10 +513,14 @@ Planned tests:
 - `agent_brief_ranks_changed_line_intersection_first`
 - `agent_brief_ranks_explicit_seam_id_first`
 - `agent_brief_ranks_changed_owner_before_same_file_fallback`
+- `agent_brief_selector_routes_file_scoped_related_test_to_seam`
+- `agent_brief_selector_routes_changed_related_test_line_to_seam`
+- `agent_brief_selector_routes_changed_assertion_near_related_test_to_seam`
 - `agent_brief_caps_default_to_three_seams`
 - `agent_brief_rejects_or_clamps_above_hard_cap`
 - `agent_brief_respects_configured_off_severity`
 - `agent_brief_omits_suppressed_seams`
+- `agent_brief_selector_uses_related_test_confidence_before_path`
 - `agent_brief_includes_config_fingerprint_without_source_text`
 - `agent_brief_reuses_agent_packet_assertion_shape`
 - `agent_brief_includes_verification_commands`
