@@ -160,6 +160,15 @@ still summarize the missing discriminator, suggested file/name, candidate value,
 and imitation or avoid patterns. Refresh remains available even when no
 diagnostic is selected.
 
+The agent-loop copy commands are workspace-relative by contract. They use
+`--root .` and the same `target/ripr/pilot` plus `target/ripr/agent` artifact
+paths used by the operator cockpit and generated CI workflow, so paste them in a
+terminal rooted at the open workspace. This keeps command text stable across
+Windows and Unix workspace path separators, including workspace roots with
+spaces, without needing shell-specific quoting for absolute workspace paths. If
+a diagnostic is stale and its `seam_id` no longer maps to the current analysis
+snapshot, the LSP does not emit agent-loop copy actions; refresh analysis first.
+
 ## Missing Server Behavior
 
 If no usable server can be resolved, the extension shows:

@@ -114,6 +114,8 @@ The test suite:
   payloads and ignore malformed arguments without throwing
 - verifies agent-loop command copying writes command text and the contributed
   command handlers ignore malformed arguments without throwing
+- verifies LSP agent-loop command payloads stay workspace-relative across
+  platform-shaped roots and fail closed for stale seam diagnostics
 - verifies `openRelatedTest` opens URI/line targets and ignores malformed
   arguments without throwing
 - verifies `restartServer` is callable even when server resolution fails
