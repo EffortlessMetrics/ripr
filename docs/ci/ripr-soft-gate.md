@@ -71,7 +71,7 @@ reviewers can see when it has been used.
 Long-lived suppressions live in `.ripr/suppressions.toml` (canonical;
 loaded by `crates/ripr/src/config.rs`; parser in
 `crates/ripr/src/output/suppressions.rs`). The entries follow the schema
-documented in `docs/OUTPUT_SCHEMA.md`, `docs/CONFIGURATION.md`, and
+documented in `docs/CONFIGURATION.md` and
 `docs/RIPR_EVIDENCE_POLICY.md`. Each suppression must record:
 
 - a `kind` (`exposure_gap` or `test_efficiency`),
