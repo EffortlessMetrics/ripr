@@ -1,0 +1,402 @@
+schema_version = "1.0"
+policy = "non-rust-allowlist"
+owner = "core/policy"
+status = "shadow"
+
+# Migration target for the non-Rust file allowlist.
+#
+# The canonical source-of-truth for `cargo xtask check-file-policy` remains
+# `policy/non_rust_allowlist.txt` (pipe-delimited) until the checker is
+# updated to consume this TOML in a follow-up PR. This file is the
+# governed schema-bearing mirror of the txt allowlist, with added
+# `surface`, `classification`, and `covered_by` fields.
+#
+# Schema:
+#   glob            file pattern this entry matches
+#   kind            short tag from the legacy txt format
+#   owner           team/area responsible for the file
+#   surface         ci | editor | docs | fixtures | rust | repo | brand | config | security
+#   classification  production | test | tooling | generated | config | docs | fixture | metadata
+#   reason          one-line justification (matches the existing txt reason)
+#   covered_by      list of commands or checks that exercise this surface
+#   expires         (optional) date this entry must be re-justified
+#   retired         (optional) true if the entry is allowed to be unused
+#
+# See docs/FILE_POLICY.md for the doctrine.
+
+# ---------------------------------------------------------------------------
+# Documentation surfaces
+# ---------------------------------------------------------------------------
+
+[[allow]]
+glob = "*.md"
+kind = "documentation"
+owner = "docs"
+surface = "docs"
+classification = "docs"
+reason = "Root documentation."
+covered_by = ["cargo xtask check-doc-index", "cargo xtask markdown-links"]
+
+[[allow]]
+glob = "AGENTS.md"
+kind = "documentation"
+owner = "agents"
+surface = "docs"
+classification = "docs"
+reason = "Agent instructions."
+covered_by = ["cargo xtask check-readme-state"]
+
+[[allow]]
+glob = "CHANGELOG.md"
+kind = "documentation"
+owner = "docs"
+surface = "docs"
+classification = "docs"
+reason = "Repository changelog."
+covered_by = ["cargo xtask check-doc-index"]
+
+[[allow]]
+glob = "CONTRIBUTING.md"
+kind = "documentation"
+owner = "docs"
+surface = "docs"
+classification = "docs"
+reason = "Contribution guide."
+covered_by = []
+
+[[allow]]
+glob = "README.md"
+kind = "documentation"
+owner = "docs"
+surface = "docs"
+classification = "docs"
+reason = "Repository README."
+covered_by = ["cargo xtask check-readme-state"]
+
+[[allow]]
+glob = "docs/**"
+kind = "documentation"
+owner = "docs"
+surface = "docs"
+classification = "docs"
+reason = "Documentation, examples, snippets, and reference material."
+covered_by = ["cargo xtask check-doc-index", "cargo xtask check-spec-format"]
+
+# ---------------------------------------------------------------------------
+# Rust workspace metadata
+# ---------------------------------------------------------------------------
+
+[[allow]]
+glob = ".cargo/config.toml"
+kind = "cargo_config"
+owner = "rust"
+surface = "rust"
+classification = "config"
+reason = "Cargo aliases for repository tooling."
+covered_by = ["cargo check --workspace --all-targets"]
+
+[[allow]]
+glob = "Cargo.lock"
+kind = "rust_lockfile"
+owner = "rust"
+surface = "rust"
+classification = "metadata"
+reason = "Cargo lockfile."
+covered_by = ["cargo check --workspace --all-targets"]
+
+[[allow]]
+glob = "Cargo.toml"
+kind = "rust_manifest"
+owner = "rust"
+surface = "rust"
+classification = "config"
+reason = "Cargo workspace manifest."
+covered_by = ["cargo check --workspace --all-targets", "cargo xtask check-lint-policy"]
+
+[[allow]]
+glob = "crates/**/Cargo.toml"
+kind = "rust_manifest"
+owner = "rust"
+surface = "rust"
+classification = "config"
+reason = "Cargo package manifests."
+covered_by = ["cargo check --workspace --all-targets"]
+
+[[allow]]
+glob = "rust-toolchain.toml"
+kind = "rust_toolchain"
+owner = "rust"
+surface = "rust"
+classification = "config"
+reason = "Pinned local Rust toolchain and components for repository development."
+covered_by = ["cargo check --workspace --all-targets"]
+
+[[allow]]
+glob = "xtask/Cargo.toml"
+kind = "rust_manifest"
+owner = "rust"
+surface = "rust"
+classification = "config"
+reason = "xtask package manifest."
+covered_by = ["cargo check -p xtask --locked"]
+
+# ---------------------------------------------------------------------------
+# CI / GitHub workflows
+# ---------------------------------------------------------------------------
+
+[[allow]]
+glob = ".github/ISSUE_TEMPLATE/*.yaml"
+kind = "github_template"
+owner = "repo-process"
+surface = "ci"
+classification = "config"
+reason = "GitHub issue forms."
+covered_by = []
+
+[[allow]]
+glob = ".github/ISSUE_TEMPLATE/*.yml"
+kind = "github_template"
+owner = "repo-process"
+surface = "ci"
+classification = "config"
+reason = "GitHub issue forms."
+covered_by = []
+
+[[allow]]
+glob = ".github/dependabot.yml"
+kind = "github_dependency_automation"
+owner = "security"
+surface = "ci"
+classification = "config"
+reason = "Dependabot update configuration for Cargo, npm, and GitHub Actions."
+covered_by = []
+
+[[allow]]
+glob = ".github/workflows/*.yaml"
+kind = "ci_declarative"
+owner = "release/ci"
+surface = "ci"
+classification = "config"
+reason = "GitHub Actions workflow definitions."
+covered_by = ["cargo xtask check-workflows"]
+
+[[allow]]
+glob = ".github/workflows/*.yml"
+kind = "ci_declarative"
+owner = "release/ci"
+surface = "ci"
+classification = "config"
+reason = "GitHub Actions workflow definitions."
+covered_by = ["cargo xtask check-workflows"]
+
+[[allow]]
+glob = ".config/nextest.toml"
+kind = "ci_test_config"
+owner = "release/ci"
+surface = "ci"
+classification = "config"
+reason = "Nextest JUnit output configuration for Test Analytics workflow."
+covered_by = []
+
+[[allow]]
+glob = "codecov.yml"
+kind = "ci_coverage_policy"
+owner = "release/ci"
+surface = "ci"
+classification = "config"
+reason = "Codecov configuration for coverage status checks and reporting."
+covered_by = []
+
+# ---------------------------------------------------------------------------
+# Repo metadata
+# ---------------------------------------------------------------------------
+
+[[allow]]
+glob = ".gitignore"
+kind = "repo_config"
+owner = "repo"
+surface = "repo"
+classification = "config"
+reason = "Git ignore rules."
+covered_by = []
+
+[[allow]]
+glob = "LICENSE-*"
+kind = "license"
+owner = "repo"
+surface = "repo"
+classification = "metadata"
+reason = "License files."
+covered_by = []
+
+[[allow]]
+glob = "ripr.toml.example"
+kind = "config_example"
+owner = "config"
+surface = "config"
+classification = "config"
+reason = "Example ripr configuration."
+covered_by = []
+
+# ---------------------------------------------------------------------------
+# Repo policy metadata
+# ---------------------------------------------------------------------------
+
+[[allow]]
+glob = ".ripr/*.toml"
+kind = "policy_metadata"
+owner = "repo-policy"
+surface = "repo"
+classification = "metadata"
+reason = "Traceability metadata."
+covered_by = ["cargo xtask check-traceability"]
+
+[[allow]]
+glob = ".ripr/*.txt"
+kind = "policy_metadata"
+owner = "repo-policy"
+surface = "repo"
+classification = "metadata"
+reason = "Policy allowlists."
+covered_by = ["cargo xtask check-allow-attributes"]
+
+[[allow]]
+glob = ".ripr/goals/*.toml"
+kind = "policy_metadata"
+owner = "repo-policy"
+surface = "repo"
+classification = "metadata"
+reason = "Codex Goals campaign metadata."
+covered_by = ["cargo xtask check-campaign"]
+
+[[allow]]
+glob = "metrics/*.toml"
+kind = "policy_metadata"
+owner = "repo-policy"
+surface = "repo"
+classification = "metadata"
+reason = "Machine-readable capability and metrics metadata."
+covered_by = ["cargo xtask check-capabilities"]
+
+[[allow]]
+glob = "policy/*.toml"
+kind = "policy_metadata"
+owner = "repo-policy"
+surface = "repo"
+classification = "metadata"
+reason = "Declarative lint and policy ledgers (see docs/CLIPPY_POLICY.md)."
+covered_by = ["cargo xtask check-lint-policy", "cargo xtask check-file-policy"]
+
+[[allow]]
+glob = "deny.toml"
+kind = "supply_chain_policy"
+owner = "security"
+surface = "security"
+classification = "config"
+reason = "Cargo-deny policy for advisories, licenses, bans, and source registries."
+covered_by = ["cargo xtask check-supply-chain"]
+
+# ---------------------------------------------------------------------------
+# Editor extension
+# ---------------------------------------------------------------------------
+
+[[allow]]
+glob = "editors/vscode/**/*.json"
+kind = "editor_extension_config"
+owner = "lsp/editor"
+surface = "editor"
+classification = "config"
+reason = "VS Code extension config or generated metadata."
+covered_by = ["cd editors/vscode && npm run compile"]
+
+[[allow]]
+glob = "editors/vscode/**/*.ts"
+kind = "editor_extension"
+owner = "lsp/editor"
+surface = "editor"
+classification = "production"
+reason = "VS Code extension client and tests."
+covered_by = [
+    "cd editors/vscode && npm run compile",
+    "cd editors/vscode && npm test",
+]
+
+[[allow]]
+glob = "editors/vscode/package-lock.json"
+kind = "editor_extension_lockfile"
+owner = "lsp/editor"
+surface = "editor"
+classification = "metadata"
+reason = "Pinned npm dependency lockfile for the extension."
+covered_by = []
+
+[[allow]]
+glob = "editors/vscode/package.json"
+kind = "editor_extension_manifest"
+owner = "lsp/editor"
+surface = "editor"
+classification = "config"
+reason = "VS Code extension package manifest."
+covered_by = ["cd editors/vscode && npm run package"]
+
+[[allow]]
+glob = "editors/vscode/test-fixtures/**"
+kind = "fixture_input"
+owner = "lsp/editor"
+surface = "editor"
+classification = "fixture"
+reason = "Fixture workspace for VS Code extension smoke tests."
+covered_by = ["cd editors/vscode && npm run test:e2e"]
+
+[[allow]]
+glob = "editors/vscode/tsconfig.json"
+kind = "editor_extension_config"
+owner = "lsp/editor"
+surface = "editor"
+classification = "config"
+reason = "VS Code TypeScript compiler config."
+covered_by = ["cd editors/vscode && npm run compile"]
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+[[allow]]
+glob = "crates/ripr/examples/**"
+kind = "fixture_input"
+owner = "analysis-fixtures"
+surface = "fixtures"
+classification = "fixture"
+reason = "Packaged sample workspace and diff are analyzed inputs."
+covered_by = ["cargo xtask check-fixture-contracts"]
+
+[[allow]]
+glob = "fixtures/**"
+kind = "fixture_input"
+owner = "analysis-fixtures"
+surface = "fixtures"
+classification = "fixture"
+reason = "Fixture workspaces may intentionally contain analyzed source files."
+covered_by = ["cargo xtask check-fixture-contracts", "cargo xtask fixtures"]
+
+# ---------------------------------------------------------------------------
+# Brand / assets
+# ---------------------------------------------------------------------------
+
+[[allow]]
+glob = "assets/**"
+kind = "asset"
+owner = "brand/docs"
+surface = "brand"
+classification = "metadata"
+reason = "Non-code assets."
+covered_by = []
+
+[[allow]]
+glob = "badges/*.json"
+kind = "badge_endpoint"
+owner = "repo-policy"
+surface = "brand"
+classification = "generated"
+reason = "Repo-scoped Shields endpoint JSON committed under main; refreshed by `cargo xtask update-badge-endpoints`. v1 dogfood self-hosted endpoint per docs/BADGE_POLICY.md and deferred/hosted-badge-service."
+covered_by = ["cargo xtask check-badge-endpoints", "cargo xtask update-badge-endpoints"]
