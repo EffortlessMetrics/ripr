@@ -75,19 +75,34 @@ Suppressions live in `.ripr/suppressions.toml` (the canonical path used by
 `crates/ripr/src/output/suppressions.rs`; see `docs/CONFIGURATION.md` and
 `docs/OUTPUT_SCHEMA.md`):
 
+Two `kind` values are supported. Each has a different required
+selector field — they are mutually exclusive.
+
 ```toml
+# kind = "exposure_gap": finding_id is required; test/path are not used.
 [[suppressions]]
-kind = "exposure_gap"          # or "test_efficiency"
-finding_id = "<finding id>"    # required when kind = "exposure_gap"
-# test = "<test selector>"     # required when kind = "test_efficiency"
-# path = "<optional path narrowing for test_efficiency>"
+kind = "exposure_gap"
+finding_id = "<finding id>"
 owner = "core/analysis"
 reason = "Spec-required behavior is exposed indirectly via integration test."
-expires = "2026-09-01"         # optional ISO-8601 YYYY-MM-DD
+expires = "2026-09-01"          # optional ISO-8601 YYYY-MM-DD
+
+# kind = "test_efficiency": test is required; path is optional narrowing.
+[[suppressions]]
+kind = "test_efficiency"
+test = "<test selector>"
+path = "<optional path narrowing>"
+owner = "core/analysis"
+reason = "Test marked low-efficiency intentionally; reviewed."
+expires = "2026-09-01"          # optional ISO-8601 YYYY-MM-DD
 ```
 
-Every entry requires `owner` and `reason`. `expires` is optional, but
-expired suppressions fail the gate. Suppressions are reviewed at every
+Every entry requires `owner` and `reason`. `expires` is optional;
+**expired suppressions surface as warnings on the badge** rather than
+failing CI hard, matching the badge policy in `docs/CONFIGURATION.md`
+and `docs/IMPLEMENTATION_CAMPAIGNS.md` (the `suppressions/v1` campaign:
+"Expired entries do not apply and surface as warnings — silent
+green-forever debt is impossible"). Suppressions are reviewed at every
 release readiness check.
 
 ## Reports and artifacts
