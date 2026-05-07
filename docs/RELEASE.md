@@ -62,21 +62,15 @@ manifest, server archives, and checksums:
 
 ```bash
 gh release list --repo EffortlessMetrics/ripr --limit 5
-gh release view v0.3.0 --repo EffortlessMetrics/ripr --json name,tagName,publishedAt,assets,url,isDraft,isPrerelease
-gh release download v0.3.0 --repo EffortlessMetrics/ripr --pattern 'ripr-server-v0.3.0-x86_64-pc-windows-msvc.zip' --pattern 'ripr-server-manifest-v0.3.0.json' --dir target/ripr/release-smoke --clobber
+gh release view v0.3.1 --repo EffortlessMetrics/ripr --json name,tagName,publishedAt,assets,url,isDraft,isPrerelease
+gh release download v0.3.1 --repo EffortlessMetrics/ripr --pattern 'ripr-server-v0.3.1-x86_64-pc-windows-msvc.zip' --pattern 'ripr-server-manifest-v0.3.1.json' --dir target/ripr/release-smoke --clobber
 ```
 
-The Campaign 7 release/install-polish pass verified `v0.3.0` as the latest
-public release on May 6, 2026. That release has `ripr-v0.3.0.vsix`, a server
-manifest, per-target server archives, checksums, and a Windows server archive
-whose manifest checksum matched the downloaded ZIP. The extracted server ran
-`ripr --version`, `ripr lsp --version`, and `ripr doctor`.
-
-That `v0.3.0` proof covers packaging and server provisioning. It does not
-verify the defaults-first public install loop because `v0.3.0` predates
-`ripr pilot` and `ripr outcome`; use
-[Installation verification](INSTALLATION_VERIFICATION.md) for the `0.3.1`
-public-install smoke.
+The `v0.3.1` release is the current defaults-first public release. It has the
+VSIX, server manifest, per-target server archives, checksums, and a Windows
+server archive whose manifest checksum matched the downloaded ZIP. The
+extracted server ran `ripr --version`, `ripr lsp --version`, `ripr pilot`, and
+`ripr outcome`.
 
 ## Name Gate
 

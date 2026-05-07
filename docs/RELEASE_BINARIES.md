@@ -47,22 +47,21 @@ README-server.txt
 
 ## Published Release Proof
 
-The Campaign 7 release/install-polish pass verified the public `v0.3.0`
-release on May 6, 2026:
+The `v0.3.1` release was verified on May 7, 2026:
 
-- `ripr v0.3.0` is the latest GitHub Release.
-- The release has `ripr-v0.3.0.vsix`.
-- The release has `ripr-server-manifest-v0.3.0.json`.
+- `ripr v0.3.1` is the latest GitHub Release.
+- The release has `ripr-0.3.1.vsix`.
+- The release has `ripr-server-manifest-v0.3.1.json`.
 - The release has server archives and `.sha256` files for each supported
   target.
 - The Windows archive checksum matched the manifest entry for
   `x86_64-pc-windows-msvc`.
-- The extracted Windows server ran `ripr --version`, `ripr lsp --version`, and
-  `ripr doctor`.
+- The extracted Windows server ran `ripr --version`, `ripr lsp --version`,
+  `ripr pilot`, and `ripr outcome`.
 
-That proof covers server archive shape for the current public release. The
-defaults-first `ripr pilot` and `ripr outcome` public-install smoke starts with
-`0.3.1`; see [Installation verification](INSTALLATION_VERIFICATION.md).
+That proof covers server archive shape for the current public release and the
+defaults-first `ripr pilot` and `ripr outcome` public-install smoke; see
+[Installation verification](INSTALLATION_VERIFICATION.md).
 
 ## Local Verification
 

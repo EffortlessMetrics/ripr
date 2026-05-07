@@ -64,22 +64,22 @@ passes.
 
 ## Current Public Release
 
-The `v0.3.0` GitHub Release has the assets the default extension path needs:
+The `v0.3.1` GitHub Release has the assets the default extension path needs:
 
 ```text
-ripr-v0.3.0.vsix
-ripr-server-manifest-v0.3.0.json
-ripr-server-v0.3.0-x86_64-pc-windows-msvc.zip
-ripr-server-v0.3.0-x86_64-unknown-linux-gnu.tar.gz
-ripr-server-v0.3.0-aarch64-unknown-linux-gnu.tar.gz
-ripr-server-v0.3.0-x86_64-apple-darwin.tar.gz
-ripr-server-v0.3.0-aarch64-apple-darwin.tar.gz
+ripr-0.3.1.vsix
+ripr-server-manifest-v0.3.1.json
+ripr-server-v0.3.1-x86_64-pc-windows-msvc.zip
+ripr-server-v0.3.1-x86_64-unknown-linux-gnu.tar.gz
+ripr-server-v0.3.1-aarch64-unknown-linux-gnu.tar.gz
+ripr-server-v0.3.1-x86_64-apple-darwin.tar.gz
+ripr-server-v0.3.1-aarch64-apple-darwin.tar.gz
 checksums.txt
 ```
 
 The release/install proof downloaded the Windows server archive, matched its
 SHA-256 against the manifest, extracted it, and ran `ripr --version`,
-`ripr lsp --version`, and `ripr doctor`.
+`ripr lsp --version`, `ripr pilot`, and `ripr outcome`.
 
 ## Supported Targets
 
@@ -111,9 +111,9 @@ The e2e suite runs in a fixture Rust workspace and covers extension activation,
 defaults-first `draft` mode, command registration, LSP-first seam context
 collection with CLI fallback, targeted-test brief copying, suggested assertion
 copying, related-test opening, malformed command arguments, and restart
-behavior. The `v0.3.0` server archive path and local VSIX package path are
+behavior. The `v0.3.1` server archive path and local VSIX package path are
 verified for current provisioning. Defaults-first public install proof for
-`ripr pilot` and `ripr outcome` starts with `0.3.1`; the checklist is in
+`ripr pilot` and `ripr outcome` is covered by
 [Installation verification](INSTALLATION_VERIFICATION.md).
 
 ## Future Bundled VSIXs
