@@ -212,6 +212,36 @@ level = "deny"
 name = "clippy::error_impl_error"
 level = "deny"
 
+# Async / concurrency. Catches lock/RefCell borrows held across `.await`
+# (deadlock shape) and misuse of threading primitives.
+[[active.async_concurrency]]
+name = "clippy::await_holding_lock"
+level = "deny"
+
+[[active.async_concurrency]]
+name = "clippy::await_holding_refcell_ref"
+level = "deny"
+
+[[active.async_concurrency]]
+name = "clippy::await_holding_invalid_type"
+level = "deny"
+
+[[active.async_concurrency]]
+name = "clippy::arc_with_non_send_sync"
+level = "deny"
+
+[[active.async_concurrency]]
+name = "clippy::rc_mutex"
+level = "deny"
+
+[[active.async_concurrency]]
+name = "clippy::mut_mutex_lock"
+level = "deny"
+
+[[active.async_concurrency]]
+name = "clippy::readonly_write_lock"
+level = "deny"
+
 [[active.governance]]
 name = "clippy::allow_attributes_without_reason"
 level = "deny"
