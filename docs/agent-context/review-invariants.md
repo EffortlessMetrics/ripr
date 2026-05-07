@@ -64,6 +64,10 @@ For Droid workflows:
 - `MINIMAX_API_KEY` must be job-level env referencing `${{ secrets.MINIMAX_API_KEY }}`.
 - Action refs must be immutable 40-character commit SHAs.
 - The manual workflow (`droid.yml`) must have trusted actor guards (`OWNER`, `MEMBER`, `COLLABORATOR`).
+- The scheduled security scan must keep `workflow_dispatch`, the weekly Monday
+  08:00 UTC schedule, repo-scoped concurrency, `security_scan_schedule: true`,
+  `security_scan_days: 7`, `security_severity_threshold: medium`,
+  `security_block_on_critical: true`, and `security_block_on_high: false`.
 - These invariants, including scheduled security-scan shape and explicit `show_full_output: false`, are enforced by `cargo xtask check-droid-review-config`.
 
 ## Queueing invariants
