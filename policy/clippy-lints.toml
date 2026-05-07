@@ -75,6 +75,23 @@ level = "deny"
 name = "clippy::drop_non_drop"
 level = "deny"
 
+# Unsafe-block hygiene. We forbid `unsafe_code` workspace-wide, so these
+# never fire on current source. They keep any future, scoped unsafe island
+# reviewable: every `unsafe { ... }` must carry a `// SAFETY:` receipt,
+# blocks may not bundle multiple unsafe ops, and `repr(packed)` must pin
+# an explicit ABI so the layout is not unspecified.
+[[active.unsafe_block]]
+name = "clippy::undocumented_unsafe_blocks"
+level = "deny"
+
+[[active.unsafe_block]]
+name = "clippy::multiple_unsafe_ops_per_block"
+level = "deny"
+
+[[active.unsafe_block]]
+name = "clippy::repr_packed_without_abi"
+level = "deny"
+
 [[active.numeric]]
 name = "clippy::float_cmp"
 level = "deny"
@@ -290,6 +307,11 @@ level = "deny"
 [[active.rust]]
 name = "unused_must_use"
 level = "deny"
+
+[[active.rust]]
+name = "unsafe_op_in_unsafe_fn"
+level = "deny"
+note = "Belt-and-suspenders for `unsafe_code = \"forbid\"`: keeps unsafe operations inside an unsafe fn from skipping the explicit `unsafe { ... }` block if a future PR ever carves out an unsafe island."
 
 # Lints planned for activation when MSRV advances. Recorded here so reviewers
 # can see the trajectory without scanning Cargo.toml history. They are not

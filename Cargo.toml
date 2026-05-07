@@ -15,6 +15,10 @@ unsafe_code = "forbid"
 const_item_interior_mutations = "deny"
 function_casts_as_integer = "deny"
 unused_must_use = "deny"
+# Belt-and-suspenders for `unsafe_code = "forbid"`: if a future PR ever
+# carves out an unsafe island, this keeps unsafe operations inside an
+# unsafe fn from skipping the explicit `unsafe { ... }` block.
+unsafe_op_in_unsafe_fn = "deny"
 
 # Panic-safety policy: clippy is the fast IDE rail for panic-family code shapes;
 # `cargo xtask check-no-panic-family` is the authoritative semantic gate that
@@ -42,6 +46,15 @@ unwrap_in_result = "deny"
 mem_forget = "deny"
 forget_non_drop = "deny"
 drop_non_drop = "deny"
+
+# Unsafe-block hygiene. We forbid `unsafe_code` workspace-wide today, so
+# these never fire on current source — they keep any future, scoped unsafe
+# island reviewable: every `unsafe { ... }` must carry a `// SAFETY:`
+# receipt, blocks may not bundle multiple unsafe ops, and `repr(packed)`
+# must pin an explicit ABI so the layout is not unspecified.
+undocumented_unsafe_blocks = "deny"
+multiple_unsafe_ops_per_block = "deny"
+repr_packed_without_abi = "deny"
 
 # Numeric correctness.
 float_cmp = "deny"
