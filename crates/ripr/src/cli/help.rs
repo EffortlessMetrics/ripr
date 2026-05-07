@@ -5,6 +5,7 @@ Usage:
   ripr pilot [--root PATH] [--out PATH] [--mode draft] [--max-seams 5] [--timeout-ms 30000]
   ripr outcome --before PATH --after PATH [--format md|json] [--out PATH]
   ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
+  ripr agent brief --root . (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json
   ripr check [--base origin/main] [--diff PATH] [--mode draft] [--format FORMAT]
   ripr explain [--base REV|--diff PATH] <finding-id|file:line>
   ripr context [--base REV|--diff PATH] --at <finding-id|file:line>
@@ -21,6 +22,7 @@ Quick start:
   ripr pilot
   ripr outcome --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json
   ripr calibrate cargo-mutants --mutants-json target/mutants/outcomes.json --repo-exposure-json target/ripr/pilot/after.repo-exposure.json
+  ripr agent brief --root . --diff change.diff --json
   ripr check --diff crates/ripr/examples/sample/example.diff
   ripr check --diff crates/ripr/examples/sample/example.diff --json
   ripr explain --diff crates/ripr/examples/sample/example.diff <finding-id>
@@ -97,6 +99,30 @@ unambiguous file/line. It does not run mutation testing, alter static
 classifications, or configure CI policy.
 "#;
 
+const AGENT_HELP: &str = r#"Usage: ripr agent <subcommand>
+
+Subcommands:
+  brief      Parse a working-set brief request for the future agent-active router.
+
+Run `ripr agent brief --help` for the JSON-only working-set brief contract.
+"#;
+
+const AGENT_BRIEF_HELP: &str = r#"Usage: ripr agent brief [--root PATH] (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json [--max-seams N]
+
+Options:
+  --root PATH      Workspace root. Defaults to current directory.
+  --diff PATH      Select a diff file and line-level working set.
+  --base REV       Derive the working set from a base revision.
+  --files PATHS    Comma-separated repo-relative file paths.
+  --seam-id ID     Select one visible seam by ID.
+  --json           Required until a human brief surface exists.
+  --max-seams N    Requested seam cap. Defaults to 3 and cannot exceed 10.
+
+This parser is the first implementation seam for RIPR-SPEC-0010. The brief
+router remains advisory and static; it does not run mutation testing, generate
+tests, edit files, change cache behavior, or touch LSP/MCP surfaces.
+"#;
+
 const CHECK_HELP: &str = r#"Usage: ripr check [OPTIONS]
 
 Options:
@@ -168,6 +194,14 @@ pub(super) fn print_calibrate_help() {
     println!("{CALIBRATE_HELP}");
 }
 
+pub(super) fn print_agent_help() {
+    println!("{AGENT_HELP}");
+}
+
+pub(super) fn print_agent_brief_help() {
+    println!("{AGENT_BRIEF_HELP}");
+}
+
 pub(super) fn print_explain_help() {
     println!("{EXPLAIN_HELP}");
 }
@@ -187,8 +221,8 @@ pub(super) fn print_lsp_help() {
 #[cfg(test)]
 mod tests {
     use super::{
-        CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP, DOCTOR_HELP, EXPLAIN_HELP, HELP, INIT_HELP,
-        LSP_HELP, OUTCOME_HELP, PILOT_HELP,
+        AGENT_BRIEF_HELP, AGENT_HELP, CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP, DOCTOR_HELP,
+        EXPLAIN_HELP, HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP,
     };
 
     #[test]
@@ -197,6 +231,7 @@ mod tests {
         assert!(HELP.contains("ripr pilot"));
         assert!(HELP.contains("ripr outcome"));
         assert!(HELP.contains("ripr calibrate"));
+        assert!(HELP.contains("ripr agent brief"));
         assert!(HELP.contains("ripr check"));
         assert!(HELP.contains("ripr explain"));
         assert!(HELP.contains("ripr context"));
@@ -226,6 +261,10 @@ mod tests {
         assert!(OUTCOME_HELP.contains("--before PATH"));
         assert!(CALIBRATE_HELP.starts_with("Usage: ripr calibrate cargo-mutants"));
         assert!(CALIBRATE_HELP.contains("--mutants-json PATH"));
+        assert!(AGENT_HELP.starts_with("Usage: ripr agent"));
+        assert!(AGENT_BRIEF_HELP.starts_with("Usage: ripr agent brief"));
+        assert!(AGENT_BRIEF_HELP.contains("--max-seams N"));
+        assert!(AGENT_BRIEF_HELP.contains("RIPR-SPEC-0010"));
         assert!(EXPLAIN_HELP.starts_with("Usage: ripr explain"));
         assert!(CONTEXT_HELP.starts_with("Usage: ripr context"));
         assert!(DOCTOR_HELP.starts_with("Usage: ripr doctor [--root PATH]"));

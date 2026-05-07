@@ -15,6 +15,7 @@ pub(super) fn execute(command: CliCommand) -> Result<(), String> {
         CliCommand::Pilot(args) => commands::pilot(&args),
         CliCommand::Outcome(args) => commands::outcome(&args),
         CliCommand::Calibrate(args) => commands::calibrate(&args),
+        CliCommand::Agent(args) => commands::agent(&args),
         CliCommand::Check(args) => commands::check(&args),
         CliCommand::Explain(args) => commands::explain(&args),
         CliCommand::Context(args) => commands::context(&args),
@@ -66,6 +67,10 @@ mod tests {
                 "xml"
             ]))),
             Err("unknown calibrate format \"xml\"".to_string())
+        );
+        assert_eq!(
+            execute(CliCommand::Agent(args(&["unknown"]))),
+            Err("unknown agent subcommand \"unknown\"; expected `brief`".to_string())
         );
     }
 

@@ -1,3 +1,4 @@
+mod agent;
 mod command;
 mod commands;
 mod execute;
@@ -63,6 +64,10 @@ mod tests {
         assert_eq!(
             run(args(&["ripr", "lsp", "--bad"])),
             Err("unknown lsp argument \"--bad\"".to_string())
+        );
+        assert_eq!(
+            run(args(&["ripr", "agent", "brief", "--diff", "change.diff"])),
+            Err("agent brief requires --json until human output is implemented".to_string())
         );
     }
 }
