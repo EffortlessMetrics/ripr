@@ -61,13 +61,8 @@ requires_human_merge = true
 acceptance = "Add `ripr agent start --root . --seam-id <id> --out target/ripr/workflow` to write a source-edit-free workflow manifest containing artifact paths and commands"
 commands = [
   "cargo test -p ripr agent",
-  "cargo test -p ripr agent_workflow",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
-  "cargo xtask check-campaign",
-  "cargo xtask goals next",
-  "cargo xtask check-traceability",
-  "cargo xtask check-capabilities",
   "cargo xtask check-pr"
 ]
 
@@ -79,12 +74,9 @@ stackable = false
 requires_human_merge = true
 acceptance = "Add receipt provenance fields for ripr version, repo root, config fingerprint, artifact hashes, seam_id, before/after class, command template version, and timestamp without claiming runtime confirmation"
 commands = [
-  "cargo test -p ripr agent_receipt",
   "cargo test -p ripr agent",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
-  "cargo xtask check-traceability",
-  "cargo xtask check-capabilities",
   "cargo xtask check-pr"
 ]
 

@@ -1075,84 +1075,6 @@ Field contract:
   guidance derived from the verify bucket. It does not claim runtime
   confirmation.
 
-## Agent Workflow Manifest
-
-`ripr agent start --root <workspace> --seam-id <id> --out <dir>` writes a
-source-edit-free workflow checklist for LLM agents:
-
-```text
-ripr agent start --root . --seam-id 67fc764ba37d77bd --out target/ripr/workflow
-```
-
-The command writes:
-
-```text
-target/ripr/workflow/agent-workflow.json
-target/ripr/workflow/agent-workflow.md
-```
-
-The command does not run analysis, mutation testing, SARIF policy, badge
-generation, LSP refresh, or cache warm-up. It does not validate the seam id,
-generate tests, or edit source files. It uses the shared agent-loop command
-templates for every artifact path and command string.
-
-JSON shape:
-
-```json
-{
-  "schema_version": "0.1",
-  "tool": "ripr",
-  "root": ".",
-  "mode": "draft",
-  "seam_id": "67fc764ba37d77bd",
-  "artifacts": {
-    "before_snapshot": "target/ripr/workflow/before.repo-exposure.json",
-    "after_snapshot": "target/ripr/workflow/after.repo-exposure.json",
-    "agent_packet": "target/ripr/workflow/agent-packet.json",
-    "agent_brief": "target/ripr/workflow/agent-brief.json",
-    "agent_verify": "target/ripr/workflow/agent-verify.json",
-    "agent_receipt": "target/ripr/reports/agent-receipt.json",
-    "agent_status": "target/ripr/workflow/agent-status.json",
-    "review_summary": "target/ripr/workflow/agent-review-summary.json"
-  },
-  "commands": {
-    "before_snapshot": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json",
-    "agent_packet": "ripr agent packet --root . --seam-id 67fc764ba37d77bd --json > target/ripr/workflow/agent-packet.json",
-    "agent_brief": "ripr agent brief --root . --seam-id 67fc764ba37d77bd --json > target/ripr/workflow/agent-brief.json",
-    "after_snapshot": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json",
-    "agent_verify": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > target/ripr/workflow/agent-verify.json",
-    "agent_receipt": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 67fc764ba37d77bd --json --out target/ripr/reports/agent-receipt.json",
-    "agent_status": "ripr agent status --root . --json > target/ripr/workflow/agent-status.json",
-    "review_summary": "ripr agent review-summary --root . --json > target/ripr/workflow/agent-review-summary.json"
-  },
-  "next_step": "before_snapshot",
-  "notes": [
-    "This manifest does not edit source files.",
-    "Static evidence only; no runtime mutation execution."
-  ]
-}
-```
-
-Field contract:
-
-- `schema_version` - currently `"0.1"`.
-- `tool` - always `"ripr"`.
-- `root` - the `--root` argument normalized to forward slashes for reporting
-  and command generation.
-- `mode` - currently `"draft"` for the generated workflow checklist.
-- `seam_id` - the caller-supplied seam id. `agent start` records it without
-  validating it through analysis.
-- `artifacts` - the fixed before snapshot, after snapshot, packet, brief,
-  verify, receipt, status, and future review-summary artifact paths.
-- `commands` - the command sequence in execution order, built from the shared
-  agent-loop command templates.
-- `next_step` - initially `"before_snapshot"`.
-- `notes` - static boundary reminders. The manifest does not claim runtime
-  confirmation or source edits.
-
-The Markdown sibling contains the same target seam, root, mode, ordered steps,
-commands, and static-limit notes in a short human/LLM-readable checklist.
-
 ## Agent Status
 
 `ripr agent status --root <workspace> --json` reads already-written agent-loop
@@ -1239,6 +1161,118 @@ Field contract:
   are emitted when `agent verify` is older than a before/after snapshot or
   `agent receipt` is older than `agent verify`. The report does not infer hash
   mismatches until receipt provenance fields exist.
+
+## Agent Workflow Manifest
+
+`ripr agent start --root <workspace> --seam-id <id> --out <dir>` writes a
+source-edit-free workflow packet for one visible seam:
+
+```text
+ripr agent start --root . --seam-id 67fc764ba37d77bd --out target/ripr/workflow
+```
+
+Outputs:
+
+```text
+target/ripr/workflow/workflow.json
+target/ripr/workflow/commands.md
+target/ripr/workflow/agent-brief.json
+```
+
+The command selects the requested seam with the same policy as
+`ripr agent brief --seam-id`, writes a focused brief, then renders a workflow
+manifest that names artifact paths and shared command templates for the static
+before snapshot, agent packet, agent brief, after snapshot, verify, and
+receipt steps. It does not edit source files, generate tests, call LLM APIs,
+run mutation testing, refresh LSP state, or configure CI blocking.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "ready",
+  "root": ".",
+  "mode": "draft",
+  "out_dir": "target/ripr/workflow",
+  "seam": {
+    "seam_id": "67fc764ba37d77bd",
+    "file": "src/pricing.rs",
+    "line": 88,
+    "seam_kind": "predicate_boundary",
+    "grip_class": "weakly_gripped",
+    "why": "caller requested seam_id 67fc764ba37d77bd",
+    "missing_discriminator": "amount == discount_threshold",
+    "assertion_shape": "assert_eq!(...)",
+    "recommended_test_file": "tests/pricing.rs",
+    "recommended_test_name": "discount_threshold_equality_boundary_is_asserted",
+    "related_test_to_imitate": "applies_discount_above_threshold"
+  },
+  "outputs": {
+    "workflow_manifest": "target/ripr/workflow/workflow.json",
+    "commands_markdown": "target/ripr/workflow/commands.md",
+    "agent_brief": "target/ripr/workflow/agent-brief.json"
+  },
+  "artifacts": [
+    {
+      "name": "before_snapshot",
+      "label": "before snapshot",
+      "path": "target/ripr/workflow/before.repo-exposure.json",
+      "required": true,
+      "state": "missing"
+    }
+  ],
+  "commands": [
+    {
+      "step": "before_snapshot",
+      "artifact": "target/ripr/workflow/before.repo-exposure.json",
+      "purpose": "Capture static seam evidence before editing tests.",
+      "command": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json"
+    }
+  ],
+  "missing_inputs": [
+    {
+      "step": "before_snapshot",
+      "artifact": "target/ripr/workflow/before.repo-exposure.json",
+      "purpose": "Capture static seam evidence before editing tests.",
+      "command": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json"
+    }
+  ],
+  "next_command": {
+    "step": "before_snapshot",
+    "artifact": "target/ripr/workflow/before.repo-exposure.json",
+    "purpose": "Capture static seam evidence before editing tests.",
+    "command": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json"
+  },
+  "boundaries": {
+    "source_edits": false,
+    "generated_tests": false,
+    "runtime_mutation_execution": false,
+    "llm_api_calls": false,
+    "ci_blocking": false
+  }
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `status` - currently `"ready"` when the manifest was written.
+- `root`, `mode`, and `out_dir` - the selected workspace root, effective
+  analysis mode, and workflow output directory.
+- `seam` - the selected seam fields copied from the generated agent brief.
+- `outputs` - the three files written by `agent start`.
+- `artifacts[]` - required downstream workflow inputs and outputs, marked
+  `present` or `missing` at manifest creation time.
+- `commands[]` - deterministic command templates for regenerating the
+  workflow, capturing snapshots, rendering packet and brief artifacts,
+  comparing before/after evidence, and writing a receipt.
+- `missing_inputs[]` - the commands whose artifacts are currently missing.
+- `next_command` - the first missing-input command, or `null` when all
+  downstream artifacts are present.
+- `boundaries` - explicit false-valued guardrails for source edits, generated
+  tests, runtime mutation execution, LLM API calls, and CI blocking.
 
 ## Release Readiness Report
 

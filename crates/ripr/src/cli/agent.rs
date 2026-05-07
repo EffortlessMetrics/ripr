@@ -23,7 +23,7 @@ pub(super) enum AgentCommand {
 pub(super) struct AgentStartOptions {
     pub(super) root: PathBuf,
     pub(super) seam_id: String,
-    pub(super) out: PathBuf,
+    pub(super) out_dir: PathBuf,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -153,7 +153,7 @@ fn parse_agent_status_command(args: &[String]) -> Result<AgentCommand, String> {
 pub(super) fn parse_agent_start_options(args: &[String]) -> Result<AgentStartOptions, String> {
     let mut root = PathBuf::from(".");
     let mut seam_id: Option<String> = None;
-    let mut out: Option<PathBuf> = None;
+    let mut out_dir = PathBuf::from("target/ripr/workflow");
 
     let mut i = 0usize;
     while i < args.len() {
@@ -176,7 +176,7 @@ pub(super) fn parse_agent_start_options(args: &[String]) -> Result<AgentStartOpt
                 if value.trim().is_empty() {
                     return Err("agent start --out requires a non-empty path".to_string());
                 }
-                out = Some(PathBuf::from(value));
+                out_dir = PathBuf::from(value);
             }
             other => return Err(format!("unknown agent start argument {other:?}")),
         }
@@ -186,7 +186,7 @@ pub(super) fn parse_agent_start_options(args: &[String]) -> Result<AgentStartOpt
     Ok(AgentStartOptions {
         root,
         seam_id: seam_id.ok_or_else(|| "agent start requires --seam-id".to_string())?,
-        out: out.ok_or_else(|| "agent start requires --out <dir>".to_string())?,
+        out_dir,
     })
 }
 
@@ -525,42 +525,66 @@ mod tests {
     }
 
     #[test]
-    fn agent_start_parses_workflow_request() {
+    fn agent_args_parse_start_request() {
         assert_eq!(
             parse_agent_args(&args(&[
                 "start",
                 "--root",
                 "repo",
                 "--seam-id",
-                "67fc764ba37d77bd",
+                "f3c9e4d21a0b7c88",
                 "--out",
                 "target/ripr/workflow",
             ])),
             Ok(AgentCommand::Start(AgentStartOptions {
                 root: PathBuf::from("repo"),
-                seam_id: "67fc764ba37d77bd".to_string(),
-                out: PathBuf::from("target/ripr/workflow"),
+                seam_id: "f3c9e4d21a0b7c88".to_string(),
+                out_dir: PathBuf::from("target/ripr/workflow"),
             }))
         );
     }
 
     #[test]
-    fn agent_start_requires_seam_id_and_rejects_unknown_arguments() {
+    fn agent_start_defaults_out_dir_and_requires_seam_id() {
         assert_eq!(
-            parse_agent_start_options(&args(&["--root", "repo", "--out", "target/ripr/workflow"])),
+            parse_agent_start_options(&args(&["--seam-id", "f3c9e4d21a0b7c88"])),
+            Ok(AgentStartOptions {
+                root: PathBuf::from("."),
+                seam_id: "f3c9e4d21a0b7c88".to_string(),
+                out_dir: PathBuf::from("target/ripr/workflow"),
+            })
+        );
+        assert_eq!(
+            parse_agent_start_options(&args(&[])),
             Err("agent start requires --seam-id".to_string())
         );
         assert_eq!(
-            parse_agent_start_options(&args(&["--seam-id", "", "--out", "target/ripr/workflow",])),
+            parse_agent_start_options(&args(&["--seam-id", ""])),
             Err("agent start --seam-id requires a non-empty ID".to_string())
+        );
+    }
+
+    #[test]
+    fn agent_start_requires_values_and_rejects_unknown_arguments() {
+        assert_eq!(
+            parse_agent_start_options(&args(&["--root"])),
+            Err("missing value for --root".to_string())
+        );
+        assert_eq!(
+            parse_agent_start_options(&args(&["--seam-id"])),
+            Err("missing value for --seam-id".to_string())
+        );
+        assert_eq!(
+            parse_agent_start_options(&args(&["--out"])),
+            Err("missing value for --out".to_string())
         );
         assert_eq!(
             parse_agent_start_options(&args(&["--seam-id", "abc", "--out", ""])),
             Err("agent start --out requires a non-empty path".to_string())
         );
         assert_eq!(
-            parse_agent_start_options(&args(&["--seam-id", "abc", "--json"])),
-            Err("unknown agent start argument \"--json\"".to_string())
+            parse_agent_start_options(&args(&["--seam-id", "abc", "--xml"])),
+            Err("unknown agent start argument \"--xml\"".to_string())
         );
     }
 

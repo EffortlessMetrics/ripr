@@ -46,6 +46,7 @@ workflow manifest is introduced. That module owns the current workflow artifact
 paths, the editor/CI pilot-agent artifact paths, and the command builders for:
 
 ```text
+ripr agent start
 ripr check --format repo-exposure-json
 ripr check --format agent-seam-packets-json
 ripr agent packet
@@ -62,27 +63,21 @@ sharing these builders where they construct command payloads or missing-input
 commands.
 
 `ripr agent start --root . --seam-id <id> --out target/ripr/workflow` writes a
-source-edit-free workflow manifest after the command templates exist. The
-manifest records the caller-supplied seam id, `draft` mode, the workflow
-artifact paths, and the command chain for:
+source-edit-free workflow packet for one visible seam:
 
 ```text
-before snapshot
-agent packet
-agent brief
-after snapshot
-agent verify
-agent receipt
-agent status
-agent review-summary
+target/ripr/workflow/workflow.json
+target/ripr/workflow/commands.md
+target/ripr/workflow/agent-brief.json
 ```
 
-The start command must not run analysis, validate the seam by refreshing repo
-evidence, generate tests, edit source files, run mutation testing, refresh LSP
-state, or change the schemas for brief, packet, verify, receipt, or status.
-It should accept the seam id, write `agent-workflow.json` and
-`agent-workflow.md`, and let packet, brief, verify, receipt, and status
-validate downstream artifacts.
+The command may run the same static seam selection used by
+`ripr agent brief --seam-id`, because the manifest needs the selected seam's
+missing discriminator, suggested assertion shape, related-test target, and
+effective mode. It must not edit source files, generate tests, run mutation
+testing, call LLM APIs, refresh LSP state, configure CI blocking, or add
+vendor-specific prompt/model behavior. The packet is deterministic context for
+humans and external agents.
 
 ## JSON Shape
 
@@ -133,34 +128,39 @@ The workflow manifest uses schema version `0.1`:
 {
   "schema_version": "0.1",
   "tool": "ripr",
+  "status": "ready",
   "root": ".",
   "mode": "draft",
-  "seam_id": "67fc764ba37d77bd",
-  "artifacts": {
-    "before_snapshot": "target/ripr/workflow/before.repo-exposure.json",
-    "after_snapshot": "target/ripr/workflow/after.repo-exposure.json",
-    "agent_packet": "target/ripr/workflow/agent-packet.json",
-    "agent_brief": "target/ripr/workflow/agent-brief.json",
-    "agent_verify": "target/ripr/workflow/agent-verify.json",
-    "agent_receipt": "target/ripr/reports/agent-receipt.json",
-    "agent_status": "target/ripr/workflow/agent-status.json",
-    "review_summary": "target/ripr/workflow/agent-review-summary.json"
+  "out_dir": "target/ripr/workflow",
+  "seam": {
+    "seam_id": "67fc764ba37d77bd",
+    "file": "src/pricing.rs",
+    "line": 88,
+    "seam_kind": "predicate_boundary",
+    "grip_class": "weakly_gripped",
+    "why": "caller requested seam_id 67fc764ba37d77bd",
+    "missing_discriminator": "amount == discount_threshold",
+    "assertion_shape": "assert_eq!(...)",
+    "recommended_test_file": "tests/pricing.rs",
+    "recommended_test_name": "discount_threshold_equality_boundary_is_asserted",
+    "related_test_to_imitate": "applies_discount_above_threshold"
   },
-  "commands": {
-    "before_snapshot": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json",
-    "agent_packet": "ripr agent packet --root . --seam-id 67fc764ba37d77bd --json > target/ripr/workflow/agent-packet.json",
-    "agent_brief": "ripr agent brief --root . --seam-id 67fc764ba37d77bd --json > target/ripr/workflow/agent-brief.json",
-    "after_snapshot": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json",
-    "agent_verify": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > target/ripr/workflow/agent-verify.json",
-    "agent_receipt": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 67fc764ba37d77bd --json --out target/ripr/reports/agent-receipt.json",
-    "agent_status": "ripr agent status --root . --json > target/ripr/workflow/agent-status.json",
-    "review_summary": "ripr agent review-summary --root . --json > target/ripr/workflow/agent-review-summary.json"
+  "outputs": {
+    "workflow_manifest": "target/ripr/workflow/workflow.json",
+    "commands_markdown": "target/ripr/workflow/commands.md",
+    "agent_brief": "target/ripr/workflow/agent-brief.json"
   },
-  "next_step": "before_snapshot",
-  "notes": [
-    "This manifest does not edit source files.",
-    "Static evidence only; no runtime mutation execution."
-  ]
+  "artifacts": [],
+  "commands": [],
+  "missing_inputs": [],
+  "next_command": null,
+  "boundaries": {
+    "source_edits": false,
+    "generated_tests": false,
+    "runtime_mutation_execution": false,
+    "llm_api_calls": false,
+    "ci_blocking": false
+  }
 }
 ```
 
@@ -182,11 +182,16 @@ The first LLM work-loop slice requires:
 - shared command templates for the existing status next commands, agent brief
   next commands, LSP copy actions, pilot next commands, generated CI artifact
   paths, and operator cockpit missing-input commands.
-- a source-edit-free workflow manifest containing before snapshot, after
-  snapshot, packet, brief, verify, receipt, status, and future review-summary
-  artifact paths and commands.
-- a short Markdown workflow checklist with the target seam, root, mode, ordered
-  steps, commands, and static-limit notes.
+
+The workflow manifest slice additionally requires:
+
+- `ripr agent start --root . --seam-id <id> --out target/ripr/workflow`;
+- `workflow.json`, `commands.md`, and `agent-brief.json` outputs;
+- selected seam details from the agent brief;
+- artifact paths and commands for before snapshot, packet, brief, after
+  snapshot, verify, and receipt;
+- explicit boundary flags proving the packet does not edit source, generate
+  tests, call LLM APIs, run mutation testing, or configure CI blocking.
 
 ## Non-Goals
 
@@ -205,11 +210,6 @@ The LLM work loop must not:
 
 - `ripr agent status --root . --json` succeeds without repo analysis when the
   root directory exists.
-- `ripr agent start --root . --seam-id <id> --out target/ripr/workflow`
-  writes `agent-workflow.json` and `agent-workflow.md` without repo analysis
-  when the root directory exists.
-- The workflow manifest uses shared command builders for every command and
-  preserves path quoting for roots or output directories with spaces.
 - Missing artifacts do not fail the command; they are reported with matching
   next commands.
 - Malformed or unreadable present JSON artifacts are warnings, not hidden
@@ -230,19 +230,19 @@ The LLM work loop must not:
 - `crates/ripr/src/app/agent_status.rs::tests::agent_status_recovers_seam_id_from_verify_packet_or_brief`
 - `crates/ripr/src/app/agent_status.rs::tests::agent_status_warns_when_verify_or_receipt_look_stale`
 - `crates/ripr/src/app/agent_status.rs::tests::agent_status_quotes_paths_with_spaces`
+- `crates/ripr/src/app/agent_workflow.rs::tests::workflow_manifest_extracts_seam_and_commands`
+- `crates/ripr/src/app/agent_workflow.rs::tests::workflow_manifest_errors_when_brief_does_not_return_seam`
 - `crates/ripr/src/cli/agent.rs::tests::agent_status_parses_root_and_json`
 - `crates/ripr/src/cli/agent.rs::tests::agent_status_requires_json_and_rejects_unknown_arguments`
-- `crates/ripr/src/cli/agent.rs::tests::agent_start_parses_workflow_request`
-- `crates/ripr/src/cli/agent.rs::tests::agent_start_requires_seam_id_and_rejects_unknown_arguments`
+- `crates/ripr/src/cli/agent.rs::tests::agent_args_parse_start_request`
+- `crates/ripr/src/cli/agent.rs::tests::agent_start_defaults_out_dir_and_requires_seam_id`
 - `crates/ripr/src/cli/commands.rs::tests::agent_status_rejects_missing_root_before_reading_artifacts`
-- `crates/ripr/src/cli/commands.rs::tests::agent_start_rejects_missing_root_before_writing_manifest`
-- `crates/ripr/src/cli/commands.rs::tests::agent_start_writes_workflow_manifest_files`
-- `crates/ripr/src/app/agent_workflow.rs::tests::agent_workflow_json_pins_artifacts_and_command_sequence`
-- `crates/ripr/src/app/agent_workflow.rs::tests::agent_workflow_markdown_is_short_and_actionable`
-- `crates/ripr/src/app/agent_workflow.rs::tests::agent_workflow_quotes_roots_with_spaces`
+- `crates/ripr/src/cli/commands.rs::tests::agent_start_rejects_missing_root_before_analysis`
 - `crates/ripr/src/agent/loop_commands.rs::tests::workflow_commands_match_existing_status_templates`
 - `crates/ripr/src/agent/loop_commands.rs::tests::editor_commands_match_existing_lsp_templates`
-- `crates/ripr/src/agent/loop_commands.rs::tests::workflow_artifacts_can_follow_custom_manifest_directory`
+- `crates/ripr/src/output/agent_workflow.rs::tests::workflow_json_is_structured_and_advisory`
+- `crates/ripr/src/output/agent_workflow.rs::tests::workflow_markdown_lists_commands_and_boundaries`
+- `crates/ripr/tests/cli_smoke.rs::agent_start_writes_source_edit_free_workflow_packet`
 - `crates/ripr/src/lsp/tests.rs::agent_loop_command_payloads_stay_workspace_relative_for_platform_roots`
 - `xtask/src/reports/operator.rs::tests::operator_cockpit_matches_editor_agent_loop_fixture`
 
@@ -250,17 +250,18 @@ The LLM work loop must not:
 
 - `crates/ripr/src/app/agent_status.rs` builds and renders the report from
   existing artifact files.
-- `crates/ripr/src/app/agent_workflow.rs` builds and renders the JSON and
-  Markdown workflow manifest from the shared command templates.
+- `crates/ripr/src/app/agent_workflow.rs` builds a selected-seam workflow
+  manifest from the generated agent brief and shared command templates.
 - `crates/ripr/src/agent/loop_commands.rs` owns internal command and artifact
   templates for status, brief, LSP copy actions, pilot next commands, generated
   CI paths, and cockpit missing-input commands.
-- `crates/ripr/src/cli/agent.rs` parses the JSON-only status subcommand and
-  the `agent start` workflow-manifest subcommand.
+- `crates/ripr/src/cli/agent.rs` parses the status and start subcommands.
 - `crates/ripr/src/cli/commands.rs` validates the root and dispatches the
-  status report and workflow manifest, and reuses shared path templates for
-  generated GitHub workflow agent artifacts.
+  report, and reuses shared path templates for generated GitHub workflow agent
+  artifacts.
 - `crates/ripr/src/cli/help.rs` documents the command surface.
+- `crates/ripr/src/output/agent_workflow.rs` renders the workflow JSON and
+  commands Markdown.
 - `crates/ripr/src/output/agent_brief.rs`, `crates/ripr/src/output/pilot.rs`,
   and `crates/ripr/src/lsp/actions.rs` reuse the shared command builders for
   their current command payloads.

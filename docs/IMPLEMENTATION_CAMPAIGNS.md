@@ -1335,7 +1335,7 @@ Work items:
 | --- | --- | --- |
 | `agent/loop-status-report` | done | Added `ripr agent status --root . --json` as a read-only artifact status report for before snapshot, after snapshot, agent brief, agent packet, agent verify, and agent receipt, with recoverable seam_id, missing-input commands, and stale-looking warnings. |
 | `agent/centralize-loop-command-templates` | done | Added `crates/ripr/src/agent/loop_commands.rs` as the shared internal source for workflow, pilot, and editor-agent artifact paths plus packet, brief, snapshot, verify, receipt, status, review-summary, and outcome command templates; agent status, agent brief, pilot, LSP copy actions, generated CI paths, and operator cockpit missing-input commands now reuse it without changing emitted command text. |
-| `agent/workflow-manifest` | done | Added `ripr agent start --root . --seam-id <id> --out target/ripr/workflow` to write source-edit-free `agent-workflow.json` and `agent-workflow.md` manifests with artifact paths and commands from the shared templates. |
+| `agent/workflow-manifest` | done | Added `ripr agent start --root . --seam-id <id> --out target/ripr/workflow` to write `workflow.json`, `commands.md`, and `agent-brief.json` as a source-edit-free workflow packet with selected seam details, artifact paths, shared commands, missing inputs, and explicit no-edit/no-LLM/no-runtime-execution boundaries. |
 | `agent/receipt-provenance` | ready | Add receipt provenance fields for ripr version, repo root, config fingerprint, artifact hashes, seam_id, before/after class, command template version, and timestamp. |
 | `agent/next-action-guidance` | blocked | Emit bounded static next-action guidance for improved, unchanged, regressed, resolved, and new-gap receipt states. |
 | `agent/reviewer-summary` | blocked | Add `ripr agent review-summary --root . --json` plus human output that joins status, receipt, cockpit, repo exposure, LSP cockpit when present, and CI artifact status into a compact review packet. |
@@ -1348,7 +1348,6 @@ Commands:
 
 ```bash
 cargo test -p ripr agent_status
-cargo test -p ripr agent_workflow
 cargo xtask check-output-contracts
 cargo xtask check-static-language
 cargo xtask check-pr

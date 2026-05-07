@@ -198,15 +198,17 @@ ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after
 ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id <seam_id> --json --out target/ripr/agent/agent-receipt.json
 ```
 
-For local LLM handoff state, start with a source-edit-free workflow checklist:
+For local LLM handoff state, start with a source-edit-free workflow packet:
 
 ```bash
 ripr agent start --root . --seam-id <seam_id> --out target/ripr/workflow
 ```
 
-Then `ripr agent status --root . --json` reads the existing
-`target/ripr/workflow` and `target/ripr/reports` artifacts to report which loop
-step is missing next. Neither command reruns analysis or edits source.
+This writes `workflow.json`, `commands.md`, and `agent-brief.json` for the
+selected seam. Then `ripr agent status --root . --json` reads the existing
+`target/ripr/workflow` and `target/ripr/reports` artifacts and reports which
+loop step is missing next. Neither command edits source files, generates tests,
+or calls an LLM API.
 
 When runtime mutation data already exists, import it as an advisory calibration
 check:
@@ -354,7 +356,7 @@ Current capabilities:
 | Test discovery | Parser-backed test and assertion facts with exact, broad, relational, snapshot, mock, smoke, custom-helper, side-effect observer, and unknown oracle kinds; per-test efficiency ledger with smoke/broad/disconnected/opaque/circular/likely-vacuous reasons and duplicate-discriminator groups. | Maintenance; no active analyzer-refactor lane. |
 | Output | Human, JSON, context, and GitHub formats render evidence-first findings with stop reasons; `ripr pilot` writes a zero-config first-run packet; `ripr outcome` compares before/after repo exposure snapshots; repo exposure report and v2 agent seam packets render classified seam evidence; public `ripr` and `ripr+` Shields badges publish seam-native unresolved gap counts while diff badge artifacts remain finding-exposure based. | Output contract maintenance. |
 | LSP | Experimental `tower-lsp-server` sidecar with evidence-aware Finding diagnostics, related-test links, hovers, server-side context packets, seam-native diagnostics + hover, and seam code actions for copying packets/assertions and opening related tests. Saved-workspace diagnostics remain advisory; unsaved-buffer overlays are not default behavior. | Editor contract maintenance. |
-| Agent context | Compact context packet plus per-seam `write_targeted_test` and `inspect_static_limitation` packets carrying recommended test placement, nearest tests to imitate, candidate values, missing discriminators, patterns to imitate/avoid, and assertion templates. `ripr agent status --root . --json` reports local LLM loop artifact state, and `ripr agent start --root . --seam-id <id> --out target/ripr/workflow` writes a source-edit-free workflow checklist without rerunning analysis. | `agent/receipt-provenance` |
+| Agent context | Compact context packet plus per-seam `write_targeted_test` and `inspect_static_limitation` packets carrying recommended test placement, nearest tests to imitate, candidate values, missing discriminators, patterns to imitate/avoid, and assertion templates. `ripr agent start --root . --seam-id <id> --out target/ripr/workflow` writes a source-edit-free workflow packet, and `ripr agent status --root . --json` reports local LLM loop artifact state and the next missing command without rerunning analysis. | `agent/receipt-provenance` |
 | Repository config | Repo-root `ripr.toml` can set analysis mode, oracle policy, severity mapping, suppressions path, report related-test caps, and LSP seam-diagnostic defaults. Explicit CLI flags and LSP initialization options still win. | Policy feedback after adoption. |
 | SARIF and CI policy | `ripr check --format sarif` emits diff-scoped Finding SARIF and `--format repo-sarif` emits repo seam SARIF with configured severity, suppression metadata, stable rule IDs, and stable fingerprints. `ripr init --ci github` generates a non-blocking GitHub Actions report workflow with pilot/report artifacts, repo badge JSON, and optional SARIF rendering/upload; `cargo xtask sarif-policy` compares current SARIF to a baseline only when explicitly requested. | Advisory policy feedback after adoption. |
 | Calibration | Advisory `ripr calibrate cargo-mutants` and repo-local `cargo xtask mutation-calibration` join imported cargo-mutants runtime data to static seam evidence by `seam_id` or unambiguous file/line; ambiguous file/line candidates stay unassigned. `fixtures/CALIBRATION_CORPUS.md` maps current fixtures to controlled calibration scenarios, `fixtures/EXAMPLE_CORPUS.md` links the checked boundary-gap calibration sample into the operator loop, and `fixtures/boundary_gap/calibration/runtime-fixtures-v1/` pins the main static/runtime agreement buckets. | Maintenance; runtime mutation language stays inside calibration/runtime reports. |

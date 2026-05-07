@@ -11,6 +11,11 @@ are scoped or reviewed.
 
 ### Added
 
+- Added `ripr agent start --root . --seam-id <id> --out target/ripr/workflow`
+  to write a source-edit-free workflow packet with `workflow.json`,
+  `commands.md`, and `agent-brief.json` for one selected seam. The packet
+  names artifact paths, shared commands, missing inputs, and explicit no-edit,
+  no-generated-test, no-LLM-call boundaries.
 - Added `ripr agent status --root . --json`, a read-only LLM work-loop status
   report that checks existing agent artifacts, recovers a seam id when
   possible, emits missing-step commands, and warns on stale-looking verify or

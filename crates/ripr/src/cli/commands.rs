@@ -120,39 +120,63 @@ fn run_agent_start(options: AgentStartOptions) -> Result<(), String> {
         ));
     }
 
-    std::fs::create_dir_all(&options.out)
-        .map_err(|err| format!("create {} failed: {err}", options.out.display()))?;
+    let config = load_for_root(&options.root)?;
+    let mut input = CheckInput {
+        root: options.root.clone(),
+        ..CheckInput::default()
+    };
+    apply_to_check_input(&mut input, &config, CheckInputExplicit::default());
 
-    let report = app::agent_workflow::build_agent_workflow_report(
-        &options.root,
-        &Mode::Draft,
-        &options.seam_id,
-        &options.out,
+    let working_set = AgentBriefResolvedWorkingSet::seam_id(options.seam_id.clone());
+    let classified = analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
+    let selection = select_agent_brief_seams(
+        &classified,
+        &working_set,
+        1,
+        AgentBriefPolicy::from_config(&config),
     );
-    let json = app::agent_workflow::render_agent_workflow_json(&report)?;
-    let markdown = app::agent_workflow::render_agent_workflow_markdown(&report);
+    if selection.top_seams.is_empty() {
+        return Err(format!(
+            "agent start seam_id {} was not found or is hidden by config",
+            options.seam_id
+        ));
+    }
 
-    let json_path = options
-        .out
-        .join(app::agent_workflow::AGENT_WORKFLOW_JSON_FILE);
-    let markdown_path = options
-        .out
-        .join(app::agent_workflow::AGENT_WORKFLOW_MARKDOWN_FILE);
-    std::fs::write(&json_path, json).map_err(|err| {
-        format!(
-            "write {} failed: {err}",
-            output::outcome::display_path(&json_path)
-        )
-    })?;
-    std::fs::write(&markdown_path, markdown).map_err(|err| {
-        format!(
-            "write {} failed: {err}",
-            output::outcome::display_path(&markdown_path)
-        )
-    })?;
+    let out_dir = resolve_agent_start_out_dir(&input.root, &options.out_dir);
+    std::fs::create_dir_all(&out_dir)
+        .map_err(|err| format!("create {} failed: {err}", out_dir.display()))?;
 
-    println!("Wrote {}", output::outcome::display_path(&json_path));
-    println!("Wrote {}", output::outcome::display_path(&markdown_path));
+    let agent_brief_json = output::agent_brief::render_agent_brief_json(
+        &input.root,
+        &input.mode,
+        &config,
+        &working_set,
+        &selection,
+    )?;
+    let agent_brief_path = out_dir.join("agent-brief.json");
+    write_text_file(&agent_brief_path, &agent_brief_json)?;
+
+    let manifest = app::agent_workflow::build_agent_workflow_manifest(
+        &input.root,
+        &options.root,
+        &input.mode,
+        &options.out_dir,
+        &options.seam_id,
+        &agent_brief_json,
+    )?;
+    let workflow_json = output::agent_workflow::render_agent_workflow_json(&manifest)?;
+    let commands_md = output::agent_workflow::render_agent_workflow_commands_md(&manifest);
+    let workflow_path = out_dir.join("workflow.json");
+    let commands_path = out_dir.join("commands.md");
+    write_text_file(&workflow_path, &workflow_json)?;
+    write_text_file(&commands_path, &commands_md)?;
+
+    println!("Wrote {}", workflow_path.display());
+    println!("Wrote {}", commands_path.display());
+    println!("Wrote {}", agent_brief_path.display());
+    if let Some(next) = manifest.missing_inputs.first() {
+        println!("Next: {}", next.command);
+    }
     Ok(())
 }
 
@@ -290,6 +314,30 @@ fn run_agent_status(options: AgentStatusOptions) -> Result<(), String> {
     let rendered = app::agent_status::render_agent_status_json(&report)?;
     print!("{rendered}");
     Ok(())
+}
+
+fn resolve_agent_start_out_dir(root: &Path, out_dir: &Path) -> PathBuf {
+    if out_dir.is_absolute() {
+        out_dir.to_path_buf()
+    } else {
+        root.join(out_dir)
+    }
+}
+
+fn write_text_file(path: &Path, rendered: &str) -> Result<(), String> {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent)
+            .map_err(|err| format!("create {} failed: {err}", parent.display()))?;
+    }
+    std::fs::write(path, rendered).map_err(|err| {
+        format!(
+            "write {} failed: {err}",
+            output::outcome::display_path(path)
+        )
+    })
 }
 
 fn validate_agent_receipt_verify_path(root: &Path, path: &Path) -> Result<PathBuf, String> {
@@ -1626,6 +1674,7 @@ mod tests {
         assert_eq!(pilot(&args(&["--help"])), Ok(()));
         assert_eq!(calibrate(&args(&["--help"])), Ok(()));
         assert_eq!(agent(&args(&["--help"])), Ok(()));
+        assert_eq!(agent(&args(&["start", "--help"])), Ok(()));
         assert_eq!(agent(&args(&["brief", "--help"])), Ok(()));
         assert_eq!(agent(&args(&["status", "--help"])), Ok(()));
         assert_eq!(check(&args(&["--help"])), Ok(()));
@@ -1900,7 +1949,7 @@ mod tests {
     }
 
     #[test]
-    fn agent_start_rejects_missing_root_before_writing_manifest() {
+    fn agent_start_rejects_missing_root_before_analysis() {
         assert_eq!(
             agent(&args(&[
                 "start",
@@ -1908,49 +1957,12 @@ mod tests {
                 "target/ripr/missing-agent-start-root",
                 "--seam-id",
                 "f3c9e4d21a0b7c88",
-                "--out",
-                "target/ripr/workflow",
             ])),
             Err(
                 "agent start root target/ripr/missing-agent-start-root is not a directory"
                     .to_string()
             )
         );
-    }
-
-    #[test]
-    fn agent_start_writes_workflow_manifest_files() -> Result<(), String> {
-        let root = unique_command_test_dir("agent-start-root");
-        let out = root.join("target/ripr/workflow");
-        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
-
-        agent(&args(&[
-            "start",
-            "--root",
-            &root.display().to_string(),
-            "--seam-id",
-            "67fc764ba37d77bd",
-            "--out",
-            &out.display().to_string(),
-        ]))?;
-
-        let json_path = out.join(app::agent_workflow::AGENT_WORKFLOW_JSON_FILE);
-        let markdown_path = out.join(app::agent_workflow::AGENT_WORKFLOW_MARKDOWN_FILE);
-        let json = std::fs::read_to_string(&json_path)
-            .map_err(|err| format!("read workflow JSON: {err}"))?;
-        let markdown = std::fs::read_to_string(&markdown_path)
-            .map_err(|err| format!("read workflow Markdown: {err}"))?;
-
-        assert!(json.contains(r#""schema_version": "0.1""#));
-        assert!(json.contains(r#""seam_id": "67fc764ba37d77bd""#));
-        assert!(json.contains(r#""next_step": "before_snapshot""#));
-        assert!(json.contains("ripr agent packet"));
-        assert!(json.contains("ripr agent receipt"));
-        assert!(markdown.contains("# RIPR Agent Workflow"));
-        assert!(markdown.contains("Static evidence only; no runtime mutation execution."));
-
-        let _ = std::fs::remove_dir_all(&root);
-        Ok(())
     }
 
     #[test]

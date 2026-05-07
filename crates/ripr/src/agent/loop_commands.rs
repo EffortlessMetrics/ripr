@@ -1,19 +1,11 @@
 use std::path::Path;
 
-pub(crate) const WORKFLOW_BEFORE_SNAPSHOT_FILE: &str = "before.repo-exposure.json";
-pub(crate) const WORKFLOW_AFTER_SNAPSHOT_FILE: &str = "after.repo-exposure.json";
-pub(crate) const WORKFLOW_AGENT_PACKET_FILE: &str = "agent-packet.json";
-pub(crate) const WORKFLOW_AGENT_BRIEF_FILE: &str = "agent-brief.json";
-pub(crate) const WORKFLOW_AGENT_VERIFY_FILE: &str = "agent-verify.json";
-pub(crate) const WORKFLOW_AGENT_WORKFLOW_JSON_FILE: &str = "agent-workflow.json";
-pub(crate) const WORKFLOW_AGENT_WORKFLOW_MARKDOWN_FILE: &str = "agent-workflow.md";
-pub(crate) const WORKFLOW_AGENT_STATUS_FILE: &str = "agent-status.json";
-pub(crate) const WORKFLOW_AGENT_REVIEW_SUMMARY_FILE: &str = "agent-review-summary.json";
-
 pub(crate) const WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT: &str =
     "target/ripr/workflow/before.repo-exposure.json";
 pub(crate) const WORKFLOW_AFTER_SNAPSHOT_ARTIFACT: &str =
     "target/ripr/workflow/after.repo-exposure.json";
+pub(crate) const WORKFLOW_MANIFEST_ARTIFACT: &str = "target/ripr/workflow/workflow.json";
+pub(crate) const WORKFLOW_COMMANDS_MARKDOWN_ARTIFACT: &str = "target/ripr/workflow/commands.md";
 pub(crate) const WORKFLOW_AGENT_SEAM_PACKETS_ARTIFACT: &str =
     "target/ripr/workflow/agent-seam-packets.json";
 pub(crate) const WORKFLOW_AGENT_PACKET_ARTIFACT: &str = "target/ripr/workflow/agent-packet.json";
@@ -32,69 +24,13 @@ pub(crate) const WORKFLOW_AGENT_STATUS_ARTIFACT: &str = "target/ripr/workflow/ag
 pub(crate) const WORKFLOW_AGENT_REVIEW_SUMMARY_ARTIFACT: &str =
     "target/ripr/workflow/agent-review-summary.json";
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct AgentWorkflowArtifacts {
-    pub(crate) before_snapshot: String,
-    pub(crate) after_snapshot: String,
-    pub(crate) agent_packet: String,
-    pub(crate) agent_brief: String,
-    pub(crate) agent_verify: String,
-    pub(crate) agent_receipt: String,
-    pub(crate) agent_status: String,
-    pub(crate) review_summary: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct AgentWorkflowCommands {
-    pub(crate) before_snapshot: String,
-    pub(crate) agent_packet: String,
-    pub(crate) agent_brief: String,
-    pub(crate) after_snapshot: String,
-    pub(crate) agent_verify: String,
-    pub(crate) agent_receipt: String,
-    pub(crate) agent_status: String,
-    pub(crate) review_summary: String,
-}
-
-pub(crate) fn agent_workflow_artifacts(out_dir: &Path) -> AgentWorkflowArtifacts {
-    AgentWorkflowArtifacts {
-        before_snapshot: workflow_path(out_dir, WORKFLOW_BEFORE_SNAPSHOT_FILE),
-        after_snapshot: workflow_path(out_dir, WORKFLOW_AFTER_SNAPSHOT_FILE),
-        agent_packet: workflow_path(out_dir, WORKFLOW_AGENT_PACKET_FILE),
-        agent_brief: workflow_path(out_dir, WORKFLOW_AGENT_BRIEF_FILE),
-        agent_verify: workflow_path(out_dir, WORKFLOW_AGENT_VERIFY_FILE),
-        agent_receipt: WORKFLOW_AGENT_RECEIPT_ARTIFACT.to_string(),
-        agent_status: workflow_path(out_dir, WORKFLOW_AGENT_STATUS_FILE),
-        review_summary: workflow_path(out_dir, WORKFLOW_AGENT_REVIEW_SUMMARY_FILE),
-    }
-}
-
-pub(crate) fn agent_workflow_commands(
-    root: &str,
-    mode: &str,
-    seam_id: &str,
-    artifacts: &AgentWorkflowArtifacts,
-) -> AgentWorkflowCommands {
-    AgentWorkflowCommands {
-        before_snapshot: check_repo_exposure_command(root, mode, &artifacts.before_snapshot),
-        agent_packet: agent_packet_command(root, seam_id, &artifacts.agent_packet),
-        agent_brief: agent_brief_command(root, seam_id, &artifacts.agent_brief),
-        after_snapshot: check_repo_exposure_command(root, mode, &artifacts.after_snapshot),
-        agent_verify: agent_verify_command(
-            root,
-            &artifacts.before_snapshot,
-            &artifacts.after_snapshot,
-            Some(&artifacts.agent_verify),
-        ),
-        agent_receipt: agent_receipt_command(
-            root,
-            &artifacts.agent_verify,
-            seam_id,
-            Some(&artifacts.agent_receipt),
-        ),
-        agent_status: agent_status_command(root, Some(&artifacts.agent_status)),
-        review_summary: agent_review_summary_command(root, Some(&artifacts.review_summary)),
-    }
+pub(crate) fn agent_start_command(root: &str, seam_id: &str, out_dir: &str) -> String {
+    format!(
+        "ripr agent start --root {} --seam-id {} --out {}",
+        shell_arg(root),
+        shell_arg(seam_id),
+        shell_arg(out_dir)
+    )
 }
 
 pub(crate) fn check_repo_exposure_command(root: &str, mode: &str, out_path: &str) -> String {
@@ -214,12 +150,17 @@ pub(crate) fn display_path(path: &Path) -> String {
     }
 }
 
-pub(crate) fn shell_path(path: &Path) -> String {
-    shell_arg(&display_path(path))
+pub(crate) fn workflow_artifact_path(out_dir: &Path, file_name: &str) -> String {
+    let out_dir = display_path(out_dir);
+    if out_dir == "." {
+        file_name.to_string()
+    } else {
+        format!("{}/{}", out_dir.trim_end_matches('/'), file_name)
+    }
 }
 
-fn workflow_path(out_dir: &Path, file_name: &str) -> String {
-    display_path(&out_dir.join(file_name))
+pub(crate) fn shell_path(path: &Path) -> String {
+    shell_arg(&display_path(path))
 }
 
 pub(crate) fn shell_arg(value: &str) -> String {
@@ -245,6 +186,10 @@ mod tests {
 
     #[test]
     fn workflow_commands_match_existing_status_templates() {
+        assert_eq!(
+            agent_start_command(".", "seam-a", "target/ripr/workflow"),
+            "ripr agent start --root . --seam-id seam-a --out target/ripr/workflow"
+        );
         assert_eq!(
             check_repo_exposure_command(".", "draft", WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT),
             "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json"
@@ -307,30 +252,38 @@ mod tests {
         assert_eq!(shell_arg("repo root"), "\"repo root\"");
         assert_eq!(shell_arg("target/ripr/workflow"), "target/ripr/workflow");
         assert_eq!(
-            check_repo_exposure_command(
-                "repo root",
-                "draft",
-                "target/ripr/work flow/before.repo-exposure.json"
-            ),
-            "ripr check --root \"repo root\" --mode draft --format repo-exposure-json > \"target/ripr/work flow/before.repo-exposure.json\""
+            workflow_artifact_path(Path::new("target/ripr/workflow"), "workflow.json"),
+            "target/ripr/workflow/workflow.json"
         );
         assert_eq!(
             agent_seam_packets_command(".", "draft mode", "target/ripr/workflow/packets.json"),
             "ripr check --root . --mode \"draft mode\" --format agent-seam-packets-json > target/ripr/workflow/packets.json"
         );
-    }
-
-    #[test]
-    fn workflow_artifacts_can_follow_custom_manifest_directory() {
-        let artifacts = agent_workflow_artifacts(Path::new("target/ripr/workflow"));
-
-        assert_eq!(artifacts.before_snapshot, WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT);
-        assert_eq!(artifacts.agent_packet, WORKFLOW_AGENT_PACKET_ARTIFACT);
-        assert_eq!(artifacts.agent_receipt, WORKFLOW_AGENT_RECEIPT_ARTIFACT);
-        assert_eq!(artifacts.agent_status, WORKFLOW_AGENT_STATUS_ARTIFACT);
         assert_eq!(
-            artifacts.review_summary,
-            WORKFLOW_AGENT_REVIEW_SUMMARY_ARTIFACT
+            agent_start_command("repo root", "seam a", "target/ripr/work flow"),
+            "ripr agent start --root \"repo root\" --seam-id \"seam a\" --out \"target/ripr/work flow\""
+        );
+        assert_eq!(
+            check_repo_exposure_command("repo root", "draft", "target/ripr/work flow/before.json"),
+            "ripr check --root \"repo root\" --mode draft --format repo-exposure-json > \"target/ripr/work flow/before.json\""
+        );
+        assert_eq!(
+            agent_verify_command(
+                "repo root",
+                "target/ripr/work flow/before.json",
+                "target/ripr/work flow/after.json",
+                Some("target/ripr/work flow/verify.json"),
+            ),
+            "ripr agent verify --root \"repo root\" --before \"target/ripr/work flow/before.json\" --after \"target/ripr/work flow/after.json\" --json > \"target/ripr/work flow/verify.json\""
+        );
+        assert_eq!(
+            agent_receipt_command(
+                "repo root",
+                "target/ripr/work flow/verify.json",
+                "seam a",
+                Some("target/ripr/work flow/receipt.json"),
+            ),
+            "ripr agent receipt --root \"repo root\" --verify-json \"target/ripr/work flow/verify.json\" --seam-id \"seam a\" --json --out \"target/ripr/work flow/receipt.json\""
         );
     }
 }
