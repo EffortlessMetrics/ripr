@@ -15019,6 +15019,18 @@ fn check_droid_common(
 fn check_droid_security_scan_config(violations: &mut Vec<String>, path_label: &str, text: &str) {
     let lines = active_yaml_lines(text);
 
+    if !has_active_line(&lines, "workflow_dispatch:") {
+        violations.push(format!(
+            "{path_label}: workflow_dispatch trigger is required"
+        ));
+    }
+
+    if !has_active_line(&lines, "cron: \"0 8 * * 1\"") {
+        violations.push(format!(
+            "{path_label}: weekly Monday 08:00 UTC schedule is required"
+        ));
+    }
+
     if !has_active_line(&lines, "droid-security-scan-${{ github.repository }}") {
         violations.push(format!(
             "{path_label}: concurrency group must be repository-scoped"
@@ -15028,6 +15040,12 @@ fn check_droid_security_scan_config(violations: &mut Vec<String>, path_label: &s
     if !has_active_line(&lines, "cancel-in-progress: false") {
         violations.push(format!(
             "{path_label}: concurrency cancel-in-progress must be false"
+        ));
+    }
+
+    if !has_active_line(&lines, "MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}") {
+        violations.push(format!(
+            "{path_label}: MINIMAX_API_KEY must be job-level env"
         ));
     }
 
@@ -20886,11 +20904,17 @@ show_full_output: false
 
     fn valid_droid_security_scan_yaml() -> &'static str {
         r#"
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 8 * * 1"
 concurrency:
   group: droid-security-scan-${{ github.repository }}
   cancel-in-progress: false
 jobs:
   droid-security-scan:
+    env:
+      MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
     steps:
       - name: Configure MiniMax BYOK for Factory Droid
         run: |
@@ -20937,6 +20961,31 @@ jobs:
             .replace("cancel-in-progress: false", "cancel-in-progress: true");
         let violations = droid_security_scan_violations(&yaml);
         assert!(violations.iter().any(|v| v.contains("cancel-in-progress")));
+    }
+
+    #[test]
+    fn check_droid_security_scan_flags_missing_workflow_dispatch() {
+        let yaml = valid_droid_security_scan_yaml().replace("  workflow_dispatch:\n", "");
+        let violations = droid_security_scan_violations(&yaml);
+        assert!(violations.iter().any(|v| v.contains("workflow_dispatch")));
+    }
+
+    #[test]
+    fn check_droid_security_scan_flags_wrong_weekly_schedule() {
+        let yaml =
+            valid_droid_security_scan_yaml().replace("cron: \"0 8 * * 1\"", "cron: \"0 8 * * *\"");
+        let violations = droid_security_scan_violations(&yaml);
+        assert!(violations.iter().any(|v| v.contains("weekly")));
+    }
+
+    #[test]
+    fn check_droid_security_scan_flags_missing_minimax_job_env() {
+        let yaml = valid_droid_security_scan_yaml().replace(
+            "      MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}\n",
+            "",
+        );
+        let violations = droid_security_scan_violations(&yaml);
+        assert!(violations.iter().any(|v| v.contains("MINIMAX_API_KEY")));
     }
 
     #[test]
