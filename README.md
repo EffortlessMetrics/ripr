@@ -109,6 +109,10 @@ mutation testing:
 `ripr` is the middle layer: faster and more targeted than mutation testing, more
 oracle-aware than coverage.
 
+## Coverage
+
+The Codecov badge above indicates execution-surface evidence only: whether code paths executed during testing. Coverage does not prove test adequacy, correctness, safety, or completeness. See [Coverage](docs/ci/coverage.md) for what the coverage signal measures and does not claim.
+
 ## Quick Start
 
 Most users use RIPR through the editor or CI. The CLI is the common engine

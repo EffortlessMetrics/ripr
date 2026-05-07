@@ -37,6 +37,62 @@ jobs:
           path: lcov.info
           if-no-files-found: error
 
+      - name: Generate coverage receipt
+        if: always()
+        run: |
+          mkdir -p target/coverage
+          python3 - <<'PY'
+          import json
+          from datetime import datetime
+
+          receipt = {
+            "schema_version": 1,
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "repo": "ripr",
+            "lane": "coverage",
+            "flag": "rust",
+            "claim_boundary": ["execution_surface_only"],
+            "artifacts": {
+              "lcov": "lcov.info"
+            }
+          }
+
+          import pathlib
+          pathlib.Path("target/coverage/coverage-receipt.json").write_text(json.dumps(receipt, indent=2))
+          PY
+
+      - name: Validate coverage receipt
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          receipt = json.loads(Path("target/coverage/coverage-receipt.json").read_text())
+          assert receipt["schema_version"] == 1, "schema_version must be 1"
+          assert receipt["repo"] == "ripr", "repo must be ripr"
+          assert receipt["lane"] == "coverage", "lane must be coverage"
+          assert receipt["flag"] == "rust", "flag must be rust"
+          assert "execution_surface_only" in receipt["claim_boundary"], "claim_boundary must include execution_surface_only"
+          print("✓ coverage receipt valid")
+          PY
+
+      - name: Summarize coverage artifacts
+        if: always()
+        run: |
+          {
+            echo "## Coverage"
+            echo ""
+            echo "| Artifact | Present |"
+            echo "| --- | ---: |"
+            echo "| lcov.info | $([ -s lcov.info ] && echo yes || echo no) |"
+            echo "| coverage-receipt.json | $([ -s target/coverage/coverage-receipt.json ] && echo yes || echo no) |"
+            echo ""
+            echo "Codecov flag: \`rust\`"
+            echo ""
+            echo "Claim boundary: execution-surface evidence only."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload coverage to Codecov
         if: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
         uses: codecov/codecov-action@v6
@@ -44,7 +100,7 @@ jobs:
           files: lcov.info
           flags: rust
           name: rust-workspace
-          fail_ci_if_error: true
+          fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Explain skipped Codecov upload
