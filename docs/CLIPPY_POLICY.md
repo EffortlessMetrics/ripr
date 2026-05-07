@@ -61,6 +61,11 @@ Currently denied at the workspace level (selected highlights):
   `clippy::should_panic_without_expect`.
 - Memory / drop footguns: `clippy::mem_forget`, `clippy::forget_non_drop`,
   `clippy::drop_non_drop`.
+- Concurrency rails (the LSP backend is async):
+  `clippy::await_holding_lock`, `clippy::await_holding_refcell_ref`,
+  `clippy::rc_mutex`, `clippy::arc_with_non_send_sync`,
+  `clippy::mutex_atomic`, `clippy::mut_mutex_lock`,
+  `clippy::readonly_write_lock`.
 - Numeric correctness: `clippy::float_cmp`, `clippy::float_cmp_const`.
 - Silent failure: `clippy::let_underscore_future`,
   `clippy::let_underscore_lock`, `clippy::unused_result_ok`,

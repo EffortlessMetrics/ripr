@@ -34,6 +34,19 @@ mem_forget = "deny"
 forget_non_drop = "deny"
 drop_non_drop = "deny"
 
+# Concurrency rails. The LSP backend is async; these catch lock/refcell
+# guards held across `.await` (which deadlock on multi-threaded runtimes
+# or panic on RefCell re-entry), Rc<Mutex<T>> (non-Send, almost always
+# wrong), Arc wrapping non-Send/Sync data, Mutex-as-atomic, and obvious
+# RwLock misuse.
+await_holding_lock = "deny"
+await_holding_refcell_ref = "deny"
+rc_mutex = "deny"
+arc_with_non_send_sync = "deny"
+mutex_atomic = "deny"
+mut_mutex_lock = "deny"
+readonly_write_lock = "deny"
+
 # Numeric correctness.
 float_cmp = "deny"
 float_cmp_const = "deny"

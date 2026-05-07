@@ -57,6 +57,39 @@ level = "deny"
 name = "clippy::drop_non_drop"
 level = "deny"
 
+# Concurrency rails. The LSP backend is async; these catch sync-Mutex /
+# RwLock / RefCell guards held across `.await` (which deadlock on
+# multi-threaded runtimes or panic on RefCell re-entry), Rc<Mutex<T>>
+# (non-Send, almost always wrong), Arc wrapping non-Send/Sync data,
+# Mutex-as-atomic, and obvious RwLock misuse.
+[[active.concurrency]]
+name = "clippy::await_holding_lock"
+level = "deny"
+
+[[active.concurrency]]
+name = "clippy::await_holding_refcell_ref"
+level = "deny"
+
+[[active.concurrency]]
+name = "clippy::rc_mutex"
+level = "deny"
+
+[[active.concurrency]]
+name = "clippy::arc_with_non_send_sync"
+level = "deny"
+
+[[active.concurrency]]
+name = "clippy::mutex_atomic"
+level = "deny"
+
+[[active.concurrency]]
+name = "clippy::mut_mutex_lock"
+level = "deny"
+
+[[active.concurrency]]
+name = "clippy::readonly_write_lock"
+level = "deny"
+
 [[active.numeric]]
 name = "clippy::float_cmp"
 level = "deny"
