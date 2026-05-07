@@ -28,6 +28,11 @@ export interface RiprTargetedTestBriefTarget {
   brief?: string;
 }
 
+export interface RiprAgentLoopCommandTarget {
+  command?: string;
+  label?: string;
+}
+
 export interface RiprRelatedTestTarget {
   uri?: string;
   line?: number;
@@ -234,6 +239,22 @@ export class RiprClientController {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copy targeted test brief failed: ${message}`);
       vscode.window.showWarningMessage('ripr could not copy the targeted test brief. See ripr output for details.');
+    }
+  }
+
+  async copyAgentLoopCommand(target?: RiprAgentLoopCommandTarget): Promise<void> {
+    const command = typeof target?.command === 'string' ? target.command.trim() : '';
+    if (!command) {
+      vscode.window.showInformationMessage('No ripr agent loop command is available for this diagnostic.');
+      return;
+    }
+    try {
+      await this.runtime.writeClipboard(command);
+      vscode.window.showInformationMessage('Copied ripr agent loop command to clipboard.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(`ripr copy agent loop command failed: ${message}`);
+      vscode.window.showWarningMessage('ripr could not copy the agent loop command. See ripr output for details.');
     }
   }
 

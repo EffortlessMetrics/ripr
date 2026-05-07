@@ -13,8 +13,10 @@ use super::hover::{hover_response, hover_with_snapshot_status};
 use super::state::{AnalysisSnapshot, DocumentStore, RefreshMetadata, format_duration};
 use super::uri::{encode_uri_path, file_uri_for_path, path_from_file_uri};
 use super::{
-    COLLECT_CONTEXT_COMMAND, COPY_CONTEXT_COMMAND, COPY_SUGGESTED_ASSERTION_COMMAND,
-    COPY_TARGETED_TEST_BRIEF_COMMAND, HOVER_TEXT, OPEN_RELATED_TEST_COMMAND, REFRESH_COMMAND,
+    COLLECT_CONTEXT_COMMAND, COPY_AFTER_SNAPSHOT_COMMAND, COPY_AGENT_BRIEF_COMMAND,
+    COPY_AGENT_PACKET_COMMAND, COPY_AGENT_RECEIPT_COMMAND, COPY_AGENT_VERIFY_COMMAND,
+    COPY_CONTEXT_COMMAND, COPY_SUGGESTED_ASSERTION_COMMAND, COPY_TARGETED_TEST_BRIEF_COMMAND,
+    HOVER_TEXT, OPEN_RELATED_TEST_COMMAND, REFRESH_COMMAND,
 };
 use crate::app::Mode;
 use crate::domain::{
@@ -1180,6 +1182,11 @@ fn seam_code_actions_surface_packet_assertion_related_test_and_refresh() -> Resu
         vec![
             COPY_CONTEXT_COMMAND,
             COPY_TARGETED_TEST_BRIEF_COMMAND,
+            COPY_AGENT_PACKET_COMMAND,
+            COPY_AGENT_BRIEF_COMMAND,
+            COPY_AFTER_SNAPSHOT_COMMAND,
+            COPY_AGENT_VERIFY_COMMAND,
+            COPY_AGENT_RECEIPT_COMMAND,
             COPY_SUGGESTED_ASSERTION_COMMAND,
             OPEN_RELATED_TEST_COMMAND,
             REFRESH_COMMAND,
@@ -1198,20 +1205,67 @@ fn seam_code_actions_surface_packet_assertion_related_test_and_refresh() -> Resu
         "expected targeted test brief argument, got {:?}",
         commands[1].2
     );
-    assert_eq!(commands[2].0, "Copy suggested assertion");
+    assert_eq!(commands[2].0, "Copy Agent Packet Command");
+    assert_eq!(commands[2].2[0]["label"], "agent_packet");
+    assert_eq!(commands[2].2[0]["root"], ".");
+    assert_eq!(commands[2].2[0]["mode"], "draft");
+    assert_eq!(commands[2].2[0]["seam_id"], seam.seam.id().as_str());
+    assert_eq!(commands[2].2[0]["seam_kind"], "predicate_boundary");
+    assert_eq!(commands[2].2[0]["seam_file"], "src/pricing.rs");
+    assert_eq!(commands[2].2[0]["owner"], "pricing::discounted_total");
+    assert_eq!(commands[2].2[0]["line"], 88);
+    assert_eq!(commands[2].2[0]["severity"], "warning");
+    assert_eq!(
+        commands[2].2[0]["target_artifact"],
+        "target/ripr/agent/agent-packet.json"
+    );
+    assert_eq!(
+        commands[2].2[0]["command"],
+        format!(
+            "ripr agent packet --root . --seam-id {} --json > target/ripr/agent/agent-packet.json",
+            seam.seam.id().as_str()
+        )
+    );
+    assert_eq!(commands[3].0, "Copy Agent Brief Command");
+    assert_eq!(
+        commands[3].2[0]["command"],
+        format!(
+            "ripr agent brief --root . --seam-id {} --json > target/ripr/agent/agent-brief.json",
+            seam.seam.id().as_str()
+        )
+    );
+    assert_eq!(commands[4].0, "Copy After Snapshot Command");
+    assert_eq!(
+        commands[4].2[0]["command"],
+        "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json"
+    );
+    assert_eq!(commands[5].0, "Copy Agent Verify Command");
+    assert_eq!(
+        commands[5].2[0]["command"],
+        "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > target/ripr/agent/agent-verify.json"
+    );
+    assert_eq!(commands[6].0, "Copy Agent Receipt Command");
+    assert_eq!(
+        commands[6].2[0]["command"],
+        format!(
+            "ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id {} --json --out target/ripr/agent/agent-receipt.json",
+            seam.seam.id().as_str()
+        )
+    );
+    assert_eq!(commands[7].0, "Copy suggested assertion");
     assert!(
-        commands[2].2[0]["assertion"]
+        commands[7].2[0]["assertion"]
             .as_str()
             .is_some_and(|value| value.contains("assert_eq!(discounted_total")),
         "expected assertion argument, got {:?}",
-        commands[2].2
+        commands[7].2
     );
-    assert_eq!(commands[3].0, "Open best related test");
+    assert_eq!(commands[8].0, "Open best related test");
     assert_eq!(
-        commands[3].2[0]["uri"],
+        commands[8].2[0]["uri"],
         "file:///workspace/tests/pricing.rs"
     );
-    assert_eq!(commands[3].2[0]["line"], 12);
+    assert_eq!(commands[8].2[0]["line"], 12);
     Ok(())
 }
 
@@ -1244,6 +1298,11 @@ fn seam_code_actions_keep_legacy_finding_context_when_both_diagnostics_are_prese
         vec![
             "Copy seam packet",
             "Copy targeted test brief",
+            "Copy Agent Packet Command",
+            "Copy Agent Brief Command",
+            "Copy After Snapshot Command",
+            "Copy Agent Verify Command",
+            "Copy Agent Receipt Command",
             "Copy suggested assertion",
             "Open best related test",
             "Copy ripr context packet",
@@ -1251,8 +1310,8 @@ fn seam_code_actions_keep_legacy_finding_context_when_both_diagnostics_are_prese
         ]
     );
     assert_eq!(commands[0].2[0]["seam_id"], seam.seam.id().as_str());
-    assert_eq!(commands[4].2[0]["finding_id"], "probe:pricing:88:predicate");
-    assert_eq!(commands[4].2[0]["probe_id"], "probe:pricing:88:predicate");
+    assert_eq!(commands[9].2[0]["finding_id"], "probe:pricing:88:predicate");
+    assert_eq!(commands[9].2[0]["probe_id"], "probe:pricing:88:predicate");
     Ok(())
 }
 
@@ -1416,11 +1475,18 @@ fn seam_code_actions_omit_assertion_and_related_test_when_evidence_is_missing() 
         vec![
             COPY_CONTEXT_COMMAND,
             COPY_TARGETED_TEST_BRIEF_COMMAND,
+            COPY_AGENT_PACKET_COMMAND,
+            COPY_AGENT_BRIEF_COMMAND,
+            COPY_AFTER_SNAPSHOT_COMMAND,
+            COPY_AGENT_VERIFY_COMMAND,
+            COPY_AGENT_RECEIPT_COMMAND,
             REFRESH_COMMAND
         ]
     );
     assert_eq!(commands[0].0, "Copy seam packet");
     assert_eq!(commands[1].0, "Copy targeted test brief");
+    assert_eq!(commands[2].0, "Copy Agent Packet Command");
+    assert_eq!(commands[6].0, "Copy Agent Receipt Command");
     Ok(())
 }
 

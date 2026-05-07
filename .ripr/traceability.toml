@@ -279,9 +279,13 @@ tests = [
   "crates/ripr/src/lsp/hover.rs::seam_hover_tests::opaque_seam_hover_advises_inspecting_static_limitation",
   "crates/ripr/src/lsp/tests.rs::seam_code_actions_surface_packet_assertion_related_test_and_refresh",
   "crates/ripr/src/lsp/tests.rs::seam_code_actions_omit_assertion_and_related_test_when_evidence_is_missing",
-  "crates/ripr/src/lsp/tests.rs::execute_command_collect_context_returns_agent_seam_packet_for_known_seam"
+  "crates/ripr/src/lsp/tests.rs::boundary_gap_lsp_code_actions_match_fixture_expectation",
+  "crates/ripr/src/lsp/tests.rs::execute_command_collect_context_returns_agent_seam_packet_for_known_seam",
+  "editors/vscode/test/suite/extension.test.ts::copyAgentLoopCommand copies command text"
 ]
-fixtures = []
+fixtures = [
+  "fixtures/boundary_gap"
+]
 code = [
   "crates/ripr/src/analysis/seams.rs",
   "crates/ripr/src/analysis/seam_inventory.rs",

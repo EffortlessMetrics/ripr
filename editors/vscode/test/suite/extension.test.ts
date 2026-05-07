@@ -28,6 +28,11 @@ suite('Extension Smoke', () => {
     assert.ok(commands.includes('ripr.copyContext'));
     assert.ok(commands.includes('ripr.copySuggestedAssertion'));
     assert.ok(commands.includes('ripr.copyTargetedTestBrief'));
+    assert.ok(commands.includes('ripr.copyAgentPacketCommand'));
+    assert.ok(commands.includes('ripr.copyAgentBriefCommand'));
+    assert.ok(commands.includes('ripr.copyAfterSnapshotCommand'));
+    assert.ok(commands.includes('ripr.copyAgentVerifyCommand'));
+    assert.ok(commands.includes('ripr.copyAgentReceiptCommand'));
     assert.ok(commands.includes('ripr.openRelatedTest'));
     assert.ok(commands.includes('ripr.openSettings'));
   });
@@ -200,6 +205,32 @@ suite('Extension Smoke', () => {
       brief: 42
     });
     await vscode.commands.executeCommand('ripr.copyTargetedTestBrief');
+  });
+
+  test('copyAgentLoopCommand copies command text', async () => {
+    const command = 'ripr agent verify --root . --before before.json --after after.json --json';
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.copyAgentLoopCommand({ command });
+
+      assert.strictEqual(context.clipboardWrites[0], command);
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('agent loop command handlers ignore malformed args without throwing', async () => {
+    await vscode.commands.executeCommand('ripr.copyAgentPacketCommand', {
+      command: ''
+    });
+    await vscode.commands.executeCommand('ripr.copyAgentBriefCommand', {
+      command: 42
+    });
+    await vscode.commands.executeCommand('ripr.copyAfterSnapshotCommand');
+    await vscode.commands.executeCommand('ripr.copyAgentVerifyCommand', {
+      command: ''
+    });
+    await vscode.commands.executeCommand('ripr.copyAgentReceiptCommand');
   });
 
   test('openRelatedTest opens the target uri and line', async () => {

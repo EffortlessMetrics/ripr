@@ -14,6 +14,11 @@ pub use diagnostics::{DiagnosticBatch, workspace_diagnostic_batches};
 use tower_lsp_server::{LspService, Server};
 
 const COPY_CONTEXT_COMMAND: &str = "ripr.copyContext";
+const COPY_AGENT_PACKET_COMMAND: &str = "ripr.copyAgentPacketCommand";
+const COPY_AGENT_BRIEF_COMMAND: &str = "ripr.copyAgentBriefCommand";
+const COPY_AFTER_SNAPSHOT_COMMAND: &str = "ripr.copyAfterSnapshotCommand";
+const COPY_AGENT_VERIFY_COMMAND: &str = "ripr.copyAgentVerifyCommand";
+const COPY_AGENT_RECEIPT_COMMAND: &str = "ripr.copyAgentReceiptCommand";
 const COPY_SUGGESTED_ASSERTION_COMMAND: &str = "ripr.copySuggestedAssertion";
 const COPY_TARGETED_TEST_BRIEF_COMMAND: &str = "ripr.copyTargetedTestBrief";
 const COLLECT_CONTEXT_COMMAND: &str = "ripr.collectContext";

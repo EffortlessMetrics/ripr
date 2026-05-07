@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import {
   RiprClientController,
+  RiprAgentLoopCommandTarget,
   RiprContextTarget,
   RiprRelatedTestTarget,
   RiprSuggestedAssertionTarget,
@@ -27,6 +28,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand(
       'ripr.copyTargetedTestBrief',
       async (target?: RiprTargetedTestBriefTarget) => controller?.copyTargetedTestBrief(target)
+    ),
+    vscode.commands.registerCommand(
+      'ripr.copyAgentPacketCommand',
+      async (target?: RiprAgentLoopCommandTarget) => controller?.copyAgentLoopCommand(target)
+    ),
+    vscode.commands.registerCommand(
+      'ripr.copyAgentBriefCommand',
+      async (target?: RiprAgentLoopCommandTarget) => controller?.copyAgentLoopCommand(target)
+    ),
+    vscode.commands.registerCommand(
+      'ripr.copyAfterSnapshotCommand',
+      async (target?: RiprAgentLoopCommandTarget) => controller?.copyAgentLoopCommand(target)
+    ),
+    vscode.commands.registerCommand(
+      'ripr.copyAgentVerifyCommand',
+      async (target?: RiprAgentLoopCommandTarget) => controller?.copyAgentLoopCommand(target)
+    ),
+    vscode.commands.registerCommand(
+      'ripr.copyAgentReceiptCommand',
+      async (target?: RiprAgentLoopCommandTarget) => controller?.copyAgentLoopCommand(target)
     ),
     vscode.commands.registerCommand('ripr.openRelatedTest', async (target?: RiprRelatedTestTarget) =>
       controller?.openRelatedTest(target)

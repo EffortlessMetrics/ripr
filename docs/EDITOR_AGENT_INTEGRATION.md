@@ -32,12 +32,12 @@ rewrite the active manifest explicitly.
 | --- | --- | --- |
 | Diagnostic | LSP seam diagnostic | Must reference the same seam identity used by agent packet, brief, and receipt |
 | Evidence | Hover plus LSP cockpit | Must match agent packet vocabulary |
-| Packet | `ripr agent packet --seam-id` | Needs editor copy command |
-| Brief | `ripr agent brief` | Needs editor copy command and working-set path |
+| Packet | `ripr agent packet --seam-id` | Editor copy command is pinned; fixture and cockpit joins must reuse it |
+| Brief | `ripr agent brief` | Editor copy command is pinned; fixture and cockpit joins must reuse it |
 | Test write | Human or agent writes focused test | No generated tests and no automatic edits |
-| After snapshot | `ripr check --format repo-exposure-json > after.json` | Needs editor copy command |
-| Verify | `ripr agent verify` | Needs editor copy command and cockpit visibility |
-| Receipt | `ripr agent receipt` | Needs editor copy command and cockpit visibility |
+| After snapshot | `ripr check --format repo-exposure-json > after.json` | Editor copy command is pinned; cockpit visibility is still pending |
+| Verify | `ripr agent verify` | Editor copy command is pinned; cockpit visibility is still pending |
+| Receipt | `ripr agent receipt` | Editor copy command is pinned; cockpit visibility is still pending |
 | Cockpit | `cargo xtask operator-cockpit` | Needs verify and receipt join status |
 | CI | Generated workflow artifacts | Needs full loop artifacts uploaded |
 | Fixture | Boundary-gap and current examples | Needs canonical editor-agent loop fixture |
@@ -66,8 +66,8 @@ rewrite the active manifest explicitly.
 
 | Work item | Missing integration |
 | --- | --- |
-| `lsp/agent-loop-copy-commands` | Add command-oriented editor actions for agent packet, brief, after snapshot, verify, and receipt command text |
-| `operator/verify-receipt-status` | Join before snapshot, after snapshot, agent verify JSON, agent receipt JSON, movement counts, and next commands |
+| `lsp/agent-loop-copy-commands` | Done: seam diagnostics now expose command-oriented editor actions for agent packet, brief, after snapshot, verify, and receipt command text |
+| `operator/verify-receipt-status` | Next: join before snapshot, after snapshot, agent verify JSON, agent receipt JSON, movement counts, and next commands |
 | `fixtures/editor-agent-loop` | Pin LSP diagnostics/actions, agent brief, agent packet, agent verify, agent receipt, and operator cockpit output in one canonical fixture |
 | `ci/editor-agent-artifacts` | Upload pilot summary, repo exposure, agent brief, agent packet, agent verify, agent receipt, operator cockpit, SARIF when enabled, and badge JSON as visible artifacts |
 | `docs/full-evidence-loop` | Make the first-hour path explicit and state that `ripr init` is optional policy materialization, not activation |

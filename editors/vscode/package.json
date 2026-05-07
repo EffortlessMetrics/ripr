@@ -144,6 +144,26 @@
         "title": "ripr: Copy Targeted Test Brief"
       },
       {
+        "command": "ripr.copyAgentPacketCommand",
+        "title": "ripr: Copy Agent Packet Command"
+      },
+      {
+        "command": "ripr.copyAgentBriefCommand",
+        "title": "ripr: Copy Agent Brief Command"
+      },
+      {
+        "command": "ripr.copyAfterSnapshotCommand",
+        "title": "ripr: Copy After Snapshot Command"
+      },
+      {
+        "command": "ripr.copyAgentVerifyCommand",
+        "title": "ripr: Copy Agent Verify Command"
+      },
+      {
+        "command": "ripr.copyAgentReceiptCommand",
+        "title": "ripr: Copy Agent Receipt Command"
+      },
+      {
         "command": "ripr.openRelatedTest",
         "title": "ripr: Open Related Test"
       },

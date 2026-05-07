@@ -104,6 +104,11 @@ quieter.
 - `ripr: Copy Finding Context`
 - `ripr: Copy Suggested Assertion`
 - `ripr: Copy Targeted Test Brief`
+- `ripr: Copy Agent Packet Command`
+- `ripr: Copy Agent Brief Command`
+- `ripr: Copy After Snapshot Command`
+- `ripr: Copy Agent Verify Command`
+- `ripr: Copy Agent Receipt Command`
 - `ripr: Open Related Test`
 - `ripr: Open Settings`
 
@@ -129,6 +134,16 @@ server can provide seam-aware code actions:
   selected seam through `ripr.collectContext`.
 - `Copy targeted test brief`: copies a plain-language work order for adding one
   focused test from the same seam packet guidance.
+- `Copy Agent Packet Command`: copies the `ripr agent packet` command for the
+  selected seam.
+- `Copy Agent Brief Command`: copies the `ripr agent brief --seam-id` command
+  for the selected seam.
+- `Copy After Snapshot Command`: copies the `ripr check --format
+  repo-exposure-json` after-snapshot command for the current mode.
+- `Copy Agent Verify Command`: copies the `ripr agent verify` command that
+  compares the pilot before snapshot to the after snapshot.
+- `Copy Agent Receipt Command`: copies the `ripr agent receipt` command for the
+  selected seam.
 - `Copy suggested assertion`: copies a concrete assertion suggestion from the
   seam packet.
 - `Open best related test`: opens the strongest related test to imitate when
