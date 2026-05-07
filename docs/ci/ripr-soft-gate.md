@@ -186,6 +186,8 @@ without the false-positive damage.
 
 - `docs/RIPR_EVIDENCE_POLICY.md`
 - `docs/ci/cost-and-verification-policy.md`
+- `docs/ci/lem-budgeting.md`
+- `docs/ci/labels.md`
 - `docs/ci/ripr-ci-rollout.md`
 - `docs/STATIC_EXPOSURE_MODEL.md`
 - `docs/OUTPUT_SCHEMA.md`
