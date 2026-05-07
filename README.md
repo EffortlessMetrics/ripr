@@ -304,19 +304,20 @@ Current capabilities:
 | Agent context | Compact context packet plus per-seam `write_targeted_test` and `inspect_static_limitation` packets carrying recommended test placement, nearest tests to imitate, candidate values, missing discriminators, patterns to imitate/avoid, and assertion templates. Documented agent dispatch workflow in `docs/AGENT_DISPATCH_WORKFLOW.md`. | Agent-context v2 when there is a concrete external contract. |
 | Repository config | Repo-root `ripr.toml` can set analysis mode, oracle policy, severity mapping, suppressions path, report related-test caps, and LSP seam-diagnostic defaults. Explicit CLI flags and LSP initialization options still win. | Policy feedback after adoption. |
 | SARIF and CI policy | `ripr check --format sarif` emits diff-scoped Finding SARIF and `--format repo-sarif` emits repo seam SARIF with configured severity, suppression metadata, stable rule IDs, and stable fingerprints. `ripr init --ci github` generates a non-blocking GitHub Actions report workflow with pilot/report artifacts, repo badge JSON, and optional SARIF rendering/upload; `cargo xtask sarif-policy` compares current SARIF to a baseline only when explicitly requested. | Advisory policy feedback after adoption. |
-| Calibration | Advisory `ripr calibrate cargo-mutants` and repo-local `cargo xtask mutation-calibration` join imported cargo-mutants runtime data to static seam evidence by `seam_id` or unambiguous file/line; ambiguous file/line candidates stay unassigned. `fixtures/CALIBRATION_CORPUS.md` maps current fixtures to controlled calibration scenarios, `fixtures/EXAMPLE_CORPUS.md` links the checked boundary-gap calibration sample into the operator loop, and `fixtures/boundary_gap/calibration/runtime-fixtures-v1/` pins the main static/runtime agreement buckets. | `campaign/runtime-calibration-closeout`; runtime mutation language stays inside calibration/runtime reports. |
+| Calibration | Advisory `ripr calibrate cargo-mutants` and repo-local `cargo xtask mutation-calibration` join imported cargo-mutants runtime data to static seam evidence by `seam_id` or unambiguous file/line; ambiguous file/line candidates stay unassigned. `fixtures/CALIBRATION_CORPUS.md` maps current fixtures to controlled calibration scenarios, `fixtures/EXAMPLE_CORPUS.md` links the checked boundary-gap calibration sample into the operator loop, and `fixtures/boundary_gap/calibration/runtime-fixtures-v1/` pins the main static/runtime agreement buckets. | Maintenance; runtime mutation language stays inside calibration/runtime reports. |
 
-Campaigns 5A, 5B, 6, and 7 are complete. Campaign 7 closed the defaults-first
+Campaigns 5A, 5B, 6, 7, and 8 are complete. Campaign 7 closed the defaults-first
 adoption lane: `ripr pilot`, `ripr outcome`, advisory calibration import, the
 operator cockpit, the generated GitHub Action entrypoint, the documented VS Code
 install path, the public example corpus, and release/install proof are in place.
 The closeout audit lives at
 `docs/handoffs/2026-05-07-campaign-7-closeout.md`. Campaign 8 has a checked
-runtime calibration fixture set for the main agreement buckets; the active item
-is Campaign 8 closeout:
+runtime calibration fixture set for the main agreement buckets and keeps
+runtime data supplied and optional. The active item is now the hot-sidecar
+latency audit:
 
 ```text
-campaign/runtime-calibration-closeout
+cache/current-latency-audit
 ```
 
 Deeper capability state lives in [Capability matrix](docs/CAPABILITY_MATRIX.md)

@@ -241,7 +241,7 @@ test, and comparing before/after evidence.
 | Output | Human, JSON, context, GitHub/SARIF, repo seam, pilot, outcome, and badge formats include evidence-first stop reasons and advisory next actions. | Output contract maintenance. |
 | LSP | Experimental `tower-lsp-server` sidecar with saved-workspace seam diagnostics, hovers, targeted context actions, refresh status, and related-test actions. | Editor contract maintenance. |
 | Agent context | Context packets and agent seam packets include targeted-test briefs with missing values and assertion shape. | Agent-context v2 when there is a concrete external contract. |
-| Calibration | `ripr calibrate cargo-mutants` imports supplied runtime mutation data and joins it to repo seam evidence for advisory static/runtime calibration; `fixtures/EXAMPLE_CORPUS.md` links the checked boundary-gap sample into the operator loop, and `fixtures/boundary_gap/calibration/runtime-fixtures-v1/` pins the main static/runtime agreement buckets. | `campaign/runtime-calibration-closeout`. |
+| Calibration | `ripr calibrate cargo-mutants` imports supplied runtime mutation data and joins it to repo seam evidence for advisory static/runtime calibration; `fixtures/EXAMPLE_CORPUS.md` links the checked boundary-gap sample into the operator loop, and `fixtures/boundary_gap/calibration/runtime-fixtures-v1/` pins the main static/runtime agreement buckets. | Maintenance; runtime data stays optional and supplied. |
 
 ## Development
 

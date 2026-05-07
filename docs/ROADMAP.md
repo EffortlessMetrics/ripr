@@ -46,24 +46,26 @@ Mode scope is intentionally cost-aware:
 | `deep` | Whole workspace. |
 | `ready` | Whole workspace static preflight before separate mutation confirmation. |
 
-The main bottleneck is now defaults-first operator adoption. Campaign 5A closed
-the cache, precision, actionability, and calibration loop for repo seam evidence.
-Campaign 5B landed repository configuration, SARIF/CI policy, and seam-native
-badge count mapping. Campaign 6 then completed the internal module SRP refactor
-chain through #405 without changing output schemas, public API, SARIF, badge, or
-saved-workspace LSP behavior. The next adoption work is one clean path from
-install to weak seam, targeted-test brief, rerun, and receipt; Campaign 7 has
-now pinned the defaults/config baseline, added the operator cockpit report, made
-the generated GitHub Action upload pilot/report artifacts with optional SARIF
-rendering/upload, documented and verified the existing VS Code install path and
-command coverage, and added the public example corpus for the defaults-first
-operator path. Install and release-path proof is now complete for the crate
-install path, public GitHub Release server assets, and VSIX package path.
+The main bottleneck is now proving the hot sidecar path stays responsive without
+serving stale evidence. Campaign 5A closed the cache, precision, actionability,
+and calibration loop for repo seam evidence. Campaign 5B landed repository
+configuration, SARIF/CI policy, and seam-native badge count mapping. Campaign 6
+then completed the internal module SRP refactor chain through #405 without
+changing output schemas, public API, SARIF, badge, or saved-workspace LSP
+behavior. Campaign 7 then pinned the defaults/config baseline, added the
+operator cockpit report, made the generated GitHub Action upload pilot/report
+artifacts with optional SARIF rendering/upload, documented and verified the
+existing VS Code install path and command coverage, and added the public example
+corpus for the defaults-first operator path. Install and release-path proof is
+now complete for the crate install path, public GitHub Release server assets,
+and VSIX package path.
 Campaign 7 is closed; the closeout audit demonstrates the installed
-boundary-gap seam packet, outcome receipt, and optional calibration loop. The
-runtime calibration fixture expansion now has a checked supplied-data sample for
-the main static/runtime agreement buckets. The next active item is Campaign 8
-closeout.
+boundary-gap seam packet, outcome receipt, and optional calibration loop.
+Campaign 8 is closed; the runtime calibration fixture expansion now has a
+checked supplied-data sample for the main static/runtime agreement buckets, and
+runtime mutation vocabulary remains confined to explicit calibration reports.
+The next active item is a hot-sidecar latency audit that measures current cache
+and saved-workspace editor refresh behavior before changing warm-path reuse.
 
 ## Strategic Sequence
 
@@ -101,6 +103,7 @@ quality rails
 -> defaults-first operator adoption
 -> runtime calibration fixture expansion
 -> Campaign 8 closeout
+-> hot-sidecar latency proof
 ```
 
 The analyzer path is:
