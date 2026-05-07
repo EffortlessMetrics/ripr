@@ -164,7 +164,7 @@ Use these pinned action refs until there is a deliberate update process:
 
 ```yaml
 actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-EffortlessMetrics/droid-action-safe@01e76b659e4b1e5f23feedc8cfabf8dc14c7485f # based on Factory-AI/droid-action v5; raw debug artifact upload disabled
+EffortlessMetrics/droid-action-safe@7c1377ccbacddc95560d1570547a5baa51de01ec # based on Factory-AI/droid-action v5; raw debug artifact upload disabled
 ```
 
 Do not use `Factory-AI/droid-action` directly for MiniMax BYOK workflows until
