@@ -99,7 +99,7 @@ is. There is no separate top-level `id` field.
   --threshold-config policy/ripr-soft-gate.toml
   --labels-json "$LABELS_JSON"`, then activate the gate after the
   calibration window has produced 2 weeks of `ci-actuals.json` data on
-  the `ripr_self_dogfood` lane. The lane is registered in
+  the `ripr-self-dogfood` lane. The lane is registered in
   `policy/ci-lane-whitelist.toml` (forward reference, ships in PR 02 of
   the rollout) and emitted by `.github/workflows/ripr.yml` (forward
   reference, ships in PR 10).
@@ -143,7 +143,8 @@ payload, passed through verbatim:
 
 The command consults only the `name` field of each entry, matches it
 against `[labels]` in `policy/ripr-soft-gate.toml` (and, transitively,
-`[labels]` in `policy/ci-budget.toml`), and treats unrecognized labels
+the `[[label]]` entries in `policy/ci-budget.toml`), and treats
+unrecognized labels
 as advisory metadata. An empty array is valid — it means no
 acknowledgement labels are present.
 
@@ -160,7 +161,7 @@ above). That PR is also where the `--findings`, `--suppressions`,
 `--threshold-config`, and `--labels-json` flow becomes a real exit code
 instead of a `|| true` advisory.
 
-The `ripr_self_dogfood` lane referenced below is the
+The `ripr-self-dogfood` lane referenced below is the
 `.github/workflows/ripr.yml` lane that runs `ripr check` against the
 diff and uploads the JSON/SARIF findings (forward reference; ships in
 PR 10 of the rollout). It is registered in
@@ -168,7 +169,7 @@ PR 10 of the rollout). It is registered in
 flip `status` only after **all** of these conditions are verified
 against that lane's `ci-actuals.json` upload:
 
-1. The `ripr_self_dogfood` lane has uploaded at least 14
+1. The `ripr-self-dogfood` lane has uploaded at least 14
    `ci-actuals.json` artifacts on `main` over a rolling 14-day window
    (matching `[calibration]` in the policy file).
 2. The 95th percentile of finding counts per `ci-actuals.json` is below

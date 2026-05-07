@@ -20,7 +20,7 @@ status = "shadow"
 # Posture: this file is `status = "shadow"` — it documents the contract.
 # The xtask command `cargo xtask ci ripr-soft-gate ...` that consumes it
 # is wired in a follow-up PR after the calibration window has produced
-# 2 weeks of `ci-actuals.json` data on the `ripr_self_dogfood` lane.
+# 2 weeks of `ci-actuals.json` data on the `ripr-self-dogfood` lane.
 
 [gate]
 # Numeric confidence threshold (range 0.0–1.0). Findings with
@@ -50,13 +50,13 @@ ignore_finding_classes = [
 # the `pull_request.labels[].name` payload (see "--labels-json contract"
 # in docs/ci/ripr-soft-gate.md).
 #
-# CANONICAL SOURCE: policy/ci-budget.toml `[labels]` is the canonical
-# vocabulary for the wider CI economics rollout (forward reference;
-# ships in PR 02 of the rollout — this file is therefore the canonical
-# source for the soft-gate's view of the vocabulary until PR 02 lands,
-# and a mirror after that). Edits to label names should land in
-# policy/ci-budget.toml first; this file is intentionally a duplicate
-# so the soft-gate config is self-contained.
+# CANONICAL SOURCE: the `[[label]]` table-array entries in
+# `policy/ci-budget.toml` are the canonical vocabulary for the wider CI
+# economics rollout. The names below mirror the `name` fields of those
+# entries (currently: `ripr-waive`, `full-ci`, `ci-budget-ack`).
+# Edits to label names should land in `policy/ci-budget.toml` first;
+# this file is intentionally a duplicate so the soft-gate config is
+# self-contained.
 [labels]
 waive = "ripr-waive"
 full_ci = "full-ci"
@@ -64,7 +64,7 @@ budget_ack = "ci-budget-ack"
 
 # Calibration-window guard: do not fail the gate until the rolling
 # 14-day median of ci-actuals.json datapoints for the
-# `ripr_self_dogfood` lane is at least this many.
+# `ripr-self-dogfood` lane is at least this many.
 #
 # Forward references:
 #   - policy/ci-lane-whitelist.toml (registers the lane; ships in PR 02)
