@@ -75,6 +75,14 @@ Currently denied at the workspace level (selected highlights):
   `clippy::suspicious_open_options`, `clippy::nonsensical_open_options`,
   `clippy::ineffective_open_options`, `clippy::path_buf_push_overwrite`,
   `clippy::join_absolute_paths`.
+- AST / UTF-8 / parser safety:
+  `clippy::char_indices_as_byte_indices`,
+  `clippy::sliced_string_as_bytes`, `clippy::index_refutable_slice`,
+  `clippy::out_of_bounds_indexing`. `clippy::indexing_slicing` and
+  `clippy::string_slice` are deferred — parser/diff code uses bounded
+  slice arithmetic where indices come from validated AST text ranges.
+  The flip pairs the two lints together with per-site `#[expect]`
+  receipts and is tracked in `policy/clippy-lints.toml` as planned.
 - Suppression governance: `clippy::allow_attributes_without_reason`,
   `clippy::blanket_clippy_restriction_lints`.
 - Rust: `unsafe_code = "forbid"`, `unused_must_use`,

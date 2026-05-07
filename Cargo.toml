@@ -61,6 +61,18 @@ ineffective_open_options = "deny"
 path_buf_push_overwrite = "deny"
 join_absolute_paths = "deny"
 
+# AST / UTF-8 / parser safety: ripr parses Rust source aggressively. Byte
+# vs char index confusion and unchecked slice/index access are bug shapes
+# the analyzer would otherwise have to defend against at runtime.
+char_indices_as_byte_indices = "deny"
+sliced_string_as_bytes = "deny"
+index_refutable_slice = "deny"
+out_of_bounds_indexing = "deny"
+# `string_slice` and `indexing_slicing` are deferred — parser/diff code
+# uses bounded slice arithmetic where the slice indices are derived from
+# AST text ranges that are guaranteed valid. Flipping requires per-call
+# review and is tracked in policy/clippy-lints.toml.
+
 # Suppression governance.
 # `allow_attributes` itself stays advisory: some `#[expect]` migrations
 # would fail because the underlying lint only fires in some builds (e.g.
