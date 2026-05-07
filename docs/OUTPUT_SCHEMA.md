@@ -1553,13 +1553,14 @@ target/ripr/pilot/pilot-summary.json
 target/ripr/pilot/pilot-summary.md
 ```
 
-`pilot-summary.json` uses schema `0.1`:
+`pilot-summary.json` uses schema `0.2`:
 
 ```json
 {
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "tool": "ripr",
   "scope": "repo",
+  "status": "complete",
   "root": ".",
   "mode": "draft",
   "config": {
@@ -1574,6 +1575,14 @@ target/ripr/pilot/pilot-summary.md
     "pilot_summary_md": "target/ripr/pilot/pilot-summary.md"
   },
   "max_seams": 5,
+  "timeout_ms": 30000,
+  "outputs_written": [
+    "repo_exposure_json",
+    "repo_exposure_md",
+    "agent_seam_packets_json",
+    "pilot_summary_json",
+    "pilot_summary_md"
+  ],
   "actionable_seams_total": 1,
   "top_actionable_seams": [
     {
@@ -1601,10 +1610,54 @@ target/ripr/pilot/pilot-summary.md
 }
 ```
 
+If analysis exceeds the pilot budget, `pilot-summary.json` is still written with
+`status: "partial"` and no ranked seams:
+
+```json
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "scope": "repo",
+  "status": "partial",
+  "reason": "timeout",
+  "timeout_ms": 30000,
+  "completed_phases": [],
+  "root": ".",
+  "mode": "draft",
+  "config": {
+    "state": "missing",
+    "path": null
+  },
+  "outputs": {
+    "repo_exposure_json": "target/ripr/pilot/repo-exposure.json",
+    "repo_exposure_md": "target/ripr/pilot/repo-exposure.md",
+    "agent_seam_packets_json": "target/ripr/pilot/agent-seam-packets.json",
+    "pilot_summary_json": "target/ripr/pilot/pilot-summary.json",
+    "pilot_summary_md": "target/ripr/pilot/pilot-summary.md"
+  },
+  "outputs_written": [
+    "pilot_summary_json",
+    "pilot_summary_md"
+  ],
+  "max_seams": 5,
+  "actionable_seams_total": null,
+  "top_actionable_seams": [],
+  "next": {
+    "retry_command": "ripr pilot --root . --out target/ripr/pilot --mode draft --max-seams 5 --timeout-ms 120000"
+  }
+}
+```
+
 Field contract:
 
-- `schema_version` — currently `"0.1"`.
+- `schema_version` — currently `"0.2"`.
 - `scope` — always `"repo"`.
+- `status` — `"complete"` when repo exposure and agent seam packet artifacts
+  were written, or `"partial"` when the command stopped at a diagnostic summary.
+- `reason` — present for partial summaries; currently `"timeout"`.
+- `timeout_ms` — explicit pilot analysis budget. The default is `30000`.
+- `completed_phases` — present for partial summaries. It is empty until pilot
+  owns more detailed phase instrumentation.
 - `root` — analyzed workspace root as supplied to `ripr pilot`.
 - `mode` — effective analysis mode after explicit CLI flags and repo config are
   applied.
@@ -1612,9 +1665,11 @@ Field contract:
   `"missing"`. Missing config is healthy and means built-in conservative
   defaults were used.
 - `outputs` — paths to the generated pilot packet files.
+- `outputs_written` — names of output files actually written. Partial timeout
+  summaries write only `pilot_summary_json` and `pilot_summary_md`.
 - `max_seams` — cap requested by `--max-seams`.
 - `actionable_seams_total` — number of seams considered actionable by the pilot
-  ranking policy.
+  ranking policy, or `null` for partial summaries where analysis did not finish.
 - `top_actionable_seams[]` — ranked seams using class order
   `weakly_gripped`, `ungripped`, `reachable_unrevealed`, unknown-stage classes,
   then `opaque`, with evidence tie-breakers for missing discriminator, related
@@ -1622,11 +1677,14 @@ Field contract:
 - `top_actionable_seams[].targeted_test_brief` — human-readable work order
   derived from the same fields as the agent seam packet. Placeholders are
   intentional; RIPR does not invent expected values.
-- `next` — advisory follow-up commands, including the public `ripr outcome`
-  before/after receipt command.
+- `next` — advisory follow-up commands. Complete summaries include the public
+  `ripr outcome` before/after receipt command. Partial summaries include a
+  retry command with a larger explicit timeout.
 
 The Markdown sibling prints the same summary, includes the top seam's targeted
-test brief, and remains advisory.
+test brief for complete runs, and remains advisory. On timeout, the Markdown
+sibling records the partial state and the retry command instead of pretending
+the packet is complete.
 
 ## LSP Seam Diagnostics
 

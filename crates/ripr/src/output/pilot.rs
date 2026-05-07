@@ -14,7 +14,7 @@ use crate::output::json::escape as json_escape;
 use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
 
-pub(crate) const PILOT_SUMMARY_SCHEMA_VERSION: &str = "0.1";
+pub(crate) const PILOT_SUMMARY_SCHEMA_VERSION: &str = "0.2";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct PilotArtifacts {
@@ -31,6 +31,7 @@ pub(crate) struct PilotSummaryContext<'a> {
     pub(crate) mode: &'a Mode,
     pub(crate) config_path: Option<&'a Path>,
     pub(crate) max_seams: usize,
+    pub(crate) timeout_ms: u64,
     pub(crate) artifacts: &'a PilotArtifacts,
 }
 
@@ -50,6 +51,7 @@ pub(crate) fn render_pilot_summary_json(
     ));
     out.push_str("  \"tool\": \"ripr\",\n");
     out.push_str("  \"scope\": \"repo\",\n");
+    out.push_str("  \"status\": \"complete\",\n");
     out.push_str(&format!(
         "  \"root\": \"{}\",\n",
         json_escape(&display_path(context.root))
@@ -99,6 +101,14 @@ pub(crate) fn render_pilot_summary_json(
     out.push_str("  },\n");
 
     out.push_str(&format!("  \"max_seams\": {},\n", context.max_seams));
+    out.push_str(&format!("  \"timeout_ms\": {},\n", context.timeout_ms));
+    out.push_str("  \"outputs_written\": [\n");
+    out.push_str("    \"repo_exposure_json\",\n");
+    out.push_str("    \"repo_exposure_md\",\n");
+    out.push_str("    \"agent_seam_packets_json\",\n");
+    out.push_str("    \"pilot_summary_json\",\n");
+    out.push_str("    \"pilot_summary_md\"\n");
+    out.push_str("  ],\n");
     out.push_str(&format!(
         "  \"actionable_seams_total\": {},\n",
         actionable_total
@@ -148,8 +158,10 @@ pub(crate) fn render_pilot_summary_md(
     let mut out = String::new();
     out.push_str("# RIPR Pilot Summary\n\n");
     out.push_str("## Scope\n\n");
+    out.push_str("- Status: `complete`\n");
     out.push_str(&format!("- Root: `{}`\n", display_path(context.root)));
     out.push_str(&format!("- Mode: `{}`\n", context.mode.as_str()));
+    out.push_str(&format!("- Timeout: {} ms\n", context.timeout_ms));
     match context.config_path {
         Some(path) => out.push_str(&format!("- Config: loaded `{}`\n", display_path(path))),
         None => out.push_str("- Config: missing; using built-in defaults\n"),
@@ -236,6 +248,7 @@ pub(crate) fn render_pilot_terminal(
         Some(path) => out.push_str(&format!("  loaded: {}\n", display_path(path))),
         None => out.push_str("  missing: using built-in defaults\n"),
     }
+    out.push_str(&format!("  timeout: {} ms\n", context.timeout_ms));
     out.push('\n');
 
     if let Some(entry) = top.first() {
@@ -263,6 +276,153 @@ pub(crate) fn render_pilot_terminal(
     out.push_str("After adding one focused test:\n");
     out.push_str(&format!("  {}\n", commands.after_snapshot));
     out.push_str(&format!("  {}\n", commands.outcome));
+    out
+}
+
+pub(crate) fn render_pilot_timeout_summary_json(context: PilotSummaryContext<'_>) -> String {
+    let commands = PilotCommands::new(context);
+
+    let mut out = String::new();
+    out.push_str("{\n");
+    out.push_str(&format!(
+        "  \"schema_version\": \"{}\",\n",
+        PILOT_SUMMARY_SCHEMA_VERSION
+    ));
+    out.push_str("  \"tool\": \"ripr\",\n");
+    out.push_str("  \"scope\": \"repo\",\n");
+    out.push_str("  \"status\": \"partial\",\n");
+    out.push_str("  \"reason\": \"timeout\",\n");
+    out.push_str(&format!("  \"timeout_ms\": {},\n", context.timeout_ms));
+    out.push_str("  \"completed_phases\": [],\n");
+    out.push_str(&format!(
+        "  \"root\": \"{}\",\n",
+        json_escape(&display_path(context.root))
+    ));
+    out.push_str(&format!("  \"mode\": \"{}\",\n", context.mode.as_str()));
+    out.push_str("  \"config\": {");
+    match context.config_path {
+        Some(path) => out.push_str(&format!(
+            "\"state\": \"loaded\", \"path\": \"{}\"",
+            json_escape(&display_path(path))
+        )),
+        None => out.push_str("\"state\": \"missing\", \"path\": null"),
+    }
+    out.push_str("},\n");
+
+    out.push_str("  \"outputs\": {\n");
+    push_path_field(
+        &mut out,
+        "repo_exposure_json",
+        &context.artifacts.repo_exposure_json,
+        true,
+    );
+    push_path_field(
+        &mut out,
+        "repo_exposure_md",
+        &context.artifacts.repo_exposure_md,
+        true,
+    );
+    push_path_field(
+        &mut out,
+        "agent_seam_packets_json",
+        &context.artifacts.agent_seam_packets_json,
+        true,
+    );
+    push_path_field(
+        &mut out,
+        "pilot_summary_json",
+        &context.artifacts.pilot_summary_json,
+        true,
+    );
+    push_path_field(
+        &mut out,
+        "pilot_summary_md",
+        &context.artifacts.pilot_summary_md,
+        false,
+    );
+    out.push_str("  },\n");
+
+    out.push_str("  \"outputs_written\": [\n");
+    out.push_str("    \"pilot_summary_json\",\n");
+    out.push_str("    \"pilot_summary_md\"\n");
+    out.push_str("  ],\n");
+    out.push_str(&format!("  \"max_seams\": {},\n", context.max_seams));
+    out.push_str("  \"actionable_seams_total\": null,\n");
+    out.push_str("  \"top_actionable_seams\": [],\n");
+    out.push_str("  \"next\": {\n");
+    out.push_str(&format!(
+        "    \"retry_command\": \"{}\"\n",
+        json_escape(&commands.retry)
+    ));
+    out.push_str("  }\n");
+    out.push_str("}\n");
+    out
+}
+
+pub(crate) fn render_pilot_timeout_summary_md(context: PilotSummaryContext<'_>) -> String {
+    let commands = PilotCommands::new(context);
+
+    let mut out = String::new();
+    out.push_str("# RIPR Pilot Summary\n\n");
+    out.push_str("## Scope\n\n");
+    out.push_str("- Status: `partial`\n");
+    out.push_str(&format!(
+        "- Reason: analysis timed out after {} ms\n",
+        context.timeout_ms
+    ));
+    out.push_str(&format!("- Root: `{}`\n", display_path(context.root)));
+    out.push_str(&format!("- Mode: `{}`\n", context.mode.as_str()));
+    match context.config_path {
+        Some(path) => out.push_str(&format!("- Config: loaded `{}`\n\n", display_path(path))),
+        None => out.push_str("- Config: missing; using built-in defaults\n\n"),
+    }
+
+    out.push_str("## Outputs\n\n");
+    out.push_str("Analysis did not finish within the pilot budget, so repo exposure and agent seam packet files were not written.\n\n");
+    out.push_str(&format!(
+        "- Pilot summary JSON: `{}`\n",
+        display_path(&context.artifacts.pilot_summary_json)
+    ));
+    out.push_str(&format!(
+        "- Pilot summary Markdown: `{}`\n\n",
+        display_path(&context.artifacts.pilot_summary_md)
+    ));
+
+    out.push_str("## Next Command\n\n");
+    out.push_str("Rerun with a larger explicit budget:\n\n");
+    out.push_str("```bash\n");
+    out.push_str(&commands.retry);
+    out.push_str("\n```\n");
+    out
+}
+
+pub(crate) fn render_pilot_timeout_terminal(context: PilotSummaryContext<'_>) -> String {
+    let commands = PilotCommands::new(context);
+
+    let mut out = String::new();
+    out.push_str("RIPR pilot partial.\n\n");
+    out.push_str("Reason:\n");
+    out.push_str(&format!(
+        "  analysis timed out after {} ms\n\n",
+        context.timeout_ms
+    ));
+    out.push_str("Config:\n");
+    match context.config_path {
+        Some(path) => out.push_str(&format!("  loaded: {}\n", display_path(path))),
+        None => out.push_str("  missing: using built-in defaults\n"),
+    }
+    out.push('\n');
+    out.push_str("Written:\n");
+    out.push_str(&format!(
+        "  {}\n",
+        display_path(&context.artifacts.pilot_summary_json)
+    ));
+    out.push_str(&format!(
+        "  {}\n\n",
+        display_path(&context.artifacts.pilot_summary_md)
+    ));
+    out.push_str("Next:\n");
+    out.push_str(&format!("  {}\n", commands.retry));
     out
 }
 
@@ -412,10 +572,17 @@ fn yes_no(value: bool) -> &'static str {
 struct PilotCommands {
     after_snapshot: String,
     outcome: String,
+    retry: String,
 }
 
 impl PilotCommands {
     fn new(context: PilotSummaryContext<'_>) -> Self {
+        let out_dir = context
+            .artifacts
+            .pilot_summary_json
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."));
         let after_path = context
             .artifacts
             .pilot_summary_json
@@ -433,9 +600,19 @@ impl PilotCommands {
             shell_path(&context.artifacts.repo_exposure_json),
             shell_path(&after_path)
         );
+        let retry_timeout_ms = context.timeout_ms.saturating_mul(4).max(120_000);
+        let retry = format!(
+            "ripr pilot --root {} --out {} --mode {} --max-seams {} --timeout-ms {}",
+            shell_path(context.root),
+            shell_path(&out_dir),
+            context.mode.as_str(),
+            context.max_seams,
+            retry_timeout_ms
+        );
         Self {
             after_snapshot,
             outcome,
+            retry,
         }
     }
 }
@@ -650,14 +827,43 @@ mod tests {
             mode: &Mode::Draft,
             config_path: Some(Path::new("ripr.toml")),
             max_seams: 5,
+            timeout_ms: 30_000,
             artifacts: &artifacts,
         };
 
         let json = render_pilot_summary_json(&[entry], context);
-        assert!(json.contains(r#""schema_version": "0.1""#));
+        assert!(json.contains(r#""schema_version": "0.2""#));
+        assert!(json.contains(r#""status": "complete""#));
         assert!(json.contains(r#""state": "loaded""#));
         assert!(json.contains(r#""top_actionable_seams""#));
         assert!(json.contains(r#""missing_discriminator""#));
         assert!(json.contains("ripr outcome --before target/ripr/pilot/repo-exposure.json"));
+    }
+
+    #[test]
+    fn timeout_summary_json_is_partial_and_points_to_retry() {
+        let artifacts = PilotArtifacts {
+            repo_exposure_json: PathBuf::from("target/ripr/pilot/repo-exposure.json"),
+            repo_exposure_md: PathBuf::from("target/ripr/pilot/repo-exposure.md"),
+            agent_seam_packets_json: PathBuf::from("target/ripr/pilot/agent-seam-packets.json"),
+            pilot_summary_json: PathBuf::from("target/ripr/pilot/pilot-summary.json"),
+            pilot_summary_md: PathBuf::from("target/ripr/pilot/pilot-summary.md"),
+        };
+        let context = PilotSummaryContext {
+            root: Path::new("."),
+            mode: &Mode::Draft,
+            config_path: None,
+            max_seams: 5,
+            timeout_ms: 1,
+            artifacts: &artifacts,
+        };
+
+        let json = render_pilot_timeout_summary_json(context);
+        assert!(json.contains(r#""schema_version": "0.2""#));
+        assert!(json.contains(r#""status": "partial""#));
+        assert!(json.contains(r#""reason": "timeout""#));
+        assert!(json.contains(r#""actionable_seams_total": null"#));
+        assert!(json.contains("ripr pilot --root . --out target/ripr/pilot --mode draft"));
+        assert!(json.contains("--timeout-ms 120000"));
     }
 }

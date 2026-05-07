@@ -147,6 +147,8 @@ ripr pilot
 The pilot packet writes repo exposure, agent seam packets, and a compact
 summary under `target/ripr/pilot/`. It prints the top actionable seam, why RIPR
 ranked it, and the command to run after a focused test is added.
+If analysis exceeds the default budget, it writes a partial summary with an
+explicit retry command instead of waiting silently.
 
 After adding one focused test, compare before and after snapshots:
 

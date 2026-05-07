@@ -8,6 +8,10 @@ use crate::config::{
 };
 use crate::output;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
+use std::time::Duration;
+
+const DEFAULT_PILOT_TIMEOUT_MS: u64 = 30_000;
 
 #[derive(Debug, PartialEq, Eq)]
 struct InitOptions {
@@ -29,6 +33,7 @@ struct PilotOptions {
     mode: Mode,
     explicit: CheckInputExplicit,
     max_seams: usize,
+    timeout_ms: u64,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -320,11 +325,49 @@ pub(super) fn pilot(args: &[String]) -> Result<(), String> {
     };
     apply_to_check_input(&mut input, &config, options.explicit);
 
-    let classified = analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
     let artifacts = pilot_artifacts(&options.out_dir);
-
     std::fs::create_dir_all(&options.out_dir)
         .map_err(|err| format!("create {} failed: {err}", options.out_dir.display()))?;
+
+    let context = output::pilot::PilotSummaryContext {
+        root: &input.root,
+        mode: &input.mode,
+        config_path: config.source_path(),
+        max_seams: options.max_seams,
+        timeout_ms: options.timeout_ms,
+        artifacts: &artifacts,
+    };
+
+    let analysis_root = input.root.clone();
+    let analysis_config = config.clone();
+    let analysis_result = run_pilot_analysis_with_timeout(options.timeout_ms, move || {
+        analysis::inventory_classified_seams_at_with_config(&analysis_root, &analysis_config)
+    })?;
+    let PilotAnalysisResult::Complete(classified) = analysis_result else {
+        std::fs::write(
+            &artifacts.pilot_summary_json,
+            output::pilot::render_pilot_timeout_summary_json(context),
+        )
+        .map_err(|err| {
+            format!(
+                "write {} failed: {err}",
+                artifacts.pilot_summary_json.display()
+            )
+        })?;
+        std::fs::write(
+            &artifacts.pilot_summary_md,
+            output::pilot::render_pilot_timeout_summary_md(context),
+        )
+        .map_err(|err| {
+            format!(
+                "write {} failed: {err}",
+                artifacts.pilot_summary_md.display()
+            )
+        })?;
+        print!("{}", output::pilot::render_pilot_timeout_terminal(context));
+        return Ok(());
+    };
+
     std::fs::write(
         &artifacts.repo_exposure_json,
         output::repo_exposure::render_repo_exposure_json(&classified),
@@ -356,13 +399,6 @@ pub(super) fn pilot(args: &[String]) -> Result<(), String> {
         )
     })?;
 
-    let context = output::pilot::PilotSummaryContext {
-        root: &input.root,
-        mode: &input.mode,
-        config_path: config.source_path(),
-        max_seams: options.max_seams,
-        artifacts: &artifacts,
-    };
     std::fs::write(
         &artifacts.pilot_summary_json,
         output::pilot::render_pilot_summary_json(&classified, context),
@@ -398,6 +434,7 @@ fn parse_pilot_options(args: &[String]) -> Result<PilotOptions, String> {
         mode: Mode::Draft,
         explicit: CheckInputExplicit::default(),
         max_seams: 5,
+        timeout_ms: DEFAULT_PILOT_TIMEOUT_MS,
     };
     let mut i = 0usize;
     while i < args.len() {
@@ -420,6 +457,11 @@ fn parse_pilot_options(args: &[String]) -> Result<PilotOptions, String> {
                 options.max_seams =
                     parse_positive_usize(expect_value(args, i, "--max-seams")?, "--max-seams")?;
             }
+            "--timeout-ms" => {
+                i += 1;
+                options.timeout_ms =
+                    parse_positive_u64(expect_value(args, i, "--timeout-ms")?, "--timeout-ms")?;
+            }
             other => return Err(format!("unknown pilot argument {other:?}")),
         }
         i += 1;
@@ -435,6 +477,43 @@ fn parse_positive_usize(value: &str, flag: &str) -> Result<usize, String> {
         return Err(format!("invalid {flag}: expected a positive integer"));
     }
     Ok(parsed)
+}
+
+fn parse_positive_u64(value: &str, flag: &str) -> Result<u64, String> {
+    let parsed = value
+        .parse::<u64>()
+        .map_err(|err| format!("invalid {flag}: {err}"))?;
+    if parsed == 0 {
+        return Err(format!("invalid {flag}: expected a positive integer"));
+    }
+    Ok(parsed)
+}
+
+enum PilotAnalysisResult {
+    Complete(Vec<analysis::ClassifiedSeam>),
+    TimedOut,
+}
+
+fn run_pilot_analysis_with_timeout<F>(
+    timeout_ms: u64,
+    runner: F,
+) -> Result<PilotAnalysisResult, String>
+where
+    F: FnOnce() -> Result<Vec<analysis::ClassifiedSeam>, String> + Send + 'static,
+{
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let result = runner();
+        let _ignored = tx.send(result);
+    });
+
+    match rx.recv_timeout(Duration::from_millis(timeout_ms)) {
+        Ok(result) => result.map(PilotAnalysisResult::Complete),
+        Err(mpsc::RecvTimeoutError::Timeout) => Ok(PilotAnalysisResult::TimedOut),
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            Err("pilot analysis stopped before producing a result".to_string())
+        }
+    }
 }
 
 fn pilot_artifacts(out_dir: &Path) -> output::pilot::PilotArtifacts {
@@ -1044,6 +1123,10 @@ mod tests {
             pilot(&args(&["--max-seams"])),
             Err("missing value for --max-seams".to_string())
         );
+        assert_eq!(
+            pilot(&args(&["--timeout-ms"])),
+            Err("missing value for --timeout-ms".to_string())
+        );
     }
 
     #[test]
@@ -1063,7 +1146,15 @@ mod tests {
     }
 
     #[test]
-    fn pilot_parses_root_out_mode_and_max_seams() {
+    fn pilot_rejects_non_positive_timeout() {
+        assert_eq!(
+            parse_pilot_options(&args(&["--timeout-ms", "0"])),
+            Err("invalid --timeout-ms: expected a positive integer".to_string())
+        );
+    }
+
+    #[test]
+    fn pilot_parses_root_out_mode_max_seams_and_timeout() {
         let options = parse_pilot_options(&args(&[
             "--root",
             "repo",
@@ -1073,6 +1164,8 @@ mod tests {
             "ready",
             "--max-seams",
             "3",
+            "--timeout-ms",
+            "120000",
         ]));
 
         assert_eq!(
@@ -1086,8 +1179,19 @@ mod tests {
                     include_unchanged_tests: false,
                 },
                 max_seams: 3,
+                timeout_ms: 120_000,
             })
         );
+    }
+
+    #[test]
+    fn pilot_analysis_timeout_returns_partial_result() {
+        let result = run_pilot_analysis_with_timeout(1, || {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            Ok(Vec::new())
+        });
+
+        assert!(matches!(result, Ok(PilotAnalysisResult::TimedOut)));
     }
 
     #[test]

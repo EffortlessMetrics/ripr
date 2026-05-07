@@ -45,6 +45,10 @@ The terminal summary shows the top actionable seam, why RIPR ranked it, where
 the structured packet lives, and the command to run after a focused test is
 added.
 
+If analysis exceeds the default budget, `ripr pilot` writes
+`pilot-summary.{json,md}` with `status: partial` and a retry command instead of
+waiting silently.
+
 From the `ripr` source repository, `cargo xtask operator-cockpit` joins the
 repo-local report artifacts into `target/ripr/reports/operator-cockpit.md` and
 `.json` when you want one cockpit for repo exposure, LSP, SARIF, badges,
@@ -63,6 +67,7 @@ ripr pilot --root .
 ripr pilot --out target/ripr/pilot
 ripr pilot --mode ready
 ripr pilot --max-seams 5
+ripr pilot --timeout-ms 120000
 ```
 
 ## Optional Policy

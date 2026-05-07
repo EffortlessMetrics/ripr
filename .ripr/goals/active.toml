@@ -89,7 +89,7 @@ commands = [
 
 [[work_item]]
 id = "pilot/budget-aware"
-status = "ready"
+status = "done"
 branch = "pilot-budget-aware"
 stackable = false
 requires_human_merge = true
@@ -98,6 +98,25 @@ commands = [
   "cargo test -p ripr cli::commands::tests::pilot",
   "cargo test -p ripr --test cli_smoke pilot_",
   "cargo xtask repo-exposure-latency-report",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
+  "cargo xtask check-pr",
+  "cargo test --workspace"
+]
+
+[[work_item]]
+id = "pilot/first-screen-clarity"
+status = "ready"
+branch = "pilot-first-screen-clarity"
+stackable = false
+requires_human_merge = true
+acceptance = "Improve pilot-summary.md and terminal copy so the top recommendation answers what was inspected, why the seam matters, what focused test to write, and what command to run after without opening JSON"
+commands = [
+  "cargo test -p ripr output::pilot --lib",
+  "cargo test -p ripr cli::commands::tests::pilot",
+  "cargo test -p ripr --test cli_smoke pilot_",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-campaign",

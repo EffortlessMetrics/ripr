@@ -2,7 +2,7 @@ const HELP: &str = r#"ripr — static RIPR mutation exposure analysis for Rust
 
 Usage:
   ripr init [--root PATH] [--ci github] [--dry-run] [--force]
-  ripr pilot [--root PATH] [--out PATH] [--mode draft] [--max-seams 5]
+  ripr pilot [--root PATH] [--out PATH] [--mode draft] [--max-seams 5] [--timeout-ms 30000]
   ripr outcome --before PATH --after PATH [--format md|json] [--out PATH]
   ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
   ripr check [--base origin/main] [--diff PATH] [--mode draft] [--format FORMAT]
@@ -49,13 +49,14 @@ Generated GitHub workflow:
   - does not enable baseline failure policy by default
 "#;
 
-const PILOT_HELP: &str = r#"Usage: ripr pilot [--root PATH] [--out PATH] [--mode MODE] [--max-seams N]
+const PILOT_HELP: &str = r#"Usage: ripr pilot [--root PATH] [--out PATH] [--mode MODE] [--max-seams N] [--timeout-ms MS]
 
 Options:
   --root PATH       Workspace root to analyze. Defaults to current directory.
   --out PATH        Output directory for the pilot packet. Defaults to target/ripr/pilot.
   --mode MODE       instant, draft, fast, deep, or ready. Defaults to draft unless ripr.toml sets one.
   --max-seams N     Maximum ranked seams in the pilot summary. Defaults to 5.
+  --timeout-ms MS   Maximum analysis budget before writing a partial summary. Defaults to 30000.
 
 Outputs:
   - repo-exposure.json and repo-exposure.md
@@ -64,7 +65,9 @@ Outputs:
 
 The pilot packet is advisory. It reports saved-workspace static seam evidence
 and points to one next focused test action; it does not run mutation testing,
-edit source files, or configure CI policy.
+edit source files, or configure CI policy. If analysis exceeds the timeout,
+pilot-summary.json and pilot-summary.md are written with status=partial and an
+explicit retry command.
 "#;
 
 const OUTCOME_HELP: &str = r#"Usage: ripr outcome --before PATH --after PATH [--format md|json] [--out PATH]
@@ -218,6 +221,7 @@ mod tests {
         assert!(INIT_HELP.contains("--force"));
         assert!(PILOT_HELP.starts_with("Usage: ripr pilot"));
         assert!(PILOT_HELP.contains("pilot-summary.json"));
+        assert!(PILOT_HELP.contains("--timeout-ms MS"));
         assert!(OUTCOME_HELP.starts_with("Usage: ripr outcome"));
         assert!(OUTCOME_HELP.contains("--before PATH"));
         assert!(CALIBRATE_HELP.starts_with("Usage: ripr calibrate cargo-mutants"));
