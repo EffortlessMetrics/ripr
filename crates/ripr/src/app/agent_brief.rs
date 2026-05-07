@@ -124,18 +124,6 @@ impl AgentBriefWhyNowReason {
             Self::RepoActionableFallback => "repo_actionable_fallback",
         }
     }
-
-    fn priority(self) -> u8 {
-        match self {
-            Self::ExplicitSeamId => 0,
-            Self::ChangedLineIntersectsSeam => 1,
-            Self::ChangedOwnerFunction => 2,
-            Self::ChangedTestForRelatedSeam => 3,
-            Self::ChangedAssertionNearRelatedTest => 4,
-            Self::SameFileSeam => 5,
-            Self::RepoActionableFallback => 6,
-        }
-    }
 }
 
 const AGENT_BRIEF_WHY_NOW_REASON_VOCABULARY: [AgentBriefWhyNowReason; 7] = [
@@ -466,9 +454,15 @@ fn matching_related_test_line<'a>(
     working_set: &'a AgentBriefResolvedWorkingSet,
     matches_line: impl Fn(&RelatedTestGrip, &AgentBriefLine) -> bool,
 ) -> Option<(&'a RelatedTestGrip, &'a AgentBriefLine)> {
+    let changed_lines = working_set
+        .changed_lines
+        .iter()
+        .map(|line| (normalized_path(&line.file), line))
+        .collect::<Vec<_>>();
     entry.evidence.related_tests.iter().find_map(|test| {
-        working_set.changed_lines.iter().find_map(|line| {
-            (same_file(&line.file, &test.file) && matches_line(test, line)).then_some((test, line))
+        let test_file = normalized_path(&test.file);
+        changed_lines.iter().find_map(|(line_file, line)| {
+            (line_file == &test_file && matches_line(test, line)).then_some((test, *line))
         })
     })
 }
@@ -477,11 +471,14 @@ fn matching_related_test_file<'a>(
     entry: &'a ClassifiedSeam,
     working_set: &AgentBriefResolvedWorkingSet,
 ) -> Option<&'a RelatedTestGrip> {
+    let working_set_files = working_set
+        .files
+        .iter()
+        .map(|file| normalized_path(file))
+        .collect::<Vec<_>>();
     entry.evidence.related_tests.iter().find(|test| {
-        working_set
-            .files
-            .iter()
-            .any(|file| same_file(file, &test.file))
+        let test_file = normalized_path(&test.file);
+        working_set_files.iter().any(|file| file == &test_file)
     })
 }
 
@@ -494,10 +491,8 @@ fn compare_selected(
     right: &AgentBriefSelectedSeam<'_>,
     policy: AgentBriefPolicy<'_>,
 ) -> Ordering {
-    left.why_now
-        .reason
-        .priority()
-        .cmp(&right.why_now.reason.priority())
+    why_now_sort_priority(&left.why_now)
+        .cmp(&why_now_sort_priority(&right.why_now))
         .then_with(|| {
             severity_priority(policy.severity_for(left.seam.class))
                 .cmp(&severity_priority(policy.severity_for(right.seam.class)))
@@ -523,6 +518,19 @@ fn compare_selected(
                 .as_str()
                 .cmp(right.seam.seam.id().as_str())
         })
+}
+
+fn why_now_sort_priority(why_now: &AgentBriefWhyNow) -> u8 {
+    match (why_now.reason, why_now.confidence) {
+        (AgentBriefWhyNowReason::ExplicitSeamId, _) => 0,
+        (AgentBriefWhyNowReason::ChangedLineIntersectsSeam, _) => 1,
+        (AgentBriefWhyNowReason::ChangedOwnerFunction, _) => 2,
+        (AgentBriefWhyNowReason::ChangedTestForRelatedSeam, AgentBriefWhyNowConfidence::High) => 3,
+        (AgentBriefWhyNowReason::ChangedAssertionNearRelatedTest, _) => 4,
+        (AgentBriefWhyNowReason::ChangedTestForRelatedSeam, _) => 5,
+        (AgentBriefWhyNowReason::SameFileSeam, _) => 6,
+        (AgentBriefWhyNowReason::RepoActionableFallback, _) => 7,
+    }
 }
 
 fn grip_priority(class: SeamGripClass) -> u8 {
@@ -753,10 +761,58 @@ mod tests {
                 "repo_actionable_fallback",
             ]
         );
-        assert_eq!(
-            AGENT_BRIEF_WHY_NOW_REASON_VOCABULARY.map(AgentBriefWhyNowReason::priority),
-            [1, 2, 3, 4, 5, 0, 6]
-        );
+        let priority_cases = [
+            (
+                AgentBriefWhyNowReason::ChangedLineIntersectsSeam,
+                AgentBriefWhyNowConfidence::High,
+                1,
+            ),
+            (
+                AgentBriefWhyNowReason::ChangedOwnerFunction,
+                AgentBriefWhyNowConfidence::High,
+                2,
+            ),
+            (
+                AgentBriefWhyNowReason::ChangedTestForRelatedSeam,
+                AgentBriefWhyNowConfidence::High,
+                3,
+            ),
+            (
+                AgentBriefWhyNowReason::ChangedAssertionNearRelatedTest,
+                AgentBriefWhyNowConfidence::Medium,
+                4,
+            ),
+            (
+                AgentBriefWhyNowReason::ChangedTestForRelatedSeam,
+                AgentBriefWhyNowConfidence::Medium,
+                5,
+            ),
+            (
+                AgentBriefWhyNowReason::SameFileSeam,
+                AgentBriefWhyNowConfidence::Medium,
+                6,
+            ),
+            (
+                AgentBriefWhyNowReason::ExplicitSeamId,
+                AgentBriefWhyNowConfidence::High,
+                0,
+            ),
+            (
+                AgentBriefWhyNowReason::RepoActionableFallback,
+                AgentBriefWhyNowConfidence::Low,
+                7,
+            ),
+        ];
+        for (reason, confidence, expected) in priority_cases {
+            assert_eq!(
+                why_now_sort_priority(&AgentBriefWhyNow {
+                    reason,
+                    confidence,
+                    evidence: String::new(),
+                }),
+                expected
+            );
+        }
 
         assert_eq!(
             AGENT_BRIEF_WHY_NOW_CONFIDENCE_VOCABULARY.map(AgentBriefWhyNowConfidence::as_str),
@@ -996,6 +1052,45 @@ mod tests {
                 .why_now
                 .evidence
                 .contains("is near related test")
+        );
+    }
+
+    #[test]
+    fn agent_brief_selector_ranks_assertion_near_related_test_before_file_only_related_test() {
+        let mut broad = classified(
+            "src/a.rs",
+            88,
+            "pricing::broad_file_match",
+            "amount >= discount_threshold",
+            SeamGripClass::WeaklyGripped,
+        );
+        related_test(&mut broad, "tests/shared.rs", 1, RelationConfidence::High);
+        let mut assertion = classified(
+            "src/z.rs",
+            88,
+            "pricing::assertion_match",
+            "amount >= discount_threshold",
+            SeamGripClass::WeaklyGripped,
+        );
+        related_test(
+            &mut assertion,
+            "tests/shared.rs",
+            20,
+            RelationConfidence::High,
+        );
+        let assertion_id = assertion.seam.id().as_str().to_string();
+        let seams = vec![broad, assertion];
+        let working_set = AgentBriefResolvedWorkingSet::diff(
+            "change.diff",
+            vec![AgentBriefLine::new("tests/shared.rs", 24)],
+        );
+
+        let selection = select(&seams, &working_set, 2);
+
+        assert_eq!(selection.top_seams[0].seam.seam.id().as_str(), assertion_id);
+        assert_eq!(
+            selection.top_seams[0].why_now.reason,
+            AgentBriefWhyNowReason::ChangedAssertionNearRelatedTest
         );
     }
 

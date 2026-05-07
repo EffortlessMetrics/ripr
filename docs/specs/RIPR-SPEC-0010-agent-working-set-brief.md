@@ -102,6 +102,12 @@ Tie-breakers:
 visible under current config. Other seams may be included only when the caller
 also asks for more than one result.
 
+When `changed_test_for_related_seam` comes from a file-only request, it is
+broader than a line-level `changed_assertion_near_related_test` match and
+should sort after that assertion-near match. A line-level related-test match
+for the test declaration remains the stronger `changed_test_for_related_seam`
+case.
+
 ### JSON Shape
 
 The brief should use schema version `0.1`:
@@ -516,6 +522,7 @@ Planned tests:
 - `agent_brief_selector_routes_file_scoped_related_test_to_seam`
 - `agent_brief_selector_routes_changed_related_test_line_to_seam`
 - `agent_brief_selector_routes_changed_assertion_near_related_test_to_seam`
+- `agent_brief_selector_ranks_assertion_near_related_test_before_file_only_related_test`
 - `agent_brief_caps_default_to_three_seams`
 - `agent_brief_rejects_or_clamps_above_hard_cap`
 - `agent_brief_respects_configured_off_severity`
