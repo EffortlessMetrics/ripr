@@ -68,23 +68,24 @@ Acknowledgement labels: `ripr-waive`, `full-ci`, `ci-budget-ack`.
 ## Suppression schema
 
 Suppressions live in `.ripr/suppressions.toml` (the canonical path used by
-`crates/ripr/src/config.rs`; see `docs/CONFIGURATION.md` and
+`crates/ripr/src/config.rs`; the parser is in
+`crates/ripr/src/output/suppressions.rs`; see `docs/CONFIGURATION.md` and
 `docs/OUTPUT_SCHEMA.md`):
 
 ```toml
-schema_version = "1.0"
-
-[[suppression]]
-id = "ripr-suppress-0001"
-finding_class = "reachable_unrevealed"
-selector = { path = "crates/ripr/src/...", symbol = "..." }
+[[suppressions]]
+kind = "exposure_gap"          # or "test_efficiency"
+finding_id = "<finding id>"    # required when kind = "exposure_gap"
+# test = "<test selector>"     # required when kind = "test_efficiency"
+# path = "<optional path narrowing for test_efficiency>"
 owner = "core/analysis"
 reason = "Spec-required behavior is exposed indirectly via integration test."
-expires = "2026-09-01"
+expires = "2026-09-01"         # optional ISO-8601 YYYY-MM-DD
 ```
 
-Suppressions require an owner, reason, and expiry. An expired suppression
-fails the gate. Suppressions are reviewed during release readiness.
+Every entry requires `owner` and `reason`. `expires` is optional, but
+expired suppressions fail the gate. Suppressions are reviewed at every
+release readiness check.
 
 ## Reports and artifacts
 
