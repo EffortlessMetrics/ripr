@@ -5,11 +5,12 @@
 
 <!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-07 from the public listing. Refresh from publisher metrics after publish. Do not use live VS Marketplace Shields routes. -->
 
-Preview VS Code extension for `ripr`, the static RIPR mutation-exposure analyzer
-for Rust/Cargo workspaces.
+Preview VS Code/Open VSX extension for `ripr`, the static RIPR
+mutation-exposure analyzer for Rust/Cargo workspaces.
 
-The extension starts `ripr lsp --stdio` and surfaces static exposure diagnostics
-from a resolved `ripr` server.
+The extension starts `ripr lsp --stdio`, surfaces saved-workspace diagnostics,
+and helps a human or coding agent move from static evidence to one focused
+test.
 
 ## Requirements
 
@@ -23,15 +24,23 @@ Install `EffortlessMetrics.ripr` from VS Code Marketplace or Open VSX. The
 extension should resolve its server automatically, so `cargo install ripr` is a
 fallback rather than a required first step.
 
-After opening a Rust/Cargo workspace, use the Problems panel, diagnostic hovers,
-and the seam code actions to inspect saved-workspace evidence and copy a
-targeted test brief. Unsaved-buffer overlays are not enabled by default.
+After opening a Rust/Cargo workspace:
+
+1. Use the Problems panel to find actionable saved-workspace seam diagnostics.
+2. Hover a diagnostic to see why RIPR flagged it.
+3. Copy the targeted test brief or agent command chain.
+4. Open the best related test when RIPR finds an imitation target.
+5. Add one focused test.
+6. Verify with the copied command chain or the CI artifact packet.
+
+Unsaved-buffer overlays are not enabled by default.
 
 ## What ripr Does
 
-`ripr` scans changed Rust code for mutation-shaped probes and reports whether
+`ripr` scans Rust code for mutation-shaped static seams and reports whether
 tests appear to contain the discriminators needed to expose the changed
-behavior.
+behavior. It uses conservative static-exposure language and is meant to guide
+the next useful test, not to prove test adequacy.
 
 It does not run mutation testing, report killed/survived, or prove test
 adequacy. Use real mutation testing, such as `cargo-mutants`, for ready-mode
@@ -60,11 +69,18 @@ confirmation.
 - `ripr: Copy Finding Context`
 - `ripr: Copy Suggested Assertion`
 - `ripr: Copy Targeted Test Brief`
+- `ripr: Copy Agent Packet Command`
+- `ripr: Copy Agent Brief Command`
+- `ripr: Copy After Snapshot Command`
+- `ripr: Copy Agent Verify Command`
+- `ripr: Copy Agent Receipt Command`
 - `ripr: Open Related Test`
 - `ripr: Open Settings`
 
 ## Preview Limitations
 
-The `0.3.x` extension uses a universal VSIX and downloads native server binaries
-when available. It does not auto-install Rust tooling. Bundled platform-specific
-VSIXs are planned after the downloader path is proven.
+The `0.4.x` extension uses a universal VSIX and downloads native server
+binaries from matching GitHub Releases when available. It does not auto-install
+Rust tooling, run mutation tests, make automatic edits, or analyze unsaved
+buffer overlays by default. Bundled platform-specific VSIXs are planned after
+the downloader path is proven.

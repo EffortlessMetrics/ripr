@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.0
+
+- Aligns the marketplace extension with the 0.4 editor-agent evidence loop:
+  saved-workspace diagnostics, hover evidence, targeted-test briefs, best
+  related-test navigation, and copied agent packet/brief/verify/receipt
+  commands now describe the same focused-test workflow.
+- Keeps normal editor installs self-provisioned through matching GitHub Release
+  server manifests and archives. `cargo install ripr` remains an offline,
+  pinned, or controlled-environment fallback.
+- Documents that CI users should rely on the generated non-blocking artifact
+  workflow, while the CLI remains the shared engine for local proof and
+  automation.
+- Keeps preview limits explicit: no mutation execution, no automatic edits, no
+  CI blocking, no unsaved-buffer overlays by default, and no bundled
+  platform-specific VSIXs yet.
+
 ## 0.3.1
 
 - Aligns the extension package with the first defaults-first `ripr` release
