@@ -55,7 +55,7 @@ rewrite the active manifest explicitly.
 | Open related test | `ripr.openRelatedTest` | Opens the strongest related test without editing it |
 | Suggested assertion | `ripr.copySuggestedAssertion` | Copies assertion text when the packet has a concrete assertion shape |
 | Refresh analysis | `ripr.refresh` | Refreshes saved-workspace diagnostics and latency status |
-| After snapshot | `ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json` | Captures the post-test static exposure state |
+| After snapshot | `ripr check --root . --mode ready --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json` | Captures the post-test static exposure state |
 | Agent verify | `ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > target/ripr/workflow/agent-verify.json` | Compares before and after repo-exposure snapshots |
 | Agent receipt | `ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id <id> --json --out target/ripr/reports/agent-receipt.json` | Narrows verify output to one seam for review handoff |
 | Operator cockpit | `cargo xtask operator-cockpit` | Joins existing repo-local reports into `target/ripr/reports/operator-cockpit.{json,md}` |

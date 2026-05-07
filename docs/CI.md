@@ -336,7 +336,7 @@ jobs:
             cp target/ripr/pilot/repo-exposure.json target/ripr/reports/repo-exposure.json
           fi
           if [ -f target/ripr/pilot/pilot-summary.json ]; then
-            top_seam_id="$(jq -r '.top_seams[0].seam_id // empty' target/ripr/pilot/pilot-summary.json 2>/dev/null || true)"
+            top_seam_id="$(jq -r '.top_actionable_seams[0].seam_id // empty' target/ripr/pilot/pilot-summary.json 2>/dev/null || true)"
             if [ -n "$top_seam_id" ] && [ "$top_seam_id" != "null" ]; then
               echo "RIPR_TOP_SEAM_ID=$top_seam_id" >> "$GITHUB_ENV"
             fi
