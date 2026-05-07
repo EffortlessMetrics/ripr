@@ -1075,6 +1075,93 @@ Field contract:
   guidance derived from the verify bucket. It does not claim runtime
   confirmation.
 
+## Agent Status
+
+`ripr agent status --root <workspace> --json` reads already-written agent-loop
+artifacts and reports which step is missing next:
+
+```text
+ripr agent status --root . --json
+```
+
+The command does not run analysis, mutation testing, SARIF policy, badge
+generation, LSP refresh, or cache warm-up. It only inspects fixed artifact
+paths under the supplied workspace root:
+
+```text
+target/ripr/workflow/before.repo-exposure.json
+target/ripr/workflow/after.repo-exposure.json
+target/ripr/workflow/agent-brief.json
+target/ripr/workflow/agent-packet.json
+target/ripr/workflow/agent-verify.json
+target/ripr/reports/agent-receipt.json
+```
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "incomplete",
+  "root": ".",
+  "seam": {
+    "seam_id": "67fc764ba37d77bd",
+    "source": "agent_receipt"
+  },
+  "artifacts": [
+    {
+      "name": "before_snapshot",
+      "label": "before snapshot",
+      "path": "target/ripr/workflow/before.repo-exposure.json",
+      "required": true,
+      "state": "present",
+      "bytes": 12000,
+      "modified_unix_ms": 1778179200000
+    }
+  ],
+  "missing_commands": [
+    {
+      "step": "agent_packet",
+      "artifact": "target/ripr/workflow/agent-packet.json",
+      "reason": "agent packet artifact is missing",
+      "command": "ripr agent packet --root . --seam-id 67fc764ba37d77bd --json > target/ripr/workflow/agent-packet.json"
+    }
+  ],
+  "next_command": {
+    "step": "agent_packet",
+    "artifact": "target/ripr/workflow/agent-packet.json",
+    "reason": "agent packet artifact is missing",
+    "command": "ripr agent packet --root . --seam-id 67fc764ba37d77bd --json > target/ripr/workflow/agent-packet.json"
+  },
+  "warnings": []
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `status` - `"complete"` when every required artifact is present and there
+  are no warnings; `"warning"` when every artifact is present but a
+  stale-looking condition exists; `"incomplete"` when any required artifact is
+  missing.
+- `root` - the `--root` argument normalized to forward slashes for reporting.
+- `seam` - recovered seam identity when available. The current recovery order
+  is receipt, verify, packet, then brief. It is `null` when no existing
+  artifact names a seam.
+- `artifacts[]` - one entry for each required fixed artifact. `bytes` and
+  `modified_unix_ms` are `null` when the artifact is missing or the filesystem
+  does not expose the timestamp.
+- `missing_commands[]` - one command for each missing artifact in workflow
+  order: before snapshot, packet, brief, after snapshot, verify, receipt. If no
+  seam can be recovered, packet, brief, and receipt commands use `<seam-id>`.
+- `next_command` - the first entry from `missing_commands`, or `null` when no
+  required artifact is missing.
+- `warnings[]` - stale-looking or unreadable-artifact hints. Timestamp warnings
+  are emitted when `agent verify` is older than a before/after snapshot or
+  `agent receipt` is older than `agent verify`. The report does not infer hash
+  mismatches until receipt provenance fields exist.
+
 ## Release Readiness Report
 
 `cargo xtask release-readiness --version <version>` writes a Campaign 10

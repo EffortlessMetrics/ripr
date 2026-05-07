@@ -6,7 +6,7 @@ use crate::app::agent_brief::{
 use crate::app::{self, CheckInput, Mode, OutputFormat};
 use crate::cli::agent::{
     AgentBriefOptions, AgentBriefWorkingSet, AgentCommand, AgentPacketOptions, AgentReceiptOptions,
-    AgentVerifyOptions, parse_agent_args,
+    AgentStatusOptions, AgentVerifyOptions, parse_agent_args,
 };
 use crate::cli::help;
 use crate::cli::parse::{expect_value, parse_format, parse_mode};
@@ -94,10 +94,15 @@ pub(super) fn agent(args: &[String]) -> Result<(), String> {
             help::print_agent_receipt_help();
             Ok(())
         }
+        AgentCommand::StatusHelp => {
+            help::print_agent_status_help();
+            Ok(())
+        }
         AgentCommand::Brief(options) => run_agent_brief(options),
         AgentCommand::Packet(options) => run_agent_packet(options),
         AgentCommand::Verify(options) => run_agent_verify(options),
         AgentCommand::Receipt(options) => run_agent_receipt(options),
+        AgentCommand::Status(options) => run_agent_status(options),
     }
 }
 
@@ -221,6 +226,20 @@ fn run_agent_receipt(options: AgentReceiptOptions) -> Result<(), String> {
             Ok(())
         }
     }
+}
+
+fn run_agent_status(options: AgentStatusOptions) -> Result<(), String> {
+    if !options.root.is_dir() {
+        return Err(format!(
+            "agent status root {} is not a directory",
+            options.root.display()
+        ));
+    }
+
+    let report = app::agent_status::build_agent_status_report(&options.root, &options.root);
+    let rendered = app::agent_status::render_agent_status_json(&report)?;
+    print!("{rendered}");
+    Ok(())
 }
 
 fn validate_agent_receipt_verify_path(root: &Path, path: &Path) -> Result<PathBuf, String> {
@@ -1534,6 +1553,7 @@ mod tests {
         assert_eq!(calibrate(&args(&["--help"])), Ok(()));
         assert_eq!(agent(&args(&["--help"])), Ok(()));
         assert_eq!(agent(&args(&["brief", "--help"])), Ok(()));
+        assert_eq!(agent(&args(&["status", "--help"])), Ok(()));
         assert_eq!(check(&args(&["--help"])), Ok(()));
         assert_eq!(explain(&args(&["--help"])), Ok(()));
         assert_eq!(context(&args(&["--help"])), Ok(()));
@@ -1799,7 +1819,23 @@ mod tests {
         assert_eq!(
             agent(&args(&["unknown"])),
             Err(
-                "unknown agent subcommand \"unknown\"; expected `brief`, `packet`, `verify`, or `receipt`"
+                "unknown agent subcommand \"unknown\"; expected `brief`, `packet`, `verify`, `receipt`, or `status`"
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn agent_status_rejects_missing_root_before_reading_artifacts() {
+        assert_eq!(
+            agent(&args(&[
+                "status",
+                "--root",
+                "target/ripr/missing-agent-status-root",
+                "--json",
+            ])),
+            Err(
+                "agent status root target/ripr/missing-agent-status-root is not a directory"
                     .to_string()
             )
         );

@@ -79,8 +79,10 @@ diagnostic, evidence, packet/brief, focused-test, after-snapshot, verify,
 receipt, cockpit, CI, and install loop. Its release-readiness gate proves the
 installed CLI, boundary-gap `pilot`, `outcome`, `agent verify`,
 `agent receipt`, latency, LSP cockpit, advisory workflow, VSIX path, and
-known-limit surfaces. No ready work item remains in the active manifest; choose
-the next product campaign explicitly before starting new implementation work.
+known-limit surfaces. Campaign 11 is now active as the LLM work loop: the first
+slice adds `ripr agent status --root . --json` as a read-only lens over
+existing artifacts, and the next ready item is
+`agent/centralize-loop-command-templates`.
 
 ## Strategic Sequence
 
@@ -121,6 +123,7 @@ quality rails
 -> hot-sidecar latency proof
 -> editor-agent integration
 -> editor-agent release readiness proof
+-> LLM work loop
 ```
 
 The analyzer path is:

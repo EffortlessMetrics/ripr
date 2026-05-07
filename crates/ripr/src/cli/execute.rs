@@ -71,7 +71,7 @@ mod tests {
         assert_eq!(
             execute(CliCommand::Agent(args(&["unknown"]))),
             Err(
-                "unknown agent subcommand \"unknown\"; expected `brief`, `packet`, `verify`, or `receipt`"
+                "unknown agent subcommand \"unknown\"; expected `brief`, `packet`, `verify`, `receipt`, or `status`"
                     .to_string()
             )
         );

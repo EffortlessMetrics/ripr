@@ -21,3 +21,4 @@ observable behavior.
 | [RIPR-SPEC-0008](RIPR-SPEC-0008-sarif-ci-policy.md) | proposed | SARIF and CI policy |
 | [RIPR-SPEC-0009](RIPR-SPEC-0009-defaults-first-adoption.md) | proposed | Defaults-first adoption |
 | [RIPR-SPEC-0010](RIPR-SPEC-0010-agent-working-set-brief.md) | proposed | Agent working-set brief |
+| [RIPR-SPEC-0011](RIPR-SPEC-0011-llm-work-loop.md) | proposed | LLM work loop |

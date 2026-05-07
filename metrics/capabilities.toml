@@ -559,6 +559,23 @@ next = "campaign/editor-agent-integration-closeout"
 metric = "packet carries missing discriminator + suggested assertion templates"
 
 [[capability]]
+id = "agent_loop_status"
+name = "Agent loop status"
+status = "alpha"
+spec = "RIPR-SPEC-0011"
+evidence = [
+  "ripr agent status --root . --json reports before snapshot, after snapshot, agent brief, agent packet, agent verify, and agent receipt artifact state without rerunning analysis",
+  "crates/ripr/src/app/agent_status.rs recovers seam_id from receipt, verify, packet, or brief JSON and emits missing-input commands",
+  "crates/ripr/src/cli/agent.rs parses the status subcommand as a JSON-only agent surface",
+  "docs/OUTPUT_SCHEMA.md Agent Status section",
+  "docs/specs/RIPR-SPEC-0011-llm-work-loop.md",
+  "cargo test -p ripr agent_status"
+]
+fixtures = []
+next = "agent/centralize-loop-command-templates"
+metric = "agent status names present or missing artifacts, recovered seam_id, stale-looking warnings, and next missing command"
+
+[[capability]]
 id = "pilot_packet"
 name = "Pilot packet"
 status = "alpha"
