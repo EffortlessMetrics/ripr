@@ -63,7 +63,10 @@ The soft-gate does not block on:
 - `static_unknown` findings.
 - Mutation outcomes (`killed` / `survived` are not produced by `ripr`).
 
-Acknowledgement labels: `ripr-waive`, `full-ci`, `ci-budget-ack`.
+Acknowledgement labels: `ripr-waive`, `ci-budget-ack`. The routing label
+`full-ci` (documented in `docs/ci/labels.md`) is also recognized — it
+adds the deep-validation lanes and as a side effect demotes `ripr-waive`
+requirement on this gate.
 
 ## Suppression schema
 
