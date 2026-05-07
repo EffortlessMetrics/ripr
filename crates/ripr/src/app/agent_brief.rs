@@ -1,11 +1,13 @@
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::seams::SeamGripClass;
+use crate::analysis::test_grip_evidence::{RelatedTestGrip, RelationConfidence};
 use crate::config::{ConfigSeverity, RiprConfig};
 use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
 
 pub(crate) const DEFAULT_AGENT_BRIEF_MAX_SEAMS: usize = 3;
 pub(crate) const AGENT_BRIEF_HARD_MAX_SEAMS: usize = 10;
+const RELATED_TEST_ASSERTION_WINDOW_LINES: usize = 12;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum AgentBriefWorkingSetSource {
@@ -374,6 +376,47 @@ fn why_now_for(
         });
     }
 
+    if let Some((test, line)) = matching_related_test_exact_line(entry, working_set) {
+        return Some(AgentBriefWhyNow {
+            reason: AgentBriefWhyNowReason::ChangedTestForRelatedSeam,
+            confidence: AgentBriefWhyNowConfidence::High,
+            evidence: format!(
+                "changed line {} intersects related test {} at {}:{}",
+                line.line,
+                test.test_name,
+                display_path(&test.file),
+                test.line
+            ),
+        });
+    }
+
+    if let Some((test, line)) = matching_related_test_assertion_line(entry, working_set) {
+        return Some(AgentBriefWhyNow {
+            reason: AgentBriefWhyNowReason::ChangedAssertionNearRelatedTest,
+            confidence: AgentBriefWhyNowConfidence::Medium,
+            evidence: format!(
+                "changed line {} is near related test {} at {}:{}",
+                line.line,
+                test.test_name,
+                display_path(&test.file),
+                test.line
+            ),
+        });
+    }
+
+    if let Some(test) = matching_related_test_file(entry, working_set) {
+        return Some(AgentBriefWhyNow {
+            reason: AgentBriefWhyNowReason::ChangedTestForRelatedSeam,
+            confidence: AgentBriefWhyNowConfidence::Medium,
+            evidence: format!(
+                "working set includes related test {} at {}:{}",
+                test.test_name,
+                display_path(&test.file),
+                test.line
+            ),
+        });
+    }
+
     if working_set
         .files
         .iter()
@@ -398,6 +441,50 @@ fn matching_changed_line<'a>(
     })
 }
 
+fn matching_related_test_exact_line<'a>(
+    entry: &'a ClassifiedSeam,
+    working_set: &'a AgentBriefResolvedWorkingSet,
+) -> Option<(&'a RelatedTestGrip, &'a AgentBriefLine)> {
+    matching_related_test_line(entry, working_set, |test, line| line.line == test.line)
+}
+
+fn matching_related_test_assertion_line<'a>(
+    entry: &'a ClassifiedSeam,
+    working_set: &'a AgentBriefResolvedWorkingSet,
+) -> Option<(&'a RelatedTestGrip, &'a AgentBriefLine)> {
+    matching_related_test_line(entry, working_set, |test, line| {
+        line.line > test.line
+            && line
+                .line
+                .checked_sub(test.line)
+                .is_some_and(|distance| distance <= RELATED_TEST_ASSERTION_WINDOW_LINES)
+    })
+}
+
+fn matching_related_test_line<'a>(
+    entry: &'a ClassifiedSeam,
+    working_set: &'a AgentBriefResolvedWorkingSet,
+    matches_line: impl Fn(&RelatedTestGrip, &AgentBriefLine) -> bool,
+) -> Option<(&'a RelatedTestGrip, &'a AgentBriefLine)> {
+    entry.evidence.related_tests.iter().find_map(|test| {
+        working_set.changed_lines.iter().find_map(|line| {
+            (same_file(&line.file, &test.file) && matches_line(test, line)).then_some((test, line))
+        })
+    })
+}
+
+fn matching_related_test_file<'a>(
+    entry: &'a ClassifiedSeam,
+    working_set: &AgentBriefResolvedWorkingSet,
+) -> Option<&'a RelatedTestGrip> {
+    entry.evidence.related_tests.iter().find(|test| {
+        working_set
+            .files
+            .iter()
+            .any(|file| same_file(file, &test.file))
+    })
+}
+
 fn selected<'a>(seam: &'a ClassifiedSeam, why_now: AgentBriefWhyNow) -> AgentBriefSelectedSeam<'a> {
     AgentBriefSelectedSeam { seam, why_now }
 }
@@ -416,6 +503,10 @@ fn compare_selected(
                 .cmp(&severity_priority(policy.severity_for(right.seam.class)))
         })
         .then_with(|| grip_priority(left.seam.class).cmp(&grip_priority(right.seam.class)))
+        .then_with(|| {
+            best_relation_confidence_priority(left.seam)
+                .cmp(&best_relation_confidence_priority(right.seam))
+        })
         .then_with(|| {
             normalized_path(left.seam.seam.file()).cmp(&normalized_path(right.seam.seam.file()))
         })
@@ -456,6 +547,25 @@ fn severity_priority(severity: ConfigSeverity) -> u8 {
         ConfigSeverity::Info => 1,
         ConfigSeverity::Note => 2,
         ConfigSeverity::Off => 3,
+    }
+}
+
+fn best_relation_confidence_priority(entry: &ClassifiedSeam) -> u8 {
+    entry
+        .evidence
+        .related_tests
+        .iter()
+        .map(|test| relation_confidence_priority(test.relation_confidence))
+        .min()
+        .unwrap_or(4)
+}
+
+fn relation_confidence_priority(confidence: RelationConfidence) -> u8 {
+    match confidence {
+        RelationConfidence::High => 0,
+        RelationConfidence::Medium => 1,
+        RelationConfidence::Low => 2,
+        RelationConfidence::Opaque => 3,
     }
 }
 
@@ -575,6 +685,17 @@ mod tests {
                 }],
             },
         }
+    }
+
+    fn related_test(
+        entry: &mut ClassifiedSeam,
+        file: &str,
+        line: usize,
+        confidence: RelationConfidence,
+    ) {
+        entry.evidence.related_tests[0].file = PathBuf::from(file);
+        entry.evidence.related_tests[0].line = line;
+        entry.evidence.related_tests[0].relation_confidence = confidence;
     }
 
     fn selected_ids(selection: &AgentBriefSelection<'_>) -> Vec<String> {
@@ -779,6 +900,106 @@ mod tests {
     }
 
     #[test]
+    fn agent_brief_selector_routes_file_scoped_related_test_to_seam() {
+        let mut seam = classified(
+            "src/pricing.rs",
+            88,
+            "pricing::discounted_total",
+            "amount >= discount_threshold",
+            SeamGripClass::WeaklyGripped,
+        );
+        related_test(&mut seam, "tests/pricing.rs", 20, RelationConfidence::High);
+        let seams = vec![seam];
+        let working_set =
+            AgentBriefResolvedWorkingSet::files(vec![PathBuf::from("tests/pricing.rs")]);
+
+        let selection = select(&seams, &working_set, 3);
+
+        assert_eq!(
+            selection.top_seams[0].why_now.reason,
+            AgentBriefWhyNowReason::ChangedTestForRelatedSeam
+        );
+        assert_eq!(
+            selection.top_seams[0].why_now.confidence,
+            AgentBriefWhyNowConfidence::Medium
+        );
+        assert!(
+            selection.top_seams[0]
+                .why_now
+                .evidence
+                .contains("working set includes related test")
+        );
+    }
+
+    #[test]
+    fn agent_brief_selector_routes_changed_related_test_line_to_seam() {
+        let mut seam = classified(
+            "src/pricing.rs",
+            88,
+            "pricing::discounted_total",
+            "amount >= discount_threshold",
+            SeamGripClass::WeaklyGripped,
+        );
+        related_test(&mut seam, "tests/pricing.rs", 20, RelationConfidence::High);
+        let seams = vec![seam];
+        let working_set = AgentBriefResolvedWorkingSet::diff(
+            "change.diff",
+            vec![AgentBriefLine::new("tests/pricing.rs", 20)],
+        );
+
+        let selection = select(&seams, &working_set, 3);
+
+        assert_eq!(
+            selection.top_seams[0].why_now.reason,
+            AgentBriefWhyNowReason::ChangedTestForRelatedSeam
+        );
+        assert_eq!(
+            selection.top_seams[0].why_now.confidence,
+            AgentBriefWhyNowConfidence::High
+        );
+        assert!(
+            selection.top_seams[0]
+                .why_now
+                .evidence
+                .contains("intersects related test")
+        );
+    }
+
+    #[test]
+    fn agent_brief_selector_routes_changed_assertion_near_related_test_to_seam() {
+        let mut seam = classified(
+            "src/pricing.rs",
+            88,
+            "pricing::discounted_total",
+            "amount >= discount_threshold",
+            SeamGripClass::WeaklyGripped,
+        );
+        related_test(&mut seam, "tests/pricing.rs", 20, RelationConfidence::High);
+        let seams = vec![seam];
+        let working_set = AgentBriefResolvedWorkingSet::diff(
+            "change.diff",
+            vec![AgentBriefLine::new("tests/pricing.rs", 24)],
+        );
+
+        let selection = select(&seams, &working_set, 3);
+
+        assert_eq!(
+            selection.top_seams[0].why_now.reason,
+            AgentBriefWhyNowReason::ChangedAssertionNearRelatedTest
+        );
+        assert_eq!(
+            selection.top_seams[0].why_now.confidence,
+            AgentBriefWhyNowConfidence::Medium
+        );
+        assert!(
+            selection.top_seams[0]
+                .why_now
+                .evidence
+                .contains("is near related test")
+        );
+    }
+
+    #[test]
     fn agent_brief_selector_uses_default_limit_when_zero_is_requested() {
         let seams = vec![
             classified(
@@ -847,6 +1068,34 @@ mod tests {
         assert_eq!(severity_priority(ConfigSeverity::Info), 1);
         assert_eq!(severity_priority(ConfigSeverity::Note), 2);
         assert_eq!(severity_priority(ConfigSeverity::Off), 3);
+    }
+
+    #[test]
+    fn agent_brief_selector_uses_related_test_confidence_before_path() {
+        let mut low = classified(
+            "src/a.rs",
+            88,
+            "pricing::low_confidence",
+            "amount >= discount_threshold",
+            SeamGripClass::WeaklyGripped,
+        );
+        related_test(&mut low, "tests/shared.rs", 20, RelationConfidence::Low);
+        let mut high = classified(
+            "src/z.rs",
+            88,
+            "pricing::high_confidence",
+            "amount >= discount_threshold",
+            SeamGripClass::WeaklyGripped,
+        );
+        related_test(&mut high, "tests/shared.rs", 20, RelationConfidence::High);
+        let high_id = high.seam.id().as_str().to_string();
+        let seams = vec![low, high];
+        let working_set =
+            AgentBriefResolvedWorkingSet::files(vec![PathBuf::from("tests/shared.rs")]);
+
+        let selection = select(&seams, &working_set, 2);
+
+        assert_eq!(selection.top_seams[0].seam.seam.id().as_str(), high_id);
     }
 
     #[test]
