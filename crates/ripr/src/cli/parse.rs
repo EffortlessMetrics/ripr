@@ -83,6 +83,10 @@ mod tests {
             parse_args(args(&["ripr", "calibrate", "cargo-mutants"])),
             Ok(CliCommand::Calibrate(args(&["cargo-mutants"])))
         );
+        assert_eq!(
+            parse_args(args(&["ripr", "agent", "brief", "--json"])),
+            Ok(CliCommand::Agent(args(&["brief", "--json"])))
+        );
     }
 
     #[test]

@@ -1,5 +1,6 @@
 use crate::analysis;
 use crate::app::{self, CheckInput, Mode, OutputFormat};
+use crate::cli::agent::{AgentCommand, parse_agent_args};
 use crate::cli::help;
 use crate::cli::parse::{expect_value, parse_format, parse_mode};
 use crate::config::{
@@ -57,6 +58,23 @@ struct CalibrateOptions {
 enum CalibrateFormat {
     Markdown,
     Json,
+}
+
+pub(super) fn agent(args: &[String]) -> Result<(), String> {
+    match parse_agent_args(args)? {
+        AgentCommand::Help => {
+            help::print_agent_help();
+            Ok(())
+        }
+        AgentCommand::BriefHelp => {
+            help::print_agent_brief_help();
+            Ok(())
+        }
+        AgentCommand::Brief(options) => Err(format!(
+            "ripr agent brief parsed ({}) but is not implemented yet",
+            options.parsed_summary()
+        )),
+    }
 }
 
 pub(super) fn init(args: &[String]) -> Result<(), String> {
@@ -1019,6 +1037,8 @@ mod tests {
         assert_eq!(init(&args(&["--help"])), Ok(()));
         assert_eq!(pilot(&args(&["--help"])), Ok(()));
         assert_eq!(calibrate(&args(&["--help"])), Ok(()));
+        assert_eq!(agent(&args(&["--help"])), Ok(()));
+        assert_eq!(agent(&args(&["brief", "--help"])), Ok(()));
         assert_eq!(check(&args(&["--help"])), Ok(()));
         assert_eq!(explain(&args(&["--help"])), Ok(()));
         assert_eq!(context(&args(&["--help"])), Ok(()));
@@ -1252,6 +1272,25 @@ mod tests {
     fn calibrate_help_returns_ok() {
         assert_eq!(calibrate(&args(&["--help"])), Ok(()));
         assert_eq!(calibrate(&args(&["cargo-mutants", "--help"])), Ok(()));
+    }
+
+    #[test]
+    fn agent_rejects_unknown_subcommands() {
+        assert_eq!(
+            agent(&args(&["packet"])),
+            Err("unknown agent subcommand \"packet\"; expected `brief`".to_string())
+        );
+    }
+
+    #[test]
+    fn agent_brief_parses_request_but_does_not_run_analysis_yet() {
+        assert_eq!(
+            agent(&args(&["brief", "--diff", "change.diff", "--json"])),
+            Err(
+                "ripr agent brief parsed (root=., working_set=diff:change.diff, max_seams=3, json=true) but is not implemented yet"
+                    .to_string()
+            )
+        );
     }
 
     #[test]
