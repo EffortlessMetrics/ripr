@@ -114,9 +114,9 @@ The seed policy ledgers are machine-readable but non-enforcing:
 - `policy/ci-whitelist-exceptions.toml` records current workflow behavior that
   intentionally differs from the target policy while the split rolls out.
 
-A later `xtask` checker should first validate these files structurally:
+`cargo xtask check-ci-lane-whitelist` validates these files structurally:
 schema version, lane IDs, label IDs, artifact family IDs, owners, and reasons.
-It should not fail a PR because a risk pack matched or an estimate changed.
+It does not fail a PR because a risk pack matched or an estimate changed.
 
 ### Artifact Families
 

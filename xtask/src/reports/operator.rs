@@ -204,6 +204,8 @@ fn keep_shared_loop_templates_reachable() {
         loop_commands::WORKFLOW_AGENT_BRIEF_ARTIFACT,
         loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT,
         loop_commands::WORKFLOW_AGENT_RECEIPT_ARTIFACT,
+        loop_commands::WORKFLOW_MANIFEST_ARTIFACT,
+        loop_commands::WORKFLOW_COMMANDS_MARKDOWN_ARTIFACT,
         loop_commands::WORKFLOW_AGENT_STATUS_ARTIFACT,
         loop_commands::WORKFLOW_AGENT_REVIEW_SUMMARY_ARTIFACT,
         loop_commands::PILOT_BEFORE_SNAPSHOT_ARTIFACT,
@@ -227,6 +229,7 @@ fn keep_shared_loop_templates_reachable() {
             "seam-id",
             loop_commands::WORKFLOW_AGENT_BRIEF_ARTIFACT,
         ),
+        loop_commands::agent_start_command(".", "seam-id", "target/ripr/workflow"),
         loop_commands::agent_status_command(
             ".",
             Some(loop_commands::WORKFLOW_AGENT_STATUS_ARTIFACT),
@@ -236,6 +239,7 @@ fn keep_shared_loop_templates_reachable() {
             Some(loop_commands::WORKFLOW_AGENT_REVIEW_SUMMARY_ARTIFACT),
         ),
         loop_commands::display_path(Path::new(".")),
+        loop_commands::workflow_artifact_path(Path::new("target/ripr/workflow"), "workflow.json"),
         loop_commands::shell_path(Path::new(".")),
     ));
 }

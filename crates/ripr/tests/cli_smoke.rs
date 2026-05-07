@@ -321,6 +321,44 @@ fn editor_agent_loop_fixture_outputs_match_expected() -> Result<(), Box<dyn std:
 }
 
 #[test]
+fn agent_start_writes_source_edit_free_workflow_packet() -> Result<(), Box<dyn std::error::Error>> {
+    let seam_id = "67fc764ba37d77bd";
+    let out_dir = unique_temp_workspace("agent-start");
+    let out = out_dir
+        .to_str()
+        .ok_or("workflow output path should be utf-8")?;
+
+    let output = run_ripr_in_workspace(&[
+        "agent",
+        "start",
+        "--root",
+        "fixtures/boundary_gap/input",
+        "--seam-id",
+        seam_id,
+        "--out",
+        out,
+    ])?;
+    assert_success(&output);
+
+    let workflow_json = std::fs::read_to_string(out_dir.join("workflow.json"))?;
+    let commands_md = std::fs::read_to_string(out_dir.join("commands.md"))?;
+    let agent_brief_json = std::fs::read_to_string(out_dir.join("agent-brief.json"))?;
+
+    assert!(workflow_json.contains(r#""schema_version": "0.1""#));
+    assert!(workflow_json.contains(r#""source_edits": false"#));
+    assert!(workflow_json.contains(r#""llm_api_calls": false"#));
+    assert!(workflow_json.contains(seam_id));
+    assert!(workflow_json.contains("ripr agent verify --root fixtures/boundary_gap/input"));
+    assert!(commands_md.contains("# RIPR Agent Workflow"));
+    assert!(commands_md.contains("Does not edit source files."));
+    assert!(commands_md.contains("Does not call an LLM API."));
+    assert!(agent_brief_json.contains(seam_id));
+
+    std::fs::remove_dir_all(out_dir)?;
+    Ok(())
+}
+
+#[test]
 fn agent_packet_rejects_configured_off_seam() -> Result<(), Box<dyn std::error::Error>> {
     let (root, diff) = agent_brief_sample_workspace("agent-packet-config-off")?;
     let root_path = root.display().to_string();

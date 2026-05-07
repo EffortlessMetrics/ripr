@@ -5,16 +5,25 @@ use std::path::PathBuf;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum AgentCommand {
     Help,
+    StartHelp,
     BriefHelp,
     PacketHelp,
     VerifyHelp,
     ReceiptHelp,
     StatusHelp,
+    Start(AgentStartOptions),
     Brief(AgentBriefOptions),
     Packet(AgentPacketOptions),
     Verify(AgentVerifyOptions),
     Receipt(AgentReceiptOptions),
     Status(AgentStatusOptions),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct AgentStartOptions {
+    pub(super) root: PathBuf,
+    pub(super) seam_id: String,
+    pub(super) out_dir: PathBuf,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -87,15 +96,23 @@ impl WorkingSetCandidate {
 pub(super) fn parse_agent_args(args: &[String]) -> Result<AgentCommand, String> {
     match args.first().map(|arg| arg.as_str()) {
         None | Some("--help" | "-h") => Ok(AgentCommand::Help),
+        Some("start") => parse_agent_start_command(&args[1..]),
         Some("brief") => parse_agent_brief_command(&args[1..]),
         Some("packet") => parse_agent_packet_command(&args[1..]),
         Some("verify") => parse_agent_verify_command(&args[1..]),
         Some("receipt") => parse_agent_receipt_command(&args[1..]),
         Some("status") => parse_agent_status_command(&args[1..]),
         Some(other) => Err(format!(
-            "unknown agent subcommand {other:?}; expected `brief`, `packet`, `verify`, `receipt`, or `status`"
+            "unknown agent subcommand {other:?}; expected `start`, `brief`, `packet`, `verify`, `receipt`, or `status`"
         )),
     }
+}
+
+fn parse_agent_start_command(args: &[String]) -> Result<AgentCommand, String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        return Ok(AgentCommand::StartHelp);
+    }
+    parse_agent_start_options(args).map(AgentCommand::Start)
 }
 
 fn parse_agent_brief_command(args: &[String]) -> Result<AgentCommand, String> {
@@ -131,6 +148,46 @@ fn parse_agent_status_command(args: &[String]) -> Result<AgentCommand, String> {
         return Ok(AgentCommand::StatusHelp);
     }
     parse_agent_status_options(args).map(AgentCommand::Status)
+}
+
+pub(super) fn parse_agent_start_options(args: &[String]) -> Result<AgentStartOptions, String> {
+    let mut root = PathBuf::from(".");
+    let mut seam_id: Option<String> = None;
+    let mut out_dir = PathBuf::from("target/ripr/workflow");
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = PathBuf::from(expect_value(args, i, "--root")?);
+            }
+            "--seam-id" => {
+                i += 1;
+                let value = expect_value(args, i, "--seam-id")?;
+                if value.trim().is_empty() {
+                    return Err("agent start --seam-id requires a non-empty ID".to_string());
+                }
+                seam_id = Some(value.to_string());
+            }
+            "--out" => {
+                i += 1;
+                let value = expect_value(args, i, "--out")?;
+                if value.trim().is_empty() {
+                    return Err("agent start --out requires a non-empty path".to_string());
+                }
+                out_dir = PathBuf::from(value);
+            }
+            other => return Err(format!("unknown agent start argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    Ok(AgentStartOptions {
+        root,
+        seam_id: seam_id.ok_or_else(|| "agent start requires --seam-id".to_string())?,
+        out_dir,
+    })
 }
 
 pub(super) fn parse_agent_brief_options(args: &[String]) -> Result<AgentBriefOptions, String> {
@@ -427,6 +484,10 @@ mod tests {
         assert_eq!(parse_agent_args(&args(&[])), Ok(AgentCommand::Help));
         assert_eq!(parse_agent_args(&args(&["--help"])), Ok(AgentCommand::Help));
         assert_eq!(
+            parse_agent_args(&args(&["start", "--help"])),
+            Ok(AgentCommand::StartHelp)
+        );
+        assert_eq!(
             parse_agent_args(&args(&["brief", "--help"])),
             Ok(AgentCommand::BriefHelp)
         );
@@ -457,9 +518,73 @@ mod tests {
         assert_eq!(
             parse_agent_args(&args(&["other"])),
             Err(
-                "unknown agent subcommand \"other\"; expected `brief`, `packet`, `verify`, `receipt`, or `status`"
+                "unknown agent subcommand \"other\"; expected `start`, `brief`, `packet`, `verify`, `receipt`, or `status`"
                     .to_string()
             )
+        );
+    }
+
+    #[test]
+    fn agent_args_parse_start_request() {
+        assert_eq!(
+            parse_agent_args(&args(&[
+                "start",
+                "--root",
+                "repo",
+                "--seam-id",
+                "f3c9e4d21a0b7c88",
+                "--out",
+                "target/ripr/workflow",
+            ])),
+            Ok(AgentCommand::Start(AgentStartOptions {
+                root: PathBuf::from("repo"),
+                seam_id: "f3c9e4d21a0b7c88".to_string(),
+                out_dir: PathBuf::from("target/ripr/workflow"),
+            }))
+        );
+    }
+
+    #[test]
+    fn agent_start_defaults_out_dir_and_requires_seam_id() {
+        assert_eq!(
+            parse_agent_start_options(&args(&["--seam-id", "f3c9e4d21a0b7c88"])),
+            Ok(AgentStartOptions {
+                root: PathBuf::from("."),
+                seam_id: "f3c9e4d21a0b7c88".to_string(),
+                out_dir: PathBuf::from("target/ripr/workflow"),
+            })
+        );
+        assert_eq!(
+            parse_agent_start_options(&args(&[])),
+            Err("agent start requires --seam-id".to_string())
+        );
+        assert_eq!(
+            parse_agent_start_options(&args(&["--seam-id", ""])),
+            Err("agent start --seam-id requires a non-empty ID".to_string())
+        );
+    }
+
+    #[test]
+    fn agent_start_requires_values_and_rejects_unknown_arguments() {
+        assert_eq!(
+            parse_agent_start_options(&args(&["--root"])),
+            Err("missing value for --root".to_string())
+        );
+        assert_eq!(
+            parse_agent_start_options(&args(&["--seam-id"])),
+            Err("missing value for --seam-id".to_string())
+        );
+        assert_eq!(
+            parse_agent_start_options(&args(&["--out"])),
+            Err("missing value for --out".to_string())
+        );
+        assert_eq!(
+            parse_agent_start_options(&args(&["--seam-id", "abc", "--out", ""])),
+            Err("agent start --out requires a non-empty path".to_string())
+        );
+        assert_eq!(
+            parse_agent_start_options(&args(&["--seam-id", "abc", "--xml"])),
+            Err("unknown agent start argument \"--xml\"".to_string())
         );
     }
 

@@ -64,6 +64,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CheckProcessPolicy => super::check_process_policy(),
         XtaskCommand::CheckNetworkPolicy => super::check_network_policy(),
         XtaskCommand::CheckLintPolicy => super::check_lint_policy(),
+        XtaskCommand::CheckCiLaneWhitelist => super::check_ci_lane_whitelist(),
         XtaskCommand::Package => {
             super::run("cargo", &["package", "-p", "ripr", "--list"]).map(|_| ())
         }
