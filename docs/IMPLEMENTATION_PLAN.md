@@ -23,8 +23,8 @@ through multiple work items in a campaign, but each work item should follow the
 | Module SRP Refactoring (6) | Refactor internal modules under `crates/ripr/src/` so each module has one product responsibility, without splitting the package. | Complete: #347, the Campaign 6 refactor chain through #405, and `campaign/modularization-closeout`. |
 | Defaults-First Operator Adoption (7) | Make a clean install useful through conservative defaults, one operator cockpit, CI artifacts, editor install docs, examples, and install/release proof. | Complete: #409 through #417 plus `campaign/defaults-first-closeout`. |
 | Runtime Calibration Fixture Expansion (8) | Expand supplied-runtime calibration fixtures without making RIPR run mutation tests. | Complete: #420 plus `campaign/runtime-calibration-closeout`. |
-| Hot Sidecar Latency Proof (9) | Measure current cache and saved-workspace editor refresh behavior before changing warm-path reuse. | Complete: #421, #422, #423, #447, #448, #450, #451, and `campaign/hot-sidecar-latency-closeout`. |
-| Editor Agent Integration (10) | Align saved-workspace editor diagnostics/actions, agent CLI commands, verification receipts, cockpit reports, CI artifacts, fixtures, docs, and install proof into one evidence loop. | Active: first ready item is `editor-agent/integration-contract-audit`. |
+| Hot Sidecar Latency Proof (9) | Measure current cache and saved-workspace editor refresh behavior before changing warm-path reuse. | Complete: latency reporting, warm-path reuse, bounded `ripr pilot`, first-screen clarity, evidence progress tracing, hot-path indexes, and `campaign/hot-sidecar-latency-closeout`. |
+| 0.4 Release Surface Hardening (10) | Make RIPR 0.4.0 usable in the first hour across install, `ripr pilot`, one focused test, `ripr outcome` / `ripr agent verify`, editor, CI, latency, examples, and known limits. | Active: `release/readiness-report`, `examples/real-repo-pilot-receipts`, `docs/0-4-landing-path`, `release/0-4-0-prep`, and `campaign/0-4-release-surface-closeout`. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
 through 8 are complete. Campaign 6 closed after the internal module SRP chain
@@ -35,12 +35,12 @@ verified; the closeout audit lives at
 `docs/handoffs/2026-05-07-campaign-7-closeout.md`. Campaign 8 added the checked
 `fixtures/boundary_gap/calibration/runtime-fixtures-v1/` sample for the main
 static/runtime agreement buckets and closed with runtime calibration still
-confined to supplied-data reports. Campaign 9 has measured the cache/editor
-proof surfaces, added bounded latency reporting, reused warm-path facts below
-rendered outputs, bounded `ripr pilot`, and improved first-screen pilot clarity.
-Campaign 9 closed after evidence hot-path indexing and current-main LSP/latency
-proof. Campaign 10 is now active; its first ready work item is
-`editor-agent/integration-contract-audit`.
+confined to supplied-data reports. Campaign 9 measured the cache/editor proof
+surfaces, added bounded latency reporting, reused warm-path facts below rendered
+outputs, bounded `ripr pilot`, improved first-screen pilot clarity, added
+evidence progress tracing, and closed after hot-path evidence indexes made the
+default latency report pass on cache hits. Campaign 10 is now active for 0.4
+release-surface hardening; the next ready item is `release/readiness-report`.
 
 ## PR 0: `planning-and-tracking-docs`
 
