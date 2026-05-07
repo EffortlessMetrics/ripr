@@ -503,6 +503,8 @@ tests = [
   "crates/ripr/src/output/pilot.rs::tests::pilot_ranking_uses_evidence_tie_breakers_then_stable_location",
   "crates/ripr/src/output/pilot.rs::tests::pilot_ranking_excludes_solved_governed_classes",
   "crates/ripr/src/output/pilot.rs::tests::pilot_summary_json_contains_config_state_artifacts_and_next_commands",
+  "crates/ripr/src/output/pilot.rs::tests::pilot_summary_md_spells_out_first_screen_recommendation",
+  "crates/ripr/src/output/pilot.rs::tests::pilot_terminal_prints_top_test_and_follow_up_commands",
   "crates/ripr/tests/cli_smoke.rs::pilot_writes_default_packet_outputs_for_boundary_gap_fixture",
   "crates/ripr/tests/cli_smoke.rs::pilot_uses_repo_config_mode_without_explicit_flag",
   "crates/ripr/tests/cli_smoke.rs::pilot_honors_explicit_mode_over_repo_config",

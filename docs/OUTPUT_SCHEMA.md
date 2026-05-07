@@ -1682,10 +1682,11 @@ Field contract:
   `ripr outcome` before/after receipt command. Partial summaries include a
   retry command with a larger explicit timeout.
 
-The Markdown sibling prints the same summary, includes the top seam's targeted
-test brief for complete runs, and remains advisory. On timeout, the Markdown
-sibling records the partial state and the retry command instead of pretending
-the packet is complete.
+The Markdown sibling prints the same summary, puts the top recommendation first,
+and includes the inspected seam, why it matters, the focused test to write, the
+top seam's targeted test brief, and the before/after commands for complete
+runs. It remains advisory. On timeout, the Markdown sibling records the partial
+state and the retry command instead of pretending the packet is complete.
 
 ## LSP Seam Diagnostics
 

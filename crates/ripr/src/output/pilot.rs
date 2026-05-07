@@ -9,6 +9,7 @@ use crate::analysis::seams::SeamGripClass;
 use crate::app::Mode;
 use crate::output::agent_seam_packets::{
     suggested_assertion_for_classified_seam, targeted_test_brief_for_classified_seam,
+    targeted_test_brief_outline_for_classified_seam,
 };
 use crate::output::json::escape as json_escape;
 use std::cmp::Ordering;
@@ -157,7 +158,7 @@ pub(crate) fn render_pilot_summary_md(
 
     let mut out = String::new();
     out.push_str("# RIPR Pilot Summary\n\n");
-    out.push_str("## Scope\n\n");
+    out.push_str("## What Was Inspected\n\n");
     out.push_str("- Status: `complete`\n");
     out.push_str(&format!("- Root: `{}`\n", display_path(context.root)));
     out.push_str(&format!("- Mode: `{}`\n", context.mode.as_str()));
@@ -171,28 +172,15 @@ pub(crate) fn render_pilot_summary_md(
         actionable_total, context.max_seams
     ));
 
-    out.push_str("## Outputs\n\n");
-    out.push_str(&format!(
-        "- Repo exposure JSON: `{}`\n",
-        display_path(&context.artifacts.repo_exposure_json)
-    ));
-    out.push_str(&format!(
-        "- Repo exposure Markdown: `{}`\n",
-        display_path(&context.artifacts.repo_exposure_md)
-    ));
-    out.push_str(&format!(
-        "- Agent seam packets: `{}`\n",
-        display_path(&context.artifacts.agent_seam_packets_json)
-    ));
-    out.push_str(&format!(
-        "- Pilot summary JSON: `{}`\n\n",
-        display_path(&context.artifacts.pilot_summary_json)
-    ));
-
-    out.push_str("## Top Actionable Seams\n\n");
     if top.is_empty() {
+        out.push_str("## Top Recommendation\n\n");
         out.push_str("No actionable seam was ranked by the default pilot policy.\n\n");
     } else {
+        out.push_str("## Top Recommendation\n\n");
+        push_markdown_recommendation(&mut out, top[0]);
+        out.push('\n');
+
+        out.push_str("## Ranked Actionable Seams\n\n");
         for (idx, entry) in top.iter().enumerate() {
             out.push_str(&format!(
                 "{}. `{}` `{}` {}:{} `{}`\n",
@@ -213,14 +201,27 @@ pub(crate) fn render_pilot_summary_md(
                 "   - Suggested assertion present: {}\n",
                 yes_no(suggested_assertion_for_classified_seam(entry).is_some())
             ));
-            if idx == 0 {
-                out.push_str("\n```text\n");
-                out.push_str(&targeted_test_brief_for_classified_seam(entry));
-                out.push_str("```\n");
-            }
             out.push('\n');
         }
     }
+
+    out.push_str("## Outputs\n\n");
+    out.push_str(&format!(
+        "- Repo exposure JSON: `{}`\n",
+        display_path(&context.artifacts.repo_exposure_json)
+    ));
+    out.push_str(&format!(
+        "- Repo exposure Markdown: `{}`\n",
+        display_path(&context.artifacts.repo_exposure_md)
+    ));
+    out.push_str(&format!(
+        "- Agent seam packets: `{}`\n",
+        display_path(&context.artifacts.agent_seam_packets_json)
+    ));
+    out.push_str(&format!(
+        "- Pilot summary JSON: `{}`\n\n",
+        display_path(&context.artifacts.pilot_summary_json)
+    ));
 
     out.push_str("## Next Commands\n\n");
     out.push_str(
@@ -243,37 +244,53 @@ pub(crate) fn render_pilot_terminal(
 
     let mut out = String::new();
     out.push_str("RIPR pilot complete.\n\n");
-    out.push_str("Config:\n");
+    out.push_str("Inspected:\n");
+    out.push_str(&format!("  root: {}\n", display_path(context.root)));
+    out.push_str(&format!("  mode: {}\n", context.mode.as_str()));
     match context.config_path {
-        Some(path) => out.push_str(&format!("  loaded: {}\n", display_path(path))),
-        None => out.push_str("  missing: using built-in defaults\n"),
+        Some(path) => out.push_str(&format!("  config: loaded {}\n", display_path(path))),
+        None => out.push_str("  config: missing, using built-in defaults\n"),
     }
     out.push_str(&format!("  timeout: {} ms\n", context.timeout_ms));
     out.push('\n');
 
     if let Some(entry) = top.first() {
-        out.push_str("Top actionable seam:\n");
+        let outline = targeted_test_brief_outline_for_classified_seam(entry);
+        out.push_str("Top recommendation:\n");
         out.push_str(&format!(
-            "  {}:{} {} {}\n\n",
+            "  inspected seam: {}:{} {} in {} ({})\n",
             display_path(entry.seam.file()),
             entry.seam.display_line(),
             entry.seam.kind().as_str(),
+            entry.seam.owner(),
             entry.class.as_str()
         ));
-        out.push_str("Why:\n");
-        out.push_str(&format!("  {}\n\n", why_line(entry)));
+        out.push_str(&format!("  why it matters: {}\n", why_line(entry)));
+        out.push_str(&format!(
+            "  focused test: add {} in {}\n",
+            outline.suggested_name,
+            display_path_text(&outline.suggested_file)
+        ));
+        if let Some(value) = outline.candidate_value.as_ref() {
+            out.push_str(&format!("  candidate value: {value}\n"));
+        }
+        out.push_str(&format!("  assertion: {}\n\n", outline.assertion_shape));
     } else {
-        out.push_str("Top actionable seam:\n");
+        out.push_str("Top recommendation:\n");
         out.push_str("  none ranked by the default pilot policy\n\n");
     }
 
-    out.push_str("Next:\n");
-    out.push_str("  Open VS Code and use Copy Targeted Test Brief\n");
+    out.push_str("Detailed brief:\n");
     out.push_str(&format!(
-        "  or inspect {}\n\n",
+        "  {}\n",
+        display_path(&context.artifacts.pilot_summary_md)
+    ));
+    out.push_str("Structured packet:\n");
+    out.push_str(&format!(
+        "  {}\n\n",
         display_path(&context.artifacts.agent_seam_packets_json)
     ));
-    out.push_str("After adding one focused test:\n");
+    out.push_str("Run after adding the focused test:\n");
     out.push_str(&format!("  {}\n", commands.after_snapshot));
     out.push_str(&format!("  {}\n", commands.outcome));
     out
@@ -542,6 +559,36 @@ fn push_top_seam_json(out: &mut String, entry: &ClassifiedSeam) {
     out.push_str("    }");
 }
 
+fn push_markdown_recommendation(out: &mut String, entry: &ClassifiedSeam) {
+    let outline = targeted_test_brief_outline_for_classified_seam(entry);
+    out.push_str(&format!(
+        "- Inspected seam: `{}` {}:{} `{}` in `{}` (`{}`)\n",
+        entry.seam.id().as_str(),
+        display_path(entry.seam.file()),
+        entry.seam.display_line(),
+        entry.seam.kind().as_str(),
+        entry.seam.owner(),
+        entry.class.as_str()
+    ));
+    out.push_str(&format!("- Why it matters: {}\n", why_line(entry)));
+    out.push_str(&format!(
+        "- Focused test: add `{}` in `{}`\n",
+        outline.suggested_name,
+        display_path_text(&outline.suggested_file)
+    ));
+    if let Some(value) = outline.candidate_value.as_ref() {
+        out.push_str(&format!("- Candidate value: `{value}`\n"));
+    }
+    out.push_str(&format!(
+        "- Assertion shape: `{}`\n",
+        outline.assertion_shape
+    ));
+    out.push_str("- Detailed work order:\n\n");
+    out.push_str("```text\n");
+    out.push_str(&targeted_test_brief_for_classified_seam(entry));
+    out.push_str("```\n");
+}
+
 fn push_path_field(out: &mut String, name: &str, path: &Path, trailing: bool) {
     out.push_str(&format!(
         "    \"{}\": \"{}\"{}\n",
@@ -630,6 +677,10 @@ fn display_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
+fn display_path_text(path: &str) -> String {
+    path.replace('\\', "/")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -679,6 +730,27 @@ mod tests {
             evidence_summary: "exact value assertion".to_string(),
             relation_reason: RelationReason::DirectOwnerCall,
             relation_confidence: RelationConfidence::High,
+        }
+    }
+
+    fn pilot_artifacts() -> PilotArtifacts {
+        PilotArtifacts {
+            repo_exposure_json: PathBuf::from("target/ripr/pilot/repo-exposure.json"),
+            repo_exposure_md: PathBuf::from("target/ripr/pilot/repo-exposure.md"),
+            agent_seam_packets_json: PathBuf::from("target/ripr/pilot/agent-seam-packets.json"),
+            pilot_summary_json: PathBuf::from("target/ripr/pilot/pilot-summary.json"),
+            pilot_summary_md: PathBuf::from("target/ripr/pilot/pilot-summary.md"),
+        }
+    }
+
+    fn pilot_context(artifacts: &PilotArtifacts) -> PilotSummaryContext<'_> {
+        PilotSummaryContext {
+            root: Path::new("."),
+            mode: &Mode::Draft,
+            config_path: Some(Path::new("ripr.toml")),
+            max_seams: 5,
+            timeout_ms: 30_000,
+            artifacts,
         }
     }
 
@@ -838,6 +910,72 @@ mod tests {
         assert!(json.contains(r#""top_actionable_seams""#));
         assert!(json.contains(r#""missing_discriminator""#));
         assert!(json.contains("ripr outcome --before target/ripr/pilot/repo-exposure.json"));
+    }
+
+    #[test]
+    fn pilot_summary_md_spells_out_first_screen_recommendation() {
+        let entry = classified_with(
+            SeamGripClass::WeaklyGripped,
+            "src/pricing.rs",
+            88,
+            vec![missing()],
+            vec![related_test()],
+        );
+        let artifacts = pilot_artifacts();
+        let md = render_pilot_summary_md(&[entry], pilot_context(&artifacts));
+
+        for needle in [
+            "## What Was Inspected",
+            "## Top Recommendation",
+            "- Inspected seam:",
+            "- Why it matters: missing discriminator: discount_threshold equality boundary",
+            "- Focused test: add `discounted_total_boundary_discriminator` in `tests/pricing.rs`",
+            "- Candidate value: `discount_threshold equality boundary`",
+            "Target seam:",
+            "Add a targeted test:",
+            "## Next Commands",
+            "ripr outcome --before target/ripr/pilot/repo-exposure.json",
+        ] {
+            assert!(md.contains(needle), "missing markdown needle: {needle}");
+        }
+    }
+
+    #[test]
+    fn pilot_terminal_prints_top_test_and_follow_up_commands() {
+        let entry = classified_with(
+            SeamGripClass::WeaklyGripped,
+            "src/pricing.rs",
+            88,
+            vec![missing()],
+            vec![related_test()],
+        );
+        let artifacts = pilot_artifacts();
+        let terminal = render_pilot_terminal(&[entry], pilot_context(&artifacts));
+
+        for needle in [
+            "Inspected:",
+            "root: .",
+            "mode: draft",
+            "config: loaded ripr.toml",
+            "Top recommendation:",
+            "inspected seam: src/pricing.rs:88 predicate_boundary in pricing::discounted_total (weakly_gripped)",
+            "why it matters: missing discriminator: discount_threshold equality boundary",
+            "focused test: add discounted_total_boundary_discriminator in tests/pricing.rs",
+            "candidate value: discount_threshold equality boundary",
+            "assertion: assert_eq!(discounted_total(/* discount_threshold equality boundary */), /* expected */)",
+            "Detailed brief:",
+            "target/ripr/pilot/pilot-summary.md",
+            "Structured packet:",
+            "target/ripr/pilot/agent-seam-packets.json",
+            "Run after adding the focused test:",
+            "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json",
+            "ripr outcome --before target/ripr/pilot/repo-exposure.json",
+        ] {
+            assert!(
+                terminal.contains(needle),
+                "missing terminal needle: {needle}"
+            );
+        }
     }
 
     #[test]

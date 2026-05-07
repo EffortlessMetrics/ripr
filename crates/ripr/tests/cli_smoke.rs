@@ -458,9 +458,10 @@ fn pilot_writes_default_packet_outputs_for_boundary_gap_fixture() -> Result<(), 
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("RIPR pilot complete."));
-    assert!(stdout.contains("missing: using built-in defaults"));
-    assert!(stdout.contains("Top actionable seam:"));
-    assert!(stdout.contains("After adding one focused test:"));
+    assert!(stdout.contains("config: missing, using built-in defaults"));
+    assert!(stdout.contains("Top recommendation:"));
+    assert!(stdout.contains("focused test:"));
+    assert!(stdout.contains("Run after adding the focused test:"));
 
     let summary_json = std::fs::read_to_string(out_dir.join("pilot-summary.json"))
         .map_err(|e| format!("read pilot summary json: {e}"))?;

@@ -1096,7 +1096,8 @@ Work items:
 | `cache/repo-exposure-latency-report` | done | Added `cargo xtask repo-exposure-latency-report`, which builds the local debug `ripr` binary, runs `repo-exposure-json` under a bounded timeout, captures opt-in analyzer trace lines from stderr, skips Markdown after a JSON timeout, and writes `target/ripr/reports/repo-exposure-latency.{json,md}`. The report observes cache collection, cache load hit/miss/corrupt state, cold compute, cache store, and total phase timing without changing repo-exposure JSON/Markdown, LSP, SARIF, badge, or public API behavior. |
 | `cache/repo-exposure-warm-path-reuse` | done | Added a repo file-fact cache under `target/ripr/cache/repo-file-facts/0.1`, changed repo-exposure cold compute to build its index from already-collected workspace bytes, and reused precomputed related-test context plus seam-independent value-resolution facts during full repo evidence construction. The latency report now exposes `file_fact_cache` counters and cold sub-phases through classification. Local evidence showed `file_fact_cache` moving from `hits_0_misses_134` at about 3065 ms to `hits_134_misses_0` at about 328 ms, and after a long bounded run populated the classified-seam cache, the default 30-second latency report passed on cache hits. |
 | `pilot/budget-aware` | done | Added a default 30 second `ripr pilot` analysis budget plus `--timeout-ms`. Complete runs keep writing repo exposure, agent seam packets, and summary artifacts with `pilot-summary.json` schema `0.2`; timeout runs write `pilot-summary.{json,md}` with `status: partial`, `reason: timeout`, `outputs_written`, and a retry command instead of waiting silently. |
-| `pilot/first-screen-clarity` | ready | Improve `pilot-summary.md` and terminal copy so the top recommendation answers what was inspected, why the seam matters, what focused test to write, and what command to run after without opening JSON. |
+| `pilot/first-screen-clarity` | done | Improved `pilot-summary.md` and terminal copy so the top recommendation answers what was inspected, why the seam matters, what focused test to write, and what command to run after without opening JSON. The complete-run JSON schema remains `0.2`; only human-facing Markdown/terminal copy changed. |
+| `campaign/hot-sidecar-latency-closeout` | ready | Close Campaign 9 after cache measurement, warm-path reuse, bounded pilot behavior, and first-screen pilot clarity have landed. This should be docs/manifest proof unless closeout validation finds drift. |
 
 Commands:
 
@@ -1153,5 +1154,7 @@ Audit notes:
   run reported 134 hits and about 328 ms for that phase. Full repo evidence
   also now reuses per-test related and value facts. After one long bounded run
   populated the classified-seam cache, the default 30-second latency report
-  passed on both JSON and Markdown cache-hit runs. The active next item is
-  `pilot/first-screen-clarity`.
+  passed on both JSON and Markdown cache-hit runs. `pilot/first-screen-clarity`
+  then made the pilot Markdown and terminal first screen spell out the inspected
+  seam, why it matters, the focused test to write, and the before/after command
+  pair. The active next item is `campaign/hot-sidecar-latency-closeout`.
