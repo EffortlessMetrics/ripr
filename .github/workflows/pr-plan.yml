@@ -16,7 +16,7 @@ permissions:
 #
 # See:
 #   docs/ci/pr-plan.md
-#   docs/ci/cost-and-verification-policy.md
+#   docs/CI.md
 #   policy/ci-budget.toml
 #   policy/ci-lane-whitelist.toml
 #   policy/ci-risk-packs.toml

@@ -52,7 +52,7 @@ deferred to the follow-up PR that adds `cargo xtask ci plan`.
 ```
 
 `band` is one of `pennies | default | elevated | high | over_ceiling` (see
-`docs/ci/lem-budgeting.md`).
+`docs/CI.md` (Verification Economics section)).
 
 `warnings` is filled by the soft budget guard (PR 12) when the forecast
 crosses an advisory threshold.
@@ -68,7 +68,7 @@ crosses an advisory threshold.
 
 ## Override and acknowledgement
 
-Labels documented in `docs/ci/labels.md`:
+Labels documented in `docs/CI.md` (labels section):
 
 - `full-ci` → expects elevated forecast; the guard suppresses the warning.
 - `ci-budget-ack` → author acknowledges elevated forecast.
