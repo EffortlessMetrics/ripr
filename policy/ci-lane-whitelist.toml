@@ -528,3 +528,27 @@ allowed_triggers = ["pull_request", "push"]
 duplicate_of = []
 review_after = "2026-06-07"
 expires = "2026-11-07"
+
+# ---------------------------------------------------------------------------
+# Self-dogfood (lands as part of PR 10 of the rollout)
+# ---------------------------------------------------------------------------
+
+[[lane]]
+id = "ripr_self_dogfood"
+workflow = ".github/workflows/ripr.yml"
+job = "ripr"
+kind = "self-dogfood"
+tier = "dogfood"
+default_pr = false
+blocking = false
+runner = "ubuntu_latest"
+base_lem = 7
+owner = "core/analysis"
+intent = "Run ripr against its own diff so oracle gaps surface in PR review."
+failure_mode = "Regressions in ripr's static-exposure analysis go unnoticed on changes to ripr itself."
+proof_obligation = "ripr check --base origin/<base>"
+evidence = ["target/ripr/reports/ripr-diff.json", "target/ripr/reports/ripr-diff.sarif"]
+allowed_triggers = ["pull_request"]
+duplicate_of = []
+review_after = "2026-06-07"
+expires = "2026-11-07"
