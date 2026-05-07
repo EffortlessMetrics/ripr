@@ -348,7 +348,7 @@ capped at three and reports that cap explicitly:
       "why_now": { "reason": "same_file_seam", "confidence": "medium" }
     }
   ],
-  "warnings": ["7 additional visible seams were omitted by the default cap"]
+  "warnings": ["7 additional visible seams were omitted by the brief cap"]
 }
 ```
 

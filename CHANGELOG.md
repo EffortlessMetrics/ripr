@@ -56,6 +56,8 @@ are scoped or reviewed.
   related-test evidence so edits to known related tests rank their seams before
   repo fallback, and added the related-test-confidence tie-breaker from
   RIPR-SPEC-0010.
+- Added an advisory `ripr agent brief` warning when visible seams are omitted
+  by the default or requested brief cap.
 - Made `ripr pilot` budget-aware with a default 30 second analysis timeout,
   `--timeout-ms` for explicit runs, and a versioned `pilot-summary.json` schema
   update that records complete versus partial timeout status.
