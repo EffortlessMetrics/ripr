@@ -17,9 +17,9 @@ mod run;
 use command::unknown_command_message;
 use command::{XtaskCommand, known_command_root, known_commands};
 use policy::{
-    check_allow_attributes, check_droid_review_config, check_executable_files, check_file_policy,
-    check_local_context, check_network_policy, check_no_panic_family, check_process_policy,
-    check_static_language, check_workflows,
+    check_allow_attributes, check_ci_lane_whitelist, check_droid_review_config,
+    check_executable_files, check_file_policy, check_local_context, check_network_policy,
+    check_no_panic_family, check_process_policy, check_static_language, check_workflows,
 };
 use reports::{
     dogfood, fixtures, metrics_report, pr_summary, receipts_write, repo_badge_artifacts,
@@ -10966,6 +10966,793 @@ fn check_lint_policy() -> Result<(), String> {
     )
 }
 
+#[derive(Clone, Debug)]
+struct CiLedgerValue {
+    line: usize,
+    raw: String,
+}
+
+#[derive(Clone, Debug)]
+struct CiLedgerTable {
+    header: String,
+    line: usize,
+    values: BTreeMap<String, CiLedgerValue>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct CiLedgerDocument {
+    top_level: BTreeMap<String, CiLedgerValue>,
+    tables: Vec<CiLedgerTable>,
+}
+
+fn check_ci_lane_whitelist_impl() -> Result<(), String> {
+    let mut violations = Vec::new();
+
+    let budget = read_ci_ledger_document("policy/ci-budget.toml", &mut violations);
+    let lanes = read_ci_ledger_document("policy/ci-lane-whitelist.toml", &mut violations);
+    let risk_packs = read_ci_ledger_document("policy/ci-risk-packs.toml", &mut violations);
+    let exceptions =
+        read_ci_ledger_document("policy/ci-whitelist-exceptions.toml", &mut violations);
+
+    if let (Some(budget), Some(lanes), Some(risk_packs), Some(exceptions)) =
+        (&budget, &lanes, &risk_packs, &exceptions)
+    {
+        violations.extend(ci_lane_whitelist_violations(
+            budget, lanes, risk_packs, exceptions,
+        ));
+    }
+
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "ci-lane-whitelist.md",
+            check: "check-ci-lane-whitelist",
+            why_it_matters: "The CI lane ledgers are the reviewable contract for future PR planning, advisory evidence, artifact families, and budget actuals. They should stay structurally coherent before any workflow starts consuming them.",
+            fix_kind: FixKind::AuthorDecisionRequired,
+            recommended_fixes: &[
+                "Keep `policy/ci-budget.toml`, `policy/ci-lane-whitelist.toml`, `policy/ci-risk-packs.toml`, and `policy/ci-whitelist-exceptions.toml` on schema version 0.1 with advisory, non-enforcing metadata.",
+                "Add lane IDs and artifact families to `policy/ci-lane-whitelist.toml` before risk packs or exceptions reference them.",
+                "Keep referenced lane IDs, artifact families, budget bands, owners, and reasons explicit before workflow or planner code consumes the ledgers.",
+            ],
+            rerun_command: "cargo xtask check-ci-lane-whitelist",
+            exception_template: None,
+        },
+        &violations,
+    )
+}
+
+fn read_ci_ledger_document(path: &str, violations: &mut Vec<String>) -> Option<CiLedgerDocument> {
+    let path_ref = Path::new(path);
+    if !path_ref.exists() {
+        violations.push(format!("{path} is missing"));
+        return None;
+    }
+    let text = match fs::read_to_string(path_ref) {
+        Ok(text) => text,
+        Err(err) => {
+            violations.push(format!("failed to read {path}: {err}"));
+            return None;
+        }
+    };
+    let (document, mut parse_violations) = parse_ci_ledger_document(path, &text);
+    violations.append(&mut parse_violations);
+    Some(document)
+}
+
+fn parse_ci_ledger_document(path: &str, text: &str) -> (CiLedgerDocument, Vec<String>) {
+    let mut document = CiLedgerDocument::default();
+    let mut violations = Vec::new();
+    let mut current: Option<CiLedgerTable> = None;
+
+    for (index, raw) in text.lines().enumerate() {
+        let line_number = index + 1;
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+
+        if line.starts_with("[[") && line.ends_with("]]") {
+            if let Some(table) = current.take() {
+                document.tables.push(table);
+            }
+            let header = line
+                .trim_start_matches("[[")
+                .trim_end_matches("]]")
+                .trim()
+                .to_string();
+            if header.is_empty() {
+                violations.push(format!("{path}:{line_number} empty table header"));
+                continue;
+            }
+            current = Some(CiLedgerTable {
+                header,
+                line: line_number,
+                values: BTreeMap::new(),
+            });
+            continue;
+        }
+
+        if line.starts_with('[') && line.ends_with(']') {
+            if let Some(table) = current.take() {
+                document.tables.push(table);
+            }
+            let header = line
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .trim()
+                .to_string();
+            if header.is_empty() {
+                violations.push(format!("{path}:{line_number} empty table header"));
+                continue;
+            }
+            current = Some(CiLedgerTable {
+                header,
+                line: line_number,
+                values: BTreeMap::new(),
+            });
+            continue;
+        }
+
+        let Some((key, value)) = parse_toml_key_value(line) else {
+            violations.push(format!(
+                "{path}:{line_number} invalid TOML line (expected key = value)"
+            ));
+            continue;
+        };
+        let value = strip_toml_value_comment(value).trim().to_string();
+        if let Some(table) = current.as_mut() {
+            insert_ci_ledger_value(
+                path,
+                &mut table.values,
+                key,
+                value,
+                line_number,
+                &mut violations,
+            );
+        } else {
+            insert_ci_ledger_value(
+                path,
+                &mut document.top_level,
+                key,
+                value,
+                line_number,
+                &mut violations,
+            );
+        }
+    }
+
+    if let Some(table) = current {
+        document.tables.push(table);
+    }
+
+    (document, violations)
+}
+
+fn insert_ci_ledger_value(
+    path: &str,
+    values: &mut BTreeMap<String, CiLedgerValue>,
+    key: &str,
+    raw: String,
+    line: usize,
+    violations: &mut Vec<String>,
+) {
+    if values
+        .insert(key.to_string(), CiLedgerValue { line, raw })
+        .is_some()
+    {
+        violations.push(format!("{path}:{line} duplicate key `{key}`"));
+    }
+}
+
+fn ci_lane_whitelist_violations(
+    budget: &CiLedgerDocument,
+    lanes: &CiLedgerDocument,
+    risk_packs: &CiLedgerDocument,
+    exceptions: &CiLedgerDocument,
+) -> Vec<String> {
+    let mut violations = Vec::new();
+
+    validate_ci_common_metadata("policy/ci-budget.toml", budget, &mut violations);
+    validate_ci_common_metadata("policy/ci-lane-whitelist.toml", lanes, &mut violations);
+    validate_ci_common_metadata("policy/ci-risk-packs.toml", risk_packs, &mut violations);
+    validate_ci_common_metadata(
+        "policy/ci-whitelist-exceptions.toml",
+        exceptions,
+        &mut violations,
+    );
+
+    let budget_bands = validate_ci_budget("policy/ci-budget.toml", budget, &mut violations);
+    let (lane_ids, _lane_postures, artifact_ids) =
+        validate_ci_lanes("policy/ci-lane-whitelist.toml", lanes, &mut violations);
+    validate_ci_risk_packs(
+        "policy/ci-risk-packs.toml",
+        risk_packs,
+        &lane_ids,
+        &artifact_ids,
+        &mut violations,
+    );
+    validate_ci_exceptions(
+        "policy/ci-whitelist-exceptions.toml",
+        exceptions,
+        &lane_ids,
+        &artifact_ids,
+        &mut violations,
+    );
+    validate_ci_budget_references(
+        "policy/ci-budget.toml",
+        budget,
+        &budget_bands,
+        &mut violations,
+    );
+
+    violations
+}
+
+fn validate_ci_common_metadata(
+    path: &str,
+    document: &CiLedgerDocument,
+    violations: &mut Vec<String>,
+) {
+    ci_expect_top_string(path, document, "schema_version", "0.1", violations);
+    ci_expect_top_string(
+        path,
+        document,
+        "policy_state",
+        "advisory-ledger",
+        violations,
+    );
+    ci_expect_top_string(path, document, "enforcement", "none", violations);
+    ci_required_non_empty_top_string(path, document, "owner", violations);
+    ci_required_non_empty_top_string(path, document, "reason", violations);
+}
+
+fn validate_ci_budget(
+    path: &str,
+    document: &CiLedgerDocument,
+    violations: &mut Vec<String>,
+) -> BTreeSet<String> {
+    ci_expect_top_string(path, document, "unit", "lem", violations);
+
+    let mut budget_bands = BTreeSet::new();
+    let bands = ci_tables(document, "budget_band");
+    if bands.is_empty() {
+        violations.push(format!("{path} has no [[budget_band]] entries"));
+    }
+    for table in bands {
+        let Some(id) = ci_required_table_id(path, table, "id", "budget band", violations) else {
+            continue;
+        };
+        if !budget_bands.insert(id.clone()) {
+            violations.push(format!(
+                "{path}:{} duplicate budget band id `{id}`",
+                table.line
+            ));
+        }
+        let min = ci_required_table_usize(path, table, "min_lem", violations);
+        let max = ci_optional_table_usize(path, table, "max_lem", violations);
+        if let (Some(min), Some(max)) = (min, max)
+            && max < min
+        {
+            violations.push(format!(
+                "{path}:{} budget band `{id}` has max_lem below min_lem",
+                table.line
+            ));
+        }
+        ci_required_non_empty_table_string(path, table, "posture", violations);
+        ci_required_non_empty_table_string(path, table, "description", violations);
+    }
+
+    let labels = ci_tables(document, "label");
+    if labels.is_empty() {
+        violations.push(format!("{path} has no [[label]] entries"));
+    }
+    let mut label_names = BTreeSet::new();
+    for table in labels {
+        let Some(name) = ci_required_non_empty_table_string(path, table, "name", violations) else {
+            continue;
+        };
+        if !label_names.insert(name.clone()) {
+            violations.push(format!("{path}:{} duplicate label `{name}`", table.line));
+        }
+        ci_required_non_empty_table_string(path, table, "effect", violations);
+        ci_required_non_empty_table_string(path, table, "budget_effect", violations);
+        ci_required_non_empty_table_string(path, table, "notes", violations);
+    }
+
+    budget_bands
+}
+
+fn validate_ci_budget_references(
+    path: &str,
+    document: &CiLedgerDocument,
+    budget_bands: &BTreeSet<String>,
+    violations: &mut Vec<String>,
+) {
+    let defaults = ci_tables(document, "defaults");
+    if defaults.len() != 1 {
+        violations.push(format!("{path} should have exactly one [defaults] table"));
+    }
+    if let Some(table) = defaults.first() {
+        for key in ["required_pr_budget", "advisory_pr_budget", "release_budget"] {
+            if let Some(value) = ci_required_non_empty_table_string(path, table, key, violations)
+                && !budget_bands.contains(&value)
+            {
+                violations.push(format!(
+                    "{path}:{} defaults `{key}` references unknown budget band `{value}`",
+                    table.line
+                ));
+            }
+        }
+    }
+
+    for table in ci_tables(document, "label") {
+        if let Some(effect) =
+            ci_required_non_empty_table_string(path, table, "budget_effect", violations)
+            && effect != "none"
+            && !budget_bands.contains(&effect)
+        {
+            violations.push(format!(
+                "{path}:{} label budget_effect references unknown budget band `{effect}`",
+                table.line
+            ));
+        }
+    }
+}
+
+fn validate_ci_lanes(
+    path: &str,
+    document: &CiLedgerDocument,
+    violations: &mut Vec<String>,
+) -> (BTreeSet<String>, BTreeMap<String, String>, BTreeSet<String>) {
+    let mut artifact_ids = BTreeSet::new();
+    let artifacts = ci_tables(document, "artifact_family");
+    if artifacts.is_empty() {
+        violations.push(format!("{path} has no [[artifact_family]] entries"));
+    }
+    for table in artifacts {
+        let Some(id) = ci_required_table_id(path, table, "id", "artifact family", violations)
+        else {
+            continue;
+        };
+        if !artifact_ids.insert(id.clone()) {
+            violations.push(format!(
+                "{path}:{} duplicate artifact family id `{id}`",
+                table.line
+            ));
+        }
+        if let Some(paths) = ci_required_table_array(path, table, "paths", violations)
+            && paths.is_empty()
+        {
+            violations.push(format!(
+                "{path}:{} artifact family `{id}` has empty paths",
+                table.line
+            ));
+        }
+    }
+
+    let mut lane_ids = BTreeSet::new();
+    let mut lane_postures = BTreeMap::new();
+    let lanes = ci_tables(document, "lane");
+    if lanes.is_empty() {
+        violations.push(format!("{path} has no [[lane]] entries"));
+    }
+    for table in lanes {
+        let Some(id) = ci_required_table_id(path, table, "id", "lane", violations) else {
+            continue;
+        };
+        if !lane_ids.insert(id.clone()) {
+            violations.push(format!("{path}:{} duplicate lane id `{id}`", table.line));
+        }
+        let posture = ci_required_non_empty_table_string(path, table, "posture", violations);
+        if let Some(posture) = posture {
+            if !matches!(
+                posture.as_str(),
+                "required" | "advisory" | "on_demand_release"
+            ) {
+                violations.push(format!(
+                    "{path}:{} lane `{id}` has unsupported posture `{posture}`",
+                    table.line
+                ));
+            }
+            lane_postures.insert(id.clone(), posture);
+        }
+        ci_required_non_empty_table_string(path, table, "workflow", violations);
+        ci_required_table_array(path, table, "jobs", violations);
+        ci_required_table_array(path, table, "commands", violations);
+        ci_required_table_usize(path, table, "estimated_lem", violations);
+        if let Some(families) =
+            ci_required_table_array(path, table, "artifact_families", violations)
+        {
+            validate_ci_artifact_references(
+                path,
+                table.line,
+                &format!("lane `{id}`"),
+                &families,
+                &artifact_ids,
+                violations,
+            );
+        }
+        ci_required_non_empty_table_string(path, table, "description", violations);
+    }
+
+    (lane_ids, lane_postures, artifact_ids)
+}
+
+fn validate_ci_risk_packs(
+    path: &str,
+    document: &CiLedgerDocument,
+    lane_ids: &BTreeSet<String>,
+    artifact_ids: &BTreeSet<String>,
+    violations: &mut Vec<String>,
+) {
+    let risk_packs: Vec<&CiLedgerTable> = document
+        .tables
+        .iter()
+        .filter(|table| table.header.starts_with("risk_pack."))
+        .collect();
+    if risk_packs.is_empty() {
+        violations.push(format!("{path} has no [risk_pack.<id>] entries"));
+    }
+
+    let mut pack_ids = BTreeSet::new();
+    for table in risk_packs {
+        let id = table.header.trim_start_matches("risk_pack.");
+        if !is_snake_case_id(id) {
+            violations.push(format!(
+                "{path}:{} risk pack id `{id}` should be snake_case",
+                table.line
+            ));
+        }
+        if !pack_ids.insert(id.to_string()) {
+            violations.push(format!(
+                "{path}:{} duplicate risk pack id `{id}`",
+                table.line
+            ));
+        }
+        if let Some(paths) = ci_required_table_array(path, table, "paths", violations)
+            && paths.is_empty()
+        {
+            violations.push(format!(
+                "{path}:{} risk pack `{id}` has empty paths",
+                table.line
+            ));
+        }
+        validate_ci_lane_bucket(path, table, id, "required", lane_ids, violations);
+        validate_ci_lane_bucket(path, table, id, "advisory", lane_ids, violations);
+        validate_ci_lane_bucket(path, table, id, "on_demand", lane_ids, violations);
+        if let Some(families) =
+            ci_required_table_array(path, table, "artifact_families", violations)
+        {
+            validate_ci_artifact_references(
+                path,
+                table.line,
+                &format!("risk pack `{id}`"),
+                &families,
+                artifact_ids,
+                violations,
+            );
+        }
+        ci_required_table_usize(path, table, "estimated_lem", violations);
+        ci_required_non_empty_table_string(path, table, "owner", violations);
+        ci_required_non_empty_table_string(path, table, "reason", violations);
+    }
+}
+
+fn validate_ci_exceptions(
+    path: &str,
+    document: &CiLedgerDocument,
+    lane_ids: &BTreeSet<String>,
+    artifact_ids: &BTreeSet<String>,
+    violations: &mut Vec<String>,
+) {
+    let exceptions = ci_tables(document, "exception");
+    if exceptions.is_empty() {
+        violations.push(format!("{path} has no [[exception]] entries"));
+    }
+
+    let mut exception_ids = BTreeSet::new();
+    for table in exceptions {
+        let Some(id) = ci_required_non_empty_table_string(path, table, "id", violations) else {
+            continue;
+        };
+        if !exception_ids.insert(id.clone()) {
+            violations.push(format!(
+                "{path}:{} duplicate exception id `{id}`",
+                table.line
+            ));
+        }
+        ci_required_non_empty_table_string(path, table, "kind", violations);
+        if let Some(paths) = ci_required_table_array(path, table, "paths", violations)
+            && paths.is_empty()
+        {
+            violations.push(format!(
+                "{path}:{} exception `{id}` has empty paths",
+                table.line
+            ));
+        }
+        ci_required_non_empty_table_string(path, table, "current_behavior", violations);
+        ci_required_non_empty_table_string(path, table, "target_behavior", violations);
+        ci_required_non_empty_table_string(path, table, "review_note", violations);
+
+        if let Some(lanes) = ci_optional_table_array(path, table, "lanes", violations) {
+            validate_ci_lane_references(
+                path,
+                table.line,
+                &format!("exception `{id}`"),
+                &lanes,
+                lane_ids,
+                violations,
+            );
+        }
+        if let Some(families) =
+            ci_optional_table_array(path, table, "artifact_families", violations)
+        {
+            validate_ci_artifact_references(
+                path,
+                table.line,
+                &format!("exception `{id}`"),
+                &families,
+                artifact_ids,
+                violations,
+            );
+        }
+    }
+}
+
+fn validate_ci_lane_bucket(
+    path: &str,
+    table: &CiLedgerTable,
+    risk_pack_id: &str,
+    key: &str,
+    lane_ids: &BTreeSet<String>,
+    violations: &mut Vec<String>,
+) {
+    let Some(lanes) = ci_required_table_array(path, table, key, violations) else {
+        return;
+    };
+    for lane in lanes {
+        if !lane_ids.contains(&lane) {
+            violations.push(format!(
+                "{path}:{} risk pack `{risk_pack_id}` references unknown lane `{lane}` in `{key}`",
+                table.line
+            ));
+        }
+    }
+}
+
+fn validate_ci_lane_references(
+    path: &str,
+    line: usize,
+    label: &str,
+    lanes: &[String],
+    lane_ids: &BTreeSet<String>,
+    violations: &mut Vec<String>,
+) {
+    for lane in lanes {
+        if !lane_ids.contains(lane) {
+            violations.push(format!(
+                "{path}:{line} {label} references unknown lane `{lane}`"
+            ));
+        }
+    }
+}
+
+fn validate_ci_artifact_references(
+    path: &str,
+    line: usize,
+    label: &str,
+    families: &[String],
+    artifact_ids: &BTreeSet<String>,
+    violations: &mut Vec<String>,
+) {
+    for family in families {
+        if !artifact_ids.contains(family) {
+            violations.push(format!(
+                "{path}:{line} {label} references unknown artifact family `{family}`"
+            ));
+        }
+    }
+}
+
+fn ci_expect_top_string(
+    path: &str,
+    document: &CiLedgerDocument,
+    key: &str,
+    expected: &str,
+    violations: &mut Vec<String>,
+) {
+    if let Some(actual) = ci_required_non_empty_top_string(path, document, key, violations)
+        && actual != expected
+    {
+        violations.push(format!(
+            "{path}: top-level `{key}` should be `{expected}`, got `{actual}`"
+        ));
+    }
+}
+
+fn ci_required_non_empty_top_string(
+    path: &str,
+    document: &CiLedgerDocument,
+    key: &str,
+    violations: &mut Vec<String>,
+) -> Option<String> {
+    let Some(value) = document.top_level.get(key) else {
+        violations.push(format!("{path}: missing top-level `{key}`"));
+        return None;
+    };
+    ci_string_value(path, "top-level", key, value, violations).and_then(|parsed| {
+        if parsed.trim().is_empty() {
+            violations.push(format!("{path}:{} top-level `{key}` is empty", value.line));
+            None
+        } else {
+            Some(parsed)
+        }
+    })
+}
+
+fn ci_required_table_id(
+    path: &str,
+    table: &CiLedgerTable,
+    key: &str,
+    label: &str,
+    violations: &mut Vec<String>,
+) -> Option<String> {
+    let value = ci_required_non_empty_table_string(path, table, key, violations)?;
+    if !is_kebab_case_id(&value) {
+        violations.push(format!(
+            "{path}:{} {label} id `{value}` should be kebab-case",
+            table.line
+        ));
+    }
+    Some(value)
+}
+
+fn ci_required_non_empty_table_string(
+    path: &str,
+    table: &CiLedgerTable,
+    key: &str,
+    violations: &mut Vec<String>,
+) -> Option<String> {
+    let Some(value) = table.values.get(key) else {
+        violations.push(format!(
+            "{path}:{} table `[{}]` missing `{key}`",
+            table.line, table.header
+        ));
+        return None;
+    };
+    ci_string_value(
+        path,
+        &format!("table `[{}]`", table.header),
+        key,
+        value,
+        violations,
+    )
+    .and_then(|parsed| {
+        if parsed.trim().is_empty() {
+            violations.push(format!(
+                "{path}:{} table `[{}]` field `{key}` is empty",
+                value.line, table.header
+            ));
+            None
+        } else {
+            Some(parsed)
+        }
+    })
+}
+
+fn ci_string_value(
+    path: &str,
+    label: &str,
+    key: &str,
+    value: &CiLedgerValue,
+    violations: &mut Vec<String>,
+) -> Option<String> {
+    match parse_string_value(&value.raw, path, value.line) {
+        Ok(parsed) => Some(parsed),
+        Err(err) => {
+            violations.push(format!("{path}:{} {label} `{key}`: {err}", value.line));
+            None
+        }
+    }
+}
+
+fn ci_required_table_array(
+    path: &str,
+    table: &CiLedgerTable,
+    key: &str,
+    violations: &mut Vec<String>,
+) -> Option<Vec<String>> {
+    let Some(value) = table.values.get(key) else {
+        violations.push(format!(
+            "{path}:{} table `[{}]` missing `{key}`",
+            table.line, table.header
+        ));
+        return None;
+    };
+    ci_array_value(path, table, key, value, violations)
+}
+
+fn ci_optional_table_array(
+    path: &str,
+    table: &CiLedgerTable,
+    key: &str,
+    violations: &mut Vec<String>,
+) -> Option<Vec<String>> {
+    let value = table.values.get(key)?;
+    ci_array_value(path, table, key, value, violations)
+}
+
+fn ci_array_value(
+    path: &str,
+    table: &CiLedgerTable,
+    key: &str,
+    value: &CiLedgerValue,
+    violations: &mut Vec<String>,
+) -> Option<Vec<String>> {
+    match parse_inline_array(&value.raw) {
+        Ok(values) => Some(values),
+        Err(err) => {
+            violations.push(format!(
+                "{path}:{} table `[{}]` field `{key}`: {err}",
+                value.line, table.header
+            ));
+            None
+        }
+    }
+}
+
+fn ci_required_table_usize(
+    path: &str,
+    table: &CiLedgerTable,
+    key: &str,
+    violations: &mut Vec<String>,
+) -> Option<usize> {
+    let Some(value) = table.values.get(key) else {
+        violations.push(format!(
+            "{path}:{} table `[{}]` missing `{key}`",
+            table.line, table.header
+        ));
+        return None;
+    };
+    ci_usize_value(path, table, key, value, violations)
+}
+
+fn ci_optional_table_usize(
+    path: &str,
+    table: &CiLedgerTable,
+    key: &str,
+    violations: &mut Vec<String>,
+) -> Option<usize> {
+    let value = table.values.get(key)?;
+    ci_usize_value(path, table, key, value, violations)
+}
+
+fn ci_usize_value(
+    path: &str,
+    table: &CiLedgerTable,
+    key: &str,
+    value: &CiLedgerValue,
+    violations: &mut Vec<String>,
+) -> Option<usize> {
+    match parse_usize_value(&value.raw, path, value.line) {
+        Ok(parsed) => Some(parsed),
+        Err(err) => {
+            violations.push(format!(
+                "{path}:{} table `[{}]` field `{key}`: {err}",
+                value.line, table.header
+            ));
+            None
+        }
+    }
+}
+
+fn ci_tables<'a>(document: &'a CiLedgerDocument, header: &str) -> Vec<&'a CiLedgerTable> {
+    document
+        .tables
+        .iter()
+        .filter(|table| table.header == header)
+        .collect()
+}
+
 fn check_dependencies() -> Result<(), String> {
     let allowlist = read_glob_allowlist("policy/dependency_allowlist.txt")?;
     let mut violations = Vec::new();
@@ -21429,6 +22216,7 @@ jobs:
         assert!(commands.contains(&"mutation-calibration [root] --mutants-json <path>"));
         assert!(commands.contains(&"sarif-policy --current <path> [--baseline <path>]"));
         assert!(commands.contains(&"check-droid-review-config"));
+        assert!(commands.contains(&"check-ci-lane-whitelist"));
     }
 
     #[test]
@@ -22936,6 +23724,230 @@ activate_when_msrv = "1.94"
             super::ledger_name_to_lookup("unsafe_code"),
             ("unsafe_code", "rust")
         );
+    }
+
+    fn ci_budget_fixture() -> &'static str {
+        r#"
+schema_version = "0.1"
+policy_state = "advisory-ledger"
+enforcement = "none"
+owner = "repo-maintainers"
+reason = "test fixture"
+unit = "lem"
+
+[defaults]
+required_pr_budget = "small"
+advisory_pr_budget = "large"
+release_budget = "release"
+
+[[budget_band]]
+id = "small"
+min_lem = 0
+max_lem = 5
+posture = "required"
+description = "small"
+
+[[budget_band]]
+id = "large"
+min_lem = 6
+max_lem = 60
+posture = "advisory"
+description = "large"
+
+[[budget_band]]
+id = "release"
+min_lem = 61
+posture = "on_demand_release"
+description = "release"
+
+[[label]]
+name = "full-ci"
+effect = "run_all"
+budget_effect = "release"
+notes = "test"
+"#
+    }
+
+    fn ci_lanes_fixture() -> &'static str {
+        r#"
+schema_version = "0.1"
+policy_state = "advisory-ledger"
+enforcement = "none"
+owner = "repo-maintainers"
+reason = "test fixture"
+
+[[artifact_family]]
+id = "ci-plan"
+paths = ["target/ci/ci-plan.json"]
+
+[[lane]]
+id = "docs"
+posture = "required"
+workflow = ".github/workflows/ci.yml"
+jobs = ["rust"]
+commands = ["cargo xtask check-doc-index"]
+estimated_lem = 1
+artifact_families = []
+description = "docs"
+
+[[lane]]
+id = "coverage"
+posture = "advisory"
+workflow = ".github/workflows/coverage.yml"
+jobs = ["rust-coverage"]
+commands = ["cargo llvm-cov"]
+estimated_lem = 18
+artifact_families = ["ci-plan"]
+description = "coverage"
+
+[[lane]]
+id = "release-package"
+posture = "on_demand_release"
+workflow = ".github/workflows/ci.yml"
+jobs = ["rust"]
+commands = ["cargo package -p ripr --list"]
+estimated_lem = 6
+artifact_families = ["ci-plan"]
+description = "release"
+"#
+    }
+
+    fn ci_risk_packs_fixture() -> &'static str {
+        r#"
+schema_version = "0.1"
+policy_state = "advisory-ledger"
+enforcement = "none"
+owner = "repo-maintainers"
+reason = "test fixture"
+
+[risk_pack.docs_only]
+paths = ["docs/**"]
+required = ["docs"]
+advisory = ["coverage"]
+on_demand = ["release-package"]
+artifact_families = ["ci-plan"]
+estimated_lem = 5
+owner = "repo-maintainers"
+reason = "docs"
+"#
+    }
+
+    fn ci_exceptions_fixture() -> &'static str {
+        r#"
+schema_version = "0.1"
+policy_state = "advisory-ledger"
+enforcement = "none"
+owner = "repo-maintainers"
+reason = "test fixture"
+
+[[exception]]
+id = "legacy-ci"
+kind = "legacy_posture"
+paths = [".github/workflows/ci.yml"]
+lanes = ["docs"]
+current_behavior = "current"
+target_behavior = "target"
+review_note = "review"
+"#
+    }
+
+    fn ci_document(path: &str, text: &str) -> Result<super::CiLedgerDocument, String> {
+        let (document, violations) = super::parse_ci_ledger_document(path, text);
+        if violations.is_empty() {
+            Ok(document)
+        } else {
+            Err(format!("{path} fixture parse violations: {violations:?}"))
+        }
+    }
+
+    fn ci_fixture_violations(
+        budget: &str,
+        lanes: &str,
+        risk_packs: &str,
+        exceptions: &str,
+    ) -> Result<Vec<String>, String> {
+        let budget = ci_document("policy/ci-budget.toml", budget)?;
+        let lanes = ci_document("policy/ci-lane-whitelist.toml", lanes)?;
+        let risk_packs = ci_document("policy/ci-risk-packs.toml", risk_packs)?;
+        let exceptions = ci_document("policy/ci-whitelist-exceptions.toml", exceptions)?;
+        Ok(super::ci_lane_whitelist_violations(
+            &budget,
+            &lanes,
+            &risk_packs,
+            &exceptions,
+        ))
+    }
+
+    #[test]
+    fn check_ci_lane_whitelist_accepts_current_policy_ledgers() -> Result<(), String> {
+        with_repo_cwd(super::check_ci_lane_whitelist_impl)
+    }
+
+    #[test]
+    fn check_ci_lane_whitelist_rejects_unknown_risk_pack_lane() -> Result<(), String> {
+        let risk_packs = ci_risk_packs_fixture()
+            .replace(r#"required = ["docs"]"#, r#"required = ["missing-lane"]"#);
+        let violations = ci_fixture_violations(
+            ci_budget_fixture(),
+            ci_lanes_fixture(),
+            &risk_packs,
+            ci_exceptions_fixture(),
+        )?;
+        if !violations
+            .iter()
+            .any(|violation| violation.contains("references unknown lane `missing-lane`"))
+        {
+            return Err(format!(
+                "expected unknown lane violation, got {violations:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn check_ci_lane_whitelist_rejects_unknown_artifact_family() -> Result<(), String> {
+        let lanes = ci_lanes_fixture().replace(
+            r#"artifact_families = ["ci-plan"]"#,
+            r#"artifact_families = ["missing-family"]"#,
+        );
+        let violations = ci_fixture_violations(
+            ci_budget_fixture(),
+            &lanes,
+            ci_risk_packs_fixture(),
+            ci_exceptions_fixture(),
+        )?;
+        if !violations
+            .iter()
+            .any(|violation| violation.contains("unknown artifact family `missing-family`"))
+        {
+            return Err(format!(
+                "expected unknown artifact family violation, got {violations:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn check_ci_lane_whitelist_detects_budget_label_drift() -> Result<(), String> {
+        let budget = ci_budget_fixture().replace(
+            r#"budget_effect = "release""#,
+            r#"budget_effect = "missing-band""#,
+        );
+        let violations = ci_fixture_violations(
+            &budget,
+            ci_lanes_fixture(),
+            ci_risk_packs_fixture(),
+            ci_exceptions_fixture(),
+        )?;
+        if !violations
+            .iter()
+            .any(|violation| violation.contains("unknown budget band `missing-band`"))
+        {
+            return Err(format!(
+                "expected budget band drift violation, got {violations:?}"
+            ));
+        }
+        Ok(())
     }
 
     #[test]

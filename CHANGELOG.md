@@ -15,6 +15,9 @@ are scoped or reviewed.
   report that checks existing agent artifacts, recovers a seam id when
   possible, emits missing-step commands, and warns on stale-looking verify or
   receipt artifacts without rerunning analysis.
+- Added `cargo xtask check-ci-lane-whitelist`, a structural advisory checker
+  for the CI lane, risk-pack, budget, artifact-family, and rollout-exception
+  ledgers.
 - Queued Campaign 12, First-Hour UX, as the post-LLM-work-loop lane for making
   the VS Code extension and generated CI workflow useful from their first
   screens without requiring users to learn RIPR's internal report topology.
