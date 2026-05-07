@@ -103,6 +103,21 @@ advisory = []
 Risk packs must stay explainable. If a lane runs because a pack matched, the PR
 plan should name the pack and paths that triggered it.
 
+The seed policy ledgers are machine-readable but non-enforcing:
+
+- `policy/ci-budget.toml` records LEM bands, label effects, and default budget
+  posture;
+- `policy/ci-lane-whitelist.toml` records allowed target lane IDs and artifact
+  families;
+- `policy/ci-risk-packs.toml` maps changed path families to required,
+  advisory, and on-demand lane IDs;
+- `policy/ci-whitelist-exceptions.toml` records current workflow behavior that
+  intentionally differs from the target policy while the split rolls out.
+
+A later `xtask` checker should first validate these files structurally:
+schema version, lane IDs, label IDs, artifact family IDs, owners, and reasons.
+It should not fail a PR because a risk pack matched or an estimate changed.
+
 ### Artifact Families
 
 Generated artifacts should have predictable paths and one index. Planned CI
@@ -144,7 +159,7 @@ logic.
 | `clippy-future` | Run future or candidate Clippy lint lanes in advisory mode. |
 
 New labels that affect CI must update this table, the PR template, and the
-eventual risk-pack policy files in the same PR.
+budget/risk-pack policy files in the same PR.
 
 These labels are the documented target vocabulary. They are not active workflow
 switches until a later PR wires them into a PR plan or workflow condition.

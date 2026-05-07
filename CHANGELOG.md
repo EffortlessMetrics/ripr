@@ -27,6 +27,10 @@ are scoped or reviewed.
 - Documented the completed `0.4.0` post-publish verification for crates.io,
   GitHub Release server assets, VS Marketplace, Open VSX, and installed
   editor-agent loop smoke checks.
+- Added non-enforcing CI policy ledgers for LEM budget bands, target lane IDs,
+  risk packs, artifact families, labels, and rollout exceptions. These seed
+  files document the future PR planning surface without changing workflow
+  behavior.
 
 ## 0.4.0 - 2026-05-07
 
