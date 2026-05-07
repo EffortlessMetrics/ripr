@@ -1,0 +1,97 @@
+schema_version = "0.3"
+policy = "no-panic-allowlist"
+owner = "core/policy"
+status = "shadow"
+
+# Schema 0.3 mirror of `.ripr/no-panic-allowlist.toml` (schema 0.2).
+#
+# The canonical file consumed by `cargo xtask check-no-panic-family` remains
+# `.ripr/no-panic-allowlist.toml` until the checker is updated to read this
+# location in a follow-up PR. This file establishes the schema-0.3 contract:
+#
+#   id              stable identifier referenced in PR descriptions and ADRs
+#   path            file the entry applies to
+#   family          panic | unwrap | expect | unreachable | todo | unimplemented
+#   classification  test_only | test_helper | release_only | bootstrap | ...
+#   owner           team / area responsible for keeping this entry valid
+#   explanation     why this entry is allowed despite the deny-by-default rule
+#   expires         date this entry must be re-justified
+#   selector        the SEMANTIC identifier (kind + container + callee +
+#                   optional receiver_fingerprint) — preserved verbatim from
+#                   schema 0.2; this is the important part
+#   last_seen       advisory line/column drift hint (informational)
+#
+# Three representative entries are mirrored here to demonstrate each shape:
+# a method_call selector without fingerprint, a method_call selector with a
+# receiver_fingerprint (the strongest semantic identity), and a release_only
+# entry placeholder. The remaining 26 entries from `.ripr/no-panic-allowlist.toml`
+# will be migrated in the follow-up that updates the checker; doing all 29 in
+# this PR would bundle a schema-introduction with a parser change.
+#
+# See:
+#   docs/NO_PANIC_SEMANTIC_ALLOWLIST.md
+#   docs/NO_PANIC_POLICY.md
+
+# ---------------------------------------------------------------------------
+# Sample: method_call selector (no fingerprint)
+# ---------------------------------------------------------------------------
+
+[[allow]]
+id = "panic-0001"
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_helper"
+owner = "test-infra"
+explanation = "Test harness creates temporary directories for test isolation."
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "temp_dir"
+callee = "unwrap"
+
+# ---------------------------------------------------------------------------
+# Sample: method_call selector with receiver_fingerprint (strongest identity)
+# ---------------------------------------------------------------------------
+
+[[allow]]
+id = "panic-0002"
+path = "crates/ripr/src/analysis/mod.rs"
+family = "unwrap"
+classification = "test_only"
+owner = "core/analysis"
+explanation = "Test helper creates temporary directories for analysis test fixtures."
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "temp_dir"
+callee = "unwrap"
+receiver_fingerprint = "SystemTime::now() .duration_since(UNIX_EPOCH)"
+
+[allow.last_seen]
+line = 171
+column = 21
+
+# ---------------------------------------------------------------------------
+# Sample: cli test helper with receiver_fingerprint
+# ---------------------------------------------------------------------------
+
+[[allow]]
+id = "panic-0003"
+path = "crates/ripr/tests/cli_smoke.rs"
+family = "unwrap"
+classification = "test_only"
+owner = "core/cli"
+explanation = "CLI smoke test runs the ripr binary and unwraps the captured output."
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "run_ripr"
+callee = "unwrap"
+receiver_fingerprint = "Command::new(bin).args(args).output()"
+
+[allow.last_seen]
+line = 6
+column = 5
