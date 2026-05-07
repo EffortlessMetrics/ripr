@@ -924,8 +924,8 @@ Work items:
 | `ci/github-action-entrypoint` | done | `ripr init --ci github` generates the copyable defaults-first GitHub Action entrypoint. It runs `ripr pilot`, renders diff/repo SARIF only when `RIPR_UPLOAD_SARIF` is true, writes repo badge JSON and Shields artifacts, uploads the pilot/report directories, and keeps the job plus upload steps advisory. |
 | `editor/install-polish` | done | Documented the normal VS Code/Open VSX install path, server-resolution fallback, local VSIX smoke path, saved-workspace default, and existing command coverage. The docs now reflect the current e2e coverage for command registration, draft-mode defaults, LSP-first seam context, targeted-test brief copying, suggested assertions, related-test opening, malformed argument handling, and restart behavior without adding editor features. |
 | `fixtures/example-corpus` | done | Added `fixtures/EXAMPLE_CORPUS.md`, the `opaque_fixture_builder` executable fixture, checked boundary-gap before/after repo-exposure snapshots, targeted-test outcome receipts, and optional mutation-calibration reports. The corpus maps boundary gap, missing equality boundary, weak oracle, exact error variant, opaque fixture/builder, LSP actions, CLI goldens, receipts, and calibration artifacts. |
-| `release/install-polish` | ready | Verify `cargo install`, GitHub Release binaries, VS Code server provisioning, README quickstart, and known-limits docs against the operator loop. |
-| `campaign/defaults-first-closeout` | blocked | Close the campaign after the install-to-targeted-test loop is demonstrated and the manifest points at the next real lane. |
+| `release/install-polish` | done | Verified crate package listing, publish dry-run, local `cargo install` smoke, VSIX packaging, public `v0.3.0` GitHub Release server manifest/assets, Windows server archive checksum, and extracted server CLI/LSP smoke against the defaults-first operator loop. |
+| `campaign/defaults-first-closeout` | ready | Close the campaign after the install-to-targeted-test loop is demonstrated and the manifest points at the next real lane. |
 
 Dependencies:
 
@@ -942,22 +942,24 @@ Dependencies:
   can point to the documented editor and CI adoption paths.
 - `release/install-polish` follows the example corpus so install and release
   proof can exercise the same public operator loop.
+- `campaign/defaults-first-closeout` follows release/install proof so the final
+  review can validate a complete install-to-targeted-test loop instead of
+  approving individual surfaces in isolation.
 
 Commands:
 
 ```bash
-npm --prefix editors/vscode ci
-npm --prefix editors/vscode run compile
+cargo package -p ripr --list
+cargo publish -p ripr --dry-run
 npm --prefix editors/vscode run package
-npm --prefix editors/vscode run test:e2e
-cargo xtask lsp-cockpit-report
 cargo xtask check-pr
-cargo xtask check-public-api
-cargo xtask check-architecture
 cargo xtask check-output-contracts
 cargo xtask check-static-language
 cargo xtask check-campaign
 cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask check-traceability
+cargo xtask check-capabilities
 cargo test --workspace
 ```
 

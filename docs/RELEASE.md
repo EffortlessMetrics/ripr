@@ -36,6 +36,35 @@ cargo run -p ripr -- explain --diff crates/ripr/examples/sample/example.diff pro
 cargo run -p ripr -- context --diff crates/ripr/examples/sample/example.diff --at probe:crates_ripr_examples_sample_src_lib.rs:21:error_path --json
 ```
 
+## Install And Release Proof
+
+Before calling an install or release-path PR complete, verify the crate package,
+the local install path, the extension package, and the published server assets:
+
+```bash
+cargo package -p ripr --list
+cargo publish -p ripr --dry-run
+cargo install --path crates/ripr --locked --force --root target/ripr/install-smoke
+target/ripr/install-smoke/bin/ripr --version
+target/ripr/install-smoke/bin/ripr doctor
+npm --prefix editors/vscode run package
+```
+
+For a published release, confirm that GitHub Releases contains the VSIX, server
+manifest, server archives, and checksums:
+
+```bash
+gh release list --repo EffortlessMetrics/ripr --limit 5
+gh release view v0.3.0 --repo EffortlessMetrics/ripr --json name,tagName,publishedAt,assets,url,isDraft,isPrerelease
+gh release download v0.3.0 --repo EffortlessMetrics/ripr --pattern 'ripr-server-v0.3.0-x86_64-pc-windows-msvc.zip' --pattern 'ripr-server-manifest-v0.3.0.json' --dir target/ripr/release-smoke --clobber
+```
+
+The Campaign 7 release/install-polish pass verified `v0.3.0` as the latest
+public release on May 6, 2026. That release has `ripr-v0.3.0.vsix`, a server
+manifest, per-target server archives, checksums, and a Windows server archive
+whose manifest checksum matched the downloaded ZIP. The extracted server ran
+`ripr --version`, `ripr lsp --version`, and `ripr doctor`.
+
 ## Name Gate
 
 Immediately before the first real publish:
