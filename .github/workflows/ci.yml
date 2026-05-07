@@ -5,6 +5,9 @@ on:
   push:
     branches: [main, master]
 
+permissions:
+  contents: read
+
 # Cancel in-flight runs on the same PR when new commits are pushed
 # (`synchronize`), but never on label or other PR-action events. The
 # label-event cancellation bug (see docs/ci/cost-and-verification-policy.md
