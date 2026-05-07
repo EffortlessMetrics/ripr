@@ -1075,6 +1075,96 @@ Field contract:
   guidance derived from the verify bucket. It does not claim runtime
   confirmation.
 
+## PR Test Guidance
+
+RIPR-SPEC-0012 defines a future `ripr review-comments` report that projects
+existing seam evidence into advisory GitHub PR guidance:
+
+```text
+ripr review-comments --root . --base <sha> --head <sha> --out target/ripr/review/comments.json
+```
+
+The command is planned as a pure renderer. It should not post to GitHub, run
+mutation testing, refresh LSP state, edit source files, or generate tests. CI
+can use the JSON to write a job summary, emit check annotations, and optionally
+upsert inline PR review comments when explicitly enabled.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "advisory",
+  "summary": {
+    "comments": 2,
+    "summary_only": 1,
+    "suppressed": 1,
+    "unchanged_tests": true
+  },
+  "comments": [
+    {
+      "id": "ripr-review-67fc764ba37d77bd",
+      "seam_id": "67fc764ba37d77bd",
+      "dedupe_key": "ripr:67fc764ba37d77bd:src/pricing.rs:88:8d3c2b1a",
+      "placement": {
+        "path": "src/pricing.rs",
+        "line": 88,
+        "side": "RIGHT",
+        "mode": "exact_seam_line"
+      },
+      "kind": "predicate_boundary",
+      "grip_class": "weakly_gripped",
+      "severity": "warning",
+      "reason": "Related tests reach and observe the owner but miss the equality boundary.",
+      "missing_discriminator": "amount == discount_threshold",
+      "suggested_test": {
+        "intent": "Add an equality-boundary test.",
+        "candidate_values": ["amount == discount_threshold"],
+        "assertion_shape": "Assert the returned discount behavior directly.",
+        "recommended_file": "tests/pricing.rs",
+        "near_test": "applies_discount_above_threshold"
+      },
+      "llm_guidance": {
+        "prompt": "Write one focused Rust test for the missing equality boundary. Place it near tests/pricing.rs::applies_discount_above_threshold. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
+        "command": "ripr agent brief --root . --seam-id 67fc764ba37d77bd --json",
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+      }
+    }
+  ],
+  "summary_only": []
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `status` - always `"advisory"`; this report is review guidance, not a CI
+  policy.
+- `summary.comments` - count of guidance items with safe changed-line
+  placement.
+- `summary.summary_only` - count of recommendations without safe changed-line
+  placement.
+- `summary.suppressed` - count hidden by configured severity, suppression,
+  caps, or missing guidance.
+- `summary.unchanged_tests` - `true` when selected recommendations did not have
+  a nearby test change in the pull request.
+- `comments[].dedupe_key` - stable key based on seam ID, path, line, and a
+  changed-expression hash when available.
+- `comments[].placement` - GitHub-compatible changed-line placement. Items
+  without safe placement belong in `summary_only[]`.
+- `comments[].reason` - short static-evidence explanation for why a focused
+  test would be useful.
+- `comments[].suggested_test` - bounded test intent, candidate values,
+  assertion shape, recommended test file, and related test to imitate when
+  available.
+- `comments[].llm_guidance` - bounded handoff command and prompt for one
+  focused test. It is not a request for free-form diff review.
+
+Default CI projection should cap inline review comments to three, write summary
+items to the job summary, and emit check annotations only for changed lines.
+Inline PR review comments remain opt-in.
+
 ## Agent Status
 
 `ripr agent status --root <workspace> --json` reads already-written agent-loop
