@@ -1,6 +1,9 @@
 use crate::analysis;
+use crate::app::agent_brief::{
+    AgentBriefLine, AgentBriefResolvedWorkingSet, select_agent_brief_seams,
+};
 use crate::app::{self, CheckInput, Mode, OutputFormat};
-use crate::cli::agent::{AgentCommand, parse_agent_args};
+use crate::cli::agent::{AgentBriefOptions, AgentBriefWorkingSet, AgentCommand, parse_agent_args};
 use crate::cli::help;
 use crate::cli::parse::{expect_value, parse_format, parse_mode};
 use crate::config::{
@@ -75,11 +78,146 @@ pub(super) fn agent(args: &[String]) -> Result<(), String> {
             help::print_agent_brief_help();
             Ok(())
         }
-        AgentCommand::Brief(options) => Err(format!(
-            "ripr agent brief parsed ({}) but is not implemented yet",
-            options.parsed_summary()
-        )),
+        AgentCommand::Brief(options) => run_agent_brief(options),
     }
+}
+
+fn run_agent_brief(options: AgentBriefOptions) -> Result<(), String> {
+    if !options.root.is_dir() {
+        return Err(format!(
+            "agent brief root {} is not a directory",
+            options.root.display()
+        ));
+    }
+
+    let config = load_for_root(&options.root)?;
+    let mut input = CheckInput {
+        root: options.root.clone(),
+        ..CheckInput::default()
+    };
+    apply_to_check_input(&mut input, &config, CheckInputExplicit::default());
+
+    let working_set = resolve_agent_brief_working_set(&input.root, &options.working_set)?;
+    let classified = analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
+    let selection = select_agent_brief_seams(&classified, &working_set, options.max_seams);
+    let rendered = output::agent_brief::render_agent_brief_json(
+        &input.root,
+        &input.mode,
+        &config,
+        &working_set,
+        &selection,
+    )?;
+    println!("{rendered}");
+    Ok(())
+}
+
+fn resolve_agent_brief_working_set(
+    root: &Path,
+    working_set: &AgentBriefWorkingSet,
+) -> Result<AgentBriefResolvedWorkingSet, String> {
+    match working_set {
+        AgentBriefWorkingSet::Diff(path) => {
+            let diff_path = validate_agent_brief_diff_path(root, path)?;
+            let diff_text = analysis::load_diff(root, None, Some(&diff_path))?;
+            Ok(AgentBriefResolvedWorkingSet::diff(
+                path.clone(),
+                agent_brief_lines_from_diff(root, &diff_text),
+            ))
+        }
+        AgentBriefWorkingSet::Base(base) => {
+            let diff_text = analysis::load_diff(root, Some(base.as_str()), None)?;
+            Ok(AgentBriefResolvedWorkingSet::base(
+                base.clone(),
+                agent_brief_lines_from_diff(root, &diff_text),
+            ))
+        }
+        AgentBriefWorkingSet::Files(files) => Ok(AgentBriefResolvedWorkingSet::files(
+            files
+                .iter()
+                .map(|file| normalize_agent_brief_path(root, file))
+                .collect(),
+        )),
+        AgentBriefWorkingSet::SeamId(seam_id) => {
+            Ok(AgentBriefResolvedWorkingSet::seam_id(seam_id.clone()))
+        }
+    }
+}
+
+fn validate_agent_brief_diff_path(root: &Path, path: &Path) -> Result<PathBuf, String> {
+    let root = root.canonicalize().map_err(|err| {
+        format!(
+            "canonicalize agent brief root {} failed: {err}",
+            root.display()
+        )
+    })?;
+    let candidate = if path.is_absolute() || path.exists() {
+        path.to_path_buf()
+    } else {
+        root.join(path)
+    };
+    let candidate = candidate.canonicalize().map_err(|err| {
+        format!(
+            "canonicalize agent brief diff {} failed: {err}",
+            path.display()
+        )
+    })?;
+
+    if !candidate.starts_with(&root) {
+        return Err(format!(
+            "agent brief --diff {} must stay under root {}",
+            path.display(),
+            root.display()
+        ));
+    }
+
+    Ok(candidate)
+}
+
+fn agent_brief_lines_from_diff(root: &Path, diff_text: &str) -> Vec<AgentBriefLine> {
+    analysis::parse_unified_diff(diff_text)
+        .into_iter()
+        .flat_map(|file| {
+            let path = normalize_agent_brief_path(root, &file.path);
+            file.added_lines
+                .into_iter()
+                .map(move |line| AgentBriefLine::new(path.clone(), line.line))
+        })
+        .collect()
+}
+
+fn normalize_agent_brief_path(root: &Path, path: &Path) -> PathBuf {
+    let path_text = normalized_path_text(path);
+    for root_text in normalized_root_prefixes(root) {
+        let prefix = format!("{root_text}/");
+        if let Some(stripped) = path_text.strip_prefix(&prefix) {
+            return PathBuf::from(stripped);
+        }
+    }
+    PathBuf::from(path_text)
+}
+
+fn normalized_root_prefixes(root: &Path) -> Vec<String> {
+    let mut prefixes = Vec::new();
+    push_unique_normalized_path(&mut prefixes, root);
+    if let Ok(root) = std::path::absolute(root) {
+        push_unique_normalized_path(&mut prefixes, &root);
+    }
+    if let Ok(root) = root.canonicalize() {
+        push_unique_normalized_path(&mut prefixes, &root);
+    }
+    prefixes
+}
+
+fn push_unique_normalized_path(prefixes: &mut Vec<String>, path: &Path) {
+    let text = normalized_path_text(path);
+    if !text.is_empty() && !prefixes.iter().any(|existing| existing == &text) {
+        prefixes.push(text);
+    }
+}
+
+fn normalized_path_text(path: &Path) -> String {
+    let text = path.to_string_lossy().replace('\\', "/");
+    text.strip_prefix("./").unwrap_or(&text).to_string()
 }
 
 pub(super) fn init(args: &[String]) -> Result<(), String> {
@@ -1099,6 +1237,17 @@ mod tests {
         ))
     }
 
+    fn unique_repo_relative_test_dir(label: &str) -> PathBuf {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        PathBuf::from("target/ripr").join(format!(
+            "ripr-command-{label}-{}-{stamp}",
+            std::process::id()
+        ))
+    }
+
     #[test]
     fn check_requires_values_for_value_flags() {
         assert_eq!(
@@ -1387,14 +1536,77 @@ mod tests {
     }
 
     #[test]
-    fn agent_brief_parses_request_but_does_not_run_analysis_yet() {
+    fn agent_brief_rejects_missing_root_before_analysis() {
         assert_eq!(
-            agent(&args(&["brief", "--diff", "change.diff", "--json"])),
+            agent(&args(&[
+                "brief",
+                "--root",
+                "target/ripr/missing-agent-brief-root",
+                "--diff",
+                "change.diff",
+                "--json",
+            ])),
             Err(
-                "ripr agent brief parsed (root=., working_set=diff:change.diff, max_seams=3, json=true) but is not implemented yet"
+                "agent brief root target/ripr/missing-agent-brief-root is not a directory"
                     .to_string()
             )
         );
+    }
+
+    #[test]
+    fn agent_brief_diff_lines_are_normalized_to_requested_root() {
+        let diff = "diff --git a/crates/ripr/examples/sample/src/lib.rs b/crates/ripr/examples/sample/src/lib.rs\n--- a/crates/ripr/examples/sample/src/lib.rs\n+++ b/crates/ripr/examples/sample/src/lib.rs\n@@ -8,1 +8,1 @@\n-old\n+new\n";
+        let lines = agent_brief_lines_from_diff(Path::new("crates/ripr/examples/sample"), diff);
+
+        assert_eq!(
+            lines,
+            vec![AgentBriefLine::new(PathBuf::from("src/lib.rs"), 8)]
+        );
+    }
+
+    #[test]
+    fn agent_brief_normalizes_absolute_diff_paths_against_relative_root() -> Result<(), String> {
+        let root = unique_repo_relative_test_dir("agent-brief-normalize");
+        let src = root.join("src");
+        std::fs::create_dir_all(&src).map_err(|err| format!("create src dir: {err}"))?;
+        let absolute_file = std::env::current_dir()
+            .map_err(|err| format!("read current dir: {err}"))?
+            .join(&root)
+            .join("src/lib.rs");
+
+        assert_eq!(
+            normalize_agent_brief_path(&root, &absolute_file),
+            PathBuf::from("src/lib.rs")
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_brief_diff_path_must_stay_under_root() -> Result<(), String> {
+        let root = unique_command_test_dir("agent-brief-root");
+        let outside = unique_command_test_dir("agent-brief-outside");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        std::fs::create_dir_all(&outside).map_err(|err| format!("create outside: {err}"))?;
+        let outside_diff = outside.join("change.diff");
+        std::fs::write(&outside_diff, "diff --git a/src/lib.rs b/src/lib.rs\n")
+            .map_err(|err| format!("write outside diff: {err}"))?;
+
+        let err = resolve_agent_brief_working_set(
+            &root,
+            &AgentBriefWorkingSet::Diff(outside_diff.clone()),
+        )
+        .expect_err("outside diff path should be rejected");
+
+        assert!(
+            err.contains("must stay under root"),
+            "unexpected error: {err}"
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        std::fs::remove_dir_all(&outside).map_err(|err| format!("remove outside: {err}"))?;
+        Ok(())
     }
 
     #[test]

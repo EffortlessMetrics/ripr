@@ -17,6 +17,7 @@ pub(crate) mod test_grip_evidence;
 mod value_resolution;
 mod workspace;
 
+pub(crate) use diff::{load_diff, parse_unified_diff};
 pub(crate) use seam_classification::{ClassifiedSeam, SeamGripClassCounts};
 pub(crate) use seam_inventory::{
     inventory_classified_seams_at_with_config, inventory_seam_grip_class_counts_at_with_config,
