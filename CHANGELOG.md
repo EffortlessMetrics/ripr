@@ -59,6 +59,9 @@ are scoped or reviewed.
   `target/ripr/reports/release-readiness.{json,md}` and checks the 0.4 CLI,
   agent verify, LSP cockpit, advisory CI, latency, install, VSIX, and
   known-limit surfaces from repo artifacts.
+- Added operator cockpit status for the editor-agent loop artifacts:
+  before/after snapshots, `agent verify`, `agent receipt`, movement counts,
+  and missing-input commands aligned with the editor copy-command chain.
 
 ### Changed
 

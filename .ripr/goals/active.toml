@@ -60,7 +60,7 @@ commands = [
 
 [[work_item]]
 id = "operator/verify-receipt-status"
-status = "ready"
+status = "done"
 branch = "operator-verify-receipt-status"
 stackable = false
 requires_human_merge = true
@@ -74,13 +74,21 @@ commands = [
 
 [[work_item]]
 id = "fixtures/editor-agent-loop"
-status = "blocked"
+status = "ready"
 branch = "fixtures-editor-agent-loop"
 stackable = false
 requires_human_merge = true
 acceptance = "Add a canonical fixture that pins LSP diagnostics/actions, agent brief, agent packet, agent verify, agent receipt, and operator cockpit outputs for the full evidence loop"
-blocked_by = ["lsp/agent-loop-copy-commands", "operator/verify-receipt-status"]
-blocked_reason = "Wait for the editor commands and cockpit join before pinning the full loop fixture."
+commands = [
+  "cargo test -p ripr lsp::tests",
+  "cargo xtask lsp-cockpit-report",
+  "cargo xtask operator-cockpit",
+  "cargo xtask fixtures",
+  "cargo xtask goldens check",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr"
+]
 
 [[work_item]]
 id = "ci/editor-agent-artifacts"
