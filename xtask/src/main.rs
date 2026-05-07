@@ -14705,16 +14705,24 @@ fn check_droid_action_refs(violations: &mut Vec<String>, path_label: &str, text:
     }
 }
 
-fn check_droid_common(violations: &mut Vec<String>, path_label: &str, text: &str) {
+fn check_droid_common(
+    violations: &mut Vec<String>,
+    path_label: &str,
+    text: &str,
+    require_same_repo_guard: bool,
+    require_review_model: bool,
+) {
     let lines = active_yaml_lines(text);
 
-    if !has_active_line(&lines, "head.repo.full_name == github.repository") {
+    if require_same_repo_guard
+        && !has_active_line(&lines, "head.repo.full_name == github.repository")
+    {
         violations.push(format!(
             "{path_label}: same-repo guard (head.repo.full_name == github.repository) is required"
         ));
     }
 
-    if !has_active_line(&lines, "review_model: \"custom:MiniMax-M2.7-0\"") {
+    if require_review_model && !has_active_line(&lines, "review_model: \"custom:MiniMax-M2.7-0\"") {
         violations.push(format!(
             "{path_label}: review_model must be custom:MiniMax-M2.7-0"
         ));
@@ -14755,9 +14763,57 @@ fn check_droid_common(violations: &mut Vec<String>, path_label: &str, text: &str
     let lower_lines: Vec<String> = lines.iter().map(|l| l.to_ascii_lowercase()).collect();
     if has_active_line(&lower_lines, "show_full_output: true") {
         violations.push(format!("{path_label}: must not enable show_full_output"));
+    } else if !has_active_line(&lower_lines, "show_full_output: false") {
+        violations.push(format!(
+            "{path_label}: must explicitly set show_full_output: false"
+        ));
     }
 
     check_droid_action_refs(violations, path_label, text);
+}
+
+fn check_droid_security_scan_config(violations: &mut Vec<String>, path_label: &str, text: &str) {
+    let lines = active_yaml_lines(text);
+
+    if !has_active_line(&lines, "droid-security-scan-${{ github.repository }}") {
+        violations.push(format!(
+            "{path_label}: concurrency group must be repository-scoped"
+        ));
+    }
+
+    if !has_active_line(&lines, "cancel-in-progress: false") {
+        violations.push(format!(
+            "{path_label}: concurrency cancel-in-progress must be false"
+        ));
+    }
+
+    if !has_active_line(&lines, "security_scan_schedule: true") {
+        violations.push(format!("{path_label}: security_scan_schedule must be true"));
+    }
+
+    if !has_active_line(&lines, "security_scan_days: 7") {
+        violations.push(format!("{path_label}: security_scan_days must be 7"));
+    }
+
+    if !has_active_line(&lines, "security_severity_threshold: medium") {
+        violations.push(format!(
+            "{path_label}: security_severity_threshold must be medium"
+        ));
+    }
+
+    if !has_active_line(&lines, "security_block_on_critical: true") {
+        violations.push(format!(
+            "{path_label}: security_block_on_critical must be true"
+        ));
+    }
+
+    if !has_active_line(&lines, "security_block_on_high: false") {
+        violations.push(format!(
+            "{path_label}: security_block_on_high must be false"
+        ));
+    }
+
+    check_droid_common(violations, path_label, text, false, false);
 }
 
 fn check_droid_review_config_impl() -> Result<(), String> {
@@ -14765,6 +14821,7 @@ fn check_droid_review_config_impl() -> Result<(), String> {
 
     let droid_review_path = ".github/workflows/droid-review.yml";
     let droid_path = ".github/workflows/droid.yml";
+    let droid_security_scan_path = ".github/workflows/droid-security-scan.yml";
 
     if let Ok(text) = read_text_lossy(Path::new(droid_review_path)) {
         let lines = active_yaml_lines(&text);
@@ -14830,7 +14887,7 @@ fn check_droid_review_config_impl() -> Result<(), String> {
             ));
         }
 
-        check_droid_common(&mut violations, droid_review_path, &text);
+        check_droid_common(&mut violations, droid_review_path, &text, true, true);
     } else {
         violations.push(format!("{droid_review_path}: file not found or unreadable"));
     }
@@ -14847,16 +14904,24 @@ fn check_droid_review_config_impl() -> Result<(), String> {
             ));
         }
 
-        check_droid_common(&mut violations, droid_path, &text);
+        check_droid_common(&mut violations, droid_path, &text, true, true);
     } else {
         violations.push(format!("{droid_path}: file not found or unreadable"));
+    }
+
+    if let Ok(text) = read_text_lossy(Path::new(droid_security_scan_path)) {
+        check_droid_security_scan_config(&mut violations, droid_security_scan_path, &text);
+    } else {
+        violations.push(format!(
+            "{droid_security_scan_path}: file not found or unreadable"
+        ));
     }
 
     finish_policy_report(
         PolicyReportSpec {
             report_file: "droid-review-config.md",
             check: "check-droid-review-config",
-            why_it_matters: "Droid review workflows handle repository secrets and automated review output; invariant drift can expose secrets, break BYOK model selection, or degrade review quality.",
+            why_it_matters: "Droid workflows handle repository secrets and automated review or security output; invariant drift can expose secrets, break BYOK model selection, or degrade review quality.",
             fix_kind: FixKind::PolicyExceptionRequired,
             recommended_fixes: &[
                 "Restore the required invariant in the workflow YAML.",
@@ -14938,8 +15003,8 @@ mod tests {
     use super::{PanicAllowEntryVersioned, PanicFamilySelector, SemanticPanicFinding};
     use super::{SarifMissingBaseline, build_sarif_policy_report};
     use super::{
-        active_yaml_lines, check_droid_action_refs, check_droid_common, forbids_active_line,
-        has_active_line, strip_yaml_comment,
+        active_yaml_lines, check_droid_action_refs, check_droid_common,
+        check_droid_security_scan_config, forbids_active_line, has_active_line, strip_yaml_comment,
     };
     use serde_json::Value;
     use std::collections::{BTreeMap, BTreeSet};
@@ -20426,7 +20491,7 @@ active: true
 review_model: \"custom:MiniMax-M2.7-0\"
 security_model: \"custom:MiniMax-M2.7-0\"
 ";
-        check_droid_common(&mut violations, "test.yml", yaml);
+        check_droid_common(&mut violations, "test.yml", yaml, true, true);
         assert!(violations.iter().any(|v| v.contains("same-repo guard")));
     }
 
@@ -20438,7 +20503,7 @@ security_model: \"custom:MiniMax-M2.7-0\"
 review_model: \"custom:MiniMax-M2.7-0\"
 security_model: \"custom:MiniMax-M2.7-0\"
 ";
-        check_droid_common(&mut violations, "test.yml", yaml);
+        check_droid_common(&mut violations, "test.yml", yaml, true, true);
         assert!(!violations.iter().any(|v| v.contains("ANTHROPIC")));
     }
 
@@ -20450,7 +20515,7 @@ ANTHROPIC_AUTH_TOKEN: something
 review_model: \"custom:MiniMax-M2.7-0\"
 security_model: \"custom:MiniMax-M2.7-0\"
 ";
-        check_droid_common(&mut violations, "test.yml", yaml);
+        check_droid_common(&mut violations, "test.yml", yaml, true, true);
         assert!(violations.iter().any(|v| v.contains("ANTHROPIC")));
     }
 
@@ -20461,7 +20526,7 @@ security_model: \"custom:MiniMax-M2.7-0\"
 # settings: |
 review_model: \"custom:MiniMax-M2.7-0\"
 ";
-        check_droid_common(&mut violations, "test.yml", yaml);
+        check_droid_common(&mut violations, "test.yml", yaml, true, true);
         assert!(!violations.iter().any(|v| v.contains("settings:")));
     }
 
@@ -20472,15 +20537,15 @@ review_model: \"custom:MiniMax-M2.7-0\"
 settings: |
   some: config
 ";
-        check_droid_common(&mut violations, "test.yml", yaml);
+        check_droid_common(&mut violations, "test.yml", yaml, true, true);
         assert!(violations.iter().any(|v| v.contains("settings:")));
     }
 
     #[test]
     fn check_droid_common_flags_show_full_output_only_when_active() {
         let mut violations = Vec::new();
-        let yaml = "# show_full_output: true\n";
-        check_droid_common(&mut violations, "test.yml", yaml);
+        let yaml = "# show_full_output: true\nshow_full_output: false\n";
+        check_droid_common(&mut violations, "test.yml", yaml, true, true);
         assert!(!violations.iter().any(|v| v.contains("show_full_output")));
     }
 
@@ -20488,7 +20553,7 @@ settings: |
     fn check_droid_common_flags_missing_review_model() {
         let mut violations = Vec::new();
         let yaml = "security_model: \"custom:MiniMax-M2.7-0\"\n";
-        check_droid_common(&mut violations, "test.yml", yaml);
+        check_droid_common(&mut violations, "test.yml", yaml, true, true);
         assert!(
             violations
                 .iter()
@@ -20500,7 +20565,7 @@ settings: |
     fn check_droid_common_flags_missing_security_model() {
         let mut violations = Vec::new();
         let yaml = "review_model: \"custom:MiniMax-M2.7-0\"\n";
-        check_droid_common(&mut violations, "test.yml", yaml);
+        check_droid_common(&mut violations, "test.yml", yaml, true, true);
         assert!(
             violations
                 .iter()
@@ -20512,7 +20577,7 @@ settings: |
     fn check_droid_common_flags_missing_settings_local_json() {
         let mut violations = Vec::new();
         let yaml = "review_model: \"custom:MiniMax-M2.7-0\"\n";
-        check_droid_common(&mut violations, "test.yml", yaml);
+        check_droid_common(&mut violations, "test.yml", yaml, true, true);
         assert!(violations.iter().any(|v| v.contains("settings.local.json")));
     }
 
@@ -20520,7 +20585,7 @@ settings: |
     fn check_droid_common_flags_missing_literal_minimax_key() {
         let mut violations = Vec::new();
         let yaml = "review_model: \"custom:MiniMax-M2.7-0\"\n";
-        check_droid_common(&mut violations, "test.yml", yaml);
+        check_droid_common(&mut violations, "test.yml", yaml, true, true);
         assert!(violations.iter().any(|v| v.contains("${MINIMAX_API_KEY}")));
     }
 
@@ -20528,7 +20593,7 @@ settings: |
     fn check_droid_common_flags_active_anthropic_base_url() {
         let mut violations = Vec::new();
         let yaml = "ANTHROPIC_BASE_URL: https://example.com\n";
-        check_droid_common(&mut violations, "test.yml", yaml);
+        check_droid_common(&mut violations, "test.yml", yaml, true, true);
         assert!(violations.iter().any(|v| v.contains("ANTHROPIC")));
     }
 
@@ -20536,7 +20601,164 @@ settings: |
     fn check_droid_common_flags_active_show_full_output() {
         let mut violations = Vec::new();
         let yaml = "show_full_output: true\n";
-        check_droid_common(&mut violations, "test.yml", yaml);
+        check_droid_common(&mut violations, "test.yml", yaml, true, true);
+        assert!(violations.iter().any(|v| v.contains("show_full_output")));
+    }
+
+    #[test]
+    fn check_droid_common_flags_missing_show_full_output_false() {
+        let mut violations = Vec::new();
+        let yaml = "\
+security_model: \"custom:MiniMax-M2.7-0\"
+$HOME/.factory/settings.local.json
+${MINIMAX_API_KEY}
+";
+        check_droid_common(&mut violations, "test.yml", yaml, false, false);
+        assert!(violations.iter().any(|v| v.contains("show_full_output")));
+    }
+
+    #[test]
+    fn check_droid_common_allows_security_scan_without_review_model_or_same_repo_guard() {
+        let mut violations = Vec::new();
+        let yaml = "\
+security_model: \"custom:MiniMax-M2.7-0\"
+$HOME/.factory/settings.local.json
+${MINIMAX_API_KEY}
+show_full_output: false
+";
+        check_droid_common(&mut violations, "test.yml", yaml, false, false);
+        assert!(
+            !violations
+                .iter()
+                .any(|v| v.contains("review_model must be custom:MiniMax-M2.7-0"))
+        );
+        assert!(!violations.iter().any(|v| v.contains("same-repo guard")));
+    }
+
+    fn valid_droid_security_scan_yaml() -> &'static str {
+        r#"
+concurrency:
+  group: droid-security-scan-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  droid-security-scan:
+    steps:
+      - name: Configure MiniMax BYOK for Factory Droid
+        run: |
+          cat > "$HOME/.factory/settings.local.json" <<'JSON'
+          {"apiKey": "${MINIMAX_API_KEY}"}
+          JSON
+      - uses: Factory-AI/droid-action@e3d1f5e7861c36fe4a9c4dca3edec87b964b2bc4
+        with:
+          security_scan_schedule: true
+          security_scan_days: 7
+          security_model: "custom:MiniMax-M2.7-0"
+          security_severity_threshold: medium
+          security_block_on_critical: true
+          security_block_on_high: false
+          show_full_output: false
+"#
+    }
+
+    fn droid_security_scan_violations(yaml: &str) -> Vec<String> {
+        let mut violations = Vec::new();
+        check_droid_security_scan_config(&mut violations, "security.yml", yaml);
+        violations
+    }
+
+    #[test]
+    fn check_droid_security_scan_accepts_current_shape() {
+        let violations = droid_security_scan_violations(valid_droid_security_scan_yaml());
+        assert!(violations.is_empty());
+    }
+
+    #[test]
+    fn check_droid_security_scan_flags_non_repo_scoped_concurrency() {
+        let yaml = valid_droid_security_scan_yaml().replace(
+            "droid-security-scan-${{ github.repository }}",
+            "droid-security-scan",
+        );
+        let violations = droid_security_scan_violations(&yaml);
+        assert!(violations.iter().any(|v| v.contains("repository-scoped")));
+    }
+
+    #[test]
+    fn check_droid_security_scan_flags_cancel_in_progress() {
+        let yaml = valid_droid_security_scan_yaml()
+            .replace("cancel-in-progress: false", "cancel-in-progress: true");
+        let violations = droid_security_scan_violations(&yaml);
+        assert!(violations.iter().any(|v| v.contains("cancel-in-progress")));
+    }
+
+    #[test]
+    fn check_droid_security_scan_flags_missing_schedule_mode() {
+        let yaml = valid_droid_security_scan_yaml().replace(
+            "security_scan_schedule: true",
+            "security_scan_schedule: false",
+        );
+        let violations = droid_security_scan_violations(&yaml);
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("security_scan_schedule"))
+        );
+    }
+
+    #[test]
+    fn check_droid_security_scan_flags_wrong_scan_days() {
+        let yaml = valid_droid_security_scan_yaml()
+            .replace("security_scan_days: 7", "security_scan_days: 14");
+        let violations = droid_security_scan_violations(&yaml);
+        assert!(violations.iter().any(|v| v.contains("security_scan_days")));
+    }
+
+    #[test]
+    fn check_droid_security_scan_flags_wrong_threshold() {
+        let yaml = valid_droid_security_scan_yaml().replace(
+            "security_severity_threshold: medium",
+            "security_severity_threshold: high",
+        );
+        let violations = droid_security_scan_violations(&yaml);
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("security_severity_threshold"))
+        );
+    }
+
+    #[test]
+    fn check_droid_security_scan_flags_disabled_critical_block() {
+        let yaml = valid_droid_security_scan_yaml().replace(
+            "security_block_on_critical: true",
+            "security_block_on_critical: false",
+        );
+        let violations = droid_security_scan_violations(&yaml);
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("security_block_on_critical"))
+        );
+    }
+
+    #[test]
+    fn check_droid_security_scan_flags_enabled_high_block() {
+        let yaml = valid_droid_security_scan_yaml().replace(
+            "security_block_on_high: false",
+            "security_block_on_high: true",
+        );
+        let violations = droid_security_scan_violations(&yaml);
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("security_block_on_high"))
+        );
+    }
+
+    #[test]
+    fn check_droid_security_scan_flags_full_output() {
+        let yaml = valid_droid_security_scan_yaml()
+            .replace("show_full_output: false", "show_full_output: true");
+        let violations = droid_security_scan_violations(&yaml);
         assert!(violations.iter().any(|v| v.contains("show_full_output")));
     }
 

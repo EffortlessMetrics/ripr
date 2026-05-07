@@ -44,9 +44,9 @@ For GitHub Actions:
 - Do not print secrets or generated local settings containing expanded secrets.
 - Keep full Droid output disabled unless debugging in a safe private context.
 
-## Droid review invariants
+## Droid workflow invariants
 
-For Droid review workflows:
+For Droid workflows:
 
 - Use the MiniMax BYOK model path unless intentionally changing provider.
 - Model should be `custom:MiniMax-M2.7-0`.
@@ -64,7 +64,7 @@ For Droid review workflows:
 - `MINIMAX_API_KEY` must be job-level env referencing `${{ secrets.MINIMAX_API_KEY }}`.
 - Action refs must be immutable 40-character commit SHAs.
 - The manual workflow (`droid.yml`) must have trusted actor guards (`OWNER`, `MEMBER`, `COLLABORATOR`).
-- These invariants are enforced by `cargo xtask check-droid-review-config`.
+- These invariants, including scheduled security-scan shape and explicit `show_full_output: false`, are enforced by `cargo xtask check-droid-review-config`.
 
 ## Queueing invariants
 
