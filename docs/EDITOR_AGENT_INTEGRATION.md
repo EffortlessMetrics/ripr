@@ -39,7 +39,7 @@ rewrite the active manifest explicitly.
 | Verify | `ripr agent verify` | Editor copy command is pinned; cockpit now reports artifact presence and movement counts |
 | Receipt | `ripr agent receipt` | Editor copy command is pinned; cockpit now reports artifact presence and receipt summary |
 | Cockpit | `cargo xtask operator-cockpit` | Joins before/after snapshots, agent verify JSON, agent receipt JSON, and missing-input commands |
-| CI | Generated workflow artifacts | Needs full loop artifacts uploaded |
+| CI | Generated workflow artifacts | Uploads the full non-blocking editor-agent artifact set |
 | Fixture | Boundary-gap `expected/editor-agent-loop/` | Pins the canonical editor-agent loop fixture |
 | Install | `cargo install` plus VSIX proof | Needs installed binary plus packaged extension loop proof |
 
@@ -69,8 +69,8 @@ rewrite the active manifest explicitly.
 | `lsp/agent-loop-copy-commands` | Done: seam diagnostics now expose command-oriented editor actions for agent packet, brief, after snapshot, verify, and receipt command text |
 | `operator/verify-receipt-status` | Done: cockpit joins before snapshot, after snapshot, agent verify JSON, agent receipt JSON, movement counts, and next commands |
 | `fixtures/editor-agent-loop` | Done: boundary-gap pins LSP diagnostics/actions, agent brief, agent packet, agent verify, agent receipt, and operator cockpit output in one canonical fixture |
-| `ci/editor-agent-artifacts` | Next: upload pilot summary, repo exposure, agent brief, agent packet, agent verify, agent receipt, operator cockpit, SARIF when enabled, and badge JSON as visible artifacts |
-| `docs/full-evidence-loop` | Make the first-hour path explicit and state that `ripr init` is optional policy materialization, not activation |
+| `ci/editor-agent-artifacts` | Done: generated workflow uploads pilot summary, repo exposure, agent packet, agent brief, agent verify, agent receipt, targeted-test outcome, optional operator cockpit, SARIF when enabled, and badge JSON as visible artifacts |
+| `docs/full-evidence-loop` | Next: make the first-hour path explicit and state that `ripr init` is optional policy materialization, not activation |
 | `release/editor-agent-readiness-proof` | Run the editor-agent loop through installed CLI, packaged VSIX, package dry-run, and known-limits checks before closeout |
 
 ## Fixture Boundary

@@ -591,6 +591,58 @@ jobs:
             --mode ready \
             --max-seams 5
 
+      - name: Prepare RIPR editor-agent artifacts
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports target/ripr/agent
+          if [ -f target/ripr/pilot/repo-exposure.json ]; then
+            cp target/ripr/pilot/repo-exposure.json target/ripr/reports/repo-exposure.json
+          fi
+          if [ -f target/ripr/pilot/pilot-summary.json ]; then
+            top_seam_id="$(jq -r '.top_seams[0].seam_id // empty' target/ripr/pilot/pilot-summary.json 2>/dev/null || true)"
+            if [ -n "$top_seam_id" ] && [ "$top_seam_id" != "null" ]; then
+              echo "RIPR_TOP_SEAM_ID=$top_seam_id" >> "$GITHUB_ENV"
+            fi
+          fi
+
+      - name: Generate RIPR agent loop artifacts
+        if: always() && env.RIPR_TOP_SEAM_ID != ''
+        continue-on-error: true
+        run: |
+          ripr agent packet \
+            --root . \
+            --seam-id "$RIPR_TOP_SEAM_ID" \
+            --json \
+            > target/ripr/agent/agent-packet.json
+          ripr agent brief \
+            --root . \
+            --seam-id "$RIPR_TOP_SEAM_ID" \
+            --json \
+            > target/ripr/agent/agent-brief.json
+          ripr check \
+            --root . \
+            --mode ready \
+            --format repo-exposure-json \
+            > target/ripr/pilot/after.repo-exposure.json
+          ripr agent verify \
+            --root . \
+            --before target/ripr/pilot/repo-exposure.json \
+            --after target/ripr/pilot/after.repo-exposure.json \
+            --json \
+            > target/ripr/agent/agent-verify.json
+          ripr agent receipt \
+            --root . \
+            --verify-json target/ripr/agent/agent-verify.json \
+            --seam-id "$RIPR_TOP_SEAM_ID" \
+            --json \
+            --out target/ripr/agent/agent-receipt.json
+          ripr outcome \
+            --before target/ripr/pilot/repo-exposure.json \
+            --after target/ripr/pilot/after.repo-exposure.json \
+            --format json \
+            --out target/ripr/reports/targeted-test-outcome.json
+
       - name: Capture pull request diff
         if: github.event_name == 'pull_request'
         run: |
@@ -633,6 +685,11 @@ jobs:
             --format repo-badge-shields \
             > target/ripr/reports/repo-ripr-badge-shields.json
 
+      - name: Render RIPR operator cockpit
+        if: always() && hashFiles('crates/ripr/Cargo.toml') != '' && hashFiles('xtask/src/reports/operator.rs') != ''
+        continue-on-error: true
+        run: cargo xtask operator-cockpit
+
       - name: Add RIPR pilot summary
         if: always() && hashFiles('target/ripr/pilot/pilot-summary.md') != ''
         continue-on-error: true
@@ -646,6 +703,7 @@ jobs:
           name: ripr-reports
           path: |
             target/ripr/pilot
+            target/ripr/agent
             target/ripr/reports
           if-no-files-found: ignore
           retention-days: 14
@@ -2124,6 +2182,16 @@ mod tests {
         assert!(workflow.contains("--format repo-sarif"));
         assert!(workflow.contains("--format repo-badge-json"));
         assert!(workflow.contains("ripr pilot"));
+        assert!(workflow.contains("ripr agent packet"));
+        assert!(workflow.contains("ripr agent brief"));
+        assert!(workflow.contains("ripr agent verify"));
+        assert!(workflow.contains("ripr agent receipt"));
+        assert!(workflow.contains("ripr outcome"));
+        assert!(workflow.contains("target/ripr/agent/agent-packet.json"));
+        assert!(workflow.contains("target/ripr/agent/agent-brief.json"));
+        assert!(workflow.contains("target/ripr/agent/agent-verify.json"));
+        assert!(workflow.contains("target/ripr/agent/agent-receipt.json"));
+        assert!(workflow.contains("target/ripr/reports/targeted-test-outcome.json"));
         assert!(!workflow.contains("fail-on-new-warning"));
         assert!(!workflow.contains("sarif-policy"));
     }
@@ -2133,8 +2201,13 @@ mod tests {
         let workflow = generated_github_actions_workflow();
         assert!(workflow.contains("name: RIPR advisory reports"));
         assert!(workflow.contains("target/ripr/pilot"));
+        assert!(workflow.contains("target/ripr/agent"));
         assert!(workflow.contains("target/ripr/reports"));
         assert!(workflow.contains("name: ripr-reports"));
+        assert!(workflow.contains("RIPR_TOP_SEAM_ID"));
+        assert!(workflow.contains("cargo xtask operator-cockpit"));
+        assert!(workflow.contains("hashFiles('crates/ripr/Cargo.toml')"));
+        assert!(workflow.contains("hashFiles('xtask/src/reports/operator.rs')"));
         assert!(workflow.contains("if: env.RIPR_UPLOAD_SARIF == 'true'"));
         assert!(workflow.contains(
             "if: env.RIPR_UPLOAD_SARIF == 'true' && github.event_name == 'pull_request'"

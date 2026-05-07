@@ -727,6 +727,9 @@ fn init_ci_github_dry_run_prints_config_and_workflow_without_writing() -> Result
     assert!(stdout.contains("continue-on-error: true"));
     assert!(stdout.contains("RIPR_UPLOAD_SARIF"));
     assert!(stdout.contains("actions/upload-artifact@v7"));
+    assert!(stdout.contains("target/ripr/agent"));
+    assert!(stdout.contains("ripr agent verify"));
+    assert!(stdout.contains("ripr agent receipt"));
     assert!(stdout.contains("github/codeql-action/upload-sarif@v4"));
     assert!(!workspace.join("ripr.toml").exists());
     assert!(!workspace.join(".github/workflows/ripr.yml").exists());
@@ -779,6 +782,16 @@ fn init_ci_github_writes_non_blocking_report_workflow() -> Result<(), String> {
     assert!(workflow.contains("--format sarif"));
     assert!(workflow.contains("--format repo-sarif"));
     assert!(workflow.contains("--format repo-badge-json"));
+    assert!(workflow.contains("ripr agent packet"));
+    assert!(workflow.contains("ripr agent brief"));
+    assert!(workflow.contains("ripr agent verify"));
+    assert!(workflow.contains("ripr agent receipt"));
+    assert!(workflow.contains("target/ripr/agent/agent-packet.json"));
+    assert!(workflow.contains("target/ripr/agent/agent-brief.json"));
+    assert!(workflow.contains("target/ripr/agent/agent-verify.json"));
+    assert!(workflow.contains("target/ripr/agent/agent-receipt.json"));
+    assert!(workflow.contains("target/ripr/reports/targeted-test-outcome.json"));
+    assert!(workflow.contains("cargo xtask operator-cockpit"));
     assert!(workflow.contains("continue-on-error: true"));
     assert!(workflow.contains("actions/upload-artifact@v7"));
     assert!(workflow.contains("RIPR_UPLOAD_SARIF"));

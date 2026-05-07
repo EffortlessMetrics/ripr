@@ -555,7 +555,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "ci/editor-agent-artifacts"
+next = "docs/full-evidence-loop"
 metric = "packet carries missing discriminator + suggested assertion templates"
 
 [[capability]]
@@ -575,7 +575,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "ci/editor-agent-artifacts"
+next = "docs/full-evidence-loop"
 metric = "pilot_packet_generated"
 
 [[capability]]
@@ -620,7 +620,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/opaque_fixture_builder"
 ]
-next = "ci/editor-agent-artifacts"
+next = "docs/full-evidence-loop"
 metric = "operator_cockpit_available"
 
 [[capability]]
@@ -644,7 +644,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "ci/editor-agent-artifacts"
+next = "docs/full-evidence-loop"
 metric = "seam_id in diagnostic.data is the hover lookup key"
 
 [[capability]]
@@ -665,7 +665,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "ci/editor-agent-artifacts"
+next = "docs/full-evidence-loop"
 metric = "hover renders evidence path from ClassifiedSeam, never parses diagnostic message"
 
 [[capability]]
@@ -688,7 +688,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "ci/editor-agent-artifacts"
+next = "docs/full-evidence-loop"
 metric = "seam diagnostics expose packet/assertion/test actions without automatic edits"
 
 [[capability]]
@@ -725,7 +725,7 @@ evidence = [
   "docs/OUTPUT_SCHEMA.md SARIF contract section",
   "docs/CI.md SARIF and Policy Contract section",
   "crates/ripr/src/output/sarif.rs renders diff-scoped Finding SARIF and repo-scoped seam SARIF",
-  "ripr init --ci github generates an advisory GitHub workflow that runs ripr pilot, uploads pilot/report artifacts, writes repo badge JSON and Shields artifacts, and makes SARIF rendering/upload optional through RIPR_UPLOAD_SARIF",
+  "ripr init --ci github generates an advisory GitHub workflow that runs ripr pilot, uploads pilot/report/agent artifacts, writes repo badge JSON and Shields artifacts, optionally renders an operator cockpit when the repo-local xtask exists, and makes SARIF rendering/upload optional through RIPR_UPLOAD_SARIF",
   "crates/ripr/src/cli/commands.rs init CI generation tests cover advisory workflow content, report upload, optional SARIF, and overwrite guards",
   "crates/ripr/tests/cli_smoke.rs init --ci github smoke tests cover dry-run, generated workflow, and existing workflow protection",
   "SARIF renderer tests cover stable rule IDs, configured severity, off severity omission, suppression metadata, valid JSON, and static language",

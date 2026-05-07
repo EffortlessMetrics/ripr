@@ -65,6 +65,10 @@ are scoped or reviewed.
 - Added a canonical boundary-gap editor-agent loop fixture that pins agent
   packet, agent brief, agent verify, agent receipt, and operator cockpit output
   against the LSP diagnostic/action seam identity.
+- Expanded the generated `ripr init --ci github` workflow to upload the
+  editor-agent loop artifacts: pilot output, agent packet, agent brief, agent
+  verify, agent receipt, targeted-test outcome, optional operator cockpit,
+  SARIF, and badge JSON.
 
 ### Changed
 
