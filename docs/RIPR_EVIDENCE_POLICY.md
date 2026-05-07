@@ -50,8 +50,12 @@ following are true:
 - Finding class is `reachable_unrevealed` or `weakly_exposed`.
 - Production Rust changed in this PR.
 - No nearby test changed.
-- The finding is not suppressed in `policy/ripr-suppressions.toml`.
-- The finding is high-confidence.
+- The finding is not suppressed in `.ripr/suppressions.toml` (the
+  canonical path used by `crates/ripr/src/config.rs`).
+- The finding's numeric `confidence` field (documented in
+  `docs/OUTPUT_SCHEMA.md`) clears the gate threshold. The threshold
+  itself is intentionally not pinned here — it is decided in PR 14
+  alongside the soft-gate implementation.
 
 The soft-gate does not block on:
 
@@ -63,7 +67,9 @@ Acknowledgement labels: `ripr-waive`, `full-ci`, `ci-budget-ack`.
 
 ## Suppression schema
 
-Suppressions live in `policy/ripr-suppressions.toml`:
+Suppressions live in `.ripr/suppressions.toml` (the canonical path used by
+`crates/ripr/src/config.rs`; see `docs/CONFIGURATION.md` and
+`docs/OUTPUT_SCHEMA.md`):
 
 ```toml
 schema_version = "1.0"
