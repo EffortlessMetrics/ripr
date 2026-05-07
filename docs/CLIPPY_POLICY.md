@@ -58,7 +58,9 @@ Currently denied at the workspace level (selected highlights):
 
 - Panic family: `clippy::panic`, `clippy::unreachable`, `clippy::todo`,
   `clippy::unimplemented`, `clippy::dbg_macro`,
-  `clippy::should_panic_without_expect`.
+  `clippy::should_panic_without_expect`, `clippy::unwrap_used`,
+  `clippy::expect_used`, `clippy::get_unwrap`,
+  `clippy::unwrap_in_result`.
 - Memory / drop footguns: `clippy::mem_forget`, `clippy::forget_non_drop`,
   `clippy::drop_non_drop`.
 - Numeric correctness: `clippy::float_cmp`, `clippy::float_cmp_const`,
@@ -107,12 +109,23 @@ Currently denied at the workspace level (selected highlights):
 - Rust: `unsafe_code = "forbid"`, `unused_must_use`,
   `const_item_interior_mutations`, `function_casts_as_integer`.
 
-`clippy::unwrap_used` and `clippy::expect_used` are intentionally **not**
-denied at the Clippy rail today. The semantic checker carries that policy
-because matching `path + family + selector` is more robust against refactors
-than per-call-site `#[expect]` annotations. A future PR can flip the Clippy
-rail to deny once the allowlist entries are mirrored in source-level
-`#[expect(clippy::unwrap_used, reason = "policy:no-panic:<id>")]` attributes.
+`clippy::unwrap_used` and `clippy::expect_used` are denied at the Clippy
+rail. Every existing call site is receipted on **both** rails:
+
+- the semantic rail: a `[[allow]]` entry in
+  `.ripr/no-panic-allowlist.toml` with selector identity;
+- the clippy rail: a module-level `#[expect(clippy::unwrap_used, reason
+  = "...")]` (or `expect_used`) attribute on the enclosing
+  `#[cfg(test)]` block (or, for the `cli_smoke` integration test crate,
+  a crate-level `#![expect]`), tracked in
+  `.ripr/allow-attributes.txt`.
+
+The module-level attribute scope keeps the receipt count small (one per
+test-module surface, not one per call) while remaining auditable. A new
+panic-family call site on a production path requires both an allowlist
+entry **and** a fresh `#[expect]` receipt with a written reason; the
+semantic checker is still the authoritative gate that owns the per-site
+selector identity.
 
 ## Adding an exception
 

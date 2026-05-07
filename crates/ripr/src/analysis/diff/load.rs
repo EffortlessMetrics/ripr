@@ -30,6 +30,10 @@ pub fn load_diff(
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "Test asserts an expected error variant via `.expect_err(\"why\")`; the closure-style helper makes the expected failure mode part of the assertion message."
+)]
 mod tests {
     use super::*;
     use std::fs;
