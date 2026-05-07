@@ -561,7 +561,8 @@ evidence = [
   "crates/ripr/src/output/pilot.rs ranks top actionable seams and renders pilot-summary.json/md",
   "ripr pilot writes repo-exposure.json, repo-exposure.md, agent-seam-packets.json, pilot-summary.json, and pilot-summary.md",
   "docs/OUTPUT_SCHEMA.md Pilot Summary section",
-  "docs/QUICKSTART.md zero-config first-run pilot path"
+  "docs/QUICKSTART.md zero-config first-run pilot path",
+  "docs/INSTALLATION_VERIFICATION.md public install smoke checklist"
 ]
 fixtures = [
   "fixtures/boundary_gap"
@@ -580,7 +581,8 @@ evidence = [
   "ripr outcome prints Markdown by default and supports --format json plus --out",
   "fixtures/boundary_gap/calibration/targeted-test-outcome.json",
   "fixtures/boundary_gap/calibration/targeted-test-outcome.md",
-  "crates/ripr/tests/cli_smoke.rs outcome smoke tests"
+  "crates/ripr/tests/cli_smoke.rs outcome smoke tests",
+  "docs/INSTALLATION_VERIFICATION.md public install smoke checklist"
 ]
 fixtures = [
   "fixtures/boundary_gap"

@@ -295,7 +295,7 @@ Current capabilities:
 
 | Capability | Current state | Next checkpoint |
 | --- | --- | --- |
-| Distribution | Crate install, package dry-run, publish dry-run, public GitHub Release server assets, server manifest, and VSIX package path are verified for `v0.3.0`. | Release maintenance after the next version bump. |
+| Distribution | Crate package and publish dry-run proof passes for `0.3.1`; public `v0.3.0` server assets are verified, while `0.3.1` is the first release line that can satisfy the installed `ripr pilot` -> `ripr outcome` loop. | Release maintenance after the next version bump. |
 | Diff analysis | Evidence-first Voice A findings with syntax-backed changed-line probes, probe-relative oracle strength, local flow sinks, observed/missing activation values, and explicit stop reasons. | Maintenance; no active analyzer-refactor lane. |
 | Repo seam inventory | First-class `RepoSeam` model with deterministic seam IDs, cached seam fact layers, test-grip evidence across the five RIPR stages, and 11-class `SeamGripClass` classification. | Maintenance; no active analyzer-refactor lane. |
 | Test discovery | Parser-backed test and assertion facts with exact, broad, relational, snapshot, mock, smoke, custom-helper, side-effect observer, and unknown oracle kinds; per-test efficiency ledger with smoke/broad/disconnected/opaque/circular/likely-vacuous reasons and duplicate-discriminator groups. | Maintenance; no active analyzer-refactor lane. |
@@ -310,6 +310,8 @@ Campaigns 5A, 5B, 6, 7, and 8 are complete. Campaign 7 closed the defaults-first
 adoption lane: `ripr pilot`, `ripr outcome`, advisory calibration import, the
 operator cockpit, the generated GitHub Action entrypoint, the documented VS Code
 install path, the public example corpus, and release/install proof are in place.
+The public `0.3.0` crate predates `ripr pilot` and `ripr outcome`; `0.3.1`
+is the first public install target for that CLI loop.
 The closeout audit lives at
 `docs/handoffs/2026-05-07-campaign-7-closeout.md`. Campaign 8 has a checked
 runtime calibration fixture set for the main agreement buckets and keeps

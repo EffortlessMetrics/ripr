@@ -550,6 +550,7 @@ code = [
   "crates/ripr/src/output/outcome.rs",
   "crates/ripr/src/output/mutation_calibration.rs",
   "crates/ripr/src/lsp",
+  ".github/workflows/publish-extension.yml",
   "editors/vscode/package.json",
   "editors/vscode/src/config.ts",
   "editors/vscode/src/client.ts",
@@ -562,6 +563,7 @@ outputs = [
   "docs/EDITOR_EXTENSION.md",
   "docs/CI.md",
   "docs/TARGETED_TEST_WORKFLOW.md",
+  "docs/INSTALLATION_VERIFICATION.md",
   "docs/OUTPUT_SCHEMA.md",
   "docs/QUICKSTART.md",
   "docs/RELEASE.md",
@@ -588,5 +590,6 @@ metrics = [
   "targeted_test_outcome_available",
   "calibration_import_available",
   "advisory_ci_workflow_generated",
-  "operator_cockpit_available"
+  "operator_cockpit_available",
+  "install_path_verified"
 ]

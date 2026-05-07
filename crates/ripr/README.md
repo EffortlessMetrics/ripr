@@ -235,7 +235,7 @@ test, and comparing before/after evidence.
 
 | Capability | Current state | Next checkpoint |
 | --- | --- | --- |
-| Distribution | Crate install, package dry-run, publish dry-run, public GitHub Release server assets, server manifest, and VSIX package path are verified for `v0.3.0`. | Release maintenance after the next version bump. |
+| Distribution | Crate package and publish dry-run proof passes for `0.3.1`; public `v0.3.0` server assets are verified, while `0.3.1` is the first release line that can satisfy the installed `ripr pilot` -> `ripr outcome` loop. | Release maintenance after the next version bump. |
 | Diff analysis | Syntax-backed changed-line probes with owner symbols, parser-backed probe facts, explicit stop reasons for unknowns, probe-relative oracle strength, and local flow sink facts. | Maintenance; no active analyzer-refactor lane. |
 | Test discovery | Parser-backed test and assertion facts with exact, broad, relational, snapshot, mock, smoke, and unknown oracle kinds. | Maintenance; no active analyzer-refactor lane. |
 | Output | Human, JSON, context, GitHub/SARIF, repo seam, pilot, outcome, and badge formats include evidence-first stop reasons and advisory next actions. | Output contract maintenance. |

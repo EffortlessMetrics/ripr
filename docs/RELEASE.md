@@ -6,6 +6,8 @@ This document is the release checklist for publishing `ripr`.
 
 - The release branch has been reviewed and merged.
 - The version in `crates/ripr/Cargo.toml` is correct.
+- For the defaults-first public install line, the version is newer than
+  `0.3.0`; `0.3.0` predates `ripr pilot` and `ripr outcome`.
 - The root workspace uses Rust edition `2024`.
 - The root workspace `rust-version` is `1.93`.
 - `repository` and `homepage` point at `https://github.com/EffortlessMetrics/ripr/`.
@@ -25,11 +27,16 @@ cargo package -p ripr --list
 cargo publish -p ripr --dry-run
 ```
 
+For the defaults-first install path, also run the local install proof from
+[Installation verification](INSTALLATION_VERIFICATION.md).
+
 ## Runtime Smoke
 
 ```bash
 cargo run -p ripr -- --version
 cargo run -p ripr -- doctor
+cargo run -p ripr -- pilot --root fixtures/boundary_gap/input --out target/ripr/release-smoke/pilot
+cargo run -p ripr -- outcome --before fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json --after fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json
 cargo run -p ripr -- check --diff crates/ripr/examples/sample/example.diff
 cargo run -p ripr -- check --diff crates/ripr/examples/sample/example.diff --json
 cargo run -p ripr -- explain --diff crates/ripr/examples/sample/example.diff probe:crates_ripr_examples_sample_src_lib.rs:21:error_path
@@ -65,6 +72,12 @@ manifest, per-target server archives, checksums, and a Windows server archive
 whose manifest checksum matched the downloaded ZIP. The extracted server ran
 `ripr --version`, `ripr lsp --version`, and `ripr doctor`.
 
+That `v0.3.0` proof covers packaging and server provisioning. It does not
+verify the defaults-first public install loop because `v0.3.0` predates
+`ripr pilot` and `ripr outcome`; use
+[Installation verification](INSTALLATION_VERIFICATION.md) for the `0.3.1`
+public-install smoke.
+
 ## Name Gate
 
 Immediately before the first real publish:
@@ -98,13 +111,15 @@ happens, check crates.io manually before retrying.
 cargo install ripr
 ripr --version
 ripr doctor
+ripr pilot --root fixtures/boundary_gap/input --out target/ripr/install-smoke-cratesio/pilot
+ripr outcome --before fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json --after fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json
 ```
 
 Tag the release:
 
 ```bash
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.3.1
+git push origin v0.3.1
 ```
 
 Update docs or release notes if the install command or package metadata changed.

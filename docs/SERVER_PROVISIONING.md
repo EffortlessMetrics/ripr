@@ -48,10 +48,10 @@ The manifest shape is:
 
 ```json
 {
-  "version": "0.3.0",
+  "version": "0.3.1",
   "assets": {
     "x86_64-pc-windows-msvc": {
-      "url": "https://github.com/EffortlessMetrics/ripr/releases/download/v0.3.0/ripr-server-v0.3.0-x86_64-pc-windows-msvc.zip",
+      "url": "https://github.com/EffortlessMetrics/ripr/releases/download/v0.3.1/ripr-server-v0.3.1-x86_64-pc-windows-msvc.zip",
       "sha256": "..."
     }
   }
@@ -111,9 +111,10 @@ The e2e suite runs in a fixture Rust workspace and covers extension activation,
 defaults-first `draft` mode, command registration, LSP-first seam context
 collection with CLI fallback, targeted-test brief copying, suggested assertion
 copying, related-test opening, malformed command arguments, and restart
-behavior. Release/install proof has verified the published `v0.3.0` server
-archive path and the local VSIX package path; marketplace publishing remains
-documented in [Marketplace release](RELEASE_MARKETPLACE.md).
+behavior. The `v0.3.0` server archive path and local VSIX package path are
+verified for current provisioning. Defaults-first public install proof for
+`ripr pilot` and `ripr outcome` starts with `0.3.1`; the checklist is in
+[Installation verification](INSTALLATION_VERIFICATION.md).
 
 ## Future Bundled VSIXs
 

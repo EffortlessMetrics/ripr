@@ -9,6 +9,9 @@ format first.
 cargo install ripr
 ```
 
+The defaults-first public install path requires `ripr 0.3.1` or later. The
+older `0.3.0` crate installs, but predates `ripr pilot` and `ripr outcome`.
+
 For local development from this repository:
 
 ```bash

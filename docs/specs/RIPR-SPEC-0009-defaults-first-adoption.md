@@ -271,6 +271,8 @@ Defaults-first adoption evidence should cover:
   equality-boundary discriminators, exact error variants, opaque
   fixture/builder paths, targeted-test receipts, LSP action expectations, and
   optional calibration artifacts;
+- installation verification covering public `cargo install`, local package
+  install, GitHub Release server assets, VSIX packaging, and known limits;
 - missing config remaining healthy and visible in `ripr doctor`;
 - malformed config failing closed;
 - generated GitHub Actions workflow being advisory by default;
@@ -337,6 +339,15 @@ Given before and after repo-exposure snapshots,
 when a user runs ripr outcome --before before.json --after after.json,
 then ripr reports moved, unchanged, regressed, new, and removed seams without
 requiring cargo xtask.
+```
+
+### Public install exposes the loop
+
+```text
+Given a released defaults-first version,
+when a user runs cargo install ripr,
+then the installed binary exposes ripr pilot, ripr outcome, and optional
+ripr calibrate cargo-mutants without requiring the ripr source checkout.
 ```
 
 ### Operator cockpit points at the next command
@@ -420,6 +431,8 @@ Current tests and reports that support the contract:
 - `xtask/src/reports/operator.rs::tests::operator_cockpit_json_and_markdown_are_structured`
 - `xtask/src/main.rs::tests::defaults_first_example_corpus_index_names_required_operator_artifacts`
 - `editors/vscode/test/suite/extension.test.ts::defaults-first check mode is draft`
+- `docs/INSTALLATION_VERIFICATION.md` release smoke checklist for package,
+  public install, server archive, VSIX, and known limits
 
 ## Implementation Mapping
 
@@ -444,6 +457,8 @@ Current implementation pieces:
   public advisory calibration report.
 - `editors/vscode/package.json` exposes `ripr.check.mode` with the same
   `draft` default as the CLI and LSP missing-config path.
+- `.github/workflows/publish-extension.yml` packages the version-normalized VSIX
+  and waits for matching server assets before marketplace publishing.
 - `xtask/src/main.rs` currently owns repo-local mutation calibration, LSP
   cockpit, SARIF policy, badge artifact, and report-index automation.
 - `xtask/src/reports/operator.rs` joins those report artifacts into
@@ -455,6 +470,9 @@ Current implementation pieces:
 - `fixtures/EXAMPLE_CORPUS.md` indexes the defaults-first example corpus,
   including CLI goldens, LSP action expectations, targeted-test receipts, and
   optional calibration artifacts.
+- `docs/INSTALLATION_VERIFICATION.md` defines the release proof path for
+  `cargo install ripr`, checked package install, GitHub Release server assets,
+  VSIX packaging, and known defaults-first limits.
 
 ## Metrics
 
@@ -464,3 +482,4 @@ Current implementation pieces:
 - `calibration_import_available`
 - `advisory_ci_workflow_generated`
 - `operator_cockpit_available`
+- `install_path_verified`
