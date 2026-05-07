@@ -514,6 +514,48 @@ For a CI-first user, the useful output is the artifact packet:
 The workflow also appends `pilot-summary.md` to the job summary, so a reviewer
 can see the top recommendation before downloading artifacts.
 
+### PR Test Guidance Annotations
+
+RIPR-SPEC-0012 defines a planned PR-facing projection for the same evidence
+packet. The default CI surface should be a GitHub job summary plus check
+annotations. Inline PR review comments should remain opt-in because they create
+durable review-thread noise when ranking or placement is wrong.
+
+The planned pure renderer is:
+
+```bash
+ripr review-comments \
+  --root . \
+  --base "$GITHUB_BASE_SHA" \
+  --head "$GITHUB_SHA" \
+  --out target/ripr/review/comments.json
+```
+
+That renderer should write JSON and Markdown under `target/ripr/review/` and
+should not post to GitHub by itself. A workflow can then:
+
+- append the Markdown summary to `$GITHUB_STEP_SUMMARY`;
+- emit check annotations from changed-line entries;
+- upload the JSON and Markdown as artifacts;
+- optionally upsert inline PR review comments when `RIPR_PR_COMMENTS` is set to
+  `"true"`.
+
+Selection and placement must stay conservative:
+
+- comment only when production Rust changed and a visible actionable seam maps
+  to the changed region or owner function;
+- skip recommendations when a nearby test changed in the pull request;
+- target only changed lines, otherwise fall back to summary-only guidance;
+- cap inline review comments to three by default;
+- include the missing discriminator, suggested assertion shape, recommended
+  test file, related test to imitate, and `ripr agent brief` command when
+  available.
+
+The LLM guidance in annotations is bounded handoff material. It should ask for
+one focused test, avoid production edits unless explicitly requested, and point
+to `ripr agent verify` after the edit. It must not ask an LLM to decide which
+diff regions matter, run mutation testing, or claim runtime confirmation.
+
 ```yaml
 name: RIPR
 
