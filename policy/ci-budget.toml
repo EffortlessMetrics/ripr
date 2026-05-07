@@ -1,0 +1,83 @@
+schema_version = "0.1"
+policy_state = "advisory-ledger"
+enforcement = "none"
+owner = "repo-maintainers"
+reason = "Seed CI economics ledger for planned PR forecasting and actuals telemetry."
+unit = "lem"
+unit_name = "Local Evidence Minute"
+
+[defaults]
+required_pr_budget = "medium"
+advisory_pr_budget = "large"
+release_budget = "release"
+budget_guard = "off"
+actuals_required = false
+
+[[budget_band]]
+id = "small"
+min_lem = 0
+max_lem = 5
+posture = "required"
+description = "Docs, policy metadata, or focused code checks."
+
+[[budget_band]]
+id = "medium"
+min_lem = 6
+max_lem = 20
+posture = "required"
+description = "Ordinary product PR with Rust and policy gates."
+
+[[budget_band]]
+id = "large"
+min_lem = 21
+max_lem = 60
+posture = "advisory"
+description = "Multi-surface PR, extension checks, or broad evidence artifacts."
+
+[[budget_band]]
+id = "release"
+min_lem = 61
+posture = "on_demand_release"
+description = "Explicit release-check or full-ci proof."
+
+[[label]]
+name = "full-ci"
+effect = "run_all_required_advisory_and_release_like_lanes"
+budget_effect = "release"
+notes = "Demotes ripr-waive for this PR once lane selection is implemented."
+
+[[label]]
+name = "release-check"
+effect = "run_release_readiness_lanes"
+budget_effect = "release"
+notes = "Runs package, publish dry-run, VSIX, server archive, and release readiness proof where applicable."
+
+[[label]]
+name = "vscode"
+effect = "run_editor_lanes"
+budget_effect = "large"
+notes = "Runs editor extension lanes even when no editor path changed."
+
+[[label]]
+name = "coverage"
+effect = "run_coverage_lanes"
+budget_effect = "large"
+notes = "Runs coverage lanes and uploads coverage artifacts."
+
+[[label]]
+name = "ripr-waive"
+effect = "acknowledge_advisory_static_exposure_finding"
+budget_effect = "none"
+notes = "Does not skip CI and does not apply when full-ci is present."
+
+[[label]]
+name = "ci-budget-ack"
+effect = "acknowledge_budget_overrun"
+budget_effect = "none"
+notes = "Acknowledges that a PR intentionally exceeds the expected LEM band."
+
+[[label]]
+name = "clippy-future"
+effect = "run_future_clippy_lanes"
+budget_effect = "medium"
+notes = "Runs future or candidate Clippy lint lanes in advisory mode."

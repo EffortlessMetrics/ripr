@@ -1,0 +1,276 @@
+schema_version = "0.1"
+policy_state = "advisory-ledger"
+enforcement = "none"
+owner = "repo-maintainers"
+reason = "Seed CI lane ledger for planned PR forecasting."
+
+# This file names the CI lanes that future PR planning may select. It does not
+# change GitHub Actions behavior by itself.
+# The filename follows the CI policy plan; entries use lane and exception
+# terminology so future policy can move toward allowlist language.
+
+[[artifact_family]]
+id = "ci-plan"
+paths = ["target/ci/ci-plan.json", "target/ci/ci-actuals.json"]
+
+[[artifact_family]]
+id = "ripr-evidence"
+paths = ["target/ripr/reports/index.md", "target/ripr/reports/repo-exposure.json", "target/ripr/reports/repo-sarif.json", "target/ripr/reports/", "target/ripr/receipts/"]
+
+[[artifact_family]]
+id = "editor-agent-loop"
+paths = ["target/ripr/reports/operator-cockpit.json", "target/ripr/reports/operator-cockpit.md", "target/ripr/workflow/agent-seam-packets.json", "target/ripr/agent/agent-packet.json", "target/ripr/agent/agent-brief.json", "target/ripr/agent/agent-verify.json", "target/ripr/agent/agent-receipt.json"]
+
+[[artifact_family]]
+id = "release-readiness"
+paths = ["target/package/", "editors/vscode/dist/*.vsix", "dist/ripr-server-*", "dist/ripr-server-manifest-*.json"]
+
+[[lane]]
+id = "docs"
+posture = "required"
+workflow = ".github/workflows/ci.yml"
+jobs = ["rust"]
+commands = ["cargo xtask check-doc-index", "cargo xtask markdown-links"]
+estimated_lem = 2
+artifact_families = []
+description = "Documentation structure, links, and doc-index safety."
+
+[[lane]]
+id = "rust"
+posture = "required"
+workflow = ".github/workflows/ci.yml"
+jobs = ["rust"]
+commands = ["cargo fmt --check", "cargo check --workspace --all-targets", "cargo clippy --workspace --all-targets -- -D warnings", "cargo test --workspace"]
+estimated_lem = 12
+artifact_families = []
+description = "Primary Rust merge-safety lane."
+
+[[lane]]
+id = "msrv"
+posture = "required"
+workflow = ".github/workflows/ci.yml"
+jobs = ["msrv"]
+commands = ["cargo check --workspace --all-targets"]
+estimated_lem = 5
+artifact_families = []
+description = "Declared MSRV proof."
+
+[[lane]]
+id = "static-language"
+posture = "required"
+workflow = ".github/workflows/ci.yml"
+jobs = ["rust"]
+commands = ["cargo xtask check-static-language"]
+estimated_lem = 1
+artifact_families = []
+description = "Static output language and forbidden vocabulary check."
+
+[[lane]]
+id = "policy"
+posture = "required"
+workflow = ".github/workflows/ci.yml"
+jobs = ["rust"]
+commands = ["cargo xtask check-file-policy", "cargo xtask check-executable-files", "cargo xtask check-workflows", "cargo xtask check-process-policy", "cargo xtask check-network-policy"]
+estimated_lem = 4
+artifact_families = []
+description = "Mechanical repository policy checks."
+
+[[lane]]
+id = "output-contracts"
+posture = "required"
+workflow = ".github/workflows/ci.yml"
+jobs = ["rust"]
+commands = ["cargo xtask check-output-contracts", "cargo xtask check-fixture-contracts", "cargo xtask check-generated"]
+estimated_lem = 4
+artifact_families = ["ripr-evidence"]
+description = "Output, fixture, and generated artifact contract checks."
+
+[[lane]]
+id = "traceability"
+posture = "required"
+workflow = ".github/workflows/ci.yml"
+jobs = ["rust"]
+commands = ["cargo xtask check-spec-format", "cargo xtask check-traceability", "cargo xtask check-capabilities", "cargo xtask check-campaign"]
+estimated_lem = 3
+artifact_families = []
+description = "Spec, campaign, capability, and traceability checks."
+
+[[lane]]
+id = "vscode-compile"
+posture = "required"
+workflow = ".github/workflows/ci.yml"
+jobs = ["vscode"]
+commands = ["npm ci", "npm run compile"]
+estimated_lem = 8
+artifact_families = []
+description = "Editor extension dependency install and compile proof."
+
+[[lane]]
+id = "vscode-e2e"
+posture = "required"
+workflow = ".github/workflows/ci.yml"
+jobs = ["vscode"]
+commands = ["npm run package", "cargo build -p ripr", "xvfb-run -a npm run test:e2e"]
+estimated_lem = 14
+artifact_families = ["editor-agent-loop"]
+description = "Saved-workspace VS Code extension smoke proof."
+
+[[lane]]
+id = "coverage"
+posture = "advisory"
+workflow = ".github/workflows/coverage.yml"
+jobs = ["rust-coverage"]
+commands = ["cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info"]
+estimated_lem = 18
+artifact_families = ["ripr-evidence"]
+description = "Coverage artifact and Codecov upload."
+
+[[lane]]
+id = "test-analytics"
+posture = "advisory"
+workflow = ".github/workflows/test-analytics.yml"
+jobs = ["rust-tests-junit"]
+commands = ["cargo nextest run --workspace --all-features --profile ci", "cargo test --workspace --doc"]
+estimated_lem = 12
+artifact_families = ["ripr-evidence"]
+description = "JUnit test-results artifact and trusted Codecov Test Analytics upload."
+
+[[lane]]
+id = "ripr-self-dogfood"
+posture = "advisory"
+workflow = ".github/workflows/ci.yml"
+jobs = ["rust"]
+commands = ["cargo xtask dogfood", "cargo xtask reports index"]
+estimated_lem = 4
+artifact_families = ["ripr-evidence"]
+description = "Non-blocking ripr-on-ripr evidence report."
+
+[[lane]]
+id = "agent-loop-artifacts"
+posture = "advisory"
+workflow = ".github/workflows/ci.yml"
+jobs = ["rust"]
+commands = ["cargo xtask operator-cockpit", "cargo xtask reports index"]
+estimated_lem = 5
+artifact_families = ["editor-agent-loop"]
+description = "Editor-agent loop report artifacts."
+
+[[lane]]
+id = "sarif-upload"
+posture = "advisory"
+workflow = "generated-ripr-advisory-workflow"
+jobs = ["ripr"]
+commands = ["ripr check --format sarif", "ripr check --format repo-sarif"]
+estimated_lem = 6
+artifact_families = ["ripr-evidence"]
+description = "Advisory SARIF rendering and optional code-scanning upload."
+
+[[lane]]
+id = "droid-review"
+posture = "advisory"
+workflow = ".github/workflows/droid-review.yml"
+jobs = ["droid-review"]
+commands = []
+estimated_lem = 8
+artifact_families = []
+description = "Automated review and security scan signal."
+
+[[lane]]
+id = "droid-tag-response"
+posture = "advisory"
+workflow = ".github/workflows/droid.yml"
+jobs = ["droid"]
+commands = []
+estimated_lem = 4
+artifact_families = []
+description = "Issue or PR mention-triggered Droid response workflow."
+
+[[lane]]
+id = "droid-security-scan"
+posture = "advisory"
+workflow = ".github/workflows/droid-security-scan.yml"
+jobs = ["droid-security-scan"]
+commands = []
+estimated_lem = 8
+artifact_families = []
+description = "Scheduled Droid security scan signal."
+
+[[lane]]
+id = "future-clippy"
+posture = "advisory"
+workflow = "planned"
+jobs = []
+commands = []
+estimated_lem = 6
+artifact_families = []
+description = "Candidate lint lane controlled by the clippy-future label."
+
+[[lane]]
+id = "security-posture"
+posture = "advisory"
+workflow = ".github/workflows/security.yml"
+jobs = ["cargo-deny", "dependency-review"]
+commands = ["cargo deny check advisories licenses bans sources"]
+estimated_lem = 8
+artifact_families = []
+description = "Supply-chain and dependency review signal."
+
+[[lane]]
+id = "release-package"
+posture = "on_demand_release"
+workflow = ".github/workflows/ci.yml"
+jobs = ["rust"]
+commands = ["cargo package -p ripr --list"]
+estimated_lem = 6
+artifact_families = ["release-readiness"]
+description = "Crate package contents proof."
+
+[[lane]]
+id = "publish-dry-run"
+posture = "on_demand_release"
+workflow = ".github/workflows/ci.yml"
+jobs = ["rust"]
+commands = ["cargo publish -p ripr --dry-run"]
+estimated_lem = 10
+artifact_families = ["release-readiness"]
+description = "crates.io publish dry-run proof."
+
+[[lane]]
+id = "vsix-package"
+posture = "on_demand_release"
+workflow = ".github/workflows/publish-extension.yml"
+jobs = ["package"]
+commands = ["npx @vscode/vsce package"]
+estimated_lem = 12
+artifact_families = ["release-readiness"]
+description = "VSIX package artifact proof."
+
+[[lane]]
+id = "extension-marketplace-publish"
+posture = "on_demand_release"
+workflow = ".github/workflows/publish-extension.yml"
+jobs = ["server-assets-ready", "publish-vs-marketplace", "publish-open-vsx", "attach-release-asset"]
+commands = ["npx @vscode/vsce publish", "npx ovsx publish", "gh release upload"]
+estimated_lem = 20
+artifact_families = ["release-readiness"]
+description = "Marketplace and release-asset publish proof."
+
+[[lane]]
+id = "server-archive"
+posture = "on_demand_release"
+workflow = ".github/workflows/release-server-binaries.yml"
+jobs = ["build", "manifest"]
+commands = []
+estimated_lem = 60
+artifact_families = ["release-readiness"]
+description = "Cross-platform server archive and manifest proof. Actual build commands come from the workflow matrix."
+
+[[lane]]
+id = "release-readiness-proof"
+posture = "on_demand_release"
+workflow = "manual-or-release"
+jobs = []
+commands = []
+estimated_lem = 30
+artifact_families = ["release-readiness"]
+description = "Full installed-product and release readiness proof."
