@@ -95,6 +95,13 @@ Currently denied at the workspace level (selected highlights):
   `clippy::expl_impl_clone_on_copy`, `clippy::infallible_try_from`,
   `clippy::fallible_impl_from`, `clippy::error_impl_error`. Catches trait
   contract mismatches that compile but silently mislead callers.
+- Async / concurrency: `clippy::await_holding_lock`,
+  `clippy::await_holding_refcell_ref`,
+  `clippy::await_holding_invalid_type`, `clippy::arc_with_non_send_sync`,
+  `clippy::rc_mutex`, `clippy::mut_mutex_lock`,
+  `clippy::readonly_write_lock`. Holding a lock or `RefCell` borrow across
+  an `.await` point is the canonical async deadlock shape; the rest catch
+  threading-primitive misuse.
 - Suppression governance: `clippy::allow_attributes_without_reason`,
   `clippy::blanket_clippy_restriction_lints`.
 - Rust: `unsafe_code = "forbid"`, `unused_must_use`,

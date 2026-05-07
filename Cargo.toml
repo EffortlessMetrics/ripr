@@ -93,6 +93,18 @@ infallible_try_from = "deny"
 fallible_impl_from = "deny"
 error_impl_error = "deny"
 
+# Async / concurrency: holding a lock or RefCell borrow across an `.await`
+# is the canonical async deadlock; `arc_with_non_send_sync` and `rc_mutex`
+# misuse threading primitives; `mut_mutex_lock` and `readonly_write_lock`
+# pick the wrong API for the read/write pattern.
+await_holding_lock = "deny"
+await_holding_refcell_ref = "deny"
+await_holding_invalid_type = "deny"
+arc_with_non_send_sync = "deny"
+rc_mutex = "deny"
+mut_mutex_lock = "deny"
+readonly_write_lock = "deny"
+
 # Suppression governance.
 # `allow_attributes` itself stays advisory: some `#[expect]` migrations
 # would fail because the underlying lint only fires in some builds (e.g.
