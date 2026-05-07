@@ -21,6 +21,7 @@ use crate::domain::{
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 /// Per-seam test-grip evidence record.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -37,6 +38,8 @@ pub(crate) struct TestGripEvidence {
 }
 
 const COMPACT_RELATED_TEST_LIMIT: usize = 12;
+const LATENCY_TRACE_ENV: &str = "RIPR_REPO_EXPOSURE_LATENCY_TRACE";
+const EVIDENCE_PROGRESS_CHUNK: usize = 500;
 
 /// Per-related-test grip facts attached to a `TestGripEvidence`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -197,11 +200,27 @@ impl RelationConfidence {
 /// Build evidence records for a slice of seams. Output is sorted by
 /// `seam_id` so two runs over the same input produce identical bytes.
 pub(crate) fn evidence_for_seams(seams: &[RepoSeam], index: &RustIndex) -> Vec<TestGripEvidence> {
+    let context_started = Instant::now();
     let context = CompactGripContext::new(index);
-    let mut out: Vec<TestGripEvidence> = seams
-        .iter()
-        .map(|seam| evidence_for_seam_with_context(seam, &context))
-        .collect();
+    trace_latency_phase(
+        "evidence_context",
+        &format!("tests_{}_seams_{}", context.tests.len(), seams.len()),
+        context_started.elapsed(),
+    );
+
+    let evidence_started = Instant::now();
+    let mut out: Vec<TestGripEvidence> = Vec::with_capacity(seams.len());
+    for (index, seam) in seams.iter().enumerate() {
+        out.push(evidence_for_seam_with_context(seam, &context));
+        let processed = index + 1;
+        if processed % EVIDENCE_PROGRESS_CHUNK == 0 || processed == seams.len() {
+            trace_latency_phase(
+                "evidence_for_seams_progress",
+                &format!("processed_{processed}_of_{}", seams.len()),
+                evidence_started.elapsed(),
+            );
+        }
+    }
     out.sort_by(|a, b| a.seam_id.as_str().cmp(b.seam_id.as_str()));
     out
 }
@@ -267,6 +286,19 @@ fn evidence_for_seam_with_context(
         observed_values,
         missing_discriminators,
     }
+}
+
+fn trace_latency_phase(phase: &str, status: &str, duration: Duration) {
+    if std::env::var_os(LATENCY_TRACE_ENV).is_some() {
+        eprintln!("{}", latency_trace_line(phase, status, duration));
+    }
+}
+
+fn latency_trace_line(phase: &str, status: &str, duration: Duration) -> String {
+    format!(
+        "ripr_repo_exposure_latency phase={phase} status={status} duration_ms={}",
+        duration.as_millis()
+    )
 }
 
 /// Build compact evidence for a single seam. The returned
@@ -1215,6 +1247,20 @@ mod tests {
             index.files.insert(path.clone(), facts);
         }
         Ok(index)
+    }
+
+    #[test]
+    fn latency_trace_line_uses_repo_exposure_trace_shape() {
+        let line = latency_trace_line(
+            "evidence_for_seams_progress",
+            "processed_500_of_12337",
+            Duration::from_millis(42),
+        );
+
+        assert_eq!(
+            line,
+            "ripr_repo_exposure_latency phase=evidence_for_seams_progress status=processed_500_of_12337 duration_ms=42"
+        );
     }
 
     #[test]

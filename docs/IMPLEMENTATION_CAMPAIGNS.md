@@ -1097,6 +1097,7 @@ Work items:
 | `cache/repo-exposure-warm-path-reuse` | done | Added a repo file-fact cache under `target/ripr/cache/repo-file-facts/0.1`, changed repo-exposure cold compute to build its index from already-collected workspace bytes, and reused precomputed related-test context plus seam-independent value-resolution facts during full repo evidence construction. The latency report now exposes `file_fact_cache` counters and cold sub-phases through classification. Local evidence showed `file_fact_cache` moving from `hits_0_misses_134` at about 3065 ms to `hits_134_misses_0` at about 328 ms, and after a long bounded run populated the classified-seam cache, the default 30-second latency report passed on cache hits. |
 | `pilot/budget-aware` | done | Added a default 30 second `ripr pilot` analysis budget plus `--timeout-ms`. Complete runs keep writing repo exposure, agent seam packets, and summary artifacts with `pilot-summary.json` schema `0.2`; timeout runs write `pilot-summary.{json,md}` with `status: partial`, `reason: timeout`, `outputs_written`, and a retry command instead of waiting silently. |
 | `pilot/first-screen-clarity` | done | Improved `pilot-summary.md` and terminal copy so the top recommendation answers what was inspected, why the seam matters, what focused test to write, and what command to run after without opening JSON. The complete-run JSON schema remains `0.2`; only human-facing Markdown/terminal copy changed. |
+| `cache/evidence-latency-progress` | done | Closeout proof found that the bounded repo-exposure latency report can still time out after `inventory_seams`, even with file-fact cache hits, without identifying how far evidence construction progressed. Added trace-only progress lines inside `evidence_for_seams`; this changes only opt-in latency stderr/report diagnostics and does not change analyzer outputs, schemas, LSP, SARIF, badges, or public API. |
 | `campaign/hot-sidecar-latency-closeout` | ready | Close Campaign 9 after cache measurement, warm-path reuse, bounded pilot behavior, and first-screen pilot clarity have landed. This should be docs/manifest proof unless closeout validation finds drift. |
 
 Commands:
@@ -1157,4 +1158,11 @@ Audit notes:
   passed on both JSON and Markdown cache-hit runs. `pilot/first-screen-clarity`
   then made the pilot Markdown and terminal first screen spell out the inspected
   seam, why it matters, the focused test to write, and the before/after command
-  pair. The active next item is `campaign/hot-sidecar-latency-closeout`.
+  pair.
+- The first `campaign/hot-sidecar-latency-closeout` proof attempt found
+  bounded repo-exposure latency still timing out after `inventory_seams` on the
+  current repo. `cache/evidence-latency-progress` added trace-only progress
+  markers inside evidence construction so the latency report can show whether
+  future timeouts are stuck before context build, during per-seam evidence, or
+  after evidence classification. The active next item is
+  `campaign/hot-sidecar-latency-closeout`.
