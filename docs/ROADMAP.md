@@ -75,7 +75,7 @@ bounded cold run can fill the classified-seam cache, after which the default
 The budget-aware pilot path has first-screen Markdown and terminal copy that
 states the inspected seam, why it matters, the focused test to write, and the
 before/after commands. Campaign 10 is now active for editor-agent integration.
-Its next ready item is `docs/full-evidence-loop`, and its goal is to make
+Its next ready item is `release/editor-agent-readiness-proof`, and its goal is to make
 the saved-workspace diagnostic, evidence, packet/brief, focused-test,
 after-snapshot, verify, receipt, cockpit, CI, and install surfaces line up as
 one loop. The 0.4 release-surface requirements are a gate inside that lane, not
@@ -286,7 +286,8 @@ Ship:
   brief, agent packet, verify, receipt, and cockpit output
 - generated CI artifacts for the non-blocking editor-agent loop
 - first-hour docs centered on `ripr pilot`, one focused test, after snapshot,
-  `ripr agent verify`, `ripr agent receipt`, editor, CI, and known limits
+  `ripr outcome`, `ripr agent verify`, `ripr agent receipt`, editor, CI, and
+  known limits
 - release-readiness proof for installed CLI, packaged VSIX, package dry-run, and
   known-limits surfaces after the loop is pinned
 

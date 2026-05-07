@@ -72,6 +72,11 @@ are scoped or reviewed.
 
 ### Changed
 
+- Centered the first-hour installed-user docs on the full editor-agent evidence
+  loop: `ripr pilot`, targeted brief, focused test, after snapshot,
+  `ripr outcome`, `ripr agent verify`, `ripr agent receipt`, editor actions,
+  generated CI artifacts, and the explicit `ripr init` policy-materialization
+  boundary.
 - Restored Campaign 10 to `editor-agent-integration` after the brief
   release-surface pivot, carrying release readiness as a later gate and moving
   the lane from LSP command copy actions to operator cockpit verify/receipt

@@ -12,6 +12,7 @@ before static seam evidence
 -> add one focused test
 -> after static seam evidence
 -> targeted-test outcome receipt
+-> agent verify and agent receipt when an agent or reviewer needs a focused packet
 -> optional SARIF, badge, and runtime calibration checks
 ```
 
@@ -29,6 +30,8 @@ The workflow uses these artifacts:
 | `agent-seam-packets.json` | Tool-readable work orders for targeted tests. |
 | LSP seam diagnostics and hovers | Editor path for inspecting evidence and copying briefs. |
 | `ripr outcome` receipt | Advisory receipt comparing before and after snapshots. |
+| `agent-verify.json` | Agent-facing before/after comparison generated from the same snapshots. |
+| `agent-receipt.json` | Focused receipt for one seam, suitable for review handoff. |
 | `repo-sarif` / `sarif-policy` | Optional CI/code-scanning projection with the same seam semantics. |
 | repo badge artifacts | Optional public count projection under badge policy. |
 | `mutation-calibration.{json,md}` | Optional runtime calibration join when cargo-mutants data exists. |
@@ -249,6 +252,29 @@ ripr outcome \
   --out target/ripr/workflow/targeted-test-outcome.json
 ```
 
+For agent or review handoff, generate the matching verification artifacts:
+
+```bash
+mkdir -p target/ripr/agent
+ripr agent verify \
+  --root . \
+  --before target/ripr/workflow/before.repo-exposure.json \
+  --after target/ripr/workflow/after.repo-exposure.json \
+  --json > target/ripr/agent/agent-verify.json
+ripr agent receipt \
+  --root . \
+  --verify-json target/ripr/agent/agent-verify.json \
+  --seam-id <seam_id> \
+  --json \
+  --out target/ripr/agent/agent-receipt.json
+```
+
+The generated CI workflow uses `target/ripr/pilot/repo-exposure.json`,
+`target/ripr/pilot/after.repo-exposure.json`, and `target/ripr/agent/` by
+default. The `target/ripr/workflow/` paths above are a local scratch variant
+for people who want to keep before/after snapshots separate from the pilot
+packet.
+
 Interpretation:
 
 | Bucket | Meaning |
@@ -358,5 +384,7 @@ has:
 - one focused test or test case;
 - an after `repo-exposure-json` snapshot from the same root, mode, and config;
 - a `targeted-test-outcome` receipt;
+- `agent verify` and `agent receipt` artifacts when handing the result to an
+  agent, reviewer, cockpit, or generated CI artifact packet;
 - optional SARIF, badge, and calibration artifacts only when they matter for
   the review surface.
