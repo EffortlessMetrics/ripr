@@ -77,6 +77,9 @@ are scoped or reviewed.
   `ripr outcome`, `ripr agent verify`, `ripr agent receipt`, editor actions,
   generated CI artifacts, and the explicit `ripr init` policy-materialization
   boundary.
+- Documented and test-pinned the LSP agent-loop copy-command payload contract:
+  commands stay workspace-relative, preserve seam metadata, and fail closed for
+  stale seam diagnostics.
 - Restored Campaign 10 to `editor-agent-integration` after the brief
   release-surface pivot, carrying release readiness as a later gate and moving
   the lane from LSP command copy actions to operator cockpit verify/receipt

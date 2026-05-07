@@ -1270,6 +1270,128 @@ fn seam_code_actions_surface_packet_assertion_related_test_and_refresh() -> Resu
 }
 
 #[test]
+fn agent_loop_command_payloads_stay_workspace_relative_for_platform_roots() -> Result<(), String> {
+    let seam = sample_classified_seam();
+    let diagnostic = diagnostic_for_classified_seam(Path::new("/workspace"), &seam)
+        .ok_or_else(|| "expected seam diagnostic".to_string())?;
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let mut snapshot = sample_analysis_snapshot(
+        PathBuf::from(r"workspace root\ripr workspace"),
+        uri,
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.mode = Mode::Ready;
+    snapshot.classified_seams = vec![seam.clone()];
+    let actions = code_action_response(&code_action_params(vec![diagnostic])?, Some(&snapshot));
+
+    let commands = code_action_commands(&actions)?;
+    let expected_commands = [
+        (
+            COPY_AGENT_PACKET_COMMAND,
+            "agent_packet",
+            "target/ripr/agent/agent-packet.json",
+            format!(
+                "ripr agent packet --root . --seam-id {} --json > target/ripr/agent/agent-packet.json",
+                seam.seam.id().as_str()
+            ),
+        ),
+        (
+            COPY_AGENT_BRIEF_COMMAND,
+            "agent_brief",
+            "target/ripr/agent/agent-brief.json",
+            format!(
+                "ripr agent brief --root . --seam-id {} --json > target/ripr/agent/agent-brief.json",
+                seam.seam.id().as_str()
+            ),
+        ),
+        (
+            COPY_AFTER_SNAPSHOT_COMMAND,
+            "after_snapshot",
+            "target/ripr/pilot/after.repo-exposure.json",
+            "ripr check --root . --mode ready --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json"
+                .to_string(),
+        ),
+        (
+            COPY_AGENT_VERIFY_COMMAND,
+            "agent_verify",
+            "target/ripr/agent/agent-verify.json",
+            "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > target/ripr/agent/agent-verify.json"
+                .to_string(),
+        ),
+        (
+            COPY_AGENT_RECEIPT_COMMAND,
+            "agent_receipt",
+            "target/ripr/agent/agent-receipt.json",
+            format!(
+                "ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id {} --json --out target/ripr/agent/agent-receipt.json",
+                seam.seam.id().as_str()
+            ),
+        ),
+    ];
+
+    for (command_id, label, target_artifact, expected_command) in expected_commands {
+        let argument = commands
+            .iter()
+            .find(|(_, command, _)| command == command_id)
+            .and_then(|(_, _, arguments)| arguments.first())
+            .ok_or_else(|| format!("missing command payload for {command_id}"))?;
+        assert_eq!(argument["label"], label);
+        assert_eq!(argument["root"], ".");
+        assert_eq!(argument["mode"], "ready");
+        assert_eq!(argument["seam_id"], seam.seam.id().as_str());
+        assert_eq!(argument["seam_file"], "src/pricing.rs");
+        assert_eq!(argument["owner"], "pricing::discounted_total");
+        assert_eq!(argument["severity"], "warning");
+        assert_eq!(argument["target_artifact"], target_artifact);
+        assert_eq!(argument["command"], expected_command);
+        let copied = argument["command"]
+            .as_str()
+            .ok_or_else(|| "expected command string".to_string())?;
+        assert!(
+            !copied.contains('\\'),
+            "copied commands should use workspace-relative slash paths, got {copied}"
+        );
+        assert!(
+            !copied.contains("ripr workspace"),
+            "copied commands should not leak platform-specific workspace roots, got {copied}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn seam_code_actions_fail_closed_for_stale_seam_diagnostic() -> Result<(), String> {
+    let seam = sample_classified_seam();
+    let mut diagnostic = diagnostic_for_classified_seam(Path::new("/workspace"), &seam)
+        .ok_or_else(|| "expected seam diagnostic".to_string())?;
+    diagnostic.data = Some(serde_json::json!({
+        "schema_version": "0.1",
+        "seam_id": "deadbeef00000000",
+        "seam_kind": "predicate_boundary",
+    }));
+    let uri = test_uri("file:///workspace/src/pricing.rs")?;
+    let mut snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri,
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.classified_seams = vec![seam];
+    let actions = code_action_response(&code_action_params(vec![diagnostic])?, Some(&snapshot));
+
+    let commands = code_action_commands(&actions)?;
+    assert_eq!(
+        commands
+            .iter()
+            .map(|(title, command, _)| (title.as_str(), command.as_str()))
+            .collect::<Vec<_>>(),
+        vec![("Refresh ripr analysis", REFRESH_COMMAND)]
+    );
+    Ok(())
+}
+
+#[test]
 fn seam_code_actions_keep_legacy_finding_context_when_both_diagnostics_are_present()
 -> Result<(), String> {
     let seam = sample_classified_seam();
