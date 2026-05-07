@@ -72,7 +72,7 @@ rewrite the active manifest explicitly.
 | `ci/editor-agent-artifacts` | Done: generated workflow uploads pilot summary, repo exposure, agent packet, agent brief, agent verify, agent receipt, targeted-test outcome, optional operator cockpit, SARIF when enabled, and badge JSON as visible artifacts |
 | `docs/full-evidence-loop` | Done: quickstart and installed-user docs now lead with `ripr pilot`, targeted brief, focused test, after snapshot, `ripr outcome`, `ripr agent verify`, `ripr agent receipt`, editor actions, generated CI artifacts, and known limits; `ripr init` is documented as optional policy materialization, not activation |
 | `release/editor-agent-readiness-proof` | Done: release readiness now proves installed CLI command surface, boundary-gap `pilot`, `outcome`, `agent verify`, `agent receipt`, latency, LSP cockpit, advisory workflow, VSIX path, and known-limit docs before release-prep package gates |
-| `campaign/editor-agent-integration-closeout` | Next: close Campaign 10 without adding analyzer families, runtime mutation execution, CI blocking, public crate splits, automatic edits, or speculative editor features |
+| `campaign/editor-agent-integration-closeout` | Done: Campaign 10 is closed with the editor, agent, cockpit, CI, fixture, docs, and release-readiness surfaces aligned and no analyzer families, runtime mutation execution, CI blocking, public crate splits, automatic edits, or speculative editor features added |
 
 ## Fixture Boundary
 

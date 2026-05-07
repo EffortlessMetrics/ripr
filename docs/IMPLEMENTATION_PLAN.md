@@ -24,7 +24,7 @@ through multiple work items in a campaign, but each work item should follow the
 | Defaults-First Operator Adoption (7) | Make a clean install useful through conservative defaults, one operator cockpit, CI artifacts, editor install docs, examples, and install/release proof. | Complete: #409 through #417 plus `campaign/defaults-first-closeout`. |
 | Runtime Calibration Fixture Expansion (8) | Expand supplied-runtime calibration fixtures without making RIPR run mutation tests. | Complete: #420 plus `campaign/runtime-calibration-closeout`. |
 | Hot Sidecar Latency Proof (9) | Measure current cache and saved-workspace editor refresh behavior before changing warm-path reuse. | Complete: latency reporting, warm-path reuse, bounded `ripr pilot`, first-screen clarity, evidence progress tracing, hot-path indexes, and `campaign/hot-sidecar-latency-closeout`. |
-| Editor Agent Integration (10) | Make the saved-workspace editor loop and the agent CLI loop line up from diagnostic to evidence, packet/brief, focused test, verify, receipt, cockpit, CI, and install proof. | Active: `campaign/editor-agent-integration-closeout`. |
+| Editor Agent Integration (10) | Make the saved-workspace editor loop and the agent CLI loop line up from diagnostic to evidence, packet/brief, focused test, verify, receipt, cockpit, CI, and install proof. | Complete: `campaign/editor-agent-integration-closeout`. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
 through 8 are complete. Campaign 6 closed after the internal module SRP chain
@@ -39,11 +39,11 @@ confined to supplied-data reports. Campaign 9 measured the cache/editor proof
 surfaces, added bounded latency reporting, reused warm-path facts below rendered
 outputs, bounded `ripr pilot`, improved first-screen pilot clarity, added
 evidence progress tracing, and closed after hot-path evidence indexes made the
-default latency report pass on cache hits. Campaign 10 is now active for
-editor-agent integration; the release-readiness gate now proves the installed
-CLI, boundary-gap `pilot`/`outcome`/`agent verify`/`agent receipt`, latency,
-LSP cockpit, advisory workflow, VSIX path, and known-limit surfaces. The next
-ready item is `campaign/editor-agent-integration-closeout`.
+default latency report pass on cache hits. Campaign 10 closed after aligning
+the saved-workspace editor and agent CLI loop through diagnostics, evidence,
+packet/brief commands, focused-test receipts, cockpit status, generated CI
+artifacts, and release-readiness proof. No ready work item remains in the
+active manifest.
 
 ## PR 0: `planning-and-tracking-docs`
 

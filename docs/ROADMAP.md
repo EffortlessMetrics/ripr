@@ -74,13 +74,13 @@ bounded cold run can fill the classified-seam cache, after which the default
 30-second repo-exposure latency report passes on JSON and Markdown cache hits.
 The budget-aware pilot path has first-screen Markdown and terminal copy that
 states the inspected seam, why it matters, the focused test to write, and the
-before/after commands. Campaign 10 is now active for editor-agent integration.
-Its release-readiness gate proves the installed CLI, boundary-gap `pilot`,
-`outcome`, `agent verify`, `agent receipt`, latency, LSP cockpit, advisory
-workflow, VSIX path, and known-limit surfaces. The next ready item is
-`campaign/editor-agent-integration-closeout`, which closes the saved-workspace
+before/after commands. Campaign 10 closed after aligning the saved-workspace
 diagnostic, evidence, packet/brief, focused-test, after-snapshot, verify,
-receipt, cockpit, CI, and install loop as one lane.
+receipt, cockpit, CI, and install loop. Its release-readiness gate proves the
+installed CLI, boundary-gap `pilot`, `outcome`, `agent verify`,
+`agent receipt`, latency, LSP cockpit, advisory workflow, VSIX path, and
+known-limit surfaces. No ready work item remains in the active manifest; choose
+the next product campaign explicitly before starting new implementation work.
 
 ## Strategic Sequence
 
