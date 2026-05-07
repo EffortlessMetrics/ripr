@@ -34,10 +34,10 @@ jobs:
       # Ordinary code PRs skip them; package metadata and publish dry-run
       # are still validated on every release-bearing change.
       - name: Package list (release surface)
-        if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
+        if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
         run: cargo package -p ripr --list
       - name: Publish dry-run (release surface)
-        if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
+        if: (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')) || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
         run: cargo publish -p ripr --dry-run
       - name: Generate ripr test-efficiency report
         if: always()
