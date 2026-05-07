@@ -38,6 +38,18 @@ drop_non_drop = "deny"
 float_cmp = "deny"
 float_cmp_const = "deny"
 
+# Silent failure: ignoring a future, lock guard, `.ok()`'d Result, or
+# wildcard-discarded error loses evidence the analyzer cannot reconstruct.
+# `let_underscore_must_use` is intentionally deferred — best-effort cleanup
+# patterns like `let _ = fs::remove_dir_all(&dir)` are pervasive across the
+# test suite and are addressed in a follow-up PR.
+let_underscore_future = "deny"
+let_underscore_lock = "deny"
+unused_result_ok = "deny"
+map_err_ignore = "deny"
+assertions_on_result_states = "deny"
+lines_filter_map_ok = "deny"
+
 # Suppression governance.
 # `allow_attributes` itself stays advisory: some `#[expect]` migrations
 # would fail because the underlying lint only fires in some builds (e.g.

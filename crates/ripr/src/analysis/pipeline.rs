@@ -113,7 +113,7 @@ mod tests {
             &OraclePolicy::default(),
         );
         // Should fail with a file system error, not a panic.
-        assert!(result.is_err());
+        result.expect_err("expected pipeline to surface file-system error");
     }
 
     #[test]
@@ -131,6 +131,6 @@ mod tests {
             &OraclePolicy::default(),
         );
         // Should fail with a file system error, not a panic.
-        assert!(result.is_err());
+        result.expect_err("expected pipeline to surface file-system error");
     }
 }
