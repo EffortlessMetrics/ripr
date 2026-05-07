@@ -92,7 +92,7 @@ commands = [
 
 [[work_item]]
 id = "ci/editor-agent-artifacts"
-status = "ready"
+status = "done"
 branch = "ci-editor-agent-artifacts"
 stackable = false
 requires_human_merge = true
@@ -108,13 +108,19 @@ commands = [
 
 [[work_item]]
 id = "docs/full-evidence-loop"
-status = "blocked"
+status = "ready"
 branch = "docs-full-evidence-loop"
 stackable = false
 requires_human_merge = true
 acceptance = "Quickstart and installed-user docs lead with the real diagnostic-to-receipt loop and state that ripr init is optional policy materialization, not activation"
-blocked_by = ["ci/editor-agent-artifacts"]
-blocked_reason = "Wait for CI artifacts so the installed-user path is current and executable."
+commands = [
+  "cargo xtask markdown-links",
+  "cargo xtask check-doc-index",
+  "cargo xtask check-static-language",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-campaign",
+  "cargo xtask check-pr"
+]
 
 [[work_item]]
 id = "release/editor-agent-readiness-proof"

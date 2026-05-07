@@ -282,10 +282,12 @@ GitHub code scanning:
 ripr init --ci github
 ```
 
-The generated workflow matches the recipe below. The official GitHub SARIF
-upload documentation uses `github/codeql-action/upload-sarif@v4`; keep the RIPR
-job, artifact upload, and optional SARIF steps advisory until the repository
-has chosen a baseline policy.
+The generated workflow matches the recipe below. It uploads the pilot, report,
+and agent artifact directories; if the repository is the RIPR source tree, it
+also renders the repo-local operator cockpit through xtask. The official GitHub
+SARIF upload documentation uses `github/codeql-action/upload-sarif@v4`; keep
+the RIPR job, artifact upload, and optional SARIF steps advisory until the
+repository has chosen a baseline policy.
 
 ```yaml
 name: RIPR
@@ -324,6 +326,58 @@ jobs:
             --out target/ripr/pilot \
             --mode ready \
             --max-seams 5
+
+      - name: Prepare RIPR editor-agent artifacts
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports target/ripr/agent
+          if [ -f target/ripr/pilot/repo-exposure.json ]; then
+            cp target/ripr/pilot/repo-exposure.json target/ripr/reports/repo-exposure.json
+          fi
+          if [ -f target/ripr/pilot/pilot-summary.json ]; then
+            top_seam_id="$(jq -r '.top_actionable_seams[0].seam_id // empty' target/ripr/pilot/pilot-summary.json 2>/dev/null || true)"
+            if [ -n "$top_seam_id" ] && [ "$top_seam_id" != "null" ]; then
+              echo "RIPR_TOP_SEAM_ID=$top_seam_id" >> "$GITHUB_ENV"
+            fi
+          fi
+
+      - name: Generate RIPR agent loop artifacts
+        if: always() && env.RIPR_TOP_SEAM_ID != ''
+        continue-on-error: true
+        run: |
+          ripr agent packet \
+            --root . \
+            --seam-id "$RIPR_TOP_SEAM_ID" \
+            --json \
+            > target/ripr/agent/agent-packet.json
+          ripr agent brief \
+            --root . \
+            --seam-id "$RIPR_TOP_SEAM_ID" \
+            --json \
+            > target/ripr/agent/agent-brief.json
+          ripr check \
+            --root . \
+            --mode ready \
+            --format repo-exposure-json \
+            > target/ripr/pilot/after.repo-exposure.json
+          ripr agent verify \
+            --root . \
+            --before target/ripr/pilot/repo-exposure.json \
+            --after target/ripr/pilot/after.repo-exposure.json \
+            --json \
+            > target/ripr/agent/agent-verify.json
+          ripr agent receipt \
+            --root . \
+            --verify-json target/ripr/agent/agent-verify.json \
+            --seam-id "$RIPR_TOP_SEAM_ID" \
+            --json \
+            --out target/ripr/agent/agent-receipt.json
+          ripr outcome \
+            --before target/ripr/pilot/repo-exposure.json \
+            --after target/ripr/pilot/after.repo-exposure.json \
+            --format json \
+            --out target/ripr/reports/targeted-test-outcome.json
 
       - name: Capture pull request diff
         if: github.event_name == 'pull_request'
@@ -367,6 +421,11 @@ jobs:
             --format repo-badge-shields \
             > target/ripr/reports/repo-ripr-badge-shields.json
 
+      - name: Render RIPR operator cockpit
+        if: always() && hashFiles('crates/ripr/Cargo.toml') != '' && hashFiles('xtask/src/reports/operator.rs') != ''
+        continue-on-error: true
+        run: cargo xtask operator-cockpit
+
       - name: Add RIPR pilot summary
         if: always() && hashFiles('target/ripr/pilot/pilot-summary.md') != ''
         continue-on-error: true
@@ -380,6 +439,7 @@ jobs:
           name: ripr-reports
           path: |
             target/ripr/pilot
+            target/ripr/agent
             target/ripr/reports
           if-no-files-found: ignore
           retention-days: 14

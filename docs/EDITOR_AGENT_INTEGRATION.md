@@ -39,7 +39,7 @@ rewrite the active manifest explicitly.
 | Verify | `ripr agent verify` | Editor copy command is pinned; cockpit now reports artifact presence and movement counts |
 | Receipt | `ripr agent receipt` | Editor copy command is pinned; cockpit now reports artifact presence and receipt summary |
 | Cockpit | `cargo xtask operator-cockpit` | Joins before/after snapshots, agent verify JSON, agent receipt JSON, and missing-input commands |
-| CI | Generated workflow artifacts | Needs full loop artifacts uploaded |
+| CI | Generated workflow artifacts | Uploads the full non-blocking editor-agent artifact set |
 | Fixture | Boundary-gap `expected/editor-agent-loop/` | Pins the canonical editor-agent loop fixture |
 | Install | `cargo install` plus VSIX proof | Needs installed binary plus packaged extension loop proof |
 
@@ -55,9 +55,9 @@ rewrite the active manifest explicitly.
 | Open related test | `ripr.openRelatedTest` | Opens the strongest related test without editing it |
 | Suggested assertion | `ripr.copySuggestedAssertion` | Copies assertion text when the packet has a concrete assertion shape |
 | Refresh analysis | `ripr.refresh` | Refreshes saved-workspace diagnostics and latency status |
-| After snapshot | `ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json` | Captures the post-test static exposure state |
-| Agent verify | `ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > target/ripr/workflow/agent-verify.json` | Compares before and after repo-exposure snapshots |
-| Agent receipt | `ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id <id> --json --out target/ripr/reports/agent-receipt.json` | Narrows verify output to one seam for review handoff |
+| After snapshot | `ripr check --root . --mode ready --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json` | Captures the post-test static exposure state |
+| Agent verify | `ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > target/ripr/agent/agent-verify.json` | Compares before and after repo-exposure snapshots |
+| Agent receipt | `ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id <id> --json --out target/ripr/agent/agent-receipt.json` | Narrows verify output to one seam for review handoff |
 | Operator cockpit | `cargo xtask operator-cockpit` | Joins existing repo-local reports into `target/ripr/reports/operator-cockpit.{json,md}` |
 | CI artifacts | Generated GitHub workflow | Uploads advisory repo artifacts and optional SARIF or badge outputs |
 | Install proof | `cargo install --path crates/ripr --locked --force --root target/ripr/install-smoke` and `npm --prefix editors/vscode run package` | Shows the installed binary and packaged extension can run the loop |
@@ -69,8 +69,8 @@ rewrite the active manifest explicitly.
 | `lsp/agent-loop-copy-commands` | Done: seam diagnostics now expose command-oriented editor actions for agent packet, brief, after snapshot, verify, and receipt command text |
 | `operator/verify-receipt-status` | Done: cockpit joins before snapshot, after snapshot, agent verify JSON, agent receipt JSON, movement counts, and next commands |
 | `fixtures/editor-agent-loop` | Done: boundary-gap pins LSP diagnostics/actions, agent brief, agent packet, agent verify, agent receipt, and operator cockpit output in one canonical fixture |
-| `ci/editor-agent-artifacts` | Next: upload pilot summary, repo exposure, agent brief, agent packet, agent verify, agent receipt, operator cockpit, SARIF when enabled, and badge JSON as visible artifacts |
-| `docs/full-evidence-loop` | Make the first-hour path explicit and state that `ripr init` is optional policy materialization, not activation |
+| `ci/editor-agent-artifacts` | Done: generated workflow uploads pilot summary, repo exposure, agent packet, agent brief, agent verify, agent receipt, targeted-test outcome, optional operator cockpit, SARIF when enabled, and badge JSON as visible artifacts |
+| `docs/full-evidence-loop` | Next: make the first-hour path explicit and state that `ripr init` is optional policy materialization, not activation |
 | `release/editor-agent-readiness-proof` | Run the editor-agent loop through installed CLI, packaged VSIX, package dry-run, and known-limits checks before closeout |
 
 ## Fixture Boundary
