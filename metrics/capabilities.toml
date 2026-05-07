@@ -581,6 +581,21 @@ next = "agent/receipt-provenance"
 metric = "agent status and workflow packets name artifacts, commands, selected seam context, recovered seam_id, stale-looking warnings, and source-edit-free boundaries"
 
 [[capability]]
+id = "pr_test_guidance_annotations"
+name = "PR test guidance annotations"
+status = "planned"
+spec = "RIPR-SPEC-0012"
+evidence = [
+  "docs/specs/RIPR-SPEC-0012-pr-test-guidance.md defines advisory PR annotation and optional review-comment guidance",
+  "docs/OUTPUT_SCHEMA.md PR Test Guidance section defines the planned review-comments JSON shape",
+  "docs/CI.md PR Test Guidance Annotations section documents the default job-summary and check-annotation posture",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md Campaign 12 queues spec/pr-test-guidance-annotations before generated workflow posting work"
+]
+fixtures = []
+next = "ci/pr-test-guidance-annotations"
+metric = "pr_test_guidance_comments, pr_test_guidance_summary_only, pr_test_guidance_suppressed, pr_test_guidance_opt_in_review_comments"
+
+[[capability]]
 id = "pilot_packet"
 name = "Pilot packet"
 status = "alpha"
