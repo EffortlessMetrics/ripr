@@ -27,7 +27,8 @@ pub(crate) use seams::{RepoSeam, RequiredDiscriminator};
 
 use crate::config::OraclePolicy;
 use crate::domain::{Finding, Summary};
-use std::path::PathBuf;
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AnalysisMode {
@@ -73,6 +74,45 @@ pub(crate) fn run_repo_analysis_with_oracle_policy(
     oracle_policy: &OraclePolicy,
 ) -> Result<AnalysisResult, String> {
     pipeline::run_repo_pipeline_with_oracle_policy(options, oracle_policy)
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ChangedLineOwner {
+    pub(crate) file: PathBuf,
+    pub(crate) line: usize,
+    pub(crate) owner: String,
+}
+
+pub(crate) fn owner_symbols_for_lines(
+    root: &Path,
+    lines: &[(PathBuf, usize)],
+) -> Result<Vec<ChangedLineOwner>, String> {
+    let files = lines
+        .iter()
+        .map(|(file, _)| file.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+
+    let index = rust_index::build_index(root, &files)?;
+    let mut owners = lines
+        .iter()
+        .filter_map(|(file, line)| {
+            rust_index::find_owner_function(&index, file, *line).map(|function| ChangedLineOwner {
+                file: file.clone(),
+                line: *line,
+                owner: function.id.to_string(),
+            })
+        })
+        .collect::<Vec<_>>();
+    owners.sort_by(|left, right| {
+        left.file
+            .cmp(&right.file)
+            .then_with(|| left.line.cmp(&right.line))
+            .then_with(|| left.owner.cmp(&right.owner))
+    });
+    owners.dedup();
+    Ok(owners)
 }
 
 #[cfg(test)]
@@ -218,6 +258,53 @@ fn premium_customer_gets_discount() {
             .any(|f| f.probe.family == crate::domain::ProbeFamily::Predicate)
         {
             return Err("expected at least one Predicate family finding".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn owner_symbols_for_lines_names_containing_function() -> Result<(), String> {
+        let root = temp_dir("owner_lines");
+        fs::create_dir_all(root.join("src"))
+            .map_err(|e| format!("failed to create src dir: {e}"))?;
+        fs::write(
+            root.join("src/lib.rs"),
+            r#"
+pub fn discounted_total(amount: i32, threshold: i32) -> i32 {
+    let discount = 10;
+    if amount >= threshold {
+        amount - discount
+    } else {
+        amount
+    }
+}
+
+pub fn unrelated() -> i32 {
+    0
+}
+"#,
+        )
+        .map_err(|e| format!("failed to write src/lib.rs: {e}"))?;
+
+        let owners = owner_symbols_for_lines(
+            &root,
+            &[
+                (PathBuf::from("src/lib.rs"), 3),
+                (PathBuf::from("src/lib.rs"), 11),
+            ],
+        )?;
+
+        if !owners
+            .iter()
+            .any(|owner| owner.line == 3 && owner.owner.ends_with("discounted_total"))
+        {
+            return Err(format!("expected discounted_total owner, got {owners:?}"));
+        }
+        if !owners
+            .iter()
+            .any(|owner| owner.line == 11 && owner.owner.ends_with("unrelated"))
+        {
+            return Err(format!("expected unrelated owner, got {owners:?}"));
         }
         Ok(())
     }

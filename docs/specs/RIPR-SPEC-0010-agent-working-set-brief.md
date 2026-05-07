@@ -518,7 +518,8 @@ Planned tests:
 
 - `agent_brief_ranks_changed_line_intersection_first`
 - `agent_brief_ranks_explicit_seam_id_first`
-- `agent_brief_ranks_changed_owner_before_same_file_fallback`
+- `agent_brief_selector_routes_changed_owner_function_to_seam`
+- `agent_brief_owner_lines_are_resolved_from_changed_lines`
 - `agent_brief_selector_routes_file_scoped_related_test_to_seam`
 - `agent_brief_selector_routes_changed_related_test_line_to_seam`
 - `agent_brief_selector_routes_changed_assertion_near_related_test_to_seam`
@@ -602,6 +603,9 @@ Responsibilities:
 - map `--diff` input to changed file/line records;
 - map `--base` input to changed file/line records through existing diff
   helpers;
+- map changed file/line records to containing owner functions when syntax facts
+  can name them, treating unresolved owner data as a best-effort absence rather
+  than a brief failure;
 - map `--files` input to normalized repo-relative paths;
 - map `--seam-id` input to an explicit seam selector;
 - rank visible seams with the reason order from this spec;

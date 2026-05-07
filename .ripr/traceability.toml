@@ -603,13 +603,16 @@ spec = "docs/specs/RIPR-SPEC-0010-agent-working-set-brief.md"
 tests = [
   "crates/ripr/src/app/agent_brief.rs::tests::agent_brief_selector_ranks_explicit_seam_id_first",
   "crates/ripr/src/app/agent_brief.rs::tests::agent_brief_selector_prefers_changed_line_intersection_over_same_file",
+  "crates/ripr/src/app/agent_brief.rs::tests::agent_brief_selector_routes_changed_owner_function_to_seam",
   "crates/ripr/src/app/agent_brief.rs::tests::agent_brief_selector_routes_file_scoped_related_test_to_seam",
   "crates/ripr/src/app/agent_brief.rs::tests::agent_brief_selector_routes_changed_related_test_line_to_seam",
   "crates/ripr/src/app/agent_brief.rs::tests::agent_brief_selector_routes_changed_assertion_near_related_test_to_seam",
   "crates/ripr/src/app/agent_brief.rs::tests::agent_brief_selector_ranks_assertion_near_related_test_before_file_only_related_test",
   "crates/ripr/src/app/agent_brief.rs::tests::agent_brief_selector_caps_file_scope_deterministically",
   "crates/ripr/src/app/agent_brief.rs::tests::agent_brief_selector_uses_related_test_confidence_before_path",
+  "crates/ripr/src/analysis/mod.rs::tests::owner_symbols_for_lines_names_containing_function",
   "crates/ripr/src/cli/commands.rs::tests::agent_brief_diff_lines_are_normalized_to_requested_root",
+  "crates/ripr/src/cli/commands.rs::tests::agent_brief_owner_lines_are_resolved_from_changed_lines",
   "crates/ripr/src/output/agent_brief.rs::tests::agent_brief_json_renders_ranked_seam_summary",
   "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_json_selects_changed_seam",
   "crates/ripr/tests/cli_smoke.rs::agent_receipt_writes_one_seam_handoff_json"
