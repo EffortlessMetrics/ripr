@@ -67,6 +67,7 @@ pub(crate) mod config;
 #[doc(hidden)]
 pub mod domain;
 // Kept public for compatibility with experimental editor integrations.
+pub(crate) mod loop_commands;
 #[doc(hidden)]
 pub mod lsp;
 // Kept public for compatibility with existing render integrations.

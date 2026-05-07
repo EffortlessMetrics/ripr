@@ -82,7 +82,8 @@ installed CLI, boundary-gap `pilot`, `outcome`, `agent verify`,
 known-limit surfaces. Campaign 11 is now active as the LLM work loop: the first
 slice adds `ripr agent status --root . --json` as a read-only lens over
 existing artifacts, and the next ready item is
-`agent/centralize-loop-command-templates`. Campaign 12 is queued as
+`agent/workflow-manifest` after centralizing the loop command templates.
+Campaign 12 is queued as
 First-Hour UX: after the LLM work-loop command and artifact state is stable,
 the next product risk is making the VS Code extension and generated GitHub
 workflow explain the top recommendation without requiring users to inspect

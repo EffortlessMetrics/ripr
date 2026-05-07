@@ -9,10 +9,11 @@ use super::{
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::test_grip_evidence::{RelatedTestGrip, RelationConfidence};
 use crate::domain::OracleStrength;
+use crate::loop_commands;
 use crate::output::agent_seam_packets::{
     suggested_assertion_for_classified_seam, targeted_test_brief_for_classified_seam,
 };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tower_lsp_server::ls_types::{
     CodeAction, CodeActionKind, CodeActionOrCommand, CodeActionParams, CodeActionResponse, Command,
     Diagnostic, LSPAny,
@@ -100,7 +101,7 @@ fn push_seam_actions(
             context.diagnostic,
             context.seam,
             "agent_packet",
-            AGENT_PACKET_ARTIFACT,
+            loop_commands::EDITOR_AGENT_PACKET,
             agent_packet_command(context.seam),
         ),
     ));
@@ -112,7 +113,7 @@ fn push_seam_actions(
             context.diagnostic,
             context.seam,
             "agent_brief",
-            AGENT_BRIEF_ARTIFACT,
+            loop_commands::EDITOR_AGENT_BRIEF,
             agent_brief_command(context.seam),
         ),
     ));
@@ -124,7 +125,7 @@ fn push_seam_actions(
             context.diagnostic,
             context.seam,
             "after_snapshot",
-            AFTER_SNAPSHOT_ARTIFACT,
+            loop_commands::PILOT_AFTER_SNAPSHOT,
             after_snapshot_command(context.snapshot),
         ),
     ));
@@ -136,7 +137,7 @@ fn push_seam_actions(
             context.diagnostic,
             context.seam,
             "agent_verify",
-            AGENT_VERIFY_ARTIFACT,
+            loop_commands::EDITOR_AGENT_VERIFY,
             agent_verify_command(),
         ),
     ));
@@ -148,7 +149,7 @@ fn push_seam_actions(
             context.diagnostic,
             context.seam,
             "agent_receipt",
-            AGENT_RECEIPT_ARTIFACT,
+            loop_commands::EDITOR_AGENT_RECEIPT,
             agent_receipt_command(context.seam),
         ),
     ));
@@ -174,14 +175,6 @@ fn copy_context_action(title: &str, command_title: &str, target: LSPAny) -> Code
         ..CodeAction::default()
     })
 }
-
-const COMMAND_ROOT: &str = ".";
-const BEFORE_SNAPSHOT_ARTIFACT: &str = "target/ripr/pilot/repo-exposure.json";
-const AFTER_SNAPSHOT_ARTIFACT: &str = "target/ripr/pilot/after.repo-exposure.json";
-const AGENT_PACKET_ARTIFACT: &str = "target/ripr/agent/agent-packet.json";
-const AGENT_BRIEF_ARTIFACT: &str = "target/ripr/agent/agent-brief.json";
-const AGENT_VERIFY_ARTIFACT: &str = "target/ripr/agent/agent-verify.json";
-const AGENT_RECEIPT_ARTIFACT: &str = "target/ripr/agent/agent-receipt.json";
 
 fn copy_agent_loop_command_action(
     title: &str,
@@ -211,7 +204,7 @@ fn agent_loop_command_target(
     serde_json::json!({
         "label": label,
         "command": command,
-        "root": COMMAND_ROOT,
+        "root": loop_commands::COMMAND_ROOT,
         "mode": snapshot.mode.as_str(),
         "seam_id": seam.seam.id().as_str(),
         "seam_kind": seam.seam.kind().as_str(),
@@ -230,46 +223,54 @@ fn agent_loop_command_target(
             },
         },
         "target_artifact": target_artifact,
-        "before_snapshot": BEFORE_SNAPSHOT_ARTIFACT,
-        "after_snapshot": AFTER_SNAPSHOT_ARTIFACT,
-        "agent_packet_json": AGENT_PACKET_ARTIFACT,
-        "agent_brief_json": AGENT_BRIEF_ARTIFACT,
-        "agent_verify_json": AGENT_VERIFY_ARTIFACT,
-        "agent_receipt_json": AGENT_RECEIPT_ARTIFACT,
+        "before_snapshot": loop_commands::PILOT_REPO_EXPOSURE,
+        "after_snapshot": loop_commands::PILOT_AFTER_SNAPSHOT,
+        "agent_packet_json": loop_commands::EDITOR_AGENT_PACKET,
+        "agent_brief_json": loop_commands::EDITOR_AGENT_BRIEF,
+        "agent_verify_json": loop_commands::EDITOR_AGENT_VERIFY,
+        "agent_receipt_json": loop_commands::EDITOR_AGENT_RECEIPT,
     })
 }
 
 fn agent_packet_command(seam: &ClassifiedSeam) -> String {
-    format!(
-        "ripr agent packet --root {COMMAND_ROOT} --seam-id {} --json > {AGENT_PACKET_ARTIFACT}",
-        seam.seam.id().as_str()
+    loop_commands::agent_packet_command(
+        Path::new(loop_commands::COMMAND_ROOT),
+        seam.seam.id().as_str(),
+        loop_commands::EDITOR_AGENT_PACKET,
     )
 }
 
 fn agent_brief_command(seam: &ClassifiedSeam) -> String {
-    format!(
-        "ripr agent brief --root {COMMAND_ROOT} --seam-id {} --json > {AGENT_BRIEF_ARTIFACT}",
-        seam.seam.id().as_str()
+    loop_commands::agent_brief_command(
+        Path::new(loop_commands::COMMAND_ROOT),
+        seam.seam.id().as_str(),
+        loop_commands::EDITOR_AGENT_BRIEF,
     )
 }
 
 fn after_snapshot_command(snapshot: &AnalysisSnapshot) -> String {
-    format!(
-        "ripr check --root {COMMAND_ROOT} --mode {} --format repo-exposure-json > {AFTER_SNAPSHOT_ARTIFACT}",
-        snapshot.mode.as_str()
+    loop_commands::repo_exposure_snapshot_command(
+        Path::new(loop_commands::COMMAND_ROOT),
+        snapshot.mode.as_str(),
+        loop_commands::PILOT_AFTER_SNAPSHOT,
     )
 }
 
 fn agent_verify_command() -> String {
-    format!(
-        "ripr agent verify --root {COMMAND_ROOT} --before {BEFORE_SNAPSHOT_ARTIFACT} --after {AFTER_SNAPSHOT_ARTIFACT} --json > {AGENT_VERIFY_ARTIFACT}"
+    loop_commands::agent_verify_command(
+        Path::new(loop_commands::COMMAND_ROOT),
+        loop_commands::PILOT_REPO_EXPOSURE,
+        loop_commands::PILOT_AFTER_SNAPSHOT,
+        Some(loop_commands::EDITOR_AGENT_VERIFY),
     )
 }
 
 fn agent_receipt_command(seam: &ClassifiedSeam) -> String {
-    format!(
-        "ripr agent receipt --root {COMMAND_ROOT} --verify-json {AGENT_VERIFY_ARTIFACT} --seam-id {} --json --out {AGENT_RECEIPT_ARTIFACT}",
-        seam.seam.id().as_str()
+    loop_commands::agent_receipt_command(
+        Path::new(loop_commands::COMMAND_ROOT),
+        loop_commands::EDITOR_AGENT_VERIFY,
+        seam.seam.id().as_str(),
+        loop_commands::EDITOR_AGENT_RECEIPT,
     )
 }
 

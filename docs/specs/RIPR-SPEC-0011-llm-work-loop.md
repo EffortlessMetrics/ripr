@@ -136,15 +136,26 @@ The LLM work loop must not:
 - `crates/ripr/src/cli/agent.rs::tests::agent_status_parses_root_and_json`
 - `crates/ripr/src/cli/agent.rs::tests::agent_status_requires_json_and_rejects_unknown_arguments`
 - `crates/ripr/src/cli/commands.rs::tests::agent_status_rejects_missing_root_before_reading_artifacts`
+- `crates/ripr/src/loop_commands.rs::tests::workflow_commands_preserve_public_templates`
+- `crates/ripr/src/loop_commands.rs::tests::editor_agent_commands_preserve_public_templates`
+- `crates/ripr/src/lsp/tests.rs::agent_loop_command_payloads_stay_workspace_relative_for_platform_roots`
+- `xtask/src/reports/operator.rs::tests::operator_cockpit_matches_editor_agent_loop_fixture`
 
 ## Implementation Mapping
 
+- `crates/ripr/src/loop_commands.rs` centralizes the workflow and editor-agent
+  artifact path profiles plus command templates used by status, brief, LSP,
+  pilot, generated CI, and cockpit surfaces.
 - `crates/ripr/src/app/agent_status.rs` builds and renders the report from
   existing artifact files.
 - `crates/ripr/src/cli/agent.rs` parses the JSON-only status subcommand.
 - `crates/ripr/src/cli/commands.rs` validates the root and dispatches the
   report.
+- `crates/ripr/src/lsp/actions.rs` uses the shared editor-agent command
+  templates for copied LSP commands.
 - `crates/ripr/src/cli/help.rs` documents the command surface.
+- `xtask/src/reports/operator.rs` uses the shared editor-agent command
+  templates for cockpit missing-input guidance.
 - `docs/OUTPUT_SCHEMA.md` defines the Agent Status output contract.
 - `.ripr/traceability.toml` maps this spec to tests, code, outputs, and
   metrics.

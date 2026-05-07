@@ -679,14 +679,23 @@ tests = [
   "crates/ripr/src/app/agent_status.rs::tests::agent_status_quotes_paths_with_spaces",
   "crates/ripr/src/cli/agent.rs::tests::agent_status_parses_root_and_json",
   "crates/ripr/src/cli/agent.rs::tests::agent_status_requires_json_and_rejects_unknown_arguments",
-  "crates/ripr/src/cli/commands.rs::tests::agent_status_rejects_missing_root_before_reading_artifacts"
+  "crates/ripr/src/cli/commands.rs::tests::agent_status_rejects_missing_root_before_reading_artifacts",
+  "crates/ripr/src/loop_commands.rs::tests::workflow_commands_preserve_public_templates",
+  "crates/ripr/src/loop_commands.rs::tests::editor_agent_commands_preserve_public_templates",
+  "crates/ripr/src/lsp/tests.rs::agent_loop_command_payloads_stay_workspace_relative_for_platform_roots",
+  "xtask/src/reports/operator.rs::tests::operator_cockpit_matches_editor_agent_loop_fixture"
 ]
 fixtures = []
 code = [
+  "crates/ripr/src/loop_commands.rs",
   "crates/ripr/src/app/agent_status.rs",
   "crates/ripr/src/cli/agent.rs",
   "crates/ripr/src/cli/commands.rs",
-  "crates/ripr/src/cli/help.rs"
+  "crates/ripr/src/cli/help.rs",
+  "crates/ripr/src/lsp/actions.rs",
+  "crates/ripr/src/output/agent_brief.rs",
+  "crates/ripr/src/output/pilot.rs",
+  "xtask/src/reports/operator.rs"
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0011-llm-work-loop.md",

@@ -3,16 +3,53 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[path = "../../../crates/ripr/src/loop_commands.rs"]
+mod loop_commands;
+
 const TOP_WEAK_SEAMS_LIMIT: usize = 5;
-const BEFORE_SNAPSHOT_ARTIFACT: &str = "target/ripr/pilot/repo-exposure.json";
-const AFTER_SNAPSHOT_ARTIFACT: &str = "target/ripr/pilot/after.repo-exposure.json";
-const AGENT_VERIFY_ARTIFACT: &str = "target/ripr/agent/agent-verify.json";
-const AGENT_RECEIPT_ARTIFACT: &str = "target/ripr/agent/agent-receipt.json";
-const BEFORE_SNAPSHOT_COMMAND: &str = "ripr pilot --out target/ripr/pilot";
-const AFTER_SNAPSHOT_COMMAND: &str = "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json";
-const AGENT_VERIFY_COMMAND: &str = "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > target/ripr/agent/agent-verify.json";
-const AGENT_RECEIPT_COMMAND: &str = "ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id <seam-id> --json --out target/ripr/agent/agent-receipt.json";
-const TARGETED_OUTCOME_COMMAND: &str = "ripr outcome --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --format json --out target/ripr/reports/targeted-test-outcome.json";
+const BEFORE_SNAPSHOT_ARTIFACT: &str = loop_commands::PILOT_REPO_EXPOSURE;
+const AFTER_SNAPSHOT_ARTIFACT: &str = loop_commands::PILOT_AFTER_SNAPSHOT;
+const AGENT_VERIFY_ARTIFACT: &str = loop_commands::EDITOR_AGENT_VERIFY;
+const AGENT_RECEIPT_ARTIFACT: &str = loop_commands::EDITOR_AGENT_RECEIPT;
+
+fn before_snapshot_command() -> String {
+    loop_commands::pilot_command(loop_commands::PILOT_DIR)
+}
+
+fn after_snapshot_command() -> String {
+    loop_commands::repo_exposure_snapshot_command(
+        Path::new(loop_commands::COMMAND_ROOT),
+        "draft",
+        loop_commands::PILOT_AFTER_SNAPSHOT,
+    )
+}
+
+fn agent_verify_command() -> String {
+    loop_commands::agent_verify_command(
+        Path::new(loop_commands::COMMAND_ROOT),
+        loop_commands::PILOT_REPO_EXPOSURE,
+        loop_commands::PILOT_AFTER_SNAPSHOT,
+        Some(loop_commands::EDITOR_AGENT_VERIFY),
+    )
+}
+
+fn agent_receipt_command(seam_id_arg: &str) -> String {
+    loop_commands::agent_receipt_command_with_seam_arg(
+        Path::new(loop_commands::COMMAND_ROOT),
+        loop_commands::EDITOR_AGENT_VERIFY,
+        seam_id_arg,
+        loop_commands::EDITOR_AGENT_RECEIPT,
+    )
+}
+
+fn targeted_outcome_command() -> String {
+    loop_commands::outcome_command(
+        loop_commands::PILOT_REPO_EXPOSURE,
+        loop_commands::PILOT_AFTER_SNAPSHOT,
+        Some("json"),
+        Some(loop_commands::TARGETED_TEST_OUTCOME),
+    )
+}
 
 #[derive(Clone, Debug)]
 struct OperatorArtifact {
@@ -123,35 +160,35 @@ fn build_operator_cockpit_report_at(report_dir: &Path) -> OperatorCockpitReport 
         report_dir,
         "targeted-test outcome",
         "targeted-test-outcome.json",
-        TARGETED_OUTCOME_COMMAND,
+        &targeted_outcome_command(),
         true,
     );
     let before_snapshot = read_workspace_artifact(
         report_dir,
         "before snapshot",
         BEFORE_SNAPSHOT_ARTIFACT,
-        BEFORE_SNAPSHOT_COMMAND,
+        &before_snapshot_command(),
         true,
     );
     let after_snapshot = read_workspace_artifact(
         report_dir,
         "after snapshot",
         AFTER_SNAPSHOT_ARTIFACT,
-        AFTER_SNAPSHOT_COMMAND,
+        &after_snapshot_command(),
         true,
     );
     let agent_verify = read_workspace_artifact(
         report_dir,
         "agent verify",
         AGENT_VERIFY_ARTIFACT,
-        AGENT_VERIFY_COMMAND,
+        &agent_verify_command(),
         true,
     );
     let agent_receipt = read_workspace_artifact(
         report_dir,
         "agent receipt",
         AGENT_RECEIPT_ARTIFACT,
-        AGENT_RECEIPT_COMMAND,
+        &agent_receipt_command("<seam-id>"),
         true,
     );
     let calibration = read_artifact(
@@ -571,19 +608,19 @@ fn operator_next_commands(
         push_next_command(
             &mut commands,
             &mut seen,
-            BEFORE_SNAPSHOT_COMMAND,
+            &before_snapshot_command(),
             "Open the top actionable seam packet and write one focused targeted test.",
         );
         push_next_command(
             &mut commands,
             &mut seen,
-            AFTER_SNAPSHOT_COMMAND,
+            &after_snapshot_command(),
             "After adding the targeted test, capture the after repo-exposure snapshot.",
         );
         push_next_command(
             &mut commands,
             &mut seen,
-            AGENT_VERIFY_COMMAND,
+            &agent_verify_command(),
             "Compare the before and after static evidence snapshots for the agent loop.",
         );
         push_next_command(
@@ -595,7 +632,7 @@ fn operator_next_commands(
         push_next_command(
             &mut commands,
             &mut seen,
-            TARGETED_OUTCOME_COMMAND,
+            &targeted_outcome_command(),
             "Compare the before and after static evidence snapshots.",
         );
     } else if commands.is_empty() {
@@ -621,7 +658,7 @@ fn missing_artifact_command(
 
 fn receipt_command_for(seam_id: Option<&str>) -> String {
     let seam_id = seam_id.unwrap_or("<seam-id>");
-    AGENT_RECEIPT_COMMAND.replace("<seam-id>", seam_id)
+    agent_receipt_command(seam_id)
 }
 
 fn push_next_command(
@@ -1025,16 +1062,18 @@ mod tests {
                 && command.reason.contains("repo exposure")
         }));
         assert!(report.next_commands.iter().any(|command| {
-            command.command == BEFORE_SNAPSHOT_COMMAND && command.reason.contains("before snapshot")
+            command.command == before_snapshot_command()
+                && command.reason.contains("before snapshot")
         }));
         assert!(report.next_commands.iter().any(|command| {
-            command.command == AFTER_SNAPSHOT_COMMAND && command.reason.contains("after snapshot")
+            command.command == after_snapshot_command() && command.reason.contains("after snapshot")
         }));
         assert!(report.next_commands.iter().any(|command| {
-            command.command == AGENT_VERIFY_COMMAND && command.reason.contains("agent verify")
+            command.command == agent_verify_command() && command.reason.contains("agent verify")
         }));
         assert!(report.next_commands.iter().any(|command| {
-            command.command == AGENT_RECEIPT_COMMAND && command.reason.contains("agent receipt")
+            command.command == agent_receipt_command("<seam-id>")
+                && command.reason.contains("agent receipt")
         }));
 
         let json = operator_cockpit_json(&report)?;

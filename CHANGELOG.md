@@ -21,6 +21,10 @@ are scoped or reviewed.
 
 ### Changed
 
+- Centralized LLM work-loop command templates for workflow and editor-agent
+  artifact profiles so agent status, agent brief, pilot follow-up commands, LSP
+  copy actions, generated CI path references, and operator cockpit guidance
+  share one Rust source of truth.
 - Documented the CI verification economics policy: required, advisory, and
   on-demand/release postures; LEM budget bands; label effects; artifact
   families; cheaper-signal-first rules; CI actuals; and rollback expectations.

@@ -3,6 +3,11 @@ use crate::app::agent_brief::{
     AgentBriefResolvedWorkingSet, AgentBriefSelectedSeam, AgentBriefSelection,
 };
 use crate::config::RiprConfig;
+use crate::loop_commands::{
+    WORKFLOW_AFTER_SNAPSHOT, WORKFLOW_AGENT_SEAM_PACKETS, WORKFLOW_BEFORE_SNAPSHOT,
+    agent_seam_packets_command, agent_verify_command, display_path, display_text_path,
+    repo_exposure_snapshot_command,
+};
 use crate::output::agent_seam_packets;
 use serde_json::{Value, json};
 use std::path::Path;
@@ -36,14 +41,16 @@ pub(crate) fn render_agent_brief_json(
             .map(|entry| top_seam_json(entry, root, mode, config))
             .collect::<Vec<_>>(),
         "next": {
-            "inspect_packet": format!(
-                "ripr check --root {} --mode {} --format agent-seam-packets-json > target/ripr/workflow/agent-seam-packets.json",
-                display_path(root),
-                mode.as_str()
+            "inspect_packet": agent_seam_packets_command(
+                root,
+                mode.as_str(),
+                WORKFLOW_AGENT_SEAM_PACKETS,
             ),
-            "verify_after_edit": format!(
-                "ripr agent verify --root {} --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json",
-                display_path(root)
+            "verify_after_edit": agent_verify_command(
+                root,
+                WORKFLOW_BEFORE_SNAPSHOT,
+                WORKFLOW_AFTER_SNAPSHOT,
+                None,
             ),
         },
         "warnings": &selection.warnings,
@@ -148,27 +155,25 @@ fn top_seam_json(
 }
 
 fn verification_json(root: &Path, mode: &Mode, recommended_name: &str) -> Value {
-    let root = display_path(root);
     json!({
-        "before_snapshot_command": format!(
-            "ripr check --root {root} --mode {} --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json",
-            mode.as_str()
+        "before_snapshot_command": repo_exposure_snapshot_command(
+            root,
+            mode.as_str(),
+            WORKFLOW_BEFORE_SNAPSHOT,
         ),
-        "after_snapshot_command": format!(
-            "ripr check --root {root} --mode {} --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json",
-            mode.as_str()
+        "after_snapshot_command": repo_exposure_snapshot_command(
+            root,
+            mode.as_str(),
+            WORKFLOW_AFTER_SNAPSHOT,
         ),
-        "verify_command": format!("ripr agent verify --root {root} --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"),
+        "verify_command": agent_verify_command(
+            root,
+            WORKFLOW_BEFORE_SNAPSHOT,
+            WORKFLOW_AFTER_SNAPSHOT,
+            None,
+        ),
         "suggested_test_command": format!("cargo test {recommended_name}"),
     })
-}
-
-fn display_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
-
-fn display_text_path(path: &str) -> String {
-    path.replace('\\', "/")
 }
 
 fn config_fingerprint(source_text: &str) -> String {

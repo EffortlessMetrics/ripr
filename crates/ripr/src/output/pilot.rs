@@ -7,6 +7,10 @@
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::seams::SeamGripClass;
 use crate::app::Mode;
+use crate::loop_commands::{
+    display_path, display_text_path, outcome_command, pilot_retry_command,
+    repo_exposure_snapshot_command,
+};
 use crate::output::agent_seam_packets::{
     suggested_assertion_for_classified_seam, targeted_test_brief_for_classified_seam,
     targeted_test_brief_outline_for_classified_seam,
@@ -269,7 +273,7 @@ pub(crate) fn render_pilot_terminal(
         out.push_str(&format!(
             "  focused test: add {} in {}\n",
             outline.suggested_name,
-            display_path_text(&outline.suggested_file)
+            display_text_path(&outline.suggested_file)
         ));
         if let Some(value) = outline.candidate_value.as_ref() {
             out.push_str(&format!("  candidate value: {value}\n"));
@@ -574,7 +578,7 @@ fn push_markdown_recommendation(out: &mut String, entry: &ClassifiedSeam) {
     out.push_str(&format!(
         "- Focused test: add `{}` in `{}`\n",
         outline.suggested_name,
-        display_path_text(&outline.suggested_file)
+        display_text_path(&outline.suggested_file)
     ));
     if let Some(value) = outline.candidate_value.as_ref() {
         out.push_str(&format!("- Candidate value: `{value}`\n"));
@@ -630,31 +634,29 @@ impl PilotCommands {
             .parent()
             .map(Path::to_path_buf)
             .unwrap_or_else(|| PathBuf::from("."));
-        let after_path = context
-            .artifacts
-            .pilot_summary_json
-            .parent()
-            .map(|dir| dir.join("after.repo-exposure.json"))
-            .unwrap_or_else(|| PathBuf::from("after.repo-exposure.json"));
-        let after_snapshot = format!(
-            "ripr check --root {} --mode {} --format repo-exposure-json > {}",
-            shell_path(context.root),
-            context.mode.as_str(),
-            shell_path(&after_path)
+        let after_path = display_path(
+            &context
+                .artifacts
+                .pilot_summary_json
+                .parent()
+                .map(|dir| dir.join("after.repo-exposure.json"))
+                .unwrap_or_else(|| PathBuf::from("after.repo-exposure.json")),
         );
-        let outcome = format!(
-            "ripr outcome --before {} --after {}",
-            shell_path(&context.artifacts.repo_exposure_json),
-            shell_path(&after_path)
+        let after_snapshot =
+            repo_exposure_snapshot_command(context.root, context.mode.as_str(), &after_path);
+        let outcome = outcome_command(
+            &display_path(&context.artifacts.repo_exposure_json),
+            &after_path,
+            None,
+            None,
         );
         let retry_timeout_ms = context.timeout_ms.saturating_mul(4).max(120_000);
-        let retry = format!(
-            "ripr pilot --root {} --out {} --mode {} --max-seams {} --timeout-ms {}",
-            shell_path(context.root),
-            shell_path(&out_dir),
+        let retry = pilot_retry_command(
+            context.root,
+            &out_dir,
             context.mode.as_str(),
             context.max_seams,
-            retry_timeout_ms
+            retry_timeout_ms,
         );
         Self {
             after_snapshot,
@@ -662,23 +664,6 @@ impl PilotCommands {
             retry,
         }
     }
-}
-
-fn shell_path(path: &Path) -> String {
-    let text = display_path(path);
-    if text.chars().any(char::is_whitespace) {
-        format!("\"{}\"", text.replace('"', "\\\""))
-    } else {
-        text
-    }
-}
-
-fn display_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
-}
-
-fn display_path_text(path: &str) -> String {
-    path.replace('\\', "/")
 }
 
 #[cfg(test)]

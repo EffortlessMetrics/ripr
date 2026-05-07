@@ -14,6 +14,7 @@ use crate::config::{
     CONFIG_FILE_NAME, CheckInputExplicit, DEFAULT_LSP_SEAM_DIAGNOSTICS, apply_to_check_input,
     generated_init_config, load_for_root,
 };
+use crate::loop_commands;
 use crate::output;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
@@ -572,8 +573,8 @@ fn write_init_ci_workflow(root: &Path, ci: &InitCi) -> Result<(), String> {
     }
 }
 
-fn generated_github_actions_workflow() -> &'static str {
-    r#"name: RIPR
+fn generated_github_actions_workflow() -> String {
+    let template = r#"name: RIPR
 
 on:
   pull_request:
@@ -742,7 +743,36 @@ jobs:
         with:
           sarif_file: target/ripr/reports/ripr-seams.sarif
           category: ripr-seams
-"#
+"#;
+    template
+        .replace(
+            "target/ripr/pilot/repo-exposure.json",
+            loop_commands::PILOT_REPO_EXPOSURE,
+        )
+        .replace(
+            "target/ripr/pilot/after.repo-exposure.json",
+            loop_commands::PILOT_AFTER_SNAPSHOT,
+        )
+        .replace(
+            "target/ripr/agent/agent-packet.json",
+            loop_commands::EDITOR_AGENT_PACKET,
+        )
+        .replace(
+            "target/ripr/agent/agent-brief.json",
+            loop_commands::EDITOR_AGENT_BRIEF,
+        )
+        .replace(
+            "target/ripr/agent/agent-verify.json",
+            loop_commands::EDITOR_AGENT_VERIFY,
+        )
+        .replace(
+            "target/ripr/agent/agent-receipt.json",
+            loop_commands::EDITOR_AGENT_RECEIPT,
+        )
+        .replace(
+            "target/ripr/reports/targeted-test-outcome.json",
+            loop_commands::TARGETED_TEST_OUTCOME,
+        )
 }
 
 pub(super) fn pilot(args: &[String]) -> Result<(), String> {
