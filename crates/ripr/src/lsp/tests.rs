@@ -13,8 +13,9 @@ use super::hover::{hover_response, hover_with_snapshot_status};
 use super::state::{AnalysisSnapshot, DocumentStore, RefreshMetadata, format_duration};
 use super::uri::{encode_uri_path, file_uri_for_path, path_from_file_uri};
 use super::{
-    COLLECT_CONTEXT_COMMAND, COPY_CONTEXT_COMMAND, COPY_SUGGESTED_ASSERTION_COMMAND,
-    COPY_TARGETED_TEST_BRIEF_COMMAND, HOVER_TEXT, OPEN_RELATED_TEST_COMMAND, REFRESH_COMMAND,
+    COLLECT_CONTEXT_COMMAND, COPY_AGENT_CLI_COMMAND, COPY_CONTEXT_COMMAND,
+    COPY_SUGGESTED_ASSERTION_COMMAND, COPY_TARGETED_TEST_BRIEF_COMMAND, HOVER_TEXT,
+    OPEN_RELATED_TEST_COMMAND, REFRESH_COMMAND,
 };
 use crate::app::Mode;
 use crate::domain::{
@@ -1179,6 +1180,11 @@ fn seam_code_actions_surface_packet_assertion_related_test_and_refresh() -> Resu
             .collect::<Vec<_>>(),
         vec![
             COPY_CONTEXT_COMMAND,
+            COPY_AGENT_CLI_COMMAND,
+            COPY_AGENT_CLI_COMMAND,
+            COPY_AGENT_CLI_COMMAND,
+            COPY_AGENT_CLI_COMMAND,
+            COPY_AGENT_CLI_COMMAND,
             COPY_TARGETED_TEST_BRIEF_COMMAND,
             COPY_SUGGESTED_ASSERTION_COMMAND,
             OPEN_RELATED_TEST_COMMAND,
@@ -1189,29 +1195,64 @@ fn seam_code_actions_surface_packet_assertion_related_test_and_refresh() -> Resu
     assert_eq!(commands[0].2[0]["seam_id"], seam.seam.id().as_str());
     assert_eq!(commands[0].2[0]["seam_kind"], "predicate_boundary");
     assert_eq!(commands[0].2[0]["line"], 88);
-    assert_eq!(commands[1].0, "Copy targeted test brief");
-    assert_eq!(commands[1].2[0]["seam_id"], seam.seam.id().as_str());
+    assert_eq!(commands[1].0, "Copy agent packet command");
+    assert_eq!(commands[1].2[0]["label"], "agent packet");
+    assert_eq!(
+        commands[1].2[0]["command"],
+        format!(
+            "ripr agent packet --root . --seam-id {} --json",
+            seam.seam.id().as_str()
+        )
+    );
+    assert_eq!(commands[2].0, "Copy agent brief command");
+    assert_eq!(
+        commands[2].2[0]["command"],
+        format!(
+            "ripr agent brief --root . --seam-id {} --json",
+            seam.seam.id().as_str()
+        )
+    );
+    assert_eq!(commands[3].0, "Copy after snapshot command");
+    assert_eq!(
+        commands[3].2[0]["command"],
+        "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json"
+    );
+    assert_eq!(commands[4].0, "Copy agent verify command");
+    assert_eq!(
+        commands[4].2[0]["command"],
+        "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > target/ripr/workflow/agent-verify.json"
+    );
+    assert_eq!(commands[5].0, "Copy agent receipt command");
+    assert_eq!(
+        commands[5].2[0]["command"],
+        format!(
+            "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id {} --json --out target/ripr/reports/agent-receipt.json",
+            seam.seam.id().as_str()
+        )
+    );
+    assert_eq!(commands[6].0, "Copy targeted test brief");
+    assert_eq!(commands[6].2[0]["seam_id"], seam.seam.id().as_str());
     assert!(
-        commands[1].2[0]["brief"]
+        commands[6].2[0]["brief"]
             .as_str()
             .is_some_and(|value| value.contains("Add a targeted test:")),
         "expected targeted test brief argument, got {:?}",
-        commands[1].2
+        commands[6].2
     );
-    assert_eq!(commands[2].0, "Copy suggested assertion");
+    assert_eq!(commands[7].0, "Copy suggested assertion");
     assert!(
-        commands[2].2[0]["assertion"]
+        commands[7].2[0]["assertion"]
             .as_str()
             .is_some_and(|value| value.contains("assert_eq!(discounted_total")),
         "expected assertion argument, got {:?}",
-        commands[2].2
+        commands[7].2
     );
-    assert_eq!(commands[3].0, "Open best related test");
+    assert_eq!(commands[8].0, "Open best related test");
     assert_eq!(
-        commands[3].2[0]["uri"],
+        commands[8].2[0]["uri"],
         "file:///workspace/tests/pricing.rs"
     );
-    assert_eq!(commands[3].2[0]["line"], 12);
+    assert_eq!(commands[8].2[0]["line"], 12);
     Ok(())
 }
 
@@ -1243,6 +1284,11 @@ fn seam_code_actions_keep_legacy_finding_context_when_both_diagnostics_are_prese
             .collect::<Vec<_>>(),
         vec![
             "Copy seam packet",
+            "Copy agent packet command",
+            "Copy agent brief command",
+            "Copy after snapshot command",
+            "Copy agent verify command",
+            "Copy agent receipt command",
             "Copy targeted test brief",
             "Copy suggested assertion",
             "Open best related test",
@@ -1251,8 +1297,8 @@ fn seam_code_actions_keep_legacy_finding_context_when_both_diagnostics_are_prese
         ]
     );
     assert_eq!(commands[0].2[0]["seam_id"], seam.seam.id().as_str());
-    assert_eq!(commands[4].2[0]["finding_id"], "probe:pricing:88:predicate");
-    assert_eq!(commands[4].2[0]["probe_id"], "probe:pricing:88:predicate");
+    assert_eq!(commands[9].2[0]["finding_id"], "probe:pricing:88:predicate");
+    assert_eq!(commands[9].2[0]["probe_id"], "probe:pricing:88:predicate");
     Ok(())
 }
 
@@ -1415,12 +1461,18 @@ fn seam_code_actions_omit_assertion_and_related_test_when_evidence_is_missing() 
             .collect::<Vec<_>>(),
         vec![
             COPY_CONTEXT_COMMAND,
+            COPY_AGENT_CLI_COMMAND,
+            COPY_AGENT_CLI_COMMAND,
+            COPY_AGENT_CLI_COMMAND,
+            COPY_AGENT_CLI_COMMAND,
+            COPY_AGENT_CLI_COMMAND,
             COPY_TARGETED_TEST_BRIEF_COMMAND,
             REFRESH_COMMAND
         ]
     );
     assert_eq!(commands[0].0, "Copy seam packet");
-    assert_eq!(commands[1].0, "Copy targeted test brief");
+    assert_eq!(commands[1].0, "Copy agent packet command");
+    assert_eq!(commands[6].0, "Copy targeted test brief");
     Ok(())
 }
 

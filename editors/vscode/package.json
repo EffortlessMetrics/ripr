@@ -144,6 +144,10 @@
         "title": "ripr: Copy Targeted Test Brief"
       },
       {
+        "command": "ripr.copyAgentCommand",
+        "title": "ripr: Copy Agent Command"
+      },
+      {
         "command": "ripr.openRelatedTest",
         "title": "ripr: Open Related Test"
       },

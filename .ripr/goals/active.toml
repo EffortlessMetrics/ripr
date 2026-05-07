@@ -43,7 +43,7 @@ commands = [
 
 [[work_item]]
 id = "lsp/agent-loop-copy-commands"
-status = "ready"
+status = "done"
 branch = "lsp-agent-loop-copy-commands"
 stackable = false
 requires_human_merge = true
@@ -60,13 +60,17 @@ commands = [
 
 [[work_item]]
 id = "operator/verify-receipt-status"
-status = "blocked"
+status = "ready"
 branch = "operator-verify-receipt-status"
 stackable = false
 requires_human_merge = true
 acceptance = "Operator cockpit reports before/after snapshot, agent verify JSON, and agent receipt JSON presence plus improved, changed, regressed, and unchanged counts with next commands for missing inputs"
-blocked_by = ["lsp/agent-loop-copy-commands"]
-blocked_reason = "Wait for the editor command contract so cockpit next-command text can match the command users copy from the editor."
+commands = [
+  "cargo xtask operator-cockpit",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr"
+]
 
 [[work_item]]
 id = "fixtures/editor-agent-loop"

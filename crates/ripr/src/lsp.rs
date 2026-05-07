@@ -14,6 +14,7 @@ pub use diagnostics::{DiagnosticBatch, workspace_diagnostic_batches};
 use tower_lsp_server::{LspService, Server};
 
 const COPY_CONTEXT_COMMAND: &str = "ripr.copyContext";
+const COPY_AGENT_CLI_COMMAND: &str = "ripr.copyAgentCommand";
 const COPY_SUGGESTED_ASSERTION_COMMAND: &str = "ripr.copySuggestedAssertion";
 const COPY_TARGETED_TEST_BRIEF_COMMAND: &str = "ripr.copyTargetedTestBrief";
 const COLLECT_CONTEXT_COMMAND: &str = "ripr.collectContext";

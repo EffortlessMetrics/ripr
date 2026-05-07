@@ -15,6 +15,56 @@
     {
       "arguments": [
         {
+          "command": "ripr agent packet --root . --seam-id 67fc764ba37d77bd --json",
+          "label": "agent packet"
+        }
+      ],
+      "command": "ripr.copyAgentCommand",
+      "title": "Copy agent packet command"
+    },
+    {
+      "arguments": [
+        {
+          "command": "ripr agent brief --root . --seam-id 67fc764ba37d77bd --json",
+          "label": "agent brief"
+        }
+      ],
+      "command": "ripr.copyAgentCommand",
+      "title": "Copy agent brief command"
+    },
+    {
+      "arguments": [
+        {
+          "command": "ripr check --root . --mode fast --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json",
+          "label": "after snapshot"
+        }
+      ],
+      "command": "ripr.copyAgentCommand",
+      "title": "Copy after snapshot command"
+    },
+    {
+      "arguments": [
+        {
+          "command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > target/ripr/workflow/agent-verify.json",
+          "label": "agent verify"
+        }
+      ],
+      "command": "ripr.copyAgentCommand",
+      "title": "Copy agent verify command"
+    },
+    {
+      "arguments": [
+        {
+          "command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 67fc764ba37d77bd --json --out target/ripr/reports/agent-receipt.json",
+          "label": "agent receipt"
+        }
+      ],
+      "command": "ripr.copyAgentCommand",
+      "title": "Copy agent receipt command"
+    },
+    {
+      "arguments": [
+        {
           "brief": "Target seam:\n- src/lib.rs:2\n- predicate_boundary\n- weakly_gripped\n- owner: src/lib.rs::discounted_total\n\nWhy it matters:\n- Related test evidence: below_threshold_has_no_discount uses strong exact_value oracle.\n- Static discriminator summary: Strongest oracle for seam kind `predicate_boundary` is `strong` (kind-match true)\n- Missing discriminator: discount_threshold (equality boundary) (observed values do not include the equality-boundary case for this predicate)\n- Missing discriminator: input that hits the boundary: amount >= discount_threshold (predicate uses an equality-bearing operator; tests should exercise the boundary case)\n\nAdd a targeted test:\n- Suggested file: tests/pricing.rs\n- Suggested name: discounted_total_boundary_discriminator\n- Candidate value: discount_threshold (equality boundary)\n- Assertion shape: assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)\n\nImitate:\n- below_threshold_has_no_discount (strong exact_value oracle with high relation)\n- far_above_threshold_discounts (strong exact_value oracle with high relation)\n\nAvoid:\n- adding another test with only already-observed values (candidate values should include the missing discriminator)\n",
           "seam_id": "67fc764ba37d77bd"
         }

@@ -62,11 +62,16 @@ rewrite the active manifest explicitly.
 | CI artifacts | Generated GitHub workflow | Uploads advisory repo artifacts and optional SARIF or badge outputs |
 | Install proof | `cargo install --path crates/ripr --locked --force --root target/ripr/install-smoke` and `npm --prefix editors/vscode run package` | Shows the installed binary and packaged extension can run the loop |
 
+## Completed Integration Seams
+
+| Work item | Integrated surface |
+| --- | --- |
+| `lsp/agent-loop-copy-commands` | Seam diagnostics can copy agent packet, agent brief, after-snapshot, verify, and receipt commands using the same root-contained artifact names documented for the CLI loop |
+
 ## Missing Work
 
 | Work item | Missing integration |
 | --- | --- |
-| `lsp/agent-loop-copy-commands` | Add command-oriented editor actions for agent packet, brief, after snapshot, verify, and receipt command text |
 | `operator/verify-receipt-status` | Join before snapshot, after snapshot, agent verify JSON, agent receipt JSON, movement counts, and next commands |
 | `fixtures/editor-agent-loop` | Pin LSP diagnostics/actions, agent brief, agent packet, agent verify, agent receipt, and operator cockpit output in one canonical fixture |
 | `ci/editor-agent-artifacts` | Upload pilot summary, repo exposure, agent brief, agent packet, agent verify, agent receipt, operator cockpit, SARIF when enabled, and badge JSON as visible artifacts |

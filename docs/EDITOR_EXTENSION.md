@@ -127,8 +127,18 @@ server can provide seam-aware code actions:
 
 - `Copy seam packet`: copies the server-owned agent seam packet for the
   selected seam through `ripr.collectContext`.
+- `Copy agent packet command`: copies
+  `ripr agent packet --root . --seam-id <id> --json` for the selected seam.
 - `Copy targeted test brief`: copies a plain-language work order for adding one
   focused test from the same seam packet guidance.
+- `Copy agent brief command`: copies
+  `ripr agent brief --root . --seam-id <id> --json` for the selected seam.
+- `Copy after snapshot command`: copies the saved-workspace after-snapshot
+  command using `target/ripr/workflow/after.repo-exposure.json`.
+- `Copy agent verify command`: copies the before/after comparison command using
+  `target/ripr/workflow/agent-verify.json`.
+- `Copy agent receipt command`: copies the review handoff command using
+  `target/ripr/reports/agent-receipt.json`.
 - `Copy suggested assertion`: copies a concrete assertion suggestion from the
   seam packet.
 - `Open best related test`: opens the strongest related test to imitate when
@@ -182,7 +192,7 @@ Open the ripr output channel.
 Confirm the resolved server source is logged.
 Confirm ripr lsp --stdio starts.
 Confirm diagnostics can arrive from saved-workspace analysis.
-Confirm hover evidence, Copy Targeted Test Brief, and Open Best Related Test are available on seam diagnostics when the analysis snapshot includes the required data.
+Confirm hover evidence, Copy Targeted Test Brief, the agent loop command copy actions, and Open Best Related Test are available on seam diagnostics when the analysis snapshot includes the required data.
 Confirm missing-server state gives the documented actionable message.
 Confirm Restart Server, Show Output, and Open Settings work.
 ```

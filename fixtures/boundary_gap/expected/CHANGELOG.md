@@ -3,6 +3,17 @@
 ## Pending
 
 Reason:
+Campaign 10: seam diagnostics expose copy actions for the agent packet, brief, after-snapshot, verify, and receipt commands.
+
+Command:
+`cargo test -p ripr boundary_gap_lsp`
+
+Updated:
+- `expected/lsp-code-actions.json`
+
+## Pending
+
+Reason:
 RIPR-SPEC-0001: baseline current predicate boundary fixture output
 
 Command:

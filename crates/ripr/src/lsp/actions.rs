@@ -1,8 +1,8 @@
 use super::state::AnalysisSnapshot;
 use super::uri::file_uri_for_path;
 use super::{
-    COPY_CONTEXT_COMMAND, COPY_SUGGESTED_ASSERTION_COMMAND, COPY_TARGETED_TEST_BRIEF_COMMAND,
-    OPEN_RELATED_TEST_COMMAND, REFRESH_COMMAND,
+    COPY_AGENT_CLI_COMMAND, COPY_CONTEXT_COMMAND, COPY_SUGGESTED_ASSERTION_COMMAND,
+    COPY_TARGETED_TEST_BRIEF_COMMAND, OPEN_RELATED_TEST_COMMAND, REFRESH_COMMAND,
 };
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::test_grip_evidence::{RelatedTestGrip, RelationConfidence};
@@ -21,7 +21,9 @@ pub(super) fn code_action_response(
     snapshot: Option<&AnalysisSnapshot>,
 ) -> CodeActionResponse {
     let mut actions = Vec::new();
-    if let Some(context) = seam_action_context(params, snapshot) {
+    if let Some(snapshot) = snapshot
+        && let Some(context) = seam_action_context(params, snapshot)
+    {
         push_seam_actions(&mut actions, params, snapshot, context);
     }
     if let Some(diagnostic) = params
@@ -56,9 +58,8 @@ struct SeamActionContext<'a> {
 
 fn seam_action_context<'a>(
     params: &'a CodeActionParams,
-    snapshot: Option<&'a AnalysisSnapshot>,
+    snapshot: &'a AnalysisSnapshot,
 ) -> Option<SeamActionContext<'a>> {
-    let snapshot = snapshot?;
     params
         .context
         .diagnostics
@@ -74,7 +75,7 @@ fn seam_action_context<'a>(
 fn push_seam_actions(
     actions: &mut CodeActionResponse,
     params: &CodeActionParams,
-    snapshot: Option<&AnalysisSnapshot>,
+    snapshot: &AnalysisSnapshot,
     context: SeamActionContext<'_>,
 ) {
     actions.push(copy_context_action(
@@ -82,6 +83,7 @@ fn push_seam_actions(
         "Copy seam packet",
         copy_seam_packet_target(params, context.diagnostic, context.seam),
     ));
+    push_agent_loop_command_actions(actions, snapshot, context.seam);
     actions.push(copy_targeted_test_brief_action(
         context.seam,
         targeted_test_brief_for_classified_seam(context.seam),
@@ -89,8 +91,7 @@ fn push_seam_actions(
     if let Some(assertion) = suggested_assertion_for_classified_seam(context.seam) {
         actions.push(copy_suggested_assertion_action(context.seam, assertion));
     }
-    if let Some(snapshot) = snapshot
-        && let Some(related) = best_related_test_for_editor(context.seam)
+    if let Some(related) = best_related_test_for_editor(context.seam)
         && let Some(target) = related_test_target(snapshot, related)
     {
         actions.push(open_related_test_action(target));
@@ -105,6 +106,85 @@ fn copy_context_action(title: &str, command_title: &str, target: LSPAny) -> Code
             title: command_title.to_string(),
             command: COPY_CONTEXT_COMMAND.to_string(),
             arguments: Some(vec![target]),
+        }),
+        ..CodeAction::default()
+    })
+}
+
+fn push_agent_loop_command_actions(
+    actions: &mut CodeActionResponse,
+    snapshot: &AnalysisSnapshot,
+    seam: &ClassifiedSeam,
+) {
+    for command in agent_loop_commands(snapshot, seam) {
+        actions.push(copy_agent_command_action(
+            command.title,
+            command.label,
+            command.command,
+        ));
+    }
+}
+
+struct AgentLoopCommand {
+    title: &'static str,
+    label: &'static str,
+    command: String,
+}
+
+fn agent_loop_commands(
+    snapshot: &AnalysisSnapshot,
+    seam: &ClassifiedSeam,
+) -> [AgentLoopCommand; 5] {
+    let seam_id = seam.seam.id().as_str();
+    let mode = snapshot.mode.as_str();
+    [
+        AgentLoopCommand {
+            title: "Copy agent packet command",
+            label: "agent packet",
+            command: format!("ripr agent packet --root . --seam-id {seam_id} --json"),
+        },
+        AgentLoopCommand {
+            title: "Copy agent brief command",
+            label: "agent brief",
+            command: format!("ripr agent brief --root . --seam-id {seam_id} --json"),
+        },
+        AgentLoopCommand {
+            title: "Copy after snapshot command",
+            label: "after snapshot",
+            command: format!(
+                "ripr check --root . --mode {mode} --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json"
+            ),
+        },
+        AgentLoopCommand {
+            title: "Copy agent verify command",
+            label: "agent verify",
+            command: "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > target/ripr/workflow/agent-verify.json".to_string(),
+        },
+        AgentLoopCommand {
+            title: "Copy agent receipt command",
+            label: "agent receipt",
+            command: format!(
+                "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id {seam_id} --json --out target/ripr/reports/agent-receipt.json"
+            ),
+        },
+    ]
+}
+
+fn copy_agent_command_action(
+    title: &str,
+    label: &str,
+    command_text: String,
+) -> CodeActionOrCommand {
+    CodeActionOrCommand::CodeAction(CodeAction {
+        title: title.to_string(),
+        kind: Some(CodeActionKind::QUICKFIX),
+        command: Some(Command {
+            title: title.to_string(),
+            command: COPY_AGENT_CLI_COMMAND.to_string(),
+            arguments: Some(vec![serde_json::json!({
+                "label": label,
+                "command": command_text,
+            })]),
         }),
         ..CodeAction::default()
     })
