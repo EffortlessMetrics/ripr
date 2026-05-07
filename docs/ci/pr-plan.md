@@ -46,13 +46,14 @@ deferred to the follow-up PR that adds `cargo xtask ci plan`.
     { "id": "check_no_panic_family", "base_lem": 1, "runner_multiplier": 1.0 }
   ],
   "estimated_lem": 9,
-  "band": "default",
+  "band": "small",
   "warnings": []
 }
 ```
 
-`band` is one of `pennies | default | elevated | high | over_ceiling` (see
-`docs/CI.md` (Verification Economics section)).
+`band` is one of `small | medium | large | release` (the band ids from
+`[[budget_band]]` in `policy/ci-budget.toml`, also documented in
+`docs/CI.md`'s Verification Economics section).
 
 `warnings` is filled by the soft budget guard (PR 12) when the forecast
 crosses an advisory threshold.
