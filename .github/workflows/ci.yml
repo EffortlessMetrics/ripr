@@ -29,8 +29,16 @@ jobs:
       - run: cargo xtask check-dependencies
       - run: cargo xtask check-process-policy
       - run: cargo xtask check-network-policy
-      - run: cargo package -p ripr --list
-      - run: cargo publish -p ripr --dry-run
+      # Release-surface steps run only when the PR targets a release path:
+      # push to main, the `release-check` label, or the `full-ci` label.
+      # Ordinary code PRs skip them; package metadata and publish dry-run
+      # are still validated on every release-bearing change.
+      - name: Package list (release surface)
+        if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
+        run: cargo package -p ripr --list
+      - name: Publish dry-run (release surface)
+        if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'release-check') || contains(github.event.pull_request.labels.*.name, 'full-ci')
+        run: cargo publish -p ripr --dry-run
       - name: Generate ripr test-efficiency report
         if: always()
         run: cargo xtask test-efficiency-report || true
