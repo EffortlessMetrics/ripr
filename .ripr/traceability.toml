@@ -716,3 +716,25 @@ metrics = [
   "agent_loop_status_available",
   "agent_workflow_manifest_available"
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0012"
+name = "PR test guidance annotations"
+spec = "docs/specs/RIPR-SPEC-0012-pr-test-guidance.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0012-pr-test-guidance.md",
+  "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/CI.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/CAPABILITY_MATRIX.md"
+]
+metrics = [
+  "pr_test_guidance_comments",
+  "pr_test_guidance_summary_only",
+  "pr_test_guidance_suppressed",
+  "pr_test_guidance_opt_in_review_comments"
+]
