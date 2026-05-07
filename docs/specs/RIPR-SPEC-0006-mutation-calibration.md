@@ -150,6 +150,7 @@ Current tests:
 - `crates/ripr/src/cli/commands.rs::tests::calibrate_command_writes_json_file`
 - `crates/ripr/tests/cli_smoke.rs::calibrate_cargo_mutants_prints_markdown_by_default`
 - `crates/ripr/tests/cli_smoke.rs::calibrate_cargo_mutants_writes_json_when_requested`
+- `crates/ripr/tests/cli_smoke.rs::calibration_runtime_fixture_matches_checked_reports`
 - `xtask/src/main.rs::mutation_calibration_args_parse_root_and_input_paths`
 - `xtask/src/main.rs::mutation_calibration_imports_static_seams_and_runtime_outcomes`
 - `xtask/src/main.rs::mutation_calibration_merges_mutants_and_outcomes_by_mutant_id`
@@ -161,11 +162,15 @@ Current tests:
 - `xtask/src/main.rs::mutation_calibration_uses_same_static_without_runtime_sample_limit_for_json_and_markdown`
 - `xtask/src/main.rs::mutation_calibration_reports_are_advisory_and_structured`
 
+Checked fixture-backed samples:
+
+- `fixtures/boundary_gap/calibration/runtime-fixtures-v1/` covers the main
+  static/runtime agreement buckets, ambiguous file/line joins, unmatched runtime
+  mutants, static seams without runtime data, and both `seam_id` and
+  unambiguous `file_line` joins.
+
 Planned tests:
 
-- fixture-backed calibration samples from the
-  [`fixtures` calibration corpus](../../fixtures/CALIBRATION_CORPUS.md) once a
-  stable cargo-mutants output fixture is checked in;
 - end-to-end smoke around a real cargo-mutants output artifact when runtime cost
   is acceptable.
 

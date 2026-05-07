@@ -22,7 +22,7 @@ through multiple work items in a campaign, but each work item should follow the
 | Operationalization (5B) | Govern analyzer behavior with repository config, integrate SARIF/CI policy modes, and remap badges onto seam-native counts. | Complete: `config/ripr-config-v1`, `ci/sarif-ci-policy`, `badge/seam-native-count-mapping`, and `campaign/operationalization-closeout`. |
 | Module SRP Refactoring (6) | Refactor internal modules under `crates/ripr/src/` so each module has one product responsibility, without splitting the package. | Complete: #347, the Campaign 6 refactor chain through #405, and `campaign/modularization-closeout`. |
 | Defaults-First Operator Adoption (7) | Make a clean install useful through conservative defaults, one operator cockpit, CI artifacts, editor install docs, examples, and install/release proof. | Complete: #409 through #417 plus `campaign/defaults-first-closeout`. |
-| Runtime Calibration Fixture Expansion (8) | Expand supplied-runtime calibration fixtures without making RIPR run mutation tests. | Active: first ready item is `calibration/runtime-fixtures-v1`. |
+| Runtime Calibration Fixture Expansion (8) | Expand supplied-runtime calibration fixtures without making RIPR run mutation tests. | Active: `calibration/runtime-fixtures-v1` is complete; next ready item is `campaign/runtime-calibration-closeout`. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
 through 7 are complete. Campaign 6 closed after the internal module SRP chain
@@ -30,8 +30,10 @@ landed through #405 while preserving the saved-workspace LSP cockpit contract,
 output schemas, public API, SARIF, and badge behavior. Campaign 7 closed after
 the defaults-first CLI, editor, CI, fixture, release, and report surfaces were
 verified; the closeout audit lives at
-`docs/handoffs/2026-05-07-campaign-7-closeout.md`. The active queue is now
-Campaign 8, starting with `calibration/runtime-fixtures-v1`.
+`docs/handoffs/2026-05-07-campaign-7-closeout.md`. Campaign 8 added the checked
+`fixtures/boundary_gap/calibration/runtime-fixtures-v1/` sample for the main
+static/runtime agreement buckets. The active queue is now
+`campaign/runtime-calibration-closeout`.
 
 ## PR 0: `planning-and-tracking-docs`
 

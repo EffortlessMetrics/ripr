@@ -335,6 +335,7 @@ tests = [
   "crates/ripr/src/cli/commands.rs::tests::calibrate_command_writes_json_file",
   "crates/ripr/tests/cli_smoke.rs::calibrate_cargo_mutants_prints_markdown_by_default",
   "crates/ripr/tests/cli_smoke.rs::calibrate_cargo_mutants_writes_json_when_requested",
+  "crates/ripr/tests/cli_smoke.rs::calibration_runtime_fixture_matches_checked_reports",
   "xtask/src/main.rs::mutation_calibration_args_parse_root_and_input_paths",
   "xtask/src/main.rs::mutation_calibration_imports_static_seams_and_runtime_outcomes",
   "xtask/src/main.rs::mutation_calibration_merges_mutants_and_outcomes_by_mutant_id",
@@ -346,7 +347,7 @@ tests = [
   "xtask/src/main.rs::mutation_calibration_uses_same_static_without_runtime_sample_limit_for_json_and_markdown",
   "xtask/src/main.rs::mutation_calibration_reports_are_advisory_and_structured"
 ]
-fixtures = []
+fixtures = ["fixtures/boundary_gap"]
 code = [
   "crates/ripr/src/cli/command.rs",
   "crates/ripr/src/cli/commands.rs",
@@ -358,7 +359,9 @@ code = [
 outputs = [
   "docs/OUTPUT_SCHEMA.md",
   "docs/CAPABILITY_MATRIX.md",
-  "fixtures/CALIBRATION_CORPUS.md"
+  "fixtures/CALIBRATION_CORPUS.md",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v1/mutation-calibration.json",
+  "fixtures/boundary_gap/calibration/runtime-fixtures-v1/mutation-calibration.md"
 ]
 metrics = [
   "static_seams_total",

@@ -33,11 +33,14 @@ targeted-test receipts, and optional calibration artifacts, see
 
 ## Runtime Calibration Artifacts
 
-The corpus now includes one tiny checked-in runtime sample:
+The corpus includes checked-in runtime samples. They are supplied input
+artifacts plus generated calibration reports; fixture execution does not run
+mutation testing.
 
 | Case | Static input | Runtime input | Command |
 | --- | --- | --- | --- |
 | Boundary gap after targeted test | `fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json` | `fixtures/boundary_gap/calibration/runtime-mutants.json` | `cargo xtask mutation-calibration . --mutants-json fixtures/boundary_gap/calibration/runtime-mutants.json --repo-exposure-json fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json` |
+| Runtime agreement buckets v1 | `fixtures/boundary_gap/calibration/runtime-fixtures-v1/repo-exposure.json` | `fixtures/boundary_gap/calibration/runtime-fixtures-v1/runtime-mutants.json` | `cargo xtask mutation-calibration . --mutants-json fixtures/boundary_gap/calibration/runtime-fixtures-v1/runtime-mutants.json --repo-exposure-json fixtures/boundary_gap/calibration/runtime-fixtures-v1/repo-exposure.json` |
 
 The boundary-gap runtime sample imports one `caught` outcome for seam
 `67fc764ba37d77bd`. It exists to exercise the calibration report path and to
@@ -46,10 +49,27 @@ show the honest disagreement case: the static after snapshot still says
 The checked `mutation-calibration.{json,md}` files pin the expected report
 shape for the defaults-first example corpus.
 
+The `runtime-fixtures-v1` sample is intentionally synthetic and compact. It
+pins the main agreement buckets in one import:
+
+- `static_gap_and_runtime_signal`
+- `static_gap_without_runtime_signal`
+- `runtime_signal_without_static_gap`
+- `static_clean_and_runtime_clean`
+- `runtime_inconclusive`
+- ambiguous file/line joins
+- unmatched runtime mutants
+- static seams without runtime data
+- `seam_id` and unambiguous `file_line` join methods
+
+The checked `runtime-fixtures-v1/mutation-calibration.{json,md}` reports are
+verified by
+`crates/ripr/tests/cli_smoke.rs::calibration_runtime_fixture_matches_checked_reports`.
+
 ## Missing Runtime Calibration Artifacts
 
-Runtime mutation calibration still needs small checked-in sample artifacts for
-these cases:
+Runtime mutation calibration can still add scenario-specific samples for these
+cases:
 
 | Planned case | Purpose | Status |
 | --- | --- | --- |
@@ -57,7 +77,6 @@ these cases:
 | `side_effect_observer` | Compare static side-effect evidence with a runtime signal. | Planned. |
 | `opaque_dynamic_dispatch` | Keep static limitations explicit when runtime data sees behavior behind dynamic dispatch. | Planned. |
 | `weak_snapshot_oracle` | Compare broad snapshot evidence with runtime mutation data without changing static language. | Planned. |
-| `ambiguous_file_line_join` | Preserve ambiguous runtime joins without assigning a record to the first static seam. | Planned. |
 
 Runtime artifacts should be tiny, deterministic samples checked in only after
 their source and update command are documented. They should feed
