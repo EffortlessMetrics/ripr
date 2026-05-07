@@ -3,7 +3,9 @@ use crate::app::agent_brief::{
     AgentBriefLine, AgentBriefPolicy, AgentBriefResolvedWorkingSet, select_agent_brief_seams,
 };
 use crate::app::{self, CheckInput, Mode, OutputFormat};
-use crate::cli::agent::{AgentBriefOptions, AgentBriefWorkingSet, AgentCommand, parse_agent_args};
+use crate::cli::agent::{
+    AgentBriefOptions, AgentBriefWorkingSet, AgentCommand, AgentPacketOptions, parse_agent_args,
+};
 use crate::cli::help;
 use crate::cli::parse::{expect_value, parse_format, parse_mode};
 use crate::config::{
@@ -78,7 +80,12 @@ pub(super) fn agent(args: &[String]) -> Result<(), String> {
             help::print_agent_brief_help();
             Ok(())
         }
+        AgentCommand::PacketHelp => {
+            help::print_agent_packet_help();
+            Ok(())
+        }
         AgentCommand::Brief(options) => run_agent_brief(options),
+        AgentCommand::Packet(options) => run_agent_packet(options),
     }
 }
 
@@ -112,6 +119,31 @@ fn run_agent_brief(options: AgentBriefOptions) -> Result<(), String> {
         &working_set,
         &selection,
     )?;
+    println!("{rendered}");
+    Ok(())
+}
+
+fn run_agent_packet(options: AgentPacketOptions) -> Result<(), String> {
+    if !options.root.is_dir() {
+        return Err(format!(
+            "agent packet root {} is not a directory",
+            options.root.display()
+        ));
+    }
+
+    let config = load_for_root(&options.root)?;
+    let classified = analysis::inventory_classified_seams_at_with_config(&options.root, &config)?;
+    let entry = classified
+        .iter()
+        .find(|entry| entry.seam.id().as_str() == options.seam_id)
+        .ok_or_else(|| format!("agent packet seam_id {} was not found", options.seam_id))?;
+
+    let policy = AgentBriefPolicy::from_config(&config);
+    if let Some(reason) = policy.omission_reason_for_class(entry.class) {
+        return Err(format!("agent packet seam_id {} {reason}", options.seam_id));
+    }
+
+    let rendered = output::agent_seam_packets::render_agent_seam_packet_json(entry);
     println!("{rendered}");
     Ok(())
 }
@@ -1535,8 +1567,26 @@ mod tests {
     #[test]
     fn agent_rejects_unknown_subcommands() {
         assert_eq!(
-            agent(&args(&["packet"])),
-            Err("unknown agent subcommand \"packet\"; expected `brief`".to_string())
+            agent(&args(&["unknown"])),
+            Err("unknown agent subcommand \"unknown\"; expected `brief` or `packet`".to_string())
+        );
+    }
+
+    #[test]
+    fn agent_packet_rejects_missing_root_before_analysis() {
+        assert_eq!(
+            agent(&args(&[
+                "packet",
+                "--root",
+                "target/ripr/missing-agent-packet-root",
+                "--seam-id",
+                "f3c9e4d21a0b7c88",
+                "--json",
+            ])),
+            Err(
+                "agent packet root target/ripr/missing-agent-packet-root is not a directory"
+                    .to_string()
+            )
         );
     }
 
@@ -1598,11 +1648,14 @@ mod tests {
         std::fs::write(&outside_diff, "diff --git a/src/lib.rs b/src/lib.rs\n")
             .map_err(|err| format!("write outside diff: {err}"))?;
 
-        let err = resolve_agent_brief_working_set(
+        let result = resolve_agent_brief_working_set(
             &root,
             &AgentBriefWorkingSet::Diff(outside_diff.clone()),
-        )
-        .expect_err("outside diff path should be rejected");
+        );
+        let err = match result {
+            Ok(_) => return Err("outside diff path should be rejected".to_string()),
+            Err(err) => err,
+        };
 
         assert!(
             err.contains("must stay under root"),

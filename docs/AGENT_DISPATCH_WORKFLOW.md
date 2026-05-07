@@ -92,8 +92,9 @@ expected routing shape:
   as an advisory warning, not dumped as a hidden packet.
 
 The examples are static documentation examples. They do not require new
-fixture generation and do not imply the CLI command exists before the
-implementation PR.
+fixture generation. The CLI implementation keeps the same boundary: `ripr
+agent brief` ranks a small working set, while `ripr agent packet --seam-id`
+expands one visible seam into the existing `agent-seam-packets-json` envelope.
 
 The spec also maps the implementation seams that future PRs should preserve:
 CLI parsing, app orchestration, working-set selection, existing repo

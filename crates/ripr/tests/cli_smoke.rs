@@ -45,6 +45,22 @@ fn assert_success(output: &Output) {
     );
 }
 
+fn assert_failure(output: &Output) {
+    assert!(
+        !output.status.success(),
+        "expected command to fail\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn json_string_field(text: &str, field: &str) -> Option<String> {
+    let pattern = format!("\"{field}\": \"");
+    let start = text.find(&pattern)? + pattern.len();
+    let end = text[start..].find('"')?;
+    Some(text[start..start + end].to_string())
+}
+
 fn agent_brief_sample_workspace(
     label: &str,
 ) -> Result<(PathBuf, PathBuf), Box<dyn std::error::Error>> {
@@ -169,6 +185,73 @@ fn agent_brief_diff_scope_omits_configured_off_seams() -> Result<(), Box<dyn std
     assert!(stdout.contains(r#""returned": 0"#));
     assert!(stdout.contains("configured off for weakly_gripped seams"));
     assert!(!stdout.contains(r#""severity": "off""#));
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn agent_packet_expands_one_brief_seam_by_id() -> Result<(), Box<dyn std::error::Error>> {
+    let (root, diff) = agent_brief_sample_workspace("agent-packet-root")?;
+    let root_path = root.display().to_string();
+    let diff = diff.display().to_string();
+    let brief = run_ripr(&[
+        "agent", "brief", "--root", &root_path, "--diff", &diff, "--json",
+    ]);
+    assert_success(&brief);
+    let brief_stdout = String::from_utf8_lossy(&brief.stdout);
+    let seam_id = json_string_field(&brief_stdout, "seam_id")
+        .ok_or("expected brief output to include a seam_id")?;
+
+    let packet = run_ripr(&[
+        "agent",
+        "packet",
+        "--root",
+        &root_path,
+        "--seam-id",
+        &seam_id,
+        "--json",
+    ]);
+    assert_success(&packet);
+
+    let packet_stdout = String::from_utf8_lossy(&packet.stdout);
+    assert!(packet_stdout.contains(r#""schema_version": "0.3""#));
+    assert!(packet_stdout.contains(r#""packets_total": 1"#));
+    assert!(packet_stdout.contains(&format!(r#""seam_id": "{seam_id}""#)));
+    assert!(packet_stdout.contains(r#""task": "write_targeted_test""#));
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn agent_packet_rejects_configured_off_seam() -> Result<(), Box<dyn std::error::Error>> {
+    let (root, diff) = agent_brief_sample_workspace("agent-packet-config-off")?;
+    let root_path = root.display().to_string();
+    let diff = diff.display().to_string();
+    let brief = run_ripr(&[
+        "agent", "brief", "--root", &root_path, "--diff", &diff, "--json",
+    ]);
+    assert_success(&brief);
+    let brief_stdout = String::from_utf8_lossy(&brief.stdout);
+    let seam_id = json_string_field(&brief_stdout, "seam_id")
+        .ok_or("expected brief output to include a seam_id")?;
+    std::fs::write(
+        root.join("ripr.toml"),
+        "[severity.seams]\nweakly_gripped = \"off\"\n",
+    )?;
+
+    let packet = run_ripr(&[
+        "agent",
+        "packet",
+        "--root",
+        &root_path,
+        "--seam-id",
+        &seam_id,
+        "--json",
+    ]);
+    assert_failure(&packet);
+
+    let stderr = String::from_utf8_lossy(&packet.stderr);
+    assert!(stderr.contains("configured off for weakly_gripped seams"));
     std::fs::remove_dir_all(root)?;
     Ok(())
 }

@@ -35,6 +35,17 @@ ripr agent brief --root . --files src/pricing.rs --json
 ripr agent brief --root . --seam-id f3c9e4d21a0b7c88 --json
 ```
 
+Related packet expansion:
+
+```bash
+ripr agent packet --root . --seam-id f3c9e4d21a0b7c88 --json
+```
+
+The packet command expands a brief `packet_ref` into the existing
+`agent-seam-packets-json` envelope filtered to one visible seam. It is not a
+second packet schema and must apply the same configured-off and hidden-class
+policy as the brief.
+
 The command should:
 
 - default to at most three seams;
@@ -516,7 +527,9 @@ Planned files:
 Responsibilities:
 
 - parse `ripr agent brief`;
+- parse `ripr agent packet`;
 - require exactly one of `--diff`, `--base`, `--files`, or `--seam-id`;
+- require `--seam-id` for packet expansion;
 - accept `--json`;
 - accept a future `--max-seams <n>` while enforcing `limits.hard_cap = 10`;
 - keep the command JSON-only until the schema is implemented and pinned.
