@@ -1,0 +1,84 @@
+# PR Plan
+
+The PR Plan workflow (`.github/workflows/pr-plan.yml`) is the LEM forecast
+lane. It runs on every PR as an **advisory** signal: it does not block
+merges, and it does not gate any required check.
+
+## What it should do (target state)
+
+Given the diff between the PR and its base, the PR Plan should:
+
+1. Read the changed-file list.
+2. Match those paths to risk packs in `policy/ci-risk-packs.toml`.
+3. Resolve the union of `lanes` across matched packs.
+4. Look up `base_lem` per lane in `policy/ci-lane-whitelist.toml`.
+5. Apply runner multipliers from `policy/ci-budget.toml`.
+6. Emit `target/ci/ci-plan.json` and a step-summary table.
+
+The forecast is intentionally *coarse*: per-lane base LEM × runner
+multiplier, summed across selected lanes. Once `ci-actuals.json` data
+exists (PR 11), the forecast is replaced by learned per-lane estimates.
+
+## What this PR ships
+
+This PR ships:
+
+- The workflow YAML at `.github/workflows/pr-plan.yml`.
+- A budget entry in `policy/workflow_allowlist.txt`.
+- This document.
+
+The job currently emits a structural advisory output (changed-file list,
+ledger-presence check, step-summary placeholder). The forecast logic is
+deferred to the follow-up PR that adds `cargo xtask ci plan`.
+
+## Output schema (target)
+
+```json
+{
+  "schema_version": 1,
+  "repo": "ripr",
+  "base": "<base SHA>",
+  "head": "<head SHA>",
+  "labels": ["full-ci", "ripr-waive"],
+  "risk_packs": ["analysis_engine", "policy_xtask"],
+  "selected_lanes": [
+    { "id": "rust_fast_gate", "base_lem": 8, "runner_multiplier": 1.0 },
+    { "id": "check_no_panic_family", "base_lem": 1, "runner_multiplier": 1.0 }
+  ],
+  "estimated_lem": 9,
+  "band": "default",
+  "warnings": []
+}
+```
+
+`band` is one of `pennies | default | elevated | high | over_ceiling` (see
+`docs/ci/lem-budgeting.md`).
+
+`warnings` is filled by the soft budget guard (PR 12) when the forecast
+crosses an advisory threshold.
+
+## Posture
+
+| Stage                                    | Posture                |
+| ---------------------------------------- | ---------------------- |
+| PR 07 (this PR)                          | structural advisory    |
+| Follow-up: `xtask ci plan` wired         | numeric advisory       |
+| PR 11: `ci-actuals.json` upload          | numeric advisory       |
+| PR 12: soft budget guard                 | warn / fail-on-ceiling |
+
+## Override and acknowledgement
+
+Labels documented in `docs/ci/labels.md`:
+
+- `full-ci` → expects elevated forecast; the guard suppresses the warning.
+- `ci-budget-ack` → author acknowledges elevated forecast.
+- `ci-budget-override` → bypass the over-ceiling failure (only effective
+  after PR 12).
+
+## Why advisory first
+
+A blocking forecast on day one would either be too loose to catch real
+overspend or too tight and reject ordinary PRs. Running the forecast in
+advisory mode for at least two weeks gives the learned-estimate path
+enough data to base a credible threshold on, and lets reviewers calibrate
+which warnings they ignore.

@@ -1,0 +1,49 @@
+name: PR Plan
+
+on:
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+# Advisory LEM (Linux Equivalent Minutes) forecast for the diff.
+#
+# Stage in the multi-PR rollout: PR 07.
+# The xtask `ci plan` command that drives the real forecast is added in a
+# follow-up PR; this lane currently emits a structural advisory output so
+# the lane is visible in CI before the forecast logic lands.
+#
+# See:
+#   docs/ci/pr-plan.md
+#   docs/ci/cost-and-verification-policy.md
+#   policy/ci-budget.toml
+#   policy/ci-lane-whitelist.toml
+#   policy/ci-risk-packs.toml
+
+jobs:
+  pr-plan:
+    name: pr-plan
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Compute changed files (advisory)
+        run: mkdir -p target/ripr/reports && git diff --name-only origin/${{ github.base_ref }}...HEAD > target/ripr/reports/pr-plan-changes.txt || true
+
+      - name: Verify CI budget ledgers exist
+        run: ls policy/ci-budget.toml policy/ci-lane-whitelist.toml policy/ci-risk-packs.toml >/dev/null
+
+      - name: Write advisory step summary
+        run: printf "## PR Plan (advisory)\n\nForecast logic lands in a follow-up PR. See docs/ci/pr-plan.md.\n" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload PR Plan artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ripr-pr-plan
+          path: target/ripr/reports/pr-plan-changes.txt
+          if-no-files-found: ignore
