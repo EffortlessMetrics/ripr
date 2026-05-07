@@ -108,13 +108,20 @@ is. There is no separate top-level `id` field.
 
 The `confidence` field referenced as the gate threshold is the numeric
 `f32` that `ripr` emits per finding. `docs/OUTPUT_SCHEMA.md` shows the
-field by example (e.g. `0.92`); the formal field contract for it is
-**established by this PR** through `policy/ripr-soft-gate.toml`'s
-`[gate].confidence_threshold` (range 0.0–1.0, inclusive). The follow-up
-PR that wires the xtask command also adds the field-contract section to
-`docs/OUTPUT_SCHEMA.md` so the threshold tunes against a documented
-schema rather than an implicit one. Until then the threshold-config
-file is the source of truth for the type and range.
+field by example (e.g. `0.92`).
+
+**The authoritative type and range contract during the rollout is
+`policy/ripr-soft-gate.toml`'s `[gate].confidence_threshold`
+(`f32`, inclusive range `0.0`–`1.0`).** Reading order is: this section
+first, then the policy TOML for the canonical numeric range, then
+OUTPUT_SCHEMA.md for the field's appearance in `ripr` output. There is
+no deferral loop — the policy file is authoritative today.
+
+The follow-up PR that wires the xtask command will lift the same range
+into a dedicated field-contract section in `docs/OUTPUT_SCHEMA.md` so
+the canonical schema doc carries the contract directly. That move
+**does not** change the meaning, only its location: the policy file
+will then become a mirror.
 
 The categorical `high | medium | low | unknown` values that exist on
 RIPR stage evidence (`why_now.confidence`, `relation_confidence`,
@@ -147,8 +154,19 @@ the JSON is well-formed and quoted by the runner.
 ## Activation criteria (shadow → active transition)
 
 The `status = "shadow"` value in `policy/ripr-soft-gate.toml` is flipped
-to `status = "active"` only after **all** of these conditions are
-verified by the follow-up PR that wires the xtask command:
+to `status = "active"` by the follow-up PR that wires the
+`cargo xtask ci ripr-soft-gate` command (see "Implementation posture"
+above). That PR is also where the `--findings`, `--suppressions`,
+`--threshold-config`, and `--labels-json` flow becomes a real exit code
+instead of a `|| true` advisory.
+
+The `ripr_self_dogfood` lane referenced below is the
+`.github/workflows/ripr.yml` lane that runs `ripr check` against the
+diff and uploads the JSON/SARIF findings (forward reference; ships in
+PR 10 of the rollout). It is registered in
+`policy/ci-lane-whitelist.toml` (PR 02). The xtask command is gated to
+flip `status` only after **all** of these conditions are verified
+against that lane's `ci-actuals.json` upload:
 
 1. The `ripr_self_dogfood` lane has uploaded at least 14
    `ci-actuals.json` artifacts on `main` over a rolling 14-day window
