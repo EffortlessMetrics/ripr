@@ -4,6 +4,201 @@ CI should protect correctness without making ordinary contribution slow or
 noisy. Default CI is advisory for static exposure findings until calibration and
 configuration are mature enough to support opt-in failure policies.
 
+## Verification Economics Policy
+
+CI is a product surface. A contributor should be able to tell what ran, why it
+ran, what it cost, what it produced, and which explicit label or follow-up
+artifact changes that behavior.
+
+`ripr` uses **Local Evidence Minutes** (LEM) as the planning unit for CI cost.
+One LEM is approximately one minute of hosted CI time on one normal GitHub
+runner, including setup, toolchain/cache work, command runtime, report writing,
+and artifact upload for that lane. LEM is intentionally approximate until
+`target/ci/ci-actuals.json` exists; PRs should still estimate the order of
+magnitude so reviewers can notice when a small docs change starts paying for a
+release-style proof.
+
+Budget bands:
+
+| Band | Estimated cost | Expected posture |
+| --- | ---: | --- |
+| `small` | 0-5 LEM | docs, policy metadata, or focused code checks |
+| `medium` | 6-20 LEM | ordinary product PR with Rust and policy gates |
+| `large` | 21-60 LEM | multi-surface PR, extension checks, or broad evidence artifacts |
+| `release` | 60+ LEM | explicit `release-check` or `full-ci` proof |
+
+CI lanes are grouped by posture, not by how convenient they are to place in one
+workflow file.
+
+| Posture | Purpose | Examples | Default behavior |
+| --- | --- | --- | --- |
+| Required | Cheap merge-safety and policy invariants. | `fmt`, `cargo check`, clippy, focused tests, static-language, file/workflow/process/dependency policy, output-contract checks for schema/output changes. | Blocking on ordinary PRs that touch the relevant surface. |
+| Advisory | Evidence that helps review but should not block routine work until calibrated. | coverage, Test Analytics, `ripr` self-dogfood, SARIF upload, agent-loop artifacts, Droid review, future Clippy lints, broad security posture scans. | Upload artifacts or comments; do not fail the PR by default. |
+| On-demand / release | Expensive, slow, or release-bearing proof. | `cargo package`, `cargo publish --dry-run`, VSIX packaging, server archive checks, release readiness, full workspace proof. | Run on `main`, manual dispatch, `release-check`, or `full-ci`; avoid default PR blocking. |
+
+The current `ci.yml` still carries some release-like proof in the primary Rust
+job. Treat that as legacy posture while the CI split is rolled out. New CI work
+should move toward small required gates at the front door, advisory evidence by
+default, and label-gated release proof.
+
+This section defines the target policy. It does not mean the current workflows
+already implement PR planning, label-gated lane selection, CI actuals, or
+budget enforcement. Until those later PRs land, the "Current Workflows" section
+below remains the source of truth for what GitHub Actions runs today.
+
+### PR Planning
+
+Every pull request should eventually get a cheap CI forecast before heavier
+lanes run. The planned `target/ci/ci-plan.json` artifact should record:
+
+- changed files;
+- detected risk packs;
+- expected required, advisory, and on-demand lanes;
+- estimated LEM;
+- labels that changed lane selection;
+- artifact families expected from each lane.
+
+Example step summary:
+
+```text
+PR Plan
+- Scope: Rust product + docs
+- Required lanes: rust, policy, output-contracts
+- Advisory lanes: coverage, ripr-self-dogfood
+- Skipped by default: vscode, release package, future-clippy
+- Estimated cost: 14 LEM
+- To run all: add full-ci
+```
+
+Until the planner exists, authors should fill the PR template's CI economics
+section for CI-affecting changes.
+
+### Risk Packs
+
+Risk packs are the planned machine-readable replacement for broad path guesses.
+They map changed paths to lanes and artifacts. The first implementation should
+live in policy files such as `policy/ci-risk-packs.toml` and should start
+structural: validate that packs, lane names, and schema versions exist before
+trying to infer perfect cost.
+
+Initial pack shape:
+
+```toml
+[risk_pack.rust_product]
+paths = ["crates/ripr/src/**"]
+required = ["rust", "policy", "output-contracts"]
+advisory = ["coverage", "ripr-self-dogfood"]
+
+[risk_pack.vscode]
+paths = ["editors/vscode/**"]
+required = ["vscode-compile", "vscode-e2e"]
+advisory = []
+
+[risk_pack.docs_only]
+paths = ["docs/**", "README.md", "CHANGELOG.md"]
+required = ["docs", "static-language"]
+advisory = []
+```
+
+Risk packs must stay explainable. If a lane runs because a pack matched, the PR
+plan should name the pack and paths that triggered it.
+
+### Artifact Families
+
+Generated artifacts should have predictable paths and one index. Planned CI
+artifacts are grouped by family:
+
+| Family | Expected paths |
+| --- | --- |
+| `ci-plan` | `target/ci/ci-plan.json`, `target/ci/ci-actuals.json` |
+| `ripr-evidence` | `target/ripr/reports/index.md`, `target/ripr/reports/repo-exposure.json`, `target/ripr/reports/repo-sarif.json` |
+| `editor-agent-loop` | `target/ripr/reports/operator-cockpit.{json,md}`, `target/ripr/workflow/agent-seam-packets.json`, `target/ripr/agent/agent-packet.json`, `target/ripr/agent/agent-brief.json`, `target/ripr/agent/agent-verify.json`, `target/ripr/agent/agent-receipt.json` |
+| `release-readiness` | package lists, publish dry-run transcript, VSIX package proof, server archive proof |
+
+The report index should be the front door for artifact discovery. CI should not
+require reviewers to inspect raw job logs to find the packet that justifies a
+decision.
+
+The `ci-plan` paths are planned. The `editor-agent-loop` paths reflect the
+current split between the local bulk packet envelope
+(`agent-seam-packets.json`) and generated CI's focused agent artifacts under
+`target/ripr/agent/`.
+
+### Label Policy
+
+Labels are policy inputs, not folklore. Each supported label must have one
+documented effect:
+
+These label effects are the target policy. They do not become active workflow
+switches until a follow-up PR implements and validates the lane-selection
+logic.
+
+| Label | Effect |
+| --- | --- |
+| `full-ci` | Run required, advisory, and release-like lanes. Demotes `ripr-waive` for this PR. Expected to cost more. |
+| `release-check` | Run package, publish dry-run, VSIX package, server archive, and release-readiness proof where applicable. |
+| `vscode` | Run editor extension lanes even when no editor path changed. |
+| `coverage` | Run coverage lanes and upload coverage artifacts. |
+| `ripr-waive` | Acknowledge a soft static exposure finding for this PR. Does not skip CI and does not apply when `full-ci` is present. |
+| `ci-budget-ack` | Acknowledge that this PR intentionally exceeds the expected LEM band. |
+| `clippy-future` | Run future or candidate Clippy lint lanes in advisory mode. |
+
+New labels that affect CI must update this table, the PR template, and the
+eventual risk-pack policy files in the same PR.
+
+These labels are the documented target vocabulary. They are not active workflow
+switches until a later PR wires them into a PR plan or workflow condition.
+
+### Cheaper Signal First
+
+When adding CI coverage for a failure mode, prefer the cheapest stable signal
+that catches the issue:
+
+1. static policy check;
+2. focused unit test;
+3. fixture or golden output;
+4. integration smoke;
+5. advisory report;
+6. release-style proof.
+
+Do not add a broad required workflow when a local `xtask` checker or focused
+test can catch the same failure earlier with clearer repair instructions.
+
+### CI Actuals
+
+Forecasts should become measurable. Planned lane actuals should emit
+`target/ci/ci-actuals.json` with one record per lane:
+
+```json
+{
+  "schema_version": "0.1",
+  "workflow": "ci",
+  "job": "rust",
+  "status": "success",
+  "duration_seconds": 212,
+  "runner": "ubuntu-latest",
+  "estimated_lem": 8,
+  "actual_lem": 9,
+  "cache_hit": true
+}
+```
+
+Budget guards should remain advisory until the repo has enough actuals to
+separate normal variance from waste.
+
+### Rollback
+
+Every CI-affecting PR should describe how to back out the change without
+weakening branch safety. Examples:
+
+- remove a new advisory workflow without changing required gates;
+- revert a risk pack while keeping the old required lane;
+- disable an artifact upload while keeping the underlying local report command;
+- move a release proof back to manual dispatch if it proves too costly.
+
+If rollback requires branch-protection changes, the PR must say so explicitly
+and should usually be split.
+
 ## Current Workflows
 
 The Rust workflow currently runs:

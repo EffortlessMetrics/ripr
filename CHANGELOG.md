@@ -9,7 +9,14 @@ are scoped or reviewed.
 
 ## Unreleased
 
-No unreleased changes yet.
+### Changed
+
+- Documented the CI verification economics policy: required, advisory, and
+  on-demand/release postures; LEM budget bands; label effects; artifact
+  families; cheaper-signal-first rules; CI actuals; and rollback expectations.
+  The PR template now asks CI-affecting PRs to record cost, affected workflows,
+  branch-protection impact, cheaper signals considered, artifact families, and
+  rollback path.
 
 ## 0.4.0 - 2026-05-07
 
