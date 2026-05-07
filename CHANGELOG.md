@@ -17,6 +17,9 @@ are scoped or reviewed.
   The PR template now asks CI-affecting PRs to record cost, affected workflows,
   branch-protection impact, cheaper signals considered, artifact families, and
   rollback path.
+- Documented the completed `0.4.0` post-publish verification for crates.io,
+  GitHub Release server assets, VS Marketplace, Open VSX, and installed
+  editor-agent loop smoke checks.
 
 ## 0.4.0 - 2026-05-07
 

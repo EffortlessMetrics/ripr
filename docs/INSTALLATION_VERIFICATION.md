@@ -19,12 +19,26 @@ first useful CLI, editor, or CI experience.
 
 ## Current Release Proof
 
-The `ripr 0.4.0` release line is prepared around the full editor-agent evidence
-loop: zero-config `ripr pilot`, `ripr outcome`, `ripr agent verify`,
-`ripr agent receipt`, saved-workspace editor actions, operator cockpit status,
-and generated non-blocking CI artifacts. The publish PR must rerun the public
-cargo install, GitHub Release server, VSIX, VS Marketplace, and Open VSX smoke
-checks after registries serve `0.4.0`.
+The `ripr 0.4.0` release was published and verified on May 7, 2026. The
+verified public loop covers zero-config `ripr pilot`, `ripr outcome`,
+`ripr agent verify`, `ripr agent receipt`, saved-workspace editor actions,
+operator cockpit status, and generated non-blocking CI artifacts.
+
+Post-publish proof covered:
+
+- crates.io serving `ripr 0.4.0`;
+- public `cargo install ripr --version 0.4.0 --locked`;
+- installed CLI smoke for `doctor`, `pilot`, `outcome`, `agent verify`, and
+  `agent receipt`;
+- GitHub Release `v0.4.0` with VSIX, server manifest, checksums, and all
+  supported server archives;
+- Windows server archive checksum matching the manifest;
+- extracted Windows server smoke for `ripr --version`, `ripr lsp --version`,
+  `pilot`, `outcome`, `agent verify`, and `agent receipt`;
+- VS Marketplace serving `EffortlessMetrics.ripr@0.4.0`;
+- Open VSX serving `EffortlessMetrics.ripr@0.4.0`;
+- isolated VS Code install smoke from VS Marketplace and from the Open VSX
+  VSIX download.
 
 ## Pre-Publish Local Proof
 

@@ -63,10 +63,16 @@ That proof covers server archive shape for the previous public release and the
 defaults-first `ripr pilot` and `ripr outcome` public-install smoke; see
 [Installation verification](INSTALLATION_VERIFICATION.md).
 
-For `v0.4.0`, rerun the same GitHub Release proof and extend the extracted
-server smoke to cover the editor-agent evidence loop: `ripr --version`,
-`ripr lsp --version`, `ripr pilot`, `ripr outcome`, `ripr agent verify`, and
-`ripr agent receipt`.
+The `v0.4.0` release was verified on May 7, 2026:
+
+- `ripr-server-manifest-v0.4.0.json`, `checksums.txt`, per-target server
+  archives, per-target `.sha256` files, and `ripr-0.4.0.vsix` were present on
+  the GitHub Release.
+- The Windows archive checksum matched the manifest entry for
+  `x86_64-pc-windows-msvc`.
+- The extracted Windows server ran `ripr --version`, `ripr lsp --version`,
+  `ripr pilot`, `ripr outcome`, `ripr agent verify`, and
+  `ripr agent receipt`.
 
 ## Local Verification
 
