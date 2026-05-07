@@ -593,3 +593,25 @@ metrics = [
   "operator_cockpit_available",
   "install_path_verified"
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0010"
+name = "agent working-set brief"
+spec = "docs/specs/RIPR-SPEC-0010-agent-working-set-brief.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0010-agent-working-set-brief.md",
+  "docs/specs/README.md",
+  "docs/AGENT_DISPATCH_WORKFLOW.md",
+  "docs/OUTPUT_SCHEMA.md"
+]
+metrics = [
+  "agent_brief_requested_total",
+  "agent_brief_top_seams_returned",
+  "agent_brief_hidden_by_policy_total",
+  "agent_brief_with_nearest_test_total",
+  "agent_brief_with_assertion_shape_total",
+  "agent_brief_with_verification_commands_total"
+]

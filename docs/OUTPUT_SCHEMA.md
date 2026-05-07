@@ -1213,6 +1213,148 @@ discriminator, the oracle shape, and an assertion template — but never
 generates the test itself. Composition with a coding agent closes the
 loop.
 
+## Agent Working-Set Brief
+
+`ripr agent brief --json` is a proposed agent-active routing surface governed
+by [RIPR-SPEC-0010](specs/RIPR-SPEC-0010-agent-working-set-brief.md). It is not
+implemented in the current CLI. When implemented, it should emit a small
+working-set summary that selects the top seams relevant to the files, lines,
+diff, base ref, or explicit seam ID an agent is touching.
+
+Command forms:
+
+```bash
+ripr agent brief --root . --diff change.diff --json
+ripr agent brief --root . --base main --json
+ripr agent brief --root . --files src/pricing.rs --json
+ripr agent brief --root . --seam-id f3c9e4d21a0b7c88 --json
+```
+
+The JSON shape uses schema `0.1`:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "scope": "working_set",
+  "root": ".",
+  "mode": "draft",
+  "config": {
+    "state": "loaded",
+    "path": "ripr.toml",
+    "fingerprint": "sha256:..."
+  },
+  "working_set": {
+    "source": "diff",
+    "files": ["src/pricing.rs"],
+    "changed_lines": [
+      {
+        "file": "src/pricing.rs",
+        "line": 88
+      }
+    ],
+    "base": "main",
+    "diff": "change.diff",
+    "seam_id": null
+  },
+  "limits": {
+    "requested": 3,
+    "returned": 1,
+    "default": 3,
+    "hard_cap": 10
+  },
+  "top_seams": [
+    {
+      "seam_id": "f3c9e4d21a0b7c88",
+      "owner": "src/pricing.rs::discounted_total",
+      "seam_kind": "predicate_boundary",
+      "file": "src/pricing.rs",
+      "line": 88,
+      "expression": "amount >= discount_threshold",
+      "grip_class": "weakly_gripped",
+      "severity": "warning",
+      "headline_eligible": true,
+      "why_now": {
+        "reason": "changed_line_intersects_seam",
+        "confidence": "high",
+        "evidence": "changed line 88 intersects the seam origin"
+      },
+      "evidence": {
+        "reach": "yes",
+        "activate": "yes",
+        "propagate": "yes",
+        "observe": "yes",
+        "discriminate": "weak"
+      },
+      "recommended_test": {
+        "name": "discounted_total_boundary_discriminator",
+        "file": "tests/pricing.rs",
+        "reason": "place the new targeted test next to the nearest strong related test"
+      },
+      "nearest_strong_test_to_imitate": {
+        "name": "below_threshold_has_no_discount",
+        "file": "tests/pricing.rs",
+        "line": 12,
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "relation_reason": "direct_owner_call",
+        "relation_confidence": "high"
+      },
+      "candidate_values": [
+        {
+          "value": "discount_threshold (equality boundary)",
+          "reason": "observed values do not include the equality-boundary case"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "discount_threshold (equality boundary)",
+          "reason": "observed values do not include the equality-boundary case"
+        }
+      ],
+      "assertion_shape": {
+        "kind": "exact_return_value",
+        "example": "assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)"
+      },
+      "packet_ref": {
+        "format": "agent-seam-packets-json",
+        "seam_id": "f3c9e4d21a0b7c88"
+      },
+      "verification": {
+        "before_snapshot_command": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json",
+        "after_snapshot_command": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json",
+        "receipt_command": "ripr outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json",
+        "suggested_test_command": "cargo test discounted_total_boundary_discriminator"
+      }
+    }
+  ],
+  "next": {
+    "inspect_packet": "ripr check --root . --mode draft --format agent-seam-packets-json > target/ripr/workflow/agent-seam-packets.json",
+    "verify_after_edit": "ripr outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json"
+  },
+  "warnings": []
+}
+```
+
+Field contract:
+
+- `scope` — always `"working_set"`.
+- `working_set.source` — `"diff"`, `"base"`, `"files"`, or `"seam_id"`.
+- `limits.default` — always `3`.
+- `limits.hard_cap` — always `10`.
+- `top_seams[]` — ranked seam summaries, intentionally smaller than full agent
+  seam packets.
+- `top_seams[].why_now.reason` — one of
+  `changed_line_intersects_seam`, `changed_owner_function`,
+  `changed_test_for_related_seam`, `changed_assertion_near_related_test`,
+  `same_file_seam`, `explicit_seam_id`, or `repo_actionable_fallback`.
+- `top_seams[].packet_ref` — pointer to the full agent seam packet.
+- `top_seams[].verification` — before/after static evidence commands and an
+  optional focused test command.
+
+The working-set brief must not write files, generate tests, change cache or LSP
+refresh behavior, or emit runtime mutation claims.
+
 ## Pilot Summary
 
 `ripr pilot` writes a first-run operator packet under `target/ripr/pilot/` by

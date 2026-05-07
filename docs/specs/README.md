@@ -20,3 +20,4 @@ observable behavior.
 | [RIPR-SPEC-0007](RIPR-SPEC-0007-repository-configuration.md) | proposed | Repository configuration |
 | [RIPR-SPEC-0008](RIPR-SPEC-0008-sarif-ci-policy.md) | proposed | SARIF and CI policy |
 | [RIPR-SPEC-0009](RIPR-SPEC-0009-defaults-first-adoption.md) | proposed | Defaults-first adoption |
+| [RIPR-SPEC-0010](RIPR-SPEC-0010-agent-working-set-brief.md) | proposed | Agent working-set brief |

@@ -49,6 +49,34 @@ testing, which is a separate calibration step.
 
 Each step has a concrete `ripr` command or LSP capability behind it.
 
+## Planned working-set brief
+
+RIPR-SPEC-0010 defines a future `ripr agent brief` command for the
+active-edit path. That command is not implemented yet. It is intended to sit
+before the seam packet step and answer:
+
+```text
+Given this diff, base ref, file list, or seam ID, which 1-3 seams matter now?
+```
+
+Planned command forms:
+
+```bash
+ripr agent brief --root . --diff change.diff --json
+ripr agent brief --root . --base main --json
+ripr agent brief --root . --files src/pricing.rs --json
+ripr agent brief --root . --seam-id f3c9e4d21a0b7c88 --json
+```
+
+The brief is a router, not a replacement for the full seam packet. It should
+rank a capped set of seams with `why_now`, nearest test-to-imitate, candidate
+values, missing discriminators, assertion shape, and verification commands.
+The full packet remains the detailed work order for one seam.
+
+The planned surface is intentionally CLI-first. It does not change cache
+semantics, editor refresh behavior, LSP protocol, runtime calibration fixtures,
+or release/install docs.
+
 ### 1. Run `ripr`
 
 Two entry points:
