@@ -23,9 +23,6 @@ jobs:
 
       - uses: taiki-e/install-action@cargo-llvm-cov
 
-      - name: Clean coverage state
-        run: cargo llvm-cov clean --workspace
-
       - name: Generate coverage
         run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
 
