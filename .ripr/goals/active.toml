@@ -167,7 +167,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/hot-sidecar-latency-closeout"
-status = "ready"
+status = "done"
 branch = "campaign-hot-sidecar-latency-closeout"
 stackable = false
 requires_human_merge = true

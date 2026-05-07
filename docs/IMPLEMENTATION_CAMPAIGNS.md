@@ -1060,7 +1060,7 @@ semantics.
 
 Campaign ID: `hot-sidecar-latency`
 
-Status: active
+Status: done
 
 Objective:
 
@@ -1099,7 +1099,7 @@ Work items:
 | `pilot/first-screen-clarity` | done | Improved `pilot-summary.md` and terminal copy so the top recommendation answers what was inspected, why the seam matters, what focused test to write, and what command to run after without opening JSON. The complete-run JSON schema remains `0.2`; only human-facing Markdown/terminal copy changed. |
 | `cache/evidence-latency-progress` | done | Closeout proof found that the bounded repo-exposure latency report can still time out after `inventory_seams`, even with file-fact cache hits, without identifying how far evidence construction progressed. Added trace-only progress lines inside `evidence_for_seams`; this changes only opt-in latency stderr/report diagnostics and does not change analyzer outputs, schemas, LSP, SARIF, badges, or public API. |
 | `cache/evidence-hot-path-indexes` | done | Replaced the per-seam full test scan with indexed related-test candidate lookup, built value-resolution facts lazily per related test, and used an owned classification path in repo inventory to avoid cloning full evidence records. A long bounded cold run completed and stored the classified-seam cache; the following default 30-second latency report passed on JSON and Markdown cache hits. No analyzer output, schema, LSP, SARIF, badge, or public API changes are intended. |
-| `campaign/hot-sidecar-latency-closeout` | ready | Close Campaign 9 after cache measurement, warm-path reuse, bounded pilot behavior, and first-screen pilot clarity have landed. This should be docs/manifest proof unless closeout validation finds drift. |
+| `campaign/hot-sidecar-latency-closeout` | done | Closed Campaign 9 after latency measurement, file-fact warm reuse, evidence hot-path indexing, bounded pilot behavior, first-screen pilot clarity, and post-merge saved-workspace LSP proof landed. Current-main proof showed the first cold default repo-exposure latency run can still exceed 30 seconds until the classified-seam cache is filled; a 120-second bounded cold run completed, stored the cache, and the following default 30-second JSON/Markdown latency report passed on cache hits. |
 
 Commands:
 
@@ -1172,5 +1172,26 @@ Audit notes:
   vectors on the repo inventory path. Local proof: a 120-second cold latency
   run passed and stored the classified-seam cache; the next default 30-second
   latency report passed with `repo-exposure-json` and `repo-exposure-md` cache
-  hits at about 12 seconds each. The active next item is
-  `campaign/hot-sidecar-latency-closeout`.
+  hits at about 12 seconds each.
+- `campaign/hot-sidecar-latency-closeout` reran proof on current `main` after
+  the concurrent agent-brief and clippy-policy PRs had merged below the final
+  cache PR. `cargo test -p ripr lsp`, `cargo test -p ripr lsp::tests`, and
+  `cargo xtask lsp-cockpit-report` passed. The first default 30-second
+  `repo-exposure-latency-report` run was a cache miss and timed out during
+  evidence construction; a 120-second bounded run completed cold compute in
+  about 33 seconds, stored the classified-seam cache, and the following default
+  30-second report passed on cache hits (`repo-exposure-json` about 14.6
+  seconds, `repo-exposure-md` about 13.4 seconds). Campaign 9 is closed with no
+  ready work item left in `.ripr/goals/active.toml`; choose the next campaign
+  explicitly from the roadmap before starting new product work.
+
+Landed PR chain:
+
+- #421 `cache: audit current hot sidecar latency`
+- #422 `cache: add repo exposure latency report`
+- #423 `cache: reuse repo exposure warm path facts`
+- #447 `pilot: add bounded first-run analysis`
+- #448 `pilot: clarify first-screen recommendation`
+- #450 `cache: trace repo exposure evidence progress`
+- #451 `cache: index repo evidence hot path`
+- `campaign/hot-sidecar-latency-closeout`
