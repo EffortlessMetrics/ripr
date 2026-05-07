@@ -585,7 +585,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "campaign/runtime-calibration-closeout"
+next = "cache/current-latency-audit"
 metric = "targeted_test_outcome_available"
 
 [[capability]]
@@ -606,7 +606,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/opaque_fixture_builder"
 ]
-next = "campaign/runtime-calibration-closeout"
+next = "cache/current-latency-audit"
 metric = "operator_cockpit_available"
 
 [[capability]]
@@ -760,5 +760,5 @@ evidence = [
   "fixtures/boundary_gap/calibration/runtime-fixtures-v1/mutation-calibration.md"
 ]
 fixtures = ["fixtures/boundary_gap"]
-next = "campaign/runtime-calibration-closeout"
+next = "cache/current-latency-audit"
 metric = "checked calibration fixtures cover static gap plus runtime signal, static gap plus runtime clean, runtime signal without static gap, static clean plus runtime clean, inconclusive runtime labels, ambiguous file_line joins, unmatched runtime data, static seams without runtime data, and seam_id/file_line join methods"

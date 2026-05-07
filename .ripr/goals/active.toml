@@ -1,64 +1,44 @@
-id = "runtime-calibration-fixtures"
-title = "Runtime Calibration Fixture Expansion"
+id = "hot-sidecar-latency"
+title = "Hot Sidecar Latency Proof"
 status = "active"
 
-# This is Campaign 8 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
-# Campaign 7 (`defaults-first-operator-adoption`) closed after the
-# install-to-targeted-test loop was documented, fixture-backed, and verified
-# through the CLI, editor, CI, release, and report surfaces. The next lane
-# keeps runtime mutation data explicit and supplied; RIPR still does not run
-# mutation tests.
+# This is Campaign 9 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+# Campaign 8 (`runtime-calibration-fixtures`) closed after the supplied
+# cargo-mutants fixture set pinned the main static/runtime agreement buckets.
+# The next lane is performance and editor responsiveness, not new analyzer
+# semantics or new LSP product surface.
 
 objective = """
-Expand the calibration fixture lane so RIPR can compare static test-grip
-evidence with supplied cargo-mutants results across representative agreement
-buckets without turning RIPR into a mutation runner.
+Make the editor and operator paths faster without broadening the analyzer or LSP
+surface by measuring current cache and refresh behavior first, then tightening
+warm-path reuse only where there is evidence.
 """
 
 end_state = [
-  "Calibration fixtures cover static gaps with runtime signals and static gaps without runtime signals",
-  "Calibration fixtures cover runtime signals without static gaps, ambiguous file/line joins, and unmatched runtime data",
-  "Every runtime artifact is supplied input or generated calibration output; RIPR does not run mutation tests",
-  "Operator cockpit and docs show calibration as optional advisory context",
-  "Static output vocabulary remains unchanged outside explicit calibration reports"
+  "Current repo seam cache behavior and saved-workspace LSP refresh latency are measured from existing commands",
+  "Any hot-path cache change preserves output schemas, static vocabulary, public API, SARIF, badges, and saved-workspace LSP cockpit behavior",
+  "Rendered outputs remain uncached; only fact layers or in-memory indexes may be reused",
+  "Large-repo and editor latency decisions are backed by reports, not speculative storage"
 ]
 
 [[work_item]]
-id = "calibration/runtime-fixtures-v1"
-status = "done"
-branch = "runtime-calibration-fixtures"
-stackable = false
-requires_human_merge = true
-acceptance = "Controlled calibration fixtures exercise the main static/runtime agreement buckets with supplied cargo-mutants data, checked expected reports, and no mutation execution by RIPR"
-commands = [
-  "cargo test -p ripr calibration",
-  "cargo xtask mutation-calibration fixtures/boundary_gap/input --mutants-json fixtures/boundary_gap/calibration/runtime-fixtures-v1/runtime-mutants.json --repo-exposure-json fixtures/boundary_gap/calibration/runtime-fixtures-v1/repo-exposure.json",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-campaign",
-  "cargo xtask goals next",
-  "cargo xtask check-fixture-contracts",
-  "cargo xtask check-traceability",
-  "cargo xtask check-capabilities",
-  "cargo test --workspace"
-]
-
-[[work_item]]
-id = "campaign/runtime-calibration-closeout"
+id = "cache/current-latency-audit"
 status = "ready"
-branch = "runtime-calibration-closeout"
+branch = "hot-sidecar-latency-audit"
 stackable = false
 requires_human_merge = true
-acceptance = "Campaign 8 is reviewed, docs and manifests point at the next real lane, and runtime calibration remains optional supplied-data context rather than mutation execution"
+acceptance = "Current repo seam cache behavior, operator report generation, and saved-workspace LSP refresh proof are measured without changing analyzer, output, LSP, SARIF, badge, or public API behavior"
 commands = [
-  "cargo test -p ripr calibration",
-  "cargo xtask mutation-calibration fixtures/boundary_gap/input --mutants-json fixtures/boundary_gap/calibration/runtime-fixtures-v1/runtime-mutants.json --repo-exposure-json fixtures/boundary_gap/calibration/runtime-fixtures-v1/repo-exposure.json",
+  "cargo test -p ripr analysis::seam_cache --lib",
+  "cargo test -p ripr analysis::seam_inventory --lib",
+  "cargo test -p ripr lsp",
+  "cargo test -p ripr lsp::tests",
+  "cargo xtask lsp-cockpit-report",
+  "cargo xtask operator-cockpit",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-campaign",
   "cargo xtask goals next",
-  "cargo xtask check-fixture-contracts",
-  "cargo xtask check-traceability",
-  "cargo xtask check-capabilities",
+  "cargo xtask check-pr",
   "cargo test --workspace"
 ]

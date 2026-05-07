@@ -991,7 +991,7 @@ mutation tests.
 
 Campaign ID: `runtime-calibration-fixtures`
 
-Status: active
+Status: done
 
 Objective:
 
@@ -1023,7 +1023,7 @@ Work items:
 | Work item | Status | Notes |
 | --- | --- | --- |
 | `calibration/runtime-fixtures-v1` | done | Added `fixtures/boundary_gap/calibration/runtime-fixtures-v1/` with supplied repo-exposure and cargo-mutants JSON inputs plus checked Markdown/JSON reports. `crates/ripr/tests/cli_smoke.rs::calibration_runtime_fixture_matches_checked_reports` verifies the public command output against those reports and pins the main static/runtime buckets, ambiguous file/line joins, unmatched runtime data, static seams without runtime data, and `seam_id`/`file_line` joins. |
-| `campaign/runtime-calibration-closeout` | ready | Close Campaign 8 after the fixture-backed calibration lane is reviewed and manifests point at the next real lane. |
+| `campaign/runtime-calibration-closeout` | done | Closed Campaign 8 after the fixture-backed calibration lane was reviewed, post-merge proof passed on `main`, and manifests moved to Campaign 9 hot-sidecar latency proof. Runtime calibration remains optional supplied-data context; RIPR still does not run mutation tests. |
 
 Commands:
 
@@ -1046,3 +1046,74 @@ Blocking conditions:
 - changing static classifications to match a runtime sample
 - using runtime outcome vocabulary outside explicit calibration reports
 - making calibration required for the default pilot, LSP, SARIF, or badge paths
+
+Landed PR chain:
+
+- #420 `fixtures: add runtime calibration agreement sample`
+- `campaign/runtime-calibration-closeout`
+
+The active campaign now moves to Campaign 9. Hot-sidecar work should start with
+measurement of current cache and editor refresh behavior before changing cache
+semantics.
+
+## Campaign 9: Hot Sidecar Latency Proof
+
+Campaign ID: `hot-sidecar-latency`
+
+Status: active
+
+Objective:
+
+```text
+Make the editor and operator paths faster without broadening the analyzer or LSP
+surface by measuring current cache and refresh behavior first, then tightening
+warm-path reuse only where there is evidence.
+```
+
+Why it matters:
+
+Campaign 5A shipped the first repo seam fact cache, and Campaign 7 made the
+saved-workspace editor/operator loop usable. The next product risk is latency:
+large workspaces and repeated editor refreshes need proof that warm paths stay
+fast without serving stale seam evidence.
+
+End state:
+
+- current repo seam cache behavior and saved-workspace LSP refresh latency are
+  measured from existing commands
+- any hot-path cache change preserves output schemas, static vocabulary, public
+  API, SARIF, badges, and saved-workspace LSP cockpit behavior
+- rendered outputs remain uncached; only fact layers or in-memory indexes may be
+  reused
+- large-repo and editor latency decisions are backed by reports, not speculative
+  storage
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `cache/current-latency-audit` | ready | Measure current repo seam cache behavior, operator report generation, and saved-workspace LSP refresh proof before changing cache semantics. This is an audit/proof PR, not a cache rewrite. |
+
+Commands:
+
+```bash
+cargo test -p ripr analysis::seam_cache --lib
+cargo test -p ripr analysis::seam_inventory --lib
+cargo test -p ripr lsp
+cargo test -p ripr lsp::tests
+cargo xtask lsp-cockpit-report
+cargo xtask operator-cockpit
+cargo xtask check-output-contracts
+cargo xtask check-static-language
+cargo xtask check-campaign
+cargo xtask goals next
+cargo xtask check-pr
+cargo test --workspace
+```
+
+Blocking conditions:
+
+- new LSP features instead of preserving the saved-workspace contract
+- caching rendered JSON, Markdown, diagnostics, hover text, or agent packets
+- stale test, config, intent, or suppression data surviving a warm path
+- output/schema/public API/SARIF/badge drift without an explicit spec update
