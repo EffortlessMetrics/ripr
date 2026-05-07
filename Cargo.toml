@@ -50,6 +50,17 @@ map_err_ignore = "deny"
 assertions_on_result_states = "deny"
 lines_filter_map_ok = "deny"
 
+# Format and I/O footguns: format-arg redundancy hides expression evaluation
+# in the format machinery; path/file APIs have surprising error modes.
+format_in_format_args = "deny"
+to_string_in_format_args = "deny"
+unused_format_specs = "deny"
+suspicious_open_options = "deny"
+nonsensical_open_options = "deny"
+ineffective_open_options = "deny"
+path_buf_push_overwrite = "deny"
+join_absolute_paths = "deny"
+
 # Suppression governance.
 # `allow_attributes` itself stays advisory: some `#[expect]` migrations
 # would fail because the underlying lint only fires in some builds (e.g.
