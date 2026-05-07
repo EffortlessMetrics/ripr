@@ -41,10 +41,10 @@ use super::seams::{RepoSeam, RequiredDiscriminator};
 use crate::domain::{ValueContext, ValueFact};
 use std::collections::BTreeMap;
 
-/// Per-test resolution environment. Built once per (seam, test); each
-/// call-arg lookup is a `BTreeMap` lookup plus a small list scan.
-pub(crate) struct ValueEnv<'a> {
-    seam: &'a RepoSeam,
+/// Per-test value facts that do not depend on a specific seam. Built
+/// once per indexed test and reused while classifying every seam.
+#[derive(Default)]
+pub(crate) struct ValueEnvFacts {
     /// Test body with comments stripped so binding scans don't pick
     /// up `// let threshold = 999;` shadows.
     body_clean: String,
@@ -65,8 +65,8 @@ pub(crate) struct ValueEnv<'a> {
     module_constants: BTreeMap<String, String>,
 }
 
-impl<'a> ValueEnv<'a> {
-    pub(crate) fn build(seam: &'a RepoSeam, test: &'a TestSummary, index: &'a RustIndex) -> Self {
+impl ValueEnvFacts {
+    pub(crate) fn build(test: &TestSummary, index: &RustIndex) -> Self {
         let body_clean = strip_comments_and_strings(&test.body);
         let let_bindings = extract_let_bindings(&body_clean);
         let (rstest_cases, case_param_names) = extract_rstest_cases(test);
@@ -75,7 +75,6 @@ impl<'a> ValueEnv<'a> {
             .map(|facts| extract_module_constants(&facts.source))
             .unwrap_or_default();
         Self {
-            seam,
             body_clean,
             let_bindings,
             rstest_cases,
@@ -83,6 +82,20 @@ impl<'a> ValueEnv<'a> {
             table_bindings,
             module_constants,
         }
+    }
+}
+
+/// Per-test, per-seam resolution environment. The expensive
+/// seam-independent scans live in [`ValueEnvFacts`]; each call-arg
+/// lookup is a `BTreeMap` lookup plus a small list scan.
+pub(crate) struct ValueEnv<'a> {
+    seam: &'a RepoSeam,
+    facts: &'a ValueEnvFacts,
+}
+
+impl<'a> ValueEnv<'a> {
+    pub(crate) fn new(seam: &'a RepoSeam, facts: &'a ValueEnvFacts) -> Self {
+        Self { seam, facts }
     }
 
     /// Resolve a single owner-call argument to one or more
@@ -123,13 +136,13 @@ impl<'a> ValueEnv<'a> {
         }
 
         // 2. Let binding.
-        if let Some(value) = self.let_bindings.get(expr) {
+        if let Some(value) = self.facts.let_bindings.get(expr) {
             return vec![(value.clone(), ValueContext::FunctionArgument)];
         }
         // 3. Rstest case (positional).
-        if let Some(idx) = self.case_param_names.iter().position(|n| n == expr) {
+        if let Some(idx) = self.facts.case_param_names.iter().position(|n| n == expr) {
             let mut out = Vec::new();
-            for case in &self.rstest_cases {
+            for case in &self.facts.rstest_cases {
                 if let Some(value) = case.get(idx) {
                     out.push((value.clone(), ValueContext::TableRow));
                 }
@@ -139,14 +152,14 @@ impl<'a> ValueEnv<'a> {
             }
         }
         // 4. Table-row binding.
-        if let Some(values) = self.table_bindings.get(expr) {
+        if let Some(values) = self.facts.table_bindings.get(expr) {
             return values
                 .iter()
                 .map(|v| (v.clone(), ValueContext::TableRow))
                 .collect();
         }
         // 5. Same-file const/static.
-        if let Some(value) = self.module_constants.get(expr) {
+        if let Some(value) = self.facts.module_constants.get(expr) {
             return vec![(value.clone(), ValueContext::FunctionArgument)];
         }
         Vec::new()
@@ -164,7 +177,7 @@ impl<'a> ValueEnv<'a> {
             return Vec::new();
         }
         let mut out = Vec::new();
-        for cap in scan_builder_calls(&self.body_clean) {
+        for cap in scan_builder_calls(&self.facts.body_clean) {
             if !builder_method_matches_allowed(&cap.method, &allowed) {
                 continue;
             }
@@ -884,15 +897,8 @@ mod tests {
     #[test]
     fn resolve_option_result_constructor_keeps_unresolved_inner_opaque() {
         let seam = predicate_seam();
-        let env = ValueEnv {
-            seam: &seam,
-            body_clean: String::new(),
-            let_bindings: BTreeMap::new(),
-            rstest_cases: Vec::new(),
-            case_param_names: Vec::new(),
-            table_bindings: BTreeMap::new(),
-            module_constants: BTreeMap::new(),
-        };
+        let facts = ValueEnvFacts::default();
+        let env = ValueEnv::new(&seam, &facts);
         assert!(
             env.resolve("Some(make_amount())").is_empty(),
             "opaque constructor payloads must not become observed values"
@@ -982,15 +988,8 @@ mod tests {
             literals: Vec::new(),
             attrs: Vec::new(),
         };
-        let env = ValueEnv {
-            seam: &seam,
-            body_clean: String::new(),
-            let_bindings: BTreeMap::new(),
-            rstest_cases: Vec::new(),
-            case_param_names: Vec::new(),
-            table_bindings: BTreeMap::new(),
-            module_constants: BTreeMap::new(),
-        };
+        let facts = ValueEnvFacts::default();
+        let env = ValueEnv::new(&seam, &facts);
         // Suppress dead-code warnings by referencing the param.
         let _ = &test;
         let allowed = env.allowed_builder_method_names();

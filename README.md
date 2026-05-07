@@ -318,11 +318,12 @@ The closeout audit lives at
 `docs/handoffs/2026-05-07-campaign-7-closeout.md`. Campaign 8 has a checked
 runtime calibration fixture set for the main agreement buckets and keeps
 runtime data supplied and optional. Campaign 9 has measured the existing cache
-and editor proof surfaces and added bounded repo-exposure latency reporting;
-the active item is now warm-path reuse guided by that report:
+and editor proof surfaces, added bounded repo-exposure latency reporting, and
+verified warm-path fact reuse below the rendered-output layer. The active item
+is now first-screen pilot clarity:
 
 ```text
-cache/repo-exposure-warm-path-reuse
+pilot/first-screen-clarity
 ```
 
 Deeper capability state lives in [Capability matrix](docs/CAPABILITY_MATRIX.md)

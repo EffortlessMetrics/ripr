@@ -822,9 +822,10 @@ Field contract:
 - `runs[].trace` - analyzer trace lines captured from stderr when
   `RIPR_REPO_EXPOSURE_LATENCY_TRACE=1` is set by the xtask command. Phases
   currently include `collect_workspace_state`, `cache_load`,
-  `file_fact_cache`, `cold_compute`, `cache_store`, and `total`; cache load
-  statuses include `hit`, `miss`, and `corrupt_ignored`. The
-  `file_fact_cache` status is a compact counter label such as
+  `file_fact_cache`, `apply_oracle_policy`, `inventory_seams`,
+  `evidence_for_seams`, `classify_seams`, `cold_compute`, `cache_store`, and
+  `total`; cache load statuses include `hit`, `miss`, and `corrupt_ignored`.
+  The `file_fact_cache` status is a compact counter label such as
   `hits_134_misses_0_corrupt_0_store_errors_0`; it describes parser/file-fact
   cache reuse only, not rendered output caching.
 

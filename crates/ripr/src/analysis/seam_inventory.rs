@@ -154,18 +154,49 @@ pub(crate) fn inventory_classified_seams_uncached_with_config(
     root: &Path,
     config: &RiprConfig,
 ) -> Result<Vec<ClassifiedSeam>, String> {
-    let rust_files = workspace::discover_rust_files(root)?;
+    let discover_started = Instant::now();
+    let rust_files = match workspace::discover_rust_files(root) {
+        Ok(files) => {
+            trace_latency_phase("discover_rust_files", "ok", discover_started.elapsed());
+            files
+        }
+        Err(err) => {
+            trace_latency_phase("discover_rust_files", "error", discover_started.elapsed());
+            return Err(err);
+        }
+    };
+    let filter_started = Instant::now();
     let production_files: Vec<PathBuf> = rust_files
         .iter()
         .filter(|p| workspace::is_production_rust_path(p))
         .cloned()
         .collect();
+    trace_latency_phase("filter_production_files", "ok", filter_started.elapsed());
 
-    let mut index = rust_index::build_index(root, &rust_files)?;
+    let index_started = Instant::now();
+    let mut index = match rust_index::build_index(root, &rust_files) {
+        Ok(index) => {
+            trace_latency_phase("build_index", "ok", index_started.elapsed());
+            index
+        }
+        Err(err) => {
+            trace_latency_phase("build_index", "error", index_started.elapsed());
+            return Err(err);
+        }
+    };
+    let policy_started = Instant::now();
     rust_index::apply_oracle_policy(&mut index, config.oracles());
+    trace_latency_phase("apply_oracle_policy", "ok", policy_started.elapsed());
+    let seams_started = Instant::now();
     let seams = inventory_seams_from_index(&production_files, &index);
+    trace_latency_phase("inventory_seams", "ok", seams_started.elapsed());
+    let evidence_started = Instant::now();
     let evidence = test_grip_evidence::evidence_for_seams(&seams, &index);
-    Ok(seam_classification::classify_seams(&seams, &evidence))
+    trace_latency_phase("evidence_for_seams", "ok", evidence_started.elapsed());
+    let classify_started = Instant::now();
+    let classified = seam_classification::classify_seams(&seams, &evidence);
+    trace_latency_phase("classify_seams", "ok", classify_started.elapsed());
+    Ok(classified)
 }
 
 /// Walk production Rust files at `root` and return compact seam grip
@@ -228,10 +259,19 @@ fn inventory_classified_seams_from_state_with_config(
         &cached.file_fact_cache.status_label(),
         build_started.elapsed(),
     );
+    let policy_started = Instant::now();
     rust_index::apply_oracle_policy(&mut cached.index, config.oracles());
+    trace_latency_phase("apply_oracle_policy", "ok", policy_started.elapsed());
+    let seams_started = Instant::now();
     let seams = inventory_seams_from_index(&production_files, &cached.index);
+    trace_latency_phase("inventory_seams", "ok", seams_started.elapsed());
+    let evidence_started = Instant::now();
     let evidence = test_grip_evidence::evidence_for_seams(&seams, &cached.index);
-    Ok(seam_classification::classify_seams(&seams, &evidence))
+    trace_latency_phase("evidence_for_seams", "ok", evidence_started.elapsed());
+    let classify_started = Instant::now();
+    let classified = seam_classification::classify_seams(&seams, &evidence);
+    trace_latency_phase("classify_seams", "ok", classify_started.elapsed());
+    Ok(classified)
 }
 
 fn inventory_seam_grip_class_counts_from_state_with_config(

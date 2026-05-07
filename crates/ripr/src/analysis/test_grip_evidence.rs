@@ -51,9 +51,9 @@ pub(crate) struct RelatedTestGrip {
     pub(crate) relation_confidence: RelationConfidence,
 }
 
-/// Precomputed per-test facts for compact consumers that only need
-/// final stage states/classes. This avoids repeatedly tokenizing the
-/// same test assertions and import lines for repo badge counts.
+/// Precomputed per-test facts for repo seam evidence consumers. This
+/// avoids repeatedly tokenizing the same test assertions and import
+/// lines while classifying every seam in a workspace.
 pub(crate) struct CompactGripContext<'a> {
     index: &'a RustIndex,
     tests: Vec<CompactTest<'a>>,
@@ -67,6 +67,7 @@ struct CompactTest<'a> {
     call_names: BTreeSet<String>,
     assertion_tokens: BTreeSet<String>,
     code_lines: Vec<String>,
+    value_facts: super::value_resolution::ValueEnvFacts,
 }
 
 impl<'a> CompactGripContext<'a> {
@@ -91,6 +92,7 @@ impl<'a> CompactGripContext<'a> {
                     .lines()
                     .map(strip_comments_and_strings)
                     .collect::<Vec<_>>();
+                let value_facts = super::value_resolution::ValueEnvFacts::build(test, index);
                 CompactTest {
                     test,
                     path_normalized: normalize_path(&test.file),
@@ -99,6 +101,7 @@ impl<'a> CompactGripContext<'a> {
                     call_names,
                     assertion_tokens,
                     code_lines,
+                    value_facts,
                 }
             })
             .collect();
@@ -194,31 +197,45 @@ impl RelationConfidence {
 /// Build evidence records for a slice of seams. Output is sorted by
 /// `seam_id` so two runs over the same input produce identical bytes.
 pub(crate) fn evidence_for_seams(seams: &[RepoSeam], index: &RustIndex) -> Vec<TestGripEvidence> {
+    let context = CompactGripContext::new(index);
     let mut out: Vec<TestGripEvidence> = seams
         .iter()
-        .map(|seam| evidence_for_seam(seam, index))
+        .map(|seam| evidence_for_seam_with_context(seam, &context))
         .collect();
     out.sort_by(|a, b| a.seam_id.as_str().cmp(b.seam_id.as_str()));
     out
 }
 
 /// Build evidence for a single seam.
+#[cfg(test)]
 pub(crate) fn evidence_for_seam(seam: &RepoSeam, index: &RustIndex) -> TestGripEvidence {
-    let related_with_reason = find_related_tests(seam, index);
-    let owner_fn = find_owner_function(seam, index);
+    let context = CompactGripContext::new(index);
+    evidence_for_seam_with_context(seam, &context)
+}
 
-    let related: Vec<&TestSummary> = related_with_reason.iter().map(|(t, _)| *t).collect();
+fn evidence_for_seam_with_context(
+    seam: &RepoSeam,
+    context: &CompactGripContext<'_>,
+) -> TestGripEvidence {
+    let related_with_reason = find_related_tests_with_context(seam, context);
+    let related_indexed: Vec<&CompactTest<'_>> = related_with_reason
+        .iter()
+        .map(|(indexed, _reason)| *indexed)
+        .collect();
+    let owner_fn = find_owner_function(seam, context.index);
+
+    let related: Vec<&TestSummary> = related_indexed.iter().map(|indexed| indexed.test).collect();
 
     let reach = reach_evidence(seam, &related);
     let (activate, observed_values, missing_discriminators) =
-        activate_evidence(seam, &related, owner_fn, index);
+        activate_evidence(seam, &related_indexed, owner_fn);
     let propagate = propagate_evidence(seam, &related);
     let observe = observe_evidence(&related);
     let discriminate = discriminate_evidence(seam, &related);
 
     let mut related_tests: Vec<RelatedTestGrip> = related_with_reason
         .iter()
-        .map(|(test, reason)| related_test_grip(seam, test, *reason))
+        .map(|(indexed, reason)| related_test_grip(seam, indexed.test, *reason))
         .collect();
     // Ranked order: confidence (high first) → reason priority → file →
     // name → line. Replaces the previous (name, file, line) sort. The
@@ -260,12 +277,13 @@ pub(crate) fn compact_evidence_for_seam(
     seam: &RepoSeam,
     context: &CompactGripContext<'_>,
 ) -> TestGripEvidence {
-    let related = find_related_tests_compact(seam, context);
+    let related_indexed = find_related_tests_compact(seam, context);
+    let related: Vec<&TestSummary> = related_indexed.iter().map(|indexed| indexed.test).collect();
     let owner_fn = find_owner_function(seam, context.index);
 
     let reach = reach_evidence(seam, &related);
     let (activate, missing_discriminators) =
-        compact_activate_evidence(seam, &related, owner_fn, context.index);
+        compact_activate_evidence(seam, &related_indexed, owner_fn);
     let propagate = propagate_evidence(seam, &related);
     let observe = observe_evidence(&related);
     let discriminate = discriminate_evidence(seam, &related);
@@ -291,118 +309,10 @@ pub(crate) fn compact_evidence_for_seam(
 /// Detection per reason — strict ordering: the first reason that fires
 /// wins, so e.g. a test that both `calls owner` and `is in same file`
 /// carries `direct_owner_call`, never `same_test_file`.
-fn find_related_tests<'a>(
+fn find_related_tests_with_context<'a>(
     seam: &RepoSeam,
-    index: &'a RustIndex,
-) -> Vec<(&'a TestSummary, RelationReason)> {
-    let owner_fn = find_owner_function(seam, index);
-    let owner_name = owner_fn.map(|f| f.name.as_str()).unwrap_or("");
-    let owner_name_lower = owner_name.to_ascii_lowercase();
-    let owner_file = owner_fn.map(|f| f.file.as_path());
-    let owner_file_stem = owner_file
-        .and_then(|p| p.file_stem())
-        .and_then(|s| s.to_str())
-        .unwrap_or("");
-    let owner_module_path = owner_file.and_then(module_path_for);
-    let prefix = owner_fn.and_then(|f| package_prefix(&f.file));
-
-    // Tokens from `RequiredDiscriminator` and `ExpectedSink` for
-    // `assertion_target_affinity`. Filtered through
-    // `extract_identifier_tokens`, so common stop-words and short
-    // tokens are already excluded — the residual set is what a test
-    // assertion would have to mention to count.
-    let discriminator_tokens = required_discriminator_tokens(seam);
-    let sink_tokens = extract_identifier_tokens(seam.expected_sink().as_str());
-    let target_tokens: Vec<String> = discriminator_tokens
-        .into_iter()
-        .chain(sink_tokens)
-        .collect();
-
-    let mut related: Vec<(&'a TestSummary, RelationReason)> = Vec::new();
-    let mut seen: std::collections::HashSet<(String, std::path::PathBuf, usize)> =
-        std::collections::HashSet::new();
-
-    for test in &index.tests {
-        let test_path = normalize_path(&test.file);
-        if let Some(prefix) = &prefix
-            && !test_path.starts_with(prefix)
-        {
-            continue;
-        }
-
-        let test_module_path = module_path_for(&test.file);
-        let test_name_lower = test.name.to_ascii_lowercase();
-
-        // Reason resolution — strict priority order.
-        let reason =
-            if !owner_name.is_empty() && test.calls.iter().any(|call| call.name == owner_name) {
-                // `direct_owner_call`: test calls the owner directly. The
-                // call walker captures the bare callee name, which covers
-                // both `owner(...)` and qualified forms like
-                // `module::owner(...)` — `CallFact.name` is the unqualified
-                // tail.
-                Some(RelationReason::DirectOwnerCall)
-            } else if !target_tokens.is_empty() && assertion_targets_seam(test, &target_tokens) {
-                // `assertion_target_affinity`: at least one assertion in
-                // the test mentions a token from the seam's required
-                // discriminator or expected sink. Token-aware (full
-                // identifier match), so `discount_threshold` does not
-                // match `discount_threshold_factor` or random substring.
-                Some(RelationReason::AssertionTargetAffinity)
-            } else if !owner_file_stem.is_empty() && same_test_file(&test.file, owner_file_stem) {
-                // `same_test_file`: physical/virtual sibling — a `tests/`
-                // file with the same stem as the owner's source, an inline
-                // `#[cfg(test)] mod tests` (test.file == owner.file), or a
-                // `*_test.rs` / `*_tests.rs` peer.
-                Some(RelationReason::SameTestFile)
-            } else if let (Some(owner_mod), Some(test_mod)) =
-                (owner_module_path.as_deref(), test_module_path.as_deref())
-                && same_module(owner_mod, test_mod)
-            {
-                // `same_module`: shares the owner's module path beyond
-                // just the file stem — e.g., `src/auth/login.rs` ↔
-                // `tests/auth/integration.rs`.
-                Some(RelationReason::SameModule)
-            } else if !owner_name_lower.is_empty() && test_name_lower.contains(&owner_name_lower) {
-                // `owner_named_test`: test name embeds the owner name.
-                // Conservative: substring on the test name (lowercase),
-                // which does not have the false-positive risk of body
-                // substring.
-                Some(RelationReason::OwnerNamedTest)
-            } else if !owner_name.is_empty() && test_imports_owner(test, owner_name) {
-                // `import_path_affinity`: test body mentions the owner
-                // via an explicit qualified-path (`module::owner`) or
-                // inline `use ... owner` shape, without a direct call.
-                // Captures the "test imports it but does not invoke
-                // it" pattern common in higher-level integration
-                // tests. Detection tightened per #310 review — see
-                // `test_imports_owner` for the accepted/rejected
-                // shapes.
-                Some(RelationReason::ImportPathAffinity)
-            } else if test_uses_owner_fixture(test, owner_file, index) {
-                // `fixture_owner_affinity`: test calls a non-test fn that
-                // lives in the owner's source file and whose name follows
-                // a fixture / builder convention. Narrow on purpose — the
-                // user tightened this to "explicit fixture relationship
-                // only", not "any helper call".
-                Some(RelationReason::FixtureOwnerAffinity)
-            } else {
-                None
-            };
-
-        let Some(reason) = reason else { continue };
-        let key = (test.name.clone(), test.file.clone(), test.start_line);
-        if seen.insert(key) {
-            related.push((test, reason));
-        }
-    }
-    related
-}
-
-fn find_related_tests_compact<'a>(
-    seam: &RepoSeam,
-    context: &'a CompactGripContext<'a>,
-) -> Vec<&'a TestSummary> {
+    context: &'a CompactGripContext<'_>,
+) -> Vec<(&'a CompactTest<'a>, RelationReason)> {
     let owner_fn = find_owner_function(seam, context.index);
     let owner_name = owner_fn.map(|f| f.name.as_str()).unwrap_or("");
     let owner_name_lower = owner_name.to_ascii_lowercase();
@@ -418,6 +328,11 @@ fn find_related_tests_compact<'a>(
         .map(fixture_names_for_owner_file)
         .unwrap_or_default();
 
+    // Tokens from `RequiredDiscriminator` and `ExpectedSink` for
+    // `assertion_target_affinity`. Filtered through
+    // `extract_identifier_tokens`, so common stop-words and short
+    // tokens are already excluded — the residual set is what a test
+    // assertion would have to mention to count.
     let discriminator_tokens = required_discriminator_tokens(seam);
     let sink_tokens = extract_identifier_tokens(seam.expected_sink().as_str());
     let target_tokens: BTreeSet<String> = discriminator_tokens
@@ -425,7 +340,7 @@ fn find_related_tests_compact<'a>(
         .chain(sink_tokens)
         .collect();
 
-    let mut related: Vec<(&'a TestSummary, RelationReason)> = Vec::new();
+    let mut related: Vec<(&'a CompactTest<'a>, RelationReason)> = Vec::new();
     let mut seen: std::collections::HashSet<(String, std::path::PathBuf, usize)> =
         std::collections::HashSet::new();
 
@@ -436,7 +351,13 @@ fn find_related_tests_compact<'a>(
             continue;
         }
 
+        // Reason resolution — strict priority order.
         let reason = if !owner_name.is_empty() && indexed.call_names.contains(owner_name) {
+            // `direct_owner_call`: test calls the owner directly. The
+            // call walker captures the bare callee name, which covers
+            // both `owner(...)` and qualified forms like
+            // `module::owner(...)` — `CallFact.name` is the unqualified
+            // tail.
             Some(RelationReason::DirectOwnerCall)
         } else if !target_tokens.is_empty()
             && indexed
@@ -444,18 +365,42 @@ fn find_related_tests_compact<'a>(
                 .iter()
                 .any(|token| target_tokens.contains(token))
         {
+            // `assertion_target_affinity`: at least one assertion in
+            // the test mentions a token from the seam's required
+            // discriminator or expected sink. Token-aware (full
+            // identifier match), so `discount_threshold` does not
+            // match `discount_threshold_factor` or random substring.
             Some(RelationReason::AssertionTargetAffinity)
         } else if !owner_file_stem.is_empty() && same_test_file(&indexed.test.file, owner_file_stem)
         {
+            // `same_test_file`: physical/virtual sibling — a `tests/`
+            // file with the same stem as the owner's source, an inline
+            // `#[cfg(test)] mod tests` (test.file == owner.file), or a
+            // `*_test.rs` / `*_tests.rs` peer.
             Some(RelationReason::SameTestFile)
         } else if let (Some(owner_mod), Some(test_mod)) =
             (owner_module_path.as_deref(), indexed.module_path.as_deref())
             && same_module(owner_mod, test_mod)
         {
+            // `same_module`: shares the owner's module path beyond
+            // just the file stem — e.g., `src/auth/login.rs` ↔
+            // `tests/auth/integration.rs`.
             Some(RelationReason::SameModule)
         } else if !owner_name_lower.is_empty() && indexed.name_lower.contains(&owner_name_lower) {
+            // `owner_named_test`: test name embeds the owner name.
+            // Conservative: substring on the test name (lowercase),
+            // which does not have the false-positive risk of body
+            // substring.
             Some(RelationReason::OwnerNamedTest)
         } else if !owner_name.is_empty() && test_imports_owner_compact(indexed, owner_name) {
+            // `import_path_affinity`: test body mentions the owner
+            // via an explicit qualified-path (`module::owner`) or
+            // inline `use ... owner` shape, without a direct call.
+            // Captures the "test imports it but does not invoke
+            // it" pattern common in higher-level integration
+            // tests. Detection tightened per #310 review — see
+            // the import detector below for the accepted/rejected
+            // shapes.
             Some(RelationReason::ImportPathAffinity)
         } else if !fixture_names.is_empty()
             && indexed
@@ -463,10 +408,16 @@ fn find_related_tests_compact<'a>(
                 .iter()
                 .any(|call| fixture_names.contains(call))
         {
+            // `fixture_owner_affinity`: test calls a non-test fn that
+            // lives in the owner's source file and whose name follows
+            // a fixture / builder convention. Narrow on purpose — the
+            // user tightened this to "explicit fixture relationship
+            // only", not "any helper call".
             Some(RelationReason::FixtureOwnerAffinity)
         } else {
             None
         };
+
         let Some(reason) = reason else { continue };
         let key = (
             indexed.test.name.clone(),
@@ -474,23 +425,31 @@ fn find_related_tests_compact<'a>(
             indexed.test.start_line,
         );
         if seen.insert(key) {
-            related.push((indexed.test, reason));
+            related.push((indexed, reason));
         }
     }
-    related.sort_by(|(test_a, reason_a), (test_b, reason_b)| {
+    related
+}
+
+fn find_related_tests_compact<'a>(
+    seam: &RepoSeam,
+    context: &'a CompactGripContext<'_>,
+) -> Vec<&'a CompactTest<'a>> {
+    let mut related = find_related_tests_with_context(seam, context);
+    related.sort_by(|(indexed_a, reason_a), (indexed_b, reason_b)| {
         reason_a
             .confidence()
             .rank()
             .cmp(&reason_b.confidence().rank())
             .then(reason_a.priority().cmp(&reason_b.priority()))
-            .then(test_a.file.cmp(&test_b.file))
-            .then(test_a.name.cmp(&test_b.name))
-            .then(test_a.start_line.cmp(&test_b.start_line))
+            .then(indexed_a.test.file.cmp(&indexed_b.test.file))
+            .then(indexed_a.test.name.cmp(&indexed_b.test.name))
+            .then(indexed_a.test.start_line.cmp(&indexed_b.test.start_line))
     });
     related
         .into_iter()
         .take(COMPACT_RELATED_TEST_LIMIT)
-        .map(|(test, _reason)| test)
+        .map(|(indexed, _reason)| indexed)
         .collect()
 }
 
@@ -524,6 +483,7 @@ fn required_discriminator_tokens(seam: &RepoSeam) -> Vec<String> {
 /// of `tokens` as a whole identifier? Substring match would let
 /// `discount` accidentally match `discount_threshold`; we want exact
 /// identifier hits.
+#[cfg(test)]
 fn assertion_targets_seam(test: &TestSummary, tokens: &[String]) -> bool {
     if tokens.is_empty() {
         return false;
@@ -624,33 +584,6 @@ fn same_module(owner_module: &str, test_module: &str) -> bool {
 /// 2. an inline `use ... owner_name` line in the test body. File-
 ///    scope `use` lines are not in `test.body` so this only covers
 ///    in-function imports.
-fn test_imports_owner(test: &TestSummary, owner_name: &str) -> bool {
-    if owner_name.is_empty() {
-        return false;
-    }
-    let qualified = format!("::{owner_name}");
-    for raw_line in test.body.lines() {
-        // Strip line comments and string-literal contents before
-        // looking at the line. Without this, doc comments like
-        // `// see crate::pricing::owner` or string literals like
-        // `let s = "crate::pricing::owner";` would falsely match the
-        // `::owner` marker — defeating the whole point of the
-        // tightening that #310 added. Caught by CodeRabbit.
-        let code = strip_comments_and_strings(raw_line);
-        if code.contains(&qualified) {
-            return true;
-        }
-        if code.trim_start().starts_with("use ")
-            && extract_identifier_tokens(&code)
-                .iter()
-                .any(|t| t == owner_name)
-        {
-            return true;
-        }
-    }
-    false
-}
-
 fn test_imports_owner_compact(test: &CompactTest<'_>, owner_name: &str) -> bool {
     if owner_name.is_empty() {
         return false;
@@ -706,36 +639,6 @@ fn strip_comments_and_strings(line: &str) -> String {
         out.push(ch);
     }
     out
-}
-
-/// Test calls a non-test function that lives in the owner's source
-/// file and whose name follows a fixture / builder convention. Narrow
-/// per the campaign decision: explicit fixture relationship only, not
-/// "any helper call".
-fn test_uses_owner_fixture(
-    test: &TestSummary,
-    owner_file: Option<&Path>,
-    index: &RustIndex,
-) -> bool {
-    let Some(owner_file) = owner_file else {
-        return false;
-    };
-    let Some(owner_facts) = index.files.get(owner_file) else {
-        return false;
-    };
-    for call in &test.calls {
-        let Some(target) = owner_facts
-            .functions
-            .iter()
-            .find(|f| f.name == call.name && !f.is_test)
-        else {
-            continue;
-        };
-        if is_fixture_named(&target.name) || target.body.contains("#[fixture]") {
-            return true;
-        }
-    }
-    false
 }
 
 fn is_fixture_named(name: &str) -> bool {
@@ -806,21 +709,20 @@ fn reach_evidence(seam: &RepoSeam, related: &[&TestSummary]) -> StageEvidence {
 /// per-kind required value or shape minus what we observed.
 fn activate_evidence(
     seam: &RepoSeam,
-    related: &[&TestSummary],
+    related: &[&CompactTest<'_>],
     owner_fn: Option<&FunctionSummary>,
-    index: &RustIndex,
 ) -> (StageEvidence, Vec<ValueFact>, Vec<MissingDiscriminatorFact>) {
     let owner_name = owner_fn.map(|f| f.name.as_str()).unwrap_or("");
     let mut observed: Vec<ValueFact> = Vec::new();
 
     if !owner_name.is_empty() {
-        for test in related {
-            // Per-test resolution env (let bindings, rstest cases,
-            // table rows, same-file consts). Built once and reused
-            // across all owner calls in this test. Per
-            // `analysis/value-extraction-v2`.
-            let env = super::value_resolution::ValueEnv::build(seam, test, index);
-            for call in &test.calls {
+        for indexed in related {
+            // Per-test resolution facts (let bindings, rstest cases,
+            // table rows, same-file consts) are precomputed in the
+            // context and reused across all owner calls in this test.
+            // Per `analysis/value-extraction-v2`.
+            let env = super::value_resolution::ValueEnv::new(seam, &indexed.value_facts);
+            for call in &indexed.test.calls {
                 if call.name != owner_name {
                     continue;
                 }
@@ -907,12 +809,11 @@ fn activate_evidence(
 
 fn compact_activate_evidence(
     seam: &RepoSeam,
-    related: &[&TestSummary],
+    related: &[&CompactTest<'_>],
     owner_fn: Option<&FunctionSummary>,
-    index: &RustIndex,
 ) -> (StageEvidence, Vec<MissingDiscriminatorFact>) {
     if seam.kind() == SeamKind::PredicateBoundary {
-        let (stage, _observed, missing) = activate_evidence(seam, related, owner_fn, index);
+        let (stage, _observed, missing) = activate_evidence(seam, related, owner_fn);
         return (stage, missing);
     }
 
@@ -920,7 +821,7 @@ fn compact_activate_evidence(
     let direct_owner_call = !owner_name.is_empty()
         && related
             .iter()
-            .any(|test| test.calls.iter().any(|call| call.name == owner_name));
+            .any(|indexed| indexed.call_names.contains(owner_name));
     let state = if related.is_empty() {
         StageState::No
     } else if direct_owner_call {
@@ -1662,6 +1563,48 @@ fn below_case() {
     }
 
     #[test]
+    fn evidence_for_seams_matches_single_seam_evidence_while_reusing_context() -> Result<(), String>
+    {
+        let prod = PathBuf::from("src/pricing.rs");
+        let prod_src = r#"
+pub fn discounted_total(amount: i32, threshold: i32) -> i32 {
+    if amount >= threshold { amount - 10 } else { amount }
+}
+"#;
+        let tests = PathBuf::from("tests/pricing_tests.rs");
+        let tests_src = r#"
+#[test]
+fn equality_boundary_returns_discount() {
+    assert_eq!(discounted_total(100, 100), 90);
+}
+#[test]
+fn import_only_mentions_owner() {
+    use crate::pricing::discounted_total;
+    assert_eq!(1, 1);
+}
+"#;
+        let index = index_from_files(&[(prod, prod_src), (tests, tests_src)])?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pricing.rs")], &index);
+        let batch = evidence_for_seams(&seams, &index);
+
+        for seam in &seams {
+            let single = evidence_for_seam(seam, &index);
+            let Some(from_batch) = batch.iter().find(|entry| entry.seam_id == *seam.id()) else {
+                return Err(format!(
+                    "batch evidence missing seam {}",
+                    seam.id().as_str()
+                ));
+            };
+            let single_json =
+                serde_json::to_string(&single).map_err(|err| format!("encode single: {err}"))?;
+            let batch_json =
+                serde_json::to_string(from_batch).map_err(|err| format!("encode batch: {err}"))?;
+            assert_eq!(single_json, batch_json);
+        }
+        Ok(())
+    }
+
+    #[test]
     fn given_compact_evidence_when_direct_owner_call_reaches_error_seam_then_activation_is_yes()
     -> Result<(), String> {
         let prod = PathBuf::from("src/parse.rs");
@@ -1734,7 +1677,7 @@ fn wrapper_rejects_empty() {
 
         let related = find_related_tests_compact(error_seam, &context);
         assert_eq!(related.len(), 1);
-        assert_eq!(related[0].name, "wrapper_rejects_empty");
+        assert_eq!(related[0].test.name, "wrapper_rejects_empty");
 
         let evidence = compact_evidence_for_seam(error_seam, &context);
         assert_eq!(evidence.reach.state, StageState::Yes);
@@ -1769,8 +1712,11 @@ pub fn discounted_total(amount: i32, threshold: i32) -> i32 {
         let related = find_related_tests_compact(predicate, &context);
 
         assert_eq!(related.len(), COMPACT_RELATED_TEST_LIMIT);
-        assert_eq!(related[0].name, "direct_00");
-        assert_eq!(related[COMPACT_RELATED_TEST_LIMIT - 1].name, "direct_11");
+        assert_eq!(related[0].test.name, "direct_00");
+        assert_eq!(
+            related[COMPACT_RELATED_TEST_LIMIT - 1].test.name,
+            "direct_11"
+        );
         Ok(())
     }
 
