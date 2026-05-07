@@ -1,6 +1,6 @@
 use crate::analysis;
 use crate::app::agent_brief::{
-    AgentBriefLine, AgentBriefResolvedWorkingSet, select_agent_brief_seams,
+    AgentBriefLine, AgentBriefPolicy, AgentBriefResolvedWorkingSet, select_agent_brief_seams,
 };
 use crate::app::{self, CheckInput, Mode, OutputFormat};
 use crate::cli::agent::{AgentBriefOptions, AgentBriefWorkingSet, AgentCommand, parse_agent_args};
@@ -99,7 +99,12 @@ fn run_agent_brief(options: AgentBriefOptions) -> Result<(), String> {
 
     let working_set = resolve_agent_brief_working_set(&input.root, &options.working_set)?;
     let classified = analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
-    let selection = select_agent_brief_seams(&classified, &working_set, options.max_seams);
+    let selection = select_agent_brief_seams(
+        &classified,
+        &working_set,
+        options.max_seams,
+        AgentBriefPolicy::from_config(&config),
+    );
     let rendered = output::agent_brief::render_agent_brief_json(
         &input.root,
         &input.mode,

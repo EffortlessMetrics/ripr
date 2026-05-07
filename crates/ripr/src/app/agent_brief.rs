@@ -1,5 +1,6 @@
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::seams::SeamGripClass;
+use crate::config::{ConfigSeverity, RiprConfig};
 use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
 
@@ -194,32 +195,50 @@ pub(crate) struct AgentBriefSelection<'a> {
     pub(crate) warnings: Vec<String>,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct AgentBriefPolicy<'a> {
+    config: &'a RiprConfig,
+}
+
+impl<'a> AgentBriefPolicy<'a> {
+    pub(crate) fn from_config(config: &'a RiprConfig) -> Self {
+        Self { config }
+    }
+
+    fn severity_for(self, class: SeamGripClass) -> ConfigSeverity {
+        self.config.severity().for_seam(class)
+    }
+}
+
 pub(crate) fn select_agent_brief_seams<'a>(
     classified: &'a [ClassifiedSeam],
     working_set: &AgentBriefResolvedWorkingSet,
     requested_max: usize,
+    policy: AgentBriefPolicy<'_>,
 ) -> AgentBriefSelection<'a> {
     debug_assert_eq!(AGENT_BRIEF_WHY_NOW_REASON_VOCABULARY.len(), 7);
     debug_assert_eq!(AGENT_BRIEF_WHY_NOW_CONFIDENCE_VOCABULARY.len(), 4);
 
     let max_seams = normalize_requested_max(requested_max);
     let mut warnings = Vec::new();
-    let mut candidates = direct_candidates(classified, working_set, &mut warnings);
+    let mut direct = direct_candidates(classified, working_set, policy, &mut warnings);
 
-    if candidates.is_empty() {
-        candidates = fallback_candidates(classified);
+    if direct.candidates.is_empty() && direct.allow_fallback {
+        direct.candidates = fallback_candidates(classified, policy);
     }
 
-    candidates.sort_by(compare_selected);
-    candidates.truncate(max_seams);
+    direct
+        .candidates
+        .sort_by(|left, right| compare_selected(left, right, policy));
+    direct.candidates.truncate(max_seams);
 
-    let returned = candidates.len();
+    let returned = direct.candidates.len();
     AgentBriefSelection {
         requested: requested_max,
         returned,
         default: DEFAULT_AGENT_BRIEF_MAX_SEAMS,
         hard_cap: AGENT_BRIEF_HARD_MAX_SEAMS,
-        top_seams: candidates,
+        top_seams: direct.candidates,
         warnings,
     }
 }
@@ -232,25 +251,53 @@ fn normalize_requested_max(requested: usize) -> usize {
     }
 }
 
+struct AgentBriefCandidateSelection<'a> {
+    candidates: Vec<AgentBriefSelectedSeam<'a>>,
+    allow_fallback: bool,
+}
+
 fn direct_candidates<'a>(
     classified: &'a [ClassifiedSeam],
     working_set: &AgentBriefResolvedWorkingSet,
+    policy: AgentBriefPolicy<'_>,
     warnings: &mut Vec<String>,
-) -> Vec<AgentBriefSelectedSeam<'a>> {
+) -> AgentBriefCandidateSelection<'a> {
     if let Some(seam_id) = working_set.seam_id.as_deref() {
-        return explicit_seam_candidate(classified, seam_id, warnings);
+        return AgentBriefCandidateSelection {
+            candidates: explicit_seam_candidate(classified, seam_id, policy, warnings),
+            allow_fallback: false,
+        };
     }
 
-    classified
-        .iter()
-        .filter(|entry| is_agent_actionable(entry.class))
-        .filter_map(|entry| why_now_for(entry, working_set).map(|why_now| selected(entry, why_now)))
-        .collect()
+    let mut candidates = Vec::new();
+    let mut matched_working_set = false;
+    for entry in classified {
+        let Some(why_now) = why_now_for(entry, working_set) else {
+            continue;
+        };
+        matched_working_set = true;
+        if let Some(reason) = agent_brief_omission_reason(entry, policy) {
+            warnings.push(format!(
+                "seam {} at {}:{} {reason}",
+                entry.seam.id().as_str(),
+                display_path(entry.seam.file()),
+                entry.seam.display_line()
+            ));
+            continue;
+        }
+        candidates.push(selected(entry, why_now));
+    }
+
+    AgentBriefCandidateSelection {
+        candidates,
+        allow_fallback: !matched_working_set,
+    }
 }
 
 fn explicit_seam_candidate<'a>(
     classified: &'a [ClassifiedSeam],
     seam_id: &str,
+    policy: AgentBriefPolicy<'_>,
     warnings: &mut Vec<String>,
 ) -> Vec<AgentBriefSelectedSeam<'a>> {
     let Some(entry) = classified
@@ -261,11 +308,8 @@ fn explicit_seam_candidate<'a>(
         return Vec::new();
     };
 
-    if !is_agent_actionable(entry.class) {
-        warnings.push(format!(
-            "requested seam_id {seam_id} is {} and is not included in agent brief results",
-            entry.class.as_str()
-        ));
+    if let Some(reason) = agent_brief_omission_reason(entry, policy) {
+        warnings.push(format!("requested seam_id {seam_id} {reason}"));
         return Vec::new();
     }
 
@@ -279,10 +323,13 @@ fn explicit_seam_candidate<'a>(
     )]
 }
 
-fn fallback_candidates(classified: &[ClassifiedSeam]) -> Vec<AgentBriefSelectedSeam<'_>> {
+fn fallback_candidates<'a>(
+    classified: &'a [ClassifiedSeam],
+    policy: AgentBriefPolicy<'_>,
+) -> Vec<AgentBriefSelectedSeam<'a>> {
     classified
         .iter()
-        .filter(|entry| is_agent_actionable(entry.class))
+        .filter(|entry| agent_brief_omission_reason(entry, policy).is_none())
         .map(|entry| {
             selected(
                 entry,
@@ -340,11 +387,16 @@ fn selected<'a>(seam: &'a ClassifiedSeam, why_now: AgentBriefWhyNow) -> AgentBri
 fn compare_selected(
     left: &AgentBriefSelectedSeam<'_>,
     right: &AgentBriefSelectedSeam<'_>,
+    policy: AgentBriefPolicy<'_>,
 ) -> Ordering {
     left.why_now
         .reason
         .priority()
         .cmp(&right.why_now.reason.priority())
+        .then_with(|| {
+            severity_priority(policy.severity_for(left.seam.class))
+                .cmp(&severity_priority(policy.severity_for(right.seam.class)))
+        })
         .then_with(|| grip_priority(left.seam.class).cmp(&grip_priority(right.seam.class)))
         .then_with(|| {
             normalized_path(left.seam.seam.file()).cmp(&normalized_path(right.seam.seam.file()))
@@ -380,8 +432,38 @@ fn grip_priority(class: SeamGripClass) -> u8 {
     }
 }
 
+fn severity_priority(severity: ConfigSeverity) -> u8 {
+    match severity {
+        ConfigSeverity::Warning => 0,
+        ConfigSeverity::Info => 1,
+        ConfigSeverity::Note => 2,
+        ConfigSeverity::Off => 3,
+    }
+}
+
 fn is_agent_actionable(class: SeamGripClass) -> bool {
     class.is_headline_eligible() || matches!(class, SeamGripClass::Opaque)
+}
+
+fn agent_brief_omission_reason(
+    entry: &ClassifiedSeam,
+    policy: AgentBriefPolicy<'_>,
+) -> Option<String> {
+    if matches!(policy.severity_for(entry.class), ConfigSeverity::Off) {
+        return Some(format!(
+            "is configured off for {} seams and is not included in agent brief results",
+            entry.class.as_str()
+        ));
+    }
+
+    if !is_agent_actionable(entry.class) {
+        return Some(format!(
+            "is {} and is not included in agent brief results",
+            entry.class.as_str()
+        ));
+    }
+
+    None
 }
 
 fn files_from_changed_lines(changed_lines: &[AgentBriefLine]) -> Vec<PathBuf> {
@@ -417,6 +499,7 @@ mod tests {
     use crate::analysis::test_grip_evidence::{
         RelatedTestGrip, RelationConfidence, RelationReason, TestGripEvidence,
     };
+    use crate::config::{RiprConfig, tests_only_parse};
     use crate::domain::{
         Confidence, MissingDiscriminatorFact, OracleKind, OracleStrength, StageEvidence,
         StageState, ValueFact,
@@ -482,6 +565,34 @@ mod tests {
             .iter()
             .map(|entry| entry.seam.seam.id().as_str().to_string())
             .collect()
+    }
+
+    fn select<'a>(
+        seams: &'a [ClassifiedSeam],
+        working_set: &AgentBriefResolvedWorkingSet,
+        requested_max: usize,
+    ) -> AgentBriefSelection<'a> {
+        let config = RiprConfig::default();
+        select_agent_brief_seams(
+            seams,
+            working_set,
+            requested_max,
+            AgentBriefPolicy::from_config(&config),
+        )
+    }
+
+    fn select_with_config<'a>(
+        seams: &'a [ClassifiedSeam],
+        working_set: &AgentBriefResolvedWorkingSet,
+        requested_max: usize,
+        config: &RiprConfig,
+    ) -> AgentBriefSelection<'a> {
+        select_agent_brief_seams(
+            seams,
+            working_set,
+            requested_max,
+            AgentBriefPolicy::from_config(config),
+        )
     }
 
     #[test]
@@ -554,8 +665,7 @@ mod tests {
         let seam_id = requested.seam.id().as_str().to_string();
         let seams = vec![unrelated, requested];
 
-        let selection =
-            select_agent_brief_seams(&seams, &AgentBriefResolvedWorkingSet::seam_id(&seam_id), 3);
+        let selection = select(&seams, &AgentBriefResolvedWorkingSet::seam_id(&seam_id), 3);
 
         assert_eq!(selected_ids(&selection), vec![seam_id]);
         assert_eq!(
@@ -592,7 +702,7 @@ mod tests {
             vec![AgentBriefLine::new("src/pricing.rs", 88)],
         );
 
-        let selection = select_agent_brief_seams(&seams, &working_set, 3);
+        let selection = select(&seams, &working_set, 3);
 
         assert_eq!(selection.top_seams[0].seam.seam.id().as_str(), touched_id);
         assert_eq!(
@@ -635,7 +745,7 @@ mod tests {
         let working_set =
             AgentBriefResolvedWorkingSet::files(vec![PathBuf::from("src/pricing.rs")]);
 
-        let selection = select_agent_brief_seams(&seams, &working_set, 2);
+        let selection = select(&seams, &working_set, 2);
 
         assert_eq!(selection.requested, 2);
         assert_eq!(selection.returned, 2);
@@ -685,7 +795,7 @@ mod tests {
         let working_set =
             AgentBriefResolvedWorkingSet::files(vec![PathBuf::from("src/pricing.rs")]);
 
-        let selection = select_agent_brief_seams(&seams, &working_set, 0);
+        let selection = select(&seams, &working_set, 0);
 
         assert_eq!(selection.requested, 0);
         assert_eq!(selection.returned, DEFAULT_AGENT_BRIEF_MAX_SEAMS);
@@ -714,6 +824,14 @@ mod tests {
     }
 
     #[test]
+    fn agent_brief_severity_priority_prefers_warning_before_info_note_and_off() {
+        assert_eq!(severity_priority(ConfigSeverity::Warning), 0);
+        assert_eq!(severity_priority(ConfigSeverity::Info), 1);
+        assert_eq!(severity_priority(ConfigSeverity::Note), 2);
+        assert_eq!(severity_priority(ConfigSeverity::Off), 3);
+    }
+
+    #[test]
     fn agent_brief_selector_uses_repo_fallback_when_working_set_has_no_match() {
         let seam = classified(
             "src/pricing.rs",
@@ -726,7 +844,7 @@ mod tests {
         let seams = vec![seam];
         let working_set = AgentBriefResolvedWorkingSet::files(vec![PathBuf::from("src/other.rs")]);
 
-        let selection = select_agent_brief_seams(&seams, &working_set, 3);
+        let selection = select(&seams, &working_set, 3);
 
         assert_eq!(selected_ids(&selection), vec![seam_id]);
         assert_eq!(
@@ -740,6 +858,122 @@ mod tests {
     }
 
     #[test]
+    fn agent_brief_selector_uses_configured_severity_before_grip_priority() -> Result<(), String> {
+        let weak = classified(
+            "src/pricing.rs",
+            88,
+            "pricing::discounted_total",
+            "amount >= discount_threshold",
+            SeamGripClass::WeaklyGripped,
+        );
+        let ungripped = classified(
+            "src/pricing.rs",
+            89,
+            "pricing::taxed_total",
+            "tax > 0",
+            SeamGripClass::Ungripped,
+        );
+        let ungripped_id = ungripped.seam.id().as_str().to_string();
+        let seams = vec![weak, ungripped];
+        let working_set =
+            AgentBriefResolvedWorkingSet::files(vec![PathBuf::from("src/pricing.rs")]);
+        let config = tests_only_parse(
+            r#"
+[severity.seams]
+weakly_gripped = "note"
+ungripped = "warning"
+"#,
+        )?;
+
+        let selection = select_with_config(&seams, &working_set, 2, &config);
+
+        assert_eq!(selection.top_seams[0].seam.seam.id().as_str(), ungripped_id);
+        Ok(())
+    }
+
+    #[test]
+    fn agent_brief_selector_omits_configured_off_working_set_seam() -> Result<(), String> {
+        let seam = classified(
+            "src/pricing.rs",
+            88,
+            "pricing::discounted_total",
+            "amount >= discount_threshold",
+            SeamGripClass::WeaklyGripped,
+        );
+        let fallback = classified(
+            "src/tax.rs",
+            12,
+            "tax::total",
+            "tax > 0",
+            SeamGripClass::Ungripped,
+        );
+        let seams = vec![seam, fallback];
+        let working_set =
+            AgentBriefResolvedWorkingSet::files(vec![PathBuf::from("src/pricing.rs")]);
+        let config = tests_only_parse(
+            r#"
+[severity.seams]
+weakly_gripped = "off"
+"#,
+        )?;
+
+        let selection = select_with_config(&seams, &working_set, 3, &config);
+
+        assert!(selection.top_seams.is_empty());
+        assert_eq!(
+            selection.warnings,
+            vec![format!(
+                "seam {} at src/pricing.rs:88 is configured off for weakly_gripped seams and is not included in agent brief results",
+                seams[0].seam.id().as_str()
+            )]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn agent_brief_selector_omits_configured_off_explicit_seam_without_fallback()
+    -> Result<(), String> {
+        let hidden = classified(
+            "src/pricing.rs",
+            88,
+            "pricing::discounted_total",
+            "amount >= discount_threshold",
+            SeamGripClass::WeaklyGripped,
+        );
+        let hidden_id = hidden.seam.id().as_str().to_string();
+        let fallback = classified(
+            "src/tax.rs",
+            12,
+            "tax::total",
+            "tax > 0",
+            SeamGripClass::Ungripped,
+        );
+        let seams = vec![hidden, fallback];
+        let config = tests_only_parse(
+            r#"
+[severity.seams]
+weakly_gripped = "off"
+"#,
+        )?;
+
+        let selection = select_with_config(
+            &seams,
+            &AgentBriefResolvedWorkingSet::seam_id(&hidden_id),
+            3,
+            &config,
+        );
+
+        assert!(selection.top_seams.is_empty());
+        assert_eq!(
+            selection.warnings,
+            vec![format!(
+                "requested seam_id {hidden_id} is configured off for weakly_gripped seams and is not included in agent brief results"
+            )]
+        );
+        Ok(())
+    }
+
+    #[test]
     fn agent_brief_selector_warns_when_explicit_seam_is_missing() {
         let seam = classified(
             "src/pricing.rs",
@@ -750,16 +984,13 @@ mod tests {
         );
         let seams = vec![seam];
 
-        let selection = select_agent_brief_seams(
+        let selection = select(
             &seams,
             &AgentBriefResolvedWorkingSet::seam_id("missing-seam"),
             3,
         );
 
-        assert_eq!(
-            selection.top_seams[0].why_now.reason,
-            AgentBriefWhyNowReason::RepoActionableFallback
-        );
+        assert!(selection.top_seams.is_empty());
         assert_eq!(
             selection.warnings,
             vec!["requested seam_id missing-seam was not found"]
@@ -778,14 +1009,13 @@ mod tests {
         let seam_id = hidden.seam.id().as_str().to_string();
         let seams = vec![hidden];
 
-        let selection =
-            select_agent_brief_seams(&seams, &AgentBriefResolvedWorkingSet::seam_id(&seam_id), 3);
+        let selection = select(&seams, &AgentBriefResolvedWorkingSet::seam_id(&seam_id), 3);
 
         assert!(selection.top_seams.is_empty());
         assert_eq!(
             selection.warnings,
             vec![format!(
-                "requested seam_id {seam_id} is strongly_gripped and is not included in agent brief results"
+                "requested seam_id {seam_id} is configured off for strongly_gripped seams and is not included in agent brief results"
             )]
         );
     }
@@ -803,7 +1033,7 @@ mod tests {
         let working_set =
             AgentBriefResolvedWorkingSet::files(vec![PathBuf::from(".\\src\\pricing.rs")]);
 
-        let selection = select_agent_brief_seams(&seams, &working_set, 3);
+        let selection = select(&seams, &working_set, 3);
 
         assert_eq!(
             selection.top_seams[0].why_now.reason,
