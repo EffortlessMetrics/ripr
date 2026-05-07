@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1
+
+- Aligns the extension package with the first defaults-first `ripr` release
+  line, including saved-workspace seam diagnostics, targeted-test brief actions,
+  best related-test navigation, and `draft` mode defaults.
+- Keeps server self-provisioning through GitHub Release manifests, with
+  `cargo install ripr` as an offline/manual fallback.
+
 ## 0.3.0
 
 - Uses the `tower-lsp-server` sidecar from `ripr 0.3.0`.

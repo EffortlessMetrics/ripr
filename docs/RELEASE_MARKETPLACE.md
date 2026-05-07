@@ -51,7 +51,7 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
-code --install-extension dist/ripr-0.3.0.vsix --force
+code --install-extension dist/ripr-0.3.1.vsix --force
 ```
 
 Also run the Rust gates from the repository root:
@@ -89,8 +89,8 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
-npx @vscode/vsce publish --packagePath dist/ripr-0.3.0.vsix --pat "$VSCE_PAT"
-npx ovsx publish dist/ripr-0.3.0.vsix -p "$OVSX_PAT" --skip-duplicate
+npx @vscode/vsce publish --packagePath dist/ripr-0.3.1.vsix --pat "$VSCE_PAT"
+npx ovsx publish dist/ripr-0.3.1.vsix -p "$OVSX_PAT" --skip-duplicate
 ```
 
 ## CI Publish
@@ -105,17 +105,22 @@ The workflow packages one VSIX, uploads it as an artifact, publishes that same
 VSIX to both registries, and attaches it to the GitHub Release when run from a
 tag.
 
+The workflow normalizes tag names like `v0.3.1` to the package version
+`0.3.1` for the VSIX filename and duplicate-version checks.
+
 To publish only Open VSX from a manual workflow run:
 
 ```bash
 gh workflow run publish-extension.yml \
-  --field version=0.3.0 \
+  --field version=0.3.1 \
   --field publish_vs_marketplace=false \
   --field publish_open_vsx=true
 ```
 
 Publish the server binary assets before publishing the marketplace VSIX so the
-extension can download a matching `ripr` server on first activation.
+extension can download a matching `ripr` server on first activation. For
+defaults-first releases, the matching server must also pass the
+[Installation verification](INSTALLATION_VERIFICATION.md) server smoke.
 
 ## Post-Publish Verification
 

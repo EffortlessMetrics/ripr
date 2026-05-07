@@ -14,7 +14,7 @@ Use:
 Manual dispatch:
 
 ```bash
-gh workflow run release-server-binaries.yml -f version=0.3.0
+gh workflow run release-server-binaries.yml -f version=0.3.1
 ```
 
 The workflow builds:
@@ -60,6 +60,10 @@ release on May 6, 2026:
 - The extracted Windows server ran `ripr --version`, `ripr lsp --version`, and
   `ripr doctor`.
 
+That proof covers server archive shape for the current public release. The
+defaults-first `ripr pilot` and `ripr outcome` public-install smoke starts with
+`0.3.1`; see [Installation verification](INSTALLATION_VERIFICATION.md).
+
 ## Local Verification
 
 After downloading a release asset for the current platform:
@@ -77,8 +81,13 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
-code --install-extension dist/ripr-0.3.0.vsix --force
+code --install-extension dist/ripr-0.3.1.vsix --force
 ```
+
+For the defaults-first release line, also run the server archive smoke from
+[Installation verification](INSTALLATION_VERIFICATION.md): the extracted server
+binary must report the release version and run `ripr pilot` against the checked
+boundary-gap fixture.
 
 ## Notes
 

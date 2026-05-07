@@ -39,9 +39,15 @@ are scoped or reviewed.
   `target/ripr/reports/operator-cockpit.{json,md}` by joining repo exposure,
   LSP cockpit, SARIF policy, badge status, targeted-test outcome, and optional
   mutation calibration artifacts into one next-action report.
+- Added `docs/INSTALLATION_VERIFICATION.md` to pin the defaults-first release
+  proof for local package install, public `cargo install`, GitHub Release server
+  archives, VSIX packaging, and known limits.
 
 ### Changed
 
+- Prepared the `0.3.1` release line as the first defaults-first public install
+  target. `0.3.0` remains published but predates `ripr pilot` and
+  `ripr outcome`.
 - Documented and test-pinned the defaults-first config profile, including
   missing-config/generated-config equivalence, repo-mode production exclusions,
   badge/report defaults, and fast/normal/deep operator mode vocabulary; Campaign
