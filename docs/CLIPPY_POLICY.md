@@ -61,7 +61,13 @@ Currently denied at the workspace level (selected highlights):
   `clippy::should_panic_without_expect`.
 - Memory / drop footguns: `clippy::mem_forget`, `clippy::forget_non_drop`,
   `clippy::drop_non_drop`.
-- Numeric correctness: `clippy::float_cmp`, `clippy::float_cmp_const`.
+- Numeric correctness: `clippy::float_cmp`, `clippy::float_cmp_const`,
+  `clippy::lossy_float_literal`, `clippy::cast_abs_to_unsigned`,
+  `clippy::cast_enum_truncation`, `clippy::cast_nan_to_int`,
+  `clippy::invalid_upcast_comparisons`. `clippy::cast_sign_loss` is
+  tracked as a follow-up — a small number of `i64 -> u32` sites in
+  `output/suppressions.rs` need explicit `try_into` / saturating
+  conversions before that rail can flip.
 - Silent failure: `clippy::let_underscore_future`,
   `clippy::let_underscore_lock`, `clippy::unused_result_ok`,
   `clippy::map_err_ignore`, `clippy::assertions_on_result_states`,

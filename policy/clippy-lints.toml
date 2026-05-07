@@ -65,6 +65,32 @@ level = "deny"
 name = "clippy::float_cmp_const"
 level = "deny"
 
+[[active.numeric]]
+name = "clippy::lossy_float_literal"
+level = "deny"
+note = "Float literals that lose precision at parse time (e.g. `0.1234567` stored as f32) are silent bad math."
+
+[[active.numeric]]
+name = "clippy::cast_abs_to_unsigned"
+level = "deny"
+note = "`x.abs() as u32` loses `i*::MIN`; use `unsigned_abs()`."
+
+[[active.numeric]]
+name = "clippy::cast_enum_truncation"
+level = "deny"
+
+[[active.numeric]]
+name = "clippy::cast_nan_to_int"
+level = "deny"
+
+[[active.numeric]]
+name = "clippy::invalid_upcast_comparisons"
+level = "deny"
+
+# `clippy::cast_sign_loss` is intentionally NOT yet active: a small number
+# of i64 -> u32 sites in `output/suppressions.rs` need explicit `try_into`
+# / saturating conversions before the rail can flip. Tracked as a follow-up.
+
 # Silent failure: ignoring a Result, future, or lock guard loses evidence the
 # analyzer cannot reconstruct. `let_underscore_must_use` is intentionally
 # deferred because best-effort cleanup patterns (`let _ = fs::remove_dir_all`)

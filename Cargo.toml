@@ -37,6 +37,21 @@ drop_non_drop = "deny"
 # Numeric correctness.
 float_cmp = "deny"
 float_cmp_const = "deny"
+# Float literals that already lose precision when parsed (e.g. `0.1234567`
+# stored as f32) are silent bad math.
+lossy_float_literal = "deny"
+# `abs()` before unsigned cast loses `i*::MIN`; use `unsigned_abs()`.
+cast_abs_to_unsigned = "deny"
+# Casting an enum to a smaller integer truncates variants silently.
+cast_enum_truncation = "deny"
+# `NaN as i*` is platform-dependent.
+cast_nan_to_int = "deny"
+# Comparisons across integer widths that are always true or always false.
+invalid_upcast_comparisons = "deny"
+# `cast_sign_loss` is intentionally NOT denied: a small number of
+# i64 -> u32 sites exist in `output/suppressions.rs` that need explicit
+# `try_into` / saturating conversions before the rail can flip. Tracked
+# as a follow-up; do not reintroduce raw signed-to-unsigned casts.
 
 # Silent failure: ignoring a future, lock guard, `.ok()`'d Result, or
 # wildcard-discarded error loses evidence the analyzer cannot reconstruct.
