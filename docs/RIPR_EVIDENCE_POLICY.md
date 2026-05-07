@@ -72,8 +72,7 @@ requirement on this gate.
 
 Suppressions live in `.ripr/suppressions.toml` (the canonical path used by
 `crates/ripr/src/config.rs`; the parser is in
-`crates/ripr/src/output/suppressions.rs`; see `docs/CONFIGURATION.md` and
-`docs/OUTPUT_SCHEMA.md`):
+`crates/ripr/src/output/suppressions.rs`; see `docs/CONFIGURATION.md`):
 
 Two `kind` values are supported. Each has a different required
 selector field — they are mutually exclusive.
