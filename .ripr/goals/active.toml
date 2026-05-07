@@ -54,7 +54,7 @@ commands = [
 
 [[work_item]]
 id = "agent/workflow-manifest"
-status = "ready"
+status = "done"
 branch = "agent-workflow-manifest"
 stackable = false
 requires_human_merge = true
@@ -68,13 +68,17 @@ commands = [
 
 [[work_item]]
 id = "agent/receipt-provenance"
-status = "blocked"
+status = "ready"
 branch = "agent-receipt-provenance"
 stackable = false
 requires_human_merge = true
-blocked_by = ["agent/workflow-manifest"]
-blocked_reason = "Wait until workflow artifact paths are explicit before hashing and recording provenance in receipts"
 acceptance = "Add receipt provenance fields for ripr version, repo root, config fingerprint, artifact hashes, seam_id, before/after class, command template version, and timestamp without claiming runtime confirmation"
+commands = [
+  "cargo test -p ripr agent",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr"
+]
 
 [[work_item]]
 id = "agent/next-action-guidance"

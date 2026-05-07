@@ -7,7 +7,7 @@ use crate::app::agent_brief::{
 use crate::app::{self, CheckInput, Mode, OutputFormat};
 use crate::cli::agent::{
     AgentBriefOptions, AgentBriefWorkingSet, AgentCommand, AgentPacketOptions, AgentReceiptOptions,
-    AgentStatusOptions, AgentVerifyOptions, parse_agent_args,
+    AgentStartOptions, AgentStatusOptions, AgentVerifyOptions, parse_agent_args,
 };
 use crate::cli::help;
 use crate::cli::parse::{expect_value, parse_format, parse_mode};
@@ -79,6 +79,10 @@ pub(super) fn agent(args: &[String]) -> Result<(), String> {
             help::print_agent_help();
             Ok(())
         }
+        AgentCommand::StartHelp => {
+            help::print_agent_start_help();
+            Ok(())
+        }
         AgentCommand::BriefHelp => {
             help::print_agent_brief_help();
             Ok(())
@@ -99,12 +103,81 @@ pub(super) fn agent(args: &[String]) -> Result<(), String> {
             help::print_agent_status_help();
             Ok(())
         }
+        AgentCommand::Start(options) => run_agent_start(options),
         AgentCommand::Brief(options) => run_agent_brief(options),
         AgentCommand::Packet(options) => run_agent_packet(options),
         AgentCommand::Verify(options) => run_agent_verify(options),
         AgentCommand::Receipt(options) => run_agent_receipt(options),
         AgentCommand::Status(options) => run_agent_status(options),
     }
+}
+
+fn run_agent_start(options: AgentStartOptions) -> Result<(), String> {
+    if !options.root.is_dir() {
+        return Err(format!(
+            "agent start root {} is not a directory",
+            options.root.display()
+        ));
+    }
+
+    let config = load_for_root(&options.root)?;
+    let mut input = CheckInput {
+        root: options.root.clone(),
+        ..CheckInput::default()
+    };
+    apply_to_check_input(&mut input, &config, CheckInputExplicit::default());
+
+    let working_set = AgentBriefResolvedWorkingSet::seam_id(options.seam_id.clone());
+    let classified = analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
+    let selection = select_agent_brief_seams(
+        &classified,
+        &working_set,
+        1,
+        AgentBriefPolicy::from_config(&config),
+    );
+    if selection.top_seams.is_empty() {
+        return Err(format!(
+            "agent start seam_id {} was not found or is hidden by config",
+            options.seam_id
+        ));
+    }
+
+    let out_dir = resolve_agent_start_out_dir(&input.root, &options.out_dir);
+    std::fs::create_dir_all(&out_dir)
+        .map_err(|err| format!("create {} failed: {err}", out_dir.display()))?;
+
+    let agent_brief_json = output::agent_brief::render_agent_brief_json(
+        &input.root,
+        &input.mode,
+        &config,
+        &working_set,
+        &selection,
+    )?;
+    let agent_brief_path = out_dir.join("agent-brief.json");
+    write_text_file(&agent_brief_path, &agent_brief_json)?;
+
+    let manifest = app::agent_workflow::build_agent_workflow_manifest(
+        &input.root,
+        &options.root,
+        &input.mode,
+        &options.out_dir,
+        &options.seam_id,
+        &agent_brief_json,
+    )?;
+    let workflow_json = output::agent_workflow::render_agent_workflow_json(&manifest)?;
+    let commands_md = output::agent_workflow::render_agent_workflow_commands_md(&manifest);
+    let workflow_path = out_dir.join("workflow.json");
+    let commands_path = out_dir.join("commands.md");
+    write_text_file(&workflow_path, &workflow_json)?;
+    write_text_file(&commands_path, &commands_md)?;
+
+    println!("Wrote {}", workflow_path.display());
+    println!("Wrote {}", commands_path.display());
+    println!("Wrote {}", agent_brief_path.display());
+    if let Some(next) = manifest.missing_inputs.first() {
+        println!("Next: {}", next.command);
+    }
+    Ok(())
 }
 
 fn run_agent_brief(options: AgentBriefOptions) -> Result<(), String> {
@@ -241,6 +314,30 @@ fn run_agent_status(options: AgentStatusOptions) -> Result<(), String> {
     let rendered = app::agent_status::render_agent_status_json(&report)?;
     print!("{rendered}");
     Ok(())
+}
+
+fn resolve_agent_start_out_dir(root: &Path, out_dir: &Path) -> PathBuf {
+    if out_dir.is_absolute() {
+        out_dir.to_path_buf()
+    } else {
+        root.join(out_dir)
+    }
+}
+
+fn write_text_file(path: &Path, rendered: &str) -> Result<(), String> {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent)
+            .map_err(|err| format!("create {} failed: {err}", parent.display()))?;
+    }
+    std::fs::write(path, rendered).map_err(|err| {
+        format!(
+            "write {} failed: {err}",
+            output::outcome::display_path(path)
+        )
+    })
 }
 
 fn validate_agent_receipt_verify_path(root: &Path, path: &Path) -> Result<PathBuf, String> {
@@ -1577,6 +1674,7 @@ mod tests {
         assert_eq!(pilot(&args(&["--help"])), Ok(()));
         assert_eq!(calibrate(&args(&["--help"])), Ok(()));
         assert_eq!(agent(&args(&["--help"])), Ok(()));
+        assert_eq!(agent(&args(&["start", "--help"])), Ok(()));
         assert_eq!(agent(&args(&["brief", "--help"])), Ok(()));
         assert_eq!(agent(&args(&["status", "--help"])), Ok(()));
         assert_eq!(check(&args(&["--help"])), Ok(()));
@@ -1844,7 +1942,24 @@ mod tests {
         assert_eq!(
             agent(&args(&["unknown"])),
             Err(
-                "unknown agent subcommand \"unknown\"; expected `brief`, `packet`, `verify`, `receipt`, or `status`"
+                "unknown agent subcommand \"unknown\"; expected `start`, `brief`, `packet`, `verify`, `receipt`, or `status`"
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn agent_start_rejects_missing_root_before_analysis() {
+        assert_eq!(
+            agent(&args(&[
+                "start",
+                "--root",
+                "target/ripr/missing-agent-start-root",
+                "--seam-id",
+                "f3c9e4d21a0b7c88",
+            ])),
+            Err(
+                "agent start root target/ripr/missing-agent-start-root is not a directory"
                     .to_string()
             )
         );

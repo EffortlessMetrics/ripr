@@ -11,6 +11,11 @@ are scoped or reviewed.
 
 ### Added
 
+- Added `ripr agent start --root . --seam-id <id> --out target/ripr/workflow`
+  to write a source-edit-free workflow packet with `workflow.json`,
+  `commands.md`, and `agent-brief.json` for one selected seam. The packet
+  names artifact paths, shared commands, missing inputs, and explicit no-edit,
+  no-generated-test, no-LLM-call boundaries.
 - Added `ripr agent status --root . --json`, a read-only LLM work-loop status
   report that checks existing agent artifacts, recovers a seam id when
   possible, emits missing-step commands, and warns on stale-looking verify or
@@ -18,6 +23,9 @@ are scoped or reviewed.
 - Added `cargo xtask check-ci-lane-whitelist`, a structural advisory checker
   for the CI lane, risk-pack, budget, artifact-family, and rollout-exception
   ledgers.
+- Added `ripr agent start --root . --seam-id <id> --out target/ripr/workflow`,
+  which writes source-edit-free `agent-workflow.json` and `agent-workflow.md`
+  checklists from the shared LLM work-loop command templates.
 - Queued Campaign 12, First-Hour UX, as the post-LLM-work-loop lane for making
   the VS Code extension and generated CI workflow useful from their first
   screens without requiring users to learn RIPR's internal report topology.

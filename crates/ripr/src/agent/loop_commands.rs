@@ -4,6 +4,8 @@ pub(crate) const WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT: &str =
     "target/ripr/workflow/before.repo-exposure.json";
 pub(crate) const WORKFLOW_AFTER_SNAPSHOT_ARTIFACT: &str =
     "target/ripr/workflow/after.repo-exposure.json";
+pub(crate) const WORKFLOW_MANIFEST_ARTIFACT: &str = "target/ripr/workflow/workflow.json";
+pub(crate) const WORKFLOW_COMMANDS_MARKDOWN_ARTIFACT: &str = "target/ripr/workflow/commands.md";
 pub(crate) const WORKFLOW_AGENT_SEAM_PACKETS_ARTIFACT: &str =
     "target/ripr/workflow/agent-seam-packets.json";
 pub(crate) const WORKFLOW_AGENT_PACKET_ARTIFACT: &str = "target/ripr/workflow/agent-packet.json";
@@ -22,33 +24,48 @@ pub(crate) const WORKFLOW_AGENT_STATUS_ARTIFACT: &str = "target/ripr/workflow/ag
 pub(crate) const WORKFLOW_AGENT_REVIEW_SUMMARY_ARTIFACT: &str =
     "target/ripr/workflow/agent-review-summary.json";
 
+pub(crate) fn agent_start_command(root: &str, seam_id: &str, out_dir: &str) -> String {
+    format!(
+        "ripr agent start --root {} --seam-id {} --out {}",
+        shell_arg(root),
+        shell_arg(seam_id),
+        shell_arg(out_dir)
+    )
+}
+
 pub(crate) fn check_repo_exposure_command(root: &str, mode: &str, out_path: &str) -> String {
     format!(
-        "ripr check --root {} --mode {mode} --format repo-exposure-json > {out_path}",
-        shell_arg(root)
+        "ripr check --root {} --mode {} --format repo-exposure-json > {}",
+        shell_arg(root),
+        shell_arg(mode),
+        shell_arg(out_path)
     )
 }
 
 pub(crate) fn agent_seam_packets_command(root: &str, mode: &str, out_path: &str) -> String {
     format!(
-        "ripr check --root {} --mode {mode} --format agent-seam-packets-json > {out_path}",
-        shell_arg(root)
+        "ripr check --root {} --mode {} --format agent-seam-packets-json > {}",
+        shell_arg(root),
+        shell_arg(mode),
+        shell_arg(out_path)
     )
 }
 
 pub(crate) fn agent_packet_command(root: &str, seam_id: &str, out_path: &str) -> String {
     format!(
-        "ripr agent packet --root {} --seam-id {} --json > {out_path}",
+        "ripr agent packet --root {} --seam-id {} --json > {}",
         shell_arg(root),
-        shell_arg(seam_id)
+        shell_arg(seam_id),
+        shell_arg(out_path)
     )
 }
 
 pub(crate) fn agent_brief_command(root: &str, seam_id: &str, out_path: &str) -> String {
     format!(
-        "ripr agent brief --root {} --seam-id {} --json > {out_path}",
+        "ripr agent brief --root {} --seam-id {} --json > {}",
         shell_arg(root),
-        shell_arg(seam_id)
+        shell_arg(seam_id),
+        shell_arg(out_path)
     )
 }
 
@@ -59,8 +76,10 @@ pub(crate) fn agent_verify_command(
     out_path: Option<&str>,
 ) -> String {
     let command = format!(
-        "ripr agent verify --root {} --before {before_path} --after {after_path} --json",
-        shell_arg(root)
+        "ripr agent verify --root {} --before {} --after {} --json",
+        shell_arg(root),
+        shell_arg(before_path),
+        shell_arg(after_path)
     );
     append_redirect(command, out_path)
 }
@@ -72,12 +91,13 @@ pub(crate) fn agent_receipt_command(
     out_path: Option<&str>,
 ) -> String {
     let command = format!(
-        "ripr agent receipt --root {} --verify-json {verify_json} --seam-id {} --json",
+        "ripr agent receipt --root {} --verify-json {} --seam-id {} --json",
         shell_arg(root),
+        shell_arg(verify_json),
         shell_arg(seam_id)
     );
     match out_path {
-        Some(path) => format!("{command} --out {path}"),
+        Some(path) => format!("{command} --out {}", shell_arg(path)),
         None => command,
     }
 }
@@ -107,10 +127,17 @@ pub(crate) fn outcome_command(
     match out_path {
         Some(path) => {
             format!(
-                "ripr outcome --before {before_path} --after {after_path} --format json --out {path}"
+                "ripr outcome --before {} --after {} --format json --out {}",
+                shell_arg(before_path),
+                shell_arg(after_path),
+                shell_arg(path)
             )
         }
-        None => format!("ripr outcome --before {before_path} --after {after_path}"),
+        None => format!(
+            "ripr outcome --before {} --after {}",
+            shell_arg(before_path),
+            shell_arg(after_path)
+        ),
     }
 }
 
@@ -120,6 +147,15 @@ pub(crate) fn display_path(path: &Path) -> String {
         ".".to_string()
     } else {
         text
+    }
+}
+
+pub(crate) fn workflow_artifact_path(out_dir: &Path, file_name: &str) -> String {
+    let out_dir = display_path(out_dir);
+    if out_dir == "." {
+        file_name.to_string()
+    } else {
+        format!("{}/{}", out_dir.trim_end_matches('/'), file_name)
     }
 }
 
@@ -139,7 +175,7 @@ pub(crate) fn shell_arg(value: &str) -> String {
 
 fn append_redirect(command: String, out_path: Option<&str>) -> String {
     match out_path {
-        Some(path) => format!("{command} > {path}"),
+        Some(path) => format!("{command} > {}", shell_arg(path)),
         None => command,
     }
 }
@@ -150,6 +186,10 @@ mod tests {
 
     #[test]
     fn workflow_commands_match_existing_status_templates() {
+        assert_eq!(
+            agent_start_command(".", "seam-a", "target/ripr/workflow"),
+            "ripr agent start --root . --seam-id seam-a --out target/ripr/workflow"
+        );
         assert_eq!(
             check_repo_exposure_command(".", "draft", WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT),
             "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json"
@@ -211,5 +251,39 @@ mod tests {
     fn command_args_quote_spaces_without_touching_plain_tokens() {
         assert_eq!(shell_arg("repo root"), "\"repo root\"");
         assert_eq!(shell_arg("target/ripr/workflow"), "target/ripr/workflow");
+        assert_eq!(
+            workflow_artifact_path(Path::new("target/ripr/workflow"), "workflow.json"),
+            "target/ripr/workflow/workflow.json"
+        );
+        assert_eq!(
+            agent_seam_packets_command(".", "draft mode", "target/ripr/workflow/packets.json"),
+            "ripr check --root . --mode \"draft mode\" --format agent-seam-packets-json > target/ripr/workflow/packets.json"
+        );
+        assert_eq!(
+            agent_start_command("repo root", "seam a", "target/ripr/work flow"),
+            "ripr agent start --root \"repo root\" --seam-id \"seam a\" --out \"target/ripr/work flow\""
+        );
+        assert_eq!(
+            check_repo_exposure_command("repo root", "draft", "target/ripr/work flow/before.json"),
+            "ripr check --root \"repo root\" --mode draft --format repo-exposure-json > \"target/ripr/work flow/before.json\""
+        );
+        assert_eq!(
+            agent_verify_command(
+                "repo root",
+                "target/ripr/work flow/before.json",
+                "target/ripr/work flow/after.json",
+                Some("target/ripr/work flow/verify.json"),
+            ),
+            "ripr agent verify --root \"repo root\" --before \"target/ripr/work flow/before.json\" --after \"target/ripr/work flow/after.json\" --json > \"target/ripr/work flow/verify.json\""
+        );
+        assert_eq!(
+            agent_receipt_command(
+                "repo root",
+                "target/ripr/work flow/verify.json",
+                "seam a",
+                Some("target/ripr/work flow/receipt.json"),
+            ),
+            "ripr agent receipt --root \"repo root\" --verify-json \"target/ripr/work flow/verify.json\" --seam-id \"seam a\" --json --out \"target/ripr/work flow/receipt.json\""
+        );
     }
 }

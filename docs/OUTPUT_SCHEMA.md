@@ -1162,6 +1162,118 @@ Field contract:
   `agent receipt` is older than `agent verify`. The report does not infer hash
   mismatches until receipt provenance fields exist.
 
+## Agent Workflow Manifest
+
+`ripr agent start --root <workspace> --seam-id <id> --out <dir>` writes a
+source-edit-free workflow packet for one visible seam:
+
+```text
+ripr agent start --root . --seam-id 67fc764ba37d77bd --out target/ripr/workflow
+```
+
+Outputs:
+
+```text
+target/ripr/workflow/workflow.json
+target/ripr/workflow/commands.md
+target/ripr/workflow/agent-brief.json
+```
+
+The command selects the requested seam with the same policy as
+`ripr agent brief --seam-id`, writes a focused brief, then renders a workflow
+manifest that names artifact paths and shared command templates for the static
+before snapshot, agent packet, agent brief, after snapshot, verify, and
+receipt steps. It does not edit source files, generate tests, call LLM APIs,
+run mutation testing, refresh LSP state, or configure CI blocking.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "ready",
+  "root": ".",
+  "mode": "draft",
+  "out_dir": "target/ripr/workflow",
+  "seam": {
+    "seam_id": "67fc764ba37d77bd",
+    "file": "src/pricing.rs",
+    "line": 88,
+    "seam_kind": "predicate_boundary",
+    "grip_class": "weakly_gripped",
+    "why": "caller requested seam_id 67fc764ba37d77bd",
+    "missing_discriminator": "amount == discount_threshold",
+    "assertion_shape": "assert_eq!(...)",
+    "recommended_test_file": "tests/pricing.rs",
+    "recommended_test_name": "discount_threshold_equality_boundary_is_asserted",
+    "related_test_to_imitate": "applies_discount_above_threshold"
+  },
+  "outputs": {
+    "workflow_manifest": "target/ripr/workflow/workflow.json",
+    "commands_markdown": "target/ripr/workflow/commands.md",
+    "agent_brief": "target/ripr/workflow/agent-brief.json"
+  },
+  "artifacts": [
+    {
+      "name": "before_snapshot",
+      "label": "before snapshot",
+      "path": "target/ripr/workflow/before.repo-exposure.json",
+      "required": true,
+      "state": "missing"
+    }
+  ],
+  "commands": [
+    {
+      "step": "before_snapshot",
+      "artifact": "target/ripr/workflow/before.repo-exposure.json",
+      "purpose": "Capture static seam evidence before editing tests.",
+      "command": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json"
+    }
+  ],
+  "missing_inputs": [
+    {
+      "step": "before_snapshot",
+      "artifact": "target/ripr/workflow/before.repo-exposure.json",
+      "purpose": "Capture static seam evidence before editing tests.",
+      "command": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json"
+    }
+  ],
+  "next_command": {
+    "step": "before_snapshot",
+    "artifact": "target/ripr/workflow/before.repo-exposure.json",
+    "purpose": "Capture static seam evidence before editing tests.",
+    "command": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json"
+  },
+  "boundaries": {
+    "source_edits": false,
+    "generated_tests": false,
+    "runtime_mutation_execution": false,
+    "llm_api_calls": false,
+    "ci_blocking": false
+  }
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `status` - currently `"ready"` when the manifest was written.
+- `root`, `mode`, and `out_dir` - the selected workspace root, effective
+  analysis mode, and workflow output directory.
+- `seam` - the selected seam fields copied from the generated agent brief.
+- `outputs` - the three files written by `agent start`.
+- `artifacts[]` - required downstream workflow inputs and outputs, marked
+  `present` or `missing` at manifest creation time.
+- `commands[]` - deterministic command templates for regenerating the
+  workflow, capturing snapshots, rendering packet and brief artifacts,
+  comparing before/after evidence, and writing a receipt.
+- `missing_inputs[]` - the commands whose artifacts are currently missing.
+- `next_command` - the first missing-input command, or `null` when all
+  downstream artifacts are present.
+- `boundaries` - explicit false-valued guardrails for source edits, generated
+  tests, runtime mutation execution, LLM API calls, and CI blocking.
+
 ## Release Readiness Report
 
 `cargo xtask release-readiness --version <version>` writes a Campaign 10
