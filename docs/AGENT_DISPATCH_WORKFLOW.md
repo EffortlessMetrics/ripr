@@ -285,13 +285,23 @@ cargo run -p ripr -- agent verify \
   --root . \
   --before target/ripr/workflow/before.repo-exposure.json \
   --after target/ripr/workflow/after.repo-exposure.json \
-  --json
+  --json > target/ripr/workflow/agent-verify.json
+cargo run -p ripr -- agent receipt \
+  --root . \
+  --verify-json target/ripr/workflow/agent-verify.json \
+  --seam-id <seam-id> \
+  --test <focused-test-name> \
+  --command "cargo test <focused-test-name>" \
+  --json \
+  --out target/ripr/reports/agent-receipt.json
 ```
 
 The JSON printed by `ripr agent verify` shows whether matched seams improved,
 stayed unchanged, regressed, appeared, or disappeared from the after snapshot.
-Use `ripr outcome --before ... --after ... --out <path>` when the review needs
-a Markdown artifact.
+`ripr agent receipt` narrows that verify artifact to the seam the agent worked
+on and records optional handoff metadata such as the focused test name and the
+commands the agent ran. Use `ripr outcome --before ... --after ... --out
+<path>` when the review needs the broader Markdown before/after artifact.
 The cleanest result is a matched seam moving toward `strongly_gripped` with
 evidence deltas such as a missing discriminator no longer reported or a
 stronger related oracle becoming visible.

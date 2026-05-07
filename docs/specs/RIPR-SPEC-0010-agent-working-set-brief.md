@@ -46,6 +46,17 @@ The packet command expands a brief `packet_ref` into the existing
 second packet schema and must apply the same configured-off and hidden-class
 policy as the brief.
 
+Related verification receipt:
+
+```bash
+ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id f3c9e4d21a0b7c88 --json
+```
+
+The receipt command consumes the JSON emitted by `ripr agent verify` and
+narrows it to the seam the agent worked on. It may record optional handoff
+metadata such as a focused test name and commands the agent already ran, but it
+must not run those commands or generate tests.
+
 The command should:
 
 - default to at most three seams;
@@ -193,7 +204,8 @@ The brief should use schema version `0.1`:
   ],
   "next": {
     "inspect_packet": "ripr check --root . --mode draft --format agent-seam-packets-json > target/ripr/workflow/agent-seam-packets.json",
-    "verify_after_edit": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+    "verify_after_edit": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > target/ripr/workflow/agent-verify.json",
+    "write_receipt": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id f3c9e4d21a0b7c88 --json --out target/ripr/reports/agent-receipt.json"
   },
   "warnings": []
 }
@@ -228,6 +240,8 @@ Field contract:
 - `top_seams[].packet_ref` — stable pointer to the full packet shape.
 - `top_seams[].verification` — commands the agent can run to compare static
   evidence before and after a focused test.
+- `next.write_receipt` — optional handoff command that narrows the verify JSON
+  to the selected seam. It records review metadata but does not run tests.
 - `warnings[]` — advisory warnings, such as hidden seams due to configured
   `off` severity, missing repo exposure artifacts, or missing line data.
 
@@ -507,6 +521,8 @@ Planned tests:
 - `agent_brief_reuses_agent_packet_assertion_shape`
 - `agent_brief_includes_verification_commands`
 - `agent_brief_json_shape_is_stable`
+- `agent_receipt_selects_one_verify_seam`
+- `agent_receipt_rejects_verify_json_outside_root`
 
 ## Implementation Mapping
 
@@ -528,8 +544,11 @@ Responsibilities:
 
 - parse `ripr agent brief`;
 - parse `ripr agent packet`;
+- parse `ripr agent verify`;
+- parse `ripr agent receipt`;
 - require exactly one of `--diff`, `--base`, `--files`, or `--seam-id`;
 - require `--seam-id` for packet expansion;
+- require `--verify-json` and `--seam-id` for receipt rendering;
 - accept `--json`;
 - accept a future `--max-seams <n>` while enforcing `limits.hard_cap = 10`;
 - keep the command JSON-only until the schema is implemented and pinned.
@@ -633,6 +652,24 @@ Responsibilities:
 The renderer should not compute ranking, policy, or evidence. It renders the
 model it receives.
 
+### Receipt renderer
+
+Planned file:
+
+- `crates/ripr/src/output/agent_receipt.rs`
+
+Responsibilities:
+
+- parse the already-rendered `ripr agent verify` JSON;
+- select exactly one seam by `seam_id` from changed, unchanged, new, or
+  resolved buckets;
+- render schema version `0.1`;
+- record optional caller-supplied focused test and commands-run metadata;
+- preserve static language and avoid runtime mutation result vocabulary.
+
+The receipt renderer must not rerun analysis, mutate reports, generate tests,
+or interpret SARIF, badges, calibration, cache, or LSP state.
+
 ### Verification command construction
 
 Planned file:
@@ -662,7 +699,9 @@ Preferred narrow PR order:
 3. JSON render model and renderer.
 4. Config/severity/suppression filtering.
 5. Verification command construction.
-6. End-to-end CLI smoke tests.
+6. Agent verify comparison over before/after repo-exposure JSON.
+7. Agent receipt rendering from one saved verify JSON.
+8. End-to-end CLI smoke tests.
 
 Each step should preserve the hard boundaries in this spec. Implementation
 should wait until the latency and cache-observation lane has settled or

@@ -8,9 +8,11 @@ pub(super) enum AgentCommand {
     BriefHelp,
     PacketHelp,
     VerifyHelp,
+    ReceiptHelp,
     Brief(AgentBriefOptions),
     Packet(AgentPacketOptions),
     Verify(AgentVerifyOptions),
+    Receipt(AgentReceiptOptions),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -34,6 +36,17 @@ pub(super) struct AgentVerifyOptions {
     pub(super) before: PathBuf,
     pub(super) after: PathBuf,
     pub(super) json: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct AgentReceiptOptions {
+    pub(super) root: PathBuf,
+    pub(super) verify_json: PathBuf,
+    pub(super) seam_id: String,
+    pub(super) test_changed: Option<String>,
+    pub(super) commands_run: Vec<String>,
+    pub(super) json: bool,
+    pub(super) out: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -69,8 +82,9 @@ pub(super) fn parse_agent_args(args: &[String]) -> Result<AgentCommand, String> 
         Some("brief") => parse_agent_brief_command(&args[1..]),
         Some("packet") => parse_agent_packet_command(&args[1..]),
         Some("verify") => parse_agent_verify_command(&args[1..]),
+        Some("receipt") => parse_agent_receipt_command(&args[1..]),
         Some(other) => Err(format!(
-            "unknown agent subcommand {other:?}; expected `brief`, `packet`, or `verify`"
+            "unknown agent subcommand {other:?}; expected `brief`, `packet`, `verify`, or `receipt`"
         )),
     }
 }
@@ -94,6 +108,13 @@ fn parse_agent_verify_command(args: &[String]) -> Result<AgentCommand, String> {
         return Ok(AgentCommand::VerifyHelp);
     }
     parse_agent_verify_options(args).map(AgentCommand::Verify)
+}
+
+fn parse_agent_receipt_command(args: &[String]) -> Result<AgentCommand, String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        return Ok(AgentCommand::ReceiptHelp);
+    }
+    parse_agent_receipt_options(args).map(AgentCommand::Receipt)
 }
 
 pub(super) fn parse_agent_brief_options(args: &[String]) -> Result<AgentBriefOptions, String> {
@@ -243,6 +264,76 @@ pub(super) fn parse_agent_verify_options(args: &[String]) -> Result<AgentVerifyO
     })
 }
 
+pub(super) fn parse_agent_receipt_options(args: &[String]) -> Result<AgentReceiptOptions, String> {
+    let mut root = PathBuf::from(".");
+    let mut verify_json: Option<PathBuf> = None;
+    let mut seam_id: Option<String> = None;
+    let mut test_changed: Option<String> = None;
+    let mut commands_run = Vec::new();
+    let mut json = false;
+    let mut out: Option<PathBuf> = None;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = PathBuf::from(expect_value(args, i, "--root")?);
+            }
+            "--verify-json" => {
+                i += 1;
+                verify_json = Some(PathBuf::from(expect_value(args, i, "--verify-json")?));
+            }
+            "--seam-id" => {
+                i += 1;
+                let value = expect_value(args, i, "--seam-id")?;
+                if value.trim().is_empty() {
+                    return Err("agent receipt --seam-id requires a non-empty ID".to_string());
+                }
+                seam_id = Some(value.to_string());
+            }
+            "--test" => {
+                i += 1;
+                let value = expect_value(args, i, "--test")?;
+                if value.trim().is_empty() {
+                    return Err("agent receipt --test requires a non-empty value".to_string());
+                }
+                test_changed = Some(value.to_string());
+            }
+            "--command" => {
+                i += 1;
+                let value = expect_value(args, i, "--command")?;
+                if value.trim().is_empty() {
+                    return Err("agent receipt --command requires a non-empty value".to_string());
+                }
+                commands_run.push(value.to_string());
+            }
+            "--json" => json = true,
+            "--out" => {
+                i += 1;
+                out = Some(PathBuf::from(expect_value(args, i, "--out")?));
+            }
+            other => return Err(format!("unknown agent receipt argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    if !json {
+        return Err("agent receipt requires --json until human output is implemented".to_string());
+    }
+
+    Ok(AgentReceiptOptions {
+        root,
+        verify_json: verify_json
+            .ok_or_else(|| "agent receipt requires --verify-json <path>".to_string())?,
+        seam_id: seam_id.ok_or_else(|| "agent receipt requires --seam-id".to_string())?,
+        test_changed,
+        commands_run,
+        json,
+        out,
+    })
+}
+
 fn set_working_set(
     current: &mut Option<WorkingSetCandidate>,
     next: WorkingSetCandidate,
@@ -307,6 +398,10 @@ mod tests {
             parse_agent_args(&args(&["verify", "--help"])),
             Ok(AgentCommand::VerifyHelp)
         );
+        assert_eq!(
+            parse_agent_args(&args(&["receipt", "--help"])),
+            Ok(AgentCommand::ReceiptHelp)
+        );
     }
 
     #[test]
@@ -318,7 +413,7 @@ mod tests {
         assert_eq!(
             parse_agent_args(&args(&["other"])),
             Err(
-                "unknown agent subcommand \"other\"; expected `brief`, `packet`, or `verify`"
+                "unknown agent subcommand \"other\"; expected `brief`, `packet`, `verify`, or `receipt`"
                     .to_string()
             )
         );
@@ -615,6 +710,112 @@ mod tests {
                 "md",
             ])),
             Err("unknown agent verify argument \"--format\"".to_string())
+        );
+    }
+
+    #[test]
+    fn agent_receipt_parses_verify_json_request() {
+        assert_eq!(
+            parse_agent_receipt_options(&args(&[
+                "--root",
+                "repo",
+                "--verify-json",
+                "target/ripr/workflow/agent-verify.json",
+                "--seam-id",
+                "f3c9e4d21a0b7c88",
+                "--test",
+                "pricing_boundary",
+                "--command",
+                "cargo test pricing_boundary",
+                "--command",
+                "cargo run -p ripr -- agent verify --json",
+                "--json",
+                "--out",
+                "target/ripr/reports/agent-receipt.json",
+            ])),
+            Ok(AgentReceiptOptions {
+                root: PathBuf::from("repo"),
+                verify_json: PathBuf::from("target/ripr/workflow/agent-verify.json"),
+                seam_id: "f3c9e4d21a0b7c88".to_string(),
+                test_changed: Some("pricing_boundary".to_string()),
+                commands_run: vec![
+                    "cargo test pricing_boundary".to_string(),
+                    "cargo run -p ripr -- agent verify --json".to_string(),
+                ],
+                json: true,
+                out: Some(PathBuf::from("target/ripr/reports/agent-receipt.json")),
+            })
+        );
+    }
+
+    #[test]
+    fn agent_receipt_requires_json_verify_json_and_seam_id() {
+        assert_eq!(
+            parse_agent_receipt_options(&args(&[
+                "--verify-json",
+                "agent-verify.json",
+                "--seam-id",
+                "abc",
+            ])),
+            Err("agent receipt requires --json until human output is implemented".to_string())
+        );
+        assert_eq!(
+            parse_agent_receipt_options(&args(&["--seam-id", "abc", "--json"])),
+            Err("agent receipt requires --verify-json <path>".to_string())
+        );
+        assert_eq!(
+            parse_agent_receipt_options(&args(&["--verify-json", "agent-verify.json", "--json"])),
+            Err("agent receipt requires --seam-id".to_string())
+        );
+        assert_eq!(
+            parse_agent_receipt_options(&args(&[
+                "--verify-json",
+                "agent-verify.json",
+                "--seam-id",
+                "",
+                "--json",
+            ])),
+            Err("agent receipt --seam-id requires a non-empty ID".to_string())
+        );
+    }
+
+    #[test]
+    fn agent_receipt_rejects_unknown_arguments_and_empty_metadata() {
+        assert_eq!(
+            parse_agent_receipt_options(&args(&[
+                "--verify-json",
+                "agent-verify.json",
+                "--seam-id",
+                "abc",
+                "--json",
+                "--format",
+                "md",
+            ])),
+            Err("unknown agent receipt argument \"--format\"".to_string())
+        );
+        assert_eq!(
+            parse_agent_receipt_options(&args(&[
+                "--verify-json",
+                "agent-verify.json",
+                "--seam-id",
+                "abc",
+                "--test",
+                "",
+                "--json",
+            ])),
+            Err("agent receipt --test requires a non-empty value".to_string())
+        );
+        assert_eq!(
+            parse_agent_receipt_options(&args(&[
+                "--verify-json",
+                "agent-verify.json",
+                "--seam-id",
+                "abc",
+                "--command",
+                "",
+                "--json",
+            ])),
+            Err("agent receipt --command requires a non-empty value".to_string())
         );
     }
 }

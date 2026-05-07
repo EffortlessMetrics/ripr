@@ -1005,6 +1005,76 @@ Field contract:
 - `new_gaps[]` / `resolved_gaps[]` - seam identity and static class for seam IDs
   present in only one snapshot.
 
+## Agent Receipt
+
+`ripr agent receipt --root <workspace> --verify-json <agent-verify-json>
+--seam-id <id> --json` narrows a saved `ripr agent verify` artifact to one
+seam and adds optional handoff metadata for review:
+
+```text
+ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 67fc764ba37d77bd --json
+ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 67fc764ba37d77bd --test discounted_total_boundary_discriminator --command "cargo test discounted_total_boundary_discriminator" --json --out target/ripr/reports/agent-receipt.json
+```
+
+The command does not run analysis, mutation testing, SARIF policy, badge
+generation, LSP refresh, or cache warm-up. It only reads the supplied
+`agent verify` JSON after validating the path resolves under `--root`.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "advisory",
+  "inputs": {
+    "agent_verify_json": "target/ripr/workflow/agent-verify.json",
+    "before": "target/ripr/workflow/before.repo-exposure.json",
+    "after": "target/ripr/workflow/after.repo-exposure.json"
+  },
+  "seam": {
+    "seam_id": "67fc764ba37d77bd",
+    "seam_kind": "predicate_boundary",
+    "file": "src/pricing.rs",
+    "line": 88,
+    "before": "weakly_gripped",
+    "after": "strongly_gripped",
+    "grip_class": null,
+    "change": "improved",
+    "evidence_delta": [
+      "missing discriminator no longer reported: discount_threshold (equality boundary)"
+    ]
+  },
+  "test_changed": "discounted_total_boundary_discriminator",
+  "verification": {
+    "commands_run": ["cargo test discounted_total_boundary_discriminator"]
+  },
+  "summary": {
+    "remaining_gap": "No remaining static gap is named by this receipt; inspect the current seam packet if review needs final assertion detail.",
+    "next_recommendation": "Keep the focused test and attach this receipt with the agent verify JSON."
+  }
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `status` - always `"advisory"`; this is a handoff receipt, not a CI policy.
+- `inputs.agent_verify_json` - the verify JSON path supplied to the command.
+- `inputs.before` / `inputs.after` - snapshot paths copied from the verify JSON.
+- `seam` - the selected seam from `changed_seams`, `unchanged_seams`,
+  `new_gaps`, or `resolved_gaps`.
+- `seam.before` / `seam.after` - before/after grip class for matched seams, or
+  `null` for one-sided new/resolved gaps.
+- `seam.grip_class` - one-sided grip class for `new` or `resolved` gaps, or
+  `null` for matched seams.
+- `test_changed` - optional focused test name supplied by the caller.
+- `verification.commands_run` - optional commands supplied by the caller. The
+  receipt records them; it does not run them.
+- `summary.remaining_gap` / `summary.next_recommendation` - static advisory
+  guidance derived from the verify bucket. It does not claim runtime
+  confirmation.
+
 ## Operator Cockpit Report
 
 `cargo xtask operator-cockpit` joins existing repo-local report artifacts into
