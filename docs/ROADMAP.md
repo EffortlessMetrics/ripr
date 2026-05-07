@@ -66,6 +66,10 @@ checked supplied-data sample for the main static/runtime agreement buckets, and
 runtime mutation vocabulary remains confined to explicit calibration reports.
 The next active item is a hot-sidecar latency audit that measures current cache
 and saved-workspace editor refresh behavior before changing warm-path reuse.
+That audit found the existing LSP/operator proof commands are cheap on a warm
+local build, while `cargo xtask repo-exposure-report` did not finish within a
+20-minute local timeout. The active item is now bounded repo-exposure latency
+reporting before any cache rewrite.
 
 ## Strategic Sequence
 

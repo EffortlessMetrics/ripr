@@ -1092,7 +1092,8 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `cache/current-latency-audit` | ready | Measure current repo seam cache behavior, operator report generation, and saved-workspace LSP refresh proof before changing cache semantics. This is an audit/proof PR, not a cache rewrite. |
+| `cache/current-latency-audit` | done | Measured the current proof surfaces without behavior changes. Unit-level seam cache and seam inventory tests, LSP tests, `lsp-cockpit-report`, and `operator-cockpit` were cheap on a warm local build. LSP cockpit stayed green with the boundary-gap fixture and all contributed VS Code commands covered. Operator cockpit generated quickly and correctly surfaced missing required report inputs when only LSP and optional calibration reports were present. A direct `cargo xtask repo-exposure-report` audit did not finish within a 20-minute local timeout, so the next work should add bounded latency visibility before any cache rewrite. |
+| `cache/repo-exposure-latency-report` | ready | Add bounded repo-exposure latency instrumentation or reporting so cache hit/miss and phase timing can be observed before optimizing warm-path reuse. This should preserve analyzer outputs, schemas, LSP behavior, SARIF, badges, and public API. |
 
 Commands:
 
@@ -1102,7 +1103,6 @@ cargo test -p ripr analysis::seam_inventory --lib
 cargo test -p ripr lsp
 cargo test -p ripr lsp::tests
 cargo xtask lsp-cockpit-report
-cargo xtask operator-cockpit
 cargo xtask check-output-contracts
 cargo xtask check-static-language
 cargo xtask check-campaign
@@ -1117,3 +1117,23 @@ Blocking conditions:
 - caching rendered JSON, Markdown, diagnostics, hover text, or agent packets
 - stale test, config, intent, or suppression data surviving a warm path
 - output/schema/public API/SARIF/badge drift without an explicit spec update
+
+Audit notes:
+
+- Warm local command timings for `analysis::seam_cache`, `analysis::seam_inventory`,
+  `lsp`, `lsp::tests`, `lsp-cockpit-report`, and `operator-cockpit` were all
+  sub-second on Windows after the build was already warm. These are smoke
+  measurements, not benchmark claims.
+- `target/ripr/reports/lsp-cockpit.{json,md}` reported `pass`, one boundary-gap
+  seam diagnostic, all existing seam actions, and no uncovered contributed VS
+  Code commands.
+- `target/ripr/reports/operator-cockpit.{json,md}` generated quickly but warned
+  because repo exposure, SARIF policy, badge status, and targeted-test outcome
+  reports had not been generated in that target directory. This is current
+  expected behavior: the cockpit joins existing reports and does not rerun
+  analysis.
+- A direct `cargo xtask repo-exposure-report` audit did not complete within a
+  20-minute local timeout on this workspace. The spawned `ripr.exe` process was
+  stopped after the timeout. Treat this as the first Campaign 9 finding: before
+  optimizing cache internals, add bounded repo-exposure latency visibility that
+  reports phase timing and cache hit/miss state.
