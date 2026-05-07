@@ -2,6 +2,10 @@
 
 Run these after changing Droid workflows, Droid review guidance, or Droid model configuration.
 
+For cross-repository rollout discipline, start with
+[Droid rollout checklist](droid-rollout.md) and the human
+[Roll out Factory Droid review](../how-to/roll-out-droid.md) guide.
+
 Before relying on live smoke tests, run `cargo xtask check-droid-review-config` locally to confirm the automatic review, manual command, and scheduled security-scan workflow invariants still match the checked-in policy.
 
 ## Automatic review
@@ -73,3 +77,11 @@ After changing any Droid workflow, inspect one completed run artifact and confir
 - prompt and debug artifacts do not contain unexpected secrets;
 - `show_full_output: false` is in effect for all Droid action steps;
 - artifact retention and download permissions are appropriate for this repo.
+
+## Rollout smoke sequence
+
+When enabling Droid in a new repository, follow the rollout checklist first.
+After merge, use one same-repo PR to confirm automatic review, `@droid review`,
+`@droid security`, and manual Droid Security Scan all run with
+`custom:MiniMax-M2.7-0`. Inspect one debug artifact before expanding beyond the
+pilot batch.

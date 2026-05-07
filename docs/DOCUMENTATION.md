@@ -28,6 +28,7 @@ Current how-to docs:
 - [Fix CI shape failures](how-to/fix-ci-shape-failures.md)
 - [Run Codex Goals](how-to/run-codex-goals.md)
 - [PR automation](PR_AUTOMATION.md)
+- [Roll out Factory Droid review](how-to/roll-out-droid.md)
 - [Dogfooding](DOGFOODING.md)
 - [Targeted test workflow](TARGETED_TEST_WORKFLOW.md)
 - [Targeted test boundary-gap case study](case-studies/TARGETED_TEST_BOUNDARY_GAP.md)
@@ -63,6 +64,7 @@ Current reference docs:
 - [Changelog policy](CHANGELOG_POLICY.md)
 - [Capability matrix](CAPABILITY_MATRIX.md)
 - [No-panic semantic allowlist](NO_PANIC_SEMANTIC_ALLOWLIST.md)
+- [Droid rollout checklist](agent-context/droid-rollout.md)
 
 Planned reference docs:
 

@@ -22,6 +22,22 @@ Run this for any change to:
 - release workflows
 - CI/security workflows
 
+## Droid workflow policy
+
+```bash
+cargo xtask check-droid-review-config
+```
+
+Run this with `cargo xtask check-workflows` for changes to:
+
+- `.github/workflows/droid-review.yml`
+- `.github/workflows/droid.yml`
+- `.github/workflows/droid-security-scan.yml`
+- `docs/agent-context/review-invariants.md`
+- `docs/agent-context/droid-smoke-tests.md`
+- `.factory/skills/review-guidelines/SKILL.md`
+- `.factory/rules/droid-review.md`
+
 ## Security-sensitive review
 
 For changes involving secrets, workflows, dependency policy, release scripts, or command execution:
