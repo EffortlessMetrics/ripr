@@ -62,6 +62,14 @@ Currently denied at the workspace level (selected highlights):
 - Memory / drop footguns: `clippy::mem_forget`, `clippy::forget_non_drop`,
   `clippy::drop_non_drop`.
 - Numeric correctness: `clippy::float_cmp`, `clippy::float_cmp_const`.
+- Silent failure: `clippy::let_underscore_future`,
+  `clippy::let_underscore_lock`, `clippy::unused_result_ok`,
+  `clippy::map_err_ignore`, `clippy::assertions_on_result_states`,
+  `clippy::lines_filter_map_ok`. `clippy::let_underscore_must_use` is
+  intentionally **not** yet active — best-effort cleanup patterns
+  (`let _ = fs::remove_dir_all(&dir)`) are pervasive across tests, and the
+  flip is tracked as a follow-up. Tests asserting that a `Result` is `Err`
+  should use `.expect_err("why")` rather than `assert!(x.is_err())`.
 - Suppression governance: `clippy::allow_attributes_without_reason`,
   `clippy::blanket_clippy_restriction_lints`.
 - Rust: `unsafe_code = "forbid"`, `unused_must_use`,

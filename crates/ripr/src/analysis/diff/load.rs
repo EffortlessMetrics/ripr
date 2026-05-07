@@ -56,7 +56,7 @@ mod tests {
             None,
             Some(&PathBuf::from("/nonexistent/path/to/file")),
         );
-        assert!(result.is_err());
+        result.expect_err("expected diff load to fail for missing file");
         Ok(())
     }
 }

@@ -14243,7 +14243,7 @@ fn unescape_toml_string(value: &str) -> String {
 fn parse_usize_value(value: &str, path: &str, line_number: usize) -> Result<usize, String> {
     let v = value.split('#').next().unwrap_or(value).trim();
     v.parse::<usize>()
-        .map_err(|_| format!("{path}:{} invalid number (got: {value})", line_number))
+        .map_err(|_err| format!("{path}:{} invalid number (got: {value})", line_number))
 }
 
 fn validate_panic_allow_entry(
@@ -17222,7 +17222,7 @@ jobs:
 
         assert_eq!(parse_reason(&spaced), Ok("intentional update".to_string()));
         assert_eq!(parse_reason(&equals), Ok("intentional update".to_string()));
-        assert!(parse_reason(&[]).is_err());
+        parse_reason(&[]).expect_err("empty args should fail to produce a reason");
     }
 
     #[test]
@@ -17244,7 +17244,7 @@ jobs:
             Ok(vec!["one".to_string(), "two".to_string()])
         );
         assert_eq!(parse_inline_array("[]"), Ok(Vec::new()));
-        assert!(parse_inline_array("[one]").is_err());
+        parse_inline_array("[one]").expect_err("unquoted token should fail array parse");
     }
 
     #[test]

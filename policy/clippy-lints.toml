@@ -65,6 +65,35 @@ level = "deny"
 name = "clippy::float_cmp_const"
 level = "deny"
 
+# Silent failure: ignoring a Result, future, or lock guard loses evidence the
+# analyzer cannot reconstruct. `let_underscore_must_use` is intentionally
+# deferred because best-effort cleanup patterns (`let _ = fs::remove_dir_all`)
+# are pervasive across tests; tracked as a follow-up flip.
+[[active.silent_failure]]
+name = "clippy::let_underscore_future"
+level = "deny"
+
+[[active.silent_failure]]
+name = "clippy::let_underscore_lock"
+level = "deny"
+
+[[active.silent_failure]]
+name = "clippy::unused_result_ok"
+level = "deny"
+
+[[active.silent_failure]]
+name = "clippy::map_err_ignore"
+level = "deny"
+
+[[active.silent_failure]]
+name = "clippy::assertions_on_result_states"
+level = "deny"
+note = "Use `.expect_err(\"why\")` (or `.unwrap_err()`) instead of `assert!(x.is_err())` so the test asserts on a typed error rather than a boolean."
+
+[[active.silent_failure]]
+name = "clippy::lines_filter_map_ok"
+level = "deny"
+
 [[active.governance]]
 name = "clippy::allow_attributes_without_reason"
 level = "deny"
