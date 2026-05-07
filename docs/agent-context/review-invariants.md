@@ -18,9 +18,59 @@ Each actionable finding emitted by Droid must include:
 * validation (command, report, fixture, golden, or CI check);
 * confidence (High / Medium / Low with justification when not high).
 
+Use the checked-in finding packet shape:
+
+```text
+[P0|P1|P2] Short title
+
+Failure mode:
+Why here:
+Fix direction:
+Validation:
+Confidence:
+```
+
+The comment should be useful as an inter-agent repair queue entry. It should
+name the likely repair surface and preserve the repo invariant that made the
+finding actionable.
+
 Review output should not optimize for short comments at the expense of repair value. Droid runs consume CI time, model calls, and repo research; each finding should amortize that cost by preserving useful research context in the comment or summary.
 
 Do not discard useful repo research. If Droid inspected specs, policies, CI configuration, prior comments, or in-repo documentation, preserve the relevant result so the next repair agent does not rediscover the same invariant.
+
+## Suggested fix invariants
+
+Use GitHub suggestion blocks for high-confidence local edits that should apply
+cleanly.
+
+Use ordered repair plans for cross-file, policy, fixture, golden,
+traceability, schema, or design-dependent changes. Name likely files, tests,
+policies, and generated outputs, and include validation commands.
+
+## Evidence provenance invariants
+
+Separate validation signal by provenance:
+
+* `Observed:` CI checks, files, logs, or artifacts Droid directly inspected.
+* `Reported:` PR-body, commit-message, or comment claims.
+* `Not verified:` validation Droid did not run or observe.
+
+Do not treat PR-body validation claims as independently verified facts.
+
+## Clean review invariants
+
+When no actionable findings are emitted, prefer:
+
+```text
+No actionable findings emitted.
+```
+
+The clean-review body should still name inspected surfaces, checks performed,
+why no comments were emitted, residual risk, and validation signal. Validation
+signal should be split into `Observed`, `Reported`, and `Not verified`.
+
+Avoid vague residual-risk labels such as `minimal`, `low risk`, or `safe`
+unless tied to concrete evidence.
 
 ## Notification invariants
 
@@ -28,7 +78,9 @@ Automated review output should avoid unnecessary notifications.
 
 * Droid-generated review bodies must not @mention humans, teams, bots, or organizations unless explicitly requested.
 * Review comments should be addressed to the next repair agent, not to the PR author.
-* Prefer PR-scoped language: `this PR`, `this diff`, `the changed code`.
+* Do not write `cc @username`, `asking @username`, or `Droid finished @username's task` in Droid-generated review content.
+* Avoid direct author-directed wording such as `you should`.
+* Prefer PR-scoped language: `this PR`, `this diff`, `the changed code`, `the follow-up agent`, `the next repair pass`.
 * Treat platform-generated wrapper mentions as outside repo guidance; do not repeat them in review content.
 
 ## Workflow invariants

@@ -14,8 +14,10 @@ Before reviewing, use the repository's checked-in context:
 - `docs/PR_AUTOMATION.md`
 - `docs/SCOPED_PR_CONTRACT.md`
 - `docs/CI.md`
+- `.factory/rules/droid-review.md`
 - `policy/workflow_allowlist.txt`
 - `docs/agent-context/review-invariants.md`
+- `docs/agent-context/validation.md`
 
 For product, analyzer, output, fixture, LSP, release, or workflow changes, inspect the relevant docs linked from `README.md`.
 
@@ -74,6 +76,8 @@ If there are 20 concrete issues, leave 20 comments. If many instances share one 
 ## Repair value
 
 Droid comments are an inter-agent repair queue. Each actionable finding should preserve enough context for a follow-up coding agent to fix the issue without repeating the research that produced the finding.
+
+Treat each actionable finding as a standalone repair packet. A follow-up agent should be able to read the comment, locate the likely repair surface, understand the violated repo invariant, and choose a validation command without reconstructing the original review.
 
 Each finding should include:
 
@@ -350,7 +354,7 @@ Do not make the next repair agent rediscover the same invariant. Include the con
 Prefer:
 
 ```text
-Why here: `CLAUDE.md` requires spec-test-code-output-metric traceability for
+Why here: `AGENTS.md` requires spec-test-code-output-metric traceability for
 behavior changes. This diff changes classifier output without updating the
 corresponding fixture in `fixtures/classifier/basic/`.
 ```
