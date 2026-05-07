@@ -15,7 +15,7 @@
 <!-- The public `ripr` and `ripr+` badges count unresolved repo-scoped seam-native exposure gaps under the configured policy — inbox-zero, not coverage. Diff-scoped badge artifacts remain legacy finding-exposure artifacts for PR summaries. This repo commits the Shields endpoint JSON under `badges/` and Shields fetches it from `raw.githubusercontent.com`; refresh with `cargo xtask update-badge-endpoints`. The ripr product contract is "ripr emits Shields-compatible JSON" — downstream users can self-host the JSON anywhere stable and are not expected to enable GitHub Pages. See [docs/BADGE_POLICY.md](docs/BADGE_POLICY.md) and `deferred/hosted-badge-service` in [docs/DEFERRED.md](docs/DEFERRED.md). -->
 
 
-<!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-07 from the public listing. Refresh from publisher metrics after publish. Do not use live VS Marketplace Shields routes. -->
+<!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-07 after the 0.4.0 publish from the public listing. Refresh from publisher metrics when updating this manual count. Do not use live VS Marketplace Shields routes. -->
 
 `ripr` helps Rust developers and coding agents answer a draft-time testing
 question:
@@ -338,7 +338,7 @@ Current capabilities:
 
 | Capability | Current state | Next checkpoint |
 | --- | --- | --- |
-| Distribution | `0.4.0` release prep aligns the Rust crate, VS Code/Open VSX extension, generated CI workflow, release-readiness report, and installed editor-agent loop proof. | Publish 0.4.0 and verify crates.io, GitHub Release assets, VS Marketplace, and Open VSX. |
+| Distribution | `0.4.0` is published on crates.io, GitHub Releases, VS Marketplace, and Open VSX with server archives, VSIX packaging, generated CI workflow artifacts, release-readiness proof, and installed editor-agent loop smoke checks. | Post-release maintenance; keep registry, server, and marketplace surfaces aligned. |
 | Diff analysis | Evidence-first Voice A findings with syntax-backed changed-line probes, probe-relative oracle strength, local flow sinks, observed/missing activation values, and explicit stop reasons. | Maintenance; no active analyzer-refactor lane. |
 | Repo seam inventory | First-class `RepoSeam` model with deterministic seam IDs, cached seam fact layers, test-grip evidence across the five RIPR stages, and 11-class `SeamGripClass` classification. | Maintenance; no active analyzer-refactor lane. |
 | Test discovery | Parser-backed test and assertion facts with exact, broad, relational, snapshot, mock, smoke, custom-helper, side-effect observer, and unknown oracle kinds; per-test efficiency ledger with smoke/broad/disconnected/opaque/circular/likely-vacuous reasons and duplicate-discriminator groups. | Maintenance; no active analyzer-refactor lane. |
@@ -378,8 +378,7 @@ The VS Code extension starts `ripr lsp --stdio` and can resolve the server from:
 Normal editor install should not require `cargo install ripr`. The Cargo install
 path remains available for offline, pinned, or controlled environments. The
 `v0.4.0` release line includes the server manifest, per-target server
-archives, checksums, and VSIX needed for this default path after the release
-publish workflow completes.
+archives, checksums, and VSIX needed for this default path.
 
 See:
 
