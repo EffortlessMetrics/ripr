@@ -110,7 +110,7 @@ For Droid workflows:
 - Do not set `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_BASE_URL`.
 - Keep `show_full_output: false`.
 - Use the approved safe action ref
-  `EffortlessMetrics/droid-action-safe@01e76b659e4b1e5f23feedc8cfabf8dc14c7485f`.
+  `EffortlessMetrics/droid-action-safe@7c1377ccbacddc95560d1570547a5baa51de01ec`.
 - Set `upload_debug_artifacts: false`.
 - Do not use `Factory-AI/droid-action` directly for MiniMax BYOK workflows
   unless a future upstream SHA has an explicit debug-artifact disable input and

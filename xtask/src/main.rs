@@ -14922,7 +14922,7 @@ fn forbids_active_line(lines: &[String], pattern: &str) -> bool {
 }
 
 const DROID_SAFE_ACTION: &str = "EffortlessMetrics/droid-action-safe";
-const DROID_SAFE_ACTION_SHA: &str = "01e76b659e4b1e5f23feedc8cfabf8dc14c7485f";
+const DROID_SAFE_ACTION_SHA: &str = "7c1377ccbacddc95560d1570547a5baa51de01ec";
 const DROID_UNSAFE_UPSTREAM_ACTION: &str = "Factory-AI/droid-action";
 
 fn check_droid_action_refs(violations: &mut Vec<String>, path_label: &str, text: &str) {
@@ -20752,7 +20752,7 @@ active: true
         check_droid_action_refs(
             &mut violations,
             "test.yml",
-            "      - uses: EffortlessMetrics/droid-action-safe@01e76b659e4b1e5f23feedc8cfabf8dc14c7485f\n",
+            "      - uses: EffortlessMetrics/droid-action-safe@7c1377ccbacddc95560d1570547a5baa51de01ec\n",
         );
         assert!(violations.is_empty());
     }
@@ -21006,7 +21006,7 @@ jobs:
           cat > "$HOME/.factory/settings.local.json" <<'JSON'
           {"apiKey": "${MINIMAX_API_KEY}"}
           JSON
-      - uses: EffortlessMetrics/droid-action-safe@01e76b659e4b1e5f23feedc8cfabf8dc14c7485f
+      - uses: EffortlessMetrics/droid-action-safe@7c1377ccbacddc95560d1570547a5baa51de01ec
         with:
           upload_debug_artifacts: false
           security_scan_schedule: true
