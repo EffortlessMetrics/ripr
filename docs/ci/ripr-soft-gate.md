@@ -100,9 +100,9 @@ is. There is no separate top-level `id` field.
   --labels-json "$LABELS_JSON"`, then activate the gate after the
   calibration window has produced 2 weeks of `ci-actuals.json` data on
   the `ripr-self-dogfood` lane. The lane is registered in
-  `policy/ci-lane-whitelist.toml` (forward reference, ships in PR 02 of
-  the rollout) and emitted by `.github/workflows/ripr.yml` (forward
-  reference, ships in PR 10).
+  `policy/ci-lane-whitelist.toml` and runs as part of the `rust` job in
+  `.github/workflows/ci.yml` via `cargo xtask dogfood` and
+  `cargo xtask reports index` (the lane's `commands` field).
 
 ## Confidence field contract
 
@@ -161,12 +161,12 @@ above). That PR is also where the `--findings`, `--suppressions`,
 `--threshold-config`, and `--labels-json` flow becomes a real exit code
 instead of a `|| true` advisory.
 
-The `ripr-self-dogfood` lane referenced below is the
-`.github/workflows/ripr.yml` lane that runs `ripr check` against the
-diff and uploads the JSON/SARIF findings (forward reference; ships in
-PR 10 of the rollout). It is registered in
-`policy/ci-lane-whitelist.toml` (PR 02). The xtask command is gated to
-flip `status` only after **all** of these conditions are verified
+The `ripr-self-dogfood` lane referenced below is registered in
+`policy/ci-lane-whitelist.toml` and runs as part of the `rust` job in
+`.github/workflows/ci.yml` via `cargo xtask dogfood` and
+`cargo xtask reports index` (the lane's `commands` field). The xtask
+command is gated to flip `status` only after **all** of these
+conditions are verified
 against that lane's `ci-actuals.json` upload:
 
 1. The `ripr-self-dogfood` lane has uploaded at least 14
