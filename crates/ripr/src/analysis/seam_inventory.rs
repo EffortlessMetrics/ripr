@@ -194,7 +194,7 @@ pub(crate) fn inventory_classified_seams_uncached_with_config(
     let evidence = test_grip_evidence::evidence_for_seams(&seams, &index);
     trace_latency_phase("evidence_for_seams", "ok", evidence_started.elapsed());
     let classify_started = Instant::now();
-    let classified = seam_classification::classify_seams(&seams, &evidence);
+    let classified = seam_classification::classify_seams_owned(seams, evidence);
     trace_latency_phase("classify_seams", "ok", classify_started.elapsed());
     Ok(classified)
 }
@@ -269,7 +269,7 @@ fn inventory_classified_seams_from_state_with_config(
     let evidence = test_grip_evidence::evidence_for_seams(&seams, &cached.index);
     trace_latency_phase("evidence_for_seams", "ok", evidence_started.elapsed());
     let classify_started = Instant::now();
-    let classified = seam_classification::classify_seams(&seams, &evidence);
+    let classified = seam_classification::classify_seams_owned(seams, evidence);
     trace_latency_phase("classify_seams", "ok", classify_started.elapsed());
     Ok(classified)
 }
