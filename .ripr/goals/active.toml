@@ -5,7 +5,7 @@ status = "active"
 # This is Campaign 9 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
 # Campaign 8 (`runtime-calibration-fixtures`) closed after the supplied
 # cargo-mutants fixture set pinned the main static/runtime agreement buckets.
-# The next lane is performance and editor responsiveness, not new analyzer
+# This lane is performance and editor responsiveness, not new analyzer
 # semantics or new LSP product surface.
 
 objective = """
@@ -23,7 +23,7 @@ end_state = [
 
 [[work_item]]
 id = "cache/current-latency-audit"
-status = "ready"
+status = "done"
 branch = "hot-sidecar-latency-audit"
 stackable = false
 requires_human_merge = true
@@ -35,6 +35,27 @@ commands = [
   "cargo test -p ripr lsp::tests",
   "cargo xtask lsp-cockpit-report",
   "cargo xtask operator-cockpit",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
+  "cargo xtask check-pr",
+  "cargo test --workspace"
+]
+
+[[work_item]]
+id = "cache/repo-exposure-latency-report"
+status = "ready"
+branch = "repo-exposure-latency-report"
+stackable = false
+requires_human_merge = true
+acceptance = "Add bounded repo-exposure latency instrumentation or reporting so cache hit/miss and phase timing can be observed before optimizing warm-path reuse; do not change analyzer outputs"
+commands = [
+  "cargo test -p ripr analysis::seam_cache --lib",
+  "cargo test -p ripr analysis::seam_inventory --lib",
+  "cargo test -p ripr lsp",
+  "cargo test -p ripr lsp::tests",
+  "cargo xtask lsp-cockpit-report",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-campaign",

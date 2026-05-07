@@ -315,11 +315,12 @@ is the first public install target for that CLI loop.
 The closeout audit lives at
 `docs/handoffs/2026-05-07-campaign-7-closeout.md`. Campaign 8 has a checked
 runtime calibration fixture set for the main agreement buckets and keeps
-runtime data supplied and optional. The active item is now the hot-sidecar
-latency audit:
+runtime data supplied and optional. Campaign 9 has measured the existing cache
+and editor proof surfaces; the active item is now bounded repo-exposure latency
+reporting:
 
 ```text
-cache/current-latency-audit
+cache/repo-exposure-latency-report
 ```
 
 Deeper capability state lives in [Capability matrix](docs/CAPABILITY_MATRIX.md)
