@@ -31,7 +31,8 @@ can see them on the timeline.
 ## Conventions
 
 - Labels are case-sensitive and must match the `[labels]` block of
-  `policy/ci-budget.toml`.
+  `policy/ci-budget.toml` (forward reference, ships in PR 02 of the
+  rollout).
 - A bot or workflow reaction to a label should be idempotent.
 - Removing an override label on a PR re-applies the original guard on the
   next push.
