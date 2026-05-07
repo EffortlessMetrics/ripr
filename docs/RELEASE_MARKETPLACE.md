@@ -17,13 +17,19 @@ The Rust crate release is documented separately in [RELEASE.md](RELEASE.md).
 Keep versions aligned:
 
 ```text
-ripr crate:      0.3.x
-VS extension:    0.3.x
-Open VSX:        0.3.x
+ripr crate:      0.4.x
+VS extension:    0.4.x
+Open VSX:        0.4.x
 ```
 
-For `0.3.x`, the universal extension can download the matching `ripr` server
-from GitHub Releases. `cargo install ripr` remains a manual fallback.
+For `0.4.x`, the universal extension can download the matching `ripr` server
+from GitHub Releases. `cargo install ripr` remains a manual fallback for
+offline, pinned, or controlled environments.
+
+The marketplace release story should lead with the editor and CI evidence loop:
+install the extension, inspect saved-workspace diagnostics, copy the targeted
+brief or agent commands, add one focused test, and verify through the copied
+command chain or generated CI artifacts.
 
 ## Required Files
 
@@ -51,7 +57,7 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
-code --install-extension dist/ripr-0.3.1.vsix --force
+code --install-extension dist/ripr-0.4.0.vsix --force
 ```
 
 Also run the Rust gates from the repository root:
@@ -89,8 +95,8 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
-npx @vscode/vsce publish --packagePath dist/ripr-0.3.1.vsix --pat "$VSCE_PAT"
-npx ovsx publish dist/ripr-0.3.1.vsix -p "$OVSX_PAT" --skip-duplicate
+npx @vscode/vsce publish --packagePath dist/ripr-0.4.0.vsix --pat "$VSCE_PAT"
+npx ovsx publish dist/ripr-0.4.0.vsix -p "$OVSX_PAT" --skip-duplicate
 ```
 
 ## CI Publish
@@ -105,14 +111,14 @@ The workflow packages one VSIX, uploads it as an artifact, publishes that same
 VSIX to both registries, and attaches it to the GitHub Release when run from a
 tag.
 
-The workflow normalizes tag names like `v0.3.1` to the package version
-`0.3.1` for the VSIX filename and duplicate-version checks.
+The workflow normalizes tag names like `v0.4.0` to the package version
+`0.4.0` for the VSIX filename and duplicate-version checks.
 
 To publish only Open VSX from a manual workflow run:
 
 ```bash
 gh workflow run publish-extension.yml \
-  --field version=0.3.1 \
+  --field version=0.4.0 \
   --field publish_vs_marketplace=false \
   --field publish_open_vsx=true
 ```

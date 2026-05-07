@@ -9,6 +9,15 @@ are scoped or reviewed.
 
 ## Unreleased
 
+No unreleased changes yet.
+
+## 0.4.0 - 2026-05-07
+
+This release aligns RIPR's editor and CI evidence loop: saved-workspace
+diagnostics, hover evidence, targeted briefs, agent command handoff, focused
+test verification, receipts, cockpit artifacts, and non-blocking CI output now
+tell the same conservative static-exposure story.
+
 ### Added
 
 - Added `ripr pilot`, a zero-config first-run command that writes
