@@ -129,6 +129,38 @@ level = "deny"
 name = "clippy::join_absolute_paths"
 level = "deny"
 
+# AST / UTF-8 / parser safety. `string_slice` and `indexing_slicing` are
+# intentionally deferred — parser/diff code uses bounded slice arithmetic
+# where the indices are derived from validated AST text ranges; per-call
+# review and `#[expect]` receipts are required for the flip.
+[[active.ast_safety]]
+name = "clippy::char_indices_as_byte_indices"
+level = "deny"
+
+[[active.ast_safety]]
+name = "clippy::sliced_string_as_bytes"
+level = "deny"
+
+[[active.ast_safety]]
+name = "clippy::index_refutable_slice"
+level = "deny"
+
+[[active.ast_safety]]
+name = "clippy::out_of_bounds_indexing"
+level = "deny"
+
+[[planned]]
+name = "clippy::indexing_slicing"
+level = "deny"
+activate_when_msrv = "1.93"
+reason = "Requires per-call `#[expect]` receipts on parser/diff bounded indexing; deferred until receipts are scripted."
+
+[[planned]]
+name = "clippy::string_slice"
+level = "deny"
+activate_when_msrv = "1.93"
+reason = "Requires per-call `#[expect]` receipts on AST-bounded text slicing; pairs with `indexing_slicing` flip."
+
 [[active.governance]]
 name = "clippy::allow_attributes_without_reason"
 level = "deny"
