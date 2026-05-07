@@ -124,7 +124,7 @@ commands = [
 
 [[work_item]]
 id = "release/editor-agent-readiness-proof"
-status = "ready"
+status = "done"
 branch = "release-editor-agent-readiness-proof"
 stackable = false
 requires_human_merge = true
@@ -142,10 +142,18 @@ commands = [
 
 [[work_item]]
 id = "campaign/editor-agent-integration-closeout"
-status = "blocked"
+status = "ready"
 branch = "campaign-editor-agent-integration-closeout"
 stackable = false
 requires_human_merge = true
 acceptance = "Close Campaign 10 after editor, agent, cockpit, CI, fixture, docs, and release-readiness proof are aligned with no new public crates, runtime execution, automatic edits, or speculative editor features"
-blocked_by = ["release/editor-agent-readiness-proof"]
-blocked_reason = "Closeout waits for the editor-agent release-readiness gate."
+commands = [
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
+  "cargo xtask check-doc-index",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-static-language",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr"
+]

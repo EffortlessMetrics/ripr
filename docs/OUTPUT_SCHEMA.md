@@ -1088,10 +1088,11 @@ target/ripr/reports/release-readiness.md
 The report checks repo artifacts and safe local commands for the 0.4
 first-hour loop. It path-installs the local binary, verifies the public command
 surface, runs the boundary-gap `ripr pilot`, `ripr outcome`, and
-`ripr agent verify` snapshots, refreshes repo-exposure latency and LSP cockpit
-reports, checks the advisory GitHub workflow dry-run, and confirms VSIX and
-known-limit docs. It does not run mutation testing, enable CI blocking, change
-analyzer classifications, or expand LSP behavior.
+`ripr agent verify` snapshots, writes a focused `ripr agent receipt`, refreshes
+repo-exposure latency and LSP cockpit reports, checks the advisory GitHub
+workflow dry-run, and confirms VSIX and known-limit docs. It does not run
+mutation testing, enable CI blocking, change analyzer classifications, or
+expand LSP behavior.
 
 JSON shape:
 
@@ -1142,8 +1143,9 @@ Field contract:
 - `checks[].id` - stable check identifier such as `package-list`,
   `publish-dry-run`, `path-install`, `installed-command-surface`,
   `pilot-boundary-fixture`, `outcome-boundary-fixture`,
-  `agent-verify-boundary-fixture`, `repo-exposure-latency`, `lsp-cockpit`,
-  `github-workflow-defaults`, `vsix-packaging-path`, or `known-limits-docs`.
+  `agent-verify-boundary-fixture`, `agent-receipt-boundary-fixture`,
+  `repo-exposure-latency`, `lsp-cockpit`, `github-workflow-defaults`,
+  `vsix-packaging-path`, or `known-limits-docs`.
 - `checks[].status` - `pass`, `warn`, `fail`, or `not_run`.
 - `checks[].required` - `true` for checks that must pass in the normal local
   readiness run. Release-only package and publish dry-run checks can be
