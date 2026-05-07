@@ -554,7 +554,7 @@ fn check_badge_json_output_has_native_badge_shape() {
     assert!(stdout.contains(r#""kind": "ripr""#));
     assert!(stdout.contains(r#""scope": "diff""#));
     assert!(stdout.contains(r#""basis": "finding_exposure""#));
-    assert!(stdout.contains(r#""label": "RIPR gaps""#));
+    assert!(stdout.contains(r#""label": "ripr""#));
     assert!(stdout.contains(r#""counts""#));
     assert!(stdout.contains(r#""reason_counts""#));
     assert!(stdout.contains(r#""policy""#));
@@ -584,7 +584,7 @@ fn check_badge_shields_output_has_exactly_four_top_level_fields() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains(r#""schemaVersion": 1"#));
-    assert!(stdout.contains(r#""label": "RIPR gaps""#));
+    assert!(stdout.contains(r#""label": "ripr""#));
     assert!(stdout.contains(r#""message": "5""#));
     assert!(stdout.contains(r#""color": "orange""#));
     // Native-JSON-only fields must not leak into the Shields shape.
@@ -1324,7 +1324,7 @@ fn check_repo_badge_plus_json_emits_native_shape_with_fixture_report() -> Result
     assert!(stdout.contains(r#""kind": "ripr_plus""#));
     assert!(stdout.contains(r#""scope": "repo""#));
     assert!(stdout.contains(r#""basis": "seam_native""#));
-    assert!(stdout.contains(r#""label": "RIPR+ gaps""#));
+    assert!(stdout.contains(r#""label": "ripr+""#));
     assert!(stdout.contains(r#""counts""#));
     assert!(stdout.contains(r#""reason_counts""#));
     assert!(stdout.contains(r#""policy""#));
@@ -1358,7 +1358,7 @@ fn check_badge_plus_shields_emits_four_field_shape_with_fixture_report() -> Resu
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains(r#""schemaVersion": 1"#));
-    assert!(stdout.contains(r#""label": "RIPR+ gaps""#));
+    assert!(stdout.contains(r#""label": "ripr+""#));
     assert!(stdout.contains(r#""color":"#));
     // Native-only fields must not leak into Shields shape.
     for forbidden in [
@@ -1427,7 +1427,7 @@ fn check_repo_badge_json_emits_repo_scope_metadata() -> Result<(), String> {
         !stdout.contains(r#""scope": "diff""#),
         "repo scope output must not also carry diff scope: {stdout}"
     );
-    assert!(stdout.contains(r#""label": "RIPR gaps""#));
+    assert!(stdout.contains(r#""label": "ripr""#));
     assert!(stdout.contains(r#""counts""#));
 
     let _ = std::fs::remove_dir_all(&workspace);
@@ -1443,7 +1443,7 @@ fn check_repo_badge_shields_keeps_four_fields_without_scope_leak() -> Result<(),
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains(r#""schemaVersion": 1"#));
-    assert!(stdout.contains(r#""label": "RIPR gaps""#));
+    assert!(stdout.contains(r#""label": "ripr""#));
     assert!(stdout.contains(r#""color""#));
     // Scope is native-only metadata; Shields stays exactly four fields.
     assert!(
@@ -1482,7 +1482,7 @@ fn check_repo_badge_plus_json_emits_repo_scope_metadata() -> Result<(), String> 
     assert!(stdout.contains(r#""kind": "ripr_plus""#));
     assert!(stdout.contains(r#""scope": "repo""#));
     assert!(stdout.contains(r#""basis": "seam_native""#));
-    assert!(stdout.contains(r#""label": "RIPR+ gaps""#));
+    assert!(stdout.contains(r#""label": "ripr+""#));
 
     let _ = std::fs::remove_dir_all(&workspace);
     Ok(())
@@ -1504,7 +1504,7 @@ fn check_repo_badge_plus_shields_keeps_four_fields() -> Result<(), String> {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains(r#""schemaVersion": 1"#));
-    assert!(stdout.contains(r#""label": "RIPR+ gaps""#));
+    assert!(stdout.contains(r#""label": "ripr+""#));
     assert!(!stdout.contains(r#""scope""#));
     assert!(!stdout.contains(r#""basis""#));
     let top_level_keys = stdout
