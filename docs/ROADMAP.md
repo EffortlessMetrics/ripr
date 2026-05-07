@@ -58,8 +58,11 @@ the generated GitHub Action upload pilot/report artifacts with optional SARIF
 rendering/upload, documented and verified the existing VS Code install path and
 command coverage, and added the public example corpus for the defaults-first
 operator path. Install and release-path proof is now complete for the crate
-install path, public GitHub Release server assets, and VSIX package path. The
-next ready work is Campaign 7 closeout against that loop.
+install path, public GitHub Release server assets, and VSIX package path.
+Campaign 7 is closed; the closeout audit demonstrates the installed
+boundary-gap seam packet, outcome receipt, and optional calibration loop. The
+next active lane is runtime calibration fixture expansion with supplied
+cargo-mutants data.
 
 ## Strategic Sequence
 
@@ -95,6 +98,7 @@ quality rails
 -> Campaign 6 stack audit
 -> Campaign 6 modularization closeout
 -> defaults-first operator adoption
+-> runtime calibration fixture expansion
 ```
 
 The analyzer path is:

@@ -21,17 +21,17 @@ through multiple work items in a campaign, but each work item should follow the
 | Seam Evidence Usability and Precision (5A) | Make repo seam evidence fast, precise, and directly actionable for developers and coding agents. | Complete: #255, #310, #313, #314, #315, #316, #327, and `campaign/seam-evidence-usability-closeout`. |
 | Operationalization (5B) | Govern analyzer behavior with repository config, integrate SARIF/CI policy modes, and remap badges onto seam-native counts. | Complete: `config/ripr-config-v1`, `ci/sarif-ci-policy`, `badge/seam-native-count-mapping`, and `campaign/operationalization-closeout`. |
 | Module SRP Refactoring (6) | Refactor internal modules under `crates/ripr/src/` so each module has one product responsibility, without splitting the package. | Complete: #347, the Campaign 6 refactor chain through #405, and `campaign/modularization-closeout`. |
-| Defaults-First Operator Adoption (7) | Make a clean install useful through conservative defaults, one operator cockpit, CI artifacts, editor install docs, examples, and install/release proof. | Active: `defaults/config-init`, `reports/operator-cockpit`, `ci/github-action-entrypoint`, `editor/install-polish`, `fixtures/example-corpus`, and `release/install-polish` are complete; next ready item is `campaign/defaults-first-closeout`. |
+| Defaults-First Operator Adoption (7) | Make a clean install useful through conservative defaults, one operator cockpit, CI artifacts, editor install docs, examples, and install/release proof. | Complete: #409 through #417 plus `campaign/defaults-first-closeout`. |
+| Runtime Calibration Fixture Expansion (8) | Expand supplied-runtime calibration fixtures without making RIPR run mutation tests. | Active: first ready item is `calibration/runtime-fixtures-v1`. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
-through 6 are complete. Campaign 6 closed after the internal module SRP chain
+through 7 are complete. Campaign 6 closed after the internal module SRP chain
 landed through #405 while preserving the saved-workspace LSP cockpit contract,
-output schemas, public API, SARIF, and badge behavior. The active queue is now
-Campaign 7; `defaults/config-init`, `reports/operator-cockpit`,
-`ci/github-action-entrypoint`, `editor/install-polish`, and
-`fixtures/example-corpus` are complete. `release/install-polish` verified the
-crate install path, public GitHub Release server assets, and VSIX package path;
-the next ready work item is `campaign/defaults-first-closeout`.
+output schemas, public API, SARIF, and badge behavior. Campaign 7 closed after
+the defaults-first CLI, editor, CI, fixture, release, and report surfaces were
+verified; the closeout audit lives at
+`docs/handoffs/2026-05-07-campaign-7-closeout.md`. The active queue is now
+Campaign 8, starting with `calibration/runtime-fixtures-v1`.
 
 ## PR 0: `planning-and-tracking-docs`
 
