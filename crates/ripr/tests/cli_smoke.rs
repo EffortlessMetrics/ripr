@@ -95,6 +95,51 @@ fn check_json_output_has_stable_contract_fields() {
 }
 
 #[test]
+fn agent_brief_diff_scope_outputs_json() -> Result<(), Box<dyn std::error::Error>> {
+    let root = unique_temp_workspace("agent-brief-root");
+    std::fs::create_dir_all(root.join("src"))?;
+    std::fs::create_dir_all(root.join("tests"))?;
+    std::fs::copy(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/sample/src/lib.rs"),
+        root.join("src/lib.rs"),
+    )?;
+    std::fs::copy(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/sample/tests/pricing.rs"),
+        root.join("tests/pricing.rs"),
+    )?;
+    let diff = root.join("change.diff");
+    std::fs::write(
+        &diff,
+        "diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -8,1 +8,1 @@\n-old\n+new\n",
+    )?;
+    let root_path = root.display().to_string();
+    let diff = diff.display().to_string();
+    let output = run_ripr(&[
+        "agent",
+        "brief",
+        "--root",
+        &root_path,
+        "--diff",
+        &diff,
+        "--json",
+        "--max-seams",
+        "2",
+    ]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains(r#""schema_version": "0.1""#));
+    assert!(stdout.contains(r#""scope": "working_set""#));
+    assert!(stdout.contains(r#""source": "diff""#));
+    assert!(stdout.contains(r#""returned": 2"#));
+    assert!(stdout.contains(r#""changed_line_intersects_seam""#));
+    assert!(stdout.contains(r#""agent-seam-packets-json""#));
+    assert!(stdout.contains("repo-exposure-json"));
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
 fn check_badge_json_output_has_native_badge_shape() {
     let root = workspace_root().display().to_string();
     let diff = sample_diff().display().to_string();

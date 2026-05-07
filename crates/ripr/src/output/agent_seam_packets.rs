@@ -463,25 +463,25 @@ fn push_packet_json(out: &mut String, entry: &ClassifiedSeam) {
 /// `missing_discriminators` array. Mirrors the field shape of
 /// `MissingDiscriminatorFact` but excludes `flow_sink` because the
 /// packet already carries the sink class via `missing_oracle_shape`.
-struct MissingRecord {
-    value: String,
-    reason: String,
+pub(crate) struct MissingRecord {
+    pub(crate) value: String,
+    pub(crate) reason: String,
 }
 
-struct CandidateValue {
-    value: String,
-    reason: String,
+pub(crate) struct CandidateValue {
+    pub(crate) value: String,
+    pub(crate) reason: String,
 }
 
-struct RecommendedTest {
-    name: String,
-    file: String,
-    reason: String,
+pub(crate) struct RecommendedTest {
+    pub(crate) name: String,
+    pub(crate) file: String,
+    pub(crate) reason: String,
 }
 
-struct AssertionShape {
-    kind: &'static str,
-    example: String,
+pub(crate) struct AssertionShape {
+    pub(crate) kind: &'static str,
+    pub(crate) example: String,
 }
 
 struct ImitationPattern<'a> {
@@ -494,7 +494,7 @@ struct AvoidPattern {
     reason: String,
 }
 
-fn recommended_test_for(entry: &ClassifiedSeam) -> RecommendedTest {
+pub(crate) fn recommended_test_for(entry: &ClassifiedSeam) -> RecommendedTest {
     let owner_short = owner_short(entry.seam.owner());
     let name = format!(
         "{}_{}",
@@ -572,7 +572,7 @@ fn snake_case_token(raw: &str) -> String {
     }
 }
 
-fn nearest_strong_test_to_imitate(
+pub(crate) fn nearest_strong_test_to_imitate(
     evidence: &TestGripEvidence,
 ) -> Option<&crate::analysis::test_grip_evidence::RelatedTestGrip> {
     evidence
@@ -616,7 +616,10 @@ fn push_related_test_reference(
     out.push('}');
 }
 
-fn candidate_values_for(entry: &ClassifiedSeam, missing: &[MissingRecord]) -> Vec<CandidateValue> {
+pub(crate) fn candidate_values_for(
+    entry: &ClassifiedSeam,
+    missing: &[MissingRecord],
+) -> Vec<CandidateValue> {
     let mut out: Vec<CandidateValue> = missing
         .iter()
         .map(|record| CandidateValue {
@@ -665,7 +668,11 @@ fn candidate_value_from_required(required: &RequiredDiscriminator) -> CandidateV
     }
 }
 
-fn assertion_shape_for(kind: SeamKind, owner: &str, evidence: &TestGripEvidence) -> AssertionShape {
+pub(crate) fn assertion_shape_for(
+    kind: SeamKind,
+    owner: &str,
+    evidence: &TestGripEvidence,
+) -> AssertionShape {
     let example = suggested_assertions_for(kind, owner, evidence)
         .into_iter()
         .next()
@@ -772,7 +779,7 @@ fn packet_confidence_for(entry: &ClassifiedSeam) -> &'static str {
 /// Build the `missing_discriminators` array carried in the packet,
 /// pairing analyzer-emitted hypotheses with a predicate-boundary
 /// fallback when the seam expression names a clear boundary.
-fn missing_discriminator_records_for(entry: &ClassifiedSeam) -> Vec<MissingRecord> {
+pub(crate) fn missing_discriminator_records_for(entry: &ClassifiedSeam) -> Vec<MissingRecord> {
     let mut out: Vec<MissingRecord> = entry
         .evidence
         .missing_discriminators

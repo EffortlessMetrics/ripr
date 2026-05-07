@@ -600,10 +600,23 @@ metrics = [
 id = "RIPR-SPEC-0010"
 name = "agent working-set brief"
 spec = "docs/specs/RIPR-SPEC-0010-agent-working-set-brief.md"
-tests = []
+tests = [
+  "crates/ripr/src/app/agent_brief.rs::tests::agent_brief_selector_ranks_explicit_seam_id_first",
+  "crates/ripr/src/app/agent_brief.rs::tests::agent_brief_selector_prefers_changed_line_intersection_over_same_file",
+  "crates/ripr/src/app/agent_brief.rs::tests::agent_brief_selector_caps_file_scope_deterministically",
+  "crates/ripr/src/cli/commands.rs::tests::agent_brief_diff_lines_are_normalized_to_requested_root",
+  "crates/ripr/src/output/agent_brief.rs::tests::agent_brief_json_renders_ranked_seam_summary"
+]
 fixtures = []
-code = []
+code = [
+  "crates/ripr/src/app/agent_brief.rs",
+  "crates/ripr/src/cli/agent.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/output/agent_brief.rs",
+  "crates/ripr/src/output/agent_seam_packets.rs"
+]
 outputs = [
+  "crates/ripr/src/output/agent_brief.rs",
   "docs/specs/RIPR-SPEC-0010-agent-working-set-brief.md",
   "docs/specs/README.md",
   "docs/AGENT_DISPATCH_WORKFLOW.md",

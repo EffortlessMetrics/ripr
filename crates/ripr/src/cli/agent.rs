@@ -1,8 +1,6 @@
+use crate::app::agent_brief::{AGENT_BRIEF_HARD_MAX_SEAMS, DEFAULT_AGENT_BRIEF_MAX_SEAMS};
 use crate::cli::parse::expect_value;
 use std::path::PathBuf;
-
-pub(super) const DEFAULT_AGENT_BRIEF_MAX_SEAMS: usize = 3;
-pub(super) const AGENT_BRIEF_HARD_MAX_SEAMS: usize = 10;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum AgentCommand {
@@ -19,35 +17,12 @@ pub(super) struct AgentBriefOptions {
     pub(super) max_seams: usize,
 }
 
-impl AgentBriefOptions {
-    pub(super) fn parsed_summary(&self) -> String {
-        format!(
-            "root={}, working_set={}, max_seams={}, json={}",
-            self.root.display(),
-            self.working_set.summary(),
-            self.max_seams,
-            self.json
-        )
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum AgentBriefWorkingSet {
     Diff(PathBuf),
     Base(String),
     Files(Vec<PathBuf>),
     SeamId(String),
-}
-
-impl AgentBriefWorkingSet {
-    fn summary(&self) -> String {
-        match self {
-            Self::Diff(path) => format!("diff:{}", path.display()),
-            Self::Base(base) => format!("base:{base}"),
-            Self::Files(paths) => format!("files:{}", paths.len()),
-            Self::SeamId(seam_id) => format!("seam-id:{seam_id}"),
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -410,35 +385,5 @@ mod tests {
             parse_agent_brief_options(&args(&["--diff", "change.diff", "--xml"])),
             Err("unknown agent brief argument \"--xml\"".to_string())
         );
-    }
-
-    #[test]
-    fn agent_brief_summary_covers_all_working_set_kinds() {
-        for (working_set, expected) in [
-            (
-                AgentBriefWorkingSet::Diff(PathBuf::from("change.diff")),
-                "root=., working_set=diff:change.diff, max_seams=3, json=true",
-            ),
-            (
-                AgentBriefWorkingSet::Base("main".to_string()),
-                "root=., working_set=base:main, max_seams=3, json=true",
-            ),
-            (
-                AgentBriefWorkingSet::Files(vec![PathBuf::from("src/lib.rs")]),
-                "root=., working_set=files:1, max_seams=3, json=true",
-            ),
-            (
-                AgentBriefWorkingSet::SeamId("f3c9e4d21a0b7c88".to_string()),
-                "root=., working_set=seam-id:f3c9e4d21a0b7c88, max_seams=3, json=true",
-            ),
-        ] {
-            let options = AgentBriefOptions {
-                root: PathBuf::from("."),
-                working_set,
-                json: true,
-                max_seams: DEFAULT_AGENT_BRIEF_MAX_SEAMS,
-            };
-            assert_eq!(options.parsed_summary(), expected);
-        }
     }
 }

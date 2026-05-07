@@ -42,6 +42,10 @@ are scoped or reviewed.
 - Added `docs/INSTALLATION_VERIFICATION.md` to pin the defaults-first release
   proof for local package install, public `cargo install`, GitHub Release server
   archives, VSIX packaging, and known limits.
+- Added the initial JSON-only `ripr agent brief` command, which ranks
+  working-set seams from existing repo exposure evidence and points agents to
+  packet references, candidate discriminators, assertion shape, and static
+  before/after verification commands.
 
 ### Changed
 
