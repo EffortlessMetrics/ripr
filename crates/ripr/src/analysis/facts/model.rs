@@ -2,14 +2,14 @@ use crate::domain::{OracleKind, OracleStrength, SymbolId};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct RustIndex {
     pub files: BTreeMap<PathBuf, FileFacts>,
     pub tests: Vec<TestFact>,
     pub functions: Vec<FunctionFact>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FileFacts {
     pub path: PathBuf,
     pub functions: Vec<FunctionFact>,
@@ -25,7 +25,7 @@ pub struct FileFacts {
     pub source: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct FunctionFact {
     pub id: SymbolId,
     pub name: String,
@@ -45,7 +45,7 @@ pub struct FunctionFact {
     pub attrs: Vec<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TestFact {
     pub name: String,
     pub file: PathBuf,
@@ -62,7 +62,7 @@ pub struct TestFact {
     pub attrs: Vec<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct OracleFact {
     pub line: usize,
     pub text: String,
@@ -71,26 +71,26 @@ pub struct OracleFact {
     pub observed_tokens: Vec<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct CallFact {
     pub line: usize,
     pub name: String,
     pub text: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ReturnFact {
     pub line: usize,
     pub text: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LiteralFact {
     pub line: usize,
     pub value: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ProbeShapeFact {
     pub start_line: usize,
     pub end_line: usize,

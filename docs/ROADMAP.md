@@ -64,14 +64,16 @@ boundary-gap seam packet, outcome receipt, and optional calibration loop.
 Campaign 8 is closed; the runtime calibration fixture expansion now has a
 checked supplied-data sample for the main static/runtime agreement buckets, and
 runtime mutation vocabulary remains confined to explicit calibration reports.
-The next active item is a hot-sidecar latency audit that measures current cache
+The active item is a hot-sidecar latency proof lane that measures current cache
 and saved-workspace editor refresh behavior before changing warm-path reuse.
 That audit found the existing LSP/operator proof commands are cheap on a warm
 local build, while `cargo xtask repo-exposure-report` did not finish within a
 20-minute local timeout. Bounded repo-exposure latency reporting now records
-cache collection, cache load hit/miss/corrupt state, cold compute, cache store,
-and total phase timing without changing repo-exposure outputs. The active item
-is now warm-path reuse work guided by that report.
+cache collection, cache load hit/miss/corrupt state, file-fact cache reuse,
+cold compute, cache store, and total phase timing without changing repo-exposure
+outputs. File-fact warm reuse improved the measured index-build subphase, but
+the full command still times out later on this workspace; the active item is
+now making `ripr pilot` bounded and explicit under timeout.
 
 ## Strategic Sequence
 

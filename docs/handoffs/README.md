@@ -59,6 +59,7 @@ the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 - [Campaign 8 closeout](2026-05-07-campaign-8-closeout.md)
 - [Hot sidecar latency audit](2026-05-07-hot-sidecar-latency-audit.md)
 - [Repo exposure latency report](2026-05-07-repo-exposure-latency-report.md)
+- [Repo exposure warm-path reuse](2026-05-07-repo-exposure-warm-path-reuse.md)
 
 ## Template
 
