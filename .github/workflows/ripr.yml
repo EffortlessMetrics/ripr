@@ -1,0 +1,76 @@
+name: ripr Self-Dogfood
+
+on:
+  pull_request:
+    paths:
+      - 'crates/ripr/src/**'
+      - 'xtask/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'ripr.toml'
+      - '.ripr/suppressions.toml'
+      - '.github/workflows/ripr.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
+
+# Advisory ripr self-dogfood lane.
+#
+# Stage in the multi-PR rollout: PR 10. Posture is non-blocking advisory:
+# findings upload as artifacts and surface in the step summary, but the
+# job does not fail on them. The soft-gate that turns this into an
+# acknowledgeable signal lands in PR 14 (after calibration data exists).
+#
+# See:
+#   docs/RIPR_EVIDENCE_POLICY.md
+#   docs/ci/ripr-ci-rollout.md
+
+jobs:
+  ripr:
+    name: ripr-self-dogfood
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ripr-rust-1.93-${{ runner.os }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build ripr
+        run: cargo build -p ripr --release
+
+      - name: Prepare reports directory
+        run: mkdir -p target/ripr/reports
+
+      - name: Run ripr check (advisory, JSON)
+        run: ./target/release/ripr check --base origin/${{ github.base_ref }} --format json > target/ripr/reports/ripr-diff.json || true
+
+      - name: Run ripr check (advisory, SARIF)
+        run: ./target/release/ripr check --base origin/${{ github.base_ref }} --format sarif > target/ripr/reports/ripr-diff.sarif || true
+
+      - name: Refresh ripr report index
+        run: cargo xtask reports index || true
+
+      - name: Write step summary
+        run: printf "## ripr self-dogfood (advisory)\n\nFindings (if any) attached as artifacts. See docs/RIPR_EVIDENCE_POLICY.md.\n" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload ripr findings
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ripr-self-dogfood
+          path: |
+            target/ripr/reports/ripr-diff.json
+            target/ripr/reports/ripr-diff.sarif
+            target/ripr/reports/index.md
+          if-no-files-found: ignore
