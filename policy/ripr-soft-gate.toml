@@ -1,0 +1,58 @@
+schema_version = "1.0"
+policy = "ripr-soft-gate"
+owner = "core/analysis"
+status = "shadow"
+
+# Configuration for the ripr soft-gate (PR 14 of the multi-PR rollout).
+#
+# The gate is intentionally narrow. It only fails the PR when ALL of the
+# following are true:
+#
+#   1. Finding class is `reachable_unrevealed` or `weakly_exposed`.
+#   2. Production Rust changed in this PR.
+#   3. No nearby test changed.
+#   4. The finding is not suppressed in `.ripr/suppressions.toml`.
+#   5. The finding's numeric `confidence` clears the `confidence_threshold`.
+#
+# See docs/ci/ripr-soft-gate.md for the full doctrine and label
+# vocabulary.
+#
+# Posture: this file is `status = "shadow"` — it documents the contract.
+# The xtask command `cargo xtask ci ripr-soft-gate ...` that consumes it
+# is wired in a follow-up PR after the calibration window has produced
+# 2 weeks of `ci-actuals.json` data on the `ripr_self_dogfood` lane.
+
+[gate]
+# Numeric confidence threshold (range 0.0–1.0). Findings with
+# `confidence` below this value never trip the gate. Default is set
+# conservatively; tune from calibration data, not from intuition.
+confidence_threshold = 0.85
+
+# Finding classes that can trip the gate. Anything not in this list is
+# advisory regardless of confidence.
+trigger_finding_classes = [
+    "reachable_unrevealed",
+    "weakly_exposed",
+]
+
+# Finding classes that are explicitly never gated.
+ignore_finding_classes = [
+    "static_unknown",
+    "infection_unknown",
+    "propagation_unknown",
+    "no_static_path",
+    "exposed",
+]
+
+# Acknowledgement labels (must exist in policy/ci-budget.toml [labels]).
+[labels]
+waive = "ripr-waive"
+full_ci = "full-ci"
+budget_ack = "ci-budget-ack"
+
+# Calibration-window guard: do not fail the gate until the rolling
+# 14-day median of ci-actuals.json datapoints for the
+# `ripr_self_dogfood` lane is at least this many.
+[calibration]
+required_actuals_count = 14
+required_window_days = 14
