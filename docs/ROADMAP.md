@@ -82,7 +82,11 @@ installed CLI, boundary-gap `pilot`, `outcome`, `agent verify`,
 known-limit surfaces. Campaign 11 is now active as the LLM work loop: the first
 slice adds `ripr agent status --root . --json` as a read-only lens over
 existing artifacts, and the next ready item is
-`agent/centralize-loop-command-templates`.
+`agent/centralize-loop-command-templates`. Campaign 12 is queued as
+First-Hour UX: after the LLM work-loop command and artifact state is stable,
+the next product risk is making the VS Code extension and generated GitHub
+workflow explain the top recommendation without requiring users to inspect
+CLI reports first.
 
 ## Strategic Sequence
 
@@ -124,6 +128,7 @@ quality rails
 -> editor-agent integration
 -> editor-agent release readiness proof
 -> LLM work loop
+-> first-hour UX
 ```
 
 The analyzer path is:

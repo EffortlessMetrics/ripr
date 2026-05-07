@@ -1362,3 +1362,94 @@ Blocking conditions:
 - new public crates
 - command strings duplicated into new surfaces after the template
   centralization work item
+
+## Campaign 12: First-Hour UX
+
+Campaign ID: `first-hour-ux`
+
+Status: queued
+
+This campaign is intentionally separate from Campaign 11. Campaign 11 keeps the
+LLM work loop stateful and deterministic through status, command templates,
+workflow manifests, receipts, and reviewer summaries. Campaign 12 starts after
+that control plane is stable, or earlier only through an explicit product-lane
+pivot.
+
+Objective:
+
+```text
+Make a new user successful in the first hour through either the VS Code
+extension or generated GitHub workflow, without requiring them to understand
+RIPR's internal report topology.
+```
+
+Why it matters:
+
+RIPR 0.4.0 aligned the editor, CLI, agent, cockpit, and CI evidence loop. The
+next user-facing risk is translation cost: editor users still need to know why
+diagnostics did not appear, which code action maps to the next focused test, and
+how to verify the result; CI users still need a useful GitHub-facing summary
+before downloading artifacts. Campaign 12 keeps the CLI as the shared engine and
+receipt surface while making the LSP-first and CI-first paths obvious from the
+surfaces users already open.
+
+End state:
+
+- VS Code users can see server, workspace, analysis, staleness, and diagnostic
+  state without reading logs first
+- editor code actions are titled around user intent: write the targeted test,
+  open the best related test, copy an agent handoff, verify after the test, and
+  refresh analysis
+- generated GitHub workflows put the top advisory recommendation in the PR or
+  step summary before artifact download is necessary
+- generated CI workflow behavior is pinned by a fixture that covers artifact
+  paths, non-blocking posture, optional SARIF, badge output, and agent artifacts
+- agent command templates and workflow manifests from Campaign 11 feed these UX
+  surfaces instead of creating another command-string source of truth
+- README and installed-user docs are organized by user type: VS Code, CI, CLI,
+  agent, troubleshooting, and known limits
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `vscode/first-run-status` | queued | Add a discoverable editor status path for server resolution, workspace detection, analysis running/complete/stale/failed, and no-actionable-seam states. |
+| `vscode/action-discoverability` | queued | Group and title diagnostic actions around user intent without changing analyzer behavior, adding broad LSP features, or enabling unsaved-buffer overlays. |
+| `ci/pr-summary-surface` | queued | Make the generated workflow emit a useful PR or step summary with the top actionable seam, why it matters, suggested test target, artifact links, SARIF status, badge status, and known limits. |
+| `ci/generated-workflow-smoke-fixture` | queued | Pin generated workflow artifact paths, top-seam extraction, agent artifact generation, non-blocking posture, optional SARIF, and badge output so CI UX does not drift. |
+| `docs/ux-by-user-type` | queued | Rewrite the first-hour docs around VS Code, CI, CLI, agent, troubleshooting, and known limits while keeping README short. |
+| `campaign/first-hour-ux-closeout` | queued | Close only after the extension and CI first screens are useful without report archaeology and the CLI remains the shared engine rather than the required first user interface. |
+
+Dependencies:
+
+- Campaign 11 should centralize command templates before Campaign 12 adds or
+  rewrites command-copy surfaces.
+- Campaign 11 workflow manifests should become the source for any guided
+  agent work packet shown through editor or CI UX.
+
+Commands:
+
+```bash
+cargo test -p ripr lsp
+cd editors/vscode
+npm ci
+npm run compile
+npm run package
+npm run test:e2e
+cd ../..
+cargo xtask check-output-contracts
+cargo xtask check-static-language
+cargo xtask check-doc-index
+cargo xtask check-pr
+```
+
+Blocking conditions:
+
+- new analyzer families
+- automatic source edits or generated tests
+- runtime mutation execution
+- default CI blocking
+- unsaved-buffer overlays
+- new public crates
+- duplicated command templates after Campaign 11 centralization
+- more report formats that do not improve the VS Code or GitHub first screen

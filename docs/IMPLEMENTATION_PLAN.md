@@ -26,6 +26,7 @@ through multiple work items in a campaign, but each work item should follow the
 | Hot Sidecar Latency Proof (9) | Measure current cache and saved-workspace editor refresh behavior before changing warm-path reuse. | Complete: latency reporting, warm-path reuse, bounded `ripr pilot`, first-screen clarity, evidence progress tracing, hot-path indexes, and `campaign/hot-sidecar-latency-closeout`. |
 | Editor Agent Integration (10) | Make the saved-workspace editor loop and the agent CLI loop line up from diagnostic to evidence, packet/brief, focused test, verify, receipt, cockpit, CI, and install proof. | Complete: `campaign/editor-agent-integration-closeout`. |
 | LLM Work Loop (11) | Make the completed editor-agent loop stateful, deterministic, and useful to LLM agents under review pressure. | Active: `agent/loop-status-report` done; next ready item is `agent/centralize-loop-command-templates`. |
+| First-Hour UX (12) | Make new LSP-first and CI-first users successful without learning RIPR's internal report topology. | Queued: opens after Campaign 11 closes, or earlier only through an explicit product-lane pivot. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
 through 8 are complete. Campaign 6 closed after the internal module SRP chain
@@ -46,7 +47,10 @@ packet/brief commands, focused-test receipts, cockpit status, generated CI
 artifacts, and release-readiness proof. Campaign 11 is now active and starts by
 adding a read-only `ripr agent status --root . --json` lens over existing
 agent-loop artifacts before centralizing the command templates that feed CLI,
-LSP, cockpit, CI, docs, and fixtures.
+LSP, cockpit, CI, docs, and fixtures. Campaign 12 is queued as the
+First-Hour UX lane after the LLM work-loop control plane: it keeps the CLI as
+the shared engine while making the extension and generated CI workflow feel
+obvious from their own first screens.
 
 ## PR 0: `planning-and-tracking-docs`
 
