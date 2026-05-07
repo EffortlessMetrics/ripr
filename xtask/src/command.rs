@@ -59,6 +59,7 @@ pub(crate) enum XtaskCommand {
     CheckProcessPolicy,
     CheckNetworkPolicy,
     CheckLintPolicy,
+    CheckCiLaneWhitelist,
     Package,
     PublishDryRun,
     Help,
@@ -134,6 +135,7 @@ impl XtaskCommand {
             "check-process-policy" => Self::CheckProcessPolicy,
             "check-network-policy" => Self::CheckNetworkPolicy,
             "check-lint-policy" => Self::CheckLintPolicy,
+            "check-ci-lane-whitelist" | "ci-lane-whitelist" => Self::CheckCiLaneWhitelist,
             "package" => Self::Package,
             "publish-dry-run" => Self::PublishDryRun,
             "help" => Self::Help,
@@ -214,6 +216,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "check-process-policy",
         "check-network-policy",
         "check-lint-policy",
+        "check-ci-lane-whitelist",
         "package",
         "publish-dry-run",
     ]
