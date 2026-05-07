@@ -238,6 +238,12 @@ pub(crate) fn select_agent_brief_seams<'a>(
     direct
         .candidates
         .sort_by(|left, right| compare_selected(left, right, policy));
+    let omitted_by_cap = direct.candidates.len().saturating_sub(max_seams);
+    if omitted_by_cap > 0 {
+        warnings.push(format!(
+            "{omitted_by_cap} additional visible seams were omitted by the brief cap"
+        ));
+    }
     direct.candidates.truncate(max_seams);
 
     let returned = direct.candidates.len();
@@ -975,6 +981,10 @@ mod tests {
         assert_eq!(selection.default, DEFAULT_AGENT_BRIEF_MAX_SEAMS);
         assert_eq!(selection.hard_cap, AGENT_BRIEF_HARD_MAX_SEAMS);
         assert_eq!(selected_ids(&selection), vec![weak_id, ungripped_id]);
+        assert_eq!(
+            selection.warnings,
+            vec!["1 additional visible seams were omitted by the brief cap"]
+        );
         assert!(
             selection
                 .top_seams
@@ -1162,6 +1172,10 @@ mod tests {
         assert_eq!(selection.requested, 0);
         assert_eq!(selection.returned, DEFAULT_AGENT_BRIEF_MAX_SEAMS);
         assert_eq!(selection.top_seams.len(), DEFAULT_AGENT_BRIEF_MAX_SEAMS);
+        assert_eq!(
+            selection.warnings,
+            vec!["1 additional visible seams were omitted by the brief cap"]
+        );
     }
 
     #[test]
