@@ -17,13 +17,11 @@ Coverage artifacts are excluded for:
 ## Claim boundaries
 
 The Codecov badge and coverage reports do **not** prove:
-- HL7 conformance correctness or clinical safety
-- Parser completeness or profile-validation completeness
-- MLLP/network robustness
-- HTTP/gRPC contract completeness
-- Python binding validation
-- Mutation adequacy or test discrimination
-- Publish readiness
+- Test discriminator adequacy (coverage ≠ mutation killing)
+- Seam classification completeness
+- Oracle strength across all five RIPR stages
+- Static analysis correctness (dynamic mutation testing required)
+- Reproducibility across different versions of `cargo-llvm-cov`
 
 Coverage is **advisory** and does not block merges. Codecov status checks are informational by default.
 
@@ -46,8 +44,7 @@ Use `workflow_dispatch` on the `Coverage` workflow to verify after changing:
 - Test topology that may affect `cargo-llvm-cov`
 
 Expected artifacts after a coverage run:
-- `lcov.info` (GitHub Actions artifact `rust-lcov`)
-- `target/coverage/coverage-receipt.json` (JSON schema v1)
+- `lcov.info` (uploaded to Codecov as `rust-lcov` artifact)
 
 Codecov upload requires `CODECOV_TOKEN` secret (only available for trusted runs). Local artifact generation succeeds even if `CODECOV_TOKEN` is unavailable.
 
@@ -56,7 +53,6 @@ Codecov upload requires `CODECOV_TOKEN` secret (only available for trusted runs)
 To generate coverage and inspect artifacts locally:
 
 ```bash
-cargo llvm-cov clean --workspace
 cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
 ls -lh lcov.info
 ```
