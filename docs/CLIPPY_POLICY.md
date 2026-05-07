@@ -54,6 +54,15 @@ The authoritative source is `[workspace.lints.*]` in Cargo.toml. A reviewable
 ledger lives in [`policy/clippy-lints.toml`](../policy/clippy-lints.toml),
 including planned 1.94 / 1.95 lint flips that are tracked but not yet active.
 
+The two are kept in lockstep by `cargo xtask check-lint-policy`, which fails
+when an active ledger entry is missing or has the wrong level in `Cargo.toml`,
+when a planned lint leaks into `Cargo.toml` before its `activate_when_msrv` is
+reached, when a planned lint's `activate_when_msrv` is now satisfied (suggests
+promoting it), when the ledger `msrv` disagrees with
+`workspace.package.rust-version`, when `[policy]` flips a panic-free invariant,
+or when `clippy.toml` adds the forbidden `allow-*-in-tests` carve-outs. The
+check runs in `precommit` and `run_policy_checks`.
+
 Currently denied at the workspace level (selected highlights):
 
 - Panic family: `clippy::panic`, `clippy::unreachable`, `clippy::todo`,

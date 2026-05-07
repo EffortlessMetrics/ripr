@@ -142,6 +142,7 @@ cargo xtask check-generated
 cargo xtask check-dependencies           # policy/dependency_allowlist.txt
 cargo xtask check-process-policy
 cargo xtask check-network-policy
+cargo xtask check-lint-policy            # policy/clippy-lints.toml ledger vs [workspace.lints]
 cargo xtask check-supply-chain
 ```
 
