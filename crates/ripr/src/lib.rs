@@ -52,6 +52,7 @@
 
 // Kept public for compatibility; prefer the crate-root re-exports for new
 // integrations.
+pub(crate) mod agent;
 #[doc(hidden)]
 pub mod analysis;
 // Kept public for compatibility; prefer the crate-root re-exports for new

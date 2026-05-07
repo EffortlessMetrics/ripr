@@ -1,3 +1,4 @@
+use crate::agent::loop_commands;
 use crate::analysis;
 use crate::app::agent_brief::{
     AgentBriefChangedOwner, AgentBriefLine, AgentBriefPolicy, AgentBriefResolvedWorkingSet,
@@ -572,7 +573,7 @@ fn write_init_ci_workflow(root: &Path, ci: &InitCi) -> Result<(), String> {
     }
 }
 
-fn generated_github_actions_workflow() -> &'static str {
+fn generated_github_actions_workflow() -> String {
     r#"name: RIPR
 
 on:
@@ -743,6 +744,30 @@ jobs:
           sarif_file: target/ripr/reports/ripr-seams.sarif
           category: ripr-seams
 "#
+    .replace(
+        "target/ripr/pilot/repo-exposure.json",
+        loop_commands::PILOT_BEFORE_SNAPSHOT_ARTIFACT,
+    )
+    .replace(
+        "target/ripr/pilot/after.repo-exposure.json",
+        loop_commands::PILOT_AFTER_SNAPSHOT_ARTIFACT,
+    )
+    .replace(
+        "target/ripr/agent/agent-packet.json",
+        loop_commands::EDITOR_AGENT_PACKET_ARTIFACT,
+    )
+    .replace(
+        "target/ripr/agent/agent-brief.json",
+        loop_commands::EDITOR_AGENT_BRIEF_ARTIFACT,
+    )
+    .replace(
+        "target/ripr/agent/agent-verify.json",
+        loop_commands::EDITOR_AGENT_VERIFY_ARTIFACT,
+    )
+    .replace(
+        "target/ripr/agent/agent-receipt.json",
+        loop_commands::EDITOR_AGENT_RECEIPT_ARTIFACT,
+    )
 }
 
 pub(super) fn pilot(args: &[String]) -> Result<(), String> {

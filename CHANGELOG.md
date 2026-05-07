@@ -21,6 +21,10 @@ are scoped or reviewed.
 
 ### Changed
 
+- Centralized LLM work-loop command templates for agent status next commands,
+  agent brief follow-up commands, pilot follow-up commands, LSP copy-action
+  payloads, generated CI artifact paths, and operator cockpit missing-input
+  commands without changing the emitted command text.
 - Documented the CI verification economics policy: required, advisory, and
   on-demand/release postures; LEM budget bands; label effects; artifact
   families; cheaper-signal-first rules; CI actuals; and rollback expectations.

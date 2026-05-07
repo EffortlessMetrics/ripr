@@ -565,15 +565,17 @@ status = "alpha"
 spec = "RIPR-SPEC-0011"
 evidence = [
   "ripr agent status --root . --json reports before snapshot, after snapshot, agent brief, agent packet, agent verify, and agent receipt artifact state without rerunning analysis",
+  "crates/ripr/src/agent/loop_commands.rs centralizes current workflow, pilot, and editor-agent artifact paths plus packet, brief, snapshot, verify, receipt, status, review-summary, and outcome command templates",
   "crates/ripr/src/app/agent_status.rs recovers seam_id from receipt, verify, packet, or brief JSON and emits missing-input commands",
+  "crates/ripr/src/lsp/actions.rs, crates/ripr/src/output/agent_brief.rs, crates/ripr/src/output/pilot.rs, crates/ripr/src/cli/commands.rs, and xtask/src/reports/operator.rs reuse the shared templates for existing command payloads without changing output text",
   "crates/ripr/src/cli/agent.rs parses the status subcommand as a JSON-only agent surface",
   "docs/OUTPUT_SCHEMA.md Agent Status section",
   "docs/specs/RIPR-SPEC-0011-llm-work-loop.md",
   "cargo test -p ripr agent_status"
 ]
 fixtures = []
-next = "agent/centralize-loop-command-templates"
-metric = "agent status names present or missing artifacts, recovered seam_id, stale-looking warnings, and next missing command"
+next = "agent/workflow-manifest"
+metric = "agent status names present or missing artifacts, recovered seam_id, stale-looking warnings, next missing command, and shared command-template fixture compatibility"
 
 [[capability]]
 id = "pilot_packet"
