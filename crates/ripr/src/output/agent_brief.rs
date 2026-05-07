@@ -190,7 +190,7 @@ mod tests {
         RelatedTestGrip, RelationConfidence, RelationReason, TestGripEvidence,
     };
     use crate::app::agent_brief::{
-        AGENT_BRIEF_HARD_MAX_SEAMS, AgentBriefLine, AgentBriefResolvedWorkingSet,
+        AGENT_BRIEF_HARD_MAX_SEAMS, AgentBriefLine, AgentBriefPolicy, AgentBriefResolvedWorkingSet,
         DEFAULT_AGENT_BRIEF_MAX_SEAMS, select_agent_brief_seams,
     };
     use crate::config::{CONFIG_FILE_NAME, load_for_root};
@@ -271,12 +271,18 @@ mod tests {
             "change.diff",
             vec![AgentBriefLine::new("src/pricing.rs", 88)],
         );
-        let selection = select_agent_brief_seams(&seams, &working_set, 3);
+        let config = RiprConfig::default();
+        let selection = select_agent_brief_seams(
+            &seams,
+            &working_set,
+            3,
+            AgentBriefPolicy::from_config(&config),
+        );
 
         let json = render_agent_brief_json(
             Path::new("."),
             &Mode::Draft,
-            &RiprConfig::default(),
+            &config,
             &working_set,
             &selection,
         )?;
