@@ -44,7 +44,15 @@ ignore_finding_classes = [
     "exposed",
 ]
 
-# Acknowledgement labels (must exist in policy/ci-budget.toml [labels]).
+# Acknowledgement labels.
+#
+# Each entry is the GitHub label name. The xtask command matches against
+# the `pull_request.labels[].name` payload (see "--labels-json contract"
+# in docs/ci/ripr-soft-gate.md).
+#
+# These labels also appear in policy/ci-budget.toml `[labels]`, which is
+# the canonical vocabulary for the wider CI economics rollout. This file
+# duplicates them locally so the soft-gate has a self-contained config.
 [labels]
 waive = "ripr-waive"
 full_ci = "full-ci"
@@ -52,7 +60,8 @@ budget_ack = "ci-budget-ack"
 
 # Calibration-window guard: do not fail the gate until the rolling
 # 14-day median of ci-actuals.json datapoints for the
-# `ripr_self_dogfood` lane is at least this many.
+# `ripr_self_dogfood` lane (registered in policy/ci-lane-whitelist.toml,
+# emitted by .github/workflows/ripr.yml) is at least this many.
 [calibration]
 required_actuals_count = 14
 required_window_days = 14

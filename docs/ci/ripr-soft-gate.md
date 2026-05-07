@@ -91,7 +91,70 @@ release readiness check.
   --threshold-config policy/ripr-soft-gate.toml
   --labels-json "$LABELS_JSON"`, then activate the gate after the
   calibration window has produced 2 weeks of `ci-actuals.json` data on
-  the `ripr_self_dogfood` lane.
+  the `ripr_self_dogfood` lane (the lane is registered in
+  `policy/ci-lane-whitelist.toml`).
+
+## Confidence field contract
+
+The `confidence` field referenced as the gate threshold is the numeric
+`f32` that `ripr` emits per finding. `docs/OUTPUT_SCHEMA.md` shows the
+field by example (e.g. `0.92`); the formal field contract for it is
+**established by this PR** through `policy/ripr-soft-gate.toml`'s
+`[gate].confidence_threshold` (range 0.0–1.0, inclusive). The follow-up
+PR that wires the xtask command also adds the field-contract section to
+`docs/OUTPUT_SCHEMA.md` so the threshold tunes against a documented
+schema rather than an implicit one. Until then the threshold-config
+file is the source of truth for the type and range.
+
+The categorical `high | medium | low | unknown` values that exist on
+RIPR stage evidence (`why_now.confidence`, `relation_confidence`,
+`packets[].confidence`) are unrelated. The soft-gate thresholds against
+the finding-level numeric field, not the stage-level enum.
+
+## --labels-json contract
+
+The `--labels-json` argument the future xtask command consumes is the
+`pull_request.labels` array of objects from the GitHub Actions event
+payload, passed through verbatim:
+
+```json
+[
+  { "name": "full-ci" },
+  { "name": "ripr-waive" }
+]
+```
+
+The command consults only the `name` field of each entry, matches it
+against `[labels]` in `policy/ripr-soft-gate.toml` (and, transitively,
+`[labels]` in `policy/ci-budget.toml`), and treats unrecognized labels
+as advisory metadata. An empty array is valid — it means no
+acknowledgement labels are present.
+
+In CI this is provided as
+`--labels-json '${{ toJSON(github.event.pull_request.labels) }}'` so
+the JSON is well-formed and quoted by the runner.
+
+## Activation criteria (shadow → active transition)
+
+The `status = "shadow"` value in `policy/ripr-soft-gate.toml` is flipped
+to `status = "active"` only after **all** of these conditions are
+verified by the follow-up PR that wires the xtask command:
+
+1. The `ripr_self_dogfood` lane has uploaded at least 14
+   `ci-actuals.json` artifacts on `main` over a rolling 14-day window
+   (matching `[calibration]` in the policy file).
+2. The 95th percentile of finding counts per `ci-actuals.json` is below
+   a documented number that the threshold can credibly catch.
+3. A documented number of `ripr-waive` labels were applied during
+   shadow mode (so the gate's expected false-positive shape is known).
+4. A 1-week dry-run period during which the xtask command emits a
+   non-zero exit code into the step summary as if the gate were
+   active, but the workflow conclusion stays success.
+
+The follow-up PR records the actual numbers from the calibration data,
+flips `status`, and turns the workflow step from `|| true` into the
+real exit code. The transition is observable in git history; there is
+no silent flag flip.
 
 ## Why a soft-gate and not a hard fail?
 
