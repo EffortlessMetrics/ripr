@@ -464,8 +464,10 @@ fn pilot_writes_default_packet_outputs_for_boundary_gap_fixture() -> Result<(), 
 
     let summary_json = std::fs::read_to_string(out_dir.join("pilot-summary.json"))
         .map_err(|e| format!("read pilot summary json: {e}"))?;
-    assert!(summary_json.contains(r#""schema_version": "0.1""#));
+    assert!(summary_json.contains(r#""schema_version": "0.2""#));
     assert!(summary_json.contains(r#""scope": "repo""#));
+    assert!(summary_json.contains(r#""status": "complete""#));
+    assert!(summary_json.contains(r#""timeout_ms": 30000"#));
     assert!(summary_json.contains(r#""state": "missing""#));
     assert!(summary_json.contains(r#""top_actionable_seams""#));
     assert!(summary_json.contains("ripr outcome --before"));

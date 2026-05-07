@@ -45,6 +45,9 @@ are scoped or reviewed.
 
 ### Changed
 
+- Made `ripr pilot` budget-aware with a default 30 second analysis timeout,
+  `--timeout-ms` for explicit runs, and a versioned `pilot-summary.json` schema
+  update that records complete versus partial timeout status.
 - Prepared the `0.3.1` release line as the first defaults-first public install
   target. `0.3.0` remains published but predates `ripr pilot` and
   `ripr outcome`.

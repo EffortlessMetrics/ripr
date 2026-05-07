@@ -76,10 +76,12 @@ target/ripr/pilot/pilot-summary.md
 
 Use `pilot-summary.md` as the front panel: it lists the top actionable seam,
 why RIPR ranked it, the targeted test brief, and the after-snapshot command.
+If analysis exceeds the pilot budget, the summary is still written with
+`status: partial` and a retry command so the first-run path is explicit.
 If you want a custom workflow directory or stronger mode:
 
 ```bash
-ripr pilot --root . --out target/ripr/workflow --mode ready
+ripr pilot --root . --out target/ripr/workflow --mode ready --timeout-ms 120000
 ```
 
 ## 1. Capture the Before Snapshot

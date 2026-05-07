@@ -156,6 +156,10 @@ How do I compare before and after after adding the test?
 
 The pilot command must remain advisory. It should not edit source files,
 generate tests, run mutation testing, or enable CI blocking policy.
+It should also be bounded for interactive first runs: if analysis exceeds the
+pilot budget, the command should write an explicit partial summary and a retry
+command instead of waiting silently or presenting incomplete analysis as
+complete.
 
 ## Outcome Receipt
 
