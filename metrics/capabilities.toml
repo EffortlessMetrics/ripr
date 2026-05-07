@@ -668,7 +668,7 @@ evidence = [
   "crates/ripr/src/lsp/actions.rs seam-aware code_action_response",
   "crates/ripr/src/lsp/backend.rs collectContext returns agent seam packets for seam_id",
   "editors/vscode/src/client.ts copySuggestedAssertion and openRelatedTest handlers",
-  "diagnostics carrying seam_id surface Copy seam packet, Copy suggested assertion, Copy targeted test brief, Open best related test, and Refresh ripr analysis",
+  "diagnostics carrying seam_id surface Copy seam packet, Copy targeted test brief, Copy Agent Packet Command, Copy Agent Brief Command, Copy After Snapshot Command, Copy Agent Verify Command, Copy Agent Receipt Command, Copy suggested assertion, Open best related test, and Refresh ripr analysis",
   "copy suggested assertion uses agent seam packet v2 assertion shape when available",
   "pre-4B Finding code actions remain available",
   "docs/TESTING.md documents VS Code e2e coverage for command registration, LSP-first seam context, targeted-test brief copying, suggested assertions, related-test opening, malformed argument handling, and restart behavior",
@@ -677,7 +677,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "lsp/agent-loop-copy-commands"
+next = "fixtures/editor-agent-loop"
 metric = "seam diagnostics expose packet/assertion/test actions without automatic edits"
 
 [[capability]]

@@ -52,14 +52,16 @@ are scoped or reviewed.
 - Added `ripr agent verify` and `ripr agent receipt` so agent workflows can
   compare before/after repo exposure snapshots and emit a focused review
   receipt for one seam.
+- Added saved-workspace LSP/VS Code code actions that copy the agent loop
+  command chain for a seam diagnostic: agent packet, agent brief, after
+  snapshot, agent verify, and agent receipt.
 
 ### Changed
 
-- Opened Campaign 10 (`release-surface-0-4`) for 0.4 release-surface
-  hardening after Campaign 9 closed, with `release/readiness-report` as the
-  next ready item and explicit non-goals around analyzer expansion, LSP
-  expansion, unsaved overlays, mutation execution, CI blocking, and
-  SARIF/badge schema churn.
+- Restored Campaign 10 to `editor-agent-integration` after the brief
+  release-surface pivot, carrying release readiness as a later gate and moving
+  the lane from LSP command copy actions to operator cockpit verify/receipt
+  status.
 - Routed `ripr agent brief` file and diff working sets through existing
   related-test evidence so edits to known related tests rank their seams before
   repo fallback, and added the related-test-confidence tie-breaker from

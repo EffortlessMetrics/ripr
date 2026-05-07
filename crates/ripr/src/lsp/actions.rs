@@ -1,8 +1,10 @@
 use super::state::AnalysisSnapshot;
 use super::uri::file_uri_for_path;
 use super::{
-    COPY_CONTEXT_COMMAND, COPY_SUGGESTED_ASSERTION_COMMAND, COPY_TARGETED_TEST_BRIEF_COMMAND,
-    OPEN_RELATED_TEST_COMMAND, REFRESH_COMMAND,
+    COPY_AFTER_SNAPSHOT_COMMAND, COPY_AGENT_BRIEF_COMMAND, COPY_AGENT_PACKET_COMMAND,
+    COPY_AGENT_RECEIPT_COMMAND, COPY_AGENT_VERIFY_COMMAND, COPY_CONTEXT_COMMAND,
+    COPY_SUGGESTED_ASSERTION_COMMAND, COPY_TARGETED_TEST_BRIEF_COMMAND, OPEN_RELATED_TEST_COMMAND,
+    REFRESH_COMMAND,
 };
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::test_grip_evidence::{RelatedTestGrip, RelationConfidence};
@@ -22,7 +24,7 @@ pub(super) fn code_action_response(
 ) -> CodeActionResponse {
     let mut actions = Vec::new();
     if let Some(context) = seam_action_context(params, snapshot) {
-        push_seam_actions(&mut actions, params, snapshot, context);
+        push_seam_actions(&mut actions, params, context);
     }
     if let Some(diagnostic) = params
         .context
@@ -52,6 +54,7 @@ pub(super) fn code_action_response(
 struct SeamActionContext<'a> {
     diagnostic: &'a Diagnostic,
     seam: &'a ClassifiedSeam,
+    snapshot: &'a AnalysisSnapshot,
 }
 
 fn seam_action_context<'a>(
@@ -67,14 +70,17 @@ fn seam_action_context<'a>(
         .find_map(|diagnostic| {
             snapshot
                 .classified_seam_for_diagnostic(diagnostic)
-                .map(|seam| SeamActionContext { diagnostic, seam })
+                .map(|seam| SeamActionContext {
+                    diagnostic,
+                    seam,
+                    snapshot,
+                })
         })
 }
 
 fn push_seam_actions(
     actions: &mut CodeActionResponse,
     params: &CodeActionParams,
-    snapshot: Option<&AnalysisSnapshot>,
     context: SeamActionContext<'_>,
 ) {
     actions.push(copy_context_action(
@@ -86,12 +92,71 @@ fn push_seam_actions(
         context.seam,
         targeted_test_brief_for_classified_seam(context.seam),
     ));
+    actions.push(copy_agent_loop_command_action(
+        "Copy Agent Packet Command",
+        COPY_AGENT_PACKET_COMMAND,
+        agent_loop_command_target(
+            context.snapshot,
+            context.diagnostic,
+            context.seam,
+            "agent_packet",
+            AGENT_PACKET_ARTIFACT,
+            agent_packet_command(context.seam),
+        ),
+    ));
+    actions.push(copy_agent_loop_command_action(
+        "Copy Agent Brief Command",
+        COPY_AGENT_BRIEF_COMMAND,
+        agent_loop_command_target(
+            context.snapshot,
+            context.diagnostic,
+            context.seam,
+            "agent_brief",
+            AGENT_BRIEF_ARTIFACT,
+            agent_brief_command(context.seam),
+        ),
+    ));
+    actions.push(copy_agent_loop_command_action(
+        "Copy After Snapshot Command",
+        COPY_AFTER_SNAPSHOT_COMMAND,
+        agent_loop_command_target(
+            context.snapshot,
+            context.diagnostic,
+            context.seam,
+            "after_snapshot",
+            AFTER_SNAPSHOT_ARTIFACT,
+            after_snapshot_command(context.snapshot),
+        ),
+    ));
+    actions.push(copy_agent_loop_command_action(
+        "Copy Agent Verify Command",
+        COPY_AGENT_VERIFY_COMMAND,
+        agent_loop_command_target(
+            context.snapshot,
+            context.diagnostic,
+            context.seam,
+            "agent_verify",
+            AGENT_VERIFY_ARTIFACT,
+            agent_verify_command(),
+        ),
+    ));
+    actions.push(copy_agent_loop_command_action(
+        "Copy Agent Receipt Command",
+        COPY_AGENT_RECEIPT_COMMAND,
+        agent_loop_command_target(
+            context.snapshot,
+            context.diagnostic,
+            context.seam,
+            "agent_receipt",
+            AGENT_RECEIPT_ARTIFACT,
+            agent_receipt_command(context.seam),
+        ),
+    ));
     if let Some(assertion) = suggested_assertion_for_classified_seam(context.seam) {
         actions.push(copy_suggested_assertion_action(context.seam, assertion));
     }
-    if let Some(snapshot) = snapshot
-        && let Some(related) = best_related_test_for_editor(context.seam)
-        && let Some(target) = related_test_target(snapshot, related)
+    if let Some(related) = best_related_test_for_editor(context.seam)
+        && let Some(target) = related_test_target(context.snapshot, related)
     {
         actions.push(open_related_test_action(target));
     }
@@ -108,6 +173,116 @@ fn copy_context_action(title: &str, command_title: &str, target: LSPAny) -> Code
         }),
         ..CodeAction::default()
     })
+}
+
+const COMMAND_ROOT: &str = ".";
+const BEFORE_SNAPSHOT_ARTIFACT: &str = "target/ripr/pilot/repo-exposure.json";
+const AFTER_SNAPSHOT_ARTIFACT: &str = "target/ripr/pilot/after.repo-exposure.json";
+const AGENT_PACKET_ARTIFACT: &str = "target/ripr/agent/agent-packet.json";
+const AGENT_BRIEF_ARTIFACT: &str = "target/ripr/agent/agent-brief.json";
+const AGENT_VERIFY_ARTIFACT: &str = "target/ripr/agent/agent-verify.json";
+const AGENT_RECEIPT_ARTIFACT: &str = "target/ripr/agent/agent-receipt.json";
+
+fn copy_agent_loop_command_action(
+    title: &str,
+    command: &str,
+    target: LSPAny,
+) -> CodeActionOrCommand {
+    CodeActionOrCommand::CodeAction(CodeAction {
+        title: title.to_string(),
+        kind: Some(CodeActionKind::QUICKFIX),
+        command: Some(Command {
+            title: title.to_string(),
+            command: command.to_string(),
+            arguments: Some(vec![target]),
+        }),
+        ..CodeAction::default()
+    })
+}
+
+fn agent_loop_command_target(
+    snapshot: &AnalysisSnapshot,
+    diagnostic: &Diagnostic,
+    seam: &ClassifiedSeam,
+    label: &str,
+    target_artifact: &str,
+    command: String,
+) -> LSPAny {
+    serde_json::json!({
+        "label": label,
+        "command": command,
+        "root": COMMAND_ROOT,
+        "mode": snapshot.mode.as_str(),
+        "seam_id": seam.seam.id().as_str(),
+        "seam_kind": seam.seam.kind().as_str(),
+        "seam_file": seam.seam.file().to_string_lossy(),
+        "owner": seam.seam.owner(),
+        "line": seam.seam.display_line(),
+        "severity": diagnostic.severity.and_then(diagnostic_severity_label),
+        "diagnostic_range": {
+            "start": {
+                "line": diagnostic.range.start.line,
+                "character": diagnostic.range.start.character,
+            },
+            "end": {
+                "line": diagnostic.range.end.line,
+                "character": diagnostic.range.end.character,
+            },
+        },
+        "target_artifact": target_artifact,
+        "before_snapshot": BEFORE_SNAPSHOT_ARTIFACT,
+        "after_snapshot": AFTER_SNAPSHOT_ARTIFACT,
+        "agent_packet_json": AGENT_PACKET_ARTIFACT,
+        "agent_brief_json": AGENT_BRIEF_ARTIFACT,
+        "agent_verify_json": AGENT_VERIFY_ARTIFACT,
+        "agent_receipt_json": AGENT_RECEIPT_ARTIFACT,
+    })
+}
+
+fn agent_packet_command(seam: &ClassifiedSeam) -> String {
+    format!(
+        "ripr agent packet --root {COMMAND_ROOT} --seam-id {} --json > {AGENT_PACKET_ARTIFACT}",
+        seam.seam.id().as_str()
+    )
+}
+
+fn agent_brief_command(seam: &ClassifiedSeam) -> String {
+    format!(
+        "ripr agent brief --root {COMMAND_ROOT} --seam-id {} --json > {AGENT_BRIEF_ARTIFACT}",
+        seam.seam.id().as_str()
+    )
+}
+
+fn after_snapshot_command(snapshot: &AnalysisSnapshot) -> String {
+    format!(
+        "ripr check --root {COMMAND_ROOT} --mode {} --format repo-exposure-json > {AFTER_SNAPSHOT_ARTIFACT}",
+        snapshot.mode.as_str()
+    )
+}
+
+fn agent_verify_command() -> String {
+    format!(
+        "ripr agent verify --root {COMMAND_ROOT} --before {BEFORE_SNAPSHOT_ARTIFACT} --after {AFTER_SNAPSHOT_ARTIFACT} --json > {AGENT_VERIFY_ARTIFACT}"
+    )
+}
+
+fn agent_receipt_command(seam: &ClassifiedSeam) -> String {
+    format!(
+        "ripr agent receipt --root {COMMAND_ROOT} --verify-json {AGENT_VERIFY_ARTIFACT} --seam-id {} --json --out {AGENT_RECEIPT_ARTIFACT}",
+        seam.seam.id().as_str()
+    )
+}
+
+fn diagnostic_severity_label(
+    severity: tower_lsp_server::ls_types::DiagnosticSeverity,
+) -> Option<&'static str> {
+    match severity {
+        tower_lsp_server::ls_types::DiagnosticSeverity::ERROR => Some("error"),
+        tower_lsp_server::ls_types::DiagnosticSeverity::WARNING => Some("warning"),
+        tower_lsp_server::ls_types::DiagnosticSeverity::INFORMATION => Some("information"),
+        tower_lsp_server::ls_types::DiagnosticSeverity::HINT => Some("hint"),
+        _ => None,
+    }
 }
 
 fn copy_targeted_test_brief_action(seam: &ClassifiedSeam, brief: String) -> CodeActionOrCommand {

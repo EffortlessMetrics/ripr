@@ -100,8 +100,10 @@ The test suite:
 - activates the extension
 - asserts commands are registered (`ripr.restartServer`, `ripr.showOutput`,
   `ripr.copyContext`, `ripr.copySuggestedAssertion`,
-  `ripr.copyTargetedTestBrief`, `ripr.openRelatedTest`,
-  `ripr.openSettings`)
+  `ripr.copyTargetedTestBrief`, `ripr.copyAgentPacketCommand`,
+  `ripr.copyAgentBriefCommand`, `ripr.copyAfterSnapshotCommand`,
+  `ripr.copyAgentVerifyCommand`, `ripr.copyAgentReceiptCommand`,
+  `ripr.openRelatedTest`, `ripr.openSettings`)
 - verifies the defaults-first editor check mode is `draft`
 - verifies `copyContext` completes without crash when no editor is active
 - verifies `copyContext` accepts a structured target with `finding_id` and
@@ -110,6 +112,8 @@ The test suite:
   targets and falls back to the CLI when LSP returns no packet or errors
 - verifies suggested-assertion and targeted-test-brief commands copy valid
   payloads and ignore malformed arguments without throwing
+- verifies agent-loop command copying writes command text and the contributed
+  command handlers ignore malformed arguments without throwing
 - verifies `openRelatedTest` opens URI/line targets and ignores malformed
   arguments without throwing
 - verifies `restartServer` is callable even when server resolution fails

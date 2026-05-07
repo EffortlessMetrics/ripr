@@ -267,6 +267,11 @@ The extension contributes:
 - `ripr.copyContext`
 - `ripr.copySuggestedAssertion`
 - `ripr.copyTargetedTestBrief`
+- `ripr.copyAgentPacketCommand`
+- `ripr.copyAgentBriefCommand`
+- `ripr.copyAfterSnapshotCommand`
+- `ripr.copyAgentVerifyCommand`
+- `ripr.copyAgentReceiptCommand`
 - `ripr.openRelatedTest`
 - `ripr.openSettings`
 
