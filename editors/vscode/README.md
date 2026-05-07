@@ -1,12 +1,12 @@
-# ripr: Static Mutation Exposure
+# ripr: Rust Test-Oracle Gaps
 
 [![VS Marketplace Installs (manual)](https://img.shields.io/badge/VS%20Marketplace-2%20installs-0078D4)](https://marketplace.visualstudio.com/items?itemName=EffortlessMetrics.ripr)
 [![Open VSX Downloads](https://img.shields.io/open-vsx/dt/EffortlessMetrics/ripr?label=Open%20VSX%20downloads)](https://open-vsx.org/extension/EffortlessMetrics/ripr)
 
 <!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-07 after the 0.4.0 publish from the public listing. Refresh from publisher metrics when updating this manual count. Do not use live VS Marketplace Shields routes. -->
 
-Preview VS Code/Open VSX extension for `ripr`, the static RIPR
-mutation-exposure analyzer for Rust/Cargo workspaces.
+Preview VS Code/Open VSX extension for `ripr`, a static Rust analysis tool that
+finds weak or missing test oracles and guides the next targeted test.
 
 The extension starts `ripr lsp --stdio`, surfaces saved-workspace diagnostics,
 and helps a human or coding agent move from static evidence to one focused
