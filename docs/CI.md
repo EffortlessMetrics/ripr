@@ -148,6 +148,9 @@ eventual risk-pack policy files in the same PR.
 
 These labels are the documented target vocabulary. They are not active workflow
 switches until a later PR wires them into a PR plan or workflow condition.
+The GitHub Settings App contract in `.github/settings.yml` codifies these label
+names, descriptions, and colors so the reviewable vocabulary does not drift in
+the GitHub UI.
 
 ### Cheaper Signal First
 

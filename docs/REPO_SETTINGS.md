@@ -4,6 +4,41 @@ Some security and review controls live in GitHub settings instead of the git
 tree. This checklist records the expected settings so local automation, CI, and
 review policy do not drift apart.
 
+## Settings App Contract
+
+The reviewable Settings App contract lives in `.github/settings.yml`.
+
+Managed from git:
+
+- repository About metadata: name, description, homepage, and topics
+- repository feature toggles: issues on, projects off, wiki off, downloads on
+- default branch: `main`
+- merge policy: squash merge enabled, merge commits disabled, rebase merge
+  disabled, auto-merge disabled, update branch enabled, and delete branch on
+  merge enabled
+- `main` branch protection
+- required status checks for routine PR merges
+- CI policy labels documented in `docs/CI.md`
+
+Not managed from `.github/settings.yml`:
+
+- secrets
+- release environments
+- Dependency Graph
+- Dependabot alerts and security updates
+- secret scanning and push protection
+- private vulnerability reporting
+- future advanced security controls unless Settings App support is verified in a
+  focused PR
+
+Post-merge receipt:
+
+- Confirm the GitHub Repository Settings App is installed for
+  `EffortlessMetrics/ripr`.
+- Let the app apply `.github/settings.yml`.
+- Inspect branch protection and labels through the GitHub UI or API.
+- Update this document with the last verified date and any applied-state notes.
+
 ## Dependency Visibility
 
 Expected state:
@@ -86,8 +121,9 @@ automatically.
 Required checks should include:
 
 - `CI / rust`
+- `CI / msrv`
 - `CI / vscode`
-- `Coverage / coverage`
+- `Coverage / rust-coverage`
 - `Security / cargo-deny`
 - `Security / dependency-review`
 
@@ -95,8 +131,18 @@ Rules:
 
 - block direct pushes to `main`
 - block force pushes to `main`
-- use squash merge for normal PRs
+- block branch deletion for `main`
+- require conversation resolution
+- require linear history
+- use squash merge for PRs
+- keep merge commits and rebase merges disabled unless an owner-approved
+  exception is documented before changing `.github/settings.yml`
 - require release workflow changes to pass security review
+
+Advisory lanes should not be required by branch protection unless they are
+promoted in a focused policy PR after calibration. This includes Droid review,
+future Clippy candidates, RIPR self-dogfood, SARIF upload, Test Analytics,
+release packaging or publish dry-runs, PR planning, and CI budget forecasts.
 
 ## Release Environments
 
