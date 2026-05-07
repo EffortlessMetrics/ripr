@@ -45,6 +45,7 @@ cargo xtask receipts
 cargo xtask receipts check
 cargo xtask check-allow-attributes
 cargo xtask check-local-context
+cargo xtask check-droid-review-config
 cargo xtask check-supply-chain
 cargo xtask ci-fast
 ```
@@ -173,8 +174,9 @@ until the dependency graph baseline is stable.
 `ci-fast` is the current non-mutating local and CI check lane. It runs the Rust
 checks plus the existing policy checks for static language, panic-family usage,
 lint-suppression bypasses, local context leaks, file policy, executable bits,
-workflow shell budgets and action runtime policy, spec format, fixture
-contracts, generated files, dependencies, process spawning, and network policy.
+workflow shell budgets and action runtime policy, Droid workflow invariants,
+spec format, fixture contracts, generated files, dependencies, process
+spawning, and network policy.
 The workflow check rejects avoidable Node-20-backed action majors and requires
 Node 24 for extension build and publish workflows. Those policy checks write
 Markdown pass/fail reports under `target/ripr/reports`.
@@ -238,6 +240,7 @@ cargo xtask precommit
 cargo xtask check-pr
 cargo xtask check-allow-attributes
 cargo xtask check-local-context
+cargo xtask check-droid-review-config
 cargo xtask fixtures
 cargo xtask goldens check
 cargo xtask golden-drift
@@ -286,6 +289,7 @@ cargo xtask golden-drift
 cargo xtask test-oracle-report
 cargo xtask check-test-oracles
 cargo xtask dogfood
+cargo xtask check-droid-review-config
 cargo xtask targeted-test-outcome --before <path> --after <path>
 cargo xtask critic
 cargo xtask reports index
@@ -424,9 +428,9 @@ cargo xtask precommit
 ```
 
 `precommit` should stay cheap. It should prefer formatting, policy checks,
-file-surface checks, spec format, and fixture contract validation. It should not
-run release packaging, marketplace packaging, real mutation work, or slow
-full-matrix checks.
+file-surface checks, spec format, fixture contract validation, and Droid
+workflow invariant checks. It should not run release packaging, marketplace
+packaging, real mutation work, or slow full-matrix checks.
 
 The current `precommit` command runs:
 
@@ -439,6 +443,7 @@ cargo xtask check-local-context
 cargo xtask check-file-policy
 cargo xtask check-executable-files
 cargo xtask check-workflows
+cargo xtask check-droid-review-config
 cargo xtask check-spec-format
 cargo xtask check-fixture-contracts
 cargo xtask check-traceability

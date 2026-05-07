@@ -421,6 +421,7 @@ Start here:
 | See design decisions | [ADRs](docs/adr/README.md) |
 | Add or review fixtures | [Testing](docs/TESTING.md) and [Test taxonomy](docs/TEST_TAXONOMY.md) |
 | Understand repo automation | [PR automation](docs/PR_AUTOMATION.md) |
+| Roll out Droid review | [Roll out Factory Droid review](docs/how-to/roll-out-droid.md) and [Droid rollout checklist](docs/agent-context/droid-rollout.md) |
 | Understand architecture | [Architecture](docs/ARCHITECTURE.md) |
 | Review capability state | [Capability matrix](docs/CAPABILITY_MATRIX.md) and [Metrics](docs/METRICS.md) |
 | Contribute a scoped PR | [Contributing](CONTRIBUTING.md) and [Scoped PR contract](docs/SCOPED_PR_CONTRACT.md) |
