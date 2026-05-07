@@ -1075,6 +1075,91 @@ Field contract:
   guidance derived from the verify bucket. It does not claim runtime
   confirmation.
 
+## Release Readiness Report
+
+`cargo xtask release-readiness --version <version>` writes a Campaign 10
+release-surface report to:
+
+```text
+target/ripr/reports/release-readiness.json
+target/ripr/reports/release-readiness.md
+```
+
+The report checks repo artifacts and safe local commands for the 0.4
+first-hour loop. It path-installs the local binary, verifies the public command
+surface, runs the boundary-gap `ripr pilot`, `ripr outcome`, and
+`ripr agent verify` snapshots, refreshes repo-exposure latency and LSP cockpit
+reports, checks the advisory GitHub workflow dry-run, and confirms VSIX and
+known-limit docs. It does not run mutation testing, enable CI blocking, change
+analyzer classifications, or expand LSP behavior.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "report": "release-readiness",
+  "version": "0.4.0",
+  "status": "warn",
+  "checks": [
+    {
+      "id": "installed-command-surface",
+      "status": "pass",
+      "required": true,
+      "command": "target/ripr/release-readiness/install/bin/ripr --help",
+      "summary": "installed binary exposes the 0.4 public loop commands",
+      "artifacts": [
+        "target/ripr/release-readiness/install/bin/ripr"
+      ],
+      "details": []
+    },
+    {
+      "id": "publish-dry-run",
+      "status": "not_run",
+      "required": false,
+      "command": "cargo publish -p ripr --dry-run",
+      "summary": "requested release version does not match the crate version yet",
+      "artifacts": [],
+      "details": [
+        "requested version: 0.4.0; crates/ripr version: 0.3.1"
+      ]
+    }
+  ],
+  "next_commands": [
+    "cargo publish -p ripr --dry-run"
+  ]
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `status` - `pass` when all checks pass, `warn` when any check is `warn` or
+  `not_run` and no required check failed, and `fail` when a required check
+  failed.
+- `version` - requested release version from `--version`.
+- `checks[].id` - stable check identifier such as `package-list`,
+  `publish-dry-run`, `path-install`, `installed-command-surface`,
+  `pilot-boundary-fixture`, `outcome-boundary-fixture`,
+  `agent-verify-boundary-fixture`, `repo-exposure-latency`, `lsp-cockpit`,
+  `github-workflow-defaults`, `vsix-packaging-path`, or `known-limits-docs`.
+- `checks[].status` - `pass`, `warn`, `fail`, or `not_run`.
+- `checks[].required` - `true` for checks that must pass in the normal local
+  readiness run. Release-only package and publish dry-run checks can be
+  `not_run` and non-required until the version bump and clean release-prep tree
+  make them safe to execute.
+- `checks[].command` - command or dry-run surface that produced the signal.
+- `checks[].summary` - short human-readable status.
+- `checks[].artifacts` - generated or inspected artifacts for the check.
+- `checks[].details` - optional bounded command output, missing fields, or
+  skip reasons.
+- `next_commands[]` - follow-up commands for non-passing checks, or the
+  release-readiness command itself when everything passed.
+
+The Markdown sibling prints the same check table, per-check details, artifacts,
+and next commands for release review.
+
 ## Operator Cockpit Report
 
 `cargo xtask operator-cockpit` joins existing repo-local report artifacts into

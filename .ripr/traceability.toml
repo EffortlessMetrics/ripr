@@ -530,6 +530,10 @@ tests = [
   "xtask/src/main.rs::tests::lsp_cockpit_report_json_and_markdown_are_structured",
   "xtask/src/reports/operator.rs::tests::operator_cockpit_reports_missing_inputs_with_commands",
   "xtask/src/reports/operator.rs::tests::operator_cockpit_json_and_markdown_are_structured",
+  "xtask/src/reports/release.rs::tests::release_readiness_args_parse_version",
+  "xtask/src/reports/release.rs::tests::release_readiness_args_require_version",
+  "xtask/src/reports/release.rs::tests::release_readiness_status_warns_for_not_run_but_fails_required_failures",
+  "xtask/src/reports/release.rs::tests::release_readiness_json_and_markdown_are_structured",
   "xtask/src/main.rs::tests::defaults_first_example_corpus_index_names_required_operator_artifacts",
   "editors/vscode/test/suite/extension.test.ts::defaults-first check mode is draft"
 ]
@@ -561,7 +565,8 @@ code = [
   "editors/vscode/src/config.ts",
   "editors/vscode/src/client.ts",
   "xtask/src/main.rs",
-  "xtask/src/reports/operator.rs"
+  "xtask/src/reports/operator.rs",
+  "xtask/src/reports/release.rs"
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0009-defaults-first-adoption.md",
@@ -597,6 +602,7 @@ metrics = [
   "calibration_import_available",
   "advisory_ci_workflow_generated",
   "operator_cockpit_available",
+  "release_readiness_available",
   "install_path_verified"
 ]
 

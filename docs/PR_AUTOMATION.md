@@ -122,6 +122,17 @@ trace lines, and writes `target/ripr/reports/repo-exposure-latency.md` and
 cache and warm-path work, including file-fact cache hit/miss counters; it does
 not change repo-exposure JSON/Markdown.
 
+`release-readiness --version <version>` writes
+`target/ripr/reports/release-readiness.md` and
+`target/ripr/reports/release-readiness.json`. It path-installs the local
+`ripr`, checks that `pilot`, `outcome`, `calibrate cargo-mutants`, and
+`agent verify` are exposed, runs the boundary-gap pilot/outcome/agent-verify
+fixtures, refreshes repo-exposure latency and LSP cockpit reports, inspects the
+advisory GitHub workflow dry-run, and checks VSIX and known-limit docs. Package
+list and publish dry-run checks record `not_run` until the requested version
+matches `crates/ripr` and the tree is clean, so release prep can rerun them on
+the version-bump branch.
+
 `targeted-test-outcome` compares two `repo-exposure-json` artifacts and writes
 `target/ripr/reports/targeted-test-outcome.md` and
 `target/ripr/reports/targeted-test-outcome.json`. It matches seams by
@@ -535,6 +546,8 @@ receipts.md
 pr-shape.md
 metrics.md
 metrics.json
+release-readiness.md
+release-readiness.json
 suggested-fixes.patch
 ```
 

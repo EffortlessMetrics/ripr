@@ -55,6 +55,10 @@ are scoped or reviewed.
 - Added saved-workspace LSP/VS Code code actions that copy the agent loop
   command chain for a seam diagnostic: agent packet, agent brief, after
   snapshot, agent verify, and agent receipt.
+- Added `cargo xtask release-readiness --version <version>`, which writes
+  `target/ripr/reports/release-readiness.{json,md}` and checks the 0.4 CLI,
+  agent verify, LSP cockpit, advisory CI, latency, install, VSIX, and
+  known-limit surfaces from repo artifacts.
 
 ### Changed
 
