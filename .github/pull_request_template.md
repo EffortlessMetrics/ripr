@@ -46,6 +46,30 @@ Non-goals:
 - [ ] Static output avoids `killed`, `survived`, `untested`, `proven`, and `adequate`.
 - [ ] Unknowns include stop reasons where applicable.
 
+## CI Economics
+
+Complete this section when the PR changes workflows, policy gates, branch
+protection expectations, CI artifacts, report uploads, release checks, or the
+cost/posture of existing lanes. Use `n/a` for ordinary PRs that do not affect
+CI behavior.
+
+- LEM impact:
+- Workflows touched:
+- Branch protection impact:
+- Failure mode caught:
+- Cheaper signal considered:
+- Required lanes affected:
+- Advisory lanes affected:
+- On-demand/release lanes affected:
+- Labels that alter behavior:
+- Artifact families affected:
+- Rollback path:
+
+If rollback requires branch-protection or workflow-file changes, say so here
+and split the PR unless the workflow change itself is the narrow reviewed
+surface. If a CI-breaking rollback would need emergency procedures because
+normal CI cannot validate the revert, document that explicitly.
+
 ## Engineering Check
 
 - [ ] No new `panic`, `unwrap`, `expect`, `todo`, or `unimplemented` in production code.
