@@ -74,11 +74,11 @@ bounded cold run can fill the classified-seam cache, after which the default
 30-second repo-exposure latency report passes on JSON and Markdown cache hits.
 The budget-aware pilot path has first-screen Markdown and terminal copy that
 states the inspected seam, why it matters, the focused test to write, and the
-before/after commands. #457 and #458 added `ripr agent verify` and
-`ripr agent receipt`, so the next active product campaign is Campaign 10:
-Editor Agent Integration. Its job is to align the saved-workspace editor loop
-and the agent CLI loop into one visible path from diagnostic to receipt to
-cockpit/CI artifacts.
+before/after commands. Campaign 10 is now active for 0.4 release-surface
+hardening. Its first ready item is `release/readiness-report`, and its goal is
+to prove the first-hour loop across install, `ripr pilot`, one focused test,
+`ripr outcome` or `ripr agent verify`, editor, CI, latency, examples, and known
+limits.
 
 ## Strategic Sequence
 
@@ -117,7 +117,7 @@ quality rails
 -> runtime calibration fixture expansion
 -> Campaign 8 closeout
 -> hot-sidecar latency proof
--> editor-agent integration
+-> 0.4 release-surface hardening
 ```
 
 The analyzer path is:
@@ -273,19 +273,22 @@ Success condition:
 Existing sample findings come from fact objects instead of line-substring guesses.
 ```
 
-### `0.4.0` - Exposure Truth
+### `0.4.0` - Release Surface Hardening
 
 Ship:
 
-- oracle strength v2
-- local delta flow
-- activation and value modeling
-- evidence-first human output
+- release-readiness report for CLI, agent verify, LSP, CI, latency, install,
+  examples, VSIX, and known-limits surfaces
+- checked real-repo pilot receipts that do not invent metrics or overclaim
+- first-hour landing path centered on `ripr pilot`, one focused test,
+  `ripr outcome`, `ripr agent verify`, editor, CI, and known limits
+- release preparation backed by package, publish dry-run, install, VSIX,
+  release-doc, and marketplace proof
 
 Success condition:
 
 ```text
-ripr can say what changed behavior appears to flow to and which discriminator is missing.
+install -> ripr pilot -> one focused test -> ripr outcome / ripr agent verify -> review-ready artifacts
 ```
 
 ### `0.5.0` - Live Editor Loop

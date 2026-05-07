@@ -49,9 +49,17 @@ are scoped or reviewed.
   working-set seams from existing repo exposure evidence and points agents to
   packet references, candidate discriminators, assertion shape, and static
   before/after verification commands.
+- Added `ripr agent verify` and `ripr agent receipt` so agent workflows can
+  compare before/after repo exposure snapshots and emit a focused review
+  receipt for one seam.
 
 ### Changed
 
+- Opened Campaign 10 (`release-surface-0-4`) for 0.4 release-surface
+  hardening after Campaign 9 closed, with `release/readiness-report` as the
+  next ready item and explicit non-goals around analyzer expansion, LSP
+  expansion, unsaved overlays, mutation execution, CI blocking, and
+  SARIF/badge schema churn.
 - Routed `ripr agent brief` file and diff working sets through existing
   related-test evidence so edits to known related tests rank their seams before
   repo fallback, and added the related-test-confidence tie-breaker from

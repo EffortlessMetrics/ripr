@@ -1,104 +1,109 @@
-id = "editor-agent-integration"
-title = "Editor Agent Integration"
+id = "release-surface-0-4"
+title = "0.4 Release Surface Hardening"
 status = "active"
 
 # This is Campaign 10 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
-# Campaign 9 (`hot-sidecar-latency`) closed after the saved-workspace editor
-# and operator warm paths were measured, bounded, and verified on the default
-# warm-cache latency budget.
-# This lane is integration discipline, not new analyzer semantics or new
-# speculative editor features.
+# Campaign 9 (`hot-sidecar-latency`) closed after bounded latency reporting,
+# warm-cache proof, budget-aware pilot behavior, and first-screen pilot clarity
+# landed. This lane is release-surface hardening, not analyzer expansion.
 
 objective = """
-Make the saved-workspace editor loop and the agent CLI loop line up:
-diagnostic to evidence to packet or brief to targeted test to verify to receipt
-to cockpit and CI artifacts.
+Make RIPR 0.4.0 usable in the first hour by proving the existing install,
+pilot, outcome, agent verify, editor, CI, latency, example, and known-limit
+surfaces from repo artifacts.
 """
 
 end_state = [
-  "A saved-workspace seam diagnostic exposes the same evidence, packet, brief, verify, and receipt path as the agent CLI",
-  "Agent verify and receipt artifacts are visible in the operator cockpit and generated CI artifacts without rerunning analysis inside report joins",
-  "A fixture pins the full editor-agent loop from diagnostic/action expectations through agent packet, verify, receipt, and cockpit outputs",
-  "Installed CLI and VSIX proof covers the editor-agent loop without requiring ripr init activation, automatic edits, generated tests, or runtime mutation execution"
+  "A release-readiness report proves the CLI, agent verify, LSP, CI, latency, install, and known-limits surfaces from one command",
+  "Checked real-repo pilot receipts show what RIPR actually reported without inventing metrics or overclaiming",
+  "The landing path explains install -> ripr pilot -> one focused test -> ripr outcome or ripr agent verify before internal report details",
+  "0.4.0 release preparation is backed by package, publish dry-run, install, VSIX, and readiness evidence"
 ]
 
 [[work_item]]
-id = "editor-agent/integration-contract-audit"
+id = "release/readiness-report"
 status = "ready"
-branch = "editor-agent-integration-contract-audit"
+branch = "release-readiness-report"
 stackable = false
 requires_human_merge = true
-acceptance = "Define the editor-agent integration contract and inventory current CLI, LSP, VS Code, agent, receipt, cockpit, CI, fixture, and install surfaces; docs and manifest only"
+acceptance = "Add a 0.4 release-readiness report that proves CLI, agent verify, LSP, CI, latency, install, examples, VSIX, and known-limits surfaces from repo artifacts without changing analyzer behavior"
+# The implementing PR must add the new release-readiness xtask command and then
+# include it in this command list. This campaign-opening PR keeps only existing
+# validation gates so the active manifest stays executable on current main.
 commands = [
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
   "cargo xtask check-campaign",
   "cargo xtask goals next",
-  "cargo xtask check-doc-index",
-  "cargo xtask check-traceability",
-  "cargo xtask check-capabilities",
+  "cargo xtask check-pr",
+  "cargo test --workspace"
+]
+
+[[work_item]]
+id = "examples/real-repo-pilot-receipts"
+status = "blocked"
+branch = "real-repo-pilot-receipts"
+stackable = false
+requires_human_merge = true
+blocked_by = ["release/readiness-report"]
+blocked_reason = "Wait for the release-readiness report to define the release proof surface, receipt verification command, and artifact expectations."
+acceptance = "Add checked non-sensitive pilot receipts from real repos that record what RIPR reported, what was useful, what was noisy, and what limits remain"
+commands = [
   "cargo xtask check-static-language",
-  "cargo xtask check-output-contracts",
+  "cargo xtask markdown-links",
+  "cargo xtask check-doc-index",
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
   "cargo xtask check-pr"
 ]
 
 [[work_item]]
-id = "lsp/agent-loop-copy-commands"
+id = "docs/0-4-landing-path"
 status = "blocked"
-branch = "lsp-agent-loop-copy-commands"
+branch = "docs-0-4-landing-path"
 stackable = false
 requires_human_merge = true
-acceptance = "From a seam diagnostic, users can copy agent packet, after-snapshot, verify, and receipt commands; no automatic edits, CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays"
-blocked_by = ["editor-agent/integration-contract-audit"]
+blocked_by = ["examples/real-repo-pilot-receipts"]
+blocked_reason = "Wait for readiness and pilot receipts so the landing path can point at current proof rather than planned artifacts."
+acceptance = "Rewrite the first-time user landing path around install, ripr pilot, one focused test, ripr outcome, ripr agent verify, editor, CI, and known limits"
+commands = [
+  "cargo xtask markdown-links",
+  "cargo xtask check-doc-index",
+  "cargo xtask check-static-language",
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
+  "cargo xtask check-pr"
+]
 
 [[work_item]]
-id = "operator/verify-receipt-status"
+id = "release/0-4-0-prep"
 status = "blocked"
-branch = "operator-verify-receipt-status"
+branch = "release-0-4-0-prep"
 stackable = false
 requires_human_merge = true
-acceptance = "Operator cockpit reports before/after snapshot, agent verify JSON, and agent receipt JSON presence plus improved, changed, regressed, and unchanged counts with next commands for missing inputs"
-blocked_by = ["editor-agent/integration-contract-audit"]
+blocked_by = ["release/readiness-report", "examples/real-repo-pilot-receipts", "docs/0-4-landing-path"]
+blocked_reason = "Wait for readiness, dogfood receipts, and landing docs before changing versioned release artifacts."
+acceptance = "Prepare 0.4.0 only after readiness and dogfood receipts exist, with crate, install, VSIX, release-doc, and marketplace proof"
+commands = [
+  "cargo package -p ripr --list",
+  "cargo publish -p ripr --dry-run",
+  "cargo xtask check-pr"
+]
 
 [[work_item]]
-id = "fixtures/editor-agent-loop"
+id = "campaign/0-4-release-surface-closeout"
 status = "blocked"
-branch = "fixtures-editor-agent-loop"
+branch = "campaign-0-4-release-surface-closeout"
 stackable = false
 requires_human_merge = true
-acceptance = "Add a canonical fixture that pins LSP diagnostics/actions, agent brief, agent packet, agent verify, agent receipt, and operator cockpit outputs for the full evidence loop"
-blocked_by = ["lsp/agent-loop-copy-commands", "operator/verify-receipt-status"]
-
-[[work_item]]
-id = "ci/editor-agent-artifacts"
-status = "blocked"
-branch = "ci-editor-agent-artifacts"
-stackable = false
-requires_human_merge = true
-acceptance = "Generated GitHub workflow uploads the non-blocking editor-agent loop artifacts, including pilot summary, repo exposure, agent brief, agent packet, agent verify, agent receipt, operator cockpit, SARIF when enabled, and badge JSON"
-blocked_by = ["fixtures/editor-agent-loop"]
-
-[[work_item]]
-id = "docs/full-evidence-loop"
-status = "blocked"
-branch = "docs-full-evidence-loop"
-stackable = false
-requires_human_merge = true
-acceptance = "Quickstart and installed-user docs lead with the real diagnostic-to-receipt loop and state that ripr init is optional policy materialization, not activation"
-blocked_by = ["fixtures/editor-agent-loop", "ci/editor-agent-artifacts"]
-
-[[work_item]]
-id = "release/install-editor-agent-proof"
-status = "blocked"
-branch = "release-install-editor-agent-proof"
-stackable = false
-requires_human_merge = true
-acceptance = "Prove the installed binary and VSIX package path can run pilot, agent brief, agent packet, agent verify, and agent receipt over the checked fixture loop"
-blocked_by = ["docs/full-evidence-loop"]
-
-[[work_item]]
-id = "campaign/editor-agent-integration-closeout"
-status = "blocked"
-branch = "campaign-editor-agent-integration-closeout"
-stackable = false
-requires_human_merge = true
-acceptance = "Close Campaign 10 after editor, agent, cockpit, CI, fixture, docs, and install proof are aligned with no new public crates, runtime mutation execution, automatic edits, or speculative editor features"
-blocked_by = ["release/install-editor-agent-proof"]
+blocked_by = ["release/0-4-0-prep"]
+blocked_reason = "Closeout waits for 0.4.0 release preparation and proof artifacts to land."
+acceptance = "Close the 0.4 release-surface campaign after readiness, real-repo receipts, landing docs, and release prep proof are landed"
+commands = [
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr"
+]
