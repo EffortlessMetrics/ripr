@@ -23,7 +23,8 @@ through multiple work items in a campaign, but each work item should follow the
 | Module SRP Refactoring (6) | Refactor internal modules under `crates/ripr/src/` so each module has one product responsibility, without splitting the package. | Complete: #347, the Campaign 6 refactor chain through #405, and `campaign/modularization-closeout`. |
 | Defaults-First Operator Adoption (7) | Make a clean install useful through conservative defaults, one operator cockpit, CI artifacts, editor install docs, examples, and install/release proof. | Complete: #409 through #417 plus `campaign/defaults-first-closeout`. |
 | Runtime Calibration Fixture Expansion (8) | Expand supplied-runtime calibration fixtures without making RIPR run mutation tests. | Complete: #420 plus `campaign/runtime-calibration-closeout`. |
-| Hot Sidecar Latency Proof (9) | Measure current cache and saved-workspace editor refresh behavior before changing warm-path reuse. | Active: cache measurement, bounded repo-exposure latency reporting, warm-path fact reuse, bounded `ripr pilot`, and first-screen pilot clarity are complete; next ready item is `campaign/hot-sidecar-latency-closeout`. |
+| Hot Sidecar Latency Proof (9) | Measure current cache and saved-workspace editor refresh behavior before changing warm-path reuse. | Complete: #421, #422, #423, #447, #448, #450, #451, and `campaign/hot-sidecar-latency-closeout`. |
+| Editor Agent Integration (10) | Align saved-workspace editor diagnostics/actions, agent CLI commands, verification receipts, cockpit reports, CI artifacts, fixtures, docs, and install proof into one evidence loop. | Active: first ready item is `editor-agent/integration-contract-audit`. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
 through 8 are complete. Campaign 6 closed after the internal module SRP chain
@@ -37,7 +38,9 @@ static/runtime agreement buckets and closed with runtime calibration still
 confined to supplied-data reports. Campaign 9 has measured the cache/editor
 proof surfaces, added bounded latency reporting, reused warm-path facts below
 rendered outputs, bounded `ripr pilot`, and improved first-screen pilot clarity.
-The active queue is now `campaign/hot-sidecar-latency-closeout`.
+Campaign 9 closed after evidence hot-path indexing and current-main LSP/latency
+proof. Campaign 10 is now active; its first ready work item is
+`editor-agent/integration-contract-audit`.
 
 ## PR 0: `planning-and-tracking-docs`
 

@@ -74,8 +74,11 @@ bounded cold run can fill the classified-seam cache, after which the default
 30-second repo-exposure latency report passes on JSON and Markdown cache hits.
 The budget-aware pilot path has first-screen Markdown and terminal copy that
 states the inspected seam, why it matters, the focused test to write, and the
-before/after commands. No next active product campaign is opened yet; choose it
-explicitly from the remaining roadmap before starting new work.
+before/after commands. #457 and #458 added `ripr agent verify` and
+`ripr agent receipt`, so the next active product campaign is Campaign 10:
+Editor Agent Integration. Its job is to align the saved-workspace editor loop
+and the agent CLI loop into one visible path from diagnostic to receipt to
+cockpit/CI artifacts.
 
 ## Strategic Sequence
 
@@ -114,6 +117,7 @@ quality rails
 -> runtime calibration fixture expansion
 -> Campaign 8 closeout
 -> hot-sidecar latency proof
+-> editor-agent integration
 ```
 
 The analyzer path is:
