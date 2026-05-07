@@ -190,6 +190,28 @@ level = "deny"
 activate_when_msrv = "1.93"
 reason = "Requires per-call `#[expect]` receipts on AST-bounded text slicing; pairs with `indexing_slicing` flip."
 
+# API and trait correctness. Catches Clone/Copy/From/Iterator/Error trait
+# mismatches that are silent bugs at runtime.
+[[active.api_correctness]]
+name = "clippy::iter_not_returning_iterator"
+level = "deny"
+
+[[active.api_correctness]]
+name = "clippy::expl_impl_clone_on_copy"
+level = "deny"
+
+[[active.api_correctness]]
+name = "clippy::infallible_try_from"
+level = "deny"
+
+[[active.api_correctness]]
+name = "clippy::fallible_impl_from"
+level = "deny"
+
+[[active.api_correctness]]
+name = "clippy::error_impl_error"
+level = "deny"
+
 [[active.governance]]
 name = "clippy::allow_attributes_without_reason"
 level = "deny"

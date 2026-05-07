@@ -91,6 +91,10 @@ Currently denied at the workspace level (selected highlights):
   slice arithmetic where indices come from validated AST text ranges.
   The flip pairs the two lints together with per-site `#[expect]`
   receipts and is tracked in `policy/clippy-lints.toml` as planned.
+- API and trait correctness: `clippy::iter_not_returning_iterator`,
+  `clippy::expl_impl_clone_on_copy`, `clippy::infallible_try_from`,
+  `clippy::fallible_impl_from`, `clippy::error_impl_error`. Catches trait
+  contract mismatches that compile but silently mislead callers.
 - Suppression governance: `clippy::allow_attributes_without_reason`,
   `clippy::blanket_clippy_restriction_lints`.
 - Rust: `unsafe_code = "forbid"`, `unused_must_use`,
