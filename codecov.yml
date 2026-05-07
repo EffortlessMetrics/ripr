@@ -53,3 +53,4 @@ ignore:
   - "target/**"
   - "fixtures/**/target/**"
   - "editors/vscode/**/node_modules/**"
+  - "xtask/src/reports/release.rs"
