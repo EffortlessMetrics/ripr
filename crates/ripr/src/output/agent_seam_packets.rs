@@ -74,6 +74,11 @@ pub(crate) fn render_agent_seam_packets_json(classified: &[ClassifiedSeam]) -> S
     out
 }
 
+/// Render the existing agent seam packet JSON envelope for one seam.
+pub(crate) fn render_agent_seam_packet_json(entry: &ClassifiedSeam) -> String {
+    render_agent_seam_packets_json(std::slice::from_ref(entry))
+}
+
 /// Return the first concrete assertion example carried by the agent
 /// seam packet v2 shape. This follows the packet content itself:
 /// any seam with a concrete assertion template can expose the editor

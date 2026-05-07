@@ -1093,6 +1093,11 @@ agent work orders for every headline-eligible classified seam. The
 artifact lands at `target/ripr/reports/agent-seam-packets.json` when
 generated via `cargo xtask agent-seam-packets`.
 
+`ripr agent packet --root . --seam-id <id> --json` emits the same
+`agent-seam-packets-json` envelope filtered to one visible seam. It does not
+dump the full repo packet set. Missing seam IDs, non-actionable seam classes,
+and seams whose configured severity is `off` return an actionable error.
+
 ```json
 {
   "schema_version": "0.3",
@@ -1206,7 +1211,9 @@ Field contract:
   in-flight `0.3` contract had not yet closed.
   Reason and confidence vocabularies are documented in the
   `repo-exposure.json` field contract above.
-- `scope` — always `"repo"`.
+- `scope` — always `"repo"`, including the one-seam `ripr agent packet`
+  expansion. The one-seam command is a filtered view of the repo packet
+  contract, not a second packet schema.
 - `packets_total` — number of actionable packets emitted. Equals the
   count of headline-eligible seams plus opaque seams (which emit
   `inspect_static_limitation`). Strongly-gripped, intentional, and
@@ -1289,11 +1296,10 @@ loop.
 
 ## Agent Working-Set Brief
 
-`ripr agent brief --json` is a proposed agent-active routing surface governed
-by [RIPR-SPEC-0010](specs/RIPR-SPEC-0010-agent-working-set-brief.md). It is not
-implemented in the current CLI. When implemented, it should emit a small
-working-set summary that selects the top seams relevant to the files, lines,
-diff, base ref, or explicit seam ID an agent is touching.
+`ripr agent brief --json` is an agent-active routing surface governed by
+[RIPR-SPEC-0010](specs/RIPR-SPEC-0010-agent-working-set-brief.md). It emits a
+small working-set summary that selects the top seams relevant to the files,
+lines, diff, base ref, or explicit seam ID an agent is touching.
 
 Command forms:
 
@@ -1316,7 +1322,7 @@ The JSON shape uses schema `0.1`:
   "config": {
     "state": "loaded",
     "path": "ripr.toml",
-    "fingerprint": "sha256:..."
+    "fingerprint": "fnv1a64:4c94a2f6cfaa5c21"
   },
   "working_set": {
     "source": "diff",

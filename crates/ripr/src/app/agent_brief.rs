@@ -208,6 +208,24 @@ impl<'a> AgentBriefPolicy<'a> {
     fn severity_for(self, class: SeamGripClass) -> ConfigSeverity {
         self.config.severity().for_seam(class)
     }
+
+    pub(crate) fn omission_reason_for_class(self, class: SeamGripClass) -> Option<String> {
+        if matches!(self.severity_for(class), ConfigSeverity::Off) {
+            return Some(format!(
+                "is configured off for {} seams and is not included in agent results",
+                class.as_str()
+            ));
+        }
+
+        if !is_agent_actionable(class) {
+            return Some(format!(
+                "is {} and is not included in agent results",
+                class.as_str()
+            ));
+        }
+
+        None
+    }
 }
 
 pub(crate) fn select_agent_brief_seams<'a>(

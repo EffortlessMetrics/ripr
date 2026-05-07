@@ -6,7 +6,9 @@ use std::path::PathBuf;
 pub(super) enum AgentCommand {
     Help,
     BriefHelp,
+    PacketHelp,
     Brief(AgentBriefOptions),
+    Packet(AgentPacketOptions),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -15,6 +17,13 @@ pub(super) struct AgentBriefOptions {
     pub(super) working_set: AgentBriefWorkingSet,
     pub(super) json: bool,
     pub(super) max_seams: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct AgentPacketOptions {
+    pub(super) root: PathBuf,
+    pub(super) seam_id: String,
+    pub(super) json: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -48,8 +57,9 @@ pub(super) fn parse_agent_args(args: &[String]) -> Result<AgentCommand, String> 
     match args.first().map(|arg| arg.as_str()) {
         None | Some("--help" | "-h") => Ok(AgentCommand::Help),
         Some("brief") => parse_agent_brief_command(&args[1..]),
+        Some("packet") => parse_agent_packet_command(&args[1..]),
         Some(other) => Err(format!(
-            "unknown agent subcommand {other:?}; expected `brief`"
+            "unknown agent subcommand {other:?}; expected `brief` or `packet`"
         )),
     }
 }
@@ -59,6 +69,13 @@ fn parse_agent_brief_command(args: &[String]) -> Result<AgentCommand, String> {
         return Ok(AgentCommand::BriefHelp);
     }
     parse_agent_brief_options(args).map(AgentCommand::Brief)
+}
+
+fn parse_agent_packet_command(args: &[String]) -> Result<AgentCommand, String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        return Ok(AgentCommand::PacketHelp);
+    }
+    parse_agent_packet_options(args).map(AgentCommand::Packet)
 }
 
 pub(super) fn parse_agent_brief_options(args: &[String]) -> Result<AgentBriefOptions, String> {
@@ -132,6 +149,43 @@ pub(super) fn parse_agent_brief_options(args: &[String]) -> Result<AgentBriefOpt
     })
 }
 
+pub(super) fn parse_agent_packet_options(args: &[String]) -> Result<AgentPacketOptions, String> {
+    let mut root = PathBuf::from(".");
+    let mut seam_id: Option<String> = None;
+    let mut json = false;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = PathBuf::from(expect_value(args, i, "--root")?);
+            }
+            "--seam-id" => {
+                i += 1;
+                let value = expect_value(args, i, "--seam-id")?;
+                if value.trim().is_empty() {
+                    return Err("agent packet --seam-id requires a non-empty ID".to_string());
+                }
+                seam_id = Some(value.to_string());
+            }
+            "--json" => json = true,
+            other => return Err(format!("unknown agent packet argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    if !json {
+        return Err("agent packet requires --json until human output is implemented".to_string());
+    }
+
+    Ok(AgentPacketOptions {
+        root,
+        seam_id: seam_id.ok_or_else(|| "agent packet requires --seam-id".to_string())?,
+        json,
+    })
+}
+
 fn set_working_set(
     current: &mut Option<WorkingSetCandidate>,
     next: WorkingSetCandidate,
@@ -188,13 +242,21 @@ mod tests {
             parse_agent_args(&args(&["brief", "--help"])),
             Ok(AgentCommand::BriefHelp)
         );
+        assert_eq!(
+            parse_agent_args(&args(&["packet", "--help"])),
+            Ok(AgentCommand::PacketHelp)
+        );
     }
 
     #[test]
     fn agent_args_reject_unknown_subcommand() {
         assert_eq!(
             parse_agent_args(&args(&["packet"])),
-            Err("unknown agent subcommand \"packet\"; expected `brief`".to_string())
+            Err("agent packet requires --json until human output is implemented".to_string())
+        );
+        assert_eq!(
+            parse_agent_args(&args(&["other"])),
+            Err("unknown agent subcommand \"other\"; expected `brief` or `packet`".to_string())
         );
     }
 
@@ -384,6 +446,53 @@ mod tests {
         assert_eq!(
             parse_agent_brief_options(&args(&["--diff", "change.diff", "--xml"])),
             Err("unknown agent brief argument \"--xml\"".to_string())
+        );
+    }
+
+    #[test]
+    fn agent_packet_parses_seam_id_request() {
+        assert_eq!(
+            parse_agent_packet_options(&args(&[
+                "--root",
+                "repo",
+                "--seam-id",
+                "f3c9e4d21a0b7c88",
+                "--json",
+            ])),
+            Ok(AgentPacketOptions {
+                root: PathBuf::from("repo"),
+                seam_id: "f3c9e4d21a0b7c88".to_string(),
+                json: true,
+            })
+        );
+    }
+
+    #[test]
+    fn agent_packet_requires_json_and_seam_id() {
+        assert_eq!(
+            parse_agent_packet_options(&args(&["--seam-id", "abc"])),
+            Err("agent packet requires --json until human output is implemented".to_string())
+        );
+        assert_eq!(
+            parse_agent_packet_options(&args(&["--json"])),
+            Err("agent packet requires --seam-id".to_string())
+        );
+        assert_eq!(
+            parse_agent_packet_options(&args(&["--seam-id", "", "--json"])),
+            Err("agent packet --seam-id requires a non-empty ID".to_string())
+        );
+    }
+
+    #[test]
+    fn agent_packet_rejects_unknown_arguments() {
+        assert_eq!(
+            parse_agent_packet_options(&args(&[
+                "--seam-id",
+                "f3c9e4d21a0b7c88",
+                "--json",
+                "--xml",
+            ])),
+            Err("unknown agent packet argument \"--xml\"".to_string())
         );
     }
 }

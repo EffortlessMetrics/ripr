@@ -6,6 +6,7 @@ Usage:
   ripr outcome --before PATH --after PATH [--format md|json] [--out PATH]
   ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
   ripr agent brief --root . (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json
+  ripr agent packet --root . --seam-id ID --json
   ripr check [--base origin/main] [--diff PATH] [--mode draft] [--format FORMAT]
   ripr explain [--base REV|--diff PATH] <finding-id|file:line>
   ripr context [--base REV|--diff PATH] --at <finding-id|file:line>
@@ -23,6 +24,7 @@ Quick start:
   ripr outcome --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json
   ripr calibrate cargo-mutants --mutants-json target/mutants/outcomes.json --repo-exposure-json target/ripr/pilot/after.repo-exposure.json
   ripr agent brief --root . --diff change.diff --json
+  ripr agent packet --root . --seam-id f3c9e4d21a0b7c88 --json
   ripr check --diff crates/ripr/examples/sample/example.diff
   ripr check --diff crates/ripr/examples/sample/example.diff --json
   ripr explain --diff crates/ripr/examples/sample/example.diff <finding-id>
@@ -103,8 +105,10 @@ const AGENT_HELP: &str = r#"Usage: ripr agent <subcommand>
 
 Subcommands:
   brief      Parse a working-set brief request for the future agent-active router.
+  packet     Expand one visible seam into the existing agent seam packet JSON.
 
-Run `ripr agent brief --help` for the JSON-only working-set brief contract.
+Run `ripr agent brief --help` or `ripr agent packet --help` for JSON-only
+agent surfaces.
 "#;
 
 const AGENT_BRIEF_HELP: &str = r#"Usage: ripr agent brief [--root PATH] (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json [--max-seams N]
@@ -121,6 +125,19 @@ Options:
 This parser is the first implementation seam for RIPR-SPEC-0010. The brief
 router remains advisory and static; it does not run mutation testing, generate
 tests, edit files, change cache behavior, or touch LSP/MCP surfaces.
+"#;
+
+const AGENT_PACKET_HELP: &str = r#"Usage: ripr agent packet [--root PATH] --seam-id ID --json
+
+Options:
+  --root PATH      Workspace root. Defaults to current directory.
+  --seam-id ID     Select one visible seam by ID.
+  --json           Required until a human packet surface exists.
+
+The packet command expands a seam selected by `ripr agent brief` into the
+existing agent-seam-packets-json envelope with one packet. It remains advisory
+and static; it does not run mutation testing, generate tests, edit files, change
+cache behavior, or touch LSP/MCP surfaces.
 "#;
 
 const CHECK_HELP: &str = r#"Usage: ripr check [OPTIONS]
@@ -202,6 +219,10 @@ pub(super) fn print_agent_brief_help() {
     println!("{AGENT_BRIEF_HELP}");
 }
 
+pub(super) fn print_agent_packet_help() {
+    println!("{AGENT_PACKET_HELP}");
+}
+
 pub(super) fn print_explain_help() {
     println!("{EXPLAIN_HELP}");
 }
@@ -221,8 +242,8 @@ pub(super) fn print_lsp_help() {
 #[cfg(test)]
 mod tests {
     use super::{
-        AGENT_BRIEF_HELP, AGENT_HELP, CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP, DOCTOR_HELP,
-        EXPLAIN_HELP, HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP,
+        AGENT_BRIEF_HELP, AGENT_HELP, AGENT_PACKET_HELP, CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP,
+        DOCTOR_HELP, EXPLAIN_HELP, HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP,
     };
 
     #[test]
@@ -232,6 +253,7 @@ mod tests {
         assert!(HELP.contains("ripr outcome"));
         assert!(HELP.contains("ripr calibrate"));
         assert!(HELP.contains("ripr agent brief"));
+        assert!(HELP.contains("ripr agent packet"));
         assert!(HELP.contains("ripr check"));
         assert!(HELP.contains("ripr explain"));
         assert!(HELP.contains("ripr context"));
@@ -265,6 +287,8 @@ mod tests {
         assert!(AGENT_BRIEF_HELP.starts_with("Usage: ripr agent brief"));
         assert!(AGENT_BRIEF_HELP.contains("--max-seams N"));
         assert!(AGENT_BRIEF_HELP.contains("RIPR-SPEC-0010"));
+        assert!(AGENT_PACKET_HELP.starts_with("Usage: ripr agent packet"));
+        assert!(AGENT_PACKET_HELP.contains("agent-seam-packets-json"));
         assert!(EXPLAIN_HELP.starts_with("Usage: ripr explain"));
         assert!(CONTEXT_HELP.starts_with("Usage: ripr context"));
         assert!(DOCTOR_HELP.starts_with("Usage: ripr doctor [--root PATH]"));
