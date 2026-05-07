@@ -68,7 +68,7 @@ commands = [
 
 [[work_item]]
 id = "agent/receipt-provenance"
-status = "ready"
+status = "done"
 branch = "agent-receipt-provenance"
 stackable = false
 requires_human_merge = true
@@ -82,13 +82,17 @@ commands = [
 
 [[work_item]]
 id = "agent/next-action-guidance"
-status = "blocked"
+status = "ready"
 branch = "agent-next-action-guidance"
 stackable = false
 requires_human_merge = true
-blocked_by = ["agent/receipt-provenance"]
-blocked_reason = "Wait until receipt provenance is present so next-action guidance can reference a trustworthy receipt surface"
 acceptance = "Emit bounded static next-action guidance for improved, unchanged, regressed, resolved, and new-gap receipt states"
+commands = [
+  "cargo test -p ripr agent",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr"
+]
 
 [[work_item]]
 id = "agent/reviewer-summary"
