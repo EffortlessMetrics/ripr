@@ -1,6 +1,7 @@
 # ripr
 
-`ripr` is a static RIPR mutation-exposure analyzer for Rust workspaces.
+`ripr` helps Rust developers and coding agents find test-oracle gaps before
+mutation testing.
 
 It answers a draft-time testing question:
 
@@ -12,8 +13,8 @@ a discriminator that would notice if that behavior were wrong?
 `ripr` is alpha software. The current release is a syntax-first scanner that is
 useful for early feedback, not a proof system.
 
-This is the product repository for `ripr`. The `0.3.x` line keeps the analyzer
-scope narrow while strengthening syntax-backed evidence and the editor loop.
+This is the product repository for `ripr`. The `0.4.x` line keeps the analyzer,
+editor, CI, and agent loops aligned around static evidence for targeted tests.
 
 ## Mission
 
@@ -235,7 +236,7 @@ test, and comparing before/after evidence.
 
 | Capability | Current state | Next checkpoint |
 | --- | --- | --- |
-| Distribution | Crate package and publish dry-run proof passes for `0.3.1`; public `v0.3.0` server assets are verified, while `0.3.1` is the first release line that can satisfy the installed `ripr pilot` -> `ripr outcome` loop. | Release maintenance after the next version bump. |
+| Distribution | `0.4.0` is published on crates.io, GitHub Releases, VS Marketplace, and Open VSX with server archives, VSIX packaging, generated CI workflow artifacts, release-readiness proof, and installed editor-agent loop smoke checks. | Post-release maintenance; keep registry, server, and marketplace surfaces aligned. |
 | Diff analysis | Syntax-backed changed-line probes with owner symbols, parser-backed probe facts, explicit stop reasons for unknowns, probe-relative oracle strength, and local flow sink facts. | Maintenance; no active analyzer-refactor lane. |
 | Test discovery | Parser-backed test and assertion facts with exact, broad, relational, snapshot, mock, smoke, and unknown oracle kinds. | Maintenance; no active analyzer-refactor lane. |
 | Output | Human, JSON, context, GitHub/SARIF, repo seam, pilot, outcome, and badge formats include evidence-first stop reasons and advisory next actions. | Output contract maintenance. |

@@ -36,6 +36,9 @@ are scoped or reviewed.
 
 ### Changed
 
+- Aligned public package and extension front-door metadata around Rust
+  test-oracle gaps, targeted tests, and static RIPR evidence instead of
+  internal mutation-exposure wording.
 - Centralized LLM work-loop command templates for agent status next commands,
   agent brief follow-up commands, pilot follow-up commands, LSP copy-action
   payloads, generated CI artifact paths, and operator cockpit missing-input
