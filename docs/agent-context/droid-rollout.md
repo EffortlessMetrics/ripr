@@ -55,6 +55,10 @@ pull_request, not pull_request_target
 same-repo guard for automatic PR review
 trusted actor guard for manual @droid commands
 show_full_output: false on every Droid action step
+upload_debug_artifacts: false on every Droid action step
+approved EffortlessMetrics/droid-action-safe SHA
+no direct Factory-AI/droid-action use for BYOK workflows
+no raw $HOME/.factory/** or droid-prompts/** artifact upload
 quoted heredoc for settings.local.json
 literal ${MINIMAX_API_KEY} inside settings.local.json
 no ANTHROPIC_AUTH_TOKEN
@@ -110,4 +114,5 @@ pull_request_target
 secrets-backed Droid jobs for fork PR code
 comment post-processing to remove Factory wrapper mentions
 global permission reductions that have not been tested in ripr
+raw Droid debug artifact upload
 ```

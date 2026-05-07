@@ -15,6 +15,9 @@ the first rollout wave:
   separate workflows.
 - Droid workflows use SHA-pinned third-party actions.
 - `show_full_output: false` is explicit in every Droid action step.
+- `upload_debug_artifacts: false` is explicit in every Droid action step.
+- The approved safe action ref disables raw `$HOME/.factory/**` and
+  `droid-prompts/**` artifact upload for normal secrets-backed runs.
 - Automatic review is restricted to same-repo PRs so secrets do not run on fork
   code.
 - Manual `@droid` commands require a trusted actor: `OWNER`, `MEMBER`, or
@@ -123,7 +126,7 @@ Use the runtime Factory settings file, not the Droid Action `settings:` input,
 for this MiniMax custom model bridge.
 
 The heredoc delimiter must stay quoted so the API key reference remains literal
-in the settings file and in likely debug artifacts:
+in `settings.local.json`:
 
 ```bash
 mkdir -p "$HOME/.factory"
@@ -161,8 +164,12 @@ Use these pinned action refs until there is a deliberate update process:
 
 ```yaml
 actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-Factory-AI/droid-action@e3d1f5e7861c36fe4a9c4dca3edec87b964b2bc4 # v5
+EffortlessMetrics/droid-action-safe@01e76b659e4b1e5f23feedc8cfabf8dc14c7485f # based on Factory-AI/droid-action v5; raw debug artifact upload disabled
 ```
+
+Do not use `Factory-AI/droid-action` directly for MiniMax BYOK workflows until
+upstream exposes a debug-artifact disable input and `ripr`'s checker allowlist
+is updated.
 
 Start with this model baseline:
 
@@ -171,6 +178,7 @@ review_depth: shallow
 review_model: "custom:MiniMax-M2.7-0"
 security_model: "custom:MiniMax-M2.7-0"
 show_full_output: false
+upload_debug_artifacts: false
 ```
 
 For automatic PR review, keep:
@@ -254,8 +262,8 @@ Also state:
 - draft PRs are intentionally reviewed;
 - `[skip-review]` opts out of automatic review;
 - `@droid review` and `@droid security` require a trusted actor;
-- `show_full_output: false` limits debug exposure but does not make artifacts
-  secret-free.
+- `show_full_output: false` controls logs only;
+- `upload_debug_artifacts: false` prevents raw Droid debug artifact upload.
 
 ## Pilot And Smoke Tests
 
@@ -274,12 +282,14 @@ After merging each pilot rollout:
 7. Comment `@droid security` as a trusted actor and confirm it runs.
 8. Run Droid Security Scan manually once before relying on the schedule.
 
-Before broad rollout, download one successful Droid debug artifact from `ripr`
-or a pilot repository and confirm:
+Before broad rollout, inspect one successful Droid run's artifact list from
+`ripr` or a pilot repository and confirm:
 
-- `settings.local.json` does not contain expanded secrets;
-- prompt and debug artifacts do not contain unexpected secrets;
-- artifact retention and download permissions are acceptable;
+- no raw artifact named `droid-review-debug-<run_id>` was uploaded;
+- if sanitized debug artifacts were explicitly enabled in a private manual run,
+  the artifact name is `droid-review-debug-sanitized-*`, retention is 1 day,
+  and it contains no expanded provider keys, GitHub tokens, authorization
+  headers, or raw prompt files;
 - MiniMax usage is visible and expected in the provider dashboard.
 
 After the pilot is uneventful, roll out in batches of 10 to 20 repositories.
