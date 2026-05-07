@@ -451,8 +451,16 @@ fn days_to_civil_date(days_since_epoch: i64) -> (i32, u32, u32) {
     let y = yoe as i32 + (era * 400) as i32;
     let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
     let mp = (5 * doy + 2) / 153;
+    #[expect(
+        clippy::cast_sign_loss,
+        reason = "Howard Hinnant civil-date algorithm guarantees 1..=31 for d and 1..=12 for m_raw."
+    )]
     let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
     let m_raw = if mp < 10 { mp + 3 } else { mp - 9 };
+    #[expect(
+        clippy::cast_sign_loss,
+        reason = "m_raw is in 1..=12 by construction (mp in 0..=11)."
+    )]
     let m = m_raw as u32;
     let y = if m <= 2 { y + 1 } else { y };
     (y, m, d)

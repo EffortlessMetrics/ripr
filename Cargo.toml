@@ -37,6 +37,13 @@ drop_non_drop = "deny"
 # Numeric correctness.
 float_cmp = "deny"
 float_cmp_const = "deny"
+float_equality_without_abs = "deny"
+lossy_float_literal = "deny"
+invalid_upcast_comparisons = "deny"
+cast_sign_loss = "deny"
+cast_abs_to_unsigned = "deny"
+cast_enum_truncation = "deny"
+cast_nan_to_int = "deny"
 
 # Silent failure: ignoring a future, lock guard, `.ok()`'d Result, or
 # wildcard-discarded error loses evidence the analyzer cannot reconstruct.
