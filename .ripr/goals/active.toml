@@ -126,6 +126,24 @@ commands = [
 ]
 
 [[work_item]]
+id = "cache/evidence-latency-progress"
+status = "done"
+branch = "cache-evidence-latency-progress"
+stackable = false
+requires_human_merge = true
+acceptance = "Add repo-exposure latency trace progress inside evidence construction after closeout proof shows the bounded report can time out after inventory_seams without identifying the long evidence phase; preserve analyzer outputs and public schemas"
+commands = [
+  "cargo test -p ripr analysis::test_grip_evidence --lib",
+  "cargo xtask repo-exposure-latency-report",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
+  "cargo xtask check-pr",
+  "cargo test --workspace"
+]
+
+[[work_item]]
 id = "campaign/hot-sidecar-latency-closeout"
 status = "ready"
 branch = "campaign-hot-sidecar-latency-closeout"
