@@ -7,7 +7,7 @@ use crate::app::Mode;
 use crate::app::agent_brief::{
     AgentBriefResolvedWorkingSet, AgentBriefSelectedSeam, AgentBriefSelection,
 };
-use crate::config::RiprConfig;
+use crate::config::{RiprConfig, config_fingerprint};
 use crate::output::agent_seam_packets;
 use serde_json::{Value, json};
 use std::path::Path;
@@ -179,17 +179,6 @@ fn verification_json(root: &Path, mode: &Mode, recommended_name: &str) -> Value 
 
 fn display_text_path(path: &str) -> String {
     path.replace('\\', "/")
-}
-
-fn config_fingerprint(source_text: &str) -> String {
-    const FNV_OFFSET: u64 = 0xcbf29ce484222325;
-    const FNV_PRIME: u64 = 0x100000001b3;
-    let mut hash = FNV_OFFSET;
-    for byte in source_text.as_bytes() {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(FNV_PRIME);
-    }
-    format!("fnv1a64:{hash:016x}")
 }
 
 #[cfg(test)]

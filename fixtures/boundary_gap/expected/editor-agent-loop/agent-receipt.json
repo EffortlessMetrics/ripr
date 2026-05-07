@@ -4,7 +4,36 @@
     "agent_verify_json": "fixtures/boundary_gap/expected/editor-agent-loop/agent-verify.json",
     "before": "fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json"
   },
-  "schema_version": "0.1",
+  "provenance": {
+    "after_artifact": {
+      "path": "fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json",
+      "sha256": "sha256:d77145b60cad4fc56217fceec32ec5283ff1dd3e7eef2b1046a4b1baf5488c1c"
+    },
+    "after_class": "weakly_gripped",
+    "before_artifact": {
+      "path": "fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json",
+      "sha256": "sha256:3535d5554f60e2e442bd2b9e44a7daa1dbfae5d0effd67e3d797c7cfa7fca7c2"
+    },
+    "before_class": "weakly_gripped",
+    "command_template_version": "0.1",
+    "config_fingerprint": null,
+    "generated_at": "<generated_at>",
+    "limits": {
+      "runtime_adequacy_claim": false,
+      "runtime_mutation_execution": false,
+      "static_artifact_relationship": true
+    },
+    "movement": "unchanged",
+    "repo_root": ".",
+    "ripr_version": "0.4.0",
+    "seam_id": "67fc764ba37d77bd",
+    "verify_artifact": {
+      "path": "fixtures/boundary_gap/expected/editor-agent-loop/agent-verify.json",
+      "sha256": "sha256:2358acd39a58ccb7acc5b64b8cf0ea8ce835677a48f7e7d035c05f51d56dea87"
+    },
+    "workflow_artifact": null
+  },
+  "schema_version": "0.2",
   "seam": {
     "after": "weakly_gripped",
     "before": "weakly_gripped",

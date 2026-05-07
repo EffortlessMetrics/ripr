@@ -79,6 +79,24 @@ testing, call LLM APIs, refresh LSP state, configure CI blocking, or add
 vendor-specific prompt/model behavior. The packet is deterministic context for
 humans and external agents.
 
+`ripr agent receipt --root . --verify-json <agent-verify-json> --seam-id <id>
+--json` records provenance for the static artifacts behind the selected seam
+receipt. The receipt renderer still reads existing artifacts only. It must not
+run analysis, edit source files, generate tests, run mutation testing, call LLM
+APIs, refresh LSP state, or claim runtime adequacy.
+
+Receipt provenance records:
+
+- `ripr_version`;
+- `repo_root`;
+- `config_fingerprint` when `ripr.toml` exists and can be read without running
+  analysis;
+- `command_template_version`;
+- `generated_at`;
+- before, after, and verify artifact paths plus SHA-256 hashes;
+- selected `seam_id`, before class, after class, and movement;
+- explicit static boundary flags.
+
 ## JSON Shape
 
 The status report uses schema version `0.1`:
@@ -164,6 +182,50 @@ The workflow manifest uses schema version `0.1`:
 }
 ```
 
+The agent receipt uses schema version `0.2` once provenance is present:
+
+```json
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "status": "advisory",
+  "inputs": {
+    "agent_verify_json": "target/ripr/workflow/agent-verify.json",
+    "before": "target/ripr/workflow/before.repo-exposure.json",
+    "after": "target/ripr/workflow/after.repo-exposure.json"
+  },
+  "provenance": {
+    "ripr_version": "0.4.0",
+    "repo_root": ".",
+    "config_fingerprint": "fnv1a64:4c94a2f6cfaa5c21",
+    "command_template_version": "0.1",
+    "generated_at": "unix_ms:1778179200000",
+    "workflow_artifact": null,
+    "before_artifact": {
+      "path": "target/ripr/workflow/before.repo-exposure.json",
+      "sha256": "sha256:..."
+    },
+    "after_artifact": {
+      "path": "target/ripr/workflow/after.repo-exposure.json",
+      "sha256": "sha256:..."
+    },
+    "verify_artifact": {
+      "path": "target/ripr/workflow/agent-verify.json",
+      "sha256": "sha256:..."
+    },
+    "seam_id": "67fc764ba37d77bd",
+    "before_class": "weakly_gripped",
+    "after_class": "strongly_gripped",
+    "movement": "improved",
+    "limits": {
+      "static_artifact_relationship": true,
+      "runtime_mutation_execution": false,
+      "runtime_adequacy_claim": false
+    }
+  }
+}
+```
+
 ## Required Evidence
 
 The first LLM work-loop slice requires:
@@ -193,6 +255,17 @@ The workflow manifest slice additionally requires:
 - explicit boundary flags proving the packet does not edit source, generate
   tests, call LLM APIs, run mutation testing, or configure CI blocking.
 
+The receipt provenance slice additionally requires:
+
+- agent receipt schema version `0.2`;
+- SHA-256 hashes for before, after, and verify artifacts;
+- `ripr_version`, `repo_root`, optional config fingerprint, command template
+  version, and render timestamp;
+- selected seam identity, before class, after class, and movement copied from
+  the verify artifact;
+- static boundary flags that do not claim runtime adequacy;
+- fixture, schema, traceability, capability, and campaign updates.
+
 ## Non-Goals
 
 The LLM work loop must not:
@@ -204,7 +277,8 @@ The LLM work loop must not:
 - refresh LSP state;
 - add speculative editor surfaces;
 - add public crates;
-- change the existing brief, packet, verify, or receipt schemas.
+- change the existing brief, packet, or verify schemas. Receipt schema changes
+  are limited to the provenance-backed `0.2` additive shape.
 
 ## Acceptance Examples
 
@@ -220,6 +294,8 @@ The LLM work loop must not:
   with the existing fixture expectations.
 - Operator cockpit missing-input commands remain fixture-compatible while
   sharing the same template source as the CLI/LSP command builders.
+- `ripr agent receipt` records artifact hashes and static provenance without
+  rerunning analysis.
 - No automatic edits, generated tests, runtime mutation execution, speculative
   LSP features, or new public crates are added.
 
@@ -242,6 +318,10 @@ The LLM work loop must not:
 - `crates/ripr/src/agent/loop_commands.rs::tests::editor_commands_match_existing_lsp_templates`
 - `crates/ripr/src/output/agent_workflow.rs::tests::workflow_json_is_structured_and_advisory`
 - `crates/ripr/src/output/agent_workflow.rs::tests::workflow_markdown_lists_commands_and_boundaries`
+- `crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_json_selects_changed_seam`
+- `crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_input_paths_extracts_verify_snapshot_paths`
+- `crates/ripr/src/agent/provenance.rs::tests::sha256_file_hashes_artifact_bytes`
+- `crates/ripr/tests/cli_smoke.rs::agent_receipt_writes_one_seam_handoff_json`
 - `crates/ripr/tests/cli_smoke.rs::agent_start_writes_source_edit_free_workflow_packet`
 - `crates/ripr/src/lsp/tests.rs::agent_loop_command_payloads_stay_workspace_relative_for_platform_roots`
 - `xtask/src/reports/operator.rs::tests::operator_cockpit_matches_editor_agent_loop_fixture`
@@ -255,13 +335,16 @@ The LLM work loop must not:
 - `crates/ripr/src/agent/loop_commands.rs` owns internal command and artifact
   templates for status, brief, LSP copy actions, pilot next commands, generated
   CI paths, and cockpit missing-input commands.
+- `crates/ripr/src/agent/provenance.rs` hashes receipt artifacts with SHA-256.
 - `crates/ripr/src/cli/agent.rs` parses the status and start subcommands.
 - `crates/ripr/src/cli/commands.rs` validates the root and dispatches the
-  report, and reuses shared path templates for generated GitHub workflow agent
-  artifacts.
+  report, builds receipt provenance from existing artifacts, and reuses shared
+  path templates for generated GitHub workflow agent artifacts.
 - `crates/ripr/src/cli/help.rs` documents the command surface.
 - `crates/ripr/src/output/agent_workflow.rs` renders the workflow JSON and
   commands Markdown.
+- `crates/ripr/src/output/agent_receipt.rs` renders receipt schema `0.2` with
+  provenance.
 - `crates/ripr/src/output/agent_brief.rs`, `crates/ripr/src/output/pilot.rs`,
   and `crates/ripr/src/lsp/actions.rs` reuse the shared command builders for
   their current command payloads.
@@ -275,6 +358,7 @@ The LLM work loop must not:
 
 - `agent_loop_status_available`
 - `agent_workflow_manifest_available`
+- `agent_receipt_provenance_available`
 - missing artifact count by status report
 - stale-looking warning count by status report
 - recovered seam source distribution
