@@ -44,9 +44,14 @@ If any of those is false, the gate stays green.
 
 - **Baseline (pre-existing) findings.** The gate evaluates only the
   delta against `origin/<base>`.
-- **`static_unknown` findings.** The unknown class exists precisely so
-  the analyzer can record that the static path is undecided; failing on
-  unknowns would punish honest uncertainty.
+- **All non-trigger finding classes** (matching
+  `policy/ripr-soft-gate.toml` `[gate].ignore_finding_classes`):
+  `static_unknown`, `infection_unknown`, `propagation_unknown`,
+  `no_static_path`, and `exposed`. The unknown classes exist precisely
+  so the analyzer can record that some stage of the static path is
+  undecided; failing on unknowns would punish honest uncertainty.
+  `no_static_path` is noise the gate must not amplify, and `exposed`
+  is the success state.
 - **Mutation outcomes.** `ripr` is a static analyzer. Words like
   `killed` and `survived` are forbidden by `cargo xtask
   check-static-language`. The soft-gate inherits that vocabulary
