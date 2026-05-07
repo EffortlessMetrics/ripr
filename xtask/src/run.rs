@@ -1,9 +1,20 @@
-use std::process::{Command, ExitStatus};
+use std::io::Read;
+use std::process::{Child, Command, ExitStatus, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 
 pub(crate) struct CapturedOutput {
     pub(crate) status: ExitStatus,
     pub(crate) stdout: String,
     pub(crate) stderr: String,
+}
+
+pub(crate) struct TimedOutput {
+    pub(crate) status: Option<ExitStatus>,
+    pub(crate) stdout: String,
+    pub(crate) stderr: String,
+    pub(crate) duration: Duration,
+    pub(crate) timed_out: bool,
 }
 
 pub(crate) fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
@@ -81,11 +92,125 @@ pub(crate) fn capture_output(
     })
 }
 
+pub(crate) fn capture_output_with_timeout(
+    program: &str,
+    args: &[String],
+    envs: &[(&str, &str)],
+    timeout: Duration,
+    error_context: &str,
+) -> Result<TimedOutput, String> {
+    let started = Instant::now();
+    let mut command = Command::new(program);
+    command.args(args);
+    for (name, value) in envs {
+        command.env(name, value);
+    }
+    let mut child = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|err| format!("failed to run {error_context}: {err}"))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| format!("failed to capture stdout for {error_context}"))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| format!("failed to capture stderr for {error_context}"))?;
+    let stdout_reader = thread::spawn(move || read_stream(stdout));
+    let stderr_reader = thread::spawn(move || read_stream(stderr));
+
+    loop {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|err| format!("failed to poll {error_context}: {err}"))?
+        {
+            let stdout = join_stream_reader(stdout_reader, "stdout", error_context)?;
+            let stderr = join_stream_reader(stderr_reader, "stderr", error_context)?;
+            return Ok(TimedOutput {
+                status: Some(status),
+                stdout,
+                stderr,
+                duration: started.elapsed(),
+                timed_out: false,
+            });
+        }
+
+        if started.elapsed() >= timeout {
+            let termination_requested = terminate_after_timeout(&mut child, error_context)?;
+            let status = child
+                .wait()
+                .map_err(|err| format!("failed to finish timed-out {error_context}: {err}"))?;
+            let timed_out = timeout_was_enforced(termination_requested, &status);
+            let stdout = join_stream_reader(stdout_reader, "stdout", error_context)?;
+            let stderr = join_stream_reader(stderr_reader, "stderr", error_context)?;
+            return Ok(TimedOutput {
+                status: Some(status),
+                stdout,
+                stderr,
+                duration: started.elapsed(),
+                timed_out,
+            });
+        }
+
+        thread::sleep(Duration::from_millis(100));
+    }
+}
+
+fn timeout_was_enforced(termination_requested: bool, status: &ExitStatus) -> bool {
+    termination_requested && !status.success()
+}
+
+fn terminate_after_timeout(child: &mut Child, error_context: &str) -> Result<bool, String> {
+    match child.kill() {
+        Ok(()) => Ok(true),
+        Err(kill_err) => {
+            if child
+                .try_wait()
+                .map_err(|err| format!("failed to poll {error_context}: {err}"))?
+                .is_some()
+            {
+                Ok(false)
+            } else {
+                Err(format!(
+                    "failed to terminate timed-out {error_context}: {kill_err}"
+                ))
+            }
+        }
+    }
+}
+
+fn read_stream<T: Read>(mut stream: T) -> Result<String, String> {
+    let mut bytes = Vec::new();
+    stream
+        .read_to_end(&mut bytes)
+        .map_err(|err| format!("failed to read process output: {err}"))?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+fn join_stream_reader(
+    reader: thread::JoinHandle<Result<String, String>>,
+    stream_name: &str,
+    error_context: &str,
+) -> Result<String, String> {
+    match reader.join() {
+        Ok(result) => result,
+        Err(_) => Err(format!(
+            "{stream_name} reader thread failed while running {error_context}"
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        CapturedOutput, capture_output, run, run_output, run_output_optional, run_output_owned,
+        CapturedOutput, capture_output, capture_output_with_timeout, run, run_output,
+        run_output_optional, run_output_owned, terminate_after_timeout, timeout_was_enforced,
     };
+    use std::process::{Command, Stdio};
+    use std::thread;
+    use std::time::Duration;
 
     #[test]
     fn run_reports_success_and_failure_status() -> Result<(), String> {
@@ -169,6 +294,100 @@ mod tests {
         }
         if !stderr.is_empty() {
             return Err(format!("captured stderr should be empty: {stderr}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn capture_output_with_timeout_reports_completed_process() -> Result<(), String> {
+        let args = vec!["--version".to_string()];
+        let output = capture_output_with_timeout(
+            "rustc",
+            &args,
+            &[],
+            Duration::from_secs(5),
+            "rustc version",
+        )?;
+
+        if output.timed_out {
+            return Err("rustc --version should not time out".to_string());
+        }
+        if !output.status.is_some_and(|status| status.success()) {
+            return Err("rustc --version should succeed".to_string());
+        }
+        if !output.stdout.contains("rustc") {
+            return Err(format!(
+                "captured stdout should name rustc: {}",
+                output.stdout
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn capture_output_with_timeout_reports_timed_out_process() -> Result<(), String> {
+        let args = vec![
+            "metadata".to_string(),
+            "--no-deps".to_string(),
+            "--format-version".to_string(),
+            "1".to_string(),
+        ];
+        let output =
+            capture_output_with_timeout("cargo", &args, &[], Duration::ZERO, "cargo metadata")?;
+
+        assert!(output.timed_out, "cargo metadata should time out");
+        assert!(
+            !output.status.is_some_and(|status| status.success()),
+            "timed-out cargo metadata should not exit successfully"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn terminate_after_timeout_returns_false_for_already_finished_child() -> Result<(), String> {
+        let mut child = Command::new("rustc")
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|err| format!("spawn rustc version: {err}"))?;
+
+        loop {
+            if child
+                .try_wait()
+                .map_err(|err| format!("poll rustc version: {err}"))?
+                .is_some()
+            {
+                break;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+
+        let termination_requested = terminate_after_timeout(&mut child, "rustc version")?;
+        let status = child
+            .wait()
+            .map_err(|err| format!("wait for rustc version: {err}"))?;
+        let timed_out = timeout_was_enforced(termination_requested, &status);
+        if timed_out {
+            return Err("finished process should not be reported as timed out".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn timeout_was_enforced_requires_termination_and_unsuccessful_status() -> Result<(), String> {
+        let success = capture_output("rustc", &["--version"], "rustc version")?.status;
+        let failure =
+            capture_output("rustc", &["--ripr-invalid-test-flag"], "rustc invalid flag")?.status;
+
+        if timeout_was_enforced(true, &success) {
+            return Err("successful status should not be treated as enforced timeout".to_string());
+        }
+        if timeout_was_enforced(false, &failure) {
+            return Err("failure without termination should not be a timeout".to_string());
+        }
+        if !timeout_was_enforced(true, &failure) {
+            return Err("terminated failure should be treated as timeout".to_string());
         }
         Ok(())
     }

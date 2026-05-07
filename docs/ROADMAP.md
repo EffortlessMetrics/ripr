@@ -68,8 +68,10 @@ The next active item is a hot-sidecar latency audit that measures current cache
 and saved-workspace editor refresh behavior before changing warm-path reuse.
 That audit found the existing LSP/operator proof commands are cheap on a warm
 local build, while `cargo xtask repo-exposure-report` did not finish within a
-20-minute local timeout. The active item is now bounded repo-exposure latency
-reporting before any cache rewrite.
+20-minute local timeout. Bounded repo-exposure latency reporting now records
+cache collection, cache load hit/miss/corrupt state, cold compute, cache store,
+and total phase timing without changing repo-exposure outputs. The active item
+is now warm-path reuse work guided by that report.
 
 ## Strategic Sequence
 

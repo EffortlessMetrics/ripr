@@ -755,6 +755,71 @@ confirmation via `cargo-mutants` is a separate calibration step
 RIPR-SPEC-0005 still apply: the report never uses runtime-mutation
 outcome words.
 
+## Repo Exposure Latency Report
+
+`cargo xtask repo-exposure-latency-report` writes a maintainer diagnostic
+report to:
+
+```text
+target/ripr/reports/repo-exposure-latency.json
+target/ripr/reports/repo-exposure-latency.md
+```
+
+This report is intentionally separate from `repo-exposure.json` and
+`repo-exposure.md`. It can time-box the repo-exposure command path and capture
+phase timing without changing analyzer classifications or public report
+schemas.
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "report": "repo-exposure-latency",
+  "status": "warn",
+  "timeout_ms": 30000,
+  "binary": "target/debug/ripr.exe",
+  "runs": [
+    {
+      "format": "repo-exposure-json",
+      "status": "timeout",
+      "duration_ms": 30082,
+      "exit_code": 1,
+      "stdout_bytes": 0,
+      "stderr_bytes": 152,
+      "trace": [
+        {
+          "phase": "collect_workspace_state",
+          "status": "ok",
+          "duration_ms": 15
+        },
+        {
+          "phase": "cache_load",
+          "status": "miss",
+          "duration_ms": 0
+        }
+      ]
+    }
+  ]
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"` for the diagnostic report.
+- `status` - `pass` when every attempted format completes successfully, `warn`
+  when a format times out or a later format is skipped after timeout, and
+  `fail` when a format exits unsuccessfully before timeout.
+- `timeout_ms` - timeout budget per repo-exposure format. Override with
+  `RIPR_REPO_EXPOSURE_LATENCY_TIMEOUT_MS`.
+- `runs[].format` - `repo-exposure-json` or `repo-exposure-md`.
+- `runs[].status` - `pass`, `fail`, `timeout`, or
+  `skipped_after_json_timeout`.
+- `runs[].trace` - analyzer trace lines captured from stderr when
+  `RIPR_REPO_EXPOSURE_LATENCY_TRACE=1` is set by the xtask command. Phases
+  currently include `collect_workspace_state`, `cache_load`, `cold_compute`,
+  `cache_store`, and `total`; cache load statuses include `hit`, `miss`, and
+  `corrupt_ignored`.
+
 ## Targeted-Test Outcome Report
 
 `ripr outcome --before <repo-exposure-json> --after <repo-exposure-json>`

@@ -114,6 +114,12 @@ e2e smoke test file and writes `target/ripr/reports/lsp-cockpit.md` and
 editor diagnostics, which code actions are exposed, which context/action fields
 are present, and which VS Code commands are covered by e2e tests.
 
+`repo-exposure-latency-report` builds the local debug `ripr` binary, runs
+repo-exposure formats under a bounded timeout, captures opt-in analyzer phase
+trace lines, and writes `target/ripr/reports/repo-exposure-latency.md` and
+`target/ripr/reports/repo-exposure-latency.json`. It is a diagnostic report for
+cache and warm-path work; it does not change repo-exposure JSON/Markdown.
+
 `targeted-test-outcome` compares two `repo-exposure-json` artifacts and writes
 `target/ripr/reports/targeted-test-outcome.md` and
 `target/ripr/reports/targeted-test-outcome.json`. It matches seams by

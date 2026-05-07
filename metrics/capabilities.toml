@@ -525,11 +525,13 @@ evidence = [
   "crates/ripr/src/output/repo_exposure.rs",
   "schema 0.2 with all 11 SeamGripClass metric buckets",
   "cargo xtask repo-exposure-report",
+  "cargo xtask repo-exposure-latency-report writes bounded latency diagnostics without changing repo-exposure output schemas",
   "target/ripr/reports/repo-exposure.json and repo-exposure.md",
+  "target/ripr/reports/repo-exposure-latency.json and repo-exposure-latency.md",
   "OUTPUT_SCHEMA.md Repo Exposure Report section"
 ]
 fixtures = []
-next = "campaign/modularization-stack-audit"
+next = "cache/repo-exposure-warm-path-reuse"
 metric = "per-class metric buckets stable across runs"
 
 [[capability]]
@@ -587,7 +589,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "cache/repo-exposure-latency-report"
+next = "cache/repo-exposure-warm-path-reuse"
 metric = "targeted_test_outcome_available"
 
 [[capability]]
@@ -608,7 +610,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/opaque_fixture_builder"
 ]
-next = "cache/repo-exposure-latency-report"
+next = "cache/repo-exposure-warm-path-reuse"
 metric = "operator_cockpit_available"
 
 [[capability]]
@@ -762,5 +764,5 @@ evidence = [
   "fixtures/boundary_gap/calibration/runtime-fixtures-v1/mutation-calibration.md"
 ]
 fixtures = ["fixtures/boundary_gap"]
-next = "cache/repo-exposure-latency-report"
+next = "cache/repo-exposure-warm-path-reuse"
 metric = "checked calibration fixtures cover static gap plus runtime signal, static gap plus runtime clean, runtime signal without static gap, static clean plus runtime clean, inconclusive runtime labels, ambiguous file_line joins, unmatched runtime data, static seams without runtime data, and seam_id/file_line join methods"

@@ -28,6 +28,9 @@ use super::test_grip_evidence;
 use super::workspace;
 use crate::config::RiprConfig;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
+
+const LATENCY_TRACE_ENV: &str = "RIPR_REPO_EXPOSURE_LATENCY_TRACE";
 
 /// Walk production Rust files at `root` and emit the raw seam inventory.
 /// Used by the `repo-seams-*` formats; the classified inventory used by
@@ -68,23 +71,78 @@ pub(crate) fn inventory_classified_seams_at_with_config(
     root: &Path,
     config: &RiprConfig,
 ) -> Result<Vec<ClassifiedSeam>, String> {
+    let total_started = Instant::now();
     let cache = RepoSeamFactCache::at(root);
-    let state = collect_workspace_state(root, config)?;
+    let collect_started = Instant::now();
+    let state = match collect_workspace_state(root, config) {
+        Ok(state) => {
+            trace_latency_phase("collect_workspace_state", "ok", collect_started.elapsed());
+            state
+        }
+        Err(err) => {
+            trace_latency_phase(
+                "collect_workspace_state",
+                "error",
+                collect_started.elapsed(),
+            );
+            trace_latency_phase("total", "error", total_started.elapsed());
+            return Err(err);
+        }
+    };
     let key = state.cache_key();
+    let cache_started = Instant::now();
     match cache.load_classified_seams(&key) {
-        CacheLoad::Hit(cached) => return Ok(cached),
-        CacheLoad::Miss => {}
+        CacheLoad::Hit(cached) => {
+            trace_latency_phase("cache_load", "hit", cache_started.elapsed());
+            trace_latency_phase("total", "cache_hit", total_started.elapsed());
+            return Ok(cached);
+        }
+        CacheLoad::Miss => {
+            trace_latency_phase("cache_load", "miss", cache_started.elapsed());
+        }
         CacheLoad::CorruptIgnored { reason } => {
+            trace_latency_phase("cache_load", "corrupt_ignored", cache_started.elapsed());
             // Advisory: surface the reason so operators can see why a
             // warm path degraded to cold. Never fail analysis.
             eprintln!("ripr: repo seam cache entry ignored ({reason})");
         }
     }
-    let classified = inventory_classified_seams_uncached_with_config(root, config)?;
+    let compute_started = Instant::now();
+    let classified = match inventory_classified_seams_uncached_with_config(root, config) {
+        Ok(classified) => {
+            trace_latency_phase("cold_compute", "ok", compute_started.elapsed());
+            classified
+        }
+        Err(err) => {
+            trace_latency_phase("cold_compute", "error", compute_started.elapsed());
+            trace_latency_phase("total", "error", total_started.elapsed());
+            return Err(err);
+        }
+    };
     // Best-effort write: a write failure does not fail analysis. The
     // result is already in memory; the next run just sees a miss again.
-    let _ = cache.store_classified_seams(&key, &classified);
+    let store_started = Instant::now();
+    let store_status = if cache.store_classified_seams(&key, &classified).is_ok() {
+        "ok"
+    } else {
+        "ignored_error"
+    };
+    trace_latency_phase("cache_store", store_status, store_started.elapsed());
+    trace_latency_phase("total", "computed", total_started.elapsed());
     Ok(classified)
+}
+
+fn trace_latency_phase(phase: &str, status: &str, duration: Duration) {
+    if std::env::var_os(LATENCY_TRACE_ENV).is_some() {
+        eprintln!("{}", latency_trace_line(phase, status, duration));
+    }
+}
+
+fn latency_trace_line(phase: &str, status: &str, duration: Duration) -> String {
+    format!(
+        "ripr_repo_exposure_latency phase={phase} status={status} duration_ms={}",
+        duration.as_millis()
+    )
 }
 
 /// Cold-path inventory + classify with no cache. Used by the cached
@@ -684,6 +742,30 @@ mod tests {
         }
         out.sort();
         Ok(out)
+    }
+
+    #[test]
+    fn latency_trace_line_formats_phase_status_and_duration() {
+        let line = latency_trace_line("cache_load", "hit", Duration::from_millis(7));
+        assert_eq!(
+            line,
+            "ripr_repo_exposure_latency phase=cache_load status=hit duration_ms=7"
+        );
+    }
+
+    #[test]
+    fn classified_inventory_returns_collect_error_for_non_directory_root() -> Result<(), String> {
+        let root = make_tempdir("collect-error")?;
+        let file_root = root.join("not-a-directory");
+        write_file(&file_root, "not a directory")?;
+
+        let result = inventory_classified_seams_at(&file_root);
+        if result.is_ok() {
+            return Err("inventory should fail when root is not a directory".to_string());
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+        Ok(())
     }
 
     #[test]
