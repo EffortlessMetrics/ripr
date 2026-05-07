@@ -138,6 +138,21 @@ applies:
   reasoned suppression that points to the underlying policy entry.
 - Do not bundle unrelated cleanup. A lint flip is one production behavior.
 
+## Keeping the ledger and Cargo.toml in sync
+
+`cargo xtask check-lint-policy` (run as part of `precommit` and `check-pr`)
+verifies that:
+
+- every `[[active.<group>]]` entry in `policy/clippy-lints.toml` is
+  configured in `[workspace.lints.*]` in `Cargo.toml` at the same level;
+- every `[[planned]]` entry is **not** yet configured in `Cargo.toml`
+  (they're future flips, not active);
+- every `[workspace.lints.*]` line has a matching ledger entry.
+
+When promoting a planned lint, move the entry from `[[planned]]` to
+`[[active.<group>]]`, add the matching `Cargo.toml` line, and update
+this doc — the gate makes drift visible immediately.
+
 ## See also
 
 - [`policy/clippy-lints.toml`](../policy/clippy-lints.toml) — declarative
