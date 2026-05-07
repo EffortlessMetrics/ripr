@@ -531,6 +531,12 @@ expires = "2026-11-07"
 
 # ---------------------------------------------------------------------------
 # Self-dogfood (lands as part of PR 10 of the rollout)
+#
+# The `workflow` field references `.github/workflows/ripr.yml`, which is
+# not yet present in the repository — it ships alongside this lane entry
+# as part of PR 10 (see `docs/ci/ripr-ci-rollout.md`). The lane lint in
+# PR 03 (advisory) tolerates this; the full cross-reference lint that
+# follows must allow rollout-staged forward references.
 # ---------------------------------------------------------------------------
 
 [[lane]]

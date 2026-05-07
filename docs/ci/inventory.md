@@ -58,14 +58,25 @@ vscode_extension (job: vscode)
 
 ## Future lanes (added in later rollout PRs)
 
-| Lane id              | Added in | Default                              |
-| -------------------- | -------- | ------------------------------------ |
-| `pr_plan`            | PR 07    | runs on every PR (advisory)          |
-| `ripr_self_dogfood`  | PR 10    | label-gated, runs on Rust diffs      |
-| `ci_actuals_upload`  | PR 11    | runs alongside other lanes           |
-| `soft_budget_guard`  | PR 12    | runs after PR Plan                   |
-| `future_clippy`      | PR 13    | label / `main` / dispatch only       |
-| `mutation_calibration` | future | label-gated; never default           |
+| Lane id                  | Added in | Default                              |
+| ------------------------ | -------- | ------------------------------------ |
+| `pr_plan`                | PR 07    | runs on every PR (advisory)          |
+| `ripr_self_dogfood`      | PR 10    | path-filtered to ripr Rust diffs     |
+| `ci_actuals_upload`      | PR 11    | runs alongside other lanes           |
+| `soft_budget_guard`      | PR 12    | runs after PR Plan                   |
+| `future_clippy`          | PR 13    | label / `main` / dispatch only       |
+| `mutation_calibration`   | future   | label-gated; never default           |
+| `cli_smoke`              | future   | runs on cli/output Rust diffs        |
+| `goldens`                | future   | label-gated deep validation          |
+| `vscode_e2e`             | future   | label-gated deep validation          |
+| `policy_gate`            | future   | runs on xtask/policy diffs           |
+| `docs_gate`              | future   | runs on docs-only diffs              |
+| `release_surface_validate` | future | label-gated release validation       |
+
+The lane ids in `policy/ci-risk-packs.toml` may include any of the future
+lanes listed above. The lane lint in PR 03 (advisory) tolerates these
+forward references; the full cross-reference lint that follows the
+rollout treats this table as the authoritative future-lane list.
 
 ## Risk pack coverage
 

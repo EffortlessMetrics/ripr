@@ -16,7 +16,14 @@ PR Plan job (PR 07) can sum a forecast from the union of selected lanes.
 
 ## Schema
 
+The file has top-level metadata followed by an array of `[[lane]]` blocks.
+
 ```toml
+schema_version  = "1.0"
+policy          = "ci-lane-whitelist"
+owner           = "release/ci"
+status          = "active"
+
 [[lane]]
 id              = "stable identifier"
 workflow        = ".github/workflows/<name>.yml"
