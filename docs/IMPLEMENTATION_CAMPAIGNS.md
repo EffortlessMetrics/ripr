@@ -1093,7 +1093,8 @@ Work items:
 | Work item | Status | Notes |
 | --- | --- | --- |
 | `cache/current-latency-audit` | done | Measured the current proof surfaces without behavior changes. Unit-level seam cache and seam inventory tests, LSP tests, `lsp-cockpit-report`, and `operator-cockpit` were cheap on a warm local build. LSP cockpit stayed green with the boundary-gap fixture and all contributed VS Code commands covered. Operator cockpit generated quickly and correctly surfaced missing required report inputs when only LSP and optional calibration reports were present. A direct `cargo xtask repo-exposure-report` audit did not finish within a 20-minute local timeout, so the next work should add bounded latency visibility before any cache rewrite. |
-| `cache/repo-exposure-latency-report` | ready | Add bounded repo-exposure latency instrumentation or reporting so cache hit/miss and phase timing can be observed before optimizing warm-path reuse. This should preserve analyzer outputs, schemas, LSP behavior, SARIF, badges, and public API. |
+| `cache/repo-exposure-latency-report` | done | Added `cargo xtask repo-exposure-latency-report`, which builds the local debug `ripr` binary, runs `repo-exposure-json` under a bounded timeout, captures opt-in analyzer trace lines from stderr, skips Markdown after a JSON timeout, and writes `target/ripr/reports/repo-exposure-latency.{json,md}`. The report observes cache collection, cache load hit/miss/corrupt state, cold compute, cache store, and total phase timing without changing repo-exposure JSON/Markdown, LSP, SARIF, badge, or public API behavior. |
+| `cache/repo-exposure-warm-path-reuse` | ready | Use the latency report evidence to reduce warm-path recomputation without caching rendered JSON, Markdown, diagnostics, hovers, SARIF, badges, or agent packets. Preserve analyzer outputs and public contracts. |
 
 Commands:
 
@@ -1103,6 +1104,7 @@ cargo test -p ripr analysis::seam_inventory --lib
 cargo test -p ripr lsp
 cargo test -p ripr lsp::tests
 cargo xtask lsp-cockpit-report
+cargo xtask repo-exposure-latency-report
 cargo xtask check-output-contracts
 cargo xtask check-static-language
 cargo xtask check-campaign
@@ -1137,3 +1139,9 @@ Audit notes:
   stopped after the timeout. Treat this as the first Campaign 9 finding: before
   optimizing cache internals, add bounded repo-exposure latency visibility that
   reports phase timing and cache hit/miss state.
+- `cargo xtask repo-exposure-latency-report` now provides that bounded surface.
+  A local 2-second smoke run and the default 30-second run both timed out in
+  `repo-exposure-json`; the trace reported `collect_workspace_state` as fast
+  and observed a repo seam fact cache miss before entering cold compute. That
+  makes the next optimization target concrete without changing analyzer results
+  or output schemas.

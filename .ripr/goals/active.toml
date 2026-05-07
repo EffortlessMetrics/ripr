@@ -45,12 +45,35 @@ commands = [
 
 [[work_item]]
 id = "cache/repo-exposure-latency-report"
-status = "ready"
+status = "done"
 branch = "repo-exposure-latency-report"
 stackable = false
 requires_human_merge = true
 acceptance = "Add bounded repo-exposure latency instrumentation or reporting so cache hit/miss and phase timing can be observed before optimizing warm-path reuse; do not change analyzer outputs"
 commands = [
+  "cargo test -p ripr analysis::seam_cache --lib",
+  "cargo test -p ripr analysis::seam_inventory --lib",
+  "cargo test -p ripr lsp",
+  "cargo test -p ripr lsp::tests",
+  "cargo xtask lsp-cockpit-report",
+  "cargo xtask repo-exposure-latency-report",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
+  "cargo xtask check-pr",
+  "cargo test --workspace"
+]
+
+[[work_item]]
+id = "cache/repo-exposure-warm-path-reuse"
+status = "ready"
+branch = "repo-exposure-warm-path-reuse"
+stackable = false
+requires_human_merge = true
+acceptance = "Use repo-exposure latency evidence to reduce warm-path recomputation without caching rendered JSON, Markdown, diagnostics, hovers, SARIF, badges, or agent packets; preserve analyzer outputs and public contracts"
+commands = [
+  "cargo xtask repo-exposure-latency-report",
   "cargo test -p ripr analysis::seam_cache --lib",
   "cargo test -p ripr analysis::seam_inventory --lib",
   "cargo test -p ripr lsp",

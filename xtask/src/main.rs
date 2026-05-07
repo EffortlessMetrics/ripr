@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
@@ -27,7 +27,10 @@ use reports::{
 };
 #[cfg(test)]
 use reports::{lsp_cockpit_report, targeted_test_outcome};
-use run::{capture_output, run, run_output, run_output_optional, run_output_owned};
+use run::{
+    TimedOutput, capture_output, capture_output_with_timeout, run, run_output, run_output_optional,
+    run_output_owned,
+};
 
 #[derive(Debug)]
 struct GlobAllow {
@@ -5595,6 +5598,308 @@ pub(crate) fn repo_exposure_report_impl() -> Result<(), String> {
     let md_args = repo_seam_inventory_command_args("repo-exposure-md");
     let md_output = run_output_owned("cargo", &md_args)?;
     write_report("repo-exposure.md", &md_output)
+}
+
+const REPO_EXPOSURE_LATENCY_TRACE_ENV: &str = "RIPR_REPO_EXPOSURE_LATENCY_TRACE";
+const REPO_EXPOSURE_LATENCY_TIMEOUT_ENV: &str = "RIPR_REPO_EXPOSURE_LATENCY_TIMEOUT_MS";
+const REPO_EXPOSURE_LATENCY_DEFAULT_TIMEOUT_MS: u64 = 30_000;
+
+#[derive(Clone, Debug)]
+struct RepoExposureLatencyReport {
+    status: String,
+    timeout_ms: u64,
+    binary: String,
+    runs: Vec<RepoExposureLatencyRun>,
+}
+
+#[derive(Clone, Debug)]
+struct RepoExposureLatencyRun {
+    format: String,
+    status: String,
+    duration_ms: u128,
+    exit_code: Option<i32>,
+    stdout_bytes: usize,
+    stderr_bytes: usize,
+    trace: Vec<RepoExposureLatencyTrace>,
+}
+
+#[derive(Clone, Debug)]
+struct RepoExposureLatencyTrace {
+    phase: String,
+    status: String,
+    duration_ms: u128,
+}
+
+/// Write a bounded repo exposure latency report without changing the
+/// repo-exposure JSON/Markdown schemas. This command is diagnostic:
+/// it reports timeouts as `warn` in its own report instead of blocking
+/// the operator lane indefinitely.
+pub(crate) fn repo_exposure_latency_report_impl() -> Result<(), String> {
+    let timeout_ms = repo_exposure_latency_timeout_ms();
+    run("cargo", &["build", "-p", "ripr"])?;
+    let binary = ripr_debug_binary();
+    write_repo_exposure_latency_report(&binary, timeout_ms, repo_exposure_latency_run)
+}
+
+fn write_repo_exposure_latency_report<F>(
+    binary: &Path,
+    timeout_ms: u64,
+    run_format: F,
+) -> Result<(), String>
+where
+    F: FnMut(&Path, &str, Duration) -> Result<RepoExposureLatencyRun, String>,
+{
+    let report = build_repo_exposure_latency_report(binary, timeout_ms, run_format)?;
+    write_report(
+        "repo-exposure-latency.json",
+        &repo_exposure_latency_json(&report),
+    )?;
+    write_report(
+        "repo-exposure-latency.md",
+        &repo_exposure_latency_markdown(&report),
+    )
+}
+
+fn build_repo_exposure_latency_report<F>(
+    binary: &Path,
+    timeout_ms: u64,
+    mut run_format: F,
+) -> Result<RepoExposureLatencyReport, String>
+where
+    F: FnMut(&Path, &str, Duration) -> Result<RepoExposureLatencyRun, String>,
+{
+    let binary_display = binary.display().to_string();
+    let timeout = Duration::from_millis(timeout_ms);
+
+    let mut runs = Vec::new();
+    let json_run = run_format(binary, "repo-exposure-json", timeout)?;
+    let should_run_markdown = json_run.status != "timeout";
+    runs.push(json_run);
+    if should_run_markdown {
+        runs.push(run_format(binary, "repo-exposure-md", timeout)?);
+    } else {
+        runs.push(RepoExposureLatencyRun {
+            format: "repo-exposure-md".to_string(),
+            status: "skipped_after_json_timeout".to_string(),
+            duration_ms: 0,
+            exit_code: None,
+            stdout_bytes: 0,
+            stderr_bytes: 0,
+            trace: Vec::new(),
+        });
+    }
+
+    let report = RepoExposureLatencyReport {
+        status: repo_exposure_latency_status(&runs),
+        timeout_ms,
+        binary: binary_display,
+        runs,
+    };
+    Ok(report)
+}
+
+fn repo_exposure_latency_timeout_ms() -> u64 {
+    std::env::var(REPO_EXPOSURE_LATENCY_TIMEOUT_ENV)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(REPO_EXPOSURE_LATENCY_DEFAULT_TIMEOUT_MS)
+}
+
+fn ripr_debug_binary() -> PathBuf {
+    let binary_name = format!("ripr{}", std::env::consts::EXE_SUFFIX);
+    let target_dir = std::env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("target"));
+    target_dir.join("debug").join(binary_name)
+}
+
+fn repo_exposure_latency_run(
+    binary: &Path,
+    format: &str,
+    timeout: Duration,
+) -> Result<RepoExposureLatencyRun, String> {
+    let args = vec![
+        "check".to_string(),
+        "--root".to_string(),
+        ".".to_string(),
+        "--format".to_string(),
+        format.to_string(),
+    ];
+    let binary_text = binary.display().to_string();
+    let envs = [(REPO_EXPOSURE_LATENCY_TRACE_ENV, "1")];
+    let output = capture_output_with_timeout(&binary_text, &args, &envs, timeout, format)?;
+    Ok(repo_exposure_latency_run_from_output(format, output))
+}
+
+fn repo_exposure_latency_run_from_output(
+    format: &str,
+    output: TimedOutput,
+) -> RepoExposureLatencyRun {
+    let status = if output.timed_out {
+        "timeout"
+    } else if output.status.is_some_and(|status| status.success()) {
+        "pass"
+    } else {
+        "fail"
+    };
+    RepoExposureLatencyRun {
+        format: format.to_string(),
+        status: status.to_string(),
+        duration_ms: output.duration.as_millis(),
+        exit_code: output.status.and_then(|status| status.code()),
+        stdout_bytes: output.stdout.len(),
+        stderr_bytes: output.stderr.len(),
+        trace: repo_exposure_latency_trace(&output.stderr),
+    }
+}
+
+fn repo_exposure_latency_status(runs: &[RepoExposureLatencyRun]) -> String {
+    if runs.iter().any(|run| run.status == "fail") {
+        return "fail".to_string();
+    }
+    if runs
+        .iter()
+        .any(|run| run.status == "timeout" || run.status == "skipped_after_json_timeout")
+    {
+        return "warn".to_string();
+    }
+    "pass".to_string()
+}
+
+fn repo_exposure_latency_trace(stderr: &str) -> Vec<RepoExposureLatencyTrace> {
+    stderr
+        .lines()
+        .filter_map(|line| {
+            let rest = line.strip_prefix("ripr_repo_exposure_latency ")?;
+            let mut phase: Option<String> = None;
+            let mut status: Option<String> = None;
+            let mut duration_ms: Option<u128> = None;
+            for field in rest.split_whitespace() {
+                if let Some(value) = field.strip_prefix("phase=") {
+                    phase = Some(value.to_string());
+                } else if let Some(value) = field.strip_prefix("status=") {
+                    status = Some(value.to_string());
+                } else if let Some(value) = field.strip_prefix("duration_ms=") {
+                    duration_ms = value.parse::<u128>().ok();
+                }
+            }
+            Some(RepoExposureLatencyTrace {
+                phase: phase?,
+                status: status?,
+                duration_ms: duration_ms?,
+            })
+        })
+        .collect()
+}
+
+fn repo_exposure_latency_json(report: &RepoExposureLatencyReport) -> String {
+    let mut body = String::new();
+    body.push_str("{\n");
+    body.push_str("  \"schema_version\": \"0.1\",\n");
+    body.push_str("  \"tool\": \"ripr\",\n");
+    body.push_str("  \"report\": \"repo-exposure-latency\",\n");
+    body.push_str(&format!(
+        "  \"status\": \"{}\",\n",
+        json_escape(&report.status)
+    ));
+    body.push_str(&format!("  \"timeout_ms\": {},\n", report.timeout_ms));
+    body.push_str(&format!(
+        "  \"binary\": \"{}\",\n",
+        json_escape(&normalize_report_path(&report.binary))
+    ));
+    body.push_str("  \"runs\": [\n");
+    for (index, run) in report.runs.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("    {\n");
+        body.push_str(&format!(
+            "      \"format\": \"{}\",\n",
+            json_escape(&run.format)
+        ));
+        body.push_str(&format!(
+            "      \"status\": \"{}\",\n",
+            json_escape(&run.status)
+        ));
+        body.push_str(&format!("      \"duration_ms\": {},\n", run.duration_ms));
+        match run.exit_code {
+            Some(code) => body.push_str(&format!("      \"exit_code\": {},\n", code)),
+            None => body.push_str("      \"exit_code\": null,\n"),
+        }
+        body.push_str(&format!("      \"stdout_bytes\": {},\n", run.stdout_bytes));
+        body.push_str(&format!("      \"stderr_bytes\": {},\n", run.stderr_bytes));
+        body.push_str("      \"trace\": [");
+        for (trace_index, trace) in run.trace.iter().enumerate() {
+            if trace_index > 0 {
+                body.push_str(", ");
+            }
+            body.push_str(&format!(
+                "{{\"phase\": \"{}\", \"status\": \"{}\", \"duration_ms\": {}}}",
+                json_escape(&trace.phase),
+                json_escape(&trace.status),
+                trace.duration_ms
+            ));
+        }
+        body.push_str("]\n");
+        body.push_str("    }");
+    }
+    body.push_str("\n  ]\n");
+    body.push_str("}\n");
+    body
+}
+
+fn repo_exposure_latency_markdown(report: &RepoExposureLatencyReport) -> String {
+    let mut body = String::new();
+    body.push_str("# Repo Exposure Latency Report\n\n");
+    body.push_str(&format!("Status: `{}`\n\n", report.status));
+    body.push_str(&format!(
+        "Timeout: `{}` ms per format\n\n",
+        report.timeout_ms
+    ));
+    body.push_str(&format!(
+        "Binary: `{}`\n\n",
+        normalize_report_path(&report.binary)
+    ));
+    body.push_str("| Format | Status | Duration | Exit | Stdout | Stderr |\n");
+    body.push_str("| --- | --- | ---: | ---: | ---: | ---: |\n");
+    for run in &report.runs {
+        let exit = run
+            .exit_code
+            .map(|code| code.to_string())
+            .unwrap_or_else(|| "n/a".to_string());
+        body.push_str(&format!(
+            "| `{}` | `{}` | {} ms | {} | {} bytes | {} bytes |\n",
+            run.format, run.status, run.duration_ms, exit, run.stdout_bytes, run.stderr_bytes
+        ));
+    }
+    body.push_str("\n## Analyzer Trace\n\n");
+    if report.runs.iter().all(|run| run.trace.is_empty()) {
+        body.push_str("No analyzer trace lines were captured before the command ended.\n");
+    } else {
+        for run in &report.runs {
+            if run.trace.is_empty() {
+                continue;
+            }
+            body.push_str(&format!("### `{}`\n\n", run.format));
+            body.push_str("| Phase | Status | Duration |\n");
+            body.push_str("| --- | --- | ---: |\n");
+            for trace in &run.trace {
+                body.push_str(&format!(
+                    "| `{}` | `{}` | {} ms |\n",
+                    trace.phase, trace.status, trace.duration_ms
+                ));
+            }
+            body.push('\n');
+        }
+    }
+    body.push_str("\n## Next Step\n\n");
+    body.push_str(
+        "Use this report to identify whether the repo-exposure path is waiting on \
+cache collection, cache load, cold compute, cache store, or rendering before \
+changing cache behavior.\n",
+    );
+    body
 }
 
 /// Run the agent seam packet renderer and write
@@ -14568,19 +14873,24 @@ fn check_droid_review_config_impl() -> Result<(), String> {
 mod tests {
     use super::XtaskCommand;
     use super::dispatch;
-    use super::run::{capture_output, run, run_output, run_output_optional, run_output_owned};
+    use super::run::{
+        TimedOutput, capture_output, capture_output_with_timeout, run, run_output,
+        run_output_optional, run_output_owned,
+    };
     use super::{
         BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, CheckReport,
         CheckStatus, CheckViolation, CiFullEvidenceGate, DogfoodRun, FixKind, LocalContextAllow,
-        MarkdownLink, ReceiptRecord, ReportIndexCampaign, ReportIndexEntry, SarifPolicyMode,
+        MarkdownLink, ReceiptRecord, RepoExposureLatencyReport, RepoExposureLatencyRun,
+        RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry, SarifPolicyMode,
         SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher,
         TestOracleClass, badge_artifact_command_args, badge_artifact_jobs,
         badge_artifact_native_slot, badge_artifacts_summary_markdown, build_lsp_cockpit_report,
-        build_targeted_test_outcome_report, check_allow_attributes, check_droid_review_config,
-        check_executable_files, check_file_policy, check_local_context, check_network_policy,
-        check_no_panic_family, check_process_policy, check_static_language, check_workflows,
-        ci_full_evidence_gates, collect_panic_findings, collect_semantic_panic_findings,
-        critic_findings, dogfood_class_counts, dogfood_report_json, dogfood_report_markdown,
+        build_repo_exposure_latency_report, build_targeted_test_outcome_report,
+        check_allow_attributes, check_droid_review_config, check_executable_files,
+        check_file_policy, check_local_context, check_network_policy, check_no_panic_family,
+        check_process_policy, check_static_language, check_workflows, ci_full_evidence_gates,
+        collect_panic_findings, collect_semantic_panic_findings, critic_findings,
+        dogfood_class_counts, dogfood_report_json, dogfood_report_markdown,
         extract_json_object_usize_map, extract_json_string, extract_json_warnings,
         extract_workflow_run_blocks, first_line_difference, forbidden_panic_patterns, glob_matches,
         golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
@@ -14602,17 +14912,20 @@ mod tests {
         precommit_report_body, public_contract_rows, read_mutation_input_json, receipt_json,
         receipt_specs, receipt_status_from_reports, repo_badge_artifact_command_args,
         repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown,
-        repo_seam_inventory_command_args_for_root, report_index_markdown,
-        report_index_missing_expected, report_status_from_text, ripr_command_literals_in_text,
-        ripr_pre_commit_hook, run_ci_full_evidence_gates, sarif_policy_report_json,
-        sarif_policy_report_markdown, semantic_selector_matches, should_scan_static_language_path,
-        should_skip_path, sorted_allowlist_content, spec_id_from_path,
-        static_language_allowlist_covers, status_for_report, suspicious_runtime_file_names,
-        targeted_test_outcome, targeted_test_outcome_report_json,
-        targeted_test_outcome_report_markdown, test_efficiency_entry, test_efficiency_report_json,
-        test_efficiency_report_markdown, test_oracle_report_json, test_oracle_report_markdown,
-        test_oracle_tests_in_text, unknown_command_message, validate_local_context_allowlist,
-        windows_absolute_path_tokens, workflow_runtime_violations,
+        repo_exposure_latency_json, repo_exposure_latency_markdown, repo_exposure_latency_run,
+        repo_exposure_latency_run_from_output, repo_exposure_latency_status,
+        repo_exposure_latency_trace, repo_seam_inventory_command_args_for_root,
+        report_index_markdown, report_index_missing_expected, report_status_from_text,
+        ripr_command_literals_in_text, ripr_debug_binary, ripr_pre_commit_hook,
+        run_ci_full_evidence_gates, sarif_policy_report_json, sarif_policy_report_markdown,
+        semantic_selector_matches, should_scan_static_language_path, should_skip_path,
+        sorted_allowlist_content, spec_id_from_path, static_language_allowlist_covers,
+        status_for_report, suspicious_runtime_file_names, targeted_test_outcome,
+        targeted_test_outcome_report_json, targeted_test_outcome_report_markdown,
+        test_efficiency_entry, test_efficiency_report_json, test_efficiency_report_markdown,
+        test_oracle_report_json, test_oracle_report_markdown, test_oracle_tests_in_text,
+        unknown_command_message, validate_local_context_allowlist, windows_absolute_path_tokens,
+        workflow_runtime_violations, write_repo_exposure_latency_report,
     };
     use super::{
         DeclaredIntent, LocalContextFinding,
@@ -14633,7 +14946,7 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::sync::{Mutex, OnceLock};
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     static CWD_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -20346,6 +20659,7 @@ settings: |
                 XtaskCommand::RepoBadgeArtifacts,
                 XtaskCommand::RepoSeamInventory,
                 XtaskCommand::RepoExposureReport,
+                XtaskCommand::RepoExposureLatencyReport,
                 XtaskCommand::AgentSeamPackets(Some(".".to_string())),
                 XtaskCommand::LspCockpitReport,
                 XtaskCommand::OperatorCockpitReport,
@@ -20484,6 +20798,7 @@ settings: |
         assert!(commands.contains(&"install-hooks"));
         assert!(commands.contains(&"repo-seam-inventory"));
         assert!(commands.contains(&"repo-exposure-report"));
+        assert!(commands.contains(&"repo-exposure-latency-report"));
         assert!(commands.contains(&"agent-seam-packets [root]"));
         assert!(commands.contains(&"lsp-cockpit-report"));
         assert!(commands.contains(&"operator-cockpit"));
@@ -20551,6 +20866,302 @@ settings: |
         assert!(markdown.contains("seam packet available: yes"));
         assert!(markdown.contains("ripr.collectContext"));
         Ok(())
+    }
+
+    #[test]
+    fn repo_exposure_latency_trace_parses_phase_lines() -> Result<(), String> {
+        let traces = repo_exposure_latency_trace(
+            "noise\nripr_repo_exposure_latency phase=cache_load status=hit duration_ms=7\n",
+        );
+        if traces.len() != 1 {
+            return Err(format!("expected one trace line, got {}", traces.len()));
+        }
+        assert_eq!(traces[0].phase, "cache_load");
+        assert_eq!(traces[0].status, "hit");
+        assert_eq!(traces[0].duration_ms, 7);
+        Ok(())
+    }
+
+    #[test]
+    fn repo_exposure_latency_report_json_and_markdown_are_structured() -> Result<(), String> {
+        let runs = vec![
+            RepoExposureLatencyRun {
+                format: "repo-exposure-json".to_string(),
+                status: "timeout".to_string(),
+                duration_ms: 30_000,
+                exit_code: None,
+                stdout_bytes: 0,
+                stderr_bytes: 91,
+                trace: vec![
+                    RepoExposureLatencyTrace {
+                        phase: "cache_load".to_string(),
+                        status: "miss".to_string(),
+                        duration_ms: 2,
+                    },
+                    RepoExposureLatencyTrace {
+                        phase: "cold_compute".to_string(),
+                        status: "ok".to_string(),
+                        duration_ms: 29_998,
+                    },
+                ],
+            },
+            RepoExposureLatencyRun {
+                format: "repo-exposure-md".to_string(),
+                status: "skipped_after_json_timeout".to_string(),
+                duration_ms: 0,
+                exit_code: None,
+                stdout_bytes: 0,
+                stderr_bytes: 0,
+                trace: Vec::new(),
+            },
+        ];
+        let report = RepoExposureLatencyReport {
+            status: repo_exposure_latency_status(&runs),
+            timeout_ms: 30_000,
+            binary: "target/debug/ripr".to_string(),
+            runs,
+        };
+
+        let json = repo_exposure_latency_json(&report);
+        let value: Value = serde_json::from_str(&json)
+            .map_err(|err| format!("latency JSON should parse: {err}"))?;
+        assert_eq!(value["schema_version"], "0.1");
+        assert_eq!(value["report"], "repo-exposure-latency");
+        assert_eq!(value["status"], "warn");
+        assert_eq!(value["runs"][0]["trace"][0]["phase"], "cache_load");
+        assert_eq!(value["runs"][0]["trace"][1]["phase"], "cold_compute");
+
+        let markdown = repo_exposure_latency_markdown(&report);
+        assert!(markdown.contains("# Repo Exposure Latency Report"));
+        assert!(markdown.contains("`repo-exposure-json`"));
+        assert!(markdown.contains("`skipped_after_json_timeout`"));
+        assert!(markdown.contains("`cache_load`"));
+        Ok(())
+    }
+
+    #[test]
+    fn repo_exposure_latency_debug_binary_uses_debug_ripr_name() -> Result<(), String> {
+        let binary = ripr_debug_binary();
+        let file_name = binary
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| format!("debug binary should have a file name: {binary:?}"))?;
+        let parent = binary
+            .parent()
+            .and_then(|path| path.file_name())
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| format!("debug binary should have a parent directory: {binary:?}"))?;
+
+        assert_eq!(file_name, format!("ripr{}", std::env::consts::EXE_SUFFIX));
+        assert_eq!(parent, "debug");
+        Ok(())
+    }
+
+    #[test]
+    fn repo_exposure_latency_report_json_records_exit_codes() -> Result<(), String> {
+        let report = RepoExposureLatencyReport {
+            status: "fail".to_string(),
+            timeout_ms: 10,
+            binary: "target/debug/ripr".to_string(),
+            runs: vec![RepoExposureLatencyRun {
+                format: "repo-exposure-json".to_string(),
+                status: "fail".to_string(),
+                duration_ms: 3,
+                exit_code: Some(101),
+                stdout_bytes: 4,
+                stderr_bytes: 9,
+                trace: Vec::new(),
+            }],
+        };
+
+        let json = repo_exposure_latency_json(&report);
+        let value: Value = serde_json::from_str(&json)
+            .map_err(|err| format!("latency JSON should parse: {err}"))?;
+        assert_eq!(value["runs"][0]["exit_code"], 101);
+        assert_eq!(value["runs"][0]["stdout_bytes"], 4);
+        assert_eq!(value["runs"][0]["stderr_bytes"], 9);
+
+        let markdown = repo_exposure_latency_markdown(&report);
+        assert!(
+            markdown.contains("| `repo-exposure-json` | `fail` | 3 ms | 101 | 4 bytes | 9 bytes |")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn repo_exposure_latency_report_builder_skips_markdown_after_json_timeout() -> Result<(), String>
+    {
+        let mut formats = Vec::new();
+        let report = build_repo_exposure_latency_report(
+            Path::new("target/debug/ripr"),
+            2_000,
+            |_, format, _| {
+                formats.push(format.to_string());
+                Ok(latency_run_with_status(format, "timeout"))
+            },
+        )?;
+
+        assert_eq!(formats, vec!["repo-exposure-json".to_string()]);
+        assert_eq!(report.status, "warn");
+        assert_eq!(report.timeout_ms, 2_000);
+        assert_eq!(report.runs.len(), 2);
+        assert_eq!(report.runs[0].status, "timeout");
+        assert_eq!(report.runs[1].format, "repo-exposure-md");
+        assert_eq!(report.runs[1].status, "skipped_after_json_timeout");
+        Ok(())
+    }
+
+    #[test]
+    fn repo_exposure_latency_report_builder_runs_markdown_after_json_pass() -> Result<(), String> {
+        let mut formats = Vec::new();
+        let report = build_repo_exposure_latency_report(
+            Path::new("target/debug/ripr"),
+            30_000,
+            |_, format, timeout| {
+                formats.push(format.to_string());
+                let mut run = latency_run_with_status(format, "pass");
+                run.duration_ms = timeout.as_millis();
+                Ok(run)
+            },
+        )?;
+
+        assert_eq!(
+            formats,
+            vec![
+                "repo-exposure-json".to_string(),
+                "repo-exposure-md".to_string()
+            ]
+        );
+        assert_eq!(report.status, "pass");
+        assert_eq!(report.runs.len(), 2);
+        assert_eq!(report.runs[0].duration_ms, 30_000);
+        assert_eq!(report.runs[1].duration_ms, 30_000);
+        Ok(())
+    }
+
+    #[test]
+    fn repo_exposure_latency_write_report_writes_markdown_and_json() -> Result<(), String> {
+        with_temp_cwd("repo-exposure-latency-write", |_| {
+            write_repo_exposure_latency_report(
+                Path::new("target/debug/ripr"),
+                12,
+                |_, format, _| Ok(latency_run_with_status(format, "pass")),
+            )?;
+
+            let json = fs::read_to_string("target/ripr/reports/repo-exposure-latency.json")
+                .map_err(|err| format!("failed to read latency JSON: {err}"))?;
+            let markdown = fs::read_to_string("target/ripr/reports/repo-exposure-latency.md")
+                .map_err(|err| format!("failed to read latency markdown: {err}"))?;
+
+            assert!(json.contains("\"report\": \"repo-exposure-latency\""));
+            assert!(markdown.contains("# Repo Exposure Latency Report"));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn repo_exposure_latency_run_invokes_binary_and_maps_failure() -> Result<(), String> {
+        let run = repo_exposure_latency_run(
+            Path::new("rustc"),
+            "repo-exposure-json",
+            Duration::from_secs(5),
+        )?;
+
+        assert_eq!(run.format, "repo-exposure-json");
+        assert_eq!(run.status, "fail");
+        assert!(!run.trace.iter().any(|trace| trace.phase.is_empty()));
+        assert!(run.stderr_bytes > 0);
+        Ok(())
+    }
+
+    #[test]
+    fn repo_exposure_latency_run_from_output_maps_status_and_trace() -> Result<(), String> {
+        let args = vec!["--version".to_string()];
+        let output = capture_output_with_timeout(
+            "rustc",
+            &args,
+            &[],
+            Duration::from_secs(5),
+            "rustc version",
+        )?;
+        let pass_run = repo_exposure_latency_run_from_output("repo-exposure-json", output);
+        assert_eq!(pass_run.status, "pass");
+        assert_eq!(pass_run.format, "repo-exposure-json");
+        assert!(pass_run.exit_code.is_some());
+        assert!(pass_run.stdout_bytes > 0);
+
+        let timeout_run = repo_exposure_latency_run_from_output(
+            "repo-exposure-md",
+            TimedOutput {
+                status: None,
+                stdout: "partial".to_string(),
+                stderr: "ripr_repo_exposure_latency phase=cold_compute status=ok duration_ms=17\n"
+                    .to_string(),
+                duration: Duration::from_millis(17),
+                timed_out: true,
+            },
+        );
+        assert_eq!(timeout_run.status, "timeout");
+        assert_eq!(timeout_run.exit_code, None);
+        assert_eq!(timeout_run.stdout_bytes, "partial".len());
+        assert_eq!(timeout_run.trace[0].phase, "cold_compute");
+
+        let fail_run = repo_exposure_latency_run_from_output(
+            "repo-exposure-md",
+            TimedOutput {
+                status: None,
+                stdout: String::new(),
+                stderr: "failed".to_string(),
+                duration: Duration::from_millis(3),
+                timed_out: false,
+            },
+        );
+        assert_eq!(fail_run.status, "fail");
+        assert_eq!(fail_run.stderr_bytes, "failed".len());
+        Ok(())
+    }
+
+    #[test]
+    fn repo_exposure_latency_status_and_empty_trace_markdown_are_stable() {
+        let pass = latency_run_with_status("repo-exposure-json", "pass");
+        let fail = latency_run_with_status("repo-exposure-json", "fail");
+        let timeout = latency_run_with_status("repo-exposure-json", "timeout");
+        let skipped = latency_run_with_status("repo-exposure-md", "skipped_after_json_timeout");
+
+        assert_eq!(
+            repo_exposure_latency_status(std::slice::from_ref(&pass)),
+            "pass"
+        );
+        assert_eq!(repo_exposure_latency_status(&[timeout]), "warn");
+        assert_eq!(repo_exposure_latency_status(&[skipped]), "warn");
+        assert_eq!(
+            repo_exposure_latency_status(&[
+                latency_run_with_status("repo-exposure-json", "pass"),
+                fail
+            ]),
+            "fail"
+        );
+
+        let report = RepoExposureLatencyReport {
+            status: "pass".to_string(),
+            timeout_ms: 30_000,
+            binary: "target/debug/ripr".to_string(),
+            runs: vec![pass],
+        };
+        let markdown = repo_exposure_latency_markdown(&report);
+        assert!(markdown.contains("No analyzer trace lines were captured"));
+    }
+
+    fn latency_run_with_status(format: &str, status: &str) -> RepoExposureLatencyRun {
+        RepoExposureLatencyRun {
+            format: format.to_string(),
+            status: status.to_string(),
+            duration_ms: 1,
+            exit_code: None,
+            stdout_bytes: 0,
+            stderr_bytes: 0,
+            trace: Vec::new(),
+        }
     }
 
     #[test]

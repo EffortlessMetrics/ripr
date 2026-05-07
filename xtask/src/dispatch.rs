@@ -17,6 +17,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::RepoBadgeArtifacts => super::reports::repo_badge_artifacts(),
         XtaskCommand::RepoSeamInventory => super::reports::repo_seam_inventory(),
         XtaskCommand::RepoExposureReport => super::reports::repo_exposure_report(),
+        XtaskCommand::RepoExposureLatencyReport => super::reports::repo_exposure_latency_report(),
         XtaskCommand::AgentSeamPackets(root) => {
             super::reports::agent_seam_packets_report(root.as_ref())
         }
