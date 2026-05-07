@@ -55,6 +55,7 @@ the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 
 ## Current Handoffs
 
+- [Campaign 10 closeout](2026-05-07-campaign-10-closeout.md)
 - [Editor agent readiness proof](2026-05-07-editor-agent-readiness-proof.md)
 - [Editor agent integration contract audit](2026-05-07-editor-agent-integration-contract-audit.md)
 - [Campaign 7 closeout](2026-05-07-campaign-7-closeout.md)

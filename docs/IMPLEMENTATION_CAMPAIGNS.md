@@ -1200,7 +1200,7 @@ Landed PR chain:
 
 Campaign ID: `editor-agent-integration`
 
-Status: active
+Status: done
 
 Objective:
 
@@ -1251,7 +1251,24 @@ Work items:
 | `ci/editor-agent-artifacts` | done | The generated GitHub workflow now uploads the non-blocking editor-agent loop artifacts: pilot summary, repo exposure, agent packet, agent brief, agent verify, agent receipt, targeted-test outcome, optional operator cockpit when the repo-local xtask exists, SARIF when enabled, and badge JSON. |
 | `docs/full-evidence-loop` | done | Quickstart and installed-user docs now lead with the real diagnostic-to-receipt loop: `ripr pilot`, targeted brief, focused test, after snapshot, `ripr outcome`, `ripr agent verify`, `ripr agent receipt`, editor actions, generated CI artifacts, and known limits. They state that `ripr init` materializes optional repo policy rather than activating the useful default path. |
 | `release/editor-agent-readiness-proof` | done | `release-readiness --version 0.4.0` now proves the installed CLI command surface, boundary-gap `pilot`, `outcome`, `agent verify`, focused `agent receipt`, repo-exposure latency, LSP cockpit, advisory workflow defaults, VSIX packaging path, and known-limit docs. Package and publish gates remain explicit release-prep checks until the version bump. |
-| `campaign/editor-agent-integration-closeout` | ready | Close Campaign 10 after editor, agent, cockpit, CI, fixture, docs, and release-readiness proof are aligned with no new public crates, runtime execution, automatic edits, or speculative editor features. |
+| `campaign/editor-agent-integration-closeout` | done | Closed Campaign 10 after editor, agent, cockpit, CI, fixture, docs, and release-readiness proof aligned with no new public crates, runtime execution, automatic edits, or speculative editor features. |
+
+Closeout:
+
+- The editor and agent paths now share one evidence chain:
+  saved-workspace diagnostic -> evidence -> packet or brief -> focused test ->
+  after snapshot -> `ripr outcome` -> `ripr agent verify` ->
+  `ripr agent receipt` -> cockpit and CI artifacts.
+- The generated GitHub workflow uploads the non-blocking editor-agent artifact
+  set without running mutation testing or enabling CI blocking by default.
+- `cargo xtask release-readiness --version 0.4.0` proves the installed command
+  surface, boundary-gap pilot/outcome/verify/receipt fixtures, repo-exposure
+  latency, LSP cockpit, advisory workflow defaults, VSIX path, and known-limit
+  docs. Package and publish gates remain explicit release-prep checks until the
+  version bump.
+- No new analyzer family, LSP feature expansion, unsaved-buffer overlay,
+  automatic edit, runtime mutation execution, CI blocking policy, public crate
+  split, or SARIF/badge schema change shipped in this campaign.
 
 Commands:
 

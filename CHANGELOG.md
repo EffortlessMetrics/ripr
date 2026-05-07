@@ -81,6 +81,10 @@ are scoped or reviewed.
   release-surface pivot, carrying release readiness as a later gate and moving
   the lane from LSP command copy actions to operator cockpit verify/receipt
   status.
+- Closed Campaign 10 after aligning editor, agent, cockpit, CI, fixture, docs,
+  and release-readiness surfaces without adding analyzer families, runtime
+  mutation execution, CI blocking, public crate splits, automatic edits, or
+  speculative editor features.
 - Routed `ripr agent brief` file and diff working sets through existing
   related-test evidence so edits to known related tests rank their seams before
   repo fallback, and added the related-test-confidence tie-breaker from
