@@ -29,6 +29,10 @@ are scoped or reviewed.
 - Queued Campaign 12, First-Hour UX, as the post-LLM-work-loop lane for making
   the VS Code extension and generated CI workflow useful from their first
   screens without requiring users to learn RIPR's internal report topology.
+- Added RIPR-SPEC-0012 for advisory PR test guidance annotations, defining the
+  future `ripr review-comments` JSON contract, changed-line placement rules,
+  check-annotation default, opt-in inline review comments, and bounded LLM
+  handoff guidance.
 
 ### Changed
 
