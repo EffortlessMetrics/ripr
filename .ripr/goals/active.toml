@@ -1,186 +1,104 @@
-id = "hot-sidecar-latency"
-title = "Hot Sidecar Latency Proof"
+id = "editor-agent-integration"
+title = "Editor Agent Integration"
 status = "active"
 
-# This is Campaign 9 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
-# Campaign 8 (`runtime-calibration-fixtures`) closed after the supplied
-# cargo-mutants fixture set pinned the main static/runtime agreement buckets.
-# This lane is performance and editor responsiveness, not new analyzer
-# semantics or new LSP product surface.
+# This is Campaign 10 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+# Campaign 9 (`hot-sidecar-latency`) closed after the saved-workspace editor
+# and operator warm paths were measured, bounded, and verified on the default
+# warm-cache latency budget.
+# This lane is integration discipline, not new analyzer semantics or new
+# speculative editor features.
 
 objective = """
-Make the editor and operator paths faster without broadening the analyzer or LSP
-surface by measuring current cache and refresh behavior first, then tightening
-warm-path reuse only where there is evidence.
+Make the saved-workspace editor loop and the agent CLI loop line up:
+diagnostic to evidence to packet or brief to targeted test to verify to receipt
+to cockpit and CI artifacts.
 """
 
 end_state = [
-  "Current repo seam cache behavior and saved-workspace LSP refresh latency are measured from existing commands",
-  "Any hot-path cache change preserves output schemas, static vocabulary, public API, SARIF, badges, and saved-workspace LSP cockpit behavior",
-  "Rendered outputs remain uncached; only fact layers or in-memory indexes may be reused",
-  "Large-repo and editor latency decisions are backed by reports, not speculative storage"
+  "A saved-workspace seam diagnostic exposes the same evidence, packet, brief, verify, and receipt path as the agent CLI",
+  "Agent verify and receipt artifacts are visible in the operator cockpit and generated CI artifacts without rerunning analysis inside report joins",
+  "A fixture pins the full editor-agent loop from diagnostic/action expectations through agent packet, verify, receipt, and cockpit outputs",
+  "Installed CLI and VSIX proof covers the editor-agent loop without requiring ripr init activation, automatic edits, generated tests, or runtime mutation execution"
 ]
 
 [[work_item]]
-id = "cache/current-latency-audit"
-status = "done"
-branch = "hot-sidecar-latency-audit"
+id = "editor-agent/integration-contract-audit"
+status = "ready"
+branch = "editor-agent-integration-contract-audit"
 stackable = false
 requires_human_merge = true
-acceptance = "Current repo seam cache behavior, operator report generation, and saved-workspace LSP refresh proof are measured without changing analyzer, output, LSP, SARIF, badge, or public API behavior"
+acceptance = "Define the editor-agent integration contract and inventory current CLI, LSP, VS Code, agent, receipt, cockpit, CI, fixture, and install surfaces; docs and manifest only"
 commands = [
-  "cargo test -p ripr analysis::seam_cache --lib",
-  "cargo test -p ripr analysis::seam_inventory --lib",
-  "cargo test -p ripr lsp",
-  "cargo test -p ripr lsp::tests",
-  "cargo xtask lsp-cockpit-report",
-  "cargo xtask operator-cockpit",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
   "cargo xtask check-campaign",
   "cargo xtask goals next",
-  "cargo xtask check-pr",
-  "cargo test --workspace"
+  "cargo xtask check-doc-index",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-static-language",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr"
 ]
 
 [[work_item]]
-id = "cache/repo-exposure-latency-report"
-status = "done"
-branch = "repo-exposure-latency-report"
+id = "lsp/agent-loop-copy-commands"
+status = "blocked"
+branch = "lsp-agent-loop-copy-commands"
 stackable = false
 requires_human_merge = true
-acceptance = "Add bounded repo-exposure latency instrumentation or reporting so cache hit/miss and phase timing can be observed before optimizing warm-path reuse; do not change analyzer outputs"
-commands = [
-  "cargo test -p ripr analysis::seam_cache --lib",
-  "cargo test -p ripr analysis::seam_inventory --lib",
-  "cargo test -p ripr lsp",
-  "cargo test -p ripr lsp::tests",
-  "cargo xtask lsp-cockpit-report",
-  "cargo xtask repo-exposure-latency-report",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-campaign",
-  "cargo xtask goals next",
-  "cargo xtask check-pr",
-  "cargo test --workspace"
-]
+acceptance = "From a seam diagnostic, users can copy agent packet, after-snapshot, verify, and receipt commands; no automatic edits, CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays"
+blocked_by = ["editor-agent/integration-contract-audit"]
 
 [[work_item]]
-id = "cache/repo-exposure-warm-path-reuse"
-status = "done"
-branch = "repo-exposure-warm-path-reuse"
+id = "operator/verify-receipt-status"
+status = "blocked"
+branch = "operator-verify-receipt-status"
 stackable = false
 requires_human_merge = true
-acceptance = "Use repo-exposure latency evidence to reduce warm-path recomputation without caching rendered JSON, Markdown, diagnostics, hovers, SARIF, badges, or agent packets; preserve analyzer outputs and public contracts"
-commands = [
-  "cargo xtask repo-exposure-latency-report",
-  "cargo test -p ripr analysis::seam_cache --lib",
-  "cargo test -p ripr analysis::seam_inventory --lib",
-  "cargo test -p ripr lsp",
-  "cargo test -p ripr lsp::tests",
-  "cargo xtask lsp-cockpit-report",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-campaign",
-  "cargo xtask goals next",
-  "cargo xtask check-pr",
-  "cargo test --workspace"
-]
+acceptance = "Operator cockpit reports before/after snapshot, agent verify JSON, and agent receipt JSON presence plus improved, changed, regressed, and unchanged counts with next commands for missing inputs"
+blocked_by = ["editor-agent/integration-contract-audit"]
 
 [[work_item]]
-id = "pilot/budget-aware"
-status = "done"
-branch = "pilot-budget-aware"
+id = "fixtures/editor-agent-loop"
+status = "blocked"
+branch = "fixtures-editor-agent-loop"
 stackable = false
 requires_human_merge = true
-acceptance = "Make ripr pilot bounded and explicit under timeout or partial analysis so the first-run operator path does not hang silently; preserve analyzer outputs and public schemas unless intentionally versioned"
-commands = [
-  "cargo test -p ripr cli::commands::tests::pilot",
-  "cargo test -p ripr --test cli_smoke pilot_",
-  "cargo xtask repo-exposure-latency-report",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-campaign",
-  "cargo xtask goals next",
-  "cargo xtask check-pr",
-  "cargo test --workspace"
-]
+acceptance = "Add a canonical fixture that pins LSP diagnostics/actions, agent brief, agent packet, agent verify, agent receipt, and operator cockpit outputs for the full evidence loop"
+blocked_by = ["lsp/agent-loop-copy-commands", "operator/verify-receipt-status"]
 
 [[work_item]]
-id = "pilot/first-screen-clarity"
-status = "done"
-branch = "pilot-first-screen-clarity"
+id = "ci/editor-agent-artifacts"
+status = "blocked"
+branch = "ci-editor-agent-artifacts"
 stackable = false
 requires_human_merge = true
-acceptance = "Improve pilot-summary.md and terminal copy so the top recommendation answers what was inspected, why the seam matters, what focused test to write, and what command to run after without opening JSON"
-commands = [
-  "cargo test -p ripr output::pilot --lib",
-  "cargo test -p ripr cli::commands::tests::pilot",
-  "cargo test -p ripr --test cli_smoke pilot_",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-campaign",
-  "cargo xtask goals next",
-  "cargo xtask check-pr",
-  "cargo test --workspace"
-]
+acceptance = "Generated GitHub workflow uploads the non-blocking editor-agent loop artifacts, including pilot summary, repo exposure, agent brief, agent packet, agent verify, agent receipt, operator cockpit, SARIF when enabled, and badge JSON"
+blocked_by = ["fixtures/editor-agent-loop"]
 
 [[work_item]]
-id = "cache/evidence-latency-progress"
-status = "done"
-branch = "cache-evidence-latency-progress"
+id = "docs/full-evidence-loop"
+status = "blocked"
+branch = "docs-full-evidence-loop"
 stackable = false
 requires_human_merge = true
-acceptance = "Add repo-exposure latency trace progress inside evidence construction after closeout proof shows the bounded report can time out after inventory_seams without identifying the long evidence phase; preserve analyzer outputs and public schemas"
-commands = [
-  "cargo test -p ripr analysis::test_grip_evidence --lib",
-  "cargo xtask repo-exposure-latency-report",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-campaign",
-  "cargo xtask goals next",
-  "cargo xtask check-pr",
-  "cargo test --workspace"
-]
+acceptance = "Quickstart and installed-user docs lead with the real diagnostic-to-receipt loop and state that ripr init is optional policy materialization, not activation"
+blocked_by = ["fixtures/editor-agent-loop", "ci/editor-agent-artifacts"]
 
 [[work_item]]
-id = "cache/evidence-hot-path-indexes"
-status = "done"
-branch = "cache-evidence-hot-path-indexes"
+id = "release/install-editor-agent-proof"
+status = "blocked"
+branch = "release-install-editor-agent-proof"
 stackable = false
 requires_human_merge = true
-acceptance = "Index related-test evidence candidates, build value-resolution facts lazily, and classify owned seam/evidence vectors so repo-exposure warm-cache proof stays within the default latency budget without changing analyzer outputs or public schemas"
-commands = [
-  "cargo test -p ripr analysis::test_grip_evidence --lib",
-  "cargo test -p ripr analysis::seam_classification --lib",
-  "cargo xtask repo-exposure-latency-report",
-  "cargo test -p ripr lsp",
-  "cargo test -p ripr lsp::tests",
-  "cargo xtask lsp-cockpit-report",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-campaign",
-  "cargo xtask goals next",
-  "cargo xtask check-pr",
-  "cargo test --workspace"
-]
+acceptance = "Prove the installed binary and VSIX package path can run pilot, agent brief, agent packet, agent verify, and agent receipt over the checked fixture loop"
+blocked_by = ["docs/full-evidence-loop"]
 
 [[work_item]]
-id = "campaign/hot-sidecar-latency-closeout"
-status = "done"
-branch = "campaign-hot-sidecar-latency-closeout"
+id = "campaign/editor-agent-integration-closeout"
+status = "blocked"
+branch = "campaign-editor-agent-integration-closeout"
 stackable = false
 requires_human_merge = true
-acceptance = "Close Campaign 9 after cache measurement, warm-path reuse, bounded pilot behavior, and first-screen pilot clarity have landed; update docs and manifests only unless closeout proof finds drift"
-commands = [
-  "cargo test -p ripr lsp",
-  "cargo test -p ripr lsp::tests",
-  "cargo xtask lsp-cockpit-report",
-  "cargo xtask repo-exposure-latency-report",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-campaign",
-  "cargo xtask goals next",
-  "cargo xtask check-pr",
-  "cargo test --workspace"
-]
+acceptance = "Close Campaign 10 after editor, agent, cockpit, CI, fixture, docs, and install proof are aligned with no new public crates, runtime mutation execution, automatic edits, or speculative editor features"
+blocked_by = ["release/install-editor-agent-proof"]

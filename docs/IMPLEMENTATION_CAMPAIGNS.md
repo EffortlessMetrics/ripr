@@ -1195,3 +1195,113 @@ Landed PR chain:
 - #450 `cache: trace repo exposure evidence progress`
 - #451 `cache: index repo evidence hot path`
 - `campaign/hot-sidecar-latency-closeout`
+
+The active campaign now moves to Campaign 10. Do not reopen Campaign 9 unless
+fresh latency proof shows drift; the next product risk is integration between
+the saved-workspace editor loop, the agent CLI loop, receipts, cockpit, and CI
+artifacts.
+
+## Campaign 10: Editor Agent Integration
+
+Campaign ID: `editor-agent-integration`
+
+Status: active
+
+Objective:
+
+```text
+Make the saved-workspace editor loop and the agent CLI loop line up:
+diagnostic -> evidence -> packet or brief -> targeted test -> verify -> receipt
+-> cockpit and CI artifacts.
+```
+
+Why it matters:
+
+Campaigns 4B, 7, 8, and 9 made the major product pieces real: saved-workspace
+seam diagnostics, hovers, copyable packets and briefs, repo exposure, operator
+cockpit, advisory CI, badge artifacts, calibration imports, and a bounded pilot
+path. #457 and #458 added `ripr agent verify` and `ripr agent receipt`. The
+remaining risk is not another analyzer capability; it is that users and agents
+still have to stitch the editor, CLI, receipt, cockpit, and CI surfaces together
+by hand.
+
+End state:
+
+- a saved-workspace seam diagnostic exposes the same evidence and next commands
+  as the agent CLI path
+- users can copy the agent packet or brief, after-snapshot command, verify
+  command, and receipt command without automatic edits
+- `operator-cockpit` joins existing before/after, verify, receipt, SARIF, badge,
+  LSP, and optional calibration reports without rerunning analysis
+- one fixture pins the full editor-agent loop from LSP expectations through
+  agent packet, verify, receipt, and cockpit output
+- generated CI uploads the editor-agent artifacts as visible non-blocking
+  evidence first
+- installed CLI and VSIX proof covers the loop
+
+Non-goals:
+
+- no unsaved-buffer overlays
+- no CodeLens
+- no inlay hints
+- no semantic tokens
+- no automatic edits
+- no generated tests
+- no runtime mutation execution
+- no new public crates
+- no Campaign 9 reopen
+
+Current surface inventory:
+
+| Surface | Current state | Integration gap |
+| --- | --- | --- |
+| LSP diagnostics | Saved-workspace seam diagnostics carry stable seam IDs and configured severity. | Diagnostics do not yet expose verify and receipt commands. |
+| LSP hover | Seam hover renders evidence, related tests, missing discriminators, and next-step text. | Hover is evidence-only; command copy should stay in code actions. |
+| VS Code actions | Existing actions copy seam packets, copy targeted-test briefs, copy suggested assertions, open related tests, and refresh analysis. | Add command-oriented copy actions for agent verify and receipt without automatic edits. |
+| `ripr pilot` | Writes repo exposure, agent packets, and first-screen pilot summary with retry guidance under budget. | Downstream verify and receipt artifacts are not yet part of the generated artifact set. |
+| `ripr agent brief` | Ranks an agent working set and includes verify-after-edit command text. | The editor path should expose the same command chain from a selected seam. |
+| `ripr agent packet` | Expands one seam into the structured packet used by agents. | The selected diagnostic should offer the packet command as well as packet content. |
+| `ripr agent verify` | Compares before/after repo exposure JSON and reports seam movement. | Cockpit and CI do not yet surface its JSON as a first-class loop artifact. |
+| `ripr agent receipt` | Narrows verify JSON to one seam for review handoff. | Cockpit and CI do not yet surface receipt presence/status. |
+| `operator-cockpit` | Joins repo exposure, LSP cockpit, SARIF policy, badge status, targeted-test outcome, and optional calibration reports. | It does not yet join agent verify and agent receipt reports. |
+| CI workflow | Generated advisory workflow uploads pilot/report artifacts, badge JSON, and optional SARIF. | It does not yet upload agent brief, packet, verify, and receipt artifacts as one loop. |
+| Fixtures | Boundary-gap fixtures pin diagnostics/actions, packets, outcome, and calibration pieces. | No single fixture pins the full editor-agent loop end to end. |
+| Install proof | CLI, release binary, and VSIX paths have separate proof. | The installed proof does not yet run the full agent verify/receipt loop. |
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `editor-agent/integration-contract-audit` | ready | Define the editor-agent integration contract and inventory current CLI, LSP, VS Code, agent, receipt, cockpit, CI, fixture, and install surfaces. Docs/manifest only. |
+| `lsp/agent-loop-copy-commands` | blocked | Expose copyable agent packet, after-snapshot, verify, and receipt commands from seam diagnostics. Command-oriented only; no automatic edits, CodeLens, inlay hints, semantic tokens, or unsaved-buffer overlays. |
+| `operator/verify-receipt-status` | blocked | Teach `operator-cockpit` to report before/after snapshot, agent verify JSON, and agent receipt JSON presence plus improved, changed, regressed, and unchanged counts with next commands for missing inputs. |
+| `fixtures/editor-agent-loop` | blocked | Add a canonical fixture that pins LSP diagnostics/actions, agent brief, agent packet, agent verify, agent receipt, and operator cockpit outputs for the full evidence loop. |
+| `ci/editor-agent-artifacts` | blocked | Make the generated GitHub workflow upload non-blocking editor-agent loop artifacts: pilot summary, repo exposure, agent brief, agent packet, agent verify, agent receipt, operator cockpit, SARIF when enabled, and badge JSON. |
+| `docs/full-evidence-loop` | blocked | Update quickstart and installed-user docs around the real diagnostic-to-receipt loop and state that `ripr init` is optional policy materialization, not activation. |
+| `release/install-editor-agent-proof` | blocked | Prove installed CLI and VSIX package path can run pilot, agent brief, agent packet, agent verify, and agent receipt over the checked fixture loop. |
+| `campaign/editor-agent-integration-closeout` | blocked | Close Campaign 10 after editor, agent, cockpit, CI, fixture, docs, and install proof are aligned with no new public crates, runtime mutation execution, automatic edits, or speculative editor features. |
+
+Commands:
+
+```bash
+cargo xtask check-campaign
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-static-language
+cargo xtask check-output-contracts
+cargo xtask check-pr
+git diff --check
+```
+
+Blocking conditions:
+
+- adding editor behavior that edits files or generates tests automatically
+- broadening LSP beyond the existing saved-workspace contract
+- adding runtime mutation execution to RIPR
+- changing output schemas, public API, SARIF, badge, or package shape without an
+  explicit spec and versioned output contract
+- treating `ripr init` as required activation instead of optional policy
+  materialization
+- mixing stale policy/lint PR cleanup into this product integration lane
