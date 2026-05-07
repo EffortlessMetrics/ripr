@@ -44,10 +44,28 @@ impl AgentBriefLine {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct AgentBriefChangedOwner {
+    pub(crate) file: PathBuf,
+    pub(crate) line: usize,
+    pub(crate) owner: String,
+}
+
+impl AgentBriefChangedOwner {
+    pub(crate) fn new(file: impl Into<PathBuf>, line: usize, owner: impl Into<String>) -> Self {
+        Self {
+            file: file.into(),
+            line,
+            owner: owner.into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct AgentBriefResolvedWorkingSet {
     pub(crate) source: AgentBriefWorkingSetSource,
     pub(crate) files: Vec<PathBuf>,
     pub(crate) changed_lines: Vec<AgentBriefLine>,
+    pub(crate) changed_owners: Vec<AgentBriefChangedOwner>,
     pub(crate) base: Option<String>,
     pub(crate) diff: Option<PathBuf>,
     pub(crate) seam_id: Option<String>,
@@ -60,6 +78,7 @@ impl AgentBriefResolvedWorkingSet {
             source: AgentBriefWorkingSetSource::Diff,
             files,
             changed_lines,
+            changed_owners: Vec::new(),
             base: None,
             diff: Some(diff.into()),
             seam_id: None,
@@ -72,6 +91,7 @@ impl AgentBriefResolvedWorkingSet {
             source: AgentBriefWorkingSetSource::Base,
             files,
             changed_lines,
+            changed_owners: Vec::new(),
             base: Some(base.into()),
             diff: None,
             seam_id: None,
@@ -83,6 +103,7 @@ impl AgentBriefResolvedWorkingSet {
             source: AgentBriefWorkingSetSource::Files,
             files,
             changed_lines: Vec::new(),
+            changed_owners: Vec::new(),
             base: None,
             diff: None,
             seam_id: None,
@@ -94,10 +115,16 @@ impl AgentBriefResolvedWorkingSet {
             source: AgentBriefWorkingSetSource::SeamId,
             files: Vec::new(),
             changed_lines: Vec::new(),
+            changed_owners: Vec::new(),
             base: None,
             diff: None,
             seam_id: Some(seam_id.into()),
         }
+    }
+
+    pub(crate) fn with_changed_owners(mut self, owners: Vec<AgentBriefChangedOwner>) -> Self {
+        self.changed_owners = owners;
+        self
     }
 }
 
@@ -361,6 +388,7 @@ fn fallback_candidates<'a>(
 
 struct NormalizedAgentBriefWorkingSet<'a> {
     changed_lines: Vec<(String, &'a AgentBriefLine)>,
+    changed_owners: Vec<(String, &'a AgentBriefChangedOwner)>,
     files: Vec<String>,
 }
 
@@ -376,9 +404,15 @@ impl<'a> NormalizedAgentBriefWorkingSet<'a> {
             .iter()
             .map(|file| normalized_path(file))
             .collect();
+        let changed_owners = working_set
+            .changed_owners
+            .iter()
+            .map(|owner| (normalized_path(&owner.file), owner))
+            .collect();
 
         Self {
             changed_lines,
+            changed_owners,
             files,
         }
     }
@@ -406,6 +440,17 @@ fn why_now_for(
                 test.test_name,
                 display_path(&test.file),
                 test.line
+            ),
+        });
+    }
+
+    if let Some(owner) = matching_changed_owner(entry, working_set) {
+        return Some(AgentBriefWhyNow {
+            reason: AgentBriefWhyNowReason::ChangedOwnerFunction,
+            confidence: AgentBriefWhyNowConfidence::High,
+            evidence: format!(
+                "changed line {} is inside owner {}",
+                owner.line, owner.owner
             ),
         });
     }
@@ -459,6 +504,19 @@ fn matching_changed_line<'a>(
         .iter()
         .find_map(|(line_file, line)| {
             (line_file == &seam_file && line.line == entry.seam.display_line()).then_some(*line)
+        })
+}
+
+fn matching_changed_owner<'a>(
+    entry: &ClassifiedSeam,
+    working_set: &'a NormalizedAgentBriefWorkingSet<'a>,
+) -> Option<&'a AgentBriefChangedOwner> {
+    let seam_file = normalized_path(entry.seam.file());
+    working_set
+        .changed_owners
+        .iter()
+        .find_map(|(owner_file, owner)| {
+            (owner_file == &seam_file && owner.owner == entry.seam.owner()).then_some(*owner)
         })
 }
 
@@ -1022,6 +1080,43 @@ mod tests {
                 .why_now
                 .evidence
                 .contains("working set includes related test")
+        );
+    }
+
+    #[test]
+    fn agent_brief_selector_routes_changed_owner_function_to_seam() {
+        let seams = vec![classified(
+            "src/pricing.rs",
+            88,
+            "pricing::discounted_total",
+            "amount >= discount_threshold",
+            SeamGripClass::WeaklyGripped,
+        )];
+        let working_set = AgentBriefResolvedWorkingSet::diff(
+            "change.diff",
+            vec![AgentBriefLine::new("src/pricing.rs", 91)],
+        )
+        .with_changed_owners(vec![AgentBriefChangedOwner::new(
+            "src/pricing.rs",
+            91,
+            "pricing::discounted_total",
+        )]);
+
+        let selection = select(&seams, &working_set, 3);
+
+        assert_eq!(
+            selection.top_seams[0].why_now.reason,
+            AgentBriefWhyNowReason::ChangedOwnerFunction
+        );
+        assert_eq!(
+            selection.top_seams[0].why_now.confidence,
+            AgentBriefWhyNowConfidence::High
+        );
+        assert!(
+            selection.top_seams[0]
+                .why_now
+                .evidence
+                .contains("inside owner pricing::discounted_total")
         );
     }
 

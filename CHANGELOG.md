@@ -66,6 +66,9 @@ are scoped or reviewed.
   RIPR-SPEC-0010.
 - Added an advisory `ripr agent brief` warning when visible seams are omitted
   by the default or requested brief cap.
+- Routed `ripr agent brief --diff` and `--base` changed lines through existing
+  owner-function facts so same-owner seams can rank as
+  `changed_owner_function` before broad file fallback.
 - Made `ripr pilot` budget-aware with a default 30 second analysis timeout,
   `--timeout-ms` for explicit runs, and a versioned `pilot-summary.json` schema
   update that records complete versus partial timeout status.
