@@ -220,6 +220,162 @@ Field contract:
 - `warnings[]` — advisory warnings, such as hidden seams due to configured
   `off` severity, missing repo exposure artifacts, or missing line data.
 
+## Static Examples
+
+These examples are static contract examples, not generated fixture outputs.
+They use the same vocabulary as repo exposure and agent seam packet artifacts,
+but intentionally stay smaller than a full packet.
+
+### Diff-scoped touched seam
+
+When a diff touches the seam origin, the touched seam should rank first with a
+high-confidence `changed_line_intersects_seam` reason:
+
+```json
+{
+  "schema_version": "0.1",
+  "working_set": {
+    "source": "diff",
+    "files": ["src/pricing.rs"],
+    "changed_lines": [{ "file": "src/pricing.rs", "line": 88 }],
+    "diff": "change.diff"
+  },
+  "limits": { "requested": 3, "returned": 1, "default": 3, "hard_cap": 10 },
+  "top_seams": [
+    {
+      "seam_id": "f3c9e4d21a0b7c88",
+      "owner": "src/pricing.rs::discounted_total",
+      "seam_kind": "predicate_boundary",
+      "file": "src/pricing.rs",
+      "line": 88,
+      "expression": "amount >= discount_threshold",
+      "grip_class": "weakly_gripped",
+      "severity": "warning",
+      "why_now": {
+        "reason": "changed_line_intersects_seam",
+        "confidence": "high",
+        "evidence": "changed line 88 intersects the seam origin"
+      },
+      "missing_discriminators": [
+        {
+          "value": "discount_threshold (equality boundary)",
+          "reason": "observed values do not include the equality-boundary case"
+        }
+      ],
+      "assertion_shape": {
+        "kind": "exact_return_value",
+        "example": "assert_eq!(discounted_total(/* boundary value */), /* expected */)"
+      },
+      "packet_ref": {
+        "format": "agent-seam-packets-json",
+        "seam_id": "f3c9e4d21a0b7c88"
+      },
+      "verification": {
+        "after_snapshot_command": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json",
+        "suggested_test_command": "cargo test discounted_total_boundary_discriminator"
+      }
+    }
+  ],
+  "warnings": []
+}
+```
+
+### File-scoped capped brief
+
+A file-only request may have many matching seams. The default brief remains
+capped at three and reports that cap explicitly:
+
+```json
+{
+  "schema_version": "0.1",
+  "working_set": {
+    "source": "files",
+    "files": ["src/pricing.rs"],
+    "changed_lines": []
+  },
+  "limits": { "requested": 3, "returned": 3, "default": 3, "hard_cap": 10 },
+  "top_seams": [
+    {
+      "seam_id": "f3c9e4d21a0b7c88",
+      "file": "src/pricing.rs",
+      "line": 88,
+      "grip_class": "weakly_gripped",
+      "why_now": { "reason": "same_file_seam", "confidence": "medium" }
+    },
+    {
+      "seam_id": "a4c733e1d9ef0220",
+      "file": "src/pricing.rs",
+      "line": 101,
+      "grip_class": "ungripped",
+      "why_now": { "reason": "same_file_seam", "confidence": "medium" }
+    },
+    {
+      "seam_id": "c2f1b5d0a8ee9b41",
+      "file": "src/pricing.rs",
+      "line": 119,
+      "grip_class": "activation_unknown",
+      "why_now": { "reason": "same_file_seam", "confidence": "medium" }
+    }
+  ],
+  "warnings": ["7 additional visible seams were omitted by the default cap"]
+}
+```
+
+### Seam-ID lookup
+
+An explicit seam lookup should return the requested visible seam first and keep
+the entry small by pointing to the full agent seam packet:
+
+```json
+{
+  "schema_version": "0.1",
+  "working_set": {
+    "source": "seam_id",
+    "files": ["src/pricing.rs"],
+    "changed_lines": [],
+    "seam_id": "f3c9e4d21a0b7c88"
+  },
+  "limits": { "requested": 1, "returned": 1, "default": 3, "hard_cap": 10 },
+  "top_seams": [
+    {
+      "seam_id": "f3c9e4d21a0b7c88",
+      "file": "src/pricing.rs",
+      "line": 88,
+      "grip_class": "weakly_gripped",
+      "why_now": { "reason": "explicit_seam_id", "confidence": "high" },
+      "packet_ref": {
+        "format": "agent-seam-packets-json",
+        "seam_id": "f3c9e4d21a0b7c88"
+      }
+    }
+  ],
+  "warnings": []
+}
+```
+
+### Configured-off or suppressed seams
+
+When matching seams are hidden by configured `off` severity or suppressions,
+the brief should omit them from `top_seams` and explain the omission without
+dumping the hidden seam packet:
+
+```json
+{
+  "schema_version": "0.1",
+  "working_set": {
+    "source": "files",
+    "files": ["src/pricing.rs"],
+    "changed_lines": []
+  },
+  "limits": { "requested": 3, "returned": 0, "default": 3, "hard_cap": 10 },
+  "top_seams": [],
+  "warnings": [
+    "1 matching seam was hidden because configured severity is off",
+    "1 matching seam was hidden by a reasoned suppression"
+  ]
+}
+```
+
 ## Required Evidence
 
 Each brief entry must include enough information for an agent to select a

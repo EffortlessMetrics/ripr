@@ -1352,6 +1352,115 @@ Field contract:
 - `top_seams[].verification` — before/after static evidence commands and an
   optional focused test command.
 
+Static examples use abbreviated JSON fragments to show routing behavior.
+
+Diff-scoped touched seam:
+
+```json
+{
+  "working_set": {
+    "source": "diff",
+    "files": ["src/pricing.rs"],
+    "changed_lines": [{ "file": "src/pricing.rs", "line": 88 }],
+    "diff": "change.diff"
+  },
+  "limits": { "requested": 3, "returned": 1, "default": 3, "hard_cap": 10 },
+  "top_seams": [
+    {
+      "seam_id": "f3c9e4d21a0b7c88",
+      "file": "src/pricing.rs",
+      "line": 88,
+      "grip_class": "weakly_gripped",
+      "why_now": {
+        "reason": "changed_line_intersects_seam",
+        "confidence": "high"
+      },
+      "missing_discriminators": [
+        { "value": "discount_threshold (equality boundary)" }
+      ],
+      "packet_ref": {
+        "format": "agent-seam-packets-json",
+        "seam_id": "f3c9e4d21a0b7c88"
+      },
+      "verification": {
+        "after_snapshot_command": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json"
+      }
+    }
+  ],
+  "warnings": []
+}
+```
+
+File-scoped capped brief:
+
+```json
+{
+  "working_set": {
+    "source": "files",
+    "files": ["src/pricing.rs"],
+    "changed_lines": []
+  },
+  "limits": { "requested": 3, "returned": 3, "default": 3, "hard_cap": 10 },
+  "top_seams": [
+    {
+      "seam_id": "f3c9e4d21a0b7c88",
+      "why_now": { "reason": "same_file_seam", "confidence": "medium" }
+    },
+    {
+      "seam_id": "a4c733e1d9ef0220",
+      "why_now": { "reason": "same_file_seam", "confidence": "medium" }
+    },
+    {
+      "seam_id": "c2f1b5d0a8ee9b41",
+      "why_now": { "reason": "same_file_seam", "confidence": "medium" }
+    }
+  ],
+  "warnings": ["7 additional visible seams were omitted by the default cap"]
+}
+```
+
+Seam-ID lookup:
+
+```json
+{
+  "working_set": {
+    "source": "seam_id",
+    "files": ["src/pricing.rs"],
+    "seam_id": "f3c9e4d21a0b7c88"
+  },
+  "limits": { "requested": 1, "returned": 1, "default": 3, "hard_cap": 10 },
+  "top_seams": [
+    {
+      "seam_id": "f3c9e4d21a0b7c88",
+      "why_now": { "reason": "explicit_seam_id", "confidence": "high" },
+      "packet_ref": {
+        "format": "agent-seam-packets-json",
+        "seam_id": "f3c9e4d21a0b7c88"
+      }
+    }
+  ],
+  "warnings": []
+}
+```
+
+Configured-off or suppressed seams:
+
+```json
+{
+  "working_set": {
+    "source": "files",
+    "files": ["src/pricing.rs"],
+    "changed_lines": []
+  },
+  "limits": { "requested": 3, "returned": 0, "default": 3, "hard_cap": 10 },
+  "top_seams": [],
+  "warnings": [
+    "1 matching seam was hidden because configured severity is off",
+    "1 matching seam was hidden by a reasoned suppression"
+  ]
+}
+```
+
 The working-set brief must not write files, generate tests, change cache or LSP
 refresh behavior, or emit runtime mutation claims.
 
