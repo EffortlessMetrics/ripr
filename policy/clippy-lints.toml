@@ -65,6 +65,35 @@ level = "deny"
 name = "clippy::float_cmp_const"
 level = "deny"
 
+[[active.numeric]]
+name = "clippy::float_equality_without_abs"
+level = "deny"
+
+[[active.numeric]]
+name = "clippy::lossy_float_literal"
+level = "deny"
+
+[[active.numeric]]
+name = "clippy::invalid_upcast_comparisons"
+level = "deny"
+
+[[active.numeric]]
+name = "clippy::cast_sign_loss"
+level = "deny"
+note = "Receipted with `#[expect]` and a documented domain invariant where the cast is provably safe."
+
+[[active.numeric]]
+name = "clippy::cast_abs_to_unsigned"
+level = "deny"
+
+[[active.numeric]]
+name = "clippy::cast_enum_truncation"
+level = "deny"
+
+[[active.numeric]]
+name = "clippy::cast_nan_to_int"
+level = "deny"
+
 # Silent failure: ignoring a Result, future, or lock guard loses evidence the
 # analyzer cannot reconstruct. `let_underscore_must_use` is intentionally
 # deferred because best-effort cleanup patterns (`let _ = fs::remove_dir_all`)
