@@ -201,9 +201,11 @@ Options:
   --out PATH          Write the JSON receipt to a file instead of stdout.
 
 The receipt command narrows a saved agent verify artifact to one seam and adds
-handoff metadata for review. The verify JSON path must resolve under `--root`.
-It remains advisory and static; it does not run analysis, mutation testing,
-generate tests, edit files, change cache behavior, or touch LSP/MCP surfaces.
+handoff metadata for review. The verify JSON path and the before/after snapshot
+paths named inside it must resolve under `--root`; receipt provenance hashes
+those three artifacts without rerunning analysis. It remains advisory and
+static; it does not run analysis, mutation testing, generate tests, edit files,
+change cache behavior, or touch LSP/MCP surfaces.
 "#;
 
 const AGENT_STATUS_HELP: &str = r#"Usage: ripr agent status [--root PATH] --json

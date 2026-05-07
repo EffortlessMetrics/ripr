@@ -1017,8 +1017,10 @@ ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json
 ```
 
 The command does not run analysis, mutation testing, SARIF policy, badge
-generation, LSP refresh, or cache warm-up. It only reads the supplied
-`agent verify` JSON after validating the path resolves under `--root`.
+generation, LSP refresh, or cache warm-up. It reads the supplied `agent verify`
+JSON after validating that path resolves under `--root`, then reads and hashes
+the `inputs.before` and `inputs.after` snapshot artifacts named by the verify
+JSON after validating those paths also resolve under `--root`.
 
 JSON shape:
 

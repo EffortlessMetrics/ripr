@@ -91,6 +91,17 @@ fn normalize_agent_receipt_fixture(text: &str) -> Result<String, Box<dyn std::er
             "generated_at".to_string(),
             serde_json::Value::String("<generated_at>".to_string()),
         );
+        for artifact in ["before_artifact", "after_artifact", "verify_artifact"] {
+            if let Some(artifact) = provenance
+                .get_mut(artifact)
+                .and_then(serde_json::Value::as_object_mut)
+            {
+                artifact.insert(
+                    "sha256".to_string(),
+                    serde_json::Value::String("<sha256>".to_string()),
+                );
+            }
+        }
     }
     let mut rendered = serde_json::to_string_pretty(&value)?;
     rendered.push('\n');

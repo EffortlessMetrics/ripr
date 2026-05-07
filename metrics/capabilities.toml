@@ -579,7 +579,9 @@ evidence = [
   "docs/specs/RIPR-SPEC-0011-llm-work-loop.md",
   "cargo test -p ripr agent"
 ]
-fixtures = []
+fixtures = [
+  "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json"
+]
 next = "agent/next-action-guidance"
 metric = "agent status, workflow packets, and provenance-backed receipts name artifacts, commands, selected seam context, recovered seam_id, stale-looking warnings, hashes, and source-edit-free boundaries"
 
