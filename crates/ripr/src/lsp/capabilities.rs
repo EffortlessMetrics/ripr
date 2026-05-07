@@ -30,7 +30,10 @@ pub(super) fn initialize_result() -> InitializeResult {
     }
 }
 
-#[allow(deprecated)]
+#[expect(
+    deprecated,
+    reason = "InitializeParams.root_path is deprecated by LSP but still required as a fallback for clients that have not migrated to workspaceFolders."
+)]
 pub(super) fn root_from_initialize_params(
     params: &InitializeParams,
     fallback_root: &Path,

@@ -234,7 +234,10 @@ impl RepoSeam {
     // Eight fields are intrinsic to a seam's identity and presentation;
     // grouping them into nested structs would force every call site
     // through extra constructors without making the data simpler.
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Eight fields are intrinsic to a seam's identity and presentation; grouping them into nested structs forces every call site through extra constructors without simplifying the data."
+    )]
     pub(crate) fn new(
         file: impl AsRef<Path>,
         owner: impl Into<String>,

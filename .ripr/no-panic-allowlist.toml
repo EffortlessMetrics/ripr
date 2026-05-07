@@ -158,17 +158,6 @@ callee = "unwrap"
 
 [[allow]]
 path = "xtask/src/main.rs"
-family = "panic_macro"
-classification = "test_only"
-explanation = "Test assertion: validates unreachable status value detection"
-
-[allow.selector]
-kind = "macro_call"
-container = "check_report_aggregates_violations_and_status"
-callee = "panic!"
-
-[[allow]]
-path = "xtask/src/main.rs"
 family = "unwrap"
 classification = "test_only"
 explanation = "Test function: v0.2 allowlist parser validation"

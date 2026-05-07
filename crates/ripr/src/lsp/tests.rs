@@ -2339,7 +2339,10 @@ fn hover_params(uri: tower_lsp_server::ls_types::Uri, line: u32, character: u32)
     }
 }
 
-#[allow(deprecated)]
+#[expect(
+    deprecated,
+    reason = "Test helper constructs InitializeParams including the deprecated root_path/root_uri fields to exercise fallback handling in capabilities.rs."
+)]
 fn initialize_params(
     workspace_folders: Option<Vec<WorkspaceFolder>>,
     root_uri: Option<tower_lsp_server::ls_types::Uri>,
