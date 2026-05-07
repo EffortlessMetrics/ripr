@@ -1,7 +1,7 @@
 {
   "name": "ripr",
-  "displayName": "ripr: Static Mutation Exposure",
-  "description": "Static RIPR exposure diagnostics for Rust/Cargo workspaces.",
+  "displayName": "ripr: Rust Test-Oracle Gaps",
+  "description": "Find weak Rust test oracles with static RIPR diagnostics, targeted test briefs, and agent handoff commands.",
   "version": "0.4.0",
   "publisher": "EffortlessMetrics",
   "preview": true,

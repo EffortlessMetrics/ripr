@@ -1402,6 +1402,9 @@ End state:
   refresh analysis
 - generated GitHub workflows put the top advisory recommendation in the PR or
   step summary before artifact download is necessary
+- PR test guidance annotations have a spec, JSON contract, placement rules,
+  caps, and opt-in review-comment boundary before generated workflows post line
+  guidance
 - generated CI workflow behavior is pinned by a fixture that covers artifact
   paths, non-blocking posture, optional SARIF, badge output, and agent artifacts
 - agent command templates and workflow manifests from Campaign 11 feed these UX
@@ -1413,9 +1416,10 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
+| `spec/pr-test-guidance-annotations` | queued | Define the advisory PR annotation/comment contract before implementing `ripr review-comments`, including changed-line placement, anti-spam caps, bounded LLM guidance, check annotations by default, and opt-in inline review comments. |
 | `vscode/first-run-status` | queued | Add a discoverable editor status path for server resolution, workspace detection, analysis running/complete/stale/failed, and no-actionable-seam states. |
 | `vscode/action-discoverability` | queued | Group and title diagnostic actions around user intent without changing analyzer behavior, adding broad LSP features, or enabling unsaved-buffer overlays. |
-| `ci/pr-summary-surface` | queued | Make the generated workflow emit a useful PR or step summary with the top actionable seam, why it matters, suggested test target, artifact links, SARIF status, badge status, and known limits. |
+| `ci/pr-summary-surface` | queued | Make the generated workflow emit a useful PR or step summary with the top actionable seam, why it matters, suggested test target, artifact links, SARIF status, badge status, known limits, and check annotations from the PR test guidance report when implemented. |
 | `ci/generated-workflow-smoke-fixture` | queued | Pin generated workflow artifact paths, top-seam extraction, agent artifact generation, non-blocking posture, optional SARIF, and badge output so CI UX does not drift. |
 | `docs/ux-by-user-type` | queued | Rewrite the first-hour docs around VS Code, CI, CLI, agent, troubleshooting, and known limits while keeping README short. |
 | `campaign/first-hour-ux-closeout` | queued | Close only after the extension and CI first screens are useful without report archaeology and the CLI remains the shared engine rather than the required first user interface. |
