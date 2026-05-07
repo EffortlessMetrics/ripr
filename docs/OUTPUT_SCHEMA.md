@@ -1203,6 +1203,42 @@ JSON shape:
       "summary": "1 fixture reports; 0 uncovered contributed commands."
     },
     {
+      "name": "before snapshot",
+      "path": "target/ripr/pilot/repo-exposure.json",
+      "state": "present",
+      "status": "present",
+      "command": "ripr pilot --out target/ripr/pilot",
+      "required": true,
+      "summary": "2 seams; 1 weakly_gripped, 0 ungripped, 0 reachable_unrevealed."
+    },
+    {
+      "name": "after snapshot",
+      "path": "target/ripr/pilot/after.repo-exposure.json",
+      "state": "present",
+      "status": "present",
+      "command": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json",
+      "required": true,
+      "summary": "2 seams; 0 weakly_gripped, 0 ungripped, 0 reachable_unrevealed."
+    },
+    {
+      "name": "agent verify",
+      "path": "target/ripr/agent/agent-verify.json",
+      "state": "present",
+      "status": "advisory",
+      "command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > target/ripr/agent/agent-verify.json",
+      "required": true,
+      "summary": "1 improved, 0 changed, 0 regressed, 1 unchanged seams."
+    },
+    {
+      "name": "agent receipt",
+      "path": "target/ripr/agent/agent-receipt.json",
+      "state": "present",
+      "status": "advisory",
+      "command": "ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id <seam-id> --json --out target/ripr/agent/agent-receipt.json",
+      "required": true,
+      "summary": "Receipt for seam 67fc764ba37d77bd: improved; before weakly_gripped, after strongly_gripped. No remaining static gap is named by this receipt."
+    },
+    {
       "name": "SARIF policy",
       "path": "target/ripr/reports/sarif-policy.json",
       "state": "missing",
@@ -1225,7 +1261,7 @@ JSON shape:
       "path": "target/ripr/reports/targeted-test-outcome.json",
       "state": "missing",
       "status": "missing",
-      "command": "cargo xtask targeted-test-outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json",
+      "command": "ripr outcome --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --format json --out target/ripr/reports/targeted-test-outcome.json",
       "required": true,
       "summary": "Report has not been generated yet."
     },
@@ -1266,11 +1302,27 @@ JSON shape:
       "agreement": "editor_contract_green",
       "signal": "1 LSP fixture reports; 0 uncovered contributed VS Code commands.",
       "command": "cargo xtask lsp-cockpit-report"
+    },
+    {
+      "surface": "agent verify",
+      "state": "present",
+      "status": "advisory",
+      "agreement": "agent_verify_counts_available",
+      "signal": "1 improved, 0 changed, 0 regressed, 1 unchanged seams.",
+      "command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > target/ripr/agent/agent-verify.json"
+    },
+    {
+      "surface": "agent receipt",
+      "state": "present",
+      "status": "advisory",
+      "agreement": "agent_receipt_available",
+      "signal": "Receipt for seam 67fc764ba37d77bd: improved; before weakly_gripped, after strongly_gripped. No remaining static gap is named by this receipt.",
+      "command": "ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id <seam-id> --json --out target/ripr/agent/agent-receipt.json"
     }
   ],
   "next_commands": [
     {
-      "command": "cargo run -p ripr -- pilot --out target/ripr/pilot",
+      "command": "ripr pilot --out target/ripr/pilot",
       "reason": "Open the top actionable seam packet and write one focused targeted test."
     }
   ]
@@ -1284,8 +1336,9 @@ Field contract:
   weak seams require operator attention; `"warn"` when required inputs are
   missing, stale/unreadable, LSP cockpit status needs review, or actionable
   weak seams are visible.
-- `inputs[]` - report inventory for repo exposure, LSP cockpit, SARIF policy,
-  badge status, targeted-test outcome, and optional mutation calibration.
+- `inputs[]` - report inventory for repo exposure, LSP cockpit, before
+  snapshot, after snapshot, agent verify, agent receipt, SARIF policy, badge
+  status, targeted-test outcome, and optional mutation calibration.
   `state` is `present`, `missing`, `optional_missing`, `unreadable`, or
   `invalid_json`.
 - `inputs[].required` - `true` for reports expected in the normal operator
@@ -1301,24 +1354,25 @@ Field contract:
   `reachable_unrevealed`, `activation_unknown`, `propagation_unknown`,
   `observation_unknown`, or `discrimination_unknown`.
 - `surface_alignment[]` - per-surface status and an `agreement` string that
-  states whether LSP, SARIF, badge, receipt, and calibration artifacts are
-  available and aligned with the operator loop.
+  states whether LSP, before/after snapshots, agent verify, agent receipt,
+  SARIF, badge, targeted outcome, and calibration artifacts are available and
+  aligned with the operator loop.
 - `next_commands[]` - ordered commands to generate missing reports, inspect the
-  top seam packet, capture the after snapshot, and write the before/after
-  targeted-test receipt.
+  top seam packet, capture the after snapshot, run agent verify, write an agent
+  receipt, and write the before/after targeted-test receipt.
 
 The Markdown sibling prints:
 
 - `Top Weak Seams`, with each seam's ID, class, file, line, kind, why it
   matters, suggested next targeted test, and best related test when present.
 - `Surface Alignment`, a table with `Surface`, `State`, `Status`, `Agreement`,
-  and `Signal` columns for LSP, SARIF, badge, receipt, and calibration
-  surfaces.
+  and `Signal` columns for LSP, before/after snapshots, agent verify, agent
+  receipt, SARIF, badge, targeted outcome, and calibration surfaces.
 - `Inputs`, a table with `Report`, `Required`, `State`, and `Path` columns for
   every input artifact.
 - `Next Commands`, an ordered list of commands to refresh missing reports,
-  inspect the top seam packet, capture the after snapshot, and write the
-  before/after targeted-test receipt.
+  inspect the top seam packet, capture the after snapshot, run agent verify,
+  write the agent receipt, and write the before/after targeted-test receipt.
 
 ## Agent Seam Packets
 

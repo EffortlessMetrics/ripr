@@ -604,7 +604,9 @@ evidence = [
   "cargo xtask operator-cockpit with operator-cockpit-report alias",
   "target/ripr/reports/operator-cockpit.json",
   "target/ripr/reports/operator-cockpit.md",
-  "xtask/src/reports/operator.rs joins repo exposure, LSP cockpit, SARIF policy, badge status, targeted-test outcome, and optional mutation calibration",
+  "xtask/src/reports/operator.rs joins repo exposure, LSP cockpit, before/after snapshots, agent verify, agent receipt, SARIF policy, badge status, targeted-test outcome, and optional mutation calibration",
+  "agent verify summary counts improved, changed, regressed, and unchanged seams",
+  "missing editor-agent loop inputs include next commands aligned with the saved-workspace editor copy actions",
   "docs/OUTPUT_SCHEMA.md Operator Cockpit Report section",
   "docs/TARGETED_TEST_WORKFLOW.md repo-local cockpit guidance",
   "fixtures/EXAMPLE_CORPUS.md public operator corpus"
@@ -613,7 +615,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/opaque_fixture_builder"
 ]
-next = "operator/verify-receipt-status"
+next = "fixtures/editor-agent-loop"
 metric = "operator_cockpit_available"
 
 [[capability]]

@@ -36,9 +36,9 @@ rewrite the active manifest explicitly.
 | Brief | `ripr agent brief` | Editor copy command is pinned; fixture and cockpit joins must reuse it |
 | Test write | Human or agent writes focused test | No generated tests and no automatic edits |
 | After snapshot | `ripr check --format repo-exposure-json > after.json` | Editor copy command is pinned; cockpit visibility is still pending |
-| Verify | `ripr agent verify` | Editor copy command is pinned; cockpit visibility is still pending |
-| Receipt | `ripr agent receipt` | Editor copy command is pinned; cockpit visibility is still pending |
-| Cockpit | `cargo xtask operator-cockpit` | Needs verify and receipt join status |
+| Verify | `ripr agent verify` | Editor copy command is pinned; cockpit now reports artifact presence and movement counts |
+| Receipt | `ripr agent receipt` | Editor copy command is pinned; cockpit now reports artifact presence and receipt summary |
+| Cockpit | `cargo xtask operator-cockpit` | Joins before/after snapshots, agent verify JSON, agent receipt JSON, and missing-input commands |
 | CI | Generated workflow artifacts | Needs full loop artifacts uploaded |
 | Fixture | Boundary-gap and current examples | Needs canonical editor-agent loop fixture |
 | Install | `cargo install` plus VSIX proof | Needs installed binary plus packaged extension loop proof |
@@ -67,8 +67,8 @@ rewrite the active manifest explicitly.
 | Work item | Missing integration |
 | --- | --- |
 | `lsp/agent-loop-copy-commands` | Done: seam diagnostics now expose command-oriented editor actions for agent packet, brief, after snapshot, verify, and receipt command text |
-| `operator/verify-receipt-status` | Next: join before snapshot, after snapshot, agent verify JSON, agent receipt JSON, movement counts, and next commands |
-| `fixtures/editor-agent-loop` | Pin LSP diagnostics/actions, agent brief, agent packet, agent verify, agent receipt, and operator cockpit output in one canonical fixture |
+| `operator/verify-receipt-status` | Done: cockpit joins before snapshot, after snapshot, agent verify JSON, agent receipt JSON, movement counts, and next commands |
+| `fixtures/editor-agent-loop` | Next: pin LSP diagnostics/actions, agent brief, agent packet, agent verify, agent receipt, and operator cockpit output in one canonical fixture |
 | `ci/editor-agent-artifacts` | Upload pilot summary, repo exposure, agent brief, agent packet, agent verify, agent receipt, operator cockpit, SARIF when enabled, and badge JSON as visible artifacts |
 | `docs/full-evidence-loop` | Make the first-hour path explicit and state that `ripr init` is optional policy materialization, not activation |
 | `release/editor-agent-readiness-proof` | Run the editor-agent loop through installed CLI, packaged VSIX, package dry-run, and known-limits checks before closeout |

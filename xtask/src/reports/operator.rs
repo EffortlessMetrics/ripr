@@ -4,6 +4,15 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 const TOP_WEAK_SEAMS_LIMIT: usize = 5;
+const BEFORE_SNAPSHOT_ARTIFACT: &str = "target/ripr/pilot/repo-exposure.json";
+const AFTER_SNAPSHOT_ARTIFACT: &str = "target/ripr/pilot/after.repo-exposure.json";
+const AGENT_VERIFY_ARTIFACT: &str = "target/ripr/agent/agent-verify.json";
+const AGENT_RECEIPT_ARTIFACT: &str = "target/ripr/agent/agent-receipt.json";
+const BEFORE_SNAPSHOT_COMMAND: &str = "ripr pilot --out target/ripr/pilot";
+const AFTER_SNAPSHOT_COMMAND: &str = "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json";
+const AGENT_VERIFY_COMMAND: &str = "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > target/ripr/agent/agent-verify.json";
+const AGENT_RECEIPT_COMMAND: &str = "ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id <seam-id> --json --out target/ripr/agent/agent-receipt.json";
+const TARGETED_OUTCOME_COMMAND: &str = "ripr outcome --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --format json --out target/ripr/reports/targeted-test-outcome.json";
 
 #[derive(Clone, Debug)]
 struct OperatorArtifact {
@@ -114,7 +123,35 @@ fn build_operator_cockpit_report_at(report_dir: &Path) -> OperatorCockpitReport 
         report_dir,
         "targeted-test outcome",
         "targeted-test-outcome.json",
-        "cargo xtask targeted-test-outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json",
+        TARGETED_OUTCOME_COMMAND,
+        true,
+    );
+    let before_snapshot = read_workspace_artifact(
+        report_dir,
+        "before snapshot",
+        BEFORE_SNAPSHOT_ARTIFACT,
+        BEFORE_SNAPSHOT_COMMAND,
+        true,
+    );
+    let after_snapshot = read_workspace_artifact(
+        report_dir,
+        "after snapshot",
+        AFTER_SNAPSHOT_ARTIFACT,
+        AFTER_SNAPSHOT_COMMAND,
+        true,
+    );
+    let agent_verify = read_workspace_artifact(
+        report_dir,
+        "agent verify",
+        AGENT_VERIFY_ARTIFACT,
+        AGENT_VERIFY_COMMAND,
+        true,
+    );
+    let agent_receipt = read_workspace_artifact(
+        report_dir,
+        "agent receipt",
+        AGENT_RECEIPT_ARTIFACT,
+        AGENT_RECEIPT_COMMAND,
         true,
     );
     let calibration = read_artifact(
@@ -128,6 +165,10 @@ fn build_operator_cockpit_report_at(report_dir: &Path) -> OperatorCockpitReport 
     let artifacts = vec![
         repo_exposure,
         lsp,
+        before_snapshot,
+        after_snapshot,
+        agent_verify,
+        agent_receipt,
         sarif,
         badge,
         targeted_outcome,
@@ -154,6 +195,21 @@ fn build_operator_cockpit_report_at(report_dir: &Path) -> OperatorCockpitReport 
         surface_alignment,
         next_commands,
     }
+}
+
+fn read_workspace_artifact(
+    report_dir: &Path,
+    name: &str,
+    relative_path: &str,
+    command: &str,
+    required: bool,
+) -> OperatorArtifact {
+    read_artifact_path(
+        workspace_artifact_path(report_dir, relative_path),
+        name,
+        command,
+        required,
+    )
 }
 
 fn read_artifact(
@@ -262,10 +318,13 @@ fn read_artifact_path(
 fn artifact_summary(name: &str, value: &Value) -> String {
     match name {
         "repo exposure" => repo_exposure_summary(value),
+        "before snapshot" | "after snapshot" => repo_exposure_summary(value),
         "LSP cockpit" => lsp_summary(value),
         "SARIF policy" => sarif_summary(value),
         "badge status" => badge_summary(value),
         "targeted-test outcome" => targeted_outcome_summary(value),
+        "agent verify" => agent_verify_summary(value),
+        "agent receipt" => agent_receipt_summary(value),
         "mutation calibration" => calibration_summary(value),
         _ => "Report is present.".to_string(),
     }
@@ -342,6 +401,51 @@ fn targeted_outcome_summary(value: &Value) -> String {
     format!("{moved} moved, {regressed} regressed, {unchanged} unchanged seams.")
 }
 
+fn agent_verify_summary(value: &Value) -> String {
+    let summary = value.get("summary").and_then(Value::as_object);
+    let improved = summary
+        .and_then(|summary| usize_field(summary, "improved"))
+        .unwrap_or(0);
+    let changed = summary
+        .and_then(|summary| usize_field(summary, "changed"))
+        .unwrap_or(0);
+    let regressed = summary
+        .and_then(|summary| usize_field(summary, "regressed"))
+        .unwrap_or(0);
+    let unchanged = summary
+        .and_then(|summary| usize_field(summary, "unchanged"))
+        .unwrap_or(0);
+    format!(
+        "{improved} improved, {changed} changed, {regressed} regressed, {unchanged} unchanged seams."
+    )
+}
+
+fn agent_receipt_summary(value: &Value) -> String {
+    let seam = value.get("seam").and_then(Value::as_object);
+    let seam_id = seam
+        .and_then(|seam| seam.get("seam_id"))
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let change = seam
+        .and_then(|seam| seam.get("change"))
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let before = seam
+        .and_then(|seam| seam.get("before"))
+        .and_then(Value::as_str)
+        .unwrap_or("n/a");
+    let after = seam
+        .and_then(|seam| seam.get("after"))
+        .and_then(Value::as_str)
+        .unwrap_or("n/a");
+    let remaining_gap = value
+        .get("summary")
+        .and_then(|summary| summary.get("remaining_gap"))
+        .and_then(Value::as_str)
+        .unwrap_or("No receipt summary was available.");
+    format!("Receipt for seam {seam_id}: {change}; before {before}, after {after}. {remaining_gap}")
+}
+
 fn calibration_summary(value: &Value) -> String {
     let metrics = value.get("metrics").and_then(Value::as_object);
     let matched = metrics
@@ -395,6 +499,10 @@ fn artifact_agreement(artifact: &OperatorArtifact, top_weak_seams: &[OperatorWea
                 "actionable_seams_visible".to_string()
             }
         }
+        "before snapshot" => "before_snapshot_available".to_string(),
+        "after snapshot" => "after_snapshot_available".to_string(),
+        "agent verify" => "agent_verify_counts_available".to_string(),
+        "agent receipt" => "agent_receipt_available".to_string(),
         "LSP cockpit" if artifact.status == "pass" => "editor_contract_green".to_string(),
         "LSP cockpit" => "editor_contract_needs_review".to_string(),
         "SARIF policy" if artifact.status == "pass" => "policy_agrees_clean".to_string(),
@@ -405,7 +513,7 @@ fn artifact_agreement(artifact: &OperatorArtifact, top_weak_seams: &[OperatorWea
             "policy_advisory_missing_baseline".to_string()
         }
         "badge status" => "badge_artifact_present".to_string(),
-        "targeted-test outcome" => "receipt_artifact_present".to_string(),
+        "targeted-test outcome" => "targeted_outcome_artifact_present".to_string(),
         "mutation calibration" => "calibration_artifact_present".to_string(),
         _ => "present".to_string(),
     }
@@ -450,10 +558,11 @@ fn operator_next_commands(
         if !artifact.required || artifact.state == "present" {
             continue;
         }
+        let command = missing_artifact_command(artifact, top_weak_seams);
         push_next_command(
             &mut commands,
             &mut seen,
-            &artifact.command,
+            &command,
             &format!("Generate the missing {} input.", artifact.name),
         );
     }
@@ -462,19 +571,31 @@ fn operator_next_commands(
         push_next_command(
             &mut commands,
             &mut seen,
-            "cargo run -p ripr -- pilot --out target/ripr/pilot",
+            BEFORE_SNAPSHOT_COMMAND,
             "Open the top actionable seam packet and write one focused targeted test.",
         );
         push_next_command(
             &mut commands,
             &mut seen,
-            "cargo run -p ripr -- check --root . --mode ready --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json",
+            AFTER_SNAPSHOT_COMMAND,
             "After adding the targeted test, capture the after repo-exposure snapshot.",
         );
         push_next_command(
             &mut commands,
             &mut seen,
-            "cargo xtask targeted-test-outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json",
+            AGENT_VERIFY_COMMAND,
+            "Compare the before and after static evidence snapshots for the agent loop.",
+        );
+        push_next_command(
+            &mut commands,
+            &mut seen,
+            &receipt_command_for(top_weak_seams.first().map(|seam| seam.seam_id.as_str())),
+            "Write a focused receipt for the top seam after agent verify completes.",
+        );
+        push_next_command(
+            &mut commands,
+            &mut seen,
+            TARGETED_OUTCOME_COMMAND,
             "Compare the before and after static evidence snapshots.",
         );
     } else if commands.is_empty() {
@@ -486,6 +607,21 @@ fn operator_next_commands(
         );
     }
     commands
+}
+
+fn missing_artifact_command(
+    artifact: &OperatorArtifact,
+    top_weak_seams: &[OperatorWeakSeam],
+) -> String {
+    if artifact.name == "agent receipt" {
+        return receipt_command_for(top_weak_seams.first().map(|seam| seam.seam_id.as_str()));
+    }
+    artifact.command.clone()
+}
+
+fn receipt_command_for(seam_id: Option<&str>) -> String {
+    let seam_id = seam_id.unwrap_or("<seam-id>");
+    AGENT_RECEIPT_COMMAND.replace("<seam-id>", seam_id)
 }
 
 fn push_next_command(
@@ -819,6 +955,34 @@ fn reports_dir() -> PathBuf {
     Path::new("target").join("ripr").join("reports")
 }
 
+fn workspace_artifact_path(report_dir: &Path, relative_path: &str) -> PathBuf {
+    workspace_root_for_report_dir(report_dir).join(relative_path)
+}
+
+fn workspace_root_for_report_dir(report_dir: &Path) -> PathBuf {
+    let reports = report_dir.file_name().and_then(|name| name.to_str());
+    let ripr = report_dir
+        .parent()
+        .and_then(Path::file_name)
+        .and_then(|name| name.to_str());
+    let target = report_dir
+        .parent()
+        .and_then(Path::parent)
+        .and_then(Path::file_name)
+        .and_then(|name| name.to_str());
+    if reports == Some("reports")
+        && ripr == Some("ripr")
+        && target == Some("target")
+        && let Some(root) = report_dir
+            .parent()
+            .and_then(Path::parent)
+            .and_then(Path::parent)
+    {
+        return root.to_path_buf();
+    }
+    report_dir.to_path_buf()
+}
+
 fn normalize_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
@@ -860,6 +1024,18 @@ mod tests {
             command.command == "cargo xtask repo-exposure-report"
                 && command.reason.contains("repo exposure")
         }));
+        assert!(report.next_commands.iter().any(|command| {
+            command.command == BEFORE_SNAPSHOT_COMMAND && command.reason.contains("before snapshot")
+        }));
+        assert!(report.next_commands.iter().any(|command| {
+            command.command == AFTER_SNAPSHOT_COMMAND && command.reason.contains("after snapshot")
+        }));
+        assert!(report.next_commands.iter().any(|command| {
+            command.command == AGENT_VERIFY_COMMAND && command.reason.contains("agent verify")
+        }));
+        assert!(report.next_commands.iter().any(|command| {
+            command.command == AGENT_RECEIPT_COMMAND && command.reason.contains("agent receipt")
+        }));
 
         let json = operator_cockpit_json(&report)?;
         let value: Value = serde_json::from_str(&json)
@@ -871,7 +1047,14 @@ mod tests {
 
     #[test]
     fn operator_cockpit_json_and_markdown_are_structured() -> Result<(), String> {
-        let dir = temp_report_dir("structured")?;
+        let root = temp_report_dir("structured")?;
+        let dir = root.join("target/ripr/reports");
+        fs::create_dir_all(&dir)
+            .map_err(|err| format!("failed to create {}: {err}", dir.display()))?;
+        let before_snapshot = workspace_artifact_path(&dir, BEFORE_SNAPSHOT_ARTIFACT);
+        let after_snapshot = workspace_artifact_path(&dir, AFTER_SNAPSHOT_ARTIFACT);
+        let agent_verify = workspace_artifact_path(&dir, AGENT_VERIFY_ARTIFACT);
+        let agent_receipt = workspace_artifact_path(&dir, AGENT_RECEIPT_ARTIFACT);
         write_json(
             &dir,
             "repo-exposure.json",
@@ -917,6 +1100,86 @@ mod tests {
                         ]
                     }
                 ]
+            }),
+        )?;
+        write_json_path(
+            &before_snapshot,
+            &serde_json::json!({
+                "schema_version": "0.2",
+                "scope": "repo",
+                "metrics": {
+                    "seams_total": 1,
+                    "weakly_gripped": 1,
+                    "ungripped": 0,
+                    "reachable_unrevealed": 0
+                },
+                "seams": []
+            }),
+        )?;
+        write_json_path(
+            &after_snapshot,
+            &serde_json::json!({
+                "schema_version": "0.2",
+                "scope": "repo",
+                "metrics": {
+                    "seams_total": 1,
+                    "weakly_gripped": 0,
+                    "ungripped": 0,
+                    "reachable_unrevealed": 0
+                },
+                "seams": []
+            }),
+        )?;
+        write_json_path(
+            &agent_verify,
+            &serde_json::json!({
+                "schema_version": "0.1",
+                "tool": "ripr",
+                "status": "advisory",
+                "inputs": {
+                    "before": BEFORE_SNAPSHOT_ARTIFACT,
+                    "after": AFTER_SNAPSHOT_ARTIFACT
+                },
+                "summary": {
+                    "improved": 1,
+                    "changed": 0,
+                    "regressed": 0,
+                    "unchanged": 1,
+                    "new": 0,
+                    "resolved": 0
+                },
+                "changed_seams": [],
+                "unchanged_seams": [],
+                "new_gaps": [],
+                "resolved_gaps": []
+            }),
+        )?;
+        write_json_path(
+            &agent_receipt,
+            &serde_json::json!({
+                "schema_version": "0.1",
+                "tool": "ripr",
+                "status": "advisory",
+                "inputs": {
+                    "agent_verify_json": AGENT_VERIFY_ARTIFACT,
+                    "before": BEFORE_SNAPSHOT_ARTIFACT,
+                    "after": AFTER_SNAPSHOT_ARTIFACT
+                },
+                "seam": {
+                    "seam_id": "67fc764ba37d77bd",
+                    "seam_kind": "predicate_boundary",
+                    "file": "src/lib.rs",
+                    "line": 42,
+                    "before": "weakly_gripped",
+                    "after": "strongly_gripped",
+                    "grip_class": null,
+                    "change": "improved",
+                    "evidence_delta": []
+                },
+                "summary": {
+                    "remaining_gap": "No remaining static gap is named by this receipt.",
+                    "next_recommendation": "Keep the focused test and attach this receipt with the agent verify JSON."
+                }
             }),
         )?;
         write_json(
@@ -980,6 +1243,16 @@ mod tests {
                 .map(|test| test.name.as_str()),
             Some("below_threshold_has_no_discount")
         );
+        assert!(report.inputs.iter().any(|input| {
+            input.name == "agent verify"
+                && input.state == "present"
+                && input.summary == "1 improved, 0 changed, 0 regressed, 1 unchanged seams."
+        }));
+        assert!(report.inputs.iter().any(|input| {
+            input.name == "agent receipt"
+                && input.state == "present"
+                && input.summary.contains("Receipt for seam 67fc764ba37d77bd")
+        }));
 
         let json = operator_cockpit_json(&report)?;
         let value: Value = serde_json::from_str(&json)
@@ -1002,6 +1275,9 @@ mod tests {
         let markdown = operator_cockpit_markdown(&report);
         assert!(markdown.contains("## Surface Alignment"));
         assert!(markdown.contains("discount_threshold (equality boundary)"));
+        assert!(markdown.contains("1 improved, 0 changed, 0 regressed, 1 unchanged seams."));
+        assert!(markdown.contains("agent_verify_counts_available"));
+        assert!(markdown.contains("agent_receipt_available"));
         Ok(())
     }
 
@@ -1020,9 +1296,17 @@ mod tests {
     }
 
     fn write_json(dir: &Path, file: &str, value: &Value) -> Result<(), String> {
+        write_json_path(&dir.join(file), value)
+    }
+
+    fn write_json_path(path: &Path, value: &Value) -> Result<(), String> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|err| format!("failed to create {}: {err}", parent.display()))?;
+        }
         let rendered = serde_json::to_string_pretty(value)
             .map_err(|err| format!("failed to render test JSON: {err}"))?;
-        fs::write(dir.join(file), rendered)
-            .map_err(|err| format!("failed to write test report {file}: {err}"))
+        fs::write(path, rendered)
+            .map_err(|err| format!("failed to write test report {}: {err}", path.display()))
     }
 }

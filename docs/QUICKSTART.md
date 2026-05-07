@@ -51,10 +51,11 @@ If analysis exceeds the default budget, `ripr pilot` writes
 waiting silently.
 
 From the `ripr` source repository, `cargo xtask operator-cockpit` joins the
-repo-local report artifacts into `target/ripr/reports/operator-cockpit.md` and
-`.json` when you want one cockpit for repo exposure, LSP, SARIF, badges,
-receipts, and optional calibration. `cargo xtask operator-cockpit-report`
-remains an alias for existing automation.
+repo-local artifacts into `target/ripr/reports/operator-cockpit.md` and `.json`
+when you want one cockpit for repo exposure, LSP, before/after snapshots,
+agent verify, agent receipt, SARIF, badges, targeted-test receipts, and
+optional calibration. `cargo xtask operator-cockpit-report` remains an alias
+for existing automation.
 
 To try the loop on known small examples from this repository, use
 [`fixtures/EXAMPLE_CORPUS.md`](../fixtures/EXAMPLE_CORPUS.md). It maps the
