@@ -2,6 +2,17 @@
 
 -
 
+## CI Economics
+
+- Default PR LEM impact (estimate): _e.g. 18 LEM_
+- Workflows touched: _e.g. `.github/workflows/ci.yml`_
+- Branch protection impact: _none / required-checks updated_
+- Failure mode caught: _what bug or drift this PR makes harder_
+- Cheaper signal considered: _what cheaper proof was tried first, why
+  insufficient_
+- Rollback path: _how to revert without destabilizing other PRs_
+- Commands run locally: _e.g. `cargo xtask check-pr`, `cargo fmt --check`_
+
 ## Scope
 
 -
