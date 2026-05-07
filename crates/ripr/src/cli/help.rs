@@ -34,6 +34,11 @@ Quick start:
 
 const INIT_HELP: &str = r#"Usage: ripr init [--root PATH] [--ci github] [--dry-run] [--force]
 
+`ripr init` is optional. It writes the built-in defaults to a repo-local
+ripr.toml so teams can commit, review, and tune policy. Missing ripr.toml is
+the normal first-run state and uses the same defaults. Running `ripr init` does
+not unlock basic CLI, editor, or pilot usefulness.
+
 Options:
   --root PATH      Workspace root where ripr.toml should be written. Defaults to current directory.
   --ci github      Also write .github/workflows/ripr.yml with advisory reports and optional SARIF rendering/upload.
@@ -42,7 +47,7 @@ Options:
 
 Generated config:
   - uses draft analysis mode and includes unchanged tests
-  - shows actionable weak or missing seams with conservative severities
+  - shows actionable weak or missing seams with default severities
   - hides seams whose configured severity is off
   - records the built-in saved-workspace LSP seam diagnostic default
   - remains advisory and does not configure CI blocking or mutation execution

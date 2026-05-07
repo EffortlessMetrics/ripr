@@ -28,8 +28,9 @@ separately is only a fallback for offline, pinned, or controlled environments.
 ripr pilot
 ```
 
-`ripr.toml` is optional. If it is missing, RIPR uses the same conservative
-built-in defaults that `ripr init` would materialize.
+`ripr.toml` is optional. If it is missing, RIPR uses built-in defaults — the
+same defaults `ripr init` would materialize. Missing config is the normal
+first-run state, not a degraded mode.
 
 The command writes:
 
@@ -72,16 +73,19 @@ ripr pilot --timeout-ms 120000
 
 ## Optional Policy
 
-Run `ripr init` when the team wants to review and tune repo policy:
+Run `ripr init` only when the team wants to commit repo-local policy:
 
 ```bash
 ripr init
 ```
 
-`ripr init` writes `ripr.toml`; it is not required for first value. The
-generated config is advisory, includes unchanged tests by default, hides solved
-and governed seam classes from default attention, and records the saved-workspace
-editor seam diagnostic default.
+`ripr init` writes `ripr.toml` so policy can be reviewed, versioned, and tuned;
+it does not unlock basic usefulness, and it is not required for first value.
+Most users only need it to commit repo policy, suppressions, tuned
+severities/modes, or a generated CI workflow. The generated config is advisory,
+includes unchanged tests by default, hides solved and governed seam classes
+from default attention, and records the saved-workspace editor seam diagnostic
+default.
 
 ## Add One Focused Test
 

@@ -27,8 +27,11 @@ are scoped or reviewed.
   workflow that runs `ripr pilot`, uploads pilot/report artifacts, writes repo
   badge JSON, and keeps SARIF rendering/upload optional through
   `RIPR_UPLOAD_SARIF`.
-- Added `ripr init` to write a conservative repo-local `ripr.toml`, with
-  `--dry-run` for previewing and `--force` for explicit overwrite.
+- Added `ripr init` as an optional command that materializes built-in defaults
+  into a repo-local `ripr.toml` so teams can commit, review, version, and tune
+  policy; it does not unlock basic usefulness, and missing `ripr.toml` remains
+  the normal first-run state. Includes `--dry-run` for previewing and `--force`
+  for explicit overwrite.
 - Added RIPR-SPEC-0009 to define defaults-first adoption behavior for `init`,
   `pilot`, `outcome`, calibration import, editor, SARIF, badge, and config
   work.
