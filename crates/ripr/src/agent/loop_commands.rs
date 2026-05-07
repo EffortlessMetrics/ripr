@@ -1,0 +1,215 @@
+use std::path::Path;
+
+pub(crate) const WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT: &str =
+    "target/ripr/workflow/before.repo-exposure.json";
+pub(crate) const WORKFLOW_AFTER_SNAPSHOT_ARTIFACT: &str =
+    "target/ripr/workflow/after.repo-exposure.json";
+pub(crate) const WORKFLOW_AGENT_SEAM_PACKETS_ARTIFACT: &str =
+    "target/ripr/workflow/agent-seam-packets.json";
+pub(crate) const WORKFLOW_AGENT_PACKET_ARTIFACT: &str = "target/ripr/workflow/agent-packet.json";
+pub(crate) const WORKFLOW_AGENT_BRIEF_ARTIFACT: &str = "target/ripr/workflow/agent-brief.json";
+pub(crate) const WORKFLOW_AGENT_VERIFY_ARTIFACT: &str = "target/ripr/workflow/agent-verify.json";
+pub(crate) const WORKFLOW_AGENT_RECEIPT_ARTIFACT: &str = "target/ripr/reports/agent-receipt.json";
+
+pub(crate) const PILOT_BEFORE_SNAPSHOT_ARTIFACT: &str = "target/ripr/pilot/repo-exposure.json";
+pub(crate) const PILOT_AFTER_SNAPSHOT_ARTIFACT: &str = "target/ripr/pilot/after.repo-exposure.json";
+pub(crate) const EDITOR_AGENT_PACKET_ARTIFACT: &str = "target/ripr/agent/agent-packet.json";
+pub(crate) const EDITOR_AGENT_BRIEF_ARTIFACT: &str = "target/ripr/agent/agent-brief.json";
+pub(crate) const EDITOR_AGENT_VERIFY_ARTIFACT: &str = "target/ripr/agent/agent-verify.json";
+pub(crate) const EDITOR_AGENT_RECEIPT_ARTIFACT: &str = "target/ripr/agent/agent-receipt.json";
+
+pub(crate) const WORKFLOW_AGENT_STATUS_ARTIFACT: &str = "target/ripr/workflow/agent-status.json";
+pub(crate) const WORKFLOW_AGENT_REVIEW_SUMMARY_ARTIFACT: &str =
+    "target/ripr/workflow/agent-review-summary.json";
+
+pub(crate) fn check_repo_exposure_command(root: &str, mode: &str, out_path: &str) -> String {
+    format!(
+        "ripr check --root {} --mode {mode} --format repo-exposure-json > {out_path}",
+        shell_arg(root)
+    )
+}
+
+pub(crate) fn agent_seam_packets_command(root: &str, mode: &str, out_path: &str) -> String {
+    format!(
+        "ripr check --root {} --mode {mode} --format agent-seam-packets-json > {out_path}",
+        shell_arg(root)
+    )
+}
+
+pub(crate) fn agent_packet_command(root: &str, seam_id: &str, out_path: &str) -> String {
+    format!(
+        "ripr agent packet --root {} --seam-id {} --json > {out_path}",
+        shell_arg(root),
+        shell_arg(seam_id)
+    )
+}
+
+pub(crate) fn agent_brief_command(root: &str, seam_id: &str, out_path: &str) -> String {
+    format!(
+        "ripr agent brief --root {} --seam-id {} --json > {out_path}",
+        shell_arg(root),
+        shell_arg(seam_id)
+    )
+}
+
+pub(crate) fn agent_verify_command(
+    root: &str,
+    before_path: &str,
+    after_path: &str,
+    out_path: Option<&str>,
+) -> String {
+    let command = format!(
+        "ripr agent verify --root {} --before {before_path} --after {after_path} --json",
+        shell_arg(root)
+    );
+    append_redirect(command, out_path)
+}
+
+pub(crate) fn agent_receipt_command(
+    root: &str,
+    verify_json: &str,
+    seam_id: &str,
+    out_path: Option<&str>,
+) -> String {
+    let command = format!(
+        "ripr agent receipt --root {} --verify-json {verify_json} --seam-id {} --json",
+        shell_arg(root),
+        shell_arg(seam_id)
+    );
+    match out_path {
+        Some(path) => format!("{command} --out {path}"),
+        None => command,
+    }
+}
+
+pub(crate) fn agent_status_command(root: &str, out_path: Option<&str>) -> String {
+    append_redirect(
+        format!("ripr agent status --root {} --json", shell_arg(root)),
+        out_path,
+    )
+}
+
+pub(crate) fn agent_review_summary_command(root: &str, out_path: Option<&str>) -> String {
+    append_redirect(
+        format!(
+            "ripr agent review-summary --root {} --json",
+            shell_arg(root)
+        ),
+        out_path,
+    )
+}
+
+pub(crate) fn outcome_command(
+    before_path: &str,
+    after_path: &str,
+    out_path: Option<&str>,
+) -> String {
+    match out_path {
+        Some(path) => {
+            format!(
+                "ripr outcome --before {before_path} --after {after_path} --format json --out {path}"
+            )
+        }
+        None => format!("ripr outcome --before {before_path} --after {after_path}"),
+    }
+}
+
+pub(crate) fn display_path(path: &Path) -> String {
+    let text = path.to_string_lossy().replace('\\', "/");
+    if text.is_empty() {
+        ".".to_string()
+    } else {
+        text
+    }
+}
+
+pub(crate) fn shell_path(path: &Path) -> String {
+    shell_arg(&display_path(path))
+}
+
+pub(crate) fn shell_arg(value: &str) -> String {
+    if value
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '/' | '\\' | '_' | '-' | ':'))
+    {
+        return value.to_string();
+    }
+    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+fn append_redirect(command: String, out_path: Option<&str>) -> String {
+    match out_path {
+        Some(path) => format!("{command} > {path}"),
+        None => command,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn workflow_commands_match_existing_status_templates() {
+        assert_eq!(
+            check_repo_exposure_command(".", "draft", WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT),
+            "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json"
+        );
+        assert_eq!(
+            check_repo_exposure_command(".", "draft", WORKFLOW_AFTER_SNAPSHOT_ARTIFACT),
+            "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json"
+        );
+        assert_eq!(
+            agent_packet_command(".", "seam-a", WORKFLOW_AGENT_PACKET_ARTIFACT),
+            "ripr agent packet --root . --seam-id seam-a --json > target/ripr/workflow/agent-packet.json"
+        );
+        assert_eq!(
+            agent_brief_command(".", "seam-a", WORKFLOW_AGENT_BRIEF_ARTIFACT),
+            "ripr agent brief --root . --seam-id seam-a --json > target/ripr/workflow/agent-brief.json"
+        );
+        assert_eq!(
+            agent_verify_command(
+                ".",
+                WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
+                WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+                Some(WORKFLOW_AGENT_VERIFY_ARTIFACT),
+            ),
+            "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > target/ripr/workflow/agent-verify.json"
+        );
+        assert_eq!(
+            agent_receipt_command(
+                ".",
+                WORKFLOW_AGENT_VERIFY_ARTIFACT,
+                "seam-a",
+                Some(WORKFLOW_AGENT_RECEIPT_ARTIFACT),
+            ),
+            "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id seam-a --json --out target/ripr/reports/agent-receipt.json"
+        );
+    }
+
+    #[test]
+    fn editor_commands_match_existing_lsp_templates() {
+        assert_eq!(
+            agent_packet_command(".", "seam-a", EDITOR_AGENT_PACKET_ARTIFACT),
+            "ripr agent packet --root . --seam-id seam-a --json > target/ripr/agent/agent-packet.json"
+        );
+        assert_eq!(
+            check_repo_exposure_command(".", "ready", PILOT_AFTER_SNAPSHOT_ARTIFACT),
+            "ripr check --root . --mode ready --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json"
+        );
+        assert_eq!(
+            agent_verify_command(
+                ".",
+                PILOT_BEFORE_SNAPSHOT_ARTIFACT,
+                PILOT_AFTER_SNAPSHOT_ARTIFACT,
+                Some(EDITOR_AGENT_VERIFY_ARTIFACT),
+            ),
+            "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > target/ripr/agent/agent-verify.json"
+        );
+    }
+
+    #[test]
+    fn command_args_quote_spaces_without_touching_plain_tokens() {
+        assert_eq!(shell_arg("repo root"), "\"repo root\"");
+        assert_eq!(shell_arg("target/ripr/workflow"), "target/ripr/workflow");
+    }
+}

@@ -4,6 +4,7 @@
 //! one small operator summary. It does not change classification semantics or
 //! run additional analysis.
 
+use crate::agent::loop_commands::{self, display_path};
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::seams::SeamGripClass;
 use crate::app::Mode;
@@ -636,22 +637,21 @@ impl PilotCommands {
             .parent()
             .map(|dir| dir.join("after.repo-exposure.json"))
             .unwrap_or_else(|| PathBuf::from("after.repo-exposure.json"));
-        let after_snapshot = format!(
-            "ripr check --root {} --mode {} --format repo-exposure-json > {}",
-            shell_path(context.root),
+        let after_snapshot = loop_commands::check_repo_exposure_command(
+            &display_path(context.root),
             context.mode.as_str(),
-            shell_path(&after_path)
+            &loop_commands::shell_path(&after_path),
         );
-        let outcome = format!(
-            "ripr outcome --before {} --after {}",
-            shell_path(&context.artifacts.repo_exposure_json),
-            shell_path(&after_path)
+        let outcome = loop_commands::outcome_command(
+            &loop_commands::shell_path(&context.artifacts.repo_exposure_json),
+            &loop_commands::shell_path(&after_path),
+            None,
         );
         let retry_timeout_ms = context.timeout_ms.saturating_mul(4).max(120_000);
         let retry = format!(
             "ripr pilot --root {} --out {} --mode {} --max-seams {} --timeout-ms {}",
-            shell_path(context.root),
-            shell_path(&out_dir),
+            loop_commands::shell_path(context.root),
+            loop_commands::shell_path(&out_dir),
             context.mode.as_str(),
             context.max_seams,
             retry_timeout_ms
@@ -662,19 +662,6 @@ impl PilotCommands {
             retry,
         }
     }
-}
-
-fn shell_path(path: &Path) -> String {
-    let text = display_path(path);
-    if text.chars().any(char::is_whitespace) {
-        format!("\"{}\"", text.replace('"', "\\\""))
-    } else {
-        text
-    }
-}
-
-fn display_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
 }
 
 fn display_path_text(path: &str) -> String {

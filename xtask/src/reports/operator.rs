@@ -3,16 +3,13 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[path = "../../../crates/ripr/src/agent/loop_commands.rs"]
+mod loop_commands;
+
 const TOP_WEAK_SEAMS_LIMIT: usize = 5;
-const BEFORE_SNAPSHOT_ARTIFACT: &str = "target/ripr/pilot/repo-exposure.json";
-const AFTER_SNAPSHOT_ARTIFACT: &str = "target/ripr/pilot/after.repo-exposure.json";
-const AGENT_VERIFY_ARTIFACT: &str = "target/ripr/agent/agent-verify.json";
-const AGENT_RECEIPT_ARTIFACT: &str = "target/ripr/agent/agent-receipt.json";
 const BEFORE_SNAPSHOT_COMMAND: &str = "ripr pilot --out target/ripr/pilot";
-const AFTER_SNAPSHOT_COMMAND: &str = "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json";
-const AGENT_VERIFY_COMMAND: &str = "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > target/ripr/agent/agent-verify.json";
-const AGENT_RECEIPT_COMMAND: &str = "ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id <seam-id> --json --out target/ripr/agent/agent-receipt.json";
-const TARGETED_OUTCOME_COMMAND: &str = "ripr outcome --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --format json --out target/ripr/reports/targeted-test-outcome.json";
+const TARGETED_OUTCOME_ARTIFACT: &str = "target/ripr/reports/targeted-test-outcome.json";
+const RECEIPT_SEAM_ID_PLACEHOLDER: &str = "__RIPR_SEAM_ID_PLACEHOLDER__:unset";
 
 #[derive(Clone, Debug)]
 struct OperatorArtifact {
@@ -91,6 +88,7 @@ pub(crate) fn operator_cockpit_report() -> Result<(), String> {
 }
 
 fn build_operator_cockpit_report_at(report_dir: &Path) -> OperatorCockpitReport {
+    keep_shared_loop_templates_reachable();
     let repo_exposure = read_artifact(
         report_dir,
         "repo exposure",
@@ -123,35 +121,35 @@ fn build_operator_cockpit_report_at(report_dir: &Path) -> OperatorCockpitReport 
         report_dir,
         "targeted-test outcome",
         "targeted-test-outcome.json",
-        TARGETED_OUTCOME_COMMAND,
+        &targeted_outcome_command(),
         true,
     );
     let before_snapshot = read_workspace_artifact(
         report_dir,
         "before snapshot",
-        BEFORE_SNAPSHOT_ARTIFACT,
+        loop_commands::PILOT_BEFORE_SNAPSHOT_ARTIFACT,
         BEFORE_SNAPSHOT_COMMAND,
         true,
     );
     let after_snapshot = read_workspace_artifact(
         report_dir,
         "after snapshot",
-        AFTER_SNAPSHOT_ARTIFACT,
-        AFTER_SNAPSHOT_COMMAND,
+        loop_commands::PILOT_AFTER_SNAPSHOT_ARTIFACT,
+        &after_snapshot_command(),
         true,
     );
     let agent_verify = read_workspace_artifact(
         report_dir,
         "agent verify",
-        AGENT_VERIFY_ARTIFACT,
-        AGENT_VERIFY_COMMAND,
+        loop_commands::EDITOR_AGENT_VERIFY_ARTIFACT,
+        &agent_verify_command(),
         true,
     );
     let agent_receipt = read_workspace_artifact(
         report_dir,
         "agent receipt",
-        AGENT_RECEIPT_ARTIFACT,
-        AGENT_RECEIPT_COMMAND,
+        loop_commands::EDITOR_AGENT_RECEIPT_ARTIFACT,
+        &receipt_command_for(None),
         true,
     );
     let calibration = read_artifact(
@@ -195,6 +193,51 @@ fn build_operator_cockpit_report_at(report_dir: &Path) -> OperatorCockpitReport 
         surface_alignment,
         next_commands,
     }
+}
+
+fn keep_shared_loop_templates_reachable() {
+    drop((
+        loop_commands::WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
+        loop_commands::WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+        loop_commands::WORKFLOW_AGENT_SEAM_PACKETS_ARTIFACT,
+        loop_commands::WORKFLOW_AGENT_PACKET_ARTIFACT,
+        loop_commands::WORKFLOW_AGENT_BRIEF_ARTIFACT,
+        loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT,
+        loop_commands::WORKFLOW_AGENT_RECEIPT_ARTIFACT,
+        loop_commands::WORKFLOW_AGENT_STATUS_ARTIFACT,
+        loop_commands::WORKFLOW_AGENT_REVIEW_SUMMARY_ARTIFACT,
+        loop_commands::PILOT_BEFORE_SNAPSHOT_ARTIFACT,
+        loop_commands::PILOT_AFTER_SNAPSHOT_ARTIFACT,
+        loop_commands::EDITOR_AGENT_PACKET_ARTIFACT,
+        loop_commands::EDITOR_AGENT_BRIEF_ARTIFACT,
+        loop_commands::EDITOR_AGENT_VERIFY_ARTIFACT,
+        loop_commands::EDITOR_AGENT_RECEIPT_ARTIFACT,
+        loop_commands::agent_seam_packets_command(
+            ".",
+            "draft",
+            loop_commands::WORKFLOW_AGENT_SEAM_PACKETS_ARTIFACT,
+        ),
+        loop_commands::agent_packet_command(
+            ".",
+            "seam-id",
+            loop_commands::WORKFLOW_AGENT_PACKET_ARTIFACT,
+        ),
+        loop_commands::agent_brief_command(
+            ".",
+            "seam-id",
+            loop_commands::WORKFLOW_AGENT_BRIEF_ARTIFACT,
+        ),
+        loop_commands::agent_status_command(
+            ".",
+            Some(loop_commands::WORKFLOW_AGENT_STATUS_ARTIFACT),
+        ),
+        loop_commands::agent_review_summary_command(
+            ".",
+            Some(loop_commands::WORKFLOW_AGENT_REVIEW_SUMMARY_ARTIFACT),
+        ),
+        loop_commands::display_path(Path::new(".")),
+        loop_commands::shell_path(Path::new(".")),
+    ));
 }
 
 fn read_workspace_artifact(
@@ -577,13 +620,13 @@ fn operator_next_commands(
         push_next_command(
             &mut commands,
             &mut seen,
-            AFTER_SNAPSHOT_COMMAND,
+            &after_snapshot_command(),
             "After adding the targeted test, capture the after repo-exposure snapshot.",
         );
         push_next_command(
             &mut commands,
             &mut seen,
-            AGENT_VERIFY_COMMAND,
+            &agent_verify_command(),
             "Compare the before and after static evidence snapshots for the agent loop.",
         );
         push_next_command(
@@ -595,7 +638,7 @@ fn operator_next_commands(
         push_next_command(
             &mut commands,
             &mut seen,
-            TARGETED_OUTCOME_COMMAND,
+            &targeted_outcome_command(),
             "Compare the before and after static evidence snapshots.",
         );
     } else if commands.is_empty() {
@@ -620,8 +663,39 @@ fn missing_artifact_command(
 }
 
 fn receipt_command_for(seam_id: Option<&str>) -> String {
-    let seam_id = seam_id.unwrap_or("<seam-id>");
-    AGENT_RECEIPT_COMMAND.replace("<seam-id>", seam_id)
+    let seam_id = seam_id.unwrap_or(RECEIPT_SEAM_ID_PLACEHOLDER);
+    loop_commands::agent_receipt_command(
+        ".",
+        loop_commands::EDITOR_AGENT_VERIFY_ARTIFACT,
+        seam_id,
+        Some(loop_commands::EDITOR_AGENT_RECEIPT_ARTIFACT),
+    )
+    .replace(RECEIPT_SEAM_ID_PLACEHOLDER, "<seam-id>")
+}
+
+fn after_snapshot_command() -> String {
+    loop_commands::check_repo_exposure_command(
+        ".",
+        "draft",
+        loop_commands::PILOT_AFTER_SNAPSHOT_ARTIFACT,
+    )
+}
+
+fn agent_verify_command() -> String {
+    loop_commands::agent_verify_command(
+        ".",
+        loop_commands::PILOT_BEFORE_SNAPSHOT_ARTIFACT,
+        loop_commands::PILOT_AFTER_SNAPSHOT_ARTIFACT,
+        Some(loop_commands::EDITOR_AGENT_VERIFY_ARTIFACT),
+    )
+}
+
+fn targeted_outcome_command() -> String {
+    loop_commands::outcome_command(
+        loop_commands::PILOT_BEFORE_SNAPSHOT_ARTIFACT,
+        loop_commands::PILOT_AFTER_SNAPSHOT_ARTIFACT,
+        Some(TARGETED_OUTCOME_ARTIFACT),
+    )
 }
 
 fn push_next_command(
@@ -1028,13 +1102,13 @@ mod tests {
             command.command == BEFORE_SNAPSHOT_COMMAND && command.reason.contains("before snapshot")
         }));
         assert!(report.next_commands.iter().any(|command| {
-            command.command == AFTER_SNAPSHOT_COMMAND && command.reason.contains("after snapshot")
+            command.command == after_snapshot_command() && command.reason.contains("after snapshot")
         }));
         assert!(report.next_commands.iter().any(|command| {
-            command.command == AGENT_VERIFY_COMMAND && command.reason.contains("agent verify")
+            command.command == agent_verify_command() && command.reason.contains("agent verify")
         }));
         assert!(report.next_commands.iter().any(|command| {
-            command.command == AGENT_RECEIPT_COMMAND && command.reason.contains("agent receipt")
+            command.command == receipt_command_for(None) && command.reason.contains("agent receipt")
         }));
 
         let json = operator_cockpit_json(&report)?;
@@ -1046,15 +1120,27 @@ mod tests {
     }
 
     #[test]
+    fn receipt_command_placeholder_does_not_rewrite_real_seam_ids() {
+        let command = receipt_command_for(Some("RIPR_SEAM_ID_PLACEHOLDER"));
+
+        assert!(command.contains("--seam-id RIPR_SEAM_ID_PLACEHOLDER"));
+        assert!(!command.contains("<seam-id>"));
+    }
+
+    #[test]
     fn operator_cockpit_json_and_markdown_are_structured() -> Result<(), String> {
         let root = temp_report_dir("structured")?;
         let dir = root.join("target/ripr/reports");
         fs::create_dir_all(&dir)
             .map_err(|err| format!("failed to create {}: {err}", dir.display()))?;
-        let before_snapshot = workspace_artifact_path(&dir, BEFORE_SNAPSHOT_ARTIFACT);
-        let after_snapshot = workspace_artifact_path(&dir, AFTER_SNAPSHOT_ARTIFACT);
-        let agent_verify = workspace_artifact_path(&dir, AGENT_VERIFY_ARTIFACT);
-        let agent_receipt = workspace_artifact_path(&dir, AGENT_RECEIPT_ARTIFACT);
+        let before_snapshot =
+            workspace_artifact_path(&dir, loop_commands::PILOT_BEFORE_SNAPSHOT_ARTIFACT);
+        let after_snapshot =
+            workspace_artifact_path(&dir, loop_commands::PILOT_AFTER_SNAPSHOT_ARTIFACT);
+        let agent_verify =
+            workspace_artifact_path(&dir, loop_commands::EDITOR_AGENT_VERIFY_ARTIFACT);
+        let agent_receipt =
+            workspace_artifact_path(&dir, loop_commands::EDITOR_AGENT_RECEIPT_ARTIFACT);
         write_json(
             &dir,
             "repo-exposure.json",
@@ -1137,8 +1223,8 @@ mod tests {
                 "tool": "ripr",
                 "status": "advisory",
                 "inputs": {
-                    "before": BEFORE_SNAPSHOT_ARTIFACT,
-                    "after": AFTER_SNAPSHOT_ARTIFACT
+                    "before": loop_commands::PILOT_BEFORE_SNAPSHOT_ARTIFACT,
+                    "after": loop_commands::PILOT_AFTER_SNAPSHOT_ARTIFACT
                 },
                 "summary": {
                     "improved": 1,
@@ -1161,9 +1247,9 @@ mod tests {
                 "tool": "ripr",
                 "status": "advisory",
                 "inputs": {
-                    "agent_verify_json": AGENT_VERIFY_ARTIFACT,
-                    "before": BEFORE_SNAPSHOT_ARTIFACT,
-                    "after": AFTER_SNAPSHOT_ARTIFACT
+                    "agent_verify_json": loop_commands::EDITOR_AGENT_VERIFY_ARTIFACT,
+                    "before": loop_commands::PILOT_BEFORE_SNAPSHOT_ARTIFACT,
+                    "after": loop_commands::PILOT_AFTER_SNAPSHOT_ARTIFACT
                 },
                 "seam": {
                     "seam_id": "67fc764ba37d77bd",
@@ -1297,11 +1383,11 @@ mod tests {
         )?;
         copy_file(
             &calibration.join("before-targeted-test.repo-exposure.json"),
-            &workspace_artifact_path(&dir, BEFORE_SNAPSHOT_ARTIFACT),
+            &workspace_artifact_path(&dir, loop_commands::PILOT_BEFORE_SNAPSHOT_ARTIFACT),
         )?;
         copy_file(
             &calibration.join("after-targeted-test.repo-exposure.json"),
-            &workspace_artifact_path(&dir, AFTER_SNAPSHOT_ARTIFACT),
+            &workspace_artifact_path(&dir, loop_commands::PILOT_AFTER_SNAPSHOT_ARTIFACT),
         )?;
         copy_file(
             &calibration.join("targeted-test-outcome.json"),
@@ -1309,11 +1395,11 @@ mod tests {
         )?;
         copy_file(
             &fixture.join("agent-verify.json"),
-            &workspace_artifact_path(&dir, AGENT_VERIFY_ARTIFACT),
+            &workspace_artifact_path(&dir, loop_commands::EDITOR_AGENT_VERIFY_ARTIFACT),
         )?;
         copy_file(
             &fixture.join("agent-receipt.json"),
-            &workspace_artifact_path(&dir, AGENT_RECEIPT_ARTIFACT),
+            &workspace_artifact_path(&dir, loop_commands::EDITOR_AGENT_RECEIPT_ARTIFACT),
         )?;
         write_json(
             &dir,

@@ -37,7 +37,7 @@ commands = [
 
 [[work_item]]
 id = "agent/centralize-loop-command-templates"
-status = "ready"
+status = "done"
 branch = "agent-centralize-loop-command-templates"
 stackable = false
 requires_human_merge = true
@@ -54,13 +54,17 @@ commands = [
 
 [[work_item]]
 id = "agent/workflow-manifest"
-status = "blocked"
+status = "ready"
 branch = "agent-workflow-manifest"
 stackable = false
 requires_human_merge = true
-blocked_by = ["agent/centralize-loop-command-templates"]
-blocked_reason = "Wait until command templates are centralized so the workflow manifest does not create another command-string source of truth"
 acceptance = "Add `ripr agent start --root . --seam-id <id> --out target/ripr/workflow` to write a source-edit-free workflow manifest containing artifact paths and commands"
+commands = [
+  "cargo test -p ripr agent",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr"
+]
 
 [[work_item]]
 id = "agent/receipt-provenance"

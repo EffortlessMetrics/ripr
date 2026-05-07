@@ -79,14 +79,14 @@ diagnostic, evidence, packet/brief, focused-test, after-snapshot, verify,
 receipt, cockpit, CI, and install loop. Its release-readiness gate proves the
 installed CLI, boundary-gap `pilot`, `outcome`, `agent verify`,
 `agent receipt`, latency, LSP cockpit, advisory workflow, VSIX path, and
-known-limit surfaces. Campaign 11 is now active as the LLM work loop: the first
-slice adds `ripr agent status --root . --json` as a read-only lens over
-existing artifacts, and the next ready item is
-`agent/centralize-loop-command-templates`. Campaign 12 is queued as
+known-limit surfaces. Campaign 11 is now active as the LLM work loop: `ripr
+agent status --root . --json` is a read-only lens over existing artifacts, loop
+command templates are centralized for the current CLI/LSP/cockpit/CI surfaces,
+and the next ready item is `agent/workflow-manifest`. Campaign 12 is queued as
 First-Hour UX: after the LLM work-loop command and artifact state is stable,
 the next product risk is making the VS Code extension and generated GitHub
-workflow explain the top recommendation without requiring users to inspect
-CLI reports first.
+workflow explain the top recommendation without requiring users to inspect CLI
+reports first.
 
 ## Strategic Sequence
 

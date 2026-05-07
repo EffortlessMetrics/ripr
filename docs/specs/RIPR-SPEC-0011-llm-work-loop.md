@@ -41,6 +41,26 @@ The status report should:
   snapshot or `agent receipt` is older than `agent verify`;
 - keep all language advisory and static.
 
+The loop command templates are centralized in one internal module before the
+workflow manifest is introduced. That module owns the current workflow artifact
+paths, the editor/CI pilot-agent artifact paths, and the command builders for:
+
+```text
+ripr check --format repo-exposure-json
+ripr check --format agent-seam-packets-json
+ripr agent packet
+ripr agent brief
+ripr agent verify
+ripr agent receipt
+ripr agent status
+ripr agent review-summary
+ripr outcome
+```
+
+Current consumers must preserve their existing emitted command text while
+sharing these builders where they construct command payloads or missing-input
+commands.
+
 ## JSON Shape
 
 The status report uses schema version `0.1`:
@@ -99,6 +119,9 @@ The first LLM work-loop slice requires:
   between receipt and verify;
 - output schema, traceability, capability, and campaign entries that point to
   the behavior.
+- shared command templates for the existing status next commands, agent brief
+  next commands, LSP copy actions, pilot next commands, generated CI artifact
+  paths, and operator cockpit missing-input commands.
 
 ## Non-Goals
 
@@ -123,6 +146,10 @@ The LLM work loop must not:
   failures.
 - The command can recover a seam from receipt, verify, packet, or brief JSON.
 - Path arguments with spaces are quoted in generated next commands.
+- LSP agent-loop copy action command payloads remain byte-for-byte compatible
+  with the existing fixture expectations.
+- Operator cockpit missing-input commands remain fixture-compatible while
+  sharing the same template source as the CLI/LSP command builders.
 - No automatic edits, generated tests, runtime mutation execution, speculative
   LSP features, or new public crates are added.
 
@@ -136,15 +163,28 @@ The LLM work loop must not:
 - `crates/ripr/src/cli/agent.rs::tests::agent_status_parses_root_and_json`
 - `crates/ripr/src/cli/agent.rs::tests::agent_status_requires_json_and_rejects_unknown_arguments`
 - `crates/ripr/src/cli/commands.rs::tests::agent_status_rejects_missing_root_before_reading_artifacts`
+- `crates/ripr/src/agent/loop_commands.rs::tests::workflow_commands_match_existing_status_templates`
+- `crates/ripr/src/agent/loop_commands.rs::tests::editor_commands_match_existing_lsp_templates`
+- `crates/ripr/src/lsp/tests.rs::agent_loop_command_payloads_stay_workspace_relative_for_platform_roots`
+- `xtask/src/reports/operator.rs::tests::operator_cockpit_matches_editor_agent_loop_fixture`
 
 ## Implementation Mapping
 
 - `crates/ripr/src/app/agent_status.rs` builds and renders the report from
   existing artifact files.
+- `crates/ripr/src/agent/loop_commands.rs` owns internal command and artifact
+  templates for status, brief, LSP copy actions, pilot next commands, generated
+  CI paths, and cockpit missing-input commands.
 - `crates/ripr/src/cli/agent.rs` parses the JSON-only status subcommand.
 - `crates/ripr/src/cli/commands.rs` validates the root and dispatches the
-  report.
+  report, and reuses shared path templates for generated GitHub workflow agent
+  artifacts.
 - `crates/ripr/src/cli/help.rs` documents the command surface.
+- `crates/ripr/src/output/agent_brief.rs`, `crates/ripr/src/output/pilot.rs`,
+  and `crates/ripr/src/lsp/actions.rs` reuse the shared command builders for
+  their current command payloads.
+- `xtask/src/reports/operator.rs` reuses the shared command builder source for
+  editor-agent cockpit missing-input commands.
 - `docs/OUTPUT_SCHEMA.md` defines the Agent Status output contract.
 - `.ripr/traceability.toml` maps this spec to tests, code, outputs, and
   metrics.

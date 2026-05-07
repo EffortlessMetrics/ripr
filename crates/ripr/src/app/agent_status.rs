@@ -1,15 +1,16 @@
+use crate::agent::loop_commands::{
+    WORKFLOW_AFTER_SNAPSHOT_ARTIFACT, WORKFLOW_AGENT_BRIEF_ARTIFACT,
+    WORKFLOW_AGENT_PACKET_ARTIFACT, WORKFLOW_AGENT_RECEIPT_ARTIFACT,
+    WORKFLOW_AGENT_REVIEW_SUMMARY_ARTIFACT, WORKFLOW_AGENT_STATUS_ARTIFACT,
+    WORKFLOW_AGENT_VERIFY_ARTIFACT, WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_brief_command,
+    agent_packet_command, agent_receipt_command, agent_review_summary_command,
+    agent_status_command, agent_verify_command, check_repo_exposure_command, display_path,
+};
 use serde_json::Value;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(crate) const AGENT_STATUS_SCHEMA_VERSION: &str = "0.1";
-
-const BEFORE_SNAPSHOT_PATH: &str = "target/ripr/workflow/before.repo-exposure.json";
-const AFTER_SNAPSHOT_PATH: &str = "target/ripr/workflow/after.repo-exposure.json";
-const AGENT_BRIEF_PATH: &str = "target/ripr/workflow/agent-brief.json";
-const AGENT_PACKET_PATH: &str = "target/ripr/workflow/agent-packet.json";
-const AGENT_VERIFY_PATH: &str = "target/ripr/workflow/agent-verify.json";
-const AGENT_RECEIPT_PATH: &str = "target/ripr/reports/agent-receipt.json";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct AgentStatusArtifactDef {
@@ -22,32 +23,32 @@ const ARTIFACTS: &[AgentStatusArtifactDef] = &[
     AgentStatusArtifactDef {
         name: "before_snapshot",
         label: "before snapshot",
-        path: BEFORE_SNAPSHOT_PATH,
+        path: WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
     },
     AgentStatusArtifactDef {
         name: "after_snapshot",
         label: "after snapshot",
-        path: AFTER_SNAPSHOT_PATH,
+        path: WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
     },
     AgentStatusArtifactDef {
         name: "agent_brief",
         label: "agent brief",
-        path: AGENT_BRIEF_PATH,
+        path: WORKFLOW_AGENT_BRIEF_ARTIFACT,
     },
     AgentStatusArtifactDef {
         name: "agent_packet",
         label: "agent packet",
-        path: AGENT_PACKET_PATH,
+        path: WORKFLOW_AGENT_PACKET_ARTIFACT,
     },
     AgentStatusArtifactDef {
         name: "agent_verify",
         label: "agent verify",
-        path: AGENT_VERIFY_PATH,
+        path: WORKFLOW_AGENT_VERIFY_ARTIFACT,
     },
     AgentStatusArtifactDef {
         name: "agent_receipt",
         label: "agent receipt",
-        path: AGENT_RECEIPT_PATH,
+        path: WORKFLOW_AGENT_RECEIPT_ARTIFACT,
     },
 ];
 
@@ -113,6 +114,8 @@ impl AgentStatusReport {
 }
 
 pub(crate) fn build_agent_status_report(root: &Path, root_argument: &Path) -> AgentStatusReport {
+    let root_display = display_path(root_argument);
+    keep_follow_up_templates_reachable(&root_display);
     let artifacts = ARTIFACTS
         .iter()
         .map(|artifact| inspect_artifact(root, artifact))
@@ -123,12 +126,19 @@ pub(crate) fn build_agent_status_report(root: &Path, root_argument: &Path) -> Ag
     let missing_commands = missing_commands(root_argument, seam.as_ref(), &artifacts);
 
     AgentStatusReport {
-        root: report_path(root_argument),
+        root: root_display,
         seam,
         artifacts,
         missing_commands,
         warnings,
     }
+}
+
+fn keep_follow_up_templates_reachable(root: &str) {
+    drop((
+        agent_status_command(root, Some(WORKFLOW_AGENT_STATUS_ARTIFACT)),
+        agent_review_summary_command(root, Some(WORKFLOW_AGENT_REVIEW_SUMMARY_ARTIFACT)),
+    ));
 }
 
 pub(crate) fn render_agent_status_json(report: &AgentStatusReport) -> Result<String, String> {
@@ -404,31 +414,30 @@ fn command_for_missing_artifact(
     seam: Option<&AgentStatusSeam>,
     artifact: &AgentStatusArtifact,
 ) -> String {
-    let root = shell_arg(&report_path(root_argument));
+    let root = display_path(root_argument);
     let seam_id = seam
         .map(|seam| seam.seam_id.as_str())
         .unwrap_or("<seam-id>");
     match artifact.name.as_str() {
-        "before_snapshot" => format!(
-            "ripr check --root {root} --mode draft --format repo-exposure-json > {BEFORE_SNAPSHOT_PATH}"
+        "before_snapshot" => {
+            check_repo_exposure_command(&root, "draft", WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT)
+        }
+        "after_snapshot" => {
+            check_repo_exposure_command(&root, "draft", WORKFLOW_AFTER_SNAPSHOT_ARTIFACT)
+        }
+        "agent_packet" => agent_packet_command(&root, seam_id, WORKFLOW_AGENT_PACKET_ARTIFACT),
+        "agent_brief" => agent_brief_command(&root, seam_id, WORKFLOW_AGENT_BRIEF_ARTIFACT),
+        "agent_verify" => agent_verify_command(
+            &root,
+            WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
+            WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+            Some(WORKFLOW_AGENT_VERIFY_ARTIFACT),
         ),
-        "after_snapshot" => format!(
-            "ripr check --root {root} --mode draft --format repo-exposure-json > {AFTER_SNAPSHOT_PATH}"
-        ),
-        "agent_packet" => format!(
-            "ripr agent packet --root {root} --seam-id {} --json > {AGENT_PACKET_PATH}",
-            shell_arg(seam_id)
-        ),
-        "agent_brief" => format!(
-            "ripr agent brief --root {root} --seam-id {} --json > {AGENT_BRIEF_PATH}",
-            shell_arg(seam_id)
-        ),
-        "agent_verify" => format!(
-            "ripr agent verify --root {root} --before {BEFORE_SNAPSHOT_PATH} --after {AFTER_SNAPSHOT_PATH} --json > {AGENT_VERIFY_PATH}"
-        ),
-        "agent_receipt" => format!(
-            "ripr agent receipt --root {root} --verify-json {AGENT_VERIFY_PATH} --seam-id {} --json --out {AGENT_RECEIPT_PATH}",
-            shell_arg(seam_id)
+        "agent_receipt" => agent_receipt_command(
+            &root,
+            WORKFLOW_AGENT_VERIFY_ARTIFACT,
+            seam_id,
+            Some(WORKFLOW_AGENT_RECEIPT_ARTIFACT),
         ),
         _ => String::new(),
     }
@@ -439,25 +448,6 @@ fn artifact_by_name<'a>(
     name: &str,
 ) -> Option<&'a AgentStatusArtifact> {
     artifacts.iter().find(|artifact| artifact.name == name)
-}
-
-fn report_path(path: &Path) -> String {
-    let text = path.to_string_lossy().replace('\\', "/");
-    if text.is_empty() {
-        ".".to_string()
-    } else {
-        text
-    }
-}
-
-fn shell_arg(value: &str) -> String {
-    if value
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '/' | '\\' | '_' | '-' | ':'))
-    {
-        return value.to_string();
-    }
-    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
 fn modified_unix_ms(time: Option<SystemTime>) -> Option<u64> {
@@ -531,12 +521,12 @@ mod tests {
     #[test]
     fn agent_status_reports_complete_when_all_artifacts_are_present() -> Result<(), String> {
         let root = unique_agent_status_test_dir("complete");
-        write_file(&root.join(BEFORE_SNAPSHOT_PATH), "{}")?;
-        write_file(&root.join(AFTER_SNAPSHOT_PATH), "{}")?;
-        write_file(&root.join(AGENT_BRIEF_PATH), "{}")?;
-        write_file(&root.join(AGENT_PACKET_PATH), "{}")?;
+        write_file(&root.join(WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT), "{}")?;
+        write_file(&root.join(WORKFLOW_AFTER_SNAPSHOT_ARTIFACT), "{}")?;
+        write_file(&root.join(WORKFLOW_AGENT_BRIEF_ARTIFACT), "{}")?;
+        write_file(&root.join(WORKFLOW_AGENT_PACKET_ARTIFACT), "{}")?;
         write_file(
-            &root.join(AGENT_VERIFY_PATH),
+            &root.join(WORKFLOW_AGENT_VERIFY_ARTIFACT),
             r#"{
   "changed_seams": [],
   "unchanged_seams": [{"seam_id": "from-verify"}],
@@ -545,7 +535,7 @@ mod tests {
 }"#,
         )?;
         write_file(
-            &root.join(AGENT_RECEIPT_PATH),
+            &root.join(WORKFLOW_AGENT_RECEIPT_ARTIFACT),
             r#"{"seam":{"seam_id":"from-receipt"}}"#,
         )?;
 
@@ -574,7 +564,7 @@ mod tests {
     fn agent_status_recovers_seam_id_from_receipt() -> Result<(), String> {
         let root = unique_agent_status_test_dir("receipt");
         write_file(
-            &root.join(AGENT_RECEIPT_PATH),
+            &root.join(WORKFLOW_AGENT_RECEIPT_ARTIFACT),
             r#"{"seam":{"seam_id":"67fc764ba37d77bd"}}"#,
         )?;
 
@@ -599,7 +589,7 @@ mod tests {
     #[test]
     fn agent_status_warns_for_malformed_present_json() -> Result<(), String> {
         let root = unique_agent_status_test_dir("malformed");
-        write_file(&root.join(AGENT_RECEIPT_PATH), "{not json")?;
+        write_file(&root.join(WORKFLOW_AGENT_RECEIPT_ARTIFACT), "{not json")?;
 
         let report = build_agent_status_report(&root, Path::new("."));
 
@@ -722,7 +712,9 @@ mod tests {
 
     #[test]
     fn agent_status_quotes_paths_with_spaces() {
-        assert_eq!(shell_arg("repo root"), "\"repo root\"");
-        assert_eq!(shell_arg("target/ripr/workflow"), "target/ripr/workflow");
+        assert_eq!(
+            agent_packet_command("repo root", "seam-a", WORKFLOW_AGENT_PACKET_ARTIFACT),
+            "ripr agent packet --root \"repo root\" --seam-id seam-a --json > target/ripr/workflow/agent-packet.json"
+        );
     }
 }
