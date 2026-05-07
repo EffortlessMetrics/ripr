@@ -7,9 +7,9 @@
 
 repository:
   name: ripr
-  description: "Static test-grip cockpit for Rust: find weakly exercised seams and guide targeted tests."
+  description: "Find Rust test-oracle gaps before mutation testing: static RIPR evidence for CI, editors, and agents."
   homepage: "https://github.com/EffortlessMetrics/ripr/"
-  topics: rust, testing, mutation-testing, static-analysis, test-automation, developer-tools, code-coverage, lsp, vscode-extension, sarif, github-actions, ci, quality-assurance, developer-experience
+  topics: rust, testing, mutation-testing, static-analysis, test-automation, developer-tools, code-coverage, lsp, vscode-extension, sarif, github-actions, ci
   private: false
 
   default_branch: main
