@@ -9,6 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 pub(crate) const TARGETED_TEST_OUTCOME_SCHEMA_VERSION: &str = "0.1";
+pub(crate) const AGENT_VERIFY_SCHEMA_VERSION: &str = "0.1";
 
 const SEAM_GRIP_CLASS_ORDER: &[&str] = &[
     "strongly_gripped",
@@ -114,6 +115,55 @@ pub(crate) fn render_targeted_test_outcome_json(
             rendered
         })
         .map_err(|err| format!("failed to render targeted-test outcome JSON: {err}"))
+}
+
+pub(crate) fn render_agent_verify_json(
+    report: &TargetedTestOutcomeReport,
+) -> Result<String, String> {
+    let improved = report
+        .moved
+        .iter()
+        .filter(|movement| movement.direction == "improved")
+        .count();
+    let changed = report
+        .moved
+        .iter()
+        .filter(|movement| movement.direction != "improved")
+        .count();
+    let changed_seams = report
+        .moved
+        .iter()
+        .chain(report.regressed.iter())
+        .map(agent_verify_movement_json)
+        .collect::<Vec<_>>();
+
+    let value = serde_json::json!({
+        "schema_version": AGENT_VERIFY_SCHEMA_VERSION,
+        "tool": "ripr",
+        "status": "advisory",
+        "inputs": {
+            "before": report.before_path.as_str(),
+            "after": report.after_path.as_str()
+        },
+        "summary": {
+            "improved": improved,
+            "changed": changed,
+            "regressed": report.regressed.len(),
+            "unchanged": report.unchanged.len(),
+            "new": report.new.len(),
+            "resolved": report.removed.len()
+        },
+        "changed_seams": changed_seams,
+        "unchanged_seams": report.unchanged.iter().map(agent_verify_movement_json).collect::<Vec<_>>(),
+        "new_gaps": report.new.iter().map(|seam| agent_verify_seam_json(seam, "new")).collect::<Vec<_>>(),
+        "resolved_gaps": report.removed.iter().map(|seam| agent_verify_seam_json(seam, "resolved")).collect::<Vec<_>>()
+    });
+    serde_json::to_string_pretty(&value)
+        .map(|mut rendered| {
+            rendered.push('\n');
+            rendered
+        })
+        .map_err(|err| format!("failed to render agent verify JSON: {err}"))
 }
 
 pub(crate) fn render_targeted_test_outcome_md(report: &TargetedTestOutcomeReport) -> String {
@@ -411,6 +461,30 @@ fn targeted_test_outcome_seam_json(seam: &TargetedTestOutcomeSeam) -> Value {
     })
 }
 
+fn agent_verify_movement_json(movement: &TargetedTestOutcomeMovement) -> Value {
+    serde_json::json!({
+        "seam_id": movement.seam_id.as_str(),
+        "seam_kind": movement.seam_kind.as_str(),
+        "file": movement.file.as_str(),
+        "line": movement.line,
+        "before": movement.before.as_str(),
+        "after": movement.after.as_str(),
+        "change": movement.direction.as_str(),
+        "evidence_delta": movement.evidence_delta
+    })
+}
+
+fn agent_verify_seam_json(seam: &TargetedTestOutcomeSeam, change: &str) -> Value {
+    serde_json::json!({
+        "seam_id": seam.seam_id.as_str(),
+        "seam_kind": seam.seam_kind.as_str(),
+        "file": seam.file.as_str(),
+        "line": seam.line,
+        "grip_class": seam.grip_class.as_str(),
+        "change": change
+    })
+}
+
 fn push_targeted_outcome_movements_md(
     out: &mut String,
     title: &str,
@@ -668,6 +742,42 @@ mod tests {
         assert!(markdown.contains("seam-same"));
         assert!(markdown.contains("new observed value: 100"));
         assert!(markdown.contains("weakly_gripped -> strongly_gripped"));
+        Ok(())
+    }
+
+    #[test]
+    fn agent_verify_json_maps_outcome_to_agent_status_buckets() -> Result<(), String> {
+        let before = vec![
+            targeted_static_seam("improved", "weakly_gripped"),
+            targeted_static_seam("regressed", "weakly_gripped"),
+            targeted_static_seam("unchanged", "weakly_gripped"),
+            targeted_static_seam("resolved", "ungripped"),
+        ];
+        let after = vec![
+            targeted_static_seam("improved", "strongly_gripped"),
+            targeted_static_seam("regressed", "ungripped"),
+            targeted_static_seam("unchanged", "weakly_gripped"),
+            targeted_static_seam("new", "weakly_gripped"),
+        ];
+        let report = build_targeted_test_outcome_report(
+            &before,
+            &after,
+            "before.json".to_string(),
+            "after.json".to_string(),
+        )?;
+
+        let json = render_agent_verify_json(&report)?;
+        let value: Value = serde_json::from_str(&json)
+            .map_err(|err| format!("agent verify JSON should parse: {err}"))?;
+        assert_eq!(value["schema_version"], AGENT_VERIFY_SCHEMA_VERSION);
+        assert_eq!(value["status"], "advisory");
+        assert_eq!(value["summary"]["improved"], 1);
+        assert_eq!(value["summary"]["regressed"], 1);
+        assert_eq!(value["summary"]["unchanged"], 1);
+        assert_eq!(value["summary"]["new"], 1);
+        assert_eq!(value["summary"]["resolved"], 1);
+        assert_eq!(value["changed_seams"][0]["change"], "improved");
+        assert_eq!(value["resolved_gaps"][0]["change"], "resolved");
         Ok(())
     }
 

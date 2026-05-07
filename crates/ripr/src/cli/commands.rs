@@ -4,7 +4,8 @@ use crate::app::agent_brief::{
 };
 use crate::app::{self, CheckInput, Mode, OutputFormat};
 use crate::cli::agent::{
-    AgentBriefOptions, AgentBriefWorkingSet, AgentCommand, AgentPacketOptions, parse_agent_args,
+    AgentBriefOptions, AgentBriefWorkingSet, AgentCommand, AgentPacketOptions, AgentVerifyOptions,
+    parse_agent_args,
 };
 use crate::cli::help;
 use crate::cli::parse::{expect_value, parse_format, parse_mode};
@@ -84,8 +85,13 @@ pub(super) fn agent(args: &[String]) -> Result<(), String> {
             help::print_agent_packet_help();
             Ok(())
         }
+        AgentCommand::VerifyHelp => {
+            help::print_agent_verify_help();
+            Ok(())
+        }
         AgentCommand::Brief(options) => run_agent_brief(options),
         AgentCommand::Packet(options) => run_agent_packet(options),
+        AgentCommand::Verify(options) => run_agent_verify(options),
     }
 }
 
@@ -146,6 +152,66 @@ fn run_agent_packet(options: AgentPacketOptions) -> Result<(), String> {
     let rendered = output::agent_seam_packets::render_agent_seam_packet_json(entry);
     println!("{rendered}");
     Ok(())
+}
+
+fn run_agent_verify(options: AgentVerifyOptions) -> Result<(), String> {
+    let before_path =
+        validate_agent_verify_snapshot_path(&options.root, &options.before, "--before")?;
+    let after_path = validate_agent_verify_snapshot_path(&options.root, &options.after, "--after")?;
+    let before_json = read_agent_verify_snapshot(&before_path, "before")?;
+    let after_json = read_agent_verify_snapshot(&after_path, "after")?;
+    let report = output::outcome::targeted_test_outcome_report_from_json(
+        &before_json,
+        &after_json,
+        output::outcome::display_path(&options.before),
+        output::outcome::display_path(&options.after),
+    )?;
+    let rendered = output::outcome::render_agent_verify_json(&report)?;
+    println!("{rendered}");
+    Ok(())
+}
+
+fn validate_agent_verify_snapshot_path(
+    root: &Path,
+    path: &Path,
+    flag: &str,
+) -> Result<PathBuf, String> {
+    let root = root.canonicalize().map_err(|err| {
+        format!(
+            "canonicalize agent verify root {} failed: {err}",
+            root.display()
+        )
+    })?;
+    let candidate = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        root.join(path)
+    };
+    let candidate = candidate.canonicalize().map_err(|err| {
+        format!(
+            "canonicalize agent verify {flag} {} failed: {err}",
+            path.display()
+        )
+    })?;
+
+    if !candidate.starts_with(&root) {
+        return Err(format!(
+            "agent verify {flag} {} must stay under root {}",
+            path.display(),
+            root.display()
+        ));
+    }
+
+    Ok(candidate)
+}
+
+fn read_agent_verify_snapshot(path: &Path, label: &str) -> Result<String, String> {
+    std::fs::read_to_string(path).map_err(|err| {
+        format!(
+            "read agent verify {label} snapshot {} failed: {err}",
+            output::outcome::display_path(path)
+        )
+    })
 }
 
 fn resolve_agent_brief_working_set(
@@ -1568,7 +1634,10 @@ mod tests {
     fn agent_rejects_unknown_subcommands() {
         assert_eq!(
             agent(&args(&["unknown"])),
-            Err("unknown agent subcommand \"unknown\"; expected `brief` or `packet`".to_string())
+            Err(
+                "unknown agent subcommand \"unknown\"; expected `brief`, `packet`, or `verify`"
+                    .to_string()
+            )
         );
     }
 
@@ -1588,6 +1657,75 @@ mod tests {
                     .to_string()
             )
         );
+    }
+
+    #[test]
+    fn agent_verify_reports_read_failures() -> Result<(), String> {
+        let dir = unique_command_test_dir("agent-verify-read");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create temp dir: {err}"))?;
+        let before = dir.join("before.json");
+        std::fs::write(&before, outcome_before_json())
+            .map_err(|err| format!("write before snapshot: {err}"))?;
+
+        let missing_before = agent(&args(&[
+            "verify",
+            "--root",
+            &dir.display().to_string(),
+            "--before",
+            &dir.join("missing-before.json").display().to_string(),
+            "--after",
+            &dir.join("missing-after.json").display().to_string(),
+            "--json",
+        ]));
+        assert!(
+            matches!(missing_before, Err(message) if message.contains("canonicalize agent verify --before"))
+        );
+
+        let missing_after = agent(&args(&[
+            "verify",
+            "--root",
+            &dir.display().to_string(),
+            "--before",
+            &before.display().to_string(),
+            "--after",
+            &dir.join("missing-after.json").display().to_string(),
+            "--json",
+        ]));
+        assert!(
+            matches!(missing_after, Err(message) if message.contains("canonicalize agent verify --after"))
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn agent_verify_rejects_snapshots_outside_root() -> Result<(), String> {
+        let root = unique_command_test_dir("agent-verify-root");
+        let outside = unique_command_test_dir("agent-verify-outside");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root dir: {err}"))?;
+        std::fs::create_dir_all(&outside).map_err(|err| format!("create outside dir: {err}"))?;
+        let before = outside.join("before.json");
+        let after = root.join("after.json");
+        std::fs::write(&before, outcome_before_json())
+            .map_err(|err| format!("write before snapshot: {err}"))?;
+        std::fs::write(&after, outcome_after_json())
+            .map_err(|err| format!("write after snapshot: {err}"))?;
+
+        let result = agent(&args(&[
+            "verify",
+            "--root",
+            &root.display().to_string(),
+            "--before",
+            &before.display().to_string(),
+            "--after",
+            &after.display().to_string(),
+            "--json",
+        ]));
+
+        assert!(matches!(result, Err(message) if message.contains("must stay under root")));
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&outside);
+        Ok(())
     }
 
     #[test]

@@ -281,14 +281,17 @@ After the test lands locally:
 
 ```bash
 cargo run -p ripr -- check --root . --mode ready --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json
-cargo run -p ripr -- outcome \
+cargo run -p ripr -- agent verify \
+  --root . \
   --before target/ripr/workflow/before.repo-exposure.json \
-  --after target/ripr/workflow/after.repo-exposure.json
+  --after target/ripr/workflow/after.repo-exposure.json \
+  --json
 ```
 
-The Markdown receipt printed by `ripr outcome` shows whether the matched seam
-moved, stayed unchanged, regressed, appeared, or disappeared. Use `--out` when
-the review needs a checked artifact.
+The JSON printed by `ripr agent verify` shows whether matched seams improved,
+stayed unchanged, regressed, appeared, or disappeared from the after snapshot.
+Use `ripr outcome --before ... --after ... --out <path>` when the review needs
+a Markdown artifact.
 The cleanest result is a matched seam moving toward `strongly_gripped` with
 evidence deltas such as a missing discriminator no longer reported or a
 stronger related oracle becoming visible.
