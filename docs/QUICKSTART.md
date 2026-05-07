@@ -1,9 +1,13 @@
 # Quickstart
 
 Use this path when you want the default RIPR loop without learning every report
-format first.
+format first. Most users should start from the surface they already use:
 
-The first-hour loop is:
+- editor users install the VS Code/Open VSX extension;
+- CI users add the generated non-blocking GitHub workflow;
+- CLI users run the same engine directly for local proof and automation.
+
+The shared evidence loop is:
 
 ```text
 ripr pilot
@@ -15,14 +19,56 @@ ripr pilot
 -> attach CI, cockpit, SARIF, badge, or calibration artifacts only when useful
 ```
 
-## Install
+## Use In VS Code
+
+Install `EffortlessMetrics.ripr` from VS Code Marketplace or Open VSX, then
+open a Rust/Cargo workspace.
+
+The extension should provision a matching `ripr` server from GitHub Releases
+without requiring `cargo install ripr`. It uses saved-workspace analysis by
+default. Open a Rust file, save or refresh the workspace, then use:
+
+- Problems diagnostics for actionable seam evidence;
+- hover for why RIPR flagged the seam;
+- Copy Targeted Test Brief for the focused test to write next;
+- Copy Agent Packet/Brief/Verify/Receipt commands for agent handoff;
+- Open Best Related Test to jump to the strongest imitation target.
+
+Unsaved-buffer overlays are not enabled by default, and the extension does not
+install Rust or Cargo. A separate CLI install remains the fallback for offline,
+pinned, or controlled environments.
+
+See [Editor extension](EDITOR_EXTENSION.md).
+
+## Use In CI
+
+Generate the advisory GitHub Actions workflow when a repository wants PR-visible
+RIPR artifacts:
+
+```bash
+ripr init --ci github
+```
+
+Run that once with the CLI, or copy the workflow recipe from [CI](CI.md) if you
+are adopting RIPR from a web-only CI setup.
+
+The workflow runs `ripr pilot`, uploads pilot/report/agent artifacts, writes
+badge JSON, and can optionally render/upload SARIF through `RIPR_UPLOAD_SARIF`.
+It is non-blocking by default and does not run mutation tests.
+
+Commit the generated workflow when the team wants that policy in the repo. See
+[CI](CI.md).
+
+## Use The CLI
 
 ```bash
 cargo install ripr
 ```
 
-The defaults-first public install path requires `ripr 0.3.1` or later. The
-older `0.3.0` crate installs, but predates `ripr pilot` and `ripr outcome`.
+The full editor-agent evidence loop requires `ripr 0.4.0` or later. The older
+`0.3.1` crate contains the first defaults-first CLI loop but predates the final
+0.4 editor-agent release proof, and `0.3.0` predates `ripr pilot` and
+`ripr outcome`.
 
 For local development from this repository:
 
@@ -30,9 +76,9 @@ For local development from this repository:
 cargo install --path crates/ripr
 ```
 
-Cargo install is the normal CLI path. The VS Code/Open VSX extension should
-self-provision a matching server from GitHub Releases; installing the CLI
-separately is only a fallback for offline, pinned, or controlled environments.
+Cargo install is the normal direct-CLI path. The VS Code/Open VSX extension and
+generated GitHub workflow both use the same engine, but editor users should not
+need a separate CLI install for normal first use.
 
 ## Run a Pilot Packet
 
@@ -159,28 +205,6 @@ ripr calibrate cargo-mutants \
 Use `--format json` for tools, or `--out target/ripr/pilot/mutation-calibration.md`
 to write the advisory calibration report to disk. Runtime vocabulary is kept in
 this calibration report and does not change static RIPR classifications.
-
-## Optional Editor and CI Paths
-
-In VS Code, install `EffortlessMetrics.ripr`, open a Rust/Cargo workspace, and
-use RIPR diagnostics, hovers, Copy Targeted Test Brief, and Open Best Related
-Test from the editor. The extension should resolve the server automatically;
-`cargo install ripr` is only a fallback for offline, pinned, or controlled
-environments. The editor uses saved-workspace analysis by default; unsaved-buffer
-overlays are not enabled by default.
-
-For CI, generate the non-blocking GitHub Actions workflow when the team wants
-PR report artifacts and optional code-scanning guidance:
-
-```bash
-ripr init --ci github
-```
-
-The generated workflow is advisory by default. It uploads the pilot packet,
-report artifacts, and repo badge JSON; SARIF rendering/upload is controlled by
-the workflow's `RIPR_UPLOAD_SARIF` setting and remains non-blocking. CI
-blocking policy remains opt-in. The copyable recipe and policy details live in
-[CI](CI.md).
 
 ## Known Limits
 

@@ -19,10 +19,12 @@ first useful CLI, editor, or CI experience.
 
 ## Current Release Proof
 
-The public `ripr 0.3.1` crate is the first release verified against the
-defaults-first install promise. It installs from crates.io and runs `ripr
-doctor`, zero-config `ripr pilot`, `ripr outcome`, SARIF output, repo badge
-JSON output, advisory calibration import, and advisory GitHub workflow dry-run.
+The `ripr 0.4.0` release line is prepared around the full editor-agent evidence
+loop: zero-config `ripr pilot`, `ripr outcome`, `ripr agent verify`,
+`ripr agent receipt`, saved-workspace editor actions, operator cockpit status,
+and generated non-blocking CI artifacts. The publish PR must rerun the public
+cargo install, GitHub Release server, VSIX, VS Marketplace, and Open VSX smoke
+checks after registries serve `0.4.0`.
 
 ## Pre-Publish Local Proof
 
@@ -70,7 +72,7 @@ Use the version being verified so an older cached or latest crate cannot mask a
 release mistake:
 
 ```bash
-cargo install ripr --version 0.3.1 --locked --root target/ripr/install-smoke-cratesio --force
+cargo install ripr --version 0.4.0 --locked --root target/ripr/install-smoke-cratesio --force
 target/ripr/install-smoke-cratesio/bin/ripr --version
 target/ripr/install-smoke-cratesio/bin/ripr pilot \
   --root fixtures/boundary_gap/input \
@@ -123,11 +125,18 @@ ripr pilot --root fixtures/boundary_gap/input --out target/ripr/release-server-s
 ripr outcome \
   --before fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json \
   --after fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json
+mkdir -p target/ripr/release-server-smoke/agent
 ripr agent verify \
   --root . \
   --before fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json \
   --after fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json \
-  --json
+  --json > target/ripr/release-server-smoke/agent/agent-verify.json
+ripr agent receipt \
+  --root . \
+  --verify-json target/ripr/release-server-smoke/agent/agent-verify.json \
+  --seam-id 67fc764ba37d77bd \
+  --json \
+  --out target/ripr/release-server-smoke/agent/agent-receipt.json
 ```
 
 The VS Code extension relies on these assets for first-run self-provisioning.

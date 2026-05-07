@@ -13,7 +13,7 @@ Open VSX extension:
   EffortlessMetrics.ripr
 ```
 
-The `0.3.x` extension is a universal VSIX preview client. It resolves the
+The `0.4.x` extension is a universal VSIX preview client. It resolves the
 server in this order:
 
 ```text
@@ -53,12 +53,29 @@ Use one of these surfaces:
 - VS Code Marketplace: install `EffortlessMetrics.ripr`.
 - Open VSX: install `EffortlessMetrics.ripr`.
 - Local VSIX smoke: run `npm run package`, then install
-  `editors/vscode/dist/ripr-0.3.1.vsix`.
+  `editors/vscode/dist/ripr-0.4.0.vsix`.
 
 On activation, the extension resolves a configured, bundled, cached,
 downloaded, or PATH server and writes the selected source to the `ripr` output
 channel. `cargo install ripr` remains the manual fallback for offline, pinned,
 or controlled environments.
+
+## First Use
+
+The editor path should not require report-format knowledge:
+
+1. Install `EffortlessMetrics.ripr` from VS Code Marketplace or Open VSX.
+2. Open a Rust/Cargo workspace.
+3. Let the saved-workspace analysis refresh or run `ripr: Restart Server`.
+4. Open the Problems panel and hover a RIPR diagnostic to inspect evidence.
+5. Use `Copy Targeted Test Brief`, the agent copy commands, or
+   `Open Best Related Test`.
+6. Add one focused test and verify with the copied command chain or the CI
+   artifact packet.
+
+The extension owns normal first-run server provisioning. A separate
+`cargo install ripr` remains a fallback for offline, pinned, or controlled
+environments.
 
 ## Settings
 
@@ -194,7 +211,7 @@ npm ci
 npm run compile
 npm run package
 npm run test:e2e
-code --install-extension dist/ripr-0.3.1.vsix --force
+code --install-extension dist/ripr-0.4.0.vsix --force
 ```
 
 Manual smoke:

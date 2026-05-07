@@ -23,6 +23,7 @@ cargo check --workspace --all-targets
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo doc --workspace --no-deps
+cargo xtask release-readiness --version 0.4.0
 cargo package -p ripr --list
 cargo publish -p ripr --dry-run
 ```
@@ -54,6 +55,8 @@ cargo publish -p ripr --dry-run
 cargo install --path crates/ripr --locked --force --root target/ripr/install-smoke
 target/ripr/install-smoke/bin/ripr --version
 target/ripr/install-smoke/bin/ripr doctor
+target/ripr/install-smoke/bin/ripr pilot --root fixtures/boundary_gap/input --out target/ripr/install-smoke/pilot
+target/ripr/install-smoke/bin/ripr outcome --before fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json --after fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json
 npm --prefix editors/vscode run package
 ```
 
@@ -62,15 +65,16 @@ manifest, server archives, and checksums:
 
 ```bash
 gh release list --repo EffortlessMetrics/ripr --limit 5
-gh release view v0.3.1 --repo EffortlessMetrics/ripr --json name,tagName,publishedAt,assets,url,isDraft,isPrerelease
-gh release download v0.3.1 --repo EffortlessMetrics/ripr --pattern 'ripr-server-v0.3.1-x86_64-pc-windows-msvc.zip' --pattern 'ripr-server-manifest-v0.3.1.json' --dir target/ripr/release-smoke --clobber
+gh release view v0.4.0 --repo EffortlessMetrics/ripr --json name,tagName,publishedAt,assets,url,isDraft,isPrerelease
+gh release download v0.4.0 --repo EffortlessMetrics/ripr --pattern 'ripr-server-v0.4.0-x86_64-pc-windows-msvc.zip' --pattern 'ripr-server-manifest-v0.4.0.json' --dir target/ripr/release-smoke --clobber
 ```
 
-The `v0.3.1` release is the current defaults-first public release. It has the
-VSIX, server manifest, per-target server archives, checksums, and a Windows
-server archive whose manifest checksum matched the downloaded ZIP. The
-extracted server ran `ripr --version`, `ripr lsp --version`, `ripr pilot`, and
-`ripr outcome`.
+For the `v0.4.0` release, the GitHub Release must have the VSIX, server
+manifest, per-target server archives, checksums, and a server archive whose
+manifest checksum matches the downloaded archive. The extracted server must run
+`ripr --version`, `ripr lsp --version`, `ripr pilot`, `ripr outcome`, and
+`ripr agent verify`. When an agent verify JSON artifact is available, also run
+`ripr agent receipt` for the top seam.
 
 ## Name Gate
 
@@ -102,18 +106,21 @@ happens, check crates.io manually before retrying.
 ## Post-Publish
 
 ```bash
-cargo install ripr
-ripr --version
-ripr doctor
-ripr pilot --root fixtures/boundary_gap/input --out target/ripr/install-smoke-cratesio/pilot
-ripr outcome --before fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json --after fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json
+cargo install ripr --version 0.4.0 --locked --root target/ripr/install-smoke-cratesio --force
+target/ripr/install-smoke-cratesio/bin/ripr --version
+target/ripr/install-smoke-cratesio/bin/ripr doctor
+target/ripr/install-smoke-cratesio/bin/ripr pilot --root fixtures/boundary_gap/input --out target/ripr/install-smoke-cratesio/pilot
+target/ripr/install-smoke-cratesio/bin/ripr outcome --before fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json --after fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json
+mkdir -p target/ripr/install-smoke-cratesio/agent
+target/ripr/install-smoke-cratesio/bin/ripr agent verify --root . --before fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json --after fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json --json > target/ripr/install-smoke-cratesio/agent/agent-verify.json
+target/ripr/install-smoke-cratesio/bin/ripr agent receipt --root . --verify-json target/ripr/install-smoke-cratesio/agent/agent-verify.json --seam-id 67fc764ba37d77bd --json --out target/ripr/install-smoke-cratesio/agent/agent-receipt.json
 ```
 
 Tag the release:
 
 ```bash
-git tag v0.3.1
-git push origin v0.3.1
+git tag v0.4.0
+git push origin v0.4.0
 ```
 
 Update docs or release notes if the install command or package metadata changed.

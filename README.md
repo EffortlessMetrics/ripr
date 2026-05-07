@@ -109,7 +109,44 @@ mutation testing:
 `ripr` is the middle layer: faster and more targeted than mutation testing, more
 oracle-aware than coverage.
 
-## Install
+## Quick Start
+
+Most users use RIPR through the editor or CI. The CLI is the common engine
+under both surfaces and the reproducible local proof path.
+
+### Use In VS Code
+
+Install `EffortlessMetrics.ripr` from VS Code Marketplace or Open VSX, then
+open a Rust/Cargo workspace.
+
+The extension resolves a matching server from configuration, bundled/cached
+assets, GitHub Releases, or PATH. A separate `cargo install ripr` is only a
+fallback for offline, pinned, or controlled environments.
+
+Use RIPR in the editor:
+
+- Problems diagnostics show actionable saved-workspace seam evidence.
+- Hover explains why the seam was flagged.
+- Copy Targeted Test Brief gives the next focused test.
+- Copy Agent Packet/Brief/Verify/Receipt commands prepares an agent handoff.
+- Open Best Related Test jumps to the strongest related test to imitate.
+
+### Use In CI
+
+Generate the advisory GitHub Actions workflow:
+
+```bash
+ripr init --ci github
+```
+
+Run that once with the CLI, or copy the workflow recipe from
+[CI](docs/CI.md) if you are adopting RIPR from the GitHub UI.
+
+The workflow runs `ripr pilot`, uploads pilot/report/agent artifacts, writes
+badge JSON, and can optionally render/upload SARIF. It is non-blocking by
+default and does not run mutation tests.
+
+### Use The CLI Directly
 
 Install from crates.io:
 
@@ -129,8 +166,6 @@ cargo install --path crates/ripr
 ```
 
 `ripr` targets Rust 2024 and requires Rust `1.93` or newer.
-
-## Quick Start
 
 Run a zero-config pilot packet with built-in defaults (no `ripr.toml` required):
 
@@ -190,13 +225,6 @@ built-in defaults to `ripr.toml`; it does not unlock basic usefulness.
 
 ```bash
 ripr init
-```
-
-Or add an advisory GitHub Actions workflow that uploads pilot/report artifacts
-and can optionally render and upload SARIF:
-
-```bash
-ripr init --ci github
 ```
 
 Then run the same pilot or check under repo-owned policy:
@@ -310,7 +338,7 @@ Current capabilities:
 
 | Capability | Current state | Next checkpoint |
 | --- | --- | --- |
-| Distribution | Public `ripr 0.3.1` crates.io install, `v0.3.1` GitHub Release server assets, VSIX packaging, and the installed `ripr pilot` -> `ripr outcome` loop are verified. | Release maintenance after the next version bump. |
+| Distribution | `0.4.0` release prep aligns the Rust crate, VS Code/Open VSX extension, generated CI workflow, release-readiness report, and installed editor-agent loop proof. | Publish 0.4.0 and verify crates.io, GitHub Release assets, VS Marketplace, and Open VSX. |
 | Diff analysis | Evidence-first Voice A findings with syntax-backed changed-line probes, probe-relative oracle strength, local flow sinks, observed/missing activation values, and explicit stop reasons. | Maintenance; no active analyzer-refactor lane. |
 | Repo seam inventory | First-class `RepoSeam` model with deterministic seam IDs, cached seam fact layers, test-grip evidence across the five RIPR stages, and 11-class `SeamGripClass` classification. | Maintenance; no active analyzer-refactor lane. |
 | Test discovery | Parser-backed test and assertion facts with exact, broad, relational, snapshot, mock, smoke, custom-helper, side-effect observer, and unknown oracle kinds; per-test efficiency ledger with smoke/broad/disconnected/opaque/circular/likely-vacuous reasons and duplicate-discriminator groups. | Maintenance; no active analyzer-refactor lane. |
@@ -321,25 +349,15 @@ Current capabilities:
 | SARIF and CI policy | `ripr check --format sarif` emits diff-scoped Finding SARIF and `--format repo-sarif` emits repo seam SARIF with configured severity, suppression metadata, stable rule IDs, and stable fingerprints. `ripr init --ci github` generates a non-blocking GitHub Actions report workflow with pilot/report artifacts, repo badge JSON, and optional SARIF rendering/upload; `cargo xtask sarif-policy` compares current SARIF to a baseline only when explicitly requested. | Advisory policy feedback after adoption. |
 | Calibration | Advisory `ripr calibrate cargo-mutants` and repo-local `cargo xtask mutation-calibration` join imported cargo-mutants runtime data to static seam evidence by `seam_id` or unambiguous file/line; ambiguous file/line candidates stay unassigned. `fixtures/CALIBRATION_CORPUS.md` maps current fixtures to controlled calibration scenarios, `fixtures/EXAMPLE_CORPUS.md` links the checked boundary-gap calibration sample into the operator loop, and `fixtures/boundary_gap/calibration/runtime-fixtures-v1/` pins the main static/runtime agreement buckets. | Maintenance; runtime mutation language stays inside calibration/runtime reports. |
 
-Campaigns 5A, 5B, 6, 7, and 8 are complete. Campaign 7 closed the defaults-first
-adoption lane: `ripr pilot`, `ripr outcome`, advisory calibration import, the
-operator cockpit, the generated GitHub Action entrypoint, the documented VS Code
-install path, the public example corpus, and release/install proof are in place.
-The public `0.3.1` release is the first verified install target for that CLI
-loop.
-The closeout audit lives at
-`docs/handoffs/2026-05-07-campaign-7-closeout.md`. Campaign 8 has a checked
-runtime calibration fixture set for the main agreement buckets and keeps
-runtime data supplied and optional. Campaign 9 has measured the existing cache
-and editor proof surfaces, added bounded repo-exposure latency reporting, and
-verified warm-path fact reuse below the rendered-output layer. The bounded
-pilot path now prints the top inspected seam, why it matters, the focused test
-to write, and the before/after commands without requiring JSON inspection. The
-active item is now Campaign 9 closeout:
-
-```text
-campaign/hot-sidecar-latency-closeout
-```
+Campaigns 5A, 5B, 6, 7, 8, 9, and 10 are complete. Campaign 7 closed the
+defaults-first adoption lane: `ripr pilot`, `ripr outcome`, advisory
+calibration import, the operator cockpit, the generated GitHub Action
+entrypoint, the documented VS Code install path, the public example corpus, and
+release/install proof are in place. Campaign 8 keeps runtime calibration
+supplied and optional. Campaign 9 made the editor/operator warm paths measured
+and bounded. Campaign 10 aligned the saved-workspace editor loop with the agent
+CLI loop from diagnostic to evidence, packet or brief, focused test, outcome,
+agent verify, agent receipt, cockpit, CI artifacts, and release-readiness proof.
 
 Deeper capability state lives in [Capability matrix](docs/CAPABILITY_MATRIX.md)
 and [Metrics](docs/METRICS.md).
@@ -359,8 +377,9 @@ The VS Code extension starts `ripr lsp --stdio` and can resolve the server from:
 
 Normal editor install should not require `cargo install ripr`. The Cargo install
 path remains available for offline, pinned, or controlled environments. The
-`v0.3.1` GitHub Release includes the server manifest, per-target server
-archives, checksums, and VSIX needed for this default path.
+`v0.4.0` release line includes the server manifest, per-target server
+archives, checksums, and VSIX needed for this default path after the release
+publish workflow completes.
 
 See:
 

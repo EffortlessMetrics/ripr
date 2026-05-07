@@ -289,6 +289,18 @@ SARIF upload documentation uses `github/codeql-action/upload-sarif@v4`; keep
 the RIPR job, artifact upload, and optional SARIF steps advisory until the
 repository has chosen a baseline policy.
 
+For a CI-first user, the useful output is the artifact packet:
+
+- `target/ripr/pilot/` - first-screen pilot summary, repo exposure snapshot,
+  and agent seam packets;
+- `target/ripr/agent/` - packet, brief, verify, and receipt JSON for the top
+  seam when one is available;
+- `target/ripr/reports/` - targeted-test outcome, SARIF files when enabled,
+  repo badge JSON, and any repo-local cockpit output.
+
+The workflow also appends `pilot-summary.md` to the job summary, so a reviewer
+can see the top recommendation before downloading artifacts.
+
 ```yaml
 name: RIPR
 

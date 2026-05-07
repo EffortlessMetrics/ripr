@@ -14,7 +14,7 @@ Use:
 Manual dispatch:
 
 ```bash
-gh workflow run release-server-binaries.yml -f version=0.3.1
+gh workflow run release-server-binaries.yml -f version=0.4.0
 ```
 
 The workflow builds:
@@ -45,11 +45,11 @@ LICENSE-APACHE
 README-server.txt
 ```
 
-## Published Release Proof
+## Release Proof
 
-The `v0.3.1` release was verified on May 7, 2026:
+The previous `v0.3.1` release was verified on May 7, 2026:
 
-- `ripr v0.3.1` is the latest GitHub Release.
+- `ripr v0.3.1` was the public GitHub Release at that time.
 - The release has `ripr-0.3.1.vsix`.
 - The release has `ripr-server-manifest-v0.3.1.json`.
 - The release has server archives and `.sha256` files for each supported
@@ -59,9 +59,14 @@ The `v0.3.1` release was verified on May 7, 2026:
 - The extracted Windows server ran `ripr --version`, `ripr lsp --version`,
   `ripr pilot`, and `ripr outcome`.
 
-That proof covers server archive shape for the current public release and the
+That proof covers server archive shape for the previous public release and the
 defaults-first `ripr pilot` and `ripr outcome` public-install smoke; see
 [Installation verification](INSTALLATION_VERIFICATION.md).
+
+For `v0.4.0`, rerun the same GitHub Release proof and extend the extracted
+server smoke to cover the editor-agent evidence loop: `ripr --version`,
+`ripr lsp --version`, `ripr pilot`, `ripr outcome`, `ripr agent verify`, and
+`ripr agent receipt`.
 
 ## Local Verification
 
@@ -80,7 +85,7 @@ cd editors/vscode
 npm ci
 npm run compile
 npm run package
-code --install-extension dist/ripr-0.3.1.vsix --force
+code --install-extension dist/ripr-0.4.0.vsix --force
 ```
 
 For the defaults-first release line, also run the server archive smoke from
