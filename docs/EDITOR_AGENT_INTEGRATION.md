@@ -55,9 +55,9 @@ rewrite the active manifest explicitly.
 | Open related test | `ripr.openRelatedTest` | Opens the strongest related test without editing it |
 | Suggested assertion | `ripr.copySuggestedAssertion` | Copies assertion text when the packet has a concrete assertion shape |
 | Refresh analysis | `ripr.refresh` | Refreshes saved-workspace diagnostics and latency status |
-| After snapshot | `ripr check --root . --mode ready --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json` | Captures the post-test static exposure state |
-| Agent verify | `ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > target/ripr/workflow/agent-verify.json` | Compares before and after repo-exposure snapshots |
-| Agent receipt | `ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id <id> --json --out target/ripr/reports/agent-receipt.json` | Narrows verify output to one seam for review handoff |
+| After snapshot | `ripr check --root . --mode ready --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json` | Captures the post-test static exposure state |
+| Agent verify | `ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > target/ripr/agent/agent-verify.json` | Compares before and after repo-exposure snapshots |
+| Agent receipt | `ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id <id> --json --out target/ripr/agent/agent-receipt.json` | Narrows verify output to one seam for review handoff |
 | Operator cockpit | `cargo xtask operator-cockpit` | Joins existing repo-local reports into `target/ripr/reports/operator-cockpit.{json,md}` |
 | CI artifacts | Generated GitHub workflow | Uploads advisory repo artifacts and optional SARIF or badge outputs |
 | Install proof | `cargo install --path crates/ripr --locked --force --root target/ripr/install-smoke` and `npm --prefix editors/vscode run package` | Shows the installed binary and packaged extension can run the loop |

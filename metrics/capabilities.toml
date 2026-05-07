@@ -595,7 +595,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "campaign/hot-sidecar-latency-closeout"
+next = "docs/full-evidence-loop"
 metric = "targeted_test_outcome_available"
 
 [[capability]]
