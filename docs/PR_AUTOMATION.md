@@ -118,7 +118,8 @@ are present, and which VS Code commands are covered by e2e tests.
 repo-exposure formats under a bounded timeout, captures opt-in analyzer phase
 trace lines, and writes `target/ripr/reports/repo-exposure-latency.md` and
 `target/ripr/reports/repo-exposure-latency.json`. It is a diagnostic report for
-cache and warm-path work; it does not change repo-exposure JSON/Markdown.
+cache and warm-path work, including file-fact cache hit/miss counters; it does
+not change repo-exposure JSON/Markdown.
 
 `targeted-test-outcome` compares two `repo-exposure-json` artifacts and writes
 `target/ripr/reports/targeted-test-outcome.md` and

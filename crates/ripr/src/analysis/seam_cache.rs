@@ -12,7 +12,8 @@
 //! - cache fact layers only — `FileFacts`, owner index, `RepoSeam` facts,
 //!   `TestGripEvidence`, `ClassifiedSeam` summaries. v1 caches the
 //!   workspace-level `Vec<ClassifiedSeam>` (which transitively covers
-//!   the listed layers); per-file fact caching is a v1.5 follow-up.
+//!   the listed layers) and per-file `FileFacts` so timed-out cold paths can
+//!   still make the next run cheaper.
 //! - never cache rendered JSON, Markdown, diagnostics, hover, or packet
 //!   strings. The renderers re-render from the cached facts.
 //! - codec stays behind a module boundary
@@ -31,6 +32,7 @@
 //! so different keys land in different files and a v1 cache hit on a
 //! v0.5 entry is impossible.
 
+use super::facts::FileFacts;
 use super::seam_classification::{ClassifiedSeam, SeamGripClassCounts};
 use std::path::{Path, PathBuf};
 
@@ -50,6 +52,11 @@ pub(crate) const CACHE_SCHEMA_VERSION: &str = "0.2";
 /// multi-hundred-megabyte evidence cache.
 const COUNT_CACHE_SCHEMA_VERSION: &str = "0.1";
 
+/// Per-file fact cache schema. This is intentionally separate from the
+/// workspace-level classified seam cache so warm compute can reuse parser facts
+/// even when a full classified seam entry has not been written yet.
+const FILE_FACT_CACHE_SCHEMA_VERSION: &str = "0.1";
+
 /// Aggregate cache key — every field that, when changed, must invalidate
 /// the workspace-level classified seam cache.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -62,6 +69,43 @@ pub(crate) struct RepoSeamCacheKey {
     pub(crate) config_hash: String,
     pub(crate) test_intent_hash: String,
     pub(crate) suppressions_hash: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct RepoFileFactCacheKey {
+    schema_version: String,
+    analyzer_version: String,
+    file_path: PathBuf,
+    content_hash: String,
+}
+
+impl RepoFileFactCacheKey {
+    pub(crate) fn new(file_path: &Path, content: &[u8]) -> Self {
+        Self {
+            schema_version: FILE_FACT_CACHE_SCHEMA_VERSION.to_string(),
+            analyzer_version: env!("CARGO_PKG_VERSION").to_string(),
+            file_path: file_path.to_path_buf(),
+            content_hash: hash_bytes(content),
+        }
+    }
+
+    fn filename(&self) -> String {
+        let file_path = self.file_path.to_string_lossy();
+        let parts = [
+            self.schema_version.as_str(),
+            self.analyzer_version.as_str(),
+            file_path.as_ref(),
+            self.content_hash.as_str(),
+        ];
+        let mut buf = String::new();
+        for (idx, part) in parts.iter().enumerate() {
+            if idx > 0 {
+                buf.push('\0');
+            }
+            buf.push_str(part);
+        }
+        format!("{:016x}.json", fnv1a_64(buf.as_bytes()))
+    }
 }
 
 impl RepoSeamCacheKey {
@@ -230,6 +274,87 @@ impl RepoSeamFactCache {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct FileFactCacheStats {
+    pub(crate) hits: usize,
+    pub(crate) misses: usize,
+    pub(crate) corrupt_ignored: usize,
+    pub(crate) stores: usize,
+    pub(crate) store_errors: usize,
+}
+
+impl FileFactCacheStats {
+    pub(crate) fn status_label(&self) -> String {
+        format!(
+            "hits_{}_misses_{}_corrupt_{}_store_errors_{}",
+            self.hits, self.misses, self.corrupt_ignored, self.store_errors
+        )
+    }
+}
+
+pub(crate) struct RepoFileFactCache {
+    dir: PathBuf,
+}
+
+impl RepoFileFactCache {
+    pub(crate) fn at(workspace_root: &Path) -> Self {
+        Self {
+            dir: workspace_root
+                .join("target")
+                .join("ripr")
+                .join("cache")
+                .join("repo-file-facts")
+                .join(FILE_FACT_CACHE_SCHEMA_VERSION),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn at_dir(dir: PathBuf) -> Self {
+        Self { dir }
+    }
+
+    pub(crate) fn load_file_facts(&self, key: &RepoFileFactCacheKey) -> CacheLoad<FileFacts> {
+        let path = self.entry_path(key);
+        let bytes = match std::fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return CacheLoad::Miss,
+            Err(err) => {
+                return CacheLoad::CorruptIgnored {
+                    reason: format!("read failed: {err}"),
+                };
+            }
+        };
+        match codec::decode_file_facts(&bytes) {
+            Ok(envelope) => {
+                if envelope.matches_key(key) {
+                    CacheLoad::Hit(envelope.file_facts)
+                } else {
+                    CacheLoad::Miss
+                }
+            }
+            Err(reason) => CacheLoad::CorruptIgnored { reason },
+        }
+    }
+
+    pub(crate) fn store_file_facts(
+        &self,
+        key: &RepoFileFactCacheKey,
+        facts: &FileFacts,
+    ) -> Result<(), String> {
+        std::fs::create_dir_all(&self.dir)
+            .map_err(|err| format!("create file fact cache dir failed: {err}"))?;
+        let envelope = FileFactCacheEnvelope::new(key.clone(), facts.clone());
+        let bytes = codec::encode_file_facts(&envelope)?;
+        std::fs::write(self.entry_path(key), bytes)
+            .map_err(|err| format!("write file fact cache failed: {err}"))?;
+        Ok(())
+    }
+
+    fn entry_path(&self, key: &RepoFileFactCacheKey) -> PathBuf {
+        self.dir.join(key.filename())
+    }
+}
+
 /// Compact cache for [`SeamGripClassCounts`].
 pub(crate) struct RepoSeamCountCache {
     dir: PathBuf,
@@ -320,6 +445,34 @@ struct CountCacheEnvelope {
     counts: SeamGripClassCounts,
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct FileFactCacheEnvelope {
+    file_fact_cache_schema_version: String,
+    analyzer_version: String,
+    file_path: PathBuf,
+    content_hash: String,
+    file_facts: FileFacts,
+}
+
+impl FileFactCacheEnvelope {
+    fn new(key: RepoFileFactCacheKey, file_facts: FileFacts) -> Self {
+        Self {
+            file_fact_cache_schema_version: key.schema_version,
+            analyzer_version: key.analyzer_version,
+            file_path: key.file_path,
+            content_hash: key.content_hash,
+            file_facts,
+        }
+    }
+
+    fn matches_key(&self, key: &RepoFileFactCacheKey) -> bool {
+        self.file_fact_cache_schema_version == key.schema_version
+            && self.analyzer_version == key.analyzer_version
+            && self.file_path == key.file_path
+            && self.content_hash == key.content_hash
+    }
+}
+
 impl CountCacheEnvelope {
     fn new(key: RepoSeamCacheKey, counts: SeamGripClassCounts) -> Self {
         Self {
@@ -379,7 +532,7 @@ impl CacheEnvelope {
 /// Codec module — the only place serialization format is decided.
 /// Switching to `postcard` for binary v2 is a localized change here.
 mod codec {
-    use super::{CacheEnvelope, CountCacheEnvelope};
+    use super::{CacheEnvelope, CountCacheEnvelope, FileFactCacheEnvelope};
 
     pub(super) fn encode(envelope: &CacheEnvelope) -> Result<Vec<u8>, String> {
         serde_json::to_vec_pretty(envelope).map_err(|err| format!("encode failed: {err}"))
@@ -395,6 +548,15 @@ mod codec {
 
     pub(super) fn decode_counts(bytes: &[u8]) -> Result<CountCacheEnvelope, String> {
         serde_json::from_slice(bytes).map_err(|err| format!("decode counts failed: {err}"))
+    }
+
+    pub(super) fn encode_file_facts(envelope: &FileFactCacheEnvelope) -> Result<Vec<u8>, String> {
+        serde_json::to_vec_pretty(envelope)
+            .map_err(|err| format!("encode file facts failed: {err}"))
+    }
+
+    pub(super) fn decode_file_facts(bytes: &[u8]) -> Result<FileFactCacheEnvelope, String> {
+        serde_json::from_slice(bytes).map_err(|err| format!("decode file facts failed: {err}"))
     }
 }
 
@@ -746,6 +908,82 @@ mod tests {
         };
         let _ = std::fs::remove_dir_all(&dir);
         result
+    }
+
+    #[test]
+    fn given_file_facts_cached_when_loading_same_file_bytes_then_hit_is_returned()
+    -> Result<(), String> {
+        let dir = isolated_dir("file-facts-warm");
+        let _ = std::fs::remove_dir_all(&dir);
+        let cache = RepoFileFactCache::at_dir(dir.clone());
+        let path = PathBuf::from("src/lib.rs");
+        let key = RepoFileFactCacheKey::new(&path, b"pub fn cached() {}\n");
+        let facts = FileFacts {
+            path: path.clone(),
+            source: "pub fn cached() {}\n".to_string(),
+            ..FileFacts::default()
+        };
+
+        cache
+            .store_file_facts(&key, &facts)
+            .map_err(|err| format!("store file facts should succeed: {err}"))?;
+
+        let result = match cache.load_file_facts(&key) {
+            CacheLoad::Hit(loaded) => {
+                if loaded != facts {
+                    Err("loaded file facts should match stored facts".to_string())
+                } else {
+                    Ok(())
+                }
+            }
+            other => Err(format!("expected file fact cache hit, got {other:?}")),
+        };
+        let _ = std::fs::remove_dir_all(&dir);
+        result
+    }
+
+    #[test]
+    fn given_file_content_changes_when_file_facts_load_then_miss_is_returned() -> Result<(), String>
+    {
+        let dir = isolated_dir("file-facts-invalidates");
+        let _ = std::fs::remove_dir_all(&dir);
+        let cache = RepoFileFactCache::at_dir(dir.clone());
+        let path = PathBuf::from("src/lib.rs");
+        let original_key = RepoFileFactCacheKey::new(&path, b"pub fn cached() -> i32 { 1 }\n");
+        let changed_key = RepoFileFactCacheKey::new(&path, b"pub fn cached() -> i32 { 2 }\n");
+        let facts = FileFacts {
+            path: path.clone(),
+            source: "pub fn cached() -> i32 { 1 }\n".to_string(),
+            ..FileFacts::default()
+        };
+
+        cache
+            .store_file_facts(&original_key, &facts)
+            .map_err(|err| format!("store original file facts: {err}"))?;
+
+        let result = match cache.load_file_facts(&changed_key) {
+            CacheLoad::Miss => Ok(()),
+            other => Err(format!(
+                "expected Miss after file content change, got {other:?}"
+            )),
+        };
+        let _ = std::fs::remove_dir_all(&dir);
+        result
+    }
+
+    #[test]
+    fn file_fact_cache_stats_status_label_is_trace_safe() {
+        let stats = FileFactCacheStats {
+            hits: 2,
+            misses: 3,
+            corrupt_ignored: 1,
+            stores: 3,
+            store_errors: 0,
+        };
+        assert_eq!(
+            stats.status_label(),
+            "hits_2_misses_3_corrupt_1_store_errors_0"
+        );
     }
 
     /// Tiny non-crypto unique-ish suffix for tempdir naming. Avoids

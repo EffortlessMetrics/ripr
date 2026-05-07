@@ -108,7 +108,7 @@ pub(crate) fn inventory_classified_seams_at_with_config(
         }
     }
     let compute_started = Instant::now();
-    let classified = match inventory_classified_seams_uncached_with_config(root, config) {
+    let classified = match inventory_classified_seams_from_state_with_config(&state, config) {
         Ok(classified) => {
             trace_latency_phase("cold_compute", "ok", compute_started.elapsed());
             classified
@@ -149,6 +149,7 @@ fn latency_trace_line(phase: &str, status: &str, duration: Duration) -> String {
 /// entry point on miss and by tests that want to drive the pipeline
 /// directly. Stays crate-private; the public entry is the cached
 /// function above.
+#[cfg(test)]
 pub(crate) fn inventory_classified_seams_uncached_with_config(
     root: &Path,
     config: &RiprConfig,
@@ -184,11 +185,12 @@ pub(crate) fn inventory_seam_grip_class_counts_at_with_config(
             eprintln!("ripr: repo seam count cache entry ignored ({reason})");
         }
     }
-    let counts = inventory_seam_grip_class_counts_uncached_with_config(root, config)?;
+    let counts = inventory_seam_grip_class_counts_from_state_with_config(&state, config)?;
     let _ = cache.store_counts(&key, &counts);
     Ok(counts)
 }
 
+#[cfg(test)]
 fn inventory_seam_grip_class_counts_uncached_with_config(
     root: &Path,
     config: &RiprConfig,
@@ -213,10 +215,64 @@ fn inventory_seam_grip_class_counts_uncached_with_config(
     Ok(counts)
 }
 
+fn inventory_classified_seams_from_state_with_config(
+    state: &OwnedWorkspaceState,
+    config: &RiprConfig,
+) -> Result<Vec<ClassifiedSeam>, String> {
+    let production_files = production_files_from_state(state);
+    let build_started = Instant::now();
+    let mut cached =
+        rust_index::build_index_from_loaded_files_with_cache(&state.workspace_root, &state.files)?;
+    trace_latency_phase(
+        "file_fact_cache",
+        &cached.file_fact_cache.status_label(),
+        build_started.elapsed(),
+    );
+    rust_index::apply_oracle_policy(&mut cached.index, config.oracles());
+    let seams = inventory_seams_from_index(&production_files, &cached.index);
+    let evidence = test_grip_evidence::evidence_for_seams(&seams, &cached.index);
+    Ok(seam_classification::classify_seams(&seams, &evidence))
+}
+
+fn inventory_seam_grip_class_counts_from_state_with_config(
+    state: &OwnedWorkspaceState,
+    config: &RiprConfig,
+) -> Result<SeamGripClassCounts, String> {
+    let production_files = production_files_from_state(state);
+    let build_started = Instant::now();
+    let mut cached =
+        rust_index::build_index_from_loaded_files_with_cache(&state.workspace_root, &state.files)?;
+    trace_latency_phase(
+        "file_fact_cache",
+        &cached.file_fact_cache.status_label(),
+        build_started.elapsed(),
+    );
+    rust_index::apply_oracle_policy(&mut cached.index, config.oracles());
+    let seams = inventory_seams_from_index(&production_files, &cached.index);
+    let mut counts = SeamGripClassCounts::new(seams.len());
+    let context = test_grip_evidence::CompactGripContext::new(&cached.index);
+    for seam in &seams {
+        let evidence = test_grip_evidence::compact_evidence_for_seam(seam, &context);
+        let class = seam_classification::classify_seam(seam, &evidence);
+        counts.increment(class);
+    }
+    Ok(counts)
+}
+
+fn production_files_from_state(state: &OwnedWorkspaceState) -> Vec<PathBuf> {
+    state
+        .files
+        .iter()
+        .map(|(path, _)| path)
+        .filter(|path| workspace::is_production_rust_path(path))
+        .cloned()
+        .collect()
+}
+
 /// Collect the per-file content + intent + suppressions inputs the
-/// cache key derives from. Reads files once; the build_index path
-/// reads them again, but the cost is minor compared to parsing. A
-/// future optimization can share the file contents.
+/// cache key derives from. The repo exposure cold path reuses these
+/// bytes when building cached file facts so file discovery and file
+/// reads are not repeated after a classified-seam cache miss.
 ///
 /// Hashes the **same Rust file set fed to `build_index`** — production
 /// seam sources *and* test evidence sources. `ClassifiedSeam` carries

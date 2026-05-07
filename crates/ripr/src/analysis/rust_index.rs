@@ -14,6 +14,7 @@ pub(crate) use super::extract::{
     extract_identifier_tokens, extract_line_scanned_oracles, extract_literal_facts,
     extract_literals, extract_return_facts,
 };
+pub(crate) use super::facts::build_index_from_loaded_files_with_cache;
 #[cfg(test)]
 pub use super::facts::{CallFact, LiteralFact, ReturnFact};
 pub use super::facts::{

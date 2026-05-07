@@ -1,9 +1,73 @@
 use super::super::syntax::{LexicalRustSyntaxAdapter, RaRustSyntaxAdapter, RustSyntaxAdapter};
 use super::model::RustIndex;
+use crate::analysis::seam_cache::{
+    CacheLoad, FileFactCacheStats, RepoFileFactCache, RepoFileFactCacheKey,
+};
 use std::path::{Path, PathBuf};
 
 pub fn build_index(root: &Path, files: &[PathBuf]) -> Result<RustIndex, String> {
     build_index_with_adapters(root, files, &RaRustSyntaxAdapter, &LexicalRustSyntaxAdapter)
+}
+
+pub(crate) struct CachedRustIndex {
+    pub(crate) index: RustIndex,
+    pub(crate) file_fact_cache: FileFactCacheStats,
+}
+
+pub(crate) fn build_index_from_loaded_files_with_cache(
+    root: &Path,
+    files: &[(PathBuf, Vec<u8>)],
+) -> Result<CachedRustIndex, String> {
+    build_index_from_loaded_files_with_cache_and_adapters(
+        root,
+        files,
+        &RaRustSyntaxAdapter,
+        &LexicalRustSyntaxAdapter,
+    )
+}
+
+fn build_index_from_loaded_files_with_cache_and_adapters(
+    root: &Path,
+    files: &[(PathBuf, Vec<u8>)],
+    adapter: &dyn RustSyntaxAdapter,
+    fallback: &dyn RustSyntaxAdapter,
+) -> Result<CachedRustIndex, String> {
+    let cache = RepoFileFactCache::at(root);
+    let mut stats = FileFactCacheStats::default();
+    let mut index = RustIndex::default();
+    for (file, bytes) in files {
+        let key = RepoFileFactCacheKey::new(file, bytes);
+        let summary = match cache.load_file_facts(&key) {
+            CacheLoad::Hit(facts) => {
+                stats.hits += 1;
+                facts
+            }
+            CacheLoad::Miss => {
+                stats.misses += 1;
+                let facts = summarize_loaded_file(root, file, bytes, adapter, fallback)?;
+                match cache.store_file_facts(&key, &facts) {
+                    Ok(()) => stats.stores += 1,
+                    Err(_) => stats.store_errors += 1,
+                }
+                facts
+            }
+            CacheLoad::CorruptIgnored { reason } => {
+                stats.corrupt_ignored += 1;
+                eprintln!("ripr: repo file fact cache entry ignored ({reason})");
+                let facts = summarize_loaded_file(root, file, bytes, adapter, fallback)?;
+                match cache.store_file_facts(&key, &facts) {
+                    Ok(()) => stats.stores += 1,
+                    Err(_) => stats.store_errors += 1,
+                }
+                facts
+            }
+        };
+        insert_file_summary(&mut index, file.clone(), summary);
+    }
+    Ok(CachedRustIndex {
+        index,
+        file_fact_cache: stats,
+    })
 }
 
 fn build_index_with_adapters(
@@ -17,14 +81,39 @@ fn build_index_with_adapters(
         let full = root.join(file);
         let text = std::fs::read_to_string(&full)
             .map_err(|err| format!("failed to read {}: {err}", full.display()))?;
-        let summary = adapter
-            .summarize_file(file, &text)
-            .or_else(|_| fallback.summarize_file(file, &text))?;
-        index.tests.extend(summary.tests.clone());
-        index.functions.extend(summary.functions.clone());
-        index.files.insert(file.clone(), summary);
+        let summary = summarize_file_with_adapters(file, &text, adapter, fallback)?;
+        insert_file_summary(&mut index, file.clone(), summary);
     }
     Ok(index)
+}
+
+fn summarize_loaded_file(
+    root: &Path,
+    file: &Path,
+    bytes: &[u8],
+    adapter: &dyn RustSyntaxAdapter,
+    fallback: &dyn RustSyntaxAdapter,
+) -> Result<super::FileFacts, String> {
+    let text = std::str::from_utf8(bytes)
+        .map_err(|err| format!("failed to read {}: {err}", root.join(file).display()))?;
+    summarize_file_with_adapters(file, text, adapter, fallback)
+}
+
+fn summarize_file_with_adapters(
+    file: &Path,
+    text: &str,
+    adapter: &dyn RustSyntaxAdapter,
+    fallback: &dyn RustSyntaxAdapter,
+) -> Result<super::FileFacts, String> {
+    adapter
+        .summarize_file(file, text)
+        .or_else(|_| fallback.summarize_file(file, text))
+}
+
+fn insert_file_summary(index: &mut RustIndex, file: PathBuf, summary: super::FileFacts) {
+    index.tests.extend(summary.tests.clone());
+    index.functions.extend(summary.functions.clone());
+    index.files.insert(file, summary);
 }
 
 #[cfg(test)]
@@ -221,6 +310,53 @@ pub fn check(x: i32) -> bool {
             StubSyntaxAdapter
                 .changed_nodes(&super::super::FileFacts::default(), &[])
                 .is_empty()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn build_index_from_loaded_files_reuses_warm_file_facts() -> Result<(), Box<dyn Error>> {
+        let root = temp_dir("index_file_fact_cache")?;
+        fs::create_dir_all(root.join("src"))?;
+        let file = PathBuf::from("src/lib.rs");
+        let bytes = b"pub fn cached(value: i32) -> bool { value >= 10 }\n".to_vec();
+        let files = [(file.clone(), bytes.clone())];
+
+        let cold = build_index_from_loaded_files_with_cache(&root, &files)?;
+        assert_eq!(cold.file_fact_cache.hits, 0);
+        assert_eq!(cold.file_fact_cache.misses, 1);
+        assert_eq!(cold.file_fact_cache.stores, 1);
+        assert!(cold.index.files.contains_key(&file));
+        assert!(!cold.index.functions.is_empty());
+
+        let warm = build_index_from_loaded_files_with_cache(&root, &files)?;
+        assert_eq!(warm.file_fact_cache.hits, 1);
+        assert_eq!(warm.file_fact_cache.misses, 0);
+        assert_eq!(warm.file_fact_cache.stores, 0);
+        assert_eq!(warm.index.files.get(&file), cold.index.files.get(&file));
+        Ok(())
+    }
+
+    #[test]
+    fn build_index_from_loaded_files_misses_when_content_changes() -> Result<(), Box<dyn Error>> {
+        let root = temp_dir("index_file_fact_cache_invalidate")?;
+        fs::create_dir_all(root.join("src"))?;
+        let file = PathBuf::from("src/lib.rs");
+        let first = [(file.clone(), b"pub fn cached() -> i32 { 1 }\n".to_vec())];
+        let second = [(file.clone(), b"pub fn cached() -> i32 { 2 }\n".to_vec())];
+
+        let _ = build_index_from_loaded_files_with_cache(&root, &first)?;
+        let changed = build_index_from_loaded_files_with_cache(&root, &second)?;
+
+        assert_eq!(changed.file_fact_cache.hits, 0);
+        assert_eq!(changed.file_fact_cache.misses, 1);
+        assert_eq!(changed.file_fact_cache.stores, 1);
+        assert!(
+            changed
+                .index
+                .files
+                .get(&file)
+                .is_some_and(|facts| facts.source.contains("{ 2 }"))
         );
         Ok(())
     }

@@ -67,7 +67,7 @@ commands = [
 
 [[work_item]]
 id = "cache/repo-exposure-warm-path-reuse"
-status = "ready"
+status = "done"
 branch = "repo-exposure-warm-path-reuse"
 stackable = false
 requires_human_merge = true
@@ -79,6 +79,25 @@ commands = [
   "cargo test -p ripr lsp",
   "cargo test -p ripr lsp::tests",
   "cargo xtask lsp-cockpit-report",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
+  "cargo xtask check-pr",
+  "cargo test --workspace"
+]
+
+[[work_item]]
+id = "pilot/budget-aware"
+status = "ready"
+branch = "pilot-budget-aware"
+stackable = false
+requires_human_merge = true
+acceptance = "Make ripr pilot bounded and explicit under timeout or partial analysis so the first-run operator path does not hang silently; preserve analyzer outputs and public schemas unless intentionally versioned"
+commands = [
+  "cargo test -p ripr cli::commands::tests::pilot",
+  "cargo test -p ripr --test cli_smoke pilot_",
+  "cargo xtask repo-exposure-latency-report",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-campaign",
