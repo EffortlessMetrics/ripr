@@ -41,7 +41,10 @@ pub(crate) fn render_agent_brief_json(
                 display_path(root),
                 mode.as_str()
             ),
-            "verify_after_edit": "ripr outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json",
+            "verify_after_edit": format!(
+                "ripr agent verify --root {} --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json",
+                display_path(root)
+            ),
         },
         "warnings": &selection.warnings,
     });
@@ -155,7 +158,7 @@ fn verification_json(root: &Path, mode: &Mode, recommended_name: &str) -> Value 
             "ripr check --root {root} --mode {} --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json",
             mode.as_str()
         ),
-        "receipt_command": "ripr outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json",
+        "verify_command": format!("ripr agent verify --root {root} --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"),
         "suggested_test_command": format!("cargo test {recommended_name}"),
     })
 }

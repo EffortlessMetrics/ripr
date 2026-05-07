@@ -926,6 +926,85 @@ regressed, new, and removed seams for human review. Unchanged seams can still
 carry evidence-delta hints, such as a new observed value, so reviewers can see
 when a targeted test improved rendered evidence without changing the grip class.
 
+## Agent Verify
+
+`ripr agent verify --root <workspace> --before <repo-exposure-json> --after
+<repo-exposure-json> --json` compares two saved static repo-exposure snapshots
+under the workspace root and emits a compact agent-focused JSON summary. It
+reuses the targeted-test outcome comparison engine, but names the buckets for
+the active agent loop:
+
+```text
+ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json
+```
+
+The command does not run analysis, mutation testing, SARIF policy, badge
+generation, LSP refresh, or cache warm-up. It only compares the supplied
+`repo-exposure-json` artifacts after validating they resolve under `--root`.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "advisory",
+  "inputs": {
+    "before": "target/ripr/workflow/before.repo-exposure.json",
+    "after": "target/ripr/workflow/after.repo-exposure.json"
+  },
+  "summary": {
+    "improved": 1,
+    "changed": 0,
+    "regressed": 0,
+    "unchanged": 0,
+    "new": 0,
+    "resolved": 0
+  },
+  "changed_seams": [
+    {
+      "seam_id": "67fc764ba37d77bd",
+      "seam_kind": "predicate_boundary",
+      "file": "src/pricing.rs",
+      "line": 88,
+      "before": "weakly_gripped",
+      "after": "strongly_gripped",
+      "change": "improved",
+      "evidence_delta": [
+        "grip class moved from weakly_gripped to strongly_gripped",
+        "missing discriminator no longer reported: discount_threshold (equality boundary)"
+      ]
+    }
+  ],
+  "unchanged_seams": [],
+  "new_gaps": [],
+  "resolved_gaps": []
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `status` - always `"advisory"`; this is an agent verification hint, not a CI
+  policy.
+- `summary.improved` - matched seams whose after `SeamGripClass` ranks higher
+  than before.
+- `summary.changed` - matched seams whose class changed without ranking higher
+  or lower.
+- `summary.regressed` - matched seams whose after class ranks lower than
+  before.
+- `summary.unchanged` - matched seams whose class stayed the same.
+- `summary.new` - seam IDs present only in the after snapshot.
+- `summary.resolved` - seam IDs absent from the after snapshot. This is
+  advisory; it can mean a gap was fixed, or that the seam disappeared because
+  the code changed.
+- `changed_seams[]` - improved, same-rank changed, and regressed matched seams.
+- `unchanged_seams[]` - matched seams whose class stayed the same. These can
+  still carry `evidence_delta` hints when rendered evidence improved without
+  changing class.
+- `new_gaps[]` / `resolved_gaps[]` - seam identity and static class for seam IDs
+  present in only one snapshot.
+
 ## Operator Cockpit Report
 
 `cargo xtask operator-cockpit` joins existing repo-local report artifacts into
@@ -1403,14 +1482,14 @@ The JSON shape uses schema `0.1`:
       "verification": {
         "before_snapshot_command": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json",
         "after_snapshot_command": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json",
-        "receipt_command": "ripr outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json",
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json",
         "suggested_test_command": "cargo test discounted_total_boundary_discriminator"
       }
     }
   ],
   "next": {
     "inspect_packet": "ripr check --root . --mode draft --format agent-seam-packets-json > target/ripr/workflow/agent-seam-packets.json",
-    "verify_after_edit": "ripr outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json"
+    "verify_after_edit": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
   },
   "warnings": []
 }

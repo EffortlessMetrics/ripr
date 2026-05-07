@@ -257,6 +257,77 @@ fn agent_packet_rejects_configured_off_seam() -> Result<(), Box<dyn std::error::
 }
 
 #[test]
+fn agent_verify_compares_before_after_repo_exposure_json() -> Result<(), Box<dyn std::error::Error>>
+{
+    let root = unique_temp_workspace("agent-verify");
+    std::fs::create_dir_all(&root)?;
+    let before = root.join("before.repo-exposure.json");
+    let after = root.join("after.repo-exposure.json");
+    std::fs::write(
+        &before,
+        r#"{
+  "schema_version": "0.2",
+  "scope": "repo",
+  "seams": [
+    {
+      "seam_id": "seam-a",
+      "kind": "predicate_boundary",
+      "file": "src/pricing.rs",
+      "line": 42,
+      "grip_class": "weakly_gripped",
+      "related_tests": [{"oracle_kind": "exact_value", "oracle_strength": "weak"}],
+      "observed_values": ["50"],
+      "missing_discriminators": [{"value": "threshold equality", "reason": "not observed"}]
+    }
+  ]
+}"#,
+    )?;
+    std::fs::write(
+        &after,
+        r#"{
+  "schema_version": "0.2",
+  "scope": "repo",
+  "seams": [
+    {
+      "seam_id": "seam-a",
+      "kind": "predicate_boundary",
+      "file": "src/pricing.rs",
+      "line": 42,
+      "grip_class": "strongly_gripped",
+      "related_tests": [{"oracle_kind": "exact_value", "oracle_strength": "strong"}],
+      "observed_values": ["50", "100"],
+      "missing_discriminators": []
+    }
+  ]
+}"#,
+    )?;
+
+    let before_path = before.display().to_string();
+    let after_path = after.display().to_string();
+    let output = run_ripr(&[
+        "agent",
+        "verify",
+        "--root",
+        &root.display().to_string(),
+        "--before",
+        &before_path,
+        "--after",
+        &after_path,
+        "--json",
+    ]);
+    assert_success(&output);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains(r#""schema_version": "0.1""#));
+    assert!(stdout.contains(r#""improved": 1"#));
+    assert!(stdout.contains(r#""change": "improved""#));
+    assert!(stdout.contains(r#""seam_id": "seam-a""#));
+    assert!(stdout.contains("missing discriminator no longer reported"));
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
 fn check_badge_json_output_has_native_badge_shape() {
     let root = workspace_root().display().to_string();
     let diff = sample_diff().display().to_string();

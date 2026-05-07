@@ -186,14 +186,14 @@ The brief should use schema version `0.1`:
       "verification": {
         "before_snapshot_command": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json",
         "after_snapshot_command": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json",
-        "receipt_command": "ripr outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json",
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json",
         "suggested_test_command": "cargo test discounted_total_boundary_discriminator"
       }
     }
   ],
   "next": {
     "inspect_packet": "ripr check --root . --mode draft --format agent-seam-packets-json > target/ripr/workflow/agent-seam-packets.json",
-    "verify_after_edit": "ripr outcome --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json"
+    "verify_after_edit": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
   },
   "warnings": []
 }
@@ -644,7 +644,9 @@ Responsibilities:
 - include a before snapshot command using `ripr check --format
   repo-exposure-json`;
 - include an after snapshot command using the same mode and root;
-- include a receipt command using existing `ripr outcome` behavior;
+- include a verify command using `ripr agent verify` before/after static
+  evidence comparison;
+- ensure before/after verify paths resolve under `--root`;
 - include a focused test command only when a recommended or nearest test name is
   visible enough to make the command concrete.
 

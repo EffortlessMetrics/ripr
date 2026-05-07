@@ -7,8 +7,10 @@ pub(super) enum AgentCommand {
     Help,
     BriefHelp,
     PacketHelp,
+    VerifyHelp,
     Brief(AgentBriefOptions),
     Packet(AgentPacketOptions),
+    Verify(AgentVerifyOptions),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -23,6 +25,14 @@ pub(super) struct AgentBriefOptions {
 pub(super) struct AgentPacketOptions {
     pub(super) root: PathBuf,
     pub(super) seam_id: String,
+    pub(super) json: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct AgentVerifyOptions {
+    pub(super) root: PathBuf,
+    pub(super) before: PathBuf,
+    pub(super) after: PathBuf,
     pub(super) json: bool,
 }
 
@@ -58,8 +68,9 @@ pub(super) fn parse_agent_args(args: &[String]) -> Result<AgentCommand, String> 
         None | Some("--help" | "-h") => Ok(AgentCommand::Help),
         Some("brief") => parse_agent_brief_command(&args[1..]),
         Some("packet") => parse_agent_packet_command(&args[1..]),
+        Some("verify") => parse_agent_verify_command(&args[1..]),
         Some(other) => Err(format!(
-            "unknown agent subcommand {other:?}; expected `brief` or `packet`"
+            "unknown agent subcommand {other:?}; expected `brief`, `packet`, or `verify`"
         )),
     }
 }
@@ -76,6 +87,13 @@ fn parse_agent_packet_command(args: &[String]) -> Result<AgentCommand, String> {
         return Ok(AgentCommand::PacketHelp);
     }
     parse_agent_packet_options(args).map(AgentCommand::Packet)
+}
+
+fn parse_agent_verify_command(args: &[String]) -> Result<AgentCommand, String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        return Ok(AgentCommand::VerifyHelp);
+    }
+    parse_agent_verify_options(args).map(AgentCommand::Verify)
 }
 
 pub(super) fn parse_agent_brief_options(args: &[String]) -> Result<AgentBriefOptions, String> {
@@ -186,6 +204,45 @@ pub(super) fn parse_agent_packet_options(args: &[String]) -> Result<AgentPacketO
     })
 }
 
+pub(super) fn parse_agent_verify_options(args: &[String]) -> Result<AgentVerifyOptions, String> {
+    let mut root = PathBuf::from(".");
+    let mut before: Option<PathBuf> = None;
+    let mut after: Option<PathBuf> = None;
+    let mut json = false;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = PathBuf::from(expect_value(args, i, "--root")?);
+            }
+            "--before" => {
+                i += 1;
+                before = Some(PathBuf::from(expect_value(args, i, "--before")?));
+            }
+            "--after" => {
+                i += 1;
+                after = Some(PathBuf::from(expect_value(args, i, "--after")?));
+            }
+            "--json" => json = true,
+            other => return Err(format!("unknown agent verify argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    if !json {
+        return Err("agent verify requires --json until human output is implemented".to_string());
+    }
+
+    Ok(AgentVerifyOptions {
+        root,
+        before: before.ok_or_else(|| "agent verify requires --before <path>".to_string())?,
+        after: after.ok_or_else(|| "agent verify requires --after <path>".to_string())?,
+        json,
+    })
+}
+
 fn set_working_set(
     current: &mut Option<WorkingSetCandidate>,
     next: WorkingSetCandidate,
@@ -246,6 +303,10 @@ mod tests {
             parse_agent_args(&args(&["packet", "--help"])),
             Ok(AgentCommand::PacketHelp)
         );
+        assert_eq!(
+            parse_agent_args(&args(&["verify", "--help"])),
+            Ok(AgentCommand::VerifyHelp)
+        );
     }
 
     #[test]
@@ -256,7 +317,10 @@ mod tests {
         );
         assert_eq!(
             parse_agent_args(&args(&["other"])),
-            Err("unknown agent subcommand \"other\"; expected `brief` or `packet`".to_string())
+            Err(
+                "unknown agent subcommand \"other\"; expected `brief`, `packet`, or `verify`"
+                    .to_string()
+            )
         );
     }
 
@@ -493,6 +557,64 @@ mod tests {
                 "--xml",
             ])),
             Err("unknown agent packet argument \"--xml\"".to_string())
+        );
+    }
+
+    #[test]
+    fn agent_verify_parses_before_after_request() {
+        assert_eq!(
+            parse_agent_verify_options(&args(&[
+                "--root",
+                "repo",
+                "--before",
+                "target/ripr/workflow/before.repo-exposure.json",
+                "--after",
+                "target/ripr/workflow/after.repo-exposure.json",
+                "--json",
+            ])),
+            Ok(AgentVerifyOptions {
+                root: PathBuf::from("repo"),
+                before: PathBuf::from("target/ripr/workflow/before.repo-exposure.json"),
+                after: PathBuf::from("target/ripr/workflow/after.repo-exposure.json"),
+                json: true,
+            })
+        );
+    }
+
+    #[test]
+    fn agent_verify_requires_json_before_and_after() {
+        assert_eq!(
+            parse_agent_verify_options(&args(&[
+                "--before",
+                "before.json",
+                "--after",
+                "after.json",
+            ])),
+            Err("agent verify requires --json until human output is implemented".to_string())
+        );
+        assert_eq!(
+            parse_agent_verify_options(&args(&["--after", "after.json", "--json"])),
+            Err("agent verify requires --before <path>".to_string())
+        );
+        assert_eq!(
+            parse_agent_verify_options(&args(&["--before", "before.json", "--json"])),
+            Err("agent verify requires --after <path>".to_string())
+        );
+    }
+
+    #[test]
+    fn agent_verify_rejects_unknown_arguments() {
+        assert_eq!(
+            parse_agent_verify_options(&args(&[
+                "--before",
+                "before.json",
+                "--after",
+                "after.json",
+                "--json",
+                "--format",
+                "md",
+            ])),
+            Err("unknown agent verify argument \"--format\"".to_string())
         );
     }
 }
