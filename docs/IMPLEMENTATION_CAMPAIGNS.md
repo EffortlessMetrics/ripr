@@ -1954,17 +1954,16 @@ Closeout:
 Next:
 
 - Campaign 16 is closed. No ready work item remains in the active manifest.
-  Baseline Ledger v1 is the recommended next adoption campaign, but it should
-  be opened in a separate explicit campaign PR. Editor Evidence UX remains
-  queued as a separate Lane 3 candidate, not activated by this closeout.
+  Campaign 17 is now active as Editor Evidence UX, with
+  `campaign/editor-evidence-ux-audit` as the first ready item. Baseline Ledger
+  v1 remains a future adoption campaign and should open only through a
+  separate explicit campaign PR.
 
-## Future Campaign: Editor Evidence UX
+## Campaign 17: Editor Evidence UX
 
 Campaign ID: `editor-evidence-ux`
 
-Status: queued, not active. Campaign 16, Gate Adoption UX, is complete. Start
-this lane only after an explicit campaign activation PR or after an explicit
-decision to run the editor lane in parallel.
+Status: active
 
 The saved-workspace LSP path already has alpha diagnostics, evidence hover,
 seam actions, related-test opening, context collection, agent-loop commands,
@@ -2003,7 +2002,7 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `campaign/editor-evidence-ux-audit` | queued | Audit diagnostic data, hover, actions, context collection, VS Code extension proof, and LSP cockpit status into one editor evidence contract without behavior changes. |
+| `campaign/editor-evidence-ux-audit` | ready | Audit diagnostic data, hover, actions, context collection, VS Code extension proof, and LSP cockpit status into one editor evidence contract without behavior changes. |
 | `lsp/evidence-hover-hardening` | blocked | Harden hover as the primary explanation surface for seam class, evidence path, missing discriminator, related test, suggested assertion, verify command, receipt command, and static limits. |
 | `lsp/evidence-aware-actions` | blocked | Tighten action visibility and payload validation so actions only appear when supporting evidence or command context exists. |
 | `lsp/context-packet-command` | blocked | Add one canonical evidence context packet command for external tools and agents without edits, generated tests, or provider coupling. |
@@ -2021,8 +2020,16 @@ Dependencies:
 - Campaign 12 supplies first-hour editor status and intent-titled action
   framing.
 - Campaign 13 supplies PR guidance without making RIPR a free-form reviewer.
-- Campaign 16 is complete; this lane still requires an explicit promotion before
-  it becomes the active manifest.
+- Campaign 16 is complete; this explicit activation starts from the queued
+  editor contract without changing gate adoption policy.
+- Baseline Ledger v1 remains a separate future adoption lane.
+
+Next:
+
+- `campaign/editor-evidence-ux-audit` is the next ready item. Keep that PR
+  docs/contract-only: audit diagnostic data, hover, actions, context
+  collection, VS Code proof, LSP cockpit status, and status/staleness without
+  adding behavior.
 
 Commands:
 

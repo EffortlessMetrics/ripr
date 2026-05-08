@@ -133,6 +133,10 @@ are scoped or reviewed.
   workflows, baseline guidance, generated-CI gate summary polish, dogfood
   receipts, and blocking-readiness guidance were complete while generated CI
   stayed advisory by default.
+- Opened Campaign 17, Editor Evidence UX, with
+  `campaign/editor-evidence-ux-audit` as the first ready item before behavior
+  changes to hover, actions, context packets, protocol smoke, VS Code smoke,
+  status/staleness, or editor workflow docs.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and PR guidance annotation counts before artifact

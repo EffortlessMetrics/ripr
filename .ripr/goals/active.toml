@@ -1,135 +1,172 @@
-id = "gate-adoption-ux"
-title = "Gate Adoption UX"
+id = "editor-evidence-ux"
+title = "Editor Evidence UX"
 status = "active"
 
-# This is Campaign 16 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
-# Campaign 15 closed Calibrated Gate Policy after optional gates were specified,
-# evaluated, fixture-pinned, wired into generated CI only when explicitly
-# configured, documented, and kept advisory by default.
+# This is Campaign 17 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+# Campaign 16 closed Gate Adoption UX after adoption examples, waiver workflows,
+# baseline guidance, CI summary polish, dogfood receipts, and
+# blocking-readiness guidance landed while generated CI stayed advisory by
+# default.
 
 objective = """
-Make optional calibrated gate adoption safe and obvious for real teams:
-provide copyable generated-CI examples, visible waiver and baseline workflows,
-first-screen gate summaries, dogfood receipts, and guidance for when blocking is
-appropriate without changing advisory defaults.
+Make RIPR's saved-workspace LSP path project one evidence spine from diagnostic
+to hover, related test, focused context packet, one test, verify, and receipt
+without automatic edits, generated tests, runtime mutation execution, or runtime
+adequacy claims.
 """
 
 end_state = [
-  "docs provide copyable generated-CI examples for visible-only, acknowledgeable, baseline-check, and calibrated-gate adoption",
-  "waiver and label workflows show how `ripr-waive` produces visible acknowledged decisions rather than hidden success",
-  "baseline creation and refresh guidance lets teams avoid punishing historical debt while identifying new policy-eligible gaps",
-  "generated CI summaries make gate decisions understandable without opening JSON artifacts",
-  "ripr dogfood receipts demonstrate visible-only and stricter opt-in gate behavior from repo-local evidence",
-  "blocking-readiness guidance explains when teams should leave gates advisory, use acknowledgement, or enable calibrated blocking",
+  "diagnostics carry stable seam identity and are not reinterpreted from message text",
+  "hover is the primary human explanation surface for seam class, evidence path, missing observation, related test, suggested assertion shape, verify command, receipt command, and static limits",
+  "code actions appear only when the supporting evidence or command context exists",
+  "a canonical evidence context packet command gives external agents one bounded work packet without coupling RIPR to an LLM provider",
+  "protocol-level and VS Code smoke tests prove the editor loop from server startup through diagnostics, hover, actions, copy payloads, related-test opening, and restart/error paths",
+  "status and staleness make stale, failed, disabled, or unavailable evidence visible rather than presenting it as fresh",
+  "user-facing docs describe the saved-workspace editor workflow and its limits",
 ]
 
 [[work_item]]
-id = "docs/gate-adoption-examples"
-status = "done"
-branch = "docs-gate-adoption-examples"
+id = "campaign/editor-evidence-ux-audit"
+status = "ready"
+branch = "docs-editor-evidence-ux-audit"
 stackable = false
-acceptance = "Add copyable generated-CI examples for visible-only, acknowledgeable, baseline-check, and calibrated-gate adoption while preserving the default advisory workflow"
-commands = [
-  "cargo xtask check-doc-index",
-  "cargo xtask markdown-links",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "docs/gate-waiver-workflows"
-status = "done"
-branch = "docs-gate-waiver-workflows"
-stackable = false
-blocked_by = ["docs/gate-adoption-examples"]
-acceptance = "Document sample label and waiver workflows that keep acknowledged findings visible, auditable, and separate from suppressions"
-commands = [
-  "cargo xtask check-doc-index",
-  "cargo xtask markdown-links",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "docs/gate-baseline-workflow"
-status = "done"
-branch = "docs-gate-baseline-workflow"
-stackable = false
-blocked_by = ["docs/gate-waiver-workflows"]
-acceptance = "Document baseline creation, review, and refresh guidance for baseline-check and calibrated-gate adoption without hiding existing debt"
-commands = [
-  "cargo xtask check-doc-index",
-  "cargo xtask markdown-links",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "ci/gate-decision-summary-polish"
-status = "done"
-branch = "ci-gate-decision-summary-polish"
-stackable = false
-blocked_by = [
-  "docs/gate-adoption-examples",
-  "docs/gate-waiver-workflows",
-  "docs/gate-baseline-workflow",
-]
-acceptance = "Polish generated CI gate summaries so reviewers can see mode, status, waiver, baseline, calibration, blocking reason, and artifact paths without opening JSON"
-commands = [
-  "cargo test -p ripr init_generated_github_workflow",
-  "cargo xtask check-workflows",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "dogfood/gate-adoption-receipts"
-status = "done"
-branch = "dogfood-gate-adoption-receipts"
-stackable = false
-blocked_by = ["ci/gate-decision-summary-polish"]
-acceptance = "Add repo-local dogfood receipts that show visible-only, acknowledged, baseline-aware, and calibrated-gate decisions from RIPR's own evidence without making default CI blocking"
-commands = [
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "docs/blocking-readiness-guide"
-status = "done"
-branch = "docs-blocking-readiness-guide"
-stackable = false
-blocked_by = ["dogfood/gate-adoption-receipts"]
-acceptance = "Document when to keep gates advisory, when to require acknowledgement, and when calibrated blocking is mature enough for a team"
-commands = [
-  "cargo xtask check-doc-index",
-  "cargo xtask markdown-links",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "campaign/gate-adoption-ux-closeout"
-status = "done"
-branch = "campaign-gate-adoption-ux-closeout"
-stackable = false
-blocked_by = [
-  "docs/gate-adoption-examples",
-  "docs/gate-waiver-workflows",
-  "docs/gate-baseline-workflow",
-  "ci/gate-decision-summary-polish",
-  "dogfood/gate-adoption-receipts",
-  "docs/blocking-readiness-guide",
-]
-acceptance = "Close Campaign 16 only after gate adoption docs, waiver workflows, baseline guidance, CI summary polish, dogfood receipts, and blocking-readiness guidance are complete while defaults stay advisory"
+acceptance = "Audit diagnostic data, hover, actions, context collection, VS Code extension proof, and LSP cockpit status into one editor evidence contract without behavior changes"
 commands = [
   "cargo xtask check-campaign",
   "cargo xtask goals next",
   "cargo xtask check-doc-index",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "lsp/evidence-hover-hardening"
+status = "blocked"
+branch = "lsp-evidence-hover-hardening"
+stackable = false
+blocked_by = ["campaign/editor-evidence-ux-audit"]
+acceptance = "Harden hover as the primary explanation surface for seam class, evidence path, missing discriminator, related test, suggested assertion, verify command, receipt command, and static limits"
+commands = [
+  "cargo test -p ripr lsp::hover --lib",
+  "cargo test -p ripr lsp::tests --lib",
+  "cargo xtask lsp-cockpit-report",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "lsp/evidence-aware-actions"
+status = "blocked"
+branch = "lsp-evidence-aware-actions"
+stackable = false
+blocked_by = ["lsp/evidence-hover-hardening"]
+acceptance = "Tighten action visibility and payload validation so actions only appear when supporting evidence or command context exists"
+commands = [
+  "cargo test -p ripr lsp::actions --lib",
+  "cargo test -p ripr lsp::tests --lib",
+  "npm --prefix editors/vscode run test:e2e",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "lsp/context-packet-command"
+status = "blocked"
+branch = "lsp-context-packet-command"
+stackable = false
+blocked_by = ["lsp/evidence-aware-actions"]
+acceptance = "Add one canonical evidence context packet command for external tools and agents without edits, generated tests, or provider coupling"
+commands = [
+  "cargo test -p ripr lsp --lib",
+  "cargo test -p ripr lsp::tests --lib",
+  "cargo xtask lsp-cockpit-report",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "test/lsp-protocol-smoke"
+status = "blocked"
+branch = "test-lsp-protocol-smoke"
+stackable = false
+blocked_by = ["lsp/context-packet-command"]
+acceptance = "Add framed protocol proof for initialize, saved-workspace diagnostics, hover, codeAction, context packet execution, and shutdown"
+commands = [
+  "cargo test -p ripr lsp --lib",
+  "cargo test -p ripr lsp::tests --lib",
+  "cargo xtask lsp-cockpit-report",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "test/vscode-extension-smoke"
+status = "blocked"
+branch = "test-vscode-extension-smoke"
+stackable = false
+blocked_by = ["test/lsp-protocol-smoke"]
+acceptance = "Prove extension activation, server resolution, fixture diagnostics, hover, actions, copy payloads, related-test opening, restart, and bad-server-path status"
+commands = [
+  "npm --prefix editors/vscode run compile",
+  "npm --prefix editors/vscode run test:e2e",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "lsp/editor-status-and-staleness"
+status = "blocked"
+branch = "lsp-editor-status-and-staleness"
+stackable = false
+blocked_by = ["test/vscode-extension-smoke"]
+acceptance = "Make server unavailable, workspace unresolved, config disabled, queued, running, complete, stale, failed, and no-actionable-seam states explicit"
+commands = [
+  "cargo test -p ripr lsp --lib",
+  "cargo test -p ripr lsp::tests --lib",
+  "npm --prefix editors/vscode run test:e2e",
+  "cargo xtask lsp-cockpit-report",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "docs/editor-evidence-workflow"
+status = "blocked"
+branch = "docs-editor-evidence-workflow"
+stackable = false
+blocked_by = ["lsp/editor-status-and-staleness"]
+acceptance = "Document install, diagnostic, hover, related test, context packet, one-test, verify, receipt, and refresh workflow with limits"
+commands = [
+  "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
   "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "campaign/editor-evidence-ux-closeout"
+status = "blocked"
+branch = "campaign-editor-evidence-ux-closeout"
+stackable = false
+blocked_by = [
+  "campaign/editor-evidence-ux-audit",
+  "lsp/evidence-hover-hardening",
+  "lsp/evidence-aware-actions",
+  "lsp/context-packet-command",
+  "test/lsp-protocol-smoke",
+  "test/vscode-extension-smoke",
+  "lsp/editor-status-and-staleness",
+  "docs/editor-evidence-workflow",
+]
+acceptance = "Close only after hover, actions, context packet, protocol proof, VS Code proof, status/staleness, and docs align without analyzer, policy, CI, or runtime-claim drift"
+commands = [
+  "cargo test -p ripr lsp --lib",
+  "cargo test -p ripr lsp::tests --lib",
+  "cargo xtask lsp-cockpit-report",
+  "npm --prefix editors/vscode run compile",
+  "npm --prefix editors/vscode run test:e2e",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
   "cargo xtask check-capabilities",
   "cargo xtask check-pr",
 ]

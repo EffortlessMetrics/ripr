@@ -72,9 +72,10 @@ Baseline Ledger v1 is the recommended next adoption campaign: make reviewed
 baselines executable with create, diff, and shrink-only refresh commands before
 using those ledgers for broader RIPR Zero planning.
 
-Editor Evidence UX remains queued as a separate Lane 3 option, not active.
-Start it only with an explicit campaign activation PR or a clear parallel-lane
-decision; the first queued item is `campaign/editor-evidence-ux-audit`.
+At closeout time, Editor Evidence UX remained queued as a separate Lane 3
+option, not active. Start it only with an explicit campaign activation PR or a
+clear parallel-lane decision; the first queued item is
+`campaign/editor-evidence-ux-audit`.
 
 ## What Not To Do
 
