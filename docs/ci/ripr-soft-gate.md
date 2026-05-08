@@ -4,6 +4,10 @@ The `ripr` soft-gate turns the advisory `ripr` self-dogfood lane into an
 **acknowledgeable gate**: narrow, calibrated, and explicit about what it
 does and does not block on.
 
+This page records the older repo-local soft-gate doctrine. For the current
+generated-workflow gate evaluator, mode vocabulary, acknowledgement behavior,
+and artifact layout, see [Calibrated gate policy](../CALIBRATED_GATE_POLICY.md).
+
 ## Doctrine constraints
 
 This document records the contract that the soft-gate must respect:
@@ -94,18 +98,13 @@ is. There is no separate top-level `id` field.
 
 ## Implementation posture
 
-- **Current state**: contract, scope, trigger criteria, and label
-  vocabulary documented. **No enforcement code yet.**
-- **Follow-up PR**: wire `cargo xtask ci ripr-soft-gate
-  --findings target/ripr/reports/ripr-diff.json
-  --suppressions .ripr/suppressions.toml
-  --threshold-config policy/ripr-soft-gate.toml
-  --labels-json "$LABELS_JSON"`, then activate the gate after the
-  calibration window has produced 2 weeks of `ci-actuals.json` data on
-  the `ripr-self-dogfood` lane. The lane is registered in
-  `policy/ci-lane-whitelist.toml` and runs as part of the `rust` job in
-  `.github/workflows/ci.yml` via `cargo xtask dogfood` and
-  `cargo xtask reports index` (the lane's `commands` field).
+- **Current state**: the historical soft-gate doctrine remains useful policy
+  background, but the active gate implementation is `ripr gate evaluate` and
+  the generated-workflow integration documented in
+  [Calibrated gate policy](../CALIBRATED_GATE_POLICY.md).
+- **Follow-up work**: tune explicit gate modes and baselines from calibration
+  evidence. Do not treat this historical `cargo xtask ci ripr-soft-gate`
+  sketch as the current implementation surface.
 
 ## Confidence field contract
 

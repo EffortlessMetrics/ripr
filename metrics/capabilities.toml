@@ -674,12 +674,13 @@ evidence = [
   "ripr gate evaluate writes gate-decision JSON/Markdown from existing PR guidance and optional labels, baseline, recommendation calibration, and imported mutation calibration inputs",
   "crates/ripr/src/output/gate.rs keeps the evaluator read-only and returns non-zero only after writing blocked or config_error reports",
   "fixtures/boundary_gap/expected/calibrated-gate pins advisory, acknowledged, baseline-check, fail-on-new-high-confidence-gap, suppression, missing-input, and calibration disagreement decisions",
-  "ripr init --ci github generates optional gate evaluation only when RIPR_GATE_MODE is explicitly configured and uploads gate-decision artifacts with the advisory report packet"
+  "ripr init --ci github generates optional gate evaluation only when RIPR_GATE_MODE is explicitly configured and uploads gate-decision artifacts with the advisory report packet",
+  "docs/CALIBRATED_GATE_POLICY.md documents modes, waivers, CI behavior, calibration evidence, rollout stages, fixture matrix, and static/runtime vocabulary boundaries"
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/calibrated-gate"
 ]
-next = "docs/calibrated-gate-policy"
+next = "campaign/calibrated-gate-closeout"
 metric = "gate_decisions_evaluated, gate_decisions_blocking, gate_decisions_acknowledged, gate_decisions_advisory, gate_decisions_suppressed, gate_decisions_unknown_confidence, gate_config_errors"
 
 [[capability]]

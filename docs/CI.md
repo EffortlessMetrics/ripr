@@ -988,6 +988,10 @@ The SARIF baseline policy implementation still lives in `cargo xtask`. The
 generated workflow above does not block pull requests by default; gate blocking
 requires an explicit `RIPR_GATE_MODE` configuration.
 
+See [Calibrated gate policy](CALIBRATED_GATE_POLICY.md) for the operating model
+covering modes, waivers, baseline inputs, calibration evidence, generated CI
+behavior, and static/runtime vocabulary boundaries.
+
 The security workflow currently runs:
 
 ```bash

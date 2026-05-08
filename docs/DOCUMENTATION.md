@@ -36,6 +36,7 @@ Current how-to docs:
 - [Agent workflows](AGENT_WORKFLOWS.md)
 - [LLM operator guide](LLM_OPERATOR_GUIDE.md)
 - [Recommendation calibration](RECOMMENDATION_CALIBRATION.md)
+- [Calibrated gate policy](CALIBRATED_GATE_POLICY.md)
 - [Release](RELEASE.md)
 - [Installation verification](INSTALLATION_VERIFICATION.md)
 - [Publishing](PUBLISHING.md)
@@ -62,6 +63,7 @@ Current reference docs:
 - [Defaults-first example corpus](../fixtures/EXAMPLE_CORPUS.md)
 - [Calibration corpus index](../fixtures/CALIBRATION_CORPUS.md)
 - [Recommendation calibration](RECOMMENDATION_CALIBRATION.md)
+- [Calibrated gate policy](CALIBRATED_GATE_POLICY.md)
 - [Test taxonomy](TEST_TAXONOMY.md)
 - [Engineering rules](ENGINEERING.md)
 - [File policy](FILE_POLICY.md)
@@ -108,6 +110,7 @@ Current explanation docs:
 - [Editor agent integration](EDITOR_AGENT_INTEGRATION.md)
 - [LLM operator guide](LLM_OPERATOR_GUIDE.md)
 - [Recommendation calibration](RECOMMENDATION_CALIBRATION.md)
+- [Calibrated gate policy](CALIBRATED_GATE_POLICY.md)
 
 ## README Rule
 

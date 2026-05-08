@@ -119,7 +119,8 @@ Policy: RIPR-SPEC-0014 pins optional policy gates after measured signal
 quality, `ripr gate evaluate` now writes the read-only decision report,
 `fixtures/calibrated-gate-cases` pins the decision matrix, and generated
 GitHub workflows run gate evaluation only when `RIPR_GATE_MODE` is explicitly
-configured. The next ready item is `docs/calibrated-gate-policy`. Gates remain
+configured. [Calibrated gate policy](CALIBRATED_GATE_POLICY.md) documents the
+operating model, so the campaign closeout is the next ready item. Gates remain
 explicit, advisory by default, and separate from runtime mutation vocabulary.
 
 ## Strategic Sequence
