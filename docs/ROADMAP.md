@@ -83,11 +83,12 @@ known-limit surfaces. Campaign 11 is now active as the LLM work loop: `ripr
 agent status` is a read-only lens over existing artifacts, loop command
 templates are centralized for the current CLI/LSP/cockpit/CI surfaces, workflow
 manifests and review summaries are pinned, and generated CI now uploads the
-LLM work-loop packet artifacts. The next ready item is `docs/llm-operator-guide`.
-Campaign 12 is queued as First-Hour UX: after the LLM work-loop command and
-artifact state is stable, the next product risk is making the VS Code extension
-and generated GitHub workflow explain the top recommendation without requiring
-users to inspect CLI reports first.
+LLM work-loop packet artifacts. The LLM operator guide documents the
+source-edit-free human and external-agent path, and the next ready item is
+`campaign/llm-work-loop-closeout`. Campaign 12 is queued as First-Hour UX:
+after the LLM work-loop command and artifact state is stable, the next product
+risk is making the VS Code extension and generated GitHub workflow explain the
+top recommendation without requiring users to inspect CLI reports first.
 
 ## Strategic Sequence
 
