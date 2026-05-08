@@ -56,7 +56,7 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Run future Clippy (advisory)
-        run: cargo +1.95 clippy --workspace --all-targets -- -W clippy::same_length_and_capacity -W clippy::manual_ilog2 -W clippy::needless_type_cast -W clippy::decimal_bitwise_operands -W clippy::disallowed_fields -W clippy::manual_checked_ops -W clippy::manual_take -W clippy::manual_pop_if -W clippy::duration_suboptimal_units -W clippy::unnecessary_trailing_comma 2>&1 | tee target/future-clippy.log || true
+        run: mkdir -p target && cargo +1.95 clippy --workspace --all-targets -- -W clippy::same_length_and_capacity -W clippy::manual_ilog2 -W clippy::needless_type_cast -W clippy::decimal_bitwise_operands -W clippy::disallowed_fields -W clippy::manual_checked_ops -W clippy::manual_take -W clippy::manual_pop_if -W clippy::duration_suboptimal_units -W clippy::unnecessary_trailing_comma 2>&1 | tee target/future-clippy.log || true
 
       - name: Write step summary
         run: printf "## Future Clippy (advisory)\n\nFindings (if any) are warnings against the 1.94 / 1.95 lint trajectory recorded in policy/clippy-lints.toml. The lane never fails.\n" >> "$GITHUB_STEP_SUMMARY"
