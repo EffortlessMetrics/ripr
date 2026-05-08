@@ -86,6 +86,31 @@ Missing optional inputs must produce `unknown` or `not_observed` fields rather
 than inventing feedback. Missing required inputs should produce an incomplete
 report with repair guidance, not a successful quality score.
 
+## Outcome Receipts
+
+Review guidance outcome receipts are optional local feedback artifacts. They
+record the observed review-quality outcome for one PR guidance item without
+depending on telemetry, an external service, model calls, generated tests, source
+edits, runtime mutation execution, or CI blocking.
+
+Receipts are inputs to calibration, not a new recommendation source. A missing
+receipt leaves the matching recommendation as `unknown` unless fixture
+expectations, static movement, or another local artifact supplies a bounded
+outcome.
+
+The receipt shape is documented in `docs/OUTPUT_SCHEMA.md` and pinned by the
+boundary-gap calibration corpus. It must identify:
+
+- the source guidance artifact, collection, item id, `seam_id`, and dedupe key
+  when available;
+- one review-quality label: `useful`, `noisy`, `wrong_line`,
+  `already_covered`, `wrong_target`, `summary_only_correct`,
+  `suppressed_correctly`, or `unknown`;
+- placement quality, suggested-test target quality, suppression reason and
+  quality, static movement state, and optional latency fields;
+- explicit false limits for telemetry, external services, source edits,
+  generated tests, runtime mutation execution, and CI blocking.
+
 ## Calibration Outcomes
 
 Recommendation calibration uses these review-quality labels:
@@ -329,7 +354,9 @@ The implementation campaign must add:
 - fixture expectations for useful, noisy, wrong-line, already-covered,
   summary-only-correct, suppressed-correctly, generated/migration,
   macro-heavy, trait/generic, and async/error-boundary cases;
-- an optional review guidance outcome receipt shape;
+- an optional review guidance outcome receipt shape with pinned examples for
+  useful, noisy, wrong-line, already-covered, wrong-target,
+  summary-only-correct, and suppressed-correctly labels;
 - a report producer that joins PR guidance, expectations, suppression state,
   target placement, latency, and before/after static movement;
 - JSON and Markdown output tests;

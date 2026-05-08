@@ -206,23 +206,25 @@ explicit in PRs and planning docs.
 
 ## Commit, PR, and Merge Boundary
 
-Agents should commit and push scoped work after validation, then open or update
-the PR with a review map, validation evidence, non-goals, and known gaps.
+Do not pause merely to commit, push, open a PR, update a PR, or merge a clean
+PR.
 
 For scoped implementation, docs, tests, and refactors, use this default flow:
 
 ```text
-implement -> validate -> commit -> push -> open or update PR -> review -> fix -> validate -> merge when ready
+review -> improve -> validate -> commit -> push -> open/update PR -> merge when ready
 ```
 
-Do not stop before commit, push, PR update, or merge because of a goal-manifest
-field. Merge readiness is governed by ordinary repo policy: branch protection,
-required checks, draft state, review comments, current operator direction,
-scope/risk, and whether the PR's issues have been reviewed and addressed.
+A PR is ready when the branch is current, required checks pass, real review
+findings are addressed, the diff matches the stated scope, and repo policy does
+not require a different sequence.
 
 `stackable = false` means do not build the next dependent work item on top of
-the current branch. Wait for the prerequisite PR to merge, or get an explicit
-operator override to stack.
+the current branch. It does not create an approval gate.
+
+`blocked_by` is a dependency rule. If a work item depends on another item, wait
+until that dependency is landed or explicitly update the manifest. Do not invent
+a separate merge rule.
 
 Ask before proceeding only when continuing would change public schema, output
 contracts, security/workflows/secrets, dependencies, release or publish
