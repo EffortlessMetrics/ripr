@@ -141,6 +141,11 @@ are scoped or reviewed.
   gate decision fixtures for advisory, acknowledged, baseline-check,
   high-confidence blocking, suppression, missing-input, and calibration
   disagreement cases.
+- Wired generated GitHub workflows to run `ripr gate evaluate` only when
+  `RIPR_GATE_MODE` is explicitly configured, upload gate-decision artifacts,
+  and keep default generated workflows advisory.
+- Advanced Campaign 15 to `docs/calibrated-gate-policy` after optional
+  generated CI gate wiring landed without changing default workflow blocking.
 - Pinned RIPR-SPEC-0012 as the PR test guidance annotation contract and
   advanced Campaign 12 to `vscode/first-run-status` as the next ready UX item.
 - Advanced Campaign 12 to `vscode/action-discoverability` after pinning the

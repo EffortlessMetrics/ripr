@@ -599,12 +599,14 @@ permissions:
 
 env:
   RIPR_UPLOAD_SARIF: "true"
+  RIPR_GATE_MODE: ${{ vars.RIPR_GATE_MODE || '' }}
+  RIPR_GATE_BASELINE: ${{ vars.RIPR_GATE_BASELINE || '' }}
 
 jobs:
   ripr:
     name: RIPR advisory reports
     runs-on: ubuntu-latest
-    continue-on-error: true
+    continue-on-error: ${{ vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only' }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -701,6 +703,13 @@ jobs:
             --head HEAD \
             --out target/ripr/review/comments.json
 
+      - name: Capture RIPR gate labels
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          mkdir -p target/ci
+          jq -c '{labels: [.pull_request.labels[]?.name]}' "$GITHUB_EVENT_PATH" > target/ci/labels.json
+
       - name: Render diff SARIF
         if: env.RIPR_UPLOAD_SARIF == 'true' && github.event_name == 'pull_request'
         continue-on-error: true
@@ -741,6 +750,35 @@ jobs:
         if: always() && hashFiles('crates/ripr/Cargo.toml') != '' && hashFiles('xtask/src/reports/operator.rs') != ''
         continue-on-error: true
         run: cargo xtask operator-cockpit
+
+      - name: Evaluate RIPR gate decision
+        if: always() && env.RIPR_GATE_MODE != '' && hashFiles('target/ripr/review/comments.json') != ''
+        run: |
+          mkdir -p target/ripr/reports
+          gate_args=(
+            gate evaluate
+            --root .
+            --pr-guidance target/ripr/review/comments.json
+            --mode "$RIPR_GATE_MODE"
+            --out target/ripr/reports/gate-decision.json
+            --out-md target/ripr/reports/gate-decision.md
+          )
+          if [ -f target/ripr/reports/repo-exposure.json ]; then
+            gate_args+=(--repo-exposure target/ripr/reports/repo-exposure.json)
+          fi
+          if [ -f target/ci/labels.json ]; then
+            gate_args+=(--labels-json target/ci/labels.json)
+          fi
+          if [ -f target/ripr/workflow/agent-verify.json ]; then
+            gate_args+=(--agent-verify target/ripr/workflow/agent-verify.json)
+          fi
+          if [ -f target/ripr/reports/agent-receipt.json ]; then
+            gate_args+=(--agent-receipt target/ripr/reports/agent-receipt.json)
+          fi
+          if [ -n "${RIPR_GATE_BASELINE:-}" ]; then
+            gate_args+=(--baseline "$RIPR_GATE_BASELINE")
+          fi
+          ripr "${gate_args[@]}"
 
       - name: Render RIPR LLM work-loop summaries
         if: always()
@@ -825,10 +863,18 @@ jobs:
             echo '- Agent workflow: `target/ripr/workflow/`'
             echo '- Agent compatibility copies: `target/ripr/agent/`'
             echo '- Repo reports, badges, SARIF, and receipts: `target/ripr/reports/`'
+            echo '- CI labels and plan inputs: `target/ci/`'
             if [ -d target/ripr/review ]; then
               echo '- PR test guidance report: `target/ripr/review/`'
             else
               echo "- PR test guidance report: not generated yet"
+            fi
+            echo
+            echo '### Gate decision'
+            if [ -f target/ripr/reports/gate-decision.md ]; then
+              cat target/ripr/reports/gate-decision.md
+            else
+              echo 'Gate decision was not run. Set `RIPR_GATE_MODE` to `visible-only`, `acknowledgeable`, `baseline-check`, or `calibrated-gate` to opt in.'
             fi
             echo
             echo '### SARIF and badge status'
@@ -871,6 +917,7 @@ jobs:
             target/ripr/workflow
             target/ripr/reports
             target/ripr/review
+            target/ci
           if-no-files-found: ignore
           retention-days: 14
 
@@ -899,9 +946,9 @@ repo-local automation today; a public package-level policy command is a future
 adoption surface.
 
 The generated workflow always uploads `target/ripr/pilot`,
-`target/ripr/workflow`, `target/ripr/agent`, `target/ripr/reports`, and
-`target/ripr/review` as a `ripr-reports` artifact when files exist. The repo
-badge files in that artifact are:
+`target/ripr/workflow`, `target/ripr/agent`, `target/ripr/reports`,
+`target/ripr/review`, and `target/ci` as a `ripr-reports` artifact when files
+exist. The repo badge files in that artifact are:
 
 - `target/ripr/reports/repo-ripr-badge.json`, the seam-native native badge
   payload;
@@ -913,9 +960,24 @@ workflow to keep the report artifact path while skipping SARIF rendering and
 upload. This is useful for repositories that do not want GitHub code scanning
 permissions or want to review the report artifacts before enabling annotations.
 
-The policy implementation lives in `cargo xtask` rather than a public `ripr`
-CLI policy command. The generated workflow above does not block pull requests
-by default; blocking policy remains an explicit follow-up decision.
+Calibrated gates are opt-in. Leave `RIPR_GATE_MODE` unset for the default
+advisory posture. To evaluate the explicit gate decision layer, set repository
+variables such as:
+
+```text
+RIPR_GATE_MODE=visible-only
+RIPR_GATE_BASELINE=.ripr/gate-baseline.json
+```
+
+`visible-only` writes `target/ripr/reports/gate-decision.{json,md}` without
+blocking. `acknowledgeable`, `baseline-check`, and `calibrated-gate` can return
+a blocking exit only when that explicit mode is configured. A `ripr-waive`
+pull-request label remains visible in the decision report as an acknowledged
+outcome rather than hiding the recommendation.
+
+The SARIF baseline policy implementation still lives in `cargo xtask`. The
+generated workflow above does not block pull requests by default; gate blocking
+requires an explicit `RIPR_GATE_MODE` configuration.
 
 The security workflow currently runs:
 

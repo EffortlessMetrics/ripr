@@ -842,12 +842,14 @@ permissions:
 
 env:
   RIPR_UPLOAD_SARIF: "true"
+  RIPR_GATE_MODE: ${{ vars.RIPR_GATE_MODE || '' }}
+  RIPR_GATE_BASELINE: ${{ vars.RIPR_GATE_BASELINE || '' }}
 
 jobs:
   ripr:
     name: RIPR advisory reports
     runs-on: ubuntu-latest
-    continue-on-error: true
+    continue-on-error: ${{ vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only' }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -944,6 +946,13 @@ jobs:
             --head HEAD \
             --out target/ripr/review/comments.json
 
+      - name: Capture RIPR gate labels
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          mkdir -p target/ci
+          jq -c '{labels: [.pull_request.labels[]?.name]}' "$GITHUB_EVENT_PATH" > target/ci/labels.json
+
       - name: Render RIPR diff SARIF
         if: env.RIPR_UPLOAD_SARIF == 'true' && github.event_name == 'pull_request'
         continue-on-error: true
@@ -984,6 +993,35 @@ jobs:
         if: always() && hashFiles('crates/ripr/Cargo.toml') != '' && hashFiles('xtask/src/reports/operator.rs') != ''
         continue-on-error: true
         run: cargo xtask operator-cockpit
+
+      - name: Evaluate RIPR gate decision
+        if: always() && env.RIPR_GATE_MODE != '' && hashFiles('target/ripr/review/comments.json') != ''
+        run: |
+          mkdir -p target/ripr/reports
+          gate_args=(
+            gate evaluate
+            --root .
+            --pr-guidance target/ripr/review/comments.json
+            --mode "$RIPR_GATE_MODE"
+            --out target/ripr/reports/gate-decision.json
+            --out-md target/ripr/reports/gate-decision.md
+          )
+          if [ -f target/ripr/reports/repo-exposure.json ]; then
+            gate_args+=(--repo-exposure target/ripr/reports/repo-exposure.json)
+          fi
+          if [ -f target/ci/labels.json ]; then
+            gate_args+=(--labels-json target/ci/labels.json)
+          fi
+          if [ -f target/ripr/workflow/agent-verify.json ]; then
+            gate_args+=(--agent-verify target/ripr/workflow/agent-verify.json)
+          fi
+          if [ -f target/ripr/reports/agent-receipt.json ]; then
+            gate_args+=(--agent-receipt target/ripr/reports/agent-receipt.json)
+          fi
+          if [ -n "${RIPR_GATE_BASELINE:-}" ]; then
+            gate_args+=(--baseline "$RIPR_GATE_BASELINE")
+          fi
+          ripr "${gate_args[@]}"
 
       - name: Render RIPR LLM work-loop summaries
         if: always()
@@ -1068,10 +1106,18 @@ jobs:
             echo '- Agent workflow: `target/ripr/workflow/`'
             echo '- Agent compatibility copies: `target/ripr/agent/`'
             echo '- Repo reports, badges, SARIF, and receipts: `target/ripr/reports/`'
+            echo '- CI labels and plan inputs: `target/ci/`'
             if [ -d target/ripr/review ]; then
               echo '- PR test guidance report: `target/ripr/review/`'
             else
               echo "- PR test guidance report: not generated yet"
+            fi
+            echo
+            echo '### Gate decision'
+            if [ -f target/ripr/reports/gate-decision.md ]; then
+              cat target/ripr/reports/gate-decision.md
+            else
+              echo 'Gate decision was not run. Set `RIPR_GATE_MODE` to `visible-only`, `acknowledgeable`, `baseline-check`, or `calibrated-gate` to opt in.'
             fi
             echo
             echo '### SARIF and badge status'
@@ -1114,6 +1160,7 @@ jobs:
             target/ripr/workflow
             target/ripr/reports
             target/ripr/review
+            target/ci
           if-no-files-found: ignore
           retention-days: 14
 
@@ -2347,6 +2394,7 @@ mod tests {
                 "ripr agent receipt",
                 "ripr outcome",
                 "ripr review-comments",
+                "gate evaluate",
                 "ripr agent status",
                 "ripr agent review-summary",
                 "cargo xtask operator-cockpit",
@@ -2372,13 +2420,17 @@ mod tests {
                 "target/ripr/reports/ripr-seams.sarif",
                 "target/ripr/reports/repo-ripr-badge.json",
                 "target/ripr/reports/repo-ripr-badge-shields.json",
+                "target/ripr/reports/gate-decision.json",
+                "target/ripr/reports/gate-decision.md",
                 "target/ripr/review/comments.json",
+                "target/ci/labels.json",
             ],
             summary_sections: &[
                 "## RIPR advisory summary",
                 "### Top recommendation",
                 "### Agent review packet",
                 "### Artifact packet",
+                "### Gate decision",
                 "### SARIF and badge status",
                 "### PR guidance annotations",
                 "### Known limits",
@@ -2393,6 +2445,7 @@ mod tests {
                 "Render RIPR operator cockpit",
                 "Render RIPR LLM work-loop summaries",
                 "Run RIPR PR guidance report",
+                "Capture RIPR gate labels",
                 "Emit RIPR PR guidance annotations",
                 "Add RIPR advisory summary",
                 "Upload RIPR report artifacts",
@@ -2405,7 +2458,14 @@ mod tests {
                 "Upload RIPR diff findings",
                 "Upload RIPR repo seams",
             ],
-            forbidden_fragments: &["fail-on-new-warning", "sarif-policy", "RIPR_PR_COMMENTS"],
+            forbidden_fragments: &[
+                "fail-on-new-warning",
+                "sarif-policy",
+                "RIPR_PR_COMMENTS",
+                "RIPR_GATE_MODE: \"acknowledgeable\"",
+                "RIPR_GATE_MODE: \"baseline-check\"",
+                "RIPR_GATE_MODE: \"calibrated-gate\"",
+            ],
         }
     }
 
@@ -3449,10 +3509,14 @@ mod tests {
     #[test]
     fn init_generated_github_workflow_is_advisory() {
         let workflow = generated_github_actions_workflow();
-        assert!(workflow.contains("continue-on-error: true"));
+        assert!(workflow.contains(
+            "continue-on-error: ${{ vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only' }}"
+        ));
         assert!(workflow.contains("github/codeql-action/upload-sarif@v4"));
         assert!(workflow.contains("actions/upload-artifact@v7"));
         assert!(workflow.contains("RIPR_UPLOAD_SARIF"));
+        assert!(workflow.contains("RIPR_GATE_MODE: ${{ vars.RIPR_GATE_MODE || '' }}"));
+        assert!(workflow.contains("RIPR_GATE_BASELINE: ${{ vars.RIPR_GATE_BASELINE || '' }}"));
         assert!(workflow.contains("--format sarif"));
         assert!(workflow.contains("--format repo-sarif"));
         assert!(workflow.contains("--format repo-badge-json"));
@@ -3477,8 +3541,14 @@ mod tests {
         assert!(workflow.contains("target/ripr/agent/agent-verify.json"));
         assert!(workflow.contains("target/ripr/agent/agent-receipt.json"));
         assert!(workflow.contains("target/ripr/reports/targeted-test-outcome.json"));
+        assert!(workflow.contains("target/ripr/reports/gate-decision.json"));
+        assert!(workflow.contains("target/ripr/reports/gate-decision.md"));
+        assert!(workflow.contains("target/ci/labels.json"));
         assert!(workflow.contains("target/ripr/review/comments.json"));
         assert!(workflow.contains("target/ripr/review"));
+        assert!(workflow.contains("target/ci"));
+        assert!(workflow.contains("name: Capture RIPR gate labels"));
+        assert!(workflow.contains("name: Evaluate RIPR gate decision"));
         assert!(workflow.contains("name: Emit RIPR PR guidance annotations"));
         assert!(workflow.contains("escape_github_property()"));
         assert!(workflow.contains("annotation_path=\"$(escape_github_property \"$path\")\""));
@@ -3488,6 +3558,7 @@ mod tests {
         assert!(workflow.contains("## RIPR advisory summary"));
         assert!(workflow.contains("### Top recommendation"));
         assert!(workflow.contains("### Artifact packet"));
+        assert!(workflow.contains("### Gate decision"));
         assert!(workflow.contains("### SARIF and badge status"));
         assert!(workflow.contains("### PR guidance annotations"));
         assert!(workflow.contains("### Known limits"));
@@ -3504,6 +3575,7 @@ mod tests {
         assert!(workflow.contains("target/ripr/workflow"));
         assert!(workflow.contains("target/ripr/reports"));
         assert!(workflow.contains("target/ripr/review"));
+        assert!(workflow.contains("target/ci"));
         assert!(workflow.contains("name: ripr-reports"));
         assert!(workflow.contains("RIPR_TOP_SEAM_ID"));
         assert!(workflow.contains(".top_actionable_seams[0].seam_id"));
@@ -3516,6 +3588,10 @@ mod tests {
         assert!(workflow.contains(".summary.comments // 0"));
         assert!(workflow.contains(".summary.summary_only // 0"));
         assert!(workflow.contains(".summary.suppressed // 0"));
+        assert!(workflow.contains("RIPR_GATE_MODE"));
+        assert!(workflow.contains("RIPR_GATE_BASELINE"));
+        assert!(workflow.contains("ripr \"${gate_args[@]}\""));
+        assert!(workflow.contains("Set `RIPR_GATE_MODE`"));
         assert!(workflow.contains("No runtime mutation execution is performed"));
         assert!(workflow.contains("hashFiles('crates/ripr/Cargo.toml')"));
         assert!(workflow.contains("hashFiles('xtask/src/reports/operator.rs')"));
@@ -3530,8 +3606,8 @@ mod tests {
         let workflow = generated_github_actions_workflow();
         let fixture = generated_workflow_smoke_fixture();
 
-        assert!(workflow.contains("continue-on-error: true"));
         assert!(workflow.contains("RIPR_UPLOAD_SARIF: \"true\""));
+        assert!(workflow.contains("RIPR_GATE_MODE: ${{ vars.RIPR_GATE_MODE || '' }}"));
         assert!(workflow.contains("actions/upload-artifact@v7"));
         assert!(workflow.contains("github/codeql-action/upload-sarif@v4"));
         assert_contains_all(&workflow, "command", fixture.commands);
@@ -3563,6 +3639,16 @@ mod tests {
         assert_step_before(
             &workflow,
             "Run RIPR PR guidance report",
+            "Evaluate RIPR gate decision",
+        );
+        assert_step_before(
+            &workflow,
+            "Capture RIPR gate labels",
+            "Evaluate RIPR gate decision",
+        );
+        assert_step_before(
+            &workflow,
+            "Evaluate RIPR gate decision",
             "Emit RIPR PR guidance annotations",
         );
         assert_step_before(
@@ -3579,12 +3665,25 @@ mod tests {
             "target/ripr/workflow",
             "target/ripr/reports",
             "target/ripr/review",
+            "target/ci",
         ] {
             assert!(
                 artifact_upload.contains(path),
                 "artifact upload must include {path}"
             );
         }
+
+        let gate = workflow_step(&workflow, "Evaluate RIPR gate decision");
+        assert!(gate.contains("env.RIPR_GATE_MODE != ''"));
+        assert!(gate.contains("hashFiles('target/ripr/review/comments.json')"));
+        assert!(gate.contains("gate evaluate"));
+        assert!(gate.contains("--pr-guidance target/ripr/review/comments.json"));
+        assert!(gate.contains("--mode \"$RIPR_GATE_MODE\""));
+        assert!(gate.contains("--out target/ripr/reports/gate-decision.json"));
+        assert!(gate.contains("--out-md target/ripr/reports/gate-decision.md"));
+        assert!(gate.contains("--labels-json target/ci/labels.json"));
+        assert!(gate.contains("--baseline \"$RIPR_GATE_BASELINE\""));
+        assert!(!gate.contains("continue-on-error: true"));
 
         let annotations = workflow_step(&workflow, "Emit RIPR PR guidance annotations");
         assert!(annotations.contains("hashFiles('target/ripr/review/comments.json')"));
@@ -3595,6 +3694,8 @@ mod tests {
         let summary = workflow_step(&workflow, "Add RIPR advisory summary");
         assert!(summary.contains("cat target/ripr/pilot/pilot-summary.md"));
         assert!(summary.contains("cat target/ripr/workflow/agent-review-summary.md"));
+        assert!(summary.contains("cat target/ripr/reports/gate-decision.md"));
+        assert!(summary.contains("Gate decision was not run"));
         assert!(summary.contains(".summary.comments // 0"));
         assert!(summary.contains(".summary.summary_only // 0"));
         assert!(summary.contains(".summary.suppressed // 0"));
