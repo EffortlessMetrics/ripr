@@ -5,12 +5,27 @@ on:
   push:
     branches: [main, master]
 
+permissions:
+  contents: read
+
+# Cancel in-flight runs on the same PR when new commits are pushed
+# (`synchronize`), but never on label or other PR-action events. The
+# label-event cancellation bug (see docs/ci/cost-and-verification-policy.md
+# rollout notes) caused in-progress runs to be cancelled on label toggling.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
+
 jobs:
   rust:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ripr-rust-1.93-${{ runner.os }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo fmt --check
       - run: cargo check --workspace --all-targets
       - run: cargo clippy --workspace --all-targets -- -D warnings
@@ -76,6 +91,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@1.93.1
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ripr-msrv-1.93-${{ runner.os }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo check --workspace --all-targets
 
   vscode:

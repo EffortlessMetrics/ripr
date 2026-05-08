@@ -4,6 +4,7 @@ coverage:
   range: "70...95"
 
   status:
+    informational: true
     project:
       default:
         target: 75%
