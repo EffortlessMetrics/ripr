@@ -616,7 +616,7 @@ evidence = [
   "docs/specs/RIPR-SPEC-0012-pr-test-guidance.md pins the advisory PR annotation and optional review-comment contract",
   "docs/OUTPUT_SCHEMA.md PR Test Guidance section defines the planned review-comments JSON shape",
   "docs/CI.md PR Test Guidance Annotations section documents the default job-summary and check-annotation posture",
-  "docs/IMPLEMENTATION_CAMPAIGNS.md Campaign 12 marks spec/pr-test-guidance-annotations done and unblocks the editor and CI first-hour work items"
+  "docs/IMPLEMENTATION_CAMPAIGNS.md Campaign 12 marks spec/pr-test-guidance-annotations done before generated workflow posting work"
 ]
 fixtures = []
 next = "ci/pr-summary-surface"

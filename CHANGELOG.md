@@ -35,9 +35,6 @@ are scoped or reviewed.
   future `ripr review-comments` JSON contract, changed-line placement rules,
   check-annotation default, opt-in inline review comments, and bounded LLM
   handoff guidance.
-- Finalized RIPR-SPEC-0012 as the Campaign 12 PR guidance contract, keeping the
-  renderer, check-annotation projection, and opt-in review-comment publisher as
-  future implementation slices.
 - Added an LLM work-loop fixture matrix that pins happy, unchanged, regressed,
   missing-artifact, stale-artifact, configured-off, path-with-spaces, and
   Windows-separator review states.
@@ -55,6 +52,8 @@ are scoped or reviewed.
 
 ### Changed
 
+- Pinned RIPR-SPEC-0012 as the PR test guidance annotation contract and
+  advanced Campaign 12 to `vscode/first-run-status` as the next ready UX item.
 - Aligned public package and extension front-door metadata around Rust
   test-oracle gaps, targeted tests, and static RIPR evidence instead of
   internal mutation-exposure wording.

@@ -48,6 +48,7 @@ status = "ready"
 branch = "vscode-first-run-status"
 stackable = false
 requires_human_merge = true
+blocked_by = ["spec/pr-test-guidance-annotations"]
 acceptance = "Add a discoverable editor status path for server resolution, workspace detection, analysis running/complete/stale/failed, and no-actionable-seam states"
 commands = [
   "cargo test -p ripr lsp",
@@ -62,10 +63,11 @@ commands = [
 
 [[work_item]]
 id = "vscode/action-discoverability"
-status = "ready"
+status = "blocked"
 branch = "vscode-action-discoverability"
 stackable = false
 requires_human_merge = true
+blocked_by = ["vscode/first-run-status"]
 acceptance = "Group and title diagnostic actions around user intent without changing analyzer behavior, adding broad LSP features, or enabling unsaved-buffer overlays"
 commands = [
   "cargo test -p ripr lsp",
@@ -80,10 +82,11 @@ commands = [
 
 [[work_item]]
 id = "ci/pr-summary-surface"
-status = "ready"
+status = "blocked"
 branch = "ci-pr-summary-surface"
 stackable = false
 requires_human_merge = true
+blocked_by = ["vscode/action-discoverability"]
 acceptance = "Make the generated workflow emit a useful PR or step summary with the top actionable seam, why it matters, suggested test target, artifact links, SARIF status, badge status, known limits, and check annotations from the PR test guidance report when implemented"
 commands = [
   "cargo test -p ripr agent",
