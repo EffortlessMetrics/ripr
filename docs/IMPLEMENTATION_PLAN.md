@@ -28,7 +28,7 @@ through multiple work items in a campaign, but each work item should follow the
 | LLM Work Loop (11) | Make the completed editor-agent loop stateful, deterministic, and useful to LLM agents under review pressure. | Complete: status, command templates, workflow manifests, receipt provenance, next-action guidance, reviewer summary, fixture matrix, CI work packets, operator guide, and `campaign/llm-work-loop-closeout`. |
 | First-Hour UX (12) | Make new LSP-first and CI-first users successful without learning RIPR's internal report topology. | Complete: editor status, intent-titled actions, advisory CI summary, workflow smoke fixture, user-type docs, and `campaign/first-hour-ux-closeout`. |
 | PR Review Guidance (13) | Project existing RIPR evidence into bounded pull-request review guidance without making CI blocking or turning RIPR into a free-form reviewer. | Complete: renderer, generated CI, fixtures, docs, and `campaign/pr-review-guidance-closeout`. |
-| Recommendation Calibration (14) | Measure whether top CI, LSP, and PR recommendations are clear, correctly placed, low-noise, and correlated with better static evidence after one focused test. | Active: `fixtures/pr-guidance-calibration-corpus` is the next ready item after RIPR-SPEC-0013 pinned the recommendation calibration report contract. |
+| Recommendation Calibration (14) | Measure whether top CI, LSP, and PR recommendations are clear, correctly placed, low-noise, and correlated with better static evidence after one focused test. | Active: `fixtures/pr-guidance-calibration-corpus` and `review-feedback/outcome-receipts` are the next ready items after RIPR-SPEC-0013 pinned the recommendation calibration report contract. |
 | Calibrated Gate Policy (15) | Define optional calibrated gates over existing PR-time evidence without changing advisory defaults or blurring static/runtime evidence. | Queued after Campaign 14 so policy earns the right to block from measured recommendation quality. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
@@ -67,13 +67,11 @@ annotation consumer steps, placement and suppression fixtures are pinned, and
 [PR review guidance](PR_REVIEW_GUIDANCE.md) documents the bounded advisory
 workflow. Campaign 14 is active as the Recommendation Calibration lane:
 RIPR-SPEC-0013 now pins the recommendation calibration report contract, and the
-next ready item is the PR-shaped calibration corpus for useful, noisy,
-wrong-line, already-covered, summary-only, suppression, generated/migration,
-macro-heavy, trait/generic, and async/error-boundary cases. Campaign 15 is
-queued as the Calibrated Gate Policy lane so optional gates can be explicit
-policy over measured evidence, preserve advisory defaults, keep acknowledgement
-paths visible, and use runtime mutation calibration only as imported confidence
-evidence.
+next ready items are the PR-shaped calibration corpus plus local outcome
+receipts. Campaign 15 is queued as the Calibrated Gate Policy lane so optional
+gates can be explicit policy over measured evidence, preserve advisory defaults,
+keep acknowledgement paths visible, and use runtime mutation calibration only as
+imported confidence evidence.
 
 ## PR 0: `planning-and-tracking-docs`
 

@@ -77,7 +77,7 @@ commands = [
 
 [[work_item]]
 id = "review-feedback/outcome-receipts"
-status = "blocked"
+status = "ready"
 branch = "review-feedback-outcome-receipts"
 stackable = false
 requires_human_merge = true

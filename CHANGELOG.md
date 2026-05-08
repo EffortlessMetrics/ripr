@@ -98,8 +98,9 @@ are scoped or reviewed.
 - Advanced the active product lane to Campaign 14 so recommendation
   usefulness, placement, suppression/noise behavior, and before/after static
   movement can be calibrated before optional gates.
-- Advanced Campaign 14 to `fixtures/pr-guidance-calibration-corpus` after
-  pinning the recommendation calibration report contract.
+- Advanced Campaign 14 to `fixtures/pr-guidance-calibration-corpus` and
+  `review-feedback/outcome-receipts` after pinning the recommendation
+  calibration report contract.
 - Pinned RIPR-SPEC-0012 as the PR test guidance annotation contract and
   advanced Campaign 12 to `vscode/first-run-status` as the next ready UX item.
 - Advanced Campaign 12 to `vscode/action-discoverability` after pinning the

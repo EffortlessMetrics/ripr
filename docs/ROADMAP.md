@@ -109,10 +109,10 @@ now pins the recommendation calibration report contract for measuring whether
 completed recommendation surfaces are actionable, correctly placed, properly
 suppressed or capped, and correlated with before/after static movement without
 telemetry, generated tests, runtime mutation execution, or default CI blocking.
-The next step is the PR-shaped calibration corpus. Campaign 15 is queued as
-Calibrated Gate Policy so optional policy gates come after measured signal
-quality and remain explicit, advisory by default, and separate from runtime
-mutation vocabulary.
+The next ready slices are the PR-shaped calibration corpus and local outcome
+receipts. Campaign 15 is queued as Calibrated Gate Policy so optional policy
+gates come after measured signal quality and remain explicit, advisory by
+default, and separate from runtime mutation vocabulary.
 
 ## Strategic Sequence
 
