@@ -790,7 +790,8 @@ outputs = [
   "docs/QUICKSTART.md",
   "README.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
-  "docs/CAPABILITY_MATRIX.md"
+  "docs/CAPABILITY_MATRIX.md",
+  "docs/handoffs/2026-05-08-campaign-12-closeout.md"
 ]
 metrics = [
   "pr_test_guidance_comments",

@@ -81,6 +81,10 @@ are scoped or reviewed.
 - Reworked README and Quickstart first-hour docs around VS Code, CI, CLI,
   agent/reviewer, troubleshooting, and known-limit paths, and advanced Campaign
   12 to closeout.
+- Closed Campaign 12 after the editor first-run status path, intent-titled
+  actions, generated CI advisory summary, workflow smoke fixture, and
+  user-type first-hour docs aligned the VS Code, CI, CLI, and agent/reviewer
+  entry paths.
 - Aligned public package and extension front-door metadata around Rust
   test-oracle gaps, targeted tests, and static RIPR evidence instead of
   internal mutation-exposure wording.

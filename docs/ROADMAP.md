@@ -84,19 +84,21 @@ is a read-only lens over existing artifacts, loop command templates are
 centralized for the current CLI/LSP/cockpit/CI surfaces, workflow manifests,
 provenance-backed receipts, next-action guidance, review summaries, fixtures,
 and generated CI packet uploads are pinned, and the LLM operator guide documents
-the source-edit-free human and external-agent path. Campaign 12 is active as
-First-Hour UX: after the LLM work-loop command and artifact state stabilized, the
-current product risk is making the VS Code extension and generated GitHub
-workflow explain the top recommendation without requiring users to inspect CLI
-reports first. The PR guidance annotation contract is pinned, the editor now has
+the source-edit-free human and external-agent path. Campaign 12 closed the
+First-Hour UX lane: after the LLM work-loop command and artifact state
+stabilized, the current product risk was making the VS Code extension and
+generated GitHub workflow explain the top recommendation without requiring
+users to inspect CLI reports first. The PR guidance annotation contract is
+pinned, the editor now has
 a first-run status path for server/workspace/analysis state, and seam diagnostic
 actions are titled around inspect, targeted-test, agent-handoff, verify, review,
 and refresh intent, and the generated GitHub workflow now writes a
 reviewer-oriented advisory summary before artifact download. The generated
 workflow smoke fixture pins the CI first screen, artifact packet, optional
-SARIF gates, badge output, and future PR guidance annotation hook. The
-first-hour docs now route users by VS Code, CI, CLI, and agent/reviewer path;
-the next slice is Campaign 12 closeout.
+SARIF gates, badge output, and future PR guidance annotation hook. Campaign 12
+closed after the first-hour docs routed users by VS Code, CI, CLI, and
+agent/reviewer path. No next product campaign is active yet; choose the next
+lane explicitly before adding new behavior.
 
 ## Strategic Sequence
 

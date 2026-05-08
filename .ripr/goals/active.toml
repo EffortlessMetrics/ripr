@@ -135,7 +135,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/first-hour-ux-closeout"
-status = "ready"
+status = "done"
 branch = "campaign-first-hour-ux-closeout"
 stackable = false
 requires_human_merge = true
