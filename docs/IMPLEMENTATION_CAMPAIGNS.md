@@ -2002,8 +2002,8 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `campaign/editor-evidence-ux-audit` | ready | Audit diagnostic data, hover, actions, context collection, VS Code extension proof, and LSP cockpit status into one editor evidence contract without behavior changes. |
-| `lsp/evidence-hover-hardening` | blocked | Harden hover as the primary explanation surface for seam class, evidence path, missing discriminator, related test, suggested assertion, verify command, receipt command, and static limits. |
+| `campaign/editor-evidence-ux-audit` | done | Added `docs/EDITOR_EVIDENCE_UX.md` and the audit handoff, mapping diagnostic data, hover, actions, context collection, VS Code proof, LSP cockpit status, status/staleness, and non-goals into one editor evidence contract without behavior changes. |
+| `lsp/evidence-hover-hardening` | ready | Harden hover as the primary explanation surface for seam class, evidence path, missing discriminator, related test, suggested assertion, verify command, receipt command, and static limits. |
 | `lsp/evidence-aware-actions` | blocked | Tighten action visibility and payload validation so actions only appear when supporting evidence or command context exists. |
 | `lsp/context-packet-command` | blocked | Add one canonical evidence context packet command for external tools and agents without edits, generated tests, or provider coupling. |
 | `test/lsp-protocol-smoke` | blocked | Add framed protocol proof for initialize, saved-workspace diagnostics, hover, codeAction, context packet execution, and shutdown. |
@@ -2026,10 +2026,10 @@ Dependencies:
 
 Next:
 
-- `campaign/editor-evidence-ux-audit` is the next ready item. Keep that PR
-  docs/contract-only: audit diagnostic data, hover, actions, context
-  collection, VS Code proof, LSP cockpit status, and status/staleness without
-  adding behavior.
+- `lsp/evidence-hover-hardening` is the next ready item. Keep that PR focused
+  on hover as the primary explanation surface: resolve from `diagnostic.data`
+  to the latest analysis state, show available evidence and limits, and avoid
+  runtime adequacy claims or behavior outside hover.
 
 Commands:
 

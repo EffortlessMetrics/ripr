@@ -55,6 +55,7 @@ the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 
 ## Current Handoffs
 
+- [Editor Evidence UX audit](2026-05-08-editor-evidence-ux-audit.md)
 - [Campaign 16 closeout](2026-05-08-campaign-16-closeout.md)
 - [Campaign 15 closeout](2026-05-08-campaign-15-closeout.md)
 - [Campaign 14 closeout](2026-05-08-campaign-14-closeout.md)

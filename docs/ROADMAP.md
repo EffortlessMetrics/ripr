@@ -142,12 +142,11 @@ readiness](BLOCKING_READINESS.md) explains when to stay advisory, require
 acknowledgement, use baseline-check, or enable calibrated blocking. The
 [Campaign 16 closeout](handoffs/2026-05-08-campaign-16-closeout.md) records
 the adoption proof and next-work boundary. Campaign 17 is now active as Editor
-Evidence UX: the first ready slice is a docs/contract-only audit of diagnostic
-data, hover, actions, context collection, VS Code proof, LSP cockpit status,
-and status/staleness before hover hardening or other behavior-bearing editor
-changes. Baseline Ledger v1 remains the recommended future adoption campaign
-for executable create/diff/shrink ledgers before broader RIPR Zero planning,
-but it is not active in this manifest.
+Evidence UX. The contract audit is recorded in
+[Editor Evidence UX](EDITOR_EVIDENCE_UX.md), and `lsp/evidence-hover-hardening`
+is now the first behavior-bearing editor slice. Baseline Ledger v1 remains the
+recommended future adoption campaign for executable create/diff/shrink ledgers
+before broader RIPR Zero planning, but it is not active in this manifest.
 
 ## Strategic Sequence
 

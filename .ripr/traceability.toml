@@ -313,6 +313,8 @@ outputs = [
   "docs/OUTPUT_SCHEMA.md",
   "docs/BADGE_POLICY.md",
   "docs/AGENT_DISPATCH_WORKFLOW.md",
+  "docs/EDITOR_EVIDENCE_UX.md",
+  "docs/handoffs/2026-05-08-editor-evidence-ux-audit.md",
   "docs/CAPABILITY_MATRIX.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md"

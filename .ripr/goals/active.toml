@@ -27,7 +27,7 @@ end_state = [
 
 [[work_item]]
 id = "campaign/editor-evidence-ux-audit"
-status = "ready"
+status = "done"
 branch = "docs-editor-evidence-ux-audit"
 stackable = false
 acceptance = "Audit diagnostic data, hover, actions, context collection, VS Code extension proof, and LSP cockpit status into one editor evidence contract without behavior changes"
@@ -43,10 +43,9 @@ commands = [
 
 [[work_item]]
 id = "lsp/evidence-hover-hardening"
-status = "blocked"
+status = "ready"
 branch = "lsp-evidence-hover-hardening"
 stackable = false
-blocked_by = ["campaign/editor-evidence-ux-audit"]
 acceptance = "Harden hover as the primary explanation surface for seam class, evidence path, missing discriminator, related test, suggested assertion, verify command, receipt command, and static limits"
 commands = [
   "cargo test -p ripr lsp::hover --lib",

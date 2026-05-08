@@ -137,6 +137,8 @@ are scoped or reviewed.
   `campaign/editor-evidence-ux-audit` as the first ready item before behavior
   changes to hover, actions, context packets, protocol smoke, VS Code smoke,
   status/staleness, or editor workflow docs.
+- Added `docs/EDITOR_EVIDENCE_UX.md` and the Editor Evidence UX audit handoff
+  to define the saved-workspace editor contract before behavior changes.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and PR guidance annotation counts before artifact
