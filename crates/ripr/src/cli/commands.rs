@@ -1012,11 +1012,20 @@ jobs:
           if [ -f target/ci/labels.json ]; then
             gate_args+=(--labels-json target/ci/labels.json)
           fi
+          if [ -f target/ripr/reports/sarif-policy.json ]; then
+            gate_args+=(--sarif-policy target/ripr/reports/sarif-policy.json)
+          fi
           if [ -f target/ripr/workflow/agent-verify.json ]; then
             gate_args+=(--agent-verify target/ripr/workflow/agent-verify.json)
           fi
           if [ -f target/ripr/reports/agent-receipt.json ]; then
             gate_args+=(--agent-receipt target/ripr/reports/agent-receipt.json)
+          fi
+          if [ -f target/ripr/reports/recommendation-calibration.json ]; then
+            gate_args+=(--recommendation-calibration target/ripr/reports/recommendation-calibration.json)
+          fi
+          if [ -f target/ripr/reports/mutation-calibration.json ]; then
+            gate_args+=(--mutation-calibration target/ripr/reports/mutation-calibration.json)
           fi
           if [ -n "${RIPR_GATE_BASELINE:-}" ]; then
             gate_args+=(--baseline "$RIPR_GATE_BASELINE")
@@ -1165,7 +1174,7 @@ jobs:
           retention-days: 14
 
       - name: Upload RIPR diff findings
-        if: env.RIPR_UPLOAD_SARIF == 'true' && github.event_name == 'pull_request' && hashFiles('target/ripr/reports/ripr-findings.sarif') != ''
+        if: always() && env.RIPR_UPLOAD_SARIF == 'true' && github.event_name == 'pull_request' && hashFiles('target/ripr/reports/ripr-findings.sarif') != ''
         continue-on-error: true
         uses: github/codeql-action/upload-sarif@v4
         with:
@@ -1173,7 +1182,7 @@ jobs:
           category: ripr-findings
 
       - name: Upload RIPR repo seams
-        if: env.RIPR_UPLOAD_SARIF == 'true' && hashFiles('target/ripr/reports/ripr-seams.sarif') != ''
+        if: always() && env.RIPR_UPLOAD_SARIF == 'true' && hashFiles('target/ripr/reports/ripr-seams.sarif') != ''
         continue-on-error: true
         uses: github/codeql-action/upload-sarif@v4
         with:
@@ -2460,7 +2469,6 @@ mod tests {
             ],
             forbidden_fragments: &[
                 "fail-on-new-warning",
-                "sarif-policy",
                 "RIPR_PR_COMMENTS",
                 "RIPR_GATE_MODE: \"acknowledgeable\"",
                 "RIPR_GATE_MODE: \"baseline-check\"",
@@ -3563,7 +3571,9 @@ mod tests {
         assert!(workflow.contains("### PR guidance annotations"));
         assert!(workflow.contains("### Known limits"));
         assert!(!workflow.contains("fail-on-new-warning"));
-        assert!(!workflow.contains("sarif-policy"));
+        assert!(!workflow.contains("RIPR_GATE_MODE: \"acknowledgeable\""));
+        assert!(!workflow.contains("RIPR_GATE_MODE: \"baseline-check\""));
+        assert!(!workflow.contains("RIPR_GATE_MODE: \"calibrated-gate\""));
     }
 
     #[test]
@@ -3682,6 +3692,13 @@ mod tests {
         assert!(gate.contains("--out target/ripr/reports/gate-decision.json"));
         assert!(gate.contains("--out-md target/ripr/reports/gate-decision.md"));
         assert!(gate.contains("--labels-json target/ci/labels.json"));
+        assert!(gate.contains("--sarif-policy target/ripr/reports/sarif-policy.json"));
+        assert!(gate.contains(
+            "--recommendation-calibration target/ripr/reports/recommendation-calibration.json"
+        ));
+        assert!(
+            gate.contains("--mutation-calibration target/ripr/reports/mutation-calibration.json")
+        );
         assert!(gate.contains("--baseline \"$RIPR_GATE_BASELINE\""));
         assert!(!gate.contains("continue-on-error: true"));
 

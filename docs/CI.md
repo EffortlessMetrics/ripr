@@ -769,11 +769,20 @@ jobs:
           if [ -f target/ci/labels.json ]; then
             gate_args+=(--labels-json target/ci/labels.json)
           fi
+          if [ -f target/ripr/reports/sarif-policy.json ]; then
+            gate_args+=(--sarif-policy target/ripr/reports/sarif-policy.json)
+          fi
           if [ -f target/ripr/workflow/agent-verify.json ]; then
             gate_args+=(--agent-verify target/ripr/workflow/agent-verify.json)
           fi
           if [ -f target/ripr/reports/agent-receipt.json ]; then
             gate_args+=(--agent-receipt target/ripr/reports/agent-receipt.json)
+          fi
+          if [ -f target/ripr/reports/recommendation-calibration.json ]; then
+            gate_args+=(--recommendation-calibration target/ripr/reports/recommendation-calibration.json)
+          fi
+          if [ -f target/ripr/reports/mutation-calibration.json ]; then
+            gate_args+=(--mutation-calibration target/ripr/reports/mutation-calibration.json)
           fi
           if [ -n "${RIPR_GATE_BASELINE:-}" ]; then
             gate_args+=(--baseline "$RIPR_GATE_BASELINE")
@@ -922,7 +931,7 @@ jobs:
           retention-days: 14
 
       - name: Upload RIPR diff findings
-        if: env.RIPR_UPLOAD_SARIF == 'true' && github.event_name == 'pull_request' && hashFiles('target/ripr/reports/ripr-findings.sarif') != ''
+        if: always() && env.RIPR_UPLOAD_SARIF == 'true' && github.event_name == 'pull_request' && hashFiles('target/ripr/reports/ripr-findings.sarif') != ''
         continue-on-error: true
         uses: github/codeql-action/upload-sarif@v4
         with:
@@ -930,7 +939,7 @@ jobs:
           category: ripr-findings
 
       - name: Upload RIPR repo seams
-        if: env.RIPR_UPLOAD_SARIF == 'true' && hashFiles('target/ripr/reports/ripr-seams.sarif') != ''
+        if: always() && env.RIPR_UPLOAD_SARIF == 'true' && hashFiles('target/ripr/reports/ripr-seams.sarif') != ''
         continue-on-error: true
         uses: github/codeql-action/upload-sarif@v4
         with:
