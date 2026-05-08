@@ -70,7 +70,10 @@ PR Plan
 - To run all: add full-ci
 ```
 
-Until the planner exists, authors should fill the PR template's CI economics
+The active PR Plan workflow is structural advisory today: it runs on opened,
+synchronized, reopened, labeled, and unlabeled pull requests, uploads the
+changed-file list, and writes a placeholder step summary. Until the numeric
+planner exists, authors should still fill the PR template's CI economics
 section for CI-affecting changes.
 
 ### Risk Packs
@@ -125,7 +128,7 @@ artifacts are grouped by family:
 
 | Family | Expected paths |
 | --- | --- |
-| `ci-plan` | `target/ci/ci-plan.json`, `target/ci/ci-actuals.json` |
+| `ci-plan` | `target/ripr/reports/pr-plan-changes.txt`, `target/ci/ci-plan.json`, `target/ci/ci-actuals.json` |
 | `ripr-evidence` | `target/ripr/reports/index.md`, `target/ripr/reports/repo-exposure.json`, `target/ripr/reports/repo-sarif.json` |
 | `editor-agent-loop` | `target/ripr/reports/operator-cockpit.{json,md}`, `target/ripr/workflow/agent-seam-packets.json`, `target/ripr/agent/agent-packet.json`, `target/ripr/agent/agent-brief.json`, `target/ripr/agent/agent-verify.json`, `target/ripr/agent/agent-receipt.json` |
 | `release-readiness` | package lists, publish dry-run transcript, VSIX package proof, server archive proof |
@@ -134,8 +137,9 @@ The report index should be the front door for artifact discovery. CI should not
 require reviewers to inspect raw job logs to find the packet that justifies a
 decision.
 
-The `ci-plan` paths are planned. The `editor-agent-loop` paths reflect the
-current split between the local bulk packet envelope
+The `pr-plan-changes.txt` file is the current structural advisory artifact;
+the `target/ci/ci-plan.json` forecast remains planned. The `editor-agent-loop`
+paths reflect the current split between the local bulk packet envelope
 (`agent-seam-packets.json`) and generated CI's focused agent artifacts under
 `target/ripr/agent/`.
 
