@@ -59,6 +59,12 @@ are scoped or reviewed.
   advanced Campaign 12 to `vscode/first-run-status` as the next ready UX item.
 - Advanced Campaign 12 to `vscode/action-discoverability` after pinning the
   extension first-run status surface.
+- Grouped seam diagnostic code-action and VS Code command titles around user
+  intent: inspect the seam, write the targeted test, copy agent handoff
+  commands, verify after the test, review the receipt, and refresh analysis.
+  Command IDs and payloads remain stable.
+- Advanced Campaign 12 to `ci/pr-summary-surface` after pinning editor action
+  discoverability.
 - Aligned public package and extension front-door metadata around Rust
   test-oracle gaps, targeted tests, and static RIPR evidence instead of
   internal mutation-exposure wording.

@@ -10,7 +10,7 @@
         }
       ],
       "command": "ripr.copyContext",
-      "title": "Copy seam packet"
+      "title": "Inspect seam: copy packet"
     },
     {
       "arguments": [
@@ -20,7 +20,7 @@
         }
       ],
       "command": "ripr.copyTargetedTestBrief",
-      "title": "Copy targeted test brief"
+      "title": "Write targeted test: copy brief"
     },
     {
       "arguments": [
@@ -55,7 +55,7 @@
         }
       ],
       "command": "ripr.copyAgentPacketCommand",
-      "title": "Copy Agent Packet Command"
+      "title": "Agent handoff: copy packet command"
     },
     {
       "arguments": [
@@ -90,7 +90,7 @@
         }
       ],
       "command": "ripr.copyAgentBriefCommand",
-      "title": "Copy Agent Brief Command"
+      "title": "Agent handoff: copy brief command"
     },
     {
       "arguments": [
@@ -125,7 +125,7 @@
         }
       ],
       "command": "ripr.copyAfterSnapshotCommand",
-      "title": "Copy After Snapshot Command"
+      "title": "Verify after test: copy after-snapshot command"
     },
     {
       "arguments": [
@@ -160,7 +160,7 @@
         }
       ],
       "command": "ripr.copyAgentVerifyCommand",
-      "title": "Copy Agent Verify Command"
+      "title": "Verify after test: copy verify command"
     },
     {
       "arguments": [
@@ -195,7 +195,7 @@
         }
       ],
       "command": "ripr.copyAgentReceiptCommand",
-      "title": "Copy Agent Receipt Command"
+      "title": "Review result: copy receipt command"
     },
     {
       "arguments": [
@@ -205,7 +205,7 @@
         }
       ],
       "command": "ripr.copySuggestedAssertion",
-      "title": "Copy suggested assertion"
+      "title": "Write targeted test: copy suggested assertion"
     },
     {
       "arguments": [
@@ -216,12 +216,12 @@
         }
       ],
       "command": "ripr.openRelatedTest",
-      "title": "Open best related test"
+      "title": "Write targeted test: open best related test"
     },
     {
       "arguments": [],
       "command": "ripr.refresh",
-      "title": "Refresh ripr analysis"
+      "title": "Refresh analysis: rerun saved-workspace check"
     }
   ],
   "fixture": "boundary_gap"

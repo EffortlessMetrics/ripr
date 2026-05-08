@@ -6060,7 +6060,7 @@ fn lsp_cockpit_fixture_report(fixture: &Path) -> Result<Option<LspCockpitFixture
             }
         }
         match command {
-            "ripr.copyContext" if title == "Copy seam packet" => {
+            "ripr.copyContext" if title == "Inspect seam: copy packet" => {
                 context.seam_packet_available = true;
             }
             "ripr.copyTargetedTestBrief" => {
@@ -22235,17 +22235,17 @@ jobs:
         assert!(
             boundary_gap
                 .action_titles
-                .contains(&"Copy seam packet".to_string())
+                .contains(&"Inspect seam: copy packet".to_string())
         );
         assert!(
             boundary_gap
                 .action_titles
-                .contains(&"Copy targeted test brief".to_string())
+                .contains(&"Write targeted test: copy brief".to_string())
         );
         assert!(
             boundary_gap
                 .action_titles
-                .contains(&"Open best related test".to_string())
+                .contains(&"Write targeted test: open best related test".to_string())
         );
         assert!(boundary_gap.context.seam_packet_available);
         assert!(boundary_gap.context.targeted_test_brief_available);
@@ -22268,7 +22268,7 @@ jobs:
             .map_err(|err| format!("cockpit JSON should parse: {err}"))?;
         assert_eq!(value["schema_version"], "0.1");
         assert_eq!(value["tool"], "ripr");
-        assert!(json.contains("Copy targeted test brief"));
+        assert!(json.contains("Write targeted test: copy brief"));
 
         let markdown = lsp_cockpit_report_markdown(&report);
         assert!(markdown.contains("# ripr LSP cockpit report"));

@@ -142,35 +142,35 @@
       },
       {
         "command": "ripr.copySuggestedAssertion",
-        "title": "ripr: Copy Suggested Assertion"
+        "title": "ripr: Write Targeted Test - Copy Suggested Assertion"
       },
       {
         "command": "ripr.copyTargetedTestBrief",
-        "title": "ripr: Copy Targeted Test Brief"
+        "title": "ripr: Write Targeted Test - Copy Brief"
       },
       {
         "command": "ripr.copyAgentPacketCommand",
-        "title": "ripr: Copy Agent Packet Command"
+        "title": "ripr: Agent Handoff - Copy Packet Command"
       },
       {
         "command": "ripr.copyAgentBriefCommand",
-        "title": "ripr: Copy Agent Brief Command"
+        "title": "ripr: Agent Handoff - Copy Brief Command"
       },
       {
         "command": "ripr.copyAfterSnapshotCommand",
-        "title": "ripr: Copy After Snapshot Command"
+        "title": "ripr: Verify After Test - Copy After Snapshot Command"
       },
       {
         "command": "ripr.copyAgentVerifyCommand",
-        "title": "ripr: Copy Agent Verify Command"
+        "title": "ripr: Verify After Test - Copy Verify Command"
       },
       {
         "command": "ripr.copyAgentReceiptCommand",
-        "title": "ripr: Copy Agent Receipt Command"
+        "title": "ripr: Review Result - Copy Receipt Command"
       },
       {
         "command": "ripr.openRelatedTest",
-        "title": "ripr: Open Related Test"
+        "title": "ripr: Write Targeted Test - Open Best Related Test"
       },
       {
         "command": "ripr.openSettings",

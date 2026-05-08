@@ -34,16 +34,16 @@ pub(super) fn code_action_response(
         .find(|d| is_ripr_diagnostic(d) && !is_seam_diagnostic(d))
     {
         actions.push(copy_context_action(
-            "Copy ripr context packet",
-            "Copy ripr context",
+            INSPECT_FINDING_CONTEXT_TITLE,
+            INSPECT_FINDING_CONTEXT_COMMAND_TITLE,
             copy_context_target(params, diagnostic),
         ));
     }
     actions.push(CodeActionOrCommand::CodeAction(CodeAction {
-        title: "Refresh ripr analysis".to_string(),
+        title: REFRESH_ANALYSIS_TITLE.to_string(),
         kind: Some(CodeActionKind::SOURCE),
         command: Some(Command {
-            title: "Refresh ripr analysis".to_string(),
+            title: REFRESH_ANALYSIS_TITLE.to_string(),
             command: REFRESH_COMMAND.to_string(),
             arguments: Some(Vec::new()),
         }),
@@ -85,8 +85,8 @@ fn push_seam_actions(
     context: SeamActionContext<'_>,
 ) {
     actions.push(copy_context_action(
-        "Copy seam packet",
-        "Copy seam packet",
+        INSPECT_SEAM_PACKET_TITLE,
+        INSPECT_SEAM_PACKET_TITLE,
         copy_seam_packet_target(params, context.diagnostic, context.seam),
     ));
     actions.push(copy_targeted_test_brief_action(
@@ -94,7 +94,7 @@ fn push_seam_actions(
         targeted_test_brief_for_classified_seam(context.seam),
     ));
     actions.push(copy_agent_loop_command_action(
-        "Copy Agent Packet Command",
+        AGENT_PACKET_COMMAND_TITLE,
         COPY_AGENT_PACKET_COMMAND,
         agent_loop_command_target(
             context.snapshot,
@@ -110,7 +110,7 @@ fn push_seam_actions(
         ),
     ));
     actions.push(copy_agent_loop_command_action(
-        "Copy Agent Brief Command",
+        AGENT_BRIEF_COMMAND_TITLE,
         COPY_AGENT_BRIEF_COMMAND,
         agent_loop_command_target(
             context.snapshot,
@@ -126,7 +126,7 @@ fn push_seam_actions(
         ),
     ));
     actions.push(copy_agent_loop_command_action(
-        "Copy After Snapshot Command",
+        AFTER_SNAPSHOT_COMMAND_TITLE,
         COPY_AFTER_SNAPSHOT_COMMAND,
         agent_loop_command_target(
             context.snapshot,
@@ -142,7 +142,7 @@ fn push_seam_actions(
         ),
     ));
     actions.push(copy_agent_loop_command_action(
-        "Copy Agent Verify Command",
+        AGENT_VERIFY_COMMAND_TITLE,
         COPY_AGENT_VERIFY_COMMAND,
         agent_loop_command_target(
             context.snapshot,
@@ -159,7 +159,7 @@ fn push_seam_actions(
         ),
     ));
     actions.push(copy_agent_loop_command_action(
-        "Copy Agent Receipt Command",
+        AGENT_RECEIPT_COMMAND_TITLE,
         COPY_AGENT_RECEIPT_COMMAND,
         agent_loop_command_target(
             context.snapshot,
@@ -199,6 +199,19 @@ fn copy_context_action(title: &str, command_title: &str, target: LSPAny) -> Code
 }
 
 const COMMAND_ROOT: &str = ".";
+
+const INSPECT_FINDING_CONTEXT_TITLE: &str = "Inspect finding: copy context packet";
+const INSPECT_FINDING_CONTEXT_COMMAND_TITLE: &str = "Inspect finding: copy context";
+const INSPECT_SEAM_PACKET_TITLE: &str = "Inspect seam: copy packet";
+const TARGETED_TEST_BRIEF_TITLE: &str = "Write targeted test: copy brief";
+const SUGGESTED_ASSERTION_TITLE: &str = "Write targeted test: copy suggested assertion";
+const OPEN_RELATED_TEST_TITLE: &str = "Write targeted test: open best related test";
+const AGENT_PACKET_COMMAND_TITLE: &str = "Agent handoff: copy packet command";
+const AGENT_BRIEF_COMMAND_TITLE: &str = "Agent handoff: copy brief command";
+const AFTER_SNAPSHOT_COMMAND_TITLE: &str = "Verify after test: copy after-snapshot command";
+const AGENT_VERIFY_COMMAND_TITLE: &str = "Verify after test: copy verify command";
+const AGENT_RECEIPT_COMMAND_TITLE: &str = "Review result: copy receipt command";
+const REFRESH_ANALYSIS_TITLE: &str = "Refresh analysis: rerun saved-workspace check";
 
 fn copy_agent_loop_command_action(
     title: &str,
@@ -270,10 +283,10 @@ fn diagnostic_severity_label(
 
 fn copy_targeted_test_brief_action(seam: &ClassifiedSeam, brief: String) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
-        title: "Copy targeted test brief".to_string(),
+        title: TARGETED_TEST_BRIEF_TITLE.to_string(),
         kind: Some(CodeActionKind::QUICKFIX),
         command: Some(Command {
-            title: "Copy targeted test brief".to_string(),
+            title: TARGETED_TEST_BRIEF_TITLE.to_string(),
             command: COPY_TARGETED_TEST_BRIEF_COMMAND.to_string(),
             arguments: Some(vec![serde_json::json!({
                 "seam_id": seam.seam.id().as_str(),
@@ -289,10 +302,10 @@ fn copy_suggested_assertion_action(
     assertion: String,
 ) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
-        title: "Copy suggested assertion".to_string(),
+        title: SUGGESTED_ASSERTION_TITLE.to_string(),
         kind: Some(CodeActionKind::QUICKFIX),
         command: Some(Command {
-            title: "Copy suggested assertion".to_string(),
+            title: SUGGESTED_ASSERTION_TITLE.to_string(),
             command: COPY_SUGGESTED_ASSERTION_COMMAND.to_string(),
             arguments: Some(vec![serde_json::json!({
                 "seam_id": seam.seam.id().as_str(),
@@ -305,10 +318,10 @@ fn copy_suggested_assertion_action(
 
 fn open_related_test_action(target: LSPAny) -> CodeActionOrCommand {
     CodeActionOrCommand::CodeAction(CodeAction {
-        title: "Open best related test".to_string(),
+        title: OPEN_RELATED_TEST_TITLE.to_string(),
         kind: Some(CodeActionKind::QUICKFIX),
         command: Some(Command {
-            title: "Open best related test".to_string(),
+            title: OPEN_RELATED_TEST_TITLE.to_string(),
             command: OPEN_RELATED_TEST_COMMAND.to_string(),
             arguments: Some(vec![target]),
         }),
