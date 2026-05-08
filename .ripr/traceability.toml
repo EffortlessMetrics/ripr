@@ -749,6 +749,7 @@ outputs = [
   "docs/specs/RIPR-SPEC-0011-llm-work-loop.md",
   "docs/specs/README.md",
   "docs/CI.md",
+  "docs/LLM_OPERATOR_GUIDE.md",
   "docs/OUTPUT_SCHEMA.md",
   "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json",
   "fixtures/boundary_gap/expected/llm-work-loop/README.md",

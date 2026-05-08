@@ -590,6 +590,7 @@ evidence = [
   "docs/OUTPUT_SCHEMA.md Agent Status, Agent Workflow Manifest, Agent Receipt, and Agent Review Summary sections",
   "docs/specs/RIPR-SPEC-0011-llm-work-loop.md",
   "docs/CI.md",
+  "docs/LLM_OPERATOR_GUIDE.md",
   "cargo test -p ripr agent"
 ]
 fixtures = [
@@ -603,7 +604,7 @@ fixtures = [
   "fixtures/boundary_gap/expected/llm-work-loop/path-with-spaces/review-summary.json",
   "fixtures/boundary_gap/expected/llm-work-loop/windows-separators/review-summary.json"
 ]
-next = "docs/llm-operator-guide"
+next = "campaign/llm-work-loop-closeout"
 metric = "agent status, workflow packets, provenance-backed receipts, reviewer summaries, and generated CI artifact uploads name artifacts, commands, selected seam context, recovered seam_id, stale-looking warnings, hashes, bounded next actions, joined surfaces, and source-edit-free boundaries"
 
 [[capability]]

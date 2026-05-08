@@ -48,6 +48,11 @@ expires, but repository artifacts remain.
    `.ripr/traceability.toml`.
 10. Inspect existing tests, fixtures, and goldens before editing code.
 
+When the work is to add a focused test from RIPR evidence, use the
+[LLM operator guide](LLM_OPERATOR_GUIDE.md). It defines the source-edit-free
+status, workflow packet, verify, receipt, and reviewer-summary loop that humans
+and external LLM tools should consume.
+
 ## Codex Goals
 
 Codex Goals is the autonomous loop. The repository provides the harness.
