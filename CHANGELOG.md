@@ -54,14 +54,12 @@ are scoped or reviewed.
   and the inline-comment opt-in boundary.
 - Added the Campaign 13 closeout handoff after PR guidance renderer, generated
   CI consumption, placement fixtures, and user-facing docs aligned.
-- Opened Campaign 14, Calibrated Gate Policy, with
-  `spec/calibrated-gate-policy` as the first ready item before any gate
-  evaluator or generated workflow blocking behavior.
-- Queued Campaign 15, Recommendation Quality Calibration, as the post-gate
-  product-quality lane for measuring recommendation actionability, placement,
-  suppression/noise behavior, and before/after static movement without
-  telemetry, generated tests, runtime mutation execution, or default CI
-  blocking.
+- Opened Campaign 14, Recommendation Calibration, with
+  `spec/recommendation-calibration-report` as the first ready item so
+  recommendation quality is measured before ranking or policy work.
+- Queued Campaign 15, Calibrated Gate Policy, as a later optional-policy lane
+  after recommendation calibration, preserving advisory defaults and keeping
+  static evidence separate from runtime mutation vocabulary.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and PR guidance annotation counts before artifact
@@ -93,8 +91,9 @@ are scoped or reviewed.
   closeout.
 - Closed Campaign 13 after PR guidance became produced, consumed by generated
   CI, fixture-pinned, documented, and still advisory/non-blocking by default.
-- Advanced the active product lane to Campaign 14 so optional calibrated gates
-  can be specified separately from PR visibility and remain advisory by default.
+- Advanced the active product lane to Campaign 14 so recommendation
+  usefulness, placement, suppression/noise behavior, and before/after static
+  movement can be calibrated before optional gates.
 - Pinned RIPR-SPEC-0012 as the PR test guidance annotation contract and
   advanced Campaign 12 to `vscode/first-run-status` as the next ready UX item.
 - Advanced Campaign 12 to `vscode/action-discoverability` after pinning the
