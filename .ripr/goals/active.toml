@@ -127,11 +127,12 @@ blocked_by = [
 ]
 acceptance = "Close Campaign 17 only after baseline delta, baseline create/diff/shrink-only update, CI artifacts, and baseline ledger docs are in place while defaults stay advisory"
 commands = [
-  "cargo xtask check-campaign",
-  "cargo xtask goals next",
+  "cargo xtask check-spec-format",
   "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
   "cargo xtask check-static-language",
   "cargo xtask check-traceability",
   "cargo xtask check-capabilities",
+  "cargo xtask check-output-contracts",
   "cargo xtask check-pr",
 ]
