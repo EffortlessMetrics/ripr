@@ -604,7 +604,7 @@ fixtures = [
   "fixtures/boundary_gap/expected/llm-work-loop/path-with-spaces/review-summary.json",
   "fixtures/boundary_gap/expected/llm-work-loop/windows-separators/review-summary.json"
 ]
-next = "campaign/llm-work-loop-closeout"
+next = "campaign/first-hour-ux"
 metric = "agent status, workflow packets, provenance-backed receipts, reviewer summaries, and generated CI artifact uploads name artifacts, commands, selected seam context, recovered seam_id, stale-looking warnings, hashes, bounded next actions, joined surfaces, and source-edit-free boundaries"
 
 [[capability]]
