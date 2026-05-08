@@ -65,6 +65,9 @@ unused_result_ok = "deny"
 map_err_ignore = "deny"
 assertions_on_result_states = "deny"
 lines_filter_map_ok = "deny"
+# `match x { Ok(v) => ..., Err(_) => ... }` rewritten via `x.ok()` obscures
+# the error path. Prefer matching the typed result directly.
+match_result_ok = "deny"
 
 # Format and I/O footguns: format-arg redundancy hides expression evaluation
 # in the format machinery; path/file APIs have surprising error modes.

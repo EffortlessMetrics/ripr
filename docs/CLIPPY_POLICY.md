@@ -78,7 +78,8 @@ Currently denied at the workspace level (selected highlights):
 - Silent failure: `clippy::let_underscore_future`,
   `clippy::let_underscore_lock`, `clippy::unused_result_ok`,
   `clippy::map_err_ignore`, `clippy::assertions_on_result_states`,
-  `clippy::lines_filter_map_ok`. `clippy::let_underscore_must_use` is
+  `clippy::lines_filter_map_ok`, `clippy::match_result_ok`.
+  `clippy::let_underscore_must_use` is
   intentionally **not** yet active — best-effort cleanup patterns
   (`let _ = fs::remove_dir_all(&dir)`) are pervasive across tests, and the
   flip is tracked as a follow-up. Tests asserting that a `Result` is `Err`
