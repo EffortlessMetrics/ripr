@@ -109,7 +109,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/pr-review-guidance-closeout"
-status = "ready"
+status = "done"
 branch = "campaign-pr-review-guidance-closeout"
 stackable = false
 requires_human_merge = true
