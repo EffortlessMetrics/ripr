@@ -13,10 +13,10 @@ use super::hover::{hover_response, hover_with_snapshot_status};
 use super::state::{AnalysisSnapshot, DocumentStore, RefreshMetadata, format_duration};
 use super::uri::{encode_uri_path, file_uri_for_path, file_uris_match, path_from_file_uri};
 use super::{
-    COLLECT_CONTEXT_COMMAND, COPY_AFTER_SNAPSHOT_COMMAND, COPY_AGENT_BRIEF_COMMAND,
-    COPY_AGENT_PACKET_COMMAND, COPY_AGENT_RECEIPT_COMMAND, COPY_AGENT_VERIFY_COMMAND,
-    COPY_CONTEXT_COMMAND, COPY_SUGGESTED_ASSERTION_COMMAND, COPY_TARGETED_TEST_BRIEF_COMMAND,
-    HOVER_TEXT, OPEN_RELATED_TEST_COMMAND, REFRESH_COMMAND,
+    COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COPY_AFTER_SNAPSHOT_COMMAND,
+    COPY_AGENT_BRIEF_COMMAND, COPY_AGENT_PACKET_COMMAND, COPY_AGENT_RECEIPT_COMMAND,
+    COPY_AGENT_VERIFY_COMMAND, COPY_CONTEXT_COMMAND, COPY_SUGGESTED_ASSERTION_COMMAND,
+    COPY_TARGETED_TEST_BRIEF_COMMAND, HOVER_TEXT, OPEN_RELATED_TEST_COMMAND, REFRESH_COMMAND,
 };
 use crate::app::Mode;
 use crate::domain::{
@@ -55,7 +55,14 @@ fn initialize_result_exposes_existing_lsp_capabilities() -> Result<(), String> {
         return Err("expected execute command provider".to_string());
     };
     let commands = provider.commands;
-    assert_eq!(commands, vec![REFRESH_COMMAND, COLLECT_CONTEXT_COMMAND]);
+    assert_eq!(
+        commands,
+        vec![
+            REFRESH_COMMAND,
+            COLLECT_CONTEXT_COMMAND,
+            COLLECT_EVIDENCE_CONTEXT_COMMAND
+        ]
+    );
     Ok(())
 }
 
@@ -101,6 +108,10 @@ fn framed_lsp_protocol_smoke_exercises_tower_server() -> Result<(), String> {
         assert_eq!(
             initialize["result"]["capabilities"]["executeCommandProvider"]["commands"][1],
             COLLECT_CONTEXT_COMMAND
+        );
+        assert_eq!(
+            initialize["result"]["capabilities"]["executeCommandProvider"]["commands"][2],
+            COLLECT_EVIDENCE_CONTEXT_COMMAND
         );
         assert_eq!(
             initialize["result"]["capabilities"]["hoverProvider"],
@@ -3262,6 +3273,147 @@ fn execute_command_collect_context_returns_agent_seam_packet_for_known_seam() ->
             packet["packets"][0]["assertion_shape"]["kind"],
             "exact_return_value"
         );
+        Ok(())
+    })
+}
+
+#[test]
+fn execute_command_collect_evidence_context_returns_editor_packet_for_known_seam()
+-> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let seam = sample_classified_seam();
+        let seam_id = seam.seam.id().as_str().to_string();
+        let diagnostic = diagnostic_for_classified_seam(Path::new("/workspace"), &seam)
+            .ok_or_else(|| "expected seam diagnostic".to_string())?;
+        let uri = test_uri("file:///workspace/src/pricing.rs")?;
+        let mut diagnostics = sample_workspace_diagnostics(
+            PathBuf::from("/workspace"),
+            uri,
+            vec![diagnostic],
+            Vec::new(),
+        );
+        diagnostics.snapshot.classified_seams = vec![seam];
+        let Some(_) = backend.refresh_plan(diagnostics) else {
+            return Err("expected refresh plan".to_string());
+        };
+
+        let params = ExecuteCommandParams {
+            command: COLLECT_EVIDENCE_CONTEXT_COMMAND.to_string(),
+            arguments: vec![serde_json::json!({
+                "seam_id": seam_id,
+                "uri": "file:///workspace/src/pricing.rs",
+                "line": 88,
+            })],
+            work_done_progress_params: Default::default(),
+        };
+        let result = backend.execute_command(params).await;
+        let packet = result.map_err(|err| format!("execute_command failed: {err}"))?;
+        let Some(packet) = packet else {
+            return Err("expected evidence context packet".to_string());
+        };
+
+        assert_eq!(packet["schema_version"], "0.1");
+        assert_eq!(packet["tool"], "ripr");
+        assert_eq!(packet["mode"], "draft");
+        assert_eq!(packet["seam_id"], seam_id);
+        assert_eq!(packet["file"], "src/pricing.rs");
+        assert_eq!(packet["range"]["start"], 88);
+        assert_eq!(packet["range"]["end"], 88);
+        assert_eq!(packet["class"], "weakly_gripped");
+        assert_eq!(packet["seam_kind"], "predicate_boundary");
+        assert_eq!(packet["owner"], "pricing::discounted_total");
+        assert_eq!(packet["evidence_path"]["reach"], "present");
+        assert_eq!(packet["evidence_path"]["activate"], "present");
+        assert_eq!(packet["evidence_path"]["propagate"], "present");
+        assert_eq!(packet["evidence_path"]["observe"], "present");
+        assert_eq!(packet["evidence_path"]["discriminate"], "weak");
+        assert_eq!(
+            packet["missing_discriminator"],
+            "discount_threshold (equality boundary)"
+        );
+        assert_eq!(
+            packet["related_test"],
+            "tests/pricing.rs::below_threshold_has_no_discount"
+        );
+        assert_eq!(
+            packet["related_test_location"]["oracle_strength"],
+            "strong"
+        );
+        assert_eq!(packet["suggested_test"]["file"], "tests/pricing.rs");
+        assert!(
+            packet["suggested_assertion"]
+                .as_str()
+                .is_some_and(|value| value.contains("assert"))
+        );
+        assert!(
+            packet["agent_brief_command"]
+                .as_str()
+                .is_some_and(|value| value.starts_with("ripr agent brief --root . --seam-id "))
+        );
+        assert_eq!(
+            packet["after_snapshot_command"],
+            "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json"
+        );
+        assert_eq!(
+            packet["verify_command"],
+            "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > target/ripr/agent/agent-verify.json"
+        );
+        assert!(
+            packet["receipt_command"]
+                .as_str()
+                .is_some_and(|value| {
+                    value.contains("ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json")
+                        && value.contains("--out target/ripr/agent/agent-receipt.json")
+                })
+        );
+        assert_eq!(
+            packet["limits_note"],
+            "Static evidence only; no runtime mutation execution."
+        );
+        Ok(())
+    })
+}
+
+#[test]
+fn execute_command_collect_evidence_context_returns_none_for_unknown_seam() -> Result<(), String> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|err| format!("failed to start test runtime: {err}"))?;
+    runtime.block_on(async {
+        let (service, _socket) = LspService::new(|client| Backend::new(client, PathBuf::from(".")));
+        let backend = service.inner();
+        let seam = sample_classified_seam();
+        let diagnostic = diagnostic_for_classified_seam(Path::new("/workspace"), &seam)
+            .ok_or_else(|| "expected seam diagnostic".to_string())?;
+        let uri = test_uri("file:///workspace/src/pricing.rs")?;
+        let mut diagnostics = sample_workspace_diagnostics(
+            PathBuf::from("/workspace"),
+            uri,
+            vec![diagnostic],
+            Vec::new(),
+        );
+        diagnostics.snapshot.classified_seams = vec![seam];
+        let Some(_) = backend.refresh_plan(diagnostics) else {
+            return Err("expected refresh plan".to_string());
+        };
+
+        let params = ExecuteCommandParams {
+            command: COLLECT_EVIDENCE_CONTEXT_COMMAND.to_string(),
+            arguments: vec![serde_json::json!({
+                "seam_id": "unknown-seam",
+            })],
+            work_done_progress_params: Default::default(),
+        };
+        let result = backend.execute_command(params).await;
+        let packet = result.map_err(|err| format!("execute_command failed: {err}"))?;
+        assert!(packet.is_none(), "expected None for unknown seam");
         Ok(())
     })
 }

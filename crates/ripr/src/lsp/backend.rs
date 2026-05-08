@@ -10,8 +10,14 @@ use super::hover::{
     diagnostic_hover_response, finding_hover_response, hover_response, hover_with_snapshot_status,
 };
 use super::state::{AnalysisSnapshot, DocumentStore, format_duration};
-use super::{COLLECT_CONTEXT_COMMAND, REFRESH_COMMAND};
+use super::{COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, REFRESH_COMMAND};
+use crate::agent::loop_commands;
+use crate::analysis::ClassifiedSeam;
 use crate::domain::context_packet::ContextPacket;
+use crate::domain::{StageEvidence, StageState};
+use crate::output::agent_seam_packets::{
+    suggested_assertion_for_classified_seam, targeted_test_brief_outline_for_classified_seam,
+};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -449,6 +455,9 @@ impl LanguageServer for Backend {
         if params.command == COLLECT_CONTEXT_COMMAND {
             return Ok(self.collect_context_packet(&params.arguments));
         }
+        if params.command == COLLECT_EVIDENCE_CONTEXT_COMMAND {
+            return Ok(self.collect_evidence_context_packet(&params.arguments));
+        }
         Ok(None)
     }
 }
@@ -484,4 +493,125 @@ impl Backend {
         let rendered = crate::output::json::render_context_packet_dto(&packet);
         serde_json::from_str(&rendered).ok()
     }
+
+    fn collect_evidence_context_packet(&self, arguments: &[LSPAny]) -> Option<LSPAny> {
+        let args = context_arguments(arguments)?;
+        let snapshot = self.latest_analysis.lock().ok()?.clone()?;
+        let seam_id = args.get("seam_id").and_then(|v| v.as_str())?;
+        let seam = snapshot.classified_seam_by_id(seam_id)?;
+        Some(evidence_context_packet(&snapshot, seam))
+    }
+}
+
+fn evidence_context_packet(snapshot: &AnalysisSnapshot, entry: &ClassifiedSeam) -> LSPAny {
+    let seam = &entry.seam;
+    let evidence = &entry.evidence;
+    let seam_id = seam.id().as_str();
+    let outline = targeted_test_brief_outline_for_classified_seam(entry);
+    let related_test = evidence.related_tests.first();
+    let missing_discriminator = evidence
+        .missing_discriminators
+        .first()
+        .map(|missing| missing.value.as_str());
+    serde_json::json!({
+        "schema_version": "0.1",
+        "tool": "ripr",
+        "root": ".",
+        "mode": snapshot.mode.as_str(),
+        "seam_id": seam_id,
+        "file": display_lsp_path(seam.file()),
+        "range": {
+            "start": seam.display_line(),
+            "end": seam.display_line(),
+        },
+        "class": entry.class.as_str(),
+        "seam_kind": seam.kind().as_str(),
+        "owner": seam.owner(),
+        "expression": seam.expression(),
+        "required_discriminator": seam.required_discriminator().as_str(),
+        "expected_sink": seam.expected_sink().as_str(),
+        "evidence_path": {
+            "reach": evidence_stage_status(&evidence.reach),
+            "activate": evidence_stage_status(&evidence.activate),
+            "propagate": evidence_stage_status(&evidence.propagate),
+            "observe": evidence_stage_status(&evidence.observe),
+            "discriminate": evidence_stage_status(&evidence.discriminate),
+        },
+        "evidence_summaries": {
+            "reach": evidence.reach.summary.as_str(),
+            "activate": evidence.activate.summary.as_str(),
+            "propagate": evidence.propagate.summary.as_str(),
+            "observe": evidence.observe.summary.as_str(),
+            "discriminate": evidence.discriminate.summary.as_str(),
+        },
+        "missing_discriminator": missing_discriminator,
+        "missing_discriminators": evidence.missing_discriminators.iter().map(|missing| {
+            serde_json::json!({
+                "value": missing.value.as_str(),
+                "reason": missing.reason.as_str(),
+            })
+        }).collect::<Vec<_>>(),
+        "related_test": related_test.map(|test| {
+            format!("{}::{}", display_lsp_path(&test.file), test.test_name)
+        }),
+        "related_test_location": related_test.map(|test| {
+            serde_json::json!({
+                "file": display_lsp_path(&test.file),
+                "line": test.line,
+                "test_name": test.test_name.as_str(),
+                "oracle_kind": test.oracle_kind.as_str(),
+                "oracle_strength": test.oracle_strength.as_str(),
+            })
+        }),
+        "suggested_assertion": suggested_assertion_for_classified_seam(entry),
+        "suggested_test": {
+            "file": outline.suggested_file,
+            "name": outline.suggested_name,
+            "candidate_value": outline.candidate_value,
+            "assertion_shape": outline.assertion_shape,
+        },
+        "agent_packet_command": loop_commands::agent_packet_command(
+            ".",
+            seam_id,
+            loop_commands::EDITOR_AGENT_PACKET_ARTIFACT,
+        ),
+        "agent_brief_command": loop_commands::agent_brief_command(
+            ".",
+            seam_id,
+            loop_commands::EDITOR_AGENT_BRIEF_ARTIFACT,
+        ),
+        "after_snapshot_command": loop_commands::check_repo_exposure_command(
+            ".",
+            snapshot.mode.as_str(),
+            loop_commands::PILOT_AFTER_SNAPSHOT_ARTIFACT,
+        ),
+        "verify_command": loop_commands::agent_verify_command(
+            ".",
+            loop_commands::PILOT_BEFORE_SNAPSHOT_ARTIFACT,
+            loop_commands::PILOT_AFTER_SNAPSHOT_ARTIFACT,
+            Some(loop_commands::EDITOR_AGENT_VERIFY_ARTIFACT),
+        ),
+        "receipt_command": loop_commands::agent_receipt_command(
+            ".",
+            loop_commands::EDITOR_AGENT_VERIFY_ARTIFACT,
+            seam_id,
+            Some(loop_commands::EDITOR_AGENT_RECEIPT_ARTIFACT),
+        ),
+        "limits_note": "Static evidence only; no runtime mutation execution.",
+    })
+}
+
+fn evidence_stage_status(evidence: &StageEvidence) -> &'static str {
+    match evidence.state {
+        StageState::Yes => "present",
+        StageState::Weak => "weak",
+        StageState::No => "missing",
+        StageState::Unknown => "unknown",
+        StageState::Opaque => "opaque",
+        StageState::NotApplicable => "not_applicable",
+    }
+}
+
+fn display_lsp_path(path: &std::path::Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
