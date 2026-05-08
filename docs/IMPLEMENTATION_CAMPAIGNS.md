@@ -1954,8 +1954,9 @@ Closeout:
 Next:
 
 - Campaign 16 is closed. No ready work item remains in the active manifest.
-  Editor Evidence UX is queued as the next explicit campaign candidate, not
-  activated by this closeout.
+  Baseline Ledger v1 is the recommended next adoption campaign, but it should
+  be opened in a separate explicit campaign PR. Editor Evidence UX remains
+  queued as a separate Lane 3 candidate, not activated by this closeout.
 
 ## Future Campaign: Editor Evidence UX
 
@@ -2020,8 +2021,8 @@ Dependencies:
 - Campaign 12 supplies first-hour editor status and intent-titled action
   framing.
 - Campaign 13 supplies PR guidance without making RIPR a free-form reviewer.
-- Campaign 16 remains active unless this lane is explicitly promoted or run in
-  parallel.
+- Campaign 16 is complete; this lane still requires an explicit promotion before
+  it becomes the active manifest.
 
 Commands:
 

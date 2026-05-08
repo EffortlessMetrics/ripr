@@ -141,9 +141,11 @@ non-blocking generated CI defaults. [RIPR blocking
 readiness](BLOCKING_READINESS.md) explains when to stay advisory, require
 acknowledgement, use baseline-check, or enable calibrated blocking. The
 [Campaign 16 closeout](handoffs/2026-05-08-campaign-16-closeout.md) records
-the adoption proof and next-work boundary. Editor Evidence UX remains queued as
-a separate Lane 3 campaign and should start only after an explicit activation
-PR or explicit parallel-lane decision.
+the adoption proof and next-work boundary. Baseline Ledger v1 is the recommended
+next adoption campaign so reviewed debt can become an executable
+create/diff/shrink ledger before broader RIPR Zero planning. Editor Evidence UX
+remains queued as a separate Lane 3 campaign and should start only after an
+explicit activation PR or explicit parallel-lane decision.
 
 ## Strategic Sequence
 
