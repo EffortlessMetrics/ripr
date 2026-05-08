@@ -593,17 +593,6 @@ mod tests {
 
     fn assert_text_fixture(case: &str, file: &str, rendered: &str) -> Result<(), String> {
         let path = pr_guidance_fixture(case, file);
-        if std::env::var_os("RIPR_UPDATE_PR_GUIDANCE_FIXTURES").is_some() {
-            let parent = path
-                .parent()
-                .ok_or_else(|| format!("fixture path {} has no parent", path.display()))?;
-            fs::create_dir_all(parent)
-                .map_err(|err| format!("create fixture dir {}: {err}", parent.display()))?;
-            fs::write(&path, rendered)
-                .map_err(|err| format!("write fixture {}: {err}", path.display()))?;
-            return Ok(());
-        }
-
         let expected = fs::read_to_string(&path)
             .map_err(|err| format!("read fixture {}: {err}", path.display()))?;
         assert_eq!(

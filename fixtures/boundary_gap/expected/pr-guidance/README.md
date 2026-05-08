@@ -14,10 +14,6 @@ Cases:
 - `changed-test-skip`: a nearby recommended test file changed, so guidance is suppressed.
 - `configured-off`: selector warnings explain configured-off seams without comments.
 
-Refresh intentionally with:
-
-```bash
-$env:RIPR_UPDATE_PR_GUIDANCE_FIXTURES = "1"
-cargo test -p ripr review_comments_pr_guidance_fixtures_pin_required_cases --lib
-Remove-Item Env:\RIPR_UPDATE_PR_GUIDANCE_FIXTURES
-```
+The fixture test is read-only. Refresh these files intentionally by inspecting
+the rendered drift and updating the paired JSON/Markdown files in the same
+change.
