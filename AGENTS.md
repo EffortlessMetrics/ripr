@@ -75,7 +75,7 @@ logic, test harnesses, fixture runners, release checks, and policy checks.
 
 Do not add shell, Python, JavaScript, TypeScript, or other programming files
 outside approved surfaces. Prefer `cargo xtask` for repo automation. If a
-non-Rust file is necessary, update `policy/non_rust_allowlist.txt` and explain
+non-Rust file is necessary, update `policy/non-rust-allowlist.toml` and explain
 the exception in the PR.
 
 The VS Code extension, GitHub Actions declarations, fixture inputs,

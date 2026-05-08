@@ -37,6 +37,18 @@ struct GlobAllow {
     glob: String,
 }
 
+#[derive(Debug, Default)]
+struct FilePolicyAllowEntry {
+    line: usize,
+    glob: Option<String>,
+    kind: Option<String>,
+    owner: Option<String>,
+    surface: Option<String>,
+    classification: Option<String>,
+    reason: Option<String>,
+    covered_by: Option<Vec<String>>,
+}
+
 #[derive(Debug)]
 struct WorkflowBudget {
     path: String,
@@ -2740,7 +2752,7 @@ fn check_local_context_impl() -> Result<(), String> {
 }
 
 fn check_file_policy_impl() -> Result<(), String> {
-    let allowlist = read_glob_allowlist("policy/non_rust_allowlist.txt")?;
+    let allowlist = read_file_policy_allowlist("policy/non-rust-allowlist.toml")?;
     let mut violations = Vec::new();
 
     for path in collect_files(Path::new("."))? {
@@ -2770,7 +2782,7 @@ fn check_file_policy_impl() -> Result<(), String> {
             ],
             rerun_command: "cargo xtask check-file-policy",
             exception_template: Some(
-                "policy/non_rust_allowlist.txt entry:\nglob|kind|owner|reason",
+                "policy/non-rust-allowlist.toml entry:\n[[allow]]\nglob = \"path/**/*.ext\"\nkind = \"surface_kind\"\nowner = \"team/area\"\nsurface = \"docs|editor|fixtures|policy|rust|ci\"\nclassification = \"production|test|tooling|generated|config|docs|fixture|metadata\"\nreason = \"why this must remain non-Rust or declarative\"\ncovered_by = [\"cargo xtask check-file-policy\"]",
             ),
         },
         &violations,
@@ -13583,6 +13595,141 @@ fn read_glob_allowlist(path: &str) -> Result<Vec<GlobAllow>, String> {
     Ok(allowed)
 }
 
+fn read_file_policy_allowlist(path: &str) -> Result<Vec<GlobAllow>, String> {
+    let entries = parse_file_policy_allowlist(path)?;
+    Ok(entries
+        .into_iter()
+        .map(|entry| GlobAllow {
+            glob: normalize_slashes(&entry.glob.unwrap_or_default()),
+        })
+        .collect())
+}
+
+fn parse_file_policy_allowlist(path: &str) -> Result<Vec<FilePolicyAllowEntry>, String> {
+    let text = read_text_lossy(Path::new(path))?;
+    let mut entries = Vec::new();
+    let mut current = FilePolicyAllowEntry::default();
+    let mut in_entry = false;
+
+    let lines = text.lines().collect::<Vec<_>>();
+    let mut idx = 0;
+    while idx < lines.len() {
+        let line_number = idx + 1;
+        let trimmed = lines[idx].trim();
+        idx += 1;
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if trimmed == "[[allow]]" {
+            if in_entry {
+                validate_file_policy_allow_entry(path, &current)?;
+                entries.push(current);
+            }
+            current = FilePolicyAllowEntry {
+                line: line_number,
+                ..FilePolicyAllowEntry::default()
+            };
+            in_entry = true;
+            continue;
+        }
+        let Some((key, value)) = parse_toml_key_value(trimmed) else {
+            continue;
+        };
+        if !in_entry {
+            continue;
+        }
+        match key {
+            "glob" => current.glob = Some(parse_string_value(value, path, line_number)?),
+            "kind" => current.kind = Some(parse_string_value(value, path, line_number)?),
+            "owner" => current.owner = Some(parse_string_value(value, path, line_number)?),
+            "surface" => current.surface = Some(parse_string_value(value, path, line_number)?),
+            "classification" => {
+                current.classification = Some(parse_string_value(value, path, line_number)?)
+            }
+            "reason" => current.reason = Some(parse_string_value(value, path, line_number)?),
+            "covered_by" => {
+                let value = collect_toml_array_value(path, line_number, value, &lines, &mut idx)?;
+                current.covered_by = Some(parse_inline_array(&value)?);
+            }
+            "expires" | "retired" => {}
+            other => {
+                return Err(format!(
+                    "{path}:{line_number} unsupported non-Rust allowlist field `{other}`"
+                ));
+            }
+        }
+    }
+
+    if in_entry {
+        validate_file_policy_allow_entry(path, &current)?;
+        entries.push(current);
+    }
+    if entries.is_empty() {
+        return Err(format!("{path} has no [[allow]] entries"));
+    }
+    Ok(entries)
+}
+
+fn collect_toml_array_value(
+    path: &str,
+    line_number: usize,
+    first_value: &str,
+    lines: &[&str],
+    idx: &mut usize,
+) -> Result<String, String> {
+    let mut value = first_value.trim().to_string();
+    if !value.starts_with('[') || value.ends_with(']') {
+        return Ok(value);
+    }
+    while *idx < lines.len() {
+        let next = lines[*idx].trim();
+        *idx += 1;
+        value.push(' ');
+        value.push_str(next);
+        if next.ends_with(']') {
+            return Ok(value);
+        }
+    }
+    Err(format!(
+        "{path}:{line_number} unterminated non-Rust allowlist array"
+    ))
+}
+
+fn validate_file_policy_allow_entry(
+    path: &str,
+    entry: &FilePolicyAllowEntry,
+) -> Result<(), String> {
+    let required = [
+        ("glob", entry.glob.as_deref()),
+        ("kind", entry.kind.as_deref()),
+        ("owner", entry.owner.as_deref()),
+        ("surface", entry.surface.as_deref()),
+        ("classification", entry.classification.as_deref()),
+        ("reason", entry.reason.as_deref()),
+    ];
+    for (field, value) in required {
+        if value.unwrap_or_default().trim().is_empty() {
+            return Err(format!(
+                "{path}:{} non-Rust allowlist entry requires `{field}`",
+                entry.line
+            ));
+        }
+    }
+    let covered_by = entry.covered_by.as_ref().ok_or_else(|| {
+        format!(
+            "{path}:{} non-Rust allowlist entry requires `covered_by`",
+            entry.line
+        )
+    })?;
+    if covered_by.iter().any(|value| value.trim().is_empty()) {
+        return Err(format!(
+            "{path}:{} non-Rust allowlist `covered_by` values must be non-empty",
+            entry.line
+        ));
+    }
+    Ok(())
+}
+
 fn read_workflow_budgets(path: &str) -> Result<BTreeMap<String, WorkflowBudget>, String> {
     let mut budgets = BTreeMap::new();
     let text = read_text_lossy(Path::new(path))?;
@@ -16098,13 +16245,13 @@ mod tests {
         mutation_calibration_report_json, mutation_calibration_report_markdown,
         next_checkpoints_from_capabilities, normalize_fixture_human_output,
         normalize_fixture_json_output, normalize_golden_text, panic_family_from_pattern,
-        parse_campaign_manifest, parse_inline_array, parse_mutation_calibration_args,
-        parse_mutation_outcomes_json, parse_no_panic_allowlist_toml,
-        parse_no_panic_allowlist_toml_v2, parse_reason, parse_repo_exposure_static_seams,
-        parse_sarif_policy_args, parse_sarif_policy_results, parse_static_language_allowlist,
-        parse_string_value, parse_targeted_test_outcome_args, pr_shape_warnings,
-        precommit_report_body, public_contract_rows, read_mutation_input_json, receipt_json,
-        receipt_specs, receipt_status_from_reports, repo_badge_artifact_command_args,
+        parse_campaign_manifest, parse_file_policy_allowlist, parse_inline_array,
+        parse_mutation_calibration_args, parse_mutation_outcomes_json,
+        parse_no_panic_allowlist_toml, parse_no_panic_allowlist_toml_v2, parse_reason,
+        parse_repo_exposure_static_seams, parse_sarif_policy_args, parse_sarif_policy_results,
+        parse_static_language_allowlist, parse_string_value, parse_targeted_test_outcome_args,
+        pr_shape_warnings, precommit_report_body, public_contract_rows, read_mutation_input_json,
+        receipt_json, receipt_specs, receipt_status_from_reports, repo_badge_artifact_command_args,
         repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown,
         repo_exposure_latency_json, repo_exposure_latency_markdown, repo_exposure_latency_run,
         repo_exposure_latency_run_from_output, repo_exposure_latency_status,
@@ -18034,7 +18181,7 @@ jobs:
         assert!(is_evidence_path("metrics/capabilities.toml"));
         assert!(is_evidence_path("xtask/src/main.rs"));
         assert!(is_policy_path(".github/workflows/ci.yml"));
-        assert!(is_policy_path("policy/non_rust_allowlist.txt"));
+        assert!(is_policy_path("policy/non-rust-allowlist.toml"));
         assert!(!is_production_path("docs/ENGINEERING.md"));
     }
 
@@ -22301,6 +22448,62 @@ jobs:
             check_droid_review_config()?;
             check_process_policy()?;
             check_network_policy()
+        })
+    }
+
+    #[test]
+    fn file_policy_allowlist_toml_parser_requires_governed_fields() -> Result<(), String> {
+        with_temp_cwd("file-policy-allowlist", |root| {
+            let path = root.join("allowlist.toml");
+            write(
+                &path,
+                r#"schema_version = "1.0"
+policy = "non-rust-allowlist"
+status = "active"
+
+[[allow]]
+glob = "editors/vscode/**/*.ts"
+kind = "editor_extension"
+owner = "lsp/editor"
+surface = "editor"
+classification = "production"
+reason = "VS Code extensions are authored against the TypeScript VS Code API."
+covered_by = ["npm run compile"]
+"#,
+            );
+
+            let path = path.to_string_lossy().to_string();
+            let entries = parse_file_policy_allowlist(&path)?;
+            assert_eq!(entries.len(), 1);
+            assert_eq!(entries[0].glob.as_deref(), Some("editors/vscode/**/*.ts"));
+            assert_eq!(entries[0].surface.as_deref(), Some("editor"));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn file_policy_allowlist_toml_parser_rejects_ungoverned_entries() -> Result<(), String> {
+        with_temp_cwd("file-policy-allowlist-missing-field", |root| {
+            let path = root.join("allowlist.toml");
+            write(
+                &path,
+                r#"[[allow]]
+glob = "scripts/*.sh"
+kind = "script"
+owner = "release"
+surface = "ci"
+classification = "tooling"
+covered_by = ["cargo xtask check-file-policy"]
+"#,
+            );
+
+            let path = path.to_string_lossy().to_string();
+            let err = match parse_file_policy_allowlist(&path) {
+                Ok(_) => return Err("expected missing reason to fail".to_string()),
+                Err(err) => err,
+            };
+            assert!(err.contains("requires `reason`"));
+            Ok(())
         })
     }
 

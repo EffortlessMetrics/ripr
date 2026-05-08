@@ -1,15 +1,13 @@
 schema_version = "1.0"
 policy = "non-rust-allowlist"
 owner = "core/policy"
-status = "shadow"
+status = "active"
 
-# Migration target for the non-Rust file allowlist.
+# Canonical source of truth for the non-Rust file allowlist.
 #
-# The canonical source-of-truth for `cargo xtask check-file-policy` remains
-# `policy/non_rust_allowlist.txt` (pipe-delimited) until the checker is
-# updated to consume this TOML in a follow-up PR. This file is the
-# governed schema-bearing mirror of the txt allowlist, with added
-# `surface`, `classification`, and `covered_by` fields.
+# `cargo xtask check-file-policy` consumes this TOML directly so each
+# exception carries owner, surface, classification, reason, and coverage
+# metadata in one governed Rust-read policy file.
 #
 # Schema:
 #   glob            file pattern this entry matches
