@@ -1953,17 +1953,118 @@ Closeout:
 
 Next:
 
-- Campaign 16 is closed. No ready work item remains in the active manifest.
-  Campaign 17 is now active as Editor Evidence UX, with
-  `campaign/editor-evidence-ux-audit` as the first ready item. Baseline Ledger
-  v1 remains a future adoption campaign and should open only through a
-  separate explicit campaign PR.
+- Campaign 17 is active as RIPR Zero Adoption. It should turn baselines into
+  burn-down ledgers with create, diff, and shrink-only refresh commands while
+  keeping generated CI advisory by default.
 
-## Campaign 17: Editor Evidence UX
+## Campaign 17: RIPR Zero Adoption
+
+Campaign ID: `ripr-zero-adoption`
+
+Status: active
+
+Campaign 16 made optional gates adoptable. The next PR/CI product risk is
+movement: teams need to see whether a PR introduces new policy-eligible debt,
+resolves baseline debt, acknowledges an exception, or moves the repo toward
+RIPR 0.
+
+Objective:
+
+```text
+Make RIPR 0 adoption concrete for PR/CI users: turn baselines into visible
+burn-down ledgers, create reviewed baseline checkpoints from gate decisions,
+diff current evidence against checked-in debt, support shrink-only refreshes,
+and keep every new policy mode explicit and advisory by default.
+```
+
+Why it matters:
+
+Most repositories will not start at RIPR 0. Adoption has to show the whole
+truth without punishing the first run: visible baseline debt, resolved debt,
+new policy-eligible gaps, acknowledged exceptions, suppressions, stale baseline
+entries, and safe commands for shrinking reviewed debt.
+
+End state:
+
+- a baseline debt delta report compares current evidence against reviewed
+  baseline debt without auto-adopting new findings
+- `ripr baseline create` writes reviewed baseline ledgers from existing
+  gate-decision evidence without implying accepted-forever debt
+- `ripr baseline diff` reports still-present, resolved, new policy-eligible,
+  acknowledged, suppressed, stale, invalid, and missing-input identities
+- `ripr baseline update --remove-resolved` supports shrink-only baseline
+  refreshes and never auto-adopts new debt in CI
+- generated CI uploads baseline debt delta artifacts and summarizes debt
+  movement while the gate evaluator remains responsible for pass or fail
+- RIPR Zero adoption docs explain initial baseline creation, baseline-check
+  rollout, shrink-only refresh, new debt review, and waiver versus baseline
+  versus suppression boundaries
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `spec/baseline-debt-delta-report` | ready | Define the baseline debt delta report contract for comparing current PR/CI evidence to reviewed baseline debt without changing analyzer identity, auto-adopting new debt, or making CI blocking by default. |
+| `baseline/create` | blocked | Add `ripr baseline create` so users can produce stable reviewed `.ripr/gate-baseline.json` ledgers from existing gate-decision evidence without overwriting by default. |
+| `baseline/diff` | blocked | Add `ripr baseline diff` to write baseline-debt-delta JSON/Markdown with still-present, resolved, new, acknowledged, suppressed, stale, invalid, and missing-input buckets. |
+| `baseline/update-remove-resolved` | blocked | Add `ripr baseline update --remove-resolved` as a shrink-only refresh path that refuses to auto-adopt new debt by default. |
+| `ci/baseline-debt-delta-artifacts` | blocked | Upload baseline debt delta JSON/Markdown from generated CI and summarize debt movement without making this report the pass/fail authority. |
+| `docs/baseline-ledger-workflow` | blocked | Document initial adoption, reviewed baseline creation, baseline-check rollout, shrink-only refresh, new debt review, waiver versus baseline versus suppression, and the path toward RIPR 0. |
+| `campaign/ripr-zero-adoption-closeout` | blocked | Close Campaign 17 only after baseline delta, baseline create/diff/shrink-only update, CI artifacts, and baseline ledger docs are in place while defaults stay advisory. |
+
+Dependencies:
+
+- Campaign 16 supplies the visible gate adoption workflow, waiver docs,
+  baseline docs, first-screen summaries, dogfood receipts, and blocking
+  readiness guide.
+- Campaign 15 supplies the explicit gate evaluator and decision schema. RIPR
+  Zero adoption consumes gate decisions; it does not redefine gate policy.
+- Campaign 14 supplies recommendation calibration. Missing or unknown
+  calibration must stay visible rather than becoming confidence.
+- Campaign 13 supplies PR guidance. Debt-delta summaries may reference that
+  evidence, but the baseline ledger is driven by gate decision identities.
+- Existing baselines are adoption checkpoints for historical debt, not
+  suppressions and not permission to adopt new debt silently.
+
+Commands:
+
+```bash
+cargo xtask check-campaign
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-capabilities
+cargo xtask check-pr
+```
+
+Blocking conditions:
+
+- analyzer identity rewrites inside Lane 4
+- default CI blocking
+- baseline auto-adoption of new PR findings
+- treating baselines as suppressions or accepted-forever debt
+- hiding acknowledged, suppressed, stale, invalid, or missing-input entries
+  from summaries
+- auto-refreshing or rewriting baselines in generated CI
+- runtime mutation vocabulary in static debt-delta summaries
+- running cargo-mutants or any mutation engine from adoption workflows
+- automatic source edits or generated tests
+- LSP/editor behavior changes in this campaign lane
+- new public crates
+
+Next:
+
+- `spec/baseline-debt-delta-report` is the next ready item. Define the report
+  contract before baseline commands or generated CI artifacts.
+
+## Future Campaign: Editor Evidence UX
 
 Campaign ID: `editor-evidence-ux`
 
-Status: active
+Status: queued, not active. Campaign 17, RIPR Zero Adoption, is active. Start
+this lane only after an explicit campaign activation PR or after an explicit
+decision to run the editor lane in parallel.
 
 The saved-workspace LSP path already has alpha diagnostics, evidence hover,
 seam actions, related-test opening, context collection, agent-loop commands,
@@ -2003,7 +2104,7 @@ Work items:
 | Work item | Status | Notes |
 | --- | --- | --- |
 | `campaign/editor-evidence-ux-audit` | done | Added `docs/EDITOR_EVIDENCE_UX.md` and the audit handoff, mapping diagnostic data, hover, actions, context collection, VS Code proof, LSP cockpit status, status/staleness, and non-goals into one editor evidence contract without behavior changes. |
-| `lsp/evidence-hover-hardening` | ready | Harden hover as the primary explanation surface for seam class, evidence path, missing discriminator, related test, suggested assertion, verify command, receipt command, and static limits. |
+| `lsp/evidence-hover-hardening` | blocked | Harden hover as the primary explanation surface for seam class, evidence path, missing discriminator, related test, suggested assertion, verify command, receipt command, and static limits. |
 | `lsp/evidence-aware-actions` | blocked | Tighten action visibility and payload validation so actions only appear when supporting evidence or command context exists. |
 | `lsp/context-packet-command` | blocked | Add one canonical evidence context packet command for external tools and agents without edits, generated tests, or provider coupling. |
 | `test/lsp-protocol-smoke` | blocked | Add framed protocol proof for initialize, saved-workspace diagnostics, hover, codeAction, context packet execution, and shutdown. |
@@ -2020,16 +2121,17 @@ Dependencies:
 - Campaign 12 supplies first-hour editor status and intent-titled action
   framing.
 - Campaign 13 supplies PR guidance without making RIPR a free-form reviewer.
-- Campaign 16 is complete; this explicit activation starts from the queued
-  editor contract without changing gate adoption policy.
-- Baseline Ledger v1 remains a separate future adoption lane.
+- Campaign 17 remains active unless this lane is explicitly promoted or run in
+  parallel.
+- `docs/EDITOR_EVIDENCE_UX.md` and the audit handoff define the contract that
+  future behavior PRs should follow.
 
-Next:
+Next when activated:
 
-- `lsp/evidence-hover-hardening` is the next ready item. Keep that PR focused
-  on hover as the primary explanation surface: resolve from `diagnostic.data`
-  to the latest analysis state, show available evidence and limits, and avoid
-  runtime adequacy claims or behavior outside hover.
+- `lsp/evidence-hover-hardening` should be the first behavior-bearing item.
+  Keep it focused on hover as the primary explanation surface: resolve from
+  `diagnostic.data` to the latest analysis state, show available evidence and
+  limits, and avoid runtime adequacy claims or behavior outside hover.
 
 Commands:
 

@@ -1,139 +1,110 @@
-id = "editor-evidence-ux"
-title = "Editor Evidence UX"
+id = "ripr-zero-adoption"
+title = "RIPR Zero Adoption"
 status = "active"
 
 # This is Campaign 17 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
-# Campaign 16 closed Gate Adoption UX after adoption examples, waiver workflows,
-# baseline guidance, CI summary polish, dogfood receipts, and
-# blocking-readiness guidance landed while generated CI stayed advisory by
-# default.
+# Campaign 16 closed Gate Adoption UX after generated-CI examples, waiver
+# workflows, baseline guidance, summary polish, dogfood receipts, and
+# blocking-readiness docs made optional gates adoptable while generated CI
+# stayed advisory by default.
 
 objective = """
-Make RIPR's saved-workspace LSP path project one evidence spine from diagnostic
-to hover, related test, focused context packet, one test, verify, and receipt
-without automatic edits, generated tests, runtime mutation execution, or runtime
-adequacy claims.
+Make RIPR 0 adoption concrete for PR/CI users: turn baselines into visible
+burn-down ledgers, create reviewed baseline checkpoints from gate decisions,
+diff current evidence against checked-in debt, support shrink-only refreshes,
+and keep every new policy mode explicit and advisory by default.
 """
 
 end_state = [
-  "diagnostics carry stable seam identity and are not reinterpreted from message text",
-  "hover is the primary human explanation surface for seam class, evidence path, missing observation, related test, suggested assertion shape, verify command, receipt command, and static limits",
-  "code actions appear only when the supporting evidence or command context exists",
-  "a canonical evidence context packet command gives external agents one bounded work packet without coupling RIPR to an LLM provider",
-  "protocol-level and VS Code smoke tests prove the editor loop from server startup through diagnostics, hover, actions, copy payloads, related-test opening, and restart/error paths",
-  "status and staleness make stale, failed, disabled, or unavailable evidence visible rather than presenting it as fresh",
-  "user-facing docs describe the saved-workspace editor workflow and its limits",
+  "a baseline debt delta report compares current evidence against reviewed baseline debt without auto-adopting new findings",
+  "ripr baseline create writes reviewed baseline ledgers from existing gate-decision evidence without implying accepted-forever debt",
+  "ripr baseline diff reports still-present, resolved, new policy-eligible, acknowledged, suppressed, stale, invalid, and missing-input identities",
+  "ripr baseline update --remove-resolved supports shrink-only baseline refreshes and never auto-adopts new debt in CI",
+  "generated CI uploads baseline debt delta artifacts and summarizes debt movement while the gate evaluator remains responsible for pass or fail",
+  "RIPR Zero adoption docs explain initial baseline creation, baseline-check rollout, shrink-only refresh, new debt review, and waiver versus baseline versus suppression boundaries",
 ]
 
 [[work_item]]
-id = "campaign/editor-evidence-ux-audit"
-status = "done"
-branch = "docs-editor-evidence-ux-audit"
+id = "spec/baseline-debt-delta-report"
+status = "ready"
+branch = "spec-baseline-debt-delta-report"
 stackable = false
-acceptance = "Audit diagnostic data, hover, actions, context collection, VS Code extension proof, and LSP cockpit status into one editor evidence contract without behavior changes"
+acceptance = "Define the baseline debt delta report contract for comparing current PR/CI evidence to reviewed baseline debt without changing analyzer identity, auto-adopting new debt, or making CI blocking by default"
 commands = [
-  "cargo xtask check-campaign",
-  "cargo xtask goals next",
+  "cargo xtask check-spec-format",
   "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
   "cargo xtask check-static-language",
   "cargo xtask check-traceability",
   "cargo xtask check-capabilities",
+  "cargo xtask check-output-contracts",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "lsp/evidence-hover-hardening"
-status = "ready"
-branch = "lsp-evidence-hover-hardening"
+id = "baseline/create"
+status = "blocked"
+branch = "baseline-create"
 stackable = false
-acceptance = "Harden hover as the primary explanation surface for seam class, evidence path, missing discriminator, related test, suggested assertion, verify command, receipt command, and static limits"
+blocked_by = ["spec/baseline-debt-delta-report"]
+acceptance = "Add ripr baseline create so users can produce stable reviewed .ripr/gate-baseline.json ledgers from existing gate-decision evidence without overwriting by default"
 commands = [
-  "cargo test -p ripr lsp::hover --lib",
-  "cargo test -p ripr lsp::tests --lib",
-  "cargo xtask lsp-cockpit-report",
+  "cargo test -p ripr baseline",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "lsp/evidence-aware-actions"
+id = "baseline/diff"
 status = "blocked"
-branch = "lsp-evidence-aware-actions"
+branch = "baseline-diff"
 stackable = false
-blocked_by = ["lsp/evidence-hover-hardening"]
-acceptance = "Tighten action visibility and payload validation so actions only appear when supporting evidence or command context exists"
+blocked_by = ["baseline/create"]
+acceptance = "Add ripr baseline diff to write baseline-debt-delta JSON/Markdown with still-present, resolved, new, acknowledged, suppressed, stale, invalid, and missing-input buckets"
 commands = [
-  "cargo test -p ripr lsp::actions --lib",
-  "cargo test -p ripr lsp::tests --lib",
-  "npm --prefix editors/vscode run test:e2e",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "lsp/context-packet-command"
-status = "blocked"
-branch = "lsp-context-packet-command"
-stackable = false
-blocked_by = ["lsp/evidence-aware-actions"]
-acceptance = "Add one canonical evidence context packet command for external tools and agents without edits, generated tests, or provider coupling"
-commands = [
-  "cargo test -p ripr lsp --lib",
-  "cargo test -p ripr lsp::tests --lib",
-  "cargo xtask lsp-cockpit-report",
+  "cargo test -p ripr baseline",
   "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "test/lsp-protocol-smoke"
+id = "baseline/update-remove-resolved"
 status = "blocked"
-branch = "test-lsp-protocol-smoke"
+branch = "baseline-update-remove-resolved"
 stackable = false
-blocked_by = ["lsp/context-packet-command"]
-acceptance = "Add framed protocol proof for initialize, saved-workspace diagnostics, hover, codeAction, context packet execution, and shutdown"
+blocked_by = ["baseline/diff"]
+acceptance = "Add ripr baseline update --remove-resolved as a shrink-only refresh path that refuses to auto-adopt new debt by default"
 commands = [
-  "cargo test -p ripr lsp --lib",
-  "cargo test -p ripr lsp::tests --lib",
-  "cargo xtask lsp-cockpit-report",
+  "cargo test -p ripr baseline",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "test/vscode-extension-smoke"
+id = "ci/baseline-debt-delta-artifacts"
 status = "blocked"
-branch = "test-vscode-extension-smoke"
+branch = "ci-baseline-debt-delta-artifacts"
 stackable = false
-blocked_by = ["test/lsp-protocol-smoke"]
-acceptance = "Prove extension activation, server resolution, fixture diagnostics, hover, actions, copy payloads, related-test opening, restart, and bad-server-path status"
+blocked_by = ["baseline/diff"]
+acceptance = "Upload baseline debt delta JSON/Markdown from generated CI and summarize debt movement without making this report the pass/fail authority"
 commands = [
-  "npm --prefix editors/vscode run compile",
-  "npm --prefix editors/vscode run test:e2e",
+  "cargo test -p ripr init_generated_github_workflow",
+  "cargo xtask check-workflows",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "lsp/editor-status-and-staleness"
+id = "docs/baseline-ledger-workflow"
 status = "blocked"
-branch = "lsp-editor-status-and-staleness"
+branch = "docs-baseline-ledger-workflow"
 stackable = false
-blocked_by = ["test/vscode-extension-smoke"]
-acceptance = "Make server unavailable, workspace unresolved, config disabled, queued, running, complete, stale, failed, and no-actionable-seam states explicit"
-commands = [
-  "cargo test -p ripr lsp --lib",
-  "cargo test -p ripr lsp::tests --lib",
-  "npm --prefix editors/vscode run test:e2e",
-  "cargo xtask lsp-cockpit-report",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "docs/editor-evidence-workflow"
-status = "blocked"
-branch = "docs-editor-evidence-workflow"
-stackable = false
-blocked_by = ["lsp/editor-status-and-staleness"]
-acceptance = "Document install, diagnostic, hover, related test, context packet, one-test, verify, receipt, and refresh workflow with limits"
+blocked_by = ["baseline/update-remove-resolved", "ci/baseline-debt-delta-artifacts"]
+acceptance = "Document initial adoption, reviewed baseline creation, baseline-check rollout, shrink-only refresh, new debt review, waiver versus baseline versus suppression, and the path toward RIPR 0"
 commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
@@ -142,30 +113,26 @@ commands = [
 ]
 
 [[work_item]]
-id = "campaign/editor-evidence-ux-closeout"
+id = "campaign/ripr-zero-adoption-closeout"
 status = "blocked"
-branch = "campaign-editor-evidence-ux-closeout"
+branch = "campaign-ripr-zero-adoption-closeout"
 stackable = false
 blocked_by = [
-  "campaign/editor-evidence-ux-audit",
-  "lsp/evidence-hover-hardening",
-  "lsp/evidence-aware-actions",
-  "lsp/context-packet-command",
-  "test/lsp-protocol-smoke",
-  "test/vscode-extension-smoke",
-  "lsp/editor-status-and-staleness",
-  "docs/editor-evidence-workflow",
+  "spec/baseline-debt-delta-report",
+  "baseline/create",
+  "baseline/diff",
+  "baseline/update-remove-resolved",
+  "ci/baseline-debt-delta-artifacts",
+  "docs/baseline-ledger-workflow",
 ]
-acceptance = "Close only after hover, actions, context packet, protocol proof, VS Code proof, status/staleness, and docs align without analyzer, policy, CI, or runtime-claim drift"
+acceptance = "Close Campaign 17 only after baseline delta, baseline create/diff/shrink-only update, CI artifacts, and baseline ledger docs are in place while defaults stay advisory"
 commands = [
-  "cargo test -p ripr lsp --lib",
-  "cargo test -p ripr lsp::tests --lib",
-  "cargo xtask lsp-cockpit-report",
-  "npm --prefix editors/vscode run compile",
-  "npm --prefix editors/vscode run test:e2e",
-  "cargo xtask check-output-contracts",
+  "cargo xtask check-spec-format",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
   "cargo xtask check-static-language",
   "cargo xtask check-traceability",
   "cargo xtask check-capabilities",
+  "cargo xtask check-output-contracts",
   "cargo xtask check-pr",
 ]

@@ -141,12 +141,13 @@ non-blocking generated CI defaults. [RIPR blocking
 readiness](BLOCKING_READINESS.md) explains when to stay advisory, require
 acknowledgement, use baseline-check, or enable calibrated blocking. The
 [Campaign 16 closeout](handoffs/2026-05-08-campaign-16-closeout.md) records
-the adoption proof and next-work boundary. Campaign 17 is now active as Editor
-Evidence UX. The contract audit is recorded in
-[Editor Evidence UX](EDITOR_EVIDENCE_UX.md), and `lsp/evidence-hover-hardening`
-is now the first behavior-bearing editor slice. Baseline Ledger v1 remains the
-recommended future adoption campaign for executable create/diff/shrink ledgers
-before broader RIPR Zero planning, but it is not active in this manifest.
+the adoption proof and next-work boundary. Campaign 17 is active as RIPR Zero
+Adoption: it starts by defining a baseline debt delta report before baseline
+create, diff, shrink-only update, and generated CI debt-delta artifacts. Editor
+Evidence UX remains queued as a separate Lane 3 campaign; its contract audit is
+recorded in [Editor Evidence UX](EDITOR_EVIDENCE_UX.md), but behavior work
+should start only after an explicit activation PR or explicit parallel-lane
+decision.
 
 ## Strategic Sequence
 
@@ -193,6 +194,7 @@ quality rails
 -> recommendation calibration
 -> calibrated gate policy
 -> gate adoption UX
+-> RIPR Zero adoption
 -> editor evidence UX
 ```
 
