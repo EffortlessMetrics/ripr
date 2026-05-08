@@ -1559,10 +1559,9 @@ Closeout:
 
 Next:
 
-- Campaign 14 is now the Recommendation Calibration lane. It starts with a
-  report spec before any ranking or policy work so RIPR measures whether its
-  PR guidance is useful, correctly placed, and low-noise before optional gates
-  are considered.
+- Campaign 14 is complete. It measured recommendation quality before any
+  ranking or policy work so future optional gates can consume calibrated
+  evidence rather than unmeasured signal.
 
 Dependencies:
 
@@ -1597,7 +1596,7 @@ Blocking conditions:
 
 Campaign ID: `recommendation-calibration`
 
-Status: active
+Status: complete
 
 Campaigns 11 through 13 built the deterministic human, CI, editor, and external
 agent control plane: selected seam -> brief/packet -> focused test -> after
@@ -1649,7 +1648,7 @@ Work items:
 | `review-feedback/outcome-receipts` | done | Added a lightweight review guidance outcome receipt schema and pinned useful, noisy, wrong-line, already-covered, wrong-target, summary-only-correct, and suppressed-correctly receipt fixtures without telemetry or external services. |
 | `report/recommendation-precision` | done | Added `cargo xtask recommendation-calibration`, an advisory JSON/Markdown report that joins PR guidance, calibration corpus expectations, optional outcome receipts, suppression state, target placement, latency, and static movement without changing CI blocking defaults. Checked outputs live under `fixtures/boundary_gap/expected/recommendation-calibration/recommendation-calibration.{json,md}`. |
 | `docs/calibration-workflow` | done | Added [Recommendation calibration](RECOMMENDATION_CALIBRATION.md), documenting how to run and read the report, outcome receipts, placement quality, suppression correctness, static movement buckets, reviewer use, fixture artifacts, and advisory limits. |
-| `campaign/recommendation-calibration-closeout` | ready | Close only after recommendation quality is specified, fixture-pinned, receipt-backed, reported, documented, surfaced advisory-first, and ready to inform later ranking or policy work. |
+| `campaign/recommendation-calibration-closeout` | done | Closed after recommendation quality was specified, fixture-pinned, receipt-backed, reported, documented, surfaced advisory-first, and ready to inform later ranking or policy work. |
 
 Dependencies:
 
@@ -1687,6 +1686,28 @@ Blocking conditions:
 - telemetry or external service dependencies
 - policy gates or acknowledgement labels as part of the calibration report
 - new public crates
+
+Closeout:
+
+- Recommendation quality is now specified by RIPR-SPEC-0013 and the output
+  schema.
+- The PR-shaped calibration corpus pins useful, noisy, wrong-line,
+  already-covered, summary-only, suppression, generated/migration,
+  macro-heavy, trait/generic, and async/error-boundary cases.
+- Outcome receipts provide repo-local review feedback labels without telemetry
+  or external services.
+- `cargo xtask recommendation-calibration` emits advisory JSON and Markdown
+  precision reports from existing artifacts.
+- [Recommendation calibration](RECOMMENDATION_CALIBRATION.md) documents how to
+  run and read reports, receipts, placement quality, suppression correctness,
+  static movement buckets, and limits.
+- [Campaign 14 closeout](handoffs/2026-05-08-campaign-14-closeout.md) records
+  the PR chain, proof commands, and deferred policy boundary.
+
+Next:
+
+- No Campaign 15 work item is active yet. Choose the next product campaign
+  explicitly before adding gate evaluation or CI blocking behavior.
 
 ## Campaign 15: Calibrated Gate Policy
 

@@ -104,7 +104,7 @@ before the existing non-blocking summary and changed-line check-annotation
 consumers, guidance placement and suppression cases are fixture-pinned, and
 [PR review guidance](PR_REVIEW_GUIDANCE.md) documents the command, CI behavior,
 summary-only fallback, inline-comment opt-in boundary, and static-evidence
-limits. Campaign 14 is active as Recommendation Calibration: RIPR-SPEC-0013
+limits. Campaign 14 is closed as Recommendation Calibration: RIPR-SPEC-0013
 pins the recommendation calibration report contract for measuring whether
 completed recommendation surfaces are actionable, correctly placed, properly
 suppressed or capped, and correlated with before/after static movement without
@@ -113,8 +113,9 @@ The PR-shaped calibration corpus, local outcome receipts, and advisory
 `cargo xtask recommendation-calibration` report are now checked, and
 [Recommendation calibration](RECOMMENDATION_CALIBRATION.md) documents how to
 read metrics, receipts, placement quality, suppression correctness, static
-movement buckets, and advisory limits. The next slice is Campaign 14 closeout.
-Campaign 15 is queued as Calibrated Gate Policy so optional policy
+movement buckets, and advisory limits. The closeout handoff records the PR
+chain and deferred policy boundary. No ready work item remains in the active
+manifest; Campaign 15 is queued as Calibrated Gate Policy so optional policy
 gates come after measured signal quality and remain explicit, advisory by
 default, and separate from runtime mutation vocabulary.
 
