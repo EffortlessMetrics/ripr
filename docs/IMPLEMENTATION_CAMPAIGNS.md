@@ -1441,8 +1441,8 @@ Work items:
 | `vscode/first-run-status` | done | VS Code now has a status bar and `ripr: Show Status` path for server resolution, workspace detection, analysis running/complete/stale/failed, and no-actionable-seam states without adding unsaved-buffer overlays. |
 | `vscode/action-discoverability` | done | Seam diagnostics now group code-action titles around inspect, write targeted test, agent handoff, verify after test, review result, and refresh intent while keeping command IDs and payloads stable. |
 | `ci/pr-summary-surface` | done | The generated workflow now writes a reviewer-oriented `RIPR advisory summary` with pilot and agent review content, artifact paths, SARIF and badge status, known limits, and future PR guidance annotation counts when `target/ripr/review/comments.json` exists; it also emits non-blocking changed-line check annotations from that future report. |
-| `ci/generated-workflow-smoke-fixture` | ready | Pin generated workflow artifact paths, top-seam extraction, agent artifact generation, non-blocking posture, optional SARIF, badge output, advisory summary sections, and future PR guidance annotation hooks after the PR summary surface exists. |
-| `docs/ux-by-user-type` | blocked | Rewrite the first-hour docs around VS Code, CI, CLI, agent, troubleshooting, and known limits while keeping README short after the editor and CI surfaces settle. |
+| `ci/generated-workflow-smoke-fixture` | done | The generated workflow smoke fixture now pins artifact paths, top-seam extraction, agent artifact generation, non-blocking posture, optional SARIF gates, badge output, advisory summary sections, and future PR guidance annotation hooks. |
+| `docs/ux-by-user-type` | ready | Rewrite the first-hour docs around VS Code, CI, CLI, agent, troubleshooting, and known limits while keeping README short now that the editor and generated CI first screens are pinned. |
 | `campaign/first-hour-ux-closeout` | blocked | Close only after the extension and CI first screens are useful without report archaeology and the CLI remains the shared engine rather than the required first user interface. |
 
 Dependencies:

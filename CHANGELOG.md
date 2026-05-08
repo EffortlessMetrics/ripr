@@ -42,6 +42,10 @@ are scoped or reviewed.
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and future PR guidance annotation counts before artifact
   download.
+- Added a generated workflow smoke fixture test that pins artifact paths,
+  top-seam extraction, agent artifact generation, non-blocking posture,
+  optional SARIF gates, badge output, advisory summary sections, and future PR
+  guidance annotation hooks.
 - Added an LLM work-loop fixture matrix that pins happy, unchanged, regressed,
   missing-artifact, stale-artifact, configured-off, path-with-spaces, and
   Windows-separator review states.
@@ -72,6 +76,8 @@ are scoped or reviewed.
 - Advanced Campaign 12 to `ci/generated-workflow-smoke-fixture` after wiring
   the generated workflow advisory summary and future PR guidance annotation
   hook.
+- Advanced Campaign 12 to `docs/ux-by-user-type` after pinning the generated
+  workflow smoke fixture.
 - Aligned public package and extension front-door metadata around Rust
   test-oracle gaps, targeted tests, and static RIPR evidence instead of
   internal mutation-exposure wording.

@@ -1970,6 +1970,105 @@ mod tests {
         ))
     }
 
+    struct GeneratedWorkflowSmokeFixture<'a> {
+        commands: &'a [&'a str],
+        artifact_paths: &'a [&'a str],
+        summary_sections: &'a [&'a str],
+        non_blocking_steps: &'a [&'a str],
+        optional_sarif_steps: &'a [&'a str],
+        forbidden_fragments: &'a [&'a str],
+    }
+
+    fn generated_workflow_smoke_fixture() -> GeneratedWorkflowSmokeFixture<'static> {
+        GeneratedWorkflowSmokeFixture {
+            commands: &[
+                "ripr pilot",
+                "ripr agent start",
+                "ripr agent packet",
+                "ripr check",
+                "ripr agent verify",
+                "ripr agent receipt",
+                "ripr outcome",
+                "ripr agent status",
+                "ripr agent review-summary",
+                "cargo xtask operator-cockpit",
+            ],
+            artifact_paths: &[
+                "target/ripr/pilot",
+                "target/ripr/agent",
+                "target/ripr/workflow",
+                "target/ripr/reports",
+                "target/ripr/review",
+                "target/ripr/workflow/before.repo-exposure.json",
+                "target/ripr/workflow/after.repo-exposure.json",
+                "target/ripr/workflow/agent-packet.json",
+                "target/ripr/workflow/agent-brief.json",
+                "target/ripr/workflow/agent-verify.json",
+                "target/ripr/reports/agent-receipt.json",
+                "target/ripr/workflow/agent-status.json",
+                "target/ripr/workflow/agent-status.md",
+                "target/ripr/workflow/agent-review-summary.json",
+                "target/ripr/workflow/agent-review-summary.md",
+                "target/ripr/reports/targeted-test-outcome.json",
+                "target/ripr/reports/ripr-findings.sarif",
+                "target/ripr/reports/ripr-seams.sarif",
+                "target/ripr/reports/repo-ripr-badge.json",
+                "target/ripr/reports/repo-ripr-badge-shields.json",
+                "target/ripr/review/comments.json",
+            ],
+            summary_sections: &[
+                "## RIPR advisory summary",
+                "### Top recommendation",
+                "### Agent review packet",
+                "### Artifact packet",
+                "### SARIF and badge status",
+                "### PR guidance annotations",
+                "### Known limits",
+            ],
+            non_blocking_steps: &[
+                "Generate RIPR pilot packet",
+                "Prepare RIPR editor-agent artifacts",
+                "Generate RIPR agent loop artifacts",
+                "Render RIPR diff SARIF",
+                "Render RIPR repo seam SARIF",
+                "Render RIPR repo badge artifacts",
+                "Render RIPR operator cockpit",
+                "Render RIPR LLM work-loop summaries",
+                "Emit RIPR PR guidance annotations",
+                "Add RIPR advisory summary",
+                "Upload RIPR report artifacts",
+                "Upload RIPR diff findings",
+                "Upload RIPR repo seams",
+            ],
+            optional_sarif_steps: &[
+                "Render RIPR diff SARIF",
+                "Render RIPR repo seam SARIF",
+                "Upload RIPR diff findings",
+                "Upload RIPR repo seams",
+            ],
+            forbidden_fragments: &["fail-on-new-warning", "sarif-policy", "RIPR_PR_COMMENTS"],
+        }
+    }
+
+    fn workflow_step<'a>(workflow: &'a str, name: &str) -> &'a str {
+        let marker = format!("      - name: {name}");
+        let Some(start) = workflow.find(&marker) else {
+            return "";
+        };
+        let rest = &workflow[start..];
+        let end = rest.find("\n\n      - ").unwrap_or(rest.len());
+        &rest[..end]
+    }
+
+    fn assert_contains_all(haystack: &str, label: &str, needles: &[&str]) {
+        for needle in needles {
+            assert!(
+                haystack.contains(needle),
+                "generated workflow missing {label} `{needle}`"
+            );
+        }
+    }
+
     #[test]
     fn check_requires_values_for_value_flags() {
         assert_eq!(
@@ -2754,6 +2853,87 @@ mod tests {
         assert!(workflow.contains(
             "if: env.RIPR_UPLOAD_SARIF == 'true' && github.event_name == 'pull_request'"
         ));
+    }
+
+    #[test]
+    fn init_generated_github_workflow_matches_smoke_fixture() {
+        let workflow = generated_github_actions_workflow();
+        let fixture = generated_workflow_smoke_fixture();
+
+        assert!(workflow.contains("continue-on-error: true"));
+        assert!(workflow.contains("RIPR_UPLOAD_SARIF: \"true\""));
+        assert!(workflow.contains("actions/upload-artifact@v7"));
+        assert!(workflow.contains("github/codeql-action/upload-sarif@v4"));
+        assert_contains_all(&workflow, "command", fixture.commands);
+        assert_contains_all(&workflow, "artifact path", fixture.artifact_paths);
+        assert_contains_all(&workflow, "summary section", fixture.summary_sections);
+
+        let prepare = workflow_step(&workflow, "Prepare RIPR editor-agent artifacts");
+        assert!(prepare.contains("RIPR_TOP_SEAM_ID"));
+        assert!(prepare.contains(".top_actionable_seams[0].seam_id"));
+        assert!(
+            !prepare.contains(".top_seams[0].seam_id"),
+            "top seam extraction must use pilot-summary top_actionable_seams"
+        );
+
+        let agent_loop = workflow_step(&workflow, "Generate RIPR agent loop artifacts");
+        assert!(agent_loop.contains("cp target/ripr/workflow/agent-packet.json"));
+        assert!(agent_loop.contains("cp target/ripr/workflow/agent-brief.json"));
+        assert!(agent_loop.contains("cp target/ripr/workflow/agent-verify.json"));
+        assert!(agent_loop.contains("cp target/ripr/reports/agent-receipt.json"));
+        assert!(agent_loop.contains("--format repo-exposure-json"));
+
+        let artifact_upload = workflow_step(&workflow, "Upload RIPR report artifacts");
+        assert!(artifact_upload.contains("if-no-files-found: ignore"));
+        for path in [
+            "target/ripr/pilot",
+            "target/ripr/agent",
+            "target/ripr/workflow",
+            "target/ripr/reports",
+            "target/ripr/review",
+        ] {
+            assert!(
+                artifact_upload.contains(path),
+                "artifact upload must include {path}"
+            );
+        }
+
+        let annotations = workflow_step(&workflow, "Emit RIPR PR guidance annotations");
+        assert!(annotations.contains("hashFiles('target/ripr/review/comments.json')"));
+        assert!(annotations.contains("escape_github_message()"));
+        assert!(annotations.contains("escape_github_property()"));
+        assert!(annotations.contains("::warning file=$annotation_path,line=$annotation_line"));
+
+        let summary = workflow_step(&workflow, "Add RIPR advisory summary");
+        assert!(summary.contains("cat target/ripr/pilot/pilot-summary.md"));
+        assert!(summary.contains("cat target/ripr/workflow/agent-review-summary.md"));
+        assert!(summary.contains(".summary.comments // 0"));
+        assert!(summary.contains(".summary.summary_only // 0"));
+        assert!(summary.contains(".summary.suppressed // 0"));
+        assert!(summary.contains("No runtime mutation execution is performed"));
+
+        for step in fixture.non_blocking_steps {
+            let block = workflow_step(&workflow, step);
+            assert!(
+                block.contains("continue-on-error: true"),
+                "`{step}` must remain advisory/non-blocking"
+            );
+        }
+
+        for step in fixture.optional_sarif_steps {
+            let block = workflow_step(&workflow, step);
+            assert!(
+                block.contains("env.RIPR_UPLOAD_SARIF == 'true'"),
+                "`{step}` must stay gated by RIPR_UPLOAD_SARIF"
+            );
+        }
+
+        for forbidden in fixture.forbidden_fragments {
+            assert!(
+                !workflow.contains(forbidden),
+                "generated workflow must not enable `{forbidden}` by default"
+            );
+        }
     }
 
     #[test]
