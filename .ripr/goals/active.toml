@@ -98,7 +98,7 @@ commands = [
 
 [[work_item]]
 id = "ci/generated-workflow-smoke-fixture"
-status = "ready"
+status = "done"
 branch = "ci-generated-workflow-smoke-fixture"
 stackable = false
 requires_human_merge = true
@@ -115,14 +115,15 @@ commands = [
 
 [[work_item]]
 id = "docs/ux-by-user-type"
-status = "blocked"
+status = "ready"
 branch = "docs-ux-by-user-type"
 stackable = false
 requires_human_merge = true
 blocked_by = [
   "vscode/first-run-status",
   "vscode/action-discoverability",
-  "ci/pr-summary-surface"
+  "ci/pr-summary-surface",
+  "ci/generated-workflow-smoke-fixture"
 ]
 acceptance = "Rewrite the first-hour docs around VS Code, CI, CLI, agent, troubleshooting, and known limits while keeping README short"
 commands = [

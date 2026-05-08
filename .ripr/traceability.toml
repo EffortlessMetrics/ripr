@@ -775,9 +775,13 @@ metrics = [
 id = "RIPR-SPEC-0012"
 name = "PR test guidance annotations"
 spec = "docs/specs/RIPR-SPEC-0012-pr-test-guidance.md"
-tests = []
+tests = [
+  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture"
+]
 fixtures = []
-code = []
+code = [
+  "crates/ripr/src/cli/commands.rs"
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0012-pr-test-guidance.md",
   "docs/specs/README.md",
