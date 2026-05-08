@@ -46,7 +46,12 @@ Implementation, verification, and integration. Claude:
 - catches stale plans by reading current repo state
 - handles mechanical repairs and gate failures inline
 - writes dense PR bodies for downstream LLM context
-- merges PRs the owner has authorized when CI is green
+- merges scoped, in-lane PRs when they are current, clean, and review-ready
+
+Ordinary review repair, validation, PR updates, merge, and post-merge proof are
+part of executor ownership. The executor should ask the owner only when the next
+step needs product, architecture, credential, release, public-contract, or
+out-of-scope judgment that is not already covered by the active lane.
 
 Claude's primary value is **not throughput**. It is verifying the
 plan against the current repo before executing. A faster executor that
