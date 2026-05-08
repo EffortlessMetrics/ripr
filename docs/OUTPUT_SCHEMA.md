@@ -1500,6 +1500,9 @@ request labels to `target/ci/labels.json`, and uploads any gate-decision files
 with the regular RIPR artifact packet. `visible-only` remains advisory;
 blocking modes are opt-in.
 
+See [Calibrated gate policy](CALIBRATED_GATE_POLICY.md) for the operating
+model, rollout path, waiver behavior, and static/runtime vocabulary boundary.
+
 JSON shape:
 
 ```json

@@ -205,3 +205,8 @@ Recommendation calibration remains static, local, and advisory:
 
 Use it to measure recommendation quality, tune ranking, and decide whether a
 future policy lane has enough evidence to define optional gates.
+
+When a repository is ready to evaluate policy, use
+[Calibrated gate policy](CALIBRATED_GATE_POLICY.md). The gate consumes
+calibration as confidence evidence, remains advisory by default, and requires
+explicit mode configuration before it can block.

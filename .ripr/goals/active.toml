@@ -95,7 +95,7 @@ commands = [
 
 [[work_item]]
 id = "docs/calibrated-gate-policy"
-status = "ready"
+status = "done"
 branch = "docs-calibrated-gate-policy"
 stackable = false
 blocked_by = [
@@ -114,7 +114,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/calibrated-gate-closeout"
-status = "blocked"
+status = "ready"
 branch = "campaign-calibrated-gate-closeout"
 stackable = false
 blocked_by = [
