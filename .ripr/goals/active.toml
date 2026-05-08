@@ -112,7 +112,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/gate-adoption-ux-closeout"
-status = "ready"
+status = "done"
 branch = "campaign-gate-adoption-ux-closeout"
 stackable = false
 blocked_by = [
