@@ -1,0 +1,26 @@
+{
+  "base": "main",
+  "comments": [],
+  "head": "HEAD",
+  "limits": {
+    "max_inline_comments": 3,
+    "max_summary_items": 10
+  },
+  "limits_note": "Advisory static evidence only; no automatic edits, generated tests, runtime mutation execution, or CI blocking.",
+  "mode": "draft",
+  "root": ".",
+  "schema_version": "0.1",
+  "status": "advisory",
+  "summary": {
+    "comments": 0,
+    "summary_only": 0,
+    "suppressed": 0,
+    "unchanged_tests": true
+  },
+  "summary_only": [],
+  "suppressed": [],
+  "tool": "ripr",
+  "warnings": [
+    "seam 8f7fa8644fd12280 at src/pricing.rs:88 is configured off for weakly_gripped seams and is not included in agent brief results"
+  ]
+}

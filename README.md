@@ -308,8 +308,9 @@ lane: the editor first-run status path, intent-titled code actions, generated
 CI advisory summary, generated workflow smoke fixture, and user-type
 first-hour docs are pinned. Campaign 13 is active as PR Review Guidance;
 `ripr review-comments` now writes the advisory review report and generated CI
-runs it before emitting advisory summaries and check annotations. The next
-ready item is fixture-pinning the guidance placement cases.
+runs it before emitting advisory summaries and check annotations. Guidance
+placement and suppression cases are fixture-pinned; the next ready item is
+dedicated PR guidance documentation.
 
 Deeper capability state lives in [Capability matrix](docs/CAPABILITY_MATRIX.md)
 and [Metrics](docs/METRICS.md).

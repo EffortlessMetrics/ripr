@@ -1490,8 +1490,9 @@ CI artifacts, and first-hour docs converge on the same static evidence loop.
 The remaining visible gap is pull-request review projection. RIPR-SPEC-0012
 defines `ripr review-comments`, the read-only report producer now exists, and
 generated CI now runs that producer before the existing summary and annotation
-consumer steps. The next gap is fixture-pinning the exact placement and
-suppression cases.
+consumer steps. The exact placement and suppression cases are now
+fixture-pinned; the next gap is dedicated user-facing documentation for the PR
+guidance lane.
 
 Objective:
 
@@ -1536,8 +1537,8 @@ Work items:
 | `campaign/pr-review-guidance-audit` | done | Audited the long-term static-evidence control-plane objective against current artifacts. The editor/CLI/CI artifact loop is real, but PR review convergence was incomplete because `ripr review-comments` was specified and consumed only as a future report. |
 | `review/pr-guidance-renderer` | done | Added read-only `ripr review-comments --root . --base <sha> --head <sha> --out target/ripr/review/comments.json` plus Markdown output, joining existing static evidence to produce bounded PR guidance without posting to GitHub or changing analyzer behavior. |
 | `ci/run-pr-guidance-report` | done | Updated generated GitHub workflows to run `ripr review-comments` before the existing advisory summary and check-annotation consumer steps, preserving non-blocking defaults. |
-| `fixtures/pr-guidance-cases` | ready | Pin PR guidance fixtures for exact changed seam line, owner-function changed line, same-file changed line, summary-only fallback, cap suppression, configured suppression, and nearby changed-test skip. |
-| `docs/pr-review-guidance` | blocked | Document PR guidance as a bounded advisory projection of existing RIPR evidence, including commands, CI behavior, opt-in review-comment boundary, and no automatic edits or runtime mutation claims. |
+| `fixtures/pr-guidance-cases` | done | Pinned PR guidance fixtures for exact changed seam line, owner-function changed line, same-file changed line, summary-only fallback, cap suppression, configured suppression, and nearby changed-test skip. |
+| `docs/pr-review-guidance` | ready | Document PR guidance as a bounded advisory projection of existing RIPR evidence, including commands, CI behavior, opt-in review-comment boundary, and no automatic edits or runtime mutation claims. |
 | `campaign/pr-review-guidance-closeout` | blocked | Close Campaign 13 only after PR review guidance is produced, consumed by generated CI, fixture-pinned, documented, and still advisory/non-blocking by default. |
 
 Dependencies:

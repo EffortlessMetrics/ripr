@@ -74,7 +74,7 @@ commands = [
 
 [[work_item]]
 id = "fixtures/pr-guidance-cases"
-status = "ready"
+status = "done"
 branch = "fixtures-pr-guidance-cases"
 stackable = false
 requires_human_merge = true
@@ -90,7 +90,7 @@ commands = [
 
 [[work_item]]
 id = "docs/pr-review-guidance"
-status = "blocked"
+status = "ready"
 branch = "docs-pr-review-guidance"
 stackable = false
 requires_human_merge = true
