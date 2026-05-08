@@ -10166,13 +10166,21 @@ fn finish_campaign_report(violations: &[String]) -> Result<(), String> {
 }
 
 fn deprecated_goal_field_violations() -> Result<Vec<String>, String> {
+    let files = tracked_files()?;
+    deprecated_goal_field_violations_for_root(Path::new("."), &files)
+}
+
+fn deprecated_goal_field_violations_for_root(
+    root: &Path,
+    files: &[String],
+) -> Result<Vec<String>, String> {
     let mut entries = Vec::new();
-    for path in tracked_files()? {
-        if !is_deprecated_goal_field_scan_target(&path) {
+    for path in files {
+        if !is_deprecated_goal_field_scan_target(path) {
             continue;
         }
-        let text = read_text_lossy(Path::new(&path))?;
-        entries.push((path, text));
+        let text = read_text_lossy(&root.join(path))?;
+        entries.push((path.clone(), text));
     }
     Ok(deprecated_goal_field_violations_for_entries(
         entries
@@ -16128,8 +16136,8 @@ mod tests {
         check_droid_security_scan_config, forbids_active_line, has_active_line, strip_yaml_comment,
     };
     use super::{
-        deprecated_goal_field_name, deprecated_goal_field_violations,
-        deprecated_goal_field_violations_for_entries,
+        deprecated_goal_field_name, deprecated_goal_field_violations_for_entries,
+        deprecated_goal_field_violations_for_root,
     };
     use serde_json::Value;
     use std::collections::{BTreeMap, BTreeSet};
@@ -20804,9 +20812,26 @@ stackable = true
     }
 
     #[test]
-    fn deprecated_goal_field_guard_accepts_current_tracked_files()
+    fn deprecated_goal_field_guard_reads_scoped_files_from_root()
     -> Result<(), Box<dyn std::error::Error>> {
-        assert!(deprecated_goal_field_violations()?.is_empty());
+        let root = temp_dir("deprecated-goal-field");
+        let field = deprecated_goal_field_name();
+        write(&root.join("AGENTS.md"), &format!("{field} = false"));
+        write(&root.join("docs/agent.md"), "stackable = false");
+        write(&root.join("README.md"), &format!("{field} = false"));
+        write(&root.join(".ripr/goals/active.toml"), "stackable = false");
+
+        let files = vec![
+            "AGENTS.md".to_string(),
+            "docs/agent.md".to_string(),
+            "README.md".to_string(),
+            ".ripr/goals/active.toml".to_string(),
+        ];
+        let violations = deprecated_goal_field_violations_for_root(&root, &files)?;
+        let _ = fs::remove_dir_all(root);
+
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].contains("AGENTS.md"));
         Ok(())
     }
 
