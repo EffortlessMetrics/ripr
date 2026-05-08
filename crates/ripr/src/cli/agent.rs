@@ -11,12 +11,14 @@ pub(super) enum AgentCommand {
     VerifyHelp,
     ReceiptHelp,
     StatusHelp,
+    ReviewSummaryHelp,
     Start(AgentStartOptions),
     Brief(AgentBriefOptions),
     Packet(AgentPacketOptions),
     Verify(AgentVerifyOptions),
     Receipt(AgentReceiptOptions),
     Status(AgentStatusOptions),
+    ReviewSummary(AgentReviewSummaryOptions),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -67,6 +69,12 @@ pub(super) struct AgentStatusOptions {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct AgentReviewSummaryOptions {
+    pub(super) root: PathBuf,
+    pub(super) json: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum AgentBriefWorkingSet {
     Diff(PathBuf),
     Base(String),
@@ -102,8 +110,9 @@ pub(super) fn parse_agent_args(args: &[String]) -> Result<AgentCommand, String> 
         Some("verify") => parse_agent_verify_command(&args[1..]),
         Some("receipt") => parse_agent_receipt_command(&args[1..]),
         Some("status") => parse_agent_status_command(&args[1..]),
+        Some("review-summary") => parse_agent_review_summary_command(&args[1..]),
         Some(other) => Err(format!(
-            "unknown agent subcommand {other:?}; expected `start`, `brief`, `packet`, `verify`, `receipt`, or `status`"
+            "unknown agent subcommand {other:?}; expected `start`, `brief`, `packet`, `verify`, `receipt`, `status`, or `review-summary`"
         )),
     }
 }
@@ -148,6 +157,13 @@ fn parse_agent_status_command(args: &[String]) -> Result<AgentCommand, String> {
         return Ok(AgentCommand::StatusHelp);
     }
     parse_agent_status_options(args).map(AgentCommand::Status)
+}
+
+fn parse_agent_review_summary_command(args: &[String]) -> Result<AgentCommand, String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        return Ok(AgentCommand::ReviewSummaryHelp);
+    }
+    parse_agent_review_summary_options(args).map(AgentCommand::ReviewSummary)
 }
 
 pub(super) fn parse_agent_start_options(args: &[String]) -> Result<AgentStartOptions, String> {
@@ -431,6 +447,28 @@ pub(super) fn parse_agent_status_options(args: &[String]) -> Result<AgentStatusO
     Ok(AgentStatusOptions { root, json })
 }
 
+pub(super) fn parse_agent_review_summary_options(
+    args: &[String],
+) -> Result<AgentReviewSummaryOptions, String> {
+    let mut root = PathBuf::from(".");
+    let mut json = false;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = PathBuf::from(expect_value(args, i, "--root")?);
+            }
+            "--json" => json = true,
+            other => return Err(format!("unknown agent review-summary argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    Ok(AgentReviewSummaryOptions { root, json })
+}
+
 fn set_working_set(
     current: &mut Option<WorkingSetCandidate>,
     next: WorkingSetCandidate,
@@ -507,6 +545,10 @@ mod tests {
             parse_agent_args(&args(&["status", "--help"])),
             Ok(AgentCommand::StatusHelp)
         );
+        assert_eq!(
+            parse_agent_args(&args(&["review-summary", "--help"])),
+            Ok(AgentCommand::ReviewSummaryHelp)
+        );
     }
 
     #[test]
@@ -518,7 +560,7 @@ mod tests {
         assert_eq!(
             parse_agent_args(&args(&["other"])),
             Err(
-                "unknown agent subcommand \"other\"; expected `start`, `brief`, `packet`, `verify`, `receipt`, or `status`"
+                "unknown agent subcommand \"other\"; expected `start`, `brief`, `packet`, `verify`, `receipt`, `status`, or `review-summary`"
                     .to_string()
             )
         );
@@ -1019,6 +1061,43 @@ mod tests {
         assert_eq!(
             parse_agent_status_options(&args(&["--json", "--xml"])),
             Err("unknown agent status argument \"--xml\"".to_string())
+        );
+    }
+
+    #[test]
+    fn agent_review_summary_parses_root_json_and_human_default() {
+        assert_eq!(
+            parse_agent_review_summary_options(&args(&["--root", "repo", "--json"])),
+            Ok(AgentReviewSummaryOptions {
+                root: PathBuf::from("repo"),
+                json: true,
+            })
+        );
+        assert_eq!(
+            parse_agent_review_summary_options(&args(&[])),
+            Ok(AgentReviewSummaryOptions {
+                root: PathBuf::from("."),
+                json: false,
+            })
+        );
+        assert_eq!(
+            parse_agent_args(&args(&["review-summary", "--root", "repo"])),
+            Ok(AgentCommand::ReviewSummary(AgentReviewSummaryOptions {
+                root: PathBuf::from("repo"),
+                json: false,
+            }))
+        );
+    }
+
+    #[test]
+    fn agent_review_summary_requires_values_and_rejects_unknown_arguments() {
+        assert_eq!(
+            parse_agent_review_summary_options(&args(&["--root"])),
+            Err("missing value for --root".to_string())
+        );
+        assert_eq!(
+            parse_agent_review_summary_options(&args(&["--xml"])),
+            Err("unknown agent review-summary argument \"--xml\"".to_string())
         );
     }
 }
