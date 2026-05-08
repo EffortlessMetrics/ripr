@@ -127,7 +127,8 @@ When `RIPR_GATE_MODE` is set, the generated workflow:
 1. runs the existing advisory evidence producers first;
 2. captures pull-request labels to `target/ci/labels.json`;
 3. runs `ripr gate evaluate` after PR guidance exists;
-4. appends `gate-decision.md` to the GitHub job summary;
+4. appends an at-a-glance gate summary plus `gate-decision.md` to the GitHub
+   job summary;
 5. uploads `gate-decision.{json,md}` with the `ripr-reports` artifact packet;
 6. fails only when the explicit mode produces `blocked` or `config_error`.
 

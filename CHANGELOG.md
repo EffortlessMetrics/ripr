@@ -117,6 +117,10 @@ are scoped or reviewed.
   `.ripr/gate-baseline.json` as a visible historical-debt ledger rather than a
   suppression file, with RIPR 0 framed as a configured-scope burn-down target
   and `baseline-check` behavior documented for reviewed historical debt.
+- Polished the generated CI gate summary so reviewers can see mode, status,
+  decision counts, active and acknowledgement labels, applied waiver, baseline
+  input, calibration inputs/effects, blocking reason, and gate artifact paths
+  before opening JSON.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and PR guidance annotation counts before artifact

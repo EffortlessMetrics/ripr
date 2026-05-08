@@ -1131,6 +1131,40 @@ jobs:
             fi
             echo
             echo '### Gate decision'
+            if [ -f target/ripr/reports/gate-decision.json ]; then
+              gate_json=target/ripr/reports/gate-decision.json
+              gate_status="$(jq -r '.status // "unknown"' "$gate_json" 2>/dev/null || echo unknown)"
+              gate_mode="$(jq -r '.mode // "unknown"' "$gate_json" 2>/dev/null || echo unknown)"
+              blocking="$(jq -r '.summary.blocking // 0' "$gate_json" 2>/dev/null || echo 0)"
+              acknowledged="$(jq -r '.summary.acknowledged // 0' "$gate_json" 2>/dev/null || echo 0)"
+              advisory="$(jq -r '.summary.advisory // 0' "$gate_json" 2>/dev/null || echo 0)"
+              suppressed="$(jq -r '.summary.suppressed // 0' "$gate_json" 2>/dev/null || echo 0)"
+              not_applicable="$(jq -r '.summary.not_applicable // 0' "$gate_json" 2>/dev/null || echo 0)"
+              unknown_confidence="$(jq -r '.summary.unknown_confidence // 0' "$gate_json" 2>/dev/null || echo 0)"
+              active_labels="$(jq -r 'if ((.inputs.labels // []) | length) == 0 then "none" else (.inputs.labels // [] | join(", ")) end' "$gate_json" 2>/dev/null || echo unknown)"
+              acknowledgement_labels="$(jq -r 'if ((.policy.acknowledgement_labels // []) | length) == 0 then "none" else (.policy.acknowledgement_labels // [] | join(", ")) end' "$gate_json" 2>/dev/null || echo unknown)"
+              applied_waiver="$(jq -r '([.decisions[]? | select(.decision == "acknowledged") | .policy.acknowledgement_label | select(. != null)] | first) // "none"' "$gate_json" 2>/dev/null || echo unknown)"
+              baseline_artifact="$(jq -r '.inputs.baseline // "not supplied"' "$gate_json" 2>/dev/null || echo unknown)"
+              recommendation_calibration="$(jq -r '.inputs.recommendation_calibration // "not supplied"' "$gate_json" 2>/dev/null || echo unknown)"
+              mutation_calibration="$(jq -r '.inputs.mutation_calibration // "not supplied"' "$gate_json" 2>/dev/null || echo unknown)"
+              recommendation_effects="$(jq -r '([.decisions[]?.evidence.recommendation_calibration.confidence_effect | select(. != null)] | unique | if length == 0 then "none" else join(", ") end)' "$gate_json" 2>/dev/null || echo unknown)"
+              mutation_effects="$(jq -r '([.decisions[]?.evidence.mutation_calibration.confidence_effect | select(. != null)] | unique | if length == 0 then "none" else join(", ") end)' "$gate_json" 2>/dev/null || echo unknown)"
+              blocking_reason="$(jq -r '([.decisions[]? | select(.decision == "blocking") | .gate_reason] | first) // "none"' "$gate_json" 2>/dev/null || echo unknown)"
+              echo '#### Gate decision at a glance'
+              echo "- Mode: \`$gate_mode\`"
+              echo "- Status: \`$gate_status\`"
+              echo "- Counts: blocking=$blocking, acknowledged=$acknowledged, advisory=$advisory, suppressed=$suppressed, not_applicable=$not_applicable, unknown_confidence=$unknown_confidence"
+              echo "- Active PR labels: \`$active_labels\`"
+              echo "- Acknowledgement labels: \`$acknowledgement_labels\`"
+              echo "- Applied waiver label: \`$applied_waiver\`"
+              echo "- Baseline artifact: \`$baseline_artifact\`"
+              echo "- Recommendation calibration: \`$recommendation_calibration\` (effects: $recommendation_effects)"
+              echo "- Mutation calibration: \`$mutation_calibration\` (effects: $mutation_effects)"
+              echo "- Blocking reason: $blocking_reason"
+              echo "- Gate artifacts: \`target/ripr/reports/gate-decision.json\`, \`target/ripr/reports/gate-decision.md\`"
+              echo "- Related inputs: \`target/ripr/review/comments.json\`, \`target/ci/labels.json\`"
+              echo
+            fi
             if [ -f target/ripr/reports/gate-decision.md ]; then
               cat target/ripr/reports/gate-decision.md
             else
@@ -2535,6 +2569,7 @@ mod tests {
                 "### Agent review packet",
                 "### Artifact packet",
                 "### Gate decision",
+                "#### Gate decision at a glance",
                 "### SARIF and badge status",
                 "### PR guidance annotations",
                 "### Known limits",
@@ -3708,6 +3743,14 @@ mod tests {
         assert!(workflow.contains("### Top recommendation"));
         assert!(workflow.contains("### Artifact packet"));
         assert!(workflow.contains("### Gate decision"));
+        assert!(workflow.contains("#### Gate decision at a glance"));
+        assert!(workflow.contains("Active PR labels"));
+        assert!(workflow.contains("Applied waiver label"));
+        assert!(workflow.contains("Baseline artifact"));
+        assert!(workflow.contains("Recommendation calibration"));
+        assert!(workflow.contains("Mutation calibration"));
+        assert!(workflow.contains("Blocking reason"));
+        assert!(workflow.contains("Gate artifacts"));
         assert!(workflow.contains("### SARIF and badge status"));
         assert!(workflow.contains("### PR guidance annotations"));
         assert!(workflow.contains("### Known limits"));
@@ -3739,6 +3782,16 @@ mod tests {
         assert!(workflow.contains(".summary.comments // 0"));
         assert!(workflow.contains(".summary.summary_only // 0"));
         assert!(workflow.contains(".summary.suppressed // 0"));
+        assert!(workflow.contains(".summary.unknown_confidence // 0"));
+        assert!(workflow.contains(".inputs.labels // []"));
+        assert!(workflow.contains(".policy.acknowledgement_labels // []"));
+        assert!(workflow.contains(".policy.acknowledgement_label"));
+        assert!(workflow.contains(".inputs.baseline // \"not supplied\""));
+        assert!(workflow.contains(".inputs.recommendation_calibration // \"not supplied\""));
+        assert!(workflow.contains(".inputs.mutation_calibration // \"not supplied\""));
+        assert!(workflow.contains(".evidence.recommendation_calibration.confidence_effect"));
+        assert!(workflow.contains(".evidence.mutation_calibration.confidence_effect"));
+        assert!(workflow.contains(".gate_reason"));
         assert!(workflow.contains("RIPR_GATE_MODE"));
         assert!(workflow.contains("RIPR_GATE_BASELINE"));
         assert!(workflow.contains("ripr \"${gate_args[@]}\""));
@@ -3852,6 +3905,24 @@ mod tests {
         let summary = workflow_step(&workflow, "Add RIPR advisory summary");
         assert!(summary.contains("cat target/ripr/pilot/pilot-summary.md"));
         assert!(summary.contains("cat target/ripr/workflow/agent-review-summary.md"));
+        assert!(summary.contains("#### Gate decision at a glance"));
+        assert!(summary.contains("gate_status=\"$(jq -r '.status // \"unknown\"'"));
+        assert!(summary.contains("gate_mode=\"$(jq -r '.mode // \"unknown\"'"));
+        assert!(summary.contains(".summary.blocking // 0"));
+        assert!(summary.contains(".summary.acknowledged // 0"));
+        assert!(summary.contains(".summary.advisory // 0"));
+        assert!(summary.contains(".summary.suppressed // 0"));
+        assert!(summary.contains(".summary.not_applicable // 0"));
+        assert!(summary.contains(".summary.unknown_confidence // 0"));
+        assert!(summary.contains("Active PR labels"));
+        assert!(summary.contains("Acknowledgement labels"));
+        assert!(summary.contains("Applied waiver label"));
+        assert!(summary.contains("Baseline artifact"));
+        assert!(summary.contains("Recommendation calibration"));
+        assert!(summary.contains("Mutation calibration"));
+        assert!(summary.contains("Blocking reason"));
+        assert!(summary.contains("target/ripr/reports/gate-decision.json"));
+        assert!(summary.contains("target/ci/labels.json"));
         assert!(summary.contains("cat target/ripr/reports/gate-decision.md"));
         assert!(summary.contains("Gate decision was not run"));
         assert!(summary.contains(".summary.comments // 0"));

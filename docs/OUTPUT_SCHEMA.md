@@ -1660,8 +1660,11 @@ upload SARIF, mutate GitHub state, or hide acknowledged decisions.
 Generated CI runs this evaluator only when `RIPR_GATE_MODE` is explicitly set.
 The default generated workflow leaves `RIPR_GATE_MODE` empty, captures pull
 request labels to `target/ci/labels.json`, and uploads any gate-decision files
-with the regular RIPR artifact packet. `visible-only` remains advisory;
-blocking modes are opt-in.
+with the regular RIPR artifact packet. When `gate-decision.json` exists, the
+job summary also renders an at-a-glance projection of mode, status, decision
+counts, labels, waiver, baseline, calibration, blocking reason, and artifact
+paths before appending the full Markdown decision report. `visible-only`
+remains advisory; blocking modes are opt-in.
 
 See [Calibrated gate policy](CALIBRATED_GATE_POLICY.md) for the operating
 model, rollout path, waiver behavior, and static/runtime vocabulary boundary.

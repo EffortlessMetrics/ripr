@@ -880,6 +880,40 @@ jobs:
             fi
             echo
             echo '### Gate decision'
+            if [ -f target/ripr/reports/gate-decision.json ]; then
+              gate_json=target/ripr/reports/gate-decision.json
+              gate_status="$(jq -r '.status // "unknown"' "$gate_json" 2>/dev/null || echo unknown)"
+              gate_mode="$(jq -r '.mode // "unknown"' "$gate_json" 2>/dev/null || echo unknown)"
+              blocking="$(jq -r '.summary.blocking // 0' "$gate_json" 2>/dev/null || echo 0)"
+              acknowledged="$(jq -r '.summary.acknowledged // 0' "$gate_json" 2>/dev/null || echo 0)"
+              advisory="$(jq -r '.summary.advisory // 0' "$gate_json" 2>/dev/null || echo 0)"
+              suppressed="$(jq -r '.summary.suppressed // 0' "$gate_json" 2>/dev/null || echo 0)"
+              not_applicable="$(jq -r '.summary.not_applicable // 0' "$gate_json" 2>/dev/null || echo 0)"
+              unknown_confidence="$(jq -r '.summary.unknown_confidence // 0' "$gate_json" 2>/dev/null || echo 0)"
+              active_labels="$(jq -r 'if ((.inputs.labels // []) | length) == 0 then "none" else (.inputs.labels // [] | join(", ")) end' "$gate_json" 2>/dev/null || echo unknown)"
+              acknowledgement_labels="$(jq -r 'if ((.policy.acknowledgement_labels // []) | length) == 0 then "none" else (.policy.acknowledgement_labels // [] | join(", ")) end' "$gate_json" 2>/dev/null || echo unknown)"
+              applied_waiver="$(jq -r '([.decisions[]? | select(.decision == "acknowledged") | .policy.acknowledgement_label | select(. != null)] | first) // "none"' "$gate_json" 2>/dev/null || echo unknown)"
+              baseline_artifact="$(jq -r '.inputs.baseline // "not supplied"' "$gate_json" 2>/dev/null || echo unknown)"
+              recommendation_calibration="$(jq -r '.inputs.recommendation_calibration // "not supplied"' "$gate_json" 2>/dev/null || echo unknown)"
+              mutation_calibration="$(jq -r '.inputs.mutation_calibration // "not supplied"' "$gate_json" 2>/dev/null || echo unknown)"
+              recommendation_effects="$(jq -r '([.decisions[]?.evidence.recommendation_calibration.confidence_effect | select(. != null)] | unique | if length == 0 then "none" else join(", ") end)' "$gate_json" 2>/dev/null || echo unknown)"
+              mutation_effects="$(jq -r '([.decisions[]?.evidence.mutation_calibration.confidence_effect | select(. != null)] | unique | if length == 0 then "none" else join(", ") end)' "$gate_json" 2>/dev/null || echo unknown)"
+              blocking_reason="$(jq -r '([.decisions[]? | select(.decision == "blocking") | .gate_reason] | first) // "none"' "$gate_json" 2>/dev/null || echo unknown)"
+              echo '#### Gate decision at a glance'
+              echo "- Mode: \`$gate_mode\`"
+              echo "- Status: \`$gate_status\`"
+              echo "- Counts: blocking=$blocking, acknowledged=$acknowledged, advisory=$advisory, suppressed=$suppressed, not_applicable=$not_applicable, unknown_confidence=$unknown_confidence"
+              echo "- Active PR labels: \`$active_labels\`"
+              echo "- Acknowledgement labels: \`$acknowledgement_labels\`"
+              echo "- Applied waiver label: \`$applied_waiver\`"
+              echo "- Baseline artifact: \`$baseline_artifact\`"
+              echo "- Recommendation calibration: \`$recommendation_calibration\` (effects: $recommendation_effects)"
+              echo "- Mutation calibration: \`$mutation_calibration\` (effects: $mutation_effects)"
+              echo "- Blocking reason: $blocking_reason"
+              echo "- Gate artifacts: \`target/ripr/reports/gate-decision.json\`, \`target/ripr/reports/gate-decision.md\`"
+              echo "- Related inputs: \`target/ripr/review/comments.json\`, \`target/ci/labels.json\`"
+              echo
+            fi
             if [ -f target/ripr/reports/gate-decision.md ]; then
               cat target/ripr/reports/gate-decision.md
             else
@@ -997,7 +1031,11 @@ RIPR_GATE_BASELINE=
 ```
 
 `visible-only` writes `target/ripr/reports/gate-decision.{json,md}` and appends
-the Markdown to the job summary without making a RIPR finding block the PR.
+an at-a-glance gate section plus the Markdown decision report to the job summary
+without making a RIPR finding block the PR. The first-screen summary names the
+mode, status, decision counts, active and acknowledgement labels, applied
+waiver label, baseline input, calibration inputs/effects, blocking reason, and
+gate artifact paths.
 
 Acknowledgeable policy:
 
