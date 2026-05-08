@@ -1,8 +1,8 @@
 # Handoff: Campaign 14 Closeout
 
 Date: 2026-05-08
-Branch / PR: `campaign-recommendation-calibration-closeout` / pending
-Latest merged PR: #551 `docs: add recommendation calibration workflow`
+Branch / PR: `campaign-recommendation-calibration-closeout` / #553
+Latest merged PR: #552 `docs: align calibration metrics with report schema`
 
 ## Current Work Item
 
@@ -29,7 +29,7 @@ policy gates.
 | PR-shaped expectations are fixture-pinned | #543 added `fixtures/boundary_gap/expected/recommendation-calibration/expectations.json` plus the calibration corpus index for useful, noisy, wrong-line, already-covered, summary-only, suppression, generated/migration, macro-heavy, trait/generic, and async/error cases. |
 | Review outcomes are local receipts | #545 added outcome receipt fixtures for useful, noisy, wrong-line, already-covered, wrong-target, summary-only-correct, and suppressed-correctly outcomes without telemetry or external services. |
 | Precision is reported from existing artifacts | #549 added `cargo xtask recommendation-calibration` and checked `recommendation-calibration.{json,md}` outputs that join PR guidance, expectations, optional receipts, suppression state, placement, latency, and static movement. |
-| Users have a dedicated calibration guide | #551 added `docs/RECOMMENDATION_CALIBRATION.md`, covering report use, receipt vocabulary, placement quality, suppression correctness, static movement buckets, reviewer workflow, fixture artifacts, and advisory limits. |
+| Users have a dedicated calibration guide | #551 added `docs/RECOMMENDATION_CALIBRATION.md`, covering report use, receipt vocabulary, placement quality, suppression correctness, static movement buckets, reviewer workflow, fixture artifacts, and advisory limits; #552 aligned the guide with the actual report schema after review caught stale metric wording. |
 
 ## PR Chain
 
@@ -39,6 +39,7 @@ policy gates.
 - #545 `review-feedback: add recommendation outcome receipts`
 - #549 `report: add recommendation calibration report`
 - #551 `docs: add recommendation calibration workflow`
+- #552 `docs: align calibration metrics with report schema`
 - `campaign/recommendation-calibration-closeout`
 
 ## Verification Run
