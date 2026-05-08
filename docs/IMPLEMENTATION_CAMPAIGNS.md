@@ -1884,8 +1884,8 @@ Work items:
 | `docs/gate-baseline-workflow` | done | Added baseline creation, review, and refresh guidance that treats baselines as visible historical-debt ledgers, not suppressions, and ties shrink refreshes to focused-test evidence movement. |
 | `ci/gate-decision-summary-polish` | done | Added a generated-CI gate decision at-a-glance summary with mode, status, counts, PR labels, acknowledgement labels, applied waiver, baseline, calibration inputs/effects, blocking reason, and artifact paths before the full Markdown report. |
 | `dogfood/gate-adoption-receipts` | done | Extended `cargo xtask dogfood` with checked repo-local gate adoption receipts for `visible-only`, acknowledged waiver, baseline-existing, baseline-new, missing-baseline, and explicit calibrated-gate decisions while recording that generated CI remains non-blocking by default. |
-| `docs/blocking-readiness-guide` | ready | Document when to keep gates advisory, when to require acknowledgement, and when calibrated blocking is mature enough for a team. |
-| `campaign/gate-adoption-ux-closeout` | blocked | Close Campaign 16 only after gate adoption docs, waiver workflows, baseline guidance, CI summary polish, dogfood receipts, and blocking-readiness guidance are complete while defaults stay advisory. |
+| `docs/blocking-readiness-guide` | done | Added [Gate blocking readiness](GATE_BLOCKING_READINESS.md), documenting when to stay advisory, require acknowledgement, use baseline-check, or enable calibrated blocking while preserving rollback and advisory defaults. |
+| `campaign/gate-adoption-ux-closeout` | ready | Close Campaign 16 only after gate adoption docs, waiver workflows, baseline guidance, CI summary polish, dogfood receipts, and blocking-readiness guidance are complete while defaults stay advisory. |
 
 Dependencies:
 
@@ -1928,10 +1928,10 @@ Blocking conditions:
 
 Next:
 
-- `docs/blocking-readiness-guide` is the next ready item. Document when teams
-  should stay advisory, require acknowledgement, or enable calibrated blocking
-  after the checked dogfood receipts show the explicit gate modes from
-  repo-local evidence without changing generated CI defaults.
+- `campaign/gate-adoption-ux-closeout` is the next ready item. Close Campaign
+  16 after confirming gate adoption examples, waiver workflows, baseline
+  guidance, CI summary polish, dogfood receipts, and blocking-readiness
+  guidance are complete while defaults stay advisory.
 
 ## Future Campaign: Editor Evidence UX
 

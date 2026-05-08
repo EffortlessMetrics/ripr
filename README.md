@@ -424,6 +424,7 @@ Start here:
 | Review capability state | [Capability matrix](docs/CAPABILITY_MATRIX.md) and [Metrics](docs/METRICS.md) |
 | Contribute a scoped PR | [Contributing](CONTRIBUTING.md) and [Scoped PR contract](docs/SCOPED_PR_CONTRACT.md) |
 | Understand CI | [CI strategy](docs/CI.md) |
+| Decide when optional gates are ready to block | [Gate blocking readiness](docs/GATE_BLOCKING_READINESS.md) |
 | Understand dogfooding | [Dogfooding](docs/DOGFOODING.md) |
 | Understand docs organization | [Documentation system](docs/DOCUMENTATION.md) |
 | Capture repo knowledge | [Learnings](docs/LEARNINGS.md) |

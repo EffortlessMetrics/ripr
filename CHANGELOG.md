@@ -126,6 +126,9 @@ are scoped or reviewed.
   baseline-existing, baseline-new, repair-oriented missing-baseline, and
   explicit calibrated-gate decisions from checked evidence while preserving
   non-blocking generated CI defaults.
+- Added a gate blocking readiness guide for deciding when to stay advisory,
+  require visible acknowledgement, use baseline-check, or enable calibrated
+  blocking.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and PR guidance annotation counts before artifact

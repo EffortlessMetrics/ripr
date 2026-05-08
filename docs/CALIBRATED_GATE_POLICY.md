@@ -199,6 +199,11 @@ Use the gate in stages:
 Rollback is simple: unset `RIPR_GATE_MODE`. The advisory PR guidance, SARIF,
 badge, agent, cockpit, and artifact packet surfaces continue to run.
 
+Use [Gate blocking readiness](GATE_BLOCKING_READINESS.md) before moving from
+advisory reporting to acknowledgement or calibrated blocking. It is the
+adoption checklist for mode selection, waiver readiness, baseline readiness,
+calibration confidence, and rollback.
+
 Baseline creation and refresh guidance lives in
 [CI strategy](CI.md#gate-baseline-workflow). Use that flow before enabling
 `baseline-check` or `calibrated-gate`: the baseline is a visible debt ledger for

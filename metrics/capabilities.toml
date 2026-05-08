@@ -696,6 +696,7 @@ evidence = [
   "fixtures/boundary_gap/expected/gate-adoption pins checked dogfood receipts for visible-only, acknowledged waiver, baseline-existing, baseline-new, missing-baseline, and explicit calibrated-gate decisions",
   "cargo xtask dogfood writes and compares gate adoption receipts while recording non-blocking generated CI defaults",
   "docs/CALIBRATED_GATE_POLICY.md documents modes, waivers, CI behavior, calibration evidence, rollout stages, fixture matrix, and static/runtime vocabulary boundaries",
+  "docs/GATE_BLOCKING_READINESS.md documents when to stay advisory, require acknowledgement, use baseline-check, or enable calibrated blocking",
   "docs/handoffs/2026-05-08-campaign-15-closeout.md records the Campaign 15 prompt-to-artifact audit and closeout proof"
 ]
 fixtures = [

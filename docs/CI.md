@@ -1109,6 +1109,9 @@ requires an explicit `RIPR_GATE_MODE` configuration.
 See [Calibrated gate policy](CALIBRATED_GATE_POLICY.md) for the operating model
 covering modes, waivers, baseline inputs, calibration evidence, generated CI
 behavior, and static/runtime vocabulary boundaries.
+Use [Gate blocking readiness](GATE_BLOCKING_READINESS.md) before changing a
+repository from advisory reporting to acknowledgement, baseline-check, or
+calibrated blocking.
 
 ### Waiver And Label Workflows
 
