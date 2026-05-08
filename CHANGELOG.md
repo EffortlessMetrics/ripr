@@ -43,6 +43,10 @@ are scoped or reviewed.
 - Added `docs/LLM_OPERATOR_GUIDE.md`, a source-edit-free guide for humans and
   external LLM tools using RIPR status, workflow packet, verify, receipt, and
   reviewer-summary artifacts.
+- Closed Campaign 11 after status, command templates, workflow manifests,
+  provenance-backed receipts, bounded next-action guidance, reviewer summaries,
+  fixtures, generated CI packets, and the LLM operator guide aligned around a
+  source-edit-free static work loop.
 
 ### Changed
 
