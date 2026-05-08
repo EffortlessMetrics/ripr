@@ -263,7 +263,7 @@ evidence = [
   "CLI context command"
 ]
 fixtures = []
-next = "agent-context-v2"
+next = "lsp/context-packet-command"
 metric = "packet includes missing discriminator and related tests"
 
 [[capability]]
@@ -275,7 +275,7 @@ evidence = [
   "agent context spec"
 ]
 fixtures = []
-next = "agent-context-v2"
+next = "lsp/context-packet-command"
 metric = "packet includes missing values and suggested assertions"
 
 [[capability]]
@@ -309,7 +309,7 @@ evidence = [
   "docs/QUICKSTART.md routes the VS Code first hour through status, Problems diagnostics, hover evidence, and intent-titled seam actions"
 ]
 fixtures = []
-next = "maintenance"
+next = "campaign/editor-evidence-ux-audit"
 metric = "diagnostics carry finding/probe metadata, editor status names saved-workspace analysis state, and editor actions target the selected finding"
 
 [[capability]]
@@ -770,7 +770,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "campaign/editor-agent-integration-closeout"
+next = "campaign/editor-evidence-ux-audit"
 metric = "seam_id in diagnostic.data is the hover lookup key"
 
 [[capability]]
@@ -791,7 +791,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "campaign/editor-agent-integration-closeout"
+next = "lsp/evidence-hover-hardening"
 metric = "hover renders evidence path from ClassifiedSeam, never parses diagnostic message"
 
 [[capability]]
@@ -815,7 +815,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "maintenance"
+next = "lsp/evidence-aware-actions"
 metric = "seam diagnostics expose packet/assertion/test actions without automatic edits"
 
 [[capability]]

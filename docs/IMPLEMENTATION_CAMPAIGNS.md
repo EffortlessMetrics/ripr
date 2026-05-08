@@ -1930,3 +1930,99 @@ Next:
 
 - `docs/gate-waiver-workflows` is the next ready item. Keep waivers visible as
   acknowledged decisions, not suppressions or hidden passes.
+
+## Future Campaign: Editor Evidence UX
+
+Campaign ID: `editor-evidence-ux`
+
+Status: queued, not active. Campaign 16, Gate Adoption UX, remains the active
+machine-readable campaign in `.ripr/goals/active.toml`. Start this lane only
+after Gate Adoption UX closes or after an explicit decision to run the editor
+lane in parallel.
+
+The saved-workspace LSP path already has alpha diagnostics, evidence hover,
+seam actions, related-test opening, context collection, agent-loop commands,
+verify commands, receipt commands, and refresh/status surfaces. The next editor
+product risk is not existence; it is making the evidence loop feel like the
+right way to work in the editor.
+
+Objective:
+
+```text
+Make RIPR's saved-workspace LSP path project one evidence spine from
+diagnostic to hover, related test, focused context packet, one test, verify,
+and receipt without automatic edits, generated tests, runtime mutation
+execution, or runtime adequacy claims.
+```
+
+End state:
+
+- diagnostics carry stable seam identity and are not reinterpreted from message
+  text
+- hover is the primary human explanation surface for the seam class, evidence
+  path, missing observation, related test, suggested assertion shape, verify
+  command, receipt command, and static limits
+- code actions appear only when the supporting evidence or command context
+  exists
+- a canonical evidence context packet command gives external agents one bounded
+  work packet without coupling RIPR to an LLM provider
+- protocol-level and VS Code smoke tests prove the editor loop from server
+  startup through diagnostics, hover, actions, copy payloads, related-test
+  opening, and restart/error paths
+- status and staleness make stale, failed, disabled, or unavailable evidence
+  visible rather than presenting it as fresh
+- user-facing docs describe the saved-workspace editor workflow and its limits
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `campaign/editor-evidence-ux-audit` | queued | Audit diagnostic data, hover, actions, context collection, VS Code extension proof, and LSP cockpit status into one editor evidence contract without behavior changes. |
+| `lsp/evidence-hover-hardening` | blocked | Harden hover as the primary explanation surface for seam class, evidence path, missing discriminator, related test, suggested assertion, verify command, receipt command, and static limits. |
+| `lsp/evidence-aware-actions` | blocked | Tighten action visibility and payload validation so actions only appear when supporting evidence or command context exists. |
+| `lsp/context-packet-command` | blocked | Add one canonical evidence context packet command for external tools and agents without edits, generated tests, or provider coupling. |
+| `test/lsp-protocol-smoke` | blocked | Add framed protocol proof for initialize, saved-workspace diagnostics, hover, codeAction, context packet execution, and shutdown. |
+| `test/vscode-extension-smoke` | blocked | Prove extension activation, server resolution, fixture diagnostics, hover, actions, copy payloads, related-test opening, restart, and bad-server-path status. |
+| `lsp/editor-status-and-staleness` | blocked | Make server unavailable, workspace unresolved, config disabled, queued, running, complete, stale, failed, and no-actionable-seam states explicit. |
+| `docs/editor-evidence-workflow` | blocked | Document install, diagnostic, hover, related test, context packet, one-test, verify, receipt, and refresh workflow with limits. |
+| `campaign/editor-evidence-ux-closeout` | blocked | Close only after hover, actions, context packet, protocol proof, VS Code proof, status/staleness, and docs align without analyzer, policy, CI, or runtime-claim drift. |
+
+Dependencies:
+
+- Campaign 10 supplies the editor-agent loop and command surfaces.
+- Campaign 11 supplies shared agent-loop command templates, workflow packets,
+  receipts, and reviewer summaries.
+- Campaign 12 supplies first-hour editor status and intent-titled action
+  framing.
+- Campaign 13 supplies PR guidance without making RIPR a free-form reviewer.
+- Campaign 16 remains active unless this lane is explicitly promoted or run in
+  parallel.
+
+Commands:
+
+```bash
+cargo test -p ripr lsp --lib
+cargo test -p ripr lsp::tests --lib
+cargo xtask lsp-cockpit-report
+npm --prefix editors/vscode run compile
+npm --prefix editors/vscode run test:e2e
+cargo xtask check-output-contracts
+cargo xtask check-static-language
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-pr
+git diff --check
+```
+
+Blocking conditions:
+
+- analyzer behavior changes
+- policy or gate behavior changes
+- generated workflow behavior changes
+- automatic source edits
+- generated tests
+- runtime mutation execution
+- runtime adequacy claims
+- unsaved-buffer overlays in this campaign
+- CodeLens, inlay hints, semantic tokens, or other speculative editor surfaces
+- new public crates
