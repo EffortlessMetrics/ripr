@@ -830,7 +830,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "lsp/evidence-aware-actions"
+next = "lsp/context-packet-command"
 metric = "hover renders evidence path from ClassifiedSeam, never parses diagnostic message"
 
 [[capability]]
@@ -842,8 +842,9 @@ evidence = [
   "crates/ripr/src/lsp/actions.rs seam-aware code_action_response",
   "crates/ripr/src/lsp/backend.rs collectContext returns agent seam packets for seam_id",
   "editors/vscode/src/client.ts copySuggestedAssertion and openRelatedTest handlers",
-  "diagnostics carrying seam_id surface intent-titled actions for inspecting the seam, writing the targeted test, copying agent handoff commands, verifying after the test, reviewing the receipt, opening the best related test, and refreshing saved-workspace analysis",
+  "diagnostics carrying seam_id surface intent-titled actions for inspecting the seam, writing the targeted test only when related-test or suggested-assertion context exists, copying agent handoff commands, verifying after the test, reviewing the receipt, opening the best related test only when a related-test location exists, and refreshing saved-workspace analysis",
   "copy suggested assertion uses agent seam packet v2 assertion shape when available",
+  "stale seam diagnostics fail closed to refresh-only",
   "pre-4B Finding code actions remain available",
   "docs/TESTING.md documents VS Code e2e coverage for command registration, LSP-first seam context, targeted-test brief copying, suggested assertions, related-test opening, malformed argument handling, and restart behavior",
   "docs/QUICKSTART.md routes the VS Code first hour through intent-titled seam actions without changing command IDs or payloads",
@@ -854,8 +855,8 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "lsp/evidence-aware-actions"
-metric = "seam diagnostics expose packet/assertion/test actions without automatic edits"
+next = "lsp/context-packet-command"
+metric = "seam diagnostics expose only supported packet/assertion/test actions without automatic edits"
 
 [[capability]]
 id = "repository_config"

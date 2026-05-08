@@ -34,7 +34,7 @@ hints, semantic tokens, policy invention, or generated workflow changes.
 | --- | --- | --- |
 | Diagnostics | `crates/ripr/src/lsp/diagnostics.rs` emits saved-workspace seam diagnostics with stable `ripr-seam-{class}` codes and `data.seam_id`; `fixtures/boundary_gap/expected/lsp-diagnostics.json` pins the boundary-gap seam identity. | Keep diagnostic identity stable and make later hover/action work depend on `diagnostic.data`, not message text. |
 | Hover | `crates/ripr/src/lsp/hover.rs` renders from `ClassifiedSeam` through the latest analysis state, including grip class, RIPR stage path, missing discriminator, related tests, suggested test shape, handoff commands, verify and receipt commands, static limits, and next step. | Keep the structure pinned while later work tightens actions, context packets, protocol proof, VS Code smoke, and staleness. |
-| Actions | `crates/ripr/src/lsp/actions.rs` and `crates/ripr/src/lsp/backend.rs` expose seam-aware actions for inspecting packets, targeted-test briefs, suggested assertions, related tests, agent-loop commands, verify, receipt, and refresh; `fixtures/boundary_gap/expected/lsp-code-actions.json` pins the action payload. | Tighten conditional visibility and malformed-argument failure so every shown action has usable evidence or command context. |
+| Actions | `crates/ripr/src/lsp/actions.rs` and `crates/ripr/src/lsp/backend.rs` expose seam-aware actions for inspecting packets, targeted-test briefs, suggested assertions, related tests, agent-loop commands, verify, receipt, and refresh; targeted-test brief, suggested assertion, and related-test actions are conditional on supporting evidence; stale seam diagnostics fail closed to refresh-only; `fixtures/boundary_gap/expected/lsp-code-actions.json` pins the action payload. | Add the canonical evidence-context packet command and extend protocol/VS Code proof around the action path. |
 | Context collection | Existing `ripr.collectContext` returns an agent seam packet for a known `seam_id`; VS Code asks LSP before CLI fallback. | Add a canonical evidence-context packet shape for editor handoff parity across human and external-agent use. |
 | VS Code proof | Extension tests cover command registration, copy handlers, LSP-first seam context, related-test opening, malformed arguments, and restart behavior. | Add live extension smoke that uses the real server path to reach diagnostics, hover, actions, command payloads, related-test opening, restart, and bad-server-path status. |
 | Protocol proof | Framed LSP smoke covers server startup and now uses a real seam diagnostic for hover and code action coverage. | Extend it to the full editor loop, including the canonical context packet command once that command exists. |
@@ -95,17 +95,19 @@ Editor Evidence UX is intentionally conservative:
 
 Remaining queued behavior slices:
 
-1. `lsp/evidence-aware-actions`
-2. `lsp/context-packet-command`
-3. `test/lsp-protocol-smoke`
-4. `test/vscode-extension-smoke`
-5. `lsp/editor-status-and-staleness`
-6. `docs/editor-evidence-workflow`
-7. `campaign/editor-evidence-ux-closeout`
+1. `lsp/context-packet-command`
+2. `test/lsp-protocol-smoke`
+3. `test/vscode-extension-smoke`
+4. `lsp/editor-status-and-staleness`
+5. `docs/editor-evidence-workflow`
+6. `campaign/editor-evidence-ux-closeout`
 
 Hover hardening has landed as the first behavior slice: hover is the primary
 human explanation surface and now makes the next useful test action legible
 before adding new editor affordances.
+Action hardening has also landed: code actions now omit unsupported
+targeted-test, assertion, and related-test affordances when their supporting
+evidence is absent.
 
 ## Validation
 

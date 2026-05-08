@@ -1727,7 +1727,6 @@ fn seam_code_actions_omit_assertion_and_related_test_when_evidence_is_missing() 
             .collect::<Vec<_>>(),
         vec![
             COPY_CONTEXT_COMMAND,
-            COPY_TARGETED_TEST_BRIEF_COMMAND,
             COPY_AGENT_PACKET_COMMAND,
             COPY_AGENT_BRIEF_COMMAND,
             COPY_AFTER_SNAPSHOT_COMMAND,
@@ -1737,9 +1736,65 @@ fn seam_code_actions_omit_assertion_and_related_test_when_evidence_is_missing() 
         ]
     );
     assert_eq!(commands[0].0, "Inspect seam: copy packet");
-    assert_eq!(commands[1].0, "Write targeted test: copy brief");
-    assert_eq!(commands[2].0, "Agent handoff: copy packet command");
-    assert_eq!(commands[6].0, "Review result: copy receipt command");
+    assert_eq!(commands[1].0, "Agent handoff: copy packet command");
+    assert_eq!(commands[5].0, "Review result: copy receipt command");
+    Ok(())
+}
+
+#[test]
+fn seam_code_actions_keep_targeted_brief_when_related_test_exists_without_assertion()
+-> Result<(), String> {
+    use crate::analysis::test_grip_evidence::{
+        RelatedTestGrip, RelationConfidence, RelationReason,
+    };
+
+    let mut seam = sample_side_effect_seam_without_related_tests();
+    seam.evidence.related_tests = vec![RelatedTestGrip {
+        test_name: "publish_event_emits_bus_message".to_string(),
+        file: PathBuf::from("tests/service.rs"),
+        line: 21,
+        oracle_kind: OracleKind::SmokeOnly,
+        oracle_strength: OracleStrength::Smoke,
+        evidence_summary: "related smoke test reaches event publishing".to_string(),
+        relation_reason: RelationReason::DirectOwnerCall,
+        relation_confidence: RelationConfidence::High,
+    }];
+    let diagnostic = diagnostic_for_classified_seam(Path::new("/workspace"), &seam)
+        .ok_or_else(|| "expected seam diagnostic".to_string())?;
+    let uri = test_uri("file:///workspace/src/service.rs")?;
+    let mut snapshot = sample_analysis_snapshot(
+        PathBuf::from("/workspace"),
+        uri,
+        vec![diagnostic.clone()],
+        Vec::new(),
+    );
+    snapshot.classified_seams = vec![seam];
+    let actions = code_action_response(&code_action_params(vec![diagnostic])?, Some(&snapshot));
+
+    let commands = code_action_commands(&actions)?;
+    assert!(
+        commands
+            .iter()
+            .any(|(_, command, _)| command == COPY_TARGETED_TEST_BRIEF_COMMAND),
+        "expected targeted-test brief action when a related test exists, got {commands:?}"
+    );
+    assert!(
+        commands
+            .iter()
+            .all(|(_, command, _)| command != COPY_SUGGESTED_ASSERTION_COMMAND),
+        "expected no suggested assertion action for prose-only side-effect guidance, got {commands:?}"
+    );
+    let Some((_, command, args)) = commands
+        .iter()
+        .find(|(title, _, _)| title == "Write targeted test: open best related test")
+    else {
+        return Err(format!(
+            "expected open related test action, got {commands:?}"
+        ));
+    };
+    assert_eq!(command, OPEN_RELATED_TEST_COMMAND);
+    assert_eq!(args[0]["uri"], "file:///workspace/tests/service.rs");
+    assert_eq!(args[0]["line"], 21);
     Ok(())
 }
 

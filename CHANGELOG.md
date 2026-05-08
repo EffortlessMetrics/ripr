@@ -146,6 +146,10 @@ are scoped or reviewed.
   related test locations, suggested test shape, packet and brief handoff
   commands, verify and receipt commands, and static-evidence limits from the
   same classified seam state.
+- Tightened seam code-action visibility so the focused test brief action is
+  offered only when a related test or suggested assertion context exists, while
+  packet, agent handoff, verify, receipt, and refresh commands remain
+  available for stable seam diagnostics.
 - Added RIPR-SPEC-0016 for the baseline debt delta report, defining the planned
   JSON/Markdown contract, identity matching order, debt movement buckets,
   advisory boundary, and future `ripr baseline create`, `diff`, and
