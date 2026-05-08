@@ -826,8 +826,14 @@ metrics = [
 id = "RIPR-SPEC-0013"
 name = "recommendation calibration report"
 spec = "docs/specs/RIPR-SPEC-0013-recommendation-calibration-report.md"
-tests = []
-fixtures = []
+tests = [
+  "crates/ripr/src/output/review_comments.rs::tests::recommendation_calibration_fixture_expectations_pin_required_cases"
+]
+fixtures = [
+  "fixtures/boundary_gap/expected/recommendation-calibration/README.md",
+  "fixtures/boundary_gap/expected/recommendation-calibration/expectations.json",
+  "fixtures/boundary_gap/expected/recommendation-calibration/synthetic-pr-guidance.json"
+]
 code = []
 outputs = [
   "docs/specs/RIPR-SPEC-0013-recommendation-calibration-report.md",

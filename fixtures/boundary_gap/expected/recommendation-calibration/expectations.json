@@ -1,0 +1,200 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "advisory",
+  "spec": "RIPR-SPEC-0013",
+  "fixture": "boundary_gap",
+  "limits_note": "Advisory recommendation-quality expectations only; no telemetry, generated tests, source edits, mutation execution, or CI blocking.",
+  "cases": [
+    {
+      "id": "useful_exact_line_boundary",
+      "scenario": "useful recommendation",
+      "source_artifact": "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
+      "source_collection": "comments",
+      "source_item_id": "ripr-review-8f7fa8644fd12280",
+      "expected": {
+        "outcome": "useful",
+        "placement_quality": "correct",
+        "suggested_test_target_quality": "correct",
+        "suppressed_reason": null,
+        "suppression_quality": null,
+        "static_movement": "improved",
+        "seam_id": "8f7fa8644fd12280",
+        "expected_test_file": "tests/pricing.rs",
+        "missing_discriminator": "input that hits the boundary: amount == discount_threshold"
+      },
+      "reason": "The line-level boundary recommendation names the expected seam, discriminator, and test target."
+    },
+    {
+      "id": "noisy_owner_fallback",
+      "scenario": "noisy recommendation",
+      "source_artifact": "fixtures/boundary_gap/expected/pr-guidance/owner-function-line/comments.json",
+      "source_collection": "comments",
+      "source_item_id": "ripr-review-8f7fa8644fd12280",
+      "expected": {
+        "outcome": "noisy",
+        "placement_quality": "correct",
+        "suggested_test_target_quality": "correct",
+        "suppressed_reason": null,
+        "suppression_quality": null,
+        "static_movement": "unchanged",
+        "seam_id": "8f7fa8644fd12280",
+        "expected_test_file": "tests/pricing.rs",
+        "missing_discriminator": "input that hits the boundary: amount == discount_threshold"
+      },
+      "reason": "Owner-function placement is visible but lower-signal than the exact changed seam line for this fixture."
+    },
+    {
+      "id": "wrong_line_same_file_fallback",
+      "scenario": "wrong-line placement",
+      "source_artifact": "fixtures/boundary_gap/expected/pr-guidance/same-file-line/comments.json",
+      "source_collection": "comments",
+      "source_item_id": "ripr-review-8f7fa8644fd12280",
+      "expected": {
+        "outcome": "wrong_line",
+        "placement_quality": "wrong_line",
+        "suggested_test_target_quality": "correct",
+        "suppressed_reason": null,
+        "suppression_quality": null,
+        "static_movement": "unchanged",
+        "seam_id": "8f7fa8644fd12280",
+        "expected_test_file": "tests/pricing.rs",
+        "missing_discriminator": "input that hits the boundary: amount == discount_threshold"
+      },
+      "reason": "The same-file fallback lands on a changed line that is not the seam line."
+    },
+    {
+      "id": "already_covered_visible",
+      "scenario": "already-covered seam",
+      "source_artifact": "fixtures/boundary_gap/expected/recommendation-calibration/synthetic-pr-guidance.json",
+      "source_collection": "comments",
+      "source_item_id": "ripr-review-calibration-already-covered",
+      "expected": {
+        "outcome": "already_covered",
+        "placement_quality": "correct",
+        "suggested_test_target_quality": "not_applicable",
+        "suppressed_reason": null,
+        "suppression_quality": null,
+        "static_movement": "unchanged",
+        "seam_id": "calibration-already-covered",
+        "expected_test_file": "tests/pricing.rs",
+        "missing_discriminator": null
+      },
+      "reason": "The PR-shaped case already changes the focused test, so another visible recommendation is expected to be counted as already covered."
+    },
+    {
+      "id": "summary_only_expected_boundary",
+      "scenario": "correct summary-only fallback",
+      "source_artifact": "fixtures/boundary_gap/expected/pr-guidance/summary-only/comments.json",
+      "source_collection": "summary_only",
+      "source_item_id": "ripr-review-8f7fa8644fd12280",
+      "expected": {
+        "outcome": "summary_only_correct",
+        "placement_quality": "summary_only_expected",
+        "suggested_test_target_quality": "correct",
+        "suppressed_reason": null,
+        "suppression_quality": null,
+        "static_movement": "unknown",
+        "seam_id": "8f7fa8644fd12280",
+        "expected_test_file": "tests/pricing.rs",
+        "missing_discriminator": "input that hits the boundary: amount == discount_threshold"
+      },
+      "reason": "The recommendation correctly stays out of inline comments when no safe changed-line placement exists."
+    },
+    {
+      "id": "suppression_configured_off",
+      "scenario": "suppression correctness",
+      "source_artifact": "fixtures/boundary_gap/expected/pr-guidance/configured-off/comments.json",
+      "source_collection": "warnings",
+      "source_item_id": null,
+      "expected": {
+        "outcome": "suppressed_correctly",
+        "placement_quality": "not_placeable",
+        "suggested_test_target_quality": "not_applicable",
+        "suppressed_reason": "severity_off",
+        "suppression_quality": "suppressed_correctly",
+        "static_movement": "unknown",
+        "seam_id": "8f7fa8644fd12280",
+        "expected_test_file": null,
+        "missing_discriminator": null
+      },
+      "reason": "Configured-off weakly gripped seams should stay hidden while preserving an auditable warning."
+    },
+    {
+      "id": "generated_migration_exclusion",
+      "scenario": "generated/migration exclusion",
+      "source_artifact": "fixtures/boundary_gap/expected/recommendation-calibration/synthetic-pr-guidance.json",
+      "source_collection": "suppressed",
+      "source_item_id": "ripr-review-calibration-generated-migration",
+      "expected": {
+        "outcome": "suppressed_correctly",
+        "placement_quality": "not_placeable",
+        "suggested_test_target_quality": "not_applicable",
+        "suppressed_reason": "generated_or_migration",
+        "suppression_quality": "suppressed_correctly",
+        "static_movement": "unknown",
+        "seam_id": "calibration-generated-migration",
+        "expected_test_file": null,
+        "missing_discriminator": null
+      },
+      "reason": "Generated or migration-like paths should not create review recommendations."
+    },
+    {
+      "id": "macro_heavy_summary_only",
+      "scenario": "macro-heavy code",
+      "source_artifact": "fixtures/boundary_gap/expected/recommendation-calibration/synthetic-pr-guidance.json",
+      "source_collection": "summary_only",
+      "source_item_id": "ripr-review-calibration-macro-heavy",
+      "expected": {
+        "outcome": "summary_only_correct",
+        "placement_quality": "summary_only_expected",
+        "suggested_test_target_quality": "correct",
+        "suppressed_reason": null,
+        "suppression_quality": null,
+        "static_movement": "unknown",
+        "seam_id": "calibration-macro-heavy",
+        "expected_test_file": "tests/macros.rs",
+        "missing_discriminator": "macro-expanded equality boundary"
+      },
+      "reason": "Macro-heavy code is expected to prefer summary-only guidance when line placement is unsafe."
+    },
+    {
+      "id": "trait_generic_wrong_target",
+      "scenario": "trait/generic boundary",
+      "source_artifact": "fixtures/boundary_gap/expected/recommendation-calibration/synthetic-pr-guidance.json",
+      "source_collection": "comments",
+      "source_item_id": "ripr-review-calibration-trait-generic",
+      "expected": {
+        "outcome": "wrong_target",
+        "placement_quality": "correct",
+        "suggested_test_target_quality": "wrong_target",
+        "suppressed_reason": null,
+        "suppression_quality": null,
+        "static_movement": "unknown",
+        "seam_id": "calibration-trait-generic",
+        "expected_test_file": "tests/generic_boundary.rs",
+        "missing_discriminator": "generic bound equality case"
+      },
+      "reason": "The recommendation is on the expected seam but points at the wrong test target."
+    },
+    {
+      "id": "async_error_boundary_useful",
+      "scenario": "async/error boundary",
+      "source_artifact": "fixtures/boundary_gap/expected/recommendation-calibration/synthetic-pr-guidance.json",
+      "source_collection": "comments",
+      "source_item_id": "ripr-review-calibration-async-error",
+      "expected": {
+        "outcome": "useful",
+        "placement_quality": "correct",
+        "suggested_test_target_quality": "correct",
+        "suppressed_reason": null,
+        "suppression_quality": null,
+        "static_movement": "improved",
+        "seam_id": "calibration-async-error",
+        "expected_test_file": "tests/async_errors.rs",
+        "missing_discriminator": "exact async error variant"
+      },
+      "reason": "The recommendation names an async error boundary and the exact error discriminator to assert."
+    }
+  ]
+}

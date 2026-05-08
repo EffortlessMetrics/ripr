@@ -61,7 +61,7 @@ commands = [
 
 [[work_item]]
 id = "fixtures/pr-guidance-calibration-corpus"
-status = "ready"
+status = "done"
 branch = "fixtures-pr-guidance-calibration-corpus"
 stackable = false
 requires_human_merge = false

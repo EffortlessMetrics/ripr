@@ -578,6 +578,12 @@ mod tests {
             .join(file)
     }
 
+    fn recommendation_calibration_fixture(file: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/boundary_gap/expected/recommendation-calibration")
+            .join(file)
+    }
+
     fn assert_json_fixture(case: &str, value: &Value) -> Result<(), String> {
         let rendered = format!(
             "{}\n",
@@ -879,6 +885,147 @@ mod tests {
             "configured-off",
             &render_markdown_with_selection(&exact, &configured_off_selection),
         )?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn recommendation_calibration_fixture_expectations_pin_required_cases() -> Result<(), String> {
+        let expectations_path = recommendation_calibration_fixture("expectations.json");
+        let expectations_text = fs::read_to_string(&expectations_path)
+            .map_err(|err| format!("read {}: {err}", expectations_path.display()))?;
+        let expectations: Value = serde_json::from_str(&expectations_text)
+            .map_err(|err| format!("parse {}: {err}", expectations_path.display()))?;
+
+        assert_eq!(expectations["schema_version"], "0.1");
+        assert_eq!(expectations["status"], "advisory");
+        assert_eq!(expectations["spec"], "RIPR-SPEC-0013");
+
+        let cases = expectations["cases"]
+            .as_array()
+            .ok_or("recommendation calibration expectations cases should be an array")?;
+        assert_eq!(cases.len(), 10);
+
+        let mut seen = std::collections::BTreeSet::new();
+        for case in cases {
+            let id = case["id"]
+                .as_str()
+                .ok_or("recommendation calibration case should have id")?;
+            let scenario = case["scenario"]
+                .as_str()
+                .ok_or("recommendation calibration case should have scenario")?;
+            let outcome = case["expected"]["outcome"]
+                .as_str()
+                .ok_or("recommendation calibration case should have expected outcome")?;
+            let placement_quality = case["expected"]["placement_quality"]
+                .as_str()
+                .ok_or("recommendation calibration case should have placement quality")?;
+            seen.insert((id.to_string(), scenario.to_string()));
+
+            assert!(
+                [
+                    "useful",
+                    "noisy",
+                    "wrong_line",
+                    "already_covered",
+                    "wrong_target",
+                    "summary_only_correct",
+                    "suppressed_correctly",
+                    "unknown",
+                ]
+                .contains(&outcome),
+                "{id} uses unsupported outcome {outcome}"
+            );
+            assert!(
+                [
+                    "correct",
+                    "wrong_line",
+                    "summary_only_expected",
+                    "not_placeable",
+                    "unknown",
+                ]
+                .contains(&placement_quality),
+                "{id} uses unsupported placement quality {placement_quality}"
+            );
+            assert_recommendation_calibration_source_exists(case)?;
+        }
+
+        for (id, scenario) in [
+            ("useful_exact_line_boundary", "useful recommendation"),
+            ("noisy_owner_fallback", "noisy recommendation"),
+            ("wrong_line_same_file_fallback", "wrong-line placement"),
+            ("already_covered_visible", "already-covered seam"),
+            (
+                "summary_only_expected_boundary",
+                "correct summary-only fallback",
+            ),
+            ("suppression_configured_off", "suppression correctness"),
+            (
+                "generated_migration_exclusion",
+                "generated/migration exclusion",
+            ),
+            ("macro_heavy_summary_only", "macro-heavy code"),
+            ("trait_generic_wrong_target", "trait/generic boundary"),
+            ("async_error_boundary_useful", "async/error boundary"),
+        ] {
+            assert!(
+                seen.contains(&(id.to_string(), scenario.to_string())),
+                "missing recommendation calibration case {id} ({scenario})"
+            );
+        }
+
+        Ok(())
+    }
+
+    fn assert_recommendation_calibration_source_exists(case: &Value) -> Result<(), String> {
+        let artifact = case["source_artifact"]
+            .as_str()
+            .ok_or("recommendation calibration case should have source_artifact")?;
+        let collection = case["source_collection"]
+            .as_str()
+            .ok_or("recommendation calibration case should have source_collection")?;
+        let item_id = case["source_item_id"].as_str();
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join(artifact);
+        let text =
+            fs::read_to_string(&path).map_err(|err| format!("read {}: {err}", path.display()))?;
+        let value: Value = serde_json::from_str(&text)
+            .map_err(|err| format!("parse source artifact {}: {err}", path.display()))?;
+
+        match collection {
+            "comments" | "summary_only" | "suppressed" => {
+                let entries = value[collection]
+                    .as_array()
+                    .ok_or_else(|| format!("{artifact} should contain array {collection}"))?;
+                let Some(item_id) = item_id else {
+                    return Err(format!(
+                        "{artifact} {collection} expectation is missing item id"
+                    ));
+                };
+                assert!(
+                    entries.iter().any(|entry| entry["id"] == item_id
+                        || entry["seam_id"] == case["expected"]["seam_id"]),
+                    "{artifact} {collection} should contain {item_id}"
+                );
+            }
+            "warnings" => {
+                let warnings = value["warnings"]
+                    .as_array()
+                    .ok_or_else(|| format!("{artifact} should contain warnings array"))?;
+                let seam_id = case["expected"]["seam_id"]
+                    .as_str()
+                    .ok_or("warning expectation should have seam_id")?;
+                assert!(
+                    warnings
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .any(|warning| warning.contains(seam_id)),
+                    "{artifact} warnings should mention {seam_id}"
+                );
+            }
+            other => return Err(format!("unsupported source_collection {other}")),
+        }
 
         Ok(())
     }
