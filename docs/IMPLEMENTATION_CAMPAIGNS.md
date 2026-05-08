@@ -1827,6 +1827,107 @@ Blocking conditions:
 
 Next:
 
-- No Campaign 16 is opened by this closeout. Future ranking, stronger policy,
-  or adoption feedback work should start from a new explicit spec and campaign
-  manifest rather than extending Campaign 15.
+- Campaign 16 is active as Gate Adoption UX. It should make optional gate
+  adoption safe and obvious through examples, waiver workflows, baseline
+  guidance, CI summary polish, dogfood receipts, and blocking-readiness docs
+  without changing advisory defaults.
+
+## Campaign 16: Gate Adoption UX
+
+Campaign ID: `gate-adoption-ux`
+
+Status: active
+
+Campaign 15 built the optional gate. The next product risk is adoption:
+teams need copyable setup examples, visible waiver workflows, baseline guidance,
+and first-screen summaries before calibrated policy can be used without
+surprise.
+
+Objective:
+
+```text
+Make optional calibrated gate adoption safe and obvious for real teams:
+provide copyable generated-CI examples, visible waiver and baseline workflows,
+first-screen gate summaries, dogfood receipts, and guidance for when blocking is
+appropriate without changing advisory defaults.
+```
+
+Why it matters:
+
+Calibrated gates are now policy over existing evidence, but the default path
+must stay low-risk. Campaign 16 should make the adoption path clear enough that
+a team can start with `visible-only`, move to acknowledgement labels, add a
+baseline, and only later enable calibrated blocking when local evidence supports
+it.
+
+End state:
+
+- docs provide copyable generated-CI examples for `visible-only`,
+  `acknowledgeable`, `baseline-check`, and `calibrated-gate`
+- waiver and label workflows show how `ripr-waive` produces visible
+  acknowledged decisions rather than hidden success
+- baseline creation and refresh guidance lets teams avoid punishing historical
+  debt while identifying new policy-eligible gaps
+- generated CI summaries make gate decisions understandable without opening
+  JSON artifacts
+- `ripr` dogfood receipts demonstrate visible-only and stricter opt-in gate
+  behavior from repo-local evidence
+- blocking-readiness guidance explains when teams should leave gates advisory,
+  use acknowledgement, or enable calibrated blocking
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `docs/gate-adoption-examples` | ready | Add copyable generated-CI examples for visible-only, acknowledgeable, baseline-check, and calibrated-gate adoption while preserving the default advisory workflow. |
+| `docs/gate-waiver-workflows` | blocked | Document sample label and waiver workflows that keep acknowledged findings visible, auditable, and separate from suppressions. |
+| `docs/gate-baseline-workflow` | blocked | Document baseline creation, review, and refresh guidance for baseline-check and calibrated-gate adoption without hiding existing debt. |
+| `ci/gate-decision-summary-polish` | blocked | Polish generated CI gate summaries so reviewers can see mode, status, waiver, baseline, calibration, blocking reason, and artifact paths without opening JSON. |
+| `dogfood/gate-adoption-receipts` | blocked | Add repo-local dogfood receipts that show visible-only, acknowledged, baseline-aware, and calibrated-gate decisions from RIPR's own evidence without making default CI blocking. |
+| `docs/blocking-readiness-guide` | blocked | Document when to keep gates advisory, when to require acknowledgement, and when calibrated blocking is mature enough for a team. |
+| `campaign/gate-adoption-ux-closeout` | blocked | Close Campaign 16 only after gate adoption docs, waiver workflows, baseline guidance, CI summary polish, dogfood receipts, and blocking-readiness guidance are complete while defaults stay advisory. |
+
+Dependencies:
+
+- Campaign 15 Calibrated Gate Policy supplies the evaluator, decision schema,
+  generated CI opt-in wiring, fixture matrix, and operating model.
+- Campaign 14 Recommendation Calibration remains the local signal-quality
+  source. Gate adoption docs must not imply calibration exists when an input is
+  missing.
+- Campaign 13 PR guidance remains the reviewer visibility source. Gate adoption
+  should summarize policy decisions over PR guidance, not replace the
+  recommendation packet.
+- The `ripr-waive` label remains acknowledgement, not suppression.
+- Baselines are adoption tools for historical debt, not a reason to hide new
+  policy-eligible gaps.
+
+Commands:
+
+```bash
+cargo xtask check-campaign
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-capabilities
+cargo xtask check-pr
+```
+
+Blocking conditions:
+
+- new gate semantics before adoption examples
+- default CI blocking
+- broader "fail on any RIPR finding" policy
+- hiding acknowledged or waived gaps from summaries
+- treating missing calibration as high confidence
+- runtime mutation vocabulary in static gate adoption docs
+- running cargo-mutants or any mutation engine from adoption workflows
+- automatic source edits or generated tests
+- LSP or analyzer behavior changes in this campaign lane
+- new public crates
+
+Next:
+
+- `docs/gate-adoption-examples` is the first ready item. Start with copyable
+  generated-CI examples for each explicit mode, and keep `RIPR_GATE_MODE`
+  unset as the documented default.
