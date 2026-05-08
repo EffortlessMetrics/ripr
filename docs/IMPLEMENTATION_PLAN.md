@@ -27,6 +27,7 @@ through multiple work items in a campaign, but each work item should follow the
 | Editor Agent Integration (10) | Make the saved-workspace editor loop and the agent CLI loop line up from diagnostic to evidence, packet/brief, focused test, verify, receipt, cockpit, CI, and install proof. | Complete: `campaign/editor-agent-integration-closeout`. |
 | LLM Work Loop (11) | Make the completed editor-agent loop stateful, deterministic, and useful to LLM agents under review pressure. | Complete: status, command templates, workflow manifests, receipt provenance, next-action guidance, reviewer summary, fixture matrix, CI work packets, operator guide, and `campaign/llm-work-loop-closeout`. |
 | First-Hour UX (12) | Make new LSP-first and CI-first users successful without learning RIPR's internal report topology. | Complete: editor status, intent-titled actions, advisory CI summary, workflow smoke fixture, user-type docs, and `campaign/first-hour-ux-closeout`. |
+| PR Review Guidance (13) | Project existing RIPR evidence into bounded pull-request review guidance without making CI blocking or turning RIPR into a free-form reviewer. | Active: `campaign/pr-review-guidance-audit` is done and `review/pr-guidance-renderer` is ready. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
 through 8 are complete. Campaign 6 closed after the internal module SRP chain
@@ -57,8 +58,11 @@ workflow now writes a reviewer-oriented advisory summary before artifact
 download. The generated workflow smoke fixture pins artifact paths,
 top-seam extraction, agent artifacts, optional SARIF gates, badges, summary
 sections, and future PR guidance annotation hooks. The first-hour docs route
-users by VS Code, CI, CLI, and agent/reviewer path. Campaign 12 is closed; no
-next product campaign is active until one is opened explicitly.
+users by VS Code, CI, CLI, and agent/reviewer path. Campaign 13 is active as PR
+Review Guidance: the audit found that the editor, CLI, agent, cockpit, and CI
+artifact loop is in place, but `ripr review-comments` remains only a specified
+future producer while generated CI already has a consumer hook for
+`target/ripr/review/comments.json`.
 
 ## PR 0: `planning-and-tracking-docs`
 

@@ -1,158 +1,131 @@
-id = "first-hour-ux"
-title = "First-Hour UX"
+id = "pr-review-guidance"
+title = "PR Review Guidance"
 status = "active"
 
-# This is Campaign 12 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
-# Campaign 11 (`llm-work-loop`) closed after status, workflow manifests,
-# provenance-backed receipts, next-action guidance, review summaries, fixtures,
-# generated CI artifacts, and the LLM operator guide made the agent loop
-# stateful and source-edit-free.
+# This is Campaign 13 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+# Campaign 12 closed the First-Hour UX lane after the editor and generated CI
+# first screens became useful without report archaeology.
 
 objective = """
-Make a new user successful in the first hour through either the VS Code
-extension or generated GitHub workflow, without requiring them to understand
-RIPR's internal report topology.
+Project the existing static evidence loop into bounded pull-request review
+guidance: changed seam -> focused test intent -> verification command -> review
+artifact, without turning RIPR into a free-form reviewer or CI blocker.
 """
 
 end_state = [
-  "VS Code users can see server, workspace, analysis, staleness, and diagnostic state without reading logs first",
-  "Editor code actions are titled around user intent: write the targeted test, open the best related test, copy an agent handoff, verify after the test, and refresh analysis",
-  "Generated GitHub workflows put the top advisory recommendation in the PR or step summary before artifact download is necessary",
-  "PR test guidance annotations have a spec, JSON contract, placement rules, caps, and opt-in review-comment boundary before generated workflows post line guidance",
-  "Generated CI workflow behavior is pinned by a fixture that covers artifact paths, non-blocking posture, optional SARIF, badge output, and agent artifacts",
-  "Agent command templates and workflow manifests from Campaign 11 feed the UX surfaces instead of creating another command-string source of truth",
-  "README and installed-user docs are organized by user type: VS Code, CI, CLI, agent, troubleshooting, and known limits"
+  "ripr review-comments writes target/ripr/review/comments.json and comments.md as read-only advisory reports",
+  "review guidance only places line annotations on changed lines and falls back to summary-only recommendations otherwise",
+  "guidance is capped, deterministic, deduplicated, and rooted in existing repo exposure, agent packet, agent brief, related-test, severity, and suppression evidence",
+  "generated GitHub workflows run the report producer before consuming target/ripr/review/comments.json for summaries and check annotations",
+  "inline PR comments remain opt-in and are not posted by default",
+  "fixtures pin exact-line, owner-function-line, same-file-line, summary-only, capped, suppressed, and changed-test skip cases",
+  "docs explain PR guidance as advisory static evidence, not LLM review, runtime mutation proof, automatic edits, generated tests, or default CI blocking"
 ]
 
 [[work_item]]
-id = "spec/pr-test-guidance-annotations"
+id = "campaign/pr-review-guidance-audit"
 status = "done"
-branch = "spec-pr-test-guidance-annotations"
+branch = "campaign-pr-review-guidance-audit"
 stackable = false
 requires_human_merge = true
-acceptance = "Finalize the advisory PR test guidance contract before implementing `ripr review-comments`, including changed-line placement, anti-spam caps, bounded LLM guidance, check annotations by default, optional inline review comments, JSON shape, and non-blocking CI posture"
-commands = [
-  "cargo xtask check-doc-index",
-  "cargo xtask markdown-links",
-  "cargo xtask check-spec-format",
-  "cargo xtask check-traceability",
-  "cargo xtask check-capabilities",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr"
-]
-
-[[work_item]]
-id = "vscode/first-run-status"
-status = "done"
-branch = "vscode-first-run-status"
-stackable = false
-requires_human_merge = true
-blocked_by = ["spec/pr-test-guidance-annotations"]
-acceptance = "Add a discoverable editor status path for server resolution, workspace detection, analysis running/complete/stale/failed, and no-actionable-seam states"
-commands = [
-  "cargo test -p ripr lsp",
-  "cargo test -p ripr lsp::tests",
-  "cargo xtask lsp-cockpit-report",
-  "npm --prefix editors/vscode run compile",
-  "npm --prefix editors/vscode run test:e2e",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr"
-]
-
-[[work_item]]
-id = "vscode/action-discoverability"
-status = "done"
-branch = "vscode-action-discoverability"
-stackable = false
-requires_human_merge = true
-blocked_by = ["vscode/first-run-status"]
-acceptance = "Group and title diagnostic actions around user intent without changing analyzer behavior, adding broad LSP features, or enabling unsaved-buffer overlays"
-commands = [
-  "cargo test -p ripr lsp",
-  "cargo test -p ripr lsp::tests",
-  "cargo xtask lsp-cockpit-report",
-  "npm --prefix editors/vscode run compile",
-  "npm --prefix editors/vscode run test:e2e",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr"
-]
-
-[[work_item]]
-id = "ci/pr-summary-surface"
-status = "done"
-branch = "ci-pr-summary-surface"
-stackable = false
-requires_human_merge = true
-blocked_by = ["vscode/action-discoverability"]
-acceptance = "Make the generated workflow emit a useful PR or step summary with the top actionable seam, why it matters, suggested test target, artifact links, SARIF status, badge status, known limits, and check annotations from the PR test guidance report when implemented"
-commands = [
-  "cargo test -p ripr agent",
-  "cargo xtask check-workflows",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr"
-]
-
-[[work_item]]
-id = "ci/generated-workflow-smoke-fixture"
-status = "done"
-branch = "ci-generated-workflow-smoke-fixture"
-stackable = false
-requires_human_merge = true
-blocked_by = ["ci/pr-summary-surface"]
-acceptance = "Pin generated workflow artifact paths, top-seam extraction, agent artifact generation, non-blocking posture, optional SARIF, and badge output so CI UX does not drift"
-commands = [
-  "cargo test -p ripr agent",
-  "cargo xtask fixtures",
-  "cargo xtask check-workflows",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr"
-]
-
-[[work_item]]
-id = "docs/ux-by-user-type"
-status = "done"
-branch = "docs-ux-by-user-type"
-stackable = false
-requires_human_merge = true
-blocked_by = [
-  "vscode/first-run-status",
-  "vscode/action-discoverability",
-  "ci/pr-summary-surface",
-  "ci/generated-workflow-smoke-fixture"
-]
-acceptance = "Rewrite the first-hour docs around VS Code, CI, CLI, agent, troubleshooting, and known limits while keeping README short"
-commands = [
-  "cargo xtask check-doc-index",
-  "cargo xtask markdown-links",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr"
-]
-
-[[work_item]]
-id = "campaign/first-hour-ux-closeout"
-status = "done"
-branch = "campaign-first-hour-ux-closeout"
-stackable = false
-requires_human_merge = true
-blocked_by = [
-  "spec/pr-test-guidance-annotations",
-  "vscode/first-run-status",
-  "vscode/action-discoverability",
-  "ci/pr-summary-surface",
-  "ci/generated-workflow-smoke-fixture",
-  "docs/ux-by-user-type"
-]
-acceptance = "Close only after the extension and CI first screens are useful without report archaeology and the CLI remains the shared engine rather than the required first user interface"
+acceptance = "Audit the long-term static-evidence control-plane objective against current artifacts, identify the missing PR review producer, and open Campaign 13 with the renderer as the next ready item"
 commands = [
   "cargo xtask check-campaign",
   "cargo xtask goals next",
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
   "cargo xtask check-static-language",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "review/pr-guidance-renderer"
+status = "ready"
+branch = "review-pr-guidance-renderer"
+stackable = false
+requires_human_merge = true
+blocked_by = ["campaign/pr-review-guidance-audit"]
+acceptance = "Add read-only `ripr review-comments --root . --base <sha> --head <sha> --out target/ripr/review/comments.json` plus Markdown output, joining existing static evidence to produce bounded PR guidance without posting to GitHub or changing analyzer behavior"
+commands = [
+  "cargo test -p ripr review_comments",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "ci/run-pr-guidance-report"
+status = "blocked"
+branch = "ci-run-pr-guidance-report"
+stackable = false
+requires_human_merge = true
+blocked_by = ["review/pr-guidance-renderer"]
+acceptance = "Update generated GitHub workflows to run `ripr review-comments` before the existing advisory summary and check-annotation consumer steps, preserving non-blocking defaults"
+commands = [
+  "cargo test -p ripr init_generated_github_workflow_matches_smoke_fixture --lib",
+  "cargo xtask check-workflows",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "fixtures/pr-guidance-cases"
+status = "blocked"
+branch = "fixtures-pr-guidance-cases"
+stackable = false
+requires_human_merge = true
+blocked_by = ["review/pr-guidance-renderer"]
+acceptance = "Pin PR guidance fixtures for exact changed seam line, owner-function changed line, same-file changed line, summary-only fallback, cap suppression, configured suppression, and nearby changed-test skip"
+commands = [
+  "cargo xtask fixtures",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "docs/pr-review-guidance"
+status = "blocked"
+branch = "docs-pr-review-guidance"
+stackable = false
+requires_human_merge = true
+blocked_by = [
+  "review/pr-guidance-renderer",
+  "ci/run-pr-guidance-report",
+  "fixtures/pr-guidance-cases"
+]
+acceptance = "Document PR guidance as a bounded advisory projection of existing RIPR evidence, including commands, CI behavior, opt-in review-comment boundary, and no automatic edits or runtime mutation claims"
+commands = [
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "campaign/pr-review-guidance-closeout"
+status = "blocked"
+branch = "campaign-pr-review-guidance-closeout"
+stackable = false
+requires_human_merge = true
+blocked_by = [
+  "review/pr-guidance-renderer",
+  "ci/run-pr-guidance-report",
+  "fixtures/pr-guidance-cases",
+  "docs/pr-review-guidance"
+]
+acceptance = "Close Campaign 13 only after PR review guidance is produced, consumed by generated CI, fixture-pinned, documented, and still advisory/non-blocking by default"
+commands = [
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-capabilities",
   "cargo xtask check-pr"
 ]
