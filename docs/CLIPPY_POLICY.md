@@ -166,10 +166,29 @@ When promoting a planned lint, move the entry from `[[planned]]` to
 `[[active.<group>]]`, add the matching `Cargo.toml` line, and update
 this doc — the gate makes drift visible immediately.
 
+## Companion ledgers
+
+Two companion ledgers track Clippy state alongside the active/planned table:
+
+- [`policy/clippy-debt.toml`](../policy/clippy-debt.toml) records lints that
+  are intentionally **deferred** with a named owner, a blocking dependency,
+  and a target date for clearing the debt. Empty by default.
+- [`policy/clippy-exceptions.toml`](../policy/clippy-exceptions.toml) records
+  per-call-site `#[expect(...)]` / `#[allow(...)]` suppressions with an `id`,
+  `owner`, `reason`, `covered_by`, and `expires`. It is the reviewable
+  counterpart to `.ripr/allow-attributes.txt`. Empty by default.
+
+These are advisory until the corresponding xtask ledger checks land in a
+follow-up PR.
+
 ## See also
 
 - [`policy/clippy-lints.toml`](../policy/clippy-lints.toml) — declarative
   ledger and planned flips.
+- [`policy/clippy-debt.toml`](../policy/clippy-debt.toml) — deferred lints
+  with owner and target date.
+- [`policy/clippy-exceptions.toml`](../policy/clippy-exceptions.toml) —
+  per-site suppressions.
 - [`docs/NO_PANIC_SEMANTIC_ALLOWLIST.md`](NO_PANIC_SEMANTIC_ALLOWLIST.md) —
   selector-based allowlist schema.
 - [`docs/FILE_POLICY.md`](FILE_POLICY.md) — non-Rust file policy.
