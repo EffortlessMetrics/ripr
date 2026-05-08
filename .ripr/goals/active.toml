@@ -1,80 +1,53 @@
-id = "gate-adoption-ux"
-title = "Gate Adoption UX"
+id = "ripr-zero-adoption"
+title = "RIPR Zero Adoption"
 status = "active"
 
-# This is Campaign 16 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
-# Campaign 15 closed Calibrated Gate Policy after optional gates were specified,
-# evaluated, fixture-pinned, wired into generated CI only when explicitly
-# configured, documented, and kept advisory by default.
+# This is Campaign 17 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+# Campaign 16 closed Gate Adoption UX after generated-CI examples, waiver
+# workflows, baseline guidance, summary polish, dogfood receipts, and
+# blocking-readiness docs made optional gates adoptable while generated CI
+# stayed advisory by default.
 
 objective = """
-Make optional calibrated gate adoption safe and obvious for real teams:
-provide copyable generated-CI examples, visible waiver and baseline workflows,
-first-screen gate summaries, dogfood receipts, and guidance for when blocking is
-appropriate without changing advisory defaults.
+Make RIPR 0 adoption concrete for PR/CI users: turn baselines into visible
+burn-down ledgers, surface PR-level behavioral-debt deltas, route blocking
+candidates to focused repair packets, and keep every new policy mode explicit
+and advisory by default.
 """
 
 end_state = [
-  "docs provide copyable generated-CI examples for visible-only, acknowledgeable, baseline-check, and calibrated-gate adoption",
-  "waiver and label workflows show how `ripr-waive` produces visible acknowledged decisions rather than hidden success",
-  "baseline creation and refresh guidance lets teams avoid punishing historical debt while identifying new policy-eligible gaps",
-  "generated CI summaries make gate decisions understandable without opening JSON artifacts",
-  "ripr dogfood receipts demonstrate visible-only and stricter opt-in gate behavior from repo-local evidence",
-  "blocking-readiness guidance explains when teams should leave gates advisory, use acknowledgement, or enable calibrated blocking",
+  "a baseline debt delta report compares current evidence against reviewed baseline debt without auto-adopting new findings",
+  "generated CI summaries show new, resolved, acknowledged, suppressed, stale, and unknown baseline-delta counts before artifact digging",
+  "blocking summaries link each policy candidate to a focused test shape, related test, verify command, acknowledgement path, and full receipt",
+  "RIPR Zero adoption docs explain that RIPR 0 is configured-scope behavioral grip closure, not perfect tests or 100 percent coverage",
+  "coverage/grip frontier summaries are available when coverage data exists without treating coverage as a proxy for oracle strength",
+  "adoption remains staged: advisory visibility, baseline checkpoint, visible-only gate, acknowledgeable gate, baseline-check, calibrated-gate, then burn-down toward RIPR 0",
 ]
 
 [[work_item]]
-id = "docs/gate-adoption-examples"
-status = "done"
-branch = "docs-gate-adoption-examples"
+id = "spec/baseline-debt-delta-report"
+status = "ready"
+branch = "spec-baseline-debt-delta-report"
 stackable = false
-acceptance = "Add copyable generated-CI examples for visible-only, acknowledgeable, baseline-check, and calibrated-gate adoption while preserving the default advisory workflow"
+acceptance = "Define the baseline debt delta report contract for comparing current PR/CI evidence to reviewed baseline debt without changing analyzer identity, auto-adopting new debt, or making CI blocking by default"
 commands = [
+  "cargo xtask check-spec-format",
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
   "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-output-contracts",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "docs/gate-waiver-workflows"
-status = "done"
-branch = "docs-gate-waiver-workflows"
+id = "ci/baseline-debt-delta-summary"
+status = "blocked"
+branch = "ci-baseline-debt-delta-summary"
 stackable = false
-blocked_by = ["docs/gate-adoption-examples"]
-acceptance = "Document sample label and waiver workflows that keep acknowledged findings visible, auditable, and separate from suppressions"
-commands = [
-  "cargo xtask check-doc-index",
-  "cargo xtask markdown-links",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "docs/gate-baseline-workflow"
-status = "done"
-branch = "docs-gate-baseline-workflow"
-stackable = false
-blocked_by = ["docs/gate-waiver-workflows"]
-acceptance = "Document baseline creation, review, and refresh guidance for baseline-check and calibrated-gate adoption without hiding existing debt"
-commands = [
-  "cargo xtask check-doc-index",
-  "cargo xtask markdown-links",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "ci/gate-decision-summary-polish"
-status = "done"
-branch = "ci-gate-decision-summary-polish"
-stackable = false
-blocked_by = [
-  "docs/gate-adoption-examples",
-  "docs/gate-waiver-workflows",
-  "docs/gate-baseline-workflow",
-]
-acceptance = "Polish generated CI gate summaries so reviewers can see mode, status, waiver, baseline, calibration, blocking reason, and artifact paths without opening JSON"
+blocked_by = ["spec/baseline-debt-delta-report"]
+acceptance = "Surface baseline debt delta counts in generated CI summaries and artifacts while preserving advisory defaults and evidence uploads"
 commands = [
   "cargo test -p ripr init_generated_github_workflow",
   "cargo xtask check-workflows",
@@ -84,25 +57,27 @@ commands = [
 ]
 
 [[work_item]]
-id = "dogfood/gate-adoption-receipts"
-status = "done"
-branch = "dogfood-gate-adoption-receipts"
+id = "ci/blocking-repair-packet-links"
+status = "blocked"
+branch = "ci-blocking-repair-packet-links"
 stackable = false
-blocked_by = ["ci/gate-decision-summary-polish"]
-acceptance = "Add repo-local dogfood receipts that show visible-only, acknowledged, baseline-aware, and calibrated-gate decisions from RIPR's own evidence without making default CI blocking"
+blocked_by = ["ci/baseline-debt-delta-summary"]
+acceptance = "Add repair-packet links to blocking summaries so every blocking candidate names the focused test shape, related test, verify command, acknowledgement path, and full receipt"
 commands = [
+  "cargo test -p ripr init_generated_github_workflow",
+  "cargo xtask check-workflows",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "docs/blocking-readiness-guide"
-status = "done"
-branch = "docs-blocking-readiness-guide"
+id = "docs/ripr-zero-adoption-guide"
+status = "blocked"
+branch = "docs-ripr-zero-adoption-guide"
 stackable = false
-blocked_by = ["dogfood/gate-adoption-receipts"]
-acceptance = "Document when to keep gates advisory, when to require acknowledgement, and when calibrated blocking is mature enough for a team"
+blocked_by = ["ci/blocking-repair-packet-links"]
+acceptance = "Document staged RIPR Zero adoption, including what RIPR 0 means under configured scope, how baselines shrink, and how waivers and suppressions differ"
 commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
@@ -111,19 +86,33 @@ commands = [
 ]
 
 [[work_item]]
-id = "campaign/gate-adoption-ux-closeout"
-status = "done"
-branch = "campaign-gate-adoption-ux-closeout"
+id = "ci/coverage-grip-frontier-summary"
+status = "blocked"
+branch = "ci-coverage-grip-frontier-summary"
+stackable = false
+blocked_by = ["docs/ripr-zero-adoption-guide"]
+acceptance = "When coverage data exists, summarize coverage and RIPR grip movement as separate axes without treating line coverage as oracle strength"
+commands = [
+  "cargo test -p ripr init_generated_github_workflow",
+  "cargo xtask check-workflows",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "campaign/ripr-zero-adoption-closeout"
+status = "blocked"
+branch = "campaign-ripr-zero-adoption-closeout"
 stackable = false
 blocked_by = [
-  "docs/gate-adoption-examples",
-  "docs/gate-waiver-workflows",
-  "docs/gate-baseline-workflow",
-  "ci/gate-decision-summary-polish",
-  "dogfood/gate-adoption-receipts",
-  "docs/blocking-readiness-guide",
+  "spec/baseline-debt-delta-report",
+  "ci/baseline-debt-delta-summary",
+  "ci/blocking-repair-packet-links",
+  "docs/ripr-zero-adoption-guide",
+  "ci/coverage-grip-frontier-summary",
 ]
-acceptance = "Close Campaign 16 only after gate adoption docs, waiver workflows, baseline guidance, CI summary polish, dogfood receipts, and blocking-readiness guidance are complete while defaults stay advisory"
+acceptance = "Close Campaign 17 only after baseline delta, PR/CI debt-delta summaries, repair links, adoption docs, and coverage/grip frontier reporting are specified or implemented while defaults stay advisory"
 commands = [
   "cargo xtask check-campaign",
   "cargo xtask goals next",
