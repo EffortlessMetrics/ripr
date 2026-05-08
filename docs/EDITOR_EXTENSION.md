@@ -367,7 +367,11 @@ The suite activates the extension in a fixture Rust workspace and verifies
 command registration, defaults-first `draft` mode, LSP-first seam context
 collection with CLI fallback, targeted-test brief copying, suggested assertion
 copying, related-test opening, malformed command argument handling, and
-`restartServer` callability. CI runs the suite headless with `xvfb-run`.
+`restartServer` callability. When a test server path is supplied, the suite also
+opens the boundary-gap fixture through the real server path, waits for a seam
+diagnostic, checks hover evidence and code actions, copies seam packet and
+verify command payloads, and opens the best related test. CI runs the suite
+headless with `xvfb-run`.
 
 ## Current Limitations
 
