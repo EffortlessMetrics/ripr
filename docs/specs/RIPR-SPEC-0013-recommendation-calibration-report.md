@@ -120,6 +120,7 @@ The report should expose counts for:
 - recommended test target correctness;
 - before/after static movement;
 - unchanged static movement;
+- regressed static movement;
 - unknown outcome count;
 - review-comment or annotation latency when timestamps are available.
 
@@ -170,6 +171,7 @@ The JSON report uses schema version `0.1`:
     "target_file_correct": 2,
     "static_improved": 1,
     "static_unchanged": 1,
+    "static_regressed": 0,
     "unknown": 1
   },
   "latency": {
@@ -241,8 +243,8 @@ The JSON report uses schema version `0.1`:
 - `summary.useful`, `summary.noisy`, `summary.false_annotations`,
   `summary.summary_only_correct`, `summary.suppressed_correctly`,
   `summary.target_file_correct`, `summary.static_improved`,
-  `summary.static_unchanged`, and `summary.unknown` - aggregate quality and
-  static-movement counts.
+  `summary.static_unchanged`, `summary.static_regressed`, and
+  `summary.unknown` - aggregate quality and static-movement counts.
 - `latency.*_unix_ms` - optional timestamps from artifacts or CI-provided
   metadata. Values are `null` when timestamps are unavailable.
 - `latency.annotation_latency_ms` - elapsed time from guidance generation to
@@ -266,6 +268,9 @@ The JSON report uses schema version `0.1`:
   `regressed`, `resolved`, `new_gap`, `missing_after_snapshot`, or `unknown`.
 - `suppressed[]` - recommendations hidden by caps, suppression, configured-off
   severity, generated/migration exclusion, or nearby-test change.
+- `suppressed[].reason` - stable reason code: `cap_reached`, `suppression`,
+  `severity_off`, `nearby_test_changed`, `generated_or_migration`, or
+  `unknown`.
 - `suppressed[].quality` - `suppressed_correctly`, `over_suppressed`, or
   `unknown`.
 - `warnings[]` - missing inputs, unsupported expectation fields, stale
@@ -398,4 +403,5 @@ The implementation should map this spec to:
 - `recommendation_calibration_target_file_correct`
 - `recommendation_calibration_static_improved`
 - `recommendation_calibration_static_unchanged`
+- `recommendation_calibration_static_regressed`
 - `recommendation_calibration_unknown`

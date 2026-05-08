@@ -1334,6 +1334,7 @@ JSON shape:
     "target_file_correct": 2,
     "static_improved": 1,
     "static_unchanged": 1,
+    "static_regressed": 0,
     "unknown": 1
   },
   "latency": {
@@ -1405,8 +1406,8 @@ Field contract:
 - `summary.useful`, `summary.noisy`, `summary.false_annotations`,
   `summary.summary_only_correct`, `summary.suppressed_correctly`,
   `summary.target_file_correct`, `summary.static_improved`,
-  `summary.static_unchanged`, and `summary.unknown` - aggregate quality and
-  static-movement counts.
+  `summary.static_unchanged`, `summary.static_regressed`, and
+  `summary.unknown` - aggregate quality and static-movement counts.
 - `latency.*_unix_ms` - optional timestamps from artifacts or CI-provided
   metadata. Values are `null` when timestamps are unavailable.
 - `latency.annotation_latency_ms` - elapsed time from guidance generation to
@@ -1430,6 +1431,9 @@ Field contract:
   `regressed`, `resolved`, `new_gap`, `missing_after_snapshot`, or `unknown`.
 - `suppressed[]` - recommendations hidden by caps, suppression, configured-off
   severity, generated/migration exclusion, or nearby-test change.
+- `suppressed[].reason` - stable reason code: `cap_reached`, `suppression`,
+  `severity_off`, `nearby_test_changed`, `generated_or_migration`, or
+  `unknown`.
 - `suppressed[].quality` - `suppressed_correctly`, `over_suppressed`, or
   `unknown`.
 - `warnings[]` - missing inputs, unsupported expectation fields, stale
