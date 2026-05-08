@@ -2058,7 +2058,7 @@ Next:
 - `spec/baseline-debt-delta-report` is the next ready item. Define the report
   contract before baseline commands or generated CI artifacts.
 
-## Campaign 17: Editor Evidence UX
+## Future Campaign: Editor Evidence UX
 
 Campaign ID: `editor-evidence-ux`
 
