@@ -73,10 +73,12 @@ A Codex Goals run should:
 - leave durable learnings only when future agents should not rediscover them
 
 Agents are expected to carry a scoped PR through review repair, validation,
-merge, and post-merge verification when the current lane instructions authorize
-that ownership. Stop before merge only when a live user instruction, hosted
-branch protection, credential requirement, or unresolved review finding makes
-that necessary.
+merge, and post-merge verification when the current lane instructions cover the
+work. Do not wait for a separate manual check when the remaining work is to
+review the PR, address findings, rerun validation, or merge a ready branch.
+Stop only when a live user instruction, hosted branch protection, credential
+requirement, unresolved review finding, or out-of-scope decision makes that
+necessary.
 
 ## Choosing A Subset
 

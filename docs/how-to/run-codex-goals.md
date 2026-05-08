@@ -84,12 +84,15 @@ Stop before continuing when:
 - continuing would require a policy exception, schema decision, dependency
   decision, credential, release, or marketplace action
 
-When the current lane instruction gives Codex ownership of review and merge,
-the normal flow is:
+When the current lane instruction covers the work, the normal flow is:
 
 ```text
-implement -> validate -> commit -> push -> open/update PR -> repair review findings -> merge -> verify main
+implement -> validate -> commit -> push -> open/update PR -> repair review findings -> validate -> merge -> verify main
 ```
+
+`stackable = false` only controls the next dependent work item: do not build
+that next item on top of the current branch unless the operator explicitly
+overrides the campaign dependency plan.
 
 ## Reports
 

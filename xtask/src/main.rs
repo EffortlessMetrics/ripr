@@ -111,7 +111,6 @@ struct CampaignWorkItem {
     status: Option<String>,
     branch: Option<String>,
     stackable: Option<bool>,
-    requires_human_merge: Option<bool>,
     acceptance: Option<String>,
     commands: Vec<String>,
     blocked_by: Vec<String>,
@@ -10095,7 +10094,7 @@ fn goals(args: &[String]) -> Result<(), String> {
 }
 
 fn check_campaign() -> Result<(), String> {
-    let mut violations = Vec::new();
+    let mut violations = deprecated_goal_field_violations()?;
     let manifest_path = Path::new(".ripr/goals/active.toml");
     if !manifest_path.exists() {
         violations.push(".ripr/goals/active.toml is missing".to_string());
@@ -10111,7 +10110,8 @@ fn check_campaign() -> Result<(), String> {
 fn goals_status() -> Result<(), String> {
     let manifest_path = Path::new(".ripr/goals/active.toml");
     let (manifest, parse_violations) = parse_campaign_manifest(manifest_path)?;
-    let mut violations = parse_violations;
+    let mut violations = deprecated_goal_field_violations()?;
+    violations.extend(parse_violations);
     validate_campaign_manifest(&manifest, &mut violations)?;
     let body = campaign_status_report_body(&manifest, &violations);
     write_report("goals.md", &body)?;
@@ -10129,7 +10129,8 @@ fn goals_status() -> Result<(), String> {
 fn goals_next() -> Result<(), String> {
     let manifest_path = Path::new(".ripr/goals/active.toml");
     let (manifest, parse_violations) = parse_campaign_manifest(manifest_path)?;
-    let mut violations = parse_violations;
+    let mut violations = deprecated_goal_field_violations()?;
+    violations.extend(parse_violations);
     validate_campaign_manifest(&manifest, &mut violations)?;
     let body = campaign_next_report_body(&manifest, &violations);
     write_report("goals-next.md", &body)?;
@@ -10162,6 +10163,33 @@ fn finish_campaign_report(violations: &[String]) -> Result<(), String> {
         },
         violations,
     )
+}
+
+fn deprecated_goal_field_violations() -> Result<Vec<String>, String> {
+    let field = deprecated_goal_field_name();
+    let mut violations = Vec::new();
+    for path in tracked_files()? {
+        if !is_deprecated_goal_field_scan_target(&path) {
+            continue;
+        }
+        let text = read_text_lossy(Path::new(&path))?;
+        if text.contains(&field) {
+            violations.push(format!(
+                "{path} contains deprecated campaign field `{field}`; use `stackable` and ordinary PR readiness instead"
+            ));
+        }
+    }
+    Ok(violations)
+}
+
+fn deprecated_goal_field_name() -> String {
+    ["requires", "human", "merge"].join("_")
+}
+
+fn is_deprecated_goal_field_scan_target(path: &str) -> bool {
+    (path.starts_with(".ripr/goals/") && path.ends_with(".toml"))
+        || path == "AGENTS.md"
+        || (path.starts_with("docs/") && (path.ends_with(".md") || path.ends_with(".toml")))
 }
 
 fn validate_campaign_manifest(
@@ -10249,9 +10277,6 @@ fn validate_campaign_manifest(
         }
         if item.stackable.is_none() {
             violations.push(format!("{item_id} is missing `stackable`"));
-        }
-        if item.requires_human_merge.is_none() {
-            violations.push(format!("{item_id} is missing `requires_human_merge`"));
         }
         if item
             .acceptance
@@ -10558,9 +10583,6 @@ fn assign_campaign_scalar(
                 });
             }
             "stackable" => item.stackable = parse_campaign_bool(value, line_number, violations),
-            "requires_human_merge" => {
-                item.requires_human_merge = parse_campaign_bool(value, line_number, violations);
-            }
             _ => violations.push(format!(
                 "campaign manifest line {line_number} uses unsupported work_item field `{key}`"
             )),
@@ -18488,7 +18510,6 @@ id = "fixtures/first-two-goldens"
 status = "ready"
 branch = "fixtures/first-two-goldens"
 stackable = false
-requires_human_merge = false
 acceptance = "fixtures pass"
 commands = [
   "cargo xtask fixtures",
@@ -20699,7 +20720,6 @@ status = "in_progress"
 id = "item-1"
 status = "ready"
 stackable = true
-requires_human_merge = false
 "#,
             );
             let result = parse_campaign_manifest(&manifest_path);
