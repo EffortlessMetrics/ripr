@@ -1684,3 +1684,92 @@ Blocking conditions:
 - posting inline comments as part of the gate evaluator
 - automatic source edits or generated tests
 - new public crates
+
+## Campaign 15: Recommendation Quality Calibration
+
+Campaign ID: `recommendation-quality-calibration`
+
+Status: queued
+
+Campaigns 11 through 13 built the deterministic human, CI, editor, and external
+agent control plane, and Campaign 14 defines the optional policy layer over
+that evidence. The next product-quality lane should measure whether RIPR's top
+recommendations are clear, correctly placed, low-noise, and useful enough to
+show to reviewers.
+
+Objective:
+
+```text
+Make RIPR's CI, LSP, and PR guidance reliably useful by measuring whether top
+recommendations are actionable, placed on the right review surface, suppressed
+when they should be, and correlated with improved static evidence after one
+focused test.
+```
+
+Why it matters:
+
+RIPR can now emit bounded PR guidance and, after Campaign 14, optional gate
+decisions. That still does not answer the adoption question: was the top
+recommendation worth showing to a reviewer? Campaign 15 should turn that into
+repo-local evidence without telemetry, external services, generated tests,
+runtime mutation execution, or default CI blocking.
+
+End state:
+
+- `cargo xtask recommendation-quality` writes
+  `target/ripr/reports/recommendation-quality.json` and
+  `recommendation-quality.md` from existing artifacts
+- recommendation quality reports distinguish actionable, diff-placeable,
+  summary-only, suppressed, capped, noisy, unchanged-after-test,
+  improved-after-test, and regressed-after-test outcomes
+- placement fixtures pin exact changed line, owner-function line, same-file
+  fallback, summary-only fallback, changed-test skip, configured suppression,
+  cap reached, equal ranking, and bad-placement-avoided cases
+- generated CI uploads the quality report and adds a compact advisory summary
+  when the relevant artifacts exist
+- docs explain how to read recommendation quality, suppressions, caps,
+  unchanged/improved/regressed receipts, and summary-only guidance
+- the closeout records what the quality reports can and cannot say before any
+  future policy or ranking changes
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `recommendation/audit-report` | queued | Add a repo-local recommendation quality report that joins PR guidance, pilot summary, agent packet or brief, receipt or targeted-test outcome, suppression state, and changed-test detection without telemetry or external services. |
+| `recommendation/placement-quality-fixtures` | queued | Pin placement cases for exact changed line, owner-function line, same-file fallback, summary-only fallback, changed-test skip, configured suppression, cap reached, equal ranking, and bad-placement-avoided behavior. |
+| `recommendation/noise-and-suppression-report` | queued | Summarize why recommendations were shown, capped, suppressed, configured off, or summary-only so noisy findings are visible instead of silently disappearing. |
+| `recommendation/outcome-correlation-report` | queued | Correlate guidance with existing outcome or receipt artifacts to report unchanged, improved, regressed, resolved, or missing-after-snapshot states without claiming runtime confirmation. |
+| `docs/recommendation-quality-guide` | queued | Document what RIPR recommends, why it may choose summary-only, how caps and suppressions work, and how to read unchanged, improved, or regressed receipts. |
+| `campaign/recommendation-quality-closeout` | queued | Close only after recommendation quality is reported, fixture-pinned, optionally surfaced in generated CI, documented, and still advisory by default. |
+
+Dependencies:
+
+- Campaign 13 PR guidance remains the placement and recommendation source.
+- Campaign 14 calibrated gates remain policy over evidence. Recommendation
+  quality measures guidance usefulness; it does not make blocking decisions.
+- Campaign 11 receipts and review summaries remain the source for before/after
+  static movement and reviewer context.
+
+Commands:
+
+```bash
+cargo xtask check-campaign
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-capabilities
+cargo xtask check-pr
+```
+
+Blocking conditions:
+
+- LLM provider integration
+- automatic source edits or generated tests
+- runtime mutation execution
+- default CI blocking
+- new analyzer families
+- broad refactors
+- telemetry or external service dependencies
+- ranking changes without fixture evidence and output-contract updates
