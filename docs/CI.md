@@ -1247,19 +1247,15 @@ Minimal baseline shape:
 }
 ```
 
-For the first version, use the stable identities already present in
-`gate-decision.json`. This `jq` example checkpoints current advisory,
-acknowledged, and blocking decisions into a candidate file for review:
+Use the stable identities already present in `gate-decision.json`. `ripr
+baseline create` checkpoints current advisory, acknowledged, and blocking
+decisions into a candidate file for review and refuses to overwrite an existing
+baseline unless `--force` is passed:
 
 ```bash
-jq '{
-  schema_version: "0.1",
-  decisions: [
-    .decisions[]?
-    | select(.decision == "advisory" or .decision == "acknowledged" or .decision == "blocking")
-    | {seam_id, source_id}
-  ]
-}' target/ripr/reports/gate-decision.json > target/ripr/reports/gate-baseline.candidate.json
+ripr baseline create \
+  --from target/ripr/reports/gate-decision.json \
+  --out target/ripr/reports/gate-baseline.candidate.json
 ```
 
 Review that candidate before copying it into `.ripr/gate-baseline.json`.
