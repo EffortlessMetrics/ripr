@@ -1273,6 +1273,22 @@ ripr baseline create \
 Review that candidate before copying it into `.ripr/gate-baseline.json`.
 Baselining everything blindly makes the file less useful as a debt ledger.
 
+After the baseline is reviewed, compare it with current gate evidence to see
+debt movement before changing policy:
+
+```bash
+ripr baseline diff \
+  --baseline .ripr/gate-baseline.json \
+  --current target/ripr/reports/gate-decision.json \
+  --out target/ripr/reports/baseline-debt-delta.json \
+  --out-md target/ripr/reports/baseline-debt-delta.md
+```
+
+The delta report is advisory. It shows still-present baseline debt, resolved
+entries, new policy-eligible findings, acknowledged findings, suppressed
+findings, stale baseline entries, invalid baseline entries, and missing current
+inputs. `ripr gate evaluate` remains the pass/fail authority.
+
 `ripr gate evaluate` indexes identities from the new `entries[].identity`
 ledger shape. For compatibility with existing fixtures and reviewed hand-built
 baselines, it also accepts identities from `decisions`, `comments`,

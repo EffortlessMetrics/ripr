@@ -1034,6 +1034,78 @@ fn baseline_create_writes_reviewed_ledger_and_refuses_overwrite() -> Result<(), 
 }
 
 #[test]
+fn baseline_diff_writes_debt_delta_json_and_markdown() -> Result<(), String> {
+    let workspace = unique_temp_workspace("baseline-diff");
+    std::fs::create_dir_all(&workspace).map_err(|e| format!("create workspace: {e}"))?;
+    let current = workspace_root().join(
+        "fixtures/boundary_gap/expected/calibrated-gate/visible-only-advisory/gate-decision.json",
+    );
+    let baseline = workspace.join(".ripr/gate-baseline.json");
+    let out_json = workspace.join("baseline-debt-delta.json");
+    let out_md = workspace.join("baseline-debt-delta.md");
+    let current_arg = current.display().to_string();
+    let baseline_arg = baseline.display().to_string();
+    let out_json_arg = out_json.display().to_string();
+    let out_md_arg = out_md.display().to_string();
+
+    let create = run_ripr(&[
+        "baseline",
+        "create",
+        "--from",
+        &current_arg,
+        "--out",
+        &baseline_arg,
+    ]);
+    assert_success(&create);
+
+    let diff = run_ripr(&[
+        "baseline",
+        "diff",
+        "--baseline",
+        &baseline_arg,
+        "--current",
+        &current_arg,
+        "--out",
+        &out_json_arg,
+        "--out-md",
+        &out_md_arg,
+    ]);
+    assert_success(&diff);
+
+    let json = std::fs::read_to_string(&out_json).map_err(|e| format!("read delta json: {e}"))?;
+    assert!(json.contains("\"kind\": \"baseline_debt_delta\""));
+    assert!(json.contains("\"still_present\": 1"));
+    assert!(json.contains("\"matched_by\": \"seam_id\""));
+    let md = std::fs::read_to_string(&out_md).map_err(|e| format!("read delta md: {e}"))?;
+    assert!(md.contains("# RIPR Baseline Debt Delta"));
+    assert!(md.contains("| Still present | 1 |"));
+
+    let missing_current = workspace.join("missing-current.json");
+    let missing_out = workspace.join("missing-current-delta.json");
+    let missing_md = workspace.join("missing-current-delta.md");
+    let missing = run_ripr(&[
+        "baseline",
+        "diff",
+        "--baseline",
+        &baseline_arg,
+        "--current",
+        &missing_current.display().to_string(),
+        "--out",
+        &missing_out.display().to_string(),
+        "--out-md",
+        &missing_md.display().to_string(),
+    ]);
+    assert_success(&missing);
+    let missing_json =
+        std::fs::read_to_string(&missing_out).map_err(|e| format!("read missing delta: {e}"))?;
+    assert!(missing_json.contains("\"missing_current_input\": 1"));
+    assert!(missing_json.contains("required current gate-decision input"));
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
 fn pilot_writes_default_packet_outputs_for_boundary_gap_fixture() -> Result<(), String> {
     let root = workspace_root().join("fixtures/boundary_gap/input");
     let out_dir = unique_temp_workspace("pilot");

@@ -1890,7 +1890,7 @@ explicit reviewed baseline ledger with current gate-decision evidence so teams
 can see existing, resolved, new, acknowledged, suppressed, stale, invalid, and
 missing-input behavioral-grip debt without making the report a gate.
 
-The future command is:
+Command:
 
 ```text
 ripr baseline diff \
@@ -1925,8 +1925,8 @@ JSON shape:
   "inputs": {
     "baseline": ".ripr/gate-baseline.json",
     "current_gate_decision": "target/ripr/reports/gate-decision.json",
-    "pr_guidance": "target/ripr/review/comments.json",
-    "agent_receipt": "target/ripr/reports/agent-receipt.json"
+    "pr_guidance": null,
+    "agent_receipt": null
   },
   "baseline": {
     "path": ".ripr/gate-baseline.json",
@@ -1953,7 +1953,8 @@ JSON shape:
         "seam_id": "67fc764ba37d77bd",
         "source_id": "ripr-review-67fc764ba37d77bd",
         "id": "ripr-gate-67fc764ba37d77bd",
-        "dedupe_key": "ripr:67fc764ba37d77bd:src/pricing.rs:88",
+        "dedupe_key": null,
+        "fallback": "src/pricing.rs:88:weakly_gripped",
         "matched_by": "seam_id"
       },
       "path": "src/pricing.rs",
@@ -1963,7 +1964,7 @@ JSON shape:
       "reason": "Current policy-eligible gap is not present in the reviewed baseline.",
       "missing_discriminator": "amount == discount_threshold",
       "suggested_test": {
-        "recommended_file": "tests/pricing.rs",
+        "recommended_test": "tests/pricing.rs::applies_discount_above_threshold",
         "assertion_shape": "Assert returned discount behavior directly."
       },
       "repair": {
@@ -1980,17 +1981,17 @@ JSON shape:
 Field contract:
 
 - `schema_version` - currently `"0.1"`.
-- `status` - `advisory`, `incomplete`, or `config_error`. The report does not
-  return `blocked`; blocking belongs to the gate evaluator.
+- `status` - currently `advisory`. The report does not return `blocked`;
+  blocking belongs to the gate evaluator.
 - `inputs.baseline` - explicit baseline ledger path. Missing or unreadable
-  required baseline input produces `missing_current_input` or `config_error`
-  with repair guidance.
+  required baseline input produces a repair-oriented warning and a
+  `missing_current_input` item instead of treating the baseline as resolved.
 - `inputs.current_gate_decision` - current gate-decision JSON path.
 - `inputs.pr_guidance`, `inputs.agent_receipt`, and other optional inputs -
   used only to enrich repair context when supplied.
 - `baseline.entries` - parsed baseline entry count.
 - `baseline.valid`, `baseline.stale`, and `baseline.invalid` - baseline record
-  health counts before current comparison.
+  health counts after current comparison.
 - `delta.still_present` - baseline identities present in current evidence.
 - `delta.resolved` - baseline identities absent from current evidence.
 - `delta.new_policy_eligible` - current policy-eligible identities absent from
@@ -2011,8 +2012,8 @@ Field contract:
   class fallback.
 - `items[].identity.matched_by` - the identity selector that joined baseline
   and current records.
-- `items[].repair` - optional focused repair context copied from existing gate,
-  PR guidance, agent, or outcome artifacts.
+- `items[].repair` - focused repair context from the current gate decision and
+  built-in baseline debt movement actions.
 - `warnings[]` - malformed baseline entries, ambiguous matches, fallback
   matches, missing optional inputs, or unsupported schema versions.
 - `limits_note` - advisory boundary text for generated CI summaries.
