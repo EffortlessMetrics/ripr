@@ -573,6 +573,9 @@ evidence = [
   "ripr agent receipt --root . --verify-json <agent-verify-json> --seam-id <id> --json emits schema 0.3 provenance with before/after/verify artifact SHA-256 hashes, static boundary flags, and structured next-action guidance",
   "crates/ripr/src/agent/provenance.rs hashes receipt artifacts with SHA-256",
   "crates/ripr/src/output/agent_receipt.rs renders receipt provenance and structured next-action guidance without rerunning analysis",
+  "ripr agent review-summary --root . joins existing status, workflow, receipt, cockpit, repo exposure, optional LSP cockpit, and local CI artifact state into compact Markdown",
+  "ripr agent review-summary --root . --json emits Agent Review Summary schema 0.1",
+  "crates/ripr/src/app/agent_review_summary.rs renders review-summary JSON and Markdown without rerunning analysis",
   "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_guidance_covers_improved_state",
   "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_guidance_covers_changed_state",
   "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_guidance_covers_regressed_state",
@@ -580,16 +583,16 @@ evidence = [
   "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_guidance_covers_new_gap_state",
   "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_guidance_covers_resolved_state",
   "crates/ripr/src/lsp/actions.rs, crates/ripr/src/output/agent_brief.rs, crates/ripr/src/output/pilot.rs, crates/ripr/src/cli/commands.rs, and xtask/src/reports/operator.rs reuse the shared templates for existing command payloads without changing output text",
-  "crates/ripr/src/cli/agent.rs parses the status and start subcommands",
-  "docs/OUTPUT_SCHEMA.md Agent Status, Agent Workflow Manifest, and Agent Receipt sections",
+  "crates/ripr/src/cli/agent.rs parses the status, start, and review-summary subcommands",
+  "docs/OUTPUT_SCHEMA.md Agent Status, Agent Workflow Manifest, Agent Receipt, and Agent Review Summary sections",
   "docs/specs/RIPR-SPEC-0011-llm-work-loop.md",
   "cargo test -p ripr agent"
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json"
 ]
-next = "agent/reviewer-summary"
-metric = "agent status, workflow packets, and provenance-backed receipts name artifacts, commands, selected seam context, recovered seam_id, stale-looking warnings, hashes, bounded next actions, and source-edit-free boundaries"
+next = "fixtures/llm-work-loop"
+metric = "agent status, workflow packets, provenance-backed receipts, and reviewer summaries name artifacts, commands, selected seam context, recovered seam_id, stale-looking warnings, hashes, bounded next actions, joined surfaces, and source-edit-free boundaries"
 
 [[capability]]
 id = "pr_test_guidance_annotations"

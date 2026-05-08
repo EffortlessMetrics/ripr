@@ -96,7 +96,7 @@ commands = [
 
 [[work_item]]
 id = "agent/reviewer-summary"
-status = "ready"
+status = "done"
 branch = "agent-reviewer-summary"
 stackable = false
 requires_human_merge = true
@@ -111,13 +111,18 @@ commands = [
 
 [[work_item]]
 id = "fixtures/llm-work-loop"
-status = "blocked"
+status = "ready"
 branch = "fixtures-llm-work-loop"
 stackable = false
 requires_human_merge = true
-blocked_by = ["agent/reviewer-summary"]
-blocked_reason = "Wait until the status, manifest, receipt, and review summary surfaces exist before pinning the full fixture set"
 acceptance = "Add LLM work-loop fixtures for happy, unchanged, regressed, missing-artifact, stale-artifact, configured-off, path-with-spaces, and Windows-separator cases"
+commands = [
+  "cargo test -p ripr agent",
+  "cargo xtask fixtures",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr"
+]
 
 [[work_item]]
 id = "ci/llm-work-packets"
