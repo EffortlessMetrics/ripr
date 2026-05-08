@@ -29,7 +29,7 @@ through multiple work items in a campaign, but each work item should follow the
 | First-Hour UX (12) | Make new LSP-first and CI-first users successful without learning RIPR's internal report topology. | Complete: editor status, intent-titled actions, advisory CI summary, workflow smoke fixture, user-type docs, and `campaign/first-hour-ux-closeout`. |
 | PR Review Guidance (13) | Project existing RIPR evidence into bounded pull-request review guidance without making CI blocking or turning RIPR into a free-form reviewer. | Complete: renderer, generated CI, fixtures, docs, and `campaign/pr-review-guidance-closeout`. |
 | Recommendation Calibration (14) | Measure whether top CI, LSP, and PR recommendations are clear, correctly placed, low-noise, and correlated with better static evidence after one focused test. | Active: `spec/recommendation-calibration-report` is the next ready item so recommendation quality is measured before policy gates. |
-| Calibrated Gate Policy (15) | Define optional calibrated gates over existing PR-time evidence without changing advisory defaults or blurring static/runtime evidence. | Queued after Campaign 14 so policy earns the right to block from measured recommendation quality. |
+| Calibrated Gate Policy (15) | Define optional calibrated gates over existing PR-time evidence without changing advisory defaults or blurring static/runtime evidence. | Queued after Campaign 14 so policy earns the right to block from measured recommendation quality; RIPR-SPEC-0013 is pinned before implementation. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
 through 8 are complete. Campaign 6 closed after the internal module SRP chain
@@ -70,8 +70,9 @@ should measure whether the completed PR, CI, and LSP recommendation surfaces are
 actionable, correctly placed, suppressed or capped for the right reasons, and
 correlated with unchanged, improved, regressed, resolved, or missing after-test
 evidence without telemetry, generated tests, runtime mutation execution, or
-default CI blocking. Campaign 15 is queued as the Calibrated Gate Policy lane so
-optional gates can be explicit policy over measured evidence, preserve advisory
+default CI blocking. Campaign 15 is queued as the Calibrated Gate Policy lane;
+RIPR-SPEC-0013 already pins the future gate evaluator contract so optional
+gates can be explicit policy over measured evidence, preserve advisory
 defaults, keep acknowledgement paths visible, and use runtime mutation
 calibration only as imported confidence evidence.
 

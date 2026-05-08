@@ -1738,7 +1738,7 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `spec/calibrated-gate-policy` | queued | Pin the optional calibrated gate policy after recommendation calibration, including modes, inputs, outputs, acknowledgement labels, runtime calibration boundaries, default advisory posture, and non-goals. |
+| `spec/calibrated-gate-policy` | done | RIPR-SPEC-0013 pins the optional calibrated gate policy before implementation, including modes, inputs, outputs, acknowledgement labels, runtime calibration boundaries, default advisory posture, and non-goals. The campaign itself remains queued until Recommendation Calibration supplies the signal-quality baseline. |
 | `gate/policy-evaluator` | queued | Add a read-only gate evaluator that writes gate-decision JSON/Markdown from existing evidence and explicit policy without posting comments, editing source, running mutation tests, or changing generated workflow defaults. |
 | `fixtures/calibrated-gate-cases` | queued | Pin gate fixtures for advisory, acknowledged, baseline-check, fail-on-new-high-confidence-gap, suppression, missing-input, and calibration agreement/disagreement cases. |
 | `ci/generated-gate-wiring` | queued | Wire generated GitHub workflows to optionally run the gate evaluator only when explicitly configured, preserving advisory defaults and surfacing acknowledged or blocking decisions in summaries. |

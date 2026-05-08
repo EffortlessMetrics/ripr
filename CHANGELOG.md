@@ -60,6 +60,9 @@ are scoped or reviewed.
 - Queued Campaign 15, Calibrated Gate Policy, as a later optional-policy lane
   after recommendation calibration, preserving advisory defaults and keeping
   static evidence separate from runtime mutation vocabulary.
+- Added RIPR-SPEC-0013 for optional calibrated gates so the future Campaign 15
+  evaluator has a pinned contract for modes, inputs, outputs, acknowledgement
+  labels, calibration boundaries, advisory defaults, and non-goals.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and PR guidance annotation counts before artifact

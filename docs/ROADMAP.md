@@ -109,9 +109,9 @@ spec for measuring whether completed recommendation surfaces are actionable,
 correctly placed, properly suppressed or capped, and correlated with
 before/after static movement without telemetry, generated tests, runtime
 mutation execution, or default CI blocking. Campaign 15 is queued as Calibrated
-Gate Policy so optional policy gates come after measured signal quality and
-remain explicit, advisory by default, and separate from runtime mutation
-vocabulary.
+Gate Policy; RIPR-SPEC-0013 is already pinned so optional policy gates can come
+after measured signal quality while remaining explicit, advisory by default,
+and separate from runtime mutation vocabulary.
 
 ## Strategic Sequence
 
