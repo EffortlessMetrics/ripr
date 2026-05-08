@@ -64,6 +64,9 @@ are scoped or reviewed.
   planned input artifacts, JSON/Markdown shape, usefulness metrics, false
   annotation tracking, summary-only correctness, suppression correctness,
   target-file correctness, latency fields, advisory posture, and non-goals.
+- Added pinned review guidance outcome receipt examples for useful, noisy,
+  wrong-line, already-covered, wrong-target, summary-only-correct, and
+  suppressed-correctly recommendation calibration feedback.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and PR guidance annotation counts before artifact
@@ -101,6 +104,8 @@ are scoped or reviewed.
 - Advanced Campaign 14 to `fixtures/pr-guidance-calibration-corpus` and
   `review-feedback/outcome-receipts` after pinning the recommendation
   calibration report contract.
+- Advanced Campaign 14 to `report/recommendation-precision` after pinning
+  outcome receipt fixtures for local recommendation feedback.
 - Pinned RIPR-SPEC-0012 as the PR test guidance annotation contract and
   advanced Campaign 12 to `vscode/first-run-status` as the next ready UX item.
 - Advanced Campaign 12 to `vscode/action-discoverability` after pinning the

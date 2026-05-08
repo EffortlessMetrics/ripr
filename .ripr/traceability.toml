@@ -827,11 +827,20 @@ id = "RIPR-SPEC-0013"
 name = "recommendation calibration report"
 spec = "docs/specs/RIPR-SPEC-0013-recommendation-calibration-report.md"
 tests = [
-  "crates/ripr/src/output/review_comments.rs::tests::recommendation_calibration_fixture_expectations_pin_required_cases"
+  "crates/ripr/src/output/review_comments.rs::tests::recommendation_calibration_fixture_expectations_pin_required_cases",
+  "crates/ripr/src/output/review_comments.rs::tests::recommendation_calibration_outcome_receipts_pin_required_labels"
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/recommendation-calibration/README.md",
   "fixtures/boundary_gap/expected/recommendation-calibration/expectations.json",
+  "fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts/README.md",
+  "fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts/already-covered.json",
+  "fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts/noisy.json",
+  "fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts/summary-only-correct.json",
+  "fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts/suppressed-correctly.json",
+  "fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts/useful.json",
+  "fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts/wrong-line.json",
+  "fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts/wrong-target.json",
   "fixtures/boundary_gap/expected/recommendation-calibration/synthetic-pr-guidance.json"
 ]
 code = []

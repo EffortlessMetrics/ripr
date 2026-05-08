@@ -42,6 +42,7 @@ metadata under
 | --- | --- |
 | `expectations.json` | Pins useful, noisy, wrong-line, already-covered, summary-only, suppression, generated/migration, macro-heavy, trait/generic, and async/error-boundary expectations for the future recommendation calibration report. |
 | `synthetic-pr-guidance.json` | Supplies compact PR-guidance-shaped inputs for cases not emitted by the existing boundary-gap PR guidance renderer fixtures. |
+| `outcome-receipts/` | Pins optional local review guidance outcome receipts for useful, noisy, wrong-line, already-covered, wrong-target, summary-only-correct, and suppressed-correctly labels. |
 
 These artifacts are static expectations. They do not run mutation testing, post
 comments, edit source, generate tests, or make CI blocking.

@@ -983,6 +983,107 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn recommendation_calibration_outcome_receipts_pin_required_labels() -> Result<(), String> {
+        let receipt_cases = [
+            ("useful.json", "useful"),
+            ("noisy.json", "noisy"),
+            ("wrong-line.json", "wrong_line"),
+            ("already-covered.json", "already_covered"),
+            ("wrong-target.json", "wrong_target"),
+            ("summary-only-correct.json", "summary_only_correct"),
+            ("suppressed-correctly.json", "suppressed_correctly"),
+        ];
+
+        let mut seen = std::collections::BTreeSet::new();
+        for (file, expected_label) in receipt_cases {
+            let relative_path = format!("outcome-receipts/{file}");
+            let receipt_path = recommendation_calibration_fixture(&relative_path);
+            let receipt_text = fs::read_to_string(&receipt_path)
+                .map_err(|err| format!("read {}: {err}", receipt_path.display()))?;
+            let receipt: Value = serde_json::from_str(&receipt_text)
+                .map_err(|err| format!("parse {}: {err}", receipt_path.display()))?;
+
+            assert_eq!(receipt["schema_version"], "0.1");
+            assert_eq!(receipt["tool"], "ripr");
+            assert_eq!(receipt["kind"], "review_guidance_outcome_receipt");
+            assert_eq!(receipt["status"], "advisory");
+            assert_eq!(receipt["spec"], "RIPR-SPEC-0013");
+
+            let label = receipt["outcome"]["label"]
+                .as_str()
+                .ok_or("outcome receipt should have outcome label")?;
+            assert_eq!(label, expected_label);
+            seen.insert(label.to_string());
+
+            let seam_id = receipt["guidance"]["seam_id"]
+                .as_str()
+                .ok_or("outcome receipt should name a guidance seam id")?;
+            assert!(
+                !seam_id.is_empty(),
+                "{file} should name the source guidance seam"
+            );
+            let source = receipt["outcome"]["source"]
+                .as_str()
+                .ok_or("outcome receipt should name a local outcome source")?;
+            assert!(
+                ["fixture", "reviewer", "agent", "ci_artifact", "unknown"].contains(&source),
+                "{file} uses unsupported outcome source {source}"
+            );
+            let placement_quality = receipt["placement"]["quality"]
+                .as_str()
+                .ok_or("outcome receipt should have placement quality")?;
+            assert!(
+                [
+                    "correct",
+                    "wrong_line",
+                    "summary_only_expected",
+                    "not_placeable",
+                    "unknown",
+                ]
+                .contains(&placement_quality),
+                "{file} uses unsupported placement quality {placement_quality}"
+            );
+            let target_quality = receipt["suggested_test"]["target_quality"]
+                .as_str()
+                .ok_or("outcome receipt should have suggested-test target quality")?;
+            assert!(
+                ["correct", "wrong_target", "not_applicable", "unknown"].contains(&target_quality),
+                "{file} uses unsupported suggested-test target quality {target_quality}"
+            );
+            for key in [
+                "telemetry",
+                "external_service",
+                "source_edits",
+                "generated_tests",
+                "runtime_mutation_execution",
+                "ci_blocking",
+            ] {
+                assert_eq!(
+                    receipt["limits"][key], false,
+                    "{file} should keep {key} disabled"
+                );
+            }
+        }
+
+        for required in [
+            "useful",
+            "noisy",
+            "wrong_line",
+            "already_covered",
+            "wrong_target",
+            "summary_only_correct",
+            "suppressed_correctly",
+        ] {
+            assert!(
+                seen.contains(required),
+                "missing recommendation calibration outcome receipt for {required}"
+            );
+        }
+
+        Ok(())
+    }
+
     fn assert_recommendation_calibration_source_exists(case: &Value) -> Result<(), String> {
         let artifact = case["source_artifact"]
             .as_str()
