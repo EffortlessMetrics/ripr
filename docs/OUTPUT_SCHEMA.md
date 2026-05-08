@@ -1148,8 +1148,9 @@ Field contract:
 
 ## PR Test Guidance
 
-RIPR-SPEC-0012 defines a future `ripr review-comments` report that projects
-existing seam evidence into advisory GitHub PR guidance:
+RIPR-SPEC-0012 defines the Campaign 12 contract for a future
+`ripr review-comments` report that projects existing seam evidence into
+advisory GitHub PR guidance:
 
 ```text
 ripr review-comments --root . --base <sha> --head <sha> --out target/ripr/review/comments.json
@@ -1210,6 +1211,7 @@ JSON shape:
 Field contract:
 
 - `schema_version` - currently `"0.1"`.
+- `tool` - always `"ripr"`.
 - `status` - always `"advisory"`; this report is review guidance, not a CI
   policy.
 - `summary.comments` - count of guidance items with safe changed-line
@@ -1220,17 +1222,33 @@ Field contract:
   caps, or missing guidance.
 - `summary.unchanged_tests` - `true` when selected recommendations did not have
   a nearby test change in the pull request.
+- `comments[]` - line-placeable advisory recommendations. These are the only
+  items eligible for check annotations or inline review comments.
+- `comments[].id` - stable report-local ID derived from the seam when possible.
+- `comments[].seam_id` - static seam identifier from the existing exposure or
+  agent packet evidence.
 - `comments[].dedupe_key` - stable key based on seam ID, path, line, and a
   changed-expression hash when available.
 - `comments[].placement` - GitHub-compatible changed-line placement. Items
   without safe placement belong in `summary_only[]`.
+- `comments[].placement.mode` - `"exact_seam_line"`,
+  `"owner_function_changed_line"`, or `"same_file_changed_line"`. The renderer
+  must prefer summary-only guidance over misleading line placement.
+- `comments[].kind` - seam kind from the existing static evidence.
+- `comments[].grip_class` - seam grip class from the existing static evidence.
+- `comments[].severity` - configured report severity for the recommendation.
 - `comments[].reason` - short static-evidence explanation for why a focused
   test would be useful.
+- `comments[].missing_discriminator` - missing value, branch, variant, or
+  observation when available.
 - `comments[].suggested_test` - bounded test intent, candidate values,
   assertion shape, recommended test file, and related test to imitate when
   available.
 - `comments[].llm_guidance` - bounded handoff command and prompt for one
   focused test. It is not a request for free-form diff review.
+- `summary_only[]` - same recommendation shape without `placement`. CI should
+  show these in the Markdown/job summary but must not invent a changed-line
+  annotation for them.
 
 Default CI projection should cap inline review comments to three, write summary
 items to the job summary, and emit check annotations only for changed lines.

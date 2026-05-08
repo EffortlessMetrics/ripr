@@ -35,6 +35,9 @@ are scoped or reviewed.
   future `ripr review-comments` JSON contract, changed-line placement rules,
   check-annotation default, opt-in inline review comments, and bounded LLM
   handoff guidance.
+- Finalized RIPR-SPEC-0012 as the Campaign 12 PR guidance contract, keeping the
+  renderer, check-annotation projection, and opt-in review-comment publisher as
+  future implementation slices.
 - Added an LLM work-loop fixture matrix that pins happy, unchanged, regressed,
   missing-artifact, stale-artifact, configured-off, path-with-spaces, and
   Windows-separator review states.

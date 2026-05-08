@@ -14,6 +14,11 @@ This spec defines that projection. RIPR decides which changed-code seams have
 weak static test evidence. Humans and LLM agents receive a bounded brief that
 explains why a focused test is useful and how to verify the result.
 
+This is the Campaign 12 design contract for implementation planning, not an
+implementation receipt. The `review-comments` renderer, generated workflow
+projection, and optional comment publisher remain future work and must preserve
+the boundaries below.
+
 ## Product Contract
 
 PR test guidance annotations are advisory review hints derived from existing
@@ -199,6 +204,8 @@ The JSON report uses schema version `0.1`:
 - `comments[].dedupe_key` - stable key based on seam ID, path, line, and a
   changed-expression hash when available.
 - `comments[].placement` - GitHub-compatible changed-line placement.
+- `comments[].placement.mode` - `"exact_seam_line"`,
+  `"owner_function_changed_line"`, or `"same_file_changed_line"`.
 - `comments[].reason` - short static-evidence explanation for why the focused
   test would be useful.
 - `comments[].missing_discriminator` - missing value, branch, or observation
