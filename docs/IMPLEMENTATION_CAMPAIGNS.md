@@ -2137,6 +2137,7 @@ Dependencies:
 - Campaign 13 supplies PR guidance without making RIPR a free-form reviewer.
 - Campaign 16 is complete and Campaign 17 remains active unless this lane is
   explicitly promoted or run in parallel.
+- Baseline Ledger v1 remains a separate future adoption lane.
 
 Commands:
 
