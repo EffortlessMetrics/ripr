@@ -111,7 +111,7 @@ commands = [
 
 [[work_item]]
 id = "fixtures/llm-work-loop"
-status = "ready"
+status = "done"
 branch = "fixtures-llm-work-loop"
 stackable = false
 requires_human_merge = true
@@ -126,13 +126,18 @@ commands = [
 
 [[work_item]]
 id = "ci/llm-work-packets"
-status = "blocked"
+status = "ready"
 branch = "ci-llm-work-packets"
 stackable = false
 requires_human_merge = true
-blocked_by = ["fixtures/llm-work-loop"]
-blocked_reason = "Wait until the fixture set pins the output contracts before publishing the artifacts from generated CI"
 acceptance = "Generated CI uploads agent status JSON/Markdown, workflow JSON, review summary JSON/Markdown, receipt, and operator cockpit artifacts as advisory evidence"
+commands = [
+  "cargo test -p ripr agent",
+  "cargo xtask check-workflows",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr"
+]
 
 [[work_item]]
 id = "docs/llm-operator-guide"

@@ -1,0 +1,130 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "ready",
+  "root": ".",
+  "target_seam": {
+    "seam_id": "seam-unchanged",
+    "source": "agent_receipt",
+    "file": "src/pricing.rs",
+    "line": 42,
+    "seam_kind": "predicate_boundary"
+  },
+  "static_movement": {
+    "state": "unchanged",
+    "before_class": "weakly_gripped",
+    "after_class": "weakly_gripped",
+    "grip_class": "weakly_gripped",
+    "evidence_artifact": "target/ripr/reports/agent-receipt.json",
+    "verify_artifact": "target/ripr/workflow/agent-verify.json",
+    "summary": "Static movement is unchanged (weakly_gripped -> weakly_gripped).",
+    "next_action": {
+      "kind": "unchanged",
+      "summary": "Static grip did not improve.",
+      "recommended_action": "Add the missing discriminator or stronger assertion named by the packet."
+    }
+  },
+  "next_command": null,
+  "surfaces": [
+    {
+      "name": "agent_status",
+      "label": "Agent status",
+      "path": "target/ripr/workflow/agent-status.json",
+      "state": "computed",
+      "status": "complete",
+      "required": true,
+      "summary": "6 required artifacts present, 0 missing, 0 warnings. Command: ripr agent status --root . --json > target/ripr/workflow/agent-status.json"
+    },
+    {
+      "name": "agent_workflow",
+      "label": "Agent workflow",
+      "path": "target/ripr/workflow/workflow.json",
+      "state": "present",
+      "status": "ready",
+      "required": false,
+      "summary": "Workflow targets seam seam-unchanged."
+    },
+    {
+      "name": "agent_receipt",
+      "label": "Agent receipt",
+      "path": "target/ripr/reports/agent-receipt.json",
+      "state": "present",
+      "status": "advisory",
+      "required": true,
+      "summary": "Receipt records unchanged movement for seam seam-unchanged."
+    },
+    {
+      "name": "operator_cockpit",
+      "label": "Operator cockpit",
+      "path": "target/ripr/reports/operator-cockpit.json",
+      "state": "optional_missing",
+      "status": "optional_missing",
+      "required": false,
+      "summary": "Operator cockpit artifact is not present."
+    },
+    {
+      "name": "repo_exposure",
+      "label": "Repo exposure",
+      "path": "target/ripr/reports/repo-exposure.json",
+      "state": "optional_missing",
+      "status": "optional_missing",
+      "required": false,
+      "summary": "Repo exposure artifact is not present."
+    },
+    {
+      "name": "lsp_cockpit",
+      "label": "LSP cockpit",
+      "path": "target/ripr/reports/lsp-cockpit.json",
+      "state": "optional_missing",
+      "status": "optional_missing",
+      "required": false,
+      "summary": "LSP cockpit artifact is not present."
+    }
+  ],
+  "ci_artifacts": [
+    {
+      "name": "agent_status",
+      "path": "target/ripr/workflow/agent-status.json",
+      "state": "missing"
+    },
+    {
+      "name": "agent_workflow",
+      "path": "target/ripr/workflow/workflow.json",
+      "state": "present"
+    },
+    {
+      "name": "agent_review_summary",
+      "path": "target/ripr/workflow/agent-review-summary.json",
+      "state": "missing"
+    },
+    {
+      "name": "agent_receipt",
+      "path": "target/ripr/reports/agent-receipt.json",
+      "state": "present"
+    },
+    {
+      "name": "operator_cockpit",
+      "path": "target/ripr/reports/operator-cockpit.json",
+      "state": "missing"
+    }
+  ],
+  "reviewer_summary": {
+    "headline": "Review packet is ready for seam seam-unchanged.",
+    "what_changed": "Static movement is unchanged (weakly_gripped -> weakly_gripped).",
+    "evidence": "Review target/ripr/reports/agent-receipt.json with target/ripr/workflow/agent-verify.json.",
+    "remaining": "Add the missing discriminator or stronger assertion named by the packet.",
+    "reviewer_should_inspect": [
+      "target/ripr/reports/agent-receipt.json",
+      "target/ripr/workflow/agent-verify.json",
+      "target/ripr/reports/operator-cockpit.json",
+      "target/ripr/reports/repo-exposure.json"
+    ]
+  },
+  "limits": {
+    "static_artifact_relationship": true,
+    "runtime_mutation_execution": false,
+    "automatic_edits": false,
+    "generated_tests": false
+  }
+}
+
