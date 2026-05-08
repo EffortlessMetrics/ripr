@@ -76,7 +76,7 @@ commands = [
 
 [[work_item]]
 id = "ci/generated-gate-wiring"
-status = "ready"
+status = "done"
 branch = "ci-generated-gate-wiring"
 stackable = false
 blocked_by = [
@@ -95,7 +95,7 @@ commands = [
 
 [[work_item]]
 id = "docs/calibrated-gate-policy"
-status = "blocked"
+status = "ready"
 branch = "docs-calibrated-gate-policy"
 stackable = false
 blocked_by = [

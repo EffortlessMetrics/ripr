@@ -1494,6 +1494,12 @@ returning a non-zero exit for `blocked` or `config_error` decisions. It must
 not post comments, edit source files, generate tests, run mutation testing,
 upload SARIF, mutate GitHub state, or hide acknowledged decisions.
 
+Generated CI runs this evaluator only when `RIPR_GATE_MODE` is explicitly set.
+The default generated workflow leaves `RIPR_GATE_MODE` empty, captures pull
+request labels to `target/ci/labels.json`, and uploads any gate-decision files
+with the regular RIPR artifact packet. `visible-only` remains advisory;
+blocking modes are opt-in.
+
 JSON shape:
 
 ```json
