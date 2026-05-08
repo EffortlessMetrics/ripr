@@ -12,12 +12,15 @@ let controller: RiprClientController | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const output = vscode.window.createOutputChannel('ripr');
-  controller = new RiprClientController(context, output);
+  const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+  controller = new RiprClientController(context, output, undefined, status);
 
   context.subscriptions.push(
     output,
+    status,
     vscode.commands.registerCommand('ripr.restartServer', async () => controller?.restart()),
     vscode.commands.registerCommand('ripr.showOutput', () => controller?.showOutput()),
+    vscode.commands.registerCommand('ripr.showStatus', () => controller?.showStatus()),
     vscode.commands.registerCommand('ripr.copyContext', async (target?: RiprContextTarget) =>
       controller?.copyContext(target)
     ),
@@ -54,6 +57,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     ),
     vscode.commands.registerCommand('ripr.openSettings', async () => {
       await vscode.commands.executeCommand('workbench.action.openSettings', 'ripr');
+    }),
+    vscode.workspace.onDidChangeTextDocument((event) => {
+      controller?.markWorkspaceStale(event.document);
     }),
     vscode.workspace.onDidChangeConfiguration(async (event) => {
       if (

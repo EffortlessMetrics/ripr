@@ -11,6 +11,9 @@ are scoped or reviewed.
 
 ### Added
 
+- Added a VS Code status bar item and `ripr: Show Status` command for first-run
+  server resolution, workspace detection, saved-workspace analysis
+  running/complete/stale/failed, and no-actionable-seam states.
 - Added `ripr agent start --root . --seam-id <id> --out target/ripr/workflow`
   to write a source-edit-free workflow packet with `workflow.json`,
   `commands.md`, and `agent-brief.json` for one selected seam. The packet
@@ -54,6 +57,8 @@ are scoped or reviewed.
 
 - Pinned RIPR-SPEC-0012 as the PR test guidance annotation contract and
   advanced Campaign 12 to `vscode/first-run-status` as the next ready UX item.
+- Advanced Campaign 12 to `vscode/action-discoverability` after pinning the
+  extension first-run status surface.
 - Aligned public package and extension front-door metadata around Rust
   test-oracle gaps, targeted tests, and static RIPR evidence instead of
   internal mutation-exposure wording.

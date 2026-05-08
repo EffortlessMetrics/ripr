@@ -88,8 +88,9 @@ the source-edit-free human and external-agent path. Campaign 12 is active as
 First-Hour UX: after the LLM work-loop command and artifact state stabilized, the
 current product risk is making the VS Code extension and generated GitHub
 workflow explain the top recommendation without requiring users to inspect CLI
-reports first. The PR guidance annotation contract is pinned first so editor and
-CI behavior can share the same advisory, non-blocking boundary.
+reports first. The PR guidance annotation contract is pinned, the editor now has
+a first-run status path for server/workspace/analysis state, and the next slice
+is action discoverability before the generated CI summary surface.
 
 ## Strategic Sequence
 

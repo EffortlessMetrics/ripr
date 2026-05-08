@@ -44,7 +44,7 @@ commands = [
 
 [[work_item]]
 id = "vscode/first-run-status"
-status = "ready"
+status = "done"
 branch = "vscode-first-run-status"
 stackable = false
 requires_human_merge = true
@@ -63,7 +63,7 @@ commands = [
 
 [[work_item]]
 id = "vscode/action-discoverability"
-status = "blocked"
+status = "ready"
 branch = "vscode-action-discoverability"
 stackable = false
 requires_human_merge = true

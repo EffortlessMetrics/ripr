@@ -66,11 +66,13 @@ The editor path should not require report-format knowledge:
 
 1. Install `EffortlessMetrics.ripr` from VS Code Marketplace or Open VSX.
 2. Open a Rust/Cargo workspace.
-3. Let the saved-workspace analysis refresh or run `ripr: Restart Server`.
-4. Open the Problems panel and hover a RIPR diagnostic to inspect evidence.
-5. Use `Copy Targeted Test Brief`, the agent copy commands, or
+3. Check the `ripr` status bar item for server, workspace, analysis, stale, or
+   no-actionable-seam state.
+4. Let the saved-workspace analysis refresh or run `ripr: Restart Server`.
+5. Open the Problems panel and hover a RIPR diagnostic to inspect evidence.
+6. Use `Copy Targeted Test Brief`, the agent copy commands, or
    `Open Best Related Test`.
-6. Add one focused test and verify with the copied command chain or the CI
+7. Add one focused test and verify with the copied command chain or the CI
    artifact packet.
 
 The extension owns normal first-run server provisioning. A separate
@@ -117,6 +119,7 @@ quieter.
 ## Commands
 
 - `ripr: Restart Server`
+- `ripr: Show Status`
 - `ripr: Show Output`
 - `ripr: Copy Finding Context`
 - `ripr: Copy Suggested Assertion`

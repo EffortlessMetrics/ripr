@@ -303,11 +303,12 @@ evidence = [
   "related test diagnostic information",
   "diagnostic-targeted context action",
   "diagnostic hover details",
-  "serialized refresh generations"
+  "serialized refresh generations",
+  "VS Code status bar and ripr: Show Status path for server resolution, workspace detection, analysis running/complete/stale/failed, and no-actionable-seam states"
 ]
 fixtures = []
-next = "lsp-context-command-v1"
-metric = "diagnostics carry finding/probe metadata and editor actions target the selected finding"
+next = "vscode/action-discoverability"
+metric = "diagnostics carry finding/probe metadata, editor status names saved-workspace analysis state, and editor actions target the selected finding"
 
 [[capability]]
 id = "parser_backed_syntax_facts"
