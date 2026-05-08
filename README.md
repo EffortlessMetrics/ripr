@@ -319,8 +319,8 @@ recommendations are useful, safely placed, properly suppressed, pointed at the
 expected test target, and correlated with before/after static movement.
 [Recommendation calibration workflow](docs/RECOMMENDATION_CALIBRATION.md)
 documents how to read that report. Campaign 15 is active as Calibrated Gate
-Policy, starting with the optional gate contract before evaluator
-implementation.
+Policy: RIPR-SPEC-0014 pins the optional gate contract, and the next
+implementation slice is the read-only evaluator.
 
 Deeper capability state lives in [Capability matrix](docs/CAPABILITY_MATRIX.md)
 and [Metrics](docs/METRICS.md).

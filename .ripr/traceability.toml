@@ -881,3 +881,32 @@ metrics = [
   "recommendation_calibration_static_regressed",
   "recommendation_calibration_unknown"
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0014"
+name = "calibrated gate policy"
+spec = "docs/specs/RIPR-SPEC-0014-calibrated-gate-policy.md"
+tests = [
+]
+fixtures = [
+]
+code = [
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0014-calibrated-gate-policy.md",
+  "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/ROADMAP.md",
+  "docs/CAPABILITY_MATRIX.md"
+]
+metrics = [
+  "gate_decisions_evaluated",
+  "gate_decisions_blocking",
+  "gate_decisions_acknowledged",
+  "gate_decisions_advisory",
+  "gate_decisions_suppressed",
+  "gate_decisions_unknown_confidence",
+  "gate_config_errors"
+]
