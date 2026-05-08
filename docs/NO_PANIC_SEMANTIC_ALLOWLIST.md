@@ -177,3 +177,22 @@ against the actual call site before being committed to the allowlist.
   entries.
 
 - **Do not** rely on `last_seen` for matching. It is a hint, not identity.
+
+## v0.3 schema (governed mirror)
+
+`policy/no-panic-allowlist.toml` is a **schema 0.3 mirror** of
+`.ripr/no-panic-allowlist.toml` (canonical schema 0.2). The v0.3 schema adds:
+
+- `id` — stable identifier referenced in PR descriptions, ADRs, and follow-up
+  cleanup work.
+- `owner` — team/area responsible for the entry.
+- `expires` — date the entry must be re-justified.
+
+The v0.3 selector model is byte-for-byte the same as v0.2: `path + family +
+selector` is the identity, and `last_seen` is advisory.
+
+The canonical file consumed by `cargo xtask check-no-panic-family` remains
+`.ripr/no-panic-allowlist.toml`. The mirror at `policy/no-panic-allowlist.toml`
+demonstrates the v0.3 schema with three representative entries; the full
+migration of the remaining 26 entries happens in the follow-up PR that updates
+the checker to read v0.3.
