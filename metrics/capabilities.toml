@@ -576,6 +576,8 @@ evidence = [
   "ripr agent review-summary --root . joins existing status, workflow, receipt, cockpit, repo exposure, optional LSP cockpit, and local CI artifact state into compact Markdown",
   "ripr agent review-summary --root . --json emits Agent Review Summary schema 0.1",
   "crates/ripr/src/app/agent_review_summary.rs renders review-summary JSON and Markdown without rerunning analysis",
+  "generated GitHub CI uploads target/ripr/workflow with workflow manifest, commands Markdown, agent status JSON/Markdown, agent review summary JSON/Markdown, packet, brief, and verify artifacts",
+  "generated GitHub CI uploads target/ripr/reports/agent-receipt.json and operator-cockpit artifacts as advisory evidence when available",
   "fixtures/boundary_gap/expected/llm-work-loop pins happy, unchanged, regressed, missing-artifact, stale-artifact, configured-off, path-with-spaces, and Windows-separator loop cases",
   "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_guidance_covers_improved_state",
   "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_guidance_covers_changed_state",
@@ -587,6 +589,7 @@ evidence = [
   "crates/ripr/src/cli/agent.rs parses the status, start, and review-summary subcommands",
   "docs/OUTPUT_SCHEMA.md Agent Status, Agent Workflow Manifest, Agent Receipt, and Agent Review Summary sections",
   "docs/specs/RIPR-SPEC-0011-llm-work-loop.md",
+  "docs/CI.md",
   "cargo test -p ripr agent"
 ]
 fixtures = [
@@ -600,8 +603,8 @@ fixtures = [
   "fixtures/boundary_gap/expected/llm-work-loop/path-with-spaces/review-summary.json",
   "fixtures/boundary_gap/expected/llm-work-loop/windows-separators/review-summary.json"
 ]
-next = "ci/llm-work-packets"
-metric = "agent status, workflow packets, provenance-backed receipts, and reviewer summaries name artifacts, commands, selected seam context, recovered seam_id, stale-looking warnings, hashes, bounded next actions, joined surfaces, and source-edit-free boundaries"
+next = "docs/llm-operator-guide"
+metric = "agent status, workflow packets, provenance-backed receipts, reviewer summaries, and generated CI artifact uploads name artifacts, commands, selected seam context, recovered seam_id, stale-looking warnings, hashes, bounded next actions, joined surfaces, and source-edit-free boundaries"
 
 [[capability]]
 id = "pr_test_guidance_annotations"

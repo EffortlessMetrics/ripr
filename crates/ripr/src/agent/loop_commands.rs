@@ -23,8 +23,12 @@ pub(crate) const EDITOR_AGENT_VERIFY_ARTIFACT: &str = "target/ripr/agent/agent-v
 pub(crate) const EDITOR_AGENT_RECEIPT_ARTIFACT: &str = "target/ripr/agent/agent-receipt.json";
 
 pub(crate) const WORKFLOW_AGENT_STATUS_ARTIFACT: &str = "target/ripr/workflow/agent-status.json";
+pub(crate) const WORKFLOW_AGENT_STATUS_MARKDOWN_ARTIFACT: &str =
+    "target/ripr/workflow/agent-status.md";
 pub(crate) const WORKFLOW_AGENT_REVIEW_SUMMARY_ARTIFACT: &str =
     "target/ripr/workflow/agent-review-summary.json";
+pub(crate) const WORKFLOW_AGENT_REVIEW_SUMMARY_MARKDOWN_ARTIFACT: &str =
+    "target/ripr/workflow/agent-review-summary.md";
 
 pub(crate) fn agent_start_command(root: &str, seam_id: &str, out_dir: &str) -> String {
     format!(
@@ -111,12 +115,26 @@ pub(crate) fn agent_status_command(root: &str, out_path: Option<&str>) -> String
     )
 }
 
+pub(crate) fn agent_status_markdown_command(root: &str, out_path: Option<&str>) -> String {
+    append_redirect(
+        format!("ripr agent status --root {}", shell_arg(root)),
+        out_path,
+    )
+}
+
 pub(crate) fn agent_review_summary_command(root: &str, out_path: Option<&str>) -> String {
     append_redirect(
         format!(
             "ripr agent review-summary --root {} --json",
             shell_arg(root)
         ),
+        out_path,
+    )
+}
+
+pub(crate) fn agent_review_summary_markdown_command(root: &str, out_path: Option<&str>) -> String {
+    append_redirect(
+        format!("ripr agent review-summary --root {}", shell_arg(root)),
         out_path,
     )
 }
@@ -225,6 +243,25 @@ mod tests {
                 Some(WORKFLOW_AGENT_RECEIPT_ARTIFACT),
             ),
             "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id seam-a --json --out target/ripr/reports/agent-receipt.json"
+        );
+        assert_eq!(
+            agent_status_command(".", Some(WORKFLOW_AGENT_STATUS_ARTIFACT)),
+            "ripr agent status --root . --json > target/ripr/workflow/agent-status.json"
+        );
+        assert_eq!(
+            agent_status_markdown_command(".", Some(WORKFLOW_AGENT_STATUS_MARKDOWN_ARTIFACT)),
+            "ripr agent status --root . > target/ripr/workflow/agent-status.md"
+        );
+        assert_eq!(
+            agent_review_summary_command(".", Some(WORKFLOW_AGENT_REVIEW_SUMMARY_ARTIFACT)),
+            "ripr agent review-summary --root . --json > target/ripr/workflow/agent-review-summary.json"
+        );
+        assert_eq!(
+            agent_review_summary_markdown_command(
+                ".",
+                Some(WORKFLOW_AGENT_REVIEW_SUMMARY_MARKDOWN_ARTIFACT),
+            ),
+            "ripr agent review-summary --root . > target/ripr/workflow/agent-review-summary.md"
         );
     }
 

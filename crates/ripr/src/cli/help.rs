@@ -10,7 +10,7 @@ Usage:
   ripr agent packet --root . --seam-id ID --json
   ripr agent verify --root . --before before.json --after after.json --json
   ripr agent receipt --root . --verify-json agent-verify.json --seam-id ID --json
-  ripr agent status --root . --json
+  ripr agent status --root . [--json]
   ripr agent review-summary --root . [--json]
   ripr check [--base origin/main] [--diff PATH] [--mode draft] [--format FORMAT]
   ripr explain [--base REV|--diff PATH] <finding-id|file:line>
@@ -33,7 +33,7 @@ Quick start:
   ripr agent packet --root . --seam-id f3c9e4d21a0b7c88 --json
   ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json
   ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id f3c9e4d21a0b7c88 --json
-  ripr agent status --root . --json
+  ripr agent status --root .
   ripr agent review-summary --root .
   ripr check --diff crates/ripr/examples/sample/example.diff
   ripr check --diff crates/ripr/examples/sample/example.diff --json
@@ -213,11 +213,11 @@ static; it does not run analysis, mutation testing, generate tests, edit files,
 change cache behavior, or touch LSP/MCP surfaces.
 "#;
 
-const AGENT_STATUS_HELP: &str = r#"Usage: ripr agent status [--root PATH] --json
+const AGENT_STATUS_HELP: &str = r#"Usage: ripr agent status [--root PATH] [--json]
 
 Options:
   --root PATH      Workspace root. Defaults to current directory.
-  --json           Required until a human status surface exists.
+  --json           Emit the machine-readable status report. Human Markdown is the default.
 
 The status command reads existing agent-loop artifacts under target/ripr only
 and reports which before snapshot, after snapshot, brief, packet, verify, and
