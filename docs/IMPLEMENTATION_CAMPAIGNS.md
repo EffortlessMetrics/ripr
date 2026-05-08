@@ -1442,8 +1442,8 @@ Work items:
 | `vscode/action-discoverability` | done | Seam diagnostics now group code-action titles around inspect, write targeted test, agent handoff, verify after test, review result, and refresh intent while keeping command IDs and payloads stable. |
 | `ci/pr-summary-surface` | done | The generated workflow now writes a reviewer-oriented `RIPR advisory summary` with pilot and agent review content, artifact paths, SARIF and badge status, known limits, and future PR guidance annotation counts when `target/ripr/review/comments.json` exists; it also emits non-blocking changed-line check annotations from that future report. |
 | `ci/generated-workflow-smoke-fixture` | done | The generated workflow smoke fixture now pins artifact paths, top-seam extraction, agent artifact generation, non-blocking posture, optional SARIF gates, badge output, advisory summary sections, and future PR guidance annotation hooks. |
-| `docs/ux-by-user-type` | ready | Rewrite the first-hour docs around VS Code, CI, CLI, agent, troubleshooting, and known limits while keeping README short now that the editor and generated CI first screens are pinned. |
-| `campaign/first-hour-ux-closeout` | blocked | Close only after the extension and CI first screens are useful without report archaeology and the CLI remains the shared engine rather than the required first user interface. |
+| `docs/ux-by-user-type` | done | `docs/QUICKSTART.md` now routes the first hour by VS Code, CI, CLI, and agent/reviewer user type, with troubleshooting and known limits; README keeps the short front-door summary and links to the deeper path. |
+| `campaign/first-hour-ux-closeout` | ready | Close only after the extension and CI first screens are useful without report archaeology and the CLI remains the shared engine rather than the required first user interface. |
 
 Dependencies:
 

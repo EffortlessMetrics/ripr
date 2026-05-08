@@ -78,6 +78,9 @@ are scoped or reviewed.
   hook.
 - Advanced Campaign 12 to `docs/ux-by-user-type` after pinning the generated
   workflow smoke fixture.
+- Reworked README and Quickstart first-hour docs around VS Code, CI, CLI,
+  agent/reviewer, troubleshooting, and known-limit paths, and advanced Campaign
+  12 to closeout.
 - Aligned public package and extension front-door metadata around Rust
   test-oracle gaps, targeted tests, and static RIPR evidence instead of
   internal mutation-exposure wording.
