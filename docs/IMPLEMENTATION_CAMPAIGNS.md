@@ -1706,15 +1706,16 @@ Closeout:
 
 Next:
 
-- Campaign 15 is active. `spec/calibrated-gate-policy` and
-  `gate/policy-evaluator` are pinned; continue with
-  `fixtures/calibrated-gate-cases` before CI wiring.
+- Campaign 15 is complete. [Campaign 15
+  closeout](handoffs/2026-05-08-campaign-15-closeout.md) records the PR chain,
+  proof commands, and explicit boundary: optional calibrated gates are available
+  only when configured, while generated workflows remain advisory by default.
 
 ## Campaign 15: Calibrated Gate Policy
 
 Campaign ID: `calibrated-gate-policy`
 
-Status: active
+Status: complete
 
 Recommendation calibration comes first. Once RIPR has measured whether its
 top recommendations are useful, correctly placed, and low-noise, a later policy
@@ -1765,7 +1766,22 @@ Work items:
 | `fixtures/calibrated-gate-cases` | done | Pin gate fixtures for advisory, acknowledged, baseline-check, fail-on-new-high-confidence-gap, suppression, missing-input, and calibration agreement/disagreement cases. |
 | `ci/generated-gate-wiring` | done | Wire generated GitHub workflows to optionally run the gate evaluator only when explicitly configured, preserving advisory defaults and surfacing acknowledged or blocking decisions in summaries. |
 | `docs/calibrated-gate-policy` | done | Document calibrated gates as optional policy over existing static evidence, including modes, waiver labels, CI behavior, calibration evidence, and static/runtime vocabulary boundaries. |
-| `campaign/calibrated-gate-closeout` | ready | Close only after optional calibrated gates are specified, evaluated, fixture-pinned, optionally wired into generated CI, documented, and still advisory by default. |
+| `campaign/calibrated-gate-closeout` | done | Closed Campaign 15 after optional calibrated gates were specified, evaluated, fixture-pinned, optionally wired into generated CI, documented, and kept advisory by default. The closeout audit is recorded in `docs/handoffs/2026-05-08-campaign-15-closeout.md`. |
+
+Campaign 15 is complete. Landed PR chain:
+
+- #554 opened the current calibrated gate policy lane after Campaign 14 supplied
+  recommendation calibration.
+- #559 pinned RIPR-SPEC-0014 and the gate decision schema contract.
+- #560 added the read-only `ripr gate evaluate` producer.
+- #561 pinned the calibrated-gate fixture matrix.
+- Direct commit `dceb291` wired generated GitHub workflows to run the gate only
+  when explicitly configured.
+- #564 preserved evidence uploads when explicit gate modes fail.
+- #566 added the calibrated gate policy guide and aligned docs with SARIF
+  policy inputs.
+- `campaign/calibrated-gate-closeout` recorded the final audit and closed the
+  campaign.
 
 Dependencies:
 
@@ -1778,6 +1794,12 @@ Dependencies:
   decisions need their own explicit output contract.
 - The `ripr-waive` label remains an acknowledgement path, not a hidden
   suppression.
+
+Closeout:
+
+- [Campaign 15 closeout](handoffs/2026-05-08-campaign-15-closeout.md)
+  records the final Campaign 15 PR chain, validation commands, and deferred
+  adoption boundary.
 
 Commands:
 
@@ -1802,3 +1824,9 @@ Blocking conditions:
 - posting inline comments as part of the gate evaluator
 - automatic source edits or generated tests
 - new public crates
+
+Next:
+
+- No Campaign 16 is opened by this closeout. Future ranking, stronger policy,
+  or adoption feedback work should start from a new explicit spec and campaign
+  manifest rather than extending Campaign 15.
