@@ -141,9 +141,11 @@ non-blocking generated CI defaults. [RIPR blocking
 readiness](BLOCKING_READINESS.md) explains when to stay advisory, require
 acknowledgement, use baseline-check, or enable calibrated blocking. The
 [Campaign 16 closeout](handoffs/2026-05-08-campaign-16-closeout.md) records
-the adoption proof and next-work boundary. Editor Evidence UX remains queued as
-a separate Lane 3 campaign and should start only after an explicit activation
-PR or explicit parallel-lane decision.
+the adoption proof and next-work boundary. Campaign 17 is active as RIPR Zero
+Adoption: it starts by defining a baseline debt delta report before generated
+CI projects debt deltas and repair-packet links. Editor Evidence UX remains
+queued as a separate Lane 3 campaign and should start only after an explicit
+activation PR or explicit parallel-lane decision.
 
 ## Strategic Sequence
 
@@ -190,6 +192,7 @@ quality rails
 -> recommendation calibration
 -> calibrated gate policy
 -> gate adoption UX
+-> RIPR Zero adoption
 -> editor evidence UX
 ```
 
