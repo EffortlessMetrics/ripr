@@ -84,9 +84,9 @@ is a read-only lens over existing artifacts, loop command templates are
 centralized for the current CLI/LSP/cockpit/CI surfaces, workflow manifests,
 provenance-backed receipts, next-action guidance, review summaries, fixtures,
 and generated CI packet uploads are pinned, and the LLM operator guide documents
-the source-edit-free human and external-agent path. Campaign 12 is queued as
-First-Hour UX: after the LLM work-loop command and artifact state is stable, the
-next product risk is making the VS Code extension and generated GitHub workflow
+the source-edit-free human and external-agent path. Campaign 12 is active as
+First-Hour UX: after the LLM work-loop command and artifact state stabilized, the
+current product risk is making the VS Code extension and generated GitHub workflow
 explain the top recommendation without requiring users to inspect CLI reports
 first.
 

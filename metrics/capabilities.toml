@@ -616,10 +616,10 @@ evidence = [
   "docs/specs/RIPR-SPEC-0012-pr-test-guidance.md defines advisory PR annotation and optional review-comment guidance",
   "docs/OUTPUT_SCHEMA.md PR Test Guidance section defines the planned review-comments JSON shape",
   "docs/CI.md PR Test Guidance Annotations section documents the default job-summary and check-annotation posture",
-  "docs/IMPLEMENTATION_CAMPAIGNS.md Campaign 12 queues spec/pr-test-guidance-annotations before generated workflow posting work"
+  "docs/IMPLEMENTATION_CAMPAIGNS.md Campaign 12 marks spec/pr-test-guidance-annotations as the first ready contract item before generated workflow posting work"
 ]
 fixtures = []
-next = "ci/pr-test-guidance-annotations"
+next = "spec/pr-test-guidance-annotations"
 metric = "pr_test_guidance_comments, pr_test_guidance_summary_only, pr_test_guidance_suppressed, pr_test_guidance_opt_in_review_comments"
 
 [[capability]]

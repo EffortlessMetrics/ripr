@@ -1,136 +1,93 @@
-id = "llm-work-loop"
-title = "LLM Work Loop"
+id = "first-hour-ux"
+title = "First-Hour UX"
 status = "active"
 
-# This is Campaign 11 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
-# Campaign 10 (`editor-agent-integration`) closed after the saved-workspace
-# editor loop, agent CLI loop, cockpit, CI artifacts, docs, and release proof
-# were aligned.
+# This is Campaign 12 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+# Campaign 11 (`llm-work-loop`) closed after status, workflow manifests,
+# provenance-backed receipts, next-action guidance, review summaries, fixtures,
+# generated CI artifacts, and the LLM operator guide made the agent loop
+# stateful and source-edit-free.
 
 objective = """
-Make the completed editor-agent loop stateful, deterministic, and useful to LLM
-agents under review pressure: status to task packet to edit target to verify to
-receipt to reviewer summary.
+Make a new user successful in the first hour through either the VS Code
+extension or generated GitHub workflow, without requiring them to understand
+RIPR's internal report topology.
 """
 
 end_state = [
-  "An agent can inspect current loop state without rerunning analysis or reading chat history",
-  "Loop commands, artifact paths, and review receipts are centralized enough that CLI, LSP, cockpit, CI, docs, and fixtures do not drift",
-  "Receipts carry enough provenance and next-action guidance for reviewers to trust the static handoff",
-  "Canonical fixtures pin happy, unchanged, regressed, missing-artifact, stale-artifact, configured-off, path-with-spaces, and Windows-separator loop cases",
-  "Generated CI uploads LLM work-loop status, workflow, review summary, receipt, and cockpit artifacts as advisory evidence"
+  "VS Code users can see server, workspace, analysis, staleness, and diagnostic state without reading logs first",
+  "Editor code actions are titled around user intent: write the targeted test, open the best related test, copy an agent handoff, verify after the test, and refresh analysis",
+  "Generated GitHub workflows put the top advisory recommendation in the PR or step summary before artifact download is necessary",
+  "PR test guidance annotations have a spec, JSON contract, placement rules, caps, and opt-in review-comment boundary before generated workflows post line guidance",
+  "Generated CI workflow behavior is pinned by a fixture that covers artifact paths, non-blocking posture, optional SARIF, badge output, and agent artifacts",
+  "Agent command templates and workflow manifests from Campaign 11 feed the UX surfaces instead of creating another command-string source of truth",
+  "README and installed-user docs are organized by user type: VS Code, CI, CLI, agent, troubleshooting, and known limits"
 ]
 
 [[work_item]]
-id = "agent/loop-status-report"
-status = "done"
-branch = "agent-loop-status-report"
+id = "spec/pr-test-guidance-annotations"
+status = "ready"
+branch = "spec-pr-test-guidance-annotations"
 stackable = false
 requires_human_merge = true
-acceptance = "Add `ripr agent status --root . --json` as a read-only artifact status report for before snapshot, after snapshot, agent brief, agent packet, agent verify, and agent receipt, with recoverable seam_id, missing-input commands, and stale-looking warnings"
+acceptance = "Finalize the advisory PR test guidance contract before implementing `ripr review-comments`, including changed-line placement, anti-spam caps, bounded LLM guidance, check annotations by default, optional inline review comments, JSON shape, and non-blocking CI posture"
 commands = [
-  "cargo test -p ripr agent_status",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-spec-format",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-pr"
 ]
 
 [[work_item]]
-id = "agent/centralize-loop-command-templates"
-status = "done"
-branch = "agent-centralize-loop-command-templates"
+id = "vscode/first-run-status"
+status = "blocked"
+branch = "vscode-first-run-status"
 stackable = false
 requires_human_merge = true
-acceptance = "Centralize loop command templates used by agent status, brief next commands, LSP copy actions, cockpit missing-input commands, CI artifacts, docs examples, fixtures, and release-readiness proof without changing behavior"
+blocked_by = ["spec/pr-test-guidance-annotations"]
+acceptance = "Add a discoverable editor status path for server resolution, workspace detection, analysis running/complete/stale/failed, and no-actionable-seam states"
 commands = [
-  "cargo test -p ripr agent",
   "cargo test -p ripr lsp",
+  "cargo test -p ripr lsp::tests",
   "cargo xtask lsp-cockpit-report",
-  "cargo xtask operator-cockpit",
+  "npm --prefix editors/vscode run compile",
+  "npm --prefix editors/vscode run test:e2e",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-pr"
 ]
 
 [[work_item]]
-id = "agent/workflow-manifest"
-status = "done"
-branch = "agent-workflow-manifest"
+id = "vscode/action-discoverability"
+status = "blocked"
+branch = "vscode-action-discoverability"
 stackable = false
 requires_human_merge = true
-acceptance = "Add `ripr agent start --root . --seam-id <id> --out target/ripr/workflow` to write a source-edit-free workflow manifest containing artifact paths and commands"
+blocked_by = ["spec/pr-test-guidance-annotations"]
+acceptance = "Group and title diagnostic actions around user intent without changing analyzer behavior, adding broad LSP features, or enabling unsaved-buffer overlays"
 commands = [
-  "cargo test -p ripr agent",
+  "cargo test -p ripr lsp",
+  "cargo test -p ripr lsp::tests",
+  "cargo xtask lsp-cockpit-report",
+  "npm --prefix editors/vscode run compile",
+  "npm --prefix editors/vscode run test:e2e",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-pr"
 ]
 
 [[work_item]]
-id = "agent/receipt-provenance"
-status = "done"
-branch = "agent-receipt-provenance"
+id = "ci/pr-summary-surface"
+status = "blocked"
+branch = "ci-pr-summary-surface"
 stackable = false
 requires_human_merge = true
-acceptance = "Add receipt provenance fields for ripr version, repo root, config fingerprint, artifact hashes, seam_id, before/after class, command template version, and timestamp without claiming runtime confirmation"
-commands = [
-  "cargo test -p ripr agent",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr"
-]
-
-[[work_item]]
-id = "agent/next-action-guidance"
-status = "done"
-branch = "agent-next-action-guidance"
-stackable = false
-requires_human_merge = true
-acceptance = "Emit bounded static next-action guidance for improved, unchanged, regressed, resolved, and new-gap receipt states"
-commands = [
-  "cargo test -p ripr agent",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr"
-]
-
-[[work_item]]
-id = "agent/reviewer-summary"
-status = "done"
-branch = "agent-reviewer-summary"
-stackable = false
-requires_human_merge = true
-acceptance = "Add `ripr agent review-summary --root . --json` and human output that joins status, receipt, cockpit, repo exposure, LSP cockpit when present, and CI artifact status into a compact review packet"
-commands = [
-  "cargo test -p ripr agent_review_summary",
-  "cargo test -p ripr agent",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr"
-]
-
-[[work_item]]
-id = "fixtures/llm-work-loop"
-status = "done"
-branch = "fixtures-llm-work-loop"
-stackable = false
-requires_human_merge = true
-acceptance = "Add LLM work-loop fixtures for happy, unchanged, regressed, missing-artifact, stale-artifact, configured-off, path-with-spaces, and Windows-separator cases"
-commands = [
-  "cargo test -p ripr agent",
-  "cargo xtask fixtures",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr"
-]
-
-[[work_item]]
-id = "ci/llm-work-packets"
-status = "done"
-branch = "ci-llm-work-packets"
-stackable = false
-requires_human_merge = true
-acceptance = "Generated CI uploads agent status JSON/Markdown, workflow JSON, review summary JSON/Markdown, receipt, and operator cockpit artifacts as advisory evidence"
+blocked_by = ["spec/pr-test-guidance-annotations"]
+acceptance = "Make the generated workflow emit a useful PR or step summary with the top actionable seam, why it matters, suggested test target, artifact links, SARIF status, badge status, known limits, and check annotations from the PR test guidance report when implemented"
 commands = [
   "cargo test -p ripr agent",
   "cargo xtask check-workflows",
@@ -140,12 +97,34 @@ commands = [
 ]
 
 [[work_item]]
-id = "docs/llm-operator-guide"
-status = "done"
-branch = "docs-llm-operator-guide"
+id = "ci/generated-workflow-smoke-fixture"
+status = "blocked"
+branch = "ci-generated-workflow-smoke-fixture"
 stackable = false
 requires_human_merge = true
-acceptance = "Document the LLM operator loop from agent status through start, packet or brief, focused test, after snapshot, verify, receipt, and review summary, with anti-goals explicit"
+blocked_by = ["ci/pr-summary-surface"]
+acceptance = "Pin generated workflow artifact paths, top-seam extraction, agent artifact generation, non-blocking posture, optional SARIF, and badge output so CI UX does not drift"
+commands = [
+  "cargo test -p ripr agent",
+  "cargo xtask fixtures",
+  "cargo xtask check-workflows",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "docs/ux-by-user-type"
+status = "blocked"
+branch = "docs-ux-by-user-type"
+stackable = false
+requires_human_merge = true
+blocked_by = [
+  "vscode/first-run-status",
+  "vscode/action-discoverability",
+  "ci/pr-summary-surface"
+]
+acceptance = "Rewrite the first-hour docs around VS Code, CI, CLI, agent, troubleshooting, and known limits while keeping README short"
 commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
@@ -154,12 +133,20 @@ commands = [
 ]
 
 [[work_item]]
-id = "campaign/llm-work-loop-closeout"
-status = "done"
-branch = "campaign-llm-work-loop-closeout"
+id = "campaign/first-hour-ux-closeout"
+status = "blocked"
+branch = "campaign-first-hour-ux-closeout"
 stackable = false
 requires_human_merge = true
-acceptance = "Close Campaign 11 after LLM work-loop state, commands, provenance, fixtures, CI artifacts, docs, and review summary are aligned without automatic edits, generated tests, runtime mutation execution, speculative LSP features, or new public crates"
+blocked_by = [
+  "spec/pr-test-guidance-annotations",
+  "vscode/first-run-status",
+  "vscode/action-discoverability",
+  "ci/pr-summary-surface",
+  "ci/generated-workflow-smoke-fixture",
+  "docs/ux-by-user-type"
+]
+acceptance = "Close only after the extension and CI first screens are useful without report archaeology and the CLI remains the shared engine rather than the required first user interface"
 commands = [
   "cargo xtask check-campaign",
   "cargo xtask goals next",
