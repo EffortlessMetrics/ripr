@@ -924,6 +924,7 @@ outputs = [
   "docs/ROADMAP.md",
   "docs/CAPABILITY_MATRIX.md",
   "docs/CALIBRATED_GATE_POLICY.md",
+  "docs/handoffs/2026-05-08-campaign-15-closeout.md",
   "docs/CI.md",
   "docs/DOCUMENTATION.md",
   "docs/PR_REVIEW_GUIDANCE.md",

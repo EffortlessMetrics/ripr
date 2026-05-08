@@ -91,6 +91,9 @@ are scoped or reviewed.
 - Added `docs/CALIBRATED_GATE_POLICY.md` to document optional gate modes,
   waiver labels, generated CI behavior, calibration evidence, rollout stages,
   fixture cases, and static/runtime vocabulary boundaries.
+- Added the Campaign 15 closeout handoff after optional calibrated gates were
+  specified, implemented as read-only evaluation, fixture-pinned, optionally
+  wired into generated CI, documented, and kept advisory by default.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and PR guidance annotation counts before artifact
@@ -151,6 +154,9 @@ are scoped or reviewed.
   generated CI gate wiring landed without changing default workflow blocking.
 - Advanced Campaign 15 to `campaign/calibrated-gate-closeout` after documenting
   calibrated gates as optional policy over existing static evidence.
+- Closed Campaign 15 after the calibrated gate policy layer reached its
+  specified end state without changing analyzer behavior or default workflow
+  blocking.
 - Clarified agent merge ownership and replaced the old campaign-field guard
   with stale merge-boundary language detection.
 - Pinned RIPR-SPEC-0012 as the PR test guidance annotation contract and

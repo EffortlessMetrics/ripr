@@ -317,12 +317,12 @@ recommendation-calibration` report now measures whether PR-time
 recommendations are useful, safely placed, properly suppressed, pointed at the
 expected test target, and correlated with before/after static movement.
 [Recommendation calibration workflow](docs/RECOMMENDATION_CALIBRATION.md)
-documents how to read that report. Campaign 15 is active as Calibrated Gate
+documents how to read that report. Campaign 15 is closed as Calibrated Gate
 Policy: RIPR-SPEC-0014 pins the optional gate contract, `ripr gate evaluate`
 writes the read-only decision report, generated CI can run it only when
 `RIPR_GATE_MODE` is explicitly configured, and
 [Calibrated gate policy](docs/CALIBRATED_GATE_POLICY.md) documents the
-operator workflow before campaign closeout.
+operator workflow. The default generated workflow remains advisory.
 
 Deeper capability state lives in [Capability matrix](docs/CAPABILITY_MATRIX.md)
 and [Metrics](docs/METRICS.md).

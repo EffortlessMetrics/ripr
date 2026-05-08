@@ -114,14 +114,14 @@ The PR-shaped calibration corpus, local outcome receipts, and advisory
 [Recommendation calibration](RECOMMENDATION_CALIBRATION.md) documents how to
 read metrics, receipts, placement quality, suppression correctness, static
 movement buckets, and advisory limits. The closeout handoff records the PR
-chain and deferred policy boundary. Campaign 15 is active as Calibrated Gate
+chain and deferred policy boundary. Campaign 15 is closed as Calibrated Gate
 Policy: RIPR-SPEC-0014 pins optional policy gates after measured signal
-quality, `ripr gate evaluate` now writes the read-only decision report,
+quality, `ripr gate evaluate` writes the read-only decision report,
 `fixtures/calibrated-gate-cases` pins the decision matrix, and generated
 GitHub workflows run gate evaluation only when `RIPR_GATE_MODE` is explicitly
 configured. [Calibrated gate policy](CALIBRATED_GATE_POLICY.md) documents the
-operating model, so the campaign closeout is the next ready item. Gates remain
-explicit, advisory by default, and separate from runtime mutation vocabulary.
+operating model. Gates remain explicit, advisory by default, and separate from
+runtime mutation vocabulary.
 
 ## Strategic Sequence
 
