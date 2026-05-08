@@ -2,6 +2,7 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main, master]
 
@@ -10,8 +11,8 @@ permissions:
 
 # Cancel in-flight runs on the same PR when new commits are pushed
 # (`synchronize`), but never on label or other PR-action events. The
-# label-event cancellation bug (see docs/ci/cost-and-verification-policy.md
-# rollout notes) caused in-progress runs to be cancelled on label toggling.
+# label-event cancellation bug described in docs/CI.md caused in-progress runs
+# to be cancelled on label toggling.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
