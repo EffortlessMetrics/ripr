@@ -42,10 +42,10 @@
   ],
   "main": "./out/src/extension.js",
   "scripts": {
-    "compile": "tsc -p ./",
-    "package": "node -e \"require('fs').mkdirSync('dist', { recursive: true })\" && vsce package --out dist/ripr-0.4.0.vsix",
-    "test": "npm run compile",
-    "test:e2e": "npm run compile && node out/test/runTest.js"
+    "compile": "cargo xtask vscode-compile",
+    "package": "cargo xtask vscode-package",
+    "test": "cargo xtask vscode-test",
+    "test:e2e": "cargo xtask vscode-test-e2e"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"

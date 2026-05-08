@@ -1,4 +1,5 @@
 use std::io::Read;
+use std::path::Path;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -47,6 +48,36 @@ pub(crate) fn run_owned(program: &str, args: &[String]) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!("{program} {} failed with {status}", args.join(" ")))
+    }
+}
+
+pub(crate) fn run_in_dir(program: &Path, args: &[&str], cwd: &Path) -> Result<ExitStatus, String> {
+    eprintln!(
+        "$ (cd {} && {} {})",
+        cwd.display(),
+        program.display(),
+        args.join(" ")
+    );
+    let status = Command::new(program)
+        .args(args)
+        .current_dir(cwd)
+        .status()
+        .map_err(|err| {
+            format!(
+                "failed to run {} in {}: {err}",
+                program.display(),
+                cwd.display()
+            )
+        })?;
+    if status.success() {
+        Ok(status)
+    } else {
+        Err(format!(
+            "{} {} failed with {status} in {}",
+            program.display(),
+            args.join(" "),
+            cwd.display()
+        ))
     }
 }
 
@@ -226,9 +257,10 @@ fn join_stream_reader(
 mod tests {
     use super::{
         CapturedOutput, capture_output, capture_output_with_timeout, command_success_owned, run,
-        run_output, run_output_optional, run_output_owned, run_owned, terminate_after_timeout,
-        timeout_was_enforced,
+        run_in_dir, run_output, run_output_optional, run_output_owned, run_owned,
+        terminate_after_timeout, timeout_was_enforced,
     };
+    use std::path::Path;
     use std::process::{Command, Stdio};
     use std::thread;
     use std::time::Duration;
@@ -266,6 +298,26 @@ mod tests {
         };
         if !err.contains("failed with") {
             return Err(format!("failure message should include status: {err}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn run_in_dir_reports_success_and_failure_with_cwd() -> Result<(), String> {
+        let cwd =
+            std::env::current_dir().map_err(|err| format!("failed to read current dir: {err}"))?;
+        let status = run_in_dir(Path::new("rustc"), &["--version"], &cwd)?;
+        if !status.success() {
+            return Err("rustc --version should succeed".to_string());
+        }
+
+        let Err(err) = run_in_dir(Path::new("rustc"), &["--ripr-invalid-test-flag"], &cwd) else {
+            return Err("invalid rustc flag should fail".to_string());
+        };
+        if !err.contains("failed with") || !err.contains(&cwd.display().to_string()) {
+            return Err(format!(
+                "failure message should include status and cwd: {err}"
+            ));
         }
         Ok(())
     }
