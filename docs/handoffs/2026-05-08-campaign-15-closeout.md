@@ -1,7 +1,7 @@
 # Handoff: Campaign 15 Closeout
 
 Date: 2026-05-08
-Branch / PR: `campaign-calibrated-gate-closeout` / #TBD
+Branch / PR: `campaign-calibrated-gate-closeout` / #567
 Latest merged PR: #566 `docs: add calibrated gate policy guide` (commit `a78fefc`)
 
 ## Current Work Item
