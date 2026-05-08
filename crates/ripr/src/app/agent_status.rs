@@ -102,7 +102,7 @@ pub(crate) struct AgentStatusWarning {
 }
 
 impl AgentStatusReport {
-    fn status(&self) -> &'static str {
+    pub(crate) fn status(&self) -> &'static str {
         if self.artifacts.iter().any(|artifact| !artifact.present) {
             "incomplete"
         } else if self.warnings.is_empty() {

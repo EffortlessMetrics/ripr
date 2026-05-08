@@ -97,6 +97,23 @@ Receipt provenance records:
 - selected `seam_id`, before class, after class, and movement;
 - explicit static boundary flags.
 
+`ripr agent review-summary --root .` reads existing artifacts and emits a
+compact Markdown packet for PR review. `--json` emits the schema `0.1` JSON
+contract. The command joins agent status, workflow, receipt, operator cockpit,
+repo exposure, LSP cockpit when present, and local CI artifact file state. It
+must not run analysis, edit source files, generate tests, run mutation testing,
+call LLM APIs, refresh LSP state, or query GitHub Actions.
+
+The review summary should answer:
+
+- which seam was targeted;
+- what static before/after movement the receipt records;
+- which receipt and verify artifacts carry the evidence;
+- which joined surfaces are present, missing, optional-missing, or malformed;
+- what command should run next when the loop is incomplete;
+- what the reviewer should inspect;
+- which static limits remain.
+
 ## JSON Shape
 
 The status report uses schema version `0.1`:
@@ -252,6 +269,57 @@ selected seam movement in the saved `agent verify` JSON:
 `safe_to_merge` remains `false` for every static receipt. The receipt is
 review evidence, not a merge policy or runtime adequacy claim.
 
+The agent review summary uses schema version `0.1`:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "ready",
+  "root": ".",
+  "target_seam": {
+    "seam_id": "67fc764ba37d77bd",
+    "source": "agent_receipt",
+    "file": "src/lib.rs",
+    "line": 42,
+    "seam_kind": "predicate_boundary"
+  },
+  "static_movement": {
+    "state": "improved",
+    "before_class": "weakly_gripped",
+    "after_class": "strongly_gripped",
+    "grip_class": "strongly_gripped",
+    "evidence_artifact": "target/ripr/reports/agent-receipt.json",
+    "verify_artifact": "target/ripr/workflow/agent-verify.json",
+    "summary": "Static movement is improved (weakly_gripped -> strongly_gripped).",
+    "next_action": {
+      "kind": "improved",
+      "summary": "Static grip improved.",
+      "recommended_action": "Keep the focused test and include this receipt in review."
+    }
+  },
+  "next_command": null,
+  "surfaces": [],
+  "ci_artifacts": [],
+  "reviewer_summary": {
+    "headline": "Review packet is ready for seam 67fc764ba37d77bd.",
+    "what_changed": "Static movement is improved (weakly_gripped -> strongly_gripped).",
+    "evidence": "Review target/ripr/reports/agent-receipt.json with target/ripr/workflow/agent-verify.json.",
+    "remaining": "Keep the focused test and include this receipt in review.",
+    "reviewer_should_inspect": [
+      "target/ripr/reports/agent-receipt.json",
+      "target/ripr/workflow/agent-verify.json"
+    ]
+  },
+  "limits": {
+    "static_artifact_relationship": true,
+    "runtime_mutation_execution": false,
+    "automatic_edits": false,
+    "generated_tests": false
+  }
+}
+```
+
 ## Required Evidence
 
 The first LLM work-loop slice requires:
@@ -294,6 +362,18 @@ The receipt provenance slice additionally requires:
   unchanged, new-gap, and resolved receipt states;
 - fixture, schema, traceability, capability, and campaign updates.
 
+The reviewer-summary slice additionally requires:
+
+- `ripr agent review-summary --root .` Markdown output;
+- `ripr agent review-summary --root . --json` schema `0.1` output;
+- read-only joins for agent status, workflow, receipt, operator cockpit, repo
+  exposure, LSP cockpit when present, and local CI artifact file state;
+- target seam recovery from receipt first, then workflow, then status;
+- static movement and next-action text copied from the receipt;
+- an incomplete state with the next status command when the receipt is missing;
+- explicit static-limit flags;
+- schema, traceability, capability, and campaign updates.
+
 ## Non-Goals
 
 The LLM work loop must not:
@@ -327,6 +407,13 @@ The LLM work loop must not:
   rerunning analysis.
 - `ripr agent receipt` emits structured, static `summary.next_action` guidance
   for improved, changed, regressed, unchanged, new-gap, and resolved states.
+- `ripr agent review-summary --root .` emits compact Markdown without rerunning
+  analysis.
+- `ripr agent review-summary --root . --json` joins status, receipt, cockpit,
+  repo exposure, optional LSP cockpit, and local CI artifact status.
+- Missing optional cockpit artifacts are visible state, not command failures.
+- A missing receipt yields `status: incomplete` and carries the next command
+  from agent status.
 - No automatic edits, generated tests, runtime mutation execution, speculative
   LSP features, or new public crates are added.
 
@@ -358,6 +445,12 @@ The LLM work loop must not:
 - `crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_guidance_covers_resolved_state`
 - `crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_input_paths_extracts_verify_snapshot_paths`
 - `crates/ripr/src/agent/provenance.rs::tests::sha256_file_hashes_artifact_bytes`
+- `crates/ripr/src/app/agent_review_summary.rs::tests::agent_review_summary_joins_status_receipt_cockpit_repo_and_lsp`
+- `crates/ripr/src/app/agent_review_summary.rs::tests::agent_review_summary_reports_missing_receipt_with_next_command`
+- `crates/ripr/src/app/agent_review_summary.rs::tests::agent_review_summary_markdown_names_review_focus_and_limits`
+- `crates/ripr/src/cli/agent.rs::tests::agent_review_summary_parses_root_json_and_human_default`
+- `crates/ripr/src/cli/agent.rs::tests::agent_review_summary_requires_values_and_rejects_unknown_arguments`
+- `crates/ripr/src/cli/commands.rs::tests::agent_review_summary_rejects_missing_root_before_reading_artifacts`
 - `crates/ripr/tests/cli_smoke.rs::agent_receipt_writes_one_seam_handoff_json`
 - `crates/ripr/tests/cli_smoke.rs::agent_start_writes_source_edit_free_workflow_packet`
 - `crates/ripr/src/lsp/tests.rs::agent_loop_command_payloads_stay_workspace_relative_for_platform_roots`
@@ -367,13 +460,17 @@ The LLM work loop must not:
 
 - `crates/ripr/src/app/agent_status.rs` builds and renders the report from
   existing artifact files.
+- `crates/ripr/src/app/agent_review_summary.rs` joins existing agent status,
+  workflow, receipt, cockpit, repo exposure, optional LSP cockpit, and local
+  CI artifact file state into review-summary JSON and Markdown.
 - `crates/ripr/src/app/agent_workflow.rs` builds a selected-seam workflow
   manifest from the generated agent brief and shared command templates.
 - `crates/ripr/src/agent/loop_commands.rs` owns internal command and artifact
   templates for status, brief, LSP copy actions, pilot next commands, generated
   CI paths, and cockpit missing-input commands.
 - `crates/ripr/src/agent/provenance.rs` hashes receipt artifacts with SHA-256.
-- `crates/ripr/src/cli/agent.rs` parses the status and start subcommands.
+- `crates/ripr/src/cli/agent.rs` parses the status, start, and review-summary
+  subcommands.
 - `crates/ripr/src/cli/commands.rs` validates the root and dispatches the
   report, builds receipt provenance from existing artifacts, and reuses shared
   path templates for generated GitHub workflow agent artifacts.
@@ -387,7 +484,8 @@ The LLM work loop must not:
   their current command payloads.
 - `xtask/src/reports/operator.rs` reuses the shared command builder source for
   editor-agent cockpit missing-input commands.
-- `docs/OUTPUT_SCHEMA.md` defines the Agent Status output contract.
+- `docs/OUTPUT_SCHEMA.md` defines the Agent Status, Agent Workflow Manifest,
+  Agent Receipt, and Agent Review Summary output contracts.
 - `.ripr/traceability.toml` maps this spec to tests, code, outputs, and
   metrics.
 
@@ -397,6 +495,7 @@ The LLM work loop must not:
 - `agent_workflow_manifest_available`
 - `agent_receipt_provenance_available`
 - `agent_receipt_next_action_guidance_available`
+- `agent_review_summary_available`
 - missing artifact count by status report
 - stale-looking warning count by status report
 - recovered seam source distribution
