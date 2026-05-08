@@ -122,14 +122,14 @@ quieter.
 - `ripr: Show Status`
 - `ripr: Show Output`
 - `ripr: Copy Finding Context`
-- `ripr: Copy Suggested Assertion`
-- `ripr: Copy Targeted Test Brief`
-- `ripr: Copy Agent Packet Command`
-- `ripr: Copy Agent Brief Command`
-- `ripr: Copy After Snapshot Command`
-- `ripr: Copy Agent Verify Command`
-- `ripr: Copy Agent Receipt Command`
-- `ripr: Open Related Test`
+- `ripr: Write Targeted Test - Copy Suggested Assertion`
+- `ripr: Write Targeted Test - Copy Brief`
+- `ripr: Agent Handoff - Copy Packet Command`
+- `ripr: Agent Handoff - Copy Brief Command`
+- `ripr: Verify After Test - Copy After Snapshot Command`
+- `ripr: Verify After Test - Copy Verify Command`
+- `ripr: Review Result - Copy Receipt Command`
+- `ripr: Write Targeted Test - Open Best Related Test`
 - `ripr: Open Settings`
 
 ### Copy Finding Context
@@ -141,7 +141,7 @@ returns a JSON context packet directly. If the LSP command is unavailable or
 returns no result, the extension falls back to shelling out to the `ripr`
 CLI (`ripr context --at <selector> --json`).
 
-The code action `Copy ripr context packet` includes `finding_id` and
+The code action `Inspect finding: copy context packet` includes `finding_id` and
 `probe_id` from the diagnostic data so the server can resolve the finding
 without re-running workspace analysis.
 
@@ -150,35 +150,38 @@ without re-running workspace analysis.
 When seam diagnostics are enabled and a diagnostic carries `seam_id`, the LSP
 server can provide seam-aware code actions:
 
-- `Copy seam packet`: copies the server-owned agent seam packet for the
+- `Inspect seam: copy packet`: copies the server-owned agent seam packet for the
   selected seam through `ripr.collectContext`.
-- `Copy targeted test brief`: copies a plain-language work order for adding one
-  focused test from the same seam packet guidance.
-- `Copy Agent Packet Command`: copies the `ripr agent packet` command for the
-  selected seam.
-- `Copy Agent Brief Command`: copies the `ripr agent brief --seam-id` command
+- `Write targeted test: copy brief`: copies a plain-language work order for
+  adding one focused test from the same seam packet guidance.
+- `Agent handoff: copy packet command`: copies the `ripr agent packet` command
   for the selected seam.
-- `Copy After Snapshot Command`: copies the `ripr check --format
-  repo-exposure-json` after-snapshot command for the current mode.
-- `Copy Agent Verify Command`: copies the `ripr agent verify` command that
-  compares the pilot before snapshot to the after snapshot.
-- `Copy Agent Receipt Command`: copies the `ripr agent receipt` command for the
-  selected seam.
-- `Copy suggested assertion`: copies a concrete assertion suggestion from the
-  seam packet.
-- `Open best related test`: opens the strongest related test to imitate when
-  one is available, then falls back to the highest-confidence related test.
-- `Refresh ripr analysis`: asks the LSP server to refresh diagnostics with
-  `ripr.refresh`.
+- `Agent handoff: copy brief command`: copies the `ripr agent brief --seam-id`
+  command for the selected seam.
+- `Verify after test: copy after-snapshot command`: copies the
+  `ripr check --format repo-exposure-json` after-snapshot command for the
+  current mode.
+- `Verify after test: copy verify command`: copies the `ripr agent verify`
+  command that compares the pilot before snapshot to the after snapshot.
+- `Review result: copy receipt command`: copies the `ripr agent receipt`
+  command for the selected seam.
+- `Write targeted test: copy suggested assertion`: copies a concrete assertion
+  suggestion from the seam packet.
+- `Write targeted test: open best related test`: opens the strongest related
+  test to imitate when one is available, then falls back to the
+  highest-confidence related test.
+- `Refresh analysis: rerun saved-workspace check`: asks the LSP server to
+  refresh diagnostics with `ripr.refresh`.
 
-The assertion and related-test actions are conditional. `Copy suggested
-assertion` is shown only when the seam has a concrete assertion suggestion, and
-`Open best related test` is shown only when the current analysis snapshot can
-resolve a related test location. The targeted-test brief remains available for seam
-diagnostics even when there is no concrete assertion snippet, because it can
-still summarize the missing discriminator, suggested file/name, candidate value,
-and imitation or avoid patterns. Refresh remains available even when no
-diagnostic is selected.
+The assertion and related-test actions are conditional.
+`Write targeted test: copy suggested assertion` is shown only when the seam has
+a concrete assertion suggestion, and `Write targeted test: open best related
+test` is shown only when the current analysis snapshot can resolve a related
+test location. The targeted-test brief remains available for seam diagnostics
+even when there is no concrete assertion snippet, because it can still summarize
+the missing discriminator, suggested file/name, candidate value, and imitation
+or avoid patterns. Refresh remains available even when no diagnostic is
+selected.
 
 The agent-loop copy commands are workspace-relative by contract. They use
 `--root .` and the same `target/ripr/pilot` plus `target/ripr/agent` artifact
@@ -226,7 +229,9 @@ Open the ripr output channel.
 Confirm the resolved server source is logged.
 Confirm ripr lsp --stdio starts.
 Confirm diagnostics can arrive from saved-workspace analysis.
-Confirm hover evidence, Copy Targeted Test Brief, and Open Best Related Test are available on seam diagnostics when the analysis snapshot includes the required data.
+Confirm hover evidence, `Write targeted test: copy brief`, and
+`Write targeted test: open best related test` are available on seam diagnostics
+when the analysis snapshot includes the required data.
 Confirm missing-server state gives the documented actionable message.
 Confirm Restart Server, Show Output, and Open Settings work.
 ```

@@ -2561,15 +2561,23 @@ file via the (now reserved) `_root` parameter on
 
 Seam diagnostics also drive editor code actions:
 
-- `Copy seam packet` calls `ripr.collectContext` with `seam_id` and
+- `Inspect seam: copy packet` calls `ripr.collectContext` with `seam_id` and
   copies the selected agent seam packet JSON.
-- `Copy targeted test brief` copies a plain-language work order derived
+- `Write targeted test: copy brief` copies a plain-language work order derived
   from the same seam packet guidance.
-- `Copy suggested assertion` appears only when the agent seam packet
-  assertion shape contains a concrete assertion example.
-- `Open best related test` appears only when ranked related-test evidence
-  has a visible file/line.
-- `Refresh ripr analysis` remains available for every request.
+- `Agent handoff: copy packet command` and `Agent handoff: copy brief command`
+  copy the selected seam's agent packet and brief commands.
+- `Verify after test: copy after-snapshot command` and
+  `Verify after test: copy verify command` copy the static after-snapshot and
+  verify commands.
+- `Review result: copy receipt command` copies the selected seam's receipt
+  command.
+- `Write targeted test: copy suggested assertion` appears only when the agent
+  seam packet assertion shape contains a concrete assertion example.
+- `Write targeted test: open best related test` appears only when ranked
+  related-test evidence has a visible file/line.
+- `Refresh analysis: rerun saved-workspace check` remains available for every
+  request.
 
 These actions do not edit files, generate tests, or add CodeLens
 surface. The pre-4B `Finding`/`AnalysisSnapshot` hover and context
@@ -2610,25 +2618,50 @@ JSON shape:
       },
       "actions": {
         "titles": [
-          "Copy seam packet",
-          "Copy targeted test brief",
-          "Copy suggested assertion",
-          "Open best related test",
-          "Refresh ripr analysis"
+          "Inspect seam: copy packet",
+          "Write targeted test: copy brief",
+          "Agent handoff: copy packet command",
+          "Agent handoff: copy brief command",
+          "Verify after test: copy after-snapshot command",
+          "Verify after test: copy verify command",
+          "Review result: copy receipt command",
+          "Write targeted test: copy suggested assertion",
+          "Write targeted test: open best related test",
+          "Refresh analysis: rerun saved-workspace check"
         ],
         "commands": [
           "ripr.copyContext",
           "ripr.copyTargetedTestBrief",
+          "ripr.copyAgentPacketCommand",
+          "ripr.copyAgentBriefCommand",
+          "ripr.copyAfterSnapshotCommand",
+          "ripr.copyAgentVerifyCommand",
+          "ripr.copyAgentReceiptCommand",
           "ripr.copySuggestedAssertion",
           "ripr.openRelatedTest",
           "ripr.refresh"
         ],
         "argument_fields": [
+          "after_snapshot",
+          "agent_brief_json",
+          "agent_packet_json",
+          "agent_receipt_json",
+          "agent_verify_json",
           "assertion",
+          "before_snapshot",
           "brief",
+          "command",
+          "diagnostic_range",
+          "label",
           "line",
+          "mode",
+          "owner",
+          "root",
+          "seam_file",
           "seam_id",
           "seam_kind",
+          "severity",
+          "target_artifact",
           "test_name",
           "uri"
         ]
@@ -2645,32 +2678,50 @@ JSON shape:
   "vscode_e2e": {
     "test_file": "editors/vscode/test/suite/extension.test.ts",
     "contributed_commands": [
+      "ripr.copyAfterSnapshotCommand",
+      "ripr.copyAgentBriefCommand",
+      "ripr.copyAgentPacketCommand",
+      "ripr.copyAgentReceiptCommand",
+      "ripr.copyAgentVerifyCommand",
       "ripr.copyContext",
       "ripr.copySuggestedAssertion",
       "ripr.copyTargetedTestBrief",
       "ripr.openRelatedTest",
       "ripr.openSettings",
       "ripr.restartServer",
-      "ripr.showOutput"
+      "ripr.showOutput",
+      "ripr.showStatus"
     ],
     "covered_commands": [
       "ripr.collectContext",
+      "ripr.copyAfterSnapshotCommand",
+      "ripr.copyAgentBriefCommand",
+      "ripr.copyAgentPacketCommand",
+      "ripr.copyAgentReceiptCommand",
+      "ripr.copyAgentVerifyCommand",
       "ripr.copyContext",
       "ripr.copySuggestedAssertion",
       "ripr.copyTargetedTestBrief",
       "ripr.openRelatedTest",
       "ripr.openSettings",
       "ripr.restartServer",
-      "ripr.showOutput"
+      "ripr.showOutput",
+      "ripr.showStatus"
     ],
     "covered_contributed_commands": [
+      "ripr.copyAfterSnapshotCommand",
+      "ripr.copyAgentBriefCommand",
+      "ripr.copyAgentPacketCommand",
+      "ripr.copyAgentReceiptCommand",
+      "ripr.copyAgentVerifyCommand",
       "ripr.copyContext",
       "ripr.copySuggestedAssertion",
       "ripr.copyTargetedTestBrief",
       "ripr.openRelatedTest",
       "ripr.openSettings",
       "ripr.restartServer",
-      "ripr.showOutput"
+      "ripr.showOutput",
+      "ripr.showStatus"
     ],
     "uncovered_contributed_commands": []
   }

@@ -521,9 +521,9 @@ End state:
   test file, nearest strong test to imitate, candidate input values,
   assertion shape with example, patterns to imitate, patterns to
   avoid, and confidence — enough to write the targeted test directly
-- LSP code actions surface "Copy seam packet", "Copy suggested
-  assertion", "Open related test", and "Refresh ripr analysis" for
-  diagnostics that carry `seam_id`; no automatic edits
+- LSP code actions surface inspect-seam, write-targeted-test,
+  open-related-test, and refresh-analysis actions for diagnostics that carry
+  `seam_id`; no automatic edits
 - calibration scaffold compares static `SeamGripClass` against
   cargo-mutants outcomes; runtime mutation vocabulary stays inside
   calibration/runtime reports; static reports keep the audit
@@ -1439,8 +1439,8 @@ Work items:
 | --- | --- | --- |
 | `spec/pr-test-guidance-annotations` | done | RIPR-SPEC-0012 pins the advisory PR annotation/comment contract before implementing `ripr review-comments`, including changed-line placement, anti-spam caps, bounded LLM guidance, check annotations by default, optional inline review comments, JSON shape, and non-blocking CI posture. |
 | `vscode/first-run-status` | done | VS Code now has a status bar and `ripr: Show Status` path for server resolution, workspace detection, analysis running/complete/stale/failed, and no-actionable-seam states without adding unsaved-buffer overlays. |
-| `vscode/action-discoverability` | ready | Group and title diagnostic actions around user intent without changing analyzer behavior, adding broad LSP features, or enabling unsaved-buffer overlays after the first-run status path exists. |
-| `ci/pr-summary-surface` | blocked | Make the generated workflow emit a useful PR or step summary with the top actionable seam, why it matters, suggested test target, artifact links, SARIF status, badge status, known limits, and check annotations from the PR test guidance report after the editor first-screen sequence is pinned. |
+| `vscode/action-discoverability` | done | Seam diagnostics now group code-action titles around inspect, write targeted test, agent handoff, verify after test, review result, and refresh intent while keeping command IDs and payloads stable. |
+| `ci/pr-summary-surface` | ready | Make the generated workflow emit a useful PR or step summary with the top actionable seam, why it matters, suggested test target, artifact links, SARIF status, badge status, known limits, and check annotations from the PR test guidance report after the editor first-screen sequence is pinned. |
 | `ci/generated-workflow-smoke-fixture` | blocked | Pin generated workflow artifact paths, top-seam extraction, agent artifact generation, non-blocking posture, optional SARIF, and badge output after the PR summary surface exists. |
 | `docs/ux-by-user-type` | blocked | Rewrite the first-hour docs around VS Code, CI, CLI, agent, troubleshooting, and known limits while keeping README short after the editor and CI surfaces settle. |
 | `campaign/first-hour-ux-closeout` | blocked | Close only after the extension and CI first screens are useful without report archaeology and the CLI remains the shared engine rather than the required first user interface. |

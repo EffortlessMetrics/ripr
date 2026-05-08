@@ -89,8 +89,9 @@ First-Hour UX: after the LLM work-loop command and artifact state stabilized, th
 current product risk is making the VS Code extension and generated GitHub
 workflow explain the top recommendation without requiring users to inspect CLI
 reports first. The PR guidance annotation contract is pinned, the editor now has
-a first-run status path for server/workspace/analysis state, and the next slice
-is action discoverability before the generated CI summary surface.
+a first-run status path for server/workspace/analysis state, and seam diagnostic
+actions are titled around inspect, targeted-test, agent-handoff, verify, review,
+and refresh intent. The next slice is the generated CI summary surface.
 
 ## Strategic Sequence
 

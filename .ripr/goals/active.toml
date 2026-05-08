@@ -63,7 +63,7 @@ commands = [
 
 [[work_item]]
 id = "vscode/action-discoverability"
-status = "ready"
+status = "done"
 branch = "vscode-action-discoverability"
 stackable = false
 requires_human_merge = true
@@ -82,7 +82,7 @@ commands = [
 
 [[work_item]]
 id = "ci/pr-summary-surface"
-status = "blocked"
+status = "ready"
 branch = "ci-pr-summary-surface"
 stackable = false
 requires_human_merge = true

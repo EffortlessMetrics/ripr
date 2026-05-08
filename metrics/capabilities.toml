@@ -304,10 +304,11 @@ evidence = [
   "diagnostic-targeted context action",
   "diagnostic hover details",
   "serialized refresh generations",
-  "VS Code status bar and ripr: Show Status path for server resolution, workspace detection, analysis running/complete/stale/failed, and no-actionable-seam states"
+  "VS Code status bar and ripr: Show Status path for server resolution, workspace detection, analysis running/complete/stale/failed, and no-actionable-seam states",
+  "intent-titled diagnostic actions for inspect, write targeted test, agent handoff, verify after test, review receipt, and refresh analysis"
 ]
 fixtures = []
-next = "vscode/action-discoverability"
+next = "docs/ux-by-user-type"
 metric = "diagnostics carry finding/probe metadata, editor status names saved-workspace analysis state, and editor actions target the selected finding"
 
 [[capability]]
@@ -556,7 +557,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "campaign/editor-agent-integration-closeout"
+next = "docs/ux-by-user-type"
 metric = "packet carries missing discriminator + suggested assertion templates"
 
 [[capability]]
@@ -742,7 +743,7 @@ evidence = [
   "crates/ripr/src/lsp/actions.rs seam-aware code_action_response",
   "crates/ripr/src/lsp/backend.rs collectContext returns agent seam packets for seam_id",
   "editors/vscode/src/client.ts copySuggestedAssertion and openRelatedTest handlers",
-  "diagnostics carrying seam_id surface Copy seam packet, Copy targeted test brief, Copy Agent Packet Command, Copy Agent Brief Command, Copy After Snapshot Command, Copy Agent Verify Command, Copy Agent Receipt Command, Copy suggested assertion, Open best related test, and Refresh ripr analysis",
+  "diagnostics carrying seam_id surface intent-titled actions for inspecting the seam, writing the targeted test, copying agent handoff commands, verifying after the test, reviewing the receipt, opening the best related test, and refreshing saved-workspace analysis",
   "copy suggested assertion uses agent seam packet v2 assertion shape when available",
   "pre-4B Finding code actions remain available",
   "docs/TESTING.md documents VS Code e2e coverage for command registration, LSP-first seam context, targeted-test brief copying, suggested assertions, related-test opening, malformed argument handling, and restart behavior",

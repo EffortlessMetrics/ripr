@@ -30,9 +30,11 @@ default. Open a Rust file, save or refresh the workspace, then use:
 
 - Problems diagnostics for actionable seam evidence;
 - hover for why RIPR flagged the seam;
-- Copy Targeted Test Brief for the focused test to write next;
-- Copy Agent Packet/Brief/Verify/Receipt commands for agent handoff;
-- Open Best Related Test to jump to the strongest imitation target.
+- `Write targeted test: copy brief` for the focused test to write next;
+- `Agent handoff: copy packet command` and related verify/receipt commands for
+  agent handoff;
+- `Write targeted test: open best related test` to jump to the strongest
+  imitation target.
 
 Unsaved-buffer overlays are not enabled by default, and the extension does not
 install Rust or Cargo. A separate CLI install remains the fallback for offline,

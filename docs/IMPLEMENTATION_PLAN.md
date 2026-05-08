@@ -26,7 +26,7 @@ through multiple work items in a campaign, but each work item should follow the
 | Hot Sidecar Latency Proof (9) | Measure current cache and saved-workspace editor refresh behavior before changing warm-path reuse. | Complete: latency reporting, warm-path reuse, bounded `ripr pilot`, first-screen clarity, evidence progress tracing, hot-path indexes, and `campaign/hot-sidecar-latency-closeout`. |
 | Editor Agent Integration (10) | Make the saved-workspace editor loop and the agent CLI loop line up from diagnostic to evidence, packet/brief, focused test, verify, receipt, cockpit, CI, and install proof. | Complete: `campaign/editor-agent-integration-closeout`. |
 | LLM Work Loop (11) | Make the completed editor-agent loop stateful, deterministic, and useful to LLM agents under review pressure. | Complete: status, command templates, workflow manifests, receipt provenance, next-action guidance, reviewer summary, fixture matrix, CI work packets, operator guide, and `campaign/llm-work-loop-closeout`. |
-| First-Hour UX (12) | Make new LSP-first and CI-first users successful without learning RIPR's internal report topology. | Active: `vscode/action-discoverability` is the next ready item after the editor first-run status path landed. |
+| First-Hour UX (12) | Make new LSP-first and CI-first users successful without learning RIPR's internal report topology. | Active: `ci/pr-summary-surface` is the next ready item after the editor status and action-discoverability slices landed. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
 through 8 are complete. Campaign 6 closed after the internal module SRP chain
@@ -52,8 +52,9 @@ bounded next-action guidance, review summaries, a fixture matrix, generated CI
 work-loop packet uploads, and the LLM operator guide. Campaign 12 is active as
 the First-Hour UX lane after the LLM work-loop control plane: the PR guidance
 annotation contract is pinned, the extension has a first-run status path, and
-the next slice keeps the CLI as the shared engine while making diagnostic
-actions easier to discover from user intent.
+diagnostic actions are titled around user intent. The next slice keeps the CLI
+as the shared engine while making generated CI summaries useful before artifact
+download.
 
 ## PR 0: `planning-and-tracking-docs`
 

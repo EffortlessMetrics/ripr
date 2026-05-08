@@ -70,14 +70,14 @@ confirmation.
 - `ripr: Show Status`
 - `ripr: Show Output`
 - `ripr: Copy Finding Context`
-- `ripr: Copy Suggested Assertion`
-- `ripr: Copy Targeted Test Brief`
-- `ripr: Copy Agent Packet Command`
-- `ripr: Copy Agent Brief Command`
-- `ripr: Copy After Snapshot Command`
-- `ripr: Copy Agent Verify Command`
-- `ripr: Copy Agent Receipt Command`
-- `ripr: Open Related Test`
+- `ripr: Write Targeted Test - Copy Suggested Assertion`
+- `ripr: Write Targeted Test - Copy Brief`
+- `ripr: Agent Handoff - Copy Packet Command`
+- `ripr: Agent Handoff - Copy Brief Command`
+- `ripr: Verify After Test - Copy After Snapshot Command`
+- `ripr: Verify After Test - Copy Verify Command`
+- `ripr: Review Result - Copy Receipt Command`
+- `ripr: Write Targeted Test - Open Best Related Test`
 - `ripr: Open Settings`
 
 ## Preview Limitations
