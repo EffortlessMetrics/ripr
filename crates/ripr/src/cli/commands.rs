@@ -1,4 +1,4 @@
-use crate::agent::loop_commands;
+use crate::agent::{loop_commands, provenance};
 use crate::analysis;
 use crate::app::agent_brief::{
     AgentBriefChangedOwner, AgentBriefLine, AgentBriefPolicy, AgentBriefResolvedWorkingSet,
@@ -13,12 +13,12 @@ use crate::cli::help;
 use crate::cli::parse::{expect_value, parse_format, parse_mode};
 use crate::config::{
     CONFIG_FILE_NAME, CheckInputExplicit, DEFAULT_LSP_SEAM_DIAGNOSTICS, apply_to_check_input,
-    generated_init_config, load_for_root,
+    config_fingerprint, generated_init_config, load_for_root,
 };
 use crate::output;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const DEFAULT_PILOT_TIMEOUT_MS: u64 = 30_000;
 
@@ -271,12 +271,20 @@ fn run_agent_receipt(options: AgentReceiptOptions) -> Result<(), String> {
             output::outcome::display_path(&verify_path)
         )
     })?;
+    let input_paths = output::agent_receipt::agent_receipt_input_paths(&verify_json)?;
+    let provenance = build_agent_receipt_provenance(
+        &options.root,
+        &options.verify_json,
+        &verify_path,
+        &input_paths,
+    )?;
     let rendered = output::agent_receipt::render_agent_receipt_json(
         &verify_json,
         output::outcome::display_path(&options.verify_json),
         &options.seam_id,
         options.test_changed.as_deref(),
         &options.commands_run,
+        provenance,
     )?;
 
     match options.out {
@@ -368,6 +376,111 @@ fn validate_agent_receipt_verify_path(root: &Path, path: &Path) -> Result<PathBu
     }
 
     Ok(candidate)
+}
+
+fn build_agent_receipt_provenance(
+    root: &Path,
+    verify_display_path: &Path,
+    verify_path: &Path,
+    input_paths: &output::agent_receipt::AgentReceiptInputPaths,
+) -> Result<output::agent_receipt::AgentReceiptProvenance, String> {
+    let before_artifact = agent_receipt_artifact_provenance(
+        root,
+        &input_paths.before,
+        "before artifact",
+        "before_artifact",
+    )?;
+    let after_artifact = agent_receipt_artifact_provenance(
+        root,
+        &input_paths.after,
+        "after artifact",
+        "after_artifact",
+    )?;
+    let verify_artifact = output::agent_receipt::AgentReceiptArtifactProvenance {
+        path: output::outcome::display_path(verify_display_path),
+        sha256: provenance::sha256_file(verify_path)?,
+    };
+
+    Ok(output::agent_receipt::AgentReceiptProvenance {
+        ripr_version: env!("CARGO_PKG_VERSION").to_string(),
+        repo_root: output::outcome::display_path(root),
+        config_fingerprint: agent_receipt_config_fingerprint(root)?,
+        command_template_version: loop_commands::AGENT_LOOP_COMMAND_TEMPLATE_VERSION.to_string(),
+        generated_at: agent_receipt_generated_at()?,
+        workflow_artifact: None,
+        before_artifact,
+        after_artifact,
+        verify_artifact,
+    })
+}
+
+fn agent_receipt_artifact_provenance(
+    root: &Path,
+    display_path: &str,
+    role: &str,
+    output_name: &str,
+) -> Result<output::agent_receipt::AgentReceiptArtifactProvenance, String> {
+    let resolved = validate_agent_receipt_artifact_path(root, Path::new(display_path), role)?;
+    Ok(output::agent_receipt::AgentReceiptArtifactProvenance {
+        path: display_path.replace('\\', "/"),
+        sha256: provenance::sha256_file(&resolved).map_err(|err| {
+            format!(
+                "hash agent receipt {output_name} {} failed: {err}",
+                display_path
+            )
+        })?,
+    })
+}
+
+fn validate_agent_receipt_artifact_path(
+    root: &Path,
+    path: &Path,
+    role: &str,
+) -> Result<PathBuf, String> {
+    let root = root.canonicalize().map_err(|err| {
+        format!(
+            "canonicalize agent receipt root {} failed: {err}",
+            root.display()
+        )
+    })?;
+    let candidate = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        root.join(path)
+    };
+    let candidate = candidate.canonicalize().map_err(|err| {
+        format!(
+            "canonicalize agent receipt {role} {} failed: {err}",
+            path.display()
+        )
+    })?;
+
+    if !candidate.starts_with(&root) {
+        return Err(format!(
+            "agent receipt {role} {} must stay under root {}",
+            path.display(),
+            root.display()
+        ));
+    }
+
+    Ok(candidate)
+}
+
+fn agent_receipt_config_fingerprint(root: &Path) -> Result<Option<String>, String> {
+    let path = root.join(CONFIG_FILE_NAME);
+    match std::fs::read_to_string(&path) {
+        Ok(text) => Ok(Some(config_fingerprint(&text))),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(format!("read {} failed: {err}", path.display())),
+    }
+}
+
+fn agent_receipt_generated_at() -> Result<String, String> {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| format!("system clock before unix epoch: {err}"))?
+        .as_millis();
+    Ok(format!("unix_ms:{millis}"))
 }
 
 fn validate_agent_verify_snapshot_path(
