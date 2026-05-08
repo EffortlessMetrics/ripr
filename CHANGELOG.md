@@ -63,6 +63,10 @@ are scoped or reviewed.
 
 ### Changed
 
+- Opened Campaign 13, PR Review Guidance, after auditing the long-term
+  control-plane objective against current artifacts; `review/pr-guidance-renderer`
+  is now the ready item for adding the read-only `ripr review-comments`
+  producer.
 - Pinned RIPR-SPEC-0012 as the PR test guidance annotation contract and
   advanced Campaign 12 to `vscode/first-run-status` as the next ready UX item.
 - Advanced Campaign 12 to `vscode/action-discoverability` after pinning the

@@ -1478,3 +1478,92 @@ Blocking conditions:
 - new public crates
 - duplicated command templates after Campaign 11 centralization
 - more report formats that do not improve the VS Code or GitHub first screen
+
+## Campaign 13: PR Review Guidance
+
+Campaign ID: `pr-review-guidance`
+
+Status: active
+
+Campaigns 10 through 12 made the editor, CLI, agent loop, cockpit, generated
+CI artifacts, and first-hour docs converge on the same static evidence loop.
+The remaining visible gap is pull-request review projection: RIPR-SPEC-0012
+defines `ripr review-comments`, and generated CI already has a future consumer
+hook for `target/ripr/review/comments.json`, but the read-only report producer
+does not exist yet.
+
+Objective:
+
+```text
+Project the existing static evidence loop into bounded pull-request review
+guidance: changed seam -> focused test intent -> verification command -> review
+artifact, without turning RIPR into a free-form reviewer or CI blocker.
+```
+
+Why it matters:
+
+Humans and LLM agents now have a deterministic workflow once they inspect RIPR
+artifacts, but CI-first reviewers still need to download or open reports before
+they see the changed seam and focused test intent. Campaign 13 should produce
+the smallest PR-facing projection of existing evidence: changed line placement
+when safe, summary-only fallback when not safe, bounded test intent, and the
+verification command. It must not post comments by default, generate tests, make
+CI blocking, or let an LLM decide what matters.
+
+End state:
+
+- `ripr review-comments` writes `target/ripr/review/comments.json` and
+  `comments.md` as read-only advisory reports
+- review guidance only places line annotations on changed lines and falls back
+  to summary-only recommendations otherwise
+- guidance is capped, deterministic, deduplicated, and rooted in existing repo
+  exposure, agent packet, agent brief, related-test, severity, and suppression
+  evidence
+- generated GitHub workflows run the report producer before consuming
+  `target/ripr/review/comments.json` for summaries and check annotations
+- inline PR comments remain opt-in and are not posted by default
+- fixtures pin exact-line, owner-function-line, same-file-line, summary-only,
+  capped, suppressed, and changed-test skip cases
+- docs explain PR guidance as advisory static evidence, not LLM review,
+  runtime mutation proof, automatic edits, generated tests, or default CI
+  blocking
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `campaign/pr-review-guidance-audit` | done | Audited the long-term static-evidence control-plane objective against current artifacts. The editor/CLI/CI artifact loop is real, but PR review convergence is incomplete because `ripr review-comments` is specified and consumed only as a future report. |
+| `review/pr-guidance-renderer` | ready | Add read-only `ripr review-comments --root . --base <sha> --head <sha> --out target/ripr/review/comments.json` plus Markdown output, joining existing static evidence to produce bounded PR guidance without posting to GitHub or changing analyzer behavior. |
+| `ci/run-pr-guidance-report` | blocked | Update generated GitHub workflows to run `ripr review-comments` before the existing advisory summary and check-annotation consumer steps, preserving non-blocking defaults. |
+| `fixtures/pr-guidance-cases` | blocked | Pin PR guidance fixtures for exact changed seam line, owner-function changed line, same-file changed line, summary-only fallback, cap suppression, configured suppression, and nearby changed-test skip. |
+| `docs/pr-review-guidance` | blocked | Document PR guidance as a bounded advisory projection of existing RIPR evidence, including commands, CI behavior, opt-in review-comment boundary, and no automatic edits or runtime mutation claims. |
+| `campaign/pr-review-guidance-closeout` | blocked | Close Campaign 13 only after PR review guidance is produced, consumed by generated CI, fixture-pinned, documented, and still advisory/non-blocking by default. |
+
+Dependencies:
+
+- RIPR-SPEC-0012 remains the product contract for review guidance.
+- Campaign 11 shared command templates remain the source for agent brief and
+  verify command strings used by review guidance.
+- Campaign 12 generated workflow annotation steps remain consumers until this
+  campaign adds the producer.
+
+Commands:
+
+```bash
+cargo test -p ripr review_comments
+cargo xtask check-output-contracts
+cargo xtask check-static-language
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-pr
+```
+
+Blocking conditions:
+
+- free-form LLM review comments
+- automatic source edits or generated tests
+- runtime mutation execution or runtime adequacy claims
+- default CI blocking
+- inline PR review comments without explicit opt-in
+- comments placed on unrelated unchanged lines
+- new public crates

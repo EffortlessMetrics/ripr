@@ -620,13 +620,13 @@ evidence = [
   "docs/specs/RIPR-SPEC-0012-pr-test-guidance.md pins the advisory PR annotation and optional review-comment contract",
   "docs/OUTPUT_SCHEMA.md PR Test Guidance section defines the planned review-comments JSON shape",
   "docs/CI.md PR Test Guidance Annotations section documents the default job-summary and check-annotation posture",
-  "docs/IMPLEMENTATION_CAMPAIGNS.md Campaign 12 marks spec/pr-test-guidance-annotations done before generated workflow posting work",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md Campaign 13 marks review/pr-guidance-renderer ready after the control-plane audit",
   "ripr init --ci github generates an advisory workflow that writes a RIPR advisory summary and emits non-blocking changed-line check annotations when target/ripr/review/comments.json exists",
   "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture pins generated workflow artifact paths, top-seam extraction, advisory posture, optional SARIF gates, badge output, summary sections, and annotation hooks",
   "docs/QUICKSTART.md routes CI-first users through the generated advisory workflow summary, uploaded artifact packet, optional SARIF, and non-blocking posture"
 ]
 fixtures = []
-next = "maintenance"
+next = "review/pr-guidance-renderer"
 metric = "pr_test_guidance_comments, pr_test_guidance_summary_only, pr_test_guidance_suppressed, pr_test_guidance_opt_in_review_comments"
 
 [[capability]]
