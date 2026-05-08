@@ -535,7 +535,9 @@ workflow writes that report before emitting changed-line check annotations by
 default without posting inline review comments.
 
 See [LLM operator guide](LLM_OPERATOR_GUIDE.md) for the same status, workflow
-packet, verify, receipt, and reviewer-summary loop outside CI.
+packet, verify, receipt, and reviewer-summary loop outside CI. See
+[PR review guidance](PR_REVIEW_GUIDANCE.md) for the PR-facing annotation
+contract and review workflow.
 
 ### PR Test Guidance Annotations
 
@@ -558,11 +560,10 @@ ripr review-comments \
 That renderer writes JSON and Markdown under `target/ripr/review/` and does
 not post to GitHub by itself. The generated workflow then:
 
-- append the Markdown summary to `$GITHUB_STEP_SUMMARY`;
-- emit check annotations from changed-line entries;
-- upload the JSON and Markdown as artifacts;
-- optionally upsert inline PR review comments when `RIPR_PR_COMMENTS` is set to
-  `"true"`.
+- appends the Markdown summary to `$GITHUB_STEP_SUMMARY`;
+- emits check annotations from changed-line entries;
+- uploads the JSON and Markdown as artifacts;
+- keeps inline PR review comments disabled by default.
 
 Selection and placement must stay conservative:
 
@@ -579,6 +580,11 @@ The LLM guidance in annotations is bounded handoff material. It should ask for
 one focused test, avoid production edits unless explicitly requested, and point
 to `ripr agent verify` after the edit. It must not ask an LLM to decide which
 diff regions matter, run mutation testing, or claim runtime confirmation.
+
+The generated workflow does not include an inline review-comment publisher.
+Teams that add one in their own workflow must make it explicit opt-in, post
+only from `comments[]`, target changed lines only, cap comment count, and
+deduplicate by `dedupe_key`.
 
 ```yaml
 name: RIPR

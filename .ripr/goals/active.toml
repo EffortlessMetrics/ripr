@@ -90,7 +90,7 @@ commands = [
 
 [[work_item]]
 id = "docs/pr-review-guidance"
-status = "ready"
+status = "done"
 branch = "docs-pr-review-guidance"
 stackable = false
 requires_human_merge = true
@@ -109,7 +109,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/pr-review-guidance-closeout"
-status = "blocked"
+status = "ready"
 branch = "campaign-pr-review-guidance-closeout"
 stackable = false
 requires_human_merge = true

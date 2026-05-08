@@ -1491,8 +1491,9 @@ The remaining visible gap is pull-request review projection. RIPR-SPEC-0012
 defines `ripr review-comments`, the read-only report producer now exists, and
 generated CI now runs that producer before the existing summary and annotation
 consumer steps. The exact placement and suppression cases are now
-fixture-pinned; the next gap is dedicated user-facing documentation for the PR
-guidance lane.
+fixture-pinned, and the dedicated PR guidance docs now explain the command, CI
+behavior, summary-only fallback, and inline-comment opt-in boundary. The next
+gap is Campaign 13 closeout.
 
 Objective:
 
@@ -1538,8 +1539,8 @@ Work items:
 | `review/pr-guidance-renderer` | done | Added read-only `ripr review-comments --root . --base <sha> --head <sha> --out target/ripr/review/comments.json` plus Markdown output, joining existing static evidence to produce bounded PR guidance without posting to GitHub or changing analyzer behavior. |
 | `ci/run-pr-guidance-report` | done | Updated generated GitHub workflows to run `ripr review-comments` before the existing advisory summary and check-annotation consumer steps, preserving non-blocking defaults. |
 | `fixtures/pr-guidance-cases` | done | Pinned PR guidance fixtures for exact changed seam line, owner-function changed line, same-file changed line, summary-only fallback, cap suppression, configured suppression, and nearby changed-test skip. |
-| `docs/pr-review-guidance` | ready | Document PR guidance as a bounded advisory projection of existing RIPR evidence, including commands, CI behavior, opt-in review-comment boundary, and no automatic edits or runtime mutation claims. |
-| `campaign/pr-review-guidance-closeout` | blocked | Close Campaign 13 only after PR review guidance is produced, consumed by generated CI, fixture-pinned, documented, and still advisory/non-blocking by default. |
+| `docs/pr-review-guidance` | done | Added [PR review guidance](PR_REVIEW_GUIDANCE.md) documenting `ripr review-comments`, generated CI check annotations, summary-only fallback, the inline-comment opt-in boundary, pinned fixture cases, and static-evidence limits. |
+| `campaign/pr-review-guidance-closeout` | ready | Close Campaign 13 only after PR review guidance is produced, consumed by generated CI, fixture-pinned, documented, and still advisory/non-blocking by default. |
 
 Dependencies:
 

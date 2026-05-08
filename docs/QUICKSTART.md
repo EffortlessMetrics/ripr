@@ -89,12 +89,13 @@ Or copy the workflow from [CI strategy](CI.md) when adopting from the GitHub UI.
 The generated workflow is advisory by default. It:
 
 - runs `ripr pilot`;
+- runs `ripr review-comments` on pull requests;
 - writes a `RIPR advisory summary` in the GitHub job summary;
 - uploads `target/ripr/pilot`, `target/ripr/workflow`, `target/ripr/agent`,
   `target/ripr/reports`, and `target/ripr/review`;
 - writes repo badge JSON;
 - renders and uploads SARIF when `RIPR_UPLOAD_SARIF` is `"true"`;
-- emits non-blocking changed-line check annotations when future
+- emits non-blocking changed-line check annotations when
   `target/ripr/review/comments.json` exists.
 
 The first thing to read in a PR is the job summary. It names:
@@ -110,6 +111,8 @@ Do not make generated CI blocking until the repository has reviewed its first
 advisory baseline and explicitly opted into a policy gate.
 
 See [CI strategy](CI.md).
+See [PR review guidance](PR_REVIEW_GUIDANCE.md) for the annotation placement,
+summary-only fallback, and inline-comment opt-in boundary.
 
 ## CLI First Hour
 
