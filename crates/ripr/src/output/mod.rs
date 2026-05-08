@@ -3,6 +3,7 @@ pub(crate) mod agent_receipt;
 pub(crate) mod agent_seam_packets;
 pub(crate) mod agent_workflow;
 pub(crate) mod badge;
+pub(crate) mod baseline;
 pub(crate) mod evidence_health;
 pub(crate) mod format;
 pub(crate) mod gate;

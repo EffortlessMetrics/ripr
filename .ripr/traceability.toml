@@ -992,9 +992,26 @@ metrics = [
 id = "RIPR-SPEC-0016"
 name = "baseline debt delta"
 spec = "docs/specs/RIPR-SPEC-0016-baseline-debt-delta.md"
-tests = []
+tests = [
+  "crates/ripr/src/output/baseline.rs::tests::baseline_create_includes_visible_gate_decisions_and_skips_hidden_ones",
+  "crates/ripr/src/output/baseline.rs::tests::baseline_create_uses_fallback_identity_when_direct_ids_are_missing",
+  "crates/ripr/src/output/baseline.rs::tests::baseline_create_reports_malformed_entries_without_stopping",
+  "crates/ripr/src/output/baseline.rs::tests::baseline_create_rejects_unsupported_schema_version",
+  "crates/ripr/src/output/gate.rs::tests::gate_baseline_check_reads_baseline_ledger_entries",
+  "crates/ripr/src/cli/commands.rs::tests::baseline_create_parses_option_surface",
+  "crates/ripr/src/cli/commands.rs::tests::baseline_create_writes_baseline_without_overwriting_by_default",
+  "crates/ripr/tests/cli_smoke.rs::baseline_create_writes_reviewed_ledger_and_refuses_overwrite",
+]
 fixtures = []
-code = []
+code = [
+  "crates/ripr/src/cli/command.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/execute.rs",
+  "crates/ripr/src/cli/help.rs",
+  "crates/ripr/src/output/baseline.rs",
+  "crates/ripr/src/output/gate.rs",
+  "crates/ripr/src/output/mod.rs",
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0016-baseline-debt-delta.md",
   "docs/specs/README.md",

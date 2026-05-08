@@ -1798,6 +1798,91 @@ must not hide acknowledged decisions. If the evaluator returns a blocking exit
 code, the Markdown still needs enough evidence for the next agent or reviewer
 to resolve the state.
 
+## Gate Baseline Ledger
+
+`ripr baseline create` writes the first executable Campaign 17 baseline ledger.
+It turns an existing gate-decision JSON report into a stable historical-debt
+baseline that can be reviewed and checked in before later `baseline diff` and
+shrink-only update commands exist.
+
+Command:
+
+```text
+ripr baseline create \
+  --from target/ripr/reports/gate-decision.json \
+  --out .ripr/gate-baseline.json
+```
+
+Options:
+
+- `--from` - required gate-decision JSON from `ripr gate evaluate`.
+- `--out` - baseline path. Defaults to `.ripr/gate-baseline.json`.
+- `--dry-run` - print the baseline JSON without writing.
+- `--force` - overwrite an existing baseline path.
+
+The command includes `advisory`, `acknowledged`, and `blocking` gate decisions.
+It skips `suppressed`, configured-off, `not_applicable`, and malformed
+decisions. The command refuses to overwrite an existing baseline unless
+`--force` is supplied. It does not run analysis, change gate policy, edit
+source, generate tests, run mutation testing, or make CI blocking by default.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "gate_baseline",
+  "created_at": "unix_ms:1778277000000",
+  "source_report": "target/ripr/reports/gate-decision.json",
+  "mode": "baseline-check",
+  "reviewed": false,
+  "summary": {
+    "entries": 1,
+    "included": 1,
+    "skipped": {
+      "suppressed": 0,
+      "not_applicable": 0,
+      "malformed": 0,
+      "other": 0
+    }
+  },
+  "entries": [
+    {
+      "identity": {
+        "seam_id": "67fc764ba37d77bd",
+        "source_id": "ripr-review-67fc764ba37d77bd",
+        "id": "ripr-gate-67fc764ba37d77bd",
+        "dedupe_key": null,
+        "fallback": "src/pricing.rs:88:weakly_gripped"
+      },
+      "path": "src/pricing.rs",
+      "line": 88,
+      "static_class": "weakly_gripped",
+      "decision": "advisory",
+      "severity": "warning",
+      "source": "pr_guidance",
+      "gate_reason": "visible-only mode records evidence without blocking",
+      "evidence": {
+        "missing_discriminator": "amount == discount_threshold",
+        "assertion_shape": "Assert returned discount behavior directly.",
+        "recommended_test": "tests/pricing.rs::applies_discount_above_threshold"
+      },
+      "review": {
+        "reviewed": false,
+        "reason": "initial adoption baseline"
+      }
+    }
+  ],
+  "warnings": [],
+  "limits_note": "Reviewed baseline debt ledger over static RIPR gate evidence; baselines are not suppressions and do not change gate policy by themselves."
+}
+```
+
+The gate evaluator accepts this `entries[]` ledger shape in addition to the
+older lightweight `decisions[]` baseline fixture shape, so newly created
+baselines can be used by `ripr gate evaluate --baseline`.
+
 ## Baseline Debt Delta Report
 
 RIPR-SPEC-0016 defines the baseline debt delta report. The report compares an

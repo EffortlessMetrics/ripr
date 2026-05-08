@@ -974,6 +974,66 @@ fn init_force_overwrites_existing_config() -> Result<(), String> {
 }
 
 #[test]
+fn baseline_create_writes_reviewed_ledger_and_refuses_overwrite() -> Result<(), String> {
+    let workspace = unique_temp_workspace("baseline-create");
+    std::fs::create_dir_all(&workspace).map_err(|e| format!("create workspace: {e}"))?;
+    let source = workspace_root().join(
+        "fixtures/boundary_gap/expected/calibrated-gate/visible-only-advisory/gate-decision.json",
+    );
+    let out = workspace.join(".ripr/gate-baseline.json");
+    let source_arg = source.display().to_string();
+    let out_arg = out.display().to_string();
+
+    let output = run_ripr(&[
+        "baseline",
+        "create",
+        "--from",
+        &source_arg,
+        "--out",
+        &out_arg,
+    ]);
+    assert_success(&output);
+
+    let baseline = std::fs::read_to_string(&out).map_err(|e| format!("read baseline: {e}"))?;
+    assert!(baseline.contains("\"kind\": \"gate_baseline\""));
+    assert!(baseline.contains("\"reviewed\": false"));
+    assert!(baseline.contains("\"source_report\""));
+    assert!(baseline.contains("\"seam_id\": \"8f7fa8644fd12280\""));
+    assert!(baseline.contains("\"entries\": 1"));
+
+    let overwrite = run_ripr(&[
+        "baseline",
+        "create",
+        "--from",
+        &source_arg,
+        "--out",
+        &out_arg,
+    ]);
+    assert_failure(&overwrite);
+    let stderr = String::from_utf8_lossy(&overwrite.stderr);
+    assert!(stderr.contains("--force"));
+
+    let dry_run_out = workspace.join(".ripr/dry-run-baseline.json");
+    let dry_run_out_arg = dry_run_out.display().to_string();
+    let dry_run = run_ripr(&[
+        "baseline",
+        "create",
+        "--from",
+        &source_arg,
+        "--out",
+        &dry_run_out_arg,
+        "--dry-run",
+    ]);
+    assert_success(&dry_run);
+    let stdout = String::from_utf8_lossy(&dry_run.stdout);
+    assert!(stdout.contains("\"kind\": \"gate_baseline\""));
+    assert!(!dry_run_out.exists());
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
 fn pilot_writes_default_packet_outputs_for_boundary_gap_fixture() -> Result<(), String> {
     let root = workspace_root().join("fixtures/boundary_gap/input");
     let out_dir = unique_temp_workspace("pilot");

@@ -131,9 +131,13 @@ ledger shape is expected to be:
 }
 ```
 
-`ripr baseline create` will define the final creation behavior in a later PR.
-This spec only pins the debt delta report contract and the identity fields the
-future commands must share.
+`ripr baseline create` writes this ledger shape from existing gate-decision
+JSON. It includes `advisory`, `acknowledged`, and `blocking` decisions; skips
+`suppressed`, configured-off, `not_applicable`, and malformed decisions; writes
+`reviewed = false` with an initial adoption review reason; refuses to overwrite
+without `--force`; and supports `--dry-run` for review without writing. The
+baseline is a historical-debt ledger and does not suppress or silence current
+findings by itself.
 
 ## Identity Matching
 
@@ -279,9 +283,9 @@ The Markdown must distinguish:
 - acknowledged current decisions from hidden success;
 - missing or invalid inputs from passing policy.
 
-## Future Commands
+## Command Sequence
 
-Later PRs in Campaign 17 should add these command surfaces:
+Campaign 17 introduces these command surfaces in order:
 
 ```text
 ripr baseline create \
@@ -385,7 +389,7 @@ The report should feed these adoption metrics:
 
 ## Non-Goals
 
-- No baseline command implementation in this spec PR.
+- No baseline diff or update implementation in the baseline-create PR.
 - No analyzer behavior changes.
 - No gate policy semantics changes.
 - No generated workflow behavior changes.

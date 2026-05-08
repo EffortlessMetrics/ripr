@@ -11,6 +11,10 @@ are scoped or reviewed.
 
 ### Added
 
+- Added `ripr baseline create --from <gate-decision.json> --out .ripr/gate-baseline.json`,
+  which writes reviewed gate baseline ledgers from existing gate-decision
+  evidence, skips suppressed or malformed decisions, supports `--dry-run`, and
+  refuses to overwrite without `--force`.
 - Added `ripr evidence-health` and `cargo xtask evidence-health`, which write
   advisory Lane 1 analyzer-health JSON/Markdown reports summarizing grip
   classes, stage states, missing discriminators, observed value contexts,

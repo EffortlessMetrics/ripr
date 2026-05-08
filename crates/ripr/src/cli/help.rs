@@ -7,6 +7,7 @@ Usage:
   ripr evidence-health [--root PATH] [--out PATH] [--out-md PATH] [--mutation-calibration PATH]
   ripr review-comments --root . --base SHA --head SHA [--out target/ripr/review/comments.json]
   ripr gate evaluate --pr-guidance PATH [--mode visible-only] [--out target/ripr/reports/gate-decision.json]
+  ripr baseline create --from target/ripr/reports/gate-decision.json [--out .ripr/gate-baseline.json] [--dry-run] [--force]
   ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
   ripr agent start --root . --seam-id ID [--out target/ripr/workflow]
   ripr agent brief --root . (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json
@@ -33,6 +34,7 @@ Quick start:
   ripr evidence-health --root .
   ripr review-comments --root . --base origin/main --head HEAD --out target/ripr/review/comments.json
   ripr gate evaluate --pr-guidance target/ripr/review/comments.json --mode visible-only
+  ripr baseline create --from target/ripr/reports/gate-decision.json --out .ripr/gate-baseline.json
   ripr calibrate cargo-mutants --mutants-json target/mutants/outcomes.json --repo-exposure-json target/ripr/pilot/after.repo-exposure.json
   ripr agent start --root . --seam-id f3c9e4d21a0b7c88
   ripr agent brief --root . --diff change.diff --json
@@ -163,6 +165,22 @@ JSON and Markdown before returning a non-zero exit for `blocked` or
 `config_error` decisions. It does not post comments, edit source, generate
 tests, run mutation testing, upload SARIF, mutate GitHub state, or change
 generated workflow defaults.
+"#;
+
+const BASELINE_HELP: &str = r#"Usage: ripr baseline create --from PATH [--out PATH] [--dry-run] [--force]
+
+Options:
+  --from PATH    Gate-decision JSON from `ripr gate evaluate`.
+  --out PATH     Baseline ledger path. Defaults to .ripr/gate-baseline.json.
+  --dry-run      Print the baseline ledger JSON without writing.
+  --force        Overwrite an existing baseline ledger.
+
+The baseline create command writes a stable reviewed historical-debt ledger
+from existing gate-decision evidence. It includes advisory, acknowledged, and
+blocking identities; skips suppressed, configured-off, not-applicable, and
+malformed decisions; and refuses to overwrite by default. It does not edit
+source, run analysis, run mutation testing, generate tests, change gate policy,
+or make CI blocking by default.
 "#;
 
 const CALIBRATE_HELP: &str = r#"Usage: ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
@@ -382,6 +400,10 @@ pub(super) fn print_gate_help() {
     println!("{GATE_HELP}");
 }
 
+pub(super) fn print_baseline_help() {
+    println!("{BASELINE_HELP}");
+}
+
 pub(super) fn print_calibrate_help() {
     println!("{CALIBRATE_HELP}");
 }
@@ -439,8 +461,9 @@ mod tests {
     use super::{
         AGENT_BRIEF_HELP, AGENT_HELP, AGENT_PACKET_HELP, AGENT_RECEIPT_HELP,
         AGENT_REVIEW_SUMMARY_HELP, AGENT_START_HELP, AGENT_STATUS_HELP, AGENT_VERIFY_HELP,
-        CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP, DOCTOR_HELP, EVIDENCE_HEALTH_HELP, EXPLAIN_HELP,
-        GATE_HELP, HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP, REVIEW_COMMENTS_HELP,
+        BASELINE_HELP, CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP, DOCTOR_HELP, EVIDENCE_HEALTH_HELP,
+        EXPLAIN_HELP, GATE_HELP, HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP,
+        REVIEW_COMMENTS_HELP,
     };
 
     #[test]
@@ -451,6 +474,7 @@ mod tests {
         assert!(HELP.contains("ripr evidence-health"));
         assert!(HELP.contains("ripr review-comments"));
         assert!(HELP.contains("ripr gate evaluate"));
+        assert!(HELP.contains("ripr baseline create"));
         assert!(HELP.contains("ripr calibrate"));
         assert!(HELP.contains("ripr agent start"));
         assert!(HELP.contains("ripr agent brief"));
@@ -493,6 +517,8 @@ mod tests {
         assert!(GATE_HELP.starts_with("Usage: ripr gate evaluate"));
         assert!(GATE_HELP.contains("visible-only"));
         assert!(GATE_HELP.contains("ripr-waive"));
+        assert!(BASELINE_HELP.starts_with("Usage: ripr baseline create"));
+        assert!(BASELINE_HELP.contains(".ripr/gate-baseline.json"));
         assert!(CALIBRATE_HELP.starts_with("Usage: ripr calibrate cargo-mutants"));
         assert!(CALIBRATE_HELP.contains("--mutants-json PATH"));
         assert!(AGENT_HELP.starts_with("Usage: ripr agent"));
