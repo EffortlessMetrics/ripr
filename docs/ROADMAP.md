@@ -105,14 +105,15 @@ consumers, guidance placement and suppression cases are fixture-pinned, and
 [PR review guidance](PR_REVIEW_GUIDANCE.md) documents the command, CI behavior,
 summary-only fallback, inline-comment opt-in boundary, and static-evidence
 limits. Campaign 14 is active as Recommendation Calibration: RIPR-SPEC-0013
-now pins the recommendation calibration report contract for measuring whether
-completed recommendation surfaces are actionable, correctly placed, properly
-suppressed or capped, and correlated with before/after static movement without
-telemetry, generated tests, runtime mutation execution, or default CI blocking.
-The next ready slices are the PR-shaped calibration corpus and local outcome
-receipts. Campaign 15 is queued as Calibrated Gate Policy so optional policy
-gates come after measured signal quality and remain explicit, advisory by
-default, and separate from runtime mutation vocabulary.
+now pins the recommendation calibration report contract, the PR-shaped
+calibration corpus is fixture-pinned, and `ripr review-feedback` writes local
+outcome receipts. The next ready slice is `report/recommendation-precision`,
+which will join PR guidance, corpus expectations, optional outcome receipts,
+suppression state, target placement, and latency without telemetry, generated
+tests, runtime mutation execution, or default CI blocking. Campaign 15 is queued
+as Calibrated Gate Policy so optional policy gates come after measured signal
+quality and remain explicit, advisory by default, and separate from runtime
+mutation vocabulary.
 
 ## Strategic Sequence
 

@@ -104,6 +104,8 @@ Recommendation calibration uses these review-quality labels:
 - `suppressed_correctly` - suppression, configured-off severity, nearby-test
   change, generated/migration classification, or cap behavior hid the item as
   expected.
+- `missing_recommendation` - fixture or review expected a recommendation for a
+  changed seam, but PR guidance did not surface one.
 - `unknown` - no fixture expectation, receipt, or reviewer outcome exists.
 
 These labels measure recommendation usefulness. They do not mean runtime
@@ -116,6 +118,43 @@ recommendation was useful in the expected review context. For example, a
 recommendation can have `placement.quality = "summary_only_expected"` and
 `calibration.outcome = "summary_only_correct"` when summary-only guidance was
 the expected review surface.
+
+## Review Outcome Receipts
+
+The first review feedback surface is a local JSON receipt:
+
+```text
+ripr review-feedback \
+  --outcome useful \
+  --recommendation-id ripr-review-67fc764ba37d77bd \
+  --seam-id 67fc764ba37d77bd \
+  --expected-test-file tests/pricing.rs \
+  --actual-test-file tests/pricing.rs \
+  --reason "Reviewer accepted the focused test request."
+```
+
+The command writes:
+
+```text
+target/ripr/review-feedback/outcome-receipt.json
+```
+
+The receipt has schema version `0.1` and records:
+
+- `source` - `human_review`, `agent_review`, `fixture_expectation`, or
+  `maintainer_import`;
+- `outcome` - one of `useful`, `noisy`, `wrong_line`, `already_covered`,
+  `wrong_target`, `summary_only_correct`, `suppressed_correctly`, or
+  `missing_recommendation`;
+- optional `recommendation_id`, `comment_id`, and `seam_id` link fields;
+- optional expected and actual test file fields;
+- optional caller-supplied `recorded_unix_ms` for later latency joins;
+- a `limits_note` that keeps the receipt local, advisory, and static.
+
+The receipt does not send telemetry, call external services, post review
+comments, edit source files, generate tests, run mutation testing, or make CI
+blocking by default. It is feedback evidence for later calibration reports, not
+a ranking change or gate decision.
 
 ## Metrics
 

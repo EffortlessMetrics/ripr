@@ -77,7 +77,7 @@ commands = [
 
 [[work_item]]
 id = "review-feedback/outcome-receipts"
-status = "ready"
+status = "done"
 branch = "review-feedback-outcome-receipts"
 stackable = false
 requires_human_merge = false
@@ -93,7 +93,7 @@ commands = [
 
 [[work_item]]
 id = "report/recommendation-precision"
-status = "blocked"
+status = "ready"
 branch = "report-recommendation-precision"
 stackable = false
 requires_human_merge = false

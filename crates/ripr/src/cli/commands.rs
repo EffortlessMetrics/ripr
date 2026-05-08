@@ -62,6 +62,21 @@ struct ReviewCommentsOptions {
     out: PathBuf,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct ReviewFeedbackOptions {
+    root: PathBuf,
+    source: output::review_feedback::ReviewFeedbackSource,
+    outcome: output::review_feedback::ReviewFeedbackOutcome,
+    recommendation_id: Option<String>,
+    comment_id: Option<String>,
+    seam_id: Option<String>,
+    expected_test_file: Option<String>,
+    actual_test_file: Option<String>,
+    reason: Option<String>,
+    recorded_unix_ms: Option<u64>,
+    out: PathBuf,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum OutcomeFormat {
     Markdown,
@@ -1480,6 +1495,39 @@ pub(super) fn review_comments(args: &[String]) -> Result<(), String> {
     review_comments_with_diff_loader(args, load_review_comments_diff)
 }
 
+pub(super) fn review_feedback(args: &[String]) -> Result<(), String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        help::print_review_feedback_help();
+        return Ok(());
+    }
+
+    let options = parse_review_feedback_options(args)?;
+    if !options.root.is_dir() {
+        return Err(format!(
+            "review-feedback root {} is not a directory",
+            options.root.display()
+        ));
+    }
+
+    let out = resolve_review_feedback_out_path(&options.root, &options.out)?;
+    let input = output::review_feedback::ReviewFeedbackReceiptInput {
+        root: output::outcome::display_path(&options.root),
+        source: options.source,
+        outcome: options.outcome,
+        recommendation_id: options.recommendation_id,
+        comment_id: options.comment_id,
+        seam_id: options.seam_id,
+        expected_test_file: options.expected_test_file,
+        actual_test_file: options.actual_test_file,
+        reason: options.reason,
+        recorded_unix_ms: options.recorded_unix_ms,
+    };
+    let rendered = output::review_feedback::render_review_feedback_receipt_json(&input)?;
+    write_text_file(&out, &rendered)?;
+    println!("Wrote {}", out.display());
+    Ok(())
+}
+
 fn review_comments_with_diff_loader(
     args: &[String],
     load_diff: impl Fn(&Path, &str, &str) -> Result<String, String>,
@@ -1792,6 +1840,188 @@ fn parse_review_comments_options(args: &[String]) -> Result<ReviewCommentsOption
         head: head.ok_or_else(|| "review-comments requires --head <sha>".to_string())?,
         out,
     })
+}
+
+fn parse_review_feedback_options(args: &[String]) -> Result<ReviewFeedbackOptions, String> {
+    let mut root = PathBuf::from(".");
+    let mut source = output::review_feedback::ReviewFeedbackSource::HumanReview;
+    let mut outcome: Option<output::review_feedback::ReviewFeedbackOutcome> = None;
+    let mut recommendation_id: Option<String> = None;
+    let mut comment_id: Option<String> = None;
+    let mut seam_id: Option<String> = None;
+    let mut expected_test_file: Option<String> = None;
+    let mut actual_test_file: Option<String> = None;
+    let mut reason: Option<String> = None;
+    let mut recorded_unix_ms: Option<u64> = None;
+    let mut out = PathBuf::from("target/ripr/review-feedback/outcome-receipt.json");
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = PathBuf::from(expect_value(args, i, "--root")?);
+            }
+            "--source" => {
+                i += 1;
+                source = output::review_feedback::ReviewFeedbackSource::parse(expect_value(
+                    args, i, "--source",
+                )?)?;
+            }
+            "--outcome" => {
+                i += 1;
+                outcome = Some(output::review_feedback::ReviewFeedbackOutcome::parse(
+                    expect_value(args, i, "--outcome")?,
+                )?);
+            }
+            "--recommendation-id" | "--recommendation" => {
+                i += 1;
+                recommendation_id = Some(non_empty_review_feedback_value(
+                    expect_value(args, i, "--recommendation-id")?,
+                    "--recommendation-id",
+                )?);
+            }
+            "--comment-id" | "--comment" => {
+                i += 1;
+                comment_id = Some(non_empty_review_feedback_value(
+                    expect_value(args, i, "--comment-id")?,
+                    "--comment-id",
+                )?);
+            }
+            "--seam-id" => {
+                i += 1;
+                seam_id = Some(non_empty_review_feedback_value(
+                    expect_value(args, i, "--seam-id")?,
+                    "--seam-id",
+                )?);
+            }
+            "--expected-test-file" => {
+                i += 1;
+                expected_test_file = Some(non_empty_review_feedback_value(
+                    expect_value(args, i, "--expected-test-file")?,
+                    "--expected-test-file",
+                )?);
+            }
+            "--actual-test-file" => {
+                i += 1;
+                actual_test_file = Some(non_empty_review_feedback_value(
+                    expect_value(args, i, "--actual-test-file")?,
+                    "--actual-test-file",
+                )?);
+            }
+            "--reason" => {
+                i += 1;
+                reason = Some(non_empty_review_feedback_value(
+                    expect_value(args, i, "--reason")?,
+                    "--reason",
+                )?);
+            }
+            "--recorded-unix-ms" => {
+                i += 1;
+                recorded_unix_ms = Some(parse_review_feedback_recorded_unix_ms(expect_value(
+                    args,
+                    i,
+                    "--recorded-unix-ms",
+                )?)?);
+            }
+            "--out" => {
+                i += 1;
+                let value = expect_value(args, i, "--out")?;
+                if value.trim().is_empty() {
+                    return Err("review-feedback --out requires a non-empty path".to_string());
+                }
+                out = PathBuf::from(value);
+            }
+            other => return Err(format!("unknown review-feedback argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    if recommendation_id.is_none() && comment_id.is_none() && seam_id.is_none() {
+        return Err(
+            "review-feedback requires at least one of --recommendation-id, --comment-id, or --seam-id"
+                .to_string(),
+        );
+    }
+
+    Ok(ReviewFeedbackOptions {
+        root,
+        source,
+        outcome: outcome
+            .ok_or_else(|| "review-feedback requires --outcome <outcome>".to_string())?,
+        recommendation_id,
+        comment_id,
+        seam_id,
+        expected_test_file,
+        actual_test_file,
+        reason,
+        recorded_unix_ms,
+        out,
+    })
+}
+
+fn non_empty_review_feedback_value(value: &str, flag: &str) -> Result<String, String> {
+    if value.trim().is_empty() {
+        Err(format!("review-feedback {flag} requires a non-empty value"))
+    } else {
+        Ok(value.to_string())
+    }
+}
+
+fn parse_review_feedback_recorded_unix_ms(value: &str) -> Result<u64, String> {
+    value.parse::<u64>().map_err(|parse_error| {
+        format!(
+            "invalid review-feedback --recorded-unix-ms {value:?}: expected unsigned integer ({parse_error})"
+        )
+    })
+}
+
+fn resolve_review_feedback_out_path(root: &Path, out: &Path) -> Result<PathBuf, String> {
+    let root = root.canonicalize().map_err(|err| {
+        format!(
+            "canonicalize review-feedback root {} failed: {err}",
+            root.display()
+        )
+    })?;
+    if out
+        .components()
+        .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        return Err(format!(
+            "review-feedback --out {} must stay under root {}",
+            out.display(),
+            root.display()
+        ));
+    }
+    let candidate = if out.is_absolute() {
+        out.to_path_buf()
+    } else {
+        root.join(out)
+    };
+    if candidate.is_absolute() && !candidate.starts_with(&root) {
+        return Err(format!(
+            "review-feedback --out {} must stay under root {}",
+            out.display(),
+            root.display()
+        ));
+    }
+    let parent = candidate.parent().unwrap_or(root.as_path());
+    if parent.exists() {
+        let parent = parent.canonicalize().map_err(|err| {
+            format!(
+                "canonicalize review-feedback output parent {} failed: {err}",
+                parent.display()
+            )
+        })?;
+        if !parent.starts_with(&root) {
+            return Err(format!(
+                "review-feedback --out {} must stay under root {}",
+                out.display(),
+                root.display()
+            ));
+        }
+    }
+    Ok(candidate)
 }
 
 fn parse_outcome_format(value: &str) -> Result<OutcomeFormat, String> {
@@ -2460,6 +2690,127 @@ mod tests {
             review_comments_markdown_path(Path::new("target/ripr/review/comments.json")),
             PathBuf::from("target/ripr/review/comments.md")
         );
+    }
+
+    #[test]
+    fn review_feedback_parses_outcome_receipt_options() {
+        assert_eq!(
+            parse_review_feedback_options(&args(&[
+                "--root",
+                ".",
+                "--source",
+                "agent_review",
+                "--outcome",
+                "wrong_line",
+                "--recommendation-id",
+                "ripr-review-67fc764ba37d77bd",
+                "--comment-id",
+                "comment-1",
+                "--seam-id",
+                "67fc764ba37d77bd",
+                "--expected-test-file",
+                "tests/pricing.rs",
+                "--actual-test-file",
+                "tests/discounts.rs",
+                "--reason",
+                "Reviewer moved the request to the owner function line.",
+                "--recorded-unix-ms",
+                "1778240000000",
+                "--out",
+                "target/ripr/review-feedback/wrong-line.json",
+            ])),
+            Ok(ReviewFeedbackOptions {
+                root: PathBuf::from("."),
+                source: output::review_feedback::ReviewFeedbackSource::AgentReview,
+                outcome: output::review_feedback::ReviewFeedbackOutcome::WrongLine,
+                recommendation_id: Some("ripr-review-67fc764ba37d77bd".to_string()),
+                comment_id: Some("comment-1".to_string()),
+                seam_id: Some("67fc764ba37d77bd".to_string()),
+                expected_test_file: Some("tests/pricing.rs".to_string()),
+                actual_test_file: Some("tests/discounts.rs".to_string()),
+                reason: Some("Reviewer moved the request to the owner function line.".to_string()),
+                recorded_unix_ms: Some(1_778_240_000_000),
+                out: PathBuf::from("target/ripr/review-feedback/wrong-line.json"),
+            })
+        );
+    }
+
+    #[test]
+    fn review_feedback_requires_outcome_and_identity() {
+        assert_eq!(
+            parse_review_feedback_options(&args(&["--seam-id", "67fc764ba37d77bd"])),
+            Err("review-feedback requires --outcome <outcome>".to_string())
+        );
+        assert_eq!(
+            parse_review_feedback_options(&args(&["--outcome", "useful"])),
+            Err(
+                "review-feedback requires at least one of --recommendation-id, --comment-id, or --seam-id"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            parse_review_feedback_options(&args(&["--outcome", "blocked", "--seam-id", "s"])),
+            Err("unknown review-feedback outcome \"blocked\"; expected useful, noisy, wrong_line, already_covered, wrong_target, summary_only_correct, suppressed_correctly, missing_recommendation".to_string())
+        );
+        assert_eq!(
+            parse_review_feedback_options(&args(&["--outcome", "useful", "--seam-id", "",])),
+            Err("review-feedback --seam-id requires a non-empty value".to_string())
+        );
+    }
+
+    #[test]
+    fn review_feedback_writes_repo_local_outcome_receipt() -> Result<(), String> {
+        let root = unique_command_test_dir("review-feedback");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        let root_arg = root.display().to_string();
+
+        review_feedback(&args(&[
+            "--root",
+            &root_arg,
+            "--outcome",
+            "useful",
+            "--recommendation-id",
+            "ripr-review-67fc764ba37d77bd",
+            "--seam-id",
+            "67fc764ba37d77bd",
+            "--expected-test-file",
+            "tests/pricing.rs",
+            "--actual-test-file",
+            "tests/pricing.rs",
+            "--reason",
+            "Reviewer accepted the focused test request.",
+        ]))?;
+
+        let receipt_path = root.join("target/ripr/review-feedback/outcome-receipt.json");
+        let rendered = std::fs::read_to_string(&receipt_path)
+            .map_err(|err| format!("read review feedback receipt: {err}"))?;
+        let value: serde_json::Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("parse review feedback receipt: {err}"))?;
+        assert_eq!(value["schema_version"], "0.1");
+        assert_eq!(value["status"], "advisory");
+        assert_eq!(value["outcome"], "useful");
+        assert_eq!(value["recommendation_id"], "ripr-review-67fc764ba37d77bd");
+        assert_eq!(value["seam_id"], "67fc764ba37d77bd");
+        assert_eq!(value["expected"]["test_file"], "tests/pricing.rs");
+        assert_eq!(value["actual"]["test_file"], "tests/pricing.rs");
+        assert!(
+            value["limits_note"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("no telemetry")
+        );
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn review_feedback_rejects_output_paths_outside_root() -> Result<(), String> {
+        let root = unique_command_test_dir("review-feedback-outside");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        let result = resolve_review_feedback_out_path(&root, Path::new("../receipt.json"));
+        assert!(matches!(result, Err(message) if message.contains("must stay under root")));
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
     }
 
     #[test]

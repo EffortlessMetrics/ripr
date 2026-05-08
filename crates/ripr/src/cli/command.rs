@@ -6,6 +6,7 @@ pub(super) enum CliCommand {
     Pilot(Vec<String>),
     Outcome(Vec<String>),
     ReviewComments(Vec<String>),
+    ReviewFeedback(Vec<String>),
     Calibrate(Vec<String>),
     Agent(Vec<String>),
     Check(Vec<String>),
@@ -24,6 +25,7 @@ impl CliCommand {
             Some("pilot") => Ok(Self::Pilot(command_args)),
             Some("outcome") => Ok(Self::Outcome(command_args)),
             Some("review-comments") => Ok(Self::ReviewComments(command_args)),
+            Some("review-feedback") => Ok(Self::ReviewFeedback(command_args)),
             Some("calibrate") => Ok(Self::Calibrate(command_args)),
             Some("agent") => Ok(Self::Agent(command_args)),
             Some("check") => Ok(Self::Check(command_args)),
@@ -58,6 +60,10 @@ mod tests {
             (
                 Some("review-comments"),
                 CliCommand::ReviewComments(Vec::new()),
+            ),
+            (
+                Some("review-feedback"),
+                CliCommand::ReviewFeedback(Vec::new()),
             ),
             (Some("calibrate"), CliCommand::Calibrate(Vec::new())),
             (Some("agent"), CliCommand::Agent(Vec::new())),

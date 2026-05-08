@@ -827,6 +827,11 @@ id = "RIPR-SPEC-0013"
 name = "recommendation calibration report"
 spec = "docs/specs/RIPR-SPEC-0013-recommendation-calibration-report.md"
 tests = [
+  "crates/ripr/src/output/review_feedback.rs::tests::review_feedback_outcome_parses_supported_values",
+  "crates/ripr/src/output/review_feedback.rs::tests::review_feedback_receipt_json_allows_missing_recommendation",
+  "crates/ripr/src/output/review_feedback.rs::tests::review_feedback_receipt_json_is_advisory_and_structured",
+  "crates/ripr/src/cli/commands.rs::tests::review_feedback_parses_outcome_receipt_options",
+  "crates/ripr/src/cli/commands.rs::tests::review_feedback_writes_repo_local_outcome_receipt",
   "crates/ripr/src/output/review_comments.rs::tests::recommendation_calibration_fixture_expectations_pin_required_cases"
 ]
 fixtures = [
@@ -834,7 +839,12 @@ fixtures = [
   "fixtures/boundary_gap/expected/recommendation-calibration/expectations.json",
   "fixtures/boundary_gap/expected/recommendation-calibration/synthetic-pr-guidance.json"
 ]
-code = []
+code = [
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/command.rs",
+  "crates/ripr/src/cli/help.rs",
+  "crates/ripr/src/output/review_feedback.rs"
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0013-recommendation-calibration-report.md",
   "docs/specs/README.md",

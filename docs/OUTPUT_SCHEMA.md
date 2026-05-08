@@ -1424,7 +1424,7 @@ Field contract:
   `wrong_target`, `not_applicable`, or `unknown`.
 - `recommendations[].calibration.outcome` - `useful`, `noisy`, `wrong_line`,
   `already_covered`, `wrong_target`, `summary_only_correct`,
-  `suppressed_correctly`, or `unknown`.
+  `suppressed_correctly`, `missing_recommendation`, or `unknown`.
 - `recommendations[].calibration.source` - `fixture_expectation`,
   `outcome_receipt`, `static_movement`, or `unknown`.
 - `recommendations[].static_movement.state` - `improved`, `unchanged`,
@@ -1439,6 +1439,79 @@ Field contract:
 - `warnings[]` - missing inputs, unsupported expectation fields, stale
   artifacts, or latency values that could not be derived.
 - `limits_note` - static/advisory boundary text for summaries and generated CI.
+
+### Review Feedback Outcome Receipt
+
+`ripr review-feedback` writes one repo-local recommendation outcome receipt for
+later recommendation calibration joins:
+
+```text
+ripr review-feedback \
+  --outcome useful \
+  --recommendation-id ripr-review-67fc764ba37d77bd \
+  --seam-id 67fc764ba37d77bd \
+  --expected-test-file tests/pricing.rs \
+  --actual-test-file tests/pricing.rs \
+  --reason "Reviewer accepted the focused test request."
+```
+
+The default output path is:
+
+```text
+target/ripr/review-feedback/outcome-receipt.json
+```
+
+This command writes a local JSON artifact only. It does not send telemetry,
+call external services, post comments, edit source files, generate tests, run
+mutation testing, or make CI blocking by default.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "advisory",
+  "root": ".",
+  "source": "human_review",
+  "recommendation_id": "ripr-review-67fc764ba37d77bd",
+  "comment_id": "comment-1",
+  "seam_id": "67fc764ba37d77bd",
+  "outcome": "useful",
+  "expected": {
+    "test_file": "tests/pricing.rs"
+  },
+  "actual": {
+    "test_file": "tests/pricing.rs"
+  },
+  "reason": "Reviewer accepted the focused test request.",
+  "recorded_unix_ms": 1778240000000,
+  "limits_note": "Repo-local review feedback only; no telemetry, generated tests, source edits, mutation execution, or CI blocking."
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `tool` - always `"ripr"`.
+- `status` - always `advisory`.
+- `root` - workspace root used when the receipt was written.
+- `source` - `human_review`, `agent_review`, `fixture_expectation`, or
+  `maintainer_import`.
+- `recommendation_id` - PR guidance recommendation ID when one exists. This is
+  `null` for missing-recommendation receipts.
+- `comment_id` - optional review/check annotation ID.
+- `seam_id` - optional seam ID related to the feedback. Missing
+  recommendations should include this when known.
+- `outcome` - `useful`, `noisy`, `wrong_line`, `already_covered`,
+  `wrong_target`, `summary_only_correct`, `suppressed_correctly`, or
+  `missing_recommendation`.
+- `expected.test_file` - optional test target expected by fixture or review.
+- `actual.test_file` - optional test target used by the author or agent.
+- `reason` - optional local explanation for the recorded outcome.
+- `recorded_unix_ms` - optional caller-supplied timestamp for later latency
+  joins. RIPR does not invent a timestamp when the caller omits it.
+- `limits_note` - local/advisory boundary text for report consumers.
 
 ## Agent Status
 

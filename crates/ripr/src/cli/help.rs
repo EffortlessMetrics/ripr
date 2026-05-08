@@ -5,6 +5,7 @@ Usage:
   ripr pilot [--root PATH] [--out PATH] [--mode draft] [--max-seams 5] [--timeout-ms 30000]
   ripr outcome --before PATH --after PATH [--format md|json] [--out PATH]
   ripr review-comments --root . --base SHA --head SHA [--out target/ripr/review/comments.json]
+  ripr review-feedback --outcome useful (--recommendation-id ID|--comment-id ID|--seam-id ID) [--out PATH]
   ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
   ripr agent start --root . --seam-id ID [--out target/ripr/workflow]
   ripr agent brief --root . (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json
@@ -29,6 +30,7 @@ Quick start:
   ripr pilot
   ripr outcome --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json
   ripr review-comments --root . --base origin/main --head HEAD --out target/ripr/review/comments.json
+  ripr review-feedback --outcome useful --recommendation-id ripr-review-f3c9e4d21a0b7c88 --seam-id f3c9e4d21a0b7c88
   ripr calibrate cargo-mutants --mutants-json target/mutants/outcomes.json --repo-exposure-json target/ripr/pilot/after.repo-exposure.json
   ripr agent start --root . --seam-id f3c9e4d21a0b7c88
   ripr agent brief --root . --diff change.diff --json
@@ -118,6 +120,27 @@ JSON plus a sibling Markdown file. It joins existing static seam evidence with
 the changed-line diff and only places line guidance on changed lines. It does
 not post to GitHub, edit source, generate tests, run mutation testing, or make
 CI blocking by default.
+"#;
+
+const REVIEW_FEEDBACK_HELP: &str = r#"Usage: ripr review-feedback [--root PATH] --outcome OUTCOME (--recommendation-id ID|--comment-id ID|--seam-id ID) [--out PATH]
+
+Options:
+  --root PATH                Workspace root. Defaults to current directory.
+  --outcome OUTCOME          useful, noisy, wrong_line, already_covered, wrong_target, summary_only_correct, suppressed_correctly, or missing_recommendation.
+  --recommendation-id ID     PR guidance recommendation ID when one exists.
+  --comment-id ID            Review/check annotation ID when available.
+  --seam-id ID               Seam ID related to the feedback.
+  --source SOURCE            human_review, agent_review, fixture_expectation, or maintainer_import. Defaults to human_review.
+  --expected-test-file PATH  Expected test target from fixture or review.
+  --actual-test-file PATH    Test target used by the author or agent.
+  --reason TEXT              Short local reason for the outcome.
+  --recorded-unix-ms MS      Optional caller-supplied timestamp for later latency joins.
+  --out PATH                 Output JSON path. Defaults to target/ripr/review-feedback/outcome-receipt.json.
+
+The review-feedback command writes one repo-local outcome receipt for
+recommendation calibration. It does not send telemetry, call external
+services, edit source files, generate tests, run mutation testing, post review
+comments, or make CI blocking by default.
 "#;
 
 const CALIBRATE_HELP: &str = r#"Usage: ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
@@ -329,6 +352,10 @@ pub(super) fn print_review_comments_help() {
     println!("{REVIEW_COMMENTS_HELP}");
 }
 
+pub(super) fn print_review_feedback_help() {
+    println!("{REVIEW_FEEDBACK_HELP}");
+}
+
 pub(super) fn print_calibrate_help() {
     println!("{CALIBRATE_HELP}");
 }
@@ -387,7 +414,7 @@ mod tests {
         AGENT_BRIEF_HELP, AGENT_HELP, AGENT_PACKET_HELP, AGENT_RECEIPT_HELP,
         AGENT_REVIEW_SUMMARY_HELP, AGENT_START_HELP, AGENT_STATUS_HELP, AGENT_VERIFY_HELP,
         CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP, DOCTOR_HELP, EXPLAIN_HELP, HELP, INIT_HELP,
-        LSP_HELP, OUTCOME_HELP, PILOT_HELP, REVIEW_COMMENTS_HELP,
+        LSP_HELP, OUTCOME_HELP, PILOT_HELP, REVIEW_COMMENTS_HELP, REVIEW_FEEDBACK_HELP,
     };
 
     #[test]
@@ -396,6 +423,7 @@ mod tests {
         assert!(HELP.contains("ripr pilot"));
         assert!(HELP.contains("ripr outcome"));
         assert!(HELP.contains("ripr review-comments"));
+        assert!(HELP.contains("ripr review-feedback"));
         assert!(HELP.contains("ripr calibrate"));
         assert!(HELP.contains("ripr agent start"));
         assert!(HELP.contains("ripr agent brief"));
@@ -433,6 +461,8 @@ mod tests {
         assert!(OUTCOME_HELP.contains("--before PATH"));
         assert!(REVIEW_COMMENTS_HELP.starts_with("Usage: ripr review-comments"));
         assert!(REVIEW_COMMENTS_HELP.contains("target/ripr/review/comments.json"));
+        assert!(REVIEW_FEEDBACK_HELP.starts_with("Usage: ripr review-feedback"));
+        assert!(REVIEW_FEEDBACK_HELP.contains("missing_recommendation"));
         assert!(CALIBRATE_HELP.starts_with("Usage: ripr calibrate cargo-mutants"));
         assert!(CALIBRATE_HELP.contains("--mutants-json PATH"));
         assert!(AGENT_HELP.starts_with("Usage: ripr agent"));

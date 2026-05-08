@@ -15,6 +15,7 @@ pub(super) fn execute(command: CliCommand) -> Result<(), String> {
         CliCommand::Pilot(args) => commands::pilot(&args),
         CliCommand::Outcome(args) => commands::outcome(&args),
         CliCommand::ReviewComments(args) => commands::review_comments(&args),
+        CliCommand::ReviewFeedback(args) => commands::review_feedback(&args),
         CliCommand::Calibrate(args) => commands::calibrate(&args),
         CliCommand::Agent(args) => commands::agent(&args),
         CliCommand::Check(args) => commands::check(&args),
@@ -64,6 +65,10 @@ mod tests {
         assert_eq!(
             execute(CliCommand::ReviewComments(args(&["--base"]))),
             Err("missing value for --base".to_string())
+        );
+        assert_eq!(
+            execute(CliCommand::ReviewFeedback(args(&["--outcome"]))),
+            Err("missing value for --outcome".to_string())
         );
         assert_eq!(
             execute(CliCommand::Calibrate(args(&[

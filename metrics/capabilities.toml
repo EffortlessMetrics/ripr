@@ -644,13 +644,18 @@ spec = "RIPR-SPEC-0013"
 evidence = [
   "docs/specs/RIPR-SPEC-0013-recommendation-calibration-report.md defines the planned recommendation calibration report contract",
   "docs/OUTPUT_SCHEMA.md Recommendation Calibration Report section defines the planned JSON shape",
-  "docs/IMPLEMENTATION_CAMPAIGNS.md Campaign 14 marks fixtures/pr-guidance-calibration-corpus as the next ready item after the spec",
+  "fixtures/boundary_gap/expected/recommendation-calibration/expectations.json pins PR-shaped recommendation-quality cases",
+  "ripr review-feedback --outcome <outcome> writes repo-local outcome receipt JSON for useful, noisy, wrong_line, already_covered, wrong_target, summary_only_correct, suppressed_correctly, and missing_recommendation feedback",
+  "crates/ripr/src/output/review_feedback.rs renders Review Feedback Outcome Receipt schema 0.1 without telemetry, external services, source edits, generated tests, mutation execution, or CI blocking",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md Campaign 14 marks report/recommendation-precision as the next ready item after the corpus and outcome receipts",
   "docs/IMPLEMENTATION_PLAN.md routes Campaign 14 through recommendation calibration before optional gates",
   "docs/ROADMAP.md places recommendation calibration before calibrated gate policy"
 ]
-fixtures = []
-next = "fixtures/pr-guidance-calibration-corpus"
-metric = "planned recommendation calibration will count usefulness, false annotations, summary-only correctness, suppression correctness, target-file correctness, latency, static improved, unchanged, or regressed movement, and unknown outcomes without telemetry or CI blocking"
+fixtures = [
+  "fixtures/boundary_gap/expected/recommendation-calibration/expectations.json"
+]
+next = "report/recommendation-precision"
+metric = "planned recommendation calibration will count usefulness, false annotations, summary-only correctness, suppression correctness, target-file correctness, latency, static improved, unchanged, or regressed movement, unknown outcomes, and local outcome receipts without telemetry or CI blocking"
 
 [[capability]]
 id = "pilot_packet"
