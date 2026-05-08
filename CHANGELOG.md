@@ -151,6 +151,8 @@ are scoped or reviewed.
   generated CI gate wiring landed without changing default workflow blocking.
 - Advanced Campaign 15 to `campaign/calibrated-gate-closeout` after documenting
   calibrated gates as optional policy over existing static evidence.
+- Clarified agent merge ownership and replaced the old campaign-field guard
+  with stale merge-boundary language detection.
 - Pinned RIPR-SPEC-0012 as the PR test guidance annotation contract and
   advanced Campaign 12 to `vscode/first-run-status` as the next ready UX item.
 - Advanced Campaign 12 to `vscode/action-discoverability` after pinning the

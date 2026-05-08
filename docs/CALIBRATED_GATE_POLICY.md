@@ -24,6 +24,7 @@ ripr gate evaluate \
   --root . \
   --repo-exposure target/ripr/reports/repo-exposure.json \
   --pr-guidance target/ripr/review/comments.json \
+  --sarif-policy target/ripr/reports/sarif-policy.json \
   --labels-json target/ci/labels.json \
   --agent-verify target/ripr/workflow/agent-verify.json \
   --agent-receipt target/ripr/reports/agent-receipt.json \
@@ -42,6 +43,7 @@ smallest local run. Other inputs refine the decision when available:
 | --- | --- |
 | PR guidance | Supplies changed-seam recommendations and placement metadata. |
 | Repo exposure | Adds static seam context when the report is available. |
+| SARIF policy | Carries existing SARIF policy decisions into the gate decision context. |
 | Labels JSON | Lets acknowledgement labels such as `ripr-waive` change a blocking candidate into an acknowledged decision. |
 | Agent verify and receipt | Connect the policy decision to the focused-test verification loop when present. |
 | Recommendation calibration | Records whether this class of recommendation was useful, noisy, correctly placed, suppressed correctly, or unknown. |

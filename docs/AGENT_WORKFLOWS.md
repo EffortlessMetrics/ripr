@@ -80,6 +80,10 @@ Stop only when a live user instruction, hosted branch protection, credential
 requirement, unresolved review finding, or out-of-scope decision makes that
 necessary.
 
+Merge ownership is ordinary scoped work. Campaign manifests should describe
+whether work items are independent or stackable, not create a special merge
+boundary that prevents an agent from finishing a green, in-scope PR.
+
 ## Choosing A Subset
 
 When a task is large, choose the smallest vertical slice that can produce a
