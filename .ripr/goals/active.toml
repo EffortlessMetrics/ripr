@@ -82,7 +82,7 @@ commands = [
 
 [[work_item]]
 id = "ci/pr-summary-surface"
-status = "ready"
+status = "done"
 branch = "ci-pr-summary-surface"
 stackable = false
 requires_human_merge = true
@@ -98,7 +98,7 @@ commands = [
 
 [[work_item]]
 id = "ci/generated-workflow-smoke-fixture"
-status = "blocked"
+status = "ready"
 branch = "ci-generated-workflow-smoke-fixture"
 stackable = false
 requires_human_merge = true

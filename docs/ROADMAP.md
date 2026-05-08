@@ -91,7 +91,9 @@ workflow explain the top recommendation without requiring users to inspect CLI
 reports first. The PR guidance annotation contract is pinned, the editor now has
 a first-run status path for server/workspace/analysis state, and seam diagnostic
 actions are titled around inspect, targeted-test, agent-handoff, verify, review,
-and refresh intent. The next slice is the generated CI summary surface.
+and refresh intent, and the generated GitHub workflow now writes a
+reviewer-oriented advisory summary before artifact download. The next slice is
+the generated workflow smoke fixture.
 
 ## Strategic Sequence
 

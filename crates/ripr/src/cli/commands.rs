@@ -979,15 +979,102 @@ jobs:
             --root . \
             > target/ripr/workflow/agent-review-summary.md
 
-      - name: Add RIPR pilot summary
-        if: always() && hashFiles('target/ripr/pilot/pilot-summary.md') != ''
+      - name: Emit RIPR PR guidance annotations
+        if: always() && hashFiles('target/ripr/review/comments.json') != ''
         continue-on-error: true
-        run: cat target/ripr/pilot/pilot-summary.md >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          escape_github_message() {
+            local value="$1"
+            value="${value//'%'/'%25'}"
+            value="${value//$'\r'/'%0D'}"
+            value="${value//$'\n'/'%0A'}"
+            printf '%s' "$value"
+          }
 
-      - name: Add RIPR agent review summary
-        if: always() && hashFiles('target/ripr/workflow/agent-review-summary.md') != ''
+          escape_github_property() {
+            local value="$1"
+            value="${value//'%'/'%25'}"
+            value="${value//$'\r'/'%0D'}"
+            value="${value//$'\n'/'%0A'}"
+            value="${value//':'/'%3A'}"
+            value="${value//','/'%2C'}"
+            printf '%s' "$value"
+          }
+
+          jq -r '.comments[]? | select(.placement.path and .placement.line) | [.placement.path, (.placement.line | tostring), (.reason // "RIPR targeted test guidance"), (.llm_guidance.command // "")] | @tsv' target/ripr/review/comments.json \
+            | while IFS="$(printf '\t')" read -r path line reason command; do
+                message="$reason"
+                if [ -n "$command" ] && [ "$command" != "null" ]; then
+                  message="$message Command: $command"
+                fi
+                annotation_path="$(escape_github_property "$path")"
+                annotation_line="$(escape_github_property "$line")"
+                annotation_title="$(escape_github_property "RIPR targeted test guidance")"
+                message="$(escape_github_message "$message")"
+                echo "::warning file=$annotation_path,line=$annotation_line,title=$annotation_title::$message"
+              done
+
+      - name: Add RIPR advisory summary
+        if: always()
         continue-on-error: true
-        run: cat target/ripr/workflow/agent-review-summary.md >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          {
+            echo '## RIPR advisory summary'
+            echo
+            echo "RIPR is advisory static evidence. It does not edit source, generate tests, or run mutation testing."
+            echo
+            echo '### Top recommendation'
+            if [ -f target/ripr/pilot/pilot-summary.md ]; then
+              cat target/ripr/pilot/pilot-summary.md
+            else
+              echo "Pilot summary was not generated. Inspect the uploaded artifact packet and job logs."
+            fi
+            echo
+            echo '### Agent review packet'
+            if [ -f target/ripr/workflow/agent-review-summary.md ]; then
+              cat target/ripr/workflow/agent-review-summary.md
+            else
+              echo 'Agent review summary was not generated. Run `ripr agent status --root .` locally or inspect uploaded workflow artifacts.'
+            fi
+            echo
+            echo '### Artifact packet'
+            echo '- Pilot reports: `target/ripr/pilot/`'
+            echo '- Agent workflow: `target/ripr/workflow/`'
+            echo '- Agent compatibility copies: `target/ripr/agent/`'
+            echo '- Repo reports, badges, SARIF, and receipts: `target/ripr/reports/`'
+            if [ -d target/ripr/review ]; then
+              echo '- PR test guidance report: `target/ripr/review/`'
+            else
+              echo "- PR test guidance report: not generated yet"
+            fi
+            echo
+            echo '### SARIF and badge status'
+            if [ "${RIPR_UPLOAD_SARIF:-}" = "true" ]; then
+              if [ -f target/ripr/reports/ripr-findings.sarif ]; then echo "- Diff SARIF: generated"; else echo "- Diff SARIF: missing or skipped"; fi
+              if [ -f target/ripr/reports/ripr-seams.sarif ]; then echo "- Repo seam SARIF: generated"; else echo "- Repo seam SARIF: missing or skipped"; fi
+            else
+              echo '- SARIF upload: disabled by `RIPR_UPLOAD_SARIF`'
+            fi
+            if [ -f target/ripr/reports/repo-ripr-badge.json ]; then echo "- Badge JSON: generated"; else echo "- Badge JSON: missing or skipped"; fi
+            if [ -f target/ripr/reports/repo-ripr-badge-shields.json ]; then echo "- Badge Shields JSON: generated"; else echo "- Badge Shields JSON: missing or skipped"; fi
+            echo
+            echo '### PR guidance annotations'
+            if [ -f target/ripr/review/comments.json ]; then
+              comments="$(jq -r '.summary.comments // 0' target/ripr/review/comments.json 2>/dev/null || echo 0)"
+              summary_only="$(jq -r '.summary.summary_only // 0' target/ripr/review/comments.json 2>/dev/null || echo 0)"
+              suppressed="$(jq -r '.summary.suppressed // 0' target/ripr/review/comments.json 2>/dev/null || echo 0)"
+              echo "- Changed-line annotations emitted: $comments"
+              echo "- Summary-only recommendations: $summary_only"
+              echo "- Suppressed recommendations: $suppressed"
+            else
+              echo 'No PR test guidance report was generated. When `ripr review-comments` writes `target/ripr/review/comments.json`, this workflow emits changed-line check annotations by default.'
+            fi
+            echo
+            echo '### Known limits'
+            echo "- Advisory static evidence only; review the named seam and write one focused test."
+            echo "- No automatic source edits or generated tests."
+            echo "- No runtime mutation execution is performed by this workflow."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload RIPR report artifacts
         if: always()
@@ -1000,6 +1087,7 @@ jobs:
             target/ripr/agent
             target/ripr/workflow
             target/ripr/reports
+            target/ripr/review
           if-no-files-found: ignore
           retention-days: 14
 
@@ -2620,6 +2708,20 @@ mod tests {
         assert!(workflow.contains("target/ripr/agent/agent-verify.json"));
         assert!(workflow.contains("target/ripr/agent/agent-receipt.json"));
         assert!(workflow.contains("target/ripr/reports/targeted-test-outcome.json"));
+        assert!(workflow.contains("target/ripr/review/comments.json"));
+        assert!(workflow.contains("target/ripr/review"));
+        assert!(workflow.contains("name: Emit RIPR PR guidance annotations"));
+        assert!(workflow.contains("escape_github_property()"));
+        assert!(workflow.contains("annotation_path=\"$(escape_github_property \"$path\")\""));
+        assert!(workflow.contains("::warning file=$annotation_path,line=$annotation_line"));
+        assert!(workflow.contains("title=$annotation_title"));
+        assert!(workflow.contains("name: Add RIPR advisory summary"));
+        assert!(workflow.contains("## RIPR advisory summary"));
+        assert!(workflow.contains("### Top recommendation"));
+        assert!(workflow.contains("### Artifact packet"));
+        assert!(workflow.contains("### SARIF and badge status"));
+        assert!(workflow.contains("### PR guidance annotations"));
+        assert!(workflow.contains("### Known limits"));
         assert!(!workflow.contains("fail-on-new-warning"));
         assert!(!workflow.contains("sarif-policy"));
     }
@@ -2632,19 +2734,26 @@ mod tests {
         assert!(workflow.contains("target/ripr/agent"));
         assert!(workflow.contains("target/ripr/workflow"));
         assert!(workflow.contains("target/ripr/reports"));
+        assert!(workflow.contains("target/ripr/review"));
         assert!(workflow.contains("name: ripr-reports"));
         assert!(workflow.contains("RIPR_TOP_SEAM_ID"));
         assert!(workflow.contains(".top_actionable_seams[0].seam_id"));
         assert!(!workflow.contains(".top_seams[0].seam_id"));
         assert!(workflow.contains("cargo xtask operator-cockpit"));
+        assert!(workflow.contains("cat target/ripr/pilot/pilot-summary.md"));
         assert!(workflow.contains("cat target/ripr/workflow/agent-review-summary.md"));
+        assert!(workflow.contains("repo-ripr-badge.json"));
+        assert!(workflow.contains("repo-ripr-badge-shields.json"));
+        assert!(workflow.contains(".summary.comments // 0"));
+        assert!(workflow.contains(".summary.summary_only // 0"));
+        assert!(workflow.contains(".summary.suppressed // 0"));
+        assert!(workflow.contains("No runtime mutation execution is performed"));
         assert!(workflow.contains("hashFiles('crates/ripr/Cargo.toml')"));
         assert!(workflow.contains("hashFiles('xtask/src/reports/operator.rs')"));
         assert!(workflow.contains("if: env.RIPR_UPLOAD_SARIF == 'true'"));
         assert!(workflow.contains(
             "if: env.RIPR_UPLOAD_SARIF == 'true' && github.event_name == 'pull_request'"
         ));
-        assert!(workflow.contains("cat target/ripr/pilot/pilot-summary.md"));
     }
 
     #[test]
