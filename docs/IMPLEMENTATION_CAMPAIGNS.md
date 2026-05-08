@@ -1298,7 +1298,7 @@ Blocking conditions:
 
 Campaign ID: `llm-work-loop`
 
-Status: active
+Status: done
 
 Objective:
 
@@ -1361,7 +1361,7 @@ Closeout:
 - The LLM operator guide documents how humans and external LLM tools consume the
   packet without RIPR calling models, generating tests, editing source, running
   mutation testing, or blocking CI by default.
-- Campaign 12 remains the queued First-Hour UX lane for making the VS Code and
+- Campaign 12 is now the active First-Hour UX lane for making the VS Code and
   GitHub Action first screens useful without report archaeology.
 
 Commands:
@@ -1388,13 +1388,13 @@ Blocking conditions:
 
 Campaign ID: `first-hour-ux`
 
-Status: queued
+Status: active
 
 This campaign is intentionally separate from Campaign 11. Campaign 11 keeps the
 LLM work loop stateful and deterministic through status, command templates,
 workflow manifests, receipts, and reviewer summaries. Campaign 12 starts after
-that control plane is stable, or earlier only through an explicit product-lane
-pivot.
+that control plane is stable and keeps the CLI as the shared engine while making
+the first editor and CI screens useful.
 
 Objective:
 
@@ -1437,13 +1437,13 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `spec/pr-test-guidance-annotations` | queued | Define the advisory PR annotation/comment contract before implementing `ripr review-comments`, including changed-line placement, anti-spam caps, bounded LLM guidance, check annotations by default, and opt-in inline review comments. |
-| `vscode/first-run-status` | queued | Add a discoverable editor status path for server resolution, workspace detection, analysis running/complete/stale/failed, and no-actionable-seam states. |
-| `vscode/action-discoverability` | queued | Group and title diagnostic actions around user intent without changing analyzer behavior, adding broad LSP features, or enabling unsaved-buffer overlays. |
-| `ci/pr-summary-surface` | queued | Make the generated workflow emit a useful PR or step summary with the top actionable seam, why it matters, suggested test target, artifact links, SARIF status, badge status, known limits, and check annotations from the PR test guidance report when implemented. |
-| `ci/generated-workflow-smoke-fixture` | queued | Pin generated workflow artifact paths, top-seam extraction, agent artifact generation, non-blocking posture, optional SARIF, and badge output so CI UX does not drift. |
-| `docs/ux-by-user-type` | queued | Rewrite the first-hour docs around VS Code, CI, CLI, agent, troubleshooting, and known limits while keeping README short. |
-| `campaign/first-hour-ux-closeout` | queued | Close only after the extension and CI first screens are useful without report archaeology and the CLI remains the shared engine rather than the required first user interface. |
+| `spec/pr-test-guidance-annotations` | ready | Finalize the advisory PR annotation/comment contract before implementing `ripr review-comments`, including changed-line placement, anti-spam caps, bounded LLM guidance, check annotations by default, optional inline review comments, JSON shape, and non-blocking CI posture. |
+| `vscode/first-run-status` | blocked | Add a discoverable editor status path for server resolution, workspace detection, analysis running/complete/stale/failed, and no-actionable-seam states after the PR guidance contract is pinned. |
+| `vscode/action-discoverability` | blocked | Group and title diagnostic actions around user intent without changing analyzer behavior, adding broad LSP features, or enabling unsaved-buffer overlays after the PR guidance contract is pinned. |
+| `ci/pr-summary-surface` | blocked | Make the generated workflow emit a useful PR or step summary with the top actionable seam, why it matters, suggested test target, artifact links, SARIF status, badge status, known limits, and check annotations from the PR test guidance report when implemented. |
+| `ci/generated-workflow-smoke-fixture` | blocked | Pin generated workflow artifact paths, top-seam extraction, agent artifact generation, non-blocking posture, optional SARIF, and badge output after the PR summary surface exists. |
+| `docs/ux-by-user-type` | blocked | Rewrite the first-hour docs around VS Code, CI, CLI, agent, troubleshooting, and known limits while keeping README short after the editor and CI surfaces settle. |
+| `campaign/first-hour-ux-closeout` | blocked | Close only after the extension and CI first screens are useful without report archaeology and the CLI remains the shared engine rather than the required first user interface. |
 
 Dependencies:
 
