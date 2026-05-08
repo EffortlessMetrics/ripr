@@ -1954,8 +1954,8 @@ Closeout:
 Next:
 
 - Campaign 17 is active as RIPR Zero Adoption. It should turn baselines into
-  burn-down ledgers, surface PR-level behavioral-debt deltas, and route focused
-  repair packets while keeping generated CI advisory by default.
+  burn-down ledgers with create, diff, and shrink-only refresh commands while
+  keeping generated CI advisory by default.
 
 ## Campaign 17: RIPR Zero Adoption
 
@@ -1972,9 +1972,9 @@ Objective:
 
 ```text
 Make RIPR 0 adoption concrete for PR/CI users: turn baselines into visible
-burn-down ledgers, surface PR-level behavioral-debt deltas, route blocking
-candidates to focused repair packets, and keep every new policy mode explicit
-and advisory by default.
+burn-down ledgers, create reviewed baseline checkpoints from gate decisions,
+diff current evidence against checked-in debt, support shrink-only refreshes,
+and keep every new policy mode explicit and advisory by default.
 ```
 
 Why it matters:
@@ -1982,34 +1982,35 @@ Why it matters:
 Most repositories will not start at RIPR 0. Adoption has to show the whole
 truth without punishing the first run: visible baseline debt, resolved debt,
 new policy-eligible gaps, acknowledged exceptions, suppressions, stale baseline
-entries, and the exact repair path for any blocking candidate.
+entries, and safe commands for shrinking reviewed debt.
 
 End state:
 
 - a baseline debt delta report compares current evidence against reviewed
   baseline debt without auto-adopting new findings
-- generated CI summaries show new, resolved, acknowledged, suppressed, stale,
-  and unknown baseline-delta counts before artifact digging
-- blocking summaries link each policy candidate to a focused test shape,
-  related test, verify command, acknowledgement path, and full receipt
-- RIPR Zero adoption docs explain that RIPR 0 is configured-scope behavioral
-  grip closure, not perfect tests or 100 percent coverage
-- coverage/grip frontier summaries are available when coverage data exists
-  without treating coverage as a proxy for oracle strength
-- adoption remains staged: advisory visibility, baseline checkpoint,
-  visible-only gate, acknowledgeable gate, baseline-check, calibrated-gate, then
-  burn-down toward RIPR 0
+- `ripr baseline create` writes reviewed baseline ledgers from existing
+  gate-decision evidence without implying accepted-forever debt
+- `ripr baseline diff` reports still-present, resolved, new policy-eligible,
+  acknowledged, suppressed, stale, invalid, and missing-input identities
+- `ripr baseline update --remove-resolved` supports shrink-only baseline
+  refreshes and never auto-adopts new debt in CI
+- generated CI uploads baseline debt delta artifacts and summarizes debt
+  movement while the gate evaluator remains responsible for pass or fail
+- RIPR Zero adoption docs explain initial baseline creation, baseline-check
+  rollout, shrink-only refresh, new debt review, and waiver versus baseline
+  versus suppression boundaries
 
 Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
 | `spec/baseline-debt-delta-report` | ready | Define the baseline debt delta report contract for comparing current PR/CI evidence to reviewed baseline debt without changing analyzer identity, auto-adopting new debt, or making CI blocking by default. |
-| `ci/baseline-debt-delta-summary` | blocked | Surface baseline debt delta counts in generated CI summaries and artifacts while preserving advisory defaults and evidence uploads. |
-| `ci/blocking-repair-packet-links` | blocked | Add repair-packet links to blocking summaries so every blocking candidate names the focused test shape, related test, verify command, acknowledgement path, and full receipt. |
-| `docs/ripr-zero-adoption-guide` | blocked | Document staged RIPR Zero adoption, including what RIPR 0 means under configured scope, how baselines shrink, and how waivers and suppressions differ. |
-| `ci/coverage-grip-frontier-summary` | blocked | When coverage data exists, summarize coverage and RIPR grip movement as separate axes without treating line coverage as oracle strength. |
-| `campaign/ripr-zero-adoption-closeout` | blocked | Close Campaign 17 only after baseline delta, PR/CI debt-delta summaries, repair links, adoption docs, and coverage/grip frontier reporting are specified or implemented while defaults stay advisory. |
+| `baseline/create` | blocked | Add `ripr baseline create` so users can produce stable reviewed `.ripr/gate-baseline.json` ledgers from existing gate-decision evidence without overwriting by default. |
+| `baseline/diff` | blocked | Add `ripr baseline diff` to write baseline-debt-delta JSON/Markdown with still-present, resolved, new, acknowledged, suppressed, stale, invalid, and missing-input buckets. |
+| `baseline/update-remove-resolved` | blocked | Add `ripr baseline update --remove-resolved` as a shrink-only refresh path that refuses to auto-adopt new debt by default. |
+| `ci/baseline-debt-delta-artifacts` | blocked | Upload baseline debt delta JSON/Markdown from generated CI and summarize debt movement without making this report the pass/fail authority. |
+| `docs/baseline-ledger-workflow` | blocked | Document initial adoption, reviewed baseline creation, baseline-check rollout, shrink-only refresh, new debt review, waiver versus baseline versus suppression, and the path toward RIPR 0. |
+| `campaign/ripr-zero-adoption-closeout` | blocked | Close Campaign 17 only after baseline delta, baseline create/diff/shrink-only update, CI artifacts, and baseline ledger docs are in place while defaults stay advisory. |
 
 Dependencies:
 
@@ -2020,8 +2021,8 @@ Dependencies:
   Zero adoption consumes gate decisions; it does not redefine gate policy.
 - Campaign 14 supplies recommendation calibration. Missing or unknown
   calibration must stay visible rather than becoming confidence.
-- Campaign 13 supplies PR guidance. Debt-delta summaries should project that
-  evidence, not replace the review packet.
+- Campaign 13 supplies PR guidance. Debt-delta summaries may reference that
+  evidence, but the baseline ledger is driven by gate decision identities.
 - Existing baselines are adoption checkpoints for historical debt, not
   suppressions and not permission to adopt new debt silently.
 
@@ -2043,8 +2044,9 @@ Blocking conditions:
 - default CI blocking
 - baseline auto-adoption of new PR findings
 - treating baselines as suppressions or accepted-forever debt
-- hiding acknowledged, suppressed, stale, or unknown entries from summaries
-- treating line coverage as oracle strength
+- hiding acknowledged, suppressed, stale, invalid, or missing-input entries
+  from summaries
+- auto-refreshing or rewriting baselines in generated CI
 - runtime mutation vocabulary in static debt-delta summaries
 - running cargo-mutants or any mutation engine from adoption workflows
 - automatic source edits or generated tests
@@ -2054,7 +2056,7 @@ Blocking conditions:
 Next:
 
 - `spec/baseline-debt-delta-report` is the next ready item. Define the report
-  contract before generated CI wiring or repair-link projection.
+  contract before baseline commands or generated CI artifacts.
 
 ## Future Campaign: Editor Evidence UX
 

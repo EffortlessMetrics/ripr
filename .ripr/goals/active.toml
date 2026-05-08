@@ -10,18 +10,18 @@ status = "active"
 
 objective = """
 Make RIPR 0 adoption concrete for PR/CI users: turn baselines into visible
-burn-down ledgers, surface PR-level behavioral-debt deltas, route blocking
-candidates to focused repair packets, and keep every new policy mode explicit
-and advisory by default.
+burn-down ledgers, create reviewed baseline checkpoints from gate decisions,
+diff current evidence against checked-in debt, support shrink-only refreshes,
+and keep every new policy mode explicit and advisory by default.
 """
 
 end_state = [
   "a baseline debt delta report compares current evidence against reviewed baseline debt without auto-adopting new findings",
-  "generated CI summaries show new, resolved, acknowledged, suppressed, stale, and unknown baseline-delta counts before artifact digging",
-  "blocking summaries link each policy candidate to a focused test shape, related test, verify command, acknowledgement path, and full receipt",
-  "RIPR Zero adoption docs explain that RIPR 0 is configured-scope behavioral grip closure, not perfect tests or 100 percent coverage",
-  "coverage/grip frontier summaries are available when coverage data exists without treating coverage as a proxy for oracle strength",
-  "adoption remains staged: advisory visibility, baseline checkpoint, visible-only gate, acknowledgeable gate, baseline-check, calibrated-gate, then burn-down toward RIPR 0",
+  "ripr baseline create writes reviewed baseline ledgers from existing gate-decision evidence without implying accepted-forever debt",
+  "ripr baseline diff reports still-present, resolved, new policy-eligible, acknowledged, suppressed, stale, invalid, and missing-input identities",
+  "ripr baseline update --remove-resolved supports shrink-only baseline refreshes and never auto-adopts new debt in CI",
+  "generated CI uploads baseline debt delta artifacts and summarizes debt movement while the gate evaluator remains responsible for pass or fail",
+  "RIPR Zero adoption docs explain initial baseline creation, baseline-check rollout, shrink-only refresh, new debt review, and waiver versus baseline versus suppression boundaries",
 ]
 
 [[work_item]]
@@ -42,12 +42,54 @@ commands = [
 ]
 
 [[work_item]]
-id = "ci/baseline-debt-delta-summary"
+id = "baseline/create"
 status = "blocked"
-branch = "ci-baseline-debt-delta-summary"
+branch = "baseline-create"
 stackable = false
 blocked_by = ["spec/baseline-debt-delta-report"]
-acceptance = "Surface baseline debt delta counts in generated CI summaries and artifacts while preserving advisory defaults and evidence uploads"
+acceptance = "Add ripr baseline create so users can produce stable reviewed .ripr/gate-baseline.json ledgers from existing gate-decision evidence without overwriting by default"
+commands = [
+  "cargo test -p ripr baseline",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "baseline/diff"
+status = "blocked"
+branch = "baseline-diff"
+stackable = false
+blocked_by = ["baseline/create"]
+acceptance = "Add ripr baseline diff to write baseline-debt-delta JSON/Markdown with still-present, resolved, new, acknowledged, suppressed, stale, invalid, and missing-input buckets"
+commands = [
+  "cargo test -p ripr baseline",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "baseline/update-remove-resolved"
+status = "blocked"
+branch = "baseline-update-remove-resolved"
+stackable = false
+blocked_by = ["baseline/diff"]
+acceptance = "Add ripr baseline update --remove-resolved as a shrink-only refresh path that refuses to auto-adopt new debt by default"
+commands = [
+  "cargo test -p ripr baseline",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "ci/baseline-debt-delta-artifacts"
+status = "blocked"
+branch = "ci-baseline-debt-delta-artifacts"
+stackable = false
+blocked_by = ["baseline/diff"]
+acceptance = "Upload baseline debt delta JSON/Markdown from generated CI and summarize debt movement without making this report the pass/fail authority"
 commands = [
   "cargo test -p ripr init_generated_github_workflow",
   "cargo xtask check-workflows",
@@ -57,45 +99,15 @@ commands = [
 ]
 
 [[work_item]]
-id = "ci/blocking-repair-packet-links"
+id = "docs/baseline-ledger-workflow"
 status = "blocked"
-branch = "ci-blocking-repair-packet-links"
+branch = "docs-baseline-ledger-workflow"
 stackable = false
-blocked_by = ["ci/baseline-debt-delta-summary"]
-acceptance = "Add repair-packet links to blocking summaries so every blocking candidate names the focused test shape, related test, verify command, acknowledgement path, and full receipt"
-commands = [
-  "cargo test -p ripr init_generated_github_workflow",
-  "cargo xtask check-workflows",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "docs/ripr-zero-adoption-guide"
-status = "blocked"
-branch = "docs-ripr-zero-adoption-guide"
-stackable = false
-blocked_by = ["ci/blocking-repair-packet-links"]
-acceptance = "Document staged RIPR Zero adoption, including what RIPR 0 means under configured scope, how baselines shrink, and how waivers and suppressions differ"
+blocked_by = ["baseline/update-remove-resolved", "ci/baseline-debt-delta-artifacts"]
+acceptance = "Document initial adoption, reviewed baseline creation, baseline-check rollout, shrink-only refresh, new debt review, waiver versus baseline versus suppression, and the path toward RIPR 0"
 commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "ci/coverage-grip-frontier-summary"
-status = "blocked"
-branch = "ci-coverage-grip-frontier-summary"
-stackable = false
-blocked_by = ["docs/ripr-zero-adoption-guide"]
-acceptance = "When coverage data exists, summarize coverage and RIPR grip movement as separate axes without treating line coverage as oracle strength"
-commands = [
-  "cargo test -p ripr init_generated_github_workflow",
-  "cargo xtask check-workflows",
-  "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-pr",
 ]
@@ -107,12 +119,13 @@ branch = "campaign-ripr-zero-adoption-closeout"
 stackable = false
 blocked_by = [
   "spec/baseline-debt-delta-report",
-  "ci/baseline-debt-delta-summary",
-  "ci/blocking-repair-packet-links",
-  "docs/ripr-zero-adoption-guide",
-  "ci/coverage-grip-frontier-summary",
+  "baseline/create",
+  "baseline/diff",
+  "baseline/update-remove-resolved",
+  "ci/baseline-debt-delta-artifacts",
+  "docs/baseline-ledger-workflow",
 ]
-acceptance = "Close Campaign 17 only after baseline delta, PR/CI debt-delta summaries, repair links, adoption docs, and coverage/grip frontier reporting are specified or implemented while defaults stay advisory"
+acceptance = "Close Campaign 17 only after baseline delta, baseline create/diff/shrink-only update, CI artifacts, and baseline ledger docs are in place while defaults stay advisory"
 commands = [
   "cargo xtask check-campaign",
   "cargo xtask goals next",

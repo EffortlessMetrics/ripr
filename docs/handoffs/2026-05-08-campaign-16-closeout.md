@@ -70,7 +70,7 @@ git diff --check
 No ready work item remains in `.ripr/goals/active.toml` from Campaign 16
 itself. Open Campaign 17, RIPR Zero Adoption, as a separate campaign. The first
 slice should define the baseline debt delta report before wiring new CI
-surfaces.
+surfaces or baseline create, diff, and shrink-only update commands.
 
 The campaign should stay in Lane 4: PR summaries, CI projection, artifact
 layout, waiver/baseline visibility, and repair paths. It should not redefine
