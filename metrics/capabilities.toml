@@ -672,10 +672,13 @@ spec = "RIPR-SPEC-0014"
 evidence = [
   "docs/specs/RIPR-SPEC-0014-calibrated-gate-policy.md defines optional visible-only, acknowledgeable, baseline-check, and calibrated-gate modes",
   "ripr gate evaluate writes gate-decision JSON/Markdown from existing PR guidance and optional labels, baseline, recommendation calibration, and imported mutation calibration inputs",
-  "crates/ripr/src/output/gate.rs keeps the evaluator read-only and returns non-zero only after writing blocked or config_error reports"
+  "crates/ripr/src/output/gate.rs keeps the evaluator read-only and returns non-zero only after writing blocked or config_error reports",
+  "fixtures/boundary_gap/expected/calibrated-gate pins advisory, acknowledged, baseline-check, fail-on-new-high-confidence-gap, suppression, missing-input, and calibration disagreement decisions"
 ]
-fixtures = []
-next = "fixtures/calibrated-gate-cases"
+fixtures = [
+  "fixtures/boundary_gap/expected/calibrated-gate"
+]
+next = "ci/generated-gate-wiring"
 metric = "gate_decisions_evaluated, gate_decisions_blocking, gate_decisions_acknowledged, gate_decisions_advisory, gate_decisions_suppressed, gate_decisions_unknown_confidence, gate_config_errors"
 
 [[capability]]

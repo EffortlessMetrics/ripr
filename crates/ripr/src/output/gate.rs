@@ -201,7 +201,7 @@ pub(crate) fn build_gate_decision_report(
     let mut config_errors = Vec::new();
     let labels = read_labels(input, &mut warnings)?;
     let pr_guidance_path = resolve_root_path(&input.root, &input.pr_guidance);
-    let pr_guidance = match read_json_value(&pr_guidance_path) {
+    let pr_guidance = match read_json_value_with_display(&pr_guidance_path, &input.pr_guidance) {
         Ok(value) => value,
         Err(error) => {
             config_errors.push(format!(
@@ -387,7 +387,7 @@ fn read_labels(
         .collect::<BTreeSet<_>>();
     if let Some(path) = &input.labels_json {
         let resolved = resolve_root_path(&input.root, path);
-        match read_json_value(&resolved) {
+        match read_json_value_with_display(&resolved, path) {
             Ok(value) => {
                 for label in labels_from_value(&value) {
                     labels.insert(label);
@@ -432,7 +432,7 @@ fn warn_for_optional_json(
     let Some(path) = path else {
         return;
     };
-    if let Err(error) = read_json_value(&resolve_root_path(root, path)) {
+    if let Err(error) = read_json_value_with_display(&resolve_root_path(root, path), path) {
         warnings.push(format!(
             "optional {name} {} is unavailable: {error}",
             display_path(path)
@@ -449,7 +449,7 @@ fn read_recommendation_calibration(
         return index;
     };
     let resolved = resolve_root_path(&input.root, path);
-    let value = match read_json_value(&resolved) {
+    let value = match read_json_value_with_display(&resolved, path) {
         Ok(value) => value,
         Err(error) => {
             warnings.push(format!(
@@ -492,7 +492,7 @@ fn read_mutation_calibration(
         return index;
     };
     let resolved = resolve_root_path(&input.root, path);
-    let value = match read_json_value(&resolved) {
+    let value = match read_json_value_with_display(&resolved, path) {
         Ok(value) => value,
         Err(error) => {
             warnings.push(format!(
@@ -607,7 +607,7 @@ fn read_baseline(
         return BaselineIndex::default();
     };
     let resolved = resolve_root_path(&input.root, path);
-    match read_json_value(&resolved) {
+    match read_json_value_with_display(&resolved, path) {
         Ok(value) => baseline_index_from_value(&value),
         Err(error) if input.mode.requires_baseline() => {
             config_errors.push(format!(
@@ -1185,10 +1185,16 @@ fn acknowledgement_labels(input: &GateEvaluateInput) -> Vec<String> {
     }
 }
 
-fn read_json_value(path: &Path) -> Result<Value, String> {
-    let text =
-        fs::read_to_string(path).map_err(|err| format!("read {} failed: {err}", path.display()))?;
-    serde_json::from_str(&text).map_err(|err| format!("parse {} failed: {err}", path.display()))
+fn read_json_value_with_display(path: &Path, display: &Path) -> Result<Value, String> {
+    let display = display_path(display);
+    let text = fs::read_to_string(path).map_err(|err| {
+        if err.kind() == std::io::ErrorKind::NotFound {
+            format!("read {display} failed: not found")
+        } else {
+            format!("read {display} failed: {err}")
+        }
+    })?;
+    serde_json::from_str(&text).map_err(|err| format!("parse {display} failed: {err}"))
 }
 
 fn string_field(value: Option<&Value>) -> Option<String> {
@@ -1660,6 +1666,115 @@ mod tests {
     }
 
     #[test]
+    fn calibrated_gate_fixture_matrix_matches_checked_outputs() -> Result<(), String> {
+        let cases = [
+            GateFixtureCase {
+                name: "visible-only-advisory",
+                mode: GateMode::VisibleOnly,
+                pr_guidance: "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
+                labels_json: None,
+                labels: &[],
+                recommendation_calibration: None,
+                mutation_calibration: None,
+                baseline: None,
+            },
+            GateFixtureCase {
+                name: "acknowledged-waiver",
+                mode: GateMode::Acknowledgeable,
+                pr_guidance: "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
+                labels_json: Some(
+                    "fixtures/boundary_gap/expected/calibrated-gate/acknowledged-waiver/labels.json",
+                ),
+                labels: &["ripr-waive"],
+                recommendation_calibration: None,
+                mutation_calibration: None,
+                baseline: None,
+            },
+            GateFixtureCase {
+                name: "baseline-check-existing",
+                mode: GateMode::BaselineCheck,
+                pr_guidance: "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
+                labels_json: None,
+                labels: &[],
+                recommendation_calibration: None,
+                mutation_calibration: None,
+                baseline: Some(
+                    "fixtures/boundary_gap/expected/calibrated-gate/baseline-check-existing/baseline.json",
+                ),
+            },
+            GateFixtureCase {
+                name: "calibrated-high-confidence-new-gap",
+                mode: GateMode::CalibratedGate,
+                pr_guidance: "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
+                labels_json: None,
+                labels: &[],
+                recommendation_calibration: Some(
+                    "fixtures/boundary_gap/expected/recommendation-calibration/recommendation-calibration.json",
+                ),
+                mutation_calibration: None,
+                baseline: Some(
+                    "fixtures/boundary_gap/expected/calibrated-gate/calibrated-high-confidence-new-gap/baseline.json",
+                ),
+            },
+            GateFixtureCase {
+                name: "summary-and-suppressed",
+                mode: GateMode::Acknowledgeable,
+                pr_guidance: "fixtures/boundary_gap/expected/calibrated-gate/summary-and-suppressed/pr-guidance.json",
+                labels_json: None,
+                labels: &[],
+                recommendation_calibration: None,
+                mutation_calibration: None,
+                baseline: None,
+            },
+            GateFixtureCase {
+                name: "missing-input",
+                mode: GateMode::BaselineCheck,
+                pr_guidance: "fixtures/boundary_gap/expected/calibrated-gate/missing-input/missing-comments.json",
+                labels_json: None,
+                labels: &[],
+                recommendation_calibration: None,
+                mutation_calibration: None,
+                baseline: Some(
+                    "fixtures/boundary_gap/expected/calibrated-gate/baseline-check-existing/baseline.json",
+                ),
+            },
+            GateFixtureCase {
+                name: "calibration-disagreement",
+                mode: GateMode::CalibratedGate,
+                pr_guidance: "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
+                labels_json: None,
+                labels: &[],
+                recommendation_calibration: Some(
+                    "fixtures/boundary_gap/expected/calibrated-gate/calibration-disagreement/recommendation-calibration.json",
+                ),
+                mutation_calibration: Some(
+                    "fixtures/boundary_gap/expected/calibrated-gate/calibration-disagreement/mutation-calibration.json",
+                ),
+                baseline: Some(
+                    "fixtures/boundary_gap/expected/calibrated-gate/calibration-disagreement/baseline.json",
+                ),
+            },
+        ];
+
+        for case in cases {
+            let input = case.input();
+            let mut report = build_gate_decision_report(&input)?;
+            report.root = ".".to_string();
+            let rendered_json = render_gate_decision_json(&report)?;
+            let rendered_md = render_gate_decision_markdown(&report);
+            let expected_dir =
+                PathBuf::from("fixtures/boundary_gap/expected/calibrated-gate").join(case.name);
+            let expected_json = read_repo_fixture(&expected_dir.join("gate-decision.json"))?;
+            let expected_md = read_repo_fixture(&expected_dir.join("gate-decision.md"))?;
+
+            assert_eq!(rendered_json, expected_json, "{} JSON drifted", case.name);
+            assert_eq!(rendered_md, expected_md, "{} Markdown drifted", case.name);
+        }
+
+        Ok(())
+    }
+
+    #[test]
     fn display_path_normalizes_empty_and_dot_prefixed_paths() {
         assert_eq!(display_path(Path::new("")), ".");
         assert_eq!(
@@ -1688,6 +1803,41 @@ mod tests {
         }
     }
 
+    struct GateFixtureCase {
+        name: &'static str,
+        mode: GateMode,
+        pr_guidance: &'static str,
+        labels_json: Option<&'static str>,
+        labels: &'static [&'static str],
+        recommendation_calibration: Option<&'static str>,
+        mutation_calibration: Option<&'static str>,
+        baseline: Option<&'static str>,
+    }
+
+    impl GateFixtureCase {
+        fn input(&self) -> GateEvaluateInput {
+            GateEvaluateInput {
+                root: repo_root(),
+                repo_exposure: None,
+                pr_guidance: PathBuf::from(self.pr_guidance),
+                sarif_policy: None,
+                labels_json: self.labels_json.map(PathBuf::from),
+                labels: self
+                    .labels
+                    .iter()
+                    .map(|label| (*label).to_string())
+                    .collect(),
+                agent_verify: None,
+                agent_receipt: None,
+                recommendation_calibration: self.recommendation_calibration.map(PathBuf::from),
+                mutation_calibration: self.mutation_calibration.map(PathBuf::from),
+                baseline: self.baseline.map(PathBuf::from),
+                mode: self.mode,
+                acknowledgement_labels: Vec::new(),
+            }
+        }
+    }
+
     fn repo_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
@@ -1711,6 +1861,12 @@ mod tests {
         let path = dir.join(name);
         fs::write(&path, contents).map_err(|err| format!("write {name} failed: {err}"))?;
         Ok(path)
+    }
+
+    fn read_repo_fixture(path: &Path) -> Result<String, String> {
+        let resolved = repo_root().join(path);
+        fs::read_to_string(&resolved)
+            .map_err(|err| format!("read {} failed: {err}", resolved.display()))
     }
 
     const PR_GUIDANCE_JSON: &str = r#"{

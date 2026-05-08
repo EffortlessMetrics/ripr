@@ -137,6 +137,10 @@ are scoped or reviewed.
   gate policy contract.
 - Advanced Campaign 15 to `fixtures/calibrated-gate-cases` after adding the
   read-only gate decision producer.
+- Advanced Campaign 15 to `ci/generated-gate-wiring` after pinning calibrated
+  gate decision fixtures for advisory, acknowledged, baseline-check,
+  high-confidence blocking, suppression, missing-input, and calibration
+  disagreement cases.
 - Pinned RIPR-SPEC-0012 as the PR test guidance annotation contract and
   advanced Campaign 12 to `vscode/first-run-status` as the next ready UX item.
 - Advanced Campaign 12 to `vscode/action-discoverability` after pinning the
