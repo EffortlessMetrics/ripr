@@ -1,0 +1,42 @@
+{
+  "config_errors": [
+    "required PR guidance input fixtures/boundary_gap/expected/calibrated-gate/missing-input/missing-comments.json is invalid: read fixtures/boundary_gap/expected/calibrated-gate/missing-input/missing-comments.json failed: not found"
+  ],
+  "decisions": [],
+  "inputs": {
+    "agent_receipt": null,
+    "agent_verify": null,
+    "baseline": "fixtures/boundary_gap/expected/calibrated-gate/baseline-check-existing/baseline.json",
+    "labels": [],
+    "labels_json": null,
+    "mutation_calibration": null,
+    "pr_guidance": "fixtures/boundary_gap/expected/calibrated-gate/missing-input/missing-comments.json",
+    "recommendation_calibration": null,
+    "repo_exposure": null,
+    "sarif_policy": null
+  },
+  "limits_note": "Optional policy over static RIPR evidence; advisory by default; runtime mutation calibration is used only when supplied.",
+  "mode": "baseline-check",
+  "policy": {
+    "acknowledgement_labels": [
+      "ripr-waive"
+    ],
+    "default_workflow_posture": "advisory",
+    "mode": "baseline-check",
+    "threshold": "high_confidence_new_gap"
+  },
+  "root": ".",
+  "schema_version": "0.1",
+  "status": "config_error",
+  "summary": {
+    "acknowledged": 0,
+    "advisory": 0,
+    "blocking": 0,
+    "evaluated": 0,
+    "not_applicable": 0,
+    "suppressed": 0,
+    "unknown_confidence": 0
+  },
+  "tool": "ripr",
+  "warnings": []
+}
