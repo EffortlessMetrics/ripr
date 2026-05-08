@@ -9,6 +9,7 @@ Use this file when choosing controlled scenarios for:
 
 - before/after targeted-test outcome receipts;
 - static/runtime mutation calibration imports;
+- PR guidance recommendation-quality calibration expectations;
 - SARIF, badge, LSP, and report alignment checks;
 - future bounded cargo-mutants artifacts.
 
@@ -30,6 +31,20 @@ targeted-test receipts, and optional calibration artifacts, see
 | Comment-only diff | `fixtures/comment_only_diff` | No behavior probe should be emitted for comment churn. | Noise-control baseline for adoption docs and CI recipes. |
 | Import-only diff | `fixtures/import_only_diff` | No behavior probe should be emitted for import churn. | Noise-control baseline for adoption docs and CI recipes. |
 | Syntax variants | `fixtures/boundary_gap_multiline_assert`, `fixtures/boundary_gap_nested_tests`, `fixtures/boundary_gap_reordered_tests`, `fixtures/weak_error_oracle_assert_matches` | Equivalent test evidence should stay stable across harmless layout variants. | Regression guard for refactors that touch syntax extraction or related-test ranking. |
+
+## Recommendation Calibration Artifacts
+
+The boundary-gap corpus also includes PR-shaped recommendation calibration
+metadata under
+`fixtures/boundary_gap/expected/recommendation-calibration/`.
+
+| Artifact | Purpose |
+| --- | --- |
+| `expectations.json` | Pins useful, noisy, wrong-line, already-covered, summary-only, suppression, generated/migration, macro-heavy, trait/generic, and async/error-boundary expectations for the future recommendation calibration report. |
+| `synthetic-pr-guidance.json` | Supplies compact PR-guidance-shaped inputs for cases not emitted by the existing boundary-gap PR guidance renderer fixtures. |
+
+These artifacts are static expectations. They do not run mutation testing, post
+comments, edit source, generate tests, or make CI blocking.
 
 ## Runtime Calibration Artifacts
 
