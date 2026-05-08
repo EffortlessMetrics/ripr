@@ -2401,11 +2401,65 @@ mod tests {
     }
 
     #[test]
+    fn review_comments_rejects_empty_values_and_unknown_args() {
+        assert_eq!(
+            parse_review_comments_options(&args(&["--base", "", "--head", "HEAD"])),
+            Err("review-comments --base requires a non-empty revision".to_string())
+        );
+        assert_eq!(
+            parse_review_comments_options(&args(&["--base", "main", "--head", ""])),
+            Err("review-comments --head requires a non-empty revision".to_string())
+        );
+        assert_eq!(
+            parse_review_comments_options(&args(&[
+                "--base", "main", "--head", "HEAD", "--out", "",
+            ])),
+            Err("review-comments --out requires a non-empty path".to_string())
+        );
+        assert_eq!(
+            parse_review_comments_options(&args(&["--base", "main", "--head", "HEAD", "--bad"])),
+            Err("unknown review-comments argument \"--bad\"".to_string())
+        );
+    }
+
+    #[test]
     fn review_comments_markdown_path_replaces_json_extension() {
         assert_eq!(
             review_comments_markdown_path(Path::new("target/ripr/review/comments.json")),
             PathBuf::from("target/ripr/review/comments.md")
         );
+    }
+
+    #[test]
+    fn review_comments_rejects_missing_root_before_loading_diff() -> Result<(), String> {
+        let root = unique_command_test_dir("review-comments-missing-root");
+        let root_arg = root.display().to_string();
+        let result = review_comments_with_diff_loader(
+            &args(&["--root", &root_arg, "--base", "main", "--head", "HEAD"]),
+            |_root, _base, _head| Ok(String::new()),
+        );
+
+        let err = match result {
+            Ok(_) => return Err("missing root should be rejected".to_string()),
+            Err(err) => err,
+        };
+        assert!(err.contains("is not a directory"));
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_returns_diff_loader_errors() -> Result<(), String> {
+        let root = unique_command_test_dir("review-comments-diff-error");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        let root_arg = root.display().to_string();
+        let result = review_comments_with_diff_loader(
+            &args(&["--root", &root_arg, "--base", "main", "--head", "HEAD"]),
+            |_root, _base, _head| Err("synthetic diff failure".to_string()),
+        );
+
+        assert_eq!(result, Err("synthetic diff failure".to_string()));
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
+        Ok(())
     }
 
     #[test]

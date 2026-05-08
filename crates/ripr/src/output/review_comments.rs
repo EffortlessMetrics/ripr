@@ -435,8 +435,9 @@ mod tests {
         RelatedTestGrip, RelationConfidence, RelationReason, TestGripEvidence,
     };
     use crate::app::agent_brief::{
-        AgentBriefLine, AgentBriefResolvedWorkingSet, AgentBriefSelectedSeam, AgentBriefSelection,
-        AgentBriefWhyNow, AgentBriefWhyNowConfidence, AgentBriefWhyNowReason,
+        AgentBriefChangedOwner, AgentBriefLine, AgentBriefResolvedWorkingSet,
+        AgentBriefSelectedSeam, AgentBriefSelection, AgentBriefWhyNow, AgentBriefWhyNowConfidence,
+        AgentBriefWhyNowReason,
     };
     use crate::domain::{Confidence, OracleKind, OracleStrength, StageEvidence, StageState};
     use serde_json::Value;
@@ -542,6 +543,73 @@ mod tests {
     }
 
     #[test]
+    fn review_comments_places_owner_function_changed_line() -> Result<(), String> {
+        let seams = [classified(88)];
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![AgentBriefLine::new("src/pricing.rs", 70)],
+        )
+        .with_changed_owners(vec![AgentBriefChangedOwner::new(
+            "src/pricing.rs",
+            70,
+            "pricing::discounted_total",
+        )]);
+
+        let value = render_value(&working_set, &seams)?;
+        assert_eq!(value["summary"]["comments"], 1);
+        assert_eq!(
+            value["comments"][0]["placement"]["mode"],
+            "owner_function_changed_line"
+        );
+        assert_eq!(value["comments"][0]["placement"]["line"], 70);
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_places_nearest_same_file_changed_line() -> Result<(), String> {
+        let seams = [classified(88)];
+        let working_set = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![
+                AgentBriefLine::new("src/pricing.rs", 60),
+                AgentBriefLine::new("src/pricing.rs", 92),
+            ],
+        );
+
+        let value = render_value(&working_set, &seams)?;
+        assert_eq!(value["summary"]["comments"], 1);
+        assert_eq!(
+            value["comments"][0]["placement"]["mode"],
+            "same_file_changed_line"
+        );
+        assert_eq!(value["comments"][0]["placement"]["line"], 92);
+        Ok(())
+    }
+
+    #[test]
+    fn review_comments_caps_inline_and_summary_items() -> Result<(), String> {
+        let seams = (1..=12)
+            .map(|index| classified(index * 10))
+            .collect::<Vec<_>>();
+        let changed_lines = seams
+            .iter()
+            .map(|seam| AgentBriefLine::new("src/pricing.rs", seam.seam.display_line()))
+            .collect::<Vec<_>>();
+        let working_set = AgentBriefResolvedWorkingSet::base("main", changed_lines);
+
+        let value = render_value(&working_set, &seams)?;
+        assert_eq!(value["summary"]["comments"], 3);
+        assert_eq!(value["summary"]["summary_only"], 7);
+        assert_eq!(value["summary"]["suppressed"], 2);
+        assert_eq!(
+            value["summary_only"][0]["summary_reason"],
+            "inline comment cap reached"
+        );
+        assert_eq!(value["suppressed"][0]["reason"], "summary_cap");
+        Ok(())
+    }
+
+    #[test]
     fn review_comments_falls_back_to_summary_only_without_safe_line() -> Result<(), String> {
         let seams = [classified(88)];
         let working_set = AgentBriefResolvedWorkingSet::files(vec![PathBuf::from("src/other.rs")]);
@@ -610,6 +678,16 @@ mod tests {
         assert_eq!(value["summary"]["suppressed"], 1);
         assert_eq!(value["suppressed"][0]["reason"], "nearby_test_changed");
         assert_eq!(value["summary"]["unchanged_tests"], false);
+        let rendered = render_review_comments_markdown(
+            Path::new("."),
+            "main",
+            "HEAD",
+            &Mode::Draft,
+            &RiprConfig::default(),
+            &working_set,
+            &selection(&seams),
+        );
+        assert!(rendered.contains("nearby_test_changed"));
         Ok(())
     }
 

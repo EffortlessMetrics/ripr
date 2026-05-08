@@ -777,12 +777,18 @@ name = "PR test guidance annotations"
 spec = "docs/specs/RIPR-SPEC-0012-pr-test-guidance.md"
 tests = [
   "crates/ripr/src/output/review_comments.rs::review_comments_places_exact_changed_seam_line",
+  "crates/ripr/src/output/review_comments.rs::review_comments_places_owner_function_changed_line",
+  "crates/ripr/src/output/review_comments.rs::review_comments_places_nearest_same_file_changed_line",
+  "crates/ripr/src/output/review_comments.rs::review_comments_caps_inline_and_summary_items",
   "crates/ripr/src/output/review_comments.rs::review_comments_falls_back_to_summary_only_without_safe_line",
   "crates/ripr/src/output/review_comments.rs::review_comments_suppresses_when_recommended_test_changed",
   "crates/ripr/src/output/review_comments.rs::review_comments_markdown_names_static_boundaries",
   "crates/ripr/src/cli/commands.rs::review_comments_writes_json_and_markdown_from_loaded_diff",
   "crates/ripr/src/cli/commands.rs::review_comments_parses_required_revisions_and_out",
   "crates/ripr/src/cli/commands.rs::review_comments_requires_base_and_head",
+  "crates/ripr/src/cli/commands.rs::review_comments_rejects_empty_values_and_unknown_args",
+  "crates/ripr/src/cli/commands.rs::review_comments_rejects_missing_root_before_loading_diff",
+  "crates/ripr/src/cli/commands.rs::review_comments_returns_diff_loader_errors",
   "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture"
 ]
 fixtures = []
