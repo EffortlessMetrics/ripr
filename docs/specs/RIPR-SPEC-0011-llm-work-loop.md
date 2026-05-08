@@ -374,6 +374,18 @@ The reviewer-summary slice additionally requires:
 - explicit static-limit flags;
 - schema, traceability, capability, and campaign updates.
 
+The fixture slice additionally requires checked, artifact-only work-loop cases
+for:
+
+- happy path with improved static movement;
+- unchanged static movement;
+- regressed static movement;
+- missing artifact recovery;
+- stale-looking verify or receipt artifacts;
+- configured-off seam handoff;
+- path arguments with spaces;
+- Windows separator normalization.
+
 ## Non-Goals
 
 The LLM work loop must not:
@@ -446,6 +458,10 @@ The LLM work loop must not:
 - `crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_input_paths_extracts_verify_snapshot_paths`
 - `crates/ripr/src/agent/provenance.rs::tests::sha256_file_hashes_artifact_bytes`
 - `crates/ripr/src/app/agent_review_summary.rs::tests::agent_review_summary_joins_status_receipt_cockpit_repo_and_lsp`
+- `crates/ripr/src/app/agent_review_summary.rs::tests::agent_llm_work_loop_review_summary_fixtures_pin_core_states`
+- `crates/ripr/src/app/agent_review_summary.rs::tests::agent_llm_work_loop_review_summary_fixture_pins_missing_artifact`
+- `crates/ripr/src/app/agent_review_summary.rs::tests::agent_llm_work_loop_review_summary_fixture_pins_stale_artifact`
+- `crates/ripr/src/app/agent_review_summary.rs::tests::agent_llm_work_loop_review_summary_fixtures_pin_path_arguments`
 - `crates/ripr/src/app/agent_review_summary.rs::tests::agent_review_summary_reports_missing_receipt_with_next_command`
 - `crates/ripr/src/app/agent_review_summary.rs::tests::agent_review_summary_markdown_names_review_focus_and_limits`
 - `crates/ripr/src/cli/agent.rs::tests::agent_review_summary_parses_root_json_and_human_default`
@@ -453,6 +469,7 @@ The LLM work loop must not:
 - `crates/ripr/src/cli/commands.rs::tests::agent_review_summary_rejects_missing_root_before_reading_artifacts`
 - `crates/ripr/tests/cli_smoke.rs::agent_receipt_writes_one_seam_handoff_json`
 - `crates/ripr/tests/cli_smoke.rs::agent_start_writes_source_edit_free_workflow_packet`
+- `crates/ripr/tests/cli_smoke.rs::agent_packet_rejects_configured_off_seam`
 - `crates/ripr/src/lsp/tests.rs::agent_loop_command_payloads_stay_workspace_relative_for_platform_roots`
 - `xtask/src/reports/operator.rs::tests::operator_cockpit_matches_editor_agent_loop_fixture`
 

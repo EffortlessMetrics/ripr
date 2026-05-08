@@ -414,7 +414,11 @@ fn agent_packet_rejects_configured_off_seam() -> Result<(), Box<dyn std::error::
     assert_failure(&packet);
 
     let stderr = String::from_utf8_lossy(&packet.stderr);
-    assert!(stderr.contains("configured off for weakly_gripped seams"));
+    let expected = std::fs::read_to_string(
+        workspace_root()
+            .join("fixtures/boundary_gap/expected/llm-work-loop/configured-off/stderr.txt"),
+    )?;
+    assert!(stderr.contains(expected.trim()));
     std::fs::remove_dir_all(root)?;
     Ok(())
 }

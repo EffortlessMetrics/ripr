@@ -33,6 +33,9 @@ are scoped or reviewed.
   future `ripr review-comments` JSON contract, changed-line placement rules,
   check-annotation default, opt-in inline review comments, and bounded LLM
   handoff guidance.
+- Added an LLM work-loop fixture matrix that pins happy, unchanged, regressed,
+  missing-artifact, stale-artifact, configured-off, path-with-spaces, and
+  Windows-separator review states.
 
 ### Changed
 
