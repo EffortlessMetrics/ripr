@@ -141,6 +141,11 @@ note = "Use `.expect_err(\"why\")` (or `.unwrap_err()`) instead of `assert!(x.is
 name = "clippy::lines_filter_map_ok"
 level = "deny"
 
+[[active.silent_failure]]
+name = "clippy::match_result_ok"
+level = "deny"
+note = "Rewriting `match x { Ok(v) => ..., Err(_) => ... }` via `x.ok()` and matching the Option obscures the error path. Match the typed `Result` directly."
+
 # Format / I/O footguns. Format-arg redundancy hides expression evaluation in
 # the format machinery; path/file APIs have surprising error modes worth
 # making syntactically obvious.
