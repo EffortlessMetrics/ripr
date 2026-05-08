@@ -760,6 +760,20 @@ mod tests {
         ))
     }
 
+    fn workspace_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(Path::parent)
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."))
+    }
+
+    fn fixture_value(relative_path: &str) -> Result<Value, String> {
+        let text = std::fs::read_to_string(workspace_root().join(relative_path))
+            .map_err(|err| format!("read fixture {relative_path}: {err}"))?;
+        serde_json::from_str(&text).map_err(|err| format!("parse fixture {relative_path}: {err}"))
+    }
+
     fn write_file(path: &Path, text: &str) -> Result<(), String> {
         if let Some(parent) = path
             .parent()
@@ -832,6 +846,111 @@ mod tests {
         Ok(())
     }
 
+    struct ReviewFixtureCase<'a> {
+        name: &'a str,
+        seam_id: &'a str,
+        movement: &'a str,
+        before: &'a str,
+        after: &'a str,
+        grip_class: &'a str,
+        action_kind: &'a str,
+        action_summary: &'a str,
+        action_recommendation: &'a str,
+    }
+
+    fn write_review_summary_case_artifacts(
+        root: &Path,
+        case: &ReviewFixtureCase<'_>,
+    ) -> Result<(), String> {
+        write_file(&root.join(WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT), "{}")?;
+        write_file(&root.join(WORKFLOW_AFTER_SNAPSHOT_ARTIFACT), "{}")?;
+        write_file(&root.join(WORKFLOW_AGENT_BRIEF_ARTIFACT), "{}")?;
+        write_file(&root.join(WORKFLOW_AGENT_PACKET_ARTIFACT), "{}")?;
+        write_file(
+            &root.join(WORKFLOW_AGENT_VERIFY_ARTIFACT),
+            &serde_json::to_string_pretty(&serde_json::json!({
+                "changed_seams": [{"seam_id": case.seam_id}],
+                "unchanged_seams": [],
+                "new_gaps": [],
+                "resolved_gaps": []
+            }))
+            .map_err(|err| format!("render verify fixture: {err}"))?,
+        )?;
+        write_file(
+            &root.join(WORKFLOW_MANIFEST_ARTIFACT),
+            &serde_json::to_string_pretty(&serde_json::json!({
+                "schema_version": "0.1",
+                "tool": "ripr",
+                "status": "ready",
+                "seam": {
+                    "seam_id": case.seam_id,
+                    "file": "src/pricing.rs",
+                    "line": 42,
+                    "seam_kind": "predicate_boundary"
+                }
+            }))
+            .map_err(|err| format!("render workflow fixture: {err}"))?,
+        )?;
+        write_file(
+            &root.join(WORKFLOW_AGENT_RECEIPT_ARTIFACT),
+            &serde_json::to_string_pretty(&serde_json::json!({
+                "schema_version": "0.3",
+                "tool": "ripr",
+                "status": "advisory",
+                "provenance": {
+                    "before_class": case.before,
+                    "after_class": case.after,
+                    "movement": case.movement,
+                    "verify_artifact": {
+                        "path": WORKFLOW_AGENT_VERIFY_ARTIFACT,
+                        "sha256": "sha256:verify"
+                    }
+                },
+                "seam": {
+                    "seam_id": case.seam_id,
+                    "file": "src/pricing.rs",
+                    "line": 42,
+                    "seam_kind": "predicate_boundary",
+                    "before": case.before,
+                    "after": case.after,
+                    "change": case.movement,
+                    "grip_class": case.grip_class
+                },
+                "summary": {
+                    "remaining_gap": "Fixture-controlled static review state.",
+                    "next_recommendation": case.action_recommendation,
+                    "next_action": {
+                        "kind": case.action_kind,
+                        "summary": case.action_summary,
+                        "recommended_action": case.action_recommendation,
+                        "safe_to_merge": false
+                    }
+                }
+            }))
+            .map_err(|err| format!("render receipt fixture: {err}"))?,
+        )?;
+        Ok(())
+    }
+
+    fn assert_review_summary_matches_fixture(
+        root: &Path,
+        root_argument: &Path,
+        case_name: &str,
+    ) -> Result<(), String> {
+        let report = build_agent_review_summary_report(root, root_argument);
+        let rendered = render_agent_review_summary_json(&report)?;
+        let actual: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("parse rendered review summary: {err}"))?;
+        let fixture_path =
+            format!("fixtures/boundary_gap/expected/llm-work-loop/{case_name}/review-summary.json");
+        assert_eq!(
+            actual,
+            fixture_value(&fixture_path)?,
+            "{case_name} fixture drifted"
+        );
+        Ok(())
+    }
+
     #[test]
     fn agent_review_summary_joins_status_receipt_cockpit_repo_and_lsp() -> Result<(), String> {
         let root = unique_agent_review_summary_test_dir("joined");
@@ -890,6 +1009,121 @@ mod tests {
             "Run the next command listed by agent status."
         );
 
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_llm_work_loop_review_summary_fixtures_pin_core_states() -> Result<(), String> {
+        let cases = [
+            ReviewFixtureCase {
+                name: "happy",
+                seam_id: "seam-happy",
+                movement: "improved",
+                before: "weakly_gripped",
+                after: "strongly_gripped",
+                grip_class: "strongly_gripped",
+                action_kind: "improved",
+                action_summary: "Static grip improved.",
+                action_recommendation: "Keep the focused test and include this receipt in review.",
+            },
+            ReviewFixtureCase {
+                name: "unchanged",
+                seam_id: "seam-unchanged",
+                movement: "unchanged",
+                before: "weakly_gripped",
+                after: "weakly_gripped",
+                grip_class: "weakly_gripped",
+                action_kind: "unchanged",
+                action_summary: "Static grip did not improve.",
+                action_recommendation: "Add the missing discriminator or stronger assertion named by the packet.",
+            },
+            ReviewFixtureCase {
+                name: "regressed",
+                seam_id: "seam-regressed",
+                movement: "regressed",
+                before: "weakly_gripped",
+                after: "ungripped",
+                grip_class: "ungripped",
+                action_kind: "regressed",
+                action_summary: "Static grip regressed.",
+                action_recommendation: "Revisit the test or code change before merge.",
+            },
+        ];
+
+        for case in cases {
+            let root = unique_agent_review_summary_test_dir(case.name);
+            write_review_summary_case_artifacts(&root, &case)?;
+            assert_review_summary_matches_fixture(&root, Path::new("."), case.name)?;
+            std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn agent_llm_work_loop_review_summary_fixture_pins_missing_artifact() -> Result<(), String> {
+        let root = unique_agent_review_summary_test_dir("missing-artifact");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        assert_review_summary_matches_fixture(&root, Path::new("."), "missing-artifact")?;
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_llm_work_loop_review_summary_fixture_pins_stale_artifact() -> Result<(), String> {
+        let root = unique_agent_review_summary_test_dir("stale-artifact");
+        let case = ReviewFixtureCase {
+            name: "stale-artifact",
+            seam_id: "seam-stale",
+            movement: "unchanged",
+            before: "weakly_gripped",
+            after: "weakly_gripped",
+            grip_class: "weakly_gripped",
+            action_kind: "unchanged",
+            action_summary: "Static grip did not improve.",
+            action_recommendation: "Add the missing discriminator or stronger assertion named by the packet.",
+        };
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        write_file(&root.join(WORKFLOW_AGENT_BRIEF_ARTIFACT), "{}")?;
+        write_file(&root.join(WORKFLOW_AGENT_PACKET_ARTIFACT), "{}")?;
+        write_file(
+            &root.join(WORKFLOW_MANIFEST_ARTIFACT),
+            r#"{"schema_version":"0.1","tool":"ripr","status":"ready","seam":{"seam_id":"seam-stale","file":"src/pricing.rs","line":42,"seam_kind":"predicate_boundary"}}"#,
+        )?;
+        write_file(
+            &root.join(WORKFLOW_AGENT_RECEIPT_ARTIFACT),
+            r#"{"schema_version":"0.3","tool":"ripr","status":"advisory","provenance":{"before_class":"weakly_gripped","after_class":"weakly_gripped","movement":"unchanged","verify_artifact":{"path":"target/ripr/workflow/agent-verify.json","sha256":"sha256:verify"}},"seam":{"seam_id":"seam-stale","file":"src/pricing.rs","line":42,"seam_kind":"predicate_boundary","before":"weakly_gripped","after":"weakly_gripped","change":"unchanged","grip_class":"weakly_gripped"},"summary":{"remaining_gap":"Fixture-controlled static review state.","next_recommendation":"Add the missing discriminator or stronger assertion named by the packet.","next_action":{"kind":"unchanged","summary":"Static grip did not improve.","recommended_action":"Add the missing discriminator or stronger assertion named by the packet.","safe_to_merge":false}}}"#,
+        )?;
+        std::thread::sleep(std::time::Duration::from_millis(25));
+        write_file(
+            &root.join(WORKFLOW_AGENT_VERIFY_ARTIFACT),
+            &serde_json::to_string_pretty(&serde_json::json!({
+                "changed_seams": [{"seam_id": case.seam_id}],
+                "unchanged_seams": [],
+                "new_gaps": [],
+                "resolved_gaps": []
+            }))
+            .map_err(|err| format!("render verify fixture: {err}"))?,
+        )?;
+        std::thread::sleep(std::time::Duration::from_millis(25));
+        write_file(&root.join(WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT), "{}")?;
+        write_file(&root.join(WORKFLOW_AFTER_SNAPSHOT_ARTIFACT), "{}")?;
+        assert_review_summary_matches_fixture(&root, Path::new("."), "stale-artifact")?;
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_llm_work_loop_review_summary_fixtures_pin_path_arguments() -> Result<(), String> {
+        let root = unique_agent_review_summary_test_dir("path-arguments");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+
+        assert_review_summary_matches_fixture(&root, Path::new("repo root"), "path-with-spaces")?;
+        assert_review_summary_matches_fixture(
+            &root,
+            Path::new("repo\\root"),
+            "windows-separators",
+        )?;
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
         Ok(())
     }
