@@ -7,7 +7,8 @@ use crate::app::agent_brief::{
 use crate::app::{self, CheckInput, Mode, OutputFormat};
 use crate::cli::agent::{
     AgentBriefOptions, AgentBriefWorkingSet, AgentCommand, AgentPacketOptions, AgentReceiptOptions,
-    AgentStartOptions, AgentStatusOptions, AgentVerifyOptions, parse_agent_args,
+    AgentReviewSummaryOptions, AgentStartOptions, AgentStatusOptions, AgentVerifyOptions,
+    parse_agent_args,
 };
 use crate::cli::help;
 use crate::cli::parse::{expect_value, parse_format, parse_mode};
@@ -103,12 +104,17 @@ pub(super) fn agent(args: &[String]) -> Result<(), String> {
             help::print_agent_status_help();
             Ok(())
         }
+        AgentCommand::ReviewSummaryHelp => {
+            help::print_agent_review_summary_help();
+            Ok(())
+        }
         AgentCommand::Start(options) => run_agent_start(options),
         AgentCommand::Brief(options) => run_agent_brief(options),
         AgentCommand::Packet(options) => run_agent_packet(options),
         AgentCommand::Verify(options) => run_agent_verify(options),
         AgentCommand::Receipt(options) => run_agent_receipt(options),
         AgentCommand::Status(options) => run_agent_status(options),
+        AgentCommand::ReviewSummary(options) => run_agent_review_summary(options),
     }
 }
 
@@ -321,6 +327,26 @@ fn run_agent_status(options: AgentStatusOptions) -> Result<(), String> {
     let report = app::agent_status::build_agent_status_report(&options.root, &options.root);
     let rendered = app::agent_status::render_agent_status_json(&report)?;
     print!("{rendered}");
+    Ok(())
+}
+
+fn run_agent_review_summary(options: AgentReviewSummaryOptions) -> Result<(), String> {
+    if !options.root.is_dir() {
+        return Err(format!(
+            "agent review-summary root {} is not a directory",
+            options.root.display()
+        ));
+    }
+
+    let report =
+        app::agent_review_summary::build_agent_review_summary_report(&options.root, &options.root);
+    if options.json {
+        let rendered = app::agent_review_summary::render_agent_review_summary_json(&report)?;
+        print!("{rendered}");
+    } else {
+        let rendered = app::agent_review_summary::render_agent_review_summary_markdown(&report);
+        print!("{rendered}");
+    }
     Ok(())
 }
 
@@ -2055,7 +2081,7 @@ mod tests {
         assert_eq!(
             agent(&args(&["unknown"])),
             Err(
-                "unknown agent subcommand \"unknown\"; expected `start`, `brief`, `packet`, `verify`, `receipt`, or `status`"
+                "unknown agent subcommand \"unknown\"; expected `start`, `brief`, `packet`, `verify`, `receipt`, `status`, or `review-summary`"
                     .to_string()
             )
         );
@@ -2089,6 +2115,22 @@ mod tests {
             ])),
             Err(
                 "agent status root target/ripr/missing-agent-status-root is not a directory"
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn agent_review_summary_rejects_missing_root_before_reading_artifacts() {
+        assert_eq!(
+            agent(&args(&[
+                "review-summary",
+                "--root",
+                "target/ripr/missing-agent-review-summary-root",
+                "--json",
+            ])),
+            Err(
+                "agent review-summary root target/ripr/missing-agent-review-summary-root is not a directory"
                     .to_string()
             )
         );
