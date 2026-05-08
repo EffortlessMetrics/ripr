@@ -1,0 +1,29 @@
+schema_version = "1.0"
+policy = "clippy-debt"
+owner = "core/rust"
+status = "active"
+
+# Tracked Clippy debt: lint flips that are intentionally deferred with a
+# named owner and a target date.
+#
+# Empty by default. Each entry must record:
+#   id         stable identifier referenced in PR descriptions
+#   lint       full clippy lint name (e.g. clippy::let_underscore_must_use)
+#   level      target level once the debt is paid (deny | warn)
+#   owner      team/area responsible for clearing the debt
+#   reason     why this lint is not enforced today
+#   blocked_by call sites or refactors that must land first
+#   target     date by which the debt must be cleared
+#
+# Debt is reviewed at every release readiness check.
+
+# Example shape (commented out so the empty file parses):
+#
+# [[debt]]
+# id = "clippy-debt-0001"
+# lint = "clippy::let_underscore_must_use"
+# level = "deny"
+# owner = "core/rust"
+# reason = "Best-effort cleanup patterns like `let _ = fs::remove_dir_all(&dir)` are pervasive across the test suite. Flipping requires per-call review."
+# blocked_by = "Audit and replace test-suite cleanup `let _ = ...` patterns with explicit ignored-error helpers."
+# target = "2026-09-01"
