@@ -53,34 +53,7 @@ jobs:
         run: cargo build -p ripr --release --target ${{ matrix.target }}
 
       - name: Package server archive
-        shell: pwsh
-        env:
-          RAW_VERSION: ${{ github.event.inputs.version || github.ref_name }}
-          TARGET: ${{ matrix.target }}
-          EXECUTABLE: ${{ matrix.executable }}
-          ARCHIVE: ${{ matrix.archive }}
-        run: |
-          $version = $env:RAW_VERSION.TrimStart("v")
-          $assetName = "ripr-server-v$version-$env:TARGET.$env:ARCHIVE"
-          New-Item -ItemType Directory -Force package, dist | Out-Null
-          Copy-Item "target/$env:TARGET/release/$env:EXECUTABLE" "package/$env:EXECUTABLE"
-          Copy-Item LICENSE-MIT package/LICENSE-MIT
-          Copy-Item LICENSE-APACHE package/LICENSE-APACHE
-          @"
-          ripr server $version
-
-          This archive contains the ripr executable used by the VS Code/Open VSX
-          extension. It is distributed under MIT OR Apache-2.0.
-          "@ | Set-Content package/README-server.txt -NoNewline
-
-          if ($env:ARCHIVE -eq "zip") {
-            Compress-Archive -Path package/* -DestinationPath "dist/$assetName" -Force
-          } else {
-            tar -czf "dist/$assetName" -C package .
-          }
-
-          $hash = (Get-FileHash "dist/$assetName" -Algorithm SHA256).Hash.ToLowerInvariant()
-          Set-Content "dist/$assetName.sha256" $hash
+        run: cargo xtask release-server-archive --version "${{ github.event.inputs.version || github.ref_name }}" --target "${{ matrix.target }}" --executable "${{ matrix.executable }}" --archive "${{ matrix.archive }}"
 
       - name: Upload server artifact
         uses: actions/upload-artifact@v7
@@ -92,6 +65,10 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+
       - uses: actions/download-artifact@v8
         with:
           pattern: ripr-server-*
@@ -99,40 +76,10 @@ jobs:
           merge-multiple: true
 
       - name: Generate manifest and checksums
-        shell: pwsh
-        env:
-          RAW_VERSION: ${{ github.event.inputs.version || github.ref_name }}
-          REPOSITORY: ${{ github.repository }}
-        run: |
-          $version = $env:RAW_VERSION.TrimStart("v")
-          $assets = @{}
-          Get-ChildItem dist -File | Where-Object { $_.Name -match "^ripr-server-v$version-(.+)\.(zip|tar\.gz)$" } | ForEach-Object {
-            $target = $Matches[1]
-            $shaPath = "$($_.FullName).sha256"
-            $sha = (Get-Content $shaPath -Raw).Trim()
-            $url = "https://github.com/$env:REPOSITORY/releases/download/v$version/$($_.Name)"
-            $assets[$target] = @{
-              url = $url
-              sha256 = $sha
-            }
-          }
-
-          @{
-            version = $version
-            assets = $assets
-          } | ConvertTo-Json -Depth 8 | Set-Content "dist/ripr-server-manifest-v$version.json"
-
-          Get-ChildItem dist -File | Where-Object { $_.Extension -ne ".sha256" } | ForEach-Object {
-            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-            "$hash  $($_.Name)"
-          } | Set-Content "dist/checksums.txt"
+        run: cargo xtask release-server-manifest --version "${{ github.event.inputs.version || github.ref_name }}" --repository "${{ github.repository }}"
 
       - name: Upload release assets
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RAW_VERSION: ${{ github.event.inputs.version || github.ref_name }}
-        run: |
-          version="${RAW_VERSION#v}"
-          gh release view "v${version}" >/dev/null 2>&1 || gh release create "v${version}" --title "ripr ${version}"
-          gh release upload "v${version}" dist/* --clobber
+        run: cargo xtask release-upload-assets --version "${{ github.event.inputs.version || github.ref_name }}"

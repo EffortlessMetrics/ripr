@@ -27,6 +27,18 @@ x86_64-unknown-linux-gnu
 aarch64-unknown-linux-gnu
 ```
 
+
+Packaging and manifest assembly intentionally live in Rust-first automation:
+
+```bash
+cargo xtask release-server-archive --version <VERSION> --target <target> --executable <ripr-or-ripr.exe> --archive <zip-or-tar.gz>
+cargo xtask release-server-manifest --version <VERSION> --repository <owner/repo>
+cargo xtask release-upload-assets --version <VERSION>
+```
+
+The workflow should only orchestrate those commands instead of keeping archive,
+checksum, manifest, or upload branching logic in shell or PowerShell.
+
 and uploads these assets to the matching GitHub Release:
 
 ```text
