@@ -270,7 +270,7 @@ impl Backend {
             for diagnostic in &overlapping {
                 if let Some(seam) = snapshot.classified_seam_for_diagnostic(diagnostic) {
                     return Some(hover_with_snapshot_status(
-                        classified_seam_hover_response(seam, diagnostic),
+                        classified_seam_hover_response(seam, diagnostic, Some(snapshot)),
                         snapshot,
                     ));
                 }

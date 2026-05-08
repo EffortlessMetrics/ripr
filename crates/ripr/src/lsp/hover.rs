@@ -1,7 +1,11 @@
 use super::HOVER_TEXT;
 use super::state::{AnalysisSnapshot, format_duration};
+use crate::agent::loop_commands;
 use crate::analysis::ClassifiedSeam;
 use crate::domain::{Finding, StageEvidence, StageState};
+use crate::output::agent_seam_packets::{
+    suggested_assertion_for_classified_seam, targeted_test_brief_outline_for_classified_seam,
+};
 use tower_lsp_server::ls_types::{
     Diagnostic, Hover, HoverContents, MarkupContent, MarkupKind, NumberOrString, Position, Range,
 };
@@ -45,11 +49,12 @@ pub(super) fn finding_hover_response(finding: &Finding, diagnostic: &Diagnostic)
 pub(super) fn classified_seam_hover_response(
     seam: &ClassifiedSeam,
     diagnostic: &Diagnostic,
+    snapshot: Option<&AnalysisSnapshot>,
 ) -> Hover {
     Hover {
         contents: HoverContents::Markup(MarkupContent {
             kind: MarkupKind::Markdown,
-            value: classified_seam_hover_markdown(seam),
+            value: classified_seam_hover_markdown(seam, snapshot),
         }),
         range: Some(diagnostic.range),
     }
@@ -193,7 +198,10 @@ fn position_is_before(position: &Position, end: &Position) -> bool {
     position.line < end.line || (position.line == end.line && position.character < end.character)
 }
 
-fn classified_seam_hover_markdown(entry: &ClassifiedSeam) -> String {
+fn classified_seam_hover_markdown(
+    entry: &ClassifiedSeam,
+    snapshot: Option<&AnalysisSnapshot>,
+) -> String {
     let seam = &entry.seam;
     let evidence = &entry.evidence;
     let next_step = seam_next_step_for(entry);
@@ -247,7 +255,9 @@ fn classified_seam_hover_markdown(entry: &ClassifiedSeam) -> String {
             // Density chosen for hover; full per-field detail belongs
             // in repo exposure JSON or the agent packet.
             lines.push(format!(
-                "- `{}` — {} / {} · {} / {}",
+                "- `{}:{}` `{}` — {} / {} · {} / {}",
+                display_hover_path(&grip.file),
+                grip.line,
                 grip.test_name,
                 grip.oracle_kind.as_str(),
                 grip.oracle_strength.as_str(),
@@ -257,11 +267,100 @@ fn classified_seam_hover_markdown(entry: &ClassifiedSeam) -> String {
         }
     }
 
+    push_test_shape(&mut lines, entry);
+    push_editor_commands(&mut lines, entry, snapshot);
+    push_static_limits(&mut lines);
+
     lines.push(String::new());
     lines.push("## Next step".to_string());
     lines.push(next_step);
 
     lines.join("\n")
+}
+
+fn push_test_shape(lines: &mut Vec<String>, entry: &ClassifiedSeam) {
+    let outline = targeted_test_brief_outline_for_classified_seam(entry);
+    lines.push(String::new());
+    lines.push("## Suggested test shape".to_string());
+    lines.push(format!("- file: `{}`", outline.suggested_file));
+    lines.push(format!("- name: `{}`", outline.suggested_name));
+    if let Some(candidate) = outline.candidate_value {
+        lines.push(format!("- candidate value: `{candidate}`"));
+    }
+    lines.push(format!("- assertion shape: {}", outline.assertion_shape));
+    if let Some(assertion) = suggested_assertion_for_classified_seam(entry) {
+        lines.push(format!("- assertion template: `{assertion}`"));
+    }
+}
+
+fn push_editor_commands(
+    lines: &mut Vec<String>,
+    entry: &ClassifiedSeam,
+    snapshot: Option<&AnalysisSnapshot>,
+) {
+    let mode = snapshot.map_or("draft", |snapshot| snapshot.mode.as_str());
+    let seam_id = entry.seam.id().as_str();
+    lines.push(String::new());
+    lines.push("## Handoff, verify, and receipt commands".to_string());
+    lines.push(format!(
+        "- packet: `{}`",
+        loop_commands::agent_packet_command(
+            ".",
+            seam_id,
+            loop_commands::EDITOR_AGENT_PACKET_ARTIFACT,
+        )
+    ));
+    lines.push(format!(
+        "- brief: `{}`",
+        loop_commands::agent_brief_command(
+            ".",
+            seam_id,
+            loop_commands::EDITOR_AGENT_BRIEF_ARTIFACT,
+        )
+    ));
+    lines.push(format!(
+        "- after snapshot: `{}`",
+        loop_commands::check_repo_exposure_command(
+            ".",
+            mode,
+            loop_commands::PILOT_AFTER_SNAPSHOT_ARTIFACT,
+        )
+    ));
+    lines.push(format!(
+        "- verify: `{}`",
+        loop_commands::agent_verify_command(
+            ".",
+            loop_commands::PILOT_BEFORE_SNAPSHOT_ARTIFACT,
+            loop_commands::PILOT_AFTER_SNAPSHOT_ARTIFACT,
+            Some(loop_commands::EDITOR_AGENT_VERIFY_ARTIFACT),
+        )
+    ));
+    lines.push(format!(
+        "- receipt: `{}`",
+        loop_commands::agent_receipt_command(
+            ".",
+            loop_commands::EDITOR_AGENT_VERIFY_ARTIFACT,
+            seam_id,
+            Some(loop_commands::EDITOR_AGENT_RECEIPT_ARTIFACT),
+        )
+    ));
+}
+
+fn push_static_limits(lines: &mut Vec<String>) {
+    lines.push(String::new());
+    lines.push("## Limits".to_string());
+    lines.push(
+        "- Static evidence only; this hover does not run mutation testing or prove runtime adequacy."
+            .to_string(),
+    );
+    lines.push(
+        "- Suggested assertions are work-order guidance, not generated tests or source edits."
+            .to_string(),
+    );
+}
+
+fn display_hover_path(path: &std::path::Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 fn seam_stage_line(name: &str, stage: &StageEvidence) -> String {
@@ -385,10 +484,12 @@ mod seam_hover_tests {
         ExpectedSink, RepoSeam, RequiredDiscriminator, SeamGripClass, SeamKind,
     };
     use crate::analysis::test_grip_evidence::{RelatedTestGrip, TestGripEvidence};
+    use crate::app::Mode;
     use crate::domain::{
         Confidence, MissingDiscriminatorFact, OracleKind, OracleStrength, StageEvidence,
         StageState, ValueContext, ValueFact,
     };
+    use std::collections::BTreeMap;
     use std::path::PathBuf;
     use tower_lsp_server::ls_types::{NumberOrString, Position, Range};
 
@@ -471,6 +572,18 @@ mod seam_hover_tests {
         }
     }
 
+    fn sample_snapshot(mode: Mode) -> AnalysisSnapshot {
+        AnalysisSnapshot {
+            root: PathBuf::from("/workspace"),
+            base: None,
+            mode,
+            refresh: super::super::state::RefreshMetadata::default(),
+            findings: Vec::new(),
+            classified_seams: Vec::new(),
+            diagnostics_by_uri: BTreeMap::new(),
+        }
+    }
+
     fn extract_markup(hover: &Hover) -> Result<&str, String> {
         match &hover.contents {
             HoverContents::Markup(content) => Ok(content.value.as_str()),
@@ -483,7 +596,7 @@ mod seam_hover_tests {
     -> Result<(), String> {
         let seam = weakly_gripped_classified();
         let diagnostic = sample_diagnostic();
-        let hover = classified_seam_hover_response(&seam, &diagnostic);
+        let hover = classified_seam_hover_response(&seam, &diagnostic, None);
         let md = extract_markup(&hover)?;
         for needle in [
             "behavioral seam",
@@ -514,7 +627,7 @@ mod seam_hover_tests {
     -> Result<(), String> {
         let seam = weakly_gripped_classified();
         let diagnostic = sample_diagnostic();
-        let hover = classified_seam_hover_response(&seam, &diagnostic);
+        let hover = classified_seam_hover_response(&seam, &diagnostic, None);
         let md = extract_markup(&hover)?;
         if !md.contains("## Missing discriminator") {
             return Err(format!("missing section header in:\n{md}"));
@@ -541,10 +654,13 @@ mod seam_hover_tests {
     -> Result<(), String> {
         let seam = weakly_gripped_classified();
         let diagnostic = sample_diagnostic();
-        let hover = classified_seam_hover_response(&seam, &diagnostic);
+        let hover = classified_seam_hover_response(&seam, &diagnostic, None);
         let md = extract_markup(&hover)?;
         if !md.contains("## Related tests") {
             return Err(format!("missing related-tests section in:\n{md}"));
+        }
+        if !md.contains("tests/pricing.rs:12") {
+            return Err(format!("missing related test location in:\n{md}"));
         }
         if !md.contains("below_threshold_has_no_discount") {
             return Err(format!("missing related test name in:\n{md}"));
@@ -556,13 +672,78 @@ mod seam_hover_tests {
     }
 
     #[test]
+    fn given_seam_hover_when_rendered_then_suggested_test_shape_is_visible() -> Result<(), String> {
+        let seam = weakly_gripped_classified();
+        let diagnostic = sample_diagnostic();
+        let hover = classified_seam_hover_response(&seam, &diagnostic, None);
+        let md = extract_markup(&hover)?;
+        for needle in [
+            "## Suggested test shape",
+            "- file: `tests/pricing.rs`",
+            "- name: `discounted_total_boundary_discriminator`",
+            "- candidate value: `discount_threshold (equality boundary)`",
+            "- assertion shape: assert_eq!(discounted_total",
+            "- assertion template: `assert_eq!(discounted_total",
+        ] {
+            if !md.contains(needle) {
+                return Err(format!("missing {needle:?} in:\n{md}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn given_seam_hover_with_snapshot_when_rendered_then_verify_and_receipt_commands_match_mode()
+    -> Result<(), String> {
+        let seam = weakly_gripped_classified();
+        let diagnostic = sample_diagnostic();
+        let snapshot = sample_snapshot(Mode::Ready);
+        let hover = classified_seam_hover_response(&seam, &diagnostic, Some(&snapshot));
+        let md = extract_markup(&hover)?;
+        for needle in [
+            "## Handoff, verify, and receipt commands",
+            "- packet: `ripr agent packet --root . --seam-id",
+            "--json > target/ripr/agent/agent-packet.json",
+            "- brief: `ripr agent brief --root . --seam-id",
+            "--json > target/ripr/agent/agent-brief.json",
+            "- after snapshot: `ripr check --root . --mode ready --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json`",
+            "- verify: `ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > target/ripr/agent/agent-verify.json`",
+            "ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id",
+            "--json --out target/ripr/agent/agent-receipt.json",
+        ] {
+            if !md.contains(needle) {
+                return Err(format!("missing {needle:?} in:\n{md}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn given_seam_hover_when_rendered_then_static_limits_are_explicit() -> Result<(), String> {
+        let seam = weakly_gripped_classified();
+        let diagnostic = sample_diagnostic();
+        let hover = classified_seam_hover_response(&seam, &diagnostic, None);
+        let md = extract_markup(&hover)?;
+        for needle in [
+            "## Limits",
+            "Static evidence only; this hover does not run mutation testing or prove runtime adequacy.",
+            "Suggested assertions are work-order guidance, not generated tests or source edits.",
+        ] {
+            if !md.contains(needle) {
+                return Err(format!("missing {needle:?} in:\n{md}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
     fn given_lsp_hover_with_related_tests_when_rendered_then_relation_reason_is_visible()
     -> Result<(), String> {
         // Pin the terse trailing tag format chosen for hover:
         //   `test_name — oracle_kind/oracle_strength · reason/confidence`.
         let seam = weakly_gripped_classified();
         let diagnostic = sample_diagnostic();
-        let hover = classified_seam_hover_response(&seam, &diagnostic);
+        let hover = classified_seam_hover_response(&seam, &diagnostic, None);
         let md = extract_markup(&hover)?;
         if !md.contains("· direct_owner_call / high") {
             return Err(format!("hover should carry terse relation tag; got:\n{md}"));
@@ -591,7 +772,7 @@ mod seam_hover_tests {
         seam.evidence.discriminate = stage(StageState::Yes, "Exact boundary assertion exists");
         seam.evidence.missing_discriminators.clear();
         let diagnostic = sample_diagnostic();
-        let hover = classified_seam_hover_response(&seam, &diagnostic);
+        let hover = classified_seam_hover_response(&seam, &diagnostic, None);
         let md = extract_markup(&hover)?;
         if !md.contains("no weak or missing stage evidence recorded") {
             return Err(format!("expected no-gap explanation in:\n{md}"));
@@ -611,7 +792,7 @@ mod seam_hover_tests {
         seam.evidence.discriminate = stage(StageState::No, "No discriminator evidence recorded");
         seam.evidence.missing_discriminators.clear();
         let diagnostic = sample_diagnostic();
-        let hover = classified_seam_hover_response(&seam, &diagnostic);
+        let hover = classified_seam_hover_response(&seam, &diagnostic, None);
         let md = extract_markup(&hover)?;
         if !md.contains("no yes-stage evidence recorded in the current snapshot") {
             return Err(format!("expected no-yes-stage explanation in:\n{md}"));
@@ -624,7 +805,7 @@ mod seam_hover_tests {
         let mut seam = weakly_gripped_classified();
         seam.class = SeamGripClass::Opaque;
         let diagnostic = sample_diagnostic();
-        let hover = classified_seam_hover_response(&seam, &diagnostic);
+        let hover = classified_seam_hover_response(&seam, &diagnostic, None);
         let md = extract_markup(&hover)?;
         if !md.contains("Inspect the static limitation") {
             return Err(format!("expected opaque next-step text in:\n{md}"));

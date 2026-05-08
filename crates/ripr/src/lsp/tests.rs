@@ -347,6 +347,18 @@ fn framed_lsp_protocol_smoke_logs_successful_refresh_completion() -> Result<(), 
             hover_value.contains("## Next step"),
             "expected seam hover to name next step, got {hover_value}"
         );
+        assert!(
+            hover_value.contains("## Suggested test shape"),
+            "expected seam hover to name suggested test shape, got {hover_value}"
+        );
+        assert!(
+            hover_value.contains("## Handoff, verify, and receipt commands"),
+            "expected seam hover to name handoff, verify, and receipt commands, got {hover_value}"
+        );
+        assert!(
+            hover_value.contains("## Limits"),
+            "expected seam hover to name static limits, got {hover_value}"
+        );
 
         write_lsp_message(
             &mut client_write,

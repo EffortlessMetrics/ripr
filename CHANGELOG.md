@@ -142,6 +142,10 @@ are scoped or reviewed.
   create, diff, shrink-only update, and generated CI debt-delta artifacts.
 - Added `docs/EDITOR_EVIDENCE_UX.md` and the Editor Evidence UX audit handoff
   to define the queued saved-workspace editor contract before behavior changes.
+- Hardened seam evidence hover so saved-workspace seam diagnostics now show
+  related test locations, suggested test shape, packet and brief handoff
+  commands, verify and receipt commands, and static-evidence limits from the
+  same classified seam state.
 - Added RIPR-SPEC-0016 for the baseline debt delta report, defining the planned
   JSON/Markdown contract, identity matching order, debt movement buckets,
   advisory boundary, and future `ripr baseline create`, `diff`, and
