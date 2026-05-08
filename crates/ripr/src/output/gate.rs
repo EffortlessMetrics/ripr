@@ -629,6 +629,18 @@ fn read_baseline(
 fn baseline_index_from_value(value: &Value) -> BaselineIndex {
     let mut index = BaselineIndex::default();
     for item in value
+        .get("entries")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        collect_identity(&mut index.identities, item.pointer("/identity/seam_id"));
+        collect_identity(&mut index.identities, item.pointer("/identity/source_id"));
+        collect_identity(&mut index.identities, item.pointer("/identity/id"));
+        collect_identity(&mut index.identities, item.pointer("/identity/dedupe_key"));
+        collect_identity(&mut index.identities, item.pointer("/identity/fallback"));
+    }
+    for item in value
         .get("decisions")
         .and_then(Value::as_array)
         .into_iter()
@@ -1396,6 +1408,44 @@ mod tests {
               "schema_version": "0.1",
               "decisions": [
                 {"seam_id": "8f7fa8644fd12280", "source_id": "ripr-review-8f7fa8644fd12280"}
+              ]
+            }"#,
+        )
+        .map_err(|err| format!("write baseline failed: {err}"))?;
+        let mut input = fixture_input(GateMode::BaselineCheck);
+        input.baseline = Some(baseline);
+        let report = build_gate_decision_report(&input)?;
+        assert_eq!(report.status, "advisory");
+        assert_eq!(report.summary.blocking, 0);
+        assert_eq!(report.summary.advisory, 1);
+        assert!(
+            report.decisions[0]
+                .gate_reason
+                .contains("explicit baseline")
+        );
+        let _ = fs::remove_dir_all(dir);
+        Ok(())
+    }
+
+    #[test]
+    fn gate_baseline_check_reads_baseline_ledger_entries() -> Result<(), String> {
+        let dir = temp_dir("gate-baseline-ledger-entry")?;
+        let baseline = dir.join("baseline.json");
+        fs::write(
+            &baseline,
+            r#"{
+              "schema_version": "0.1",
+              "kind": "gate_baseline",
+              "entries": [
+                {
+                  "identity": {
+                    "seam_id": "8f7fa8644fd12280",
+                    "source_id": "ripr-review-8f7fa8644fd12280",
+                    "id": "ripr-gate-8f7fa8644fd12280",
+                    "dedupe_key": null,
+                    "fallback": "src/pricing.rs:88:weakly_gripped"
+                  }
+                }
               ]
             }"#,
         )

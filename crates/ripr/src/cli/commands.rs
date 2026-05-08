@@ -77,6 +77,14 @@ struct GateOptions {
     out_md: PathBuf,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct BaselineCreateOptions {
+    from: PathBuf,
+    out: PathBuf,
+    dry_run: bool,
+    force: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum OutcomeFormat {
     Markdown,
@@ -1683,6 +1691,54 @@ pub(super) fn gate(args: &[String]) -> Result<(), String> {
     }
 }
 
+pub(super) fn baseline(args: &[String]) -> Result<(), String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        help::print_baseline_help();
+        return Ok(());
+    }
+    let Some((subcommand, rest)) = args.split_first() else {
+        return Err("baseline requires subcommand `create`".to_string());
+    };
+    if subcommand != "create" {
+        return Err(format!(
+            "unknown baseline subcommand {subcommand:?}; expected `create`"
+        ));
+    }
+
+    let options = parse_baseline_create_options(rest)?;
+    let gate_decision_json = std::fs::read_to_string(&options.from).map_err(|err| {
+        format!(
+            "read baseline create source {} failed: {err}",
+            output::baseline::display_path(&options.from)
+        )
+    })?;
+    let created_at = baseline_created_at()?;
+    let source_report = output::baseline::display_path(&options.from);
+    let report = output::baseline::baseline_create_report_from_gate_decision_json(
+        &source_report,
+        &created_at,
+        &gate_decision_json,
+    )?;
+    let rendered = output::baseline::render_baseline_create_json(&report)?;
+    if options.dry_run {
+        print!("{rendered}");
+        return Ok(());
+    }
+    if options.out.exists() && !options.force {
+        return Err(format!(
+            "{} already exists; rerun `ripr baseline create --force` to overwrite it",
+            options.out.display()
+        ));
+    }
+    write_text_file(&options.out, &rendered)?;
+    println!("Wrote {}", options.out.display());
+    println!(
+        "Entries: {}",
+        output::baseline::baseline_entry_count(&report)
+    );
+    Ok(())
+}
+
 fn review_comments_with_diff_loader(
     args: &[String],
     load_diff: impl Fn(&Path, &str, &str) -> Result<String, String>,
@@ -2160,6 +2216,46 @@ fn parse_gate_options(args: &[String]) -> Result<GateOptions, String> {
         out,
         out_md,
     })
+}
+
+fn parse_baseline_create_options(args: &[String]) -> Result<BaselineCreateOptions, String> {
+    let mut from = None;
+    let mut out = PathBuf::from(output::baseline::DEFAULT_BASELINE_OUT);
+    let mut dry_run = false;
+    let mut force = false;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--from" => {
+                i += 1;
+                from = Some(non_empty_path_arg(args, i, "--from", "baseline create")?);
+            }
+            "--out" => {
+                i += 1;
+                out = non_empty_path_arg(args, i, "--out", "baseline create")?;
+            }
+            "--dry-run" => dry_run = true,
+            "--force" => force = true,
+            other => return Err(format!("unknown baseline create argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    Ok(BaselineCreateOptions {
+        from: from.ok_or_else(|| "baseline create requires --from <path>".to_string())?,
+        out,
+        dry_run,
+        force,
+    })
+}
+
+fn baseline_created_at() -> Result<String, String> {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| format!("system clock before unix epoch: {err}"))?
+        .as_millis();
+    Ok(format!("unix_ms:{millis}"))
 }
 
 fn non_empty_path_arg(
@@ -3059,6 +3155,105 @@ mod tests {
         assert!(json_text.contains("\"status\": \"blocked\""));
         assert!(json_text.contains("\"decision\": \"blocking\""));
         std::fs::remove_dir_all(&dir).map_err(|err| format!("remove gate dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn baseline_create_parses_option_surface() {
+        assert_eq!(
+            parse_baseline_create_options(&args(&[
+                "--from",
+                "target/ripr/reports/gate-decision.json",
+                "--out",
+                ".ripr/gate-baseline.json",
+                "--dry-run",
+                "--force",
+            ])),
+            Ok(BaselineCreateOptions {
+                from: PathBuf::from("target/ripr/reports/gate-decision.json"),
+                out: PathBuf::from(".ripr/gate-baseline.json"),
+                dry_run: true,
+                force: true,
+            })
+        );
+        assert_eq!(
+            parse_baseline_create_options(&args(&["--from", "gate.json"])),
+            Ok(BaselineCreateOptions {
+                from: PathBuf::from("gate.json"),
+                out: PathBuf::from(".ripr/gate-baseline.json"),
+                dry_run: false,
+                force: false,
+            })
+        );
+    }
+
+    #[test]
+    fn baseline_create_requires_source_and_rejects_unknown_args() {
+        assert_eq!(
+            baseline(&args(&[])),
+            Err("baseline requires subcommand `create`".to_string())
+        );
+        assert_eq!(
+            baseline(&args(&["diff"])),
+            Err("unknown baseline subcommand \"diff\"; expected `create`".to_string())
+        );
+        assert_eq!(
+            parse_baseline_create_options(&args(&[])),
+            Err("baseline create requires --from <path>".to_string())
+        );
+        assert_eq!(
+            parse_baseline_create_options(&args(&["--from", ""])),
+            Err("baseline create --from requires a non-empty value".to_string())
+        );
+        assert_eq!(
+            parse_baseline_create_options(&args(&["--bad"])),
+            Err("unknown baseline create argument \"--bad\"".to_string())
+        );
+    }
+
+    #[test]
+    fn baseline_create_writes_baseline_without_overwriting_by_default() -> Result<(), String> {
+        let dir = unique_command_test_dir("baseline-create");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create baseline dir: {err}"))?;
+        let out = dir.join("gate-baseline.json");
+        let from = repo_root().join(
+            "fixtures/boundary_gap/expected/calibrated-gate/visible-only-advisory/gate-decision.json",
+        );
+        baseline(&args(&[
+            "create",
+            "--from",
+            &from.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+        ]))?;
+
+        let json_text =
+            std::fs::read_to_string(&out).map_err(|err| format!("read baseline json: {err}"))?;
+        assert!(json_text.contains("\"kind\": \"gate_baseline\""));
+        assert!(json_text.contains("\"reviewed\": false"));
+        assert!(json_text.contains("\"source_report\""));
+        assert!(json_text.contains("\"seam_id\": \"8f7fa8644fd12280\""));
+        assert!(json_text.contains("\"entries\": 1"));
+
+        let second = baseline(&args(&[
+            "create",
+            "--from",
+            &from.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+        ]));
+        assert!(matches!(second, Err(message) if message.contains("--force")));
+
+        baseline(&args(&[
+            "create",
+            "--from",
+            &from.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--force",
+        ]))?;
+
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove baseline dir: {err}"))?;
         Ok(())
     }
 

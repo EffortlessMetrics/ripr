@@ -43,7 +43,7 @@ commands = [
 
 [[work_item]]
 id = "baseline/create"
-status = "ready"
+status = "done"
 branch = "baseline-create"
 stackable = false
 blocked_by = ["spec/baseline-debt-delta-report"]
@@ -57,7 +57,7 @@ commands = [
 
 [[work_item]]
 id = "baseline/diff"
-status = "blocked"
+status = "ready"
 branch = "baseline-diff"
 stackable = false
 blocked_by = ["baseline/create"]

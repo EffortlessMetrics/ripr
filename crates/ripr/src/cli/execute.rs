@@ -17,6 +17,7 @@ pub(super) fn execute(command: CliCommand) -> Result<(), String> {
         CliCommand::EvidenceHealth(args) => commands::evidence_health(&args),
         CliCommand::ReviewComments(args) => commands::review_comments(&args),
         CliCommand::Gate(args) => commands::gate(&args),
+        CliCommand::Baseline(args) => commands::baseline(&args),
         CliCommand::Calibrate(args) => commands::calibrate(&args),
         CliCommand::Agent(args) => commands::agent(&args),
         CliCommand::Check(args) => commands::check(&args),
@@ -74,6 +75,10 @@ mod tests {
         assert_eq!(
             execute(CliCommand::Gate(args(&["evaluate", "--mode", "strict"]))),
             Err("unknown gate mode `strict`".to_string())
+        );
+        assert_eq!(
+            execute(CliCommand::Baseline(args(&["create", "--from"]))),
+            Err("missing value for --from".to_string())
         );
         assert_eq!(
             execute(CliCommand::Calibrate(args(&[
