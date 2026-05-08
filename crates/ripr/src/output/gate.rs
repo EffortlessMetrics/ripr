@@ -1660,6 +1660,50 @@ mod tests {
     }
 
     #[test]
+    fn gate_decision_fixtures_pin_required_cases() -> Result<(), String> {
+        assert_gate_fixture("advisory", fixture_case_input(GateMode::VisibleOnly))?;
+
+        let mut acknowledged = fixture_case_input(GateMode::Acknowledgeable);
+        acknowledged.labels_json = Some(gate_input("inputs/labels-ripr-waive.json"));
+        assert_gate_fixture("acknowledged", acknowledged)?;
+
+        let mut baseline_check = fixture_case_input(GateMode::BaselineCheck);
+        baseline_check.baseline = Some(gate_input("inputs/existing-baseline.json"));
+        assert_gate_fixture("baseline-check", baseline_check)?;
+
+        let mut high_confidence = fixture_case_input(GateMode::CalibratedGate);
+        high_confidence.baseline = Some(gate_input("inputs/empty-baseline.json"));
+        high_confidence.recommendation_calibration = Some(PathBuf::from(
+            "fixtures/boundary_gap/expected/recommendation-calibration/recommendation-calibration.json",
+        ));
+        assert_gate_fixture("fail-on-new-high-confidence-gap", high_confidence)?;
+
+        let mut suppression = fixture_case_input(GateMode::Acknowledgeable);
+        suppression.pr_guidance = gate_input("inputs/suppressed-pr-guidance.json");
+        assert_gate_fixture("suppression", suppression)?;
+
+        assert_gate_fixture(
+            "missing-input",
+            fixture_case_input(GateMode::CalibratedGate),
+        )?;
+
+        let mut calibration_agrees = fixture_case_input(GateMode::CalibratedGate);
+        calibration_agrees.baseline = Some(gate_input("inputs/empty-baseline.json"));
+        calibration_agrees.mutation_calibration = Some(gate_input("inputs/mutation-agrees.json"));
+        assert_gate_fixture("calibration-agrees", calibration_agrees)?;
+
+        let mut calibration_disagrees = fixture_case_input(GateMode::CalibratedGate);
+        calibration_disagrees.baseline = Some(gate_input("inputs/empty-baseline.json"));
+        calibration_disagrees.recommendation_calibration =
+            Some(gate_input("inputs/recommendation-disagrees.json"));
+        calibration_disagrees.mutation_calibration =
+            Some(gate_input("inputs/mutation-disagrees.json"));
+        assert_gate_fixture("calibration-disagrees", calibration_disagrees)?;
+
+        Ok(())
+    }
+
+    #[test]
     fn display_path_normalizes_empty_and_dot_prefixed_paths() {
         assert_eq!(display_path(Path::new("")), ".");
         assert_eq!(
@@ -1686,6 +1730,56 @@ mod tests {
             mode,
             acknowledgement_labels: Vec::new(),
         }
+    }
+
+    fn fixture_case_input(mode: GateMode) -> GateEvaluateInput {
+        GateEvaluateInput {
+            root: repo_root(),
+            repo_exposure: None,
+            pr_guidance: PathBuf::from(
+                "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
+            ),
+            sarif_policy: None,
+            labels_json: None,
+            labels: Vec::new(),
+            agent_verify: None,
+            agent_receipt: None,
+            recommendation_calibration: None,
+            mutation_calibration: None,
+            baseline: None,
+            mode,
+            acknowledgement_labels: Vec::new(),
+        }
+    }
+
+    fn assert_gate_fixture(case: &str, input: GateEvaluateInput) -> Result<(), String> {
+        let report = build_gate_decision_report(&input)?;
+        let json = normalize_gate_fixture_output(&render_gate_decision_json(&report)?);
+        assert_text_fixture(case, "gate-decision.json", &json)?;
+        let markdown = normalize_gate_fixture_output(&render_gate_decision_markdown(&report));
+        assert_text_fixture(case, "gate-decision.md", &markdown)
+    }
+
+    fn normalize_gate_fixture_output(actual: &str) -> String {
+        actual.replace(&display_path(&repo_root()), ".")
+    }
+
+    fn assert_text_fixture(case: &str, file: &str, actual: &str) -> Result<(), String> {
+        let path = gate_fixture(&format!("{case}/{file}"));
+        let expected = fs::read_to_string(&path)
+            .map_err(|err| format!("read gate fixture {}: {err}", display_path(&path)))?;
+        assert_eq!(expected, actual, "gate fixture drift for {case}/{file}");
+        Ok(())
+    }
+
+    fn gate_fixture(relative: &str) -> PathBuf {
+        repo_root()
+            .join("fixtures/boundary_gap/expected/gate-decision")
+            .join(relative)
+    }
+
+    fn gate_input(relative: &str) -> PathBuf {
+        PathBuf::from("fixtures/boundary_gap/expected/gate-decision").join(relative)
     }
 
     fn repo_root() -> PathBuf {

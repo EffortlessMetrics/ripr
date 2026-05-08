@@ -1,0 +1,82 @@
+{
+  "config_errors": [],
+  "decisions": [
+    {
+      "decision": "suppressed",
+      "evidence": {
+        "assertion_shape": "assert_eq!(discounted_total(/* boundary input */), /* expected */)",
+        "candidate_values": [
+          "input that hits the boundary: amount == discount_threshold"
+        ],
+        "configured_off": true,
+        "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+        "mutation_calibration": {
+          "available": false,
+          "confidence_effect": "not_used",
+          "outcome": null
+        },
+        "nearby_test_changed": false,
+        "recommendation_calibration": {
+          "available": false,
+          "confidence_effect": "not_used",
+          "outcome": null
+        },
+        "recommended_test": "tests/pricing.rs::above_threshold_gets_discount",
+        "suppressed": true
+      },
+      "gate_reason": "configured-hidden or suppressed candidate preserved as `severity_off`",
+      "id": "ripr-gate-8f7fa8644fd12280",
+      "placement": {
+        "line": 88,
+        "path": "src/pricing.rs"
+      },
+      "policy": {
+        "acknowledgement_label": null,
+        "baseline_identity": "8f7fa8644fd12280",
+        "mode": "acknowledgeable",
+        "threshold": "high_confidence_new_gap"
+      },
+      "seam_id": "8f7fa8644fd12280",
+      "severity": "off",
+      "source": "pr_guidance",
+      "source_id": "suppressed-weakly-gripped",
+      "static_class": "weakly_gripped"
+    }
+  ],
+  "inputs": {
+    "agent_receipt": null,
+    "agent_verify": null,
+    "baseline": null,
+    "labels": [],
+    "labels_json": null,
+    "mutation_calibration": null,
+    "pr_guidance": "fixtures/boundary_gap/expected/gate-decision/inputs/suppressed-pr-guidance.json",
+    "recommendation_calibration": null,
+    "repo_exposure": null,
+    "sarif_policy": null
+  },
+  "limits_note": "Optional policy over static RIPR evidence; advisory by default; runtime mutation calibration is used only when supplied.",
+  "mode": "acknowledgeable",
+  "policy": {
+    "acknowledgement_labels": [
+      "ripr-waive"
+    ],
+    "default_workflow_posture": "advisory",
+    "mode": "acknowledgeable",
+    "threshold": "high_confidence_new_gap"
+  },
+  "root": ".",
+  "schema_version": "0.1",
+  "status": "advisory",
+  "summary": {
+    "acknowledged": 0,
+    "advisory": 0,
+    "blocking": 0,
+    "evaluated": 1,
+    "not_applicable": 0,
+    "suppressed": 1,
+    "unknown_confidence": 0
+  },
+  "tool": "ripr",
+  "warnings": []
+}

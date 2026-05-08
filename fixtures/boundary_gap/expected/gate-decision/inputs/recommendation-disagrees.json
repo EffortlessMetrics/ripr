@@ -1,0 +1,12 @@
+{
+  "schema_version": "0.1",
+  "recommendations": [
+    {
+      "id": "ripr-review-8f7fa8644fd12280",
+      "seam_id": "8f7fa8644fd12280",
+      "calibration": {
+        "outcome": "wrong_target"
+      }
+    }
+  ]
+}

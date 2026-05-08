@@ -1,0 +1,30 @@
+{
+  "schema_version": "0.1",
+  "summary": {
+    "unchanged_tests": true
+  },
+  "comments": [],
+  "summary_only": [],
+  "suppressed": [
+    {
+      "id": "suppressed-weakly-gripped",
+      "seam_id": "8f7fa8644fd12280",
+      "grip_class": "weakly_gripped",
+      "severity": "off",
+      "reason": "severity_off",
+      "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "placement": {
+        "path": "src/pricing.rs",
+        "line": 88
+      },
+      "suggested_test": {
+        "assertion_shape": "assert_eq!(discounted_total(/* boundary input */), /* expected */)",
+        "candidate_values": [
+          "input that hits the boundary: amount == discount_threshold"
+        ],
+        "near_test": "above_threshold_gets_discount",
+        "recommended_file": "tests/pricing.rs"
+      }
+    }
+  ]
+}

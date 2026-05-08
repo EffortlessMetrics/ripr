@@ -76,6 +76,8 @@ The current fixture baseline covers:
 - metamorphic syntax variants: `boundary_gap_multiline_assert`,
   `boundary_gap_nested_tests`, `boundary_gap_reordered_tests`,
   `weak_error_oracle_assert_matches`
+- calibrated gate policy cases:
+  `boundary_gap/expected/gate-decision`
 
 For defaults-first adoption examples, see
 [`EXAMPLE_CORPUS.md`](EXAMPLE_CORPUS.md). For calibration scenarios, see

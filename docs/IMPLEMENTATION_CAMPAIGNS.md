@@ -1706,9 +1706,10 @@ Closeout:
 
 Next:
 
-- Campaign 15 is active. `spec/calibrated-gate-policy` and
-  `gate/policy-evaluator` are pinned; continue with
-  `fixtures/calibrated-gate-cases` before CI wiring.
+- Campaign 15 is active. `spec/calibrated-gate-policy`,
+  `gate/policy-evaluator`, and `fixtures/calibrated-gate-cases` are pinned;
+  continue with explicit generated CI gate wiring while preserving advisory
+  defaults.
 
 ## Campaign 15: Calibrated Gate Policy
 
@@ -1762,8 +1763,8 @@ Work items:
 | --- | --- | --- |
 | `spec/calibrated-gate-policy` | done | Pin the optional calibrated gate policy after recommendation calibration, including modes, inputs, outputs, acknowledgement labels, runtime calibration boundaries, default advisory posture, and non-goals. |
 | `gate/policy-evaluator` | done | Add a read-only gate evaluator that writes gate-decision JSON/Markdown from existing evidence and explicit policy without posting comments, editing source, running mutation tests, or changing generated workflow defaults. |
-| `fixtures/calibrated-gate-cases` | ready | Pin gate fixtures for advisory, acknowledged, baseline-check, fail-on-new-high-confidence-gap, suppression, missing-input, and calibration agreement/disagreement cases. |
-| `ci/generated-gate-wiring` | blocked | Wire generated GitHub workflows to optionally run the gate evaluator only when explicitly configured, preserving advisory defaults and surfacing acknowledged or blocking decisions in summaries. |
+| `fixtures/calibrated-gate-cases` | done | Pin gate fixtures for advisory, acknowledged, baseline-check, fail-on-new-high-confidence-gap, suppression, missing-input, and calibration agreement/disagreement cases. |
+| `ci/generated-gate-wiring` | ready | Wire generated GitHub workflows to optionally run the gate evaluator only when explicitly configured, preserving advisory defaults and surfacing acknowledged or blocking decisions in summaries. |
 | `docs/calibrated-gate-policy` | blocked | Document calibrated gates as optional policy over existing static evidence, including modes, waiver labels, CI behavior, calibration evidence, and static/runtime vocabulary boundaries. |
 | `campaign/calibrated-gate-closeout` | blocked | Close only after optional calibrated gates are specified, evaluated, fixture-pinned, optionally wired into generated CI, documented, and still advisory by default. |
 

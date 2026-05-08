@@ -58,7 +58,7 @@ commands = [
 
 [[work_item]]
 id = "fixtures/calibrated-gate-cases"
-status = "ready"
+status = "done"
 branch = "fixtures-calibrated-gate-cases"
 stackable = false
 blocked_by = [
@@ -76,7 +76,7 @@ commands = [
 
 [[work_item]]
 id = "ci/generated-gate-wiring"
-status = "blocked"
+status = "ready"
 branch = "ci-generated-gate-wiring"
 stackable = false
 blocked_by = [

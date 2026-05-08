@@ -899,8 +899,10 @@ tests = [
   "crates/ripr/src/output/gate.rs::tests::gate_calibrated_mode_uses_imported_mutation_support",
   "crates/ripr/src/output/gate.rs::tests::gate_labels_json_acknowledges_candidate",
   "crates/ripr/src/output/gate.rs::tests::gate_baseline_check_keeps_existing_candidate_advisory",
+  "crates/ripr/src/output/gate.rs::tests::gate_decision_fixtures_pin_required_cases",
 ]
 fixtures = [
+  "fixtures/boundary_gap/expected/gate-decision",
 ]
 code = [
   "crates/ripr/src/cli/command.rs",

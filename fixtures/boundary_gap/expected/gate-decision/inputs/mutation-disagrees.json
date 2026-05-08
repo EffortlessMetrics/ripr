@@ -1,0 +1,16 @@
+{
+  "schema_version": "0.1",
+  "matches": [
+    {
+      "join_method": "seam_id",
+      "runtime": {
+        "seam_id": "8f7fa8644fd12280",
+        "runtime_outcome": "caught"
+      },
+      "static": {
+        "seam_id": "8f7fa8644fd12280"
+      }
+    }
+  ],
+  "ambiguous_file_line_matches": []
+}
