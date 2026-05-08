@@ -309,7 +309,7 @@ evidence = [
   "docs/QUICKSTART.md routes the VS Code first hour through status, Problems diagnostics, hover evidence, and intent-titled seam actions"
 ]
 fixtures = []
-next = "campaign/first-hour-ux-closeout"
+next = "maintenance"
 metric = "diagnostics carry finding/probe metadata, editor status names saved-workspace analysis state, and editor actions target the selected finding"
 
 [[capability]]
@@ -559,7 +559,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "campaign/first-hour-ux-closeout"
+next = "maintenance"
 metric = "packet carries missing discriminator + suggested assertion templates"
 
 [[capability]]
@@ -608,7 +608,7 @@ fixtures = [
   "fixtures/boundary_gap/expected/llm-work-loop/path-with-spaces/review-summary.json",
   "fixtures/boundary_gap/expected/llm-work-loop/windows-separators/review-summary.json"
 ]
-next = "campaign/first-hour-ux"
+next = "maintenance"
 metric = "agent status, workflow packets, provenance-backed receipts, reviewer summaries, and generated CI artifact uploads name artifacts, commands, selected seam context, recovered seam_id, stale-looking warnings, hashes, bounded next actions, joined surfaces, and source-edit-free boundaries"
 
 [[capability]]
@@ -626,7 +626,7 @@ evidence = [
   "docs/QUICKSTART.md routes CI-first users through the generated advisory workflow summary, uploaded artifact packet, optional SARIF, and non-blocking posture"
 ]
 fixtures = []
-next = "campaign/first-hour-ux-closeout"
+next = "maintenance"
 metric = "pr_test_guidance_comments, pr_test_guidance_summary_only, pr_test_guidance_suppressed, pr_test_guidance_opt_in_review_comments"
 
 [[capability]]
@@ -760,7 +760,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "campaign/first-hour-ux-closeout"
+next = "maintenance"
 metric = "seam diagnostics expose packet/assertion/test actions without automatic edits"
 
 [[capability]]

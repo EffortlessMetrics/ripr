@@ -26,7 +26,7 @@ through multiple work items in a campaign, but each work item should follow the
 | Hot Sidecar Latency Proof (9) | Measure current cache and saved-workspace editor refresh behavior before changing warm-path reuse. | Complete: latency reporting, warm-path reuse, bounded `ripr pilot`, first-screen clarity, evidence progress tracing, hot-path indexes, and `campaign/hot-sidecar-latency-closeout`. |
 | Editor Agent Integration (10) | Make the saved-workspace editor loop and the agent CLI loop line up from diagnostic to evidence, packet/brief, focused test, verify, receipt, cockpit, CI, and install proof. | Complete: `campaign/editor-agent-integration-closeout`. |
 | LLM Work Loop (11) | Make the completed editor-agent loop stateful, deterministic, and useful to LLM agents under review pressure. | Complete: status, command templates, workflow manifests, receipt provenance, next-action guidance, reviewer summary, fixture matrix, CI work packets, operator guide, and `campaign/llm-work-loop-closeout`. |
-| First-Hour UX (12) | Make new LSP-first and CI-first users successful without learning RIPR's internal report topology. | Active: `campaign/first-hour-ux-closeout` is next after the first-hour docs were organized by VS Code, CI, CLI, agent/reviewer, troubleshooting, and known limits. |
+| First-Hour UX (12) | Make new LSP-first and CI-first users successful without learning RIPR's internal report topology. | Complete: editor status, intent-titled actions, advisory CI summary, workflow smoke fixture, user-type docs, and `campaign/first-hour-ux-closeout`. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
 through 8 are complete. Campaign 6 closed after the internal module SRP chain
@@ -49,16 +49,16 @@ read-only `ripr agent status` lens over existing agent-loop artifacts,
 centralized command templates for CLI, LSP, cockpit, generated CI, docs, and
 fixtures, source-edit-free workflow manifests, provenance-backed receipts,
 bounded next-action guidance, review summaries, a fixture matrix, generated CI
-work-loop packet uploads, and the LLM operator guide. Campaign 12 is active as
-the First-Hour UX lane after the LLM work-loop control plane: the PR guidance
+work-loop packet uploads, and the LLM operator guide. Campaign 12 closed the
+First-Hour UX lane after the LLM work-loop control plane: the PR guidance
 annotation contract is pinned, the extension has a first-run status path,
 diagnostic actions are titled around user intent, and the generated GitHub
 workflow now writes a reviewer-oriented advisory summary before artifact
 download. The generated workflow smoke fixture pins artifact paths,
 top-seam extraction, agent artifacts, optional SARIF gates, badges, summary
-sections, and future PR guidance annotation hooks. The first-hour docs now
-route users by VS Code, CI, CLI, and agent/reviewer path; the next slice is
-Campaign 12 closeout.
+sections, and future PR guidance annotation hooks. The first-hour docs route
+users by VS Code, CI, CLI, and agent/reviewer path. Campaign 12 is closed; no
+next product campaign is active until one is opened explicitly.
 
 ## PR 0: `planning-and-tracking-docs`
 
