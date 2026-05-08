@@ -115,42 +115,43 @@ The Codecov badge above indicates execution-surface evidence only: whether code 
 
 ## Quick Start
 
-Most users use RIPR through the editor or CI. The CLI is the common engine
-under both surfaces and the reproducible local proof path.
+Most users start from the surface they already use. The CLI is the shared
+engine behind each path, but it is not the required first interface for editor
+or CI users.
 
-### Use In VS Code
+| User type | First action | Main doc |
+| --- | --- | --- |
+| VS Code user | Install `EffortlessMetrics.ripr`, open a Rust workspace, then use the status bar, Problems, hover, and seam actions. | [Quickstart](docs/QUICKSTART.md#vs-code-first-hour) |
+| CI user | Generate or copy the advisory GitHub workflow. | [Quickstart](docs/QUICKSTART.md#ci-first-hour) |
+| CLI user | Run `ripr pilot --root .` and add one focused test for the top seam. | [Quickstart](docs/QUICKSTART.md#cli-first-hour) |
+| Agent or reviewer | Start from `ripr agent status --root .` or a selected-seam workflow packet. | [LLM operator guide](docs/LLM_OPERATOR_GUIDE.md) |
+
+For the full first-hour path, including troubleshooting and known limits, read
+[Quickstart](docs/QUICKSTART.md).
+
+### VS Code
 
 Install `EffortlessMetrics.ripr` from VS Code Marketplace or Open VSX, then
-open a Rust/Cargo workspace.
+open a Rust/Cargo workspace. Normal editor installs do not require
+`cargo install ripr`; the extension resolves the server from configuration,
+bundled or cached assets, GitHub Releases, or PATH.
 
-The extension resolves a matching server from configuration, bundled/cached
-assets, GitHub Releases, or PATH. A separate `cargo install ripr` is only a
-fallback for offline, pinned, or controlled environments.
+Use the `ripr` status bar item or `ripr: Show Status` first. Then inspect RIPR
+Problems diagnostics, hover evidence, `Write targeted test` actions, agent
+handoff commands, and `Open Best Related Test`.
 
-Use RIPR in the editor:
-
-- Problems diagnostics show actionable saved-workspace seam evidence.
-- Hover explains why the seam was flagged.
-- Copy Targeted Test Brief gives the next focused test.
-- Copy Agent Packet/Brief/Verify/Receipt commands prepares an agent handoff.
-- Open Best Related Test jumps to the strongest related test to imitate.
-
-### Use In CI
-
-Generate the advisory GitHub Actions workflow:
+### CI
 
 ```bash
 ripr init --ci github
 ```
 
-Run that once with the CLI, or copy the workflow recipe from
-[CI](docs/CI.md) if you are adopting RIPR from the GitHub UI.
+The generated workflow is advisory by default. It runs `ripr pilot`, writes a
+RIPR advisory summary, uploads pilot/workflow/agent/report/review artifacts,
+writes badge JSON, can optionally upload SARIF, and does not run mutation
+tests.
 
-The workflow runs `ripr pilot`, uploads pilot/report/agent artifacts, writes
-badge JSON, and can optionally render/upload SARIF. It is non-blocking by
-default and does not run mutation tests.
-
-### Use The CLI Directly
+### CLI
 
 Install from crates.io:
 
@@ -171,22 +172,14 @@ cargo install --path crates/ripr
 
 `ripr` targets Rust 2024 and requires Rust `1.93` or newer.
 
-Run a zero-config pilot packet with built-in defaults (no `ripr.toml` required):
+Run a zero-config pilot packet:
 
 ```bash
-ripr pilot
+ripr pilot --root .
 ```
 
-The pilot packet writes repo exposure, agent seam packets, and a compact
-summary under `target/ripr/pilot/`. It prints the top actionable seam, why RIPR
-ranked it, and the command to run after a focused test is added.
-If analysis exceeds the default budget, it writes a partial summary with an
-explicit retry command instead of waiting silently.
-
-Read `target/ripr/pilot/pilot-summary.md`, use the editor action to copy the
-targeted test brief, or inspect `target/ripr/pilot/agent-seam-packets.json`.
-Add one focused test for the top missing discriminator, then compare before and
-after snapshots:
+Read `target/ripr/pilot/pilot-summary.md`, add one focused test for the top
+missing discriminator, then compare before and after snapshots:
 
 ```bash
 ripr check --root . --mode ready --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json
@@ -202,91 +195,22 @@ ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after
 ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id <seam_id> --json --out target/ripr/agent/agent-receipt.json
 ```
 
-For local LLM handoff state, start with a source-edit-free workflow packet:
+For local agent handoff state, start with:
 
 ```bash
+ripr agent status --root .
 ripr agent start --root . --seam-id <seam_id> --out target/ripr/workflow
+ripr agent review-summary --root .
 ```
 
-This writes `workflow.json`, `commands.md`, and `agent-brief.json` for the
-selected seam. Then `ripr agent status --root . --json` reads the existing
-`target/ripr/workflow` and `target/ripr/reports` artifacts and reports which
-loop step is missing next. Neither command edits source files, generates tests,
-or calls an LLM API. After `agent verify` and `agent receipt`, run
-`ripr agent review-summary --root .` for the compact PR-review packet, or add
-`--json` for the machine-readable handoff.
-
-When runtime mutation data already exists, import it as an advisory calibration
-check:
-
-```bash
-ripr calibrate cargo-mutants \
-  --mutants-json target/mutants/outcomes.json \
-  --repo-exposure-json target/ripr/pilot/after.repo-exposure.json
-```
-
-Check the current Git diff against `origin/main` with built-in defaults:
-
-```bash
-ripr check --base origin/main
-```
-
-If the first run behaves unexpectedly, inspect local tooling and config state:
+If the first run behaves unexpectedly:
 
 ```bash
 ripr doctor
 ```
 
-`ripr.toml` is optional. `ripr init` is **only** for teams that want to commit
-repo-local policy they can review, version, and tune. It writes the same
-built-in defaults to `ripr.toml`; it does not unlock basic usefulness.
-
-```bash
-ripr init
-```
-
-Then run the same pilot or check under repo-owned policy:
-
-```bash
-ripr pilot
-ripr check --base origin/main
-```
-
-Analyze an explicit unified diff:
-
-```bash
-ripr check --diff example.diff
-```
-
-Emit JSON for tools, editors, CI, or agents:
-
-```bash
-ripr check --diff example.diff --json
-```
-
-Emit GitHub Actions annotations:
-
-```bash
-ripr check --diff example.diff --format github
-```
-
-Explain a finding:
-
-```bash
-ripr explain --diff example.diff probe:src_lib.rs:88:predicate
-```
-
-Emit an agent context packet:
-
-```bash
-ripr context --diff example.diff --at probe:src_lib.rs:88:predicate --json
-```
-
-Start the experimental language server:
-
-```bash
-ripr lsp --stdio
-```
+`ripr.toml` is optional. `ripr init` materializes repo-local policy when a team
+wants to review, version, and tune it; it does not unlock basic usefulness.
 
 ## Example Finding
 
@@ -362,12 +286,12 @@ Current capabilities:
 | Test discovery | Parser-backed test and assertion facts with exact, broad, relational, snapshot, mock, smoke, custom-helper, side-effect observer, and unknown oracle kinds; per-test efficiency ledger with smoke/broad/disconnected/opaque/circular/likely-vacuous reasons and duplicate-discriminator groups. | Maintenance; no active analyzer-refactor lane. |
 | Output | Human, JSON, context, and GitHub formats render evidence-first findings with stop reasons; `ripr pilot` writes a zero-config first-run packet; `ripr outcome` compares before/after repo exposure snapshots; repo exposure report and v2 agent seam packets render classified seam evidence; public `ripr` and `ripr+` Shields badges publish seam-native unresolved gap counts while diff badge artifacts remain finding-exposure based. | Output contract maintenance. |
 | LSP | Experimental `tower-lsp-server` sidecar with evidence-aware Finding diagnostics, related-test links, hovers, server-side context packets, seam-native diagnostics + hover, and seam code actions for copying packets/assertions and opening related tests. Saved-workspace diagnostics remain advisory; unsaved-buffer overlays are not default behavior. | Editor contract maintenance. |
-| Agent context | Compact context packet plus per-seam `write_targeted_test` and `inspect_static_limitation` packets carrying recommended test placement, nearest tests to imitate, candidate values, missing discriminators, patterns to imitate/avoid, and assertion templates. `ripr agent start --root . --seam-id <id> --out target/ripr/workflow` writes a source-edit-free workflow packet, `ripr agent status --root . --json` reports local LLM loop artifact state and the next missing command without rerunning analysis, `ripr agent receipt` emits provenance plus bounded next-action guidance, and `ripr agent review-summary --root .` joins existing loop artifacts into compact review Markdown or schema `0.1` JSON. | `fixtures/llm-work-loop` |
+| Agent context | Compact context packet plus per-seam `write_targeted_test` and `inspect_static_limitation` packets carrying recommended test placement, nearest tests to imitate, candidate values, missing discriminators, patterns to imitate/avoid, and assertion templates. `ripr agent start --root . --seam-id <id> --out target/ripr/workflow` writes a source-edit-free workflow packet, `ripr agent status --root . --json` reports local LLM loop artifact state and the next command without rerunning analysis, `ripr agent receipt` emits provenance plus bounded next-action guidance, and `ripr agent review-summary --root .` joins existing loop artifacts into compact review Markdown or schema `0.1` JSON. | First-hour docs and closeout. |
 | Repository config | Repo-root `ripr.toml` can set analysis mode, oracle policy, severity mapping, suppressions path, report related-test caps, and LSP seam-diagnostic defaults. Explicit CLI flags and LSP initialization options still win. | Policy feedback after adoption. |
 | SARIF and CI policy | `ripr check --format sarif` emits diff-scoped Finding SARIF and `--format repo-sarif` emits repo seam SARIF with configured severity, suppression metadata, stable rule IDs, and stable fingerprints. `ripr init --ci github` generates a non-blocking GitHub Actions report workflow with pilot/report artifacts, repo badge JSON, and optional SARIF rendering/upload; `cargo xtask sarif-policy` compares current SARIF to a baseline only when explicitly requested. | Advisory policy feedback after adoption. |
 | Calibration | Advisory `ripr calibrate cargo-mutants` and repo-local `cargo xtask mutation-calibration` join imported cargo-mutants runtime data to static seam evidence by `seam_id` or unambiguous file/line; ambiguous file/line candidates stay unassigned. `fixtures/CALIBRATION_CORPUS.md` maps current fixtures to controlled calibration scenarios, `fixtures/EXAMPLE_CORPUS.md` links the checked boundary-gap calibration sample into the operator loop, and `fixtures/boundary_gap/calibration/runtime-fixtures-v1/` pins the main static/runtime agreement buckets. | Maintenance; runtime mutation language stays inside calibration/runtime reports. |
 
-Campaigns 5A, 5B, 6, 7, 8, 9, and 10 are complete. Campaign 7 closed the
+Campaigns 5A, 5B, 6, 7, 8, 9, 10, and 11 are complete. Campaign 7 closed the
 defaults-first adoption lane: `ripr pilot`, `ripr outcome`, advisory
 calibration import, the operator cockpit, the generated GitHub Action
 entrypoint, the documented VS Code install path, the public example corpus, and
@@ -376,8 +300,14 @@ supplied and optional. Campaign 9 made the editor/operator warm paths measured
 and bounded. Campaign 10 aligned the saved-workspace editor loop with the agent
 CLI loop from diagnostic to evidence, packet or brief, focused test, outcome,
 agent verify, agent receipt, cockpit, CI artifacts, and release-readiness proof.
-Campaign 11 is active and starts the LLM work loop with read-only artifact
-status before centralizing loop command templates.
+Campaign 11 closed after the LLM work loop gained read-only artifact status,
+centralized command templates, workflow manifests, provenance-backed receipts,
+bounded next-action guidance, reviewer summaries, fixtures, generated CI packet
+uploads, and the LLM operator guide. Campaign 12 is active as the First-Hour UX
+lane: the editor first-run status path, intent-titled code actions, generated
+CI advisory summary, and generated workflow smoke fixture are pinned; the
+current slice organizes installed-user docs by VS Code, CI, CLI, agent,
+troubleshooting, and known limits.
 
 Deeper capability state lives in [Capability matrix](docs/CAPABILITY_MATRIX.md)
 and [Metrics](docs/METRICS.md).
@@ -459,7 +389,7 @@ Start here:
 
 | Need | Doc |
 | --- | --- |
-| Start with the default workflow | [Quickstart](docs/QUICKSTART.md) |
+| Choose the first-hour path by user type | [Quickstart](docs/QUICKSTART.md) |
 | Understand the model | [Static exposure model](docs/STATIC_EXPOSURE_MODEL.md) |
 | Understand JSON/context output | [Output schema](docs/OUTPUT_SCHEMA.md) |
 | Turn seam evidence into a test | [Targeted test workflow](docs/TARGETED_TEST_WORKFLOW.md) |

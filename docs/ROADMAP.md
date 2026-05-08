@@ -94,8 +94,9 @@ actions are titled around inspect, targeted-test, agent-handoff, verify, review,
 and refresh intent, and the generated GitHub workflow now writes a
 reviewer-oriented advisory summary before artifact download. The generated
 workflow smoke fixture pins the CI first screen, artifact packet, optional
-SARIF gates, badge output, and future PR guidance annotation hook. The next
-slice is the first-hour docs organized by user type.
+SARIF gates, badge output, and future PR guidance annotation hook. The
+first-hour docs now route users by VS Code, CI, CLI, and agent/reviewer path;
+the next slice is Campaign 12 closeout.
 
 ## Strategic Sequence
 

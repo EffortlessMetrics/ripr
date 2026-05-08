@@ -115,7 +115,7 @@ commands = [
 
 [[work_item]]
 id = "docs/ux-by-user-type"
-status = "ready"
+status = "done"
 branch = "docs-ux-by-user-type"
 stackable = false
 requires_human_merge = true
@@ -135,7 +135,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/first-hour-ux-closeout"
-status = "blocked"
+status = "ready"
 branch = "campaign-first-hour-ux-closeout"
 stackable = false
 requires_human_merge = true

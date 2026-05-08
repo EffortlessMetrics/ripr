@@ -305,10 +305,11 @@ evidence = [
   "diagnostic hover details",
   "serialized refresh generations",
   "VS Code status bar and ripr: Show Status path for server resolution, workspace detection, analysis running/complete/stale/failed, and no-actionable-seam states",
-  "intent-titled diagnostic actions for inspect, write targeted test, agent handoff, verify after test, review receipt, and refresh analysis"
+  "intent-titled diagnostic actions for inspect, write targeted test, agent handoff, verify after test, review receipt, and refresh analysis",
+  "docs/QUICKSTART.md routes the VS Code first hour through status, Problems diagnostics, hover evidence, and intent-titled seam actions"
 ]
 fixtures = []
-next = "docs/ux-by-user-type"
+next = "campaign/first-hour-ux-closeout"
 metric = "diagnostics carry finding/probe metadata, editor status names saved-workspace analysis state, and editor actions target the selected finding"
 
 [[capability]]
@@ -552,12 +553,13 @@ evidence = [
   "suggested_assertions assertion templates with placeholders",
   "context/agent-seam-packets-v2 recommended_test, candidate_values, assertion_shape, patterns_to_imitate, patterns_to_avoid, and confidence",
   "fixtures/boundary_gap/expected/editor-agent-loop/agent-packet.json",
-  "OUTPUT_SCHEMA.md Agent Seam Packets section"
+  "OUTPUT_SCHEMA.md Agent Seam Packets section",
+  "docs/QUICKSTART.md routes agent and reviewer handoff through agent status, workflow packet, verify, receipt, and review-summary commands"
 ]
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "docs/ux-by-user-type"
+next = "campaign/first-hour-ux-closeout"
 metric = "packet carries missing discriminator + suggested assertion templates"
 
 [[capability]]
@@ -620,10 +622,11 @@ evidence = [
   "docs/CI.md PR Test Guidance Annotations section documents the default job-summary and check-annotation posture",
   "docs/IMPLEMENTATION_CAMPAIGNS.md Campaign 12 marks spec/pr-test-guidance-annotations done before generated workflow posting work",
   "ripr init --ci github generates an advisory workflow that writes a RIPR advisory summary and emits non-blocking changed-line check annotations when target/ripr/review/comments.json exists",
-  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture pins generated workflow artifact paths, top-seam extraction, advisory posture, optional SARIF gates, badge output, summary sections, and annotation hooks"
+  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture pins generated workflow artifact paths, top-seam extraction, advisory posture, optional SARIF gates, badge output, summary sections, and annotation hooks",
+  "docs/QUICKSTART.md routes CI-first users through the generated advisory workflow summary, uploaded artifact packet, optional SARIF, and non-blocking posture"
 ]
 fixtures = []
-next = "docs/ux-by-user-type"
+next = "campaign/first-hour-ux-closeout"
 metric = "pr_test_guidance_comments, pr_test_guidance_summary_only, pr_test_guidance_suppressed, pr_test_guidance_opt_in_review_comments"
 
 [[capability]]
@@ -749,6 +752,7 @@ evidence = [
   "copy suggested assertion uses agent seam packet v2 assertion shape when available",
   "pre-4B Finding code actions remain available",
   "docs/TESTING.md documents VS Code e2e coverage for command registration, LSP-first seam context, targeted-test brief copying, suggested assertions, related-test opening, malformed argument handling, and restart behavior",
+  "docs/QUICKSTART.md routes the VS Code first hour through intent-titled seam actions without changing command IDs or payloads",
   "fixtures/boundary_gap/expected/lsp-code-actions.json",
   "fixtures/boundary_gap/expected/editor-agent-loop/agent-verify.json",
   "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json"
@@ -756,7 +760,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "campaign/editor-agent-integration-closeout"
+next = "campaign/first-hour-ux-closeout"
 metric = "seam diagnostics expose packet/assertion/test actions without automatic edits"
 
 [[capability]]

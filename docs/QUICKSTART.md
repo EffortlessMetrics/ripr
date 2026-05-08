@@ -1,98 +1,139 @@
 # Quickstart
 
-Use this path when you want the default RIPR loop without learning every report
-format first. Most users should start from the surface they already use:
+Use this guide to get useful RIPR feedback in the first hour without learning
+the full report topology. Start from the surface you already use.
 
-- editor users install the VS Code/Open VSX extension;
-- CI users add the generated non-blocking GitHub workflow;
-- CLI users run the same engine directly for local proof and automation.
-
-The shared evidence loop is:
+RIPR answers a static, draft-time question:
 
 ```text
-ripr pilot
--> inspect the top seam, hover, or targeted test brief
--> add one focused test
--> capture an after snapshot
--> ripr outcome
--> ripr agent verify / ripr agent receipt when handing work to an agent
--> attach CI, cockpit, SARIF, badge, or calibration artifacts only when useful
+For the behavior changed in this diff, do the current tests appear to contain
+a discriminator that would notice if that behavior were wrong?
 ```
 
-## Use In VS Code
+It does not edit source, generate tests, run mutation testing, or prove test
+adequacy. The normal loop is:
 
-Install `EffortlessMetrics.ripr` from VS Code Marketplace or Open VSX, then
-open a Rust/Cargo workspace.
+```text
+find the top weak seam
+-> inspect the evidence
+-> write one focused test outside RIPR
+-> capture an after snapshot
+-> verify static movement
+-> attach the receipt or review summary when useful
+```
 
-The extension should provision a matching `ripr` server from GitHub Releases
-without requiring `cargo install ripr`. It uses saved-workspace analysis by
-default. Open a Rust file, save or refresh the workspace, then use:
+## Choose Your Path
 
-- Problems diagnostics for actionable seam evidence;
-- hover for why RIPR flagged the seam;
-- `Write targeted test: copy brief` for the focused test to write next;
-- `Agent handoff: copy packet command` and related verify/receipt commands for
-  agent handoff;
-- `Write targeted test: open best related test` to jump to the strongest
-  imitation target.
+| User type | Start here | You should see |
+| --- | --- | --- |
+| VS Code user | Install `EffortlessMetrics.ripr` and open a Rust/Cargo workspace. | Status bar state, Problems diagnostics, hover evidence, and intent-titled seam actions. |
+| CI user | Run `ripr init --ci github` once or copy the workflow from [CI strategy](CI.md). | A non-blocking RIPR advisory summary plus uploaded pilot, workflow, agent, report, and review artifacts. |
+| CLI user | Run `ripr pilot --root .`. | A top actionable seam, why it matters, and before/after commands under `target/ripr/pilot`. |
+| Agent or reviewer | Run `ripr agent status --root .`. | Existing artifact state, the selected seam when recoverable, and the next command to run. |
 
-Unsaved-buffer overlays are not enabled by default, and the extension does not
-install Rust or Cargo. A separate CLI install remains the fallback for offline,
-pinned, or controlled environments.
+`ripr.toml` is optional. `ripr init` materializes repo-local policy when a team
+wants to review, version, and tune it. It is not activation, and it is not
+required for first value.
 
-See [Editor extension](EDITOR_EXTENSION.md).
+## VS Code First Hour
 
-## Use In CI
+Use the editor path when you want saved-workspace feedback while writing or
+reviewing Rust.
 
-Generate the advisory GitHub Actions workflow when a repository wants PR-visible
-RIPR artifacts:
+1. Install `EffortlessMetrics.ripr` from VS Code Marketplace or Open VSX.
+2. Open a Rust/Cargo workspace.
+3. Check the `ripr` status bar item or run `ripr: Show Status`.
+4. Open the Problems panel and inspect RIPR diagnostics.
+5. Hover a diagnostic for the static evidence path.
+6. Use the seam actions around your intent:
+   - `Write targeted test: copy brief`
+   - `Write targeted test: open best related test`
+   - `Agent handoff: copy packet command`
+   - `Agent handoff: copy brief command`
+   - `Verify after test: copy after-snapshot command`
+   - `Verify after test: copy verify command`
+   - `Review result: copy receipt command`
+   - `Refresh analysis: rerun saved-workspace check`
+
+Normal editor install should not require `cargo install ripr`. The extension
+resolves the server from `ripr.server.path`, bundled or cached assets, verified
+GitHub Release download, or PATH.
+
+If no diagnostics appear, start with the status path:
+
+```text
+ripr: Show Status
+ripr: Show Output
+ripr: Restart Server
+```
+
+The editor analyzes the saved workspace. Unsaved-buffer overlays are not enabled
+by default. Save the file or refresh analysis before trusting a stale diagnostic.
+
+See [Editor extension](EDITOR_EXTENSION.md) and
+[Server provisioning](SERVER_PROVISIONING.md).
+
+## CI First Hour
+
+Use the CI path when you want PR-visible advisory evidence without asking every
+reviewer to download raw artifacts.
+
+Generate the GitHub workflow:
 
 ```bash
 ripr init --ci github
 ```
 
-Run that once with the CLI, or copy the workflow recipe from [CI](CI.md) if you
-are adopting RIPR from a web-only CI setup.
+Or copy the workflow from [CI strategy](CI.md) when adopting from the GitHub UI.
 
-The workflow runs `ripr pilot`, uploads pilot/report/agent artifacts, writes
-badge JSON, and can optionally render/upload SARIF through `RIPR_UPLOAD_SARIF`.
-It is non-blocking by default and does not run mutation tests.
+The generated workflow is advisory by default. It:
 
-Commit the generated workflow when the team wants that policy in the repo. See
-[CI](CI.md).
+- runs `ripr pilot`;
+- writes a `RIPR advisory summary` in the GitHub job summary;
+- uploads `target/ripr/pilot`, `target/ripr/workflow`, `target/ripr/agent`,
+  `target/ripr/reports`, and `target/ripr/review`;
+- writes repo badge JSON;
+- renders and uploads SARIF when `RIPR_UPLOAD_SARIF` is `"true"`;
+- emits non-blocking changed-line check annotations when future
+  `target/ripr/review/comments.json` exists.
 
-## Use The CLI
+The first thing to read in a PR is the job summary. It names:
+
+- the top recommendation;
+- the agent review packet when present;
+- artifact paths;
+- SARIF and badge status;
+- PR guidance annotation counts when present;
+- known limits.
+
+Do not make generated CI blocking until the repository has reviewed its first
+advisory baseline and explicitly opted into a policy gate.
+
+See [CI strategy](CI.md).
+
+## CLI First Hour
+
+Use the CLI path when you want the reproducible local proof loop.
+
+Install:
 
 ```bash
 cargo install ripr
 ```
 
-The full editor-agent evidence loop requires `ripr 0.4.0` or later. The older
-`0.3.1` crate contains the first defaults-first CLI loop but predates the final
-0.4 editor-agent release proof, and `0.3.0` predates `ripr pilot` and
-`ripr outcome`.
-
-For local development from this repository:
+From this repository, use:
 
 ```bash
 cargo install --path crates/ripr
 ```
 
-Cargo install is the normal direct-CLI path. The VS Code/Open VSX extension and
-generated GitHub workflow both use the same engine, but editor users should not
-need a separate CLI install for normal first use.
-
-## Run a Pilot Packet
+Run the zero-config pilot:
 
 ```bash
-ripr pilot
+ripr pilot --root .
 ```
 
-`ripr.toml` is optional. If it is missing, RIPR uses built-in defaults — the
-same defaults `ripr init` would materialize. Missing config is the normal
-first-run state, not a degraded mode.
-
-The command writes:
+The pilot writes:
 
 ```text
 target/ripr/pilot/repo-exposure.json
@@ -102,71 +143,16 @@ target/ripr/pilot/pilot-summary.json
 target/ripr/pilot/pilot-summary.md
 ```
 
-The terminal summary shows the top actionable seam, why RIPR ranked it, where
-the structured packet lives, and the command to run after a focused test is
-added.
+Read `target/ripr/pilot/pilot-summary.md`. Pick one top actionable seam and
+write one focused test outside RIPR.
 
-When a human or external LLM tool is taking over one focused test, follow the
-[LLM operator guide](LLM_OPERATOR_GUIDE.md) for the status, workflow packet,
-verify, receipt, and reviewer-summary artifact loop.
-
-If analysis exceeds the default budget, `ripr pilot` writes
-`pilot-summary.{json,md}` with `status: partial` and a retry command instead of
-waiting silently.
-
-From the `ripr` source repository, `cargo xtask operator-cockpit` joins the
-repo-local artifacts into `target/ripr/reports/operator-cockpit.md` and `.json`
-when you want one cockpit for repo exposure, LSP, before/after snapshots,
-agent verify, agent receipt, SARIF, badges, targeted-test receipts, and
-optional calibration. `cargo xtask operator-cockpit-report` remains an alias
-for existing automation.
-
-To try the loop on known small examples from this repository, use
-[`fixtures/EXAMPLE_CORPUS.md`](../fixtures/EXAMPLE_CORPUS.md). It maps the
-boundary gap, weak oracle, exact error variant, opaque fixture/builder, LSP
-action, receipt, and optional calibration artifacts.
-
-Useful flags:
-
-```bash
-ripr pilot --root .
-ripr pilot --out target/ripr/pilot
-ripr pilot --mode ready
-ripr pilot --max-seams 5
-ripr pilot --timeout-ms 120000
-```
-
-## Optional Policy
-
-Run `ripr init` only when the team wants to commit repo-local policy:
-
-```bash
-ripr init
-```
-
-`ripr init` writes `ripr.toml` so policy can be reviewed, versioned, and tuned;
-it does not unlock basic usefulness, and it is not required for first value.
-Most users only need it to commit repo policy, suppressions, tuned
-severities/modes, or a generated CI workflow. The generated config is advisory,
-includes unchanged tests by default, hides solved and governed seam classes
-from default attention, and records the saved-workspace editor seam diagnostic
-default.
-
-## Add One Focused Test
-
-Pick one seam from `pilot-summary.md` or use the VS Code action to copy the
-targeted test brief. Add one focused test that exercises the missing
-discriminator or oracle shape.
-
-## Compare Afterward
-
-After adding the test, rerun repo exposure:
+After the test is added, capture the after snapshot:
 
 ```bash
 ripr check --root . --mode ready --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json
 ```
 
-Then compare the before and after snapshots:
+Compare before and after:
 
 ```bash
 ripr outcome \
@@ -174,33 +160,96 @@ ripr outcome \
   --after target/ripr/pilot/after.repo-exposure.json
 ```
 
-Use `--format json` for tools, or `--out target/ripr/pilot/outcome.md` to write
-the receipt instead of printing Markdown to stdout.
+For machine-readable output, add `--format json` or `--out <path>` where the
+command supports it.
 
-If a coding agent or review handoff needs a machine-readable verification
-packet, write the agent artifacts beside the pilot packet:
+If the pilot reports a partial result, use the retry command it prints rather
+than guessing at cache or timeout settings.
+
+## Agent Or Reviewer First Hour
+
+Use this path when a human or external coding agent needs a deterministic work
+packet for one focused test.
+
+Ask RIPR what already exists:
 
 ```bash
-mkdir -p target/ripr/agent
-ripr agent verify \
-  --root . \
-  --before target/ripr/pilot/repo-exposure.json \
-  --after target/ripr/pilot/after.repo-exposure.json \
-  --json > target/ripr/agent/agent-verify.json
-ripr agent receipt \
-  --root . \
-  --verify-json target/ripr/agent/agent-verify.json \
-  --seam-id <seam_id> \
-  --json \
-  --out target/ripr/agent/agent-receipt.json
+ripr agent status --root .
 ```
 
-The VS Code copy-command actions and generated GitHub workflow use the same
-`target/ripr/pilot` and `target/ripr/agent` artifact paths.
+For machine-readable state:
 
-## Optional Runtime Calibration
+```bash
+ripr agent status --root . --json > target/ripr/workflow/agent-status.json
+```
 
-If cargo-mutants data already exists, import it without running mutation tests:
+When you have selected a seam, write a source-edit-free workflow packet:
+
+```bash
+ripr agent start --root . --seam-id <seam_id> --out target/ripr/workflow
+```
+
+Then follow the generated `target/ripr/workflow/commands.md`, or run the common
+verification sequence directly:
+
+```bash
+ripr agent verify \
+  --root . \
+  --before target/ripr/workflow/before.repo-exposure.json \
+  --after target/ripr/workflow/after.repo-exposure.json \
+  --json \
+  > target/ripr/workflow/agent-verify.json
+
+ripr agent receipt \
+  --root . \
+  --verify-json target/ripr/workflow/agent-verify.json \
+  --seam-id <seam_id> \
+  --json \
+  --out target/ripr/reports/agent-receipt.json
+
+ripr agent review-summary --root . > target/ripr/workflow/agent-review-summary.md
+```
+
+The status, workflow, receipt, and review-summary commands read or write
+artifacts. They do not edit source files, generate tests, call an LLM API, run
+mutation testing, refresh LSP state, or enable CI blocking.
+
+See [LLM operator guide](LLM_OPERATOR_GUIDE.md).
+
+## Troubleshooting
+
+| Symptom | First check |
+| --- | --- |
+| VS Code shows no RIPR state. | Run `ripr: Show Status`, then `ripr: Show Output`. Confirm a Rust/Cargo workspace is open. |
+| VS Code cannot start the server. | Check `ripr.server.path`, `ripr.server.autoDownload`, network access to GitHub Releases, and PATH fallback. |
+| Diagnostics look stale. | Save the workspace file or run `Refresh analysis: rerun saved-workspace check`. |
+| CI has no top recommendation. | Open the `RIPR advisory summary`, then inspect `target/ripr/pilot/pilot-summary.md` in the uploaded artifact. |
+| CI did not upload SARIF. | Confirm `RIPR_UPLOAD_SARIF` is `"true"` and that GitHub code scanning permissions are available. |
+| Agent status says artifacts are missing. | Run the `next_command` printed by `ripr agent status`. |
+| Agent receipt looks stale. | Regenerate after snapshot, verify, and receipt in that order. |
+| Local CLI behavior is surprising. | Run `ripr doctor` and inspect config precedence in [Configuration](CONFIGURATION.md). |
+
+## Known Limits
+
+RIPR reports static exposure evidence. It should not be read as runtime proof.
+
+It does not:
+
+- run mutants;
+- report `killed` or `survived` outside supplied runtime calibration reports;
+- prove test adequacy;
+- generate tests;
+- edit source files;
+- replace coverage or execution-backed mutation testing;
+- analyze unsaved editor buffers by default;
+- make generated CI blocking by default.
+
+Static classifications stay conservative: `exposed`, `weakly_exposed`,
+`reachable_unrevealed`, `no_static_path`, `infection_unknown`,
+`propagation_unknown`, and `static_unknown`.
+
+When runtime mutation data already exists, import it as advisory calibration
+data:
 
 ```bash
 ripr calibrate cargo-mutants \
@@ -208,13 +257,16 @@ ripr calibrate cargo-mutants \
   --repo-exposure-json target/ripr/pilot/after.repo-exposure.json
 ```
 
-Use `--format json` for tools, or `--out target/ripr/pilot/mutation-calibration.md`
-to write the advisory calibration report to disk. Runtime vocabulary is kept in
-this calibration report and does not change static RIPR classifications.
+Runtime vocabulary belongs in that calibration report, not in ordinary static
+RIPR findings.
 
-## Known Limits
+## Next Docs
 
-RIPR reports static exposure evidence. It does not run mutation tests, prove
-test adequacy, or replace execution-backed mutation testing. Runtime mutation
-vocabulary belongs only in explicit calibration reports supplied with runtime
-data.
+- [Editor extension](EDITOR_EXTENSION.md) for VS Code install, commands, and
+  saved-workspace refresh behavior.
+- [CI strategy](CI.md) for the generated advisory workflow and artifact packet.
+- [LLM operator guide](LLM_OPERATOR_GUIDE.md) for the source-edit-free agent
+  loop.
+- [Configuration](CONFIGURATION.md) for `ripr.toml`, modes, severities, and
+  editor settings.
+- [Output schema](OUTPUT_SCHEMA.md) for JSON contracts.

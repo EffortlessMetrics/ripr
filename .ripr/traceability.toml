@@ -787,6 +787,8 @@ outputs = [
   "docs/specs/README.md",
   "docs/OUTPUT_SCHEMA.md",
   "docs/CI.md",
+  "docs/QUICKSTART.md",
+  "README.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/CAPABILITY_MATRIX.md"
 ]

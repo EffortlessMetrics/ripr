@@ -9,7 +9,8 @@ Tutorials help a new user succeed once.
 
 Current and planned tutorial docs:
 
-- [Quickstart](QUICKSTART.md)
+- [Quickstart](QUICKSTART.md) - first-hour paths for VS Code, CI, CLI, and
+  agent or reviewer handoff
 - README quick start
 - future first-extension-install walkthrough
 - future first-fixture walkthrough
