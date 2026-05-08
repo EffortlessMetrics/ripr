@@ -26,12 +26,14 @@ fallback rather than a required first step.
 
 After opening a Rust/Cargo workspace:
 
-1. Use the Problems panel to find actionable saved-workspace seam diagnostics.
-2. Hover a diagnostic to see why RIPR flagged it.
-3. Copy the targeted test brief or agent command chain.
-4. Open the best related test when RIPR finds an imitation target.
-5. Add one focused test.
-6. Verify with the copied command chain or the CI artifact packet.
+1. Check the `ripr` status bar item for server, workspace, analysis, stale,
+   failed, or no-actionable-seam state.
+2. Use the Problems panel to find actionable saved-workspace seam diagnostics.
+3. Hover a diagnostic to see why RIPR flagged it.
+4. Copy the targeted test brief or agent command chain.
+5. Open the best related test when RIPR finds an imitation target.
+6. Add one focused test.
+7. Verify with the copied command chain or the CI artifact packet.
 
 Unsaved-buffer overlays are not enabled by default.
 
@@ -65,6 +67,7 @@ confirmation.
 ## Commands
 
 - `ripr: Restart Server`
+- `ripr: Show Status`
 - `ripr: Show Output`
 - `ripr: Copy Finding Context`
 - `ripr: Copy Suggested Assertion`

@@ -1438,8 +1438,8 @@ Work items:
 | Work item | Status | Notes |
 | --- | --- | --- |
 | `spec/pr-test-guidance-annotations` | done | RIPR-SPEC-0012 pins the advisory PR annotation/comment contract before implementing `ripr review-comments`, including changed-line placement, anti-spam caps, bounded LLM guidance, check annotations by default, optional inline review comments, JSON shape, and non-blocking CI posture. |
-| `vscode/first-run-status` | ready | Add a discoverable editor status path for server resolution, workspace detection, analysis running/complete/stale/failed, and no-actionable-seam states now that the PR guidance contract is pinned. |
-| `vscode/action-discoverability` | blocked | Group and title diagnostic actions around user intent without changing analyzer behavior, adding broad LSP features, or enabling unsaved-buffer overlays after the first-run status path exists. |
+| `vscode/first-run-status` | done | VS Code now has a status bar and `ripr: Show Status` path for server resolution, workspace detection, analysis running/complete/stale/failed, and no-actionable-seam states without adding unsaved-buffer overlays. |
+| `vscode/action-discoverability` | ready | Group and title diagnostic actions around user intent without changing analyzer behavior, adding broad LSP features, or enabling unsaved-buffer overlays after the first-run status path exists. |
 | `ci/pr-summary-surface` | blocked | Make the generated workflow emit a useful PR or step summary with the top actionable seam, why it matters, suggested test target, artifact links, SARIF status, badge status, known limits, and check annotations from the PR test guidance report after the editor first-screen sequence is pinned. |
 | `ci/generated-workflow-smoke-fixture` | blocked | Pin generated workflow artifact paths, top-seam extraction, agent artifact generation, non-blocking posture, optional SARIF, and badge output after the PR summary surface exists. |
 | `docs/ux-by-user-type` | blocked | Rewrite the first-hour docs around VS Code, CI, CLI, agent, troubleshooting, and known limits while keeping README short after the editor and CI surfaces settle. |

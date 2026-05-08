@@ -40,6 +40,7 @@ export interface RiprRelatedTestTarget {
 }
 
 interface RiprLanguageClient {
+  onNotification(method: string, handler: (params: unknown) => void): vscode.Disposable;
   sendRequest(method: string, params: unknown): Promise<unknown>;
   setTrace(trace: Trace): void;
   start(): Promise<void>;
@@ -75,31 +76,67 @@ const defaultRuntime: RiprClientRuntime = {
 export class RiprClientController {
   private client: RiprLanguageClient | undefined;
   private server: ResolvedServer | undefined;
+  private readonly notificationDisposables: vscode.Disposable[] = [];
+  private status: RiprStatusState = {
+    kind: 'stopped',
+    summary: 'ripr server has not started.',
+    detail: 'Open a Rust/Cargo workspace or run ripr: Restart Server.'
+  };
+  private workspaceRoot: string | undefined;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly output: vscode.OutputChannel,
-    private readonly runtime: RiprClientRuntime = defaultRuntime
-  ) {}
+    private readonly runtime: RiprClientRuntime = defaultRuntime,
+    private readonly statusBar?: vscode.StatusBarItem
+  ) {
+    this.updateStatus(this.status);
+  }
 
   async start(): Promise<void> {
     if (this.client) {
       return;
     }
 
+    this.workspaceRoot = firstWorkspaceFolder();
+    if (!this.workspaceRoot) {
+      this.updateStatus({
+        kind: 'noWorkspace',
+        summary: 'Open a Rust/Cargo workspace for ripr diagnostics.',
+        detail: 'The extension needs a workspace folder before it can start the language server.'
+      });
+      this.output.appendLine('ripr workspace was not detected; open a Rust/Cargo workspace.');
+      return;
+    }
+
     const config = this.runtime.getConfig();
+    this.updateStatus({
+      kind: 'resolvingServer',
+      summary: 'Resolving ripr server.',
+      detail: `Workspace: ${this.workspaceRoot}`
+    });
     const server = await this.runtime.resolveServer(this.context, config, this.output);
     if (!('command' in server)) {
+      this.updateStatus({
+        kind: 'serverUnavailable',
+        summary: 'ripr server is not available.',
+        detail: server.detail
+      });
       await this.showMissingServerMessage(server.message, server.detail);
       return;
     }
     this.server = server;
+    this.updateStatus({
+      kind: 'starting',
+      summary: 'Starting ripr language server.',
+      detail: `Server: ${server.source} (${server.detail})\nWorkspace: ${this.workspaceRoot}`
+    });
 
     const serverOptions: ServerOptions = {
       command: server.command,
       args: config.serverArgs,
       options: {
-        cwd: firstWorkspaceFolder()
+        cwd: this.workspaceRoot
       }
     };
 
@@ -122,7 +159,15 @@ export class RiprClientController {
     this.output.appendLine(`Starting ripr language server: ${server.command} ${config.serverArgs.join(' ')}`);
     this.client = this.runtime.createLanguageClient(serverOptions, clientOptions);
     this.client.setTrace(traceFromConfig(config.traceServer));
+    this.notificationDisposables.push(
+      this.client.onNotification('window/logMessage', (params) => this.handleServerLog(params))
+    );
     await this.client.start();
+    this.updateStatus({
+      kind: 'ready',
+      summary: 'ripr server is ready; waiting for saved-workspace analysis.',
+      detail: `Server: ${server.source} (${server.detail})\nWorkspace: ${this.workspaceRoot}`
+    });
   }
 
   async restart(): Promise<void> {
@@ -134,9 +179,28 @@ export class RiprClientController {
     const client = this.client;
     this.client = undefined;
     this.server = undefined;
+    while (this.notificationDisposables.length > 0) {
+      this.notificationDisposables.pop()?.dispose();
+    }
     if (client) {
       await client.stop();
     }
+    this.updateStatus({
+      kind: 'stopped',
+      summary: 'ripr server has stopped.',
+      detail: 'Run ripr: Restart Server to start analysis again.'
+    });
+  }
+
+  markWorkspaceStale(document: vscode.TextDocument): void {
+    if (!this.client || document.languageId !== 'rust' || document.uri.scheme !== 'file') {
+      return;
+    }
+    this.updateStatus({
+      kind: 'stale',
+      summary: 'ripr analysis is stale until the Rust file is saved.',
+      detail: `Unsaved changes: ${document.uri.fsPath}`
+    });
   }
 
   async copyContext(target?: RiprContextTarget): Promise<void> {
@@ -282,6 +346,52 @@ export class RiprClientController {
     this.output.show();
   }
 
+  showStatus(): void {
+    this.output.appendLine(`ripr status: ${this.status.summary}`);
+    if (this.status.detail) {
+      this.output.appendLine(this.status.detail);
+    }
+    this.output.show();
+    vscode.window.showInformationMessage(this.status.summary);
+  }
+
+  private handleServerLog(params: unknown): void {
+    const message = serverLogMessage(params);
+    if (!message) {
+      return;
+    }
+    if (message.startsWith('ripr analysis refresh started')) {
+      this.updateStatus({
+        kind: 'analysisRunning',
+        summary: 'ripr saved-workspace analysis is running.',
+        detail: message
+      });
+      return;
+    }
+    if (message.startsWith('ripr analysis refresh completed')) {
+      this.updateStatus(statusFromRefreshCompletedMessage(message));
+      return;
+    }
+    if (message.startsWith('ripr analysis refresh failed')) {
+      this.updateStatus({
+        kind: 'analysisFailed',
+        summary: 'ripr analysis refresh failed.',
+        detail: message
+      });
+    }
+  }
+
+  private updateStatus(status: RiprStatusState): void {
+    this.status = status;
+    if (!this.statusBar) {
+      return;
+    }
+    this.statusBar.text = statusText(status.kind);
+    this.statusBar.tooltip = status.detail ? `${status.summary}\n${status.detail}` : status.summary;
+    this.statusBar.command = 'ripr.showStatus';
+    this.statusBar.show();
+  }
+
   private async resolveServerForCommand(config: RiprConfig): Promise<ResolvedServer | undefined> {
     const server = await this.runtime.resolveServer(this.context, config, this.output);
     if ('command' in server) {
@@ -309,6 +419,83 @@ export class RiprClientController {
       await this.restart();
     }
   }
+}
+
+type RiprStatusKind =
+  | 'noWorkspace'
+  | 'resolvingServer'
+  | 'serverUnavailable'
+  | 'starting'
+  | 'ready'
+  | 'analysisRunning'
+  | 'analysisReady'
+  | 'noActionableSeams'
+  | 'stale'
+  | 'analysisFailed'
+  | 'stopped';
+
+interface RiprStatusState {
+  kind: RiprStatusKind;
+  summary: string;
+  detail?: string;
+}
+
+function statusText(kind: RiprStatusKind): string {
+  switch (kind) {
+    case 'noWorkspace':
+      return '$(folder) ripr: open workspace';
+    case 'resolvingServer':
+      return '$(sync~spin) ripr: resolving';
+    case 'serverUnavailable':
+      return '$(warning) ripr: server missing';
+    case 'starting':
+      return '$(sync~spin) ripr: starting';
+    case 'ready':
+      return '$(pass) ripr: ready';
+    case 'analysisRunning':
+      return '$(sync~spin) ripr: analyzing';
+    case 'analysisReady':
+      return '$(check) ripr: diagnostics';
+    case 'noActionableSeams':
+      return '$(circle-slash) ripr: no seams';
+    case 'stale':
+      return '$(warning) ripr: stale';
+    case 'analysisFailed':
+      return '$(error) ripr: failed';
+    case 'stopped':
+    default:
+      return 'ripr: stopped';
+  }
+}
+
+function serverLogMessage(params: unknown): string | undefined {
+  if (!params || typeof params !== 'object' || !('message' in params)) {
+    return undefined;
+  }
+  const message = (params as { message?: unknown }).message;
+  return typeof message === 'string' ? message : undefined;
+}
+
+function statusFromRefreshCompletedMessage(message: string): RiprStatusState {
+  const diagnostics = numberField(message, 'diagnostics');
+  const seamDiagnostics = numberField(message, 'seam_diagnostics');
+  if (seamDiagnostics !== undefined && seamDiagnostics === 0) {
+    return {
+      kind: 'noActionableSeams',
+      summary: 'ripr analysis completed with no actionable seam diagnostics.',
+      detail: message
+    };
+  }
+  return {
+    kind: 'analysisReady',
+    summary: `ripr analysis completed with ${diagnostics ?? 0} diagnostics.`,
+    detail: message
+  };
+}
+
+function numberField(message: string, field: string): number | undefined {
+  const match = message.match(new RegExp(`${field}=(\\d+)`));
+  return match ? Number.parseInt(match[1], 10) : undefined;
 }
 
 function uriFromTarget(target: RiprContextTarget | undefined): vscode.Uri | undefined {

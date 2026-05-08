@@ -25,6 +25,7 @@ suite('Extension Smoke', () => {
     const commands = await vscode.commands.getCommands(true);
     assert.ok(commands.includes('ripr.restartServer'));
     assert.ok(commands.includes('ripr.showOutput'));
+    assert.ok(commands.includes('ripr.showStatus'));
     assert.ok(commands.includes('ripr.copyContext'));
     assert.ok(commands.includes('ripr.copySuggestedAssertion'));
     assert.ok(commands.includes('ripr.copyTargetedTestBrief'));
@@ -101,6 +102,56 @@ suite('Extension Smoke', () => {
       assert.deepStrictEqual(JSON.parse(context.clipboardWrites[0]), {
         seam_packets: [{ seam_id: 'abc123' }]
       });
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('status bar reports server readiness and refresh state', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+
+      assert.ok(context.status.text.includes('ripr: ready'));
+
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh started: generation=1'
+      });
+      assert.ok(context.status.text.includes('ripr: analyzing'));
+
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=1, diagnostics=0, files=0, findings=0, seam_diagnostics=0, published_files=0, cleared_files=0'
+      });
+      assert.ok(context.status.text.includes('ripr: no seams'));
+
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=2, diagnostics=5, files=2, findings=4, seam_diagnostics=0, published_files=2, cleared_files=0'
+      });
+      assert.ok(context.status.text.includes('ripr: no seams'));
+
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=3, diagnostics=2, files=1, findings=1, seam_diagnostics=1, published_files=1, cleared_files=0'
+      });
+      assert.ok(context.status.text.includes('ripr: diagnostics'));
+
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh failed after 3 ms: workspace analysis failed'
+      });
+      assert.ok(context.status.text.includes('ripr: failed'));
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('status bar reports stale saved-workspace analysis after Rust edits', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+      const document = await vscode.workspace.openTextDocument(workspaceFileUri('src/lib.rs'));
+
+      context.controller.markWorkspaceStale(document);
+
+      assert.ok(context.status.text.includes('ripr: stale'));
     } finally {
       await context.dispose();
     }
@@ -265,6 +316,7 @@ interface ControllerTestOptions {
 
 class FakeLanguageClient {
   readonly requests: Array<{ method: string; params: unknown }> = [];
+  private readonly notificationHandlers = new Map<string, Array<(params: unknown) => void>>();
 
   constructor(private readonly options: ControllerTestOptions) {}
 
@@ -274,6 +326,22 @@ class FakeLanguageClient {
       throw this.options.lspError;
     }
     return this.options.lspResult;
+  }
+
+  onNotification(method: string, handler: (params: unknown) => void): vscode.Disposable {
+    const handlers = this.notificationHandlers.get(method) ?? [];
+    handlers.push(handler);
+    this.notificationHandlers.set(method, handlers);
+    return new vscode.Disposable(() => {
+      const current = this.notificationHandlers.get(method) ?? [];
+      this.notificationHandlers.set(method, current.filter((entry) => entry !== handler));
+    });
+  }
+
+  emitNotification(method: string, params: unknown): void {
+    for (const handler of this.notificationHandlers.get(method) ?? []) {
+      handler(params);
+    }
   }
 
   setTrace(): void {}
@@ -286,6 +354,7 @@ class FakeLanguageClient {
 function createControllerTestContext(options: ControllerTestOptions) {
   const client = new FakeLanguageClient(options);
   const output = vscode.window.createOutputChannel('ripr test');
+  const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
   const runRiprCalls: Array<{ command: string; args: string[]; cwd: string }> = [];
   const clipboardWrites: string[] = [];
   const runtime: RiprClientRuntime = {
@@ -313,15 +382,17 @@ function createControllerTestContext(options: ControllerTestOptions) {
       clipboardWrites.push(text);
     },
   };
-  const controller = new RiprClientController({} as vscode.ExtensionContext, output, runtime);
+  const controller = new RiprClientController({} as vscode.ExtensionContext, output, runtime, status);
   return {
     client,
     controller,
+    status,
     runRiprCalls,
     clipboardWrites,
     dispose: async () => {
       await controller.stop();
       output.dispose();
+      status.dispose();
     }
   };
 }

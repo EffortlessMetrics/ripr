@@ -37,7 +37,8 @@
   "activationEvents": [
     "onLanguage:rust",
     "workspaceContains:Cargo.toml",
-    "onCommand:ripr.restartServer"
+    "onCommand:ripr.restartServer",
+    "onCommand:ripr.showStatus"
   ],
   "main": "./out/src/extension.js",
   "scripts": {
@@ -130,6 +131,10 @@
       {
         "command": "ripr.showOutput",
         "title": "ripr: Show Output"
+      },
+      {
+        "command": "ripr.showStatus",
+        "title": "ripr: Show Status"
       },
       {
         "command": "ripr.copyContext",
