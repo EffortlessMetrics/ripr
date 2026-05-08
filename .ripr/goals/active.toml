@@ -42,7 +42,7 @@ commands = [
 
 [[work_item]]
 id = "spec/calibrated-gate-policy"
-status = "ready"
+status = "done"
 branch = "spec-calibrated-gate-policy"
 stackable = false
 requires_human_merge = true
@@ -59,7 +59,7 @@ commands = [
 
 [[work_item]]
 id = "gate/policy-evaluator"
-status = "blocked"
+status = "ready"
 branch = "gate-policy-evaluator"
 stackable = false
 requires_human_merge = true

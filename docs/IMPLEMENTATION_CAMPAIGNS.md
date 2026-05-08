@@ -1644,8 +1644,8 @@ Work items:
 | Work item | Status | Notes |
 | --- | --- | --- |
 | `campaign/calibrated-gate-audit` | done | Audited the PR-time test-oracle gap objective after Campaign 13. The evidence and PR guidance loop is real, but the optional calibrated gate layer is not specified as an active campaign. |
-| `spec/calibrated-gate-policy` | ready | Pin RIPR-SPEC-0013 for optional calibrated gates, including modes, inputs, outputs, acknowledgement labels, runtime calibration boundaries, default advisory posture, and non-goals. |
-| `gate/policy-evaluator` | blocked | Add a read-only gate evaluator that writes gate-decision JSON/Markdown from existing evidence and explicit policy without posting comments, editing source, running mutation tests, or changing generated workflow defaults. |
+| `spec/calibrated-gate-policy` | done | Pinned RIPR-SPEC-0013 for optional calibrated gates, including modes, inputs, outputs, acknowledgement labels, runtime calibration boundaries, default advisory posture, and non-goals. |
+| `gate/policy-evaluator` | ready | Add a read-only gate evaluator that writes gate-decision JSON/Markdown from existing evidence and explicit policy without posting comments, editing source, running mutation tests, or changing generated workflow defaults. |
 | `fixtures/calibrated-gate-cases` | blocked | Pin gate fixtures for advisory, acknowledged, baseline-check, fail-on-new-high-confidence-gap, suppression, missing-input, and mutation-calibration agreement/disagreement cases. |
 | `ci/generated-gate-wiring` | blocked | Wire generated GitHub workflows to optionally run the gate evaluator only when explicitly configured, preserving advisory defaults and surfacing acknowledged or blocking decisions in summaries. |
 | `docs/calibrated-gate-policy` | blocked | Document calibrated gates as optional policy over existing static evidence, including modes, waiver labels, CI behavior, calibration evidence, and static/runtime vocabulary boundaries. |

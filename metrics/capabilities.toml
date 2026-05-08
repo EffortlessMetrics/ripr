@@ -637,6 +637,19 @@ next = "maintenance"
 metric = "PR guidance projects existing seam evidence into bounded changed-line annotations without blocking by default"
 
 [[capability]]
+id = "calibrated_gate_policy"
+name = "Calibrated gate policy"
+status = "planned"
+spec = "RIPR-SPEC-0013"
+evidence = [
+  "docs/specs/RIPR-SPEC-0013-calibrated-gate-policy.md pins optional gate modes, inputs, outputs, acknowledgement labels, runtime calibration boundaries, advisory defaults, and non-goals before implementation",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md Campaign 14 keeps gate/policy-evaluator, fixtures/calibrated-gate-cases, and ci/generated-gate-wiring blocked behind the spec"
+]
+fixtures = []
+next = "gate/policy-evaluator"
+metric = "planned gates separate visibility from blocking and consume existing evidence only when explicitly configured"
+
+[[capability]]
 id = "pilot_packet"
 name = "Pilot packet"
 status = "alpha"

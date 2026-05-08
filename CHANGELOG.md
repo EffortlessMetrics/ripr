@@ -57,6 +57,8 @@ are scoped or reviewed.
 - Opened Campaign 14, Calibrated Gate Policy, with
   `spec/calibrated-gate-policy` as the first ready item before any gate
   evaluator or generated workflow blocking behavior.
+- Added RIPR-SPEC-0013 for optional calibrated gates and advanced Campaign 14
+  to the read-only `gate/policy-evaluator` implementation slice.
 - Queued Campaign 15, Recommendation Quality Calibration, as the post-gate
   product-quality lane for measuring recommendation actionability, placement,
   suppression/noise behavior, and before/after static movement without
