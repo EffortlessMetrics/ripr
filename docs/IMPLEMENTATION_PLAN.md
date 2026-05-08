@@ -31,6 +31,7 @@ through multiple work items in a campaign, but each work item should follow the
 | Recommendation Calibration (14) | Measure whether top CI, LSP, and PR recommendations are clear, correctly placed, low-noise, and correlated with better static evidence after one focused test. | Complete: spec, corpus, receipts, report, guide, and `campaign/recommendation-calibration-closeout`. |
 | Calibrated Gate Policy (15) | Define optional calibrated gates over existing PR-time evidence without changing advisory defaults or blurring static/runtime evidence. | Complete: spec, evaluator, fixtures, generated CI opt-in wiring, evidence-preserving CI behavior, calibrated gate guide, and `campaign/calibrated-gate-closeout`. |
 | Gate Adoption UX (16) | Make optional calibrated gate adoption safe and obvious for real teams without changing advisory defaults. | Complete: generated-CI examples, waiver workflows, baseline guidance, CI gate summary polish, dogfood receipts, blocking-readiness guidance, and `campaign/gate-adoption-ux-closeout`. |
+| RIPR Zero Evidence (17) | Turn large raw RIPR scores into canonical, actionable, verifiable burn-down evidence. | Active: evidence health is alpha; `analysis/evidence-movement-v1` is the first ready item before canonical gap identity, actionability filtering, RIPR Zero plans, packets, coverage/grip frontier, and calibration confidence. |
 | Editor Evidence UX (future) | Make the saved-workspace LSP path feel like an editor-native test-intent cockpit from diagnostic to hover, related test, context packet, one test, verify, and receipt. | Queued separately; start only after an explicit activation PR or explicit parallel-lane decision. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
@@ -98,7 +99,17 @@ acknowledgement, use baseline-check, or enable calibrated blocking. The
 [Campaign 16 closeout](handoffs/2026-05-08-campaign-16-closeout.md) records
 the PR chain, proof commands, and next-work boundary. Editor Evidence UX
 remains queued as a separate Lane 3 campaign and should start only after an
-explicit activation PR or explicit parallel-lane decision.
+explicit activation PR or explicit parallel-lane decision. Campaign 17 is now
+active as RIPR Zero Evidence: it returns to Lane 1 analyzer evidence after the
+gate/adoption lanes. The first ready item is
+`analysis/evidence-movement-v1`, which should compare before/after
+repo-exposure artifacts and explain whether a focused test improved, regressed,
+resolved, or failed to move static seam evidence. Later work decomposes raw
+RIPR gaps into canonical and actionable buckets, emits RIPR Zero plans and
+packets, measures coverage/grip frontier movement, applies imported runtime
+calibration as confidence context, and stabilizes an evidence record spine
+without changing default gates, PR comments, LSP UX, mutation execution, or
+public crate shape.
 
 ## PR 0: `planning-and-tracking-docs`
 

@@ -133,6 +133,10 @@ are scoped or reviewed.
   workflows, baseline guidance, generated-CI gate summary polish, dogfood
   receipts, and blocking-readiness guidance were complete while generated CI
   stayed advisory by default.
+- Opened Campaign 17, RIPR Zero Evidence, with `analysis/evidence-movement-v1`
+  as the first ready Lane 1 item before canonical gap identity, actionability
+  filtering, RIPR Zero plans, external-agent packets, coverage/grip frontier
+  reporting, and calibration confidence.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and PR guidance annotation counts before artifact

@@ -1953,17 +1953,127 @@ Closeout:
 
 Next:
 
-- Campaign 16 is closed. No ready work item remains in the active manifest.
-  Editor Evidence UX is queued as the next explicit campaign candidate, not
-  activated by this closeout.
+- Campaign 17 is active as RIPR Zero Evidence. It returns to Lane 1 evidence
+  accuracy after the downstream gate/adoption lanes and should make large raw
+  RIPR scores decomposed, actionable, and verifiable before stricter policy or
+  editor UX work consumes them.
+
+## Campaign 17: RIPR Zero Evidence
+
+Campaign ID: `ripr-zero-evidence`
+
+Status: active
+
+Campaign 16 made optional gate adoption safe. The next product risk is evidence
+truth: a large raw RIPR score must become a credible path to RIPR 0 under
+configured scope, not a flat static-analysis wall and not a softened number
+that hides behavioral debt.
+
+Objective:
+
+```text
+Turn large raw RIPR repo scores into canonical, actionable, verifiable
+burn-down evidence so teams can preserve honest visibility, baseline existing
+debt, block only new policy-eligible regressions, and make measurable progress
+toward RIPR 0 under configured scope.
+```
+
+Why it matters:
+
+High line coverage can still leave behavior weakly gripped, and many RIPR
+improvements may not move line coverage at all. Lane 1 must explain which
+unresolved seam items are concrete behavioral gaps, which are static
+limitations, which are baseline-known historical debt, which are suppressed or
+intentional, and which have calibration support. Downstream gates, PR guidance,
+LSP hovers, agent packets, badges, and burn-down reports should project that
+evidence rather than reinterpret it.
+
+End state:
+
+- raw RIPR gaps are decomposed into canonical, actionable, static-limitation,
+  baseline-known, suppressed, and calibrated-confidence buckets
+- every actionable gap has a focused test or assertion-upgrade path with a
+  missing discriminator, candidate value, assertion shape, related test, or
+  verification command
+- top burn-down tasks are ranked by expected raw and canonical RIPR delta
+- before/after evidence movement verifies whether a focused test improved,
+  regressed, resolved, or failed to move seam evidence
+- coverage/grip frontier reporting shows behavioral grip movement separately
+  from line coverage
+- imported runtime calibration can support or lower confidence without running
+  mutation tests or changing static vocabulary
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `analysis/evidence-movement-v1` | ready | Compare before/after repo-exposure artifacts and report improved, unchanged, changed, regressed, resolved, new_gap, missing_after_snapshot, and unknown movement with per-seam deltas. |
+| `fixtures/evidence-movement-cases` | blocked | Pin focused-boundary-improves, smoke-only-no-movement, exact-error-variant-improves, broad-is-err-no-movement, removed-test-regresses, source-deletion-resolves, missing-after-snapshot, and calibration-context-copied cases. |
+| `analysis/canonical-gap-id-v1` | blocked | Group raw gaps by stable owner symbol, seam kind, flow sink, missing discriminator, and assertion shape without using line numbers as durable identity. |
+| `analysis/actionable-gap-filter-v1` | blocked | Split concrete focused-test or assertion-upgrade gaps from needs-human-design, static-limitation, and not-policy-relevant cases. |
+| `report/ripr-zero-plan-v1` | blocked | Emit JSON/Markdown plans with raw, canonical, actionable, high-confidence one-test, static-limitation, expected-delta, test-target, and verification-command fields. |
+| `report/ripr-zero-packets-v1` | blocked | Emit bounded human and external-LLM task packets without provider integration, source edits, generated tests, or mutation execution. |
+| `report/coverage-grip-frontier-v1` | blocked | Report coverage/grip quadrants so behavioral grip movement is measured separately from line coverage. |
+| `calibration/static-runtime-confidence-v1` | blocked | Use imported mutation calibration as confidence context while keeping runtime vocabulary out of static reports. |
+| `analysis/local-delta-flow-v2` | blocked | Explain flow sinks well enough that recommendations can say why the suggested assertion observes the changed behavior. |
+| `analysis/activation-value-modeling-v2` | blocked | Improve boundary, enum, Option/Result, table, rstest, builder, constant, and macro-heavy activation value modeling. |
+| `analysis/oracle-semantics-v3` | blocked | Classify and explain exact, broad, smoke-only, opaque, circular, duplicative, event, mock, state, persistence, snapshot, helper, and field assertion shapes. |
+| `analysis/related-test-ranking-v2` | blocked | Rank the best test to imitate or extend using owner calls, assertion affinity, file/module/import affinity, observed values, oracle strength, and false-positive guards. |
+| `report/baseline-burndown-evidence-v1` | blocked | Report baseline-known, new, resolved, reintroduced, identity-changed, and unknown-match states without changing CI blocking or auto-updating baselines. |
+| `output/evidence-record-v1` | blocked | Define one evidence record spine for downstream reports, PR guidance, LSP, agents, and gates. |
+| `campaign/ripr-zero-evidence-closeout` | blocked | Close only after decomposition, movement, plans, packets, coverage/grip reporting, calibration confidence, and capability updates are complete. |
+
+Dependencies:
+
+- RIPR-SPEC-0015 and the evidence-health report provide the current analyzer
+  health baseline.
+- Repo exposure schema 0.3, repo seam inventory, test grip evidence, agent seam
+  packets, targeted-test outcome receipts, recommendation calibration, and
+  mutation calibration are the existing evidence surfaces to build on.
+- Campaigns 13 through 16 are downstream consumers and policy/adoption layers;
+  this campaign should improve the evidence spine without changing gate
+  defaults, PR comment behavior, generated CI blocking, or LSP UX.
+
+Commands:
+
+```bash
+cargo xtask check-campaign
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-output-contracts
+cargo xtask check-pr
+```
+
+Blocking conditions:
+
+- default CI blocking
+- new gate modes or waiver semantics
+- PR comment posting
+- LSP/editor feature polish
+- generated tests or automatic source edits
+- runtime mutation execution
+- runtime vocabulary in static reports
+- public crate splits
+- redefining raw RIPR scores downward for optics instead of decomposing them
+
+Next:
+
+- `analysis/evidence-movement-v1` is the next ready item. It should close the
+  feedback loop by telling users and agents whether a focused test improved,
+  regressed, resolved, or failed to move static seam evidence.
 
 ## Future Campaign: Editor Evidence UX
 
 Campaign ID: `editor-evidence-ux`
 
-Status: queued, not active. Campaign 16, Gate Adoption UX, is complete. Start
-this lane only after an explicit campaign activation PR or after an explicit
-decision to run the editor lane in parallel.
+Status: queued, not active. Campaign 17, RIPR Zero Evidence, is the active
+machine-readable campaign in `.ripr/goals/active.toml`. Start this lane only
+after an explicit campaign activation PR or after an explicit decision to run
+the editor lane in parallel.
 
 The saved-workspace LSP path already has alpha diagnostics, evidence hover,
 seam actions, related-test opening, context collection, agent-loop commands,
@@ -2020,7 +2130,7 @@ Dependencies:
 - Campaign 12 supplies first-hour editor status and intent-titled action
   framing.
 - Campaign 13 supplies PR guidance without making RIPR a free-form reviewer.
-- Campaign 16 remains active unless this lane is explicitly promoted or run in
+- Campaign 17 remains active unless this lane is explicitly promoted or run in
   parallel.
 
 Commands:

@@ -1,135 +1,262 @@
-id = "gate-adoption-ux"
-title = "Gate Adoption UX"
+id = "ripr-zero-evidence"
+title = "RIPR Zero Evidence"
 status = "active"
 
-# This is Campaign 16 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
-# Campaign 15 closed Calibrated Gate Policy after optional gates were specified,
-# evaluated, fixture-pinned, wired into generated CI only when explicitly
-# configured, documented, and kept advisory by default.
+# This is Campaign 17 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+# Campaign 16 closed Gate Adoption UX after optional gate adoption examples,
+# waiver workflows, baseline guidance, CI summary polish, dogfood receipts, and
+# blocking-readiness guidance landed while generated workflows stayed advisory
+# by default.
 
 objective = """
-Make optional calibrated gate adoption safe and obvious for real teams:
-provide copyable generated-CI examples, visible waiver and baseline workflows,
-first-screen gate summaries, dogfood receipts, and guidance for when blocking is
-appropriate without changing advisory defaults.
+Turn large raw RIPR repo scores into canonical, actionable, verifiable
+burn-down evidence so teams can preserve honest visibility, baseline existing
+debt, block only new policy-eligible regressions, and make measurable progress
+toward RIPR 0 under configured scope.
 """
 
 end_state = [
-  "docs provide copyable generated-CI examples for visible-only, acknowledgeable, baseline-check, and calibrated-gate adoption",
-  "waiver and label workflows show how `ripr-waive` produces visible acknowledged decisions rather than hidden success",
-  "baseline creation and refresh guidance lets teams avoid punishing historical debt while identifying new policy-eligible gaps",
-  "generated CI summaries make gate decisions understandable without opening JSON artifacts",
-  "ripr dogfood receipts demonstrate visible-only and stricter opt-in gate behavior from repo-local evidence",
-  "blocking-readiness guidance explains when teams should leave gates advisory, use acknowledgement, or enable calibrated blocking",
+  "raw RIPR gaps are decomposed into canonical, actionable, static-limitation, baseline-known, suppressed, and calibrated-confidence buckets",
+  "every actionable gap has a focused test or assertion-upgrade path with a missing discriminator, candidate value, assertion shape, related test, or verification command",
+  "top burn-down tasks are ranked by expected raw and canonical RIPR delta",
+  "before/after evidence movement verifies whether a focused test improved, regressed, resolved, or failed to move seam evidence",
+  "coverage/grip frontier reporting shows behavioral grip movement separately from line coverage",
+  "imported runtime calibration can support or lower confidence without running mutation tests or changing static vocabulary",
 ]
 
 [[work_item]]
-id = "docs/gate-adoption-examples"
-status = "done"
-branch = "docs-gate-adoption-examples"
+id = "analysis/evidence-movement-v1"
+status = "ready"
+branch = "analysis-evidence-movement-v1"
 stackable = false
-acceptance = "Add copyable generated-CI examples for visible-only, acknowledgeable, baseline-check, and calibrated-gate adoption while preserving the default advisory workflow"
+acceptance = "Compare before/after repo-exposure artifacts and report improved, unchanged, changed, regressed, resolved, new_gap, missing_after_snapshot, and unknown movement with per-seam deltas for grip class, stage evidence, observed values, missing discriminators, oracle strength, related tests, and no-movement reasons"
 commands = [
-  "cargo xtask check-doc-index",
-  "cargo xtask markdown-links",
+  "cargo test -p ripr evidence_movement",
+  "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "docs/gate-waiver-workflows"
-status = "done"
-branch = "docs-gate-waiver-workflows"
+id = "fixtures/evidence-movement-cases"
+status = "blocked"
+branch = "fixtures-evidence-movement-cases"
 stackable = false
-blocked_by = ["docs/gate-adoption-examples"]
-acceptance = "Document sample label and waiver workflows that keep acknowledged findings visible, auditable, and separate from suppressions"
+blocked_by = ["analysis/evidence-movement-v1"]
+acceptance = "Pin focused-boundary-improves, smoke-only-no-movement, exact-error-variant-improves, broad-is-err-no-movement, removed-test-regresses, source-deletion-resolves, missing-after-snapshot, and calibration-context-copied evidence-movement fixture cases"
 commands = [
-  "cargo xtask check-doc-index",
-  "cargo xtask markdown-links",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "docs/gate-baseline-workflow"
-status = "done"
-branch = "docs-gate-baseline-workflow"
-stackable = false
-blocked_by = ["docs/gate-waiver-workflows"]
-acceptance = "Document baseline creation, review, and refresh guidance for baseline-check and calibrated-gate adoption without hiding existing debt"
-commands = [
-  "cargo xtask check-doc-index",
-  "cargo xtask markdown-links",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "ci/gate-decision-summary-polish"
-status = "done"
-branch = "ci-gate-decision-summary-polish"
-stackable = false
-blocked_by = [
-  "docs/gate-adoption-examples",
-  "docs/gate-waiver-workflows",
-  "docs/gate-baseline-workflow",
-]
-acceptance = "Polish generated CI gate summaries so reviewers can see mode, status, waiver, baseline, calibration, blocking reason, and artifact paths without opening JSON"
-commands = [
-  "cargo test -p ripr init_generated_github_workflow",
-  "cargo xtask check-workflows",
+  "cargo xtask fixtures",
+  "cargo xtask check-fixture-contracts",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "dogfood/gate-adoption-receipts"
-status = "done"
-branch = "dogfood-gate-adoption-receipts"
+id = "analysis/canonical-gap-id-v1"
+status = "blocked"
+branch = "analysis-canonical-gap-id-v1"
 stackable = false
-blocked_by = ["ci/gate-decision-summary-polish"]
-acceptance = "Add repo-local dogfood receipts that show visible-only, acknowledged, baseline-aware, and calibrated-gate decisions from RIPR's own evidence without making default CI blocking"
+blocked_by = ["fixtures/evidence-movement-cases"]
+acceptance = "Assign deterministic canonical gap identities that group raw gaps by owner symbol, seam kind, flow sink, missing discriminator, and assertion shape without using line numbers as durable identity"
 commands = [
+  "cargo test -p ripr canonical_gap",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "docs/blocking-readiness-guide"
-status = "done"
-branch = "docs-blocking-readiness-guide"
+id = "analysis/actionable-gap-filter-v1"
+status = "blocked"
+branch = "analysis-actionable-gap-filter-v1"
 stackable = false
-blocked_by = ["dogfood/gate-adoption-receipts"]
-acceptance = "Document when to keep gates advisory, when to require acknowledgement, and when calibrated blocking is mature enough for a team"
+blocked_by = ["analysis/canonical-gap-id-v1"]
+acceptance = "Classify canonical gaps as actionable_focused_test, actionable_assertion_upgrade, actionable_related_test_extension, needs_human_design, static_limitation, or not_policy_relevant based on concrete repair guidance and analyzer limits"
 commands = [
-  "cargo xtask check-doc-index",
-  "cargo xtask markdown-links",
+  "cargo test -p ripr actionability",
+  "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "campaign/gate-adoption-ux-closeout"
-status = "done"
-branch = "campaign-gate-adoption-ux-closeout"
+id = "report/ripr-zero-plan-v1"
+status = "blocked"
+branch = "report-ripr-zero-plan-v1"
+stackable = false
+blocked_by = ["analysis/actionable-gap-filter-v1"]
+acceptance = "Emit JSON and Markdown RIPR Zero plans with raw gaps, canonical gaps, actionable gaps, high-confidence one-test fixes, static limitations, estimated focused tests to RIPR 0, top tasks, expected deltas, suggested test targets, assertion shapes, candidate values, confidence, and verification commands"
+commands = [
+  "cargo test -p ripr ripr_zero",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "report/ripr-zero-packets-v1"
+status = "blocked"
+branch = "report-ripr-zero-packets-v1"
+stackable = false
+blocked_by = ["report/ripr-zero-plan-v1"]
+acceptance = "Emit bounded human and external-LLM task packets for top RIPR Zero plan items without provider integration, source edits, generated tests, or mutation execution"
+commands = [
+  "cargo test -p ripr ripr_zero",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "report/coverage-grip-frontier-v1"
+status = "blocked"
+branch = "report-coverage-grip-frontier-v1"
+stackable = false
+blocked_by = ["report/ripr-zero-plan-v1"]
+acceptance = "Report covered-with-RIPR-gap, covered-without-RIPR-gap, uncovered-with-RIPR-gap, and uncovered-without-RIPR-gap quadrants so behavioral grip movement can be measured separately from line coverage"
+commands = [
+  "cargo test -p ripr coverage_grip",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "calibration/static-runtime-confidence-v1"
+status = "blocked"
+branch = "calibration-static-runtime-confidence-v1"
+stackable = false
+blocked_by = ["report/ripr-zero-plan-v1"]
+acceptance = "Use imported mutation calibration as confidence context for static gaps with support, contradiction, ambiguous join, runtime-only, and no-runtime-data labels while keeping runtime vocabulary out of static reports"
+commands = [
+  "cargo test -p ripr mutation_calibration",
+  "cargo xtask mutation-calibration",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "analysis/local-delta-flow-v2"
+status = "blocked"
+branch = "analysis-local-delta-flow-v2"
+stackable = false
+blocked_by = ["analysis/evidence-movement-v1"]
+acceptance = "Explain predicate, error, match-arm, field-assignment, side-effect, persistence, logging, and config flow sinks well enough that recommended assertions name why they observe the changed behavior"
+commands = [
+  "cargo test -p ripr local_delta_flow",
+  "cargo xtask fixtures",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "analysis/activation-value-modeling-v2"
+status = "blocked"
+branch = "analysis-activation-value-modeling-v2"
+stackable = false
+blocked_by = ["analysis/evidence-movement-v1"]
+acceptance = "Improve numeric boundary, enum variant, Option/Result branch, table row, rstest, builder override, same-file constant, and macro-heavy activation value modeling with explicit static limitations for unresolved cases"
+commands = [
+  "cargo test -p ripr activation",
+  "cargo xtask fixtures",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "analysis/oracle-semantics-v3"
+status = "blocked"
+branch = "analysis-oracle-semantics-v3"
+stackable = false
+blocked_by = ["analysis/evidence-movement-v1"]
+acceptance = "Classify and explain exact, broad, smoke-only, opaque, circular, duplicative, event, mock, state, persistence, snapshot, helper, and field assertion shapes with upgrade guidance for weak or broad assertions"
+commands = [
+  "cargo test -p ripr oracle",
+  "cargo xtask fixtures",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "analysis/related-test-ranking-v2"
+status = "blocked"
+branch = "analysis-related-test-ranking-v2"
+stackable = false
+blocked_by = ["analysis/evidence-movement-v1"]
+acceptance = "Rank the best test to imitate or extend using owner calls, assertion target affinity, file/module affinity, import paths, fixture affinity, observed value overlap, oracle strength, recent test changes, and false-positive guards"
+commands = [
+  "cargo test -p ripr related_test",
+  "cargo xtask fixtures",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "report/baseline-burndown-evidence-v1"
+status = "blocked"
+branch = "report-baseline-burndown-evidence-v1"
+stackable = false
+blocked_by = ["analysis/canonical-gap-id-v1", "analysis/evidence-movement-v1"]
+acceptance = "Report baseline_known, new_against_baseline, resolved_since_baseline, reintroduced, identity_changed, and unknown_match states using canonical gap identity when available without changing CI blocking or auto-updating baselines"
+commands = [
+  "cargo test -p ripr baseline_burndown",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "output/evidence-record-v1"
+status = "blocked"
+branch = "output-evidence-record-v1"
 stackable = false
 blocked_by = [
-  "docs/gate-adoption-examples",
-  "docs/gate-waiver-workflows",
-  "docs/gate-baseline-workflow",
-  "ci/gate-decision-summary-polish",
-  "dogfood/gate-adoption-receipts",
-  "docs/blocking-readiness-guide",
+  "analysis/canonical-gap-id-v1",
+  "analysis/actionable-gap-filter-v1",
+  "report/ripr-zero-plan-v1",
 ]
-acceptance = "Close Campaign 16 only after gate adoption docs, waiver workflows, baseline guidance, CI summary polish, dogfood receipts, and blocking-readiness guidance are complete while defaults stay advisory"
+acceptance = "Define one evidence record spine with seam identity, canonical gap identity, owner, file, line, seam kind, grip class, evidence path, observed values, missing discriminators, related tests, recommendation, actionability, calibration, and static limitations for downstream surfaces to consume"
+commands = [
+  "cargo test -p ripr evidence_record",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "campaign/ripr-zero-evidence-closeout"
+status = "blocked"
+branch = "campaign-ripr-zero-evidence-closeout"
+stackable = false
+blocked_by = [
+  "analysis/evidence-movement-v1",
+  "fixtures/evidence-movement-cases",
+  "analysis/canonical-gap-id-v1",
+  "analysis/actionable-gap-filter-v1",
+  "report/ripr-zero-plan-v1",
+  "report/ripr-zero-packets-v1",
+  "report/coverage-grip-frontier-v1",
+  "calibration/static-runtime-confidence-v1",
+  "analysis/local-delta-flow-v2",
+  "analysis/activation-value-modeling-v2",
+  "analysis/oracle-semantics-v3",
+  "analysis/related-test-ranking-v2",
+  "report/baseline-burndown-evidence-v1",
+  "output/evidence-record-v1",
+]
+acceptance = "Close Campaign 17 only after raw RIPR scores are decomposed into canonical/actionable/static-limitation buckets, evidence movement verifies focused-test changes, RIPR Zero plans and packets exist, coverage/grip frontier is reported, imported runtime calibration informs confidence without static vocabulary drift, and capability states are updated honestly"
 commands = [
   "cargo xtask check-campaign",
   "cargo xtask goals next",
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
   "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
   "cargo xtask check-capabilities",
+  "cargo xtask check-output-contracts",
   "cargo xtask check-pr",
 ]

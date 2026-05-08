@@ -143,7 +143,14 @@ acknowledgement, use baseline-check, or enable calibrated blocking. The
 [Campaign 16 closeout](handoffs/2026-05-08-campaign-16-closeout.md) records
 the adoption proof and next-work boundary. Editor Evidence UX remains queued as
 a separate Lane 3 campaign and should start only after an explicit activation
-PR or explicit parallel-lane decision.
+PR or explicit parallel-lane decision. Campaign 17 is active as RIPR Zero
+Evidence: the next Lane 1 focus is turning large raw RIPR scores into
+canonical, actionable, and verifiable burn-down evidence. The first ready item
+is before/after evidence movement. Subsequent slices should group raw gaps into
+canonical behavioral gaps, classify actionability and static limitations, emit
+RIPR Zero plans and external-agent packets, measure behavioral grip separately
+from line coverage, and use imported runtime calibration only as confidence
+context.
 
 ## Strategic Sequence
 
@@ -190,6 +197,7 @@ quality rails
 -> recommendation calibration
 -> calibrated gate policy
 -> gate adoption UX
+-> RIPR Zero evidence
 -> editor evidence UX
 ```
 
