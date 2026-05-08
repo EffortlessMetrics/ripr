@@ -10166,20 +10166,37 @@ fn finish_campaign_report(violations: &[String]) -> Result<(), String> {
 }
 
 fn deprecated_goal_field_violations() -> Result<Vec<String>, String> {
-    let field = deprecated_goal_field_name();
-    let mut violations = Vec::new();
+    let mut entries = Vec::new();
     for path in tracked_files()? {
         if !is_deprecated_goal_field_scan_target(&path) {
             continue;
         }
         let text = read_text_lossy(Path::new(&path))?;
+        entries.push((path, text));
+    }
+    Ok(deprecated_goal_field_violations_for_entries(
+        entries
+            .iter()
+            .map(|(path, text)| (path.as_str(), text.as_str())),
+    ))
+}
+
+fn deprecated_goal_field_violations_for_entries<'a>(
+    entries: impl IntoIterator<Item = (&'a str, &'a str)>,
+) -> Vec<String> {
+    let field = deprecated_goal_field_name();
+    let mut violations = Vec::new();
+    for (path, text) in entries {
+        if !is_deprecated_goal_field_scan_target(path) {
+            continue;
+        }
         if text.contains(&field) {
             violations.push(format!(
                 "{path} contains deprecated campaign field `{field}`; use `stackable` and ordinary PR readiness instead"
             ));
         }
     }
-    Ok(violations)
+    violations
 }
 
 fn deprecated_goal_field_name() -> String {
@@ -16064,10 +16081,10 @@ mod tests {
         extract_workflow_run_blocks, first_line_difference, forbidden_panic_patterns, glob_matches,
         golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
         guarded_allow_attributes_in_text, install_hooks_in, is_bdd_test_name,
-        is_dependency_surface_candidate, is_evidence_path, is_generated_candidate,
-        is_known_campaign_command, is_policy_path, is_production_path, is_receipt_status,
-        is_ripr_managed_hook, is_snake_case_id, is_spec_id, json_escape, json_number_after,
-        json_string_values_for_key, known_commands, known_xtask_command,
+        is_dependency_surface_candidate, is_deprecated_goal_field_scan_target, is_evidence_path,
+        is_generated_candidate, is_known_campaign_command, is_policy_path, is_production_path,
+        is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id, json_escape,
+        json_number_after, json_string_values_for_key, known_commands, known_xtask_command,
         local_context_line_findings, local_markdown_target, lsp_cockpit_report,
         lsp_cockpit_report_json, lsp_cockpit_report_markdown, markdown_links_in_text,
         mutation_calibration_report_json, mutation_calibration_report_markdown,
@@ -16109,6 +16126,10 @@ mod tests {
     use super::{
         active_yaml_lines, check_droid_action_refs, check_droid_common,
         check_droid_security_scan_config, forbids_active_line, has_active_line, strip_yaml_comment,
+    };
+    use super::{
+        deprecated_goal_field_name, deprecated_goal_field_violations,
+        deprecated_goal_field_violations_for_entries,
     };
     use serde_json::Value;
     use std::collections::{BTreeMap, BTreeSet};
@@ -20731,6 +20752,62 @@ stackable = true
             assert_eq!(manifest.work_items.len(), 1);
             assert_eq!(manifest.work_items[0].id, Some("item-1".to_string()));
         });
+    }
+
+    #[test]
+    fn deprecated_goal_field_guard_targets_goal_manifests_and_agent_docs() {
+        assert!(is_deprecated_goal_field_scan_target(
+            ".ripr/goals/active.toml"
+        ));
+        assert!(is_deprecated_goal_field_scan_target(
+            ".ripr/goals/modularization.toml"
+        ));
+        assert!(is_deprecated_goal_field_scan_target("AGENTS.md"));
+        assert!(is_deprecated_goal_field_scan_target(
+            "docs/how-to/run-codex-goals.md"
+        ));
+        assert!(is_deprecated_goal_field_scan_target(
+            "docs/example-policy.toml"
+        ));
+
+        assert!(!is_deprecated_goal_field_scan_target("README.md"));
+        assert!(!is_deprecated_goal_field_scan_target("xtask/src/main.rs"));
+        assert!(!is_deprecated_goal_field_scan_target(
+            ".ripr/release/history.toml"
+        ));
+    }
+
+    #[test]
+    fn deprecated_goal_field_guard_reports_deprecated_entries() {
+        let field = deprecated_goal_field_name();
+        assert_eq!(field, ["requires", "human", "merge"].join("_"));
+        let bad_text = format!("{field} = false");
+        let clean_text = "stackable = false";
+        let violations = deprecated_goal_field_violations_for_entries([
+            ("AGENTS.md", bad_text.as_str()),
+            (".ripr/goals/active.toml", bad_text.as_str()),
+            ("README.md", bad_text.as_str()),
+            ("docs/agent.md", clean_text),
+        ]);
+
+        assert_eq!(violations.len(), 2);
+        assert!(
+            violations
+                .iter()
+                .any(|message| message.contains("AGENTS.md"))
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|message| message.contains(".ripr/goals/active.toml"))
+        );
+    }
+
+    #[test]
+    fn deprecated_goal_field_guard_accepts_current_tracked_files()
+    -> Result<(), Box<dyn std::error::Error>> {
+        assert!(deprecated_goal_field_violations()?.is_empty());
+        Ok(())
     }
 
     #[test]
