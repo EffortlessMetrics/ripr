@@ -121,7 +121,9 @@ quality, `ripr gate evaluate` writes the read-only decision report,
 GitHub workflows run gate evaluation only when `RIPR_GATE_MODE` is explicitly
 configured. [Calibrated gate policy](CALIBRATED_GATE_POLICY.md) documents the
 operating model. Gates remain explicit, advisory by default, and separate from
-runtime mutation vocabulary.
+runtime mutation vocabulary. The [Campaign 15
+closeout](handoffs/2026-05-08-campaign-15-closeout.md) records the final proof
+and defers the next product campaign to an explicit decision.
 
 ## Strategic Sequence
 

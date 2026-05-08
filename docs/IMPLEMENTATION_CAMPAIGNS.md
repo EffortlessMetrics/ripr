@@ -1706,9 +1706,10 @@ Closeout:
 
 Next:
 
-- Campaign 15 is active. `spec/calibrated-gate-policy` and
-  `gate/policy-evaluator` are pinned; continue with
-  `fixtures/calibrated-gate-cases` before CI wiring.
+- Campaign 15 is complete. [Campaign 15
+  closeout](handoffs/2026-05-08-campaign-15-closeout.md) records the PR chain,
+  proof commands, and explicit boundary: optional calibrated gates are available
+  only when configured, while generated workflows remain advisory by default.
 
 ## Campaign 15: Calibrated Gate Policy
 
@@ -1793,6 +1794,12 @@ Dependencies:
   decisions need their own explicit output contract.
 - The `ripr-waive` label remains an acknowledgement path, not a hidden
   suppression.
+
+Closeout:
+
+- [Campaign 15 closeout](handoffs/2026-05-08-campaign-15-closeout.md)
+  records the final Campaign 15 PR chain, validation commands, and deferred
+  adoption boundary.
 
 Commands:
 

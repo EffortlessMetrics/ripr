@@ -18,9 +18,10 @@ PR guidance + existing reports + labels + optional calibration
 -> optional generated-CI execution
 ```
 
-The campaign did not change analyzer behavior, make generated workflows block
-by default, run mutation testing, post comments, edit source, generate tests,
-change SARIF or badge schemas, or split the public crate surface.
+The campaign did not change analyzer behavior, add LSP/editor feature work, run
+mutation testing, make generated workflows block by default, hide acknowledged
+decisions, post comments, edit source, generate tests, add telemetry or external
+services, change SARIF or badge schemas, or split the public crate surface.
 
 ## Prompt-To-Artifact Audit
 
@@ -65,9 +66,10 @@ git diff --check
 
 ## Next Work Item
 
-No Campaign 16 is opened by this closeout. Future stronger policy, ranking, or
-adoption-feedback work should start from a new explicit spec and campaign
-manifest rather than extending Campaign 15.
+No ready work item remains in `.ripr/goals/active.toml`. No Campaign 16 is
+opened by this closeout. Future stronger policy, ranking, or adoption-feedback
+work should start from a new explicit spec and campaign manifest rather than
+extending Campaign 15.
 
 ## What Not To Do
 
@@ -77,6 +79,8 @@ manifest rather than extending Campaign 15.
 - Do not post GitHub comments from `ripr gate evaluate`.
 - Do not generate tests or edit source from the gate.
 - Do not treat runtime mutation calibration as static proof.
+- Do not add LSP/editor feature work as part of Campaign 15 maintenance.
+- Do not add telemetry, external services, or public crate splits.
 - Do not change SARIF, badge, PR guidance, recommendation calibration,
   mutation calibration, or agent receipt schemas without a new compatibility
   contract.

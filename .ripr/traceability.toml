@@ -928,7 +928,8 @@ outputs = [
   "docs/CI.md",
   "docs/DOCUMENTATION.md",
   "docs/PR_REVIEW_GUIDANCE.md",
-  "docs/RECOMMENDATION_CALIBRATION.md"
+  "docs/RECOMMENDATION_CALIBRATION.md",
+  "docs/handoffs/2026-05-08-campaign-15-closeout.md"
 ]
 metrics = [
   "gate_decisions_evaluated",
