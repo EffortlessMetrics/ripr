@@ -1,51 +1,34 @@
-id = "recommendation-calibration"
-title = "Recommendation Calibration"
+id = "calibrated-gate-policy"
+title = "Calibrated Gate Policy"
 status = "active"
 
-# This is Campaign 14 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
-# Campaign 13 closed PR Review Guidance after static evidence became visible in
-# generated CI summaries, check annotations, fixtures, and docs while staying
-# advisory/non-blocking by default.
+# This is Campaign 15 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+# Campaign 14 closed Recommendation Calibration after the spec, fixture corpus,
+# outcome receipts, advisory report, workflow docs, and closeout handoff landed.
 
 objective = """
-Move RIPR from a complete static evidence loop to measured recommendation
-quality: determine whether PR-time guidance is useful, correctly placed,
-properly suppressed or capped, and correlated with improved static evidence
-after one focused test.
+Define the optional calibrated gate layer for PR-time test-oracle evidence:
+separate visibility from blocking, fail only under explicit policy, preserve
+waiver and acknowledgement paths, and use runtime mutation calibration only as
+imported confidence evidence.
 """
 
 end_state = [
-  "a PR-shaped calibration corpus records useful, noisy, wrong-line, already-covered, summary-only, suppression, generated/migration, macro-heavy, trait/generic, and async/error-boundary cases",
-  "review guidance outcome receipts can record recommendation outcomes without telemetry, external services, source edits, generated tests, or runtime mutation execution",
-  "recommendation calibration reports measure top recommendation usefulness, false annotations, summary-only fallback correctness, suppression correctness, recommended test target correctness, and review-comment latency",
-  "generated CI remains advisory and non-blocking while surfacing calibration artifacts when available",
-  "calibration results feed future ranking and policy decisions without opaque scores or runtime adequacy claims"
+  "a gate policy spec defines inputs, outputs, modes, acknowledgement labels, calibration evidence, and non-goals before implementation",
+  "a read-only gate evaluator consumes existing PR guidance, repo exposure, SARIF policy, suppressions, labels, recommendation calibration, and optional mutation calibration reports",
+  "default generated workflows remain advisory and non-blocking unless an explicit gate mode is configured",
+  "blocking decisions are deterministic, narrow, auditable, and limited to calibrated high-confidence new gaps",
+  "waiver labels such as `ripr-waive` produce visible acknowledged outcomes, not silent success",
+  "fixtures pin advisory, acknowledged, fail-on-new-high-confidence-gap, baseline-check, suppression, and calibration agreement/disagreement cases",
+  "docs explain visibility versus gating and keep static evidence vocabulary separate from runtime mutation outcomes"
 ]
 
 [[work_item]]
-id = "campaign/recommendation-calibration-audit"
-status = "done"
-branch = "campaign-recommendation-calibration"
+id = "spec/calibrated-gate-policy"
+status = "ready"
+branch = "spec-calibrated-gate-policy"
 stackable = false
-acceptance = "Audit the post-Campaign-13 product objective, identify recommendation quality as the next trust layer before policy gates, and open Campaign 14 with the calibration report spec as the next ready item"
-commands = [
-  "cargo xtask check-campaign",
-  "cargo xtask goals next",
-  "cargo xtask check-doc-index",
-  "cargo xtask markdown-links",
-  "cargo xtask check-static-language",
-  "cargo xtask check-traceability",
-  "cargo xtask check-capabilities",
-  "cargo xtask check-pr"
-]
-
-[[work_item]]
-id = "spec/recommendation-calibration-report"
-status = "done"
-branch = "spec-recommendation-calibration-report"
-stackable = false
-blocked_by = ["campaign/recommendation-calibration-audit"]
-acceptance = "Define the recommendation calibration report contract, including inputs, output schema, top recommendation usefulness metrics, false annotation tracking, summary-only correctness, suppression correctness, target-file correctness, latency fields, advisory posture, and non-goals"
+acceptance = "Pin the optional calibrated gate policy after recommendation calibration, including modes, inputs, outputs, acknowledgement labels, runtime calibration boundaries, default advisory posture, and non-goals"
 commands = [
   "cargo xtask check-spec-format",
   "cargo xtask check-doc-index",
@@ -58,12 +41,31 @@ commands = [
 ]
 
 [[work_item]]
-id = "fixtures/pr-guidance-calibration-corpus"
-status = "done"
-branch = "fixtures-pr-guidance-calibration-corpus"
+id = "gate/policy-evaluator"
+status = "blocked"
+branch = "gate-policy-evaluator"
 stackable = false
-blocked_by = ["spec/recommendation-calibration-report"]
-acceptance = "Add PR-shaped calibration cases for useful recommendation, noisy recommendation, wrong-line placement, already-covered seam, correct summary-only fallback, suppression correctness, generated/migration exclusion, macro-heavy code, trait/generic boundary, and async/error boundary"
+blocked_by = ["spec/calibrated-gate-policy"]
+acceptance = "Add a read-only gate evaluator that writes gate-decision JSON/Markdown from existing evidence and explicit policy without posting comments, editing source, running mutation tests, or changing generated workflow defaults"
+commands = [
+  "cargo test -p ripr gate",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "fixtures/calibrated-gate-cases"
+status = "blocked"
+branch = "fixtures-calibrated-gate-cases"
+stackable = false
+blocked_by = [
+  "spec/calibrated-gate-policy",
+  "gate/policy-evaluator"
+]
+acceptance = "Pin gate fixtures for advisory, acknowledged, baseline-check, fail-on-new-high-confidence-gap, suppression, missing-input, and calibration agreement/disagreement cases"
 commands = [
   "cargo xtask fixtures",
   "cargo xtask check-fixture-contracts",
@@ -73,52 +75,36 @@ commands = [
 ]
 
 [[work_item]]
-id = "review-feedback/outcome-receipts"
-status = "done"
-branch = "review-feedback-outcome-receipts"
+id = "ci/generated-gate-wiring"
+status = "blocked"
+branch = "ci-generated-gate-wiring"
 stackable = false
-blocked_by = ["spec/recommendation-calibration-report"]
-acceptance = "Add a lightweight review guidance outcome receipt schema for useful, noisy, wrong-line, already-covered, wrong-target, summary-only-correct, and suppressed-correctly outcomes without telemetry or external services"
+blocked_by = [
+  "spec/calibrated-gate-policy",
+  "gate/policy-evaluator",
+  "fixtures/calibrated-gate-cases"
+]
+acceptance = "Wire generated GitHub workflows to optionally run the gate evaluator only when explicitly configured, preserving advisory defaults and surfacing acknowledged or blocking decisions in summaries"
 commands = [
+  "cargo test -p ripr init_generated_github_workflow",
+  "cargo xtask check-workflows",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
-  "cargo xtask check-traceability",
-  "cargo xtask check-capabilities",
   "cargo xtask check-pr"
 ]
 
 [[work_item]]
-id = "report/recommendation-precision"
-status = "done"
-branch = "report-recommendation-precision"
+id = "docs/calibrated-gate-policy"
+status = "blocked"
+branch = "docs-calibrated-gate-policy"
 stackable = false
 blocked_by = [
-  "spec/recommendation-calibration-report",
-  "fixtures/pr-guidance-calibration-corpus",
-  "review-feedback/outcome-receipts"
+  "spec/calibrated-gate-policy",
+  "gate/policy-evaluator",
+  "fixtures/calibrated-gate-cases",
+  "ci/generated-gate-wiring"
 ]
-acceptance = "Emit a recommendation precision report that joins PR guidance, calibration corpus expectations, optional outcome receipts, suppression state, target placement, and latency without changing CI blocking defaults"
-commands = [
-  "cargo test -p ripr recommendation",
-  "cargo test -p xtask recommendation_calibration",
-  "cargo xtask recommendation-calibration --root . --calibration-expectations fixtures/boundary_gap/expected/recommendation-calibration/expectations.json --outcome-receipts fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts --out fixtures/boundary_gap/expected/recommendation-calibration/recommendation-calibration.json --out-md fixtures/boundary_gap/expected/recommendation-calibration/recommendation-calibration.md",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-traceability",
-  "cargo xtask check-capabilities",
-  "cargo xtask check-pr"
-]
-
-[[work_item]]
-id = "docs/calibration-workflow"
-status = "done"
-branch = "docs-calibration-workflow"
-stackable = false
-blocked_by = [
-  "spec/recommendation-calibration-report",
-  "report/recommendation-precision"
-]
-acceptance = "Document how to read recommendation calibration reports, outcome receipts, placement quality, suppression correctness, unchanged/improved/regressed static movement, and why calibration remains advisory"
+acceptance = "Document calibrated gates as optional policy over existing static evidence, including modes, waiver labels, CI behavior, calibration evidence, and static/runtime vocabulary boundaries"
 commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
@@ -127,18 +113,18 @@ commands = [
 ]
 
 [[work_item]]
-id = "campaign/recommendation-calibration-closeout"
-status = "done"
-branch = "campaign-recommendation-calibration-closeout"
+id = "campaign/calibrated-gate-closeout"
+status = "blocked"
+branch = "campaign-calibrated-gate-closeout"
 stackable = false
 blocked_by = [
-  "spec/recommendation-calibration-report",
-  "fixtures/pr-guidance-calibration-corpus",
-  "review-feedback/outcome-receipts",
-  "report/recommendation-precision",
-  "docs/calibration-workflow"
+  "spec/calibrated-gate-policy",
+  "gate/policy-evaluator",
+  "fixtures/calibrated-gate-cases",
+  "ci/generated-gate-wiring",
+  "docs/calibrated-gate-policy"
 ]
-acceptance = "Close Campaign 14 only after recommendation quality is specified, fixture-pinned, receipt-backed, reported, documented, surfaced advisory-first, and ready to inform later ranking or policy work"
+acceptance = "Close only after optional calibrated gates are specified, evaluated, fixture-pinned, optionally wired into generated CI, documented, and still advisory by default"
 commands = [
   "cargo xtask check-campaign",
   "cargo xtask goals next",

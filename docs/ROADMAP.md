@@ -113,11 +113,10 @@ The PR-shaped calibration corpus, local outcome receipts, and advisory
 `cargo xtask recommendation-calibration` report are now checked, and
 [Recommendation calibration](RECOMMENDATION_CALIBRATION.md) documents how to
 read metrics, receipts, placement quality, suppression correctness, static
-movement buckets, and advisory limits. The closeout handoff records the PR
-chain and deferred policy boundary. No ready work item remains in the active
-manifest; Campaign 15 is queued as Calibrated Gate Policy so optional policy
-gates come after measured signal quality and remain explicit, advisory by
-default, and separate from runtime mutation vocabulary.
+movement buckets, and advisory limits. Campaign 15 is active as Calibrated Gate
+Policy so optional policy gates come after measured signal quality and remain
+explicit, advisory by default, and separate from runtime mutation vocabulary.
+The next slice is `spec/calibrated-gate-policy`.
 
 ## Strategic Sequence
 
