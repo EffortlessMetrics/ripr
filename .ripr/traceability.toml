@@ -846,5 +846,8 @@ metrics = [
   "recommendation_calibration_summary_only_correct",
   "recommendation_calibration_suppressed_correctly",
   "recommendation_calibration_target_file_correct",
-  "recommendation_calibration_static_improved"
+  "recommendation_calibration_static_improved",
+  "recommendation_calibration_static_unchanged",
+  "recommendation_calibration_static_regressed",
+  "recommendation_calibration_unknown"
 ]

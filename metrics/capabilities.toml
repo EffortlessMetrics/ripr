@@ -650,7 +650,7 @@ evidence = [
 ]
 fixtures = []
 next = "fixtures/pr-guidance-calibration-corpus"
-metric = "planned recommendation calibration will count usefulness, false annotations, summary-only correctness, suppression correctness, target-file correctness, latency, and static movement without telemetry or CI blocking"
+metric = "planned recommendation calibration will count usefulness, false annotations, summary-only correctness, suppression correctness, target-file correctness, latency, static improved, unchanged, or regressed movement, and unknown outcomes without telemetry or CI blocking"
 
 [[capability]]
 id = "pilot_packet"

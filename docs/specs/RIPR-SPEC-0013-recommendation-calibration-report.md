@@ -109,6 +109,14 @@ Recommendation calibration uses these review-quality labels:
 These labels measure recommendation usefulness. They do not mean runtime
 mutation results, coverage, or merge readiness.
 
+Calibration outcomes and placement quality are separate axes. Placement quality
+describes whether a PR guidance item was safely mapped to a changed line or kept
+out of the inline surface. Calibration outcomes describe whether that rendered
+recommendation was useful in the expected review context. For example, a
+recommendation can have `placement.quality = "summary_only_expected"` and
+`calibration.outcome = "summary_only_correct"` when summary-only guidance was
+the expected review surface.
+
 ## Metrics
 
 The report should expose counts for:
