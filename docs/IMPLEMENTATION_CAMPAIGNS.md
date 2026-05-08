@@ -1955,7 +1955,9 @@ Next:
 
 - Campaign 16 is closed. No ready work item remains in the active manifest.
   Campaign 17 is now active as Editor Evidence UX, with
-  `campaign/editor-evidence-ux-audit` as the first ready item.
+  `campaign/editor-evidence-ux-audit` as the first ready item. Baseline Ledger
+  v1 remains a future adoption campaign and should open only through a
+  separate explicit campaign PR.
 
 ## Campaign 17: Editor Evidence UX
 
@@ -2018,8 +2020,9 @@ Dependencies:
 - Campaign 12 supplies first-hour editor status and intent-titled action
   framing.
 - Campaign 13 supplies PR guidance without making RIPR a free-form reviewer.
-- Campaign 16 is complete; this lane starts from the queued editor contract
-  without changing gate adoption policy.
+- Campaign 16 is complete; this explicit activation starts from the queued
+  editor contract without changing gate adoption policy.
+- Baseline Ledger v1 remains a separate future adoption lane.
 
 Next:
 

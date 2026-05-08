@@ -31,6 +31,7 @@ through multiple work items in a campaign, but each work item should follow the
 | Recommendation Calibration (14) | Measure whether top CI, LSP, and PR recommendations are clear, correctly placed, low-noise, and correlated with better static evidence after one focused test. | Complete: spec, corpus, receipts, report, guide, and `campaign/recommendation-calibration-closeout`. |
 | Calibrated Gate Policy (15) | Define optional calibrated gates over existing PR-time evidence without changing advisory defaults or blurring static/runtime evidence. | Complete: spec, evaluator, fixtures, generated CI opt-in wiring, evidence-preserving CI behavior, calibrated gate guide, and `campaign/calibrated-gate-closeout`. |
 | Gate Adoption UX (16) | Make optional calibrated gate adoption safe and obvious for real teams without changing advisory defaults. | Complete: generated-CI examples, waiver workflows, baseline guidance, CI gate summary polish, dogfood receipts, blocking-readiness guidance, and `campaign/gate-adoption-ux-closeout`. |
+| Baseline Ledger v1 (future) | Make reviewed baselines executable debt ledgers with create, diff, and shrink-only refresh commands. | Recommended future adoption campaign; open only with an explicit campaign manifest PR. |
 | Editor Evidence UX (17) | Make the saved-workspace LSP path feel like an editor-native test-intent cockpit from diagnostic to hover, related test, context packet, one test, verify, and receipt. | Active: `campaign/editor-evidence-ux-audit` is the first ready item before hover, actions, context packet, protocol smoke, VS Code smoke, status/staleness, docs, and closeout. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
@@ -100,7 +101,9 @@ the PR chain, proof commands, and next-work boundary. Campaign 17 is now active
 as Editor Evidence UX. Its first ready item is
 `campaign/editor-evidence-ux-audit`, a docs/contract-only audit of diagnostic
 data, hover, actions, context collection, VS Code proof, LSP cockpit status,
-and status/staleness before any behavior-bearing editor changes.
+and status/staleness before any behavior-bearing editor changes. Baseline
+Ledger v1 remains a future adoption campaign that should open only through a
+separate explicit campaign PR.
 
 ## PR 0: `planning-and-tracking-docs`
 

@@ -145,7 +145,9 @@ the adoption proof and next-work boundary. Campaign 17 is now active as Editor
 Evidence UX: the first ready slice is a docs/contract-only audit of diagnostic
 data, hover, actions, context collection, VS Code proof, LSP cockpit status,
 and status/staleness before hover hardening or other behavior-bearing editor
-changes.
+changes. Baseline Ledger v1 remains the recommended future adoption campaign
+for executable create/diff/shrink ledgers before broader RIPR Zero planning,
+but it is not active in this manifest.
 
 ## Strategic Sequence
 
