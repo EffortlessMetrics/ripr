@@ -141,6 +141,10 @@ are scoped or reviewed.
   baseline create/diff, shrink-only update, and generated CI debt-delta
   artifacts after evidence movement and identity work are durable enough to
   consume.
+- Added RIPR-SPEC-0016 for the baseline debt delta report, defining the planned
+  JSON/Markdown contract, identity matching order, debt movement buckets,
+  advisory boundary, and future `ripr baseline create`, `diff`, and
+  shrink-only `update --remove-resolved` command surfaces.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and PR guidance annotation counts before artifact

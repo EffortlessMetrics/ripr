@@ -153,7 +153,9 @@ from line coverage, and use imported runtime calibration only as confidence
 context. RIPR Zero Adoption remains a recommended future adoption campaign once
 evidence movement and canonical identity make baseline states durable enough
 for baseline debt delta reports, create/diff/update commands, and generated CI
-debt-delta artifacts; open it only through a separate explicit campaign PR.
+debt-delta artifacts. RIPR-SPEC-0016 already defines that baseline debt delta
+contract; open the rest of the adoption lane only through a separate explicit
+campaign PR.
 
 ## Strategic Sequence
 

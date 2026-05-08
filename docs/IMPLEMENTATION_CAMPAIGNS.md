@@ -2115,8 +2115,8 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `spec/baseline-debt-delta-report` | queued | Define the baseline debt delta report contract for comparing current PR/CI evidence to reviewed baseline debt without changing analyzer identity, auto-adopting new debt, or making CI blocking by default. |
-| `baseline/create` | blocked | Add `ripr baseline create` so users can produce stable reviewed `.ripr/gate-baseline.json` ledgers from existing gate-decision evidence without overwriting by default. |
+| `spec/baseline-debt-delta-report` | done | Defined RIPR-SPEC-0016 and the output-schema contract for comparing current PR/CI evidence to reviewed baseline debt without changing analyzer identity, auto-adopting new debt, or making CI blocking by default. |
+| `baseline/create` | queued | Add `ripr baseline create` so users can produce stable reviewed `.ripr/gate-baseline.json` ledgers from existing gate-decision evidence without overwriting by default. |
 | `baseline/diff` | blocked | Add `ripr baseline diff` to write baseline-debt-delta JSON/Markdown with still-present, resolved, new, acknowledged, suppressed, stale, invalid, and missing-input buckets. |
 | `baseline/update-remove-resolved` | blocked | Add `ripr baseline update --remove-resolved` as a shrink-only refresh path that refuses to auto-adopt new debt by default. |
 | `ci/baseline-debt-delta-artifacts` | blocked | Upload baseline debt delta JSON/Markdown from generated CI and summarize debt movement without making this report the pass/fail authority. |
