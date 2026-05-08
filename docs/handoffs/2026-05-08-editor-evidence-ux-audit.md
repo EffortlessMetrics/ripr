@@ -27,7 +27,7 @@ diagnostic -> evidence hover -> related test -> context packet
 | --- | --- | --- |
 | Diagnostic carries stable seam identity | `crates/ripr/src/lsp/diagnostics.rs` emits seam diagnostics with `data.seam_id`; boundary-gap pins the same seam in LSP diagnostics and agent packet fixtures. | Covered |
 | Hover reads analysis state, not message text | `crates/ripr/src/lsp/hover.rs` resolves through latest analysis state and renders from `ClassifiedSeam`. | Covered |
-| Hover explains next useful test context | Existing hover includes grip class, stage path, missing discriminator, related tests, and next step. | Needs hardening |
+| Hover explains next useful test context | Hover includes grip class, stage path, missing discriminator, related test locations, suggested test shape, packet and brief handoff commands, verify and receipt commands, static limits, and next step. | Covered by hover hardening |
 | Actions are command-oriented and evidence-aware | LSP and VS Code actions expose packet, brief, assertion, related-test, after-snapshot, verify, receipt, and refresh paths. | Needs conditional audit in behavior PR |
 | Context packet exists | `ripr.collectContext` can return an agent seam packet for a selected `seam_id`. | Needs canonical evidence packet |
 | VS Code path is tested | Current tests cover registration, handlers, LSP-first context, related-test opening, malformed args, and restart behavior. | Needs live server smoke |
@@ -37,17 +37,15 @@ diagnostic -> evidence hover -> related test -> context packet
 
 ## Next Lane 3 Work Item
 
-`lsp/evidence-hover-hardening`
+`lsp/evidence-aware-actions`
 
 This is the next Editor Evidence UX behavior item when the lane is explicitly
 activated or explicitly run in parallel. It is not the active machine-readable
 `goals next` item while Campaign 17 remains active.
 
-Make hover the primary human explanation surface. It should show, when
-available, seam class, configured status, evidence path, missing observation,
-related test, oracle strength, suggested assertion shape, verify command,
-receipt command, and static limits. It should resolve from `diagnostic.data` to
-the latest analysis state and fall back cleanly when the evidence is incomplete.
+Tighten action visibility and payload validation so every shown action has
+usable supporting evidence or command context, malformed arguments fail closed,
+and no editor action edits source, generates tests, or claims runtime proof.
 
 ## Verification Run
 

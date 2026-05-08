@@ -335,6 +335,20 @@ Weak / missing evidence:
 - discrimination weak: equality boundary missing
 - missing discriminator `discount_threshold (equality boundary)`: observed values do not include the equality-boundary case
 
+## Suggested test shape
+- file: `tests/pricing.rs`
+- name: `discounted_total_boundary_discriminator`
+- assertion shape: assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)
+
+## Handoff, verify, and receipt commands
+- packet: `ripr agent packet --root . --seam-id <seam-id> --json > target/ripr/agent/agent-packet.json`
+- brief: `ripr agent brief --root . --seam-id <seam-id> --json > target/ripr/agent/agent-brief.json`
+- verify: `ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > target/ripr/agent/agent-verify.json`
+- receipt: `ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id <seam-id> --json --out target/ripr/agent/agent-receipt.json`
+
+## Limits
+- Static evidence only; this hover does not run mutation testing or prove runtime adequacy.
+
 Recommended next move: Add an exact-value assertion for the equality boundary.
 ```
 

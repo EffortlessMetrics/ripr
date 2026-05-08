@@ -147,8 +147,9 @@ Adoption: RIPR-SPEC-0016 now defines the baseline debt delta contract, and
 existing gate-decision evidence before baseline diff, shrink-only update, and
 generated CI debt-delta artifacts. Editor Evidence UX remains queued as a
 separate Lane 3 campaign; its contract audit is recorded in
-[Editor Evidence UX](EDITOR_EVIDENCE_UX.md), but behavior work should start
-only after an explicit activation PR or explicit parallel-lane decision.
+[Editor Evidence UX](EDITOR_EVIDENCE_UX.md), and hover hardening has landed as
+an explicit parallel slice. Further behavior work should start only after an
+explicit activation PR or explicit parallel-lane decision.
 
 ## Strategic Sequence
 

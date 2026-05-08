@@ -3432,6 +3432,14 @@ parsing severity. The `data` field carries `seam_id` so seam-evidence
 hover (`lsp/seam-evidence-hover-v1`) can look up the same record from
 `inventory_classified_seams_at`.
 
+Seam evidence hover renders from that same `ClassifiedSeam` record, not from
+diagnostic message text. For actionable seams it includes the grip class,
+RIPR evidence path, observed values, missing discriminator, related test
+location, suggested test shape, packet and brief handoff command strings,
+verify and receipt command strings, static evidence limits, and per-kind next
+step when those fields are available. The hover does not run mutation testing,
+edit source, generate tests, or claim runtime adequacy.
+
 The diagnostic range is currently a **full-line placeholder**: seams
 do not yet carry a column, so the range spans `(line, 0)` →
 `(line, MAX_DIAGNOSTIC_RANGE_WIDTH)`. Editors render this as a
