@@ -33,7 +33,7 @@ services, change SARIF or badge schemas, or split the public crate surface.
 | Blocking requires explicit policy mode | #560 pinned `visible-only`, `acknowledgeable`, `baseline-check`, and `calibrated-gate` modes; `visible-only` remains non-blocking for RIPR evidence, while blocking reports are written before non-zero exit. |
 | Waiver labels stay visible | `ripr-waive` is the default acknowledgement label; `fixtures/boundary_gap/expected/calibrated-gate/acknowledged-waiver/` pins an `acknowledged` top-level decision and visible per-candidate reason instead of a silent skip. |
 | Fixtures pin the decision matrix | #561 added `fixtures/boundary_gap/expected/calibrated-gate/` for visible-only advisory, acknowledged waiver, baseline-check existing gap, calibrated high-confidence new gap, summary/suppressed candidates, missing input, and calibration disagreement. |
-| Generated CI is opt-in and evidence-preserving | #563 wired generated GitHub workflows to run `ripr gate evaluate` only when `RIPR_GATE_MODE` is configured; #564 kept report, SARIF, badge, and gate artifacts uploaded with `always()` behavior even when explicit gate modes fail. |
+| Generated CI is opt-in and evidence-preserving | Direct commit `dceb291` wired generated GitHub workflows to run `ripr gate evaluate` only when `RIPR_GATE_MODE` is configured; #564 kept report, SARIF, badge, and gate artifacts uploaded with `always()` behavior even when explicit gate modes fail. |
 | Documentation explains operation and boundaries | #566 added `docs/CALIBRATED_GATE_POLICY.md`, updated README/CI/PR guidance/recommendation calibration references, and aligned examples with SARIF policy inputs. |
 | Static/runtime vocabulary stays separate | RIPR-SPEC-0014, `docs/CALIBRATED_GATE_POLICY.md`, fixture `limits_note` fields, and `cargo xtask check-static-language` keep runtime mutation language confined to imported calibration context. |
 
@@ -43,7 +43,7 @@ services, change SARIF or badge schemas, or split the public crate surface.
 - #559 `spec: define calibrated gate policy`
 - #560 `gate: add calibrated policy evaluator`
 - #561 `fixtures: pin calibrated gate cases`
-- #563 `ci: wire optional generated gate decision`
+- `dceb291` `ci: wire optional generated gate decision`
 - #564 `ci: preserve gate evidence uploads`
 - #566 `docs: add calibrated gate policy guide`
 - `campaign/calibrated-gate-closeout`

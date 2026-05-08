@@ -1775,8 +1775,8 @@ Campaign 15 is complete. Landed PR chain:
 - #559 pinned RIPR-SPEC-0014 and the gate decision schema contract.
 - #560 added the read-only `ripr gate evaluate` producer.
 - #561 pinned the calibrated-gate fixture matrix.
-- #563 wired generated GitHub workflows to run the gate only when explicitly
-  configured.
+- Direct commit `dceb291` wired generated GitHub workflows to run the gate only
+  when explicitly configured.
 - #564 preserved evidence uploads when explicit gate modes fail.
 - #566 added the calibrated gate policy guide and aligned docs with SARIF
   policy inputs.
