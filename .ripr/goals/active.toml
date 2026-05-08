@@ -27,7 +27,6 @@ id = "campaign/recommendation-calibration-audit"
 status = "done"
 branch = "campaign-recommendation-calibration"
 stackable = false
-requires_human_merge = false
 acceptance = "Audit the post-Campaign-13 product objective, identify recommendation quality as the next trust layer before policy gates, and open Campaign 14 with the calibration report spec as the next ready item"
 commands = [
   "cargo xtask check-campaign",
@@ -45,7 +44,6 @@ id = "spec/recommendation-calibration-report"
 status = "done"
 branch = "spec-recommendation-calibration-report"
 stackable = false
-requires_human_merge = false
 blocked_by = ["campaign/recommendation-calibration-audit"]
 acceptance = "Define the recommendation calibration report contract, including inputs, output schema, top recommendation usefulness metrics, false annotation tracking, summary-only correctness, suppression correctness, target-file correctness, latency fields, advisory posture, and non-goals"
 commands = [
@@ -64,7 +62,6 @@ id = "fixtures/pr-guidance-calibration-corpus"
 status = "done"
 branch = "fixtures-pr-guidance-calibration-corpus"
 stackable = false
-requires_human_merge = false
 blocked_by = ["spec/recommendation-calibration-report"]
 acceptance = "Add PR-shaped calibration cases for useful recommendation, noisy recommendation, wrong-line placement, already-covered seam, correct summary-only fallback, suppression correctness, generated/migration exclusion, macro-heavy code, trait/generic boundary, and async/error boundary"
 commands = [
@@ -80,7 +77,6 @@ id = "review-feedback/outcome-receipts"
 status = "done"
 branch = "review-feedback-outcome-receipts"
 stackable = false
-requires_human_merge = false
 blocked_by = ["spec/recommendation-calibration-report"]
 acceptance = "Add a lightweight review guidance outcome receipt schema for useful, noisy, wrong-line, already-covered, wrong-target, summary-only-correct, and suppressed-correctly outcomes without telemetry or external services"
 commands = [
@@ -96,7 +92,6 @@ id = "report/recommendation-precision"
 status = "ready"
 branch = "report-recommendation-precision"
 stackable = false
-requires_human_merge = false
 blocked_by = [
   "spec/recommendation-calibration-report",
   "fixtures/pr-guidance-calibration-corpus",
@@ -117,7 +112,6 @@ id = "docs/calibration-workflow"
 status = "blocked"
 branch = "docs-calibration-workflow"
 stackable = false
-requires_human_merge = false
 blocked_by = [
   "spec/recommendation-calibration-report",
   "report/recommendation-precision"
@@ -135,7 +129,6 @@ id = "campaign/recommendation-calibration-closeout"
 status = "blocked"
 branch = "campaign-recommendation-calibration-closeout"
 stackable = false
-requires_human_merge = false
 blocked_by = [
   "spec/recommendation-calibration-report",
   "fixtures/pr-guidance-calibration-corpus",

@@ -206,22 +206,25 @@ explicit in PRs and planning docs.
 
 ## Commit, PR, and Merge Boundary
 
-Do not interpret `requires_human_merge = true` as "do not commit" or "do not
-push." It means the PR needs explicit review evidence before merge; it is not a
-handoff boundary that prevents Codex from reviewing, improving, or merging the
-PR when the user has authorized that lane.
+Do not pause merely to commit, push, open a PR, update a PR, or merge a clean
+PR.
 
 For scoped implementation, docs, tests, and refactors, use this default flow:
 
 ```text
-implement -> validate -> commit -> push -> open or update PR -> review -> improve -> merge when authorized
+review -> improve -> validate -> commit -> push -> open/update PR -> merge when ready
 ```
 
-Agents should commit and push scoped work after validation, then open or update
-the PR with a review map, validation evidence, non-goals, and known gaps. When
-`requires_human_merge = true`, treat the merge decision as requiring an explicit
-review record, clean hosted checks, and clear user authorization for the lane,
-not a requirement to wait for a different operator.
+A PR is ready when the branch is current, required checks pass, real review
+findings are addressed, the diff matches the stated scope, and repo policy does
+not require a different sequence.
+
+`stackable = false` means do not build the next dependent work item on top of
+the current branch. It does not create an approval gate.
+
+`blocked_by` is a dependency rule. If a work item depends on another item, wait
+until that dependency is landed or explicitly update the manifest. Do not invent
+a separate merge rule.
 
 Ask before proceeding only when continuing would change public schema, output
 contracts, security/workflows/secrets, dependencies, release or publish

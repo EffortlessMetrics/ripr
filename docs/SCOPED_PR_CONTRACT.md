@@ -109,13 +109,15 @@ the package may include:
 Large evidence diffs are welcome when they make one narrow production delta
 reviewable.
 
-## Review Boundary
+## PR Completion Boundary
 
-Humans review and merge scoped PRs. Codex Goals may continue to another work
-item only when the next item is independent or explicitly stackable.
+Scoped PRs should be reviewed, repaired, validated, merged, and verified before
+starting a dependent non-stackable work item. Codex Goals may continue to
+another work item only when the next item is independent, explicitly stackable,
+or the prerequisite PR has landed.
 
 For non-stackable work, the safe boundary is:
 
 ```text
-open PR -> generate reports -> wait for human review/merge
+open PR -> generate reports -> repair review findings -> validate -> merge -> verify main
 ```

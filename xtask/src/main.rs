@@ -111,7 +111,6 @@ struct CampaignWorkItem {
     status: Option<String>,
     branch: Option<String>,
     stackable: Option<bool>,
-    requires_human_merge: Option<bool>,
     acceptance: Option<String>,
     commands: Vec<String>,
     blocked_by: Vec<String>,
@@ -10095,7 +10094,7 @@ fn goals(args: &[String]) -> Result<(), String> {
 }
 
 fn check_campaign() -> Result<(), String> {
-    let mut violations = Vec::new();
+    let mut violations = deprecated_goal_field_violations()?;
     let manifest_path = Path::new(".ripr/goals/active.toml");
     if !manifest_path.exists() {
         violations.push(".ripr/goals/active.toml is missing".to_string());
@@ -10111,7 +10110,8 @@ fn check_campaign() -> Result<(), String> {
 fn goals_status() -> Result<(), String> {
     let manifest_path = Path::new(".ripr/goals/active.toml");
     let (manifest, parse_violations) = parse_campaign_manifest(manifest_path)?;
-    let mut violations = parse_violations;
+    let mut violations = deprecated_goal_field_violations()?;
+    violations.extend(parse_violations);
     validate_campaign_manifest(&manifest, &mut violations)?;
     let body = campaign_status_report_body(&manifest, &violations);
     write_report("goals.md", &body)?;
@@ -10129,7 +10129,8 @@ fn goals_status() -> Result<(), String> {
 fn goals_next() -> Result<(), String> {
     let manifest_path = Path::new(".ripr/goals/active.toml");
     let (manifest, parse_violations) = parse_campaign_manifest(manifest_path)?;
-    let mut violations = parse_violations;
+    let mut violations = deprecated_goal_field_violations()?;
+    violations.extend(parse_violations);
     validate_campaign_manifest(&manifest, &mut violations)?;
     let body = campaign_next_report_body(&manifest, &violations);
     write_report("goals-next.md", &body)?;
@@ -10162,6 +10163,58 @@ fn finish_campaign_report(violations: &[String]) -> Result<(), String> {
         },
         violations,
     )
+}
+
+fn deprecated_goal_field_violations() -> Result<Vec<String>, String> {
+    let files = tracked_files()?;
+    deprecated_goal_field_violations_for_root(Path::new("."), &files)
+}
+
+fn deprecated_goal_field_violations_for_root(
+    root: &Path,
+    files: &[String],
+) -> Result<Vec<String>, String> {
+    let mut entries = Vec::new();
+    for path in files {
+        if !is_deprecated_goal_field_scan_target(path) {
+            continue;
+        }
+        let text = read_text_lossy(&root.join(path))?;
+        entries.push((path.clone(), text));
+    }
+    Ok(deprecated_goal_field_violations_for_entries(
+        entries
+            .iter()
+            .map(|(path, text)| (path.as_str(), text.as_str())),
+    ))
+}
+
+fn deprecated_goal_field_violations_for_entries<'a>(
+    entries: impl IntoIterator<Item = (&'a str, &'a str)>,
+) -> Vec<String> {
+    let field = deprecated_goal_field_name();
+    let mut violations = Vec::new();
+    for (path, text) in entries {
+        if !is_deprecated_goal_field_scan_target(path) {
+            continue;
+        }
+        if text.contains(&field) {
+            violations.push(format!(
+                "{path} contains deprecated campaign field `{field}`; use `stackable` and ordinary PR readiness instead"
+            ));
+        }
+    }
+    violations
+}
+
+fn deprecated_goal_field_name() -> String {
+    ["requires", "human", "merge"].join("_")
+}
+
+fn is_deprecated_goal_field_scan_target(path: &str) -> bool {
+    (path.starts_with(".ripr/goals/") && path.ends_with(".toml"))
+        || path == "AGENTS.md"
+        || (path.starts_with("docs/") && (path.ends_with(".md") || path.ends_with(".toml")))
 }
 
 fn validate_campaign_manifest(
@@ -10249,9 +10302,6 @@ fn validate_campaign_manifest(
         }
         if item.stackable.is_none() {
             violations.push(format!("{item_id} is missing `stackable`"));
-        }
-        if item.requires_human_merge.is_none() {
-            violations.push(format!("{item_id} is missing `requires_human_merge`"));
         }
         if item
             .acceptance
@@ -10558,9 +10608,6 @@ fn assign_campaign_scalar(
                 });
             }
             "stackable" => item.stackable = parse_campaign_bool(value, line_number, violations),
-            "requires_human_merge" => {
-                item.requires_human_merge = parse_campaign_bool(value, line_number, violations);
-            }
             _ => violations.push(format!(
                 "campaign manifest line {line_number} uses unsupported work_item field `{key}`"
             )),
@@ -16042,10 +16089,10 @@ mod tests {
         extract_workflow_run_blocks, first_line_difference, forbidden_panic_patterns, glob_matches,
         golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
         guarded_allow_attributes_in_text, install_hooks_in, is_bdd_test_name,
-        is_dependency_surface_candidate, is_evidence_path, is_generated_candidate,
-        is_known_campaign_command, is_policy_path, is_production_path, is_receipt_status,
-        is_ripr_managed_hook, is_snake_case_id, is_spec_id, json_escape, json_number_after,
-        json_string_values_for_key, known_commands, known_xtask_command,
+        is_dependency_surface_candidate, is_deprecated_goal_field_scan_target, is_evidence_path,
+        is_generated_candidate, is_known_campaign_command, is_policy_path, is_production_path,
+        is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id, json_escape,
+        json_number_after, json_string_values_for_key, known_commands, known_xtask_command,
         local_context_line_findings, local_markdown_target, lsp_cockpit_report,
         lsp_cockpit_report_json, lsp_cockpit_report_markdown, markdown_links_in_text,
         mutation_calibration_report_json, mutation_calibration_report_markdown,
@@ -16087,6 +16134,10 @@ mod tests {
     use super::{
         active_yaml_lines, check_droid_action_refs, check_droid_common,
         check_droid_security_scan_config, forbids_active_line, has_active_line, strip_yaml_comment,
+    };
+    use super::{
+        deprecated_goal_field_name, deprecated_goal_field_violations_for_entries,
+        deprecated_goal_field_violations_for_root,
     };
     use serde_json::Value;
     use std::collections::{BTreeMap, BTreeSet};
@@ -18488,7 +18539,6 @@ id = "fixtures/first-two-goldens"
 status = "ready"
 branch = "fixtures/first-two-goldens"
 stackable = false
-requires_human_merge = false
 acceptance = "fixtures pass"
 commands = [
   "cargo xtask fixtures",
@@ -20699,7 +20749,6 @@ status = "in_progress"
 id = "item-1"
 status = "ready"
 stackable = true
-requires_human_merge = false
 "#,
             );
             let result = parse_campaign_manifest(&manifest_path);
@@ -20711,6 +20760,79 @@ requires_human_merge = false
             assert_eq!(manifest.work_items.len(), 1);
             assert_eq!(manifest.work_items[0].id, Some("item-1".to_string()));
         });
+    }
+
+    #[test]
+    fn deprecated_goal_field_guard_targets_goal_manifests_and_agent_docs() {
+        assert!(is_deprecated_goal_field_scan_target(
+            ".ripr/goals/active.toml"
+        ));
+        assert!(is_deprecated_goal_field_scan_target(
+            ".ripr/goals/modularization.toml"
+        ));
+        assert!(is_deprecated_goal_field_scan_target("AGENTS.md"));
+        assert!(is_deprecated_goal_field_scan_target(
+            "docs/how-to/run-codex-goals.md"
+        ));
+        assert!(is_deprecated_goal_field_scan_target(
+            "docs/example-policy.toml"
+        ));
+
+        assert!(!is_deprecated_goal_field_scan_target("README.md"));
+        assert!(!is_deprecated_goal_field_scan_target("xtask/src/main.rs"));
+        assert!(!is_deprecated_goal_field_scan_target(
+            ".ripr/release/history.toml"
+        ));
+    }
+
+    #[test]
+    fn deprecated_goal_field_guard_reports_deprecated_entries() {
+        let field = deprecated_goal_field_name();
+        assert_eq!(field, ["requires", "human", "merge"].join("_"));
+        let bad_text = format!("{field} = false");
+        let clean_text = "stackable = false";
+        let violations = deprecated_goal_field_violations_for_entries([
+            ("AGENTS.md", bad_text.as_str()),
+            (".ripr/goals/active.toml", bad_text.as_str()),
+            ("README.md", bad_text.as_str()),
+            ("docs/agent.md", clean_text),
+        ]);
+
+        assert_eq!(violations.len(), 2);
+        assert!(
+            violations
+                .iter()
+                .any(|message| message.contains("AGENTS.md"))
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|message| message.contains(".ripr/goals/active.toml"))
+        );
+    }
+
+    #[test]
+    fn deprecated_goal_field_guard_reads_scoped_files_from_root()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let root = temp_dir("deprecated-goal-field");
+        let field = deprecated_goal_field_name();
+        write(&root.join("AGENTS.md"), &format!("{field} = false"));
+        write(&root.join("docs/agent.md"), "stackable = false");
+        write(&root.join("README.md"), &format!("{field} = false"));
+        write(&root.join(".ripr/goals/active.toml"), "stackable = false");
+
+        let files = vec![
+            "AGENTS.md".to_string(),
+            "docs/agent.md".to_string(),
+            "README.md".to_string(),
+            ".ripr/goals/active.toml".to_string(),
+        ];
+        let violations = deprecated_goal_field_violations_for_root(&root, &files)?;
+        let _ = fs::remove_dir_all(root);
+
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].contains("AGENTS.md"));
+        Ok(())
     }
 
     #[test]

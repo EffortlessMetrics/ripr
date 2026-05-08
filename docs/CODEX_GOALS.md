@@ -73,12 +73,18 @@ Codex Goals runs should use repository artifacts instead of chat history:
 A Codex goal may create multiple scoped PRs in one run only when the work items
 are independent or explicitly marked stackable.
 
-If a work item requires review or merge before the next item can safely be based
-on `main`, Codex should open the PR, write a campaign handoff, and stop or move
-only to an independent item.
+If a non-stackable work item must land before the next item can safely be based
+on `main`, Codex should finish the current PR first: open or update it, repair
+review findings, validate it, merge it when ready, verify `main`, and then move
+to the next item.
 
 Do not silently build multiple dependent PRs on an unmerged branch unless the
 campaign manifest marks those work items as stackable.
+
+Goal manifests do not carry a special merge-permission field. Merge readiness
+comes from ordinary repo policy: branch protection, required checks, draft
+state, review comments, current operator direction, scope/risk, and whether the
+PR's issues have been reviewed and addressed.
 
 ## Stop Conditions
 
@@ -93,7 +99,7 @@ Stop for:
 - schema or public output contract changes without explicit scope
 - golden blessing decisions
 - credential, publish, or marketplace decisions
-- merge/review boundaries for non-stackable work items
+- non-stackable dependency boundaries for dependent work items
 - missing acceptance evidence that cannot be produced within the work item
 
 Blocked reports should be written to:
