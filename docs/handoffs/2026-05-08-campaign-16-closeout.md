@@ -77,9 +77,10 @@ layout, waiver/baseline visibility, and repair paths. It should not redefine
 analyzer semantics, gate policy semantics, LSP behavior, mutation execution, or
 default blocking.
 
-Editor Evidence UX remains queued as a separate Lane 3 option, not active.
-Start it only with an explicit campaign activation PR or a clear parallel-lane
-decision; the first queued item is `campaign/editor-evidence-ux-audit`.
+The campaign should stay in Lane 4: PR summaries, CI projection, artifact
+layout, waiver/baseline visibility, and repair paths. It should not redefine
+analyzer semantics, gate policy semantics, LSP behavior, mutation execution, or
+default blocking.
 
 ## What Not To Do
 
