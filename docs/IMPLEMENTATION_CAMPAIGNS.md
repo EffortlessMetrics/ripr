@@ -1559,8 +1559,9 @@ Closeout:
 
 Next:
 
-- No Campaign 14 is open yet. Choose the next product campaign explicitly from
-  current user feedback and release needs before adding new behavior.
+- Campaign 14 is now the Calibrated Gate Policy lane. It starts with a spec
+  before any evaluator or generated workflow wiring so visibility and blocking
+  stay separated.
 
 Dependencies:
 
@@ -1589,4 +1590,97 @@ Blocking conditions:
 - default CI blocking
 - inline PR review comments without explicit opt-in
 - comments placed on unrelated unchanged lines
+- new public crates
+
+## Campaign 14: Calibrated Gate Policy
+
+Campaign ID: `calibrated-gate-policy`
+
+Status: active
+
+Campaigns 11 through 13 made the source-edit-free evidence loop visible to
+humans, CI, editors, and agents: selected seam -> brief/packet -> focused test
+-> after snapshot -> verify/receipt -> PR guidance. The remaining mature-loop
+gap is the optional gate. It must be explicit policy over existing evidence,
+not a hidden escalation from advisory comments to blocking CI.
+
+Objective:
+
+```text
+Define the optional calibrated gate layer for PR-time test-oracle evidence:
+separate visibility from blocking, fail only under explicit policy, preserve
+waiver/acknowledgement paths, and use runtime mutation calibration only as
+imported confidence evidence.
+```
+
+Why it matters:
+
+RIPR now gives reviewers a compact PR-facing test-oracle gap packet, but
+visibility alone does not answer every repository policy question. Some teams
+will want to block only on narrow, high-confidence new gaps; others will want
+acknowledgeable warnings or baseline checks. Campaign 14 should define that
+policy layer without weakening the default advisory posture and without
+confusing static RIPR evidence with runtime mutation proof.
+
+End state:
+
+- RIPR-SPEC-0013 defines gate inputs, outputs, modes, acknowledgement labels,
+  calibration evidence, and non-goals before implementation
+- a read-only gate evaluator consumes existing PR guidance, repo exposure,
+  SARIF policy, suppressions, labels, and optional mutation calibration reports
+- default generated workflows remain advisory and non-blocking unless an
+  explicit gate mode is configured
+- blocking decisions are deterministic, narrow, auditable, and limited to
+  calibrated high-confidence new gaps
+- waiver labels such as `ripr-waive` produce visible acknowledged outcomes,
+  not silent success
+- fixtures pin advisory, acknowledged, fail-on-new-high-confidence-gap,
+  baseline-check, suppression, and calibration agreement/disagreement cases
+- docs explain visibility versus gating and keep static evidence vocabulary
+  separate from runtime mutation outcomes
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `campaign/calibrated-gate-audit` | done | Audited the PR-time test-oracle gap objective after Campaign 13. The evidence and PR guidance loop is real, but the optional calibrated gate layer is not specified as an active campaign. |
+| `spec/calibrated-gate-policy` | ready | Pin RIPR-SPEC-0013 for optional calibrated gates, including modes, inputs, outputs, acknowledgement labels, runtime calibration boundaries, default advisory posture, and non-goals. |
+| `gate/policy-evaluator` | blocked | Add a read-only gate evaluator that writes gate-decision JSON/Markdown from existing evidence and explicit policy without posting comments, editing source, running mutation tests, or changing generated workflow defaults. |
+| `fixtures/calibrated-gate-cases` | blocked | Pin gate fixtures for advisory, acknowledged, baseline-check, fail-on-new-high-confidence-gap, suppression, missing-input, and mutation-calibration agreement/disagreement cases. |
+| `ci/generated-gate-wiring` | blocked | Wire generated GitHub workflows to optionally run the gate evaluator only when explicitly configured, preserving advisory defaults and surfacing acknowledged or blocking decisions in summaries. |
+| `docs/calibrated-gate-policy` | blocked | Document calibrated gates as optional policy over existing static evidence, including modes, waiver labels, CI behavior, calibration evidence, and static/runtime vocabulary boundaries. |
+| `campaign/calibrated-gate-closeout` | blocked | Close only after optional calibrated gates are specified, evaluated, fixture-pinned, optionally wired into generated CI, documented, and still advisory by default. |
+
+Dependencies:
+
+- Campaign 13 PR guidance remains the visibility surface. Gates consume it;
+  they do not replace it.
+- Campaign 5A/8 mutation calibration remains supplied-data calibration. Gates
+  may import calibration artifacts, but RIPR must not run mutation testing.
+- Campaign 5B SARIF policy remains a related advisory policy surface; gate
+  decisions need their own explicit output contract.
+- The `ripr-waive` label remains an acknowledgement path, not a hidden
+  suppression.
+
+Commands:
+
+```bash
+cargo xtask check-campaign
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-pr
+```
+
+Blocking conditions:
+
+- default CI blocking
+- broad "fail on any RIPR finding" policy
+- runtime mutation vocabulary in static gate decisions
+- running cargo-mutants or any mutation engine from the gate
+- hiding acknowledged or waived gaps from summaries
+- treating PR-body validation claims as observed evidence
+- posting inline comments as part of the gate evaluator
+- automatic source edits or generated tests
 - new public crates

@@ -1,37 +1,55 @@
-id = "pr-review-guidance"
-title = "PR Review Guidance"
+id = "calibrated-gate-policy"
+title = "Calibrated Gate Policy"
 status = "active"
 
-# This is Campaign 13 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
-# Campaign 12 closed the First-Hour UX lane after the editor and generated CI
-# first screens became useful without report archaeology.
+# This is Campaign 14 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+# Campaign 13 closed PR Review Guidance after static evidence became visible in
+# generated CI summaries, check annotations, fixtures, and docs while staying
+# advisory/non-blocking by default.
 
 objective = """
-Project the existing static evidence loop into bounded pull-request review
-guidance: changed seam -> focused test intent -> verification command -> review
-artifact, without turning RIPR into a free-form reviewer or CI blocker.
+Define the optional calibrated gate layer for PR-time test-oracle evidence:
+separate visibility from blocking, fail only under explicit policy, preserve
+waiver/acknowledgement paths, and use runtime mutation calibration only as
+imported confidence evidence.
 """
 
 end_state = [
-  "ripr review-comments writes target/ripr/review/comments.json and comments.md as read-only advisory reports",
-  "review guidance only places line annotations on changed lines and falls back to summary-only recommendations otherwise",
-  "guidance is capped, deterministic, deduplicated, and rooted in existing repo exposure, agent packet, agent brief, related-test, severity, and suppression evidence",
-  "generated GitHub workflows run the report producer before consuming target/ripr/review/comments.json for summaries and check annotations",
-  "inline PR comments remain opt-in and are not posted by default",
-  "fixtures pin exact-line, owner-function-line, same-file-line, summary-only, capped, suppressed, and changed-test skip cases",
-  "docs explain PR guidance as advisory static evidence, not LLM review, runtime mutation proof, automatic edits, generated tests, or default CI blocking"
+  "RIPR-SPEC-0013 defines gate inputs, outputs, modes, acknowledgement labels, calibration evidence, and non-goals before implementation",
+  "a read-only gate evaluator consumes existing PR guidance, repo exposure, SARIF policy, suppressions, labels, and optional mutation calibration reports",
+  "default generated workflows remain advisory and non-blocking unless an explicit gate mode is configured",
+  "blocking decisions are deterministic, narrow, auditable, and limited to calibrated high-confidence new gaps",
+  "waiver labels such as ripr-waive produce visible acknowledged outcomes, not silent success",
+  "fixtures pin advisory, acknowledged, fail-on-new-high-confidence-gap, baseline-check, suppression, and calibration agreement/disagreement cases",
+  "docs explain visibility versus gating and keep static evidence vocabulary separate from runtime mutation outcomes"
 ]
 
 [[work_item]]
-id = "campaign/pr-review-guidance-audit"
+id = "campaign/calibrated-gate-audit"
 status = "done"
-branch = "campaign-pr-review-guidance-audit"
+branch = "campaign-calibrated-gates"
 stackable = false
 requires_human_merge = true
-acceptance = "Audit the long-term static-evidence control-plane objective against current artifacts, identify the missing PR review producer, and open Campaign 13 with the renderer as the next ready item"
+acceptance = "Audit the PR-time test-oracle gap objective after Campaign 13, identify calibrated gating as the next missing layer, and open Campaign 14 with the spec as the next ready item"
 commands = [
   "cargo xtask check-campaign",
   "cargo xtask goals next",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "spec/calibrated-gate-policy"
+status = "ready"
+branch = "spec-calibrated-gate-policy"
+stackable = false
+requires_human_merge = true
+blocked_by = ["campaign/calibrated-gate-audit"]
+acceptance = "Pin RIPR-SPEC-0013 for optional calibrated gates, including modes, inputs, outputs, acknowledgement labels, runtime calibration boundaries, default advisory posture, and non-goals"
+commands = [
+  "cargo xtask check-spec-format",
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
   "cargo xtask check-static-language",
@@ -40,15 +58,15 @@ commands = [
 ]
 
 [[work_item]]
-id = "review/pr-guidance-renderer"
-status = "done"
-branch = "review-pr-guidance-renderer"
+id = "gate/policy-evaluator"
+status = "blocked"
+branch = "gate-policy-evaluator"
 stackable = false
 requires_human_merge = true
-blocked_by = ["campaign/pr-review-guidance-audit"]
-acceptance = "Add read-only `ripr review-comments --root . --base <sha> --head <sha> --out target/ripr/review/comments.json` plus Markdown output, joining existing static evidence to produce bounded PR guidance without posting to GitHub or changing analyzer behavior"
+blocked_by = ["spec/calibrated-gate-policy"]
+acceptance = "Add a read-only gate evaluator that writes gate-decision JSON/Markdown from existing evidence and explicit policy without posting comments, editing source, running mutation tests, or changing generated workflow defaults"
 commands = [
-  "cargo test -p ripr review_comments",
+  "cargo test -p ripr gate",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-traceability",
@@ -57,29 +75,13 @@ commands = [
 ]
 
 [[work_item]]
-id = "ci/run-pr-guidance-report"
-status = "done"
-branch = "ci-run-pr-guidance-report"
+id = "fixtures/calibrated-gate-cases"
+status = "blocked"
+branch = "fixtures-calibrated-gate-cases"
 stackable = false
 requires_human_merge = true
-blocked_by = ["review/pr-guidance-renderer"]
-acceptance = "Update generated GitHub workflows to run `ripr review-comments` before the existing advisory summary and check-annotation consumer steps, preserving non-blocking defaults"
-commands = [
-  "cargo test -p ripr init_generated_github_workflow_matches_smoke_fixture --lib",
-  "cargo xtask check-workflows",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr"
-]
-
-[[work_item]]
-id = "fixtures/pr-guidance-cases"
-status = "done"
-branch = "fixtures-pr-guidance-cases"
-stackable = false
-requires_human_merge = true
-blocked_by = ["ci/run-pr-guidance-report"]
-acceptance = "Pin PR guidance fixtures for exact changed seam line, owner-function changed line, same-file changed line, summary-only fallback, cap suppression, configured suppression, and nearby changed-test skip"
+blocked_by = ["gate/policy-evaluator"]
+acceptance = "Pin gate fixtures for advisory, acknowledged, baseline-check, fail-on-new-high-confidence-gap, suppression, missing-input, and mutation-calibration agreement/disagreement cases"
 commands = [
   "cargo xtask fixtures",
   "cargo xtask check-fixture-contracts",
@@ -89,17 +91,36 @@ commands = [
 ]
 
 [[work_item]]
-id = "docs/pr-review-guidance"
-status = "done"
-branch = "docs-pr-review-guidance"
+id = "ci/generated-gate-wiring"
+status = "blocked"
+branch = "ci-generated-gate-wiring"
 stackable = false
 requires_human_merge = true
 blocked_by = [
-  "review/pr-guidance-renderer",
-  "ci/run-pr-guidance-report",
-  "fixtures/pr-guidance-cases"
+  "gate/policy-evaluator",
+  "fixtures/calibrated-gate-cases"
 ]
-acceptance = "Document PR guidance as a bounded advisory projection of existing RIPR evidence, including commands, CI behavior, opt-in review-comment boundary, and no automatic edits or runtime mutation claims"
+acceptance = "Wire generated GitHub workflows to optionally run the gate evaluator only when explicitly configured, preserving advisory defaults and surfacing acknowledged or blocking decisions in summaries"
+commands = [
+  "cargo test -p ripr init_generated_github_workflow_matches_smoke_fixture --lib",
+  "cargo xtask check-workflows",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr"
+]
+
+[[work_item]]
+id = "docs/calibrated-gate-policy"
+status = "blocked"
+branch = "docs-calibrated-gate-policy"
+stackable = false
+requires_human_merge = true
+blocked_by = [
+  "spec/calibrated-gate-policy",
+  "gate/policy-evaluator",
+  "ci/generated-gate-wiring"
+]
+acceptance = "Document calibrated gates as optional policy over existing static evidence, including modes, waiver labels, CI behavior, calibration evidence, and static/runtime vocabulary boundaries"
 commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
@@ -108,18 +129,19 @@ commands = [
 ]
 
 [[work_item]]
-id = "campaign/pr-review-guidance-closeout"
-status = "done"
-branch = "campaign-pr-review-guidance-closeout"
+id = "campaign/calibrated-gate-closeout"
+status = "blocked"
+branch = "campaign-calibrated-gate-closeout"
 stackable = false
 requires_human_merge = true
 blocked_by = [
-  "review/pr-guidance-renderer",
-  "ci/run-pr-guidance-report",
-  "fixtures/pr-guidance-cases",
-  "docs/pr-review-guidance"
+  "spec/calibrated-gate-policy",
+  "gate/policy-evaluator",
+  "fixtures/calibrated-gate-cases",
+  "ci/generated-gate-wiring",
+  "docs/calibrated-gate-policy"
 ]
-acceptance = "Close Campaign 13 only after PR review guidance is produced, consumed by generated CI, fixture-pinned, documented, and still advisory/non-blocking by default"
+acceptance = "Close Campaign 14 only after optional calibrated gates are specified, evaluated, fixture-pinned, optionally wired into generated CI, documented, and still advisory by default"
 commands = [
   "cargo xtask check-campaign",
   "cargo xtask goals next",
