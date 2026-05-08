@@ -107,6 +107,10 @@ are scoped or reviewed.
 - Added gate waiver workflow docs for `ripr-waive`, including label setup,
   acknowledgeable-mode review steps, audit artifacts, and the boundary between
   PR-time waivers, durable suppressions, and baselines.
+- Added gate baseline workflow docs for creating, reviewing, and refreshing
+  `.ripr/gate-baseline.json` as a visible historical-debt ledger rather than a
+  suppression file, with RIPR 0 framed as a configured-scope burn-down target
+  and `baseline-check` behavior documented for reviewed historical debt.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and PR guidance annotation counts before artifact

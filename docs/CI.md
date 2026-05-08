@@ -1129,6 +1129,151 @@ recommendation is correct and the PR is still changing the relevant behavior.
 Do not add a suppression just to make one PR pass; suppressions are durable
 repository policy and should carry owner, reason, and review intent.
 
+### Gate Baseline Workflow
+
+Use a gate baseline when a repository wants to adopt RIPR policy without
+punishing historical behavioral test debt on every pull request. A baseline is
+a checkpoint of visible existing findings. It is not a suppression file, not a
+waiver label, and not evidence that the finding is acceptable forever.
+
+The adoption model is:
+
+```text
+show the full RIPR picture
+-> checkpoint existing policy-eligible gaps as baseline debt
+-> block or acknowledge only new policy-eligible gaps
+-> add focused tests
+-> remove resolved identities from the baseline
+-> move toward RIPR 0 under the configured scope
+```
+
+`RIPR 0` means there are no visible unresolved behavioral test-grip gaps under
+the configured scope and policy. It does not mean the test suite is perfect or
+that RIPR has runtime mutation confirmation.
+
+Recommended baseline creation workflow:
+
+1. Run the generated workflow with `RIPR_GATE_MODE=visible-only`.
+2. Download or inspect `target/ripr/reports/gate-decision.json` and
+   `target/ripr/reports/gate-decision.md`.
+3. Review the visible recommendations. Do not baseline malformed inputs,
+   suppressed findings, configured-off findings, or items the team plans to fix
+   in the same adoption PR.
+4. Create `.ripr/gate-baseline.json` from reviewed current findings.
+5. Commit the baseline in its own PR with the generated CI mode still
+   `visible-only` or `baseline-check`.
+6. Switch to `RIPR_GATE_MODE=baseline-check` only after the baseline PR is
+   reviewed and merged.
+
+Minimal baseline shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "decisions": [
+    {
+      "seam_id": "8f7fa8644fd12280",
+      "source_id": "ripr-review-8f7fa8644fd12280"
+    }
+  ]
+}
+```
+
+For the first version, use the stable identities already present in
+`gate-decision.json`. This `jq` example checkpoints current advisory,
+acknowledged, and blocking decisions into a candidate file for review:
+
+```bash
+jq '{
+  schema_version: "0.1",
+  decisions: [
+    .decisions[]?
+    | select(.decision == "advisory" or .decision == "acknowledged" or .decision == "blocking")
+    | {seam_id, source_id}
+  ]
+}' target/ripr/reports/gate-decision.json > target/ripr/reports/gate-baseline.candidate.json
+```
+
+Review that candidate before copying it into `.ripr/gate-baseline.json`.
+Baselining everything blindly makes the file less useful as a debt ledger.
+
+`ripr gate evaluate` also accepts identities from `comments`, `summary_only`,
+and `suppressed` arrays when those fields are present in the baseline file. For
+each entry, it indexes `seam_id`, `id`, and `dedupe_key` when present. Keep the
+baseline small and reviewable; do not check in an uninspected copy of every PR
+guidance artifact.
+
+Baseline review checklist:
+
+- Every entry came from current `gate-decision.json` or PR guidance evidence.
+- The entry represents existing debt, not a finding introduced by the adoption
+  PR.
+- The finding remains visible in summaries or artifacts after being baselined.
+- The baseline PR explains the configured scope and why blocking is not enabled
+  yet, if the repo is still in `visible-only`.
+- The baseline PR explains the adoption date, reviewed artifact source, and
+  owner for future refreshes.
+- The baseline file is checked in at the same path configured by
+  `RIPR_GATE_BASELINE`.
+
+After the baseline PR is reviewed, set repository variables:
+
+```text
+RIPR_GATE_MODE=baseline-check
+RIPR_GATE_BASELINE=.ripr/gate-baseline.json
+```
+
+Expected behavior:
+
+```text
+Existing baseline identity: visible and non-blocking
+New policy-eligible identity: blocking in baseline-check
+Missing or invalid baseline: config_error
+```
+
+Refresh the baseline after focused tests move static evidence. The safe refresh
+rule is remove identities that no longer appear in current gate output; do not
+add new identities during a shrink refresh. New identities should go through the
+normal review path as new policy-eligible debt.
+
+Refresh workflow:
+
+1. Add one or more focused tests.
+2. Rerun PR guidance and gate evaluation.
+3. Confirm the agent receipt or targeted-test outcome shows the expected static
+   movement when those artifacts are available.
+4. Compare the old `.ripr/gate-baseline.json` to the new
+   `gate-decision.json`.
+5. Remove baseline entries that no longer appear.
+6. Keep the gate summary visible so reviewers can see which debt was removed.
+
+Policy modes with a baseline:
+
+| Mode | Baseline role |
+| --- | --- |
+| `visible-only` | Baseline is optional context; findings stay advisory. |
+| `baseline-check` | Existing baseline identities stay visible and non-blocking; new policy-eligible identities can block. |
+| `calibrated-gate` | Baseline identity must be new, policy-eligible, and supported by calibration before it can block. |
+
+Baseline, waiver, and suppression controls have different jobs:
+
+| Control | Good use | Bad use |
+| --- | --- | --- |
+| Baseline | Mark reviewed historical debt so stricter modes can focus on new gaps. | Add every new blocking finding to avoid fixing or acknowledging it. |
+| `ripr-waive` | Acknowledge a visible finding for one PR. | Make a recurring gap disappear across future PRs. |
+| `.ripr/suppressions.toml` | Record durable accepted debt or configured-off policy with owner and reason. | Replace baseline review or PR acknowledgement for convenience. |
+
+Do not use a baseline to hide new findings. Do not move an uncomfortable
+recommendation from a PR into the baseline without review. If the team accepts
+one PR-time exception, use `ripr-waive`; if the team accepts durable debt, use
+the baseline or a reasoned suppression depending on whether the finding should
+remain part of the burn-down ledger.
+
+When moving from `baseline-check` to `calibrated-gate`, keep the same baseline
+discipline. Calibration can raise confidence for new, matching candidates; it
+does not make stale baseline entries stronger or turn missing calibration into a
+blocking signal.
+
 The security workflow currently runs:
 
 ```bash

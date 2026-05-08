@@ -52,7 +52,7 @@ commands = [
 
 [[work_item]]
 id = "docs/gate-baseline-workflow"
-status = "ready"
+status = "done"
 branch = "docs-gate-baseline-workflow"
 stackable = false
 blocked_by = ["docs/gate-waiver-workflows"]
@@ -66,7 +66,7 @@ commands = [
 
 [[work_item]]
 id = "ci/gate-decision-summary-polish"
-status = "blocked"
+status = "ready"
 branch = "ci-gate-decision-summary-polish"
 stackable = false
 blocked_by = [

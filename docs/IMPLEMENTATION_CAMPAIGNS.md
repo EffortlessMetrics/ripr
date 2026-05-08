@@ -1881,8 +1881,8 @@ Work items:
 | --- | --- | --- |
 | `docs/gate-adoption-examples` | done | Added copyable generated-CI repository-variable examples for default advisory posture, `visible-only`, `acknowledgeable`, `baseline-check`, and `calibrated-gate` while preserving generated workflow defaults. |
 | `docs/gate-waiver-workflows` | done | Added sample `ripr-waive` label and reviewer workflows that keep acknowledged findings visible in gate decisions, auditable through `target/ci/labels.json`, and separate from durable suppressions. |
-| `docs/gate-baseline-workflow` | ready | Document baseline creation, review, and refresh guidance for baseline-check and calibrated-gate adoption without hiding existing debt. |
-| `ci/gate-decision-summary-polish` | blocked | Polish generated CI gate summaries so reviewers can see mode, status, waiver, baseline, calibration, blocking reason, and artifact paths without opening JSON. |
+| `docs/gate-baseline-workflow` | done | Added baseline creation, review, and refresh guidance that treats baselines as visible historical-debt ledgers, not suppressions, and ties shrink refreshes to focused-test evidence movement. |
+| `ci/gate-decision-summary-polish` | ready | Polish generated CI gate summaries so reviewers can see mode, status, waiver, baseline, calibration, blocking reason, and artifact paths without opening JSON. |
 | `dogfood/gate-adoption-receipts` | blocked | Add repo-local dogfood receipts that show visible-only, acknowledged, baseline-aware, and calibrated-gate decisions from RIPR's own evidence without making default CI blocking. |
 | `docs/blocking-readiness-guide` | blocked | Document when to keep gates advisory, when to require acknowledgement, and when calibrated blocking is mature enough for a team. |
 | `campaign/gate-adoption-ux-closeout` | blocked | Close Campaign 16 only after gate adoption docs, waiver workflows, baseline guidance, CI summary polish, dogfood receipts, and blocking-readiness guidance are complete while defaults stay advisory. |
@@ -1928,9 +1928,9 @@ Blocking conditions:
 
 Next:
 
-- `docs/gate-baseline-workflow` is the next ready item. Document baseline
-  creation and refresh as an adoption path for historical debt, not as a way to
-  hide new policy-eligible gaps.
+- `ci/gate-decision-summary-polish` is the next ready item. The first-screen CI
+  summary should show mode, status, waiver, baseline, calibration, blocking
+  reason, and artifact paths without requiring reviewers to open JSON.
 
 ## Future Campaign: Editor Evidence UX
 
