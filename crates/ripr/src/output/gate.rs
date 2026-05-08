@@ -1409,6 +1409,265 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn gate_mode_parse_covers_all_values_and_unknowns() {
+        assert_eq!(GateMode::parse("visible-only"), Ok(GateMode::VisibleOnly));
+        assert_eq!(
+            GateMode::parse("acknowledgeable"),
+            Ok(GateMode::Acknowledgeable)
+        );
+        assert_eq!(
+            GateMode::parse("baseline-check"),
+            Ok(GateMode::BaselineCheck)
+        );
+        assert_eq!(
+            GateMode::parse("calibrated-gate"),
+            Ok(GateMode::CalibratedGate)
+        );
+        assert_eq!(
+            GateMode::parse("hard"),
+            Err("unknown gate mode `hard`".to_string())
+        );
+    }
+
+    #[test]
+    fn gate_optional_inputs_emit_warnings_and_markdown_sections() -> Result<(), String> {
+        let dir = temp_dir("gate-optional-warnings")?;
+        let invalid = write_temp_json(&dir, "invalid.json", "{")?;
+        let mut input = fixture_input(GateMode::VisibleOnly);
+        input.root = dir.clone();
+        input.pr_guidance = write_temp_json(&dir, "comments.json", PR_GUIDANCE_JSON)?;
+        input.repo_exposure = Some(PathBuf::from("missing-repo.json"));
+        input.sarif_policy = Some(
+            invalid
+                .strip_prefix(&dir)
+                .map_err(|err| err.to_string())?
+                .to_path_buf(),
+        );
+        input.labels_json = Some(input.sarif_policy.clone().unwrap_or_default());
+        input.agent_verify = Some(PathBuf::from("missing-verify.json"));
+        input.agent_receipt = Some(input.sarif_policy.clone().unwrap_or_default());
+        input.recommendation_calibration = Some(PathBuf::from("missing-recommendation.json"));
+        input.mutation_calibration = Some(input.sarif_policy.clone().unwrap_or_default());
+        input.baseline = Some(input.sarif_policy.clone().unwrap_or_default());
+
+        let report = build_gate_decision_report(&input)?;
+        let mut warning_report = report.clone();
+        warning_report
+            .warnings
+            .push("manual | warning\nwith newline".to_string());
+        let markdown = render_gate_decision_markdown(&warning_report);
+
+        assert_eq!(report.status, "advisory");
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("optional repo_exposure"))
+        );
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("optional labels_json"))
+        );
+        assert!(markdown.contains("## Warnings"));
+        assert!(markdown.contains("manual \\| warning with newline"));
+        let _ = fs::remove_dir_all(dir);
+        Ok(())
+    }
+
+    #[test]
+    fn gate_config_errors_render_markdown_and_fail_status() -> Result<(), String> {
+        let input = GateEvaluateInput {
+            root: repo_root(),
+            repo_exposure: None,
+            pr_guidance: PathBuf::from("missing-comments.json"),
+            sarif_policy: None,
+            labels_json: None,
+            labels: Vec::new(),
+            agent_verify: None,
+            agent_receipt: None,
+            recommendation_calibration: None,
+            mutation_calibration: None,
+            baseline: None,
+            mode: GateMode::BaselineCheck,
+            acknowledgement_labels: Vec::new(),
+        };
+
+        let report = build_gate_decision_report(&input)?;
+        let markdown = render_gate_decision_markdown(&report);
+
+        assert_eq!(report.status, "config_error");
+        assert!(gate_decision_should_fail(&report));
+        assert!(markdown.contains("## Config Errors"));
+        assert!(markdown.contains("requires an explicit --baseline"));
+        Ok(())
+    }
+
+    #[test]
+    fn gate_summary_only_and_suppressed_candidates_remain_visible() -> Result<(), String> {
+        let dir = temp_dir("gate-summary-suppressed")?;
+        let guidance = write_temp_json(&dir, "comments.json", SUMMARY_AND_SUPPRESSED_JSON)?;
+        let mut input = fixture_input(GateMode::Acknowledgeable);
+        input.root = dir.clone();
+        input.pr_guidance = guidance
+            .strip_prefix(&dir)
+            .map_err(|err| err.to_string())?
+            .to_path_buf();
+
+        let report = build_gate_decision_report(&input)?;
+
+        assert_eq!(report.status, "advisory");
+        assert_eq!(report.summary.suppressed, 1);
+        assert_eq!(report.summary.advisory, 1);
+        assert!(
+            report
+                .decisions
+                .iter()
+                .any(|decision| decision.gate_reason.contains("summary-only"))
+        );
+        assert!(
+            report
+                .decisions
+                .iter()
+                .any(|decision| decision.gate_reason.contains("configured-hidden"))
+        );
+        let _ = fs::remove_dir_all(dir);
+        Ok(())
+    }
+
+    #[test]
+    fn gate_changed_test_and_missing_guidance_candidates_stay_advisory() -> Result<(), String> {
+        let dir = temp_dir("gate-ineligible")?;
+        let guidance = write_temp_json(&dir, "comments.json", INELIGIBLE_GUIDANCE_JSON)?;
+        let mut input = fixture_input(GateMode::Acknowledgeable);
+        input.root = dir.clone();
+        input.pr_guidance = guidance
+            .strip_prefix(&dir)
+            .map_err(|err| err.to_string())?
+            .to_path_buf();
+
+        let report = build_gate_decision_report(&input)?;
+
+        assert_eq!(report.status, "advisory");
+        assert_eq!(report.summary.blocking, 0);
+        assert!(
+            report
+                .decisions
+                .iter()
+                .any(|decision| decision.gate_reason.contains("nearby focused test changed"))
+        );
+        let missing_guidance = write_temp_json(&dir, "missing.json", MISSING_GUIDANCE_JSON)?;
+        input.pr_guidance = missing_guidance
+            .strip_prefix(&dir)
+            .map_err(|err| err.to_string())?
+            .to_path_buf();
+        let report = build_gate_decision_report(&input)?;
+        assert!(
+            report
+                .decisions
+                .iter()
+                .any(|decision| decision.gate_reason.contains("missing concrete"))
+        );
+        let _ = fs::remove_dir_all(dir);
+        Ok(())
+    }
+
+    #[test]
+    fn gate_baseline_check_blocks_new_candidate() -> Result<(), String> {
+        let dir = temp_dir("gate-baseline-new")?;
+        let baseline = write_temp_json(&dir, "baseline.json", r#"{"decisions":[]}"#)?;
+        let mut input = fixture_input(GateMode::BaselineCheck);
+        input.baseline = Some(baseline);
+
+        let report = build_gate_decision_report(&input)?;
+
+        assert_eq!(report.status, "blocked");
+        assert_eq!(report.summary.blocking, 1);
+        assert!(report.decisions[0].gate_reason.contains("baseline-check"));
+        let _ = fs::remove_dir_all(dir);
+        Ok(())
+    }
+
+    #[test]
+    fn gate_labels_array_supports_custom_acknowledgement_label() -> Result<(), String> {
+        let dir = temp_dir("gate-label-array")?;
+        let labels = write_temp_json(&dir, "labels.json", r#"["accepted-risk"]"#)?;
+        let mut input = fixture_input(GateMode::Acknowledgeable);
+        input.labels_json = Some(labels);
+        input.acknowledgement_labels = vec!["accepted-risk".to_string()];
+
+        let report = build_gate_decision_report(&input)?;
+
+        assert_eq!(report.status, "acknowledged");
+        assert_eq!(
+            report.decisions[0].policy.acknowledgement_label.as_deref(),
+            Some("accepted-risk")
+        );
+        let _ = fs::remove_dir_all(dir);
+        Ok(())
+    }
+
+    #[test]
+    fn gate_calibration_can_keep_candidates_advisory() -> Result<(), String> {
+        let dir = temp_dir("gate-calibration-advisory")?;
+        let baseline = write_temp_json(&dir, "baseline.json", r#"{"decisions":[]}"#)?;
+        let recommendation = write_temp_json(
+            &dir,
+            "recommendation.json",
+            r#"{"recommendations":[{"id":"ripr-review-8f7fa8644fd12280","calibration":{"outcome":"wrong_target"}}]}"#,
+        )?;
+        let mutation = write_temp_json(
+            &dir,
+            "mutation.json",
+            r#"{
+              "matches": [
+                {
+                  "static": {"seam_id": "other-seam"},
+                  "runtime": {"runtime_outcome": "caught"}
+                }
+              ],
+              "static_only_findings": [
+                {"static": {"seam_id": "8f7fa8644fd12280"}}
+              ],
+              "ambiguous_file_line_matches": [{"file":"src/lib.rs","line":7}]
+            }"#,
+        )?;
+        let mut input = fixture_input(GateMode::CalibratedGate);
+        input.baseline = Some(baseline);
+        input.recommendation_calibration = Some(recommendation);
+        input.mutation_calibration = Some(mutation);
+
+        let report = build_gate_decision_report(&input)?;
+
+        assert_eq!(report.status, "advisory");
+        assert_eq!(
+            report.decisions[0]
+                .evidence
+                .recommendation_calibration
+                .confidence_effect,
+            "keeps_advisory"
+        );
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("ambiguous file/line"))
+        );
+        let _ = fs::remove_dir_all(dir);
+        Ok(())
+    }
+
+    #[test]
+    fn display_path_normalizes_empty_and_dot_prefixed_paths() {
+        assert_eq!(display_path(Path::new("")), ".");
+        assert_eq!(
+            display_path(Path::new("./target/out.json")),
+            "target/out.json"
+        );
+    }
+
     fn fixture_input(mode: GateMode) -> GateEvaluateInput {
         GateEvaluateInput {
             root: repo_root(),
@@ -1447,4 +1706,98 @@ mod tests {
         fs::create_dir_all(&path).map_err(|err| format!("create temp dir failed: {err}"))?;
         Ok(path)
     }
+
+    fn write_temp_json(dir: &Path, name: &str, contents: &str) -> Result<PathBuf, String> {
+        let path = dir.join(name);
+        fs::write(&path, contents).map_err(|err| format!("write {name} failed: {err}"))?;
+        Ok(path)
+    }
+
+    const PR_GUIDANCE_JSON: &str = r#"{
+      "schema_version": "0.1",
+      "summary": {"unchanged_tests": true},
+      "comments": [
+        {
+          "id": "ripr-review-8f7fa8644fd12280",
+          "seam_id": "8f7fa8644fd12280",
+          "grip_class": "weakly_gripped",
+          "severity": "warning",
+          "missing_discriminator": "amount == discount_threshold",
+          "placement": {"path": "src/pricing.rs", "line": 88},
+          "suggested_test": {
+            "candidate_values": ["amount == discount_threshold"],
+            "near_test": "above_threshold_gets_discount"
+          }
+        }
+      ],
+      "summary_only": [],
+      "suppressed": []
+    }"#;
+
+    const SUMMARY_AND_SUPPRESSED_JSON: &str = r#"{
+      "schema_version": "0.1",
+      "summary": {"unchanged_tests": true},
+      "comments": [],
+      "summary_only": [
+        {
+          "id": "summary-1",
+          "seam_id": "summary-seam",
+          "grip_class": "weakly_gripped",
+          "severity": "warning",
+          "missing_discriminator": "amount == discount_threshold",
+          "placement": {"path": "src/pricing.rs", "line": 88}
+        }
+      ],
+      "suppressed": [
+        {
+          "id": "suppressed-1",
+          "seam_id": "suppressed-seam",
+          "grip_class": "weakly_gripped",
+          "severity": "off",
+          "reason": "severity_off",
+          "missing_discriminator": "amount == discount_threshold",
+          "placement": {"path": "src/pricing.rs", "line": 89}
+        }
+      ]
+    }"#;
+
+    const INELIGIBLE_GUIDANCE_JSON: &str = r#"{
+      "schema_version": "0.1",
+      "summary": {"unchanged_tests": false},
+      "comments": [
+        {
+          "id": "changed-test",
+          "seam_id": "changed-test-seam",
+          "grip_class": "weakly_gripped",
+          "severity": "warning",
+          "missing_discriminator": "amount == discount_threshold",
+          "placement": {"path": "src/pricing.rs", "line": 88}
+        },
+        {
+          "id": "missing-guidance",
+          "seam_id": "missing-guidance-seam",
+          "grip_class": "weakly_gripped",
+          "severity": "warning",
+          "placement": {"path": "src/pricing.rs", "line": 89}
+        }
+      ],
+      "summary_only": [],
+      "suppressed": []
+    }"#;
+
+    const MISSING_GUIDANCE_JSON: &str = r#"{
+      "schema_version": "0.1",
+      "summary": {"unchanged_tests": true},
+      "comments": [
+        {
+          "id": "missing-guidance",
+          "seam_id": "missing-guidance-seam",
+          "grip_class": "weakly_gripped",
+          "severity": "warning",
+          "placement": {"path": "src/pricing.rs", "line": 89}
+        }
+      ],
+      "summary_only": [],
+      "suppressed": []
+    }"#;
 }
