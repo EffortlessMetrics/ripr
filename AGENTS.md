@@ -207,17 +207,21 @@ explicit in PRs and planning docs.
 ## Commit, PR, and Merge Boundary
 
 Do not interpret `requires_human_merge = true` as "do not commit" or "do not
-push." It means the PR must return for owner review before merge.
+push." It means the PR needs explicit review evidence before merge; it is not a
+handoff boundary that prevents Codex from reviewing, improving, or merging the
+PR when the user has authorized that lane.
 
 For scoped implementation, docs, tests, and refactors, use this default flow:
 
 ```text
-implement -> validate -> commit -> push -> open or update PR -> stop before merge
+implement -> validate -> commit -> push -> open or update PR -> review -> improve -> merge when authorized
 ```
 
 Agents should commit and push scoped work after validation, then open or update
-the PR with a review map, validation evidence, non-goals, and known gaps. Stop
-before merge when the work item requires human merge.
+the PR with a review map, validation evidence, non-goals, and known gaps. When
+`requires_human_merge = true`, treat the merge decision as requiring an explicit
+review record, clean hosted checks, and clear user authorization for the lane,
+not a requirement to wait for a different operator.
 
 Ask before proceeding only when continuing would change public schema, output
 contracts, security/workflows/secrets, dependencies, release or publish
