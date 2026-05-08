@@ -104,6 +104,9 @@ are scoped or reviewed.
   Adoption UX, preserving `gate-adoption-ux` as the active manifest while
   documenting the saved-workspace LSP loop from diagnostic to hover, related
   test, context packet, verify, and receipt.
+- Added gate waiver workflow docs for `ripr-waive`, including label setup,
+  acknowledgeable-mode review steps, audit artifacts, and the boundary between
+  PR-time waivers, durable suppressions, and baselines.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and PR guidance annotation counts before artifact

@@ -92,6 +92,11 @@ inputs. Suppression means the repository policy intentionally hid or downgraded
 that candidate; acknowledgement means a visible PR-time candidate was accepted
 for this review.
 
+The sample reviewer workflow for applying, auditing, and removing
+`ripr-waive` lives in [CI strategy](CI.md#waiver-and-label-workflows). Use that
+flow when moving a repository from `visible-only` to `acknowledgeable`; keep
+waivers as PR labels and suppressions as durable repository policy.
+
 ## CI Behavior
 
 `ripr init --ci github` generates gate wiring but keeps it disabled:
