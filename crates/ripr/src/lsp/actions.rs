@@ -84,15 +84,19 @@ fn push_seam_actions(
     params: &CodeActionParams,
     context: SeamActionContext<'_>,
 ) {
+    let suggested_assertion = suggested_assertion_for_classified_seam(context.seam);
+    let related_test = best_related_test_for_editor(context.seam);
     actions.push(copy_context_action(
         INSPECT_SEAM_PACKET_TITLE,
         INSPECT_SEAM_PACKET_TITLE,
         copy_seam_packet_target(params, context.diagnostic, context.seam),
     ));
-    actions.push(copy_targeted_test_brief_action(
-        context.seam,
-        targeted_test_brief_for_classified_seam(context.seam),
-    ));
+    if suggested_assertion.is_some() || related_test.is_some() {
+        actions.push(copy_targeted_test_brief_action(
+            context.seam,
+            targeted_test_brief_for_classified_seam(context.seam),
+        ));
+    }
     actions.push(copy_agent_loop_command_action(
         AGENT_PACKET_COMMAND_TITLE,
         COPY_AGENT_PACKET_COMMAND,
@@ -175,10 +179,10 @@ fn push_seam_actions(
             ),
         ),
     ));
-    if let Some(assertion) = suggested_assertion_for_classified_seam(context.seam) {
+    if let Some(assertion) = suggested_assertion {
         actions.push(copy_suggested_assertion_action(context.seam, assertion));
     }
-    if let Some(related) = best_related_test_for_editor(context.seam)
+    if let Some(related) = related_test
         && let Some(target) = related_test_target(context.snapshot, related)
     {
         actions.push(open_related_test_action(target));

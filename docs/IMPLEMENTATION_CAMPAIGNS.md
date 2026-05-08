@@ -2106,7 +2106,7 @@ Work items:
 | --- | --- | --- |
 | `campaign/editor-evidence-ux-audit` | done | Added `docs/EDITOR_EVIDENCE_UX.md` and the audit handoff, mapping diagnostic data, hover, actions, context collection, VS Code proof, LSP cockpit status, status/staleness, and non-goals into one editor evidence contract without behavior changes. |
 | `lsp/evidence-hover-hardening` | done | Hardened hover as the primary explanation surface for seam class, evidence path, missing discriminator, related test location, suggested assertion/test shape, packet and brief handoff commands, verify command, receipt command, and static limits. |
-| `lsp/evidence-aware-actions` | blocked | Tighten action visibility and payload validation so actions only appear when supporting evidence or command context exists. |
+| `lsp/evidence-aware-actions` | done | Tightened action visibility so targeted-test briefs require related-test or suggested-assertion context, suggested assertions and related-test opening remain evidence-gated, stale seam diagnostics fail closed, and agent-loop commands stay available for stable seam diagnostics. |
 | `lsp/context-packet-command` | blocked | Add one canonical evidence context packet command for external tools and agents without edits, generated tests, or provider coupling. |
 | `test/lsp-protocol-smoke` | blocked | Add framed protocol proof for initialize, saved-workspace diagnostics, hover, codeAction, context packet execution, and shutdown. |
 | `test/vscode-extension-smoke` | blocked | Prove extension activation, server resolution, fixture diagnostics, hover, actions, copy payloads, related-test opening, restart, and bad-server-path status. |
@@ -2129,11 +2129,10 @@ Dependencies:
 
 Next when activated:
 
-- `lsp/evidence-aware-actions` should be the next behavior-bearing item. Keep
-  it focused on conditional action visibility and payload validation: every
-  shown action should have usable supporting evidence or command context, and
-  malformed arguments should fail closed without source edits or generated
-  tests.
+- `lsp/context-packet-command` should be the next behavior-bearing item. Keep
+  it focused on one bounded editor packet built from existing seam evidence and
+  shared command templates, without source edits, generated tests, provider
+  coupling, or runtime claims.
 
 Commands:
 

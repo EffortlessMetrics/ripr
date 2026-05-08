@@ -173,15 +173,13 @@ server can provide seam-aware code actions:
 - `Refresh analysis: rerun saved-workspace check`: asks the LSP server to
   refresh diagnostics with `ripr.refresh`.
 
-The assertion and related-test actions are conditional.
+The targeted-test, assertion, and related-test actions are conditional.
+`Write targeted test: copy brief` is shown only when the seam has related-test
+context or a concrete assertion suggestion.
 `Write targeted test: copy suggested assertion` is shown only when the seam has
 a concrete assertion suggestion, and `Write targeted test: open best related
 test` is shown only when the current analysis snapshot can resolve a related
-test location. The targeted-test brief remains available for seam diagnostics
-even when there is no concrete assertion snippet, because it can still summarize
-the missing discriminator, suggested file/name, candidate value, and imitation
-or avoid patterns. Refresh remains available even when no diagnostic is
-selected.
+test location. Refresh remains available even when no diagnostic is selected.
 
 The agent-loop copy commands are workspace-relative by contract. They use
 `--root .` and the same `target/ripr/pilot` plus `target/ripr/agent` artifact
