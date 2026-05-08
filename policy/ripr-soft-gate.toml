@@ -3,7 +3,7 @@ policy = "ripr-soft-gate"
 owner = "core/analysis"
 status = "shadow"
 
-# Configuration for the ripr soft-gate (PR 14 of the multi-PR rollout).
+# Configuration for the ripr soft-gate.
 #
 # The gate is intentionally narrow. It only fails the PR when ALL of the
 # following are true:
@@ -17,13 +17,13 @@ status = "shadow"
 # See docs/ci/ripr-soft-gate.md for the full doctrine and label
 # vocabulary.
 #
-# Posture: this file is `status = "shadow"` — it documents the contract.
+# Posture: this file is `status = "shadow"`; it documents the contract.
 # The xtask command `cargo xtask ci ripr-soft-gate ...` that consumes it
 # is wired in a follow-up PR after the calibration window has produced
 # 2 weeks of `ci-actuals.json` data on the `ripr-self-dogfood` lane.
 
 [gate]
-# Numeric confidence threshold (range 0.0–1.0). Findings with
+# Numeric confidence threshold (range 0.0-1.0). Findings with
 # `confidence` below this value never trip the gate. Default is set
 # conservatively; tune from calibration data, not from intuition.
 confidence_threshold = 0.85
@@ -66,7 +66,7 @@ budget_ack = "ci-budget-ack"
 # 14-day median of ci-actuals.json datapoints for the
 # `ripr-self-dogfood` lane is at least this many.
 #
-# Lane provenance (no forward references — both already on main):
+# Lane provenance (no forward references; both already on main):
 #   - policy/ci-lane-whitelist.toml registers the lane.
 #   - .github/workflows/ci.yml job `rust` runs the lane via the
 #     `commands` field (cargo xtask dogfood + cargo xtask reports index).

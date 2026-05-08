@@ -1,9 +1,8 @@
 # `ripr` Soft-Gate
 
-The `ripr` soft-gate is the final stage in the multi-PR rollout. It turns
-the advisory `ripr` self-dogfood lane (PR 10) into an **acknowledgeable
-gate** — narrow, calibrated, and explicit about what it does and does
-not block on.
+The `ripr` soft-gate turns the advisory `ripr` self-dogfood lane into an
+**acknowledgeable gate**: narrow, calibrated, and explicit about what it
+does and does not block on.
 
 ## Doctrine constraints
 
@@ -28,13 +27,13 @@ The soft-gate fires only when **all** of the following are true:
 1. **Finding class** is `reachable_unrevealed` or `weakly_exposed`.
 2. **Production Rust changed** in this PR.
 3. **No nearby test changed** (the heuristic for "nearby" is the same
-   one `ripr` already uses internally — same module, same fixture, same
+   one `ripr` already uses internally: same module, same fixture, same
    fixture-test pair).
 4. The finding is **not suppressed** in `.ripr/suppressions.toml` (the
    canonical path used by `crates/ripr/src/config.rs`).
 5. The finding's **`confidence` field clears the gate threshold**.
    `confidence` is the numeric f32 documented in `docs/OUTPUT_SCHEMA.md`
-   (range 0.0–1.0). The threshold is set in
+   (range 0.0-1.0). The threshold is set in
    `policy/ripr-soft-gate.toml` (default proposal: `0.85`); it is tuned
    from the calibration data, not pinned in this doc.
 
@@ -52,10 +51,9 @@ If any of those is false, the gate stays green.
   undecided; failing on unknowns would punish honest uncertainty.
   `no_static_path` is noise the gate must not amplify, and `exposed`
   is the success state.
-- **Mutation outcomes.** `ripr` is a static analyzer. Words like
-  `killed` and `survived` are forbidden by `cargo xtask
-  check-static-language`. The soft-gate inherits that vocabulary
-  constraint.
+- **Mutation outcomes.** `ripr` is a static analyzer. Runtime mutation
+  outcome terms are forbidden by `cargo xtask check-static-language`.
+  The soft-gate inherits that vocabulary constraint.
 - **Findings outside the trigger criteria.** PRs that change tests
   alongside production, or that touch only docs/policy, never trip the
   gate.
@@ -80,7 +78,7 @@ documented in `docs/CONFIGURATION.md` and `docs/CI.md` (Verification
 Economics section). Each suppression must record:
 
 - a `kind` (`exposure_gap` or `test_efficiency`),
-- the kind-specific selector — `finding_id` for `exposure_gap`, or
+- the kind-specific selector: `finding_id` for `exposure_gap`, or
   `test` (with optional `path` narrowing) for `test_efficiency`,
 - an `owner` (team/area),
 - a `reason`.
@@ -96,7 +94,7 @@ is. There is no separate top-level `id` field.
 
 ## Implementation posture
 
-- **PR 14 (this PR)**: contract, scope, trigger criteria, and label
+- **Current state**: contract, scope, trigger criteria, and label
   vocabulary documented. **No enforcement code yet.**
 - **Follow-up PR**: wire `cargo xtask ci ripr-soft-gate
   --findings target/ripr/reports/ripr-diff.json
@@ -117,10 +115,10 @@ field by example (e.g. `0.92`).
 
 **The authoritative type and range contract during the rollout is
 `policy/ripr-soft-gate.toml`'s `[gate].confidence_threshold`
-(`f32`, inclusive range `0.0`–`1.0`).** Reading order is: this section
+(`f32`, inclusive range `0.0-1.0`).** Reading order is: this section
 first, then the policy TOML for the canonical numeric range, then
 OUTPUT_SCHEMA.md for the field's appearance in `ripr` output. There is
-no deferral loop — the policy file is authoritative today.
+no deferral loop; the policy file is authoritative today.
 
 The follow-up PR that wires the xtask command will lift the same range
 into a dedicated field-contract section in `docs/OUTPUT_SCHEMA.md` so
@@ -149,15 +147,14 @@ payload, passed through verbatim:
 The command consults only the `name` field of each entry, matches it
 against `[labels]` in `policy/ripr-soft-gate.toml` (and, transitively,
 the `[[label]]` entries in `policy/ci-budget.toml`), and treats
-unrecognized labels
-as advisory metadata. An empty array is valid — it means no
+unrecognized labels as advisory metadata. An empty array is valid; it means no
 acknowledgement labels are present.
 
 In CI this is provided as
 `--labels-json '${{ toJSON(github.event.pull_request.labels) }}'` so
 the JSON is well-formed and quoted by the runner.
 
-## Activation criteria (shadow → active transition)
+## Activation criteria (shadow to active transition)
 
 The `status = "shadow"` value in `policy/ripr-soft-gate.toml` is flipped
 to `status = "active"` by the follow-up PR that wires the
@@ -192,7 +189,7 @@ no silent flag flip.
 
 ## Why a soft-gate and not a hard fail?
 
-`ripr` makes claims about static *exposure* — whether a discriminator
+`ripr` makes claims about static *exposure*: whether a discriminator
 appears to exist. The right reaction to a `reachable_unrevealed` is
 "investigate", not "must fix before merge". A hard fail would either:
 
@@ -208,7 +205,7 @@ without the false-positive damage.
 
 ## See also
 
-- `docs/CI.md` — verification economics policy, LEM bands, labels,
+- `docs/CI.md` - verification economics policy, LEM bands, labels,
   and the multi-PR rollout map (the canonical source for the wider
   CI economics policy).
 - `docs/STATIC_EXPOSURE_MODEL.md`
