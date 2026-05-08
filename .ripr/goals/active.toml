@@ -126,7 +126,7 @@ commands = [
 
 [[work_item]]
 id = "ci/llm-work-packets"
-status = "ready"
+status = "done"
 branch = "ci-llm-work-packets"
 stackable = false
 requires_human_merge = true
@@ -141,13 +141,17 @@ commands = [
 
 [[work_item]]
 id = "docs/llm-operator-guide"
-status = "blocked"
+status = "ready"
 branch = "docs-llm-operator-guide"
 stackable = false
 requires_human_merge = true
-blocked_by = ["ci/llm-work-packets"]
-blocked_reason = "Wait until the command and CI artifact loop is pinned before documenting the full LLM operator path"
 acceptance = "Document the LLM operator loop from agent status through start, packet or brief, focused test, after snapshot, verify, receipt, and review summary, with anti-goals explicit"
+commands = [
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr"
+]
 
 [[work_item]]
 id = "campaign/llm-work-loop-closeout"

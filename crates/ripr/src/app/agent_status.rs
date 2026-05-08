@@ -1,10 +1,12 @@
 use crate::agent::loop_commands::{
     WORKFLOW_AFTER_SNAPSHOT_ARTIFACT, WORKFLOW_AGENT_BRIEF_ARTIFACT,
     WORKFLOW_AGENT_PACKET_ARTIFACT, WORKFLOW_AGENT_RECEIPT_ARTIFACT,
-    WORKFLOW_AGENT_REVIEW_SUMMARY_ARTIFACT, WORKFLOW_AGENT_STATUS_ARTIFACT,
+    WORKFLOW_AGENT_REVIEW_SUMMARY_ARTIFACT, WORKFLOW_AGENT_REVIEW_SUMMARY_MARKDOWN_ARTIFACT,
+    WORKFLOW_AGENT_STATUS_ARTIFACT, WORKFLOW_AGENT_STATUS_MARKDOWN_ARTIFACT,
     WORKFLOW_AGENT_VERIFY_ARTIFACT, WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_brief_command,
     agent_packet_command, agent_receipt_command, agent_review_summary_command,
-    agent_status_command, agent_verify_command, check_repo_exposure_command, display_path,
+    agent_review_summary_markdown_command, agent_status_command, agent_status_markdown_command,
+    agent_verify_command, check_repo_exposure_command, display_path,
 };
 use serde_json::Value;
 use std::path::Path;
@@ -137,7 +139,12 @@ pub(crate) fn build_agent_status_report(root: &Path, root_argument: &Path) -> Ag
 fn keep_follow_up_templates_reachable(root: &str) {
     drop((
         agent_status_command(root, Some(WORKFLOW_AGENT_STATUS_ARTIFACT)),
+        agent_status_markdown_command(root, Some(WORKFLOW_AGENT_STATUS_MARKDOWN_ARTIFACT)),
         agent_review_summary_command(root, Some(WORKFLOW_AGENT_REVIEW_SUMMARY_ARTIFACT)),
+        agent_review_summary_markdown_command(
+            root,
+            Some(WORKFLOW_AGENT_REVIEW_SUMMARY_MARKDOWN_ARTIFACT),
+        ),
     ));
 }
 
@@ -163,6 +170,60 @@ pub(crate) fn render_agent_status_json(report: &AgentStatusReport) -> Result<Str
             rendered
         })
         .map_err(|err| format!("failed to render agent status JSON: {err}"))
+}
+
+pub(crate) fn render_agent_status_markdown(report: &AgentStatusReport) -> String {
+    let mut rendered = String::new();
+    rendered.push_str("# RIPR Agent Status\n\n");
+    rendered.push_str(&format!("Status: {}\n", report.status()));
+    rendered.push_str(&format!("Root: {}\n", report.root));
+    match &report.seam {
+        Some(seam) => rendered.push_str(&format!("Seam: {} ({})\n", seam.seam_id, seam.source)),
+        None => rendered.push_str("Seam: unknown\n"),
+    }
+
+    rendered.push_str("\n## Artifacts\n\n");
+    rendered.push_str("| Artifact | State | Path |\n");
+    rendered.push_str("| --- | --- | --- |\n");
+    for artifact in &report.artifacts {
+        let state = if artifact.present {
+            "present"
+        } else {
+            "missing"
+        };
+        rendered.push_str(&format!(
+            "| {} | {} | `{}` |\n",
+            artifact.label, state, artifact.path
+        ));
+    }
+
+    if let Some(next) = report.missing_commands.first() {
+        rendered.push_str("\n## Next Command\n\n");
+        rendered.push_str(&format!("{}\n\n", next.reason));
+        rendered.push_str("```bash\n");
+        rendered.push_str(&next.command);
+        rendered.push_str("\n```\n");
+    } else {
+        rendered.push_str("\nNo missing agent-loop artifacts were detected.\n");
+    }
+
+    if !report.warnings.is_empty() {
+        rendered.push_str("\n## Warnings\n\n");
+        for warning in &report.warnings {
+            rendered.push_str(&format!(
+                "- {}: {} (`{}`)\n",
+                warning.kind, warning.message, warning.artifact
+            ));
+        }
+    }
+
+    rendered.push_str("\n## Limits\n\n");
+    rendered.push_str("- Reads existing artifacts only.\n");
+    rendered.push_str("- No repo analysis is run by this command.\n");
+    rendered.push_str("- No runtime mutation execution.\n");
+    rendered.push_str("- No automatic source edits.\n");
+    rendered.push_str("- No generated tests.\n");
+    rendered
 }
 
 fn agent_status_seam_json(seam: &AgentStatusSeam) -> Value {
@@ -555,6 +616,26 @@ mod tests {
         );
         assert!(value["artifacts"][0]["bytes"].as_u64().is_some());
         assert!(value["artifacts"][0]["modified_unix_ms"].as_u64().is_some());
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_status_markdown_names_next_command_and_limits() -> Result<(), String> {
+        let root = unique_agent_status_test_dir("markdown");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+
+        let report = build_agent_status_report(&root, Path::new("."));
+        let rendered = render_agent_status_markdown(&report);
+
+        assert!(rendered.contains("# RIPR Agent Status"));
+        assert!(rendered.contains("Status: incomplete"));
+        assert!(rendered.contains("| before snapshot | missing |"));
+        assert!(rendered.contains("## Next Command"));
+        assert!(rendered.contains("ripr check --root . --mode draft"));
+        assert!(rendered.contains("No runtime mutation execution."));
+        assert!(rendered.contains("No generated tests."));
 
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
         Ok(())

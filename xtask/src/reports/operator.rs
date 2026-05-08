@@ -208,7 +208,9 @@ fn keep_shared_loop_templates_reachable() {
         loop_commands::WORKFLOW_MANIFEST_ARTIFACT,
         loop_commands::WORKFLOW_COMMANDS_MARKDOWN_ARTIFACT,
         loop_commands::WORKFLOW_AGENT_STATUS_ARTIFACT,
+        loop_commands::WORKFLOW_AGENT_STATUS_MARKDOWN_ARTIFACT,
         loop_commands::WORKFLOW_AGENT_REVIEW_SUMMARY_ARTIFACT,
+        loop_commands::WORKFLOW_AGENT_REVIEW_SUMMARY_MARKDOWN_ARTIFACT,
         loop_commands::PILOT_BEFORE_SNAPSHOT_ARTIFACT,
         loop_commands::PILOT_AFTER_SNAPSHOT_ARTIFACT,
         loop_commands::EDITOR_AGENT_PACKET_ARTIFACT,
@@ -235,9 +237,17 @@ fn keep_shared_loop_templates_reachable() {
             ".",
             Some(loop_commands::WORKFLOW_AGENT_STATUS_ARTIFACT),
         ),
+        loop_commands::agent_status_markdown_command(
+            ".",
+            Some(loop_commands::WORKFLOW_AGENT_STATUS_MARKDOWN_ARTIFACT),
+        ),
         loop_commands::agent_review_summary_command(
             ".",
             Some(loop_commands::WORKFLOW_AGENT_REVIEW_SUMMARY_ARTIFACT),
+        ),
+        loop_commands::agent_review_summary_markdown_command(
+            ".",
+            Some(loop_commands::WORKFLOW_AGENT_REVIEW_SUMMARY_MARKDOWN_ARTIFACT),
         ),
         loop_commands::display_path(Path::new(".")),
         loop_commands::workflow_artifact_path(Path::new("target/ripr/workflow"), "workflow.json"),

@@ -88,6 +88,11 @@
       "state": "missing"
     },
     {
+      "name": "agent_status_markdown",
+      "path": "target/ripr/workflow/agent-status.md",
+      "state": "missing"
+    },
+    {
       "name": "agent_workflow",
       "path": "target/ripr/workflow/workflow.json",
       "state": "present"
@@ -98,6 +103,11 @@
       "state": "missing"
     },
     {
+      "name": "agent_review_summary_markdown",
+      "path": "target/ripr/workflow/agent-review-summary.md",
+      "state": "missing"
+    },
+    {
       "name": "agent_receipt",
       "path": "target/ripr/reports/agent-receipt.json",
       "state": "present"
@@ -105,6 +115,11 @@
     {
       "name": "operator_cockpit",
       "path": "target/ripr/reports/operator-cockpit.json",
+      "state": "missing"
+    },
+    {
+      "name": "operator_cockpit_markdown",
+      "path": "target/ripr/reports/operator-cockpit.md",
       "state": "missing"
     }
   ],

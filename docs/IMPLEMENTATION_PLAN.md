@@ -45,13 +45,14 @@ default latency report pass on cache hits. Campaign 10 closed after aligning
 the saved-workspace editor and agent CLI loop through diagnostics, evidence,
 packet/brief commands, focused-test receipts, cockpit status, generated CI
 artifacts, and release-readiness proof. Campaign 11 is now active. It has added
-a read-only `ripr agent status --root . --json` lens over existing agent-loop
-artifacts and centralized the command templates that feed CLI, LSP, cockpit,
-generated CI paths, docs, and fixtures. The next slice is the source-edit-free
-workflow manifest. Campaign 12 is queued as the First-Hour UX lane after the
-LLM work-loop control plane: it keeps the CLI as the shared engine while making
-the extension and generated CI workflow feel obvious from their own first
-screens.
+a read-only `ripr agent status` lens over existing agent-loop artifacts,
+centralized the command templates that feed CLI, LSP, cockpit, generated CI
+paths, docs, and fixtures, pinned source-edit-free workflow manifests and
+review summaries, and wired generated CI to upload LLM work-loop packet
+artifacts. The next slice is the LLM operator guide. Campaign 12 is queued as
+the First-Hour UX lane after the LLM work-loop control plane: it keeps the CLI
+as the shared engine while making the extension and generated CI workflow feel
+obvious from their own first screens.
 
 ## PR 0: `planning-and-tracking-docs`
 
