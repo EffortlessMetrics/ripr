@@ -114,7 +114,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/calibrated-gate-closeout"
-status = "ready"
+status = "done"
 branch = "campaign-calibrated-gate-closeout"
 stackable = false
 blocked_by = [

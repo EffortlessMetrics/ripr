@@ -1706,15 +1706,16 @@ Closeout:
 
 Next:
 
-- Campaign 15 is active. `spec/calibrated-gate-policy` and
-  `gate/policy-evaluator` are pinned; continue with
-  `fixtures/calibrated-gate-cases` before CI wiring.
+- Campaign 15 is complete. [Campaign 15
+  closeout](handoffs/2026-05-08-campaign-15-closeout.md) records the PR chain,
+  proof commands, and explicit boundary: optional calibrated gates are available
+  only when configured, while generated workflows remain advisory by default.
 
 ## Campaign 15: Calibrated Gate Policy
 
 Campaign ID: `calibrated-gate-policy`
 
-Status: active
+Status: complete
 
 Recommendation calibration comes first. Once RIPR has measured whether its
 top recommendations are useful, correctly placed, and low-noise, a later policy
@@ -1765,7 +1766,7 @@ Work items:
 | `fixtures/calibrated-gate-cases` | done | Pin gate fixtures for advisory, acknowledged, baseline-check, fail-on-new-high-confidence-gap, suppression, missing-input, and calibration agreement/disagreement cases. |
 | `ci/generated-gate-wiring` | done | Wire generated GitHub workflows to optionally run the gate evaluator only when explicitly configured, preserving advisory defaults and surfacing acknowledged or blocking decisions in summaries. |
 | `docs/calibrated-gate-policy` | done | Document calibrated gates as optional policy over existing static evidence, including modes, waiver labels, CI behavior, calibration evidence, and static/runtime vocabulary boundaries. |
-| `campaign/calibrated-gate-closeout` | ready | Close only after optional calibrated gates are specified, evaluated, fixture-pinned, optionally wired into generated CI, documented, and still advisory by default. |
+| `campaign/calibrated-gate-closeout` | done | Closed after optional calibrated gates were specified, evaluated, fixture-pinned, optionally wired into generated CI, documented, and kept advisory by default. |
 
 Dependencies:
 
@@ -1778,6 +1779,12 @@ Dependencies:
   decisions need their own explicit output contract.
 - The `ripr-waive` label remains an acknowledgement path, not a hidden
   suppression.
+
+Closeout:
+
+- [Campaign 15 closeout](handoffs/2026-05-08-campaign-15-closeout.md)
+  records the final Campaign 15 PR chain, validation commands, and deferred
+  adoption boundary.
 
 Commands:
 

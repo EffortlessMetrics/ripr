@@ -680,7 +680,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap/expected/calibrated-gate"
 ]
-next = "campaign/calibrated-gate-closeout"
+next = "maintenance"
 metric = "gate_decisions_evaluated, gate_decisions_blocking, gate_decisions_acknowledged, gate_decisions_advisory, gate_decisions_suppressed, gate_decisions_unknown_confidence, gate_config_errors"
 
 [[capability]]

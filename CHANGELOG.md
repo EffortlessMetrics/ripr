@@ -151,6 +151,9 @@ are scoped or reviewed.
   generated CI gate wiring landed without changing default workflow blocking.
 - Advanced Campaign 15 to `campaign/calibrated-gate-closeout` after documenting
   calibrated gates as optional policy over existing static evidence.
+- Closed Campaign 15 after the optional calibrated gate layer was specified,
+  implemented as a read-only evaluator, fixture-pinned, wired into generated CI
+  only behind explicit configuration, documented, and kept advisory by default.
 - Clarified agent merge ownership and replaced the old campaign-field guard
   with stale merge-boundary language detection.
 - Pinned RIPR-SPEC-0012 as the PR test guidance annotation contract and
