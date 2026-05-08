@@ -311,15 +311,8 @@ first-hour docs are pinned. Campaign 13 then closed PR Review Guidance:
 before emitting advisory summaries and check annotations, placement and
 suppression cases are fixture-pinned, and
 [PR review guidance](docs/PR_REVIEW_GUIDANCE.md) documents the command, CI
-behavior, summary-only fallback, and inline-comment opt-in boundary. Campaign
-14 closed Recommendation Calibration: the checked advisory
-`cargo xtask recommendation-calibration` report now measures whether PR-time
-recommendations are useful, safely placed, properly suppressed, pointed at the
-expected test target, and correlated with before/after static movement.
-[Recommendation calibration workflow](docs/RECOMMENDATION_CALIBRATION.md)
-documents how to read that report. Campaign 15 is active as Calibrated Gate
-Policy, starting with the optional gate contract before evaluator
-implementation.
+behavior, summary-only fallback, and inline-comment opt-in boundary. No next
+product campaign is active yet.
 
 Deeper capability state lives in [Capability matrix](docs/CAPABILITY_MATRIX.md)
 and [Metrics](docs/METRICS.md).

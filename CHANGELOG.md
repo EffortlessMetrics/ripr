@@ -81,8 +81,6 @@ are scoped or reviewed.
 - Added the Campaign 14 closeout handoff after recommendation calibration was
   specified, fixture-pinned, receipt-backed, reported, documented, and kept
   advisory-first for later ranking or policy work.
-- Opened Campaign 15, Calibrated Gate Policy, with
-  `spec/calibrated-gate-policy` as the next ready contract item.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and PR guidance annotation counts before artifact

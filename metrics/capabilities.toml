@@ -309,7 +309,7 @@ evidence = [
   "docs/QUICKSTART.md routes the VS Code first hour through status, Problems diagnostics, hover evidence, and intent-titled seam actions"
 ]
 fixtures = []
-next = "spec/calibrated-gate-policy"
+next = "maintenance"
 metric = "diagnostics carry finding/probe metadata, editor status names saved-workspace analysis state, and editor actions target the selected finding"
 
 [[capability]]
