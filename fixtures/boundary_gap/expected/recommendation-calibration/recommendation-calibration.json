@@ -1,0 +1,353 @@
+{
+  "inputs": {
+    "agent_receipt": null,
+    "calibration_expectations": "fixtures/boundary_gap/expected/recommendation-calibration/expectations.json",
+    "outcome_receipts": [
+      "fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts/already-covered.json",
+      "fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts/noisy.json",
+      "fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts/summary-only-correct.json",
+      "fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts/suppressed-correctly.json",
+      "fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts/useful.json",
+      "fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts/wrong-line.json",
+      "fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts/wrong-target.json"
+    ],
+    "pr_guidance": [
+      "fixtures/boundary_gap/expected/pr-guidance/configured-off/comments.json",
+      "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
+      "fixtures/boundary_gap/expected/pr-guidance/owner-function-line/comments.json",
+      "fixtures/boundary_gap/expected/pr-guidance/same-file-line/comments.json",
+      "fixtures/boundary_gap/expected/pr-guidance/summary-only/comments.json",
+      "fixtures/boundary_gap/expected/recommendation-calibration/synthetic-pr-guidance.json"
+    ],
+    "targeted_test_outcome": null
+  },
+  "latency": {
+    "annotation_emitted_unix_ms": null,
+    "annotation_latency_ms": null,
+    "guidance_generated_unix_ms": null,
+    "outcome_latency_ms": null,
+    "outcome_recorded_unix_ms": null
+  },
+  "limits_note": "Advisory recommendation-quality evidence only; no telemetry, generated tests, source edits, runtime execution, or CI blocking.",
+  "recommendations": [
+    {
+      "calibration": {
+        "outcome": "useful",
+        "reason": "The recommendation points at the changed seam line and names the expected boundary discriminator and test target.",
+        "source": "outcome_receipt:fixture"
+      },
+      "grip_class": "weakly_gripped",
+      "id": "ripr-review-8f7fa8644fd12280",
+      "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "placement": {
+        "line": 88,
+        "mode": "exact_seam_line",
+        "path": "src/pricing.rs",
+        "quality": "correct"
+      },
+      "rank": 1,
+      "seam_id": "8f7fa8644fd12280",
+      "severity": "warning",
+      "source": "comments",
+      "source_artifact": "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
+      "source_case": "useful_exact_line_boundary",
+      "static_movement": {
+        "after_class": null,
+        "before_class": null,
+        "source": "outcome_receipt",
+        "state": "improved"
+      },
+      "suggested_test": {
+        "expected_file": "tests/pricing.rs",
+        "near_test": "above_threshold_gets_discount",
+        "recommended_file": "tests/pricing.rs",
+        "target_quality": "correct"
+      }
+    },
+    {
+      "calibration": {
+        "outcome": "noisy",
+        "reason": "Owner-function placement is visible but lower-signal than the exact changed seam line for this fixture.",
+        "source": "outcome_receipt:fixture"
+      },
+      "grip_class": "weakly_gripped",
+      "id": "ripr-review-8f7fa8644fd12280",
+      "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "placement": {
+        "line": 70,
+        "mode": "owner_function_changed_line",
+        "path": "src/pricing.rs",
+        "quality": "correct"
+      },
+      "rank": 2,
+      "seam_id": "8f7fa8644fd12280",
+      "severity": "warning",
+      "source": "comments",
+      "source_artifact": "fixtures/boundary_gap/expected/pr-guidance/owner-function-line/comments.json",
+      "source_case": "noisy_owner_fallback",
+      "static_movement": {
+        "after_class": null,
+        "before_class": null,
+        "source": "outcome_receipt",
+        "state": "unchanged"
+      },
+      "suggested_test": {
+        "expected_file": "tests/pricing.rs",
+        "near_test": "above_threshold_gets_discount",
+        "recommended_file": "tests/pricing.rs",
+        "target_quality": "correct"
+      }
+    },
+    {
+      "calibration": {
+        "outcome": "wrong_line",
+        "reason": "The same-file fallback lands on a changed line that is not the seam line.",
+        "source": "outcome_receipt:fixture"
+      },
+      "grip_class": "weakly_gripped",
+      "id": "ripr-review-8f7fa8644fd12280",
+      "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "placement": {
+        "line": 92,
+        "mode": "same_file_changed_line",
+        "path": "src/pricing.rs",
+        "quality": "wrong_line"
+      },
+      "rank": 3,
+      "seam_id": "8f7fa8644fd12280",
+      "severity": "warning",
+      "source": "comments",
+      "source_artifact": "fixtures/boundary_gap/expected/pr-guidance/same-file-line/comments.json",
+      "source_case": "wrong_line_same_file_fallback",
+      "static_movement": {
+        "after_class": null,
+        "before_class": null,
+        "source": "outcome_receipt",
+        "state": "unchanged"
+      },
+      "suggested_test": {
+        "expected_file": "tests/pricing.rs",
+        "near_test": "above_threshold_gets_discount",
+        "recommended_file": "tests/pricing.rs",
+        "target_quality": "correct"
+      }
+    },
+    {
+      "calibration": {
+        "outcome": "already_covered",
+        "reason": "The PR-shaped case already changes the focused test, so another visible recommendation is expected to be treated as already covered.",
+        "source": "outcome_receipt:fixture"
+      },
+      "grip_class": "weakly_gripped",
+      "id": "ripr-review-calibration-already-covered",
+      "missing_discriminator": null,
+      "placement": {
+        "line": 44,
+        "mode": "exact_seam_line",
+        "path": "tests/pricing.rs",
+        "quality": "correct"
+      },
+      "rank": 4,
+      "seam_id": "calibration-already-covered",
+      "severity": "warning",
+      "source": "comments",
+      "source_artifact": "fixtures/boundary_gap/expected/recommendation-calibration/synthetic-pr-guidance.json",
+      "source_case": "already_covered_visible",
+      "static_movement": {
+        "after_class": null,
+        "before_class": null,
+        "source": "outcome_receipt",
+        "state": "unchanged"
+      },
+      "suggested_test": {
+        "expected_file": "tests/pricing.rs",
+        "near_test": "discounted_total_boundary_discriminator",
+        "recommended_file": "tests/pricing.rs",
+        "target_quality": "not_applicable"
+      }
+    },
+    {
+      "calibration": {
+        "outcome": "summary_only_correct",
+        "reason": "The recommendation correctly stays out of inline comments when no safe changed-line placement exists.",
+        "source": "outcome_receipt:fixture"
+      },
+      "grip_class": "weakly_gripped",
+      "id": "ripr-review-8f7fa8644fd12280",
+      "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "placement": {
+        "line": 88,
+        "mode": null,
+        "path": "src/pricing.rs",
+        "quality": "summary_only_expected"
+      },
+      "rank": 5,
+      "seam_id": "8f7fa8644fd12280",
+      "severity": "warning",
+      "source": "summary_only",
+      "source_artifact": "fixtures/boundary_gap/expected/pr-guidance/summary-only/comments.json",
+      "source_case": "summary_only_expected_boundary",
+      "static_movement": {
+        "after_class": null,
+        "before_class": null,
+        "source": "outcome_receipt",
+        "state": "unknown"
+      },
+      "suggested_test": {
+        "expected_file": "tests/pricing.rs",
+        "near_test": "above_threshold_gets_discount",
+        "recommended_file": "tests/pricing.rs",
+        "target_quality": "correct"
+      }
+    },
+    {
+      "calibration": {
+        "outcome": "summary_only_correct",
+        "reason": "Macro-heavy code is expected to prefer summary-only guidance when line placement is unsafe.",
+        "source": "fixture_expectation"
+      },
+      "grip_class": "weakly_gripped",
+      "id": "ripr-review-calibration-macro-heavy",
+      "missing_discriminator": "macro-expanded equality boundary",
+      "placement": {
+        "line": 18,
+        "mode": null,
+        "path": "src/macros.rs",
+        "quality": "summary_only_expected"
+      },
+      "rank": 6,
+      "seam_id": "calibration-macro-heavy",
+      "severity": "warning",
+      "source": "summary_only",
+      "source_artifact": "fixtures/boundary_gap/expected/recommendation-calibration/synthetic-pr-guidance.json",
+      "source_case": "macro_heavy_summary_only",
+      "static_movement": {
+        "after_class": null,
+        "before_class": null,
+        "source": "fixture_expectation",
+        "state": "unknown"
+      },
+      "suggested_test": {
+        "expected_file": "tests/macros.rs",
+        "near_test": "macro_total_above_threshold",
+        "recommended_file": "tests/macros.rs",
+        "target_quality": "correct"
+      }
+    },
+    {
+      "calibration": {
+        "outcome": "wrong_target",
+        "reason": "The recommendation is on the expected seam but points at the wrong test target.",
+        "source": "outcome_receipt:fixture"
+      },
+      "grip_class": "weakly_gripped",
+      "id": "ripr-review-calibration-trait-generic",
+      "missing_discriminator": "generic bound equality case",
+      "placement": {
+        "line": 31,
+        "mode": "exact_seam_line",
+        "path": "src/generic.rs",
+        "quality": "correct"
+      },
+      "rank": 7,
+      "seam_id": "calibration-trait-generic",
+      "severity": "warning",
+      "source": "comments",
+      "source_artifact": "fixtures/boundary_gap/expected/recommendation-calibration/synthetic-pr-guidance.json",
+      "source_case": "trait_generic_wrong_target",
+      "static_movement": {
+        "after_class": null,
+        "before_class": null,
+        "source": "outcome_receipt",
+        "state": "unknown"
+      },
+      "suggested_test": {
+        "expected_file": "tests/generic_boundary.rs",
+        "near_test": "generic_rule_applies_above_threshold",
+        "recommended_file": "tests/generic_rules.rs",
+        "target_quality": "wrong_target"
+      }
+    },
+    {
+      "calibration": {
+        "outcome": "useful",
+        "reason": "The recommendation names an async error boundary and the exact error discriminator to assert.",
+        "source": "fixture_expectation"
+      },
+      "grip_class": "weakly_gripped",
+      "id": "ripr-review-calibration-async-error",
+      "missing_discriminator": "exact async error variant",
+      "placement": {
+        "line": 64,
+        "mode": "exact_seam_line",
+        "path": "src/auth.rs",
+        "quality": "correct"
+      },
+      "rank": 8,
+      "seam_id": "calibration-async-error",
+      "severity": "warning",
+      "source": "comments",
+      "source_artifact": "fixtures/boundary_gap/expected/recommendation-calibration/synthetic-pr-guidance.json",
+      "source_case": "async_error_boundary_useful",
+      "static_movement": {
+        "after_class": null,
+        "before_class": null,
+        "source": "fixture_expectation",
+        "state": "improved"
+      },
+      "suggested_test": {
+        "expected_file": "tests/async_errors.rs",
+        "near_test": "refresh_session_rejects_expired_token",
+        "recommended_file": "tests/async_errors.rs",
+        "target_quality": "correct"
+      }
+    }
+  ],
+  "root": ".",
+  "schema_version": "0.1",
+  "status": "advisory",
+  "summary": {
+    "false_annotations": 4,
+    "noisy": 1,
+    "recommendations_evaluated": 10,
+    "static_improved": 2,
+    "static_regressed": 0,
+    "static_unchanged": 3,
+    "summary_only_correct": 2,
+    "suppressed_correctly": 2,
+    "target_file_correct": 6,
+    "top_recommendation_outcome": "useful",
+    "unknown": 0,
+    "useful": 2
+  },
+  "suppressed": [
+    {
+      "calibration": {
+        "outcome": "suppressed_correctly",
+        "reason": "Configured-off weakly gripped seams should stay hidden while preserving auditable warning text.",
+        "source": "outcome_receipt:fixture"
+      },
+      "id": "ripr-review-suppression_configured_off",
+      "quality": "suppressed_correctly",
+      "reason": "severity_off",
+      "seam_id": "8f7fa8644fd12280",
+      "source_artifact": "fixtures/boundary_gap/expected/pr-guidance/configured-off/comments.json",
+      "source_case": "suppression_configured_off"
+    },
+    {
+      "calibration": {
+        "outcome": "suppressed_correctly",
+        "reason": "Generated or migration-like paths should not create review recommendations.",
+        "source": "fixture_expectation"
+      },
+      "id": "ripr-review-calibration-generated-migration",
+      "quality": "suppressed_correctly",
+      "reason": "generated_or_migration",
+      "seam_id": "calibration-generated-migration",
+      "source_artifact": "fixtures/boundary_gap/expected/recommendation-calibration/synthetic-pr-guidance.json",
+      "source_case": "generated_migration_exclusion"
+    }
+  ],
+  "tool": "ripr",
+  "warnings": []
+}

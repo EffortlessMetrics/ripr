@@ -639,24 +639,28 @@ metric = "PR guidance projects existing seam evidence into bounded changed-line 
 [[capability]]
 id = "recommendation_calibration_report"
 name = "Recommendation calibration report"
-status = "planned"
+status = "alpha"
 spec = "RIPR-SPEC-0013"
 evidence = [
-  "docs/specs/RIPR-SPEC-0013-recommendation-calibration-report.md defines the planned recommendation calibration report contract",
-  "docs/OUTPUT_SCHEMA.md Recommendation Calibration Report section defines the planned JSON shape",
+  "docs/specs/RIPR-SPEC-0013-recommendation-calibration-report.md defines the recommendation calibration report contract",
+  "docs/OUTPUT_SCHEMA.md Recommendation Calibration Report section defines the JSON shape",
   "docs/OUTPUT_SCHEMA.md Review Guidance Outcome Receipt section defines the optional local receipt shape",
+  "cargo xtask recommendation-calibration emits advisory JSON and Markdown reports",
+  "xtask/src/reports/recommendation.rs joins PR guidance, expectations, optional outcome receipts, suppression state, target placement, latency, and static movement",
   "fixtures/boundary_gap/expected/recommendation-calibration/expectations.json pins PR-shaped calibration expectations",
   "fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts/ pins optional local outcome receipt examples",
-  "docs/IMPLEMENTATION_CAMPAIGNS.md Campaign 14 marks report/recommendation-precision as the next ready item after the spec, corpus, and outcome receipts",
+  "fixtures/boundary_gap/expected/recommendation-calibration/recommendation-calibration.{json,md} pins checked report output",
   "docs/IMPLEMENTATION_PLAN.md routes Campaign 14 through recommendation calibration before optional gates",
   "docs/ROADMAP.md places recommendation calibration before calibrated gate policy"
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/recommendation-calibration/expectations.json",
-  "fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts"
+  "fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts",
+  "fixtures/boundary_gap/expected/recommendation-calibration/recommendation-calibration.json",
+  "fixtures/boundary_gap/expected/recommendation-calibration/recommendation-calibration.md"
 ]
-next = "report/recommendation-precision"
-metric = "planned recommendation calibration will count usefulness, false annotations, summary-only correctness, suppression correctness, target-file correctness, latency, static improved, unchanged, or regressed movement, and unknown outcomes without telemetry or CI blocking"
+next = "docs/calibration-workflow"
+metric = "recommendation calibration counts usefulness, false annotations, summary-only correctness, suppression correctness, target-file correctness, latency, static improved, unchanged, or regressed movement, and unknown outcomes without telemetry or CI blocking"
 
 [[capability]]
 id = "pilot_packet"

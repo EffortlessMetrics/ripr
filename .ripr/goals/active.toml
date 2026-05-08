@@ -89,7 +89,7 @@ commands = [
 
 [[work_item]]
 id = "report/recommendation-precision"
-status = "ready"
+status = "done"
 branch = "report-recommendation-precision"
 stackable = false
 blocked_by = [
@@ -100,6 +100,8 @@ blocked_by = [
 acceptance = "Emit a recommendation precision report that joins PR guidance, calibration corpus expectations, optional outcome receipts, suppression state, target placement, and latency without changing CI blocking defaults"
 commands = [
   "cargo test -p ripr recommendation",
+  "cargo test -p xtask recommendation_calibration",
+  "cargo xtask recommendation-calibration --root . --calibration-expectations fixtures/boundary_gap/expected/recommendation-calibration/expectations.json --outcome-receipts fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts --out fixtures/boundary_gap/expected/recommendation-calibration/recommendation-calibration.json --out-md fixtures/boundary_gap/expected/recommendation-calibration/recommendation-calibration.md",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-traceability",
@@ -109,7 +111,7 @@ commands = [
 
 [[work_item]]
 id = "docs/calibration-workflow"
-status = "blocked"
+status = "ready"
 branch = "docs-calibration-workflow"
 stackable = false
 blocked_by = [

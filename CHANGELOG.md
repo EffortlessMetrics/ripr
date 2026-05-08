@@ -67,6 +67,13 @@ are scoped or reviewed.
 - Added pinned review guidance outcome receipt examples for useful, noisy,
   wrong-line, already-covered, wrong-target, summary-only-correct, and
   suppressed-correctly recommendation calibration feedback.
+- Added `cargo xtask recommendation-calibration`, which reads existing PR
+  guidance, calibration expectations, optional outcome receipts, targeted-test
+  outcome, and agent receipt artifacts, then writes advisory
+  `recommendation-calibration.{json,md}` without telemetry, source edits,
+  generated tests, runtime execution, or CI blocking.
+- Added checked recommendation calibration report outputs under
+  `fixtures/boundary_gap/expected/recommendation-calibration/`.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and PR guidance annotation counts before artifact
@@ -106,6 +113,8 @@ are scoped or reviewed.
   calibration report contract.
 - Advanced Campaign 14 to `report/recommendation-precision` after pinning
   outcome receipt fixtures for local recommendation feedback.
+- Advanced Campaign 14 to `docs/calibration-workflow` after adding the
+  advisory recommendation precision report command and checked outputs.
 - Pinned RIPR-SPEC-0012 as the PR test guidance annotation contract and
   advanced Campaign 12 to `vscode/first-run-status` as the next ready UX item.
 - Advanced Campaign 12 to `vscode/action-discoverability` after pinning the

@@ -1279,18 +1279,19 @@ inline-comment boundary.
 
 ## Recommendation Calibration Report
 
-RIPR-SPEC-0013 defines the planned recommendation calibration report contract.
+RIPR-SPEC-0013 defines the recommendation calibration report contract.
 The report measures whether existing PR guidance was useful, correctly placed,
 properly suppressed or capped, aimed at the expected test target, and
 correlated with later static evidence movement.
 
-The planned repo-local report command is:
+The repo-local report command is:
 
 ```text
 cargo xtask recommendation-calibration \
   --root . \
   --pr-guidance target/ripr/review/comments.json \
-  --pilot-summary target/ripr/pilot/pilot-summary.json \
+  --calibration-expectations fixtures/boundary_gap/expected/recommendation-calibration/expectations.json \
+  --outcome-receipts fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts \
   --agent-receipt target/ripr/reports/agent-receipt.json \
   --targeted-test-outcome target/ripr/outcome/targeted-test-outcome.json \
   --out target/ripr/reports/recommendation-calibration.json
@@ -1316,12 +1317,13 @@ JSON shape:
   "status": "advisory",
   "root": ".",
   "inputs": {
-    "pr_guidance": "target/ripr/review/comments.json",
-    "pilot_summary": "target/ripr/pilot/pilot-summary.json",
+    "pr_guidance": ["target/ripr/review/comments.json"],
     "agent_receipt": "target/ripr/reports/agent-receipt.json",
     "targeted_test_outcome": "target/ripr/outcome/targeted-test-outcome.json",
     "calibration_expectations": "fixtures/boundary_gap/expected/recommendation-calibration/expectations.json",
-    "outcome_receipts": []
+    "outcome_receipts": [
+      "fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts/useful.json"
+    ]
   },
   "summary": {
     "recommendations_evaluated": 4,
@@ -1349,7 +1351,9 @@ JSON shape:
       "id": "ripr-review-67fc764ba37d77bd",
       "seam_id": "67fc764ba37d77bd",
       "rank": 1,
-      "source": "pr_guidance",
+      "source": "comments",
+      "source_artifact": "target/ripr/review/comments.json",
+      "source_case": "useful_exact_line_boundary",
       "placement": {
         "path": "src/pricing.rs",
         "line": 88,
@@ -1362,30 +1366,39 @@ JSON shape:
       "suggested_test": {
         "recommended_file": "tests/pricing.rs",
         "near_test": "applies_discount_above_threshold",
-        "target_quality": "correct"
+        "target_quality": "correct",
+        "expected_file": "tests/pricing.rs"
       },
       "calibration": {
         "outcome": "useful",
-        "source": "fixture_expectation",
+        "source": "outcome_receipt:fixture",
         "reason": "expected equality-boundary recommendation on the changed seam"
       },
       "static_movement": {
         "state": "improved",
-        "source": "agent_receipt",
-        "before_class": "weakly_gripped",
-        "after_class": "strongly_gripped"
+        "source": "outcome_receipt",
+        "before_class": null,
+        "after_class": null
       }
     }
   ],
   "suppressed": [
     {
       "id": "ripr-review-capped-1",
+      "seam_id": "67fc764ba37d77bd",
+      "source_artifact": "target/ripr/review/comments.json",
+      "source_case": "configured_off_boundary",
       "reason": "cap_reached",
-      "quality": "suppressed_correctly"
+      "quality": "suppressed_correctly",
+      "calibration": {
+        "outcome": "suppressed_correctly",
+        "source": "fixture_expectation",
+        "reason": "expected cap suppression"
+      }
     }
   ],
   "warnings": [],
-  "limits_note": "Advisory recommendation-quality evidence only; no telemetry, generated tests, source edits, mutation execution, or CI blocking."
+  "limits_note": "Advisory recommendation-quality evidence only; no telemetry, generated tests, source edits, runtime execution, or CI blocking."
 }
 ```
 
@@ -1393,9 +1406,9 @@ Field contract:
 
 - `schema_version` - currently `"0.1"`.
 - `tool` - always `"ripr"`.
-- `status` - `advisory` when at least one recommendation can be evaluated,
-  `incomplete` when required inputs are missing, and `config_error` when an
-  input is malformed or unsafe to read.
+- `status` - `advisory` when at least one recommendation can be evaluated and
+  `incomplete` when required inputs are missing. Malformed required inputs
+  return an actionable command error instead of a successful report.
 - `root` - workspace root used to resolve artifact paths.
 - `inputs` - paths and receipt lists considered by the report. Missing optional
   inputs should be visible as `null`, empty arrays, or warnings.
@@ -1425,8 +1438,8 @@ Field contract:
 - `recommendations[].calibration.outcome` - `useful`, `noisy`, `wrong_line`,
   `already_covered`, `wrong_target`, `summary_only_correct`,
   `suppressed_correctly`, or `unknown`.
-- `recommendations[].calibration.source` - `fixture_expectation`,
-  `outcome_receipt`, `static_movement`, or `unknown`.
+- `recommendations[].calibration.source` - `fixture_expectation` or
+  `outcome_receipt:<source>`.
 - `recommendations[].static_movement.state` - `improved`, `unchanged`,
   `regressed`, `resolved`, `new_gap`, `missing_after_snapshot`, or `unknown`.
 - `suppressed[]` - recommendations hidden by caps, suppression, configured-off
@@ -1438,11 +1451,11 @@ Field contract:
   `unknown`.
 - `warnings[]` - missing inputs, unsupported expectation fields, stale
   artifacts, or latency values that could not be derived.
-- `limits_note` - static/advisory boundary text for summaries and generated CI.
+- `limits_note` - advisory boundary text for summaries and generated CI.
 
 ### Review Guidance Outcome Receipt
 
-Review guidance outcome receipts are optional repo-local inputs to the planned
+Review guidance outcome receipts are optional repo-local inputs to the
 recommendation calibration report. They record reviewer, fixture, agent, or CI
 artifact feedback for one PR guidance item without sending telemetry, calling an
 external service, editing source, generating tests, running mutation testing, or
