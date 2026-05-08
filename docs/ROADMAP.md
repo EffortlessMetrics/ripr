@@ -124,27 +124,26 @@ operating model. Gates remain explicit, advisory by default, and separate from
 runtime mutation vocabulary. The [Campaign 15
 closeout](handoffs/2026-05-08-campaign-15-closeout.md) records the final proof
 and defers the next product campaign to an explicit decision. Campaign 16 is
-now active as Gate Adoption UX: the goal is not more policy machinery, but
-making explicit gate adoption safe through copyable generated-CI examples,
-visible waiver workflows, baseline creation and refresh guidance, first-screen
-gate summaries, repo-local dogfood receipts, and guidance for when blocking is
-earned by local evidence. The generated-CI examples for default advisory
-posture, `visible-only`, `acknowledgeable`, `baseline-check`, and
-`calibrated-gate` are now documented, and the `ripr-waive` reviewer workflow
-now keeps acknowledgements visible and separate from suppressions. Baseline
-creation and refresh guidance now frames baselines as visible historical debt
-ledgers that teams can shrink toward RIPR 0 under configured scope, and the
-generated CI summary now shows gate mode, status, labels, waiver, baseline,
-calibration, blocking reason, and artifact paths at a glance. Checked
-repo-local dogfood gate receipts now show visible-only, acknowledged,
-baseline-existing, baseline-new, missing-baseline, and explicit
-calibrated-gate decisions from checked evidence while preserving non-blocking
-generated CI defaults. [RIPR blocking readiness](BLOCKING_READINESS.md) now
-explains when to stay advisory, require acknowledgement, use baseline-check,
-or enable calibrated blocking. Campaign 16 closeout is the next ready
-adoption slice. Editor Evidence UX is queued as a separate Lane 3 editor
-campaign, not a replacement for the active gate-adoption manifest; it should
-begin after Gate Adoption UX closes or after an explicit parallel-lane decision.
+closed as Gate Adoption UX: it made explicit gate adoption safe through
+copyable generated-CI examples, visible waiver workflows, baseline creation and
+refresh guidance, first-screen gate summaries, repo-local dogfood receipts, and
+guidance for when blocking is earned by local evidence. The generated-CI
+examples for default advisory posture, `visible-only`, `acknowledgeable`,
+`baseline-check`, and `calibrated-gate` are documented; the `ripr-waive`
+reviewer workflow keeps acknowledgements visible and separate from
+suppressions; baseline guidance frames existing findings as visible historical
+debt that teams can shrink toward RIPR 0 under configured scope; generated CI
+summaries show gate mode, status, labels, waiver, baseline, calibration,
+blocking reason, and artifact paths at a glance; and checked repo-local dogfood
+receipts cover visible-only, acknowledged, baseline-existing, baseline-new,
+missing-baseline, and explicit calibrated-gate decisions while preserving
+non-blocking generated CI defaults. [RIPR blocking
+readiness](BLOCKING_READINESS.md) explains when to stay advisory, require
+acknowledgement, use baseline-check, or enable calibrated blocking. The
+[Campaign 16 closeout](handoffs/2026-05-08-campaign-16-closeout.md) records
+the adoption proof and next-work boundary. Editor Evidence UX remains queued as
+a separate Lane 3 campaign and should start only after an explicit activation
+PR or explicit parallel-lane decision.
 
 ## Strategic Sequence
 

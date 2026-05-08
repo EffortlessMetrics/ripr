@@ -1827,16 +1827,16 @@ Blocking conditions:
 
 Next:
 
-- Campaign 16 is active as Gate Adoption UX. It should make optional gate
-  adoption safe and obvious through examples, waiver workflows, baseline
-  guidance, CI summary polish, dogfood receipts, and blocking-readiness docs
-  without changing advisory defaults.
+- Campaign 16 is complete. [Campaign 16
+  closeout](handoffs/2026-05-08-campaign-16-closeout.md) records the gate
+  adoption PR chain, proof commands, and the boundary that Editor Evidence UX
+  remains queued until an explicit activation PR or parallel-lane decision.
 
 ## Campaign 16: Gate Adoption UX
 
 Campaign ID: `gate-adoption-ux`
 
-Status: active
+Status: complete
 
 Campaign 15 built the optional gate. The next product risk is adoption:
 teams need copyable setup examples, visible waiver workflows, baseline guidance,
@@ -1885,7 +1885,26 @@ Work items:
 | `ci/gate-decision-summary-polish` | done | Added a generated-CI gate decision at-a-glance summary with mode, status, counts, PR labels, acknowledgement labels, applied waiver, baseline, calibration inputs/effects, blocking reason, and artifact paths before the full Markdown report. |
 | `dogfood/gate-adoption-receipts` | done | Extended `cargo xtask dogfood` with checked repo-local gate adoption receipts for `visible-only`, acknowledged waiver, baseline-existing, baseline-new, missing-baseline, and explicit calibrated-gate decisions while recording that generated CI remains non-blocking by default. |
 | `docs/blocking-readiness-guide` | done | Added RIPR blocking-readiness guidance for staying advisory, requiring acknowledgement, using baseline-check, and enabling calibrated blocking only when local evidence is mature. |
-| `campaign/gate-adoption-ux-closeout` | ready | Close Campaign 16 only after gate adoption docs, waiver workflows, baseline guidance, CI summary polish, dogfood receipts, and blocking-readiness guidance are complete while defaults stay advisory. |
+| `campaign/gate-adoption-ux-closeout` | done | Closed Campaign 16 after gate adoption docs, waiver workflows, baseline guidance, CI summary polish, dogfood receipts, and blocking-readiness guidance were complete while defaults stayed advisory. The closeout audit is recorded in `docs/handoffs/2026-05-08-campaign-16-closeout.md`. |
+
+Campaign 16 is complete. Landed PR chain:
+
+- #571 opened Gate Adoption UX after Campaign 15 supplied explicit optional
+  gates.
+- #573 added copyable generated-CI adoption examples for default advisory,
+  `visible-only`, `acknowledgeable`, `baseline-check`, and `calibrated-gate`
+  modes.
+- #575 documented visible `ripr-waive` acknowledgement workflows.
+- #576 documented baseline creation, review, and shrink refresh workflows for
+  historical debt.
+- #578 polished generated-CI gate summaries, and #581 hardened their Markdown
+  escaping.
+- #580 added checked repo-local gate adoption dogfood receipts through
+  `cargo xtask dogfood`.
+- #582 added blocking-readiness guidance for moving from advisory visibility to
+  acknowledgement, baseline-check, and calibrated blocking.
+- `campaign/gate-adoption-ux-closeout` recorded the final audit and closed the
+  campaign.
 
 Dependencies:
 
@@ -1926,21 +1945,25 @@ Blocking conditions:
 - LSP or analyzer behavior changes in this campaign lane
 - new public crates
 
+Closeout:
+
+- [Campaign 16 closeout](handoffs/2026-05-08-campaign-16-closeout.md)
+  records the final Campaign 16 PR chain, validation commands, and adoption
+  boundary.
+
 Next:
 
-- `campaign/gate-adoption-ux-closeout` is the next ready item. Close Campaign
-  16 after auditing that adoption examples, waiver workflows, baseline
-  guidance, CI summary polish, dogfood receipts, and blocking-readiness
-  guidance all preserve advisory defaults.
+- Campaign 16 is closed. No ready work item remains in the active manifest.
+  Editor Evidence UX is queued as the next explicit campaign candidate, not
+  activated by this closeout.
 
 ## Future Campaign: Editor Evidence UX
 
 Campaign ID: `editor-evidence-ux`
 
-Status: queued, not active. Campaign 16, Gate Adoption UX, remains the active
-machine-readable campaign in `.ripr/goals/active.toml`. Start this lane only
-after Gate Adoption UX closes or after an explicit decision to run the editor
-lane in parallel.
+Status: queued, not active. Campaign 16, Gate Adoption UX, is complete. Start
+this lane only after an explicit campaign activation PR or after an explicit
+decision to run the editor lane in parallel.
 
 The saved-workspace LSP path already has alpha diagnostics, evidence hover,
 seam actions, related-test opening, context collection, agent-loop commands,

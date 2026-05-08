@@ -697,10 +697,12 @@ evidence = [
   "cargo xtask dogfood writes and compares gate adoption receipts while recording non-blocking generated CI defaults",
   "docs/CALIBRATED_GATE_POLICY.md documents modes, waivers, CI behavior, calibration evidence, rollout stages, fixture matrix, and static/runtime vocabulary boundaries",
   "docs/BLOCKING_READINESS.md explains when to stay advisory, require acknowledgement, use baseline-check, or enable calibrated blocking",
-  "docs/handoffs/2026-05-08-campaign-15-closeout.md records the Campaign 15 prompt-to-artifact audit and closeout proof"
+  "docs/handoffs/2026-05-08-campaign-15-closeout.md records the Campaign 15 prompt-to-artifact audit and closeout proof",
+  "docs/handoffs/2026-05-08-campaign-16-closeout.md records the Campaign 16 gate adoption audit, proof, and next-work boundary"
 ]
 fixtures = [
-  "fixtures/boundary_gap/expected/calibrated-gate"
+  "fixtures/boundary_gap/expected/calibrated-gate",
+  "fixtures/boundary_gap/expected/gate-adoption"
 ]
 next = "maintenance"
 metric = "gate_decisions_evaluated, gate_decisions_blocking, gate_decisions_acknowledged, gate_decisions_advisory, gate_decisions_suppressed, gate_decisions_unknown_confidence, gate_config_errors"
