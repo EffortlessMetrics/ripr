@@ -11,7 +11,7 @@ status = "shadow"
 #
 #   id              stable identifier referenced in PR descriptions and ADRs
 #   path            file the entry applies to
-#   family          panic | unwrap | expect | unreachable | todo | unimplemented
+#   family          panic_macro | unwrap | expect | unreachable | todo | unimplemented
 #   classification  test_only | test_helper | release_only | bootstrap | ...
 #   owner           team / area responsible for keeping this entry valid
 #   explanation     why this entry is allowed despite the deny-by-default rule
@@ -22,11 +22,12 @@ status = "shadow"
 #   last_seen       advisory line/column drift hint (informational)
 #
 # Three representative entries are mirrored here to demonstrate each shape:
-# a method_call selector without fingerprint, a method_call selector with a
-# receiver_fingerprint (the strongest semantic identity), and a release_only
-# entry placeholder. The remaining 26 entries from `.ripr/no-panic-allowlist.toml`
-# will be migrated in the follow-up that updates the checker; doing all 29 in
-# this PR would bundle a schema-introduction with a parser change.
+# a method_call selector without fingerprint (test_helper), a method_call
+# selector with a receiver_fingerprint (test_only — the strongest semantic
+# identity shape), and a CLI test helper using receiver_fingerprint
+# (test_only). The remaining 26 entries from `.ripr/no-panic-allowlist.toml`
+# will be migrated in the follow-up that updates the checker; doing all 29
+# in this PR would bundle a schema-introduction with a parser change.
 #
 # See:
 #   docs/NO_PANIC_SEMANTIC_ALLOWLIST.md
