@@ -1953,17 +1953,116 @@ Closeout:
 
 Next:
 
-- Campaign 16 is closed. No ready work item remains in the active manifest.
-  Campaign 17 is now active as Editor Evidence UX, with
-  `campaign/editor-evidence-ux-audit` as the first ready item. Baseline Ledger
-  v1 remains a future adoption campaign and should open only through a
-  separate explicit campaign PR.
+- Campaign 17 is active as RIPR Zero Adoption. It should turn baselines into
+  burn-down ledgers, surface PR-level behavioral-debt deltas, and route focused
+  repair packets while keeping generated CI advisory by default.
 
-## Campaign 17: Editor Evidence UX
+## Campaign 17: RIPR Zero Adoption
+
+Campaign ID: `ripr-zero-adoption`
+
+Status: active
+
+Campaign 16 made optional gates adoptable. The next PR/CI product risk is
+movement: teams need to see whether a PR introduces new policy-eligible debt,
+resolves baseline debt, acknowledges an exception, or moves the repo toward
+RIPR 0.
+
+Objective:
+
+```text
+Make RIPR 0 adoption concrete for PR/CI users: turn baselines into visible
+burn-down ledgers, surface PR-level behavioral-debt deltas, route blocking
+candidates to focused repair packets, and keep every new policy mode explicit
+and advisory by default.
+```
+
+Why it matters:
+
+Most repositories will not start at RIPR 0. Adoption has to show the whole
+truth without punishing the first run: visible baseline debt, resolved debt,
+new policy-eligible gaps, acknowledged exceptions, suppressions, stale baseline
+entries, and the exact repair path for any blocking candidate.
+
+End state:
+
+- a baseline debt delta report compares current evidence against reviewed
+  baseline debt without auto-adopting new findings
+- generated CI summaries show new, resolved, acknowledged, suppressed, stale,
+  and unknown baseline-delta counts before artifact digging
+- blocking summaries link each policy candidate to a focused test shape,
+  related test, verify command, acknowledgement path, and full receipt
+- RIPR Zero adoption docs explain that RIPR 0 is configured-scope behavioral
+  grip closure, not perfect tests or 100 percent coverage
+- coverage/grip frontier summaries are available when coverage data exists
+  without treating coverage as a proxy for oracle strength
+- adoption remains staged: advisory visibility, baseline checkpoint,
+  visible-only gate, acknowledgeable gate, baseline-check, calibrated-gate, then
+  burn-down toward RIPR 0
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `spec/baseline-debt-delta-report` | ready | Define the baseline debt delta report contract for comparing current PR/CI evidence to reviewed baseline debt without changing analyzer identity, auto-adopting new debt, or making CI blocking by default. |
+| `ci/baseline-debt-delta-summary` | blocked | Surface baseline debt delta counts in generated CI summaries and artifacts while preserving advisory defaults and evidence uploads. |
+| `ci/blocking-repair-packet-links` | blocked | Add repair-packet links to blocking summaries so every blocking candidate names the focused test shape, related test, verify command, acknowledgement path, and full receipt. |
+| `docs/ripr-zero-adoption-guide` | blocked | Document staged RIPR Zero adoption, including what RIPR 0 means under configured scope, how baselines shrink, and how waivers and suppressions differ. |
+| `ci/coverage-grip-frontier-summary` | blocked | When coverage data exists, summarize coverage and RIPR grip movement as separate axes without treating line coverage as oracle strength. |
+| `campaign/ripr-zero-adoption-closeout` | blocked | Close Campaign 17 only after baseline delta, PR/CI debt-delta summaries, repair links, adoption docs, and coverage/grip frontier reporting are specified or implemented while defaults stay advisory. |
+
+Dependencies:
+
+- Campaign 16 supplies the visible gate adoption workflow, waiver docs,
+  baseline docs, first-screen summaries, dogfood receipts, and blocking
+  readiness guide.
+- Campaign 15 supplies the explicit gate evaluator and decision schema. RIPR
+  Zero adoption consumes gate decisions; it does not redefine gate policy.
+- Campaign 14 supplies recommendation calibration. Missing or unknown
+  calibration must stay visible rather than becoming confidence.
+- Campaign 13 supplies PR guidance. Debt-delta summaries should project that
+  evidence, not replace the review packet.
+- Existing baselines are adoption checkpoints for historical debt, not
+  suppressions and not permission to adopt new debt silently.
+
+Commands:
+
+```bash
+cargo xtask check-campaign
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-capabilities
+cargo xtask check-pr
+```
+
+Blocking conditions:
+
+- analyzer identity rewrites inside Lane 4
+- default CI blocking
+- baseline auto-adoption of new PR findings
+- treating baselines as suppressions or accepted-forever debt
+- hiding acknowledged, suppressed, stale, or unknown entries from summaries
+- treating line coverage as oracle strength
+- runtime mutation vocabulary in static debt-delta summaries
+- running cargo-mutants or any mutation engine from adoption workflows
+- automatic source edits or generated tests
+- LSP/editor behavior changes in this campaign lane
+- new public crates
+
+Next:
+
+- `spec/baseline-debt-delta-report` is the next ready item. Define the report
+  contract before generated CI wiring or repair-link projection.
+
+## Future Campaign: Editor Evidence UX
 
 Campaign ID: `editor-evidence-ux`
 
-Status: active
+Status: queued, not active. Campaign 17, RIPR Zero Adoption, is active. Start
+this lane only after an explicit campaign activation PR or after an explicit
+decision to run the editor lane in parallel.
 
 The saved-workspace LSP path already has alpha diagnostics, evidence hover,
 seam actions, related-test opening, context collection, agent-loop commands,
@@ -2002,7 +2101,7 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `campaign/editor-evidence-ux-audit` | ready | Audit diagnostic data, hover, actions, context collection, VS Code extension proof, and LSP cockpit status into one editor evidence contract without behavior changes. |
+| `campaign/editor-evidence-ux-audit` | queued | Audit diagnostic data, hover, actions, context collection, VS Code extension proof, and LSP cockpit status into one editor evidence contract without behavior changes. |
 | `lsp/evidence-hover-hardening` | blocked | Harden hover as the primary explanation surface for seam class, evidence path, missing discriminator, related test, suggested assertion, verify command, receipt command, and static limits. |
 | `lsp/evidence-aware-actions` | blocked | Tighten action visibility and payload validation so actions only appear when supporting evidence or command context exists. |
 | `lsp/context-packet-command` | blocked | Add one canonical evidence context packet command for external tools and agents without edits, generated tests, or provider coupling. |
@@ -2020,16 +2119,8 @@ Dependencies:
 - Campaign 12 supplies first-hour editor status and intent-titled action
   framing.
 - Campaign 13 supplies PR guidance without making RIPR a free-form reviewer.
-- Campaign 16 is complete; this explicit activation starts from the queued
-  editor contract without changing gate adoption policy.
-- Baseline Ledger v1 remains a separate future adoption lane.
-
-Next:
-
-- `campaign/editor-evidence-ux-audit` is the next ready item. Keep that PR
-  docs/contract-only: audit diagnostic data, hover, actions, context
-  collection, VS Code proof, LSP cockpit status, and status/staleness without
-  adding behavior.
+- Campaign 17 remains active unless this lane is explicitly promoted or run in
+  parallel.
 
 Commands:
 
