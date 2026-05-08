@@ -30,6 +30,7 @@ through multiple work items in a campaign, but each work item should follow the
 | PR Review Guidance (13) | Project existing RIPR evidence into bounded pull-request review guidance without making CI blocking or turning RIPR into a free-form reviewer. | Complete: renderer, generated CI, fixtures, docs, and `campaign/pr-review-guidance-closeout`. |
 | Recommendation Calibration (14) | Measure whether top CI, LSP, and PR recommendations are clear, correctly placed, low-noise, and correlated with better static evidence after one focused test. | Complete: spec, corpus, receipts, report, guide, and `campaign/recommendation-calibration-closeout`. |
 | Calibrated Gate Policy (15) | Define optional calibrated gates over existing PR-time evidence without changing advisory defaults or blurring static/runtime evidence. | Complete: spec, evaluator, fixtures, generated CI opt-in wiring, evidence-preserving CI behavior, calibrated gate guide, and `campaign/calibrated-gate-closeout`. |
+| Gate Adoption UX (16) | Make optional calibrated gate adoption safe and obvious for real teams without changing advisory defaults. | Active: `docs/gate-adoption-examples` is ready; waiver workflows, baseline guidance, CI summary polish, dogfood receipts, blocking-readiness docs, and closeout are queued. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
 through 8 are complete. Campaign 6 closed after the internal module SRP chain
@@ -81,7 +82,11 @@ only when `RIPR_GATE_MODE` is explicitly configured; and
 [Calibrated gate policy](CALIBRATED_GATE_POLICY.md) documents modes, waivers,
 CI behavior, calibration evidence, and the static/runtime boundary. The
 closeout handoff records the PR chain, prompt-to-artifact audit, and explicit
-boundary that no Campaign 16 is opened by this closeout.
+boundary that adoption should be opened explicitly after closeout. Campaign 16
+is now active as Gate Adoption UX: it starts with copyable generated-CI examples
+for explicit gate modes, then queues visible waiver workflows, baseline
+creation and refresh guidance, first-screen gate summary polish, repo-local
+dogfood receipts, and guidance for when blocking is mature enough.
 
 ## PR 0: `planning-and-tracking-docs`
 

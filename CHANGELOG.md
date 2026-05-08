@@ -94,6 +94,9 @@ are scoped or reviewed.
 - Added the Campaign 15 closeout handoff after optional calibrated gates were
   specified, implemented as read-only evaluation, fixture-pinned, optionally
   wired into generated CI, documented, and kept advisory by default.
+- Opened Campaign 16, Gate Adoption UX, with `docs/gate-adoption-examples` as
+  the first ready item before waiver workflows, baseline guidance, CI summary
+  polish, dogfood receipts, and blocking-readiness docs.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and PR guidance annotation counts before artifact
