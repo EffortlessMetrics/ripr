@@ -42,7 +42,7 @@ commands = [
 
 [[work_item]]
 id = "gate/policy-evaluator"
-status = "ready"
+status = "done"
 branch = "gate-policy-evaluator"
 stackable = false
 blocked_by = ["spec/calibrated-gate-policy"]
@@ -58,7 +58,7 @@ commands = [
 
 [[work_item]]
 id = "fixtures/calibrated-gate-cases"
-status = "blocked"
+status = "ready"
 branch = "fixtures-calibrated-gate-cases"
 stackable = false
 blocked_by = [

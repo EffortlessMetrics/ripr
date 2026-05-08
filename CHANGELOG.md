@@ -84,6 +84,10 @@ are scoped or reviewed.
 - Added RIPR-SPEC-0014 for calibrated gate policy, defining optional
   visible-only, acknowledgeable, baseline-check, and calibrated-gate modes plus
   the planned gate decision JSON/Markdown contract.
+- Added `ripr gate evaluate`, a read-only optional policy evaluator that writes
+  `gate-decision.{json,md}` from existing PR guidance, labels, baselines, and
+  calibration inputs without posting comments, editing source, running mutation
+  tests, uploading SARIF, or changing generated workflow defaults.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and PR guidance annotation counts before artifact
@@ -131,6 +135,8 @@ are scoped or reviewed.
   `spec/calibrated-gate-policy` as the next ready contract item.
 - Advanced Campaign 15 to `gate/policy-evaluator` after pinning the calibrated
   gate policy contract.
+- Advanced Campaign 15 to `fixtures/calibrated-gate-cases` after adding the
+  read-only gate decision producer.
 - Pinned RIPR-SPEC-0012 as the PR test guidance annotation contract and
   advanced Campaign 12 to `vscode/first-run-status` as the next ready UX item.
 - Advanced Campaign 12 to `vscode/action-discoverability` after pinning the

@@ -5,6 +5,7 @@ Usage:
   ripr pilot [--root PATH] [--out PATH] [--mode draft] [--max-seams 5] [--timeout-ms 30000]
   ripr outcome --before PATH --after PATH [--format md|json] [--out PATH]
   ripr review-comments --root . --base SHA --head SHA [--out target/ripr/review/comments.json]
+  ripr gate evaluate --pr-guidance PATH [--mode visible-only] [--out target/ripr/reports/gate-decision.json]
   ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
   ripr agent start --root . --seam-id ID [--out target/ripr/workflow]
   ripr agent brief --root . (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json
@@ -29,6 +30,7 @@ Quick start:
   ripr pilot
   ripr outcome --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json
   ripr review-comments --root . --base origin/main --head HEAD --out target/ripr/review/comments.json
+  ripr gate evaluate --pr-guidance target/ripr/review/comments.json --mode visible-only
   ripr calibrate cargo-mutants --mutants-json target/mutants/outcomes.json --repo-exposure-json target/ripr/pilot/after.repo-exposure.json
   ripr agent start --root . --seam-id f3c9e4d21a0b7c88
   ripr agent brief --root . --diff change.diff --json
@@ -118,6 +120,32 @@ JSON plus a sibling Markdown file. It joins existing static seam evidence with
 the changed-line diff and only places line guidance on changed lines. It does
 not post to GitHub, edit source, generate tests, run mutation testing, or make
 CI blocking by default.
+"#;
+
+const GATE_HELP: &str = r#"Usage: ripr gate evaluate --pr-guidance PATH [--mode MODE] [--out PATH] [--out-md PATH]
+
+Options:
+  --root PATH                         Workspace root. Defaults to current directory.
+  --repo-exposure PATH                Optional repo-exposure JSON input.
+  --pr-guidance PATH                  Required PR guidance JSON from `ripr review-comments`.
+  --sarif-policy PATH                 Optional SARIF policy JSON input.
+  --labels-json PATH                  Optional JSON array or object with labels.
+  --label LABEL                       Repeatable current PR label input.
+  --agent-verify PATH                 Optional agent verify JSON input.
+  --agent-receipt PATH                Optional agent receipt JSON input.
+  --recommendation-calibration PATH   Optional recommendation calibration JSON input.
+  --mutation-calibration PATH         Optional imported mutation calibration JSON input.
+  --baseline PATH                     Explicit baseline for baseline-check or calibrated-gate.
+  --mode MODE                         visible-only, acknowledgeable, baseline-check, or calibrated-gate. Defaults to visible-only.
+  --acknowledgement-label LABEL       Repeatable acknowledgement label. Defaults to ripr-waive.
+  --out PATH                          JSON output path. Defaults to target/ripr/reports/gate-decision.json.
+  --out-md PATH                       Markdown output path. Defaults to --out with .md extension.
+
+The gate evaluator is read-only policy over existing RIPR evidence. It writes
+JSON and Markdown before returning a non-zero exit for `blocked` or
+`config_error` decisions. It does not post comments, edit source, generate
+tests, run mutation testing, upload SARIF, mutate GitHub state, or change
+generated workflow defaults.
 "#;
 
 const CALIBRATE_HELP: &str = r#"Usage: ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
@@ -329,6 +357,10 @@ pub(super) fn print_review_comments_help() {
     println!("{REVIEW_COMMENTS_HELP}");
 }
 
+pub(super) fn print_gate_help() {
+    println!("{GATE_HELP}");
+}
+
 pub(super) fn print_calibrate_help() {
     println!("{CALIBRATE_HELP}");
 }
@@ -386,8 +418,8 @@ mod tests {
     use super::{
         AGENT_BRIEF_HELP, AGENT_HELP, AGENT_PACKET_HELP, AGENT_RECEIPT_HELP,
         AGENT_REVIEW_SUMMARY_HELP, AGENT_START_HELP, AGENT_STATUS_HELP, AGENT_VERIFY_HELP,
-        CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP, DOCTOR_HELP, EXPLAIN_HELP, HELP, INIT_HELP,
-        LSP_HELP, OUTCOME_HELP, PILOT_HELP, REVIEW_COMMENTS_HELP,
+        CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP, DOCTOR_HELP, EXPLAIN_HELP, GATE_HELP, HELP,
+        INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP, REVIEW_COMMENTS_HELP,
     };
 
     #[test]
@@ -396,6 +428,7 @@ mod tests {
         assert!(HELP.contains("ripr pilot"));
         assert!(HELP.contains("ripr outcome"));
         assert!(HELP.contains("ripr review-comments"));
+        assert!(HELP.contains("ripr gate evaluate"));
         assert!(HELP.contains("ripr calibrate"));
         assert!(HELP.contains("ripr agent start"));
         assert!(HELP.contains("ripr agent brief"));
@@ -433,6 +466,9 @@ mod tests {
         assert!(OUTCOME_HELP.contains("--before PATH"));
         assert!(REVIEW_COMMENTS_HELP.starts_with("Usage: ripr review-comments"));
         assert!(REVIEW_COMMENTS_HELP.contains("target/ripr/review/comments.json"));
+        assert!(GATE_HELP.starts_with("Usage: ripr gate evaluate"));
+        assert!(GATE_HELP.contains("visible-only"));
+        assert!(GATE_HELP.contains("ripr-waive"));
         assert!(CALIBRATE_HELP.starts_with("Usage: ripr calibrate cargo-mutants"));
         assert!(CALIBRATE_HELP.contains("--mutants-json PATH"));
         assert!(AGENT_HELP.starts_with("Usage: ripr agent"));

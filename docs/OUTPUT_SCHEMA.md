@@ -1459,11 +1459,11 @@ Field contract:
 ## Calibrated Gate Decision
 
 RIPR-SPEC-0014 defines the optional calibrated gate policy contract. The gate
-decision report is planned as read-only policy over existing repo exposure, PR
-guidance, SARIF policy, labels, receipts, recommendation calibration, and
-optional imported mutation calibration artifacts.
+decision report is read-only policy over existing repo exposure, PR guidance,
+SARIF policy, labels, receipts, recommendation calibration, and optional
+imported mutation calibration artifacts.
 
-The planned evaluator is:
+The evaluator is:
 
 ```text
 ripr gate evaluate \
@@ -1489,9 +1489,10 @@ target/ripr/reports/gate-decision.md
 ```
 
 This is an optional policy surface. Generated workflows remain advisory and
-non-blocking by default. The evaluator must not post comments, edit source
-files, generate tests, run mutation testing, upload SARIF, mutate GitHub state,
-or hide acknowledged decisions.
+non-blocking by default. The evaluator writes JSON and Markdown before
+returning a non-zero exit for `blocked` or `config_error` decisions. It must
+not post comments, edit source files, generate tests, run mutation testing,
+upload SARIF, mutate GitHub state, or hide acknowledged decisions.
 
 JSON shape:
 

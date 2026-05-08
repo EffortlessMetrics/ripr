@@ -887,10 +887,28 @@ id = "RIPR-SPEC-0014"
 name = "calibrated gate policy"
 spec = "docs/specs/RIPR-SPEC-0014-calibrated-gate-policy.md"
 tests = [
+  "crates/ripr/src/cli/commands.rs::tests::gate_parses_full_option_surface",
+  "crates/ripr/src/cli/commands.rs::tests::gate_requires_pr_guidance_and_rejects_unknown_args",
+  "crates/ripr/src/cli/commands.rs::tests::gate_command_writes_visible_only_reports",
+  "crates/ripr/src/cli/commands.rs::tests::gate_command_writes_blocked_report_before_error",
+  "crates/ripr/src/output/gate.rs::tests::gate_visible_only_records_pr_guidance_without_blocking",
+  "crates/ripr/src/output/gate.rs::tests::gate_acknowledgeable_blocks_policy_candidate_without_label",
+  "crates/ripr/src/output/gate.rs::tests::gate_acknowledgeable_keeps_waived_candidate_visible",
+  "crates/ripr/src/output/gate.rs::tests::gate_calibrated_mode_requires_explicit_baseline",
+  "crates/ripr/src/output/gate.rs::tests::gate_calibrated_mode_blocks_new_supported_candidate",
+  "crates/ripr/src/output/gate.rs::tests::gate_calibrated_mode_uses_imported_mutation_support",
+  "crates/ripr/src/output/gate.rs::tests::gate_labels_json_acknowledges_candidate",
+  "crates/ripr/src/output/gate.rs::tests::gate_baseline_check_keeps_existing_candidate_advisory",
 ]
 fixtures = [
 ]
 code = [
+  "crates/ripr/src/cli/command.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/execute.rs",
+  "crates/ripr/src/cli/help.rs",
+  "crates/ripr/src/cli/parse.rs",
+  "crates/ripr/src/output/gate.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0014-calibrated-gate-policy.md",

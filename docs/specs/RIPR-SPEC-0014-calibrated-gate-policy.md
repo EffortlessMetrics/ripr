@@ -56,7 +56,7 @@ The contract is:
 
 ## Behavior
 
-The planned evaluator is a read-only command:
+The evaluator is a read-only command:
 
 ```text
 ripr gate evaluate --root . \
