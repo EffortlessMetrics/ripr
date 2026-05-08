@@ -144,9 +144,10 @@ acknowledgement, use baseline-check, or enable calibrated blocking. The
 the adoption proof and next-work boundary. Campaign 17 is active as RIPR Zero
 Adoption: RIPR-SPEC-0016 now defines the baseline debt delta contract before
 baseline create, diff, shrink-only update, and generated CI debt-delta
-artifacts. Editor Evidence UX remains queued as a separate Lane 3 campaign and
-should start only after an explicit activation PR or explicit parallel-lane
-decision.
+artifacts. Editor Evidence UX remains queued as a separate Lane 3 campaign; its
+contract audit is recorded in [Editor Evidence UX](EDITOR_EVIDENCE_UX.md), but
+behavior work should start only after an explicit activation PR or explicit
+parallel-lane decision.
 
 ## Strategic Sequence
 

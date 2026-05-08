@@ -77,11 +77,6 @@ layout, waiver/baseline visibility, and repair paths. It should not redefine
 analyzer semantics, gate policy semantics, LSP behavior, mutation execution, or
 default blocking.
 
-The campaign should stay in Lane 4: PR summaries, CI projection, artifact
-layout, waiver/baseline visibility, and repair paths. It should not redefine
-analyzer semantics, gate policy semantics, LSP behavior, mutation execution, or
-default blocking.
-
 ## What Not To Do
 
 - Do not make generated workflows blocking by default.
