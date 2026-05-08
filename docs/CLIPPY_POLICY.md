@@ -66,6 +66,11 @@ Currently denied at the workspace level (selected highlights):
   `clippy::unwrap_in_result`.
 - Memory / drop footguns: `clippy::mem_forget`, `clippy::forget_non_drop`,
   `clippy::drop_non_drop`.
+- Unsafe-block hygiene (belt-and-suspenders for `unsafe_code = "forbid"`,
+  active so a future scoped unsafe island still has a receipt):
+  `unsafe_op_in_unsafe_fn`, `clippy::undocumented_unsafe_blocks`,
+  `clippy::multiple_unsafe_ops_per_block`,
+  `clippy::repr_packed_without_abi`.
 - Numeric correctness: `clippy::float_cmp`, `clippy::float_cmp_const`,
   `clippy::float_equality_without_abs`, `clippy::lossy_float_literal`,
   `clippy::invalid_upcast_comparisons`, `clippy::cast_sign_loss`,
@@ -111,7 +116,8 @@ Currently denied at the workspace level (selected highlights):
 - Suppression governance: `clippy::allow_attributes_without_reason`,
   `clippy::blanket_clippy_restriction_lints`.
 - Rust: `unsafe_code = "forbid"`, `unused_must_use`,
-  `const_item_interior_mutations`, `function_casts_as_integer`.
+  `unsafe_op_in_unsafe_fn`, `const_item_interior_mutations`,
+  `function_casts_as_integer`.
 
 `clippy::unwrap_used` and `clippy::expect_used` are denied at the Clippy
 rail. Every existing call site is receipted on **both** rails:
