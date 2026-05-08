@@ -1341,8 +1341,8 @@ Work items:
 | `agent/reviewer-summary` | done | Added `ripr agent review-summary --root .` Markdown plus `--json` schema `0.1` output that joins status, workflow, receipt, cockpit, repo exposure, LSP cockpit when present, and local CI artifact state into a compact review packet. |
 | `fixtures/llm-work-loop` | done | Added a boundary-gap `expected/llm-work-loop/` fixture matrix for happy, unchanged, regressed, missing-artifact, stale-artifact, configured-off, path-with-spaces, and Windows-separator loop cases. |
 | `ci/llm-work-packets` | done | Generated CI now writes and uploads `target/ripr/workflow` with workflow manifest, commands Markdown, agent status JSON/Markdown, agent review summary JSON/Markdown, agent packet, brief, and verify JSON, plus `target/ripr/reports/agent-receipt.json` and repo-local operator cockpit artifacts when available. Existing `target/ripr/agent` compatibility copies remain uploaded. |
-| `docs/llm-operator-guide` | ready | Document the LLM operator loop from agent status through start, packet or brief, focused test, after snapshot, verify, receipt, and review summary, with anti-goals explicit. |
-| `campaign/llm-work-loop-closeout` | blocked | Close Campaign 11 only after LLM work-loop state, commands, provenance, fixtures, CI artifacts, docs, and review summary are aligned without automatic edits, generated tests, runtime mutation execution, speculative LSP features, or new public crates. |
+| `docs/llm-operator-guide` | done | Added `docs/LLM_OPERATOR_GUIDE.md` as the source-edit-free operator guide for humans and external LLM tools, covering agent status, workflow packet, packet or brief, focused test target, after snapshot, verify, receipt, reviewer summary, CI/editor artifact paths, and explicit anti-goals. |
+| `campaign/llm-work-loop-closeout` | ready | Close Campaign 11 only after LLM work-loop state, commands, provenance, fixtures, CI artifacts, docs, and review summary are aligned without automatic edits, generated tests, runtime mutation execution, speculative LSP features, or new public crates. |
 
 Commands:
 

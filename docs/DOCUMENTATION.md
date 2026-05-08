@@ -33,6 +33,7 @@ Current how-to docs:
 - [Targeted test workflow](TARGETED_TEST_WORKFLOW.md)
 - [Targeted test boundary-gap case study](case-studies/TARGETED_TEST_BOUNDARY_GAP.md)
 - [Agent workflows](AGENT_WORKFLOWS.md)
+- [LLM operator guide](LLM_OPERATOR_GUIDE.md)
 - [Release](RELEASE.md)
 - [Installation verification](INSTALLATION_VERIFICATION.md)
 - [Publishing](PUBLISHING.md)
@@ -102,6 +103,7 @@ Current explanation docs:
 - [Agent workflows](AGENT_WORKFLOWS.md)
 - [Agent dispatch workflow](AGENT_DISPATCH_WORKFLOW.md)
 - [Editor agent integration](EDITOR_AGENT_INTEGRATION.md)
+- [LLM operator guide](LLM_OPERATOR_GUIDE.md)
 
 ## README Rule
 

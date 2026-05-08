@@ -529,6 +529,9 @@ The workflow also appends `pilot-summary.md` and `agent-review-summary.md` to
 the job summary, so a reviewer can see the top recommendation and current
 static receipt state before downloading artifacts.
 
+See [LLM operator guide](LLM_OPERATOR_GUIDE.md) for the same status, workflow
+packet, verify, receipt, and reviewer-summary loop outside CI.
+
 ### PR Test Guidance Annotations
 
 RIPR-SPEC-0012 defines a planned PR-facing projection for the same evidence

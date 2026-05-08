@@ -40,6 +40,9 @@ are scoped or reviewed.
   workflow manifest, commands Markdown, agent status JSON/Markdown, review
   summary JSON/Markdown, receipt, and operator cockpit artifacts as advisory
   evidence.
+- Added `docs/LLM_OPERATOR_GUIDE.md`, a source-edit-free guide for humans and
+  external LLM tools using RIPR status, workflow packet, verify, receipt, and
+  reviewer-summary artifacts.
 
 ### Changed
 
