@@ -148,9 +148,9 @@ paths reflect the current split between the local bulk packet envelope
 Labels are policy inputs, not folklore. Each supported label must have one
 documented effect:
 
-These label effects are the target policy. They do not become active workflow
-switches until a follow-up PR implements and validates the lane-selection
-logic.
+These label effects are the target policy. Active workflow switches are called
+out below; remaining label effects stay documented until follow-up PRs
+implement and validate the lane-selection logic.
 
 | Label | Effect |
 | --- | --- |
@@ -165,11 +165,12 @@ logic.
 New labels that affect CI must update this table, the PR template, and the
 budget/risk-pack policy files in the same PR.
 
-These labels are the documented target vocabulary. They are not active workflow
-switches until a later PR wires them into a PR plan or workflow condition.
-The GitHub Settings App contract in `.github/settings.yml` codifies these label
-names, descriptions, and colors so the reviewable vocabulary does not drift in
-the GitHub UI.
+These labels are the documented target vocabulary. Today, `release-check` and
+`full-ci` activate the Rust workflow's package list and publish dry-run steps
+on pull requests. Other label effects remain target vocabulary until a later PR
+wires them into a PR plan or workflow condition. The GitHub Settings App
+contract in `.github/settings.yml` codifies these label names, descriptions,
+and colors so the reviewable vocabulary does not drift in the GitHub UI.
 
 ### Cheaper Signal First
 
@@ -254,6 +255,12 @@ cargo xtask check-generated
 cargo xtask check-dependencies
 cargo xtask check-process-policy
 cargo xtask check-network-policy
+```
+
+On pushes to `main` or `master`, and on pull requests labeled `release-check`
+or `full-ci`, the Rust workflow also runs the release-surface package checks:
+
+```bash
 cargo package -p ripr --list
 cargo publish -p ripr --dry-run
 ```
