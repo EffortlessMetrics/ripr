@@ -478,9 +478,8 @@ function serverLogMessage(params: unknown): string | undefined {
 
 function statusFromRefreshCompletedMessage(message: string): RiprStatusState {
   const diagnostics = numberField(message, 'diagnostics');
-  const findings = numberField(message, 'findings');
   const seamDiagnostics = numberField(message, 'seam_diagnostics');
-  if ((diagnostics ?? 0) === 0 && (findings ?? 0) === 0 && (seamDiagnostics ?? 0) === 0) {
+  if (seamDiagnostics !== undefined && seamDiagnostics === 0) {
     return {
       kind: 'noActionableSeams',
       summary: 'ripr analysis completed with no actionable seam diagnostics.',

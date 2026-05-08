@@ -125,7 +125,12 @@ suite('Extension Smoke', () => {
       assert.ok(context.status.text.includes('ripr: no seams'));
 
       context.client.emitNotification('window/logMessage', {
-        message: 'ripr analysis refresh completed in 42 ms: generation=2, diagnostics=2, files=1, findings=1, seam_diagnostics=1, published_files=1, cleared_files=0'
+        message: 'ripr analysis refresh completed in 42 ms: generation=2, diagnostics=5, files=2, findings=4, seam_diagnostics=0, published_files=2, cleared_files=0'
+      });
+      assert.ok(context.status.text.includes('ripr: no seams'));
+
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=3, diagnostics=2, files=1, findings=1, seam_diagnostics=1, published_files=1, cleared_files=0'
       });
       assert.ok(context.status.text.includes('ripr: diagnostics'));
 

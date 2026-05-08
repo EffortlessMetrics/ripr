@@ -26,8 +26,8 @@ fallback rather than a required first step.
 
 After opening a Rust/Cargo workspace:
 
-1. Check the `ripr` status bar item for server, workspace, analysis, stale, or
-   no-actionable-seam state.
+1. Check the `ripr` status bar item for server, workspace, analysis, stale,
+   failed, or no-actionable-seam state.
 2. Use the Problems panel to find actionable saved-workspace seam diagnostics.
 3. Hover a diagnostic to see why RIPR flagged it.
 4. Copy the targeted test brief or agent command chain.

@@ -59,7 +59,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await vscode.commands.executeCommand('workbench.action.openSettings', 'ripr');
     }),
     vscode.workspace.onDidChangeTextDocument((event) => {
-      controller?.markWorkspaceStale(event.document);
+      if (event.document.isDirty) {
+        controller?.markWorkspaceStale(event.document);
+      }
     }),
     vscode.workspace.onDidChangeConfiguration(async (event) => {
       if (

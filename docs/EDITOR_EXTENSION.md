@@ -66,8 +66,8 @@ The editor path should not require report-format knowledge:
 
 1. Install `EffortlessMetrics.ripr` from VS Code Marketplace or Open VSX.
 2. Open a Rust/Cargo workspace.
-3. Check the `ripr` status bar item for server, workspace, analysis, stale, or
-   no-actionable-seam state.
+3. Check the `ripr` status bar item for server, workspace, analysis, stale,
+   failed, or no-actionable-seam state.
 4. Let the saved-workspace analysis refresh or run `ripr: Restart Server`.
 5. Open the Problems panel and hover a RIPR diagnostic to inspect evidence.
 6. Use `Copy Targeted Test Brief`, the agent copy commands, or
