@@ -24,6 +24,10 @@ are scoped or reviewed.
   still-present, resolved, new policy-eligible, acknowledged, suppressed,
   stale, invalid, and missing-input identities without making gate decisions or
   rewriting baselines.
+- Added `ripr baseline update --remove-resolved`, which shrink-only refreshes a
+  reviewed gate baseline ledger by removing resolved entries while preserving
+  malformed or ambiguous records for review and refusing to auto-adopt new
+  current debt.
 - Extended framed LSP protocol smoke coverage through a real seam diagnostic,
   hover, code actions, `ripr.collectEvidenceContext`, and shutdown.
 - Added `ripr evidence-health` and `cargo xtask evidence-health`, which write

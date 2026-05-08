@@ -5,6 +5,7 @@ pub(crate) mod agent_workflow;
 pub(crate) mod badge;
 pub(crate) mod baseline;
 pub(crate) mod baseline_delta;
+pub(crate) mod baseline_update;
 pub(crate) mod evidence_health;
 pub(crate) mod format;
 pub(crate) mod gate;

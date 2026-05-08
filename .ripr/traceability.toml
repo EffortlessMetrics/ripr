@@ -1005,13 +1005,19 @@ tests = [
   "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_marks_ambiguous_fallback_as_stale",
   "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_reports_missing_current_input",
   "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_matches_mixed_fixture_contract",
+  "crates/ripr/src/output/baseline_update.rs::tests::baseline_update_removes_resolved_without_adopting_new_current_debt",
+  "crates/ripr/src/output/baseline_update.rs::tests::baseline_update_preserves_ambiguous_and_fallback_matches",
+  "crates/ripr/src/output/baseline_update.rs::tests::baseline_update_rejects_invalid_inputs",
   "crates/ripr/src/output/gate.rs::tests::gate_baseline_check_reads_baseline_ledger_entries",
   "crates/ripr/src/cli/commands.rs::tests::baseline_create_parses_option_surface",
   "crates/ripr/src/cli/commands.rs::tests::baseline_diff_parses_option_surface",
   "crates/ripr/src/cli/commands.rs::tests::baseline_diff_requires_inputs_and_rejects_unknown_args",
+  "crates/ripr/src/cli/commands.rs::tests::baseline_update_parses_option_surface",
+  "crates/ripr/src/cli/commands.rs::tests::baseline_update_requires_inputs_remove_resolved_and_rejects_unknown_args",
   "crates/ripr/src/cli/commands.rs::tests::baseline_create_writes_baseline_without_overwriting_by_default",
   "crates/ripr/tests/cli_smoke.rs::baseline_create_writes_reviewed_ledger_and_refuses_overwrite",
   "crates/ripr/tests/cli_smoke.rs::baseline_diff_writes_debt_delta_json_and_markdown",
+  "crates/ripr/tests/cli_smoke.rs::baseline_update_removes_resolved_without_adopting_new_debt",
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/baseline-debt-delta/mixed/baseline.json",
@@ -1026,6 +1032,7 @@ code = [
   "crates/ripr/src/cli/help.rs",
   "crates/ripr/src/output/baseline.rs",
   "crates/ripr/src/output/baseline_delta.rs",
+  "crates/ripr/src/output/baseline_update.rs",
   "crates/ripr/src/output/gate.rs",
   "crates/ripr/src/output/mod.rs",
 ]

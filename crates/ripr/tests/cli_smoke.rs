@@ -1106,6 +1106,61 @@ fn baseline_diff_writes_debt_delta_json_and_markdown() -> Result<(), String> {
 }
 
 #[test]
+fn baseline_update_removes_resolved_without_adopting_new_debt() -> Result<(), String> {
+    let workspace = unique_temp_workspace("baseline-update");
+    std::fs::create_dir_all(&workspace).map_err(|e| format!("create workspace: {e}"))?;
+    let fixture_dir =
+        workspace_root().join("fixtures/boundary_gap/expected/baseline-debt-delta/mixed");
+    let baseline = fixture_dir.join("baseline.json");
+    let current = fixture_dir.join("current-gate-decision.json");
+    let out = workspace.join(".ripr/gate-baseline.json");
+    let baseline_arg = baseline.display().to_string();
+    let current_arg = current.display().to_string();
+    let out_arg = out.display().to_string();
+
+    let update = run_ripr(&[
+        "baseline",
+        "update",
+        "--baseline",
+        &baseline_arg,
+        "--current",
+        &current_arg,
+        "--remove-resolved",
+        "--out",
+        &out_arg,
+    ]);
+    assert_success(&update);
+
+    let json = std::fs::read_to_string(&out).map_err(|e| format!("read updated baseline: {e}"))?;
+    assert!(json.contains("\"kind\": \"gate_baseline\""));
+    assert!(json.contains("\"seam_id\": \"same\""));
+    assert!(!json.contains("\"seam_id\": \"gone\""));
+    assert!(!json.contains("\"seam_id\": \"new\""));
+    assert!(json.contains("\"entries\": 2"));
+    assert!(json.contains("\"removed_resolved\": 1"));
+    assert!(json.contains("\"ignored_new_current\": 3"));
+    assert!(json.contains("preserved malformed baseline entry"));
+
+    let no_mode = run_ripr(&[
+        "baseline",
+        "update",
+        "--baseline",
+        &baseline_arg,
+        "--current",
+        &current_arg,
+        "--out",
+        &out_arg,
+    ]);
+    assert_failure(&no_mode);
+    let stderr = String::from_utf8_lossy(&no_mode.stderr);
+    assert!(stderr.contains("--remove-resolved"));
+    assert!(stderr.contains("adopting new debt is not supported"));
+
+    let _ = std::fs::remove_dir_all(&workspace);
+    Ok(())
+}
+
+#[test]
 fn pilot_writes_default_packet_outputs_for_boundary_gap_fixture() -> Result<(), String> {
     let root = workspace_root().join("fixtures/boundary_gap/input");
     let out_dir = unique_temp_workspace("pilot");

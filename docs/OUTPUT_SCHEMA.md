@@ -1802,8 +1802,8 @@ to resolve the state.
 
 `ripr baseline create` writes the first executable Campaign 17 baseline ledger.
 It turns an existing gate-decision JSON report into a stable historical-debt
-baseline that can be reviewed and checked in before later `baseline diff` and
-shrink-only update commands exist.
+baseline that can be reviewed, checked in, diffed against current evidence, and
+shrink-only refreshed after resolved debt is reviewed.
 
 Command:
 
@@ -1882,6 +1882,64 @@ JSON shape:
 The gate evaluator accepts this `entries[]` ledger shape in addition to the
 older lightweight `decisions[]` baseline fixture shape, so newly created
 baselines can be used by `ripr gate evaluate --baseline`.
+
+## Gate Baseline Update
+
+`ripr baseline update --remove-resolved` refreshes a reviewed baseline ledger in
+shrink-only mode. It removes reviewed baseline entries that are absent from the
+current gate-decision evidence and never adopts new current debt.
+
+Command:
+
+```text
+ripr baseline update \
+  --baseline .ripr/gate-baseline.json \
+  --current target/ripr/reports/gate-decision.json \
+  --remove-resolved \
+  --out .ripr/gate-baseline.json
+```
+
+Options:
+
+- `--baseline` - reviewed baseline ledger to refresh.
+- `--current` - current gate-decision JSON from `ripr gate evaluate`.
+- `--remove-resolved` - required shrink-only mode.
+- `--out` - updated baseline path. Defaults to `--baseline`.
+
+The update command hard-fails if either input is missing or unsupported. It
+preserves malformed entries without stable identity and ambiguous matches for
+manual review. New current gate decisions are counted as ignored and are not
+inserted into the baseline. Generated CI must not use this command to rewrite
+checked-in baselines automatically.
+
+The output is the same `kind = "gate_baseline"` ledger with updated `entries`
+and `summary` counts plus an additive update receipt:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "gate_baseline",
+  "summary": {
+    "entries": 40,
+    "included": 39,
+    "skipped": {
+      "malformed": 1
+    }
+  },
+  "entries": [],
+  "update": {
+    "remove_resolved": true,
+    "current_gate_decision": "target/ripr/reports/gate-decision.json",
+    "removed_resolved": 7,
+    "ignored_new_current": 2
+  },
+  "warnings": [
+    "preserved malformed baseline entry without stable identity during shrink-only update"
+  ],
+  "limits_note": "Shrink-only baseline refresh over static RIPR gate evidence; update removes resolved reviewed debt and never adopts new current debt."
+}
+```
 
 ## Baseline Debt Delta Report
 
