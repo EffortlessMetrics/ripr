@@ -104,7 +104,10 @@ before the existing non-blocking summary and changed-line check-annotation
 consumers, guidance placement and suppression cases are fixture-pinned, and
 [PR review guidance](PR_REVIEW_GUIDANCE.md) documents the command, CI behavior,
 summary-only fallback, inline-comment opt-in boundary, and static-evidence
-limits. No next product campaign is active yet.
+limits. Campaign 14 is active as Calibrated Gate Policy: the next step is a
+spec for optional gates that consume existing evidence, preserve advisory
+defaults, expose acknowledgement paths, and keep static evidence separate from
+runtime mutation calibration.
 
 ## Strategic Sequence
 
@@ -148,6 +151,7 @@ quality rails
 -> LLM work loop
 -> first-hour UX
 -> PR review guidance
+-> calibrated gate policy
 ```
 
 The analyzer path is:

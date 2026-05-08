@@ -54,6 +54,9 @@ are scoped or reviewed.
   and the inline-comment opt-in boundary.
 - Added the Campaign 13 closeout handoff after PR guidance renderer, generated
   CI consumption, placement fixtures, and user-facing docs aligned.
+- Opened Campaign 14, Calibrated Gate Policy, with
+  `spec/calibrated-gate-policy` as the first ready item before any gate
+  evaluator or generated workflow blocking behavior.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and PR guidance annotation counts before artifact
@@ -85,6 +88,8 @@ are scoped or reviewed.
   closeout.
 - Closed Campaign 13 after PR guidance became produced, consumed by generated
   CI, fixture-pinned, documented, and still advisory/non-blocking by default.
+- Advanced the active product lane to Campaign 14 so optional calibrated gates
+  can be specified separately from PR visibility and remain advisory by default.
 - Pinned RIPR-SPEC-0012 as the PR test guidance annotation contract and
   advanced Campaign 12 to `vscode/first-run-status` as the next ready UX item.
 - Advanced Campaign 12 to `vscode/action-discoverability` after pinning the
