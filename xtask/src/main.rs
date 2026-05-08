@@ -31,7 +31,7 @@ use reports::{
 use reports::{lsp_cockpit_report, targeted_test_outcome};
 use run::{
     TimedOutput, capture_output, capture_output_with_timeout, command_success_owned, run,
-    run_in_dir, run_output, run_output_optional, run_output_owned, run_owned,
+    run_in_dir, run_in_dir_with_envs, run_output, run_output_optional, run_output_owned, run_owned,
 };
 
 #[derive(Debug)]
@@ -718,8 +718,21 @@ fn vscode_test() -> Result<(), String> {
 }
 
 fn vscode_test_e2e() -> Result<(), String> {
+    run("cargo", &["build", "-p", "ripr"])?;
     vscode_compile()?;
-    run_cwd_command(&vscode_test_e2e_command())
+    let server_path = vscode_test_server_path()?;
+    let workspace_path = vscode_test_workspace_path()?;
+    let envs = [
+        (
+            "RIPR_TEST_SERVER_PATH",
+            path_to_utf8(&server_path, "VS Code test server path")?,
+        ),
+        (
+            "RIPR_TEST_WORKSPACE_PATH",
+            path_to_utf8(&workspace_path, "VS Code test workspace path")?,
+        ),
+    ];
+    run_cwd_command_with_envs(&vscode_test_e2e_command(), &envs)
 }
 
 fn vscode_compile_command() -> CwdCommand {
@@ -750,10 +763,48 @@ fn vscode_test_e2e_command() -> CwdCommand {
     }
 }
 
+fn run_cwd_command_with_envs(command: &CwdCommand, envs: &[(&str, &str)]) -> Result<(), String> {
+    let args: Vec<&str> = command.args.iter().map(String::as_str).collect();
+    run_in_dir_with_envs(&command.program, &args, &command.cwd, envs).map(|_| ())
+}
+
+fn vscode_test_server_path() -> Result<PathBuf, String> {
+    let binary = if cfg!(windows) { "ripr.exe" } else { "ripr" };
+    let target_dir = std::env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            repo_root()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join("target")
+        });
+    Ok(target_dir.join("debug").join(binary))
+}
+
+fn vscode_test_workspace_path() -> Result<PathBuf, String> {
+    Ok(repo_root()?
+        .join("fixtures")
+        .join("boundary_gap")
+        .join("input"))
+}
+
+fn repo_root() -> Result<PathBuf, String> {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    manifest_dir.parent().map(Path::to_path_buf).ok_or_else(|| {
+        format!(
+            "failed to resolve repo root from {}",
+            manifest_dir.display()
+        )
+    })
+}
+
+fn path_to_utf8<'a>(path: &'a Path, label: &str) -> Result<&'a str, String> {
+    path.to_str()
+        .ok_or_else(|| format!("{label} is not valid UTF-8: {}", path.display()))
+}
+
 fn vscode_extension_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
+    repo_root()
+        .unwrap_or_else(|_| PathBuf::from("."))
         .join("editors/vscode")
 }
 

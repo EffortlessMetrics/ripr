@@ -7,8 +7,8 @@ async function main() {
     const extensionDevelopmentPath = path.resolve(__dirname, '../../');
     const extensionTestsPath = path.resolve(__dirname, './suite/index');
     const workspacePath = path.resolve(
-      __dirname,
-      '../../test-fixtures/workspace'
+      process.env.RIPR_TEST_WORKSPACE_PATH ??
+        path.resolve(__dirname, '../../test-fixtures/workspace')
     );
     const cachePath = path.resolve(
       __dirname,
