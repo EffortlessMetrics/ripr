@@ -130,8 +130,138 @@ commands = [
   "cargo xtask check-campaign",
   "cargo xtask goals next",
   "cargo xtask check-doc-index",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "lsp/evidence-hover-hardening"
+status = "blocked"
+branch = "lsp-evidence-hover-hardening"
+stackable = false
+blocked_by = ["campaign/editor-evidence-ux-audit"]
+acceptance = "Harden hover as the primary explanation surface for seam class, evidence path, missing discriminator, related test, suggested assertion, verify command, receipt command, and static limits"
+commands = [
+  "cargo test -p ripr lsp::hover --lib",
+  "cargo test -p ripr lsp::tests --lib",
+  "cargo xtask lsp-cockpit-report",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "lsp/evidence-aware-actions"
+status = "blocked"
+branch = "lsp-evidence-aware-actions"
+stackable = false
+blocked_by = ["lsp/evidence-hover-hardening"]
+acceptance = "Tighten action visibility and payload validation so actions only appear when supporting evidence or command context exists"
+commands = [
+  "cargo test -p ripr lsp::actions --lib",
+  "cargo test -p ripr lsp::tests --lib",
+  "npm --prefix editors/vscode run test:e2e",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "lsp/context-packet-command"
+status = "blocked"
+branch = "lsp-context-packet-command"
+stackable = false
+blocked_by = ["lsp/evidence-aware-actions"]
+acceptance = "Add one canonical evidence context packet command for external tools and agents without edits, generated tests, or provider coupling"
+commands = [
+  "cargo test -p ripr lsp --lib",
+  "cargo test -p ripr lsp::tests --lib",
+  "cargo xtask lsp-cockpit-report",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "test/lsp-protocol-smoke"
+status = "blocked"
+branch = "test-lsp-protocol-smoke"
+stackable = false
+blocked_by = ["lsp/context-packet-command"]
+acceptance = "Add framed protocol proof for initialize, saved-workspace diagnostics, hover, codeAction, context packet execution, and shutdown"
+commands = [
+  "cargo test -p ripr lsp --lib",
+  "cargo test -p ripr lsp::tests --lib",
+  "cargo xtask lsp-cockpit-report",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "test/vscode-extension-smoke"
+status = "blocked"
+branch = "test-vscode-extension-smoke"
+stackable = false
+blocked_by = ["test/lsp-protocol-smoke"]
+acceptance = "Prove extension activation, server resolution, fixture diagnostics, hover, actions, copy payloads, related-test opening, restart, and bad-server-path status"
+commands = [
+  "npm --prefix editors/vscode run compile",
+  "npm --prefix editors/vscode run test:e2e",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "lsp/editor-status-and-staleness"
+status = "blocked"
+branch = "lsp-editor-status-and-staleness"
+stackable = false
+blocked_by = ["test/vscode-extension-smoke"]
+acceptance = "Make server unavailable, workspace unresolved, config disabled, queued, running, complete, stale, failed, and no-actionable-seam states explicit"
+commands = [
+  "cargo test -p ripr lsp --lib",
+  "cargo test -p ripr lsp::tests --lib",
+  "npm --prefix editors/vscode run test:e2e",
+  "cargo xtask lsp-cockpit-report",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "docs/editor-evidence-workflow"
+status = "blocked"
+branch = "docs-editor-evidence-workflow"
+stackable = false
+blocked_by = ["lsp/editor-status-and-staleness"]
+acceptance = "Document install, diagnostic, hover, related test, context packet, one-test, verify, receipt, and refresh workflow with limits"
+commands = [
+  "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
   "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "campaign/editor-evidence-ux-closeout"
+status = "blocked"
+branch = "campaign-editor-evidence-ux-closeout"
+stackable = false
+blocked_by = [
+  "campaign/editor-evidence-ux-audit",
+  "lsp/evidence-hover-hardening",
+  "lsp/evidence-aware-actions",
+  "lsp/context-packet-command",
+  "test/lsp-protocol-smoke",
+  "test/vscode-extension-smoke",
+  "lsp/editor-status-and-staleness",
+  "docs/editor-evidence-workflow",
+]
+acceptance = "Close only after hover, actions, context packet, protocol proof, VS Code proof, status/staleness, and docs align without analyzer, policy, CI, or runtime-claim drift"
+commands = [
+  "cargo test -p ripr lsp --lib",
+  "cargo test -p ripr lsp::tests --lib",
+  "cargo xtask lsp-cockpit-report",
+  "npm --prefix editors/vscode run compile",
+  "npm --prefix editors/vscode run test:e2e",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
   "cargo xtask check-capabilities",
   "cargo xtask check-pr",
 ]

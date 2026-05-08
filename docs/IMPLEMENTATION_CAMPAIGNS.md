@@ -2058,7 +2058,7 @@ Next:
 - `spec/baseline-debt-delta-report` is the next ready item. Define the report
   contract before baseline commands or generated CI artifacts.
 
-## Future Campaign: Editor Evidence UX
+## Campaign 17: Editor Evidence UX
 
 Campaign ID: `editor-evidence-ux`
 
@@ -2103,7 +2103,7 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `campaign/editor-evidence-ux-audit` | queued | Audit diagnostic data, hover, actions, context collection, VS Code extension proof, and LSP cockpit status into one editor evidence contract without behavior changes. |
+| `campaign/editor-evidence-ux-audit` | ready | Audit diagnostic data, hover, actions, context collection, VS Code extension proof, and LSP cockpit status into one editor evidence contract without behavior changes. |
 | `lsp/evidence-hover-hardening` | blocked | Harden hover as the primary explanation surface for seam class, evidence path, missing discriminator, related test, suggested assertion, verify command, receipt command, and static limits. |
 | `lsp/evidence-aware-actions` | blocked | Tighten action visibility and payload validation so actions only appear when supporting evidence or command context exists. |
 | `lsp/context-packet-command` | blocked | Add one canonical evidence context packet command for external tools and agents without edits, generated tests, or provider coupling. |
