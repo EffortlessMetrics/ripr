@@ -926,6 +926,17 @@ jobs:
           mkdir -p target/ripr/reports
           git diff --binary "origin/${{ github.base_ref }}...HEAD" > target/ripr/reports/pr.diff
 
+      - name: Run RIPR PR guidance report
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/review
+          ripr review-comments \
+            --root . \
+            --base "origin/${{ github.base_ref }}" \
+            --head HEAD \
+            --out target/ripr/review/comments.json
+
       - name: Render RIPR diff SARIF
         if: env.RIPR_UPLOAD_SARIF == 'true' && github.event_name == 'pull_request'
         continue-on-error: true
@@ -2140,6 +2151,7 @@ mod tests {
                 "ripr agent verify",
                 "ripr agent receipt",
                 "ripr outcome",
+                "ripr review-comments",
                 "ripr agent status",
                 "ripr agent review-summary",
                 "cargo xtask operator-cockpit",
@@ -2185,6 +2197,7 @@ mod tests {
                 "Render RIPR repo badge artifacts",
                 "Render RIPR operator cockpit",
                 "Render RIPR LLM work-loop summaries",
+                "Run RIPR PR guidance report",
                 "Emit RIPR PR guidance annotations",
                 "Add RIPR advisory summary",
                 "Upload RIPR report artifacts",
@@ -2218,6 +2231,25 @@ mod tests {
                 "generated workflow missing {label} `{needle}`"
             );
         }
+    }
+
+    fn assert_step_before(workflow: &str, earlier: &str, later: &str) {
+        let earlier_marker = format!("      - name: {earlier}");
+        let later_marker = format!("      - name: {later}");
+        assert!(
+            workflow.contains(&earlier_marker),
+            "generated workflow missing step `{earlier}`"
+        );
+        assert!(
+            workflow.contains(&later_marker),
+            "generated workflow missing step `{later}`"
+        );
+        let earlier_index = workflow.find(&earlier_marker).unwrap_or(usize::MAX);
+        let later_index = workflow.find(&later_marker).unwrap_or(usize::MAX);
+        assert!(
+            earlier_index < later_index,
+            "`{earlier}` must run before `{later}`"
+        );
     }
 
     #[test]
@@ -3179,6 +3211,24 @@ mod tests {
         assert!(agent_loop.contains("cp target/ripr/workflow/agent-verify.json"));
         assert!(agent_loop.contains("cp target/ripr/reports/agent-receipt.json"));
         assert!(agent_loop.contains("--format repo-exposure-json"));
+
+        let guidance = workflow_step(&workflow, "Run RIPR PR guidance report");
+        assert!(guidance.contains("github.event_name == 'pull_request'"));
+        assert!(guidance.contains("mkdir -p target/ripr/review"));
+        assert!(guidance.contains("ripr review-comments"));
+        assert!(guidance.contains("--base \"origin/${{ github.base_ref }}\""));
+        assert!(guidance.contains("--head HEAD"));
+        assert!(guidance.contains("--out target/ripr/review/comments.json"));
+        assert_step_before(
+            &workflow,
+            "Run RIPR PR guidance report",
+            "Emit RIPR PR guidance annotations",
+        );
+        assert_step_before(
+            &workflow,
+            "Run RIPR PR guidance report",
+            "Add RIPR advisory summary",
+        );
 
         let artifact_upload = workflow_step(&workflow, "Upload RIPR report artifacts");
         assert!(artifact_upload.contains("if-no-files-found: ignore"));

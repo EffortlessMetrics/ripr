@@ -42,13 +42,16 @@ are scoped or reviewed.
   to write bounded advisory PR guidance JSON plus Markdown without posting to
   GitHub, generating tests, editing source, running mutation testing, or making
   CI blocking.
+- Added generated CI execution of `ripr review-comments` on pull requests so
+  `target/ripr/review/comments.json` is written before the existing advisory
+  summary and non-blocking check-annotation consumers run.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
-  known limits, and future PR guidance annotation counts before artifact
+  known limits, and PR guidance annotation counts before artifact
   download.
 - Added a generated workflow smoke fixture test that pins artifact paths,
   top-seam extraction, agent artifact generation, non-blocking posture,
-  optional SARIF gates, badge output, advisory summary sections, and future PR
+  optional SARIF gates, badge output, advisory summary sections, and PR
   guidance annotation hooks.
 - Added an LLM work-loop fixture matrix that pins happy, unchanged, regressed,
   missing-artifact, stale-artifact, configured-off, path-with-spaces, and
@@ -68,8 +71,9 @@ are scoped or reviewed.
 ### Changed
 
 - Advanced Campaign 13, PR Review Guidance, after adding the read-only
-  `ripr review-comments` producer; `ci/run-pr-guidance-report` is now the ready
-  item for running that producer inside generated workflows.
+  `ripr review-comments` producer and generated CI producer step;
+  `fixtures/pr-guidance-cases` is now the ready item for pinning placement and
+  suppression cases.
 - Pinned RIPR-SPEC-0012 as the PR test guidance annotation contract and
   advanced Campaign 12 to `vscode/first-run-status` as the next ready UX item.
 - Advanced Campaign 12 to `vscode/action-discoverability` after pinning the
@@ -81,8 +85,7 @@ are scoped or reviewed.
 - Advanced Campaign 12 to `ci/pr-summary-surface` after pinning editor action
   discoverability.
 - Advanced Campaign 12 to `ci/generated-workflow-smoke-fixture` after wiring
-  the generated workflow advisory summary and future PR guidance annotation
-  hook.
+  the generated workflow advisory summary and PR guidance annotation hook.
 - Advanced Campaign 12 to `docs/ux-by-user-type` after pinning the generated
   workflow smoke fixture.
 - Reworked README and Quickstart first-hour docs around VS Code, CI, CLI,

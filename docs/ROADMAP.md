@@ -95,13 +95,14 @@ actions are titled around inspect, targeted-test, agent-handoff, verify, review,
 and refresh intent, and the generated GitHub workflow now writes a
 reviewer-oriented advisory summary before artifact download. The generated
 workflow smoke fixture pins the CI first screen, artifact packet, optional
-SARIF gates, badge output, and future PR guidance annotation hook. Campaign 12
+SARIF gates, badge output, and PR guidance annotation hook. Campaign 12
 closed after the first-hour docs routed users by VS Code, CI, CLI, and
 agent/reviewer path. Campaign 13 is active as PR Review Guidance:
 `ripr review-comments` now writes the already-specified
-`target/ripr/review/comments.json` report, and the next control-plane gap is
-running that producer inside generated CI before the existing non-blocking
-summary and changed-line check-annotation consumers.
+`target/ripr/review/comments.json` report, and generated CI now runs that
+producer before the existing non-blocking summary and changed-line
+check-annotation consumers. The next control-plane gap is fixture-pinning the
+guidance placement and suppression cases.
 
 ## Strategic Sequence
 
