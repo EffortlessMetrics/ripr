@@ -309,8 +309,10 @@ CI advisory summary, generated workflow smoke fixture, and user-type
 first-hour docs are pinned. Campaign 13 is active as PR Review Guidance;
 `ripr review-comments` now writes the advisory review report and generated CI
 runs it before emitting advisory summaries and check annotations. Guidance
-placement and suppression cases are fixture-pinned; the next ready item is
-dedicated PR guidance documentation.
+placement and suppression cases are fixture-pinned, and
+[PR review guidance](docs/PR_REVIEW_GUIDANCE.md) documents the command, CI
+behavior, summary-only fallback, and inline-comment opt-in boundary. The next
+ready item is Campaign 13 closeout.
 
 Deeper capability state lives in [Capability matrix](docs/CAPABILITY_MATRIX.md)
 and [Metrics](docs/METRICS.md).
@@ -338,6 +340,7 @@ See:
 - [Editor extension](docs/EDITOR_EXTENSION.md)
 - [Server provisioning](docs/SERVER_PROVISIONING.md)
 - [Marketplace release](docs/RELEASE_MARKETPLACE.md)
+- [PR review guidance](docs/PR_REVIEW_GUIDANCE.md)
 
 ## For Contributors
 

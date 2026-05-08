@@ -1158,8 +1158,8 @@ ripr review-comments --root . --base <sha> --head <sha> --out target/ripr/review
 
 The command is a pure renderer. It does not post to GitHub, run mutation
 testing, refresh LSP state, edit source files, or generate tests. CI can use
-the JSON to write a job summary, emit check annotations by default, and
-optionally upsert inline PR review comments when explicitly enabled.
+the JSON to write a job summary and emit check annotations by default. Inline
+PR review comments require a custom explicit opt-in publisher.
 
 JSON shape:
 
@@ -1270,10 +1270,12 @@ Field contract:
 - `warnings[]` - selection warnings from the agent brief selection path.
 - `limits_note` - static-evidence boundary text for downstream summaries.
 
-Default CI projection runs `ripr review-comments` on pull requests, caps inline
-review comments to three, writes summary items to the job summary, and emits
-check annotations only for changed lines. Inline PR review comments remain
-opt-in.
+Default CI projection runs `ripr review-comments` on pull requests, writes
+summary items to the job summary, and emits check annotations only for changed
+lines. Inline PR review comments remain opt-in; any custom publisher must cap
+them to three by default. See [PR review guidance](PR_REVIEW_GUIDANCE.md) for
+the command, generated CI behavior, placement-safe review flow, and
+inline-comment boundary.
 
 ## Agent Status
 

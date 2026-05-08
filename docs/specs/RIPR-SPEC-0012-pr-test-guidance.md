@@ -18,8 +18,9 @@ This started as the Campaign 12 design contract for implementation planning.
 Campaign 13 now uses it as the implementation contract: the pure
 `review-comments` renderer exists and generated workflows run it before the
 summary and check-annotation consumers. The placement and suppression fixture
-matrix exists; dedicated documentation and optional comment publishing remain
-future work and must preserve the boundaries below.
+matrix exists, and dedicated PR guidance documentation now pins the user-facing
+command, CI, placement, and inline-comment boundaries. Optional comment
+publishing remains future work and must preserve the boundaries below.
 
 ## Product Contract
 
@@ -246,21 +247,21 @@ The JSON report uses schema version `0.1`:
 
 ## GitHub Projection
 
-Generated CI should publish this report in three levels:
+Generated CI should publish this report in two default levels:
 
 1. Append a concise Markdown summary to `$GITHUB_STEP_SUMMARY`.
 2. Emit GitHub check annotations from `comments[]`.
-3. Optionally upsert inline PR review comments when explicitly enabled.
 
 Check annotations are the default line-level surface because they provide file
 and line guidance without adding persistent review-thread noise.
 
-Inline review comments must:
+A custom inline review-comment publisher may be added by a repository as an
+explicit opt-in. Inline review comments must:
 
 - post at most three comments by default;
 - target only changed lines;
 - use `dedupe_key` to update or replace prior RIPR comments;
-- fall back to summary-only guidance when placement fails;
+- never invent placement for `summary_only[]` guidance;
 - remain advisory and non-blocking.
 
 ## LLM Guidance Boundary
@@ -298,8 +299,7 @@ The generated GitHub workflow can then:
 - run `ripr review-comments` for pull requests;
 - upload `target/ripr/review/comments.{json,md}`;
 - emit check annotations from the JSON;
-- optionally post or upsert inline PR review comments when
-  `RIPR_PR_COMMENTS=true`.
+- leave inline PR review comments disabled by default.
 
 Campaign 11 workflow manifests and shared command templates provide the
 artifact paths and agent commands linked from comments, so this surface does
@@ -361,7 +361,7 @@ Initial implementation should add tests for:
 - dedupe key stability;
 - Markdown and annotation-safe escaping;
 - generated workflow annotation emission;
-- optional review-comment upsert behavior if that publisher is implemented.
+- optional review-comment upsert behavior if a future publisher is implemented.
 
 ## Implementation Mapping
 
