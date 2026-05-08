@@ -68,9 +68,13 @@ git diff --check
 ## Next Work Item
 
 No ready work item remains in `.ripr/goals/active.toml` after this closeout.
-Editor Evidence UX remains queued, not active. Start it only with an explicit
-campaign activation PR or a clear parallel-lane decision; the first queued item
-is `campaign/editor-evidence-ux-audit`.
+Baseline Ledger v1 is the recommended next adoption campaign: make reviewed
+baselines executable with create, diff, and shrink-only refresh commands before
+using those ledgers for broader RIPR Zero planning.
+
+Editor Evidence UX remains queued as a separate Lane 3 option, not active.
+Start it only with an explicit campaign activation PR or a clear parallel-lane
+decision; the first queued item is `campaign/editor-evidence-ux-audit`.
 
 ## What Not To Do
 
@@ -82,4 +86,4 @@ is `campaign/editor-evidence-ux-audit`.
 - Do not generate tests or edit source from PR/CI adoption surfaces.
 - Do not move recommendation ranking, analyzer semantics, or LSP/editor UX into
   Campaign 16 maintenance.
-- Do not activate Editor Evidence UX silently.
+- Do not activate Baseline Ledger v1, RIPR Zero, or Editor Evidence UX silently.
