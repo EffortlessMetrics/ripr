@@ -1277,6 +1277,163 @@ them to three by default. See [PR review guidance](PR_REVIEW_GUIDANCE.md) for
 the command, generated CI behavior, placement-safe review flow, and
 inline-comment boundary.
 
+## Recommendation Calibration Report
+
+RIPR-SPEC-0013 defines the planned recommendation calibration report contract.
+The report measures whether existing PR guidance was useful, correctly placed,
+properly suppressed or capped, aimed at the expected test target, and
+correlated with later static evidence movement.
+
+The planned repo-local report command is:
+
+```text
+cargo xtask recommendation-calibration \
+  --root . \
+  --pr-guidance target/ripr/review/comments.json \
+  --pilot-summary target/ripr/pilot/pilot-summary.json \
+  --agent-receipt target/ripr/reports/agent-receipt.json \
+  --targeted-test-outcome target/ripr/outcome/targeted-test-outcome.json \
+  --out target/ripr/reports/recommendation-calibration.json
+```
+
+The report writes:
+
+```text
+target/ripr/reports/recommendation-calibration.json
+target/ripr/reports/recommendation-calibration.md
+```
+
+This is an advisory calibration surface. It does not call LLM providers, edit
+source files, generate tests, run mutation testing, post comments, or make CI
+blocking by default.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "advisory",
+  "root": ".",
+  "inputs": {
+    "pr_guidance": "target/ripr/review/comments.json",
+    "pilot_summary": "target/ripr/pilot/pilot-summary.json",
+    "agent_receipt": "target/ripr/reports/agent-receipt.json",
+    "targeted_test_outcome": "target/ripr/outcome/targeted-test-outcome.json",
+    "calibration_expectations": "fixtures/boundary_gap/expected/recommendation-calibration/expectations.json",
+    "outcome_receipts": []
+  },
+  "summary": {
+    "recommendations_evaluated": 4,
+    "top_recommendation_outcome": "useful",
+    "useful": 2,
+    "noisy": 1,
+    "false_annotations": 1,
+    "summary_only_correct": 1,
+    "suppressed_correctly": 1,
+    "target_file_correct": 2,
+    "static_improved": 1,
+    "static_unchanged": 1,
+    "unknown": 1
+  },
+  "latency": {
+    "guidance_generated_unix_ms": 1778240000000,
+    "annotation_emitted_unix_ms": 1778240001200,
+    "outcome_recorded_unix_ms": 1778240100000,
+    "annotation_latency_ms": 1200,
+    "outcome_latency_ms": 100000
+  },
+  "recommendations": [
+    {
+      "id": "ripr-review-67fc764ba37d77bd",
+      "seam_id": "67fc764ba37d77bd",
+      "rank": 1,
+      "source": "pr_guidance",
+      "placement": {
+        "path": "src/pricing.rs",
+        "line": 88,
+        "mode": "exact_seam_line",
+        "quality": "correct"
+      },
+      "grip_class": "weakly_gripped",
+      "severity": "warning",
+      "missing_discriminator": "amount == discount_threshold",
+      "suggested_test": {
+        "recommended_file": "tests/pricing.rs",
+        "near_test": "applies_discount_above_threshold",
+        "target_quality": "correct"
+      },
+      "calibration": {
+        "outcome": "useful",
+        "source": "fixture_expectation",
+        "reason": "expected equality-boundary recommendation on the changed seam"
+      },
+      "static_movement": {
+        "state": "improved",
+        "source": "agent_receipt",
+        "before_class": "weakly_gripped",
+        "after_class": "strongly_gripped"
+      }
+    }
+  ],
+  "suppressed": [
+    {
+      "id": "ripr-review-capped-1",
+      "reason": "cap_reached",
+      "quality": "suppressed_correctly"
+    }
+  ],
+  "warnings": [],
+  "limits_note": "Advisory recommendation-quality evidence only; no telemetry, generated tests, source edits, mutation execution, or CI blocking."
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `tool` - always `"ripr"`.
+- `status` - `advisory` when at least one recommendation can be evaluated,
+  `incomplete` when required inputs are missing, and `config_error` when an
+  input is malformed or unsafe to read.
+- `root` - workspace root used to resolve artifact paths.
+- `inputs` - paths and receipt lists considered by the report. Missing optional
+  inputs should be visible as `null`, empty arrays, or warnings.
+- `summary.recommendations_evaluated` - count of visible and suppressed
+  recommendations considered.
+- `summary.top_recommendation_outcome` - outcome label for the highest-ranked
+  recommendation, or `unknown`.
+- `summary.useful`, `summary.noisy`, `summary.false_annotations`,
+  `summary.summary_only_correct`, `summary.suppressed_correctly`,
+  `summary.target_file_correct`, `summary.static_improved`,
+  `summary.static_unchanged`, and `summary.unknown` - aggregate quality and
+  static-movement counts.
+- `latency.*_unix_ms` - optional timestamps from artifacts or CI-provided
+  metadata. Values are `null` when timestamps are unavailable.
+- `latency.annotation_latency_ms` - elapsed time from guidance generation to
+  annotation emission when both timestamps are available.
+- `latency.outcome_latency_ms` - elapsed time from guidance generation to the
+  first matching outcome or receipt timestamp when available.
+- `recommendations[]` - calibrated records for visible PR guidance items.
+- `recommendations[].rank` - ranking from the source guidance.
+- `recommendations[].placement.quality` - `correct`, `wrong_line`,
+  `summary_only_correct`, `not_placeable`, or `unknown`.
+- `recommendations[].suggested_test.target_quality` - `correct`,
+  `wrong_target`, `not_applicable`, or `unknown`.
+- `recommendations[].calibration.outcome` - `useful`, `noisy`, `wrong_line`,
+  `already_covered`, `wrong_target`, `summary_only_correct`,
+  `suppressed_correctly`, or `unknown`.
+- `recommendations[].calibration.source` - `fixture_expectation`,
+  `outcome_receipt`, `static_movement`, or `unknown`.
+- `recommendations[].static_movement.state` - `improved`, `unchanged`,
+  `regressed`, `resolved`, `new_gap`, `missing_after_snapshot`, or `unknown`.
+- `suppressed[]` - recommendations hidden by caps, suppression, configured-off
+  severity, generated/migration exclusion, or nearby-test change.
+- `suppressed[].quality` - `suppressed_correctly`, `over_suppressed`, or
+  `unknown`.
+- `warnings[]` - missing inputs, unsupported expectation fields, stale
+  artifacts, or latency values that could not be derived.
+- `limits_note` - static/advisory boundary text for summaries and generated CI.
+
 ## Agent Status
 
 `ripr agent status --root <workspace>` reads already-written agent-loop

@@ -23,3 +23,4 @@ observable behavior.
 | [RIPR-SPEC-0010](RIPR-SPEC-0010-agent-working-set-brief.md) | proposed | Agent working-set brief |
 | [RIPR-SPEC-0011](RIPR-SPEC-0011-llm-work-loop.md) | proposed | LLM work loop |
 | [RIPR-SPEC-0012](RIPR-SPEC-0012-pr-test-guidance.md) | proposed | PR test guidance annotations |
+| [RIPR-SPEC-0013](RIPR-SPEC-0013-recommendation-calibration-report.md) | proposed | Recommendation calibration report |

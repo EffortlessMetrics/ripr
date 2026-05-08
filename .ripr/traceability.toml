@@ -821,3 +821,30 @@ metrics = [
   "pr_test_guidance_suppressed",
   "pr_test_guidance_opt_in_review_comments"
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0013"
+name = "recommendation calibration report"
+spec = "docs/specs/RIPR-SPEC-0013-recommendation-calibration-report.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0013-recommendation-calibration-report.md",
+  "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/ROADMAP.md",
+  "docs/CAPABILITY_MATRIX.md"
+]
+metrics = [
+  "recommendation_calibration_evaluated",
+  "recommendation_calibration_useful",
+  "recommendation_calibration_noisy",
+  "recommendation_calibration_false_annotations",
+  "recommendation_calibration_summary_only_correct",
+  "recommendation_calibration_suppressed_correctly",
+  "recommendation_calibration_target_file_correct",
+  "recommendation_calibration_static_improved"
+]

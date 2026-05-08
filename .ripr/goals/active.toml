@@ -42,7 +42,7 @@ commands = [
 
 [[work_item]]
 id = "spec/recommendation-calibration-report"
-status = "ready"
+status = "done"
 branch = "spec-recommendation-calibration-report"
 stackable = false
 requires_human_merge = true
@@ -61,7 +61,7 @@ commands = [
 
 [[work_item]]
 id = "fixtures/pr-guidance-calibration-corpus"
-status = "blocked"
+status = "ready"
 branch = "fixtures-pr-guidance-calibration-corpus"
 stackable = false
 requires_human_merge = true
