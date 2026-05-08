@@ -139,12 +139,12 @@ calibration, blocking reason, and artifact paths at a glance. Checked
 repo-local dogfood gate receipts now show visible-only, acknowledged,
 baseline-existing, baseline-new, missing-baseline, and explicit
 calibrated-gate decisions from checked evidence while preserving non-blocking
-generated CI defaults. Blocking-readiness guidance is the next ready adoption
-slice. Editor Evidence UX is queued as a
-separate Lane 3 editor
+generated CI defaults. [RIPR blocking readiness](BLOCKING_READINESS.md) now
+explains when to stay advisory, require acknowledgement, use baseline-check,
+or enable calibrated blocking. Campaign 16 closeout is the next ready
+adoption slice. Editor Evidence UX is queued as a separate Lane 3 editor
 campaign, not a replacement for the active gate-adoption manifest; it should
-begin after Gate Adoption UX closes or after an explicit parallel-lane
-decision.
+begin after Gate Adoption UX closes or after an explicit parallel-lane decision.
 
 ## Strategic Sequence
 

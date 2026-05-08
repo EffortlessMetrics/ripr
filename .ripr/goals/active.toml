@@ -98,7 +98,7 @@ commands = [
 
 [[work_item]]
 id = "docs/blocking-readiness-guide"
-status = "ready"
+status = "done"
 branch = "docs-blocking-readiness-guide"
 stackable = false
 blocked_by = ["dogfood/gate-adoption-receipts"]
@@ -112,7 +112,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/gate-adoption-ux-closeout"
-status = "blocked"
+status = "ready"
 branch = "campaign-gate-adoption-ux-closeout"
 stackable = false
 blocked_by = [
