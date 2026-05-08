@@ -394,6 +394,17 @@ pub(crate) fn generated_init_config() -> &'static str {
     INIT_CONFIG_TEXT
 }
 
+pub(crate) fn config_fingerprint(source_text: &str) -> String {
+    const FNV_OFFSET: u64 = 0xcbf29ce484222325;
+    const FNV_PRIME: u64 = 0x100000001b3;
+    let mut hash = FNV_OFFSET;
+    for byte in source_text.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    format!("fnv1a64:{hash:016x}")
+}
+
 pub(crate) fn apply_to_check_input(
     input: &mut CheckInput,
     config: &RiprConfig,
