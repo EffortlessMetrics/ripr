@@ -62,6 +62,13 @@ struct ReviewCommentsOptions {
     out: PathBuf,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct GateOptions {
+    input: output::gate::GateEvaluateInput,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum OutcomeFormat {
     Markdown,
@@ -1480,6 +1487,39 @@ pub(super) fn review_comments(args: &[String]) -> Result<(), String> {
     review_comments_with_diff_loader(args, load_review_comments_diff)
 }
 
+pub(super) fn gate(args: &[String]) -> Result<(), String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        help::print_gate_help();
+        return Ok(());
+    }
+    let Some((subcommand, rest)) = args.split_first() else {
+        return Err("gate requires subcommand `evaluate`".to_string());
+    };
+    if subcommand != "evaluate" {
+        return Err(format!(
+            "unknown gate subcommand {subcommand:?}; expected `evaluate`"
+        ));
+    }
+
+    let options = parse_gate_options(rest)?;
+    let report = output::gate::build_gate_decision_report(&options.input)?;
+    let rendered_json = output::gate::render_gate_decision_json(&report)?;
+    let rendered_md = output::gate::render_gate_decision_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    if output::gate::gate_decision_should_fail(&report) {
+        Err(format!(
+            "ripr gate decision is {}; see {}",
+            output::gate::gate_decision_status(&report),
+            options.out.display()
+        ))
+    } else {
+        Ok(())
+    }
+}
+
 fn review_comments_with_diff_loader(
     args: &[String],
     load_diff: impl Fn(&Path, &str, &str) -> Result<String, String>,
@@ -1792,6 +1832,153 @@ fn parse_review_comments_options(args: &[String]) -> Result<ReviewCommentsOption
         head: head.ok_or_else(|| "review-comments requires --head <sha>".to_string())?,
         out,
     })
+}
+
+fn parse_gate_options(args: &[String]) -> Result<GateOptions, String> {
+    let mut root = PathBuf::from(".");
+    let mut repo_exposure = None;
+    let mut pr_guidance = None;
+    let mut sarif_policy = None;
+    let mut labels_json = None;
+    let mut labels = Vec::new();
+    let mut agent_verify = None;
+    let mut agent_receipt = None;
+    let mut recommendation_calibration = None;
+    let mut mutation_calibration = None;
+    let mut baseline = None;
+    let mut mode = output::gate::GateMode::VisibleOnly;
+    let mut acknowledgement_labels = Vec::new();
+    let mut out = PathBuf::from(output::gate::DEFAULT_GATE_OUT);
+    let mut out_md = None;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = non_empty_path_arg(args, i, "--root", "gate")?;
+            }
+            "--repo-exposure" => {
+                i += 1;
+                repo_exposure = Some(non_empty_path_arg(args, i, "--repo-exposure", "gate")?);
+            }
+            "--pr-guidance" => {
+                i += 1;
+                pr_guidance = Some(non_empty_path_arg(args, i, "--pr-guidance", "gate")?);
+            }
+            "--sarif-policy" => {
+                i += 1;
+                sarif_policy = Some(non_empty_path_arg(args, i, "--sarif-policy", "gate")?);
+            }
+            "--labels-json" => {
+                i += 1;
+                labels_json = Some(non_empty_path_arg(args, i, "--labels-json", "gate")?);
+            }
+            "--label" => {
+                i += 1;
+                labels.push(non_empty_string_arg(args, i, "--label", "gate")?);
+            }
+            "--agent-verify" => {
+                i += 1;
+                agent_verify = Some(non_empty_path_arg(args, i, "--agent-verify", "gate")?);
+            }
+            "--agent-receipt" => {
+                i += 1;
+                agent_receipt = Some(non_empty_path_arg(args, i, "--agent-receipt", "gate")?);
+            }
+            "--recommendation-calibration" => {
+                i += 1;
+                recommendation_calibration = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--recommendation-calibration",
+                    "gate",
+                )?);
+            }
+            "--mutation-calibration" => {
+                i += 1;
+                mutation_calibration = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--mutation-calibration",
+                    "gate",
+                )?);
+            }
+            "--baseline" => {
+                i += 1;
+                baseline = Some(non_empty_path_arg(args, i, "--baseline", "gate")?);
+            }
+            "--mode" => {
+                i += 1;
+                mode = output::gate::GateMode::parse(expect_value(args, i, "--mode")?)?;
+            }
+            "--acknowledgement-label" => {
+                i += 1;
+                acknowledgement_labels.push(non_empty_string_arg(
+                    args,
+                    i,
+                    "--acknowledgement-label",
+                    "gate",
+                )?);
+            }
+            "--out" => {
+                i += 1;
+                out = non_empty_path_arg(args, i, "--out", "gate")?;
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = Some(non_empty_path_arg(args, i, "--out-md", "gate")?);
+            }
+            other => return Err(format!("unknown gate argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    let out_md = out_md.unwrap_or_else(|| output::gate::markdown_path_for(&out));
+    Ok(GateOptions {
+        input: output::gate::GateEvaluateInput {
+            root,
+            repo_exposure,
+            pr_guidance: pr_guidance
+                .ok_or_else(|| "gate evaluate requires --pr-guidance <path>".to_string())?,
+            sarif_policy,
+            labels_json,
+            labels,
+            agent_verify,
+            agent_receipt,
+            recommendation_calibration,
+            mutation_calibration,
+            baseline,
+            mode,
+            acknowledgement_labels,
+        },
+        out,
+        out_md,
+    })
+}
+
+fn non_empty_path_arg(
+    args: &[String],
+    index: usize,
+    flag: &str,
+    command: &str,
+) -> Result<PathBuf, String> {
+    let value = non_empty_string_arg(args, index, flag, command)?;
+    Ok(PathBuf::from(value))
+}
+
+fn non_empty_string_arg(
+    args: &[String],
+    index: usize,
+    flag: &str,
+    command: &str,
+) -> Result<String, String> {
+    let value = expect_value(args, index, flag)?;
+    if value.trim().is_empty() {
+        Err(format!("{command} {flag} requires a non-empty value"))
+    } else {
+        Ok(value.to_string())
+    }
 }
 
 fn parse_outcome_format(value: &str) -> Result<OutcomeFormat, String> {
@@ -2132,6 +2319,14 @@ mod tests {
         ))
     }
 
+    fn repo_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(Path::parent)
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."))
+    }
+
     struct GeneratedWorkflowSmokeFixture<'a> {
         commands: &'a [&'a str],
         artifact_paths: &'a [&'a str],
@@ -2269,6 +2464,7 @@ mod tests {
         assert_eq!(init(&args(&["--help"])), Ok(()));
         assert_eq!(pilot(&args(&["--help"])), Ok(()));
         assert_eq!(review_comments(&args(&["--help"])), Ok(()));
+        assert_eq!(gate(&args(&["--help"])), Ok(()));
         assert_eq!(calibrate(&args(&["--help"])), Ok(()));
         assert_eq!(agent(&args(&["--help"])), Ok(()));
         assert_eq!(agent(&args(&["start", "--help"])), Ok(()));
@@ -2460,6 +2656,151 @@ mod tests {
             review_comments_markdown_path(Path::new("target/ripr/review/comments.json")),
             PathBuf::from("target/ripr/review/comments.md")
         );
+    }
+
+    #[test]
+    fn gate_parses_full_option_surface() {
+        let options = parse_gate_options(&args(&[
+            "--root",
+            "repo",
+            "--repo-exposure",
+            "target/ripr/reports/repo-exposure.json",
+            "--pr-guidance",
+            "target/ripr/review/comments.json",
+            "--sarif-policy",
+            "target/ripr/reports/sarif-policy.json",
+            "--labels-json",
+            "target/ci/labels.json",
+            "--label",
+            "ripr-waive",
+            "--agent-verify",
+            "target/ripr/workflow/agent-verify.json",
+            "--agent-receipt",
+            "target/ripr/reports/agent-receipt.json",
+            "--recommendation-calibration",
+            "target/ripr/reports/recommendation-calibration.json",
+            "--mutation-calibration",
+            "target/ripr/reports/mutation-calibration.json",
+            "--baseline",
+            "target/ripr/reports/gate-baseline.json",
+            "--mode",
+            "calibrated-gate",
+            "--acknowledgement-label",
+            "custom-waive",
+            "--out",
+            "target/ripr/reports/gate-decision.json",
+        ]));
+
+        assert_eq!(
+            options,
+            Ok(GateOptions {
+                input: output::gate::GateEvaluateInput {
+                    root: PathBuf::from("repo"),
+                    repo_exposure: Some(PathBuf::from("target/ripr/reports/repo-exposure.json")),
+                    pr_guidance: PathBuf::from("target/ripr/review/comments.json"),
+                    sarif_policy: Some(PathBuf::from("target/ripr/reports/sarif-policy.json")),
+                    labels_json: Some(PathBuf::from("target/ci/labels.json")),
+                    labels: vec!["ripr-waive".to_string()],
+                    agent_verify: Some(PathBuf::from("target/ripr/workflow/agent-verify.json")),
+                    agent_receipt: Some(PathBuf::from("target/ripr/reports/agent-receipt.json")),
+                    recommendation_calibration: Some(PathBuf::from(
+                        "target/ripr/reports/recommendation-calibration.json"
+                    )),
+                    mutation_calibration: Some(PathBuf::from(
+                        "target/ripr/reports/mutation-calibration.json"
+                    )),
+                    baseline: Some(PathBuf::from("target/ripr/reports/gate-baseline.json")),
+                    mode: output::gate::GateMode::CalibratedGate,
+                    acknowledgement_labels: vec!["custom-waive".to_string()],
+                },
+                out: PathBuf::from("target/ripr/reports/gate-decision.json"),
+                out_md: PathBuf::from("target/ripr/reports/gate-decision.md"),
+            })
+        );
+    }
+
+    #[test]
+    fn gate_requires_pr_guidance_and_rejects_unknown_args() {
+        assert_eq!(
+            gate(&args(&[])),
+            Err("gate requires subcommand `evaluate`".to_string())
+        );
+        assert_eq!(
+            gate(&args(&["inspect"])),
+            Err("unknown gate subcommand \"inspect\"; expected `evaluate`".to_string())
+        );
+        assert_eq!(
+            parse_gate_options(&args(&["--mode", "strict"])),
+            Err("unknown gate mode `strict`".to_string())
+        );
+        assert_eq!(
+            parse_gate_options(&args(&["--out", ""])),
+            Err("gate --out requires a non-empty value".to_string())
+        );
+        assert_eq!(
+            parse_gate_options(&args(&["--bad"])),
+            Err("unknown gate argument \"--bad\"".to_string())
+        );
+        assert_eq!(
+            parse_gate_options(&args(&[])),
+            Err("gate evaluate requires --pr-guidance <path>".to_string())
+        );
+    }
+
+    #[test]
+    fn gate_command_writes_visible_only_reports() -> Result<(), String> {
+        let dir = unique_command_test_dir("gate-visible");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create gate dir: {err}"))?;
+        let out = dir.join("gate-decision.json");
+        let out_md = dir.join("gate-decision.md");
+        gate(&args(&[
+            "evaluate",
+            "--root",
+            &repo_root().display().to_string(),
+            "--pr-guidance",
+            "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json_text =
+            std::fs::read_to_string(&out).map_err(|err| format!("read gate json: {err}"))?;
+        let md_text =
+            std::fs::read_to_string(&out_md).map_err(|err| format!("read gate md: {err}"))?;
+        assert!(json_text.contains("\"status\": \"advisory\""));
+        assert!(json_text.contains("\"mode\": \"visible-only\""));
+        assert!(md_text.contains("# RIPR Gate Decision"));
+        assert!(md_text.contains("Decision: advisory"));
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove gate dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn gate_command_writes_blocked_report_before_error() -> Result<(), String> {
+        let dir = unique_command_test_dir("gate-blocked");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create gate dir: {err}"))?;
+        let out = dir.join("gate-decision.json");
+        let result = gate(&args(&[
+            "evaluate",
+            "--root",
+            &repo_root().display().to_string(),
+            "--pr-guidance",
+            "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
+            "--mode",
+            "acknowledgeable",
+            "--out",
+            &out.display().to_string(),
+        ]));
+
+        assert!(matches!(result, Err(message) if message.contains("blocked")));
+        let json_text =
+            std::fs::read_to_string(&out).map_err(|err| format!("read gate json: {err}"))?;
+        assert!(json_text.contains("\"status\": \"blocked\""));
+        assert!(json_text.contains("\"decision\": \"blocking\""));
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove gate dir: {err}"))?;
+        Ok(())
     }
 
     #[test]

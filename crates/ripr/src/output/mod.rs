@@ -4,6 +4,7 @@ pub(crate) mod agent_seam_packets;
 pub(crate) mod agent_workflow;
 pub(crate) mod badge;
 pub(crate) mod format;
+pub(crate) mod gate;
 pub mod github;
 pub mod human;
 pub mod json;

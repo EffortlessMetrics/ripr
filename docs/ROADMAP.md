@@ -116,8 +116,9 @@ read metrics, receipts, placement quality, suppression correctness, static
 movement buckets, and advisory limits. The closeout handoff records the PR
 chain and deferred policy boundary. Campaign 15 is active as Calibrated Gate
 Policy: RIPR-SPEC-0014 pins optional policy gates after measured signal
-quality, and `gate/policy-evaluator` is the next ready item. Gates remain
-explicit, advisory by default, and separate from runtime mutation vocabulary.
+quality, `ripr gate evaluate` now writes the read-only decision report, and
+`fixtures/calibrated-gate-cases` is the next ready item. Gates remain explicit,
+advisory by default, and separate from runtime mutation vocabulary.
 
 ## Strategic Sequence
 
