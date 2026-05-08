@@ -111,6 +111,12 @@ RIPR_GATE_MODE=visible-only
 RIPR_GATE_BASELINE=.ripr/gate-baseline.json
 ```
 
+Copyable generated-CI adoption examples live in
+[CI strategy](CI.md#gate-adoption-examples). Start there when enabling
+`visible-only`, `acknowledgeable`, `baseline-check`, or `calibrated-gate` on an
+external repository; do not fork the generated workflow just to change gate
+mode.
+
 When `RIPR_GATE_MODE` is set, the generated workflow:
 
 1. runs the existing advisory evidence producers first;

@@ -1879,8 +1879,8 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `docs/gate-adoption-examples` | ready | Add copyable generated-CI examples for visible-only, acknowledgeable, baseline-check, and calibrated-gate adoption while preserving the default advisory workflow. |
-| `docs/gate-waiver-workflows` | blocked | Document sample label and waiver workflows that keep acknowledged findings visible, auditable, and separate from suppressions. |
+| `docs/gate-adoption-examples` | done | Added copyable generated-CI repository-variable examples for default advisory posture, `visible-only`, `acknowledgeable`, `baseline-check`, and `calibrated-gate` while preserving generated workflow defaults. |
+| `docs/gate-waiver-workflows` | ready | Document sample label and waiver workflows that keep acknowledged findings visible, auditable, and separate from suppressions. |
 | `docs/gate-baseline-workflow` | blocked | Document baseline creation, review, and refresh guidance for baseline-check and calibrated-gate adoption without hiding existing debt. |
 | `ci/gate-decision-summary-polish` | blocked | Polish generated CI gate summaries so reviewers can see mode, status, waiver, baseline, calibration, blocking reason, and artifact paths without opening JSON. |
 | `dogfood/gate-adoption-receipts` | blocked | Add repo-local dogfood receipts that show visible-only, acknowledged, baseline-aware, and calibrated-gate decisions from RIPR's own evidence without making default CI blocking. |
@@ -1928,6 +1928,5 @@ Blocking conditions:
 
 Next:
 
-- `docs/gate-adoption-examples` is the first ready item. Start with copyable
-  generated-CI examples for each explicit mode, and keep `RIPR_GATE_MODE`
-  unset as the documented default.
+- `docs/gate-waiver-workflows` is the next ready item. Keep waivers visible as
+  acknowledged decisions, not suppressions or hidden passes.

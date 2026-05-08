@@ -97,6 +97,9 @@ are scoped or reviewed.
 - Opened Campaign 16, Gate Adoption UX, with `docs/gate-adoption-examples` as
   the first ready item before waiver workflows, baseline guidance, CI summary
   polish, dogfood receipts, and blocking-readiness docs.
+- Added copyable generated-CI gate adoption examples for default advisory
+  posture, `visible-only`, `acknowledgeable`, `baseline-check`, and
+  `calibrated-gate` repository-variable settings.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and PR guidance annotation counts before artifact

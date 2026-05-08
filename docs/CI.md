@@ -970,19 +970,69 @@ upload. This is useful for repositories that do not want GitHub code scanning
 permissions or want to review the report artifacts before enabling annotations.
 
 Calibrated gates are opt-in. Leave `RIPR_GATE_MODE` unset for the default
-advisory posture. To evaluate the explicit gate decision layer, set repository
-variables such as:
+advisory posture. The generated workflow already reads repository variables, so
+teams should adopt gates by setting variables rather than editing the workflow
+for each mode.
+
+### Gate Adoption Examples
+
+Use these repository-variable examples with the generated workflow.
+
+Default advisory mode:
+
+```text
+# Leave both repository variables unset.
+RIPR_GATE_MODE=
+RIPR_GATE_BASELINE=
+```
+
+This preserves first-run behavior: PR guidance, SARIF when enabled, badges,
+agent packets, review packets, and artifacts remain advisory.
+
+Visible decision report:
 
 ```text
 RIPR_GATE_MODE=visible-only
+RIPR_GATE_BASELINE=
+```
+
+`visible-only` writes `target/ripr/reports/gate-decision.{json,md}` and appends
+the Markdown to the job summary without making a RIPR finding block the PR.
+
+Acknowledgeable policy:
+
+```text
+RIPR_GATE_MODE=acknowledgeable
+RIPR_GATE_BASELINE=
+```
+
+`acknowledgeable` requires a visible acknowledgement such as the `ripr-waive`
+label for policy-eligible findings. The finding stays in the gate decision; the
+label records an acknowledged outcome rather than hiding the recommendation.
+
+Baseline-aware policy:
+
+```text
+RIPR_GATE_MODE=baseline-check
 RIPR_GATE_BASELINE=.ripr/gate-baseline.json
 ```
 
-`visible-only` writes `target/ripr/reports/gate-decision.{json,md}` without
-blocking. `acknowledgeable`, `baseline-check`, and `calibrated-gate` can return
-a blocking exit only when that explicit mode is configured. A `ripr-waive`
-pull-request label remains visible in the decision report as an acknowledged
-outcome rather than hiding the recommendation.
+`baseline-check` is for repos with an explicit checked-in baseline. Use it only
+after reviewing the baseline file; missing baseline input is reported as a
+configuration problem instead of being treated as clean evidence.
+
+Calibrated gate:
+
+```text
+RIPR_GATE_MODE=calibrated-gate
+RIPR_GATE_BASELINE=.ripr/gate-baseline.json
+```
+
+`calibrated-gate` is the narrowest stricter mode. Use it only when the repo has
+reviewed baseline behavior and the available recommendation or imported
+mutation-calibration inputs support the same candidate class. Missing or
+ambiguous calibration stays visible as unknown confidence; it must not be
+treated as high confidence.
 
 The SARIF baseline policy implementation still lives in `cargo xtask`. The
 generated workflow above does not block pull requests by default; gate blocking

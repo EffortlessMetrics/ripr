@@ -128,7 +128,10 @@ now active as Gate Adoption UX: the goal is not more policy machinery, but
 making explicit gate adoption safe through copyable generated-CI examples,
 visible waiver workflows, baseline creation and refresh guidance, first-screen
 gate summaries, repo-local dogfood receipts, and guidance for when blocking is
-earned by local evidence.
+earned by local evidence. The generated-CI examples for default advisory
+posture, `visible-only`, `acknowledgeable`, `baseline-check`, and
+`calibrated-gate` are now documented; visible waiver workflows are the next
+ready adoption slice.
 
 ## Strategic Sequence
 
