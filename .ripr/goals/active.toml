@@ -66,7 +66,7 @@ commands = [
 
 [[work_item]]
 id = "ci/gate-decision-summary-polish"
-status = "ready"
+status = "done"
 branch = "ci-gate-decision-summary-polish"
 stackable = false
 blocked_by = [
@@ -85,7 +85,7 @@ commands = [
 
 [[work_item]]
 id = "dogfood/gate-adoption-receipts"
-status = "blocked"
+status = "ready"
 branch = "dogfood-gate-adoption-receipts"
 stackable = false
 blocked_by = ["ci/gate-decision-summary-polish"]

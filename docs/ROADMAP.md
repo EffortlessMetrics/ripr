@@ -133,8 +133,10 @@ posture, `visible-only`, `acknowledgeable`, `baseline-check`, and
 `calibrated-gate` are now documented, and the `ripr-waive` reviewer workflow
 now keeps acknowledgements visible and separate from suppressions. Baseline
 creation and refresh guidance now frames baselines as visible historical debt
-ledgers that teams can shrink toward RIPR 0 under configured scope. First-screen
-gate summary polish is the next ready adoption slice. Editor Evidence UX is
+ledgers that teams can shrink toward RIPR 0 under configured scope, and the
+generated CI summary now shows gate mode, status, labels, waiver, baseline,
+calibration, blocking reason, and artifact paths at a glance. Repo-local
+dogfood gate receipts are the next ready adoption slice. Editor Evidence UX is
 queued as a separate Lane 3 editor campaign, not a replacement for the active
 gate-adoption manifest; it should begin after Gate Adoption UX closes or after
 an explicit parallel-lane decision.
