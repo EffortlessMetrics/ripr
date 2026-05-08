@@ -1,10 +1,12 @@
 # Handoff: Editor Evidence UX Audit
 
 Date: 2026-05-08
-Branch / PR: `docs-editor-evidence-ux-audit` / pending
-Latest merged PR: #586 `campaign: activate editor evidence ux`
+Branch / PR: `docs-editor-evidence-ux-audit` / #589
+Latest merged campaign context: #590 `spec: define baseline debt delta report`
+keeps Campaign 17, RIPR Zero Adoption, active while Editor Evidence UX remains
+queued.
 
-## Current Work Item
+## Queued Work Item
 
 `campaign/editor-evidence-ux-audit`
 
@@ -33,9 +35,13 @@ diagnostic -> evidence hover -> related test -> context packet
 | Status and freshness exist | First-hour UX added status and action discoverability. | Needs explicit staleness contract |
 | Boundaries are explicit | `docs/EDITOR_EVIDENCE_UX.md` repeats no source edits, generated tests, runtime mutation execution, runtime adequacy claims, or policy invention. | Covered |
 
-## Next Work Item
+## Next Lane 3 Work Item
 
 `lsp/evidence-hover-hardening`
+
+This is the next Editor Evidence UX behavior item when the lane is explicitly
+activated or explicitly run in parallel. It is not the active machine-readable
+`goals next` item while Campaign 17 remains active.
 
 Make hover the primary human explanation surface. It should show, when
 available, seam class, configured status, evidence path, missing observation,

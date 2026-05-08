@@ -708,6 +708,20 @@ next = "maintenance"
 metric = "gate_decisions_evaluated, gate_decisions_blocking, gate_decisions_acknowledged, gate_decisions_advisory, gate_decisions_suppressed, gate_decisions_unknown_confidence, gate_config_errors"
 
 [[capability]]
+id = "baseline_debt_delta_report"
+name = "Baseline debt delta report"
+status = "planned"
+spec = "RIPR-SPEC-0016"
+evidence = [
+  "docs/specs/RIPR-SPEC-0016-baseline-debt-delta.md defines the baseline debt delta contract",
+  "docs/OUTPUT_SCHEMA.md Baseline Debt Delta Report section defines the planned JSON and Markdown shape",
+  "Campaign 17 keeps the report advisory and separates debt movement from gate pass/fail authority"
+]
+fixtures = []
+next = "baseline/create"
+metric = "baseline_debt_delta_entries, baseline_debt_delta_still_present, baseline_debt_delta_resolved, baseline_debt_delta_new_policy_eligible, baseline_debt_delta_acknowledged, baseline_debt_delta_suppressed, baseline_debt_delta_stale_entries, baseline_debt_delta_invalid_entries, baseline_debt_delta_missing_current_input"
+
+[[capability]]
 id = "pilot_packet"
 name = "Pilot packet"
 status = "alpha"
