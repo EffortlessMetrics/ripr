@@ -30,6 +30,26 @@ pub(crate) fn run(program: &str, args: &[&str]) -> Result<ExitStatus, String> {
     }
 }
 
+pub(crate) fn command_success_owned(program: &str, args: &[String]) -> Result<bool, String> {
+    let status = Command::new(program)
+        .args(args)
+        .status()
+        .map_err(|err| format!("failed to run {program}: {err}"))?;
+    Ok(status.success())
+}
+
+pub(crate) fn run_owned(program: &str, args: &[String]) -> Result<(), String> {
+    let status = Command::new(program)
+        .args(args)
+        .status()
+        .map_err(|err| format!("failed to run {program}: {err}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("{program} {} failed with {status}", args.join(" ")))
+    }
+}
+
 pub(crate) fn run_output(program: &str, args: &[&str]) -> Result<String, String> {
     let output = Command::new(program)
         .args(args)
@@ -205,8 +225,9 @@ fn join_stream_reader(
 #[cfg(test)]
 mod tests {
     use super::{
-        CapturedOutput, capture_output, capture_output_with_timeout, run, run_output,
-        run_output_optional, run_output_owned, terminate_after_timeout, timeout_was_enforced,
+        CapturedOutput, capture_output, capture_output_with_timeout, command_success_owned, run,
+        run_output, run_output_optional, run_output_owned, run_owned, terminate_after_timeout,
+        timeout_was_enforced,
     };
     use std::process::{Command, Stdio};
     use std::thread;
@@ -220,6 +241,27 @@ mod tests {
         }
 
         let Err(err) = run("rustc", &["--ripr-invalid-test-flag"]) else {
+            return Err("invalid rustc flag should fail".to_string());
+        };
+        if !err.contains("failed with") {
+            return Err(format!("failure message should include status: {err}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn owned_run_helpers_report_success_and_failure_status() -> Result<(), String> {
+        let version_args = vec!["--version".to_string()];
+        if !command_success_owned("rustc", &version_args)? {
+            return Err("rustc --version should report success".to_string());
+        }
+        run_owned("rustc", &version_args)?;
+
+        let bad_args = vec!["--ripr-invalid-test-flag".to_string()];
+        if command_success_owned("rustc", &bad_args)? {
+            return Err("invalid rustc flag should report failure".to_string());
+        }
+        let Err(err) = run_owned("rustc", &bad_args) else {
             return Err("invalid rustc flag should fail".to_string());
         };
         if !err.contains("failed with") {

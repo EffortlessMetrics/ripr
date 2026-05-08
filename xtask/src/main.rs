@@ -2,10 +2,12 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 mod command;
 mod dispatch;
@@ -28,8 +30,8 @@ use reports::{
 #[cfg(test)]
 use reports::{lsp_cockpit_report, targeted_test_outcome};
 use run::{
-    TimedOutput, capture_output, capture_output_with_timeout, run, run_output, run_output_optional,
-    run_output_owned,
+    TimedOutput, capture_output, capture_output_with_timeout, command_success_owned, run,
+    run_output, run_output_optional, run_output_owned, run_owned,
 };
 
 #[derive(Debug)]
@@ -683,6 +685,303 @@ fn run_ci_full_evidence_gates(gates: &[CiFullEvidenceGate]) -> Result<(), String
             .map_err(|err| format!("ci-full evidence gate `{}` failed: {err}", gate.name))?;
     }
     Ok(())
+}
+
+fn release_server_archive(args: &[String]) -> Result<(), String> {
+    let version = required_release_arg(args, "version", "RAW_VERSION")?;
+    let target = required_release_arg(args, "target", "TARGET")?;
+    let executable = required_release_arg(args, "executable", "EXECUTABLE")?;
+    let archive = required_release_arg(args, "archive", "ARCHIVE")?;
+    let version = normalize_release_version(&version);
+    let asset_name = format!("ripr-server-v{version}-{target}.{archive}");
+    let package_dir = Path::new("package");
+    let dist_dir = Path::new("dist");
+
+    if package_dir.exists() {
+        fs::remove_dir_all(package_dir)
+            .map_err(|err| format!("failed to remove {}: {err}", package_dir.display()))?;
+    }
+    fs::create_dir_all(package_dir)
+        .map_err(|err| format!("failed to create {}: {err}", package_dir.display()))?;
+    fs::create_dir_all(dist_dir)
+        .map_err(|err| format!("failed to create {}: {err}", dist_dir.display()))?;
+
+    let built_executable = Path::new("target")
+        .join(&target)
+        .join("release")
+        .join(&executable);
+    fs::copy(&built_executable, package_dir.join(&executable)).map_err(|err| {
+        format!(
+            "failed to copy {} into {}: {err}",
+            built_executable.display(),
+            package_dir.display()
+        )
+    })?;
+    copy_release_file("LICENSE-MIT", package_dir)?;
+    copy_release_file("LICENSE-APACHE", package_dir)?;
+    fs::write(
+        package_dir.join("README-server.txt"),
+        release_server_readme(&version),
+    )
+    .map_err(|err| {
+        format!(
+            "failed to write {}: {err}",
+            package_dir.join("README-server.txt").display()
+        )
+    })?;
+
+    let asset_path = dist_dir.join(&asset_name);
+    if asset_path.exists() {
+        fs::remove_file(&asset_path)
+            .map_err(|err| format!("failed to remove {}: {err}", asset_path.display()))?;
+    }
+    match archive.as_str() {
+        "zip" => create_zip_archive(package_dir, &asset_path)?,
+        "tar.gz" => create_tar_gz_archive(package_dir, &asset_path)?,
+        other => {
+            return Err(format!(
+                "unsupported release server archive format `{other}`"
+            ));
+        }
+    }
+
+    let sha = sha256_file(&asset_path)?;
+    fs::write(
+        dist_dir.join(format!("{asset_name}.sha256")),
+        format!("{sha}\n"),
+    )
+    .map_err(|err| {
+        format!(
+            "failed to write {}: {err}",
+            dist_dir.join(format!("{asset_name}.sha256")).display()
+        )
+    })?;
+    eprintln!("wrote {}", asset_path.display());
+    Ok(())
+}
+
+fn release_server_manifest(args: &[String]) -> Result<(), String> {
+    let version = required_release_arg(args, "version", "RAW_VERSION")?;
+    let repository = required_release_arg(args, "repository", "REPOSITORY")?;
+    let version = normalize_release_version(&version);
+    let dist_dir = Path::new("dist");
+    let checksums_path = dist_dir.join("checksums.txt");
+    if checksums_path.exists() {
+        fs::remove_file(&checksums_path)
+            .map_err(|err| format!("failed to remove {}: {err}", checksums_path.display()))?;
+    }
+
+    let mut assets = serde_json::Map::new();
+    for asset in release_server_assets(dist_dir, &version)? {
+        let sha_path = dist_dir.join(format!("{}.sha256", asset.file_name));
+        let sha = read_trimmed(&sha_path)?;
+        let url = format!(
+            "https://github.com/{repository}/releases/download/v{version}/{}",
+            asset.file_name
+        );
+        assets.insert(
+            asset.target,
+            serde_json::json!({ "url": url, "sha256": sha }),
+        );
+    }
+
+    let manifest = serde_json::json!({
+        "version": version,
+        "assets": assets,
+    });
+    let manifest_path = dist_dir.join(format!("ripr-server-manifest-v{version}.json"));
+    let manifest_text = serde_json::to_string_pretty(&manifest)
+        .map_err(|err| format!("failed to render release server manifest: {err}"))?;
+    fs::write(&manifest_path, format!("{manifest_text}\n"))
+        .map_err(|err| format!("failed to write {}: {err}", manifest_path.display()))?;
+
+    let mut checksum_lines = Vec::new();
+    for path in sorted_dist_files(dist_dir)? {
+        let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if file_name.ends_with(".sha256") || file_name == "checksums.txt" {
+            continue;
+        }
+        checksum_lines.push(format!("{}  {file_name}", sha256_file(&path)?));
+    }
+    fs::write(&checksums_path, format!("{}\n", checksum_lines.join("\n")))
+        .map_err(|err| format!("failed to write {}: {err}", checksums_path.display()))?;
+    eprintln!("wrote {}", manifest_path.display());
+    eprintln!("wrote {}", checksums_path.display());
+    Ok(())
+}
+
+fn release_upload_assets(args: &[String]) -> Result<(), String> {
+    let version = normalize_release_version(&required_release_arg(args, "version", "RAW_VERSION")?);
+    let tag = format!("v{version}");
+    if !command_success_owned(
+        "gh",
+        &["release".to_string(), "view".to_string(), tag.clone()],
+    )? {
+        run_owned(
+            "gh",
+            &[
+                "release".to_string(),
+                "create".to_string(),
+                tag.clone(),
+                "--title".to_string(),
+                format!("ripr {version}"),
+            ],
+        )?;
+    }
+
+    let mut upload_args = vec!["release".to_string(), "upload".to_string(), tag];
+    for path in sorted_dist_files(Path::new("dist"))? {
+        upload_args.push(path.to_string_lossy().to_string());
+    }
+    upload_args.push("--clobber".to_string());
+    run_owned("gh", &upload_args)
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct ReleaseServerAsset {
+    target: String,
+    file_name: String,
+}
+
+fn release_server_assets(
+    dist_dir: &Path,
+    version: &str,
+) -> Result<Vec<ReleaseServerAsset>, String> {
+    let prefix = format!("ripr-server-v{version}-");
+    let mut assets = Vec::new();
+    for path in sorted_dist_files(dist_dir)? {
+        let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let Some(target_with_suffix) = file_name.strip_prefix(&prefix) else {
+            continue;
+        };
+        let target = target_with_suffix
+            .strip_suffix(".tar.gz")
+            .or_else(|| target_with_suffix.strip_suffix(".zip"));
+        let Some(target) = target else {
+            continue;
+        };
+        assets.push(ReleaseServerAsset {
+            target: target.to_string(),
+            file_name: file_name.to_string(),
+        });
+    }
+    Ok(assets)
+}
+
+fn required_release_arg(args: &[String], flag: &str, env_name: &str) -> Result<String, String> {
+    let flag_name = format!("--{flag}");
+    for window in args.windows(2) {
+        if window[0] == flag_name {
+            return Ok(window[1].clone());
+        }
+    }
+    let inline_prefix = format!("{flag_name}=");
+    for arg in args {
+        if let Some(value) = arg.strip_prefix(&inline_prefix) {
+            return Ok(value.to_string());
+        }
+    }
+    std::env::var(env_name).map_err(|err| format!("missing {flag_name} or {env_name}: {err}"))
+}
+
+fn normalize_release_version(version: &str) -> String {
+    version.trim().trim_start_matches('v').to_string()
+}
+
+fn copy_release_file(file_name: &str, package_dir: &Path) -> Result<(), String> {
+    fs::copy(file_name, package_dir.join(file_name)).map_err(|err| {
+        format!(
+            "failed to copy {file_name} into {}: {err}",
+            package_dir.display()
+        )
+    })?;
+    Ok(())
+}
+
+fn release_server_readme(version: &str) -> String {
+    format!(
+        "ripr server {version}\n\nThis archive contains the ripr executable used by the VS Code/Open VSX\nextension. It is distributed under MIT OR Apache-2.0."
+    )
+}
+
+fn create_tar_gz_archive(package_dir: &Path, asset_path: &Path) -> Result<(), String> {
+    run_owned(
+        "tar",
+        &[
+            "-czf".to_string(),
+            asset_path.to_string_lossy().to_string(),
+            "-C".to_string(),
+            package_dir.to_string_lossy().to_string(),
+            ".".to_string(),
+        ],
+    )
+}
+
+fn create_zip_archive(package_dir: &Path, asset_path: &Path) -> Result<(), String> {
+    run_owned(
+        "pwsh",
+        &[
+            "-NoLogo".to_string(),
+            "-NoProfile".to_string(),
+            "-Command".to_string(),
+            "$source = Join-Path $args[0] '*'; Compress-Archive -Path $source -DestinationPath $args[1] -Force".to_string(),
+            package_dir.to_string_lossy().to_string(),
+            asset_path.to_string_lossy().to_string(),
+        ],
+    )
+}
+
+fn sha256_file(path: &Path) -> Result<String, String> {
+    let mut file = fs::File::open(path)
+        .map_err(|err| format!("failed to open {} for hashing: {err}", path.display()))?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .map_err(|err| format!("failed to read {} for hashing: {err}", path.display()))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(hex_lower(&hasher.finalize()))
+}
+
+fn hex_lower(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        output.push(char::from(HEX[usize::from(byte >> 4)]));
+        output.push(char::from(HEX[usize::from(byte & 0x0f)]));
+    }
+    output
+}
+
+fn sorted_dist_files(dist_dir: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut paths = Vec::new();
+    for entry in fs::read_dir(dist_dir)
+        .map_err(|err| format!("failed to read {}: {err}", dist_dir.display()))?
+    {
+        let path = entry
+            .map_err(|err| format!("failed to read entry under {}: {err}", dist_dir.display()))?
+            .path();
+        if path.is_file() {
+            paths.push(path);
+        }
+    }
+    paths.sort();
+    Ok(paths)
+}
+
+fn read_trimmed(path: &Path) -> Result<String, String> {
+    fs::read_to_string(path)
+        .map(|text| text.trim().to_string())
+        .map_err(|err| format!("failed to read {}: {err}", path.display()))
 }
 
 const RIPR_MANAGED_PRE_COMMIT_MARKER: &str = "# ripr-managed pre-commit hook";
@@ -16337,6 +16636,168 @@ mod tests {
             fs::create_dir_all(parent).unwrap();
         }
         fs::write(path, text).unwrap();
+    }
+
+    #[test]
+    fn release_server_assets_selects_versioned_archives() -> Result<(), String> {
+        let root = temp_dir("release-server-assets");
+        write(
+            &root.join("ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz"),
+            "archive",
+        );
+        write(
+            &root.join("ripr-server-v1.2.3-x86_64-pc-windows-msvc.zip"),
+            "archive",
+        );
+        write(
+            &root.join("ripr-server-v1.2.4-aarch64-apple-darwin.tar.gz"),
+            "other",
+        );
+        write(
+            &root.join("ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz.sha256"),
+            "sha",
+        );
+
+        let assets = super::release_server_assets(&root, "1.2.3")?;
+
+        assert_eq!(
+            assets,
+            vec![
+                super::ReleaseServerAsset {
+                    target: "x86_64-pc-windows-msvc".to_string(),
+                    file_name: "ripr-server-v1.2.3-x86_64-pc-windows-msvc.zip".to_string(),
+                },
+                super::ReleaseServerAsset {
+                    target: "x86_64-unknown-linux-gnu".to_string(),
+                    file_name: "ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz".to_string(),
+                },
+            ]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn release_server_helpers_match_workflow_arguments() -> Result<(), String> {
+        let args = vec![
+            "--version=v1.2.3".to_string(),
+            "--target".to_string(),
+            "x86_64-unknown-linux-gnu".to_string(),
+        ];
+
+        assert_eq!(
+            super::required_release_arg(&args, "version", "MISSING_ENV")?,
+            "v1.2.3"
+        );
+        assert_eq!(
+            super::required_release_arg(&args, "target", "MISSING_ENV")?,
+            "x86_64-unknown-linux-gnu"
+        );
+        assert_eq!(super::normalize_release_version(" v1.2.3 "), "1.2.3");
+        assert_eq!(
+            super::release_server_readme("1.2.3"),
+            "ripr server 1.2.3\n\nThis archive contains the ripr executable used by the VS Code/Open VSX\nextension. It is distributed under MIT OR Apache-2.0."
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn release_server_archive_prepares_package_before_format_validation() -> Result<(), String> {
+        with_temp_cwd("release-server-archive", |root| {
+            let executable = if cfg!(windows) { "ripr.exe" } else { "ripr" };
+            write(
+                &root
+                    .join("target")
+                    .join("x86_64-unknown-linux-gnu")
+                    .join("release")
+                    .join(executable),
+                "binary",
+            );
+            write(&root.join("LICENSE-MIT"), "mit");
+            write(&root.join("LICENSE-APACHE"), "apache");
+
+            let args = vec![
+                "--version".to_string(),
+                "v1.2.3".to_string(),
+                "--target".to_string(),
+                "x86_64-unknown-linux-gnu".to_string(),
+                "--executable".to_string(),
+                executable.to_string(),
+                "--archive".to_string(),
+                "bad-format".to_string(),
+            ];
+
+            let Err(err) = super::release_server_archive(&args) else {
+                return Err("unsupported archive format should fail".to_string());
+            };
+            assert!(err.contains("unsupported release server archive format"));
+            assert_eq!(
+                fs::read_to_string(root.join("package").join(executable))
+                    .map_err(|err| format!("read packaged executable: {err}"))?,
+                "binary"
+            );
+            assert_eq!(
+                fs::read_to_string(root.join("package").join("README-server.txt"))
+                    .map_err(|err| format!("read packaged README: {err}"))?,
+                super::release_server_readme("1.2.3")
+            );
+            assert!(root.join("dist").is_dir());
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn release_server_manifest_writes_assets_and_checksums() -> Result<(), String> {
+        with_temp_cwd("release-server-manifest", |root| {
+            let dist = root.join("dist");
+            write(
+                &dist.join("ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz"),
+                "linux",
+            );
+            write(
+                &dist.join("ripr-server-v1.2.3-x86_64-pc-windows-msvc.zip"),
+                "windows",
+            );
+            write(
+                &dist.join("ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz.sha256"),
+                "linux-sha\n",
+            );
+            write(
+                &dist.join("ripr-server-v1.2.3-x86_64-pc-windows-msvc.zip.sha256"),
+                "windows-sha\n",
+            );
+
+            let args = vec![
+                "--version".to_string(),
+                "v1.2.3".to_string(),
+                "--repository".to_string(),
+                "EffortlessMetrics/ripr".to_string(),
+            ];
+
+            super::release_server_manifest(&args)?;
+
+            let manifest_path = dist.join("ripr-server-manifest-v1.2.3.json");
+            let manifest_text = fs::read_to_string(&manifest_path)
+                .map_err(|err| format!("read release manifest: {err}"))?;
+            let manifest: Value = serde_json::from_str(&manifest_text)
+                .map_err(|err| format!("parse release manifest: {err}"))?;
+            assert_eq!(manifest["version"], "1.2.3");
+            assert_eq!(
+                manifest["assets"]["x86_64-unknown-linux-gnu"]["url"],
+                "https://github.com/EffortlessMetrics/ripr/releases/download/v1.2.3/ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz"
+            );
+            assert_eq!(
+                manifest["assets"]["x86_64-pc-windows-msvc"]["sha256"],
+                "windows-sha"
+            );
+
+            let checksums = fs::read_to_string(dist.join("checksums.txt"))
+                .map_err(|err| format!("read checksums: {err}"))?;
+            assert!(checksums.contains("  ripr-server-v1.2.3-x86_64-unknown-linux-gnu.tar.gz"));
+            assert!(checksums.contains("  ripr-server-v1.2.3-x86_64-pc-windows-msvc.zip"));
+            assert!(checksums.contains("  ripr-server-manifest-v1.2.3.json"));
+            assert!(!checksums.contains(".sha256"));
+            Ok(())
+        })
     }
 
     fn with_temp_cwd<T>(name: &str, f: impl FnOnce(&Path) -> T) -> T {
