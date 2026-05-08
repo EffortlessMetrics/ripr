@@ -890,6 +890,7 @@ fn init_ci_github_writes_non_blocking_report_workflow() -> Result<(), String> {
     assert!(workflow.contains("ripr agent packet"));
     assert!(workflow.contains("ripr agent verify"));
     assert!(workflow.contains("ripr agent receipt"));
+    assert!(workflow.contains("ripr review-comments"));
     assert!(workflow.contains("ripr agent status"));
     assert!(workflow.contains("ripr agent review-summary"));
     assert!(workflow.contains("target/ripr/workflow/agent-packet.json"));
@@ -907,6 +908,7 @@ fn init_ci_github_writes_non_blocking_report_workflow() -> Result<(), String> {
     assert!(workflow.contains("target/ripr/reports/targeted-test-outcome.json"));
     assert!(workflow.contains("target/ripr/review"));
     assert!(workflow.contains("target/ripr/review/comments.json"));
+    assert!(workflow.contains("Run RIPR PR guidance report"));
     assert!(workflow.contains("Emit RIPR PR guidance annotations"));
     assert!(workflow.contains("Add RIPR advisory summary"));
     assert!(workflow.contains("## RIPR advisory summary"));

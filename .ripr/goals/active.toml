@@ -58,7 +58,7 @@ commands = [
 
 [[work_item]]
 id = "ci/run-pr-guidance-report"
-status = "ready"
+status = "done"
 branch = "ci-run-pr-guidance-report"
 stackable = false
 requires_human_merge = true
@@ -74,7 +74,7 @@ commands = [
 
 [[work_item]]
 id = "fixtures/pr-guidance-cases"
-status = "blocked"
+status = "ready"
 branch = "fixtures-pr-guidance-cases"
 stackable = false
 requires_human_merge = true

@@ -623,13 +623,13 @@ evidence = [
   "crates/ripr/src/output/review_comments.rs renders bounded line annotations, summary-only fallbacks, cap suppression, nearby-test suppression, LLM guidance, and static limits",
   "crates/ripr/src/cli/commands.rs exposes the command and parses required revisions",
   "docs/CI.md PR Test Guidance Annotations section documents the default job-summary and check-annotation posture",
-  "docs/IMPLEMENTATION_CAMPAIGNS.md Campaign 13 marks ci/run-pr-guidance-report ready after the review-comments renderer",
-  "ripr init --ci github generates an advisory workflow that writes a RIPR advisory summary and emits non-blocking changed-line check annotations when target/ripr/review/comments.json exists",
-  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture pins generated workflow artifact paths, top-seam extraction, advisory posture, optional SARIF gates, badge output, summary sections, and annotation hooks",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md Campaign 13 marks ci/run-pr-guidance-report done after wiring the generated workflow producer",
+  "ripr init --ci github generates an advisory workflow that runs ripr review-comments on pull requests, writes a RIPR advisory summary, and emits non-blocking changed-line check annotations when target/ripr/review/comments.json exists",
+  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture pins generated workflow artifact paths, top-seam extraction, review-comments execution before summary and annotation consumers, advisory posture, optional SARIF gates, badge output, summary sections, and annotation hooks",
   "docs/QUICKSTART.md routes CI-first users through the generated advisory workflow summary, uploaded artifact packet, optional SARIF, and non-blocking posture"
 ]
 fixtures = []
-next = "ci/run-pr-guidance-report"
+next = "fixtures/pr-guidance-cases"
 metric = "PR guidance projects existing seam evidence into bounded changed-line annotations without blocking by default"
 
 [[capability]]

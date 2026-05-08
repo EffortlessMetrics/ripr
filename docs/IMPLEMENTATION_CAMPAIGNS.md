@@ -1440,8 +1440,8 @@ Work items:
 | `spec/pr-test-guidance-annotations` | done | RIPR-SPEC-0012 pins the advisory PR annotation/comment contract before implementing `ripr review-comments`, including changed-line placement, anti-spam caps, bounded LLM guidance, check annotations by default, optional inline review comments, JSON shape, and non-blocking CI posture. |
 | `vscode/first-run-status` | done | VS Code now has a status bar and `ripr: Show Status` path for server resolution, workspace detection, analysis running/complete/stale/failed, and no-actionable-seam states without adding unsaved-buffer overlays. |
 | `vscode/action-discoverability` | done | Seam diagnostics now group code-action titles around inspect, write targeted test, agent handoff, verify after test, review result, and refresh intent while keeping command IDs and payloads stable. |
-| `ci/pr-summary-surface` | done | The generated workflow now writes a reviewer-oriented `RIPR advisory summary` with pilot and agent review content, artifact paths, SARIF and badge status, known limits, and future PR guidance annotation counts when `target/ripr/review/comments.json` exists; it also emits non-blocking changed-line check annotations from that future report. |
-| `ci/generated-workflow-smoke-fixture` | done | The generated workflow smoke fixture now pins artifact paths, top-seam extraction, agent artifact generation, non-blocking posture, optional SARIF gates, badge output, advisory summary sections, and future PR guidance annotation hooks. |
+| `ci/pr-summary-surface` | done | The generated workflow now writes a reviewer-oriented `RIPR advisory summary` with pilot and agent review content, artifact paths, SARIF and badge status, known limits, and PR guidance annotation counts when `target/ripr/review/comments.json` exists; it also emits non-blocking changed-line check annotations from that report. |
+| `ci/generated-workflow-smoke-fixture` | done | The generated workflow smoke fixture now pins artifact paths, top-seam extraction, agent artifact generation, non-blocking posture, optional SARIF gates, badge output, advisory summary sections, and PR guidance annotation hooks. |
 | `docs/ux-by-user-type` | done | `docs/QUICKSTART.md` now routes the first hour by VS Code, CI, CLI, and agent/reviewer user type, with troubleshooting and known limits; README keeps the short front-door summary and links to the deeper path. |
 | `campaign/first-hour-ux-closeout` | done | Campaign 12 closed after the editor status path, intent-titled actions, generated CI advisory summary, generated workflow smoke fixture, and user-type quickstart made the first hour understandable from VS Code, CI, CLI, and agent/reviewer surfaces. |
 
@@ -1489,9 +1489,9 @@ Campaigns 10 through 12 made the editor, CLI, agent loop, cockpit, generated
 CI artifacts, and first-hour docs converge on the same static evidence loop.
 The remaining visible gap is pull-request review projection. RIPR-SPEC-0012
 defines `ripr review-comments`, the read-only report producer now exists, and
-generated CI already has a consumer hook for `target/ripr/review/comments.json`;
-the next gap is running that producer inside generated workflows before the
-existing summary and annotation consumer steps.
+generated CI now runs that producer before the existing summary and annotation
+consumer steps. The next gap is fixture-pinning the exact placement and
+suppression cases.
 
 Objective:
 
@@ -1535,8 +1535,8 @@ Work items:
 | --- | --- | --- |
 | `campaign/pr-review-guidance-audit` | done | Audited the long-term static-evidence control-plane objective against current artifacts. The editor/CLI/CI artifact loop is real, but PR review convergence was incomplete because `ripr review-comments` was specified and consumed only as a future report. |
 | `review/pr-guidance-renderer` | done | Added read-only `ripr review-comments --root . --base <sha> --head <sha> --out target/ripr/review/comments.json` plus Markdown output, joining existing static evidence to produce bounded PR guidance without posting to GitHub or changing analyzer behavior. |
-| `ci/run-pr-guidance-report` | ready | Update generated GitHub workflows to run `ripr review-comments` before the existing advisory summary and check-annotation consumer steps, preserving non-blocking defaults. |
-| `fixtures/pr-guidance-cases` | blocked | Pin PR guidance fixtures for exact changed seam line, owner-function changed line, same-file changed line, summary-only fallback, cap suppression, configured suppression, and nearby changed-test skip. |
+| `ci/run-pr-guidance-report` | done | Updated generated GitHub workflows to run `ripr review-comments` before the existing advisory summary and check-annotation consumer steps, preserving non-blocking defaults. |
+| `fixtures/pr-guidance-cases` | ready | Pin PR guidance fixtures for exact changed seam line, owner-function changed line, same-file changed line, summary-only fallback, cap suppression, configured suppression, and nearby changed-test skip. |
 | `docs/pr-review-guidance` | blocked | Document PR guidance as a bounded advisory projection of existing RIPR evidence, including commands, CI behavior, opt-in review-comment boundary, and no automatic edits or runtime mutation claims. |
 | `campaign/pr-review-guidance-closeout` | blocked | Close Campaign 13 only after PR review guidance is produced, consumed by generated CI, fixture-pinned, documented, and still advisory/non-blocking by default. |
 
@@ -1545,8 +1545,8 @@ Dependencies:
 - RIPR-SPEC-0012 remains the product contract for review guidance.
 - Campaign 11 shared command templates remain the source for agent brief and
   verify command strings used by review guidance.
-- Campaign 12 generated workflow annotation steps remain consumers until this
-  campaign runs the producer in generated CI.
+- Campaign 12 generated workflow annotation steps remain the non-blocking
+  consumers of the producer output.
 
 Commands:
 

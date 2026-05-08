@@ -16,9 +16,10 @@ explains why a focused test is useful and how to verify the result.
 
 This started as the Campaign 12 design contract for implementation planning.
 Campaign 13 now uses it as the implementation contract: the pure
-`review-comments` renderer exists, while generated workflow projection,
-fixture expansion, documentation, and optional comment publishing remain future
-work and must preserve the boundaries below.
+`review-comments` renderer exists and generated workflows run it before the
+summary and check-annotation consumers. Fixture expansion, documentation, and
+optional comment publishing remain future work and must preserve the
+boundaries below.
 
 ## Product Contract
 

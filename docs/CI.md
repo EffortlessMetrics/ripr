@@ -524,28 +524,28 @@ For a CI-first user, the useful output is the artifact packet:
   receipt JSON for the top seam when one is available;
 - `target/ripr/reports/` - targeted-test outcome, SARIF files when enabled,
   repo badge JSON, `agent-receipt.json`, and any repo-local cockpit output.
-- `target/ripr/review/` - planned PR test guidance JSON and Markdown when
-  the future pure renderer writes them.
+- `target/ripr/review/` - PR test guidance JSON and Markdown when
+  `ripr review-comments` runs on pull requests.
 
 The workflow also writes a `RIPR advisory summary` step summary. It includes
 the top recommendation, the agent review packet when present, artifact links,
 SARIF and badge status, known limits, and PR guidance annotation counts when
-`target/ripr/review/comments.json` exists. If that future PR guidance report is
-present, the workflow emits changed-line check annotations by default without
-posting inline review comments.
+`target/ripr/review/comments.json` exists. On pull requests, the generated
+workflow writes that report before emitting changed-line check annotations by
+default without posting inline review comments.
 
 See [LLM operator guide](LLM_OPERATOR_GUIDE.md) for the same status, workflow
 packet, verify, receipt, and reviewer-summary loop outside CI.
 
 ### PR Test Guidance Annotations
 
-RIPR-SPEC-0012 defines the pinned planning contract for a planned PR-facing
-projection of the same evidence packet. The default CI surface should be a
-GitHub job summary plus check annotations. Inline PR review comments should
+RIPR-SPEC-0012 defines the pinned planning contract for the PR-facing
+projection of the same evidence packet. The default CI surface is a GitHub job
+summary plus check annotations. Inline PR review comments should
 remain opt-in because they create durable review-thread noise when ranking or
 placement is wrong.
 
-The planned pure renderer is:
+The generated workflow runs the pure renderer on pull requests:
 
 ```bash
 ripr review-comments \
@@ -555,8 +555,8 @@ ripr review-comments \
   --out target/ripr/review/comments.json
 ```
 
-That renderer should write JSON and Markdown under `target/ripr/review/` and
-should not post to GitHub by itself. A workflow can then:
+That renderer writes JSON and Markdown under `target/ripr/review/` and does
+not post to GitHub by itself. The generated workflow then:
 
 - append the Markdown summary to `$GITHUB_STEP_SUMMARY`;
 - emit check annotations from changed-line entries;
@@ -683,6 +683,17 @@ jobs:
         run: |
           mkdir -p target/ripr/reports
           git diff --binary "origin/${{ github.base_ref }}...HEAD" > target/ripr/reports/pr.diff
+
+      - name: Run RIPR PR guidance report
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/review
+          ripr review-comments \
+            --root . \
+            --base "origin/${{ github.base_ref }}" \
+            --head HEAD \
+            --out target/ripr/review/comments.json
 
       - name: Render diff SARIF
         if: env.RIPR_UPLOAD_SARIF == 'true' && github.event_name == 'pull_request'

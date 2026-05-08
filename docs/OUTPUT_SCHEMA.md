@@ -1270,9 +1270,10 @@ Field contract:
 - `warnings[]` - selection warnings from the agent brief selection path.
 - `limits_note` - static-evidence boundary text for downstream summaries.
 
-Default CI projection should cap inline review comments to three, write summary
-items to the job summary, and emit check annotations only for changed lines.
-Inline PR review comments remain opt-in.
+Default CI projection runs `ripr review-comments` on pull requests, caps inline
+review comments to three, writes summary items to the job summary, and emits
+check annotations only for changed lines. Inline PR review comments remain
+opt-in.
 
 ## Agent Status
 
