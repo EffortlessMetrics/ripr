@@ -104,6 +104,10 @@ The terminal summary shows the top actionable seam, why RIPR ranked it, where
 the structured packet lives, and the command to run after a focused test is
 added.
 
+When a human or external LLM tool is taking over one focused test, follow the
+[LLM operator guide](LLM_OPERATOR_GUIDE.md) for the status, workflow packet,
+verify, receipt, and reviewer-summary artifact loop.
+
 If analysis exceeds the default budget, `ripr pilot` writes
 `pilot-summary.{json,md}` with `status: partial` and a retry command instead of
 waiting silently.

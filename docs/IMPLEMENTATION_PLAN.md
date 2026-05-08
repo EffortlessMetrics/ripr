@@ -49,10 +49,11 @@ a read-only `ripr agent status` lens over existing agent-loop artifacts,
 centralized the command templates that feed CLI, LSP, cockpit, generated CI
 paths, docs, and fixtures, pinned source-edit-free workflow manifests and
 review summaries, and wired generated CI to upload LLM work-loop packet
-artifacts. The next slice is the LLM operator guide. Campaign 12 is queued as
-the First-Hour UX lane after the LLM work-loop control plane: it keeps the CLI
-as the shared engine while making the extension and generated CI workflow feel
-obvious from their own first screens.
+artifacts. The LLM operator guide now documents the source-edit-free human and
+external-agent loop; the next slice is Campaign 11 closeout. Campaign 12 is
+queued as the First-Hour UX lane after the LLM work-loop control plane: it
+keeps the CLI as the shared engine while making the extension and generated CI
+workflow feel obvious from their own first screens.
 
 ## PR 0: `planning-and-tracking-docs`
 

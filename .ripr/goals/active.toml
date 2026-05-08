@@ -141,7 +141,7 @@ commands = [
 
 [[work_item]]
 id = "docs/llm-operator-guide"
-status = "ready"
+status = "done"
 branch = "docs-llm-operator-guide"
 stackable = false
 requires_human_merge = true
@@ -155,10 +155,16 @@ commands = [
 
 [[work_item]]
 id = "campaign/llm-work-loop-closeout"
-status = "blocked"
+status = "ready"
 branch = "campaign-llm-work-loop-closeout"
 stackable = false
 requires_human_merge = true
-blocked_by = ["docs/llm-operator-guide"]
-blocked_reason = "Close only after the status, command template, manifest, receipt, guidance, review summary, fixtures, CI, and docs work items land"
 acceptance = "Close Campaign 11 after LLM work-loop state, commands, provenance, fixtures, CI artifacts, docs, and review summary are aligned without automatic edits, generated tests, runtime mutation execution, speculative LSP features, or new public crates"
+commands = [
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr"
+]

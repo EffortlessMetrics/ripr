@@ -426,6 +426,9 @@ The LLM work loop must not:
 - Generated GitHub CI writes and uploads workflow packet artifacts under
   `target/ripr/workflow`, including status JSON/Markdown and review summary
   JSON/Markdown, while keeping the job advisory.
+- `docs/LLM_OPERATOR_GUIDE.md` documents the source-edit-free operator loop
+  from status through workflow packet, focused test target, after snapshot,
+  verify, receipt, and reviewer summary.
 - Missing optional cockpit artifacts are visible state, not command failures.
 - A missing receipt yields `status: incomplete` and carries the next command
   from agent status.
@@ -497,6 +500,8 @@ The LLM work loop must not:
 - `crates/ripr/src/cli/help.rs` documents the command surface.
 - `crates/ripr/src/cli/commands.rs` renders the generated GitHub workflow that
   uploads LLM work-loop packet artifacts without changing analyzer behavior.
+- `docs/LLM_OPERATOR_GUIDE.md` documents the human and external-agent operating
+  loop and anti-goals.
 - `crates/ripr/src/output/agent_workflow.rs` renders the workflow JSON and
   commands Markdown.
 - `crates/ripr/src/output/agent_receipt.rs` renders receipt schema `0.3` with
