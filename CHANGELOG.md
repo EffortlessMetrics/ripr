@@ -100,6 +100,10 @@ are scoped or reviewed.
 - Added copyable generated-CI gate adoption examples for default advisory
   posture, `visible-only`, `acknowledgeable`, `baseline-check`, and
   `calibrated-gate` repository-variable settings.
+- Queued Editor Evidence UX as a separate Lane 3 campaign proposal after Gate
+  Adoption UX, preserving `gate-adoption-ux` as the active manifest while
+  documenting the saved-workspace LSP loop from diagnostic to hover, related
+  test, context packet, verify, and receipt.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and PR guidance annotation counts before artifact
