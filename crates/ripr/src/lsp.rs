@@ -22,6 +22,7 @@ const COPY_AGENT_RECEIPT_COMMAND: &str = "ripr.copyAgentReceiptCommand";
 const COPY_SUGGESTED_ASSERTION_COMMAND: &str = "ripr.copySuggestedAssertion";
 const COPY_TARGETED_TEST_BRIEF_COMMAND: &str = "ripr.copyTargetedTestBrief";
 const COLLECT_CONTEXT_COMMAND: &str = "ripr.collectContext";
+const COLLECT_EVIDENCE_CONTEXT_COMMAND: &str = "ripr.collectEvidenceContext";
 const OPEN_RELATED_TEST_COMMAND: &str = "ripr.openRelatedTest";
 const REFRESH_COMMAND: &str = "ripr.refresh";
 const HOVER_TEXT: &str = "ripr estimates static RIPR exposure for changed Rust behavior. Run `ripr check --format json` for current findings.";

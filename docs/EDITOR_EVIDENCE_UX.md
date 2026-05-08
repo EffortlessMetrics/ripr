@@ -35,7 +35,7 @@ hints, semantic tokens, policy invention, or generated workflow changes.
 | Diagnostics | `crates/ripr/src/lsp/diagnostics.rs` emits saved-workspace seam diagnostics with stable `ripr-seam-{class}` codes and `data.seam_id`; `fixtures/boundary_gap/expected/lsp-diagnostics.json` pins the boundary-gap seam identity. | Keep diagnostic identity stable and make later hover/action work depend on `diagnostic.data`, not message text. |
 | Hover | `crates/ripr/src/lsp/hover.rs` renders from `ClassifiedSeam` through the latest analysis state, including grip class, RIPR stage path, missing discriminator, related tests, suggested test shape, handoff commands, verify and receipt commands, static limits, and next step. | Keep the structure pinned while later work tightens actions, context packets, protocol proof, VS Code smoke, and staleness. |
 | Actions | `crates/ripr/src/lsp/actions.rs` and `crates/ripr/src/lsp/backend.rs` expose seam-aware actions for inspecting packets, targeted-test briefs, suggested assertions, related tests, agent-loop commands, verify, receipt, and refresh; targeted-test brief, suggested assertion, and related-test actions are conditional on supporting evidence; stale seam diagnostics fail closed to refresh-only; `fixtures/boundary_gap/expected/lsp-code-actions.json` pins the action payload. | Add the canonical evidence-context packet command and extend protocol/VS Code proof around the action path. |
-| Context collection | Existing `ripr.collectContext` returns an agent seam packet for a known `seam_id`; VS Code asks LSP before CLI fallback. | Add a canonical evidence-context packet shape for editor handoff parity across human and external-agent use. |
+| Context collection | Existing `ripr.collectContext` returns an agent seam packet for a known `seam_id`; `ripr.collectEvidenceContext` returns a bounded editor handoff packet with seam identity, evidence path, related test, suggested test, shared command templates, and static limits; VS Code asks LSP before CLI fallback for the existing packet path. | Extend protocol/VS Code proof around the canonical packet command. |
 | VS Code proof | Extension tests cover command registration, copy handlers, LSP-first seam context, related-test opening, malformed arguments, and restart behavior. | Add live extension smoke that uses the real server path to reach diagnostics, hover, actions, command payloads, related-test opening, restart, and bad-server-path status. |
 | Protocol proof | Framed LSP smoke covers server startup and now uses a real seam diagnostic for hover and code action coverage. | Extend it to the full editor loop, including the canonical context packet command once that command exists. |
 | Cockpit proof | `cargo xtask lsp-cockpit-report` reads committed LSP diagnostics/actions and VS Code command coverage; #569 made packet, brief, after-snapshot, verify, and receipt command actions explicit. | Keep cockpit as regression proof while behavior PRs pin the richer hover/action/status contracts. |
@@ -95,12 +95,11 @@ Editor Evidence UX is intentionally conservative:
 
 Remaining queued behavior slices:
 
-1. `lsp/context-packet-command`
-2. `test/lsp-protocol-smoke`
-3. `test/vscode-extension-smoke`
-4. `lsp/editor-status-and-staleness`
-5. `docs/editor-evidence-workflow`
-6. `campaign/editor-evidence-ux-closeout`
+1. `test/lsp-protocol-smoke`
+2. `test/vscode-extension-smoke`
+3. `lsp/editor-status-and-staleness`
+4. `docs/editor-evidence-workflow`
+5. `campaign/editor-evidence-ux-closeout`
 
 Hover hardening has landed as the first behavior slice: hover is the primary
 human explanation surface and now makes the next useful test action legible
@@ -108,6 +107,10 @@ before adding new editor affordances.
 Action hardening has also landed: code actions now omit unsupported
 targeted-test, assertion, and related-test affordances when their supporting
 evidence is absent.
+The context packet command has landed as `ripr.collectEvidenceContext`: it
+returns one schema `0.1` packet from the latest classified seam evidence and the
+shared agent-loop command templates without source edits, generated tests,
+provider coupling, broad analysis reruns, or runtime mutation execution.
 
 ## Validation
 

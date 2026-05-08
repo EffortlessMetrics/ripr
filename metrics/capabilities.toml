@@ -260,22 +260,26 @@ name = "Context packet v1"
 status = "alpha"
 spec = "RIPR-SPEC-0003"
 evidence = [
-  "CLI context command"
+  "CLI context command",
+  "LSP ripr.collectContext compatibility path",
+  "LSP ripr.collectEvidenceContext schema 0.1 editor handoff packet for seam diagnostics with evidence path, missing discriminator, related test, suggested test, shared command templates, and static limits"
 ]
 fixtures = []
-next = "lsp/context-packet-command"
+next = "test/lsp-protocol-smoke"
 metric = "packet includes missing discriminator and related tests"
 
 [[capability]]
 id = "agent_context_v2"
 name = "Agent context v2"
-status = "planned"
+status = "alpha"
 spec = "RIPR-SPEC-0003"
 evidence = [
-  "agent context spec"
+  "agent context spec",
+  "agent seam packet schema 0.3",
+  "LSP ripr.collectEvidenceContext schema 0.1 editor handoff packet carrying suggested assertion/test shape plus packet, brief, after-snapshot, verify, and receipt commands from shared templates"
 ]
 fixtures = []
-next = "lsp/context-packet-command"
+next = "test/lsp-protocol-smoke"
 metric = "packet includes missing values and suggested assertions"
 
 [[capability]]
@@ -830,7 +834,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "lsp/context-packet-command"
+next = "test/lsp-protocol-smoke"
 metric = "hover renders evidence path from ClassifiedSeam, never parses diagnostic message"
 
 [[capability]]
@@ -841,6 +845,7 @@ spec = "RIPR-SPEC-0005"
 evidence = [
   "crates/ripr/src/lsp/actions.rs seam-aware code_action_response",
   "crates/ripr/src/lsp/backend.rs collectContext returns agent seam packets for seam_id",
+  "crates/ripr/src/lsp/backend.rs collectEvidenceContext returns schema 0.1 editor handoff packets from ClassifiedSeam evidence",
   "editors/vscode/src/client.ts copySuggestedAssertion and openRelatedTest handlers",
   "diagnostics carrying seam_id surface intent-titled actions for inspecting the seam, writing the targeted test only when related-test or suggested-assertion context exists, copying agent handoff commands, verifying after the test, reviewing the receipt, opening the best related test only when a related-test location exists, and refreshing saved-workspace analysis",
   "copy suggested assertion uses agent seam packet v2 assertion shape when available",
@@ -855,7 +860,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "lsp/context-packet-command"
+next = "test/lsp-protocol-smoke"
 metric = "seam diagnostics expose only supported packet/assertion/test actions without automatic edits"
 
 [[capability]]

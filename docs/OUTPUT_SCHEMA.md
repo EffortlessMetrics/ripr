@@ -3473,6 +3473,78 @@ surface. The pre-4B `Finding`/`AnalysisSnapshot` hover and context
 actions continue to work for diff-scoped diagnostics; seam diagnostics
 live alongside them.
 
+Seam diagnostics can also drive `executeCommand` `ripr.collectEvidenceContext`.
+The command accepts a `seam_id` argument and returns one bounded editor handoff
+packet derived from the latest saved-workspace `ClassifiedSeam` plus the shared
+agent-loop command templates. It does not run analysis, edit source, generate
+tests, call an LLM provider, or run mutation testing. Unknown seams return no
+packet.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "root": ".",
+  "mode": "draft",
+  "seam_id": "67fc764ba37d77bd",
+  "file": "src/pricing.rs",
+  "range": {
+    "start": 88,
+    "end": 88
+  },
+  "class": "weakly_gripped",
+  "seam_kind": "predicate_boundary",
+  "owner": "pricing::discounted_total",
+  "expression": "amount >= discount_threshold",
+  "required_discriminator": "boundary_value",
+  "expected_sink": "return_value",
+  "evidence_path": {
+    "reach": "present",
+    "activate": "present",
+    "propagate": "present",
+    "observe": "present",
+    "discriminate": "weak"
+  },
+  "evidence_summaries": {
+    "reach": "related test calls owner",
+    "activate": "test reaches branch",
+    "propagate": "return value sink",
+    "observe": "exact assertion",
+    "discriminate": "boundary value missing"
+  },
+  "missing_discriminator": "discount_threshold (equality boundary)",
+  "missing_discriminators": [
+    {
+      "value": "discount_threshold (equality boundary)",
+      "reason": "observed values skip equality boundary"
+    }
+  ],
+  "related_test": "tests/pricing.rs::below_threshold_has_no_discount",
+  "related_test_location": {
+    "file": "tests/pricing.rs",
+    "line": 12,
+    "test_name": "below_threshold_has_no_discount",
+    "oracle_kind": "exact_value",
+    "oracle_strength": "strong"
+  },
+  "suggested_assertion": "assert_eq!(...)",
+  "suggested_test": {
+    "file": "tests/pricing.rs",
+    "name": "discounted_total_boundary_value",
+    "candidate_value": "discount_threshold (equality boundary)",
+    "assertion_shape": "Assert the exact returned value."
+  },
+  "agent_packet_command": "ripr agent packet --root . --seam-id 67fc764ba37d77bd --json > target/ripr/agent/agent-packet.json",
+  "agent_brief_command": "ripr agent brief --root . --seam-id 67fc764ba37d77bd --json > target/ripr/agent/agent-brief.json",
+  "after_snapshot_command": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json",
+  "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > target/ripr/agent/agent-verify.json",
+  "receipt_command": "ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id 67fc764ba37d77bd --json --out target/ripr/agent/agent-receipt.json",
+  "limits_note": "Static evidence only; no runtime mutation execution."
+}
+```
+
 ## Dogfood Report
 
 `cargo xtask dogfood` writes:
