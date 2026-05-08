@@ -38,7 +38,7 @@ commands = [
 
 [[work_item]]
 id = "docs/gate-waiver-workflows"
-status = "ready"
+status = "done"
 branch = "docs-gate-waiver-workflows"
 stackable = false
 blocked_by = ["docs/gate-adoption-examples"]
@@ -52,7 +52,7 @@ commands = [
 
 [[work_item]]
 id = "docs/gate-baseline-workflow"
-status = "blocked"
+status = "ready"
 branch = "docs-gate-baseline-workflow"
 stackable = false
 blocked_by = ["docs/gate-waiver-workflows"]

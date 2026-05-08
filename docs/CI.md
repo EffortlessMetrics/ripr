@@ -1042,6 +1042,93 @@ See [Calibrated gate policy](CALIBRATED_GATE_POLICY.md) for the operating model
 covering modes, waivers, baseline inputs, calibration evidence, generated CI
 behavior, and static/runtime vocabulary boundaries.
 
+### Waiver And Label Workflows
+
+Use waiver labels when a team wants a visible PR-time acknowledgement, not when
+it wants to hide a finding. The default waiver label is `ripr-waive`, and the
+generated workflow already captures pull-request labels into
+`target/ci/labels.json` before running `ripr gate evaluate`.
+
+Label setup:
+
+```text
+Label: ripr-waive
+Meaning: acknowledge a soft RIPR static exposure finding for this PR
+Effect: changes an eligible blocking candidate into an acknowledged decision
+Scope: this PR only
+```
+
+In this repository, `.github/settings.yml` manages the label name, color, and
+description. In another repository using the generated workflow, create the
+same label before enabling `acknowledgeable` mode so reviewers do not have to
+guess which label the gate evaluator expects.
+
+Recommended acknowledgement workflow:
+
+1. Start with `RIPR_GATE_MODE=visible-only` until reviewers are familiar with
+   `gate-decision.md`.
+2. Move to `RIPR_GATE_MODE=acknowledgeable` when the team wants policy-eligible
+   gaps to require either a focused test or an explicit PR label.
+3. When the gate reports a policy-eligible gap, review the job summary,
+   `target/ripr/reports/gate-decision.md`, and the PR guidance packet.
+4. If the finding is acceptable for this PR, add `ripr-waive`.
+5. Let the labeled PR workflow rerun. The next gate decision should say
+   `Decision: acknowledged`, list `ripr-waive`, and keep the candidate visible.
+6. If a focused test is added instead, remove `ripr-waive` and rerun the gate so
+   the receipt records the current evidence without an acknowledgement label.
+
+The expected acknowledged summary looks like:
+
+```text
+Decision: acknowledged
+Mode: acknowledgeable
+Blocking: 0
+Acknowledged: 1
+
+Acknowledged:
+- src/pricing.rs:88 weakly_gripped - policy-eligible gap acknowledged by ripr-waive
+```
+
+The machine-readable report keeps the same fact trail:
+
+```json
+{
+  "status": "acknowledged",
+  "mode": "acknowledgeable",
+  "inputs": {
+    "labels": ["ripr-waive"],
+    "labels_json": "target/ci/labels.json"
+  },
+  "summary": {
+    "acknowledged": 1,
+    "blocking": 0
+  }
+}
+```
+
+Reviewers should be able to audit an acknowledgement from artifacts alone:
+
+- `target/ci/labels.json` records the PR labels observed by the workflow.
+- `target/ripr/reports/gate-decision.json` records the matching label and
+  candidate decision.
+- `target/ripr/reports/gate-decision.md` keeps the acknowledged finding in the
+  job summary.
+- `target/ripr/review/comments.json` keeps the underlying recommendation
+  packet when PR guidance was produced.
+
+Waivers and suppressions are separate controls:
+
+| Control | Where it lives | Use for | Visibility |
+| --- | --- | --- | --- |
+| `ripr-waive` | PR label | Accept this visible PR-time finding for this review. | The finding remains in gate decision JSON/Markdown as `acknowledged`. |
+| `.ripr/suppressions.toml` | Repository policy file | Record accepted debt or a durable exception before PR-time policy. | Suppressed/configured-off candidates cannot block and should be counted as suppressed or not applicable when present in inputs. |
+| Baseline | Checked-in gate baseline | Avoid punishing historical debt while identifying new gaps. | Baseline state remains policy evidence; it does not hide new policy-eligible findings. |
+
+Do not use `ripr-waive` as a substitute for adding a focused test when the
+recommendation is correct and the PR is still changing the relevant behavior.
+Do not add a suppression just to make one PR pass; suppressions are durable
+repository policy and should carry owner, reason, and review intent.
+
 The security workflow currently runs:
 
 ```bash
