@@ -1,7 +1,7 @@
 # Handoff: Campaign 11 Closeout
 
 Date: 2026-05-07
-Branch / PR: `campaign-llm-work-loop-closeout` / pending
+Branch / PR: `campaign-llm-work-loop-closeout` / #519
 Latest merged PR: #518 `docs: add LLM operator guide`
 
 ## Current Work Item
@@ -47,7 +47,7 @@ crates.
 - #516 `fixtures: pin LLM work loop matrix`
 - #517 `ci: upload LLM work-loop packets`
 - #518 `docs: add LLM operator guide`
-- `campaign/llm-work-loop-closeout`
+- #519 `campaign/llm-work-loop-closeout`
 
 ## Verification Run
 
