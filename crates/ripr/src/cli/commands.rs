@@ -54,6 +54,14 @@ struct OutcomeOptions {
     out: Option<PathBuf>,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct ReviewCommentsOptions {
+    root: PathBuf,
+    base: String,
+    head: String,
+    out: PathBuf,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum OutcomeFormat {
     Markdown,
@@ -1457,6 +1465,65 @@ pub(super) fn outcome(args: &[String]) -> Result<(), String> {
     }
 }
 
+pub(super) fn review_comments(args: &[String]) -> Result<(), String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        help::print_review_comments_help();
+        return Ok(());
+    }
+
+    let options = parse_review_comments_options(args)?;
+    if !options.root.is_dir() {
+        return Err(format!(
+            "review-comments root {} is not a directory",
+            options.root.display()
+        ));
+    }
+
+    let config = load_for_root(&options.root)?;
+    let mut input = CheckInput {
+        root: options.root.clone(),
+        ..CheckInput::default()
+    };
+    apply_to_check_input(&mut input, &config, CheckInputExplicit::default());
+
+    let diff_text = load_review_comments_diff(&input.root, &options.base, &options.head)?;
+    let changed_lines = agent_brief_lines_from_diff(&input.root, &diff_text);
+    let changed_owners = agent_brief_owners_for_lines(&input.root, &changed_lines);
+    let working_set = AgentBriefResolvedWorkingSet::base(options.base.clone(), changed_lines)
+        .with_changed_owners(changed_owners);
+    let classified = analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
+    let selection = select_agent_brief_seams(
+        &classified,
+        &working_set,
+        output::review_comments::DEFAULT_REVIEW_MAX_SUMMARY_ITEMS,
+        AgentBriefPolicy::from_config(&config),
+    );
+    let rendered_json = output::review_comments::render_review_comments_json(
+        &input.root,
+        &options.base,
+        &options.head,
+        &input.mode,
+        &config,
+        &working_set,
+        &selection,
+    )?;
+    let rendered_md = output::review_comments::render_review_comments_markdown(
+        &input.root,
+        &options.base,
+        &options.head,
+        &input.mode,
+        &config,
+        &working_set,
+        &selection,
+    );
+    let markdown_path = review_comments_markdown_path(&options.out);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&markdown_path, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", markdown_path.display());
+    Ok(())
+}
+
 pub(super) fn calibrate(args: &[String]) -> Result<(), String> {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         help::print_calibrate_help();
@@ -1659,12 +1726,89 @@ fn parse_outcome_options(args: &[String]) -> Result<OutcomeOptions, String> {
     })
 }
 
+fn parse_review_comments_options(args: &[String]) -> Result<ReviewCommentsOptions, String> {
+    let mut root = PathBuf::from(".");
+    let mut base: Option<String> = None;
+    let mut head: Option<String> = None;
+    let mut out = PathBuf::from("target/ripr/review/comments.json");
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = PathBuf::from(expect_value(args, i, "--root")?);
+            }
+            "--base" => {
+                i += 1;
+                let value = expect_value(args, i, "--base")?;
+                if value.trim().is_empty() {
+                    return Err("review-comments --base requires a non-empty revision".to_string());
+                }
+                base = Some(value.to_string());
+            }
+            "--head" => {
+                i += 1;
+                let value = expect_value(args, i, "--head")?;
+                if value.trim().is_empty() {
+                    return Err("review-comments --head requires a non-empty revision".to_string());
+                }
+                head = Some(value.to_string());
+            }
+            "--out" => {
+                i += 1;
+                let value = expect_value(args, i, "--out")?;
+                if value.trim().is_empty() {
+                    return Err("review-comments --out requires a non-empty path".to_string());
+                }
+                out = PathBuf::from(value);
+            }
+            other => return Err(format!("unknown review-comments argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    Ok(ReviewCommentsOptions {
+        root,
+        base: base.ok_or_else(|| "review-comments requires --base <sha>".to_string())?,
+        head: head.ok_or_else(|| "review-comments requires --head <sha>".to_string())?,
+        out,
+    })
+}
+
 fn parse_outcome_format(value: &str) -> Result<OutcomeFormat, String> {
     match value {
         "md" | "markdown" | "text" => Ok(OutcomeFormat::Markdown),
         "json" => Ok(OutcomeFormat::Json),
         _ => Err(format!("unknown outcome format {value:?}")),
     }
+}
+
+fn load_review_comments_diff(root: &Path, base: &str, head: &str) -> Result<String, String> {
+    let range = format!("{base}...{head}");
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .arg("diff")
+        .arg("--unified=0")
+        .arg("--no-ext-diff")
+        .arg(&range)
+        .output()
+        .map_err(|err| format!("failed to run git diff for review-comments: {err}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "git diff for review-comments failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    String::from_utf8(output.stdout)
+        .map_err(|err| format!("git diff for review-comments was not UTF-8: {err}"))
+}
+
+fn review_comments_markdown_path(json_path: &Path) -> PathBuf {
+    let mut path = json_path.to_path_buf();
+    path.set_extension("md");
+    path
 }
 
 pub(super) fn check(args: &[String]) -> Result<(), String> {
@@ -2085,6 +2229,7 @@ mod tests {
     fn command_help_branches_return_ok() {
         assert_eq!(init(&args(&["--help"])), Ok(()));
         assert_eq!(pilot(&args(&["--help"])), Ok(()));
+        assert_eq!(review_comments(&args(&["--help"])), Ok(()));
         assert_eq!(calibrate(&args(&["--help"])), Ok(()));
         assert_eq!(agent(&args(&["--help"])), Ok(()));
         assert_eq!(agent(&args(&["start", "--help"])), Ok(()));
@@ -2207,6 +2352,52 @@ mod tests {
                     "target/ripr/outcome/targeted-test-outcome.json"
                 )),
             })
+        );
+    }
+
+    #[test]
+    fn review_comments_parses_required_revisions_and_out() {
+        assert_eq!(
+            parse_review_comments_options(&args(&[
+                "--root",
+                "repo",
+                "--base",
+                "origin/main",
+                "--head",
+                "HEAD",
+                "--out",
+                "target/ripr/review/comments.json",
+            ])),
+            Ok(ReviewCommentsOptions {
+                root: PathBuf::from("repo"),
+                base: "origin/main".to_string(),
+                head: "HEAD".to_string(),
+                out: PathBuf::from("target/ripr/review/comments.json"),
+            })
+        );
+    }
+
+    #[test]
+    fn review_comments_requires_base_and_head() {
+        assert_eq!(
+            parse_review_comments_options(&args(&["--head", "HEAD"])),
+            Err("review-comments requires --base <sha>".to_string())
+        );
+        assert_eq!(
+            parse_review_comments_options(&args(&["--base", "main"])),
+            Err("review-comments requires --head <sha>".to_string())
+        );
+        assert_eq!(
+            parse_review_comments_options(&args(&["--base"])),
+            Err("missing value for --base".to_string())
+        );
+    }
+
+    #[test]
+    fn review_comments_markdown_path_replaces_json_extension() {
+        assert_eq!(
+            review_comments_markdown_path(Path::new("target/ripr/review/comments.json")),
+            PathBuf::from("target/ripr/review/comments.md")
         );
     }
 

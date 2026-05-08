@@ -306,9 +306,9 @@ bounded next-action guidance, reviewer summaries, fixtures, generated CI packet
 uploads, and the LLM operator guide. Campaign 12 then closed the First-Hour UX
 lane: the editor first-run status path, intent-titled code actions, generated
 CI advisory summary, generated workflow smoke fixture, and user-type
-first-hour docs are pinned. Campaign 13 is active as PR Review Guidance; the
-next ready item is the read-only `ripr review-comments` producer for the
-already-specified advisory review report.
+first-hour docs are pinned. Campaign 13 is active as PR Review Guidance;
+`ripr review-comments` now writes the advisory review report, and the next
+ready item is running that report producer inside generated CI.
 
 Deeper capability state lives in [Capability matrix](docs/CAPABILITY_MATRIX.md)
 and [Metrics](docs/METRICS.md).

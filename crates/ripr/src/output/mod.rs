@@ -13,5 +13,6 @@ pub(crate) mod pilot;
 pub(crate) mod render;
 pub(crate) mod repo_exposure;
 pub(crate) mod repo_seams;
+pub(crate) mod review_comments;
 pub(crate) mod sarif;
 pub(crate) mod suppressions;
