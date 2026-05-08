@@ -55,6 +55,14 @@ struct OutcomeOptions {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+struct EvidenceHealthOptions {
+    root: PathBuf,
+    out: PathBuf,
+    out_md: PathBuf,
+    mutation_calibration: Option<PathBuf>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 struct ReviewCommentsOptions {
     root: PathBuf,
     base: String,
@@ -1539,6 +1547,51 @@ pub(super) fn outcome(args: &[String]) -> Result<(), String> {
     }
 }
 
+pub(super) fn evidence_health(args: &[String]) -> Result<(), String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        help::print_evidence_health_help();
+        return Ok(());
+    }
+
+    let options = parse_evidence_health_options(args)?;
+    if !options.root.is_dir() {
+        return Err(format!(
+            "evidence-health root {} is not a directory",
+            options.root.display()
+        ));
+    }
+
+    let config = load_for_root(&options.root)?;
+    let classified = analysis::inventory_classified_seams_at_with_config(&options.root, &config)?;
+    let calibration = match &options.mutation_calibration {
+        Some(path) => {
+            let contents = std::fs::read_to_string(path).map_err(|err| {
+                format!(
+                    "read evidence-health calibration context {} failed: {err}",
+                    output::outcome::display_path(path)
+                )
+            })?;
+            output::evidence_health::EvidenceHealthCalibration::from_json(
+                output::outcome::display_path(path),
+                &contents,
+            )?
+        }
+        None => output::evidence_health::EvidenceHealthCalibration::not_provided(),
+    };
+    let report = output::evidence_health::build_evidence_health_report(
+        &classified,
+        output::outcome::display_path(&options.root),
+        calibration,
+    );
+    let rendered_json = output::evidence_health::render_evidence_health_json(&report)?;
+    let rendered_md = output::evidence_health::render_evidence_health_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    Ok(())
+}
+
 pub(super) fn review_comments(args: &[String]) -> Result<(), String> {
     review_comments_with_diff_loader(args, load_review_comments_diff)
 }
@@ -1837,6 +1890,48 @@ fn parse_outcome_options(args: &[String]) -> Result<OutcomeOptions, String> {
         after,
         format,
         out,
+    })
+}
+
+fn parse_evidence_health_options(args: &[String]) -> Result<EvidenceHealthOptions, String> {
+    let mut root = PathBuf::from(".");
+    let mut out = PathBuf::from("target/ripr/reports/evidence-health.json");
+    let mut out_md = PathBuf::from("target/ripr/reports/evidence-health.md");
+    let mut mutation_calibration: Option<PathBuf> = None;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = PathBuf::from(expect_value(args, i, "--root")?);
+            }
+            "--out" => {
+                i += 1;
+                out = PathBuf::from(expect_value(args, i, "--out")?);
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = PathBuf::from(expect_value(args, i, "--out-md")?);
+            }
+            "--mutation-calibration" => {
+                i += 1;
+                mutation_calibration = Some(PathBuf::from(expect_value(
+                    args,
+                    i,
+                    "--mutation-calibration",
+                )?));
+            }
+            other => return Err(format!("unknown evidence-health argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    Ok(EvidenceHealthOptions {
+        root,
+        out,
+        out_md,
+        mutation_calibration,
     })
 }
 
@@ -2659,6 +2754,47 @@ mod tests {
     }
 
     #[test]
+    fn evidence_health_parses_default_and_full_option_surface() {
+        assert_eq!(
+            parse_evidence_health_options(&args(&[])),
+            Ok(EvidenceHealthOptions {
+                root: PathBuf::from("."),
+                out: PathBuf::from("target/ripr/reports/evidence-health.json"),
+                out_md: PathBuf::from("target/ripr/reports/evidence-health.md"),
+                mutation_calibration: None,
+            })
+        );
+        assert_eq!(
+            parse_evidence_health_options(&args(&[
+                "--root",
+                "repo",
+                "--out",
+                "health.json",
+                "--out-md",
+                "health.md",
+                "--mutation-calibration",
+                "target/ripr/reports/mutation-calibration.json",
+            ])),
+            Ok(EvidenceHealthOptions {
+                root: PathBuf::from("repo"),
+                out: PathBuf::from("health.json"),
+                out_md: PathBuf::from("health.md"),
+                mutation_calibration: Some(PathBuf::from(
+                    "target/ripr/reports/mutation-calibration.json"
+                )),
+            })
+        );
+    }
+
+    #[test]
+    fn evidence_health_rejects_unknown_arguments() {
+        assert_eq!(
+            parse_evidence_health_options(&args(&["--bad"])),
+            Err("unknown evidence-health argument \"--bad\"".to_string())
+        );
+    }
+
+    #[test]
     fn review_comments_parses_required_revisions_and_out() {
         assert_eq!(
             parse_review_comments_options(&args(&[
@@ -2978,6 +3114,11 @@ mod tests {
     #[test]
     fn outcome_help_returns_ok() {
         assert_eq!(outcome(&args(&["--help"])), Ok(()));
+    }
+
+    #[test]
+    fn evidence_health_help_returns_ok() {
+        assert_eq!(evidence_health(&args(&["--help"])), Ok(()));
     }
 
     #[test]

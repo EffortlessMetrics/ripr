@@ -5,6 +5,7 @@ pub(super) enum CliCommand {
     Init(Vec<String>),
     Pilot(Vec<String>),
     Outcome(Vec<String>),
+    EvidenceHealth(Vec<String>),
     ReviewComments(Vec<String>),
     Gate(Vec<String>),
     Calibrate(Vec<String>),
@@ -24,6 +25,7 @@ impl CliCommand {
             Some("init") => Ok(Self::Init(command_args)),
             Some("pilot") => Ok(Self::Pilot(command_args)),
             Some("outcome") => Ok(Self::Outcome(command_args)),
+            Some("evidence-health") => Ok(Self::EvidenceHealth(command_args)),
             Some("review-comments") => Ok(Self::ReviewComments(command_args)),
             Some("gate") => Ok(Self::Gate(command_args)),
             Some("calibrate") => Ok(Self::Calibrate(command_args)),
@@ -57,6 +59,10 @@ mod tests {
             (Some("init"), CliCommand::Init(Vec::new())),
             (Some("pilot"), CliCommand::Pilot(Vec::new())),
             (Some("outcome"), CliCommand::Outcome(Vec::new())),
+            (
+                Some("evidence-health"),
+                CliCommand::EvidenceHealth(Vec::new()),
+            ),
             (
                 Some("review-comments"),
                 CliCommand::ReviewComments(Vec::new()),

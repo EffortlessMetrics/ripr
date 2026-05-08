@@ -4,6 +4,7 @@ Usage:
   ripr init [--root PATH] [--ci github] [--dry-run] [--force]
   ripr pilot [--root PATH] [--out PATH] [--mode draft] [--max-seams 5] [--timeout-ms 30000]
   ripr outcome --before PATH --after PATH [--format md|json] [--out PATH]
+  ripr evidence-health [--root PATH] [--out PATH] [--out-md PATH] [--mutation-calibration PATH]
   ripr review-comments --root . --base SHA --head SHA [--out target/ripr/review/comments.json]
   ripr gate evaluate --pr-guidance PATH [--mode visible-only] [--out target/ripr/reports/gate-decision.json]
   ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
@@ -29,6 +30,7 @@ Quick start:
   ripr doctor
   ripr pilot
   ripr outcome --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json
+  ripr evidence-health --root .
   ripr review-comments --root . --base origin/main --head HEAD --out target/ripr/review/comments.json
   ripr gate evaluate --pr-guidance target/ripr/review/comments.json --mode visible-only
   ripr calibrate cargo-mutants --mutants-json target/mutants/outcomes.json --repo-exposure-json target/ripr/pilot/after.repo-exposure.json
@@ -105,6 +107,21 @@ Options:
 The outcome receipt is advisory. It compares static repo-exposure snapshots by
 seam_id and reports moved, unchanged, regressed, new, and removed seams; it
 does not run analysis, mutation testing, or CI policy.
+"#;
+
+const EVIDENCE_HEALTH_HELP: &str = r#"Usage: ripr evidence-health [--root PATH] [--out PATH] [--out-md PATH] [--mutation-calibration PATH]
+
+Options:
+  --root PATH                    Workspace root to summarize. Defaults to current directory.
+  --out PATH                     JSON output path. Defaults to target/ripr/reports/evidence-health.json.
+  --out-md PATH                  Markdown output path. Defaults to target/ripr/reports/evidence-health.md.
+  --mutation-calibration PATH    Optional imported mutation-calibration JSON for calibration availability counts.
+
+The evidence-health report is an advisory Lane 1 analyzer-health view. It
+summarizes seam grip classes, missing discriminators, observed values, related
+test confidence, oracle strength, unknown static stages, and optional imported
+calibration availability. It does not change analyzer behavior, run mutation
+testing, edit source files, configure CI policy, or make gate decisions.
 "#;
 
 const REVIEW_COMMENTS_HELP: &str = r#"Usage: ripr review-comments [--root PATH] --base SHA --head SHA [--out PATH]
@@ -353,6 +370,10 @@ pub(super) fn print_outcome_help() {
     println!("{OUTCOME_HELP}");
 }
 
+pub(super) fn print_evidence_health_help() {
+    println!("{EVIDENCE_HEALTH_HELP}");
+}
+
 pub(super) fn print_review_comments_help() {
     println!("{REVIEW_COMMENTS_HELP}");
 }
@@ -418,8 +439,8 @@ mod tests {
     use super::{
         AGENT_BRIEF_HELP, AGENT_HELP, AGENT_PACKET_HELP, AGENT_RECEIPT_HELP,
         AGENT_REVIEW_SUMMARY_HELP, AGENT_START_HELP, AGENT_STATUS_HELP, AGENT_VERIFY_HELP,
-        CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP, DOCTOR_HELP, EXPLAIN_HELP, GATE_HELP, HELP,
-        INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP, REVIEW_COMMENTS_HELP,
+        CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP, DOCTOR_HELP, EVIDENCE_HEALTH_HELP, EXPLAIN_HELP,
+        GATE_HELP, HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP, REVIEW_COMMENTS_HELP,
     };
 
     #[test]
@@ -427,6 +448,7 @@ mod tests {
         assert!(HELP.contains("ripr init"));
         assert!(HELP.contains("ripr pilot"));
         assert!(HELP.contains("ripr outcome"));
+        assert!(HELP.contains("ripr evidence-health"));
         assert!(HELP.contains("ripr review-comments"));
         assert!(HELP.contains("ripr gate evaluate"));
         assert!(HELP.contains("ripr calibrate"));
@@ -464,6 +486,8 @@ mod tests {
         assert!(PILOT_HELP.contains("--timeout-ms MS"));
         assert!(OUTCOME_HELP.starts_with("Usage: ripr outcome"));
         assert!(OUTCOME_HELP.contains("--before PATH"));
+        assert!(EVIDENCE_HEALTH_HELP.starts_with("Usage: ripr evidence-health"));
+        assert!(EVIDENCE_HEALTH_HELP.contains("--mutation-calibration PATH"));
         assert!(REVIEW_COMMENTS_HELP.starts_with("Usage: ripr review-comments"));
         assert!(REVIEW_COMMENTS_HELP.contains("target/ripr/review/comments.json"));
         assert!(GATE_HELP.starts_with("Usage: ripr gate evaluate"));

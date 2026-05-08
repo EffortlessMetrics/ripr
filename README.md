@@ -371,6 +371,7 @@ cargo xtask fixtures
 cargo xtask goldens check
 cargo xtask golden-drift
 cargo xtask test-oracle-report
+cargo xtask evidence-health
 cargo xtask dogfood
 cargo xtask reports index
 cargo xtask receipts
