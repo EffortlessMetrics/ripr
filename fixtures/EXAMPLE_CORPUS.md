@@ -56,6 +56,10 @@ Checked artifacts for that loop:
   the verify result to the top seam.
 - `fixtures/boundary_gap/expected/editor-agent-loop/operator-cockpit.json` and
   `operator-cockpit.md` show the cockpit join over the editor-agent artifacts.
+- `fixtures/boundary_gap/expected/llm-work-loop/` pins the artifact-only LLM
+  work-loop matrix for happy, unchanged, regressed, missing-artifact,
+  stale-artifact, configured-off, path-with-spaces, and Windows-separator
+  review-summary states.
 - `fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json`
   is the static before snapshot.
 - `fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json`

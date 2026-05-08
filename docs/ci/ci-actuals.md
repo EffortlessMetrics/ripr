@@ -1,9 +1,9 @@
 # CI Actuals
 
 `ci-actuals.json` is the per-lane telemetry record that closes the
-forecast → actuals → learned-estimate loop described in `docs/CI.md`'s
+forecast -> actuals -> learned-estimate loop described in `docs/CI.md`'s
 Verification Economics section. **The canonical schema lives in
-`docs/CI.md`'s "CI Actuals" subsection** — this document expands on it
+`docs/CI.md`'s "CI Actuals" subsection** - this document expands on it
 with field-level guidance and emission notes; it does not redefine the
 shape.
 
@@ -50,18 +50,18 @@ latest` so the multiplier defaults to `1.0`; expensive runner classes
 
 ## Posture
 
-- **PR 11 (this PR)** establishes the field-level documentation that
-  expands on the canonical schema in `docs/CI.md`.
+- **Current state**: field-level documentation expands on the canonical schema
+  in `docs/CI.md`.
 - **Follow-up**: wire each lane to emit `target/ci/ci-actuals.json`
   using the schema above. Each lane uploads its own JSON; PR Plan rolls
   them up.
-- The soft budget guard (PR 12) consumes the rolled-up actuals; it
-  remains advisory until `[defaults].budget_guard` in
+- The soft budget guard consumes the rolled-up actuals; it remains advisory
+  until `[defaults].budget_guard` in
   `policy/ci-budget.toml` flips from `"off"`.
 
 ## Why no enforcement yet
 
-The forecast → actuals → learned-estimate loop only works once a
+The forecast -> actuals -> learned-estimate loop only works once a
 *distribution* of actuals exists per lane. Until at least 2 weeks of
 `ci-actuals.json` data has accumulated, any threshold is guesswork. The
 schema is fixed now so every lane that lands later already emits the
@@ -73,13 +73,13 @@ PR Plan emits `estimated_lem`. The job records `actual_lem`. The
 follow-up that wires this exposes the delta in the step summary:
 
 ```text
-rust_fast_gate: estimated 18 LEM, actual 12 LEM (Δ -6)
-ripr-self-dogfood: estimated 6 LEM, actual 4 LEM (Δ -2)
+rust_fast_gate: estimated 18 LEM, actual 12 LEM (delta -6)
+ripr-self-dogfood: estimated 6 LEM, actual 4 LEM (delta -2)
 ```
 
 A persistent positive delta (forecast under-estimates) means the lane's
 expected band needs to grow. A persistent negative delta (forecast
-over-estimates) is fine — it just leaves slack budget for unexpected
+over-estimates) is fine; it just leaves slack budget for unexpected
 lanes.
 
 ## Storage
@@ -92,8 +92,8 @@ dedicated retention path is out of scope for this rollout.
 
 ## See also
 
-- `docs/CI.md` — canonical "CI Actuals" subsection and Verification
+- `docs/CI.md` - canonical "CI Actuals" subsection and Verification
   Economics policy.
-- `policy/ci-budget.toml` — `[[budget_band]]` and `[[label]]` ledgers.
-- `policy/ci-lane-whitelist.toml` — lane registry.
-- `policy/ci-risk-packs.toml` — changed-paths → lane-set mapping.
+- `policy/ci-budget.toml` - `[[budget_band]]` and `[[label]]` ledgers.
+- `policy/ci-lane-whitelist.toml` - lane registry.
+- `policy/ci-risk-packs.toml` - changed-paths to lane-set mapping.
