@@ -24,6 +24,8 @@ are scoped or reviewed.
   still-present, resolved, new policy-eligible, acknowledged, suppressed,
   stale, invalid, and missing-input identities without making gate decisions or
   rewriting baselines.
+- Extended framed LSP protocol smoke coverage through a real seam diagnostic,
+  hover, code actions, `ripr.collectEvidenceContext`, and shutdown.
 - Added `ripr evidence-health` and `cargo xtask evidence-health`, which write
   advisory Lane 1 analyzer-health JSON/Markdown reports summarizing grip
   classes, stage states, missing discriminators, observed value contexts,
