@@ -690,6 +690,12 @@ tests = [
   "crates/ripr/src/output/agent_workflow.rs::tests::workflow_json_is_structured_and_advisory",
   "crates/ripr/src/output/agent_workflow.rs::tests::workflow_markdown_lists_commands_and_boundaries",
   "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_json_selects_changed_seam",
+  "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_guidance_covers_improved_state",
+  "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_guidance_covers_changed_state",
+  "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_guidance_covers_regressed_state",
+  "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_guidance_covers_unchanged_state",
+  "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_guidance_covers_new_gap_state",
+  "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_guidance_covers_resolved_state",
   "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_input_paths_extracts_verify_snapshot_paths",
   "crates/ripr/src/agent/provenance.rs::tests::sha256_file_hashes_artifact_bytes",
   "crates/ripr/tests/cli_smoke.rs::agent_receipt_writes_one_seam_handoff_json",
@@ -724,7 +730,8 @@ outputs = [
 metrics = [
   "agent_loop_status_available",
   "agent_workflow_manifest_available",
-  "agent_receipt_provenance_available"
+  "agent_receipt_provenance_available",
+  "agent_receipt_next_action_guidance_available"
 ]
 
 [[behavior]]

@@ -82,7 +82,7 @@ commands = [
 
 [[work_item]]
 id = "agent/next-action-guidance"
-status = "ready"
+status = "done"
 branch = "agent-next-action-guidance"
 stackable = false
 requires_human_merge = true
@@ -96,13 +96,18 @@ commands = [
 
 [[work_item]]
 id = "agent/reviewer-summary"
-status = "blocked"
+status = "ready"
 branch = "agent-reviewer-summary"
 stackable = false
 requires_human_merge = true
-blocked_by = ["agent/next-action-guidance"]
-blocked_reason = "Wait until status, provenance, and next-action guidance are available to join into one reviewer summary"
 acceptance = "Add `ripr agent review-summary --root . --json` and human output that joins status, receipt, cockpit, repo exposure, LSP cockpit when present, and CI artifact status into a compact review packet"
+commands = [
+  "cargo test -p ripr agent_review_summary",
+  "cargo test -p ripr agent",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr"
+]
 
 [[work_item]]
 id = "fixtures/llm-work-loop"
