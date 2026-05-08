@@ -85,7 +85,7 @@ commands = [
 
 [[work_item]]
 id = "dogfood/gate-adoption-receipts"
-status = "ready"
+status = "done"
 branch = "dogfood-gate-adoption-receipts"
 stackable = false
 blocked_by = ["ci/gate-decision-summary-polish"]
@@ -98,7 +98,7 @@ commands = [
 
 [[work_item]]
 id = "docs/blocking-readiness-guide"
-status = "blocked"
+status = "ready"
 branch = "docs-blocking-readiness-guide"
 stackable = false
 blocked_by = ["dogfood/gate-adoption-receipts"]

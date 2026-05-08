@@ -3240,6 +3240,98 @@ surface. The pre-4B `Finding`/`AnalysisSnapshot` hover and context
 actions continue to work for diff-scoped diagnostics; seam diagnostics
 live alongside them.
 
+## Dogfood Report
+
+`cargo xtask dogfood` writes:
+
+```text
+target/ripr/reports/dogfood.json
+target/ripr/reports/dogfood.md
+target/ripr/dogfood/<fixture>/check.json
+target/ripr/dogfood/<fixture>/human.txt
+target/ripr/dogfood/gate-adoption/<case>/gate-decision.json
+target/ripr/dogfood/gate-adoption/<case>/gate-decision.md
+fixtures/boundary_gap/expected/gate-adoption/<case>/gate-decision.json
+fixtures/boundary_gap/expected/gate-adoption/<case>/gate-decision.md
+```
+
+The report is advisory. It runs `ripr check --mode fast` against stable fixture
+diffs and runs `ripr gate evaluate` against checked boundary-gap PR guidance
+and calibration evidence for the explicit gate adoption modes. It records
+`default_ci_blocking: false`; generated CI still leaves `RIPR_GATE_MODE` unset
+unless the repository configures it. The generated adoption receipts are
+compared with `fixtures/boundary_gap/expected/gate-adoption/`. The
+calibrated-gate dogfood case expects a non-zero evaluator exit only for the
+explicit blocking mode and treats that as healthy when the written decision
+report has the expected `blocked` status and count.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "status": "pass",
+  "advisory": true,
+  "runs": [
+    {
+      "name": "boundary_gap",
+      "root": "fixtures/boundary_gap/input",
+      "diff": "fixtures/boundary_gap/diff.patch",
+      "actual_dir": "target/ripr/dogfood/boundary_gap",
+      "duration_ms": 123,
+      "findings": 1,
+      "stop_reason_mentions": 1,
+      "class_counts": {
+        "exposed": 0,
+        "weakly_exposed": 1,
+        "reachable_unrevealed": 0,
+        "no_static_path": 0,
+        "infection_unknown": 0,
+        "propagation_unknown": 0,
+        "static_unknown": 0
+      },
+      "errors": []
+    }
+  ],
+  "gate_adoption": {
+    "default_ci_blocking": false,
+    "receipt_dir": "target/ripr/dogfood/gate-adoption",
+    "cases": [
+      {
+        "name": "visible-only-advisory",
+        "mode": "visible-only",
+        "actual_dir": "target/ripr/dogfood/gate-adoption/visible-only-advisory",
+        "json_path": "target/ripr/dogfood/gate-adoption/visible-only-advisory/gate-decision.json",
+        "markdown_path": "target/ripr/dogfood/gate-adoption/visible-only-advisory/gate-decision.md",
+        "duration_ms": 123,
+        "status": "advisory",
+        "blocking": 0,
+        "acknowledged": 0,
+        "advisory": 1,
+        "expected_status": "advisory",
+        "expected_blocking": 0,
+        "expected_acknowledged": 0,
+        "expected_advisory": 1,
+        "exit_success": true,
+        "expected_exit_success": true,
+        "errors": []
+      }
+    ]
+  }
+}
+```
+
+The checked adoption cases are:
+
+| Case | Expected status | Purpose |
+| --- | --- | --- |
+| `visible-only-advisory` | `advisory` | Records policy evidence without blocking. |
+| `acknowledged-waiver` | `acknowledged` | Shows `ripr-waive` as a visible acknowledgement. |
+| `baseline-check-existing` | `advisory` | Shows a baseline-known identity as visible and non-blocking. |
+| `baseline-check-new-gap` | `blocked` | Shows a new policy-eligible identity blocking in explicit baseline-check mode. |
+| `calibrated-high-confidence-new-gap` | `blocked` | Shows explicit calibrated-gate behavior for a new supported candidate. |
+| `missing-baseline-config` | `config_error` | Shows missing required baseline input as a repair-oriented configuration error. |
+
 ## LSP Cockpit Report
 
 `cargo xtask lsp-cockpit-report` writes:

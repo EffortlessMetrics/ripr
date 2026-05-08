@@ -318,6 +318,44 @@ struct DogfoodRun {
     errors: Vec<String>,
 }
 
+#[derive(Debug)]
+struct DogfoodGateScenario {
+    name: &'static str,
+    mode: &'static str,
+    expected_dir: &'static str,
+    pr_guidance: &'static str,
+    labels_json: Option<&'static str>,
+    baseline: Option<&'static str>,
+    recommendation_calibration: Option<&'static str>,
+    mutation_calibration: Option<&'static str>,
+    expected_status: &'static str,
+    expected_blocking: usize,
+    expected_acknowledged: usize,
+    expected_advisory: usize,
+    expected_exit_success: bool,
+}
+
+#[derive(Debug)]
+struct DogfoodGateRun {
+    name: String,
+    mode: String,
+    actual_dir: PathBuf,
+    json_path: PathBuf,
+    markdown_path: PathBuf,
+    duration_ms: u128,
+    status: String,
+    blocking: usize,
+    acknowledged: usize,
+    advisory: usize,
+    expected_status: String,
+    expected_blocking: usize,
+    expected_acknowledged: usize,
+    expected_advisory: usize,
+    exit_success: bool,
+    expected_exit_success: bool,
+    errors: Vec<String>,
+}
+
 #[derive(Clone, Debug)]
 struct ReportIndexEntry {
     file: String,
@@ -9358,8 +9396,12 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
         .into_iter()
         .map(|scenario| dogfood_run(&scenario))
         .collect::<Result<Vec<_>, _>>()?;
-    write_report("dogfood.md", &dogfood_report_markdown(&runs))?;
-    write_report("dogfood.json", &dogfood_report_json(&runs))
+    let gate_runs = dogfood_gate_adoption_scenarios()
+        .into_iter()
+        .map(|scenario| dogfood_gate_adoption_run(&scenario))
+        .collect::<Result<Vec<_>, _>>()?;
+    write_report("dogfood.md", &dogfood_report_markdown(&runs, &gate_runs))?;
+    write_report("dogfood.json", &dogfood_report_json(&runs, &gate_runs))
 }
 
 fn dogfood_scenarios() -> Vec<DogfoodScenario> {
@@ -9455,6 +9497,333 @@ fn dogfood_run(scenario: &DogfoodScenario) -> Result<DogfoodRun, String> {
     })
 }
 
+fn dogfood_gate_adoption_scenarios() -> Vec<DogfoodGateScenario> {
+    vec![
+        DogfoodGateScenario {
+            name: "visible-only-advisory",
+            mode: "visible-only",
+            expected_dir: "fixtures/boundary_gap/expected/gate-adoption/visible-only",
+            pr_guidance: "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
+            labels_json: None,
+            baseline: None,
+            recommendation_calibration: None,
+            mutation_calibration: None,
+            expected_status: "advisory",
+            expected_blocking: 0,
+            expected_acknowledged: 0,
+            expected_advisory: 1,
+            expected_exit_success: true,
+        },
+        DogfoodGateScenario {
+            name: "acknowledged-waiver",
+            mode: "acknowledgeable",
+            expected_dir: "fixtures/boundary_gap/expected/gate-adoption/acknowledged",
+            pr_guidance: "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
+            labels_json: Some(
+                "fixtures/boundary_gap/expected/gate-adoption/acknowledged/labels.json",
+            ),
+            baseline: None,
+            recommendation_calibration: None,
+            mutation_calibration: None,
+            expected_status: "acknowledged",
+            expected_blocking: 0,
+            expected_acknowledged: 1,
+            expected_advisory: 0,
+            expected_exit_success: true,
+        },
+        DogfoodGateScenario {
+            name: "baseline-check-existing",
+            mode: "baseline-check",
+            expected_dir: "fixtures/boundary_gap/expected/gate-adoption/baseline-aware",
+            pr_guidance: "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
+            labels_json: None,
+            baseline: Some(
+                "fixtures/boundary_gap/expected/gate-adoption/baseline-aware/baseline.json",
+            ),
+            recommendation_calibration: None,
+            mutation_calibration: None,
+            expected_status: "advisory",
+            expected_blocking: 0,
+            expected_acknowledged: 0,
+            expected_advisory: 1,
+            expected_exit_success: true,
+        },
+        DogfoodGateScenario {
+            name: "baseline-check-new-gap",
+            mode: "baseline-check",
+            expected_dir: "fixtures/boundary_gap/expected/gate-adoption/baseline-new-gap",
+            pr_guidance: "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
+            labels_json: None,
+            baseline: Some(
+                "fixtures/boundary_gap/expected/gate-adoption/baseline-new-gap/baseline.json",
+            ),
+            recommendation_calibration: None,
+            mutation_calibration: None,
+            expected_status: "blocked",
+            expected_blocking: 1,
+            expected_acknowledged: 0,
+            expected_advisory: 0,
+            expected_exit_success: false,
+        },
+        DogfoodGateScenario {
+            name: "calibrated-high-confidence-new-gap",
+            mode: "calibrated-gate",
+            expected_dir: "fixtures/boundary_gap/expected/gate-adoption/calibrated-gate",
+            pr_guidance: "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
+            labels_json: None,
+            baseline: Some(
+                "fixtures/boundary_gap/expected/gate-adoption/calibrated-gate/baseline.json",
+            ),
+            recommendation_calibration: Some(
+                "fixtures/boundary_gap/expected/gate-adoption/calibrated-gate/recommendation-calibration.json",
+            ),
+            mutation_calibration: None,
+            expected_status: "blocked",
+            expected_blocking: 1,
+            expected_acknowledged: 0,
+            expected_advisory: 0,
+            expected_exit_success: false,
+        },
+        DogfoodGateScenario {
+            name: "missing-baseline-config",
+            mode: "baseline-check",
+            expected_dir: "fixtures/boundary_gap/expected/gate-adoption/missing-baseline-config",
+            pr_guidance: "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
+            labels_json: None,
+            baseline: None,
+            recommendation_calibration: None,
+            mutation_calibration: None,
+            expected_status: "config_error",
+            expected_blocking: 0,
+            expected_acknowledged: 0,
+            expected_advisory: 0,
+            expected_exit_success: false,
+        },
+    ]
+}
+
+fn dogfood_gate_adoption_run(scenario: &DogfoodGateScenario) -> Result<DogfoodGateRun, String> {
+    let started = Instant::now();
+    let actual_dir = Path::new("target")
+        .join("ripr")
+        .join("dogfood")
+        .join("gate-adoption")
+        .join(scenario.name);
+    fs::create_dir_all(&actual_dir).map_err(|err| {
+        format!(
+            "failed to create gate adoption dogfood directory {}: {err}",
+            normalize_path(&actual_dir)
+        )
+    })?;
+
+    let json_path = actual_dir.join("gate-decision.json");
+    let markdown_path = actual_dir.join("gate-decision.md");
+    let args = dogfood_gate_adoption_args(scenario, &json_path, &markdown_path);
+    let args_ref = args.iter().map(String::as_str).collect::<Vec<_>>();
+    let output = capture_output("cargo", &args_ref, "cargo run -p ripr -- gate evaluate")?;
+    let exit_success = output.status.success();
+    let mut errors = Vec::new();
+
+    if exit_success != scenario.expected_exit_success {
+        let stderr = output.stderr.trim();
+        if stderr.is_empty() {
+            errors.push(format!(
+                "expected exit success {}, got {}",
+                scenario.expected_exit_success, exit_success
+            ));
+        } else {
+            errors.push(format!(
+                "expected exit success {}, got {}; stderr: {}",
+                scenario.expected_exit_success,
+                exit_success,
+                one_line(stderr)
+            ));
+        }
+    }
+
+    let mut status = "missing".to_string();
+    let mut blocking = 0usize;
+    let mut acknowledged = 0usize;
+    let mut advisory = 0usize;
+
+    match fs::read_to_string(&json_path) {
+        Ok(text) => match serde_json::from_str::<Value>(&text) {
+            Ok(value) => {
+                status = value
+                    .get("status")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown")
+                    .to_string();
+                blocking = json_summary_count(&value, "blocking");
+                acknowledged = json_summary_count(&value, "acknowledged");
+                advisory = json_summary_count(&value, "advisory");
+            }
+            Err(err) => errors.push(format!(
+                "failed to parse gate decision JSON {}: {err}",
+                normalize_path(&json_path)
+            )),
+        },
+        Err(err) => errors.push(format!(
+            "failed to read gate decision JSON {}: {err}",
+            normalize_path(&json_path)
+        )),
+    }
+
+    if !markdown_path.exists() {
+        errors.push(format!(
+            "missing gate decision Markdown {}",
+            normalize_path(&markdown_path)
+        ));
+    }
+    if status != scenario.expected_status {
+        errors.push(format!(
+            "expected status {}, got {}",
+            scenario.expected_status, status
+        ));
+    }
+    if blocking != scenario.expected_blocking {
+        errors.push(format!(
+            "expected {} blocking decision(s), got {}",
+            scenario.expected_blocking, blocking
+        ));
+    }
+    if acknowledged != scenario.expected_acknowledged {
+        errors.push(format!(
+            "expected {} acknowledged decision(s), got {}",
+            scenario.expected_acknowledged, acknowledged
+        ));
+    }
+    if advisory != scenario.expected_advisory {
+        errors.push(format!(
+            "expected {} advisory decision(s), got {}",
+            scenario.expected_advisory, advisory
+        ));
+    }
+    let expected_dir = Path::new(scenario.expected_dir);
+    compare_expected_text(
+        &json_path,
+        &expected_dir.join("gate-decision.json"),
+        "gate decision JSON",
+        &mut errors,
+    );
+    compare_expected_text(
+        &markdown_path,
+        &expected_dir.join("gate-decision.md"),
+        "gate decision Markdown",
+        &mut errors,
+    );
+
+    Ok(DogfoodGateRun {
+        name: scenario.name.to_string(),
+        mode: scenario.mode.to_string(),
+        actual_dir,
+        json_path,
+        markdown_path,
+        duration_ms: started.elapsed().as_millis(),
+        status,
+        blocking,
+        acknowledged,
+        advisory,
+        expected_status: scenario.expected_status.to_string(),
+        expected_blocking: scenario.expected_blocking,
+        expected_acknowledged: scenario.expected_acknowledged,
+        expected_advisory: scenario.expected_advisory,
+        exit_success,
+        expected_exit_success: scenario.expected_exit_success,
+        errors,
+    })
+}
+
+fn dogfood_gate_adoption_args(
+    scenario: &DogfoodGateScenario,
+    json_path: &Path,
+    markdown_path: &Path,
+) -> Vec<String> {
+    let mut args = vec![
+        "run".to_string(),
+        "-p".to_string(),
+        "ripr".to_string(),
+        "--".to_string(),
+        "gate".to_string(),
+        "evaluate".to_string(),
+        "--root".to_string(),
+        ".".to_string(),
+        "--pr-guidance".to_string(),
+        scenario.pr_guidance.to_string(),
+        "--mode".to_string(),
+        scenario.mode.to_string(),
+        "--out".to_string(),
+        normalize_path(json_path),
+        "--out-md".to_string(),
+        normalize_path(markdown_path),
+    ];
+    if let Some(path) = scenario.labels_json {
+        args.push("--labels-json".to_string());
+        args.push(path.to_string());
+    }
+    if let Some(path) = scenario.baseline {
+        args.push("--baseline".to_string());
+        args.push(path.to_string());
+    }
+    if let Some(path) = scenario.recommendation_calibration {
+        args.push("--recommendation-calibration".to_string());
+        args.push(path.to_string());
+    }
+    if let Some(path) = scenario.mutation_calibration {
+        args.push("--mutation-calibration".to_string());
+        args.push(path.to_string());
+    }
+    args
+}
+
+fn compare_expected_text(
+    actual_path: &Path,
+    expected_path: &Path,
+    label: &str,
+    errors: &mut Vec<String>,
+) {
+    let actual = match fs::read_to_string(actual_path) {
+        Ok(text) => text,
+        Err(err) => {
+            errors.push(format!(
+                "failed to read actual {label} {}: {err}",
+                normalize_path(actual_path)
+            ));
+            return;
+        }
+    };
+    let expected = match fs::read_to_string(expected_path) {
+        Ok(text) => text,
+        Err(err) => {
+            errors.push(format!(
+                "failed to read expected {label} {}: {err}",
+                normalize_path(expected_path)
+            ));
+            return;
+        }
+    };
+    if actual != expected {
+        errors.push(format!(
+            "{label} drifted: actual {} does not match expected {}",
+            normalize_path(actual_path),
+            normalize_path(expected_path)
+        ));
+    }
+}
+
+fn json_summary_count(value: &Value, key: &str) -> usize {
+    value
+        .get("summary")
+        .and_then(|summary| summary.get(key))
+        .and_then(Value::as_u64)
+        .and_then(|count| usize::try_from(count).ok())
+        .unwrap_or(0)
+}
+
+fn one_line(text: &str) -> String {
+    text.lines().map(str::trim).collect::<Vec<_>>().join(" ")
+}
+
 fn dogfood_class_counts(json: &str) -> BTreeMap<String, usize> {
     let mut counts = BTreeMap::new();
     for class in [
@@ -9489,18 +9858,20 @@ fn json_number_after(text: &str, needle: &str) -> Option<usize> {
     }
 }
 
-fn dogfood_report_status(runs: &[DogfoodRun]) -> &'static str {
-    if runs.iter().any(|run| !run.errors.is_empty()) {
+fn dogfood_report_status(runs: &[DogfoodRun], gate_runs: &[DogfoodGateRun]) -> &'static str {
+    if runs.iter().any(|run| !run.errors.is_empty())
+        || gate_runs.iter().any(|run| !run.errors.is_empty())
+    {
         "warn"
     } else {
         "pass"
     }
 }
 
-fn dogfood_report_markdown(runs: &[DogfoodRun]) -> String {
+fn dogfood_report_markdown(runs: &[DogfoodRun], gate_runs: &[DogfoodGateRun]) -> String {
     let mut body = format!(
         "# ripr dogfood report\n\nStatus: {}\n\nMode: advisory\n\nThis report runs `ripr check --mode fast` against stable in-repo fixture diffs. It records current product output for review without making dogfood a blocking gate yet.\n\n## Summary\n\n",
-        dogfood_report_status(runs)
+        dogfood_report_status(runs, gate_runs)
     );
     for run in runs {
         body.push_str(&format!(
@@ -9533,13 +9904,80 @@ fn dogfood_report_markdown(runs: &[DogfoodRun]) -> String {
             body.push('\n');
         }
     }
+    body.push_str("## Gate Adoption Receipts\n\n");
+    body.push_str("These receipts run `ripr gate evaluate` against checked boundary-gap PR guidance and calibration evidence. They are repo-local dogfood for explicit gate modes; generated CI still leaves `RIPR_GATE_MODE` unset unless the repository configures it.\n\n");
+    body.push_str("- Default CI blocking: no\n");
+    body.push_str(
+        "- Receipt outputs: `target/ripr/dogfood/gate-adoption/<case>/gate-decision.{json,md}`\n\n",
+    );
+    body.push_str(
+        "| Case | Mode | Status | Blocking | Acknowledged | Advisory | Exit | Expected exit |\n",
+    );
+    body.push_str("| --- | --- | --- | ---: | ---: | ---: | --- | --- |\n");
+    for run in gate_runs {
+        body.push_str(&format!(
+            "| `{}` | `{}` | `{}` | {} | {} | {} | {} | {} |\n",
+            markdown_cell(&run.name),
+            markdown_cell(&run.mode),
+            markdown_cell(&run.status),
+            run.blocking,
+            run.acknowledged,
+            run.advisory,
+            if run.exit_success {
+                "success"
+            } else {
+                "non-zero"
+            },
+            if run.expected_exit_success {
+                "success"
+            } else {
+                "non-zero"
+            }
+        ));
+    }
+    body.push('\n');
+    for run in gate_runs {
+        body.push_str(&format!("### Gate `{}`\n\n", run.name));
+        body.push_str(&format!("- Mode: `{}`\n", markdown_cell(&run.mode)));
+        body.push_str(&format!("- Status: `{}`\n", markdown_cell(&run.status)));
+        body.push_str(&format!(
+            "- Expected status: `{}`\n",
+            markdown_cell(&run.expected_status)
+        ));
+        body.push_str(&format!(
+            "- Decision counts: blocking {}, acknowledged {}, advisory {}\n",
+            run.blocking, run.acknowledged, run.advisory
+        ));
+        body.push_str(&format!(
+            "- Expected counts: blocking {}, acknowledged {}, advisory {}\n",
+            run.expected_blocking, run.expected_acknowledged, run.expected_advisory
+        ));
+        body.push_str(&format!(
+            "- Gate decision JSON: `{}`\n",
+            normalize_path(&run.json_path)
+        ));
+        body.push_str(&format!(
+            "- Gate decision Markdown: `{}`\n",
+            normalize_path(&run.markdown_path)
+        ));
+        body.push_str(&format!("- Duration: {} ms\n", run.duration_ms));
+        if run.errors.is_empty() {
+            body.push_str("- Errors: none\n\n");
+        } else {
+            body.push_str("- Errors:\n");
+            for error in &run.errors {
+                body.push_str(&format!("  - `{}`\n", markdown_cell(error)));
+            }
+            body.push('\n');
+        }
+    }
     body
 }
 
-fn dogfood_report_json(runs: &[DogfoodRun]) -> String {
+fn dogfood_report_json(runs: &[DogfoodRun], gate_runs: &[DogfoodGateRun]) -> String {
     let mut body = format!(
         "{{\n  \"schema_version\": \"0.1\",\n  \"status\": \"{}\",\n  \"advisory\": true,\n  \"runs\": [\n",
-        dogfood_report_status(runs)
+        dogfood_report_status(runs, gate_runs)
     );
     for (index, run) in runs.iter().enumerate() {
         if index > 0 {
@@ -9580,7 +10018,76 @@ fn dogfood_report_json(runs: &[DogfoodRun]) -> String {
         write_json_string_array(&mut body, &run.errors);
         body.push_str("]\n    }");
     }
-    body.push_str("\n  ]\n}\n");
+    body.push_str("\n  ],\n  \"gate_adoption\": {\n");
+    body.push_str("    \"default_ci_blocking\": false,\n");
+    body.push_str(
+        "    \"receipt_dir\": \"target/ripr/dogfood/gate-adoption\",\n    \"cases\": [\n",
+    );
+    for (index, run) in gate_runs.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("      {\n");
+        body.push_str(&format!(
+            "        \"name\": \"{}\",\n",
+            json_escape(&run.name)
+        ));
+        body.push_str(&format!(
+            "        \"mode\": \"{}\",\n",
+            json_escape(&run.mode)
+        ));
+        body.push_str(&format!(
+            "        \"actual_dir\": \"{}\",\n",
+            json_escape(&normalize_path(&run.actual_dir))
+        ));
+        body.push_str(&format!(
+            "        \"json_path\": \"{}\",\n",
+            json_escape(&normalize_path(&run.json_path))
+        ));
+        body.push_str(&format!(
+            "        \"markdown_path\": \"{}\",\n",
+            json_escape(&normalize_path(&run.markdown_path))
+        ));
+        body.push_str(&format!("        \"duration_ms\": {},\n", run.duration_ms));
+        body.push_str(&format!(
+            "        \"status\": \"{}\",\n",
+            json_escape(&run.status)
+        ));
+        body.push_str(&format!("        \"blocking\": {},\n", run.blocking));
+        body.push_str(&format!(
+            "        \"acknowledged\": {},\n",
+            run.acknowledged
+        ));
+        body.push_str(&format!("        \"advisory\": {},\n", run.advisory));
+        body.push_str(&format!(
+            "        \"expected_status\": \"{}\",\n",
+            json_escape(&run.expected_status)
+        ));
+        body.push_str(&format!(
+            "        \"expected_blocking\": {},\n",
+            run.expected_blocking
+        ));
+        body.push_str(&format!(
+            "        \"expected_acknowledged\": {},\n",
+            run.expected_acknowledged
+        ));
+        body.push_str(&format!(
+            "        \"expected_advisory\": {},\n",
+            run.expected_advisory
+        ));
+        body.push_str(&format!(
+            "        \"exit_success\": {},\n",
+            run.exit_success
+        ));
+        body.push_str(&format!(
+            "        \"expected_exit_success\": {},\n",
+            run.expected_exit_success
+        ));
+        body.push_str("        \"errors\": [");
+        write_json_string_array(&mut body, &run.errors);
+        body.push_str("]\n      }");
+    }
+    body.push_str("\n    ]\n  }\n}\n");
     body
 }
 
@@ -16734,8 +17241,8 @@ mod tests {
     };
     use super::{
         BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, CheckReport,
-        CheckStatus, CheckViolation, CiFullEvidenceGate, CwdCommand, DogfoodRun, FixKind,
-        LocalContextAllow, MarkdownLink, ReceiptRecord, RepoExposureLatencyReport,
+        CheckStatus, CheckViolation, CiFullEvidenceGate, CwdCommand, DogfoodGateRun, DogfoodRun,
+        FixKind, LocalContextAllow, MarkdownLink, ReceiptRecord, RepoExposureLatencyReport,
         RepoExposureLatencyRun, RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry,
         SarifPolicyMode, SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry,
         StaticLanguageMatcher, TestOracleClass, badge_artifact_command_args, badge_artifact_jobs,
@@ -16745,23 +17252,24 @@ mod tests {
         check_file_policy, check_local_context, check_network_policy, check_no_panic_family,
         check_process_policy, check_static_language, check_workflows, ci_full_evidence_gates,
         collect_panic_findings, collect_semantic_panic_findings, critic_findings,
-        dogfood_class_counts, dogfood_report_json, dogfood_report_markdown,
-        extract_json_object_usize_map, extract_json_string, extract_json_warnings,
-        extract_workflow_run_blocks, first_line_difference, forbidden_panic_patterns, glob_matches,
-        golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
-        guarded_allow_attributes_in_text, install_hooks_in, is_bdd_test_name,
-        is_dependency_surface_candidate, is_evidence_path, is_generated_candidate,
-        is_known_campaign_command, is_non_rust_programming_candidate, is_policy_path,
-        is_production_path, is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id,
-        is_stale_agent_boundary_scan_target, json_escape, json_number_after,
-        json_string_values_for_key, known_commands, known_xtask_command,
-        local_context_line_findings, local_markdown_target, lsp_cockpit_report,
-        lsp_cockpit_report_json, lsp_cockpit_report_markdown, markdown_links_in_text,
-        mutation_calibration_report_json, mutation_calibration_report_markdown,
-        next_checkpoints_from_capabilities, non_rust_programming_retention_reason,
-        normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
-        panic_family_from_pattern, parse_campaign_manifest, parse_file_policy_allowlist,
-        parse_inline_array, parse_mutation_calibration_args, parse_mutation_outcomes_json,
+        dogfood_class_counts, dogfood_gate_adoption_scenarios, dogfood_report_json,
+        dogfood_report_markdown, extract_json_object_usize_map, extract_json_string,
+        extract_json_warnings, extract_workflow_run_blocks, first_line_difference,
+        forbidden_panic_patterns, glob_matches, golden_changes_without_blessing,
+        golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
+        install_hooks_in, is_bdd_test_name, is_dependency_surface_candidate, is_evidence_path,
+        is_generated_candidate, is_known_campaign_command, is_non_rust_programming_candidate,
+        is_policy_path, is_production_path, is_receipt_status, is_ripr_managed_hook,
+        is_snake_case_id, is_spec_id, is_stale_agent_boundary_scan_target, json_escape,
+        json_number_after, json_string_values_for_key, json_summary_count, known_commands,
+        known_xtask_command, local_context_line_findings, local_markdown_target,
+        lsp_cockpit_report, lsp_cockpit_report_json, lsp_cockpit_report_markdown,
+        markdown_links_in_text, mutation_calibration_report_json,
+        mutation_calibration_report_markdown, next_checkpoints_from_capabilities,
+        non_rust_programming_retention_reason, normalize_fixture_human_output,
+        normalize_fixture_json_output, normalize_golden_text, panic_family_from_pattern,
+        parse_campaign_manifest, parse_file_policy_allowlist, parse_inline_array,
+        parse_mutation_calibration_args, parse_mutation_outcomes_json,
         parse_no_panic_allowlist_toml, parse_no_panic_allowlist_toml_v2, parse_reason,
         parse_repo_exposure_static_seams, parse_sarif_policy_args, parse_sarif_policy_results,
         parse_static_language_allowlist, parse_string_value, parse_targeted_test_outcome_args,
@@ -19672,13 +20180,117 @@ fn exact_owner_call_has_external_expected_value() {
             stop_reason_mentions: 1,
             errors: Vec::new(),
         };
+        let gate_run = DogfoodGateRun {
+            name: "calibrated-high-confidence-new-gap".to_string(),
+            mode: "calibrated-gate".to_string(),
+            actual_dir: Path::new(
+                "target/ripr/dogfood/gate-adoption/calibrated-high-confidence-new-gap",
+            )
+            .to_path_buf(),
+            json_path: Path::new(
+                "target/ripr/dogfood/gate-adoption/calibrated-high-confidence-new-gap/gate-decision.json",
+            )
+            .to_path_buf(),
+            markdown_path: Path::new(
+                "target/ripr/dogfood/gate-adoption/calibrated-high-confidence-new-gap/gate-decision.md",
+            )
+            .to_path_buf(),
+            duration_ms: 10,
+            status: "blocked".to_string(),
+            blocking: 1,
+            acknowledged: 0,
+            advisory: 0,
+            expected_status: "blocked".to_string(),
+            expected_blocking: 1,
+            expected_acknowledged: 0,
+            expected_advisory: 0,
+            exit_success: false,
+            expected_exit_success: false,
+            errors: Vec::new(),
+        };
 
-        let markdown = dogfood_report_markdown(&[run]);
-        let json = dogfood_report_json(&[]);
+        let markdown = dogfood_report_markdown(&[run], &[gate_run]);
+        let json = dogfood_report_json(&[], &[]);
 
         assert!(markdown.contains("Mode: advisory"));
         assert!(markdown.contains("boundary_gap"));
+        assert!(markdown.contains("Gate Adoption Receipts"));
+        assert!(markdown.contains("Default CI blocking: no"));
+        assert!(markdown.contains("calibrated-high-confidence-new-gap"));
         assert!(json.contains("\"advisory\": true"));
+        assert!(json.contains("\"default_ci_blocking\": false"));
+    }
+
+    #[test]
+    fn dogfood_gate_adoption_scenarios_have_checked_receipts() -> Result<(), String> {
+        with_repo_cwd(|| {
+            for scenario in dogfood_gate_adoption_scenarios() {
+                assert!(
+                    Path::new(scenario.pr_guidance).exists(),
+                    "{} PR guidance input missing",
+                    scenario.name
+                );
+                for input in [
+                    scenario.labels_json,
+                    scenario.baseline,
+                    scenario.recommendation_calibration,
+                    scenario.mutation_calibration,
+                ]
+                .into_iter()
+                .flatten()
+                {
+                    assert!(
+                        Path::new(input).exists(),
+                        "{} input missing: {}",
+                        scenario.name,
+                        input
+                    );
+                }
+
+                let expected_dir = Path::new(scenario.expected_dir);
+                let json_text = fs::read_to_string(expected_dir.join("gate-decision.json"))
+                    .map_err(|err| {
+                        format!("{} gate-decision.json missing: {err}", scenario.name)
+                    })?;
+                let markdown = fs::read_to_string(expected_dir.join("gate-decision.md"))
+                    .map_err(|err| format!("{} gate-decision.md missing: {err}", scenario.name))?;
+                let value: Value = serde_json::from_str(&json_text).map_err(|err| {
+                    format!("{} gate-decision.json invalid: {err}", scenario.name)
+                })?;
+
+                assert_eq!(
+                    value.get("status").and_then(Value::as_str),
+                    Some(scenario.expected_status),
+                    "{} expected status should be pinned",
+                    scenario.name
+                );
+                assert_eq!(
+                    json_summary_count(&value, "blocking"),
+                    scenario.expected_blocking,
+                    "{} expected blocking count should be pinned",
+                    scenario.name
+                );
+                assert_eq!(
+                    json_summary_count(&value, "acknowledged"),
+                    scenario.expected_acknowledged,
+                    "{} expected acknowledged count should be pinned",
+                    scenario.name
+                );
+                assert_eq!(
+                    json_summary_count(&value, "advisory"),
+                    scenario.expected_advisory,
+                    "{} expected advisory count should be pinned",
+                    scenario.name
+                );
+                assert!(
+                    markdown.contains(&format!("Decision: {}", scenario.expected_status)),
+                    "{} Markdown should pin decision status",
+                    scenario.name
+                );
+            }
+
+            Ok(())
+        })
     }
 
     fn duplicate_entry(

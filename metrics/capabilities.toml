@@ -693,6 +693,8 @@ evidence = [
   "crates/ripr/src/output/gate.rs keeps the evaluator read-only and returns non-zero only after writing blocked or config_error reports",
   "fixtures/boundary_gap/expected/calibrated-gate pins advisory, acknowledged, baseline-check, fail-on-new-high-confidence-gap, suppression, missing-input, and calibration disagreement decisions",
   "ripr init --ci github generates optional gate evaluation only when RIPR_GATE_MODE is explicitly configured and uploads gate-decision artifacts with the advisory report packet",
+  "fixtures/boundary_gap/expected/gate-adoption pins checked dogfood receipts for visible-only, acknowledged waiver, baseline-existing, baseline-new, missing-baseline, and explicit calibrated-gate decisions",
+  "cargo xtask dogfood writes and compares gate adoption receipts while recording non-blocking generated CI defaults",
   "docs/CALIBRATED_GATE_POLICY.md documents modes, waivers, CI behavior, calibration evidence, rollout stages, fixture matrix, and static/runtime vocabulary boundaries",
   "docs/handoffs/2026-05-08-campaign-15-closeout.md records the Campaign 15 prompt-to-artifact audit and closeout proof"
 ]

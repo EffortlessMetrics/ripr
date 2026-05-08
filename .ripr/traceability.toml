@@ -905,9 +905,12 @@ tests = [
   "crates/ripr/src/output/gate.rs::tests::gate_labels_json_acknowledges_candidate",
   "crates/ripr/src/output/gate.rs::tests::gate_baseline_check_keeps_existing_candidate_advisory",
   "crates/ripr/src/output/gate.rs::tests::calibrated_gate_fixture_matrix_matches_checked_outputs",
+  "xtask/src/main.rs::tests::dogfood_reports_are_advisory",
+  "xtask/src/main.rs::tests::dogfood_gate_adoption_scenarios_have_checked_receipts",
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/calibrated-gate",
+  "fixtures/boundary_gap/expected/gate-adoption",
 ]
 code = [
   "crates/ripr/src/cli/command.rs",
@@ -916,6 +919,7 @@ code = [
   "crates/ripr/src/cli/help.rs",
   "crates/ripr/src/cli/parse.rs",
   "crates/ripr/src/output/gate.rs",
+  "xtask/src/main.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0014-calibrated-gate-policy.md",
@@ -929,6 +933,7 @@ outputs = [
   "docs/handoffs/2026-05-08-campaign-15-closeout.md",
   "docs/CI.md",
   "docs/DOCUMENTATION.md",
+  "docs/PR_AUTOMATION.md",
   "docs/PR_REVIEW_GUIDANCE.md",
   "docs/RECOMMENDATION_CALIBRATION.md"
 ]
