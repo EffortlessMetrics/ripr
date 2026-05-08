@@ -11,6 +11,12 @@ are scoped or reviewed.
 
 ### Added
 
+- Added `ripr evidence-health` and `cargo xtask evidence-health`, which write
+  advisory Lane 1 analyzer-health JSON/Markdown reports summarizing grip
+  classes, stage states, missing discriminators, observed value contexts,
+  related-test confidence, oracle evidence, top static limitations, and
+  optional imported calibration availability without changing analyzer
+  behavior.
 - Added a VS Code status bar item and `ripr: Show Status` command for first-run
   server resolution, workspace detection, saved-workspace analysis
   running/complete/stale/failed, and no-actionable-seam states.

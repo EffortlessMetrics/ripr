@@ -6011,6 +6011,33 @@ pub(crate) fn repo_exposure_report_impl() -> Result<(), String> {
     write_report("repo-exposure.md", &md_output)
 }
 
+/// Run the Lane 1 evidence health report and write
+/// `target/ripr/reports/evidence-health.{json,md}`. If an imported mutation
+/// calibration report already exists, include it only as calibration
+/// availability context.
+pub(crate) fn evidence_health_report_impl() -> Result<(), String> {
+    let mut args = vec![
+        "run".to_string(),
+        "-p".to_string(),
+        "ripr".to_string(),
+        "--quiet".to_string(),
+        "--".to_string(),
+        "evidence-health".to_string(),
+        "--root".to_string(),
+        ".".to_string(),
+        "--out".to_string(),
+        "target/ripr/reports/evidence-health.json".to_string(),
+        "--out-md".to_string(),
+        "target/ripr/reports/evidence-health.md".to_string(),
+    ];
+    let calibration = Path::new("target/ripr/reports/mutation-calibration.json");
+    if calibration.exists() {
+        args.push("--mutation-calibration".to_string());
+        args.push(calibration.display().to_string());
+    }
+    run_owned("cargo", &args)
+}
+
 const REPO_EXPOSURE_LATENCY_TRACE_ENV: &str = "RIPR_REPO_EXPOSURE_LATENCY_TRACE";
 const REPO_EXPOSURE_LATENCY_TIMEOUT_ENV: &str = "RIPR_REPO_EXPOSURE_LATENCY_TIMEOUT_MS";
 const REPO_EXPOSURE_LATENCY_DEFAULT_TIMEOUT_MS: u64 = 30_000;
@@ -23031,6 +23058,7 @@ jobs:
                 XtaskCommand::RepoSeamInventory,
                 XtaskCommand::RepoExposureReport,
                 XtaskCommand::RepoExposureLatencyReport,
+                XtaskCommand::EvidenceHealth,
                 XtaskCommand::AgentSeamPackets(Some(".".to_string())),
                 XtaskCommand::LspCockpitReport,
                 XtaskCommand::OperatorCockpitReport,

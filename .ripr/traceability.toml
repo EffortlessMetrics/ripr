@@ -40,6 +40,8 @@ code = [
   "crates/ripr/src/lsp"
 ]
 outputs = [
+  "docs/specs/RIPR-SPEC-0015-evidence-health-baseline.md",
+  "docs/specs/README.md",
   "docs/OUTPUT_SCHEMA.md",
   "docs/STATIC_EXPOSURE_MODEL.md",
   "fixtures/boundary_gap/expected/check.json",
@@ -938,4 +940,41 @@ metrics = [
   "gate_decisions_suppressed",
   "gate_decisions_unknown_confidence",
   "gate_config_errors"
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0015"
+name = "evidence health baseline"
+spec = "docs/specs/RIPR-SPEC-0015-evidence-health-baseline.md"
+tests = [
+  "crates/ripr/src/output/evidence_health.rs::tests::evidence_health_counts_core_metrics",
+  "crates/ripr/src/output/evidence_health.rs::tests::evidence_health_markdown_names_calibration_and_limitations",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/cli/command.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/execute.rs",
+  "crates/ripr/src/cli/help.rs",
+  "crates/ripr/src/output/evidence_health.rs",
+  "xtask/src/command.rs",
+  "xtask/src/dispatch.rs",
+  "xtask/src/main.rs",
+  "xtask/src/reports/mod.rs",
+  "xtask/src/reports/repo.rs",
+]
+outputs = [
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "metrics/capabilities.toml",
+  "README.md",
+  "CHANGELOG.md",
+]
+metrics = [
+  "evidence_health_seams_total",
+  "evidence_health_missing_discriminators_total",
+  "evidence_health_observed_values_total",
+  "evidence_health_related_tests_total",
+  "evidence_health_opaque_oracle_count",
+  "evidence_health_calibration_matched_total",
 ]
