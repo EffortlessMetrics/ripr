@@ -23,5 +23,5 @@ Files:
 - `suppressed-correctly.json` records a recommendation hidden by configured
   severity.
 
-The future recommendation calibration report should treat missing receipts as
+The recommendation calibration report treats missing receipts as
 `unknown`; absence of feedback must not be interpreted as useful or noisy.

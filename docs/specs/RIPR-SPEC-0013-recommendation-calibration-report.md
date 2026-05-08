@@ -43,13 +43,14 @@ The contract is:
 
 ## Behavior
 
-The planned repo-local report producer is:
+The repo-local report producer is:
 
 ```text
 cargo xtask recommendation-calibration \
   --root . \
   --pr-guidance target/ripr/review/comments.json \
-  --pilot-summary target/ripr/pilot/pilot-summary.json \
+  --calibration-expectations fixtures/boundary_gap/expected/recommendation-calibration/expectations.json \
+  --outcome-receipts fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts \
   --agent-receipt target/ripr/reports/agent-receipt.json \
   --targeted-test-outcome target/ripr/outcome/targeted-test-outcome.json \
   --out target/ripr/reports/recommendation-calibration.json
@@ -186,12 +187,13 @@ The JSON report uses schema version `0.1`:
   "status": "advisory",
   "root": ".",
   "inputs": {
-    "pr_guidance": "target/ripr/review/comments.json",
-    "pilot_summary": "target/ripr/pilot/pilot-summary.json",
+    "pr_guidance": ["target/ripr/review/comments.json"],
     "agent_receipt": "target/ripr/reports/agent-receipt.json",
     "targeted_test_outcome": "target/ripr/outcome/targeted-test-outcome.json",
     "calibration_expectations": "fixtures/boundary_gap/expected/recommendation-calibration/expectations.json",
-    "outcome_receipts": []
+    "outcome_receipts": [
+      "fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts/useful.json"
+    ]
   },
   "summary": {
     "recommendations_evaluated": 4,
@@ -219,7 +221,9 @@ The JSON report uses schema version `0.1`:
       "id": "ripr-review-67fc764ba37d77bd",
       "seam_id": "67fc764ba37d77bd",
       "rank": 1,
-      "source": "pr_guidance",
+      "source": "comments",
+      "source_artifact": "target/ripr/review/comments.json",
+      "source_case": "useful_exact_line_boundary",
       "placement": {
         "path": "src/pricing.rs",
         "line": 88,
@@ -232,30 +236,39 @@ The JSON report uses schema version `0.1`:
       "suggested_test": {
         "recommended_file": "tests/pricing.rs",
         "near_test": "applies_discount_above_threshold",
-        "target_quality": "correct"
+        "target_quality": "correct",
+        "expected_file": "tests/pricing.rs"
       },
       "calibration": {
         "outcome": "useful",
-        "source": "fixture_expectation",
+        "source": "outcome_receipt:fixture",
         "reason": "expected equality-boundary recommendation on the changed seam"
       },
       "static_movement": {
         "state": "improved",
-        "source": "agent_receipt",
-        "before_class": "weakly_gripped",
-        "after_class": "strongly_gripped"
+        "source": "outcome_receipt",
+        "before_class": null,
+        "after_class": null
       }
     }
   ],
   "suppressed": [
     {
       "id": "ripr-review-capped-1",
+      "seam_id": "67fc764ba37d77bd",
+      "source_artifact": "target/ripr/review/comments.json",
+      "source_case": "configured_off_boundary",
       "reason": "cap_reached",
-      "quality": "suppressed_correctly"
+      "quality": "suppressed_correctly",
+      "calibration": {
+        "outcome": "suppressed_correctly",
+        "source": "fixture_expectation",
+        "reason": "expected cap suppression"
+      }
     }
   ],
   "warnings": [],
-  "limits_note": "Advisory recommendation-quality evidence only; no telemetry, generated tests, source edits, mutation execution, or CI blocking."
+  "limits_note": "Advisory recommendation-quality evidence only; no telemetry, generated tests, source edits, runtime execution, or CI blocking."
 }
 ```
 
@@ -264,8 +277,9 @@ The JSON report uses schema version `0.1`:
 - `schema_version` - currently `"0.1"`.
 - `tool` - always `"ripr"`.
 - `status` - `advisory` when the report has enough inputs to evaluate at least
-  one recommendation, `incomplete` when required inputs are missing, and
-  `config_error` when an input is malformed or unsafe to read.
+  one recommendation and `incomplete` when required inputs are missing.
+  Malformed required inputs return an actionable command error instead of a
+  successful report.
 - `root` - workspace root used to resolve artifact paths.
 - `inputs` - paths and receipt lists considered by the report. Missing optional
   inputs should be visible as `null`, empty arrays, or warnings.
@@ -295,8 +309,8 @@ The JSON report uses schema version `0.1`:
   `wrong_target`, `not_applicable`, or `unknown`.
 - `recommendations[].calibration.outcome` - one of the calibration outcome
   labels defined above.
-- `recommendations[].calibration.source` - `fixture_expectation`,
-  `outcome_receipt`, `static_movement`, or `unknown`.
+- `recommendations[].calibration.source` - `fixture_expectation` or
+  `outcome_receipt:<source>`.
 - `recommendations[].static_movement.state` - `improved`, `unchanged`,
   `regressed`, `resolved`, `new_gap`, `missing_after_snapshot`, or `unknown`.
 - `suppressed[]` - recommendations hidden by caps, suppression, configured-off
@@ -349,7 +363,7 @@ separate explicit gate-policy campaign.
 
 ## Required Evidence
 
-The implementation campaign must add:
+The implementation campaign adds:
 
 - fixture expectations for useful, noisy, wrong-line, already-covered,
   summary-only-correct, suppressed-correctly, generated/migration,
@@ -360,8 +374,8 @@ The implementation campaign must add:
 - a report producer that joins PR guidance, expectations, suppression state,
   target placement, latency, and before/after static movement;
 - JSON and Markdown output tests;
-- generated CI artifact upload and summary tests only after the pure report is
-  fixture-backed;
+- generated CI artifact upload and summary tests only in a follow-up after the
+  pure report is fixture-backed;
 - docs explaining how to read useful, noisy, wrong-line, already-covered,
   wrong-target, summary-only-correct, suppressed-correctly, unchanged,
   improved, regressed, resolved, and unknown outcomes.
@@ -402,7 +416,7 @@ Recommendation calibration must not:
 
 ## Test Mapping
 
-Initial implementation should add tests for:
+The initial implementation test mapping covers:
 
 - report input parsing and missing-input warnings;
 - JSON and Markdown rendering;
@@ -413,16 +427,17 @@ Initial implementation should add tests for:
 - recommended test target correctness;
 - latency derivation with missing timestamp fallback;
 - static movement import from agent receipt or targeted-test outcome;
-- generated CI summary/artifact behavior after the report producer exists.
+- generated CI summary/artifact behavior remains follow-up work after the
+  report producer exists.
 
 ## Implementation Mapping
 
 The implementation should map this spec to:
 
 - a repo-local xtask report command for the initial calibration report;
-- an app/report module that joins existing PR guidance, expectation, receipt,
+- an xtask report module that joins existing PR guidance, expectation, receipt,
   and static-movement artifacts;
-- an output module for recommendation calibration JSON and Markdown;
+- JSON and Markdown rendering for recommendation calibration;
 - fixture expectations under the boundary-gap corpus;
 - generated CI upload and summary wiring only after fixture-backed report
   output exists.

@@ -828,11 +828,19 @@ name = "recommendation calibration report"
 spec = "docs/specs/RIPR-SPEC-0013-recommendation-calibration-report.md"
 tests = [
   "crates/ripr/src/output/review_comments.rs::tests::recommendation_calibration_fixture_expectations_pin_required_cases",
-  "crates/ripr/src/output/review_comments.rs::tests::recommendation_calibration_outcome_receipts_pin_required_labels"
+  "crates/ripr/src/output/review_comments.rs::tests::recommendation_calibration_outcome_receipts_pin_required_labels",
+  "xtask/src/reports/recommendation.rs::tests::recommendation_calibration_args_parse_defaults_and_inputs",
+  "xtask/src/reports/recommendation.rs::tests::recommendation_calibration_report_counts_fixture_expectations",
+  "xtask/src/reports/recommendation.rs::tests::recommendation_calibration_missing_guidance_is_incomplete",
+  "xtask/src/reports/recommendation.rs::tests::recommendation_calibration_json_and_markdown_are_structured",
+  "xtask/src/reports/recommendation.rs::tests::recommendation_calibration_command_writes_reports",
+  "xtask/src/reports/recommendation.rs::tests::recommendation_calibration_fixture_matches_checked_reports"
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/recommendation-calibration/README.md",
   "fixtures/boundary_gap/expected/recommendation-calibration/expectations.json",
+  "fixtures/boundary_gap/expected/recommendation-calibration/recommendation-calibration.json",
+  "fixtures/boundary_gap/expected/recommendation-calibration/recommendation-calibration.md",
   "fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts/README.md",
   "fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts/already-covered.json",
   "fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts/noisy.json",
@@ -843,7 +851,12 @@ fixtures = [
   "fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts/wrong-target.json",
   "fixtures/boundary_gap/expected/recommendation-calibration/synthetic-pr-guidance.json"
 ]
-code = []
+code = [
+  "xtask/src/reports/recommendation.rs",
+  "xtask/src/command.rs",
+  "xtask/src/dispatch.rs",
+  "xtask/src/reports/mod.rs"
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0013-recommendation-calibration-report.md",
   "docs/specs/README.md",

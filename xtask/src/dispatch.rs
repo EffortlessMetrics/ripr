@@ -26,6 +26,9 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::ReleaseReadiness(args) => super::reports::release_readiness(&args),
         XtaskCommand::TargetedTestOutcome(args) => super::reports::targeted_test_outcome(&args),
         XtaskCommand::MutationCalibration(args) => super::reports::mutation_calibration(&args),
+        XtaskCommand::RecommendationCalibration(args) => {
+            super::reports::recommendation_calibration(&args)
+        }
         XtaskCommand::SarifPolicy(args) => super::reports::sarif_policy(&args),
         XtaskCommand::UpdateBadgeEndpoints => super::reports::update_badge_endpoints(),
         XtaskCommand::CheckBadgeEndpoints => super::reports::check_badge_endpoints(),
