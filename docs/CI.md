@@ -1233,15 +1233,27 @@ Recommended baseline creation workflow:
 6. Switch to `RIPR_GATE_MODE=baseline-check` only after the baseline PR is
    reviewed and merged.
 
-Minimal baseline shape:
+Baseline ledger shape:
 
 ```json
 {
   "schema_version": "0.1",
-  "decisions": [
+  "kind": "gate_baseline",
+  "reviewed": false,
+  "summary": {
+    "entries": 1
+  },
+  "entries": [
     {
-      "seam_id": "8f7fa8644fd12280",
-      "source_id": "ripr-review-8f7fa8644fd12280"
+      "identity": {
+        "seam_id": "8f7fa8644fd12280",
+        "source_id": "ripr-review-8f7fa8644fd12280"
+      },
+      "decision": "advisory",
+      "review": {
+        "reviewed": false,
+        "reason": "initial adoption baseline"
+      }
     }
   ]
 }
@@ -1261,11 +1273,13 @@ ripr baseline create \
 Review that candidate before copying it into `.ripr/gate-baseline.json`.
 Baselining everything blindly makes the file less useful as a debt ledger.
 
-`ripr gate evaluate` also accepts identities from `comments`, `summary_only`,
-and `suppressed` arrays when those fields are present in the baseline file. For
-each entry, it indexes `seam_id`, `id`, and `dedupe_key` when present. Keep the
-baseline small and reviewable; do not check in an uninspected copy of every PR
-guidance artifact.
+`ripr gate evaluate` indexes identities from the new `entries[].identity`
+ledger shape. For compatibility with existing fixtures and reviewed hand-built
+baselines, it also accepts identities from `decisions`, `comments`,
+`summary_only`, and `suppressed` arrays when those fields are present in the
+baseline file. For each entry, it indexes `seam_id`, `id`, and `dedupe_key`
+when present. Keep the baseline small and reviewable; do not check in an
+uninspected copy of every PR guidance artifact.
 
 Baseline review checklist:
 
