@@ -322,7 +322,7 @@ kind = "editor_extension"
 owner = "lsp/editor"
 surface = "editor"
 classification = "production"
-reason = "VS Code extension client and tests."
+reason = "VS Code extension client and tests must stay TypeScript for the VS Code Extension Host API."
 covered_by = [
     "cd editors/vscode && npm run compile",
     "cd editors/vscode && npm test",

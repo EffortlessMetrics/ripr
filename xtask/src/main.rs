@@ -2767,6 +2767,14 @@ fn check_file_policy_impl() -> Result<(), String> {
             violations.push(format!(
                 "unapproved non-Rust programming/declarative file: {normalized}\n  preferred: implement automation in Rust/xtask or add a policy allowlist entry with owner and reason"
             ));
+            continue;
+        }
+        if is_non_rust_programming_candidate(&normalized)
+            && non_rust_programming_retention_reason(&normalized).is_none()
+        {
+            violations.push(format!(
+                "non-Rust programming file lacks a keep-non-Rust retention rule: {normalized}\n  preferred: convert implementation/test automation to Rust/xtask unless the file is bound to an approved non-Rust runtime surface"
+            ));
         }
     }
 
@@ -14356,6 +14364,24 @@ fn is_file_policy_candidate(path: &str) -> bool {
     extensions.iter().any(|extension| path.ends_with(extension))
 }
 
+fn is_non_rust_programming_candidate(path: &str) -> bool {
+    let extensions = [
+        ".bash", ".c", ".cjs", ".cpp", ".cs", ".go", ".h", ".hpp", ".java", ".js", ".kt", ".lua",
+        ".mjs", ".php", ".pl", ".ps1", ".py", ".rb", ".sh", ".swift", ".ts", ".tsx", ".zsh",
+    ];
+    extensions.iter().any(|extension| path.ends_with(extension))
+}
+
+fn non_rust_programming_retention_reason(path: &str) -> Option<&'static str> {
+    if path.starts_with("editors/vscode/") && path.ends_with(".ts") {
+        return Some(
+            "VS Code extension source and tests must run in the VS Code Extension Host TypeScript API.",
+        );
+    }
+
+    None
+}
+
 fn is_generated_candidate(path: &str) -> bool {
     path == "Cargo.lock"
         || path.ends_with("/package-lock.json")
@@ -16237,13 +16263,14 @@ mod tests {
         golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
         guarded_allow_attributes_in_text, install_hooks_in, is_bdd_test_name,
         is_dependency_surface_candidate, is_deprecated_goal_field_scan_target, is_evidence_path,
-        is_generated_candidate, is_known_campaign_command, is_policy_path, is_production_path,
-        is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id, json_escape,
-        json_number_after, json_string_values_for_key, known_commands, known_xtask_command,
-        local_context_line_findings, local_markdown_target, lsp_cockpit_report,
-        lsp_cockpit_report_json, lsp_cockpit_report_markdown, markdown_links_in_text,
-        mutation_calibration_report_json, mutation_calibration_report_markdown,
-        next_checkpoints_from_capabilities, normalize_fixture_human_output,
+        is_generated_candidate, is_known_campaign_command, is_non_rust_programming_candidate,
+        is_policy_path, is_production_path, is_receipt_status, is_ripr_managed_hook,
+        is_snake_case_id, is_spec_id, json_escape, json_number_after, json_string_values_for_key,
+        known_commands, known_xtask_command, local_context_line_findings, local_markdown_target,
+        lsp_cockpit_report, lsp_cockpit_report_json, lsp_cockpit_report_markdown,
+        markdown_links_in_text, mutation_calibration_report_json,
+        mutation_calibration_report_markdown, next_checkpoints_from_capabilities,
+        non_rust_programming_retention_reason, normalize_fixture_human_output,
         normalize_fixture_json_output, normalize_golden_text, panic_family_from_pattern,
         parse_campaign_manifest, parse_file_policy_allowlist, parse_inline_array,
         parse_mutation_calibration_args, parse_mutation_outcomes_json,
@@ -17416,6 +17443,25 @@ fn has_unwrap_in_name() -> bool {
         assert!(should_skip_path("editors/vscode/out/src/extension.js"));
         assert!(should_skip_path("editors/vscode/dist/ripr-0.3.0.vsix"));
         assert!(!should_skip_path("editors/vscode/src/config.ts"));
+    }
+
+    #[test]
+    fn non_rust_programming_policy_requires_retention_rule() {
+        assert!(is_non_rust_programming_candidate("scripts/check.py"));
+        assert!(is_non_rust_programming_candidate(
+            "editors/vscode/src/extension.ts"
+        ));
+        assert!(!is_non_rust_programming_candidate(
+            "policy/non_rust_allowlist.txt"
+        ));
+        assert!(!is_non_rust_programming_candidate("policy/ci-budget.toml"));
+
+        assert!(non_rust_programming_retention_reason("editors/vscode/src/extension.ts").is_some());
+        assert!(
+            non_rust_programming_retention_reason("editors/vscode/test/suite/extension.test.ts")
+                .is_some()
+        );
+        assert!(non_rust_programming_retention_reason("scripts/check.py").is_none());
     }
 
     #[test]
