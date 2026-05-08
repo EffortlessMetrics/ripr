@@ -661,8 +661,22 @@ fixtures = [
   "fixtures/boundary_gap/expected/recommendation-calibration/recommendation-calibration.json",
   "fixtures/boundary_gap/expected/recommendation-calibration/recommendation-calibration.md"
 ]
-next = "spec/calibrated-gate-policy"
+next = "maintenance"
 metric = "recommendation calibration counts usefulness, false annotations, summary-only correctness, suppression correctness, target-file correctness, latency, static improved, unchanged, or regressed movement, and unknown outcomes without telemetry or CI blocking"
+
+[[capability]]
+id = "calibrated_gate_policy"
+name = "Calibrated gate policy"
+status = "planned"
+spec = "RIPR-SPEC-0014"
+evidence = [
+  "docs/specs/RIPR-SPEC-0014-calibrated-gate-policy.md defines optional visible-only, acknowledgeable, baseline-check, and calibrated-gate modes",
+  "docs/OUTPUT_SCHEMA.md Calibrated Gate Decision section pins the planned JSON and Markdown decision shape",
+  ".ripr/goals/active.toml routes implementation to gate/policy-evaluator after the spec"
+]
+fixtures = []
+next = "gate/policy-evaluator"
+metric = "gate decisions will count evaluated, blocking, acknowledged, advisory, suppressed, unknown-confidence, and config-error outcomes"
 
 [[capability]]
 id = "pilot_packet"

@@ -60,12 +60,13 @@ git diff --check
 
 ## Next Work Item
 
-`spec/calibrated-gate-policy`
+`gate/policy-evaluator`
 
-Campaign 15, Calibrated Gate Policy, is active. Define the optional gate
-contract before implementation, including modes, inputs, outputs,
-acknowledgement labels, calibration evidence, runtime mutation boundaries,
-default advisory posture, and non-goals.
+Campaign 15, Calibrated Gate Policy, is active. RIPR-SPEC-0014 defines the
+optional gate contract. The next implementation item is the read-only evaluator
+that writes gate decision JSON/Markdown from existing artifacts without posting
+comments, editing source, running mutation tests, or changing generated
+workflow defaults.
 
 ## What Not To Do
 
@@ -76,4 +77,5 @@ default advisory posture, and non-goals.
   execution.
 - Do not turn calibration into telemetry, an external service, or an opaque
   score.
-- Do not implement gate evaluation before `spec/calibrated-gate-policy` lands.
+- Do not wire generated CI before `gate/policy-evaluator` and calibrated-gate
+  fixtures land.

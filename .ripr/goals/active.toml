@@ -25,7 +25,7 @@ end_state = [
 
 [[work_item]]
 id = "spec/calibrated-gate-policy"
-status = "ready"
+status = "done"
 branch = "spec-calibrated-gate-policy"
 stackable = false
 acceptance = "Pin the optional calibrated gate policy after recommendation calibration, including modes, inputs, outputs, acknowledgement labels, runtime calibration boundaries, default advisory posture, and non-goals"
@@ -42,7 +42,7 @@ commands = [
 
 [[work_item]]
 id = "gate/policy-evaluator"
-status = "blocked"
+status = "ready"
 branch = "gate-policy-evaluator"
 stackable = false
 blocked_by = ["spec/calibrated-gate-policy"]

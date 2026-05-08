@@ -1456,6 +1456,172 @@ Field contract:
   artifacts, or latency values that could not be derived.
 - `limits_note` - advisory boundary text for summaries and generated CI.
 
+## Calibrated Gate Decision
+
+RIPR-SPEC-0014 defines the optional calibrated gate policy contract. The gate
+decision report is planned as read-only policy over existing repo exposure, PR
+guidance, SARIF policy, labels, receipts, recommendation calibration, and
+optional imported mutation calibration artifacts.
+
+The planned evaluator is:
+
+```text
+ripr gate evaluate \
+  --root . \
+  --repo-exposure target/ripr/reports/repo-exposure.json \
+  --pr-guidance target/ripr/review/comments.json \
+  --sarif-policy target/ripr/reports/sarif-policy.json \
+  --labels-json target/ci/labels.json \
+  --agent-verify target/ripr/workflow/agent-verify.json \
+  --agent-receipt target/ripr/reports/agent-receipt.json \
+  --recommendation-calibration target/ripr/reports/recommendation-calibration.json \
+  --mutation-calibration target/ripr/reports/mutation-calibration.json \
+  --mode visible-only \
+  --out target/ripr/reports/gate-decision.json \
+  --out-md target/ripr/reports/gate-decision.md
+```
+
+The report writes:
+
+```text
+target/ripr/reports/gate-decision.json
+target/ripr/reports/gate-decision.md
+```
+
+This is an optional policy surface. Generated workflows remain advisory and
+non-blocking by default. The evaluator must not post comments, edit source
+files, generate tests, run mutation testing, upload SARIF, mutate GitHub state,
+or hide acknowledged decisions.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "acknowledged",
+  "mode": "acknowledgeable",
+  "root": ".",
+  "inputs": {
+    "repo_exposure": "target/ripr/reports/repo-exposure.json",
+    "pr_guidance": "target/ripr/review/comments.json",
+    "sarif_policy": "target/ripr/reports/sarif-policy.json",
+    "labels_json": "target/ci/labels.json",
+    "labels": ["ripr-waive"],
+    "agent_verify": "target/ripr/workflow/agent-verify.json",
+    "agent_receipt": "target/ripr/reports/agent-receipt.json",
+    "recommendation_calibration": "target/ripr/reports/recommendation-calibration.json",
+    "mutation_calibration": null,
+    "baseline": null
+  },
+  "policy": {
+    "mode": "acknowledgeable",
+    "threshold": "high_confidence_new_gap",
+    "acknowledgement_labels": ["ripr-waive"],
+    "default_workflow_posture": "advisory"
+  },
+  "summary": {
+    "evaluated": 2,
+    "blocking": 0,
+    "acknowledged": 1,
+    "advisory": 1,
+    "suppressed": 0,
+    "not_applicable": 0,
+    "unknown_confidence": 0
+  },
+  "decisions": [
+    {
+      "id": "ripr-gate-67fc764ba37d77bd",
+      "source": "pr_guidance",
+      "decision": "acknowledged",
+      "gate_reason": "policy-eligible gap acknowledged by ripr-waive",
+      "seam_id": "67fc764ba37d77bd",
+      "source_id": "ripr-review-67fc764ba37d77bd",
+      "static_class": "weakly_gripped",
+      "severity": "warning",
+      "placement": {
+        "path": "src/pricing.rs",
+        "line": 88
+      },
+      "policy": {
+        "mode": "acknowledgeable",
+        "threshold": "high_confidence_new_gap",
+        "acknowledgement_label": "ripr-waive",
+        "baseline_identity": null
+      },
+      "evidence": {
+        "missing_discriminator": "amount == discount_threshold",
+        "assertion_shape": "Assert the returned discount behavior directly.",
+        "candidate_values": ["amount == discount_threshold"],
+        "recommended_test": "tests/pricing.rs::discounted_total_boundary",
+        "nearby_test_changed": false,
+        "suppressed": false,
+        "configured_off": false,
+        "recommendation_calibration": {
+          "available": true,
+          "outcome": "useful",
+          "confidence_effect": "supports_static_gap"
+        },
+        "mutation_calibration": {
+          "available": false,
+          "confidence_effect": "not_used"
+        }
+      }
+    }
+  ],
+  "warnings": [],
+  "limits_note": "Optional policy over static RIPR evidence; advisory by default; runtime mutation calibration is used only when supplied."
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `status` - one of `pass`, `advisory`, `acknowledged`, `blocked`, or
+  `config_error`.
+- `mode` - one of `visible-only`, `acknowledgeable`, `baseline-check`, or
+  `calibrated-gate`.
+- `inputs` - normalized paths and labels used by the evaluator. Optional inputs
+  should appear as `null` or produce a warning when they are absent.
+- `policy.mode` - effective gate mode after config and CLI precedence.
+- `policy.threshold` - initially `high_confidence_new_gap`.
+- `policy.acknowledgement_labels` - configured labels that can turn a blocking
+  candidate into a visible acknowledged decision.
+- `policy.default_workflow_posture` - must remain `advisory` for generated
+  workflows unless a later explicit configuration changes it.
+- `summary.evaluated` - candidate count considered after parsing inputs.
+- `summary.blocking` - count of candidate decisions that make the gate fail.
+- `summary.acknowledged` - count of candidate decisions made non-failing by an
+  acknowledgement label.
+- `summary.advisory` - count of visible non-blocking decisions.
+- `summary.suppressed` - count of suppressed or configured-hidden candidates
+  preserved in the gate report.
+- `summary.not_applicable` - count of parsed records that are outside the
+  configured policy scope.
+- `summary.unknown_confidence` - count of candidates that could not satisfy
+  high-confidence requirements.
+- `decisions[].source` - source artifact family such as `pr_guidance`,
+  `repo_exposure`, `sarif_policy`, or `agent_receipt`.
+- `decisions[].decision` - one of `blocking`, `acknowledged`, `advisory`,
+  `suppressed`, or `not_applicable`.
+- `decisions[].gate_reason` - short policy explanation for human summaries.
+- `decisions[].static_class` - source static class copied without rewriting
+  seam-grip classes into finding classes.
+- `decisions[].severity` - configured severity from the source surface.
+- `decisions[].policy` - mode, threshold, acknowledgement, and baseline facts
+  that affected the candidate.
+- `decisions[].evidence` - static evidence and optional calibration confidence
+  effects used for the candidate.
+- `warnings[]` - missing optional inputs, unsupported labels, ambiguous
+  calibration, baseline limitations, or schema limitations.
+- `limits_note` - static/runtime and advisory-default boundary text.
+
+Markdown should fit in a job summary. It should name the top-level decision,
+mode, counts, blocking or acknowledged seams, repair action, and limits. It
+must not hide acknowledged decisions. If the evaluator returns a blocking exit
+code, the Markdown still needs enough evidence for the next agent or reviewer
+to resolve the state.
+
 ### Review Guidance Outcome Receipt
 
 Review guidance outcome receipts are optional repo-local inputs to the
