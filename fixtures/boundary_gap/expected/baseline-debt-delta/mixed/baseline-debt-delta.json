@@ -1,0 +1,185 @@
+{
+  "baseline": {
+    "entries": 3,
+    "invalid": 1,
+    "path": "fixtures/boundary_gap/expected/baseline-debt-delta/mixed/baseline.json",
+    "schema_version": "0.1",
+    "stale": 0,
+    "valid": 2
+  },
+  "delta": {
+    "acknowledged": 1,
+    "invalid_baseline_entry": 1,
+    "missing_current_input": 0,
+    "new_policy_eligible": 1,
+    "resolved": 1,
+    "stale_baseline_entry": 0,
+    "still_present": 1,
+    "suppressed": 1
+  },
+  "inputs": {
+    "agent_receipt": null,
+    "baseline": "fixtures/boundary_gap/expected/baseline-debt-delta/mixed/baseline.json",
+    "current_gate_decision": "fixtures/boundary_gap/expected/baseline-debt-delta/mixed/current-gate-decision.json",
+    "pr_guidance": null
+  },
+  "items": [
+    {
+      "bucket": "still_present",
+      "decision": "advisory",
+      "identity": {
+        "dedupe_key": null,
+        "fallback": "src/same.rs:1:weakly_gripped",
+        "id": "ripr-gate-same",
+        "matched_by": "seam_id",
+        "seam_id": "same",
+        "source_id": "ripr-review-same"
+      },
+      "line": 1,
+      "missing_discriminator": "same == 1",
+      "path": "src/same.rs",
+      "reason": "Reviewed baseline identity is still present in current gate-decision evidence.",
+      "repair": {
+        "action": "keep_visible_or_burn_down",
+        "verify_command": null
+      },
+      "static_class": "weakly_gripped",
+      "suggested_test": {
+        "assertion_shape": "assert_eq!(same(), 1)",
+        "recommended_test": "tests/same.rs::boundary"
+      }
+    },
+    {
+      "bucket": "resolved",
+      "decision": "advisory",
+      "identity": {
+        "dedupe_key": null,
+        "fallback": "src/gone.rs:2:weakly_gripped",
+        "id": "ripr-gate-gone",
+        "matched_by": null,
+        "seam_id": "gone",
+        "source_id": "ripr-review-gone"
+      },
+      "line": 2,
+      "missing_discriminator": "gone == 2",
+      "path": "src/gone.rs",
+      "reason": "Reviewed baseline identity is absent from current gate-decision evidence.",
+      "repair": {
+        "action": "remove_resolved_from_baseline_when_reviewed",
+        "verify_command": null
+      },
+      "static_class": "weakly_gripped",
+      "suggested_test": {
+        "assertion_shape": "assert_eq!(gone(), 2)",
+        "recommended_test": "tests/gone.rs::boundary"
+      }
+    },
+    {
+      "bucket": "new_policy_eligible",
+      "decision": "blocking",
+      "identity": {
+        "dedupe_key": null,
+        "fallback": "src/new.rs:4:weakly_gripped",
+        "id": "ripr-gate-new",
+        "matched_by": null,
+        "seam_id": "new",
+        "source_id": "ripr-review-new"
+      },
+      "line": 4,
+      "missing_discriminator": "new == 4",
+      "path": "src/new.rs",
+      "reason": "Current policy-eligible gap is not present in the reviewed baseline.",
+      "repair": {
+        "action": "add_focused_test_or_acknowledge",
+        "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json"
+      },
+      "static_class": "weakly_gripped",
+      "suggested_test": {
+        "assertion_shape": "assert_eq!(new(), 4)",
+        "recommended_test": "tests/new.rs::boundary"
+      }
+    },
+    {
+      "bucket": "acknowledged",
+      "decision": "acknowledged",
+      "identity": {
+        "dedupe_key": null,
+        "fallback": "src/ack.rs:5:weakly_gripped",
+        "id": "ripr-gate-ack",
+        "matched_by": null,
+        "seam_id": "ack",
+        "source_id": "ripr-review-ack"
+      },
+      "line": 5,
+      "missing_discriminator": "ack == 5",
+      "path": "src/ack.rs",
+      "reason": "policy-eligible gap acknowledged by ripr-waive",
+      "repair": {
+        "action": "review_acknowledgement",
+        "verify_command": null
+      },
+      "static_class": "weakly_gripped",
+      "suggested_test": {
+        "assertion_shape": "assert_eq!(ack(), 5)",
+        "recommended_test": "tests/ack.rs::boundary"
+      }
+    },
+    {
+      "bucket": "suppressed",
+      "decision": "suppressed",
+      "identity": {
+        "dedupe_key": null,
+        "fallback": "src/suppressed.rs:6:weakly_gripped",
+        "id": "ripr-gate-suppressed",
+        "matched_by": null,
+        "seam_id": "suppressed",
+        "source_id": "ripr-review-suppressed"
+      },
+      "line": 6,
+      "missing_discriminator": "suppressed == 6",
+      "path": "src/suppressed.rs",
+      "reason": "configured-hidden or suppressed candidate preserved as `severity_off`",
+      "repair": {
+        "action": "review_suppression_or_config",
+        "verify_command": null
+      },
+      "static_class": "weakly_gripped",
+      "suggested_test": {
+        "assertion_shape": null,
+        "recommended_test": null
+      }
+    },
+    {
+      "bucket": "invalid_baseline_entry",
+      "decision": "advisory",
+      "identity": {
+        "dedupe_key": null,
+        "fallback": null,
+        "id": null,
+        "matched_by": null,
+        "seam_id": null,
+        "source_id": null
+      },
+      "line": null,
+      "missing_discriminator": null,
+      "path": null,
+      "reason": "Baseline entry is missing seam_id, source_id, id, dedupe_key, and fallback identity.",
+      "repair": {
+        "action": "repair_or_remove_baseline_entry",
+        "verify_command": null
+      },
+      "static_class": null,
+      "suggested_test": {
+        "assertion_shape": null,
+        "recommended_test": null
+      }
+    }
+  ],
+  "kind": "baseline_debt_delta",
+  "limits_note": "Advisory baseline debt movement over static RIPR gate evidence; pass/fail remains owned by ripr gate evaluate.",
+  "root": ".",
+  "schema_version": "0.1",
+  "status": "advisory",
+  "tool": "ripr",
+  "warnings": []
+}

@@ -1,6 +1,6 @@
 # RIPR-SPEC-0016: Baseline Debt Delta
 
-Status: proposed
+Status: accepted
 
 ## Problem
 
@@ -46,7 +46,7 @@ The contract is:
 
 ## Behavior
 
-The future command surface is:
+The command surface is:
 
 ```text
 ripr baseline diff \
@@ -197,8 +197,8 @@ The JSON report uses schema version `0.1`:
   "inputs": {
     "baseline": ".ripr/gate-baseline.json",
     "current_gate_decision": "target/ripr/reports/gate-decision.json",
-    "pr_guidance": "target/ripr/review/comments.json",
-    "agent_receipt": "target/ripr/reports/agent-receipt.json"
+    "pr_guidance": null,
+    "agent_receipt": null
   },
   "baseline": {
     "path": ".ripr/gate-baseline.json",
@@ -225,7 +225,8 @@ The JSON report uses schema version `0.1`:
         "seam_id": "67fc764ba37d77bd",
         "source_id": "ripr-review-67fc764ba37d77bd",
         "id": "ripr-gate-67fc764ba37d77bd",
-        "dedupe_key": "ripr:67fc764ba37d77bd:src/pricing.rs:88",
+        "dedupe_key": null,
+        "fallback": "src/pricing.rs:88:weakly_gripped",
         "matched_by": "seam_id"
       },
       "path": "src/pricing.rs",
@@ -235,7 +236,7 @@ The JSON report uses schema version `0.1`:
       "reason": "Current policy-eligible gap is not present in the reviewed baseline.",
       "missing_discriminator": "amount == discount_threshold",
       "suggested_test": {
-        "recommended_file": "tests/pricing.rs",
+        "recommended_test": "tests/pricing.rs::applies_discount_above_threshold",
         "assertion_shape": "Assert returned discount behavior directly."
       },
       "repair": {
@@ -350,7 +351,7 @@ Given a missing current gate-decision input, the report produces
 
 ## Test Mapping
 
-Initial implementation should add tests for:
+The implementation adds tests for:
 
 - CLI parsing for `ripr baseline diff`;
 - baseline JSON parsing and invalid-entry reporting;
@@ -367,8 +368,7 @@ The expected implementation surface is:
 
 - `crates/ripr/src/cli/command.rs`, `commands.rs`, `execute.rs`, and `help.rs`
   for the `ripr baseline` command group;
-- a future `crates/ripr/src/output/baseline_delta.rs` or equivalent output
-  module for JSON/Markdown rendering;
+- `crates/ripr/src/output/baseline_delta.rs` for JSON/Markdown rendering;
 - `docs/OUTPUT_SCHEMA.md` for the public contract;
 - fixtures under `fixtures/boundary_gap/expected/baseline-debt-delta/`;
 - generated CI wiring only after the command and fixture contract are pinned.
@@ -389,7 +389,7 @@ The report should feed these adoption metrics:
 
 ## Non-Goals
 
-- No baseline diff or update implementation in the baseline-create PR.
+- No baseline update implementation in the baseline-diff PR.
 - No analyzer behavior changes.
 - No gate policy semantics changes.
 - No generated workflow behavior changes.

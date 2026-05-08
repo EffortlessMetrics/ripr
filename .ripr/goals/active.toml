@@ -57,7 +57,7 @@ commands = [
 
 [[work_item]]
 id = "baseline/diff"
-status = "ready"
+status = "done"
 branch = "baseline-diff"
 stackable = false
 blocked_by = ["baseline/create"]
@@ -71,7 +71,7 @@ commands = [
 
 [[work_item]]
 id = "baseline/update-remove-resolved"
-status = "blocked"
+status = "ready"
 branch = "baseline-update-remove-resolved"
 stackable = false
 blocked_by = ["baseline/diff"]

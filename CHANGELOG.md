@@ -19,6 +19,11 @@ are scoped or reviewed.
   packet with seam identity, evidence path, missing discriminator, related
   test, suggested test, shared agent-loop commands, and static limits for
   editor or external-agent use.
+- Added `ripr baseline diff --baseline <gate-baseline.json> --current <gate-decision.json>`,
+  which writes advisory baseline-debt-delta JSON/Markdown showing
+  still-present, resolved, new policy-eligible, acknowledged, suppressed,
+  stale, invalid, and missing-input identities without making gate decisions or
+  rewriting baselines.
 - Added `ripr evidence-health` and `cargo xtask evidence-health`, which write
   advisory Lane 1 analyzer-health JSON/Markdown reports summarizing grip
   classes, stage states, missing discriminators, observed value contexts,

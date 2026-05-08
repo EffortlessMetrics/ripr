@@ -8,6 +8,7 @@ Usage:
   ripr review-comments --root . --base SHA --head SHA [--out target/ripr/review/comments.json]
   ripr gate evaluate --pr-guidance PATH [--mode visible-only] [--out target/ripr/reports/gate-decision.json]
   ripr baseline create --from target/ripr/reports/gate-decision.json [--out .ripr/gate-baseline.json] [--dry-run] [--force]
+  ripr baseline diff --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json [--out target/ripr/reports/baseline-debt-delta.json] [--out-md target/ripr/reports/baseline-debt-delta.md]
   ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
   ripr agent start --root . --seam-id ID [--out target/ripr/workflow]
   ripr agent brief --root . (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json
@@ -35,6 +36,7 @@ Quick start:
   ripr review-comments --root . --base origin/main --head HEAD --out target/ripr/review/comments.json
   ripr gate evaluate --pr-guidance target/ripr/review/comments.json --mode visible-only
   ripr baseline create --from target/ripr/reports/gate-decision.json --out .ripr/gate-baseline.json
+  ripr baseline diff --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json
   ripr calibrate cargo-mutants --mutants-json target/mutants/outcomes.json --repo-exposure-json target/ripr/pilot/after.repo-exposure.json
   ripr agent start --root . --seam-id f3c9e4d21a0b7c88
   ripr agent brief --root . --diff change.diff --json
@@ -167,13 +169,21 @@ tests, run mutation testing, upload SARIF, mutate GitHub state, or change
 generated workflow defaults.
 "#;
 
-const BASELINE_HELP: &str = r#"Usage: ripr baseline create --from PATH [--out PATH] [--dry-run] [--force]
+const BASELINE_HELP: &str = r#"Usage:
+  ripr baseline create --from PATH [--out PATH] [--dry-run] [--force]
+  ripr baseline diff --baseline PATH --current PATH [--out PATH] [--out-md PATH]
 
-Options:
+Create options:
   --from PATH    Gate-decision JSON from `ripr gate evaluate`.
   --out PATH     Baseline ledger path. Defaults to .ripr/gate-baseline.json.
   --dry-run      Print the baseline ledger JSON without writing.
   --force        Overwrite an existing baseline ledger.
+
+Diff options:
+  --baseline PATH    Reviewed baseline ledger. Defaults are supplied by callers.
+  --current PATH     Current gate-decision JSON from `ripr gate evaluate`.
+  --out PATH         JSON output path. Defaults to target/ripr/reports/baseline-debt-delta.json.
+  --out-md PATH      Markdown output path. Defaults to target/ripr/reports/baseline-debt-delta.md.
 
 The baseline create command writes a stable reviewed historical-debt ledger
 from existing gate-decision evidence. It includes advisory, acknowledged, and
@@ -181,6 +191,13 @@ blocking identities; skips suppressed, configured-off, not-applicable, and
 malformed decisions; and refuses to overwrite by default. It does not edit
 source, run analysis, run mutation testing, generate tests, change gate policy,
 or make CI blocking by default.
+
+The baseline diff command compares a reviewed baseline ledger with current
+gate-decision evidence and writes advisory JSON/Markdown debt movement. It
+reports still-present, resolved, new policy-eligible, acknowledged, suppressed,
+stale, invalid, and missing-input identities. It does not update baselines,
+edit source, run analysis, run mutation testing, generate tests, change gate
+policy, or make CI blocking by default.
 "#;
 
 const CALIBRATE_HELP: &str = r#"Usage: ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
@@ -475,6 +492,7 @@ mod tests {
         assert!(HELP.contains("ripr review-comments"));
         assert!(HELP.contains("ripr gate evaluate"));
         assert!(HELP.contains("ripr baseline create"));
+        assert!(HELP.contains("ripr baseline diff"));
         assert!(HELP.contains("ripr calibrate"));
         assert!(HELP.contains("ripr agent start"));
         assert!(HELP.contains("ripr agent brief"));
@@ -517,8 +535,11 @@ mod tests {
         assert!(GATE_HELP.starts_with("Usage: ripr gate evaluate"));
         assert!(GATE_HELP.contains("visible-only"));
         assert!(GATE_HELP.contains("ripr-waive"));
-        assert!(BASELINE_HELP.starts_with("Usage: ripr baseline create"));
+        assert!(BASELINE_HELP.starts_with("Usage:"));
+        assert!(BASELINE_HELP.contains("ripr baseline create"));
+        assert!(BASELINE_HELP.contains("ripr baseline diff"));
         assert!(BASELINE_HELP.contains(".ripr/gate-baseline.json"));
+        assert!(BASELINE_HELP.contains("baseline-debt-delta.json"));
         assert!(CALIBRATE_HELP.starts_with("Usage: ripr calibrate cargo-mutants"));
         assert!(CALIBRATE_HELP.contains("--mutants-json PATH"));
         assert!(AGENT_HELP.starts_with("Usage: ripr agent"));

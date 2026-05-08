@@ -999,18 +999,32 @@ tests = [
   "crates/ripr/src/output/baseline.rs::tests::baseline_create_uses_fallback_identity_when_direct_ids_are_missing",
   "crates/ripr/src/output/baseline.rs::tests::baseline_create_reports_malformed_entries_without_stopping",
   "crates/ripr/src/output/baseline.rs::tests::baseline_create_rejects_unsupported_schema_version",
+  "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_reports_all_primary_buckets",
+  "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_matches_by_fallback_and_warns",
+  "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_marks_ambiguous_fallback_as_stale",
+  "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_reports_missing_current_input",
+  "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_matches_mixed_fixture_contract",
   "crates/ripr/src/output/gate.rs::tests::gate_baseline_check_reads_baseline_ledger_entries",
   "crates/ripr/src/cli/commands.rs::tests::baseline_create_parses_option_surface",
+  "crates/ripr/src/cli/commands.rs::tests::baseline_diff_parses_option_surface",
+  "crates/ripr/src/cli/commands.rs::tests::baseline_diff_requires_inputs_and_rejects_unknown_args",
   "crates/ripr/src/cli/commands.rs::tests::baseline_create_writes_baseline_without_overwriting_by_default",
   "crates/ripr/tests/cli_smoke.rs::baseline_create_writes_reviewed_ledger_and_refuses_overwrite",
+  "crates/ripr/tests/cli_smoke.rs::baseline_diff_writes_debt_delta_json_and_markdown",
 ]
-fixtures = []
+fixtures = [
+  "fixtures/boundary_gap/expected/baseline-debt-delta/mixed/baseline.json",
+  "fixtures/boundary_gap/expected/baseline-debt-delta/mixed/current-gate-decision.json",
+  "fixtures/boundary_gap/expected/baseline-debt-delta/mixed/baseline-debt-delta.json",
+  "fixtures/boundary_gap/expected/baseline-debt-delta/mixed/baseline-debt-delta.md",
+]
 code = [
   "crates/ripr/src/cli/command.rs",
   "crates/ripr/src/cli/commands.rs",
   "crates/ripr/src/cli/execute.rs",
   "crates/ripr/src/cli/help.rs",
   "crates/ripr/src/output/baseline.rs",
+  "crates/ripr/src/output/baseline_delta.rs",
   "crates/ripr/src/output/gate.rs",
   "crates/ripr/src/output/mod.rs",
 ]

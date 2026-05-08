@@ -85,6 +85,14 @@ struct BaselineCreateOptions {
     force: bool,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct BaselineDiffOptions {
+    baseline: PathBuf,
+    current: PathBuf,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum OutcomeFormat {
     Markdown,
@@ -1697,15 +1705,19 @@ pub(super) fn baseline(args: &[String]) -> Result<(), String> {
         return Ok(());
     }
     let Some((subcommand, rest)) = args.split_first() else {
-        return Err("baseline requires subcommand `create`".to_string());
+        return Err("baseline requires subcommand `create` or `diff`".to_string());
     };
-    if subcommand != "create" {
-        return Err(format!(
-            "unknown baseline subcommand {subcommand:?}; expected `create`"
-        ));
+    match subcommand.as_str() {
+        "create" => baseline_create(rest),
+        "diff" => baseline_diff(rest),
+        _ => Err(format!(
+            "unknown baseline subcommand {subcommand:?}; expected `create` or `diff`"
+        )),
     }
+}
 
-    let options = parse_baseline_create_options(rest)?;
+fn baseline_create(args: &[String]) -> Result<(), String> {
+    let options = parse_baseline_create_options(args)?;
     let gate_decision_json = std::fs::read_to_string(&options.from).map_err(|err| {
         format!(
             "read baseline create source {} failed: {err}",
@@ -1735,6 +1747,34 @@ pub(super) fn baseline(args: &[String]) -> Result<(), String> {
     println!(
         "Entries: {}",
         output::baseline::baseline_entry_count(&report)
+    );
+    Ok(())
+}
+
+fn baseline_diff(args: &[String]) -> Result<(), String> {
+    let options = parse_baseline_diff_options(args)?;
+    let baseline_path = output::baseline_delta::display_path(&options.baseline);
+    let current_path = output::baseline_delta::display_path(&options.current);
+    let baseline_json = read_optional_text_for_report("baseline", &options.baseline);
+    let current_json = read_optional_text_for_report("current gate-decision", &options.current);
+    let report = output::baseline_delta::build_baseline_delta_report(
+        output::baseline_delta::BaselineDeltaInput {
+            root: ".".to_string(),
+            baseline_path,
+            current_gate_decision_path: current_path,
+            baseline_json,
+            current_gate_decision_json: current_json,
+        },
+    );
+    let rendered_json = output::baseline_delta::render_baseline_delta_json(&report)?;
+    let rendered_md = output::baseline_delta::render_baseline_delta_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    println!(
+        "Items: {}",
+        output::baseline_delta::baseline_delta_item_count(&report)
     );
     Ok(())
 }
@@ -2250,12 +2290,59 @@ fn parse_baseline_create_options(args: &[String]) -> Result<BaselineCreateOption
     })
 }
 
+fn parse_baseline_diff_options(args: &[String]) -> Result<BaselineDiffOptions, String> {
+    let mut baseline = None;
+    let mut current = None;
+    let mut out = PathBuf::from(output::baseline_delta::DEFAULT_BASELINE_DELTA_OUT);
+    let mut out_md = PathBuf::from(output::baseline_delta::DEFAULT_BASELINE_DELTA_MD_OUT);
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--baseline" => {
+                i += 1;
+                baseline = Some(non_empty_path_arg(args, i, "--baseline", "baseline diff")?);
+            }
+            "--current" => {
+                i += 1;
+                current = Some(non_empty_path_arg(args, i, "--current", "baseline diff")?);
+            }
+            "--out" => {
+                i += 1;
+                out = non_empty_path_arg(args, i, "--out", "baseline diff")?;
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = non_empty_path_arg(args, i, "--out-md", "baseline diff")?;
+            }
+            other => return Err(format!("unknown baseline diff argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    Ok(BaselineDiffOptions {
+        baseline: baseline.ok_or_else(|| "baseline diff requires --baseline <path>".to_string())?,
+        current: current.ok_or_else(|| "baseline diff requires --current <path>".to_string())?,
+        out,
+        out_md,
+    })
+}
+
 fn baseline_created_at() -> Result<String, String> {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|err| format!("system clock before unix epoch: {err}"))?
         .as_millis();
     Ok(format!("unix_ms:{millis}"))
+}
+
+fn read_optional_text_for_report(label: &str, path: &Path) -> Result<String, String> {
+    std::fs::read_to_string(path).map_err(|err| {
+        format!(
+            "read {label} {} failed: {err}",
+            output::baseline_delta::display_path(path)
+        )
+    })
 }
 
 fn non_empty_path_arg(
@@ -3191,11 +3278,11 @@ mod tests {
     fn baseline_create_requires_source_and_rejects_unknown_args() {
         assert_eq!(
             baseline(&args(&[])),
-            Err("baseline requires subcommand `create`".to_string())
+            Err("baseline requires subcommand `create` or `diff`".to_string())
         );
         assert_eq!(
-            baseline(&args(&["diff"])),
-            Err("unknown baseline subcommand \"diff\"; expected `create`".to_string())
+            baseline(&args(&["unknown"])),
+            Err("unknown baseline subcommand \"unknown\"; expected `create` or `diff`".to_string())
         );
         assert_eq!(
             parse_baseline_create_options(&args(&[])),
@@ -3208,6 +3295,48 @@ mod tests {
         assert_eq!(
             parse_baseline_create_options(&args(&["--bad"])),
             Err("unknown baseline create argument \"--bad\"".to_string())
+        );
+    }
+
+    #[test]
+    fn baseline_diff_parses_option_surface() {
+        assert_eq!(
+            parse_baseline_diff_options(&args(&[
+                "--baseline",
+                ".ripr/gate-baseline.json",
+                "--current",
+                "target/ripr/reports/gate-decision.json",
+                "--out",
+                "target/ripr/reports/baseline-debt-delta.json",
+                "--out-md",
+                "target/ripr/reports/baseline-debt-delta.md",
+            ])),
+            Ok(BaselineDiffOptions {
+                baseline: PathBuf::from(".ripr/gate-baseline.json"),
+                current: PathBuf::from("target/ripr/reports/gate-decision.json"),
+                out: PathBuf::from("target/ripr/reports/baseline-debt-delta.json"),
+                out_md: PathBuf::from("target/ripr/reports/baseline-debt-delta.md"),
+            })
+        );
+    }
+
+    #[test]
+    fn baseline_diff_requires_inputs_and_rejects_unknown_args() {
+        assert_eq!(
+            parse_baseline_diff_options(&args(&[])),
+            Err("baseline diff requires --baseline <path>".to_string())
+        );
+        assert_eq!(
+            parse_baseline_diff_options(&args(&["--baseline", ".ripr/gate-baseline.json"])),
+            Err("baseline diff requires --current <path>".to_string())
+        );
+        assert_eq!(
+            parse_baseline_diff_options(&args(&["--baseline", ""])),
+            Err("baseline diff --baseline requires a non-empty value".to_string())
+        );
+        assert_eq!(
+            parse_baseline_diff_options(&args(&["--bad"])),
+            Err("unknown baseline diff argument \"--bad\"".to_string())
         );
     }
 

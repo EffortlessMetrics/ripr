@@ -1,0 +1,81 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "gate_baseline",
+  "created_at": "unix_ms:1778279000000",
+  "source_report": "target/ripr/reports/gate-decision.json",
+  "mode": "baseline-check",
+  "reviewed": false,
+  "summary": {
+    "entries": 3,
+    "included": 2,
+    "skipped": {
+      "suppressed": 0,
+      "not_applicable": 0,
+      "malformed": 1,
+      "other": 0
+    }
+  },
+  "entries": [
+    {
+      "identity": {
+        "seam_id": "same",
+        "source_id": "ripr-review-same",
+        "id": "ripr-gate-same",
+        "dedupe_key": null,
+        "fallback": "src/same.rs:1:weakly_gripped"
+      },
+      "path": "src/same.rs",
+      "line": 1,
+      "static_class": "weakly_gripped",
+      "decision": "advisory",
+      "severity": "warning",
+      "source": "pr_guidance",
+      "gate_reason": "visible-only mode records evidence without blocking",
+      "evidence": {
+        "missing_discriminator": "same == 1",
+        "assertion_shape": "assert_eq!(same(), 1)",
+        "recommended_test": "tests/same.rs::boundary"
+      },
+      "review": {
+        "reviewed": false,
+        "reason": "initial adoption baseline"
+      }
+    },
+    {
+      "identity": {
+        "seam_id": "gone",
+        "source_id": "ripr-review-gone",
+        "id": "ripr-gate-gone",
+        "dedupe_key": null,
+        "fallback": "src/gone.rs:2:weakly_gripped"
+      },
+      "path": "src/gone.rs",
+      "line": 2,
+      "static_class": "weakly_gripped",
+      "decision": "advisory",
+      "severity": "warning",
+      "source": "pr_guidance",
+      "gate_reason": "visible-only mode records evidence without blocking",
+      "evidence": {
+        "missing_discriminator": "gone == 2",
+        "assertion_shape": "assert_eq!(gone(), 2)",
+        "recommended_test": "tests/gone.rs::boundary"
+      },
+      "review": {
+        "reviewed": false,
+        "reason": "initial adoption baseline"
+      }
+    },
+    {
+      "identity": {},
+      "decision": "advisory",
+      "review": {
+        "reviewed": false,
+        "reason": "initial adoption baseline"
+      }
+    }
+  ],
+  "warnings": [],
+  "limits_note": "Reviewed baseline debt ledger over static RIPR gate evidence; baselines are not suppressions and do not change gate policy by themselves."
+}
