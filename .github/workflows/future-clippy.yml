@@ -1,0 +1,70 @@
+name: Future Clippy (advisory)
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    types: [labeled, opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'synchronize' }}
+
+# Advisory future-Clippy scan.
+#
+# Runs the Rust 1.95 toolchain over the workspace with the planned 1.94 /
+# 1.95 lints turned on. Every finding is **advisory** — the lane never
+# fails. The point is to track readiness for the planned flips recorded
+# in `policy/clippy-lints.toml`.
+#
+# Triggers:
+#   - push to main: tracks main-line readiness over time.
+#   - pull_request with the `clippy-future` or `full-ci` label: lets
+#     authors opt into the scan when they're touching code likely to
+#     surface findings.
+#   - workflow_dispatch: manual run.
+#
+# This lane intentionally does **not** activate any 1.95 lint name in the
+# main MSRV-1.93 Cargo.toml — the active table at MSRV 1.93 must continue
+# to compile under MSRV 1.93. The future-Clippy lane only runs Clippy
+# warnings; it does not modify the workspace lint configuration.
+
+jobs:
+  future-clippy:
+    name: future-clippy
+    if: |
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'clippy-future') ||
+      contains(github.event.pull_request.labels.*.name, 'full-ci')
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@1.95
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ripr-future-clippy-1.95-${{ runner.os }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Run future Clippy (advisory)
+        run: mkdir -p target && cargo +1.95 clippy --workspace --all-targets -- -W clippy::same_length_and_capacity -W clippy::manual_ilog2 -W clippy::needless_type_cast -W clippy::decimal_bitwise_operands -W clippy::disallowed_fields -W clippy::manual_checked_ops -W clippy::manual_take -W clippy::manual_pop_if -W clippy::duration_suboptimal_units -W clippy::unnecessary_trailing_comma 2>&1 | tee target/future-clippy.log || true
+
+      - name: Write step summary
+        run: printf "## Future Clippy (advisory)\n\nFindings (if any) are warnings against the 1.94 / 1.95 lint trajectory recorded in policy/clippy-lints.toml. The lane never fails.\n" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload future-clippy log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ripr-future-clippy
+          path: target/future-clippy.log
+          if-no-files-found: ignore
