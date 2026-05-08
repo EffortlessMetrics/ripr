@@ -38,6 +38,10 @@ are scoped or reviewed.
   future `ripr review-comments` JSON contract, changed-line placement rules,
   check-annotation default, opt-in inline review comments, and bounded LLM
   handoff guidance.
+- Added a generated GitHub workflow advisory summary that combines the pilot
+  recommendation, agent review packet, artifact paths, SARIF and badge status,
+  known limits, and future PR guidance annotation counts before artifact
+  download.
 - Added an LLM work-loop fixture matrix that pins happy, unchanged, regressed,
   missing-artifact, stale-artifact, configured-off, path-with-spaces, and
   Windows-separator review states.
@@ -65,6 +69,9 @@ are scoped or reviewed.
   Command IDs and payloads remain stable.
 - Advanced Campaign 12 to `ci/pr-summary-surface` after pinning editor action
   discoverability.
+- Advanced Campaign 12 to `ci/generated-workflow-smoke-fixture` after wiring
+  the generated workflow advisory summary and future PR guidance annotation
+  hook.
 - Aligned public package and extension front-door metadata around Rust
   test-oracle gaps, targeted tests, and static RIPR evidence instead of
   internal mutation-exposure wording.

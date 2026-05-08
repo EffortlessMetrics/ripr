@@ -618,10 +618,11 @@ evidence = [
   "docs/specs/RIPR-SPEC-0012-pr-test-guidance.md pins the advisory PR annotation and optional review-comment contract",
   "docs/OUTPUT_SCHEMA.md PR Test Guidance section defines the planned review-comments JSON shape",
   "docs/CI.md PR Test Guidance Annotations section documents the default job-summary and check-annotation posture",
-  "docs/IMPLEMENTATION_CAMPAIGNS.md Campaign 12 marks spec/pr-test-guidance-annotations done before generated workflow posting work"
+  "docs/IMPLEMENTATION_CAMPAIGNS.md Campaign 12 marks spec/pr-test-guidance-annotations done before generated workflow posting work",
+  "ripr init --ci github generates an advisory workflow that writes a RIPR advisory summary and emits non-blocking changed-line check annotations when target/ripr/review/comments.json exists"
 ]
 fixtures = []
-next = "ci/pr-summary-surface"
+next = "ci/generated-workflow-smoke-fixture"
 metric = "pr_test_guidance_comments, pr_test_guidance_summary_only, pr_test_guidance_suppressed, pr_test_guidance_opt_in_review_comments"
 
 [[capability]]
@@ -791,7 +792,7 @@ evidence = [
   "docs/OUTPUT_SCHEMA.md SARIF contract section",
   "docs/CI.md SARIF and Policy Contract section",
   "crates/ripr/src/output/sarif.rs renders diff-scoped Finding SARIF and repo-scoped seam SARIF",
-  "ripr init --ci github generates an advisory GitHub workflow that runs ripr pilot, uploads pilot/report/agent artifacts, writes repo badge JSON and Shields artifacts, optionally renders an operator cockpit when the repo-local xtask exists, and makes SARIF rendering/upload optional through RIPR_UPLOAD_SARIF",
+  "ripr init --ci github generates an advisory GitHub workflow that runs ripr pilot, uploads pilot/report/agent/review artifacts, writes a RIPR advisory summary, writes repo badge JSON and Shields artifacts, optionally renders an operator cockpit when the repo-local xtask exists, and makes SARIF rendering/upload optional through RIPR_UPLOAD_SARIF",
   "crates/ripr/src/cli/commands.rs init CI generation tests cover advisory workflow content, report upload, optional SARIF, and overwrite guards",
   "crates/ripr/tests/cli_smoke.rs init --ci github smoke tests cover dry-run, generated workflow, and existing workflow protection",
   "SARIF renderer tests cover stable rule IDs, configured severity, off severity omission, suppression metadata, valid JSON, and static language",

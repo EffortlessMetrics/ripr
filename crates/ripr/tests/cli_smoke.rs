@@ -824,6 +824,9 @@ fn init_ci_github_dry_run_prints_config_and_workflow_without_writing() -> Result
     assert!(stdout.contains("actions/upload-artifact@v7"));
     assert!(stdout.contains("target/ripr/agent"));
     assert!(stdout.contains("target/ripr/workflow"));
+    assert!(stdout.contains("target/ripr/review"));
+    assert!(stdout.contains("RIPR advisory summary"));
+    assert!(stdout.contains("target/ripr/review/comments.json"));
     assert!(stdout.contains("ripr agent start"));
     assert!(stdout.contains("ripr agent verify"));
     assert!(stdout.contains("ripr agent receipt"));
@@ -902,6 +905,14 @@ fn init_ci_github_writes_non_blocking_report_workflow() -> Result<(), String> {
     assert!(workflow.contains("target/ripr/agent/agent-verify.json"));
     assert!(workflow.contains("target/ripr/agent/agent-receipt.json"));
     assert!(workflow.contains("target/ripr/reports/targeted-test-outcome.json"));
+    assert!(workflow.contains("target/ripr/review"));
+    assert!(workflow.contains("target/ripr/review/comments.json"));
+    assert!(workflow.contains("Emit RIPR PR guidance annotations"));
+    assert!(workflow.contains("Add RIPR advisory summary"));
+    assert!(workflow.contains("## RIPR advisory summary"));
+    assert!(workflow.contains("### SARIF and badge status"));
+    assert!(workflow.contains("### PR guidance annotations"));
+    assert!(workflow.contains("### Known limits"));
     assert!(workflow.contains("cargo xtask operator-cockpit"));
     assert!(workflow.contains("continue-on-error: true"));
     assert!(workflow.contains("actions/upload-artifact@v7"));

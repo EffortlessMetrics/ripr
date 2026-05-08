@@ -62,7 +62,8 @@ Generated config:
 
 Generated GitHub workflow:
   - installs ripr and writes a pilot packet plus repo report artifacts
-  - uploads report artifacts for review and adds the pilot summary to the job
+  - uploads report artifacts and writes a reviewer-oriented advisory summary
+  - surfaces future PR test guidance reports as non-blocking check annotations
   - renders and uploads diff/repo SARIF only while RIPR_UPLOAD_SARIF is true
   - uses continue-on-error for advisory RIPR work and upload steps
   - does not enable baseline failure policy by default

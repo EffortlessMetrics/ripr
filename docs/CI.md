@@ -524,10 +524,15 @@ For a CI-first user, the useful output is the artifact packet:
   receipt JSON for the top seam when one is available;
 - `target/ripr/reports/` - targeted-test outcome, SARIF files when enabled,
   repo badge JSON, `agent-receipt.json`, and any repo-local cockpit output.
+- `target/ripr/review/` - planned PR test guidance JSON and Markdown when
+  the future pure renderer writes them.
 
-The workflow also appends `pilot-summary.md` and `agent-review-summary.md` to
-the job summary, so a reviewer can see the top recommendation and current
-static receipt state before downloading artifacts.
+The workflow also writes a `RIPR advisory summary` step summary. It includes
+the top recommendation, the agent review packet when present, artifact links,
+SARIF and badge status, known limits, and PR guidance annotation counts when
+`target/ripr/review/comments.json` exists. If that future PR guidance report is
+present, the workflow emits changed-line check annotations by default without
+posting inline review comments.
 
 See [LLM operator guide](LLM_OPERATOR_GUIDE.md) for the same status, workflow
 packet, verify, receipt, and reviewer-summary loop outside CI.
@@ -740,15 +745,102 @@ jobs:
             --root . \
             > target/ripr/workflow/agent-review-summary.md
 
-      - name: Add RIPR pilot summary
-        if: always() && hashFiles('target/ripr/pilot/pilot-summary.md') != ''
+      - name: Emit RIPR PR guidance annotations
+        if: always() && hashFiles('target/ripr/review/comments.json') != ''
         continue-on-error: true
-        run: cat target/ripr/pilot/pilot-summary.md >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          escape_github_message() {
+            local value="$1"
+            value="${value//'%'/'%25'}"
+            value="${value//$'\r'/'%0D'}"
+            value="${value//$'\n'/'%0A'}"
+            printf '%s' "$value"
+          }
 
-      - name: Add RIPR agent review summary
-        if: always() && hashFiles('target/ripr/workflow/agent-review-summary.md') != ''
+          escape_github_property() {
+            local value="$1"
+            value="${value//'%'/'%25'}"
+            value="${value//$'\r'/'%0D'}"
+            value="${value//$'\n'/'%0A'}"
+            value="${value//':'/'%3A'}"
+            value="${value//','/'%2C'}"
+            printf '%s' "$value"
+          }
+
+          jq -r '.comments[]? | select(.placement.path and .placement.line) | [.placement.path, (.placement.line | tostring), (.reason // "RIPR targeted test guidance"), (.llm_guidance.command // "")] | @tsv' target/ripr/review/comments.json \
+            | while IFS="$(printf '\t')" read -r path line reason command; do
+                message="$reason"
+                if [ -n "$command" ] && [ "$command" != "null" ]; then
+                  message="$message Command: $command"
+                fi
+                annotation_path="$(escape_github_property "$path")"
+                annotation_line="$(escape_github_property "$line")"
+                annotation_title="$(escape_github_property "RIPR targeted test guidance")"
+                message="$(escape_github_message "$message")"
+                echo "::warning file=$annotation_path,line=$annotation_line,title=$annotation_title::$message"
+              done
+
+      - name: Add RIPR advisory summary
+        if: always()
         continue-on-error: true
-        run: cat target/ripr/workflow/agent-review-summary.md >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          {
+            echo '## RIPR advisory summary'
+            echo
+            echo "RIPR is advisory static evidence. It does not edit source, generate tests, or run mutation testing."
+            echo
+            echo '### Top recommendation'
+            if [ -f target/ripr/pilot/pilot-summary.md ]; then
+              cat target/ripr/pilot/pilot-summary.md
+            else
+              echo "Pilot summary was not generated. Inspect the uploaded artifact packet and job logs."
+            fi
+            echo
+            echo '### Agent review packet'
+            if [ -f target/ripr/workflow/agent-review-summary.md ]; then
+              cat target/ripr/workflow/agent-review-summary.md
+            else
+              echo 'Agent review summary was not generated. Run `ripr agent status --root .` locally or inspect uploaded workflow artifacts.'
+            fi
+            echo
+            echo '### Artifact packet'
+            echo '- Pilot reports: `target/ripr/pilot/`'
+            echo '- Agent workflow: `target/ripr/workflow/`'
+            echo '- Agent compatibility copies: `target/ripr/agent/`'
+            echo '- Repo reports, badges, SARIF, and receipts: `target/ripr/reports/`'
+            if [ -d target/ripr/review ]; then
+              echo '- PR test guidance report: `target/ripr/review/`'
+            else
+              echo "- PR test guidance report: not generated yet"
+            fi
+            echo
+            echo '### SARIF and badge status'
+            if [ "${RIPR_UPLOAD_SARIF:-}" = "true" ]; then
+              if [ -f target/ripr/reports/ripr-findings.sarif ]; then echo "- Diff SARIF: generated"; else echo "- Diff SARIF: missing or skipped"; fi
+              if [ -f target/ripr/reports/ripr-seams.sarif ]; then echo "- Repo seam SARIF: generated"; else echo "- Repo seam SARIF: missing or skipped"; fi
+            else
+              echo '- SARIF upload: disabled by `RIPR_UPLOAD_SARIF`'
+            fi
+            if [ -f target/ripr/reports/repo-ripr-badge.json ]; then echo "- Badge JSON: generated"; else echo "- Badge JSON: missing or skipped"; fi
+            if [ -f target/ripr/reports/repo-ripr-badge-shields.json ]; then echo "- Badge Shields JSON: generated"; else echo "- Badge Shields JSON: missing or skipped"; fi
+            echo
+            echo '### PR guidance annotations'
+            if [ -f target/ripr/review/comments.json ]; then
+              comments="$(jq -r '.summary.comments // 0' target/ripr/review/comments.json 2>/dev/null || echo 0)"
+              summary_only="$(jq -r '.summary.summary_only // 0' target/ripr/review/comments.json 2>/dev/null || echo 0)"
+              suppressed="$(jq -r '.summary.suppressed // 0' target/ripr/review/comments.json 2>/dev/null || echo 0)"
+              echo "- Changed-line annotations emitted: $comments"
+              echo "- Summary-only recommendations: $summary_only"
+              echo "- Suppressed recommendations: $suppressed"
+            else
+              echo 'No PR test guidance report was generated. When `ripr review-comments` writes `target/ripr/review/comments.json`, this workflow emits changed-line check annotations by default.'
+            fi
+            echo
+            echo '### Known limits'
+            echo "- Advisory static evidence only; review the named seam and write one focused test."
+            echo "- No automatic source edits or generated tests."
+            echo "- No runtime mutation execution is performed by this workflow."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload RIPR report artifacts
         if: always()
@@ -761,6 +853,7 @@ jobs:
             target/ripr/agent
             target/ripr/workflow
             target/ripr/reports
+            target/ripr/review
           if-no-files-found: ignore
           retention-days: 14
 
@@ -789,9 +882,9 @@ repo-local automation today; a public package-level policy command is a future
 adoption surface.
 
 The generated workflow always uploads `target/ripr/pilot`,
-`target/ripr/workflow`, `target/ripr/agent`, and `target/ripr/reports` as a
-`ripr-reports` artifact when files exist. The repo badge files in that artifact
-are:
+`target/ripr/workflow`, `target/ripr/agent`, `target/ripr/reports`, and
+`target/ripr/review` as a `ripr-reports` artifact when files exist. The repo
+badge files in that artifact are:
 
 - `target/ripr/reports/repo-ripr-badge.json`, the seam-native native badge
   payload;
