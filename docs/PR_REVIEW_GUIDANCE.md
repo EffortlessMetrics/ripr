@@ -140,3 +140,7 @@ not in PR guidance claims.
 Use [Recommendation calibration](RECOMMENDATION_CALIBRATION.md) when you need to
 measure whether PR guidance was useful, correctly placed, properly suppressed,
 and associated with better static evidence after one focused test.
+
+Use [Calibrated gate policy](CALIBRATED_GATE_POLICY.md) only after the advisory
+guidance and calibration loop are understood. Gates consume the same evidence;
+they do not replace PR guidance or make it blocking by default.
