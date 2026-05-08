@@ -25,3 +25,4 @@ observable behavior.
 | [RIPR-SPEC-0012](RIPR-SPEC-0012-pr-test-guidance.md) | proposed | PR test guidance annotations |
 | [RIPR-SPEC-0013](RIPR-SPEC-0013-recommendation-calibration-report.md) | proposed | Recommendation calibration report |
 | [RIPR-SPEC-0014](RIPR-SPEC-0014-calibrated-gate-policy.md) | proposed | Calibrated gate policy |
+| [RIPR-SPEC-0015](RIPR-SPEC-0015-evidence-health-baseline.md) | proposed | Evidence health baseline |

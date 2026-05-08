@@ -526,7 +526,7 @@ status = "alpha"
 spec = "RIPR-SPEC-0005"
 evidence = [
   "crates/ripr/src/output/repo_exposure.rs",
-  "schema 0.2 with all 11 SeamGripClass metric buckets",
+  "schema 0.3 with all 11 SeamGripClass metric buckets and related-test relation reason/confidence",
   "cargo xtask repo-exposure-report",
   "cargo xtask repo-exposure-latency-report writes bounded latency diagnostics without changing repo-exposure output schemas",
   "repo file-fact cache reuses parser/file facts under target/ripr/cache/repo-file-facts/0.1 without caching rendered outputs",
@@ -538,6 +538,24 @@ evidence = [
 fixtures = []
 next = "campaign/hot-sidecar-latency-closeout"
 metric = "per-class metric buckets stable across runs"
+
+[[capability]]
+id = "evidence_health_report"
+name = "Evidence health report"
+status = "alpha"
+spec = "RIPR-SPEC-0015"
+evidence = [
+  "crates/ripr/src/output/evidence_health.rs",
+  "RIPR-SPEC-0015 evidence health baseline contract",
+  "ripr evidence-health writes advisory JSON and Markdown",
+  "cargo xtask evidence-health writes target/ripr/reports/evidence-health.json and evidence-health.md",
+  "counts grip classes, stage states, missing discriminators, observed value contexts, related-test confidence, oracle strength, oracle kind, opaque oracles, and top static limitations",
+  "optional imported mutation-calibration JSON contributes calibration availability counts without changing static classification",
+  "docs/OUTPUT_SCHEMA.md Evidence Health Report section"
+]
+fixtures = []
+next = "analysis/evidence-movement-v1"
+metric = "Lane 1 evidence gaps summarized without analyzer behavior changes"
 
 [[capability]]
 id = "agent_seam_packets"

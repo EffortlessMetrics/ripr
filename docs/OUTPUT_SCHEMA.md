@@ -701,7 +701,7 @@ lands at `target/ripr/reports/repo-exposure.json` when generated via
 
 Field contract:
 
-- `schema_version` — currently `"0.2"`. Bumping requires updating this
+- `schema_version` — currently `"0.3"`. Bumping requires updating this
   section, the renderer (`crates/ripr/src/output/repo_exposure.rs`), and
   any downstream consumers in lockstep. `0.1` → `0.2`: per-related-test
   entries gained `relation_reason` and `relation_confidence` fields
@@ -754,6 +754,169 @@ confirmation via `cargo-mutants` is a separate calibration step
 (`calibration/cargo-mutants-v1`). Static-language constraints from
 RIPR-SPEC-0005 still apply: the report never uses runtime-mutation
 outcome words.
+
+## Evidence Health Report
+
+`ripr evidence-health --root .` summarizes Lane 1 analyzer evidence health
+without changing analyzer behavior. The same report lands at
+`target/ripr/reports/evidence-health.json` and
+`target/ripr/reports/evidence-health.md` when generated through
+`cargo xtask evidence-health`.
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "scope": "repo",
+  "status": "advisory",
+  "inputs": {
+    "root": ".",
+    "mutation_calibration": "target/ripr/reports/mutation-calibration.json"
+  },
+  "metrics": {
+    "seams_total": 9355,
+    "headline_eligible_total": 6114,
+    "weakly_gripped_total": 1756,
+    "ungripped_total": 0,
+    "grip_class_counts": {
+      "strongly_gripped": 3241,
+      "weakly_gripped": 1756,
+      "ungripped": 0,
+      "reachable_unrevealed": 2,
+      "activation_unknown": 4356,
+      "propagation_unknown": 0,
+      "observation_unknown": 0,
+      "discrimination_unknown": 0,
+      "opaque": 0,
+      "intentional": 0,
+      "suppressed": 0
+    },
+    "stage_state_counts": {
+      "reach": {
+        "yes": 4999,
+        "weak": 0,
+        "no": 0,
+        "unknown": 4356,
+        "opaque": 0,
+        "not_applicable": 0
+      }
+    },
+    "unknown_stage_counts": {
+      "reach": 4356,
+      "activate": 4356,
+      "propagate": 0,
+      "observe": 0,
+      "discriminate": 0
+    },
+    "unknown_stop_reason_counts": {
+      "activation_unknown": 4356,
+      "propagation_unknown": 0,
+      "observation_unknown": 0,
+      "discrimination_unknown": 0,
+      "opaque": 0
+    },
+    "missing_discriminators_total": 1756,
+    "seams_with_missing_discriminators": 1756,
+    "missing_discriminator_counts": {
+      "amount == threshold": 4
+    },
+    "observed_values_total": 740,
+    "seams_with_observed_values": 310,
+    "observed_value_context_counts": {
+      "function_argument": 600,
+      "assertion_argument": 40,
+      "builder_method": 30,
+      "table_row": 50,
+      "enum_variant": 12,
+      "return_value": 8,
+      "unknown": 0
+    },
+    "related_tests_total": 2200,
+    "seams_with_related_tests": 1720,
+    "related_test_confidence_counts": {
+      "high": 910,
+      "medium": 1060,
+      "low": 220,
+      "opaque": 10
+    },
+    "oracle_strength_counts": {
+      "strong": 800,
+      "medium": 410,
+      "weak": 600,
+      "smoke": 300,
+      "none": 80,
+      "unknown": 10
+    },
+    "oracle_kind_counts": {
+      "exact_value": 700,
+      "exact_error_variant": 60,
+      "whole_object_equality": 40,
+      "snapshot": 120,
+      "relational_check": 180,
+      "broad_error": 250,
+      "smoke_only": 300,
+      "mock_expectation": 40,
+      "unknown": 10
+    },
+    "opaque_oracle_count": 10
+  },
+  "calibration": {
+    "status": "loaded",
+    "source": "target/ripr/reports/mutation-calibration.json",
+    "matched_total": 18,
+    "static_without_runtime_total": 120,
+    "runtime_without_static_total": 2,
+    "ambiguous_file_line_total": 1,
+    "unmatched_runtime_total": 2
+  },
+  "top_static_limitations": [
+    {
+      "kind": "missing_discriminator",
+      "count": 1756,
+      "summary": "At least one discriminator remains missing for the seam.",
+      "example_seam_id": "f3c9e4d21a0b7c88"
+    }
+  ]
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `scope` - always `"repo"`.
+- `status` - always `"advisory"`. This report is an analyzer-health view, not
+  a gate decision.
+- `inputs.root` - the analyzed workspace root as supplied to the command.
+- `inputs.mutation_calibration` - optional imported calibration report path;
+  `null` when not provided.
+- `metrics.grip_class_counts` - all `SeamGripClass` buckets, including zero
+  counts.
+- `metrics.stage_state_counts` - per-stage `StageState` buckets for `reach`,
+  `activate`, `propagate`, `observe`, and `discriminate`.
+- `metrics.unknown_stage_counts` - unknown or opaque counts by evidence stage.
+- `metrics.unknown_stop_reason_counts` - counts of unknown/opaque
+  `SeamGripClass` buckets. This is intentionally repo-seam terminology; diff
+  finding stop-reason strings are not reinterpreted here.
+- `metrics.missing_discriminator_counts` - aggregate counts keyed by the
+  missing discriminator value text.
+- `metrics.observed_value_context_counts` - aggregate counts keyed by
+  `ValueContext::as_str()`.
+- `metrics.related_test_confidence_counts` - `high`, `medium`, `low`, and
+  `opaque` related-test confidence buckets.
+- `metrics.oracle_strength_counts` and `metrics.oracle_kind_counts` - aggregate
+  oracle evidence observed on related tests.
+- `calibration` - availability counts from an already-produced mutation
+  calibration report when one is supplied. The evidence-health command does not
+  run mutation testing, infer thresholds, or change static classification.
+- `top_static_limitations` - the largest static evidence gaps by count, capped
+  to 10 rows and carrying one example seam ID for inspection.
+
+The Markdown sibling prints the same summary, grip-class, top missing
+discriminator, oracle-strength, related-test confidence, calibration, and top
+limitation sections for humans. High-cardinality missing-discriminator details
+remain complete in JSON and are capped in Markdown. Static-language constraints
+still apply: runtime-specific labels stay confined to the optional calibration
+availability section.
 
 ## Repo Exposure Latency Report
 
