@@ -71,8 +71,6 @@ The report intentionally uses counts and buckets, not an opaque score.
 | --- | --- |
 | `recommendations_evaluated` | Visible recommendations plus suppressed candidates included in the calibration corpus. |
 | `top_recommendation_outcome` | Outcome label for the first visible recommendation. |
-| `top_1_useful` | `1` when the first visible recommendation is `useful`; otherwise `0`. |
-| `top_3_useful` | Count of useful recommendations among the first three visible recommendations. |
 | `false_annotations` | Visible recommendations labeled `noisy`, `wrong_line`, `already_covered`, or `wrong_target`. |
 | `summary_only_correct` | Recommendations that correctly avoided an unsafe changed-line annotation. |
 | `suppressed_correctly` | Hidden candidates that match an expected suppression, cap, configured-off severity, generated/migration exclusion, or nearby-test change. |
@@ -82,9 +80,9 @@ The report intentionally uses counts and buckets, not an opaque score.
 | `static_regressed` | Recommendations associated with worse static grip and requiring review before policy use. |
 | `unknown` | Recommendations without enough local evidence to classify. |
 
-Use the top-1 and top-3 counts to judge ranking quality. Use false annotation,
-summary-only, suppression, and target-file counts to decide where the
-recommendation placement rules need hardening.
+Use `top_recommendation_outcome` to judge the first ranked recommendation. Use
+false annotation, summary-only, suppression, and target-file counts to decide
+where the recommendation placement rules need hardening.
 
 ## Outcome Receipts
 
