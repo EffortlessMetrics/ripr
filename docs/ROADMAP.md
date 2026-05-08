@@ -97,10 +97,11 @@ reviewer-oriented advisory summary before artifact download. The generated
 workflow smoke fixture pins the CI first screen, artifact packet, optional
 SARIF gates, badge output, and future PR guidance annotation hook. Campaign 12
 closed after the first-hour docs routed users by VS Code, CI, CLI, and
-agent/reviewer path. Campaign 13 is active as PR Review Guidance: the next
-control-plane gap is the read-only `ripr review-comments` producer for the
-already-specified `target/ripr/review/comments.json` report that generated CI
-can summarize and project as non-blocking changed-line check annotations.
+agent/reviewer path. Campaign 13 is active as PR Review Guidance:
+`ripr review-comments` now writes the already-specified
+`target/ripr/review/comments.json` report, and the next control-plane gap is
+running that producer inside generated CI before the existing non-blocking
+summary and changed-line check-annotation consumers.
 
 ## Strategic Sequence
 

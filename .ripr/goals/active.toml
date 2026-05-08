@@ -41,7 +41,7 @@ commands = [
 
 [[work_item]]
 id = "review/pr-guidance-renderer"
-status = "ready"
+status = "done"
 branch = "review-pr-guidance-renderer"
 stackable = false
 requires_human_merge = true
@@ -58,7 +58,7 @@ commands = [
 
 [[work_item]]
 id = "ci/run-pr-guidance-report"
-status = "blocked"
+status = "ready"
 branch = "ci-run-pr-guidance-report"
 stackable = false
 requires_human_merge = true
@@ -78,7 +78,7 @@ status = "blocked"
 branch = "fixtures-pr-guidance-cases"
 stackable = false
 requires_human_merge = true
-blocked_by = ["review/pr-guidance-renderer"]
+blocked_by = ["ci/run-pr-guidance-report"]
 acceptance = "Pin PR guidance fixtures for exact changed seam line, owner-function changed line, same-file changed line, summary-only fallback, cap suppression, configured suppression, and nearby changed-test skip"
 commands = [
   "cargo xtask fixtures",

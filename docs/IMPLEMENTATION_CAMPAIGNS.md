@@ -1487,10 +1487,11 @@ Status: active
 
 Campaigns 10 through 12 made the editor, CLI, agent loop, cockpit, generated
 CI artifacts, and first-hour docs converge on the same static evidence loop.
-The remaining visible gap is pull-request review projection: RIPR-SPEC-0012
-defines `ripr review-comments`, and generated CI already has a future consumer
-hook for `target/ripr/review/comments.json`, but the read-only report producer
-does not exist yet.
+The remaining visible gap is pull-request review projection. RIPR-SPEC-0012
+defines `ripr review-comments`, the read-only report producer now exists, and
+generated CI already has a consumer hook for `target/ripr/review/comments.json`;
+the next gap is running that producer inside generated workflows before the
+existing summary and annotation consumer steps.
 
 Objective:
 
@@ -1532,9 +1533,9 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `campaign/pr-review-guidance-audit` | done | Audited the long-term static-evidence control-plane objective against current artifacts. The editor/CLI/CI artifact loop is real, but PR review convergence is incomplete because `ripr review-comments` is specified and consumed only as a future report. |
-| `review/pr-guidance-renderer` | ready | Add read-only `ripr review-comments --root . --base <sha> --head <sha> --out target/ripr/review/comments.json` plus Markdown output, joining existing static evidence to produce bounded PR guidance without posting to GitHub or changing analyzer behavior. |
-| `ci/run-pr-guidance-report` | blocked | Update generated GitHub workflows to run `ripr review-comments` before the existing advisory summary and check-annotation consumer steps, preserving non-blocking defaults. |
+| `campaign/pr-review-guidance-audit` | done | Audited the long-term static-evidence control-plane objective against current artifacts. The editor/CLI/CI artifact loop is real, but PR review convergence was incomplete because `ripr review-comments` was specified and consumed only as a future report. |
+| `review/pr-guidance-renderer` | done | Added read-only `ripr review-comments --root . --base <sha> --head <sha> --out target/ripr/review/comments.json` plus Markdown output, joining existing static evidence to produce bounded PR guidance without posting to GitHub or changing analyzer behavior. |
+| `ci/run-pr-guidance-report` | ready | Update generated GitHub workflows to run `ripr review-comments` before the existing advisory summary and check-annotation consumer steps, preserving non-blocking defaults. |
 | `fixtures/pr-guidance-cases` | blocked | Pin PR guidance fixtures for exact changed seam line, owner-function changed line, same-file changed line, summary-only fallback, cap suppression, configured suppression, and nearby changed-test skip. |
 | `docs/pr-review-guidance` | blocked | Document PR guidance as a bounded advisory projection of existing RIPR evidence, including commands, CI behavior, opt-in review-comment boundary, and no automatic edits or runtime mutation claims. |
 | `campaign/pr-review-guidance-closeout` | blocked | Close Campaign 13 only after PR review guidance is produced, consumed by generated CI, fixture-pinned, documented, and still advisory/non-blocking by default. |
@@ -1545,7 +1546,7 @@ Dependencies:
 - Campaign 11 shared command templates remain the source for agent brief and
   verify command strings used by review guidance.
 - Campaign 12 generated workflow annotation steps remain consumers until this
-  campaign adds the producer.
+  campaign runs the producer in generated CI.
 
 Commands:
 

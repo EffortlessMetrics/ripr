@@ -35,9 +35,13 @@ are scoped or reviewed.
 - Opened Campaign 12, First-Hour UX, with `spec/pr-test-guidance-annotations`
   as the first ready contract item before editor or CI behavior changes.
 - Added RIPR-SPEC-0012 for advisory PR test guidance annotations, defining the
-  future `ripr review-comments` JSON contract, changed-line placement rules,
+  `ripr review-comments` JSON contract, changed-line placement rules,
   check-annotation default, opt-in inline review comments, and bounded LLM
   handoff guidance.
+- Added `ripr review-comments --root . --base <sha> --head <sha> --out target/ripr/review/comments.json`
+  to write bounded advisory PR guidance JSON plus Markdown without posting to
+  GitHub, generating tests, editing source, running mutation testing, or making
+  CI blocking.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and future PR guidance annotation counts before artifact
@@ -63,10 +67,9 @@ are scoped or reviewed.
 
 ### Changed
 
-- Opened Campaign 13, PR Review Guidance, after auditing the long-term
-  control-plane objective against current artifacts; `review/pr-guidance-renderer`
-  is now the ready item for adding the read-only `ripr review-comments`
-  producer.
+- Advanced Campaign 13, PR Review Guidance, after adding the read-only
+  `ripr review-comments` producer; `ci/run-pr-guidance-report` is now the ready
+  item for running that producer inside generated workflows.
 - Pinned RIPR-SPEC-0012 as the PR test guidance annotation contract and
   advanced Campaign 12 to `vscode/first-run-status` as the next ready UX item.
 - Advanced Campaign 12 to `vscode/action-discoverability` after pinning the

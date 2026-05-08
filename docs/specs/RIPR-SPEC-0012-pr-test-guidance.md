@@ -14,10 +14,11 @@ This spec defines that projection. RIPR decides which changed-code seams have
 weak static test evidence. Humans and LLM agents receive a bounded brief that
 explains why a focused test is useful and how to verify the result.
 
-This is the Campaign 12 design contract for implementation planning, not an
-implementation receipt. The `review-comments` renderer, generated workflow
-projection, and optional comment publisher remain future work and must preserve
-the boundaries below.
+This started as the Campaign 12 design contract for implementation planning.
+Campaign 13 now uses it as the implementation contract: the pure
+`review-comments` renderer exists, while generated workflow projection,
+fixture expansion, documentation, and optional comment publishing remain future
+work and must preserve the boundaries below.
 
 ## Product Contract
 
@@ -42,11 +43,10 @@ comments only by explicit opt-in, and no CI failure policy by default.
 
 ## Behavior
 
-`ripr review-comments` is planned as a read-only report command. It should join
-the pull-request diff, repo exposure, agent seam packets, agent brief fields,
-related-test evidence, changed production files, changed test files, configured
-severity, and suppression policy. It should then write review-ready JSON and
-Markdown without posting to GitHub.
+`ripr review-comments` is a read-only report command. It joins the pull-request
+diff, repo exposure, agent brief fields, related-test evidence, changed
+production files, changed test files, configured severity, and suppression
+policy. It writes review-ready JSON and Markdown without posting to GitHub.
 
 Generated CI should publish that report through the least intrusive useful
 surfaces first: job summary and check annotations by default, optional inline PR
@@ -140,7 +140,7 @@ is noisier than a summary-only recommendation.
 
 ## JSON Shape
 
-The future renderer writes:
+The renderer writes:
 
 ```text
 target/ripr/review/comments.json
@@ -154,6 +154,14 @@ The JSON report uses schema version `0.1`:
   "schema_version": "0.1",
   "tool": "ripr",
   "status": "advisory",
+  "root": ".",
+  "base": "origin/main",
+  "head": "HEAD",
+  "mode": "draft",
+  "limits": {
+    "max_inline_comments": 3,
+    "max_summary_items": 10
+  },
   "summary": {
     "comments": 2,
     "summary_only": 1,
@@ -164,7 +172,7 @@ The JSON report uses schema version `0.1`:
     {
       "id": "ripr-review-67fc764ba37d77bd",
       "seam_id": "67fc764ba37d77bd",
-      "dedupe_key": "ripr:67fc764ba37d77bd:src/pricing.rs:88:8d3c2b1a",
+      "dedupe_key": "ripr:67fc764ba37d77bd:src/pricing.rs:88",
       "placement": {
         "path": "src/pricing.rs",
         "line": 88,
@@ -180,17 +188,22 @@ The JSON report uses schema version `0.1`:
         "intent": "Add an equality-boundary test.",
         "candidate_values": ["amount == discount_threshold"],
         "assertion_shape": "Assert the returned discount behavior directly.",
+        "assertion_kind": "exact_value",
         "recommended_file": "tests/pricing.rs",
+        "recommended_name": "discounted_total_boundary",
         "near_test": "applies_discount_above_threshold"
       },
       "llm_guidance": {
         "prompt": "Write one focused Rust test for the missing equality boundary. Place it near tests/pricing.rs::applies_discount_above_threshold. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
-        "command": "ripr agent brief --root . --seam-id 67fc764ba37d77bd --json",
+        "command": "ripr agent brief --root . --seam-id 67fc764ba37d77bd --json > target/ripr/workflow/agent-brief.json",
         "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
       }
     }
   ],
-  "summary_only": []
+  "summary_only": [],
+  "suppressed": [],
+  "warnings": [],
+  "limits_note": "Advisory static evidence only; no automatic edits, generated tests, runtime mutation execution, or CI blocking."
 }
 ```
 
@@ -199,6 +212,10 @@ The JSON report uses schema version `0.1`:
 - `schema_version` - currently `"0.1"`.
 - `status` - always `"advisory"`; this report is review guidance, not a CI
   policy.
+- `root`, `base`, `head`, and `mode` - the workspace root, compared revisions,
+  and RIPR analysis mode used to render the report.
+- `limits.max_inline_comments` - default cap for changed-line annotations.
+- `limits.max_summary_items` - default cap for total recommendations.
 - `summary.comments` - count of line-placeable comments.
 - `summary.summary_only` - count of recommendations without a safe changed-line
   placement.
@@ -207,8 +224,7 @@ The JSON report uses schema version `0.1`:
 - `summary.unchanged_tests` - `true` when the pull request did not change a
   nearby test for the selected recommendations.
 - `comments[].id` - stable report-local ID.
-- `comments[].dedupe_key` - stable key based on seam ID, path, line, and a
-  changed-expression hash when available.
+- `comments[].dedupe_key` - stable key based on seam ID, path, and seam line.
 - `comments[].placement` - GitHub-compatible changed-line placement.
 - `comments[].placement.mode` - `"exact_seam_line"`,
   `"owner_function_changed_line"`, or `"same_file_changed_line"`.
@@ -222,6 +238,10 @@ The JSON report uses schema version `0.1`:
   request for free-form diff review.
 - `summary_only[]` - same item shape without a `placement` object when the seam
   cannot be safely attached to a changed line.
+- `suppressed[]` - bounded records for recommendations hidden by caps or nearby
+  test changes.
+- `warnings[]` - selection warnings from the agent brief selection path.
+- `limits_note` - static-evidence boundary text for downstream summaries.
 
 ## GitHub Projection
 
@@ -261,16 +281,16 @@ The prompt must not ask the LLM to freely choose important diff regions, rewrite
 production code, generate broad snapshots, run mutation testing, or claim
 runtime confirmation.
 
-## Future Implementation Mapping
+## Implementation Mapping
 
-The planned pure renderer is:
+The pure renderer is:
 
 ```text
 ripr review-comments --root . --base <sha> --head <sha> --out target/ripr/review/comments.json
 ```
 
-It should read existing evidence and write JSON plus Markdown. It must not post
-to GitHub by itself.
+It reads existing evidence and writes JSON plus Markdown. It must not post to
+GitHub by itself.
 
 The generated GitHub workflow can then:
 
@@ -280,9 +300,9 @@ The generated GitHub workflow can then:
 - optionally post or upsert inline PR review comments when
   `RIPR_PR_COMMENTS=true`.
 
-Campaign 11 workflow manifests should eventually provide the artifact paths and
-agent commands linked from comments, so this surface does not create another
-command-template source of truth.
+Campaign 11 workflow manifests and shared command templates provide the
+artifact paths and agent commands linked from comments, so this surface does
+not create another command-template source of truth.
 
 ## Required Evidence
 

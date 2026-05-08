@@ -1148,17 +1148,17 @@ Field contract:
 
 ## PR Test Guidance
 
-RIPR-SPEC-0012 defines the pinned planning contract for the planned
+RIPR-SPEC-0012 defines the pinned contract for the
 `ripr review-comments` report that projects existing seam evidence into
-advisory GitHub PR guidance:
+advisory pull-request guidance:
 
 ```text
 ripr review-comments --root . --base <sha> --head <sha> --out target/ripr/review/comments.json
 ```
 
-The command is planned as a pure renderer. It should not post to GitHub, run
-mutation testing, refresh LSP state, edit source files, or generate tests. CI
-can use the JSON to write a job summary, emit check annotations by default, and
+The command is a pure renderer. It does not post to GitHub, run mutation
+testing, refresh LSP state, edit source files, or generate tests. CI can use
+the JSON to write a job summary, emit check annotations by default, and
 optionally upsert inline PR review comments when explicitly enabled.
 
 JSON shape:
@@ -1168,6 +1168,14 @@ JSON shape:
   "schema_version": "0.1",
   "tool": "ripr",
   "status": "advisory",
+  "root": ".",
+  "base": "origin/main",
+  "head": "HEAD",
+  "mode": "draft",
+  "limits": {
+    "max_inline_comments": 3,
+    "max_summary_items": 10
+  },
   "summary": {
     "comments": 2,
     "summary_only": 1,
@@ -1178,7 +1186,7 @@ JSON shape:
     {
       "id": "ripr-review-67fc764ba37d77bd",
       "seam_id": "67fc764ba37d77bd",
-      "dedupe_key": "ripr:67fc764ba37d77bd:src/pricing.rs:88:8d3c2b1a",
+      "dedupe_key": "ripr:67fc764ba37d77bd:src/pricing.rs:88",
       "placement": {
         "path": "src/pricing.rs",
         "line": 88,
@@ -1194,17 +1202,22 @@ JSON shape:
         "intent": "Add an equality-boundary test.",
         "candidate_values": ["amount == discount_threshold"],
         "assertion_shape": "Assert the returned discount behavior directly.",
+        "assertion_kind": "exact_value",
         "recommended_file": "tests/pricing.rs",
+        "recommended_name": "discounted_total_boundary",
         "near_test": "applies_discount_above_threshold"
       },
       "llm_guidance": {
         "prompt": "Write one focused Rust test for the missing equality boundary. Place it near tests/pricing.rs::applies_discount_above_threshold. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
-        "command": "ripr agent brief --root . --seam-id 67fc764ba37d77bd --json",
+        "command": "ripr agent brief --root . --seam-id 67fc764ba37d77bd --json > target/ripr/workflow/agent-brief.json",
         "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
       }
     }
   ],
-  "summary_only": []
+  "summary_only": [],
+  "suppressed": [],
+  "warnings": [],
+  "limits_note": "Advisory static evidence only; no automatic edits, generated tests, runtime mutation execution, or CI blocking."
 }
 ```
 
@@ -1214,6 +1227,10 @@ Field contract:
 - `tool` - always `"ripr"`.
 - `status` - always `"advisory"`; this report is review guidance, not a CI
   policy.
+- `root`, `base`, `head`, and `mode` - the workspace root, compared revisions,
+  and RIPR analysis mode used to render the report.
+- `limits.max_inline_comments` - default cap for changed-line annotations.
+- `limits.max_summary_items` - default cap for total recommendations.
 - `summary.comments` - count of guidance items with safe changed-line
   placement.
 - `summary.summary_only` - count of recommendations without safe changed-line
@@ -1227,8 +1244,7 @@ Field contract:
 - `comments[].id` - stable report-local ID derived from the seam when possible.
 - `comments[].seam_id` - static seam identifier from the existing exposure or
   agent packet evidence.
-- `comments[].dedupe_key` - stable key based on seam ID, path, line, and a
-  changed-expression hash when available.
+- `comments[].dedupe_key` - stable key based on seam ID, path, and seam line.
 - `comments[].placement` - GitHub-compatible changed-line placement. Items
   without safe placement belong in `summary_only[]`.
 - `comments[].placement.mode` - `"exact_seam_line"`,
@@ -1249,6 +1265,10 @@ Field contract:
 - `summary_only[]` - same recommendation shape without `placement`. CI should
   show these in the Markdown/job summary but must not invent a changed-line
   annotation for them.
+- `suppressed[]` - bounded records for recommendations hidden by caps or
+  nearby test changes.
+- `warnings[]` - selection warnings from the agent brief selection path.
+- `limits_note` - static-evidence boundary text for downstream summaries.
 
 Default CI projection should cap inline review comments to three, write summary
 items to the job summary, and emit check annotations only for changed lines.
