@@ -116,6 +116,9 @@ The test suite:
   command handlers ignore malformed arguments without throwing
 - verifies LSP agent-loop command payloads stay workspace-relative across
   platform-shaped roots and fail closed for stale seam diagnostics
+- verifies the live real-server boundary-gap path publishes a seam diagnostic,
+  renders hover evidence, exposes seam actions, copies seam packet and verify
+  command payloads, and opens the best related test
 - verifies `openRelatedTest` opens URI/line targets and ignores malformed
   arguments without throwing
 - verifies `restartServer` is callable even when server resolution fails

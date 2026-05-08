@@ -36,7 +36,7 @@ hints, semantic tokens, policy invention, or generated workflow changes.
 | Hover | `crates/ripr/src/lsp/hover.rs` renders from `ClassifiedSeam` through the latest analysis state, including grip class, RIPR stage path, missing discriminator, related tests, suggested test shape, handoff commands, verify and receipt commands, static limits, and next step. | Keep the structure pinned while later work tightens actions, context packets, protocol proof, VS Code smoke, and staleness. |
 | Actions | `crates/ripr/src/lsp/actions.rs` and `crates/ripr/src/lsp/backend.rs` expose seam-aware actions for inspecting packets, targeted-test briefs, suggested assertions, related tests, agent-loop commands, verify, receipt, and refresh; targeted-test brief, suggested assertion, and related-test actions are conditional on supporting evidence; stale seam diagnostics fail closed to refresh-only; `fixtures/boundary_gap/expected/lsp-code-actions.json` pins the action payload. | Add the canonical evidence-context packet command and extend protocol/VS Code proof around the action path. |
 | Context collection | Existing `ripr.collectContext` returns an agent seam packet for a known `seam_id`; `ripr.collectEvidenceContext` returns a bounded editor handoff packet with seam identity, evidence path, related test, suggested test, shared command templates, and static limits; VS Code asks LSP before CLI fallback for the existing packet path. | Extend protocol/VS Code proof around the canonical packet command. |
-| VS Code proof | Extension tests cover command registration, copy handlers, LSP-first seam context, related-test opening, malformed arguments, and restart behavior. | Add live extension smoke that uses the real server path to reach diagnostics, hover, actions, command payloads, related-test opening, restart, and bad-server-path status. |
+| VS Code proof | Extension tests cover command registration, copy handlers, LSP-first seam context, related-test opening, malformed arguments, restart behavior, and a live real-server boundary-gap path from seam diagnostic through hover, actions, copy packet/verify payloads, and related-test opening. | Tighten editor status and staleness proof, including bad-server-path status, without adding new editor features. |
 | Protocol proof | Framed LSP smoke covers server startup, saved-workspace refresh, a real seam diagnostic, hover, code actions, `ripr.collectEvidenceContext`, and shutdown. | Add live VS Code extension smoke for the installed editor path. |
 | Cockpit proof | `cargo xtask lsp-cockpit-report` reads committed LSP diagnostics/actions and VS Code command coverage; #569 made packet, brief, after-snapshot, verify, and receipt command actions explicit. | Keep cockpit as regression proof while behavior PRs pin the richer hover/action/status contracts. |
 | Status and staleness | Campaign 12 added first-run status and intent-titled actions; extension docs describe saved-workspace analysis status. | Make freshness and failure states explicit enough that stale seam evidence is never presented as current. |
@@ -95,10 +95,9 @@ Editor Evidence UX is intentionally conservative:
 
 Remaining queued behavior slices:
 
-1. `test/vscode-extension-smoke`
-2. `lsp/editor-status-and-staleness`
-3. `docs/editor-evidence-workflow`
-4. `campaign/editor-evidence-ux-closeout`
+1. `lsp/editor-status-and-staleness`
+2. `docs/editor-evidence-workflow`
+3. `campaign/editor-evidence-ux-closeout`
 
 Hover hardening has landed as the first behavior slice: hover is the primary
 human explanation surface and now makes the next useful test action legible
@@ -113,6 +112,10 @@ provider coupling, broad analysis reruns, or runtime mutation execution.
 Protocol proof has also been extended: the framed LSP smoke now drives the
 boundary-gap seam diagnostic through hover, code actions, and
 `ripr.collectEvidenceContext` before shutdown.
+VS Code proof now exercises the live extension path against the real server:
+the boundary-gap seam diagnostic drives hover, code actions, a copied seam
+packet, a copied verify command, and related-test opening. Bad-server-path and
+freshness states remain part of the explicit status/staleness slice.
 
 ## Validation
 

@@ -82,7 +82,7 @@ suite('Extension Smoke', () => {
       uri,
       diagnostic.range
     );
-    assertCommandAction(actions, 'Inspect seam: copy packet', 'ripr.copyContext');
+    const contextCommand = assertCommandAction(actions, 'Inspect seam: copy packet', 'ripr.copyContext');
     assertCommandAction(actions, 'Write targeted test: copy brief', 'ripr.copyTargetedTestBrief');
     assertCommandAction(
       actions,
@@ -102,7 +102,7 @@ suite('Extension Smoke', () => {
       'ripr.copyAfterSnapshotCommand',
       'ripr check'
     );
-    assertCommandAction(
+    const verifyCommand = assertCommandAction(
       actions,
       'Verify after test: copy verify command',
       'ripr.copyAgentVerifyCommand',
@@ -114,6 +114,34 @@ suite('Extension Smoke', () => {
       'ripr.copyAgentReceiptCommand',
       'ripr agent receipt'
     );
+    const relatedTestCommand = assertCommandAction(
+      actions,
+      'Write targeted test: open best related test',
+      'ripr.openRelatedTest'
+    );
+
+    await vscode.commands.executeCommand(contextCommand.command, ...(contextCommand.arguments ?? []));
+    const contextPacket = await vscode.env.clipboard.readText();
+    const parsedContextPacket = JSON.parse(contextPacket) as {
+      schema_version?: string;
+      packets?: Array<{ seam_id?: string }>;
+    };
+    assert.strictEqual(parsedContextPacket.schema_version, '0.3');
+    assert.strictEqual(parsedContextPacket.packets?.[0]?.seam_id, '67fc764ba37d77bd');
+
+    await vscode.commands.executeCommand(verifyCommand.command, ...(verifyCommand.arguments ?? []));
+    const verifyText = await vscode.env.clipboard.readText();
+    assert.ok(verifyText.includes('ripr agent verify --root .'), verifyText);
+    assert.ok(verifyText.includes('target/ripr/pilot/after.repo-exposure.json'), verifyText);
+
+    await vscode.commands.executeCommand(relatedTestCommand.command, ...(relatedTestCommand.arguments ?? []));
+    const activeEditor = vscode.window.activeTextEditor;
+    assert.ok(activeEditor, 'expected related test to open an editor');
+    assert.ok(
+      activeEditor.document.uri.fsPath.replace(/\\/g, '/').endsWith('/tests/pricing.rs'),
+      activeEditor.document.uri.fsPath
+    );
+    assert.strictEqual(activeEditor.selection.active.line, 3);
   });
 
   test('restartServer command is callable', async () => {
@@ -590,7 +618,7 @@ function assertCommandAction(
   title: string,
   command: string,
   commandText?: string
-): void {
+): vscode.Command {
   const action = actions.find((entry) => entry.title === title);
   assert.ok(action, `expected code action ${title}`);
   const actionCommand = commandForAction(action);
@@ -606,6 +634,8 @@ function assertCommandAction(
       `expected ${title} command payload to include ${commandText}, got ${payload}`
     );
   }
+  assert.ok(actionCommand, `expected ${title} to carry a command`);
+  return actionCommand;
 }
 
 function commandForAction(action: vscode.CodeAction | vscode.Command): vscode.Command | undefined {
