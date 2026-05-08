@@ -1416,7 +1416,9 @@ Field contract:
 - `recommendations[]` - calibrated records for visible PR guidance items.
 - `recommendations[].rank` - ranking from the source guidance.
 - `recommendations[].placement.quality` - `correct`, `wrong_line`,
-  `summary_only_correct`, `not_placeable`, or `unknown`.
+  `summary_only_expected`, `not_placeable`, or `unknown`.
+  `summary_only_expected` is a placement-quality value only; the matching
+  review-quality outcome remains `summary_only_correct`.
 - `recommendations[].suggested_test.target_quality` - `correct`,
   `wrong_target`, `not_applicable`, or `unknown`.
 - `recommendations[].calibration.outcome` - `useful`, `noisy`, `wrong_line`,

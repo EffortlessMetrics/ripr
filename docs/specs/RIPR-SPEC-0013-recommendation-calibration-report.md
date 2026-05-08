@@ -119,6 +119,8 @@ The report should expose counts for:
 - suppression correctness;
 - recommended test target correctness;
 - before/after static movement;
+- unchanged static movement;
+- unknown outcome count;
 - review-comment or annotation latency when timestamps are available.
 
 Definitions:
@@ -250,7 +252,10 @@ The JSON report uses schema version `0.1`:
 - `recommendations[]` - calibrated records for visible PR guidance items.
 - `recommendations[].rank` - ranking from the source guidance.
 - `recommendations[].placement.quality` - `correct`, `wrong_line`,
-  `summary_only_correct`, `not_placeable`, or `unknown`.
+  `summary_only_expected`, `not_placeable`, or `unknown`.
+  `summary_only_expected` is a placement-quality value only: it means the item
+  correctly stayed out of an unsafe line-level placement. The corresponding
+  review-quality outcome remains `summary_only_correct`.
 - `recommendations[].suggested_test.target_quality` - `correct`,
   `wrong_target`, `not_applicable`, or `unknown`.
 - `recommendations[].calibration.outcome` - one of the calibration outcome
@@ -392,3 +397,5 @@ The implementation should map this spec to:
 - `recommendation_calibration_suppressed_correctly`
 - `recommendation_calibration_target_file_correct`
 - `recommendation_calibration_static_improved`
+- `recommendation_calibration_static_unchanged`
+- `recommendation_calibration_unknown`
