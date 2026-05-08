@@ -67,15 +67,15 @@ git diff --check
 
 ## Next Work Item
 
-No ready work item remains in `.ripr/goals/active.toml` after this closeout.
-Baseline Ledger v1 is the recommended next adoption campaign: make reviewed
-baselines executable with create, diff, and shrink-only refresh commands before
-using those ledgers for broader RIPR Zero planning.
+No ready work item remains in `.ripr/goals/active.toml` from Campaign 16
+itself. Subsequent campaign activation should happen in a separate explicit
+campaign PR rather than by editing Campaign 16 in place.
 
-At closeout time, Editor Evidence UX remained queued as a separate Lane 3
-option, not active. Start it only with an explicit campaign activation PR or a
-clear parallel-lane decision; the first queued item is
-`campaign/editor-evidence-ux-audit`.
+RIPR Zero Evidence is the current active Lane 1 campaign after this closeout.
+RIPR Zero Adoption remains a future Lane 4 adoption campaign for baseline debt
+delta reports, CI projection, artifact layout, waiver/baseline visibility, and
+repair paths after evidence movement and identity work are durable enough to
+consume. Editor Evidence UX remains queued as a separate Lane 3 option.
 
 ## What Not To Do
 
@@ -86,5 +86,6 @@ clear parallel-lane decision; the first queued item is
 - Do not run cargo-mutants or any mutation engine from adoption workflows.
 - Do not generate tests or edit source from PR/CI adoption surfaces.
 - Do not move recommendation ranking, analyzer semantics, or LSP/editor UX into
-  Campaign 16 maintenance.
-- Do not activate Baseline Ledger v1, RIPR Zero, or Editor Evidence UX silently.
+  Lane 4 closeout work.
+- Do not open follow-up campaigns by editing Campaign 16 in place; start them
+  as explicit campaign PRs.

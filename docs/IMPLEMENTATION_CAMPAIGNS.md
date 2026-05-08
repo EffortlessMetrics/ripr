@@ -1957,9 +1957,10 @@ Next:
   accuracy after the downstream gate/adoption lanes and should make large raw
   RIPR scores decomposed, actionable, and verifiable before stricter policy or
   editor UX work consumes them.
-- Baseline Ledger v1 remains a recommended future adoption campaign after
-  evidence movement and canonical identity make baseline states durable. Open it
-  only through a separate explicit campaign PR.
+- RIPR Zero Adoption remains a recommended future adoption campaign after
+  evidence movement and canonical identity make baseline states durable enough
+  for baseline debt delta reports, create/diff/update commands, and generated CI
+  debt-delta artifacts. Open it only through a separate explicit campaign PR.
 - Editor Evidence UX remains queued as a separate Lane 3 candidate, not
   activated by this closeout.
 
@@ -2071,6 +2072,84 @@ Next:
   feedback loop by telling users and agents whether a focused test improved,
   regressed, resolved, or failed to move static seam evidence.
 
+## Future Campaign: RIPR Zero Adoption
+
+Campaign ID: `ripr-zero-adoption`
+
+Status: queued, not active. Campaign 17, RIPR Zero Evidence, is the active
+machine-readable campaign in `.ripr/goals/active.toml`. Open this adoption lane
+only through a separate explicit campaign PR after evidence movement and
+canonical identity are durable enough for baseline debt ledgers.
+
+Campaign 16 made optional gates adoptable. The next PR/CI adoption risk is
+movement: teams need to see whether a PR introduces new policy-eligible debt,
+resolves baseline debt, acknowledges an exception, or moves the repo toward
+RIPR 0 without auto-adopting new findings.
+
+Objective:
+
+```text
+Make RIPR 0 adoption concrete for PR/CI users: turn baselines into visible
+burn-down ledgers, create reviewed baseline checkpoints from gate decisions,
+diff current evidence against checked-in debt, support shrink-only refreshes,
+and keep every new policy mode explicit and advisory by default.
+```
+
+End state:
+
+- a baseline debt delta report compares current evidence against reviewed
+  baseline debt without auto-adopting new findings
+- `ripr baseline create` writes reviewed baseline ledgers from existing
+  gate-decision evidence without implying accepted-forever debt
+- `ripr baseline diff` reports still-present, resolved, new policy-eligible,
+  acknowledged, suppressed, stale, invalid, and missing-input identities
+- `ripr baseline update --remove-resolved` supports shrink-only baseline
+  refreshes and never auto-adopts new debt in CI
+- generated CI uploads baseline debt delta artifacts and summarizes debt
+  movement while the gate evaluator remains responsible for pass or fail
+- RIPR Zero adoption docs explain initial baseline creation, baseline-check
+  rollout, shrink-only refresh, new debt review, and waiver versus baseline
+  versus suppression boundaries
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `spec/baseline-debt-delta-report` | queued | Define the baseline debt delta report contract for comparing current PR/CI evidence to reviewed baseline debt without changing analyzer identity, auto-adopting new debt, or making CI blocking by default. |
+| `baseline/create` | blocked | Add `ripr baseline create` so users can produce stable reviewed `.ripr/gate-baseline.json` ledgers from existing gate-decision evidence without overwriting by default. |
+| `baseline/diff` | blocked | Add `ripr baseline diff` to write baseline-debt-delta JSON/Markdown with still-present, resolved, new, acknowledged, suppressed, stale, invalid, and missing-input buckets. |
+| `baseline/update-remove-resolved` | blocked | Add `ripr baseline update --remove-resolved` as a shrink-only refresh path that refuses to auto-adopt new debt by default. |
+| `ci/baseline-debt-delta-artifacts` | blocked | Upload baseline debt delta JSON/Markdown from generated CI and summarize debt movement without making this report the pass/fail authority. |
+| `docs/baseline-ledger-workflow` | blocked | Document initial adoption, reviewed baseline creation, baseline-check rollout, shrink-only refresh, new debt review, waiver versus baseline versus suppression, and the path toward RIPR 0. |
+| `campaign/ripr-zero-adoption-closeout` | blocked | Close only after baseline delta, baseline create/diff/shrink-only update, CI artifacts, and baseline ledger docs are in place while defaults stay advisory. |
+
+Dependencies:
+
+- Campaign 16 supplies the visible gate adoption workflow, waiver docs,
+  baseline docs, first-screen summaries, dogfood receipts, and blocking
+  readiness guide.
+- Campaign 15 supplies the explicit gate evaluator and decision schema. RIPR
+  Zero adoption consumes gate decisions; it does not redefine gate policy.
+- Lane 1 evidence movement and canonical identity should land before this lane
+  turns baselines into executable reviewed ledgers.
+- Existing baselines are adoption checkpoints for historical debt, not
+  suppressions and not permission to adopt new debt silently.
+
+Blocking conditions:
+
+- analyzer identity rewrites inside the adoption lane
+- default CI blocking
+- baseline auto-adoption of new PR findings
+- treating baselines as suppressions or accepted-forever debt
+- hiding acknowledged, suppressed, stale, invalid, or missing-input entries
+  from summaries
+- auto-refreshing or rewriting baselines in generated CI
+- runtime mutation vocabulary in static debt-delta summaries
+- running cargo-mutants or any mutation engine from adoption workflows
+- automatic source edits or generated tests
+- LSP/editor behavior changes in this campaign lane
+- new public crates
+
 ## Future Campaign: Editor Evidence UX
 
 Campaign ID: `editor-evidence-ux`
@@ -2137,7 +2216,7 @@ Dependencies:
 - Campaign 13 supplies PR guidance without making RIPR a free-form reviewer.
 - Campaign 16 is complete and Campaign 17 remains active unless this lane is
   explicitly promoted or run in parallel.
-- Baseline Ledger v1 remains a separate future adoption lane.
+- RIPR Zero Adoption remains a separate future adoption lane.
 
 Commands:
 

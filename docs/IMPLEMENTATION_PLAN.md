@@ -32,7 +32,7 @@ through multiple work items in a campaign, but each work item should follow the
 | Calibrated Gate Policy (15) | Define optional calibrated gates over existing PR-time evidence without changing advisory defaults or blurring static/runtime evidence. | Complete: spec, evaluator, fixtures, generated CI opt-in wiring, evidence-preserving CI behavior, calibrated gate guide, and `campaign/calibrated-gate-closeout`. |
 | Gate Adoption UX (16) | Make optional calibrated gate adoption safe and obvious for real teams without changing advisory defaults. | Complete: generated-CI examples, waiver workflows, baseline guidance, CI gate summary polish, dogfood receipts, blocking-readiness guidance, and `campaign/gate-adoption-ux-closeout`. |
 | RIPR Zero Evidence (17) | Turn large raw RIPR scores into canonical, actionable, verifiable burn-down evidence. | Active: evidence health is alpha; `analysis/evidence-movement-v1` is the first ready item before canonical gap identity, actionability filtering, RIPR Zero plans, packets, coverage/grip frontier, and calibration confidence. |
-| Baseline Ledger v1 (future) | Make reviewed baselines executable debt ledgers with create, diff, and shrink-only refresh commands. | Recommended next adoption campaign; open only with an explicit campaign manifest PR. |
+| RIPR Zero Adoption (future) | Turn baselines into burn-down ledgers with create, diff, and shrink-only refresh commands while keeping generated CI advisory by default. | Recommended future adoption campaign after evidence movement and canonical identity are durable; open only with an explicit campaign manifest PR. |
 | Editor Evidence UX (future) | Make the saved-workspace LSP path feel like an editor-native test-intent cockpit from diagnostic to hover, related test, context packet, one test, verify, and receipt. | Queued separately; start only after an explicit activation PR or explicit parallel-lane decision. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
@@ -110,7 +110,10 @@ RIPR gaps into canonical and actionable buckets, emits RIPR Zero plans and
 packets, measures coverage/grip frontier movement, applies imported runtime
 calibration as confidence context, and stabilizes an evidence record spine
 without changing default gates, PR comments, LSP UX, mutation execution, or
-public crate shape.
+public crate shape. RIPR Zero Adoption remains a future adoption campaign for
+baseline debt delta contracts, create/diff/update commands, generated CI
+debt-delta artifacts, and repair-link projection after Lane 1 evidence movement
+and identity work are durable enough to consume.
 
 ## PR 0: `planning-and-tracking-docs`
 

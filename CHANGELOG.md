@@ -137,6 +137,10 @@ are scoped or reviewed.
   as the first ready Lane 1 item before canonical gap identity, actionability
   filtering, RIPR Zero plans, external-agent packets, coverage/grip frontier
   reporting, and calibration confidence.
+- Queued RIPR Zero Adoption as a future adoption lane for baseline debt delta,
+  baseline create/diff, shrink-only update, and generated CI debt-delta
+  artifacts after evidence movement and identity work are durable enough to
+  consume.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and PR guidance annotation counts before artifact
