@@ -1324,6 +1324,115 @@ Field contract:
   later reviewer-summary/status enhancement now that receipt provenance records
   artifact SHA-256 values.
 
+## Agent Review Summary
+
+`ripr agent review-summary --root <workspace>` reads already-written agent-loop
+artifacts and emits a compact Markdown packet for PR review. Add `--json` for
+the machine-readable contract:
+
+```text
+ripr agent review-summary --root .
+ripr agent review-summary --root . --json
+```
+
+The command does not run analysis, mutation testing, SARIF policy, badge
+generation, LSP refresh, cache warm-up, source edits, or test generation. It
+joins only existing artifacts:
+
+- `ripr agent status` computed from the current artifact tree;
+- `target/ripr/workflow/workflow.json` when present;
+- `target/ripr/reports/agent-receipt.json`;
+- `target/ripr/reports/operator-cockpit.json` when present;
+- `target/ripr/reports/repo-exposure.json` when present;
+- `target/ripr/reports/lsp-cockpit.json` when present;
+- local file presence for CI-published work-loop artifacts.
+
+The JSON schema is version `0.1`:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "ready",
+  "root": ".",
+  "target_seam": {
+    "seam_id": "67fc764ba37d77bd",
+    "source": "agent_receipt",
+    "file": "src/lib.rs",
+    "line": 42,
+    "seam_kind": "predicate_boundary"
+  },
+  "static_movement": {
+    "state": "improved",
+    "before_class": "weakly_gripped",
+    "after_class": "strongly_gripped",
+    "grip_class": "strongly_gripped",
+    "evidence_artifact": "target/ripr/reports/agent-receipt.json",
+    "verify_artifact": "target/ripr/workflow/agent-verify.json",
+    "summary": "Static movement is improved (weakly_gripped -> strongly_gripped).",
+    "next_action": {
+      "kind": "improved",
+      "summary": "Static grip improved.",
+      "recommended_action": "Keep the focused test and include this receipt in review."
+    }
+  },
+  "next_command": null,
+  "surfaces": [
+    {
+      "name": "agent_status",
+      "label": "Agent status",
+      "path": "target/ripr/workflow/agent-status.json",
+      "state": "computed",
+      "status": "complete",
+      "required": true,
+      "summary": "6 required artifacts present, 0 missing, 0 warnings."
+    }
+  ],
+  "ci_artifacts": [
+    {
+      "name": "agent_review_summary",
+      "path": "target/ripr/workflow/agent-review-summary.json",
+      "state": "missing"
+    }
+  ],
+  "reviewer_summary": {
+    "headline": "Review packet is ready for seam 67fc764ba37d77bd.",
+    "what_changed": "Static movement is improved (weakly_gripped -> strongly_gripped).",
+    "evidence": "Review target/ripr/reports/agent-receipt.json with target/ripr/workflow/agent-verify.json.",
+    "remaining": "Keep the focused test and include this receipt in review.",
+    "reviewer_should_inspect": [
+      "target/ripr/reports/agent-receipt.json",
+      "target/ripr/workflow/agent-verify.json"
+    ]
+  },
+  "limits": {
+    "static_artifact_relationship": true,
+    "runtime_mutation_execution": false,
+    "automatic_edits": false,
+    "generated_tests": false
+  }
+}
+```
+
+Field notes:
+
+- `status` is `ready` when a receipt is present and required loop artifacts do
+  not report warnings; `warning` when a receipt exists but local artifact state
+  looks stale or malformed; `incomplete` when the receipt is missing.
+- `target_seam` is recovered from receipt first, then workflow, then agent
+  status.
+- `static_movement` is copied from the receipt and remains a static
+  before/after artifact relationship.
+- `surfaces[]` reports each joined surface as `computed`, `present`, `missing`,
+  `optional_missing`, or `invalid_json`.
+- `ci_artifacts[]` is local file presence for artifacts that generated CI can
+  upload later; it does not query GitHub Actions.
+- `reviewer_summary` is intentionally compact enough for PR comments and LLM
+  context windows.
+
+The Markdown output contains the same target seam, movement, evidence artifact,
+next command when one is missing, reviewer inspection list, and static limits.
+
 ## Agent Workflow Manifest
 
 `ripr agent start --root <workspace> --seam-id <id> --out <dir>` writes a

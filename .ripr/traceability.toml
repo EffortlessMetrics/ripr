@@ -698,6 +698,12 @@ tests = [
   "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_guidance_covers_resolved_state",
   "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_input_paths_extracts_verify_snapshot_paths",
   "crates/ripr/src/agent/provenance.rs::tests::sha256_file_hashes_artifact_bytes",
+  "crates/ripr/src/app/agent_review_summary.rs::tests::agent_review_summary_joins_status_receipt_cockpit_repo_and_lsp",
+  "crates/ripr/src/app/agent_review_summary.rs::tests::agent_review_summary_reports_missing_receipt_with_next_command",
+  "crates/ripr/src/app/agent_review_summary.rs::tests::agent_review_summary_markdown_names_review_focus_and_limits",
+  "crates/ripr/src/cli/agent.rs::tests::agent_review_summary_parses_root_json_and_human_default",
+  "crates/ripr/src/cli/agent.rs::tests::agent_review_summary_requires_values_and_rejects_unknown_arguments",
+  "crates/ripr/src/cli/commands.rs::tests::agent_review_summary_rejects_missing_root_before_reading_artifacts",
   "crates/ripr/tests/cli_smoke.rs::agent_receipt_writes_one_seam_handoff_json",
   "crates/ripr/tests/cli_smoke.rs::agent_start_writes_source_edit_free_workflow_packet",
   "crates/ripr/src/lsp/tests.rs::agent_loop_command_payloads_stay_workspace_relative_for_platform_roots",
@@ -710,6 +716,7 @@ code = [
   "crates/ripr/src/agent/loop_commands.rs",
   "crates/ripr/src/agent/provenance.rs",
   "crates/ripr/src/app/agent_status.rs",
+  "crates/ripr/src/app/agent_review_summary.rs",
   "crates/ripr/src/app/agent_workflow.rs",
   "crates/ripr/src/output/agent_workflow.rs",
   "crates/ripr/src/output/agent_receipt.rs",
@@ -731,7 +738,8 @@ metrics = [
   "agent_loop_status_available",
   "agent_workflow_manifest_available",
   "agent_receipt_provenance_available",
-  "agent_receipt_next_action_guidance_available"
+  "agent_receipt_next_action_guidance_available",
+  "agent_review_summary_available"
 ]
 
 [[behavior]]

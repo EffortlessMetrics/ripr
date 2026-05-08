@@ -11,6 +11,7 @@ Usage:
   ripr agent verify --root . --before before.json --after after.json --json
   ripr agent receipt --root . --verify-json agent-verify.json --seam-id ID --json
   ripr agent status --root . --json
+  ripr agent review-summary --root . [--json]
   ripr check [--base origin/main] [--diff PATH] [--mode draft] [--format FORMAT]
   ripr explain [--base REV|--diff PATH] <finding-id|file:line>
   ripr context [--base REV|--diff PATH] --at <finding-id|file:line>
@@ -33,6 +34,7 @@ Quick start:
   ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json
   ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id f3c9e4d21a0b7c88 --json
   ripr agent status --root . --json
+  ripr agent review-summary --root .
   ripr check --diff crates/ripr/examples/sample/example.diff
   ripr check --diff crates/ripr/examples/sample/example.diff --json
   ripr explain --diff crates/ripr/examples/sample/example.diff <finding-id>
@@ -123,11 +125,14 @@ Subcommands:
   verify     Compare before/after repo-exposure JSON for agent verification.
   receipt    Summarize one seam from agent verify JSON for review handoff.
   status     Report existing agent-loop artifacts and the next missing command.
+  review-summary
+             Join agent-loop artifacts into a compact review packet.
 
 Run `ripr agent start --help` for the workflow manifest, `ripr agent brief
 --help`, `ripr agent packet --help`, or `ripr agent verify --help` for
 JSON-only agent surfaces. Run `ripr agent receipt --help` for the verification
-receipt surface, and `ripr agent status --help` for the artifact status lens.
+receipt surface, `ripr agent status --help` for the artifact status lens, and
+`ripr agent review-summary --help` for the PR-review packet.
 "#;
 
 const AGENT_START_HELP: &str = r#"Usage: ripr agent start [--root PATH] --seam-id ID [--out PATH]
@@ -218,6 +223,19 @@ The status command reads existing agent-loop artifacts under target/ripr only
 and reports which before snapshot, after snapshot, brief, packet, verify, and
 receipt files are present or missing. It may recover a seam_id from those
 artifacts and emits the next command to run for missing inputs. It remains
+advisory and static; it does not run analysis, mutation testing, generate
+tests, edit files, change cache behavior, or touch LSP/MCP surfaces.
+"#;
+
+const AGENT_REVIEW_SUMMARY_HELP: &str = r#"Usage: ripr agent review-summary [--root PATH] [--json]
+
+Options:
+  --root PATH      Workspace root. Defaults to current directory.
+  --json           Emit the machine-readable review summary. Human Markdown is the default.
+
+The review-summary command reads existing agent-loop artifacts and joins agent
+status, receipt, workflow, operator cockpit, repo exposure, LSP cockpit when
+present, and local CI artifact state into a compact review packet. It remains
 advisory and static; it does not run analysis, mutation testing, generate
 tests, edit files, change cache behavior, or touch LSP/MCP surfaces.
 "#;
@@ -321,6 +339,10 @@ pub(super) fn print_agent_status_help() {
     println!("{AGENT_STATUS_HELP}");
 }
 
+pub(super) fn print_agent_review_summary_help() {
+    println!("{AGENT_REVIEW_SUMMARY_HELP}");
+}
+
 pub(super) fn print_explain_help() {
     println!("{EXPLAIN_HELP}");
 }
@@ -340,9 +362,10 @@ pub(super) fn print_lsp_help() {
 #[cfg(test)]
 mod tests {
     use super::{
-        AGENT_BRIEF_HELP, AGENT_HELP, AGENT_PACKET_HELP, AGENT_RECEIPT_HELP, AGENT_START_HELP,
-        AGENT_STATUS_HELP, AGENT_VERIFY_HELP, CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP,
-        DOCTOR_HELP, EXPLAIN_HELP, HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP,
+        AGENT_BRIEF_HELP, AGENT_HELP, AGENT_PACKET_HELP, AGENT_RECEIPT_HELP,
+        AGENT_REVIEW_SUMMARY_HELP, AGENT_START_HELP, AGENT_STATUS_HELP, AGENT_VERIFY_HELP,
+        CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP, DOCTOR_HELP, EXPLAIN_HELP, HELP, INIT_HELP,
+        LSP_HELP, OUTCOME_HELP, PILOT_HELP,
     };
 
     #[test]
@@ -357,6 +380,7 @@ mod tests {
         assert!(HELP.contains("ripr agent verify"));
         assert!(HELP.contains("ripr agent receipt"));
         assert!(HELP.contains("ripr agent status"));
+        assert!(HELP.contains("ripr agent review-summary"));
         assert!(HELP.contains("ripr check"));
         assert!(HELP.contains("ripr explain"));
         assert!(HELP.contains("ripr context"));
@@ -400,6 +424,8 @@ mod tests {
         assert!(AGENT_RECEIPT_HELP.contains("--verify-json PATH"));
         assert!(AGENT_STATUS_HELP.starts_with("Usage: ripr agent status"));
         assert!(AGENT_STATUS_HELP.contains("before snapshot"));
+        assert!(AGENT_REVIEW_SUMMARY_HELP.starts_with("Usage: ripr agent review-summary"));
+        assert!(AGENT_REVIEW_SUMMARY_HELP.contains("Human Markdown is the default"));
         assert!(EXPLAIN_HELP.starts_with("Usage: ripr explain"));
         assert!(CONTEXT_HELP.starts_with("Usage: ripr context"));
         assert!(DOCTOR_HELP.starts_with("Usage: ripr doctor [--root PATH]"));
