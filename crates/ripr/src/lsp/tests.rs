@@ -316,17 +316,82 @@ fn framed_lsp_protocol_smoke_logs_successful_refresh_completion() -> Result<(), 
                 .any(|message| message.contains("ripr analysis refresh completed in"))
         );
 
+        let (text_uri, seam_diagnostic) =
+            published_seam_diagnostic(&notifications, "67fc764ba37d77bd")?;
         write_lsp_message(
             &mut client_write,
             serde_json::json!({
                 "jsonrpc": "2.0",
                 "id": 3,
+                "method": "textDocument/hover",
+                "params": {
+                    "textDocument": { "uri": text_uri },
+                    "position": { "line": 1, "character": 1 }
+                }
+            }),
+        )
+        .await?;
+        let hover = read_lsp_response(&mut client_read, 3).await?;
+        let hover_value = hover["result"]["contents"]["value"]
+            .as_str()
+            .ok_or_else(|| "expected seam hover markdown value".to_string())?;
+        assert!(
+            hover_value.contains("## Missing discriminator"),
+            "expected seam hover to name missing discriminator, got {hover_value}"
+        );
+        assert!(
+            hover_value.contains("## Related tests"),
+            "expected seam hover to name related tests, got {hover_value}"
+        );
+        assert!(
+            hover_value.contains("## Next step"),
+            "expected seam hover to name next step, got {hover_value}"
+        );
+
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 4,
+                "method": "textDocument/codeAction",
+                "params": {
+                    "textDocument": { "uri": text_uri },
+                    "range": seam_diagnostic["range"].clone(),
+                    "context": { "diagnostics": [seam_diagnostic] }
+                }
+            }),
+        )
+        .await?;
+        let code_actions = read_lsp_response(&mut client_read, 4).await?;
+        let titles = code_actions["result"]
+            .as_array()
+            .ok_or_else(|| "expected codeAction result array".to_string())?
+            .iter()
+            .filter_map(|action| action.get("title").and_then(serde_json::Value::as_str))
+            .collect::<Vec<_>>();
+        for expected in [
+            "Inspect seam: copy packet",
+            "Write targeted test: copy brief",
+            "Verify after test: copy verify command",
+            "Review result: copy receipt command",
+        ] {
+            assert!(
+                titles.contains(&expected),
+                "expected protocol code actions to contain {expected}, got {titles:?}"
+            );
+        }
+
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 5,
                 "method": "shutdown",
                 "params": null
             }),
         )
         .await?;
-        let shutdown = read_lsp_response(&mut client_read, 3).await?;
+        let shutdown = read_lsp_response(&mut client_read, 5).await?;
         assert!(shutdown.get("error").is_none());
         write_lsp_message(
             &mut client_write,
@@ -352,6 +417,48 @@ fn framed_lsp_protocol_smoke_logs_successful_refresh_completion() -> Result<(), 
         }
         Ok(())
     })
+}
+
+fn published_seam_diagnostic(
+    notifications: &[serde_json::Value],
+    seam_id: &str,
+) -> Result<(String, serde_json::Value), String> {
+    for notification in notifications {
+        if notification
+            .get("method")
+            .and_then(serde_json::Value::as_str)
+            != Some("textDocument/publishDiagnostics")
+        {
+            continue;
+        }
+        let Some(uri) = notification
+            .get("params")
+            .and_then(|params| params.get("uri"))
+            .and_then(serde_json::Value::as_str)
+        else {
+            continue;
+        };
+        let Some(diagnostics) = notification
+            .get("params")
+            .and_then(|params| params.get("diagnostics"))
+            .and_then(serde_json::Value::as_array)
+        else {
+            continue;
+        };
+        for diagnostic in diagnostics {
+            if diagnostic
+                .get("data")
+                .and_then(|data| data.get("seam_id"))
+                .and_then(serde_json::Value::as_str)
+                == Some(seam_id)
+            {
+                return Ok((uri.to_string(), diagnostic.clone()));
+            }
+        }
+    }
+    Err(format!(
+        "expected published seam diagnostic with seam_id {seam_id}"
+    ))
 }
 
 #[test]
