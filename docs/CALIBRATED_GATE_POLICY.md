@@ -24,6 +24,7 @@ ripr gate evaluate \
   --root . \
   --repo-exposure target/ripr/reports/repo-exposure.json \
   --pr-guidance target/ripr/review/comments.json \
+  --sarif-policy target/ripr/reports/sarif-policy.json \
   --labels-json target/ci/labels.json \
   --agent-verify target/ripr/workflow/agent-verify.json \
   --agent-receipt target/ripr/reports/agent-receipt.json \
@@ -42,6 +43,7 @@ smallest local run. Other inputs refine the decision when available:
 | --- | --- |
 | PR guidance | Supplies changed-seam recommendations and placement metadata. |
 | Repo exposure | Adds static seam context when the report is available. |
+| SARIF policy | Adds configured code-scanning policy context when the SARIF policy report exists. |
 | Labels JSON | Lets acknowledgement labels such as `ripr-waive` change a blocking candidate into an acknowledged decision. |
 | Agent verify and receipt | Connect the policy decision to the focused-test verification loop when present. |
 | Recommendation calibration | Records whether this class of recommendation was useful, noisy, correctly placed, suppressed correctly, or unknown. |
@@ -96,6 +98,7 @@ for this review.
 
 ```yaml
 env:
+  RIPR_UPLOAD_SARIF: "true"
   RIPR_GATE_MODE: ${{ vars.RIPR_GATE_MODE || '' }}
   RIPR_GATE_BASELINE: ${{ vars.RIPR_GATE_BASELINE || '' }}
 ```
@@ -118,9 +121,11 @@ When `RIPR_GATE_MODE` is set, the generated workflow:
 6. fails only when the explicit mode produces `blocked` or `config_error`.
 
 The generated workflow currently passes the PR guidance, repo exposure when
-available, PR labels, agent verify, agent receipt, and optional baseline. Use a
-custom workflow step when a repository wants to pass recommendation or mutation
-calibration artifacts into the gate.
+available, SARIF policy when available, PR labels, agent verify, agent receipt,
+recommendation calibration when available, mutation calibration when available,
+and optional baseline. It also keeps SARIF upload steps behind `always()` so
+explicit gate failures still preserve code-scanning and artifact evidence when
+the files exist.
 
 ## Reading The Decision
 
