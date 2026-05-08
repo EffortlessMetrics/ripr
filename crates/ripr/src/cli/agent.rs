@@ -440,10 +440,6 @@ pub(super) fn parse_agent_status_options(args: &[String]) -> Result<AgentStatusO
         i += 1;
     }
 
-    if !json {
-        return Err("agent status requires --json until human output is implemented".to_string());
-    }
-
     Ok(AgentStatusOptions { root, json })
 }
 
@@ -1049,10 +1045,13 @@ mod tests {
     }
 
     #[test]
-    fn agent_status_requires_json_and_rejects_unknown_arguments() {
+    fn agent_status_parses_human_default_and_rejects_unknown_arguments() {
         assert_eq!(
             parse_agent_status_options(&args(&[])),
-            Err("agent status requires --json until human output is implemented".to_string())
+            Ok(AgentStatusOptions {
+                root: PathBuf::from("."),
+                json: false,
+            })
         );
         assert_eq!(
             parse_agent_status_options(&args(&["--root"])),

@@ -1238,10 +1238,12 @@ Inline PR review comments remain opt-in.
 
 ## Agent Status
 
-`ripr agent status --root <workspace> --json` reads already-written agent-loop
-artifacts and reports which step is missing next:
+`ripr agent status --root <workspace>` reads already-written agent-loop
+artifacts and reports which step is missing next. Markdown is the default for
+human review packets; add `--json` for the machine-readable contract:
 
 ```text
+ripr agent status --root .
 ripr agent status --root . --json
 ```
 
@@ -1324,6 +1326,11 @@ Field contract:
   later reviewer-summary/status enhancement now that receipt provenance records
   artifact SHA-256 values.
 
+Markdown output contains the same status, recovered seam, artifact table, next
+command, warnings, and static-only limits. Generated CI writes it to
+`target/ripr/workflow/agent-status.md` next to
+`target/ripr/workflow/agent-status.json`.
+
 ## Agent Review Summary
 
 `ripr agent review-summary --root <workspace>` reads already-written agent-loop
@@ -1390,8 +1397,23 @@ The JSON schema is version `0.1`:
   ],
   "ci_artifacts": [
     {
+      "name": "agent_status",
+      "path": "target/ripr/workflow/agent-status.json",
+      "state": "present"
+    },
+    {
+      "name": "agent_status_markdown",
+      "path": "target/ripr/workflow/agent-status.md",
+      "state": "present"
+    },
+    {
       "name": "agent_review_summary",
       "path": "target/ripr/workflow/agent-review-summary.json",
+      "state": "missing"
+    },
+    {
+      "name": "agent_review_summary_markdown",
+      "path": "target/ripr/workflow/agent-review-summary.md",
       "state": "missing"
     }
   ],

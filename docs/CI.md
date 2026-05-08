@@ -130,7 +130,7 @@ artifacts are grouped by family:
 | --- | --- |
 | `ci-plan` | `target/ripr/reports/pr-plan-changes.txt`, `target/ci/ci-plan.json`, `target/ci/ci-actuals.json` |
 | `ripr-evidence` | `target/ripr/reports/index.md`, `target/ripr/reports/repo-exposure.json`, `target/ripr/reports/repo-sarif.json` |
-| `editor-agent-loop` | `target/ripr/reports/operator-cockpit.{json,md}`, `target/ripr/workflow/agent-seam-packets.json`, `target/ripr/agent/agent-packet.json`, `target/ripr/agent/agent-brief.json`, `target/ripr/agent/agent-verify.json`, `target/ripr/agent/agent-receipt.json` |
+| `editor-agent-loop` | `target/ripr/reports/operator-cockpit.{json,md}`, `target/ripr/reports/agent-receipt.json`, `target/ripr/workflow/agent-seam-packets.json`, `target/ripr/workflow/workflow.json`, `target/ripr/workflow/commands.md`, `target/ripr/workflow/agent-status.{json,md}`, `target/ripr/workflow/agent-review-summary.{json,md}`, `target/ripr/workflow/agent-packet.json`, `target/ripr/workflow/agent-brief.json`, `target/ripr/workflow/agent-verify.json`, plus compatibility copies under `target/ripr/agent/` |
 | `release-readiness` | package lists, publish dry-run transcript, VSIX package proof, server archive proof |
 
 The report index should be the front door for artifact discovery. CI should not
@@ -517,13 +517,17 @@ For a CI-first user, the useful output is the artifact packet:
 
 - `target/ripr/pilot/` - first-screen pilot summary, repo exposure snapshot,
   and agent seam packets;
-- `target/ripr/agent/` - packet, brief, verify, and receipt JSON for the top
-  seam when one is available;
+- `target/ripr/workflow/` - selected-seam workflow manifest, commands,
+  status JSON/Markdown, review summary JSON/Markdown, and agent packet,
+  brief, and verify JSON when a top seam is available;
+- `target/ripr/agent/` - compatibility copies of packet, brief, verify, and
+  receipt JSON for the top seam when one is available;
 - `target/ripr/reports/` - targeted-test outcome, SARIF files when enabled,
-  repo badge JSON, and any repo-local cockpit output.
+  repo badge JSON, `agent-receipt.json`, and any repo-local cockpit output.
 
-The workflow also appends `pilot-summary.md` to the job summary, so a reviewer
-can see the top recommendation before downloading artifacts.
+The workflow also appends `pilot-summary.md` and `agent-review-summary.md` to
+the job summary, so a reviewer can see the top recommendation and current
+static receipt state before downloading artifacts.
 
 ### PR Test Guidance Annotations
 
@@ -609,9 +613,13 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
-          mkdir -p target/ripr/reports target/ripr/agent
+          mkdir -p target/ripr/reports target/ripr/agent target/ripr/workflow
           if [ -f target/ripr/pilot/repo-exposure.json ]; then
             cp target/ripr/pilot/repo-exposure.json target/ripr/reports/repo-exposure.json
+            cp target/ripr/pilot/repo-exposure.json target/ripr/workflow/before.repo-exposure.json
+          fi
+          if [ -f target/ripr/pilot/agent-seam-packets.json ]; then
+            cp target/ripr/pilot/agent-seam-packets.json target/ripr/workflow/agent-seam-packets.json
           fi
           if [ -f target/ripr/pilot/pilot-summary.json ]; then
             top_seam_id="$(jq -r '.top_actionable_seams[0].seam_id // empty' target/ripr/pilot/pilot-summary.json 2>/dev/null || true)"
@@ -624,36 +632,40 @@ jobs:
         if: always() && env.RIPR_TOP_SEAM_ID != ''
         continue-on-error: true
         run: |
+          ripr agent start \
+            --root . \
+            --seam-id "$RIPR_TOP_SEAM_ID" \
+            --out target/ripr/workflow
           ripr agent packet \
             --root . \
             --seam-id "$RIPR_TOP_SEAM_ID" \
             --json \
-            > target/ripr/agent/agent-packet.json
-          ripr agent brief \
-            --root . \
-            --seam-id "$RIPR_TOP_SEAM_ID" \
-            --json \
-            > target/ripr/agent/agent-brief.json
+            > target/ripr/workflow/agent-packet.json
+          cp target/ripr/workflow/agent-packet.json target/ripr/agent/agent-packet.json
+          cp target/ripr/workflow/agent-brief.json target/ripr/agent/agent-brief.json
           ripr check \
             --root . \
             --mode ready \
             --format repo-exposure-json \
-            > target/ripr/pilot/after.repo-exposure.json
+            > target/ripr/workflow/after.repo-exposure.json
+          cp target/ripr/workflow/after.repo-exposure.json target/ripr/pilot/after.repo-exposure.json
           ripr agent verify \
             --root . \
-            --before target/ripr/pilot/repo-exposure.json \
-            --after target/ripr/pilot/after.repo-exposure.json \
+            --before target/ripr/workflow/before.repo-exposure.json \
+            --after target/ripr/workflow/after.repo-exposure.json \
             --json \
-            > target/ripr/agent/agent-verify.json
+            > target/ripr/workflow/agent-verify.json
+          cp target/ripr/workflow/agent-verify.json target/ripr/agent/agent-verify.json
           ripr agent receipt \
             --root . \
-            --verify-json target/ripr/agent/agent-verify.json \
+            --verify-json target/ripr/workflow/agent-verify.json \
             --seam-id "$RIPR_TOP_SEAM_ID" \
             --json \
-            --out target/ripr/agent/agent-receipt.json
+            --out target/ripr/reports/agent-receipt.json
+          cp target/ripr/reports/agent-receipt.json target/ripr/agent/agent-receipt.json
           ripr outcome \
-            --before target/ripr/pilot/repo-exposure.json \
-            --after target/ripr/pilot/after.repo-exposure.json \
+            --before target/ripr/workflow/before.repo-exposure.json \
+            --after target/ripr/workflow/after.repo-exposure.json \
             --format json \
             --out target/ripr/reports/targeted-test-outcome.json
 
@@ -704,10 +716,35 @@ jobs:
         continue-on-error: true
         run: cargo xtask operator-cockpit
 
+      - name: Render RIPR LLM work-loop summaries
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/workflow
+          ripr agent status \
+            --root . \
+            --json \
+            > target/ripr/workflow/agent-status.json
+          ripr agent status \
+            --root . \
+            > target/ripr/workflow/agent-status.md
+          ripr agent review-summary \
+            --root . \
+            --json \
+            > target/ripr/workflow/agent-review-summary.json
+          ripr agent review-summary \
+            --root . \
+            > target/ripr/workflow/agent-review-summary.md
+
       - name: Add RIPR pilot summary
         if: always() && hashFiles('target/ripr/pilot/pilot-summary.md') != ''
         continue-on-error: true
         run: cat target/ripr/pilot/pilot-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Add RIPR agent review summary
+        if: always() && hashFiles('target/ripr/workflow/agent-review-summary.md') != ''
+        continue-on-error: true
+        run: cat target/ripr/workflow/agent-review-summary.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload RIPR report artifacts
         if: always()
@@ -718,6 +755,7 @@ jobs:
           path: |
             target/ripr/pilot
             target/ripr/agent
+            target/ripr/workflow
             target/ripr/reports
           if-no-files-found: ignore
           retention-days: 14
@@ -746,9 +784,10 @@ fail CI. The `cargo xtask sarif-policy` baseline modes shown above are
 repo-local automation today; a public package-level policy command is a future
 adoption surface.
 
-The generated workflow always uploads `target/ripr/pilot` and
-`target/ripr/reports` as a `ripr-reports` artifact when files exist. The repo
-badge files in that artifact are:
+The generated workflow always uploads `target/ripr/pilot`,
+`target/ripr/workflow`, `target/ripr/agent`, and `target/ripr/reports` as a
+`ripr-reports` artifact when files exist. The repo badge files in that artifact
+are:
 
 - `target/ripr/reports/repo-ripr-badge.json`, the seam-native native badge
   payload;

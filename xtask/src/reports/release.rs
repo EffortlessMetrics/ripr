@@ -768,8 +768,15 @@ fn github_workflow_check(binary: &Path) -> ReleaseReadinessCheck {
             let required = [
                 "continue-on-error: true",
                 "ripr pilot",
+                "ripr agent start",
+                "ripr agent status",
+                "ripr agent review-summary",
                 "target/ripr/pilot",
+                "target/ripr/workflow",
                 "target/ripr/reports",
+                "target/ripr/workflow/agent-status.md",
+                "target/ripr/workflow/agent-review-summary.md",
+                "target/ripr/reports/agent-receipt.json",
                 "RIPR_UPLOAD_SARIF",
                 "actions/upload-artifact",
             ];
