@@ -25,7 +25,7 @@ end_state = [
 
 [[work_item]]
 id = "docs/gate-adoption-examples"
-status = "ready"
+status = "done"
 branch = "docs-gate-adoption-examples"
 stackable = false
 acceptance = "Add copyable generated-CI examples for visible-only, acknowledgeable, baseline-check, and calibrated-gate adoption while preserving the default advisory workflow"
@@ -38,7 +38,7 @@ commands = [
 
 [[work_item]]
 id = "docs/gate-waiver-workflows"
-status = "blocked"
+status = "ready"
 branch = "docs-gate-waiver-workflows"
 stackable = false
 blocked_by = ["docs/gate-adoption-examples"]
