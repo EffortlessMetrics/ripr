@@ -107,7 +107,11 @@ summary-only fallback, inline-comment opt-in boundary, and static-evidence
 limits. Campaign 14 is active as Calibrated Gate Policy: the next step is a
 spec for optional gates that consume existing evidence, preserve advisory
 defaults, expose acknowledgement paths, and keep static evidence separate from
-runtime mutation calibration.
+runtime mutation calibration. Campaign 15 is queued as Recommendation Quality
+Calibration so the completed recommendation surfaces can be measured for
+actionability, placement quality, suppression/noise behavior, and before/after
+static movement without telemetry, generated tests, runtime mutation execution,
+or default CI blocking.
 
 ## Strategic Sequence
 
@@ -152,6 +156,7 @@ quality rails
 -> first-hour UX
 -> PR review guidance
 -> calibrated gate policy
+-> recommendation quality calibration
 ```
 
 The analyzer path is:

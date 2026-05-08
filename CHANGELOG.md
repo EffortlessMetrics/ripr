@@ -57,6 +57,11 @@ are scoped or reviewed.
 - Opened Campaign 14, Calibrated Gate Policy, with
   `spec/calibrated-gate-policy` as the first ready item before any gate
   evaluator or generated workflow blocking behavior.
+- Queued Campaign 15, Recommendation Quality Calibration, as the post-gate
+  product-quality lane for measuring recommendation actionability, placement,
+  suppression/noise behavior, and before/after static movement without
+  telemetry, generated tests, runtime mutation execution, or default CI
+  blocking.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and PR guidance annotation counts before artifact
