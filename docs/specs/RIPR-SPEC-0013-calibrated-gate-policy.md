@@ -103,6 +103,30 @@ Missing optional inputs must degrade to advisory or unknown confidence, not
 invent evidence. Missing required inputs should produce a configuration error
 with a repair command.
 
+## Vocabulary And Policy Values
+
+The gate may consume both finding-class evidence and seam-grip evidence:
+
+- Finding classes use the existing static RIPR vocabulary, such as `exposed`,
+  `weakly_exposed`, and `reachable_unrevealed`.
+- Seam-grip classes come from repo exposure and PR guidance. `weakly_gripped`
+  means a related test reaches the seam but the current static evidence shows a
+  weak or missing discriminator. `ungripped` means no meaningful related test
+  grip was found for the seam. `reachable_unrevealed` means the seam appears
+  reachable but lacks revealing discriminator evidence.
+
+The evaluator must preserve the source class it read. It must not rewrite a
+seam-grip class into a finding class just to fit a gate policy.
+
+Valid severity values are inherited from the configured evidence surface:
+
+- finding severities: `info`, `warning`, or `note`;
+- seam severities: `off`, `info`, `warning`, or `note`.
+
+`off` means configured out and cannot produce a blocking decision. The initial
+threshold string is `high_confidence_new_gap`; future threshold names require a
+schema compatibility note.
+
 ## Decision Rules
 
 A blocking candidate must satisfy all of these conditions:
@@ -127,6 +151,44 @@ missing discriminator, assertion shape, related test, or candidate value.
 Unknown-stage and opaque cases may be reported, but should not block by default
 until a later policy explicitly promotes them.
 
+For the initial `high_confidence_new_gap` threshold, high static confidence
+means all of these are true:
+
+- the candidate is on a changed line or a deterministic changed-line fallback
+  accepted by the PR guidance placement rules;
+- the class is `weakly_gripped`, `ungripped`, or `reachable_unrevealed`;
+- the severity is not `off`;
+- the recommendation includes concrete focused-test guidance, such as a
+  missing discriminator, assertion shape, related test, or candidate value;
+- no nearby focused test changed in the same PR.
+
+Imported calibration may raise a candidate to high confidence only through an
+unambiguous matching runtime gap signal as defined below. It may also lower a
+candidate to advisory when an unambiguous runtime-clean signal exists.
+
+## Baseline Comparison
+
+`baseline-check` and `fail-on-new-high-confidence-gap` require a selected
+baseline when configured to compare against prior evidence. The baseline is the
+explicit baseline artifact supplied to the evaluator, such as a previous PR
+guidance JSON, gate decision JSON, or SARIF policy report. The evaluator must
+record which baseline path was used.
+
+A candidate is new when no baseline record has the same stable identity and
+same or stronger policy significance. Stable identity is compared in this
+order:
+
+1. `seam_id` when present;
+2. `finding_id` or `probe_id` when the source is finding-oriented;
+3. normalized repo-relative path plus line plus source class when no stable ID
+   is available.
+
+If a baseline has the same identity but a weaker class, weaker severity, or
+lower confidence, the current candidate is treated as a changed candidate and
+may be policy-eligible. If the baseline is missing or malformed for a mode that
+requires it, the evaluator must return `config_error` rather than inventing a
+baseline.
+
 ## Acknowledgement Labels
 
 `ripr-waive` is the default acknowledgement label. Acknowledgement means:
@@ -146,17 +208,28 @@ The gate may read an existing mutation calibration report. It must not run
 mutation testing or shell out to a mutation tool.
 
 Calibration can affect confidence only when the report directly joins a runtime
-record to the same static seam by `seam_id` or another unambiguous join already
-accepted by the calibration importer.
+record to the same static seam. Static seam identity is the `seam_id` emitted by
+repo exposure and PR guidance. When `seam_id` is absent from runtime data, an
+unambiguous fallback join is a normalized repo-relative file plus line match
+that the calibration report records as a single matched row with
+`join_method: "file_line"`. Records listed under ambiguous file/line matches,
+unmatched runtime records, or runtime-only signal sections must not raise gate
+confidence.
 
 Calibration effects:
 
-- static gap plus matching runtime signal can raise confidence;
-- static gap plus clean matching runtime signal can lower confidence or keep
+- static gap plus unambiguous runtime gap signal can raise confidence;
+- static gap plus unambiguous runtime-clean signal can lower confidence or keep
   the candidate advisory;
 - runtime signal without a matching static gap remains calibration evidence,
   not a static gate failure;
 - ambiguous joins must remain advisory.
+
+A runtime gap signal is a matched calibration record counted by the calibration
+report as `static_gap_and_runtime_signal`. A runtime-clean signal is a matched
+record where the imported runtime outcome indicates the supplied mutation was
+detected for the same static seam. Runtime-inconclusive and ambiguous records
+must remain advisory.
 
 Runtime outcome labels belong in calibration report fields. Gate summaries
 should describe them as imported runtime calibration evidence, not as static
@@ -244,13 +317,29 @@ The planned gate decision JSON uses schema version `0.1`:
   `suppressed`, or `not_applicable`.
 - `decisions[].gate_reason` - short policy explanation.
 - `decisions[].static_class` - static seam or finding class from RIPR output.
+- `decisions[].severity` - configured severity from the source surface. Finding
+  severities use `info`, `warning`, or `note`; seam severities also allow
+  `off`.
 - `decisions[].policy` - mode, threshold, and acknowledgement fields that
   affected the result.
+- `decisions[].policy.threshold` - currently `high_confidence_new_gap`.
 - `decisions[].evidence` - static evidence, nearby-test state, suppression
   state, and optional calibration confidence effect.
 - `warnings[]` - missing inputs, unsupported labels, ambiguous calibration, or
   baseline limitations.
 - `limits_note` - static/runtime and advisory-default boundary text.
+
+Top-level `status` is derived from the decision records in this order:
+
+1. `config_error` when required inputs or policy are invalid.
+2. `fail` when any decision is `blocking`.
+3. `acknowledged` when there are no blocking decisions and at least one
+   decision is `acknowledged`.
+4. `advisory` when mode is `advisory`, any decision is `advisory`, or any
+   candidate has unknown confidence.
+5. `pass` when the configured non-advisory mode evaluated successfully and no
+   candidate produced a blocking, acknowledged, advisory, or unknown-confidence
+   decision.
 
 ## CI Projection
 
