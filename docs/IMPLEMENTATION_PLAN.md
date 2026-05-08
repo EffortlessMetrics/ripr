@@ -86,10 +86,10 @@ closeout handoff records the PR chain, prompt-to-artifact audit, and explicit
 boundary that adoption should be opened explicitly after closeout. Campaign 16
 is now active as Gate Adoption UX: it starts with copyable generated-CI examples
 for explicit gate modes. Those examples are now documented, the `ripr-waive`
-reviewer workflow now keeps acknowledgements visible and separate from
-suppressions, and baseline guidance now treats existing findings as visible
-debt that can be shrunk toward RIPR 0 under configured scope. The next ready
-item is first-screen gate summary polish, followed by repo-local dogfood
+reviewer workflow now keeps acknowledgements visible, auditable, and separate
+from suppressions, and baseline guidance now treats existing findings as
+visible debt that can be shrunk toward RIPR 0 under configured scope. The next
+ready item is first-screen gate summary polish, followed by repo-local dogfood
 receipts and guidance for when blocking is mature enough. Editor Evidence UX is
 queued as a separate future Lane 3 campaign rather than replacing the active
 manifest: it should harden the saved-workspace LSP path from diagnostic to
