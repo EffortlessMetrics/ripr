@@ -934,7 +934,9 @@ mod tests {
                     "unknown",
                 ]
                 .contains(&outcome),
-                "{id} uses unsupported outcome {outcome}"
+                "{} uses unsupported outcome {}",
+                id,
+                outcome
             );
             assert!(
                 [
@@ -945,7 +947,9 @@ mod tests {
                     "unknown",
                 ]
                 .contains(&placement_quality),
-                "{id} uses unsupported placement quality {placement_quality}"
+                "{} uses unsupported placement quality {}",
+                id,
+                placement_quality
             );
             assert_recommendation_calibration_source_exists(case)?;
         }
@@ -970,7 +974,9 @@ mod tests {
         ] {
             assert!(
                 seen.contains(&(id.to_string(), scenario.to_string())),
-                "missing recommendation calibration case {id} ({scenario})"
+                "missing recommendation calibration case {} ({})",
+                id,
+                scenario
             );
         }
 
@@ -1006,7 +1012,10 @@ mod tests {
                 assert!(
                     entries.iter().any(|entry| entry["id"] == item_id
                         || entry["seam_id"] == case["expected"]["seam_id"]),
-                    "{artifact} {collection} should contain {item_id}"
+                    "{} {} should contain {}",
+                    artifact,
+                    collection,
+                    item_id
                 );
             }
             "warnings" => {
@@ -1021,7 +1030,9 @@ mod tests {
                         .iter()
                         .filter_map(Value::as_str)
                         .any(|warning| warning.contains(seam_id)),
-                    "{artifact} warnings should mention {seam_id}"
+                    "{} warnings should mention {}",
+                    artifact,
+                    seam_id
                 );
             }
             other => return Err(format!("unsupported source_collection {other}")),
