@@ -325,8 +325,13 @@ fn run_agent_status(options: AgentStatusOptions) -> Result<(), String> {
     }
 
     let report = app::agent_status::build_agent_status_report(&options.root, &options.root);
-    let rendered = app::agent_status::render_agent_status_json(&report)?;
-    print!("{rendered}");
+    if options.json {
+        let rendered = app::agent_status::render_agent_status_json(&report)?;
+        print!("{rendered}");
+    } else {
+        let rendered = app::agent_status::render_agent_status_markdown(&report);
+        print!("{rendered}");
+    }
     Ok(())
 }
 
@@ -851,9 +856,13 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
-          mkdir -p target/ripr/reports target/ripr/agent
+          mkdir -p target/ripr/reports target/ripr/agent target/ripr/workflow
           if [ -f target/ripr/pilot/repo-exposure.json ]; then
             cp target/ripr/pilot/repo-exposure.json target/ripr/reports/repo-exposure.json
+            cp target/ripr/pilot/repo-exposure.json target/ripr/workflow/before.repo-exposure.json
+          fi
+          if [ -f target/ripr/pilot/agent-seam-packets.json ]; then
+            cp target/ripr/pilot/agent-seam-packets.json target/ripr/workflow/agent-seam-packets.json
           fi
           if [ -f target/ripr/pilot/pilot-summary.json ]; then
             top_seam_id="$(jq -r '.top_actionable_seams[0].seam_id // empty' target/ripr/pilot/pilot-summary.json 2>/dev/null || true)"
@@ -866,36 +875,40 @@ jobs:
         if: always() && env.RIPR_TOP_SEAM_ID != ''
         continue-on-error: true
         run: |
+          ripr agent start \
+            --root . \
+            --seam-id "$RIPR_TOP_SEAM_ID" \
+            --out target/ripr/workflow
           ripr agent packet \
             --root . \
             --seam-id "$RIPR_TOP_SEAM_ID" \
             --json \
-            > target/ripr/agent/agent-packet.json
-          ripr agent brief \
-            --root . \
-            --seam-id "$RIPR_TOP_SEAM_ID" \
-            --json \
-            > target/ripr/agent/agent-brief.json
+            > target/ripr/workflow/agent-packet.json
+          cp target/ripr/workflow/agent-packet.json target/ripr/agent/agent-packet.json
+          cp target/ripr/workflow/agent-brief.json target/ripr/agent/agent-brief.json
           ripr check \
             --root . \
             --mode ready \
             --format repo-exposure-json \
-            > target/ripr/pilot/after.repo-exposure.json
+            > target/ripr/workflow/after.repo-exposure.json
+          cp target/ripr/workflow/after.repo-exposure.json target/ripr/pilot/after.repo-exposure.json
           ripr agent verify \
             --root . \
-            --before target/ripr/pilot/repo-exposure.json \
-            --after target/ripr/pilot/after.repo-exposure.json \
+            --before target/ripr/workflow/before.repo-exposure.json \
+            --after target/ripr/workflow/after.repo-exposure.json \
             --json \
-            > target/ripr/agent/agent-verify.json
+            > target/ripr/workflow/agent-verify.json
+          cp target/ripr/workflow/agent-verify.json target/ripr/agent/agent-verify.json
           ripr agent receipt \
             --root . \
-            --verify-json target/ripr/agent/agent-verify.json \
+            --verify-json target/ripr/workflow/agent-verify.json \
             --seam-id "$RIPR_TOP_SEAM_ID" \
             --json \
-            --out target/ripr/agent/agent-receipt.json
+            --out target/ripr/reports/agent-receipt.json
+          cp target/ripr/reports/agent-receipt.json target/ripr/agent/agent-receipt.json
           ripr outcome \
-            --before target/ripr/pilot/repo-exposure.json \
-            --after target/ripr/pilot/after.repo-exposure.json \
+            --before target/ripr/workflow/before.repo-exposure.json \
+            --after target/ripr/workflow/after.repo-exposure.json \
             --format json \
             --out target/ripr/reports/targeted-test-outcome.json
 
@@ -946,10 +959,35 @@ jobs:
         continue-on-error: true
         run: cargo xtask operator-cockpit
 
+      - name: Render RIPR LLM work-loop summaries
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/workflow
+          ripr agent status \
+            --root . \
+            --json \
+            > target/ripr/workflow/agent-status.json
+          ripr agent status \
+            --root . \
+            > target/ripr/workflow/agent-status.md
+          ripr agent review-summary \
+            --root . \
+            --json \
+            > target/ripr/workflow/agent-review-summary.json
+          ripr agent review-summary \
+            --root . \
+            > target/ripr/workflow/agent-review-summary.md
+
       - name: Add RIPR pilot summary
         if: always() && hashFiles('target/ripr/pilot/pilot-summary.md') != ''
         continue-on-error: true
         run: cat target/ripr/pilot/pilot-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Add RIPR agent review summary
+        if: always() && hashFiles('target/ripr/workflow/agent-review-summary.md') != ''
+        continue-on-error: true
+        run: cat target/ripr/workflow/agent-review-summary.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload RIPR report artifacts
         if: always()
@@ -960,6 +998,7 @@ jobs:
           path: |
             target/ripr/pilot
             target/ripr/agent
+            target/ripr/workflow
             target/ripr/reports
           if-no-files-found: ignore
           retention-days: 14
@@ -1003,6 +1042,54 @@ jobs:
     .replace(
         "target/ripr/agent/agent-receipt.json",
         loop_commands::EDITOR_AGENT_RECEIPT_ARTIFACT,
+    )
+    .replace(
+        "target/ripr/workflow/before.repo-exposure.json",
+        loop_commands::WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
+    )
+    .replace(
+        "target/ripr/workflow/after.repo-exposure.json",
+        loop_commands::WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+    )
+    .replace(
+        "target/ripr/workflow/workflow.json",
+        loop_commands::WORKFLOW_MANIFEST_ARTIFACT,
+    )
+    .replace(
+        "target/ripr/workflow/agent-seam-packets.json",
+        loop_commands::WORKFLOW_AGENT_SEAM_PACKETS_ARTIFACT,
+    )
+    .replace(
+        "target/ripr/workflow/agent-packet.json",
+        loop_commands::WORKFLOW_AGENT_PACKET_ARTIFACT,
+    )
+    .replace(
+        "target/ripr/workflow/agent-brief.json",
+        loop_commands::WORKFLOW_AGENT_BRIEF_ARTIFACT,
+    )
+    .replace(
+        "target/ripr/workflow/agent-verify.json",
+        loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT,
+    )
+    .replace(
+        "target/ripr/reports/agent-receipt.json",
+        loop_commands::WORKFLOW_AGENT_RECEIPT_ARTIFACT,
+    )
+    .replace(
+        "target/ripr/workflow/agent-status.json",
+        loop_commands::WORKFLOW_AGENT_STATUS_ARTIFACT,
+    )
+    .replace(
+        "target/ripr/workflow/agent-status.md",
+        loop_commands::WORKFLOW_AGENT_STATUS_MARKDOWN_ARTIFACT,
+    )
+    .replace(
+        "target/ripr/workflow/agent-review-summary.json",
+        loop_commands::WORKFLOW_AGENT_REVIEW_SUMMARY_ARTIFACT,
+    )
+    .replace(
+        "target/ripr/workflow/agent-review-summary.md",
+        loop_commands::WORKFLOW_AGENT_REVIEW_SUMMARY_MARKDOWN_ARTIFACT,
     )
 }
 
@@ -2513,11 +2600,21 @@ mod tests {
         assert!(workflow.contains("--format repo-sarif"));
         assert!(workflow.contains("--format repo-badge-json"));
         assert!(workflow.contains("ripr pilot"));
+        assert!(workflow.contains("ripr agent start"));
         assert!(workflow.contains("ripr agent packet"));
-        assert!(workflow.contains("ripr agent brief"));
         assert!(workflow.contains("ripr agent verify"));
         assert!(workflow.contains("ripr agent receipt"));
+        assert!(workflow.contains("ripr agent status"));
+        assert!(workflow.contains("ripr agent review-summary"));
         assert!(workflow.contains("ripr outcome"));
+        assert!(workflow.contains("target/ripr/workflow/agent-packet.json"));
+        assert!(workflow.contains("target/ripr/workflow/agent-brief.json"));
+        assert!(workflow.contains("target/ripr/workflow/agent-verify.json"));
+        assert!(workflow.contains("target/ripr/reports/agent-receipt.json"));
+        assert!(workflow.contains("target/ripr/workflow/agent-status.json"));
+        assert!(workflow.contains("target/ripr/workflow/agent-status.md"));
+        assert!(workflow.contains("target/ripr/workflow/agent-review-summary.json"));
+        assert!(workflow.contains("target/ripr/workflow/agent-review-summary.md"));
         assert!(workflow.contains("target/ripr/agent/agent-packet.json"));
         assert!(workflow.contains("target/ripr/agent/agent-brief.json"));
         assert!(workflow.contains("target/ripr/agent/agent-verify.json"));
@@ -2533,12 +2630,14 @@ mod tests {
         assert!(workflow.contains("name: RIPR advisory reports"));
         assert!(workflow.contains("target/ripr/pilot"));
         assert!(workflow.contains("target/ripr/agent"));
+        assert!(workflow.contains("target/ripr/workflow"));
         assert!(workflow.contains("target/ripr/reports"));
         assert!(workflow.contains("name: ripr-reports"));
         assert!(workflow.contains("RIPR_TOP_SEAM_ID"));
         assert!(workflow.contains(".top_actionable_seams[0].seam_id"));
         assert!(!workflow.contains(".top_seams[0].seam_id"));
         assert!(workflow.contains("cargo xtask operator-cockpit"));
+        assert!(workflow.contains("cat target/ripr/workflow/agent-review-summary.md"));
         assert!(workflow.contains("hashFiles('crates/ripr/Cargo.toml')"));
         assert!(workflow.contains("hashFiles('xtask/src/reports/operator.rs')"));
         assert!(workflow.contains("if: env.RIPR_UPLOAD_SARIF == 'true'"));
