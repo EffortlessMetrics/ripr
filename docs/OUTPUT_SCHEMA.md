@@ -640,7 +640,7 @@ lands at `target/ripr/reports/repo-exposure.json` when generated via
 
 ```json
 {
-  "schema_version": "0.2",
+  "schema_version": "0.3",
   "scope": "repo",
   "metrics": {
     "seams_total": 9355,
@@ -1026,7 +1026,7 @@ JSON shape:
 
 ```json
 {
-  "schema_version": "0.2",
+  "schema_version": "0.3",
   "tool": "ripr",
   "status": "advisory",
   "inputs": {
@@ -1082,16 +1082,22 @@ JSON shape:
   },
   "summary": {
     "remaining_gap": "No remaining static gap is named by this receipt; inspect the current seam packet if review needs final assertion detail.",
-    "next_recommendation": "Keep the focused test and attach this receipt with the agent verify JSON."
+    "next_recommendation": "Keep the focused test and attach this receipt with the agent verify JSON.",
+    "next_action": {
+      "kind": "improved",
+      "summary": "Static grip improved.",
+      "recommended_action": "Keep the focused test and include this receipt in review.",
+      "safe_to_merge": false
+    }
   }
 }
 ```
 
 Field contract:
 
-- `schema_version` - currently `"0.2"`. Version `0.2` adds receipt
-  provenance fields while preserving the selected-seam and handoff fields from
-  `0.1`.
+- `schema_version` - currently `"0.3"`. Version `0.2` added receipt
+  provenance fields; version `0.3` adds structured next-action guidance while
+  preserving the selected-seam and handoff fields from `0.1`.
 - `status` - always `"advisory"`; this is a handoff receipt, not a CI policy.
 - `inputs.agent_verify_json` - the verify JSON path supplied to the command.
 - `inputs.before` / `inputs.after` - snapshot paths copied from the verify JSON.
@@ -1134,6 +1140,11 @@ Field contract:
 - `summary.remaining_gap` / `summary.next_recommendation` - static advisory
   guidance derived from the verify bucket. It does not claim runtime
   confirmation.
+- `summary.next_action` - structured static guidance for agents and reviewers.
+  `kind` is `improved`, `changed`, `regressed`, `unchanged`, `new_gap`,
+  `resolved`, or `unknown`; `summary` is a short static movement statement;
+  `recommended_action` is the bounded next step; and `safe_to_merge` is always
+  `false` because the static receipt is review evidence, not a merge policy.
 
 ## PR Test Guidance
 
