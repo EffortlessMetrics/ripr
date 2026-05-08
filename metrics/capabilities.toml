@@ -720,13 +720,15 @@ evidence = [
   "docs/specs/RIPR-SPEC-0016-baseline-debt-delta.md defines the baseline debt delta contract",
   "ripr baseline create writes .ripr/gate-baseline.json ledgers from existing gate-decision JSON without overwriting by default",
   "ripr baseline diff writes advisory baseline-debt-delta JSON and Markdown from a reviewed baseline and current gate-decision evidence",
+  "ripr baseline update --remove-resolved shrink-only refreshes reviewed baselines without adopting new current debt",
   "crates/ripr/src/output/baseline_delta.rs renders still-present, resolved, new policy-eligible, acknowledged, suppressed, stale, invalid, and missing-input buckets",
+  "crates/ripr/src/output/baseline_update.rs preserves malformed or ambiguous entries while removing resolved reviewed debt",
   "fixtures/boundary_gap/expected/baseline-debt-delta/mixed pins checked JSON and Markdown output",
-  "docs/OUTPUT_SCHEMA.md Gate Baseline Ledger and Baseline Debt Delta Report sections define the ledger and delta shapes",
+  "docs/OUTPUT_SCHEMA.md Gate Baseline Ledger, Gate Baseline Update, and Baseline Debt Delta Report sections define the ledger, update, and delta shapes",
   "Campaign 17 keeps the report advisory and separates debt movement from gate pass/fail authority"
 ]
 fixtures = ["fixtures/boundary_gap/expected/baseline-debt-delta/mixed"]
-next = "baseline/update-remove-resolved"
+next = "ci/baseline-debt-delta-artifacts"
 metric = "baseline_debt_delta_entries, baseline_debt_delta_still_present, baseline_debt_delta_resolved, baseline_debt_delta_new_policy_eligible, baseline_debt_delta_acknowledged, baseline_debt_delta_suppressed, baseline_debt_delta_stale_entries, baseline_debt_delta_invalid_entries, baseline_debt_delta_missing_current_input"
 
 [[capability]]

@@ -306,9 +306,11 @@ ripr baseline update \
   --out .ripr/gate-baseline.json
 ```
 
-`baseline update` should be shrink-only by default. Adopting new debt must
-require a later explicit flag and reviewed reason if it is implemented.
-Generated CI must not rewrite baselines.
+`baseline update --remove-resolved` is shrink-only. It removes reviewed baseline
+identities that are absent from current gate-decision evidence, preserves
+malformed or ambiguous entries for manual review, and never adopts new current
+debt. Adopting new debt must require a later explicit flag and reviewed reason
+if it is implemented. Generated CI must not rewrite baselines.
 
 ## Required Evidence
 
@@ -354,11 +356,14 @@ Given a missing current gate-decision input, the report produces
 The implementation adds tests for:
 
 - CLI parsing for `ripr baseline diff`;
+- CLI parsing for `ripr baseline update --remove-resolved`;
 - baseline JSON parsing and invalid-entry reporting;
 - identity matching by `seam_id`, `source_id`, `id`, `dedupe_key`, and
   fallback;
 - ambiguous fallback matches becoming stale or invalid rather than arbitrary;
 - JSON and Markdown report shape;
+- shrink-only baseline update preserving malformed or ambiguous entries and
+  ignoring new current debt;
 - fixture cases for still-present, resolved, new policy-eligible,
   acknowledged, suppressed, stale, invalid, and missing-current-input buckets.
 
@@ -369,6 +374,8 @@ The expected implementation surface is:
 - `crates/ripr/src/cli/command.rs`, `commands.rs`, `execute.rs`, and `help.rs`
   for the `ripr baseline` command group;
 - `crates/ripr/src/output/baseline_delta.rs` for JSON/Markdown rendering;
+- `crates/ripr/src/output/baseline_update.rs` for shrink-only baseline
+  refreshes;
 - `docs/OUTPUT_SCHEMA.md` for the public contract;
 - fixtures under `fixtures/boundary_gap/expected/baseline-debt-delta/`;
 - generated CI wiring only after the command and fixture contract are pinned.
@@ -389,7 +396,7 @@ The report should feed these adoption metrics:
 
 ## Non-Goals
 
-- No baseline update implementation in the baseline-diff PR.
+- No automatic adoption of new current debt.
 - No analyzer behavior changes.
 - No gate policy semantics changes.
 - No generated workflow behavior changes.

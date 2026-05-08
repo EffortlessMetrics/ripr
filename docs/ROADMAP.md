@@ -144,8 +144,10 @@ acknowledgement, use baseline-check, or enable calibrated blocking. The
 the adoption proof and next-work boundary. Campaign 17 is active as RIPR Zero
 Adoption: RIPR-SPEC-0016 now defines the baseline debt delta contract, `ripr
 baseline create` can write `.ripr/gate-baseline.json` ledgers from existing
-gate-decision evidence, and `ripr baseline diff` can report baseline debt
-movement before shrink-only update and generated CI debt-delta artifacts.
+gate-decision evidence, `ripr baseline diff` can report baseline debt
+movement, and `ripr baseline update --remove-resolved` can shrink reviewed
+baselines without adopting new current debt before generated CI debt-delta
+artifacts.
 Editor Evidence UX remains queued as a separate Lane 3 campaign; its contract
 audit is recorded in [Editor Evidence UX](EDITOR_EVIDENCE_UX.md), and hover
 plus evidence-aware action hardening have landed as explicit parallel slices.

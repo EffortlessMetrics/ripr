@@ -71,7 +71,7 @@ commands = [
 
 [[work_item]]
 id = "baseline/update-remove-resolved"
-status = "ready"
+status = "done"
 branch = "baseline-update-remove-resolved"
 stackable = false
 blocked_by = ["baseline/diff"]
@@ -85,10 +85,10 @@ commands = [
 
 [[work_item]]
 id = "ci/baseline-debt-delta-artifacts"
-status = "blocked"
+status = "ready"
 branch = "ci-baseline-debt-delta-artifacts"
 stackable = false
-blocked_by = ["baseline/diff"]
+blocked_by = ["baseline/update-remove-resolved"]
 acceptance = "Upload baseline debt delta JSON/Markdown from generated CI and summarize debt movement without making this report the pass/fail authority"
 commands = [
   "cargo test -p ripr init_generated_github_workflow",

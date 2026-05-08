@@ -93,6 +93,14 @@ struct BaselineDiffOptions {
     out_md: PathBuf,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct BaselineUpdateOptions {
+    baseline: PathBuf,
+    current: PathBuf,
+    out: Option<PathBuf>,
+    remove_resolved: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum OutcomeFormat {
     Markdown,
@@ -1705,13 +1713,14 @@ pub(super) fn baseline(args: &[String]) -> Result<(), String> {
         return Ok(());
     }
     let Some((subcommand, rest)) = args.split_first() else {
-        return Err("baseline requires subcommand `create` or `diff`".to_string());
+        return Err("baseline requires subcommand `create`, `diff`, or `update`".to_string());
     };
     match subcommand.as_str() {
         "create" => baseline_create(rest),
         "diff" => baseline_diff(rest),
+        "update" => baseline_update(rest),
         _ => Err(format!(
-            "unknown baseline subcommand {subcommand:?}; expected `create` or `diff`"
+            "unknown baseline subcommand {subcommand:?}; expected `create`, `diff`, or `update`"
         )),
     }
 }
@@ -1776,6 +1785,62 @@ fn baseline_diff(args: &[String]) -> Result<(), String> {
         "Items: {}",
         output::baseline_delta::baseline_delta_item_count(&report)
     );
+    Ok(())
+}
+
+fn baseline_update(args: &[String]) -> Result<(), String> {
+    let options = parse_baseline_update_options(args)?;
+    if !options.remove_resolved {
+        return Err(
+            "baseline update requires --remove-resolved; adopting new debt is not supported"
+                .to_string(),
+        );
+    }
+    let baseline_path = output::baseline_update::display_path(&options.baseline);
+    let current_path = output::baseline_update::display_path(&options.current);
+    let baseline_json = std::fs::read_to_string(&options.baseline).map_err(|err| {
+        format!(
+            "read baseline update baseline {} failed: {err}",
+            output::baseline_update::display_path(&options.baseline)
+        )
+    })?;
+    let current_json = std::fs::read_to_string(&options.current).map_err(|err| {
+        format!(
+            "read baseline update current gate-decision {} failed: {err}",
+            output::baseline_update::display_path(&options.current)
+        )
+    })?;
+    let report = output::baseline_update::build_baseline_update_remove_resolved(
+        output::baseline_update::BaselineUpdateInput {
+            baseline_path,
+            current_gate_decision_path: current_path,
+            baseline_json,
+            current_gate_decision_json: current_json,
+        },
+    )?;
+    let rendered = output::baseline_update::render_baseline_update_json(&report)?;
+    let out = options.out.unwrap_or_else(|| options.baseline.clone());
+    write_text_file(&out, &rendered)?;
+    println!("Wrote {}", out.display());
+    println!(
+        "Entries: {} -> {}",
+        output::baseline_update::baseline_update_before_entry_count(&report),
+        output::baseline_update::baseline_update_after_entry_count(&report)
+    );
+    println!(
+        "Removed resolved: {}",
+        output::baseline_update::baseline_update_removed_resolved_count(&report)
+    );
+    println!(
+        "Ignored new current: {}",
+        output::baseline_update::baseline_update_ignored_new_current_count(&report)
+    );
+    if output::baseline_update::baseline_update_warning_count(&report) > 0 {
+        println!(
+            "Warnings: {}",
+            output::baseline_update::baseline_update_warning_count(&report)
+        );
+    }
     Ok(())
 }
 
@@ -2325,6 +2390,47 @@ fn parse_baseline_diff_options(args: &[String]) -> Result<BaselineDiffOptions, S
         current: current.ok_or_else(|| "baseline diff requires --current <path>".to_string())?,
         out,
         out_md,
+    })
+}
+
+fn parse_baseline_update_options(args: &[String]) -> Result<BaselineUpdateOptions, String> {
+    let mut baseline = None;
+    let mut current = None;
+    let mut out = None;
+    let mut remove_resolved = false;
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--baseline" => {
+                i += 1;
+                baseline = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--baseline",
+                    "baseline update",
+                )?);
+            }
+            "--current" => {
+                i += 1;
+                current = Some(non_empty_path_arg(args, i, "--current", "baseline update")?);
+            }
+            "--out" => {
+                i += 1;
+                out = Some(non_empty_path_arg(args, i, "--out", "baseline update")?);
+            }
+            "--remove-resolved" => remove_resolved = true,
+            other => return Err(format!("unknown baseline update argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    Ok(BaselineUpdateOptions {
+        baseline: baseline
+            .ok_or_else(|| "baseline update requires --baseline <path>".to_string())?,
+        current: current.ok_or_else(|| "baseline update requires --current <path>".to_string())?,
+        out,
+        remove_resolved,
     })
 }
 
@@ -3278,11 +3384,14 @@ mod tests {
     fn baseline_create_requires_source_and_rejects_unknown_args() {
         assert_eq!(
             baseline(&args(&[])),
-            Err("baseline requires subcommand `create` or `diff`".to_string())
+            Err("baseline requires subcommand `create`, `diff`, or `update`".to_string())
         );
         assert_eq!(
             baseline(&args(&["unknown"])),
-            Err("unknown baseline subcommand \"unknown\"; expected `create` or `diff`".to_string())
+            Err(
+                "unknown baseline subcommand \"unknown\"; expected `create`, `diff`, or `update`"
+                    .to_string()
+            )
         );
         assert_eq!(
             parse_baseline_create_options(&args(&[])),
@@ -3337,6 +3446,78 @@ mod tests {
         assert_eq!(
             parse_baseline_diff_options(&args(&["--bad"])),
             Err("unknown baseline diff argument \"--bad\"".to_string())
+        );
+    }
+
+    #[test]
+    fn baseline_update_parses_option_surface() {
+        assert_eq!(
+            parse_baseline_update_options(&args(&[
+                "--baseline",
+                ".ripr/gate-baseline.json",
+                "--current",
+                "target/ripr/reports/gate-decision.json",
+                "--remove-resolved",
+                "--out",
+                ".ripr/gate-baseline.updated.json",
+            ])),
+            Ok(BaselineUpdateOptions {
+                baseline: PathBuf::from(".ripr/gate-baseline.json"),
+                current: PathBuf::from("target/ripr/reports/gate-decision.json"),
+                out: Some(PathBuf::from(".ripr/gate-baseline.updated.json")),
+                remove_resolved: true,
+            })
+        );
+        assert_eq!(
+            parse_baseline_update_options(&args(&[
+                "--baseline",
+                ".ripr/gate-baseline.json",
+                "--current",
+                "target/ripr/reports/gate-decision.json",
+            ])),
+            Ok(BaselineUpdateOptions {
+                baseline: PathBuf::from(".ripr/gate-baseline.json"),
+                current: PathBuf::from("target/ripr/reports/gate-decision.json"),
+                out: None,
+                remove_resolved: false,
+            })
+        );
+    }
+
+    #[test]
+    fn baseline_update_requires_inputs_remove_resolved_and_rejects_unknown_args() {
+        assert_eq!(
+            parse_baseline_update_options(&args(&[])),
+            Err("baseline update requires --baseline <path>".to_string())
+        );
+        assert_eq!(
+            parse_baseline_update_options(&args(&["--baseline", ".ripr/gate-baseline.json"])),
+            Err("baseline update requires --current <path>".to_string())
+        );
+        assert_eq!(
+            parse_baseline_update_options(&args(&["--baseline", ""])),
+            Err("baseline update --baseline requires a non-empty value".to_string())
+        );
+        assert_eq!(
+            parse_baseline_update_options(&args(&["--bad"])),
+            Err("unknown baseline update argument \"--bad\"".to_string())
+        );
+        assert_eq!(
+            parse_baseline_update_options(&args(&["--adopt-new"])),
+            Err("unknown baseline update argument \"--adopt-new\"".to_string())
+        );
+        assert_eq!(
+            baseline(&args(&[
+                "update",
+                "--baseline",
+                ".ripr/gate-baseline.json",
+                "--current",
+                "target/ripr/reports/gate-decision.json",
+            ])),
+            Err(
+                "baseline update requires --remove-resolved; adopting new debt is not supported"
+                    .to_string()
+            )
         );
     }
 
