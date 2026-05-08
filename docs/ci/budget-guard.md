@@ -10,9 +10,9 @@ The bands are exactly those declared in `policy/ci-budget.toml`:
 
 | Band      | LEM range | Posture                | Documented description                                       |
 | --------- | --------- | ---------------------- | ------------------------------------------------------------ |
-| `small`   |     0–5   | `required`             | Docs, policy metadata, or focused code checks.               |
-| `medium`  |    6–20   | `required`             | Ordinary product PR with Rust and policy gates.              |
-| `large`   |   21–60   | `advisory`             | Multi-surface PR, extension checks, or broad evidence.       |
+| `small`   |     0-5   | `required`             | Docs, policy metadata, or focused code checks.               |
+| `medium`  |    6-20   | `required`             | Ordinary product PR with Rust and policy gates.              |
+| `large`   |   21-60   | `advisory`             | Multi-surface PR, extension checks, or broad evidence.       |
 | `release` |     61+   | `on_demand_release`    | Explicit `release-check` or `full-ci` proof.                 |
 
 When PR Plan's forecast lands in `small` or `medium`, the guard is
@@ -25,8 +25,8 @@ release-bearing).
 The guard never fails the workflow until the overall ledger flips
 `policy_state` from `advisory-ledger` to an enforcing state. Today
 `policy_state = "advisory-ledger"`, `enforcement = "none"`, and
-`[defaults].budget_guard = "off"` — so the guard runs in pure warn-only
-mode.
+`[defaults].budget_guard = "off"`, so any implementation must stay
+warn-only and exit successfully.
 
 ## Override and acknowledgement labels
 
@@ -48,7 +48,7 @@ Hard enforcement remains intentionally off until `ci-actuals.json` data
 has accumulated for at least 14 days on the lanes the guard meters
 against. The `ci-budget.toml` ledger encodes this with
 `[defaults].actuals_required = false` and `[defaults].budget_guard =
-"off"`. The guard self-disables until those defaults flip — see
+"off"`. The guard must not enforce until those defaults flip; see
 `docs/CI.md`'s Verification Economics section for the doctrine.
 
 ## Failure mode caught
@@ -68,7 +68,7 @@ accounted for.
 
 ## Implementation posture
 
-- **PR 12 (this PR)**: schema and behavior contract documented against
+- **Current state**: schema and behavior contract documented against
   the merged `policy/ci-budget.toml` shape. **No enforcement code yet.**
 - **Follow-up PR**: `cargo xtask ci budget-guard --plan
   target/ci/ci-plan.json --actuals target/ci/ci-actuals.json
@@ -78,7 +78,7 @@ accounted for.
 
 ## See also
 
-- `docs/CI.md` — Verification Economics policy.
-- `policy/ci-budget.toml` — `[[budget_band]]` and `[[label]]` ledgers.
-- `policy/ci-lane-whitelist.toml` — lane registry.
-- `policy/ci-risk-packs.toml` — changed-paths → lane-set mapping.
+- `docs/CI.md` - Verification Economics policy.
+- `policy/ci-budget.toml` - `[[budget_band]]` and `[[label]]` ledgers.
+- `policy/ci-lane-whitelist.toml` - lane registry.
+- `policy/ci-risk-packs.toml` - changed-paths to lane-set mapping.
