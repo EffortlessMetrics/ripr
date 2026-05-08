@@ -29,6 +29,12 @@ The contract is:
 - The LLM handoff is bounded to one focused test and a verification command.
 - GitHub annotations and summaries are advisory and non-blocking by default.
 
+This contract is pinned before implementation so that generated workflow
+posting behavior has a fixed boundary. The first implementation slice may add
+the pure report renderer and generated workflow projection, but it must preserve
+the defaults here: job summary and check annotations first, inline PR review
+comments only by explicit opt-in, and no CI failure policy by default.
+
 ## Behavior
 
 `ripr review-comments` is planned as a read-only report command. It should join

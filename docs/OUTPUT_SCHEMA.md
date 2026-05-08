@@ -1148,8 +1148,9 @@ Field contract:
 
 ## PR Test Guidance
 
-RIPR-SPEC-0012 defines a future `ripr review-comments` report that projects
-existing seam evidence into advisory GitHub PR guidance:
+RIPR-SPEC-0012 defines the pinned planning contract for the planned
+`ripr review-comments` report that projects existing seam evidence into
+advisory GitHub PR guidance:
 
 ```text
 ripr review-comments --root . --base <sha> --head <sha> --out target/ripr/review/comments.json
@@ -1157,8 +1158,8 @@ ripr review-comments --root . --base <sha> --head <sha> --out target/ripr/review
 
 The command is planned as a pure renderer. It should not post to GitHub, run
 mutation testing, refresh LSP state, edit source files, or generate tests. CI
-can use the JSON to write a job summary, emit check annotations, and optionally
-upsert inline PR review comments when explicitly enabled.
+can use the JSON to write a job summary, emit check annotations by default, and
+optionally upsert inline PR review comments when explicitly enabled.
 
 JSON shape:
 
