@@ -1338,9 +1338,9 @@ Work items:
 | `agent/workflow-manifest` | done | Added `ripr agent start --root . --seam-id <id> --out target/ripr/workflow` to write `workflow.json`, `commands.md`, and `agent-brief.json` as a source-edit-free workflow packet with selected seam details, artifact paths, shared commands, missing inputs, and explicit no-edit/no-LLM/no-runtime-execution boundaries. |
 | `agent/receipt-provenance` | done | Added agent receipt schema `0.2` provenance with ripr version, repo root, optional config fingerprint, command template version, render timestamp, before/after/verify artifact SHA-256 hashes, selected seam ID, before/after classes, movement, and explicit static-boundary flags. |
 | `agent/next-action-guidance` | done | Added structured `summary.next_action` guidance to agent receipt schema `0.3` for improved, changed, regressed, unchanged, new-gap, and resolved states while preserving existing summary fields. |
-| `agent/reviewer-summary` | ready | Add `ripr agent review-summary --root . --json` plus human output that joins status, receipt, cockpit, repo exposure, LSP cockpit when present, and CI artifact status into a compact review packet. |
-| `fixtures/llm-work-loop` | blocked | Add LLM work-loop fixtures for happy, unchanged, regressed, missing-artifact, stale-artifact, configured-off, path-with-spaces, and Windows-separator cases. |
-| `ci/llm-work-packets` | blocked | Generated CI uploads agent status JSON/Markdown, workflow JSON, review summary JSON/Markdown, receipt, and operator cockpit artifacts as advisory evidence. |
+| `agent/reviewer-summary` | done | Added `ripr agent review-summary --root .` Markdown plus `--json` schema `0.1` output that joins status, workflow, receipt, cockpit, repo exposure, LSP cockpit when present, and local CI artifact state into a compact review packet. |
+| `fixtures/llm-work-loop` | done | Added a boundary-gap `expected/llm-work-loop/` fixture matrix for happy, unchanged, regressed, missing-artifact, stale-artifact, configured-off, path-with-spaces, and Windows-separator loop cases. |
+| `ci/llm-work-packets` | ready | Generated CI uploads agent status JSON/Markdown, workflow JSON, review summary JSON/Markdown, receipt, and operator cockpit artifacts as advisory evidence. |
 | `docs/llm-operator-guide` | blocked | Document the LLM operator loop from agent status through start, packet or brief, focused test, after snapshot, verify, receipt, and review summary, with anti-goals explicit. |
 | `campaign/llm-work-loop-closeout` | blocked | Close Campaign 11 only after LLM work-loop state, commands, provenance, fixtures, CI artifacts, docs, and review summary are aligned without automatic edits, generated tests, runtime mutation execution, speculative LSP features, or new public crates. |
 
@@ -1348,6 +1348,7 @@ Commands:
 
 ```bash
 cargo test -p ripr agent_status
+cargo test -p ripr agent_review_summary
 cargo xtask check-output-contracts
 cargo xtask check-static-language
 cargo xtask check-pr

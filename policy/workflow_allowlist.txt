@@ -9,6 +9,7 @@
 
 .github/workflows/ci.yml|3|CI run blocks call direct Cargo or npm commands.
 .github/workflows/coverage.yml|1|Coverage workflow keeps each run block to one coverage command.
+.github/workflows/pr-plan.yml|1|Advisory PR Plan workflow keeps each run block to one shell command (mkdir/git, ls, printf).
 .github/workflows/droid-review.yml|20|Droid auto-review workflow writes local Factory BYOK settings, then uses reusable actions.
 .github/workflows/droid-security-scan.yml|20|Droid scheduled security scan writes local Factory BYOK settings, then uses reusable actions.
 .github/workflows/droid.yml|20|Droid tag-response workflow writes local Factory BYOK settings, then uses reusable actions.
