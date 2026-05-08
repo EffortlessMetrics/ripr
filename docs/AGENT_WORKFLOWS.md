@@ -68,12 +68,15 @@ A Codex Goals run should:
 - run `cargo xtask shape`, `cargo xtask fix-pr`, `cargo xtask check-pr`, and
   `cargo xtask pr-summary`
 - continue only to independent or explicitly stackable work items
-- stop on policy, architecture, credential, merge, or scope decisions
+- stop on policy, architecture, credential, or scope decisions that are not
+  covered by the current lane instructions
 - leave durable learnings only when future agents should not rediscover them
 
-`requires_human_merge = true` is a merge boundary, not a commit boundary. It
-does not block committing, pushing, or opening a scoped PR after validation.
-Package the work first, then stop before merge when owner review is required.
+Agents are expected to carry a scoped PR through review repair, validation,
+merge, and post-merge verification when the current lane instructions authorize
+that ownership. Stop before merge only when a live user instruction, hosted
+branch protection, credential requirement, or unresolved review finding makes
+that necessary.
 
 ## Choosing A Subset
 
