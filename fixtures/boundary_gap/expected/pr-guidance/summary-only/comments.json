@@ -1,0 +1,59 @@
+{
+  "base": "main",
+  "comments": [],
+  "head": "HEAD",
+  "limits": {
+    "max_inline_comments": 3,
+    "max_summary_items": 10
+  },
+  "limits_note": "Advisory static evidence only; no automatic edits, generated tests, runtime mutation execution, or CI blocking.",
+  "mode": "draft",
+  "root": ".",
+  "schema_version": "0.1",
+  "status": "advisory",
+  "summary": {
+    "comments": 0,
+    "summary_only": 1,
+    "suppressed": 0,
+    "unchanged_tests": true
+  },
+  "summary_only": [
+    {
+      "dedupe_key": "ripr:8f7fa8644fd12280:src/pricing.rs:88",
+      "grip_class": "weakly_gripped",
+      "id": "ripr-review-8f7fa8644fd12280",
+      "kind": "predicate_boundary",
+      "llm_guidance": {
+        "command": "ripr agent brief --root . --seam-id 8f7fa8644fd12280 --json > target/ripr/workflow/agent-brief.json",
+        "prompt": "Write one focused Rust test for input that hits the boundary: amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+      },
+      "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "owner": "pricing::discounted_total",
+      "placement": null,
+      "reason": "Static evidence names missing discriminator `input that hits the boundary: amount == discount_threshold` for this seam.",
+      "seam": {
+        "expression": "amount >= discount_threshold",
+        "file": "src/pricing.rs",
+        "line": 88
+      },
+      "seam_id": "8f7fa8644fd12280",
+      "severity": "warning",
+      "suggested_test": {
+        "assertion_kind": "exact_return_value",
+        "assertion_shape": "assert_eq!(discounted_total(/* boundary input */), /* expected */)",
+        "candidate_values": [
+          "input that hits the boundary: amount == discount_threshold"
+        ],
+        "intent": "Add one focused discriminator test.",
+        "near_test": "above_threshold_gets_discount",
+        "recommended_file": "tests/pricing.rs",
+        "recommended_name": "discounted_total_boundary_discriminator"
+      },
+      "summary_reason": "no safe changed-line placement was available for this seam"
+    }
+  ],
+  "suppressed": [],
+  "tool": "ripr",
+  "warnings": []
+}

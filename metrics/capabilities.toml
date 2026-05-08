@@ -626,10 +626,12 @@ evidence = [
   "docs/IMPLEMENTATION_CAMPAIGNS.md Campaign 13 marks ci/run-pr-guidance-report done after wiring the generated workflow producer",
   "ripr init --ci github generates an advisory workflow that runs ripr review-comments on pull requests, writes a RIPR advisory summary, and emits non-blocking changed-line check annotations when target/ripr/review/comments.json exists",
   "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture pins generated workflow artifact paths, top-seam extraction, review-comments execution before summary and annotation consumers, advisory posture, optional SARIF gates, badge output, summary sections, and annotation hooks",
+  "fixtures/boundary_gap/expected/pr-guidance pins exact-line, owner-function-line, same-file-line, summary-only, capped, configured-off, and changed-test-skip JSON and Markdown outputs",
+  "crates/ripr/src/output/review_comments.rs::review_comments_pr_guidance_fixtures_pin_required_cases compares the PR guidance fixture matrix",
   "docs/QUICKSTART.md routes CI-first users through the generated advisory workflow summary, uploaded artifact packet, optional SARIF, and non-blocking posture"
 ]
-fixtures = []
-next = "fixtures/pr-guidance-cases"
+fixtures = ["fixtures/boundary_gap/expected/pr-guidance"]
+next = "docs/pr-review-guidance"
 metric = "PR guidance projects existing seam evidence into bounded changed-line annotations without blocking by default"
 
 [[capability]]

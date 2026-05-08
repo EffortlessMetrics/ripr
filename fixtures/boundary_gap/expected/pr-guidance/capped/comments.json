@@ -1,0 +1,428 @@
+{
+  "base": "main",
+  "comments": [
+    {
+      "dedupe_key": "ripr:53d21b642e4945bb:src/pricing.rs:10",
+      "grip_class": "weakly_gripped",
+      "id": "ripr-review-53d21b642e4945bb",
+      "kind": "predicate_boundary",
+      "llm_guidance": {
+        "command": "ripr agent brief --root . --seam-id 53d21b642e4945bb --json > target/ripr/workflow/agent-brief.json",
+        "prompt": "Write one focused Rust test for input that hits the boundary: amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+      },
+      "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "owner": "pricing::discounted_total",
+      "placement": {
+        "line": 10,
+        "mode": "exact_seam_line",
+        "path": "src/pricing.rs",
+        "side": "RIGHT"
+      },
+      "reason": "Static evidence names missing discriminator `input that hits the boundary: amount == discount_threshold` for this seam.",
+      "seam": {
+        "expression": "amount >= discount_threshold",
+        "file": "src/pricing.rs",
+        "line": 10
+      },
+      "seam_id": "53d21b642e4945bb",
+      "severity": "warning",
+      "suggested_test": {
+        "assertion_kind": "exact_return_value",
+        "assertion_shape": "assert_eq!(discounted_total(/* boundary input */), /* expected */)",
+        "candidate_values": [
+          "input that hits the boundary: amount == discount_threshold"
+        ],
+        "intent": "Add one focused discriminator test.",
+        "near_test": "above_threshold_gets_discount",
+        "recommended_file": "tests/pricing.rs",
+        "recommended_name": "discounted_total_boundary_discriminator"
+      }
+    },
+    {
+      "dedupe_key": "ripr:5b353664321bdea6:src/pricing.rs:20",
+      "grip_class": "weakly_gripped",
+      "id": "ripr-review-5b353664321bdea6",
+      "kind": "predicate_boundary",
+      "llm_guidance": {
+        "command": "ripr agent brief --root . --seam-id 5b353664321bdea6 --json > target/ripr/workflow/agent-brief.json",
+        "prompt": "Write one focused Rust test for input that hits the boundary: amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+      },
+      "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "owner": "pricing::discounted_total",
+      "placement": {
+        "line": 20,
+        "mode": "exact_seam_line",
+        "path": "src/pricing.rs",
+        "side": "RIGHT"
+      },
+      "reason": "Static evidence names missing discriminator `input that hits the boundary: amount == discount_threshold` for this seam.",
+      "seam": {
+        "expression": "amount >= discount_threshold",
+        "file": "src/pricing.rs",
+        "line": 20
+      },
+      "seam_id": "5b353664321bdea6",
+      "severity": "warning",
+      "suggested_test": {
+        "assertion_kind": "exact_return_value",
+        "assertion_shape": "assert_eq!(discounted_total(/* boundary input */), /* expected */)",
+        "candidate_values": [
+          "input that hits the boundary: amount == discount_threshold"
+        ],
+        "intent": "Add one focused discriminator test.",
+        "near_test": "above_threshold_gets_discount",
+        "recommended_file": "tests/pricing.rs",
+        "recommended_name": "discounted_total_boundary_discriminator"
+      }
+    },
+    {
+      "dedupe_key": "ripr:644b716437604271:src/pricing.rs:30",
+      "grip_class": "weakly_gripped",
+      "id": "ripr-review-644b716437604271",
+      "kind": "predicate_boundary",
+      "llm_guidance": {
+        "command": "ripr agent brief --root . --seam-id 644b716437604271 --json > target/ripr/workflow/agent-brief.json",
+        "prompt": "Write one focused Rust test for input that hits the boundary: amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+      },
+      "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "owner": "pricing::discounted_total",
+      "placement": {
+        "line": 30,
+        "mode": "exact_seam_line",
+        "path": "src/pricing.rs",
+        "side": "RIGHT"
+      },
+      "reason": "Static evidence names missing discriminator `input that hits the boundary: amount == discount_threshold` for this seam.",
+      "seam": {
+        "expression": "amount >= discount_threshold",
+        "file": "src/pricing.rs",
+        "line": 30
+      },
+      "seam_id": "644b716437604271",
+      "severity": "warning",
+      "suggested_test": {
+        "assertion_kind": "exact_return_value",
+        "assertion_shape": "assert_eq!(discounted_total(/* boundary input */), /* expected */)",
+        "candidate_values": [
+          "input that hits the boundary: amount == discount_threshold"
+        ],
+        "intent": "Add one focused discriminator test.",
+        "near_test": "above_threshold_gets_discount",
+        "recommended_file": "tests/pricing.rs",
+        "recommended_name": "discounted_total_boundary_discriminator"
+      }
+    }
+  ],
+  "head": "HEAD",
+  "limits": {
+    "max_inline_comments": 3,
+    "max_summary_items": 10
+  },
+  "limits_note": "Advisory static evidence only; no automatic edits, generated tests, runtime mutation execution, or CI blocking.",
+  "mode": "draft",
+  "root": ".",
+  "schema_version": "0.1",
+  "status": "advisory",
+  "summary": {
+    "comments": 3,
+    "summary_only": 7,
+    "suppressed": 2,
+    "unchanged_tests": true
+  },
+  "summary_only": [
+    {
+      "dedupe_key": "ripr:6d620c643ca5495c:src/pricing.rs:40",
+      "grip_class": "weakly_gripped",
+      "id": "ripr-review-6d620c643ca5495c",
+      "kind": "predicate_boundary",
+      "llm_guidance": {
+        "command": "ripr agent brief --root . --seam-id 6d620c643ca5495c --json > target/ripr/workflow/agent-brief.json",
+        "prompt": "Write one focused Rust test for input that hits the boundary: amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+      },
+      "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "owner": "pricing::discounted_total",
+      "placement": {
+        "line": 40,
+        "mode": "exact_seam_line",
+        "path": "src/pricing.rs",
+        "side": "RIGHT"
+      },
+      "reason": "Static evidence names missing discriminator `input that hits the boundary: amount == discount_threshold` for this seam.",
+      "seam": {
+        "expression": "amount >= discount_threshold",
+        "file": "src/pricing.rs",
+        "line": 40
+      },
+      "seam_id": "6d620c643ca5495c",
+      "severity": "warning",
+      "suggested_test": {
+        "assertion_kind": "exact_return_value",
+        "assertion_shape": "assert_eq!(discounted_total(/* boundary input */), /* expected */)",
+        "candidate_values": [
+          "input that hits the boundary: amount == discount_threshold"
+        ],
+        "intent": "Add one focused discriminator test.",
+        "near_test": "above_threshold_gets_discount",
+        "recommended_file": "tests/pricing.rs",
+        "recommended_name": "discounted_total_boundary_discriminator"
+      },
+      "summary_reason": "inline comment cap reached"
+    },
+    {
+      "dedupe_key": "ripr:7678476441e9ad27:src/pricing.rs:50",
+      "grip_class": "weakly_gripped",
+      "id": "ripr-review-7678476441e9ad27",
+      "kind": "predicate_boundary",
+      "llm_guidance": {
+        "command": "ripr agent brief --root . --seam-id 7678476441e9ad27 --json > target/ripr/workflow/agent-brief.json",
+        "prompt": "Write one focused Rust test for input that hits the boundary: amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+      },
+      "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "owner": "pricing::discounted_total",
+      "placement": {
+        "line": 50,
+        "mode": "exact_seam_line",
+        "path": "src/pricing.rs",
+        "side": "RIGHT"
+      },
+      "reason": "Static evidence names missing discriminator `input that hits the boundary: amount == discount_threshold` for this seam.",
+      "seam": {
+        "expression": "amount >= discount_threshold",
+        "file": "src/pricing.rs",
+        "line": 50
+      },
+      "seam_id": "7678476441e9ad27",
+      "severity": "warning",
+      "suggested_test": {
+        "assertion_kind": "exact_return_value",
+        "assertion_shape": "assert_eq!(discounted_total(/* boundary input */), /* expected */)",
+        "candidate_values": [
+          "input that hits the boundary: amount == discount_threshold"
+        ],
+        "intent": "Add one focused discriminator test.",
+        "near_test": "above_threshold_gets_discount",
+        "recommended_file": "tests/pricing.rs",
+        "recommended_name": "discounted_total_boundary_discriminator"
+      },
+      "summary_reason": "inline comment cap reached"
+    },
+    {
+      "dedupe_key": "ripr:7f21626446d108b2:src/pricing.rs:60",
+      "grip_class": "weakly_gripped",
+      "id": "ripr-review-7f21626446d108b2",
+      "kind": "predicate_boundary",
+      "llm_guidance": {
+        "command": "ripr agent brief --root . --seam-id 7f21626446d108b2 --json > target/ripr/workflow/agent-brief.json",
+        "prompt": "Write one focused Rust test for input that hits the boundary: amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+      },
+      "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "owner": "pricing::discounted_total",
+      "placement": {
+        "line": 60,
+        "mode": "exact_seam_line",
+        "path": "src/pricing.rs",
+        "side": "RIGHT"
+      },
+      "reason": "Static evidence names missing discriminator `input that hits the boundary: amount == discount_threshold` for this seam.",
+      "seam": {
+        "expression": "amount >= discount_threshold",
+        "file": "src/pricing.rs",
+        "line": 60
+      },
+      "seam_id": "7f21626446d108b2",
+      "severity": "warning",
+      "suggested_test": {
+        "assertion_kind": "exact_return_value",
+        "assertion_shape": "assert_eq!(discounted_total(/* boundary input */), /* expected */)",
+        "candidate_values": [
+          "input that hits the boundary: amount == discount_threshold"
+        ],
+        "intent": "Add one focused discriminator test.",
+        "near_test": "above_threshold_gets_discount",
+        "recommended_file": "tests/pricing.rs",
+        "recommended_name": "discounted_total_boundary_discriminator"
+      },
+      "summary_reason": "inline comment cap reached"
+    },
+    {
+      "dedupe_key": "ripr:86849d644aa3d7fd:src/pricing.rs:70",
+      "grip_class": "weakly_gripped",
+      "id": "ripr-review-86849d644aa3d7fd",
+      "kind": "predicate_boundary",
+      "llm_guidance": {
+        "command": "ripr agent brief --root . --seam-id 86849d644aa3d7fd --json > target/ripr/workflow/agent-brief.json",
+        "prompt": "Write one focused Rust test for input that hits the boundary: amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+      },
+      "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "owner": "pricing::discounted_total",
+      "placement": {
+        "line": 70,
+        "mode": "exact_seam_line",
+        "path": "src/pricing.rs",
+        "side": "RIGHT"
+      },
+      "reason": "Static evidence names missing discriminator `input that hits the boundary: amount == discount_threshold` for this seam.",
+      "seam": {
+        "expression": "amount >= discount_threshold",
+        "file": "src/pricing.rs",
+        "line": 70
+      },
+      "seam_id": "86849d644aa3d7fd",
+      "severity": "warning",
+      "suggested_test": {
+        "assertion_kind": "exact_return_value",
+        "assertion_shape": "assert_eq!(discounted_total(/* boundary input */), /* expected */)",
+        "candidate_values": [
+          "input that hits the boundary: amount == discount_threshold"
+        ],
+        "intent": "Add one focused discriminator test.",
+        "near_test": "above_threshold_gets_discount",
+        "recommended_file": "tests/pricing.rs",
+        "recommended_name": "discounted_total_boundary_discriminator"
+      },
+      "summary_reason": "inline comment cap reached"
+    },
+    {
+      "dedupe_key": "ripr:8f9b38644fe8dee8:src/pricing.rs:80",
+      "grip_class": "weakly_gripped",
+      "id": "ripr-review-8f9b38644fe8dee8",
+      "kind": "predicate_boundary",
+      "llm_guidance": {
+        "command": "ripr agent brief --root . --seam-id 8f9b38644fe8dee8 --json > target/ripr/workflow/agent-brief.json",
+        "prompt": "Write one focused Rust test for input that hits the boundary: amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+      },
+      "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "owner": "pricing::discounted_total",
+      "placement": {
+        "line": 80,
+        "mode": "exact_seam_line",
+        "path": "src/pricing.rs",
+        "side": "RIGHT"
+      },
+      "reason": "Static evidence names missing discriminator `input that hits the boundary: amount == discount_threshold` for this seam.",
+      "seam": {
+        "expression": "amount >= discount_threshold",
+        "file": "src/pricing.rs",
+        "line": 80
+      },
+      "seam_id": "8f9b38644fe8dee8",
+      "severity": "warning",
+      "suggested_test": {
+        "assertion_kind": "exact_return_value",
+        "assertion_shape": "assert_eq!(discounted_total(/* boundary input */), /* expected */)",
+        "candidate_values": [
+          "input that hits the boundary: amount == discount_threshold"
+        ],
+        "intent": "Add one focused discriminator test.",
+        "near_test": "above_threshold_gets_discount",
+        "recommended_file": "tests/pricing.rs",
+        "recommended_name": "discounted_total_boundary_discriminator"
+      },
+      "summary_reason": "inline comment cap reached"
+    },
+    {
+      "dedupe_key": "ripr:98b15364552d0c53:src/pricing.rs:90",
+      "grip_class": "weakly_gripped",
+      "id": "ripr-review-98b15364552d0c53",
+      "kind": "predicate_boundary",
+      "llm_guidance": {
+        "command": "ripr agent brief --root . --seam-id 98b15364552d0c53 --json > target/ripr/workflow/agent-brief.json",
+        "prompt": "Write one focused Rust test for input that hits the boundary: amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+      },
+      "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "owner": "pricing::discounted_total",
+      "placement": {
+        "line": 90,
+        "mode": "exact_seam_line",
+        "path": "src/pricing.rs",
+        "side": "RIGHT"
+      },
+      "reason": "Static evidence names missing discriminator `input that hits the boundary: amount == discount_threshold` for this seam.",
+      "seam": {
+        "expression": "amount >= discount_threshold",
+        "file": "src/pricing.rs",
+        "line": 90
+      },
+      "seam_id": "98b15364552d0c53",
+      "severity": "warning",
+      "suggested_test": {
+        "assertion_kind": "exact_return_value",
+        "assertion_shape": "assert_eq!(discounted_total(/* boundary input */), /* expected */)",
+        "candidate_values": [
+          "input that hits the boundary: amount == discount_threshold"
+        ],
+        "intent": "Add one focused discriminator test.",
+        "near_test": "above_threshold_gets_discount",
+        "recommended_file": "tests/pricing.rs",
+        "recommended_name": "discounted_total_boundary_discriminator"
+      },
+      "summary_reason": "inline comment cap reached"
+    },
+    {
+      "dedupe_key": "ripr:b74a163aa6812b31:src/pricing.rs:100",
+      "grip_class": "weakly_gripped",
+      "id": "ripr-review-b74a163aa6812b31",
+      "kind": "predicate_boundary",
+      "llm_guidance": {
+        "command": "ripr agent brief --root . --seam-id b74a163aa6812b31 --json > target/ripr/workflow/agent-brief.json",
+        "prompt": "Write one focused Rust test for input that hits the boundary: amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+      },
+      "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+      "owner": "pricing::discounted_total",
+      "placement": {
+        "line": 100,
+        "mode": "exact_seam_line",
+        "path": "src/pricing.rs",
+        "side": "RIGHT"
+      },
+      "reason": "Static evidence names missing discriminator `input that hits the boundary: amount == discount_threshold` for this seam.",
+      "seam": {
+        "expression": "amount >= discount_threshold",
+        "file": "src/pricing.rs",
+        "line": 100
+      },
+      "seam_id": "b74a163aa6812b31",
+      "severity": "warning",
+      "suggested_test": {
+        "assertion_kind": "exact_return_value",
+        "assertion_shape": "assert_eq!(discounted_total(/* boundary input */), /* expected */)",
+        "candidate_values": [
+          "input that hits the boundary: amount == discount_threshold"
+        ],
+        "intent": "Add one focused discriminator test.",
+        "near_test": "above_threshold_gets_discount",
+        "recommended_file": "tests/pricing.rs",
+        "recommended_name": "discounted_total_boundary_discriminator"
+      },
+      "summary_reason": "inline comment cap reached"
+    }
+  ],
+  "suppressed": [
+    {
+      "file": "src/pricing.rs",
+      "line": 110,
+      "message": "The PR guidance summary item cap was reached.",
+      "reason": "summary_cap",
+      "seam_id": "ae33db3aa13cc766"
+    },
+    {
+      "file": "src/pricing.rs",
+      "line": 120,
+      "message": "The PR guidance summary item cap was reached.",
+      "reason": "summary_cap",
+      "seam_id": "a6d0c03a9d6a2e7b"
+    }
+  ],
+  "tool": "ripr",
+  "warnings": []
+}

@@ -789,9 +789,12 @@ tests = [
   "crates/ripr/src/cli/commands.rs::review_comments_rejects_empty_values_and_unknown_args",
   "crates/ripr/src/cli/commands.rs::review_comments_rejects_missing_root_before_loading_diff",
   "crates/ripr/src/cli/commands.rs::review_comments_returns_diff_loader_errors",
-  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture"
+  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture",
+  "crates/ripr/src/output/review_comments.rs::review_comments_pr_guidance_fixtures_pin_required_cases"
 ]
-fixtures = []
+fixtures = [
+  "fixtures/boundary_gap/expected/pr-guidance"
+]
 code = [
   "crates/ripr/src/cli/commands.rs",
   "crates/ripr/src/cli/command.rs",

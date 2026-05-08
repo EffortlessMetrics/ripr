@@ -45,6 +45,10 @@ are scoped or reviewed.
 - Added generated CI execution of `ripr review-comments` on pull requests so
   `target/ripr/review/comments.json` is written before the existing advisory
   summary and non-blocking check-annotation consumers run.
+- Added PR guidance fixture outputs under
+  `fixtures/boundary_gap/expected/pr-guidance` for exact-line,
+  owner-function-line, same-file-line, summary-only, capped, configured-off,
+  and changed-test-skip cases.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and PR guidance annotation counts before artifact
@@ -72,8 +76,8 @@ are scoped or reviewed.
 
 - Advanced Campaign 13, PR Review Guidance, after adding the read-only
   `ripr review-comments` producer and generated CI producer step;
-  `fixtures/pr-guidance-cases` is now the ready item for pinning placement and
-  suppression cases.
+  `docs/pr-review-guidance` is now the ready item after pinning placement and
+  suppression fixtures.
 - Pinned RIPR-SPEC-0012 as the PR test guidance annotation contract and
   advanced Campaign 12 to `vscode/first-run-status` as the next ready UX item.
 - Advanced Campaign 12 to `vscode/action-discoverability` after pinning the

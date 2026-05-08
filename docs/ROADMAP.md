@@ -101,8 +101,9 @@ agent/reviewer path. Campaign 13 is active as PR Review Guidance:
 `ripr review-comments` now writes the already-specified
 `target/ripr/review/comments.json` report, and generated CI now runs that
 producer before the existing non-blocking summary and changed-line
-check-annotation consumers. The next control-plane gap is fixture-pinning the
-guidance placement and suppression cases.
+check-annotation consumers. Guidance placement and suppression cases are now
+fixture-pinned; the next control-plane gap is dedicated PR guidance
+documentation.
 
 ## Strategic Sequence
 

@@ -441,6 +441,7 @@ mod tests {
     };
     use crate::domain::{Confidence, OracleKind, OracleStrength, StageEvidence, StageState};
     use serde_json::Value;
+    use std::fs;
     use std::path::PathBuf;
 
     fn stage(state: StageState) -> StageEvidence {
@@ -522,6 +523,83 @@ mod tests {
             &selection(seams),
         )?;
         serde_json::from_str(&rendered).map_err(|err| format!("parse review comments JSON: {err}"))
+    }
+
+    fn render_value_with_selection(
+        working_set: &AgentBriefResolvedWorkingSet,
+        selection: &AgentBriefSelection<'_>,
+    ) -> Result<Value, String> {
+        let rendered = render_review_comments_json(
+            Path::new("."),
+            "main",
+            "HEAD",
+            &Mode::Draft,
+            &RiprConfig::default(),
+            working_set,
+            selection,
+        )?;
+        serde_json::from_str(&rendered).map_err(|err| format!("parse review comments JSON: {err}"))
+    }
+
+    fn render_markdown(
+        working_set: &AgentBriefResolvedWorkingSet,
+        seams: &[ClassifiedSeam],
+    ) -> String {
+        render_review_comments_markdown(
+            Path::new("."),
+            "main",
+            "HEAD",
+            &Mode::Draft,
+            &RiprConfig::default(),
+            working_set,
+            &selection(seams),
+        )
+    }
+
+    fn render_markdown_with_selection(
+        working_set: &AgentBriefResolvedWorkingSet,
+        selection: &AgentBriefSelection<'_>,
+    ) -> String {
+        render_review_comments_markdown(
+            Path::new("."),
+            "main",
+            "HEAD",
+            &Mode::Draft,
+            &RiprConfig::default(),
+            working_set,
+            selection,
+        )
+    }
+
+    fn pr_guidance_fixture(case: &str, file: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/boundary_gap/expected/pr-guidance")
+            .join(case)
+            .join(file)
+    }
+
+    fn assert_json_fixture(case: &str, value: &Value) -> Result<(), String> {
+        let rendered = format!(
+            "{}\n",
+            serde_json::to_string_pretty(value)
+                .map_err(|err| format!("render {case} JSON fixture: {err}"))?
+        );
+        assert_text_fixture(case, "comments.json", &rendered)
+    }
+
+    fn assert_markdown_fixture(case: &str, rendered: &str) -> Result<(), String> {
+        assert_text_fixture(case, "comments.md", &format!("{rendered}\n"))
+    }
+
+    fn assert_text_fixture(case: &str, file: &str, rendered: &str) -> Result<(), String> {
+        let path = pr_guidance_fixture(case, file);
+        let expected = fs::read_to_string(&path)
+            .map_err(|err| format!("read fixture {}: {err}", path.display()))?;
+        assert_eq!(
+            expected, rendered,
+            "PR guidance fixture drift for {case}/{file}"
+        );
+        Ok(())
     }
 
     #[test]
@@ -711,5 +789,97 @@ mod tests {
         assert!(rendered.contains("# RIPR PR Guidance"));
         assert!(rendered.contains("Advisory static evidence only"));
         assert!(rendered.contains("ripr agent brief"));
+    }
+
+    #[test]
+    fn review_comments_pr_guidance_fixtures_pin_required_cases() -> Result<(), String> {
+        let exact_seams = [classified(88)];
+        let exact = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![AgentBriefLine::new("src/pricing.rs", 88)],
+        );
+        assert_json_fixture("exact-line", &render_value(&exact, &exact_seams)?)?;
+        assert_markdown_fixture("exact-line", &render_markdown(&exact, &exact_seams))?;
+
+        let owner = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![AgentBriefLine::new("src/pricing.rs", 70)],
+        )
+        .with_changed_owners(vec![AgentBriefChangedOwner::new(
+            "src/pricing.rs",
+            70,
+            "pricing::discounted_total",
+        )]);
+        assert_json_fixture("owner-function-line", &render_value(&owner, &exact_seams)?)?;
+        assert_markdown_fixture(
+            "owner-function-line",
+            &render_markdown(&owner, &exact_seams),
+        )?;
+
+        let same_file = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![
+                AgentBriefLine::new("src/pricing.rs", 60),
+                AgentBriefLine::new("src/pricing.rs", 92),
+            ],
+        );
+        assert_json_fixture("same-file-line", &render_value(&same_file, &exact_seams)?)?;
+        assert_markdown_fixture("same-file-line", &render_markdown(&same_file, &exact_seams))?;
+
+        let summary_only = AgentBriefResolvedWorkingSet::files(vec![PathBuf::from("src/other.rs")]);
+        assert_json_fixture("summary-only", &render_value(&summary_only, &exact_seams)?)?;
+        assert_markdown_fixture(
+            "summary-only",
+            &render_markdown(&summary_only, &exact_seams),
+        )?;
+
+        let capped_seams = (1..=12)
+            .map(|index| classified(index * 10))
+            .collect::<Vec<_>>();
+        let capped_lines = capped_seams
+            .iter()
+            .map(|seam| AgentBriefLine::new("src/pricing.rs", seam.seam.display_line()))
+            .collect::<Vec<_>>();
+        let capped = AgentBriefResolvedWorkingSet::base("main", capped_lines);
+        assert_json_fixture("capped", &render_value(&capped, &capped_seams)?)?;
+        assert_markdown_fixture("capped", &render_markdown(&capped, &capped_seams))?;
+
+        let changed_test = AgentBriefResolvedWorkingSet::base(
+            "main",
+            vec![
+                AgentBriefLine::new("src/pricing.rs", 88),
+                AgentBriefLine::new("tests/pricing.rs", 12),
+            ],
+        );
+        assert_json_fixture(
+            "changed-test-skip",
+            &render_value(&changed_test, &exact_seams)?,
+        )?;
+        assert_markdown_fixture(
+            "changed-test-skip",
+            &render_markdown(&changed_test, &exact_seams),
+        )?;
+
+        let configured_off_selection = AgentBriefSelection {
+            requested: 10,
+            returned: 0,
+            default: 10,
+            hard_cap: 10,
+            top_seams: Vec::new(),
+            warnings: vec![format!(
+                "seam {} at src/pricing.rs:88 is configured off for weakly_gripped seams and is not included in agent brief results",
+                exact_seams[0].seam.id().as_str()
+            )],
+        };
+        assert_json_fixture(
+            "configured-off",
+            &render_value_with_selection(&exact, &configured_off_selection)?,
+        )?;
+        assert_markdown_fixture(
+            "configured-off",
+            &render_markdown_with_selection(&exact, &configured_off_selection),
+        )?;
+
+        Ok(())
     }
 }

@@ -1,0 +1,32 @@
+{
+  "base": "main",
+  "comments": [],
+  "head": "HEAD",
+  "limits": {
+    "max_inline_comments": 3,
+    "max_summary_items": 10
+  },
+  "limits_note": "Advisory static evidence only; no automatic edits, generated tests, runtime mutation execution, or CI blocking.",
+  "mode": "draft",
+  "root": ".",
+  "schema_version": "0.1",
+  "status": "advisory",
+  "summary": {
+    "comments": 0,
+    "summary_only": 0,
+    "suppressed": 1,
+    "unchanged_tests": false
+  },
+  "summary_only": [],
+  "suppressed": [
+    {
+      "file": "src/pricing.rs",
+      "line": 88,
+      "message": "A nearby recommended test file changed in this pull request.",
+      "reason": "nearby_test_changed",
+      "seam_id": "8f7fa8644fd12280"
+    }
+  ],
+  "tool": "ripr",
+  "warnings": []
+}
