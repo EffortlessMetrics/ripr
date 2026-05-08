@@ -2109,7 +2109,7 @@ Work items:
 | `lsp/evidence-hover-hardening` | done | Hardened hover as the primary explanation surface for seam class, evidence path, missing discriminator, related test location, suggested assertion/test shape, packet and brief handoff commands, verify command, receipt command, and static limits. |
 | `lsp/evidence-aware-actions` | done | Tightened action visibility so targeted-test briefs require related-test or suggested-assertion context, suggested assertions and related-test opening remain evidence-gated, stale seam diagnostics fail closed, and agent-loop commands stay available for stable seam diagnostics. |
 | `lsp/context-packet-command` | done | Added `ripr.collectEvidenceContext`, a schema `0.1` LSP execute-command packet with seam identity, evidence path, missing discriminator, related test, suggested test, shared agent-loop commands, and static limits without source edits, generated tests, provider coupling, broad analysis reruns, or runtime mutation execution. |
-| `test/lsp-protocol-smoke` | blocked | Add framed protocol proof for initialize, saved-workspace diagnostics, hover, codeAction, context packet execution, and shutdown. |
+| `test/lsp-protocol-smoke` | done | Extended framed LSP proof through initialize, saved-workspace refresh, a real boundary-gap seam diagnostic, hover, codeAction, `ripr.collectEvidenceContext`, and shutdown without relying on the VS Code client. |
 | `test/vscode-extension-smoke` | blocked | Prove extension activation, server resolution, fixture diagnostics, hover, actions, copy payloads, related-test opening, restart, and bad-server-path status. |
 | `lsp/editor-status-and-staleness` | blocked | Make server unavailable, workspace unresolved, config disabled, queued, running, complete, stale, failed, and no-actionable-seam states explicit. |
 | `docs/editor-evidence-workflow` | blocked | Document install, diagnostic, hover, related test, context packet, one-test, verify, receipt, and refresh workflow with limits. |
@@ -2130,10 +2130,10 @@ Dependencies:
 
 Next when activated:
 
-- `test/lsp-protocol-smoke` should be the next behavior-bearing item. Extend
-  the framed LSP smoke through `ripr.collectEvidenceContext` so the server
-  proves diagnostics, hover, code actions, and the canonical packet command
-  without relying on the VS Code client.
+- `test/vscode-extension-smoke` should be the next behavior-bearing item. Keep
+  it proof-only: exercise extension activation, server resolution, fixture
+  diagnostics, hover, actions, copy payloads, related-test opening, restart,
+  and bad-server-path status without adding new editor features.
 
 Commands:
 
