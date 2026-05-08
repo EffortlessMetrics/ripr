@@ -86,9 +86,10 @@ provenance-backed receipts, next-action guidance, review summaries, fixtures,
 and generated CI packet uploads are pinned, and the LLM operator guide documents
 the source-edit-free human and external-agent path. Campaign 12 is active as
 First-Hour UX: after the LLM work-loop command and artifact state stabilized, the
-current product risk is making the VS Code extension and generated GitHub workflow
-explain the top recommendation without requiring users to inspect CLI reports
-first.
+current product risk is making the VS Code extension and generated GitHub
+workflow explain the top recommendation without requiring users to inspect CLI
+reports first. The PR guidance annotation contract is pinned first so editor and
+CI behavior can share the same advisory, non-blocking boundary.
 
 ## Strategic Sequence
 

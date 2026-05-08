@@ -26,7 +26,7 @@ end_state = [
 
 [[work_item]]
 id = "spec/pr-test-guidance-annotations"
-status = "ready"
+status = "done"
 branch = "spec-pr-test-guidance-annotations"
 stackable = false
 requires_human_merge = true
@@ -44,7 +44,7 @@ commands = [
 
 [[work_item]]
 id = "vscode/first-run-status"
-status = "blocked"
+status = "ready"
 branch = "vscode-first-run-status"
 stackable = false
 requires_human_merge = true
@@ -67,7 +67,7 @@ status = "blocked"
 branch = "vscode-action-discoverability"
 stackable = false
 requires_human_merge = true
-blocked_by = ["spec/pr-test-guidance-annotations"]
+blocked_by = ["vscode/first-run-status"]
 acceptance = "Group and title diagnostic actions around user intent without changing analyzer behavior, adding broad LSP features, or enabling unsaved-buffer overlays"
 commands = [
   "cargo test -p ripr lsp",
@@ -86,7 +86,7 @@ status = "blocked"
 branch = "ci-pr-summary-surface"
 stackable = false
 requires_human_merge = true
-blocked_by = ["spec/pr-test-guidance-annotations"]
+blocked_by = ["vscode/action-discoverability"]
 acceptance = "Make the generated workflow emit a useful PR or step summary with the top actionable seam, why it matters, suggested test target, artifact links, SARIF status, badge status, known limits, and check annotations from the PR test guidance report when implemented"
 commands = [
   "cargo test -p ripr agent",

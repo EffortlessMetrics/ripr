@@ -52,6 +52,8 @@ are scoped or reviewed.
 
 ### Changed
 
+- Pinned RIPR-SPEC-0012 as the PR test guidance annotation contract and
+  advanced Campaign 12 to `vscode/first-run-status` as the next ready UX item.
 - Aligned public package and extension front-door metadata around Rust
   test-oracle gaps, targeted tests, and static RIPR evidence instead of
   internal mutation-exposure wording.
