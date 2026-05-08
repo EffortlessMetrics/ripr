@@ -14,6 +14,26 @@ pub(super) fn file_uri_for_path(path: &Path) -> Result<Uri, String> {
 }
 
 pub(super) fn path_from_file_uri(uri: &Uri) -> Option<PathBuf> {
+    normalized_file_uri_path(uri).map(PathBuf::from)
+}
+
+pub(super) fn file_uris_match(left: &Uri, right: &Uri) -> bool {
+    if left == right {
+        return true;
+    }
+    let Some(left_path) = normalized_file_uri_path(left) else {
+        return false;
+    };
+    let Some(right_path) = normalized_file_uri_path(right) else {
+        return false;
+    };
+    if is_windows_drive_path(&left_path) && is_windows_drive_path(&right_path) {
+        return left_path.eq_ignore_ascii_case(&right_path);
+    }
+    left_path == right_path
+}
+
+fn normalized_file_uri_path(uri: &Uri) -> Option<String> {
     let raw = uri.as_str();
     let path = raw.strip_prefix("file://")?;
     let decoded = percent_decode_uri_path(path)?;
@@ -22,12 +42,17 @@ pub(super) fn path_from_file_uri(uri: &Uri) -> Option<PathBuf> {
     } else {
         decoded
     };
-    Some(PathBuf::from(path))
+    Some(path.replace('\\', "/"))
 }
 
 fn is_windows_drive_uri_path(path: &str) -> bool {
     let bytes = path.as_bytes();
     bytes.len() >= 3 && bytes[0] == b'/' && bytes[2] == b':' && bytes[1].is_ascii_alphabetic()
+}
+
+fn is_windows_drive_path(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic()
 }
 
 fn percent_decode_uri_path(path: &str) -> Option<String> {

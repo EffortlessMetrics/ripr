@@ -1,4 +1,4 @@
-use super::uri::path_from_file_uri;
+use super::uri::{file_uris_match, path_from_file_uri};
 use crate::analysis::ClassifiedSeam;
 use crate::app::Mode;
 use crate::domain::Finding;
@@ -77,7 +77,15 @@ impl AnalysisSnapshot {
     }
 
     pub(super) fn diagnostics_for_uri(&self, uri: &Uri) -> Option<&[Diagnostic]> {
-        self.diagnostics_by_uri.get(uri).map(Vec::as_slice)
+        self.diagnostics_by_uri
+            .get(uri)
+            .or_else(|| {
+                self.diagnostics_by_uri
+                    .iter()
+                    .find(|(stored_uri, _)| file_uris_match(stored_uri, uri))
+                    .map(|(_, diagnostics)| diagnostics)
+            })
+            .map(Vec::as_slice)
     }
 
     pub(super) fn diagnostic_count(&self) -> usize {

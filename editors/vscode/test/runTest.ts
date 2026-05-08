@@ -14,13 +14,29 @@ async function main() {
       __dirname,
       '../../../../target/ripr/vscode-test-cache'
     );
+    const runId = String(process.pid);
+    const extensionsPath = path.resolve(
+      __dirname,
+      '../../../../target/ripr/vscode-test-extensions',
+      runId
+    );
     const userDataPath = path.resolve(
       __dirname,
-      '../../../../target/ripr/vscode-test-user-data'
+      '../../../../target/ripr/vscode-test-user-data',
+      runId
     );
     fs.mkdirSync(cachePath, { recursive: true });
+    fs.mkdirSync(extensionsPath, { recursive: true });
+    fs.mkdirSync(userDataPath, { recursive: true });
 
-    const launchArgs = [workspacePath, '--disable-extensions'];
+    const launchArgs = [
+      workspacePath,
+      '--disable-extensions',
+      '--extensions-dir',
+      extensionsPath,
+      '--user-data-dir',
+      userDataPath,
+    ];
     const testServerPath = process.env.RIPR_TEST_SERVER_PATH;
     if (testServerPath) {
       const userSettingsPath = path.join(userDataPath, 'User');
@@ -30,9 +46,10 @@ async function main() {
         `${JSON.stringify({
           'ripr.server.path': testServerPath,
           'ripr.server.autoDownload': false,
+          'ripr.baseRef': 'HEAD',
+          'ripr.check.mode': 'instant',
         }, null, 2)}\n`
       );
-      launchArgs.push('--user-data-dir', userDataPath);
     }
 
     await runTests({

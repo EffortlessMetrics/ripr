@@ -41,7 +41,7 @@ suite('Extension Smoke', () => {
 
   test('defaults-first check mode is draft', () => {
     const config = vscode.workspace.getConfiguration('ripr');
-    assert.strictEqual(config.get('check.mode'), 'draft');
+    assert.strictEqual(config.inspect('check.mode')?.defaultValue, 'draft');
   });
 
   test('real server surfaces seam diagnostic, hover provider, and agent actions', async function (this: Mocha.Context) {
@@ -51,6 +51,7 @@ suite('Extension Smoke', () => {
     }
 
     const uri = workspaceFileUri('src/lib.rs');
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
     const document = await vscode.workspace.openTextDocument(uri);
     assert.strictEqual(document.languageId, 'rust');
     await vscode.window.showTextDocument(document);
@@ -63,13 +64,18 @@ suite('Extension Smoke', () => {
     );
     assert.ok(diagnostic.message.includes('Weakly gripped behavioral seam'));
 
-    const hovers = await vscode.commands.executeCommand<vscode.Hover[]>(
-      'vscode.executeHoverProvider',
-      uri,
-      diagnostic.range.start
+    const hoverPosition = new vscode.Position(
+      diagnostic.range.start.line,
+      diagnostic.range.start.character + 1
     );
-    const hoverText = hovers.map(hoverMarkdown).join('\n');
-    assert.ok(hoverText.includes('ripr estimates static RIPR exposure'), hoverText);
+    const hoverText = await waitForHoverText(uri, hoverPosition, (text) =>
+      text.includes('**ripr** behavioral seam') &&
+      text.includes('`weakly_gripped`') &&
+      text.includes('## Missing discriminator')
+    );
+    assert.ok(hoverText.includes('**ripr** behavioral seam'), hoverText);
+    assert.ok(hoverText.includes('`weakly_gripped`'), hoverText);
+    assert.ok(hoverText.includes('## Missing discriminator'), hoverText);
 
     const actions = await vscode.commands.executeCommand<Array<vscode.CodeAction | vscode.Command>>(
       'vscode.executeCodeActionProvider',
@@ -479,6 +485,8 @@ async function configureTestServer(): Promise<void> {
   const config = vscode.workspace.getConfiguration('ripr');
   await config.update('server.path', testServerPath, vscode.ConfigurationTarget.Global);
   await config.update('server.autoDownload', false, vscode.ConfigurationTarget.Global);
+  await config.update('baseRef', 'HEAD', vscode.ConfigurationTarget.Global);
+  await config.update('check.mode', 'instant', vscode.ConfigurationTarget.Global);
 }
 
 function workspaceFileUri(relativePath: string): vscode.Uri {
@@ -500,11 +508,52 @@ async function waitForDiagnostic(
     }
     await sleep(150);
   }
-  const diagnostics = vscode.languages
+  const currentUriDiagnostics = vscode.languages
     .getDiagnostics(uri)
     .map((entry) => `${entry.source ?? '<no source>'}:${diagnosticCode(entry)}:${entry.message}`)
     .join('\n');
-  throw new Error(`timed out waiting for ripr seam diagnostic. Current diagnostics:\n${diagnostics}`);
+  const allDiagnostics = vscode.languages
+    .getDiagnostics()
+    .map(([diagnosticUri, entries]) =>
+      [
+        diagnosticUri.toString(),
+        ...entries.map((entry) => `  ${entry.source ?? '<no source>'}:${diagnosticCode(entry)}:${entry.message}`),
+      ].join('\n')
+    )
+    .join('\n');
+  const workspaceFolders = vscode.workspace.workspaceFolders
+    ?.map((folder) => folder.uri.fsPath)
+    .join(', ') ?? '<none>';
+  throw new Error([
+    'timed out waiting for ripr seam diagnostic.',
+    `Workspace folders: ${workspaceFolders}`,
+    `Target URI: ${uri.toString()}`,
+    `Current URI diagnostics:\n${currentUriDiagnostics}`,
+    `All diagnostics:\n${allDiagnostics}`,
+  ].join('\n'));
+}
+
+async function waitForHoverText(
+  uri: vscode.Uri,
+  position: vscode.Position,
+  predicate: (text: string) => boolean,
+  timeoutMs = 15000
+): Promise<string> {
+  const started = Date.now();
+  let lastHoverText = '';
+  while (Date.now() - started < timeoutMs) {
+    const hovers = await vscode.commands.executeCommand<vscode.Hover[]>(
+      'vscode.executeHoverProvider',
+      uri,
+      position
+    );
+    lastHoverText = hovers.map(hoverMarkdown).join('\n');
+    if (predicate(lastHoverText)) {
+      return lastHoverText;
+    }
+    await sleep(150);
+  }
+  throw new Error(`timed out waiting for ripr seam hover. Last hover:\n${lastHoverText}`);
 }
 
 function sleep(ms: number): Promise<void> {
