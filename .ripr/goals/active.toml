@@ -1,90 +1,80 @@
-id = "calibrated-gate-policy"
-title = "Calibrated Gate Policy"
+id = "gate-adoption-ux"
+title = "Gate Adoption UX"
 status = "active"
 
-# This is Campaign 15 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
-# Campaign 14 closed Recommendation Calibration after the spec, fixture corpus,
-# outcome receipts, advisory report, workflow docs, and closeout handoff landed.
+# This is Campaign 16 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+# Campaign 15 closed Calibrated Gate Policy after optional gates were specified,
+# evaluated, fixture-pinned, wired into generated CI only when explicitly
+# configured, documented, and kept advisory by default.
 
 objective = """
-Define the optional calibrated gate layer for PR-time test-oracle evidence:
-separate visibility from blocking, fail only under explicit policy, preserve
-waiver and acknowledgement paths, and use runtime mutation calibration only as
-imported confidence evidence.
+Make optional calibrated gate adoption safe and obvious for real teams:
+provide copyable generated-CI examples, visible waiver and baseline workflows,
+first-screen gate summaries, dogfood receipts, and guidance for when blocking is
+appropriate without changing advisory defaults.
 """
 
 end_state = [
-  "a gate policy spec defines inputs, outputs, modes, acknowledgement labels, calibration evidence, and non-goals before implementation",
-  "a read-only gate evaluator consumes existing PR guidance, repo exposure, SARIF policy, suppressions, labels, recommendation calibration, and optional mutation calibration reports",
-  "default generated workflows remain advisory and non-blocking unless an explicit gate mode is configured",
-  "blocking decisions are deterministic, narrow, auditable, and limited to calibrated high-confidence new gaps",
-  "waiver labels such as `ripr-waive` produce visible acknowledged outcomes, not silent success",
-  "fixtures pin advisory, acknowledged, fail-on-new-high-confidence-gap, baseline-check, suppression, and calibration agreement/disagreement cases",
-  "docs explain visibility versus gating and keep static evidence vocabulary separate from runtime mutation outcomes",
+  "docs provide copyable generated-CI examples for visible-only, acknowledgeable, baseline-check, and calibrated-gate adoption",
+  "waiver and label workflows show how `ripr-waive` produces visible acknowledged decisions rather than hidden success",
+  "baseline creation and refresh guidance lets teams avoid punishing historical debt while identifying new policy-eligible gaps",
+  "generated CI summaries make gate decisions understandable without opening JSON artifacts",
+  "ripr dogfood receipts demonstrate visible-only and stricter opt-in gate behavior from repo-local evidence",
+  "blocking-readiness guidance explains when teams should leave gates advisory, use acknowledgement, or enable calibrated blocking",
 ]
 
 [[work_item]]
-id = "spec/calibrated-gate-policy"
-status = "done"
-branch = "spec-calibrated-gate-policy"
+id = "docs/gate-adoption-examples"
+status = "ready"
+branch = "docs-gate-adoption-examples"
 stackable = false
-acceptance = "Pin the optional calibrated gate policy after recommendation calibration, including modes, inputs, outputs, acknowledgement labels, runtime calibration boundaries, default advisory posture, and non-goals"
+acceptance = "Add copyable generated-CI examples for visible-only, acknowledgeable, baseline-check, and calibrated-gate adoption while preserving the default advisory workflow"
 commands = [
-  "cargo xtask check-spec-format",
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
   "cargo xtask check-static-language",
-  "cargo xtask check-traceability",
-  "cargo xtask check-capabilities",
-  "cargo xtask check-output-contracts",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "gate/policy-evaluator"
-status = "done"
-branch = "gate-policy-evaluator"
+id = "docs/gate-waiver-workflows"
+status = "blocked"
+branch = "docs-gate-waiver-workflows"
 stackable = false
-blocked_by = ["spec/calibrated-gate-policy"]
-acceptance = "Add a read-only gate evaluator that writes gate-decision JSON/Markdown from existing evidence and explicit policy without posting comments, editing source, running mutation tests, or changing generated workflow defaults"
+blocked_by = ["docs/gate-adoption-examples"]
+acceptance = "Document sample label and waiver workflows that keep acknowledged findings visible, auditable, and separate from suppressions"
 commands = [
-  "cargo test -p ripr gate",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-traceability",
-  "cargo xtask check-capabilities",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "fixtures/calibrated-gate-cases"
-status = "done"
-branch = "fixtures-calibrated-gate-cases"
-stackable = false
-blocked_by = [
-  "spec/calibrated-gate-policy",
-  "gate/policy-evaluator",
-]
-acceptance = "Pin gate fixtures for advisory, acknowledged, baseline-check, fail-on-new-high-confidence-gap, suppression, missing-input, and calibration agreement/disagreement cases"
-commands = [
-  "cargo xtask fixtures",
-  "cargo xtask check-fixture-contracts",
-  "cargo xtask check-output-contracts",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
   "cargo xtask check-static-language",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "ci/generated-gate-wiring"
-status = "done"
-branch = "ci-generated-gate-wiring"
+id = "docs/gate-baseline-workflow"
+status = "blocked"
+branch = "docs-gate-baseline-workflow"
+stackable = false
+blocked_by = ["docs/gate-waiver-workflows"]
+acceptance = "Document baseline creation, review, and refresh guidance for baseline-check and calibrated-gate adoption without hiding existing debt"
+commands = [
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "ci/gate-decision-summary-polish"
+status = "blocked"
+branch = "ci-gate-decision-summary-polish"
 stackable = false
 blocked_by = [
-  "spec/calibrated-gate-policy",
-  "gate/policy-evaluator",
-  "fixtures/calibrated-gate-cases",
+  "docs/gate-adoption-examples",
+  "docs/gate-waiver-workflows",
+  "docs/gate-baseline-workflow",
 ]
-acceptance = "Wire generated GitHub workflows to optionally run the gate evaluator only when explicitly configured, preserving advisory defaults and surfacing acknowledged or blocking decisions in summaries"
+acceptance = "Polish generated CI gate summaries so reviewers can see mode, status, waiver, baseline, calibration, blocking reason, and artifact paths without opening JSON"
 commands = [
   "cargo test -p ripr init_generated_github_workflow",
   "cargo xtask check-workflows",
@@ -94,17 +84,25 @@ commands = [
 ]
 
 [[work_item]]
-id = "docs/calibrated-gate-policy"
-status = "done"
-branch = "docs-calibrated-gate-policy"
+id = "dogfood/gate-adoption-receipts"
+status = "blocked"
+branch = "dogfood-gate-adoption-receipts"
 stackable = false
-blocked_by = [
-  "spec/calibrated-gate-policy",
-  "gate/policy-evaluator",
-  "fixtures/calibrated-gate-cases",
-  "ci/generated-gate-wiring",
+blocked_by = ["ci/gate-decision-summary-polish"]
+acceptance = "Add repo-local dogfood receipts that show visible-only, acknowledged, baseline-aware, and calibrated-gate decisions from RIPR's own evidence without making default CI blocking"
+commands = [
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
 ]
-acceptance = "Document calibrated gates as optional policy over existing static evidence, including modes, waiver labels, CI behavior, calibration evidence, and static/runtime vocabulary boundaries"
+
+[[work_item]]
+id = "docs/blocking-readiness-guide"
+status = "blocked"
+branch = "docs-blocking-readiness-guide"
+stackable = false
+blocked_by = ["dogfood/gate-adoption-receipts"]
+acceptance = "Document when to keep gates advisory, when to require acknowledgement, and when calibrated blocking is mature enough for a team"
 commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
@@ -113,25 +111,25 @@ commands = [
 ]
 
 [[work_item]]
-id = "campaign/calibrated-gate-closeout"
-status = "done"
-branch = "campaign-calibrated-gate-closeout"
+id = "campaign/gate-adoption-ux-closeout"
+status = "blocked"
+branch = "campaign-gate-adoption-ux-closeout"
 stackable = false
 blocked_by = [
-  "spec/calibrated-gate-policy",
-  "gate/policy-evaluator",
-  "fixtures/calibrated-gate-cases",
-  "ci/generated-gate-wiring",
-  "docs/calibrated-gate-policy",
+  "docs/gate-adoption-examples",
+  "docs/gate-waiver-workflows",
+  "docs/gate-baseline-workflow",
+  "ci/gate-decision-summary-polish",
+  "dogfood/gate-adoption-receipts",
+  "docs/blocking-readiness-guide",
 ]
-acceptance = "Close only after optional calibrated gates are specified, evaluated, fixture-pinned, optionally wired into generated CI, documented, and still advisory by default"
+acceptance = "Close Campaign 16 only after gate adoption docs, waiver workflows, baseline guidance, CI summary polish, dogfood receipts, and blocking-readiness guidance are complete while defaults stay advisory"
 commands = [
   "cargo xtask check-campaign",
   "cargo xtask goals next",
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
   "cargo xtask check-static-language",
-  "cargo xtask check-traceability",
   "cargo xtask check-capabilities",
   "cargo xtask check-pr",
 ]

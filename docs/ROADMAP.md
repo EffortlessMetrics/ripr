@@ -123,7 +123,12 @@ configured. [Calibrated gate policy](CALIBRATED_GATE_POLICY.md) documents the
 operating model. Gates remain explicit, advisory by default, and separate from
 runtime mutation vocabulary. The [Campaign 15
 closeout](handoffs/2026-05-08-campaign-15-closeout.md) records the final proof
-and defers the next product campaign to an explicit decision.
+and defers the next product campaign to an explicit decision. Campaign 16 is
+now active as Gate Adoption UX: the goal is not more policy machinery, but
+making explicit gate adoption safe through copyable generated-CI examples,
+visible waiver workflows, baseline creation and refresh guidance, first-screen
+gate summaries, repo-local dogfood receipts, and guidance for when blocking is
+earned by local evidence.
 
 ## Strategic Sequence
 
@@ -169,6 +174,7 @@ quality rails
 -> PR review guidance
 -> recommendation calibration
 -> calibrated gate policy
+-> gate adoption UX
 ```
 
 The analyzer path is:
