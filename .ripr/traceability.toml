@@ -861,6 +861,7 @@ outputs = [
   "docs/specs/RIPR-SPEC-0013-recommendation-calibration-report.md",
   "docs/specs/README.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/RECOMMENDATION_CALIBRATION.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/ROADMAP.md",

@@ -35,6 +35,7 @@ Current how-to docs:
 - [Targeted test boundary-gap case study](case-studies/TARGETED_TEST_BOUNDARY_GAP.md)
 - [Agent workflows](AGENT_WORKFLOWS.md)
 - [LLM operator guide](LLM_OPERATOR_GUIDE.md)
+- [Recommendation calibration](RECOMMENDATION_CALIBRATION.md)
 - [Release](RELEASE.md)
 - [Installation verification](INSTALLATION_VERIFICATION.md)
 - [Publishing](PUBLISHING.md)
@@ -60,6 +61,7 @@ Current reference docs:
 - [Fixture contracts](../fixtures/README.md)
 - [Defaults-first example corpus](../fixtures/EXAMPLE_CORPUS.md)
 - [Calibration corpus index](../fixtures/CALIBRATION_CORPUS.md)
+- [Recommendation calibration](RECOMMENDATION_CALIBRATION.md)
 - [Test taxonomy](TEST_TAXONOMY.md)
 - [Engineering rules](ENGINEERING.md)
 - [File policy](FILE_POLICY.md)
@@ -105,6 +107,7 @@ Current explanation docs:
 - [Agent dispatch workflow](AGENT_DISPATCH_WORKFLOW.md)
 - [Editor agent integration](EDITOR_AGENT_INTEGRATION.md)
 - [LLM operator guide](LLM_OPERATOR_GUIDE.md)
+- [Recommendation calibration](RECOMMENDATION_CALIBRATION.md)
 
 ## README Rule
 

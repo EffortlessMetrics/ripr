@@ -1648,8 +1648,8 @@ Work items:
 | `fixtures/pr-guidance-calibration-corpus` | done | Added PR-shaped calibration expectation metadata for useful recommendation, noisy recommendation, wrong-line placement, already-covered seam, correct summary-only fallback, suppression correctness, generated/migration exclusion, macro-heavy code, trait/generic boundary, and async/error boundary. |
 | `review-feedback/outcome-receipts` | done | Added a lightweight review guidance outcome receipt schema and pinned useful, noisy, wrong-line, already-covered, wrong-target, summary-only-correct, and suppressed-correctly receipt fixtures without telemetry or external services. |
 | `report/recommendation-precision` | done | Added `cargo xtask recommendation-calibration`, an advisory JSON/Markdown report that joins PR guidance, calibration corpus expectations, optional outcome receipts, suppression state, target placement, latency, and static movement without changing CI blocking defaults. Checked outputs live under `fixtures/boundary_gap/expected/recommendation-calibration/recommendation-calibration.{json,md}`. |
-| `docs/calibration-workflow` | ready | Document how to read recommendation calibration reports, outcome receipts, placement quality, suppression correctness, unchanged/improved/regressed static movement, and why calibration remains advisory. |
-| `campaign/recommendation-calibration-closeout` | blocked | Close only after recommendation quality is specified, fixture-pinned, receipt-backed, reported, documented, surfaced advisory-first, and ready to inform later ranking or policy work. |
+| `docs/calibration-workflow` | done | Added [Recommendation calibration](RECOMMENDATION_CALIBRATION.md), documenting how to run and read the report, outcome receipts, placement quality, suppression correctness, static movement buckets, reviewer use, fixture artifacts, and advisory limits. |
+| `campaign/recommendation-calibration-closeout` | ready | Close only after recommendation quality is specified, fixture-pinned, receipt-backed, reported, documented, surfaced advisory-first, and ready to inform later ranking or policy work. |
 
 Dependencies:
 

@@ -1304,6 +1304,9 @@ target/ripr/reports/recommendation-calibration.json
 target/ripr/reports/recommendation-calibration.md
 ```
 
+See [Recommendation calibration](RECOMMENDATION_CALIBRATION.md) for the
+operator workflow and metric interpretation guide.
+
 This is an advisory calibration surface. It does not call LLM providers, edit
 source files, generate tests, run mutation testing, post comments, or make CI
 blocking by default.

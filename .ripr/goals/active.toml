@@ -111,7 +111,7 @@ commands = [
 
 [[work_item]]
 id = "docs/calibration-workflow"
-status = "ready"
+status = "done"
 branch = "docs-calibration-workflow"
 stackable = false
 blocked_by = [
@@ -128,7 +128,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/recommendation-calibration-closeout"
-status = "blocked"
+status = "ready"
 branch = "campaign-recommendation-calibration-closeout"
 stackable = false
 blocked_by = [
