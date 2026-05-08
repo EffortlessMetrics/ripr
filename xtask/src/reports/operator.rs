@@ -199,6 +199,7 @@ fn keep_shared_loop_templates_reachable() {
     drop((
         loop_commands::WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
         loop_commands::WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+        loop_commands::AGENT_LOOP_COMMAND_TEMPLATE_VERSION,
         loop_commands::WORKFLOW_AGENT_SEAM_PACKETS_ARTIFACT,
         loop_commands::WORKFLOW_AGENT_PACKET_ARTIFACT,
         loop_commands::WORKFLOW_AGENT_BRIEF_ARTIFACT,
