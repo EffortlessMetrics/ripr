@@ -1706,14 +1706,14 @@ Closeout:
 
 Next:
 
-- No Campaign 15 work item is active yet. Choose the next product campaign
-  explicitly before adding gate evaluation or CI blocking behavior.
+- Campaign 15 is active. Start with `spec/calibrated-gate-policy` before gate
+  evaluation or CI wiring.
 
 ## Campaign 15: Calibrated Gate Policy
 
 Campaign ID: `calibrated-gate-policy`
 
-Status: queued
+Status: active
 
 Recommendation calibration comes first. Once RIPR has measured whether its
 top recommendations are useful, correctly placed, and low-noise, a later policy
@@ -1759,12 +1759,12 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `spec/calibrated-gate-policy` | queued | Pin the optional calibrated gate policy after recommendation calibration, including modes, inputs, outputs, acknowledgement labels, runtime calibration boundaries, default advisory posture, and non-goals. |
-| `gate/policy-evaluator` | queued | Add a read-only gate evaluator that writes gate-decision JSON/Markdown from existing evidence and explicit policy without posting comments, editing source, running mutation tests, or changing generated workflow defaults. |
-| `fixtures/calibrated-gate-cases` | queued | Pin gate fixtures for advisory, acknowledged, baseline-check, fail-on-new-high-confidence-gap, suppression, missing-input, and calibration agreement/disagreement cases. |
-| `ci/generated-gate-wiring` | queued | Wire generated GitHub workflows to optionally run the gate evaluator only when explicitly configured, preserving advisory defaults and surfacing acknowledged or blocking decisions in summaries. |
-| `docs/calibrated-gate-policy` | queued | Document calibrated gates as optional policy over existing static evidence, including modes, waiver labels, CI behavior, calibration evidence, and static/runtime vocabulary boundaries. |
-| `campaign/calibrated-gate-closeout` | queued | Close only after optional calibrated gates are specified, evaluated, fixture-pinned, optionally wired into generated CI, documented, and still advisory by default. |
+| `spec/calibrated-gate-policy` | ready | Pin the optional calibrated gate policy after recommendation calibration, including modes, inputs, outputs, acknowledgement labels, runtime calibration boundaries, default advisory posture, and non-goals. |
+| `gate/policy-evaluator` | blocked | Add a read-only gate evaluator that writes gate-decision JSON/Markdown from existing evidence and explicit policy without posting comments, editing source, running mutation tests, or changing generated workflow defaults. |
+| `fixtures/calibrated-gate-cases` | blocked | Pin gate fixtures for advisory, acknowledged, baseline-check, fail-on-new-high-confidence-gap, suppression, missing-input, and calibration agreement/disagreement cases. |
+| `ci/generated-gate-wiring` | blocked | Wire generated GitHub workflows to optionally run the gate evaluator only when explicitly configured, preserving advisory defaults and surfacing acknowledged or blocking decisions in summaries. |
+| `docs/calibrated-gate-policy` | blocked | Document calibrated gates as optional policy over existing static evidence, including modes, waiver labels, CI behavior, calibration evidence, and static/runtime vocabulary boundaries. |
+| `campaign/calibrated-gate-closeout` | blocked | Close only after optional calibrated gates are specified, evaluated, fixture-pinned, optionally wired into generated CI, documented, and still advisory by default. |
 
 Dependencies:
 

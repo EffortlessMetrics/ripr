@@ -60,11 +60,12 @@ git diff --check
 
 ## Next Work Item
 
-No ready work item remains in `.ripr/goals/active.toml`.
+`spec/calibrated-gate-policy`
 
-Choose the next product campaign explicitly before adding new behavior.
-Campaign 15, Calibrated Gate Policy, is queued in the docs because gates should
-be policy over measured recommendation quality; it is not active yet.
+Campaign 15, Calibrated Gate Policy, is active. Define the optional gate
+contract before implementation, including modes, inputs, outputs,
+acknowledgement labels, calibration evidence, runtime mutation boundaries,
+default advisory posture, and non-goals.
 
 ## What Not To Do
 
@@ -75,4 +76,4 @@ be policy over measured recommendation quality; it is not active yet.
   execution.
 - Do not turn calibration into telemetry, an external service, or an opaque
   score.
-- Do not activate Campaign 15 without an explicit product decision.
+- Do not implement gate evaluation before `spec/calibrated-gate-policy` lands.
