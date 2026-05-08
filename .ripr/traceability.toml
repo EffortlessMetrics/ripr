@@ -780,6 +780,7 @@ tests = [
   "crates/ripr/src/output/review_comments.rs::review_comments_falls_back_to_summary_only_without_safe_line",
   "crates/ripr/src/output/review_comments.rs::review_comments_suppresses_when_recommended_test_changed",
   "crates/ripr/src/output/review_comments.rs::review_comments_markdown_names_static_boundaries",
+  "crates/ripr/src/cli/commands.rs::review_comments_writes_json_and_markdown_from_loaded_diff",
   "crates/ripr/src/cli/commands.rs::review_comments_parses_required_revisions_and_out",
   "crates/ripr/src/cli/commands.rs::review_comments_requires_base_and_head",
   "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture"

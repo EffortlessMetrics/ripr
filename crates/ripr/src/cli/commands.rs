@@ -1466,6 +1466,13 @@ pub(super) fn outcome(args: &[String]) -> Result<(), String> {
 }
 
 pub(super) fn review_comments(args: &[String]) -> Result<(), String> {
+    review_comments_with_diff_loader(args, load_review_comments_diff)
+}
+
+fn review_comments_with_diff_loader(
+    args: &[String],
+    load_diff: impl Fn(&Path, &str, &str) -> Result<String, String>,
+) -> Result<(), String> {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         help::print_review_comments_help();
         return Ok(());
@@ -1486,7 +1493,7 @@ pub(super) fn review_comments(args: &[String]) -> Result<(), String> {
     };
     apply_to_check_input(&mut input, &config, CheckInputExplicit::default());
 
-    let diff_text = load_review_comments_diff(&input.root, &options.base, &options.head)?;
+    let diff_text = load_diff(&input.root, &options.base, &options.head)?;
     let changed_lines = agent_brief_lines_from_diff(&input.root, &diff_text);
     let changed_owners = agent_brief_owners_for_lines(&input.root, &changed_lines);
     let working_set = AgentBriefResolvedWorkingSet::base(options.base.clone(), changed_lines)
@@ -2399,6 +2406,51 @@ mod tests {
             review_comments_markdown_path(Path::new("target/ripr/review/comments.json")),
             PathBuf::from("target/ripr/review/comments.md")
         );
+    }
+
+    #[test]
+    fn review_comments_writes_json_and_markdown_from_loaded_diff() -> Result<(), String> {
+        let root = unique_command_test_dir("review-comments");
+        std::fs::create_dir_all(root.join("src")).map_err(|err| format!("create src: {err}"))?;
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[package]\nname = \"review_comments_fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+        )
+        .map_err(|err| format!("write Cargo.toml: {err}"))?;
+        std::fs::write(
+            root.join("src/lib.rs"),
+            "pub fn discounted_total(amount: i32) -> i32 {\n    if amount > 10 { amount - 1 } else { amount }\n}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn above_threshold_gets_discount() {\n        assert_eq!(discounted_total(11), 10);\n    }\n}\n",
+        )
+        .map_err(|err| format!("write src/lib.rs: {err}"))?;
+
+        let out = root.join("target/ripr/review/comments.json");
+        let root_arg = root.display().to_string();
+        let out_arg = out.display().to_string();
+        review_comments_with_diff_loader(
+            &args(&[
+                "--root", &root_arg, "--base", "HEAD~1", "--head", "HEAD", "--out", &out_arg,
+            ]),
+            |diff_root, base, head| {
+                assert_eq!(diff_root, root.as_path());
+                assert_eq!(base, "HEAD~1");
+                assert_eq!(head, "HEAD");
+                Ok("diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -2 +2 @@\n-    if amount >= 10 { amount - 1 } else { amount }\n+    if amount > 10 { amount - 1 } else { amount }\n".to_string())
+            },
+        )?;
+
+        let rendered_json = std::fs::read_to_string(&out)
+            .map_err(|err| format!("read review comments JSON: {err}"))?;
+        let rendered_md = std::fs::read_to_string(out.with_extension("md"))
+            .map_err(|err| format!("read review comments Markdown: {err}"))?;
+        assert!(rendered_json.contains("\"schema_version\": \"0.1\""));
+        assert!(rendered_json.contains("\"status\": \"advisory\""));
+        assert!(rendered_json.contains("\"base\": \"HEAD~1\""));
+        assert!(rendered_json.contains("\"head\": \"HEAD\""));
+        assert!(rendered_md.contains("# RIPR PR Guidance"));
+        assert!(rendered_md.contains("Advisory static evidence only"));
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
+        Ok(())
     }
 
     #[test]
