@@ -651,6 +651,7 @@ evidence = [
   "fixtures/boundary_gap/expected/recommendation-calibration/expectations.json pins PR-shaped calibration expectations",
   "fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts/ pins optional local outcome receipt examples",
   "fixtures/boundary_gap/expected/recommendation-calibration/recommendation-calibration.{json,md} pins checked report output",
+  "docs/handoffs/2026-05-08-campaign-14-closeout.md records the Recommendation Calibration PR chain and deferred policy boundary",
   "docs/IMPLEMENTATION_PLAN.md routes Campaign 14 through recommendation calibration before optional gates",
   "docs/ROADMAP.md places recommendation calibration before calibrated gate policy"
 ]
@@ -660,7 +661,7 @@ fixtures = [
   "fixtures/boundary_gap/expected/recommendation-calibration/recommendation-calibration.json",
   "fixtures/boundary_gap/expected/recommendation-calibration/recommendation-calibration.md"
 ]
-next = "campaign/recommendation-calibration-closeout"
+next = "maintenance"
 metric = "recommendation calibration counts usefulness, false annotations, summary-only correctness, suppression correctness, target-file correctness, latency, static improved, unchanged, or regressed movement, and unknown outcomes without telemetry or CI blocking"
 
 [[capability]]

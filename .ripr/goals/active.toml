@@ -128,7 +128,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/recommendation-calibration-closeout"
-status = "ready"
+status = "done"
 branch = "campaign-recommendation-calibration-closeout"
 stackable = false
 blocked_by = [

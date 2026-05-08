@@ -78,6 +78,9 @@ are scoped or reviewed.
   recommendation calibration reports, local outcome receipts, placement
   quality, suppression correctness, static movement buckets, and advisory
   limits.
+- Added the Campaign 14 closeout handoff after recommendation calibration was
+  specified, fixture-pinned, receipt-backed, reported, documented, and kept
+  advisory-first for later ranking or policy work.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and PR guidance annotation counts before artifact
