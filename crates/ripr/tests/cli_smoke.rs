@@ -562,7 +562,7 @@ fn agent_receipt_writes_one_seam_handoff_json() -> Result<(), Box<dyn std::error
     assert_success(&output);
 
     let text = std::fs::read_to_string(&receipt)?;
-    assert!(text.contains(r#""schema_version": "0.2""#));
+    assert!(text.contains(r#""schema_version": "0.3""#));
     assert!(text.contains(r#""seam_id": "seam-a""#));
     assert!(text.contains(r#""change": "improved""#));
     assert!(text.contains(r#""ripr_version": "0.4.0""#));
@@ -578,6 +578,9 @@ fn agent_receipt_writes_one_seam_handoff_json() -> Result<(), Box<dyn std::error
     assert!(text.contains(r#""after_class": "strongly_gripped""#));
     assert!(text.contains(r#""movement": "improved""#));
     assert!(text.contains(r#""runtime_mutation_execution": false"#));
+    assert!(text.contains(r#""next_action": {"#));
+    assert!(text.contains(r#""kind": "improved""#));
+    assert!(text.contains(r#""safe_to_merge": false"#));
     assert!(text.contains(r#""test_changed": "pricing_boundary""#));
     assert!(text.contains(r#""cargo test pricing_boundary""#));
     std::fs::remove_dir_all(root)?;

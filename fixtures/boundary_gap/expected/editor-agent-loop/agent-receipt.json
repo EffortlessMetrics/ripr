@@ -33,7 +33,7 @@
     },
     "workflow_artifact": null
   },
-  "schema_version": "0.2",
+  "schema_version": "0.3",
   "seam": {
     "after": "weakly_gripped",
     "before": "weakly_gripped",
@@ -49,6 +49,12 @@
   },
   "status": "advisory",
   "summary": {
+    "next_action": {
+      "kind": "unchanged",
+      "recommended_action": "Add the missing discriminator or stronger assertion named by the packet.",
+      "safe_to_merge": false,
+      "summary": "Static grip did not improve."
+    },
     "next_recommendation": "Add or strengthen the missing discriminator named by the seam packet, then rerun agent verify.",
     "remaining_gap": "Static grip class did not move."
   },

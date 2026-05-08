@@ -182,11 +182,12 @@ The workflow manifest uses schema version `0.1`:
 }
 ```
 
-The agent receipt uses schema version `0.2` once provenance is present:
+The agent receipt uses schema version `0.3` once provenance and structured
+next-action guidance are present:
 
 ```json
 {
-  "schema_version": "0.2",
+  "schema_version": "0.3",
   "tool": "ripr",
   "status": "advisory",
   "inputs": {
@@ -222,9 +223,34 @@ The agent receipt uses schema version `0.2` once provenance is present:
       "runtime_mutation_execution": false,
       "runtime_adequacy_claim": false
     }
+  },
+  "summary": {
+    "remaining_gap": "No remaining static gap is named by this receipt; inspect the current seam packet if review needs final assertion detail.",
+    "next_recommendation": "Keep the focused test and attach this receipt with the agent verify JSON.",
+    "next_action": {
+      "kind": "improved",
+      "summary": "Static grip improved.",
+      "recommended_action": "Keep the focused test and include this receipt in review.",
+      "safe_to_merge": false
+    }
   }
 }
 ```
+
+Receipt next-action guidance stays static and bounded. It derives only from the
+selected seam movement in the saved `agent verify` JSON:
+
+| Movement | `next_action.kind` | Guidance |
+| --- | --- | --- |
+| `improved` | `improved` | Keep the focused test and include the receipt in review. |
+| `changed` | `changed` | Inspect the evidence delta and strengthen the discriminator named by the packet. |
+| `regressed` | `regressed` | Revisit the test or code change before merge. |
+| `unchanged` | `unchanged` | Add the missing discriminator or stronger assertion named by the packet. |
+| `new` | `new_gap` | Generate a fresh packet or brief for the seam. |
+| `resolved` | `resolved` | Confirm the seam disappeared intentionally before relying on the receipt. |
+
+`safe_to_merge` remains `false` for every static receipt. The receipt is
+review evidence, not a merge policy or runtime adequacy claim.
 
 ## Required Evidence
 
@@ -257,13 +283,15 @@ The workflow manifest slice additionally requires:
 
 The receipt provenance slice additionally requires:
 
-- agent receipt schema version `0.2`;
+- agent receipt schema version `0.3`;
 - SHA-256 hashes for before, after, and verify artifacts;
 - `ripr_version`, `repo_root`, optional config fingerprint, command template
   version, and render timestamp;
 - selected seam identity, before class, after class, and movement copied from
   the verify artifact;
 - static boundary flags that do not claim runtime adequacy;
+- bounded `summary.next_action` guidance for improved, changed, regressed,
+  unchanged, new-gap, and resolved receipt states;
 - fixture, schema, traceability, capability, and campaign updates.
 
 ## Non-Goals
@@ -278,7 +306,8 @@ The LLM work loop must not:
 - add speculative editor surfaces;
 - add public crates;
 - change the existing brief, packet, or verify schemas. Receipt schema changes
-  are limited to the provenance-backed `0.2` additive shape.
+  are limited to the provenance-backed `0.2` shape and the next-action `0.3`
+  additive shape.
 
 ## Acceptance Examples
 
@@ -296,6 +325,8 @@ The LLM work loop must not:
   sharing the same template source as the CLI/LSP command builders.
 - `ripr agent receipt` records artifact hashes and static provenance without
   rerunning analysis.
+- `ripr agent receipt` emits structured, static `summary.next_action` guidance
+  for improved, changed, regressed, unchanged, new-gap, and resolved states.
 - No automatic edits, generated tests, runtime mutation execution, speculative
   LSP features, or new public crates are added.
 
@@ -319,6 +350,12 @@ The LLM work loop must not:
 - `crates/ripr/src/output/agent_workflow.rs::tests::workflow_json_is_structured_and_advisory`
 - `crates/ripr/src/output/agent_workflow.rs::tests::workflow_markdown_lists_commands_and_boundaries`
 - `crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_json_selects_changed_seam`
+- `crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_guidance_covers_improved_state`
+- `crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_guidance_covers_changed_state`
+- `crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_guidance_covers_regressed_state`
+- `crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_guidance_covers_unchanged_state`
+- `crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_guidance_covers_new_gap_state`
+- `crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_guidance_covers_resolved_state`
 - `crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_input_paths_extracts_verify_snapshot_paths`
 - `crates/ripr/src/agent/provenance.rs::tests::sha256_file_hashes_artifact_bytes`
 - `crates/ripr/tests/cli_smoke.rs::agent_receipt_writes_one_seam_handoff_json`
@@ -343,8 +380,8 @@ The LLM work loop must not:
 - `crates/ripr/src/cli/help.rs` documents the command surface.
 - `crates/ripr/src/output/agent_workflow.rs` renders the workflow JSON and
   commands Markdown.
-- `crates/ripr/src/output/agent_receipt.rs` renders receipt schema `0.2` with
-  provenance.
+- `crates/ripr/src/output/agent_receipt.rs` renders receipt schema `0.3` with
+  provenance and structured next-action guidance.
 - `crates/ripr/src/output/agent_brief.rs`, `crates/ripr/src/output/pilot.rs`,
   and `crates/ripr/src/lsp/actions.rs` reuse the shared command builders for
   their current command payloads.
@@ -359,6 +396,7 @@ The LLM work loop must not:
 - `agent_loop_status_available`
 - `agent_workflow_manifest_available`
 - `agent_receipt_provenance_available`
+- `agent_receipt_next_action_guidance_available`
 - missing artifact count by status report
 - stale-looking warning count by status report
 - recovered seam source distribution
