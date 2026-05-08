@@ -121,6 +121,11 @@ are scoped or reviewed.
   decision counts, active and acknowledgement labels, applied waiver, baseline
   input, calibration inputs/effects, blocking reason, and gate artifact paths
   before opening JSON.
+- Added checked repo-local gate adoption dogfood receipts to
+  `cargo xtask dogfood`, covering `visible-only`, acknowledged waiver,
+  baseline-existing, baseline-new, repair-oriented missing-baseline, and
+  explicit calibrated-gate decisions from checked evidence while preserving
+  non-blocking generated CI defaults.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and PR guidance annotation counts before artifact

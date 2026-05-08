@@ -1,0 +1,42 @@
+{
+  "config_errors": [
+    "baseline-check mode requires an explicit --baseline artifact"
+  ],
+  "decisions": [],
+  "inputs": {
+    "agent_receipt": null,
+    "agent_verify": null,
+    "baseline": null,
+    "labels": [],
+    "labels_json": null,
+    "mutation_calibration": null,
+    "pr_guidance": "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
+    "recommendation_calibration": null,
+    "repo_exposure": null,
+    "sarif_policy": null
+  },
+  "limits_note": "Optional policy over static RIPR evidence; advisory by default; runtime mutation calibration is used only when supplied.",
+  "mode": "baseline-check",
+  "policy": {
+    "acknowledgement_labels": [
+      "ripr-waive"
+    ],
+    "default_workflow_posture": "advisory",
+    "mode": "baseline-check",
+    "threshold": "high_confidence_new_gap"
+  },
+  "root": ".",
+  "schema_version": "0.1",
+  "status": "config_error",
+  "summary": {
+    "acknowledged": 0,
+    "advisory": 0,
+    "blocking": 0,
+    "evaluated": 0,
+    "not_applicable": 0,
+    "suppressed": 0,
+    "unknown_confidence": 0
+  },
+  "tool": "ripr",
+  "warnings": []
+}

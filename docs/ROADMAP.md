@@ -135,11 +135,16 @@ now keeps acknowledgements visible and separate from suppressions. Baseline
 creation and refresh guidance now frames baselines as visible historical debt
 ledgers that teams can shrink toward RIPR 0 under configured scope, and the
 generated CI summary now shows gate mode, status, labels, waiver, baseline,
-calibration, blocking reason, and artifact paths at a glance. Repo-local
-dogfood gate receipts are the next ready adoption slice. Editor Evidence UX is
-queued as a separate Lane 3 editor campaign, not a replacement for the active
-gate-adoption manifest; it should begin after Gate Adoption UX closes or after
-an explicit parallel-lane decision.
+calibration, blocking reason, and artifact paths at a glance. Checked
+repo-local dogfood gate receipts now show visible-only, acknowledged,
+baseline-existing, baseline-new, missing-baseline, and explicit
+calibrated-gate decisions from checked evidence while preserving non-blocking
+generated CI defaults. Blocking-readiness guidance is the next ready adoption
+slice. Editor Evidence UX is queued as a
+separate Lane 3 editor
+campaign, not a replacement for the active gate-adoption manifest; it should
+begin after Gate Adoption UX closes or after an explicit parallel-lane
+decision.
 
 ## Strategic Sequence
 

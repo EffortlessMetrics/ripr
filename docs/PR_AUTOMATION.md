@@ -107,7 +107,14 @@ aid and does not block CI.
 
 `dogfood` runs `ripr check --mode fast` against stable in-repo fixture diffs,
 writes actual outputs under `target/ripr/dogfood/`, and writes advisory
-Markdown and JSON reports under `target/ripr/reports/`.
+Markdown and JSON reports under `target/ripr/reports/`. It also dogfoods gate
+adoption by running `ripr gate evaluate` over checked boundary-gap PR guidance
+and calibration evidence for `visible-only`, `acknowledgeable`,
+`baseline-check`, and `calibrated-gate` modes. Those gate adoption receipts
+are compared against `fixtures/boundary_gap/expected/gate-adoption/` and
+written under `target/ripr/dogfood/gate-adoption/`; the dogfood report records
+that default generated CI still does not block unless `RIPR_GATE_MODE` is
+explicitly configured.
 
 `lsp-cockpit-report` reads committed LSP fixture expectations plus the VS Code
 e2e smoke test file and writes `target/ripr/reports/lsp-cockpit.md` and

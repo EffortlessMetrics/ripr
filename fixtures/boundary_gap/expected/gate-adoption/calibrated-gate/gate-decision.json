@@ -1,0 +1,82 @@
+{
+  "config_errors": [],
+  "decisions": [
+    {
+      "decision": "blocking",
+      "evidence": {
+        "assertion_shape": "assert_eq!(discounted_total(/* boundary input */), /* expected */)",
+        "candidate_values": [
+          "input that hits the boundary: amount == discount_threshold"
+        ],
+        "configured_off": false,
+        "missing_discriminator": "input that hits the boundary: amount == discount_threshold",
+        "mutation_calibration": {
+          "available": false,
+          "confidence_effect": "not_used",
+          "outcome": null
+        },
+        "nearby_test_changed": false,
+        "recommendation_calibration": {
+          "available": true,
+          "confidence_effect": "supports_static_gap",
+          "outcome": "summary_only_correct"
+        },
+        "recommended_test": "tests/pricing.rs::above_threshold_gets_discount",
+        "suppressed": false
+      },
+      "gate_reason": "new policy-eligible gap has supporting recommendation calibration",
+      "id": "ripr-gate-8f7fa8644fd12280",
+      "placement": {
+        "line": 88,
+        "path": "src/pricing.rs"
+      },
+      "policy": {
+        "acknowledgement_label": null,
+        "baseline_identity": "8f7fa8644fd12280",
+        "mode": "calibrated-gate",
+        "threshold": "high_confidence_new_gap"
+      },
+      "seam_id": "8f7fa8644fd12280",
+      "severity": "warning",
+      "source": "pr_guidance",
+      "source_id": "ripr-review-8f7fa8644fd12280",
+      "static_class": "weakly_gripped"
+    }
+  ],
+  "inputs": {
+    "agent_receipt": null,
+    "agent_verify": null,
+    "baseline": "fixtures/boundary_gap/expected/gate-adoption/calibrated-gate/baseline.json",
+    "labels": [],
+    "labels_json": null,
+    "mutation_calibration": null,
+    "pr_guidance": "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
+    "recommendation_calibration": "fixtures/boundary_gap/expected/gate-adoption/calibrated-gate/recommendation-calibration.json",
+    "repo_exposure": null,
+    "sarif_policy": null
+  },
+  "limits_note": "Optional policy over static RIPR evidence; advisory by default; runtime mutation calibration is used only when supplied.",
+  "mode": "calibrated-gate",
+  "policy": {
+    "acknowledgement_labels": [
+      "ripr-waive"
+    ],
+    "default_workflow_posture": "advisory",
+    "mode": "calibrated-gate",
+    "threshold": "high_confidence_new_gap"
+  },
+  "root": ".",
+  "schema_version": "0.1",
+  "status": "blocked",
+  "summary": {
+    "acknowledged": 0,
+    "advisory": 0,
+    "blocking": 1,
+    "evaluated": 1,
+    "not_applicable": 0,
+    "suppressed": 0,
+    "unknown_confidence": 0
+  },
+  "tool": "ripr",
+  "warnings": []
+}
