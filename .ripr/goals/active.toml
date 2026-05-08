@@ -89,7 +89,7 @@ commands = [
 
 [[work_item]]
 id = "report/recommendation-precision"
-status = "ready"
+status = "done"
 branch = "report-recommendation-precision"
 stackable = false
 blocked_by = [
@@ -109,7 +109,7 @@ commands = [
 
 [[work_item]]
 id = "docs/calibration-workflow"
-status = "blocked"
+status = "ready"
 branch = "docs-calibration-workflow"
 stackable = false
 blocked_by = [

@@ -22193,6 +22193,7 @@ jobs:
                 XtaskCommand::LspCockpitReport,
                 XtaskCommand::OperatorCockpitReport,
                 XtaskCommand::ReleaseReadiness(vec!["--version".to_string(), "0.4.0".to_string()]),
+                XtaskCommand::RecommendationCalibration(Vec::new()),
                 XtaskCommand::TargetedTestOutcome(Vec::new()),
                 XtaskCommand::MutationCalibration(Vec::new()),
                 XtaskCommand::SarifPolicy(Vec::new()),
@@ -22334,6 +22335,7 @@ jobs:
         assert!(commands.contains(&"operator-cockpit"));
         assert!(commands.contains(&"operator-cockpit-report"));
         assert!(commands.contains(&"release-readiness --version <version>"));
+        assert!(commands.contains(&"recommendation-calibration [root] [--expectations <path>]"));
         assert!(commands.contains(&"targeted-test-outcome --before <path> --after <path>"));
         assert!(commands.contains(&"mutation-calibration [root] --mutants-json <path>"));
         assert!(commands.contains(&"sarif-policy --current <path> [--baseline <path>]"));

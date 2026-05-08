@@ -828,7 +828,12 @@ name = "recommendation calibration report"
 spec = "docs/specs/RIPR-SPEC-0013-recommendation-calibration-report.md"
 tests = [
   "crates/ripr/src/output/review_comments.rs::tests::recommendation_calibration_fixture_expectations_pin_required_cases",
-  "crates/ripr/src/output/review_comments.rs::tests::recommendation_calibration_outcome_receipts_pin_required_labels"
+  "crates/ripr/src/output/review_comments.rs::tests::recommendation_calibration_outcome_receipts_pin_required_labels",
+  "xtask/src/reports/recommendation.rs::tests::recommendation_calibration_args_parse_inputs_and_outputs",
+  "xtask/src/reports/recommendation.rs::tests::recommendation_calibration_counts_fixture_expectations",
+  "xtask/src/reports/recommendation.rs::tests::recommendation_calibration_outcome_receipts_override_fixture_labels",
+  "xtask/src/reports/recommendation.rs::tests::recommendation_calibration_imports_targeted_static_movement",
+  "xtask/src/reports/recommendation.rs::tests::recommendation_calibration_markdown_names_top_recommendation"
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/recommendation-calibration/README.md",
@@ -843,7 +848,11 @@ fixtures = [
   "fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts/wrong-target.json",
   "fixtures/boundary_gap/expected/recommendation-calibration/synthetic-pr-guidance.json"
 ]
-code = []
+code = [
+  "xtask/src/command.rs",
+  "xtask/src/dispatch.rs",
+  "xtask/src/reports/recommendation.rs"
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0013-recommendation-calibration-report.md",
   "docs/specs/README.md",

@@ -1279,12 +1279,12 @@ inline-comment boundary.
 
 ## Recommendation Calibration Report
 
-RIPR-SPEC-0013 defines the planned recommendation calibration report contract.
+RIPR-SPEC-0013 defines the recommendation calibration report contract.
 The report measures whether existing PR guidance was useful, correctly placed,
 properly suppressed or capped, aimed at the expected test target, and
 correlated with later static evidence movement.
 
-The planned repo-local report command is:
+The repo-local report command is:
 
 ```text
 cargo xtask recommendation-calibration \
@@ -1293,6 +1293,8 @@ cargo xtask recommendation-calibration \
   --pilot-summary target/ripr/pilot/pilot-summary.json \
   --agent-receipt target/ripr/reports/agent-receipt.json \
   --targeted-test-outcome target/ripr/outcome/targeted-test-outcome.json \
+  --expectations fixtures/boundary_gap/expected/recommendation-calibration/expectations.json \
+  --receipt fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts/useful.json \
   --out target/ripr/reports/recommendation-calibration.json
 ```
 
