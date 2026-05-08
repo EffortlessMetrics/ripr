@@ -36,6 +36,10 @@ are scoped or reviewed.
 - Added an LLM work-loop fixture matrix that pins happy, unchanged, regressed,
   missing-artifact, stale-artifact, configured-off, path-with-spaces, and
   Windows-separator review states.
+- Added generated CI LLM work-loop packets: `ripr init --ci github` now uploads
+  workflow manifest, commands Markdown, agent status JSON/Markdown, review
+  summary JSON/Markdown, receipt, and operator cockpit artifacts as advisory
+  evidence.
 
 ### Changed
 
@@ -46,6 +50,8 @@ are scoped or reviewed.
   agent brief follow-up commands, pilot follow-up commands, LSP copy-action
   payloads, generated CI artifact paths, and operator cockpit missing-input
   commands without changing the emitted command text.
+- `ripr agent status --root .` now prints Markdown by default; `--json` keeps
+  the machine-readable Agent Status schema.
 - Documented the CI verification economics policy: required, advisory, and
   on-demand/release postures; LEM budget bands; label effects; artifact
   families; cheaper-signal-first rules; CI actuals; and rollback expectations.
