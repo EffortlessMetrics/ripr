@@ -637,6 +637,22 @@ next = "maintenance"
 metric = "PR guidance projects existing seam evidence into bounded changed-line annotations without blocking by default"
 
 [[capability]]
+id = "recommendation_calibration_report"
+name = "Recommendation calibration report"
+status = "planned"
+spec = "RIPR-SPEC-0013"
+evidence = [
+  "docs/specs/RIPR-SPEC-0013-recommendation-calibration-report.md defines the planned recommendation calibration report contract",
+  "docs/OUTPUT_SCHEMA.md Recommendation Calibration Report section defines the planned JSON shape",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md Campaign 14 marks fixtures/pr-guidance-calibration-corpus as the next ready item after the spec",
+  "docs/IMPLEMENTATION_PLAN.md routes Campaign 14 through recommendation calibration before optional gates",
+  "docs/ROADMAP.md places recommendation calibration before calibrated gate policy"
+]
+fixtures = []
+next = "fixtures/pr-guidance-calibration-corpus"
+metric = "planned recommendation calibration will count usefulness, false annotations, summary-only correctness, suppression correctness, target-file correctness, latency, static improved, unchanged, or regressed movement, and unknown outcomes without telemetry or CI blocking"
+
+[[capability]]
 id = "pilot_packet"
 name = "Pilot packet"
 status = "alpha"
