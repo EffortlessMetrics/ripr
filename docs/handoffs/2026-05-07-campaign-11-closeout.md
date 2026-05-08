@@ -80,7 +80,7 @@ Open it explicitly before adding editor or CI first-screen behavior.
 ## What Not To Do
 
 - Do not reopen Campaign 11 to add PR comments or CI annotations; those belong
-  in the queued First-Hour UX / PR guidance lane.
+  in the First-Hour UX / PR guidance lane.
 - Do not add LLM provider integration, model selection, prompt orchestration, or
   automatic test generation.
 - Do not make RIPR edit production or test source.
