@@ -645,6 +645,7 @@ evidence = [
   "docs/specs/RIPR-SPEC-0013-recommendation-calibration-report.md defines the recommendation calibration report contract",
   "docs/OUTPUT_SCHEMA.md Recommendation Calibration Report section defines the JSON shape",
   "docs/OUTPUT_SCHEMA.md Review Guidance Outcome Receipt section defines the optional local receipt shape",
+  "docs/RECOMMENDATION_CALIBRATION.md explains how to run and read the report, outcome receipts, placement quality, suppression correctness, static movement buckets, and advisory limits",
   "cargo xtask recommendation-calibration emits advisory JSON and Markdown reports",
   "xtask/src/reports/recommendation.rs joins PR guidance, expectations, optional outcome receipts, suppression state, target placement, latency, and static movement",
   "fixtures/boundary_gap/expected/recommendation-calibration/expectations.json pins PR-shaped calibration expectations",
@@ -659,7 +660,7 @@ fixtures = [
   "fixtures/boundary_gap/expected/recommendation-calibration/recommendation-calibration.json",
   "fixtures/boundary_gap/expected/recommendation-calibration/recommendation-calibration.md"
 ]
-next = "docs/calibration-workflow"
+next = "campaign/recommendation-calibration-closeout"
 metric = "recommendation calibration counts usefulness, false annotations, summary-only correctness, suppression correctness, target-file correctness, latency, static improved, unchanged, or regressed movement, and unknown outcomes without telemetry or CI blocking"
 
 [[capability]]

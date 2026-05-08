@@ -47,6 +47,8 @@ metadata under
 
 These artifacts are static expectations. They do not run mutation testing, post
 comments, edit source, generate tests, or make CI blocking.
+See [Recommendation calibration](../docs/RECOMMENDATION_CALIBRATION.md) for how
+to read the report metrics and outcome receipts.
 
 ## Runtime Calibration Artifacts
 

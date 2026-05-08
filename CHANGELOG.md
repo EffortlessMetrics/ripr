@@ -74,6 +74,10 @@ are scoped or reviewed.
   generated tests, runtime execution, or CI blocking.
 - Added checked recommendation calibration report outputs under
   `fixtures/boundary_gap/expected/recommendation-calibration/`.
+- Added `docs/RECOMMENDATION_CALIBRATION.md` to document how to run and read
+  recommendation calibration reports, local outcome receipts, placement
+  quality, suppression correctness, static movement buckets, and advisory
+  limits.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and PR guidance annotation counts before artifact
@@ -115,6 +119,8 @@ are scoped or reviewed.
   outcome receipt fixtures for local recommendation feedback.
 - Advanced Campaign 14 to `docs/calibration-workflow` after adding the
   advisory recommendation precision report command and checked outputs.
+- Advanced Campaign 14 to `campaign/recommendation-calibration-closeout` after
+  documenting the recommendation calibration workflow.
 - Pinned RIPR-SPEC-0012 as the PR test guidance annotation contract and
   advanced Campaign 12 to `vscode/first-run-status` as the next ready UX item.
 - Advanced Campaign 12 to `vscode/action-discoverability` after pinning the

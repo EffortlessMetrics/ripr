@@ -110,9 +110,11 @@ completed recommendation surfaces are actionable, correctly placed, properly
 suppressed or capped, and correlated with before/after static movement without
 telemetry, generated tests, runtime mutation execution, or default CI blocking.
 The PR-shaped calibration corpus, local outcome receipts, and advisory
-`cargo xtask recommendation-calibration` report are now checked; the next slice
-is documentation for reading the report. Campaign 15 is queued as Calibrated
-Gate Policy so optional policy
+`cargo xtask recommendation-calibration` report are now checked, and
+[Recommendation calibration](RECOMMENDATION_CALIBRATION.md) documents how to
+read metrics, receipts, placement quality, suppression correctness, static
+movement buckets, and advisory limits. The next slice is Campaign 14 closeout.
+Campaign 15 is queued as Calibrated Gate Policy so optional policy
 gates come after measured signal quality and remain explicit, advisory by
 default, and separate from runtime mutation vocabulary.
 

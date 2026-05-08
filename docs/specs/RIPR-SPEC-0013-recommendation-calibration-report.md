@@ -63,6 +63,9 @@ target/ripr/reports/recommendation-calibration.json
 target/ripr/reports/recommendation-calibration.md
 ```
 
+The operator workflow and metric interpretation guide live in
+`docs/RECOMMENDATION_CALIBRATION.md`.
+
 The producer must not rerun analysis unless a later implementation explicitly
 adds a safe refresh mode. The first implementation should read existing
 artifacts and report missing inputs as incomplete evidence.

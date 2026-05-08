@@ -136,3 +136,7 @@ PR review guidance remains static evidence:
 
 Real mutation testing, when supplied separately, belongs in calibration reports,
 not in PR guidance claims.
+
+Use [Recommendation calibration](RECOMMENDATION_CALIBRATION.md) when you need to
+measure whether PR guidance was useful, correctly placed, properly suppressed,
+and associated with better static evidence after one focused test.
