@@ -71,10 +71,12 @@ crosses an advisory threshold.
 
 Labels documented in `docs/CI.md` (labels section):
 
-- `full-ci` → expects elevated forecast; the guard suppresses the warning.
-- `ci-budget-ack` → author acknowledges elevated forecast.
-- `ci-budget-override` → bypass the over-ceiling failure (only effective
-  after PR 12).
+- `full-ci` → expects release-band forecast; the guard suppresses the
+  warning.
+- `release-check` → same release-band mapping as `full-ci`; runs release
+  readiness lanes.
+- `ci-budget-ack` → author acknowledges elevated forecast (no budget
+  effect).
 
 ## Why advisory first
 
