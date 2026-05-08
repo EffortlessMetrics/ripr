@@ -3086,6 +3086,9 @@ target/ripr/reports/lsp-cockpit.md
 The report is an advisory dogfood artifact for the editor loop. It reads the
 committed LSP fixture expectations, plus the VS Code e2e smoke test file, and
 summarizes the editor surface without opening VS Code.
+For seam fixtures, `status` downgrades from `pass` when the editor-agent loop
+command actions for packet, brief, after-snapshot, verify, or receipt are
+missing from the pinned action payloads.
 
 JSON shape:
 
@@ -3159,6 +3162,11 @@ JSON shape:
       "context": {
         "seam_packet_available": true,
         "targeted_test_brief_available": true,
+        "agent_packet_command_available": true,
+        "agent_brief_command_available": true,
+        "after_snapshot_command_available": true,
+        "agent_verify_command_available": true,
+        "agent_receipt_command_available": true,
         "assertion_available": true,
         "related_test_available": true,
         "refresh_available": true

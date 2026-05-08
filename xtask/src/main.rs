@@ -6349,9 +6349,24 @@ struct LspCockpitFixture {
 struct LspCockpitContext {
     seam_packet_available: bool,
     targeted_test_brief_available: bool,
+    agent_packet_command_available: bool,
+    agent_brief_command_available: bool,
+    after_snapshot_command_available: bool,
+    agent_verify_command_available: bool,
+    agent_receipt_command_available: bool,
     assertion_available: bool,
     related_test_available: bool,
     refresh_available: bool,
+}
+
+impl LspCockpitContext {
+    fn agent_loop_commands_available(&self) -> bool {
+        self.agent_packet_command_available
+            && self.agent_brief_command_available
+            && self.after_snapshot_command_available
+            && self.agent_verify_command_available
+            && self.agent_receipt_command_available
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -6377,7 +6392,13 @@ fn build_lsp_cockpit_report() -> Result<LspCockpitReport, String> {
         }
     }
     let vscode = lsp_cockpit_vscode_coverage()?;
-    let status = if fixtures.is_empty() || !vscode.uncovered_contributed_commands.is_empty() {
+    let has_missing_agent_loop_commands = fixtures.iter().any(|fixture| {
+        fixture.seam_diagnostic_count > 0 && !fixture.context.agent_loop_commands_available()
+    });
+    let status = if fixtures.is_empty()
+        || has_missing_agent_loop_commands
+        || !vscode.uncovered_contributed_commands.is_empty()
+    {
         "warn"
     } else {
         "pass"
@@ -6474,6 +6495,26 @@ fn lsp_cockpit_fixture_report(fixture: &Path) -> Result<Option<LspCockpitFixture
             }
             "ripr.copyTargetedTestBrief" => {
                 context.targeted_test_brief_available = action_has_string_argument(action, "brief");
+            }
+            "ripr.copyAgentPacketCommand" => {
+                context.agent_packet_command_available =
+                    action_has_string_argument(action, "command");
+            }
+            "ripr.copyAgentBriefCommand" => {
+                context.agent_brief_command_available =
+                    action_has_string_argument(action, "command");
+            }
+            "ripr.copyAfterSnapshotCommand" => {
+                context.after_snapshot_command_available =
+                    action_has_string_argument(action, "command");
+            }
+            "ripr.copyAgentVerifyCommand" => {
+                context.agent_verify_command_available =
+                    action_has_string_argument(action, "command");
+            }
+            "ripr.copyAgentReceiptCommand" => {
+                context.agent_receipt_command_available =
+                    action_has_string_argument(action, "command");
             }
             "ripr.copySuggestedAssertion" => {
                 context.assertion_available = action_has_string_argument(action, "assertion");
@@ -6619,6 +6660,11 @@ fn lsp_cockpit_report_json(report: &LspCockpitReport) -> Result<String, String> 
                 "context": {
                     "seam_packet_available": fixture.context.seam_packet_available,
                     "targeted_test_brief_available": fixture.context.targeted_test_brief_available,
+                    "agent_packet_command_available": fixture.context.agent_packet_command_available,
+                    "agent_brief_command_available": fixture.context.agent_brief_command_available,
+                    "after_snapshot_command_available": fixture.context.after_snapshot_command_available,
+                    "agent_verify_command_available": fixture.context.agent_verify_command_available,
+                    "agent_receipt_command_available": fixture.context.agent_receipt_command_available,
                     "assertion_available": fixture.context.assertion_available,
                     "related_test_available": fixture.context.related_test_available,
                     "refresh_available": fixture.context.refresh_available
@@ -6685,6 +6731,26 @@ fn lsp_cockpit_report_markdown(report: &LspCockpitReport) -> String {
         out.push_str(&format!(
             "- targeted test brief available: {}\n",
             yes_no(fixture.context.targeted_test_brief_available)
+        ));
+        out.push_str(&format!(
+            "- agent packet command available: {}\n",
+            yes_no(fixture.context.agent_packet_command_available)
+        ));
+        out.push_str(&format!(
+            "- agent brief command available: {}\n",
+            yes_no(fixture.context.agent_brief_command_available)
+        ));
+        out.push_str(&format!(
+            "- after-snapshot command available: {}\n",
+            yes_no(fixture.context.after_snapshot_command_available)
+        ));
+        out.push_str(&format!(
+            "- agent verify command available: {}\n",
+            yes_no(fixture.context.agent_verify_command_available)
+        ));
+        out.push_str(&format!(
+            "- agent receipt command available: {}\n",
+            yes_no(fixture.context.agent_receipt_command_available)
         ));
         out.push_str(&format!(
             "- assertion available: {}\n",
@@ -23259,6 +23325,11 @@ covered_by = ["cargo xtask check-file-policy"]
         );
         assert!(boundary_gap.context.seam_packet_available);
         assert!(boundary_gap.context.targeted_test_brief_available);
+        assert!(boundary_gap.context.agent_packet_command_available);
+        assert!(boundary_gap.context.agent_brief_command_available);
+        assert!(boundary_gap.context.after_snapshot_command_available);
+        assert!(boundary_gap.context.agent_verify_command_available);
+        assert!(boundary_gap.context.agent_receipt_command_available);
         assert!(boundary_gap.context.assertion_available);
         assert!(boundary_gap.context.related_test_available);
         assert!(boundary_gap.context.refresh_available);
@@ -23284,6 +23355,8 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(markdown.contains("# ripr LSP cockpit report"));
         assert!(markdown.contains("## Fixture: boundary_gap"));
         assert!(markdown.contains("seam packet available: yes"));
+        assert!(markdown.contains("agent verify command available: yes"));
+        assert!(markdown.contains("agent receipt command available: yes"));
         assert!(markdown.contains("ripr.collectContext"));
         Ok(())
     }
