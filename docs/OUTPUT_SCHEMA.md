@@ -1290,19 +1290,23 @@ defaults.
 Planned command:
 
 ```text
-ripr gate --root . \
-  --review-comments target/ripr/review/comments.json \
-  --repo-exposure target/ripr/pilot/repo-exposure.json \
+ripr gate evaluate --root . \
+  --pr-guidance target/ripr/review/comments.json \
+  --repo-exposure target/ripr/reports/repo-exposure.json \
+  --sarif-policy target/ripr/reports/sarif-policy.json \
   --policy ripr.toml \
   --labels-json target/ripr/review/labels.json \
-  --out target/ripr/review/gate-decision.json
+  --agent-verify target/ripr/workflow/agent-verify.json \
+  --agent-receipt target/ripr/reports/agent-receipt.json \
+  --mutation-calibration target/ripr/reports/mutation-calibration.json \
+  --out target/ripr/reports/gate-decision.json
 ```
 
 Planned outputs:
 
 ```text
-target/ripr/review/gate-decision.json
-target/ripr/review/gate-decision.md
+target/ripr/reports/gate-decision.json
+target/ripr/reports/gate-decision.md
 ```
 
 JSON shape:
@@ -1315,10 +1319,14 @@ JSON shape:
   "mode": "acknowledgeable-soft-gate",
   "root": ".",
   "inputs": {
-    "review_comments": "target/ripr/review/comments.json",
-    "repo_exposure": "target/ripr/pilot/repo-exposure.json",
+    "pr_guidance": "target/ripr/review/comments.json",
+    "repo_exposure": "target/ripr/reports/repo-exposure.json",
+    "sarif_policy": "target/ripr/reports/sarif-policy.json",
     "policy": "ripr.toml",
+    "labels_json": "target/ripr/review/labels.json",
     "labels": ["ripr-waive"],
+    "agent_verify": "target/ripr/workflow/agent-verify.json",
+    "agent_receipt": "target/ripr/reports/agent-receipt.json",
     "mutation_calibration": null
   },
   "summary": {
@@ -1333,7 +1341,7 @@ JSON shape:
     {
       "id": "ripr-gate-67fc764ba37d77bd",
       "seam_id": "67fc764ba37d77bd",
-      "source": "review_comments",
+      "source": "pr_guidance",
       "decision": "acknowledged",
       "gate_reason": "policy-eligible gap acknowledged by ripr-waive",
       "static_class": "weakly_gripped",
@@ -1372,8 +1380,10 @@ Field contract:
   `config_error`.
 - `mode` - one of `advisory`, `baseline-check`,
   `fail-on-new-high-confidence-gap`, or `acknowledgeable-soft-gate`.
-- `inputs` - artifact paths and labels used by the decision. Missing optional
-  inputs remain visible.
+- `inputs` - artifact paths and labels used by the decision. `pr_guidance` is
+  the PR guidance artifact produced by `ripr review-comments`; `sarif_policy`,
+  `agent_verify`, `agent_receipt`, and `mutation_calibration` are optional and
+  should remain visible when omitted.
 - `summary.evaluated` - candidate recommendations considered.
 - `summary.blocking` - decisions that made the gate fail.
 - `summary.acknowledged` - decisions made non-failing by an acknowledgement
