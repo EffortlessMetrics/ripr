@@ -832,6 +832,7 @@ code = []
 outputs = [
   "docs/specs/RIPR-SPEC-0013-calibrated-gate-policy.md",
   "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/ROADMAP.md",

@@ -1277,6 +1277,127 @@ them to three by default. See [PR review guidance](PR_REVIEW_GUIDANCE.md) for
 the command, generated CI behavior, placement-safe review flow, and
 inline-comment boundary.
 
+## Calibrated Gate Decision
+
+RIPR-SPEC-0013 defines the planned contract for optional calibrated gate
+decisions over existing PR-time evidence. The gate evaluator is explicit policy
+over PR guidance, repo exposure, configured severity and suppressions, labels,
+optional SARIF policy reports, optional before/after receipts, and optional
+imported mutation calibration. It does not run mutation testing, post comments,
+edit source files, generate tests, upload SARIF, or change generated workflow
+defaults.
+
+Planned command:
+
+```text
+ripr gate --root . \
+  --review-comments target/ripr/review/comments.json \
+  --repo-exposure target/ripr/pilot/repo-exposure.json \
+  --policy ripr.toml \
+  --labels-json target/ripr/review/labels.json \
+  --out target/ripr/review/gate-decision.json
+```
+
+Planned outputs:
+
+```text
+target/ripr/review/gate-decision.json
+target/ripr/review/gate-decision.md
+```
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "acknowledged",
+  "mode": "acknowledgeable-soft-gate",
+  "root": ".",
+  "inputs": {
+    "review_comments": "target/ripr/review/comments.json",
+    "repo_exposure": "target/ripr/pilot/repo-exposure.json",
+    "policy": "ripr.toml",
+    "labels": ["ripr-waive"],
+    "mutation_calibration": null
+  },
+  "summary": {
+    "evaluated": 2,
+    "blocking": 0,
+    "acknowledged": 1,
+    "advisory": 1,
+    "suppressed": 0,
+    "unknown_confidence": 0
+  },
+  "decisions": [
+    {
+      "id": "ripr-gate-67fc764ba37d77bd",
+      "seam_id": "67fc764ba37d77bd",
+      "source": "review_comments",
+      "decision": "acknowledged",
+      "gate_reason": "policy-eligible gap acknowledged by ripr-waive",
+      "static_class": "weakly_gripped",
+      "severity": "warning",
+      "placement": {
+        "path": "src/pricing.rs",
+        "line": 88
+      },
+      "policy": {
+        "mode": "acknowledgeable-soft-gate",
+        "acknowledgement_label": "ripr-waive",
+        "threshold": "high_confidence_new_gap"
+      },
+      "evidence": {
+        "missing_discriminator": "amount == discount_threshold",
+        "suggested_test": "Add an equality-boundary test.",
+        "related_test": "tests/pricing.rs::applies_discount_above_threshold",
+        "nearby_test_changed": false,
+        "suppressed": false,
+        "calibration": {
+          "available": false,
+          "confidence_effect": "not_used"
+        }
+      }
+    }
+  ],
+  "warnings": [],
+  "limits_note": "Optional policy over static RIPR evidence; advisory by default; runtime calibration is used only when supplied."
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `status` - one of `pass`, `advisory`, `acknowledged`, `fail`, or
+  `config_error`.
+- `mode` - one of `advisory`, `baseline-check`,
+  `fail-on-new-high-confidence-gap`, or `acknowledgeable-soft-gate`.
+- `inputs` - artifact paths and labels used by the decision. Missing optional
+  inputs remain visible.
+- `summary.evaluated` - candidate recommendations considered.
+- `summary.blocking` - decisions that made the gate fail.
+- `summary.acknowledged` - decisions made non-failing by an acknowledgement
+  label.
+- `summary.advisory` - visible non-blocking decisions.
+- `summary.suppressed` - candidates hidden by configured policy.
+- `summary.unknown_confidence` - candidates that could not satisfy confidence
+  requirements.
+- `decisions[].decision` - `blocking`, `acknowledged`, `advisory`,
+  `suppressed`, or `not_applicable`.
+- `decisions[].gate_reason` - short policy explanation.
+- `decisions[].static_class` - static seam or finding class from RIPR output.
+- `decisions[].policy` - mode, threshold, and acknowledgement fields that
+  affected the result.
+- `decisions[].evidence` - static evidence, nearby-test state, suppression
+  state, and optional calibration confidence effect.
+- `warnings[]` - missing inputs, unsupported labels, ambiguous calibration, or
+  baseline limitations.
+- `limits_note` - static/runtime and advisory-default boundary text.
+
+Generated workflows must not run this gate by default. A future workflow may
+opt in with an explicit gate mode, but generated CI remains advisory unless
+that setting is present.
+
 ## Agent Status
 
 `ripr agent status --root <workspace>` reads already-written agent-loop
