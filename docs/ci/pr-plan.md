@@ -1,8 +1,9 @@
 # PR Plan
 
 The PR Plan workflow (`.github/workflows/pr-plan.yml`) is the LEM forecast
-lane. It runs on every PR as an **advisory** signal: it does not block
-merges, and it does not gate any required check.
+lane. It runs on opened, synchronized, reopened, labeled, and unlabeled pull
+requests as an **advisory** signal: it does not block merges, and it does not
+gate any required check.
 
 ## What it should do (target state)
 
@@ -15,9 +16,9 @@ Given the diff between the PR and its base, the PR Plan should:
 5. Apply runner multipliers from `policy/ci-budget.toml`.
 6. Emit `target/ci/ci-plan.json` and a step-summary table.
 
-The forecast is intentionally *coarse*: per-lane base LEM × runner
-multiplier, summed across selected lanes. Once `ci-actuals.json` data
-exists (PR 11), the forecast is replaced by learned per-lane estimates.
+The forecast is intentionally *coarse*: per-lane base LEM x runner multiplier,
+summed across selected lanes. Once `ci-actuals.json` data exists, the forecast
+can be replaced by learned per-lane estimates.
 
 ## What this PR ships
 
@@ -55,27 +56,27 @@ deferred to the follow-up PR that adds `cargo xtask ci plan`.
 `[[budget_band]]` in `policy/ci-budget.toml`, also documented in
 `docs/CI.md`'s Verification Economics section).
 
-`warnings` is filled by the soft budget guard (PR 12) when the forecast
-crosses an advisory threshold.
+`warnings` is filled by the soft budget guard when the forecast crosses an
+advisory threshold.
 
 ## Posture
 
 | Stage                                    | Posture                |
 | ---------------------------------------- | ---------------------- |
-| PR 07 (this PR)                          | structural advisory    |
+| Initial workflow                         | structural advisory    |
 | Follow-up: `xtask ci plan` wired         | numeric advisory       |
-| PR 11: `ci-actuals.json` upload          | numeric advisory       |
-| PR 12: soft budget guard                 | warn / fail-on-ceiling |
+| `ci-actuals.json` upload                 | numeric advisory       |
+| Soft budget guard                        | warn / fail-on-ceiling |
 
 ## Override and acknowledgement
 
 Labels documented in `docs/CI.md` (labels section):
 
-- `full-ci` → expects release-band forecast; the guard suppresses the
+- `full-ci` expects release-band forecast; the guard suppresses the
   warning.
-- `release-check` → same release-band mapping as `full-ci`; runs release
+- `release-check` uses the same release-band mapping as `full-ci` and runs release
   readiness lanes.
-- `ci-budget-ack` → author acknowledges elevated forecast (no budget
+- `ci-budget-ack` records that the author acknowledges elevated forecast (no budget
   effect).
 
 ## Why advisory first

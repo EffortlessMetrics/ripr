@@ -3,13 +3,14 @@ name: PR Plan
 on:
   pull_request:
     branches: [main, master]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions:
   contents: read
 
 # Advisory LEM (Linux Equivalent Minutes) forecast for the diff.
 #
-# Stage in the multi-PR rollout: PR 07.
+# Stage in the CI economics rollout: structural advisory bootstrap.
 # The xtask `ci plan` command that drives the real forecast is added in a
 # follow-up PR; this lane currently emits a structural advisory output so
 # the lane is visible in CI before the forecast logic lands.
