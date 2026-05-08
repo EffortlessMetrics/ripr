@@ -30,7 +30,7 @@ through multiple work items in a campaign, but each work item should follow the
 | PR Review Guidance (13) | Project existing RIPR evidence into bounded pull-request review guidance without making CI blocking or turning RIPR into a free-form reviewer. | Complete: renderer, generated CI, fixtures, docs, and `campaign/pr-review-guidance-closeout`. |
 | Recommendation Calibration (14) | Measure whether top CI, LSP, and PR recommendations are clear, correctly placed, low-noise, and correlated with better static evidence after one focused test. | Complete: spec, corpus, receipts, report, guide, and `campaign/recommendation-calibration-closeout`. |
 | Calibrated Gate Policy (15) | Define optional calibrated gates over existing PR-time evidence without changing advisory defaults or blurring static/runtime evidence. | Complete: spec, evaluator, fixtures, generated CI opt-in wiring, evidence-preserving CI behavior, calibrated gate guide, and `campaign/calibrated-gate-closeout`. |
-| Gate Adoption UX (16) | Make optional calibrated gate adoption safe and obvious for real teams without changing advisory defaults. | Active: gate adoption examples, waiver workflows, baseline guidance, CI gate summary polish, and dogfood gate adoption receipts are done; `docs/blocking-readiness-guide` is ready; closeout is queued. |
+| Gate Adoption UX (16) | Make optional calibrated gate adoption safe and obvious for real teams without changing advisory defaults. | Active: gate adoption examples, waiver workflows, baseline guidance, CI gate summary polish, dogfood receipts, and blocking-readiness guidance are done; `campaign/gate-adoption-ux-closeout` is ready. |
 | Editor Evidence UX (future) | Make the saved-workspace LSP path feel like an editor-native test-intent cockpit from diagnostic to hover, related test, context packet, one test, verify, and receipt. | Queued separately from the active campaign; start after Gate Adoption UX closes or after an explicit parallel-lane decision. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
@@ -93,8 +93,10 @@ generated CI summary now shows the gate decision at a glance before the full
 Markdown report. `cargo xtask dogfood` now records and compares checked
 visible-only, acknowledged, baseline-existing, baseline-new,
 missing-baseline, and explicit calibrated-gate adoption receipts from
-repo-local evidence without changing generated CI defaults. The next ready
-item is guidance for when blocking is mature enough. Editor Evidence UX is
+repo-local evidence without changing generated CI defaults, and
+[RIPR blocking readiness](BLOCKING_READINESS.md) now explains when to stay
+advisory, require acknowledgement, use baseline-check, or enable calibrated
+blocking. The next ready item is Campaign 16 closeout. Editor Evidence UX is
 queued as a separate future Lane 3 campaign rather than replacing the active
 manifest: it should harden the saved-workspace LSP path from diagnostic to
 hover, related test, context packet, verify, and receipt only after Gate

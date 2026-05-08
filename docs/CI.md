@@ -1342,6 +1342,14 @@ discipline. Calibration can raise confidence for new, matching candidates; it
 does not make stale baseline entries stronger or turn missing calibration into a
 blocking signal.
 
+### Blocking Readiness
+
+Use [RIPR blocking readiness](BLOCKING_READINESS.md) before promoting a gate
+mode. The guide explains when to stay advisory, when to require `ripr-waive`,
+when a reviewed baseline is enough for `baseline-check`, and when
+`calibrated-gate` has enough local evidence to block. Default generated CI
+still stays non-blocking unless `RIPR_GATE_MODE` is explicitly configured.
+
 The security workflow currently runs:
 
 ```bash

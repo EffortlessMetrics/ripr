@@ -126,6 +126,9 @@ are scoped or reviewed.
   baseline-existing, baseline-new, repair-oriented missing-baseline, and
   explicit calibrated-gate decisions from checked evidence while preserving
   non-blocking generated CI defaults.
+- Added `docs/BLOCKING_READINESS.md` to explain when teams should stay
+  advisory, require acknowledgement, use `baseline-check`, or enable
+  `calibrated-gate` after local evidence is mature.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and PR guidance annotation counts before artifact
