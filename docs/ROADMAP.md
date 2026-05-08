@@ -132,10 +132,12 @@ earned by local evidence. The generated-CI examples for default advisory
 posture, `visible-only`, `acknowledgeable`, `baseline-check`, and
 `calibrated-gate` are now documented, and the `ripr-waive` reviewer workflow
 now keeps acknowledgements visible and separate from suppressions. Baseline
-creation and refresh guidance is the next ready adoption slice. Editor Evidence
-UX is queued as a separate Lane 3 editor campaign, not a replacement for the
-active gate-adoption manifest; it should begin after Gate Adoption UX closes or
-after an explicit parallel-lane decision.
+creation and refresh guidance now frames baselines as visible historical debt
+ledgers that teams can shrink toward RIPR 0 under configured scope. CI gate
+summary polish is the next ready adoption slice. Editor Evidence UX is queued
+as a separate Lane 3 editor campaign, not a replacement for the active
+gate-adoption manifest; it should begin after Gate Adoption UX closes or after
+an explicit parallel-lane decision.
 
 ## Strategic Sequence
 

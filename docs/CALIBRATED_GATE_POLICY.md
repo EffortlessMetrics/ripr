@@ -198,6 +198,12 @@ Use the gate in stages:
 Rollback is simple: unset `RIPR_GATE_MODE`. The advisory PR guidance, SARIF,
 badge, agent, cockpit, and artifact packet surfaces continue to run.
 
+Baseline creation and refresh guidance lives in
+[CI strategy](CI.md#gate-baseline-workflow). Use that flow before enabling
+`baseline-check` or `calibrated-gate`: the baseline is a visible debt ledger for
+existing policy-eligible gaps, not a suppression list and not a way to hide new
+findings.
+
 ## Fixture Matrix
 
 The checked gate cases live under:
