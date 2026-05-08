@@ -31,7 +31,7 @@ use reports::{
 use reports::{lsp_cockpit_report, targeted_test_outcome};
 use run::{
     TimedOutput, capture_output, capture_output_with_timeout, command_success_owned, run,
-    run_output, run_output_optional, run_output_owned, run_owned,
+    run_in_dir, run_output, run_output_optional, run_output_owned, run_owned,
 };
 
 #[derive(Debug)]
@@ -648,6 +648,97 @@ fn ci_full() -> Result<(), String> {
     run_ci_full_evidence_gates(&ci_full_evidence_gates())?;
     run("cargo", &["package", "-p", "ripr", "--list"])?;
     run("cargo", &["publish", "-p", "ripr", "--dry-run"]).map(|_| ())
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct CwdCommand {
+    program: PathBuf,
+    args: Vec<String>,
+    cwd: PathBuf,
+}
+
+fn run_cwd_command(command: &CwdCommand) -> Result<(), String> {
+    let args: Vec<&str> = command.args.iter().map(String::as_str).collect();
+    run_in_dir(&command.program, &args, &command.cwd).map(|_| ())
+}
+
+fn vscode_compile() -> Result<(), String> {
+    run_cwd_command(&vscode_compile_command())
+}
+
+fn vscode_package() -> Result<(), String> {
+    let extension_dir = vscode_extension_dir();
+    let dist = extension_dir.join("dist");
+    fs::create_dir_all(&dist)
+        .map_err(|err| format!("failed to create {}: {err}", dist.display()))?;
+    let version = vscode_package_version(&extension_dir.join("package.json"))?;
+    run_cwd_command(&vscode_package_command(&version))
+}
+
+fn vscode_test() -> Result<(), String> {
+    vscode_compile()
+}
+
+fn vscode_test_e2e() -> Result<(), String> {
+    vscode_compile()?;
+    run_cwd_command(&vscode_test_e2e_command())
+}
+
+fn vscode_compile_command() -> CwdCommand {
+    CwdCommand {
+        program: vscode_local_bin("tsc"),
+        args: vec!["-p".to_string(), "./".to_string()],
+        cwd: vscode_extension_dir(),
+    }
+}
+
+fn vscode_package_command(version: &str) -> CwdCommand {
+    CwdCommand {
+        program: vscode_local_bin("vsce"),
+        args: vec![
+            "package".to_string(),
+            "--out".to_string(),
+            format!("dist/ripr-{version}.vsix"),
+        ],
+        cwd: vscode_extension_dir(),
+    }
+}
+
+fn vscode_test_e2e_command() -> CwdCommand {
+    CwdCommand {
+        program: PathBuf::from("node"),
+        args: vec!["out/test/runTest.js".to_string()],
+        cwd: vscode_extension_dir(),
+    }
+}
+
+fn vscode_extension_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .map_or_else(|| PathBuf::from("."), Path::to_path_buf)
+        .join("editors/vscode")
+}
+
+fn vscode_local_bin(name: &str) -> PathBuf {
+    let executable = if cfg!(windows) {
+        format!("{name}.cmd")
+    } else {
+        name.to_string()
+    };
+    vscode_extension_dir()
+        .join("node_modules")
+        .join(".bin")
+        .join(executable)
+}
+
+fn vscode_package_version(package_json: &Path) -> Result<String, String> {
+    let value = read_json_value(package_json)?;
+    value
+        .get("version")
+        .and_then(Value::as_str)
+        .filter(|version| !version.trim().is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| format!("{} is missing a string version", package_json.display()))
 }
 
 fn ci_full_evidence_gates() -> [CiFullEvidenceGate; 5] {
@@ -16545,11 +16636,11 @@ mod tests {
     };
     use super::{
         BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, CheckReport,
-        CheckStatus, CheckViolation, CiFullEvidenceGate, DogfoodRun, FixKind, LocalContextAllow,
-        MarkdownLink, ReceiptRecord, RepoExposureLatencyReport, RepoExposureLatencyRun,
-        RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry, SarifPolicyMode,
-        SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher,
-        TestOracleClass, badge_artifact_command_args, badge_artifact_jobs,
+        CheckStatus, CheckViolation, CiFullEvidenceGate, CwdCommand, DogfoodRun, FixKind,
+        LocalContextAllow, MarkdownLink, ReceiptRecord, RepoExposureLatencyReport,
+        RepoExposureLatencyRun, RepoExposureLatencyTrace, ReportIndexCampaign, ReportIndexEntry,
+        SarifPolicyMode, SarifPolicyResult, SarifPolicyThreshold, StaticLanguageAllowEntry,
+        StaticLanguageMatcher, TestOracleClass, badge_artifact_command_args, badge_artifact_jobs,
         badge_artifact_native_slot, badge_artifacts_summary_markdown, build_lsp_cockpit_report,
         build_repo_exposure_latency_report, build_targeted_test_outcome_report,
         check_allow_attributes, check_droid_review_config, check_executable_files,
@@ -16591,8 +16682,10 @@ mod tests {
         targeted_test_outcome_report_json, targeted_test_outcome_report_markdown,
         test_efficiency_entry, test_efficiency_report_json, test_efficiency_report_markdown,
         test_oracle_report_json, test_oracle_report_markdown, test_oracle_tests_in_text,
-        unknown_command_message, validate_local_context_allowlist, windows_absolute_path_tokens,
-        workflow_runtime_violations, write_repo_exposure_latency_report,
+        unknown_command_message, validate_local_context_allowlist, vscode_compile_command,
+        vscode_extension_dir, vscode_package_command, vscode_package_version,
+        vscode_test_e2e_command, windows_absolute_path_tokens, workflow_runtime_violations,
+        write_repo_exposure_latency_report,
     };
     use super::{
         DeclaredIntent, LocalContextFinding,
@@ -22823,6 +22916,14 @@ jobs:
             XtaskCommand::OperatorCockpitReport
         );
         assert_eq!(
+            XtaskCommand::parse(["vscode-compile".to_string()]),
+            XtaskCommand::VscodeCompile
+        );
+        assert_eq!(
+            XtaskCommand::parse(["vscode-package".to_string()]),
+            XtaskCommand::VscodePackage
+        );
+        assert_eq!(
             XtaskCommand::parse(std::iter::empty::<String>()),
             XtaskCommand::Help
         );
@@ -23049,6 +23150,62 @@ covered_by = ["cargo xtask check-file-policy"]
         assert!(commands.contains(&"sarif-policy --current <path> [--baseline <path>]"));
         assert!(commands.contains(&"check-droid-review-config"));
         assert!(commands.contains(&"check-ci-lane-whitelist"));
+        assert!(commands.contains(&"vscode-compile"));
+        assert!(commands.contains(&"vscode-package"));
+        assert!(commands.contains(&"vscode-test"));
+        assert!(commands.contains(&"vscode-test-e2e"));
+    }
+
+    #[test]
+    fn vscode_package_version_reads_extension_manifest() -> Result<(), String> {
+        with_temp_cwd("vscode-package-version", |root| {
+            let package_json = root.join("package.json");
+            fs::write(&package_json, r#"{"version":"0.4.0"}"#)
+                .map_err(|err| format!("failed to write {}: {err}", package_json.display()))?;
+            assert_eq!(vscode_package_version(&package_json)?, "0.4.0");
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn vscode_commands_use_extension_cwd_and_local_bins() {
+        let extension_dir = vscode_extension_dir();
+        let node_bin_extension = if cfg!(windows) { ".cmd" } else { "" };
+
+        assert_eq!(
+            vscode_compile_command(),
+            CwdCommand {
+                program: extension_dir
+                    .join("node_modules")
+                    .join(".bin")
+                    .join(format!("tsc{node_bin_extension}")),
+                args: vec!["-p".to_string(), "./".to_string()],
+                cwd: extension_dir.clone(),
+            }
+        );
+        assert_eq!(
+            vscode_package_command("0.4.0"),
+            CwdCommand {
+                program: extension_dir
+                    .join("node_modules")
+                    .join(".bin")
+                    .join(format!("vsce{node_bin_extension}")),
+                args: vec![
+                    "package".to_string(),
+                    "--out".to_string(),
+                    "dist/ripr-0.4.0.vsix".to_string(),
+                ],
+                cwd: extension_dir.clone(),
+            }
+        );
+        assert_eq!(
+            vscode_test_e2e_command(),
+            CwdCommand {
+                program: PathBuf::from("node"),
+                args: vec!["out/test/runTest.js".to_string()],
+                cwd: extension_dir,
+            }
+        );
     }
 
     #[test]
