@@ -48,19 +48,23 @@ The planned gate evaluator is a read-only command. It consumes existing
 artifacts and writes a gate decision report:
 
 ```text
-ripr gate --root . \
-  --review-comments target/ripr/review/comments.json \
-  --repo-exposure target/ripr/pilot/repo-exposure.json \
+ripr gate evaluate --root . \
+  --pr-guidance target/ripr/review/comments.json \
+  --repo-exposure target/ripr/reports/repo-exposure.json \
+  --sarif-policy target/ripr/reports/sarif-policy.json \
   --policy ripr.toml \
   --labels-json target/ripr/review/labels.json \
-  --out target/ripr/review/gate-decision.json
+  --agent-verify target/ripr/workflow/agent-verify.json \
+  --agent-receipt target/ripr/reports/agent-receipt.json \
+  --mutation-calibration target/ripr/reports/mutation-calibration.json \
+  --out target/ripr/reports/gate-decision.json
 ```
 
 The command writes:
 
 ```text
-target/ripr/review/gate-decision.json
-target/ripr/review/gate-decision.md
+target/ripr/reports/gate-decision.json
+target/ripr/reports/gate-decision.md
 ```
 
 It must not post comments, edit files, generate tests, upload SARIF, mutate
@@ -91,13 +95,14 @@ same JSON and Markdown evidence so reviewers can understand the decision.
 
 The evaluator may read:
 
-- PR guidance from `ripr review-comments`;
-- repo exposure or pilot output;
+- PR guidance JSON produced by `ripr review-comments`;
+- repo exposure output from `target/ripr/reports/repo-exposure.json` or an
+  explicitly supplied equivalent;
 - current and optional baseline SARIF policy reports;
 - configured severity and suppressions from `ripr.toml`;
 - labels supplied by CI as JSON;
 - optional imported mutation calibration reports;
-- optional before/after receipt or agent verify artifacts.
+- optional agent verify and receipt artifacts.
 
 Missing optional inputs must degrade to advisory or unknown confidence, not
 invent evidence. Missing required inputs should produce a configuration error
@@ -247,10 +252,14 @@ The planned gate decision JSON uses schema version `0.1`:
   "mode": "acknowledgeable-soft-gate",
   "root": ".",
   "inputs": {
-    "review_comments": "target/ripr/review/comments.json",
-    "repo_exposure": "target/ripr/pilot/repo-exposure.json",
+    "pr_guidance": "target/ripr/review/comments.json",
+    "repo_exposure": "target/ripr/reports/repo-exposure.json",
+    "sarif_policy": "target/ripr/reports/sarif-policy.json",
     "policy": "ripr.toml",
+    "labels_json": "target/ripr/review/labels.json",
     "labels": ["ripr-waive"],
+    "agent_verify": "target/ripr/workflow/agent-verify.json",
+    "agent_receipt": "target/ripr/reports/agent-receipt.json",
     "mutation_calibration": null
   },
   "summary": {
@@ -265,7 +274,7 @@ The planned gate decision JSON uses schema version `0.1`:
     {
       "id": "ripr-gate-67fc764ba37d77bd",
       "seam_id": "67fc764ba37d77bd",
-      "source": "review_comments",
+      "source": "pr_guidance",
       "decision": "acknowledged",
       "gate_reason": "policy-eligible gap acknowledged by ripr-waive",
       "static_class": "weakly_gripped",
@@ -303,8 +312,12 @@ The planned gate decision JSON uses schema version `0.1`:
 - `status` - one of `pass`, `advisory`, `acknowledged`, `fail`, or
   `config_error`.
 - `mode` - one of the configured gate modes.
-- `inputs` - paths and labels used by the decision. Missing optional inputs
-  should be visible.
+- `inputs` - paths and labels used by the decision. `pr_guidance` is the
+  conceptual PR guidance artifact produced by `ripr review-comments`, even
+  though the current default file is `target/ripr/review/comments.json`.
+  `sarif_policy`, `agent_verify`, `agent_receipt`, and `mutation_calibration`
+  are optional; when omitted, they should remain visible as `null` or as a
+  missing optional input warning rather than being silently ignored.
 - `summary.evaluated` - number of candidate recommendations considered.
 - `summary.blocking` - number of decisions that made the gate fail.
 - `summary.acknowledged` - number of decisions made non-failing by an
@@ -430,7 +443,7 @@ Initial implementation should add tests for:
 
 The first implementation should map this spec to:
 
-- a CLI adapter for `ripr gate`;
+- a CLI adapter for `ripr gate evaluate`;
 - an app/use-case module that reads existing PR guidance, repo exposure, SARIF
   policy, suppressions, labels, and optional calibration reports;
 - an output module for gate decision JSON/Markdown;
