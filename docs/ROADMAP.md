@@ -131,7 +131,10 @@ gate summaries, repo-local dogfood receipts, and guidance for when blocking is
 earned by local evidence. The generated-CI examples for default advisory
 posture, `visible-only`, `acknowledgeable`, `baseline-check`, and
 `calibrated-gate` are now documented; visible waiver workflows are the next
-ready adoption slice.
+ready adoption slice. Editor Evidence UX is queued as a separate Lane 3 editor
+campaign, not a replacement for the active gate-adoption manifest; it should
+begin after Gate Adoption UX closes or after an explicit parallel-lane
+decision.
 
 ## Strategic Sequence
 
@@ -178,6 +181,7 @@ quality rails
 -> recommendation calibration
 -> calibrated gate policy
 -> gate adoption UX
+-> editor evidence UX
 ```
 
 The analyzer path is:
