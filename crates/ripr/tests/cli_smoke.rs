@@ -921,7 +921,9 @@ fn init_ci_github_writes_non_blocking_report_workflow() -> Result<(), String> {
     assert!(workflow.contains("RIPR_UPLOAD_SARIF"));
     assert!(workflow.contains("github/codeql-action/upload-sarif@v4"));
     assert!(!workflow.contains("fail-on-new-warning"));
-    assert!(!workflow.contains("sarif-policy"));
+    assert!(!workflow.contains("RIPR_GATE_MODE: \"acknowledgeable\""));
+    assert!(!workflow.contains("RIPR_GATE_MODE: \"baseline-check\""));
+    assert!(!workflow.contains("RIPR_GATE_MODE: \"calibrated-gate\""));
 
     let _ = std::fs::remove_dir_all(&workspace);
     Ok(())
