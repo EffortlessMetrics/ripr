@@ -1559,9 +1559,10 @@ Closeout:
 
 Next:
 
-- Campaign 14 is now the Calibrated Gate Policy lane. It starts with a spec
-  before any evaluator or generated workflow wiring so visibility and blocking
-  stay separated.
+- Campaign 14 is now the Recommendation Calibration lane. It starts with a
+  report spec before any ranking or policy work so RIPR measures whether its
+  PR guidance is useful, correctly placed, and low-noise before optional gates
+  are considered.
 
 Dependencies:
 
@@ -1592,17 +1593,111 @@ Blocking conditions:
 - comments placed on unrelated unchanged lines
 - new public crates
 
-## Campaign 14: Calibrated Gate Policy
+## Campaign 14: Recommendation Calibration
 
-Campaign ID: `calibrated-gate-policy`
+Campaign ID: `recommendation-calibration`
 
 Status: active
 
-Campaigns 11 through 13 made the source-edit-free evidence loop visible to
-humans, CI, editors, and agents: selected seam -> brief/packet -> focused test
--> after snapshot -> verify/receipt -> PR guidance. The remaining mature-loop
-gap is the optional gate. It must be explicit policy over existing evidence,
-not a hidden escalation from advisory comments to blocking CI.
+Campaigns 11 through 13 built the deterministic human, CI, editor, and external
+agent control plane: selected seam -> brief/packet -> focused test -> after
+snapshot -> verify/receipt -> PR guidance. The next trust layer is not a gate.
+It is measuring whether the recommendation was worth the reviewer or agent's
+attention in the first place.
+
+Objective:
+
+```text
+Move RIPR from a complete static evidence loop to measured recommendation
+quality: determine whether PR-time guidance is useful, correctly placed,
+properly suppressed or capped, and correlated with improved static evidence
+after one focused test.
+```
+
+Why it matters:
+
+RIPR now emits bounded PR guidance, but that still does not answer the adoption
+question: was the top recommendation worth showing to a reviewer? Campaign 14
+turns that into repo-local calibration evidence before any future ranking or
+policy work. Calibration stays advisory, deterministic, and static; it does not
+add telemetry, external services, generated tests, runtime mutation execution,
+or default CI blocking.
+
+End state:
+
+- a PR-shaped calibration corpus records useful, noisy, wrong-line,
+  already-covered, summary-only, suppression, generated/migration,
+  macro-heavy, trait/generic, and async/error-boundary cases
+- review guidance outcome receipts can record recommendation outcomes without
+  telemetry, external services, source edits, generated tests, or runtime
+  mutation execution
+- recommendation calibration reports measure top recommendation usefulness,
+  false annotations, summary-only fallback correctness, suppression
+  correctness, recommended test target correctness, and review-comment latency
+- generated CI remains advisory and non-blocking while surfacing calibration
+  artifacts when available
+- calibration results feed future ranking and policy decisions without opaque
+  scores or runtime adequacy claims
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `campaign/recommendation-calibration-audit` | done | Audited the post-Campaign-13 product objective and made recommendation quality the next trust layer before optional policy gates. |
+| `spec/recommendation-calibration-report` | ready | Define the recommendation calibration report contract, including inputs, output schema, top recommendation usefulness metrics, false annotation tracking, summary-only correctness, suppression correctness, target-file correctness, latency fields, advisory posture, and non-goals. |
+| `fixtures/pr-guidance-calibration-corpus` | blocked | Add PR-shaped calibration cases for useful recommendation, noisy recommendation, wrong-line placement, already-covered seam, correct summary-only fallback, suppression correctness, generated/migration exclusion, macro-heavy code, trait/generic boundary, and async/error boundary. |
+| `review-feedback/outcome-receipts` | blocked | Add a lightweight review guidance outcome receipt schema for useful, noisy, wrong-line, already-covered, wrong-target, summary-only-correct, and suppressed-correctly outcomes without telemetry or external services. |
+| `report/recommendation-precision` | blocked | Emit a recommendation precision report that joins PR guidance, calibration corpus expectations, optional outcome receipts, suppression state, target placement, and latency without changing CI blocking defaults. |
+| `docs/calibration-workflow` | blocked | Document how to read recommendation calibration reports, outcome receipts, placement quality, suppression correctness, unchanged/improved/regressed static movement, and why calibration remains advisory. |
+| `campaign/recommendation-calibration-closeout` | blocked | Close only after recommendation quality is specified, fixture-pinned, receipt-backed, reported, documented, surfaced advisory-first, and ready to inform later ranking or policy work. |
+
+Dependencies:
+
+- Campaign 13 PR guidance remains the placement and recommendation source.
+- Campaign 11 receipts and review summaries remain the source for before/after
+  static movement and reviewer context.
+- Campaign 5A/8 mutation calibration remains supplied-data calibration.
+  Recommendation calibration may compare against imported runtime artifacts, but
+  RIPR must not run mutation testing.
+- Future calibrated gates are policy over measured evidence. They should not
+  become active until recommendation quality has a calibration baseline.
+
+Commands:
+
+```bash
+cargo xtask check-campaign
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-pr
+```
+
+Blocking conditions:
+
+- LSP feature work
+- LLM provider integration
+- automatic source edits or generated tests
+- runtime mutation execution
+- runtime adequacy claims
+- default CI blocking
+- opaque scores
+- telemetry or external service dependencies
+- policy gates or acknowledgement labels as part of the calibration report
+- new public crates
+
+## Campaign 15: Calibrated Gate Policy
+
+Campaign ID: `calibrated-gate-policy`
+
+Status: queued
+
+Recommendation calibration comes first. Once RIPR has measured whether its
+top recommendations are useful, correctly placed, and low-noise, a later policy
+lane can define optional gates over that evidence without turning advisory
+visibility into blocking behavior by accident.
 
 Objective:
 
@@ -1615,19 +1710,19 @@ imported confidence evidence.
 
 Why it matters:
 
-RIPR now gives reviewers a compact PR-facing test-oracle gap packet, but
-visibility alone does not answer every repository policy question. Some teams
-will want to block only on narrow, high-confidence new gaps; others will want
-acknowledgeable warnings or baseline checks. Campaign 14 should define that
-policy layer without weakening the default advisory posture and without
-confusing static RIPR evidence with runtime mutation proof.
+RIPR gives reviewers a compact PR-facing test-oracle gap packet, but policy
+should earn the right to block. Some teams may eventually want narrow,
+high-confidence checks, acknowledgeable warnings, or baseline comparisons.
+Campaign 15 should define that policy layer only after Campaign 14 supplies a
+recommendation-quality baseline.
 
 End state:
 
-- RIPR-SPEC-0013 defines gate inputs, outputs, modes, acknowledgement labels,
+- a gate policy spec defines inputs, outputs, modes, acknowledgement labels,
   calibration evidence, and non-goals before implementation
 - a read-only gate evaluator consumes existing PR guidance, repo exposure,
-  SARIF policy, suppressions, labels, and optional mutation calibration reports
+  SARIF policy, suppressions, labels, recommendation calibration, and optional
+  mutation calibration reports
 - default generated workflows remain advisory and non-blocking unless an
   explicit gate mode is configured
 - blocking decisions are deterministic, narrow, auditable, and limited to
@@ -1643,16 +1738,16 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `campaign/calibrated-gate-audit` | done | Audited the PR-time test-oracle gap objective after Campaign 13. The evidence and PR guidance loop is real, but the optional calibrated gate layer is not specified as an active campaign. |
-| `spec/calibrated-gate-policy` | ready | Pin RIPR-SPEC-0013 for optional calibrated gates, including modes, inputs, outputs, acknowledgement labels, runtime calibration boundaries, default advisory posture, and non-goals. |
-| `gate/policy-evaluator` | blocked | Add a read-only gate evaluator that writes gate-decision JSON/Markdown from existing evidence and explicit policy without posting comments, editing source, running mutation tests, or changing generated workflow defaults. |
-| `fixtures/calibrated-gate-cases` | blocked | Pin gate fixtures for advisory, acknowledged, baseline-check, fail-on-new-high-confidence-gap, suppression, missing-input, and mutation-calibration agreement/disagreement cases. |
-| `ci/generated-gate-wiring` | blocked | Wire generated GitHub workflows to optionally run the gate evaluator only when explicitly configured, preserving advisory defaults and surfacing acknowledged or blocking decisions in summaries. |
-| `docs/calibrated-gate-policy` | blocked | Document calibrated gates as optional policy over existing static evidence, including modes, waiver labels, CI behavior, calibration evidence, and static/runtime vocabulary boundaries. |
-| `campaign/calibrated-gate-closeout` | blocked | Close only after optional calibrated gates are specified, evaluated, fixture-pinned, optionally wired into generated CI, documented, and still advisory by default. |
+| `spec/calibrated-gate-policy` | queued | Pin the optional calibrated gate policy after recommendation calibration, including modes, inputs, outputs, acknowledgement labels, runtime calibration boundaries, default advisory posture, and non-goals. |
+| `gate/policy-evaluator` | queued | Add a read-only gate evaluator that writes gate-decision JSON/Markdown from existing evidence and explicit policy without posting comments, editing source, running mutation tests, or changing generated workflow defaults. |
+| `fixtures/calibrated-gate-cases` | queued | Pin gate fixtures for advisory, acknowledged, baseline-check, fail-on-new-high-confidence-gap, suppression, missing-input, and calibration agreement/disagreement cases. |
+| `ci/generated-gate-wiring` | queued | Wire generated GitHub workflows to optionally run the gate evaluator only when explicitly configured, preserving advisory defaults and surfacing acknowledged or blocking decisions in summaries. |
+| `docs/calibrated-gate-policy` | queued | Document calibrated gates as optional policy over existing static evidence, including modes, waiver labels, CI behavior, calibration evidence, and static/runtime vocabulary boundaries. |
+| `campaign/calibrated-gate-closeout` | queued | Close only after optional calibrated gates are specified, evaluated, fixture-pinned, optionally wired into generated CI, documented, and still advisory by default. |
 
 Dependencies:
 
+- Campaign 14 Recommendation Calibration supplies the signal-quality baseline.
 - Campaign 13 PR guidance remains the visibility surface. Gates consume it;
   they do not replace it.
 - Campaign 5A/8 mutation calibration remains supplied-data calibration. Gates
@@ -1670,6 +1765,7 @@ cargo xtask goals next
 cargo xtask check-doc-index
 cargo xtask markdown-links
 cargo xtask check-static-language
+cargo xtask check-capabilities
 cargo xtask check-pr
 ```
 
@@ -1684,92 +1780,3 @@ Blocking conditions:
 - posting inline comments as part of the gate evaluator
 - automatic source edits or generated tests
 - new public crates
-
-## Campaign 15: Recommendation Quality Calibration
-
-Campaign ID: `recommendation-quality-calibration`
-
-Status: queued
-
-Campaigns 11 through 13 built the deterministic human, CI, editor, and external
-agent control plane, and Campaign 14 defines the optional policy layer over
-that evidence. The next product-quality lane should measure whether RIPR's top
-recommendations are clear, correctly placed, low-noise, and useful enough to
-show to reviewers.
-
-Objective:
-
-```text
-Make RIPR's CI, LSP, and PR guidance reliably useful by measuring whether top
-recommendations are actionable, placed on the right review surface, suppressed
-when they should be, and correlated with improved static evidence after one
-focused test.
-```
-
-Why it matters:
-
-RIPR can now emit bounded PR guidance and, after Campaign 14, optional gate
-decisions. That still does not answer the adoption question: was the top
-recommendation worth showing to a reviewer? Campaign 15 should turn that into
-repo-local evidence without telemetry, external services, generated tests,
-runtime mutation execution, or default CI blocking.
-
-End state:
-
-- `cargo xtask recommendation-quality` writes
-  `target/ripr/reports/recommendation-quality.json` and
-  `recommendation-quality.md` from existing artifacts
-- recommendation quality reports distinguish actionable, diff-placeable,
-  summary-only, suppressed, capped, noisy, unchanged-after-test,
-  improved-after-test, and regressed-after-test outcomes
-- placement fixtures pin exact changed line, owner-function line, same-file
-  fallback, summary-only fallback, changed-test skip, configured suppression,
-  cap reached, equal ranking, and bad-placement-avoided cases
-- generated CI uploads the quality report and adds a compact advisory summary
-  when the relevant artifacts exist
-- docs explain how to read recommendation quality, suppressions, caps,
-  unchanged/improved/regressed receipts, and summary-only guidance
-- the closeout records what the quality reports can and cannot say before any
-  future policy or ranking changes
-
-Work items:
-
-| Work item | Status | Notes |
-| --- | --- | --- |
-| `recommendation/audit-report` | queued | Add a repo-local recommendation quality report that joins PR guidance, pilot summary, agent packet or brief, receipt or targeted-test outcome, suppression state, and changed-test detection without telemetry or external services. |
-| `recommendation/placement-quality-fixtures` | queued | Pin placement cases for exact changed line, owner-function line, same-file fallback, summary-only fallback, changed-test skip, configured suppression, cap reached, equal ranking, and bad-placement-avoided behavior. |
-| `recommendation/noise-and-suppression-report` | queued | Summarize why recommendations were shown, capped, suppressed, configured off, or summary-only so noisy findings are visible instead of silently disappearing. |
-| `recommendation/outcome-correlation-report` | queued | Correlate guidance with existing outcome or receipt artifacts to report unchanged, improved, regressed, resolved, or missing-after-snapshot states without claiming runtime confirmation. |
-| `docs/recommendation-quality-guide` | queued | Document what RIPR recommends, why it may choose summary-only, how caps and suppressions work, and how to read unchanged, improved, or regressed receipts. |
-| `campaign/recommendation-quality-closeout` | queued | Close only after recommendation quality is reported, fixture-pinned, optionally surfaced in generated CI, documented, and still advisory by default. |
-
-Dependencies:
-
-- Campaign 13 PR guidance remains the placement and recommendation source.
-- Campaign 14 calibrated gates remain policy over evidence. Recommendation
-  quality measures guidance usefulness; it does not make blocking decisions.
-- Campaign 11 receipts and review summaries remain the source for before/after
-  static movement and reviewer context.
-
-Commands:
-
-```bash
-cargo xtask check-campaign
-cargo xtask goals next
-cargo xtask check-doc-index
-cargo xtask markdown-links
-cargo xtask check-static-language
-cargo xtask check-capabilities
-cargo xtask check-pr
-```
-
-Blocking conditions:
-
-- LLM provider integration
-- automatic source edits or generated tests
-- runtime mutation execution
-- default CI blocking
-- new analyzer families
-- broad refactors
-- telemetry or external service dependencies
-- ranking changes without fixture evidence and output-contract updates
