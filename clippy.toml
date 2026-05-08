@@ -1,0 +1,13 @@
+# Workspace Clippy configuration.
+#
+# Pinning `msrv` keeps newer Clippy releases (when run via `rustup` or in an
+# advisory CI lane on a more recent toolchain) from suggesting APIs that
+# violate the workspace's declared minimum supported Rust version.
+#
+# This file deliberately omits the `allow-*-in-tests` carve-outs
+# (`allow-panic-in-tests`, `allow-unwrap-in-tests`, `allow-expect-in-tests`,
+# `allow-dbg-in-tests`, `allow-indexing-slicing-in-tests`). Tests in this
+# repo inherit the same panic-free / no-silent-failure bar as production
+# code; see `docs/CLIPPY_POLICY.md` and the `cargo xtask check-no-panic-family`
+# semantic rail.
+msrv = "1.93"

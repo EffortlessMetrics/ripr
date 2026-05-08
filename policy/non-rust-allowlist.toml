@@ -112,6 +112,15 @@ reason = "Cargo workspace manifest."
 covered_by = ["cargo check --workspace --all-targets", "cargo xtask check-lint-policy"]
 
 [[allow]]
+glob = "clippy.toml"
+kind = "lint_policy"
+owner = "repo-policy"
+surface = "rust"
+classification = "config"
+reason = "Workspace Clippy configuration; pins MSRV awareness and explicitly omits test carve-outs."
+covered_by = ["cargo clippy --workspace --all-targets -- -D warnings", "cargo xtask check-lint-policy"]
+
+[[allow]]
 glob = "crates/**/Cargo.toml"
 kind = "rust_manifest"
 owner = "rust"
