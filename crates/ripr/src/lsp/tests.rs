@@ -7,11 +7,11 @@ use super::config::LspAnalysisConfig;
 use super::diagnostics::{
     DiagnosticBatch, WorkspaceDiagnostics, diagnostic_for_classified_seam, diagnostic_for_finding,
     diagnostic_refresh_plan, diagnostic_severity_for_class, take_all_uris,
-    workspace_diagnostic_batches,
+    workspace_diagnostic_batches, workspace_diagnostic_batches_with_config,
 };
 use super::hover::{hover_response, hover_with_snapshot_status};
 use super::state::{AnalysisSnapshot, DocumentStore, RefreshMetadata, format_duration};
-use super::uri::{encode_uri_path, file_uri_for_path, path_from_file_uri};
+use super::uri::{encode_uri_path, file_uri_for_path, file_uris_match, path_from_file_uri};
 use super::{
     COLLECT_CONTEXT_COMMAND, COPY_AFTER_SNAPSHOT_COMMAND, COPY_AGENT_BRIEF_COMMAND,
     COPY_AGENT_PACKET_COMMAND, COPY_AGENT_RECEIPT_COMMAND, COPY_AGENT_VERIFY_COMMAND,
@@ -2189,6 +2189,37 @@ fn workspace_diagnostic_batches_uses_default_lsp_analysis_config() {
 }
 
 #[test]
+fn boundary_gap_workspace_diagnostics_include_live_seam_diagnostic() -> Result<(), String> {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let fixture_root = repo_root.join("fixtures/boundary_gap/input");
+    let config = LspAnalysisConfig {
+        base_ref: Some("HEAD".to_string()),
+        mode: Mode::Instant,
+        ..LspAnalysisConfig::default()
+    };
+
+    let batches = workspace_diagnostic_batches_with_config(&fixture_root, &config)?;
+    let seam_diagnostic = batches
+        .iter()
+        .flat_map(|batch| &batch.diagnostics)
+        .any(|diagnostic| {
+            diagnostic.source.as_deref() == Some("ripr")
+                && diagnostic
+                    .code
+                    .as_ref()
+                    .map(diagnostic_code_value)
+                    .as_deref()
+                    == Some("ripr-seam-weakly-gripped")
+        });
+
+    assert!(
+        seam_diagnostic,
+        "expected boundary_gap live workspace diagnostics to include ripr-seam-weakly-gripped"
+    );
+    Ok(())
+}
+
+#[test]
 fn file_uri_to_path_decodes_spaces_and_windows_drive_prefix() -> Result<(), String> {
     let uri = test_uri(&format!("file:///{}{}", "C%3A", "/path/to/ripr%20repo"))?;
 
@@ -2223,6 +2254,21 @@ fn file_uri_to_path_decodes_uppercase_hex_escape() -> Result<(), String> {
 }
 
 #[test]
+fn file_uri_to_path_normalizes_backslash_separators() -> Result<(), String> {
+    let drive = "C";
+    let uri = test_uri(&format!("file:///{drive}:%5Cworkspace%5Csrc%5Clib.rs"))?;
+
+    let Some(path) = path_from_file_uri(&uri) else {
+        return Err("expected path from file URI".to_string());
+    };
+    assert_eq!(
+        path,
+        PathBuf::from(format!("{drive}:/workspace/src/lib.rs"))
+    );
+    Ok(())
+}
+
+#[test]
 fn file_uri_for_path_uses_valid_encoded_file_uri() -> Result<(), String> {
     let uri = file_uri_for_path(&PathBuf::from("src lib.rs"))?;
 
@@ -2236,6 +2282,66 @@ fn uri_path_encoding_preserves_path_syntax_and_escapes_spaces() {
         encode_uri_path("workspace/src lib.rs"),
         "workspace/src%20lib.rs"
     );
+}
+
+#[test]
+fn file_uri_match_decodes_equivalent_file_paths() -> Result<(), String> {
+    let encoded_uri = test_uri("file:///workspace/src%2Dlib.rs")?;
+    let plain_uri = test_uri("file:///workspace/src-lib.rs")?;
+
+    assert!(file_uris_match(&encoded_uri, &plain_uri));
+    Ok(())
+}
+
+#[test]
+fn file_uri_match_treats_windows_drive_paths_case_insensitively() -> Result<(), String> {
+    let drive = "C";
+    let stored_uri = test_uri(&format!("file:///{drive}:/Workspace/Src/lib.rs"))?;
+    let queried_uri = test_uri(&format!(
+        "file:///{drive}:/workspace/src/lib.rs",
+        drive = drive.to_ascii_lowercase()
+    ))?;
+
+    assert!(file_uris_match(&stored_uri, &queried_uri));
+    Ok(())
+}
+
+#[test]
+fn file_uri_match_rejects_non_file_and_distinct_paths() -> Result<(), String> {
+    let file_uri = test_uri("file:///workspace/src/lib.rs")?;
+    let other_file_uri = test_uri("file:///workspace/src/other.rs")?;
+    let non_file_uri = test_uri("https://example.com/workspace/src/lib.rs")?;
+
+    assert!(!file_uris_match(&file_uri, &other_file_uri));
+    assert!(!file_uris_match(&non_file_uri, &file_uri));
+    assert!(!file_uris_match(&file_uri, &non_file_uri));
+    Ok(())
+}
+
+#[test]
+fn diagnostics_for_uri_matches_windows_drive_case_variants() -> Result<(), String> {
+    let drive = "H";
+    let root = format!("{drive}:/workspace");
+    let stored_uri = test_uri(&format!("file:///{drive}:/workspace/src/pricing.rs"))?;
+    let queried_uri = test_uri(&format!(
+        "file:///{drive}:/workspace/src/pricing.rs",
+        drive = drive.to_ascii_lowercase()
+    ))?;
+    let finding = sample_finding();
+    let diagnostic = diagnostic_for_finding(Path::new(&root), &finding);
+    let snapshot = sample_analysis_snapshot(
+        PathBuf::from(root),
+        stored_uri,
+        vec![diagnostic],
+        vec![finding],
+    );
+
+    let Some(diagnostics) = snapshot.diagnostics_for_uri(&queried_uri) else {
+        return Err("expected diagnostics for URI with lowercase drive letter".to_string());
+    };
+
+    assert_eq!(diagnostics.len(), 1);
+    Ok(())
 }
 
 fn test_uri(uri: &str) -> Result<tower_lsp_server::ls_types::Uri, String> {

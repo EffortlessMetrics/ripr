@@ -7,6 +7,7 @@ import {
 
 suite('Extension Smoke', () => {
   suiteSetup(async () => {
+    await configureTestServer();
     await activateExtension();
   });
 
@@ -40,7 +41,79 @@ suite('Extension Smoke', () => {
 
   test('defaults-first check mode is draft', () => {
     const config = vscode.workspace.getConfiguration('ripr');
-    assert.strictEqual(config.get('check.mode'), 'draft');
+    assert.strictEqual(config.inspect('check.mode')?.defaultValue, 'draft');
+  });
+
+  test('real server surfaces seam diagnostic, hover provider, and agent actions', async function (this: Mocha.Context) {
+    this.timeout(75000);
+    if (!process.env.RIPR_TEST_SERVER_PATH) {
+      this.skip();
+    }
+
+    const uri = workspaceFileUri('src/lib.rs');
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    const document = await vscode.workspace.openTextDocument(uri);
+    assert.strictEqual(document.languageId, 'rust');
+    await vscode.window.showTextDocument(document);
+    await vscode.commands.executeCommand('ripr.restartServer');
+
+    const diagnostic = await waitForDiagnostic(
+      uri,
+      (entry) => entry.source === 'ripr' && diagnosticCode(entry) === 'ripr-seam-weakly-gripped',
+      60000
+    );
+    assert.ok(diagnostic.message.includes('Weakly gripped behavioral seam'));
+
+    const hoverPosition = new vscode.Position(
+      diagnostic.range.start.line,
+      diagnostic.range.start.character + 1
+    );
+    const hoverText = await waitForHoverText(uri, hoverPosition, (text) =>
+      text.includes('**ripr** behavioral seam') &&
+      text.includes('`weakly_gripped`') &&
+      text.includes('## Missing discriminator')
+    );
+    assert.ok(hoverText.includes('**ripr** behavioral seam'), hoverText);
+    assert.ok(hoverText.includes('`weakly_gripped`'), hoverText);
+    assert.ok(hoverText.includes('## Missing discriminator'), hoverText);
+
+    const actions = await vscode.commands.executeCommand<Array<vscode.CodeAction | vscode.Command>>(
+      'vscode.executeCodeActionProvider',
+      uri,
+      diagnostic.range
+    );
+    assertCommandAction(actions, 'Inspect seam: copy packet', 'ripr.copyContext');
+    assertCommandAction(actions, 'Write targeted test: copy brief', 'ripr.copyTargetedTestBrief');
+    assertCommandAction(
+      actions,
+      'Agent handoff: copy packet command',
+      'ripr.copyAgentPacketCommand',
+      'ripr agent packet'
+    );
+    assertCommandAction(
+      actions,
+      'Agent handoff: copy brief command',
+      'ripr.copyAgentBriefCommand',
+      'ripr agent brief'
+    );
+    assertCommandAction(
+      actions,
+      'Verify after test: copy after-snapshot command',
+      'ripr.copyAfterSnapshotCommand',
+      'ripr check'
+    );
+    assertCommandAction(
+      actions,
+      'Verify after test: copy verify command',
+      'ripr.copyAgentVerifyCommand',
+      'ripr agent verify'
+    );
+    assertCommandAction(
+      actions,
+      'Review result: copy receipt command',
+      'ripr.copyAgentReceiptCommand',
+      'ripr agent receipt'
+    );
   });
 
   test('restartServer command is callable', async () => {
@@ -403,8 +476,143 @@ async function activateExtension(): Promise<void> {
   await ext.activate();
 }
 
+async function configureTestServer(): Promise<void> {
+  const testServerPath = process.env.RIPR_TEST_SERVER_PATH;
+  if (!testServerPath) {
+    return;
+  }
+
+  const config = vscode.workspace.getConfiguration('ripr');
+  await config.update('server.path', testServerPath, vscode.ConfigurationTarget.Global);
+  await config.update('server.autoDownload', false, vscode.ConfigurationTarget.Global);
+  await config.update('baseRef', 'HEAD', vscode.ConfigurationTarget.Global);
+  await config.update('check.mode', 'instant', vscode.ConfigurationTarget.Global);
+}
+
 function workspaceFileUri(relativePath: string): vscode.Uri {
   const folder = vscode.workspace.workspaceFolders?.[0];
   assert.ok(folder, 'test workspace should be open');
   return vscode.Uri.joinPath(folder.uri, ...relativePath.split('/'));
+}
+
+async function waitForDiagnostic(
+  uri: vscode.Uri,
+  predicate: (diagnostic: vscode.Diagnostic) => boolean,
+  timeoutMs = 15000
+): Promise<vscode.Diagnostic> {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const diagnostic = vscode.languages.getDiagnostics(uri).find(predicate);
+    if (diagnostic) {
+      return diagnostic;
+    }
+    await sleep(150);
+  }
+  const currentUriDiagnostics = vscode.languages
+    .getDiagnostics(uri)
+    .map((entry) => `${entry.source ?? '<no source>'}:${diagnosticCode(entry)}:${entry.message}`)
+    .join('\n');
+  const allDiagnostics = vscode.languages
+    .getDiagnostics()
+    .map(([diagnosticUri, entries]) =>
+      [
+        diagnosticUri.toString(),
+        ...entries.map((entry) => `  ${entry.source ?? '<no source>'}:${diagnosticCode(entry)}:${entry.message}`),
+      ].join('\n')
+    )
+    .join('\n');
+  const workspaceFolders = vscode.workspace.workspaceFolders
+    ?.map((folder) => folder.uri.fsPath)
+    .join(', ') ?? '<none>';
+  throw new Error([
+    'timed out waiting for ripr seam diagnostic.',
+    `Workspace folders: ${workspaceFolders}`,
+    `Target URI: ${uri.toString()}`,
+    `Current URI diagnostics:\n${currentUriDiagnostics}`,
+    `All diagnostics:\n${allDiagnostics}`,
+  ].join('\n'));
+}
+
+async function waitForHoverText(
+  uri: vscode.Uri,
+  position: vscode.Position,
+  predicate: (text: string) => boolean,
+  timeoutMs = 15000
+): Promise<string> {
+  const started = Date.now();
+  let lastHoverText = '';
+  while (Date.now() - started < timeoutMs) {
+    const hovers = await vscode.commands.executeCommand<vscode.Hover[]>(
+      'vscode.executeHoverProvider',
+      uri,
+      position
+    );
+    lastHoverText = hovers.map(hoverMarkdown).join('\n');
+    if (predicate(lastHoverText)) {
+      return lastHoverText;
+    }
+    await sleep(150);
+  }
+  throw new Error(`timed out waiting for ripr seam hover. Last hover:\n${lastHoverText}`);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function diagnosticCode(diagnostic: vscode.Diagnostic): string {
+  const code = diagnostic.code;
+  if (!code) {
+    return '';
+  }
+  if (typeof code === 'string' || typeof code === 'number') {
+    return String(code);
+  }
+  return String(code.value);
+}
+
+function hoverMarkdown(hover: vscode.Hover): string {
+  return hover.contents
+    .map((entry) => {
+      if (typeof entry === 'string') {
+        return entry;
+      }
+      if (entry instanceof vscode.MarkdownString) {
+        return entry.value;
+      }
+      return entry.value;
+    })
+    .join('\n');
+}
+
+function assertCommandAction(
+  actions: Array<vscode.CodeAction | vscode.Command>,
+  title: string,
+  command: string,
+  commandText?: string
+): void {
+  const action = actions.find((entry) => entry.title === title);
+  assert.ok(action, `expected code action ${title}`);
+  const actionCommand = commandForAction(action);
+  assert.strictEqual(actionCommand?.command, command);
+  if (commandText) {
+    const firstArg = actionCommand?.arguments?.[0] as { command?: unknown } | undefined;
+    if (typeof firstArg?.command !== 'string') {
+      assert.fail(`expected ${title} to include a string command payload`);
+    }
+    const payload = firstArg.command;
+    assert.ok(
+      payload.includes(commandText),
+      `expected ${title} command payload to include ${commandText}, got ${payload}`
+    );
+  }
+}
+
+function commandForAction(action: vscode.CodeAction | vscode.Command): vscode.Command | undefined {
+  const maybeCodeActionCommand = (action as vscode.CodeAction).command;
+  if (maybeCodeActionCommand && typeof maybeCodeActionCommand === 'object') {
+    return maybeCodeActionCommand;
+  }
+  const maybeCommand = action as vscode.Command;
+  return typeof maybeCommand.command === 'string' ? maybeCommand : undefined;
 }

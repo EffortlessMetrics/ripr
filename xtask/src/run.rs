@@ -52,23 +52,44 @@ pub(crate) fn run_owned(program: &str, args: &[String]) -> Result<(), String> {
 }
 
 pub(crate) fn run_in_dir(program: &Path, args: &[&str], cwd: &Path) -> Result<ExitStatus, String> {
+    run_in_dir_with_envs(program, args, cwd, &[])
+}
+
+pub(crate) fn run_in_dir_with_envs(
+    program: &Path,
+    args: &[&str],
+    cwd: &Path,
+    envs: &[(&str, &str)],
+) -> Result<ExitStatus, String> {
+    let env_text = envs
+        .iter()
+        .map(|(name, value)| format!("{name}={value}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let env_prefix = if env_text.is_empty() {
+        String::new()
+    } else {
+        format!("{env_text} ")
+    };
     eprintln!(
-        "$ (cd {} && {} {})",
+        "$ (cd {} && {}{} {})",
         cwd.display(),
+        env_prefix,
         program.display(),
         args.join(" ")
     );
-    let status = Command::new(program)
-        .args(args)
-        .current_dir(cwd)
-        .status()
-        .map_err(|err| {
-            format!(
-                "failed to run {} in {}: {err}",
-                program.display(),
-                cwd.display()
-            )
-        })?;
+    let mut command = Command::new(program);
+    command.args(args).current_dir(cwd);
+    for (name, value) in envs {
+        command.env(name, value);
+    }
+    let status = command.status().map_err(|err| {
+        format!(
+            "failed to run {} in {}: {err}",
+            program.display(),
+            cwd.display()
+        )
+    })?;
     if status.success() {
         Ok(status)
     } else {
