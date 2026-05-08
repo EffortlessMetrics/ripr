@@ -911,4 +911,169 @@ mod tests {
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
         Ok(())
     }
+
+    #[test]
+    fn agent_review_summary_warns_for_invalid_optional_surface() -> Result<(), String> {
+        let root = unique_agent_review_summary_test_dir("invalid-surface");
+        write_complete_artifacts(&root)?;
+        write_file(&root.join(OPERATOR_COCKPIT_ARTIFACT), "{")?;
+
+        let report = build_agent_review_summary_report(&root, Path::new("."));
+        let rendered = render_agent_review_summary_json(&report)?;
+        let value: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("parse review summary JSON: {err}"))?;
+
+        assert_eq!(value["status"], "warning");
+        assert!(
+            value["surfaces"]
+                .as_array()
+                .ok_or_else(|| "expected surfaces".to_string())?
+                .iter()
+                .any(|surface| surface["name"] == "operator_cockpit"
+                    && surface["state"] == "invalid_json"
+                    && surface["summary"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .contains("could not be parsed as JSON"))
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_review_summary_recovers_target_from_workflow() -> Result<(), String> {
+        let root = unique_agent_review_summary_test_dir("workflow-target");
+        write_file(
+            &root.join(WORKFLOW_MANIFEST_ARTIFACT),
+            r#"{"status":"ready","seam":{"seam_id":"workflow-seam","file":"src/workflow.rs","line":7,"seam_kind":"branch"}}"#,
+        )?;
+
+        let report = build_agent_review_summary_report(&root, Path::new("."));
+        let rendered = render_agent_review_summary_json(&report)?;
+        let value: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("parse review summary JSON: {err}"))?;
+
+        assert_eq!(value["status"], "incomplete");
+        assert_eq!(value["target_seam"]["seam_id"], "workflow-seam");
+        assert_eq!(value["target_seam"]["source"], "agent_workflow");
+        assert_eq!(value["target_seam"]["file"], "src/workflow.rs");
+        assert_eq!(value["target_seam"]["line"], 7);
+        assert_eq!(value["target_seam"]["seam_kind"], "branch");
+        assert_eq!(value["static_movement"]["state"], "missing_artifact");
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_review_summary_recovers_target_from_status_verify() -> Result<(), String> {
+        let root = unique_agent_review_summary_test_dir("status-target");
+        write_file(
+            &root.join(WORKFLOW_AGENT_VERIFY_ARTIFACT),
+            r#"{"changed_seams":[],"unchanged_seams":[],"new_gaps":[{"seam_id":"verify-seam"}],"resolved_gaps":[]}"#,
+        )?;
+
+        let report = build_agent_review_summary_report(&root, Path::new("."));
+        let rendered = render_agent_review_summary_json(&report)?;
+        let value: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("parse review summary JSON: {err}"))?;
+
+        assert_eq!(value["target_seam"]["seam_id"], "verify-seam");
+        assert_eq!(value["target_seam"]["source"], "agent_verify");
+        assert_eq!(value["next_command"]["step"], "before_snapshot");
+        assert!(
+            value["next_command"]["command"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("repo-exposure-json")
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_review_summary_treats_lsp_cockpit_as_optional() -> Result<(), String> {
+        let root = unique_agent_review_summary_test_dir("optional-lsp");
+        write_complete_artifacts(&root)?;
+        std::fs::remove_file(root.join(LSP_COCKPIT_ARTIFACT))
+            .map_err(|err| format!("remove lsp cockpit: {err}"))?;
+        write_file(
+            &root.join(REPO_EXPOSURE_ARTIFACT),
+            r#"{"status":"ready","summary":{"total_seams":3,"weakly_exposed":2}}"#,
+        )?;
+
+        let report = build_agent_review_summary_report(&root, Path::new("."));
+        let rendered = render_agent_review_summary_json(&report)?;
+        let value: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("parse review summary JSON: {err}"))?;
+
+        assert_eq!(value["status"], "ready");
+        assert!(
+            value["surfaces"]
+                .as_array()
+                .ok_or_else(|| "expected surfaces".to_string())?
+                .iter()
+                .any(|surface| surface["name"] == "lsp_cockpit"
+                    && surface["state"] == "optional_missing")
+        );
+        assert!(
+            value["surfaces"]
+                .as_array()
+                .ok_or_else(|| "expected surfaces".to_string())?
+                .iter()
+                .any(|surface| surface["name"] == "repo_exposure"
+                    && surface["summary"]
+                        == "Repo exposure artifact lists 3 seams and 2 weak seams.")
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_review_summary_handles_receipt_without_next_action() -> Result<(), String> {
+        let root = unique_agent_review_summary_test_dir("no-next-action");
+        write_complete_artifacts(&root)?;
+        write_file(
+            &root.join(WORKFLOW_AGENT_RECEIPT_ARTIFACT),
+            r#"{"seam":{"seam_id":"seam-without-next","change":"unchanged"}}"#,
+        )?;
+
+        let report = build_agent_review_summary_report(&root, Path::new("."));
+        let rendered = render_agent_review_summary_json(&report)?;
+        let value: Value = serde_json::from_str(&rendered)
+            .map_err(|err| format!("parse review summary JSON: {err}"))?;
+
+        assert_eq!(value["status"], "ready");
+        assert_eq!(value["target_seam"]["seam_id"], "seam-without-next");
+        assert_eq!(value["static_movement"]["state"], "unchanged");
+        assert_eq!(value["static_movement"]["before_class"], Value::Null);
+        assert_eq!(value["static_movement"]["verify_artifact"], Value::Null);
+        assert_eq!(
+            value["reviewer_summary"]["remaining"],
+            "No next action was recovered from the available artifacts."
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_review_summary_markdown_includes_next_command_when_incomplete() -> Result<(), String> {
+        let root = unique_agent_review_summary_test_dir("markdown-next-command");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+
+        let report = build_agent_review_summary_report(&root, Path::new("."));
+        let rendered = render_agent_review_summary_markdown(&report);
+
+        assert!(rendered.contains("Target seam: unknown"));
+        assert!(rendered.contains("Next command:"));
+        assert!(rendered.contains("ripr check --root . --mode draft --format repo-exposure-json"));
+        assert!(rendered.contains("No generated tests."));
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
 }
