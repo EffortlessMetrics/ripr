@@ -644,12 +644,18 @@ spec = "RIPR-SPEC-0013"
 evidence = [
   "docs/specs/RIPR-SPEC-0013-recommendation-calibration-report.md defines the planned recommendation calibration report contract",
   "docs/OUTPUT_SCHEMA.md Recommendation Calibration Report section defines the planned JSON shape",
-  "docs/IMPLEMENTATION_CAMPAIGNS.md Campaign 14 marks fixtures/pr-guidance-calibration-corpus as the next ready item after the spec",
+  "docs/OUTPUT_SCHEMA.md Review Guidance Outcome Receipt section defines the optional local receipt shape",
+  "fixtures/boundary_gap/expected/recommendation-calibration/expectations.json pins PR-shaped calibration expectations",
+  "fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts/ pins optional local outcome receipt examples",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md Campaign 14 marks report/recommendation-precision as the next ready item after the spec, corpus, and outcome receipts",
   "docs/IMPLEMENTATION_PLAN.md routes Campaign 14 through recommendation calibration before optional gates",
   "docs/ROADMAP.md places recommendation calibration before calibrated gate policy"
 ]
-fixtures = []
-next = "fixtures/pr-guidance-calibration-corpus"
+fixtures = [
+  "fixtures/boundary_gap/expected/recommendation-calibration/expectations.json",
+  "fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts"
+]
+next = "report/recommendation-precision"
 metric = "planned recommendation calibration will count usefulness, false annotations, summary-only correctness, suppression correctness, target-file correctness, latency, static improved, unchanged, or regressed movement, and unknown outcomes without telemetry or CI blocking"
 
 [[capability]]

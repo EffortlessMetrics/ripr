@@ -1440,6 +1440,118 @@ Field contract:
   artifacts, or latency values that could not be derived.
 - `limits_note` - static/advisory boundary text for summaries and generated CI.
 
+### Review Guidance Outcome Receipt
+
+Review guidance outcome receipts are optional repo-local inputs to the planned
+recommendation calibration report. They record reviewer, fixture, agent, or CI
+artifact feedback for one PR guidance item without sending telemetry, calling an
+external service, editing source, generating tests, running mutation testing, or
+changing CI blocking behavior.
+
+Receipt files may live anywhere a repo chooses. The boundary-gap calibration
+corpus pins examples under:
+
+```text
+fixtures/boundary_gap/expected/recommendation-calibration/outcome-receipts/
+```
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "review_guidance_outcome_receipt",
+  "status": "advisory",
+  "spec": "RIPR-SPEC-0013",
+  "receipt_id": "review-outcome-useful-exact-line-boundary",
+  "case_id": "useful_exact_line_boundary",
+  "root": ".",
+  "guidance": {
+    "artifact": "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
+    "collection": "comments",
+    "id": "ripr-review-8f7fa8644fd12280",
+    "seam_id": "8f7fa8644fd12280",
+    "dedupe_key": "ripr:8f7fa8644fd12280:src/pricing.rs:88"
+  },
+  "outcome": {
+    "label": "useful",
+    "source": "fixture",
+    "reason": "The recommendation points at the changed seam line and names the expected boundary discriminator and test target."
+  },
+  "placement": {
+    "path": "src/pricing.rs",
+    "line": 88,
+    "mode": "exact_seam_line",
+    "quality": "correct"
+  },
+  "suggested_test": {
+    "target_quality": "correct",
+    "expected_file": "tests/pricing.rs",
+    "actual_file": "tests/pricing.rs",
+    "near_test": "applies_discount_above_threshold"
+  },
+  "suppression": {
+    "reason": null,
+    "quality": "not_applicable"
+  },
+  "static_movement": {
+    "state": "improved",
+    "source": "targeted_test_outcome",
+    "artifact": "fixtures/boundary_gap/calibration/targeted-test-outcome.json"
+  },
+  "latency": {
+    "guidance_generated_unix_ms": null,
+    "outcome_recorded_unix_ms": null,
+    "outcome_latency_ms": null
+  },
+  "limits": {
+    "telemetry": false,
+    "external_service": false,
+    "source_edits": false,
+    "generated_tests": false,
+    "runtime_mutation_execution": false,
+    "ci_blocking": false
+  },
+  "limits_note": "Advisory review-guidance outcome receipt only; no telemetry, generated tests, source edits, mutation execution, or CI blocking."
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `tool` - always `"ripr"`.
+- `kind` - always `review_guidance_outcome_receipt`.
+- `status` - `advisory`; receipts are feedback artifacts, not policy gates.
+- `spec` - `RIPR-SPEC-0013`.
+- `receipt_id` - stable local identifier for this receipt.
+- `case_id` - optional calibration-corpus case identifier when the receipt
+  came from a fixture expectation.
+- `root` - workspace root used to resolve artifact paths.
+- `guidance` - the source PR guidance artifact, collection, item id,
+  `seam_id`, and dedupe key when available.
+- `outcome.label` - one of `useful`, `noisy`, `wrong_line`,
+  `already_covered`, `wrong_target`, `summary_only_correct`,
+  `suppressed_correctly`, or `unknown`.
+- `outcome.source` - local source class such as `fixture`, `reviewer`,
+  `agent`, `ci_artifact`, or `unknown`.
+- `outcome.reason` - concise local rationale for the outcome label.
+- `placement.quality` - `correct`, `wrong_line`,
+  `summary_only_expected`, `not_placeable`, or `unknown`.
+- `suggested_test.target_quality` - `correct`, `wrong_target`,
+  `not_applicable`, or `unknown`.
+- `suppression.reason` - `cap_reached`, `suppression`, `severity_off`,
+  `nearby_test_changed`, `generated_or_migration`, `none`, or `unknown`.
+- `suppression.quality` - `suppressed_correctly`, `over_suppressed`,
+  `not_applicable`, or `unknown`.
+- `static_movement.state` - `improved`, `unchanged`, `regressed`, `resolved`,
+  `new_gap`, `missing_after_snapshot`, or `unknown`.
+- `latency.*` - optional timestamps and elapsed time. Values are `null` when
+  not available.
+- `limits` - explicit false values for telemetry, external services, source
+  edits, generated tests, runtime mutation execution, and CI blocking.
+- `limits_note` - static/advisory boundary text for downstream summaries.
+
 ## Agent Status
 
 `ripr agent status --root <workspace>` reads already-written agent-loop
