@@ -661,7 +661,7 @@ fixtures = [
   "fixtures/boundary_gap/expected/recommendation-calibration/recommendation-calibration.json",
   "fixtures/boundary_gap/expected/recommendation-calibration/recommendation-calibration.md"
 ]
-next = "maintenance"
+next = "spec/calibrated-gate-policy"
 metric = "recommendation calibration counts usefulness, false annotations, summary-only correctness, suppression correctness, target-file correctness, latency, static improved, unchanged, or regressed movement, and unknown outcomes without telemetry or CI blocking"
 
 [[capability]]
