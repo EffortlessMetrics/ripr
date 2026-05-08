@@ -1129,6 +1129,81 @@ recommendation is correct and the PR is still changing the relevant behavior.
 Do not add a suppression just to make one PR pass; suppressions are durable
 repository policy and should carry owner, reason, and review intent.
 
+### Baseline-Check Workflows
+
+Use a gate baseline when a repository wants stricter PR behavior without
+punishing already-reviewed historical debt. The baseline is an adoption artifact:
+it says "these known candidate identities existed before this policy became
+active." It is not a suppression file and should not be used to hide new
+policy-eligible gaps.
+
+Baseline shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "decisions": [
+    {
+      "seam_id": "8f7fa8644fd12280",
+      "source_id": "ripr-review-8f7fa8644fd12280"
+    }
+  ]
+}
+```
+
+`ripr gate evaluate` also accepts identities from `comments`, `summary_only`,
+and `suppressed` arrays when those fields are present in the baseline file. For
+each entry, it indexes `seam_id`, `id`, and `dedupe_key` when present. Keep the
+baseline small and reviewable; do not check in an uninspected copy of every PR
+guidance artifact.
+
+Recommended creation workflow:
+
+1. Run the generated workflow with `RIPR_GATE_MODE=visible-only`.
+2. Review the job summary, `target/ripr/review/comments.json`, and
+   `target/ripr/reports/gate-decision.md`.
+3. Decide which existing candidates are accepted historical debt.
+4. Create `.ripr/gate-baseline.json` with only those reviewed identities.
+5. Commit the baseline with a PR body that explains the adoption date, reviewed
+   artifact source, and owner for future refreshes.
+6. Set repository variables:
+
+```text
+RIPR_GATE_MODE=baseline-check
+RIPR_GATE_BASELINE=.ripr/gate-baseline.json
+```
+
+Expected behavior:
+
+```text
+Existing baseline identity: visible and non-blocking
+New policy-eligible identity: blocking in baseline-check
+Missing or invalid baseline: config_error
+```
+
+Refresh the baseline deliberately:
+
+1. Run `baseline-check` on the current main branch or a policy-refresh PR.
+2. Remove entries whose focused tests landed or whose evidence no longer
+   appears.
+3. Add entries only when the team intentionally accepts existing debt into the
+   adoption baseline.
+4. Keep the refresh PR separate from behavior changes when practical, so
+   reviewers can tell policy debt movement from product changes.
+
+Baseline, waiver, and suppression controls have different jobs:
+
+| Control | Good use | Bad use |
+| --- | --- | --- |
+| Baseline | Mark reviewed historical debt so stricter modes can focus on new gaps. | Add every new blocking finding to avoid fixing or acknowledging it. |
+| `ripr-waive` | Acknowledge a visible finding for one PR. | Make a recurring gap disappear across future PRs. |
+| `.ripr/suppressions.toml` | Record durable accepted debt or configured-off policy with owner and reason. | Replace baseline review or PR acknowledgement for convenience. |
+
+When moving from `baseline-check` to `calibrated-gate`, keep the same baseline
+discipline. Calibration can raise confidence for new, matching candidates; it
+does not make stale baseline entries stronger or turn missing calibration into a
+blocking signal.
+
 The security workflow currently runs:
 
 ```bash

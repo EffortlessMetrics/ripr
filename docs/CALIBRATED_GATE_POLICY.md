@@ -97,6 +97,11 @@ The sample reviewer workflow for applying, auditing, and removing
 flow when moving a repository from `visible-only` to `acknowledgeable`; keep
 waivers as PR labels and suppressions as durable repository policy.
 
+Baseline creation and refresh guidance lives in
+[CI strategy](CI.md#baseline-check-workflows). Use a baseline to avoid failing
+on reviewed historical debt while still making new policy-eligible gaps visible
+and, in stricter modes, blocking.
+
 ## CI Behavior
 
 `ripr init --ci github` generates gate wiring but keeps it disabled:

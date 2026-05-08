@@ -130,12 +130,13 @@ visible waiver workflows, baseline creation and refresh guidance, first-screen
 gate summaries, repo-local dogfood receipts, and guidance for when blocking is
 earned by local evidence. The generated-CI examples for default advisory
 posture, `visible-only`, `acknowledgeable`, `baseline-check`, and
-`calibrated-gate` are now documented, and the `ripr-waive` reviewer workflow
-now keeps acknowledgements visible and separate from suppressions. Baseline
-creation and refresh guidance is the next ready adoption slice. Editor Evidence
-UX is queued as a separate Lane 3 editor campaign, not a replacement for the
-active gate-adoption manifest; it should begin after Gate Adoption UX closes or
-after an explicit parallel-lane decision.
+`calibrated-gate` are now documented, the `ripr-waive` reviewer workflow keeps
+acknowledgements visible and separate from suppressions, and baseline guidance
+covers creation and refresh for reviewed historical debt. First-screen gate
+summary polish is the next ready adoption slice. Editor Evidence UX is queued as
+a separate Lane 3 editor campaign, not a replacement for the active
+gate-adoption manifest; it should begin after Gate Adoption UX closes or after
+an explicit parallel-lane decision.
 
 ## Strategic Sequence
 
