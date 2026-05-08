@@ -311,7 +311,6 @@ first-hour docs are pinned. Campaign 13 then closed PR Review Guidance:
 before emitting advisory summaries and check annotations, placement and
 suppression cases are fixture-pinned, and
 [PR review guidance](docs/PR_REVIEW_GUIDANCE.md) documents the command, CI
-behavior, summary-only fallback, and inline-comment opt-in boundary. No next
 behavior, summary-only fallback, and inline-comment opt-in boundary. Campaign
 14 closed Recommendation Calibration: the checked advisory `cargo xtask
 recommendation-calibration` report now measures whether PR-time
@@ -319,8 +318,11 @@ recommendations are useful, safely placed, properly suppressed, pointed at the
 expected test target, and correlated with before/after static movement.
 [Recommendation calibration workflow](docs/RECOMMENDATION_CALIBRATION.md)
 documents how to read that report. Campaign 15 is active as Calibrated Gate
-Policy: RIPR-SPEC-0014 pins the optional gate contract, and the next
-implementation slice is the read-only evaluator.
+Policy: RIPR-SPEC-0014 pins the optional gate contract, `ripr gate evaluate`
+writes the read-only decision report, generated CI can run it only when
+`RIPR_GATE_MODE` is explicitly configured, and
+[Calibrated gate policy](docs/CALIBRATED_GATE_POLICY.md) documents the
+operator workflow before campaign closeout.
 
 Deeper capability state lives in [Capability matrix](docs/CAPABILITY_MATRIX.md)
 and [Metrics](docs/METRICS.md).
