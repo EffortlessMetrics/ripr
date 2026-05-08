@@ -71,6 +71,10 @@ A Codex Goals run should:
 - stop on policy, architecture, credential, merge, or scope decisions
 - leave durable learnings only when future agents should not rediscover them
 
+`requires_human_merge = true` is a merge boundary, not a commit boundary. It
+does not block committing, pushing, or opening a scoped PR after validation.
+Package the work first, then stop before merge when owner review is required.
+
 ## Choosing A Subset
 
 When a task is large, choose the smallest vertical slice that can produce a
@@ -127,6 +131,10 @@ cargo xtask check-no-panic-family
 ```
 
 Run the full release/package gates before marking a branch ready.
+
+After validation, commit the scoped branch, push it, and open or update the PR
+unless the work has hit a real stop condition. Human review requirements apply
+at merge time.
 
 ## Handoff Notes
 

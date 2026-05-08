@@ -204,6 +204,26 @@ spec -> test or fixture -> code -> output contract -> metric
 Make production delta, evidence delta, acceptance criterion, and non-goals
 explicit in PRs and planning docs.
 
+## Commit, PR, and Merge Boundary
+
+Do not interpret `requires_human_merge = true` as "do not commit" or "do not
+push." It means the PR must return for owner review before merge.
+
+For scoped implementation, docs, tests, and refactors, use this default flow:
+
+```text
+implement -> validate -> commit -> push -> open or update PR -> stop before merge
+```
+
+Agents should commit and push scoped work after validation, then open or update
+the PR with a review map, validation evidence, non-goals, and known gaps. Stop
+before merge when the work item requires human merge.
+
+Ask before proceeding only when continuing would change public schema, output
+contracts, security/workflows/secrets, dependencies, release or publish
+behavior, architecture boundaries, campaign ordering, or duplicate-PR
+selection.
+
 ## Review posture
 
 Automated review comments are primarily consumed by follow-up coding agents.

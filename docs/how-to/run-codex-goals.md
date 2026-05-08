@@ -47,6 +47,7 @@ For each work item:
 - add the required evidence package
 - run the repo shaping and verification commands
 - generate reports and receipts
+- commit and push the validated branch
 - open or update the PR
 - continue only to the next independent or explicitly stackable work item
 
@@ -80,9 +81,18 @@ Continue to another work item only when:
 Stop at human review boundaries when:
 
 - the next work item depends on an unmerged PR
-- the manifest says `requires_human_merge = true`
+- the manifest says `requires_human_merge = true` and the scoped PR has been
+  opened or updated
 - continuing would require a policy exception, schema decision, dependency
   decision, credential, release, or marketplace action
+
+`requires_human_merge = true` means "stop before merge." It does not mean "stop
+before commit," "stop before push," or "stop before opening a PR." The normal
+flow is:
+
+```text
+implement -> validate -> commit -> push -> open/update PR -> wait before merge
+```
 
 ## Reports
 
