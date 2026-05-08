@@ -155,7 +155,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/llm-work-loop-closeout"
-status = "ready"
+status = "done"
 branch = "campaign-llm-work-loop-closeout"
 stackable = false
 requires_human_merge = true
