@@ -150,7 +150,9 @@ is before/after evidence movement. Subsequent slices should group raw gaps into
 canonical behavioral gaps, classify actionability and static limitations, emit
 RIPR Zero plans and external-agent packets, measure behavioral grip separately
 from line coverage, and use imported runtime calibration only as confidence
-context.
+context. Baseline Ledger v1 remains a recommended future adoption campaign once
+evidence movement and canonical identity make baseline states durable; open it
+only through a separate explicit campaign PR.
 
 ## Strategic Sequence
 
@@ -198,6 +200,7 @@ quality rails
 -> calibrated gate policy
 -> gate adoption UX
 -> RIPR Zero evidence
+-> baseline ledger adoption
 -> editor evidence UX
 ```
 

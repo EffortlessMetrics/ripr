@@ -1957,6 +1957,11 @@ Next:
   accuracy after the downstream gate/adoption lanes and should make large raw
   RIPR scores decomposed, actionable, and verifiable before stricter policy or
   editor UX work consumes them.
+- Baseline Ledger v1 remains a recommended future adoption campaign after
+  evidence movement and canonical identity make baseline states durable. Open it
+  only through a separate explicit campaign PR.
+- Editor Evidence UX remains queued as a separate Lane 3 candidate, not
+  activated by this closeout.
 
 ## Campaign 17: RIPR Zero Evidence
 
@@ -2130,8 +2135,8 @@ Dependencies:
 - Campaign 12 supplies first-hour editor status and intent-titled action
   framing.
 - Campaign 13 supplies PR guidance without making RIPR a free-form reviewer.
-- Campaign 17 remains active unless this lane is explicitly promoted or run in
-  parallel.
+- Campaign 16 is complete and Campaign 17 remains active unless this lane is
+  explicitly promoted or run in parallel.
 
 Commands:
 
