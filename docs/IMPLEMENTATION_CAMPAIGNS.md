@@ -1340,8 +1340,8 @@ Work items:
 | `agent/next-action-guidance` | done | Added structured `summary.next_action` guidance to agent receipt schema `0.3` for improved, changed, regressed, unchanged, new-gap, and resolved states while preserving existing summary fields. |
 | `agent/reviewer-summary` | done | Added `ripr agent review-summary --root .` Markdown plus `--json` schema `0.1` output that joins status, workflow, receipt, cockpit, repo exposure, LSP cockpit when present, and local CI artifact state into a compact review packet. |
 | `fixtures/llm-work-loop` | done | Added a boundary-gap `expected/llm-work-loop/` fixture matrix for happy, unchanged, regressed, missing-artifact, stale-artifact, configured-off, path-with-spaces, and Windows-separator loop cases. |
-| `ci/llm-work-packets` | ready | Generated CI uploads agent status JSON/Markdown, workflow JSON, review summary JSON/Markdown, receipt, and operator cockpit artifacts as advisory evidence. |
-| `docs/llm-operator-guide` | blocked | Document the LLM operator loop from agent status through start, packet or brief, focused test, after snapshot, verify, receipt, and review summary, with anti-goals explicit. |
+| `ci/llm-work-packets` | done | Generated CI now writes and uploads `target/ripr/workflow` with workflow manifest, commands Markdown, agent status JSON/Markdown, agent review summary JSON/Markdown, agent packet, brief, and verify JSON, plus `target/ripr/reports/agent-receipt.json` and repo-local operator cockpit artifacts when available. Existing `target/ripr/agent` compatibility copies remain uploaded. |
+| `docs/llm-operator-guide` | ready | Document the LLM operator loop from agent status through start, packet or brief, focused test, after snapshot, verify, receipt, and review summary, with anti-goals explicit. |
 | `campaign/llm-work-loop-closeout` | blocked | Close Campaign 11 only after LLM work-loop state, commands, provenance, fixtures, CI artifacts, docs, and review summary are aligned without automatic edits, generated tests, runtime mutation execution, speculative LSP features, or new public crates. |
 
 Commands:

@@ -677,10 +677,11 @@ tests = [
   "crates/ripr/src/app/agent_status.rs::tests::agent_status_recovers_seam_id_from_verify_packet_or_brief",
   "crates/ripr/src/app/agent_status.rs::tests::agent_status_warns_when_verify_or_receipt_look_stale",
   "crates/ripr/src/app/agent_status.rs::tests::agent_status_quotes_paths_with_spaces",
+  "crates/ripr/src/app/agent_status.rs::tests::agent_status_markdown_names_next_command_and_limits",
   "crates/ripr/src/app/agent_workflow.rs::tests::workflow_manifest_extracts_seam_and_commands",
   "crates/ripr/src/app/agent_workflow.rs::tests::workflow_manifest_errors_when_brief_does_not_return_seam",
   "crates/ripr/src/cli/agent.rs::tests::agent_status_parses_root_and_json",
-  "crates/ripr/src/cli/agent.rs::tests::agent_status_requires_json_and_rejects_unknown_arguments",
+  "crates/ripr/src/cli/agent.rs::tests::agent_status_parses_human_default_and_rejects_unknown_arguments",
   "crates/ripr/src/cli/agent.rs::tests::agent_args_parse_start_request",
   "crates/ripr/src/cli/agent.rs::tests::agent_start_defaults_out_dir_and_requires_seam_id",
   "crates/ripr/src/cli/commands.rs::tests::agent_status_rejects_missing_root_before_reading_artifacts",
@@ -708,6 +709,10 @@ tests = [
   "crates/ripr/src/cli/agent.rs::tests::agent_review_summary_parses_root_json_and_human_default",
   "crates/ripr/src/cli/agent.rs::tests::agent_review_summary_requires_values_and_rejects_unknown_arguments",
   "crates/ripr/src/cli/commands.rs::tests::agent_review_summary_rejects_missing_root_before_reading_artifacts",
+  "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_is_advisory",
+  "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_uploads_reports_and_makes_sarif_optional",
+  "crates/ripr/tests/cli_smoke.rs::init_ci_github_dry_run_prints_config_and_workflow_without_writing",
+  "crates/ripr/tests/cli_smoke.rs::init_ci_github_writes_non_blocking_report_workflow",
   "crates/ripr/tests/cli_smoke.rs::agent_receipt_writes_one_seam_handoff_json",
   "crates/ripr/tests/cli_smoke.rs::agent_start_writes_source_edit_free_workflow_packet",
   "crates/ripr/src/lsp/tests.rs::agent_loop_command_payloads_stay_workspace_relative_for_platform_roots",
@@ -743,6 +748,7 @@ code = [
 outputs = [
   "docs/specs/RIPR-SPEC-0011-llm-work-loop.md",
   "docs/specs/README.md",
+  "docs/CI.md",
   "docs/OUTPUT_SCHEMA.md",
   "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json",
   "fixtures/boundary_gap/expected/llm-work-loop/README.md",
@@ -760,7 +766,8 @@ metrics = [
   "agent_workflow_manifest_available",
   "agent_receipt_provenance_available",
   "agent_receipt_next_action_guidance_available",
-  "agent_review_summary_available"
+  "agent_review_summary_available",
+  "ci_llm_work_packets_uploaded"
 ]
 
 [[behavior]]

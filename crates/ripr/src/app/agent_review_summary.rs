@@ -1,7 +1,8 @@
 use crate::agent::loop_commands::{
     WORKFLOW_AGENT_RECEIPT_ARTIFACT, WORKFLOW_AGENT_REVIEW_SUMMARY_ARTIFACT,
-    WORKFLOW_AGENT_STATUS_ARTIFACT, WORKFLOW_AGENT_VERIFY_ARTIFACT, WORKFLOW_MANIFEST_ARTIFACT,
-    agent_status_command, display_path,
+    WORKFLOW_AGENT_REVIEW_SUMMARY_MARKDOWN_ARTIFACT, WORKFLOW_AGENT_STATUS_ARTIFACT,
+    WORKFLOW_AGENT_STATUS_MARKDOWN_ARTIFACT, WORKFLOW_AGENT_VERIFY_ARTIFACT,
+    WORKFLOW_MANIFEST_ARTIFACT, agent_status_command, display_path,
 };
 use crate::app::agent_status::{self, AgentStatusCommand, AgentStatusReport};
 use serde_json::Value;
@@ -11,6 +12,7 @@ pub(crate) const AGENT_REVIEW_SUMMARY_SCHEMA_VERSION: &str = "0.1";
 
 const REPO_EXPOSURE_ARTIFACT: &str = "target/ripr/reports/repo-exposure.json";
 const OPERATOR_COCKPIT_ARTIFACT: &str = "target/ripr/reports/operator-cockpit.json";
+const OPERATOR_COCKPIT_MARKDOWN_ARTIFACT: &str = "target/ripr/reports/operator-cockpit.md";
 const LSP_COCKPIT_ARTIFACT: &str = "target/ripr/reports/lsp-cockpit.json";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -627,13 +629,25 @@ fn reviewer_summary(
 fn ci_artifacts(root: &Path) -> Vec<AgentReviewArtifact> {
     [
         ("agent_status", WORKFLOW_AGENT_STATUS_ARTIFACT),
+        (
+            "agent_status_markdown",
+            WORKFLOW_AGENT_STATUS_MARKDOWN_ARTIFACT,
+        ),
         ("agent_workflow", WORKFLOW_MANIFEST_ARTIFACT),
         (
             "agent_review_summary",
             WORKFLOW_AGENT_REVIEW_SUMMARY_ARTIFACT,
         ),
+        (
+            "agent_review_summary_markdown",
+            WORKFLOW_AGENT_REVIEW_SUMMARY_MARKDOWN_ARTIFACT,
+        ),
         ("agent_receipt", WORKFLOW_AGENT_RECEIPT_ARTIFACT),
         ("operator_cockpit", OPERATOR_COCKPIT_ARTIFACT),
+        (
+            "operator_cockpit_markdown",
+            OPERATOR_COCKPIT_MARKDOWN_ARTIFACT,
+        ),
     ]
     .into_iter()
     .map(|(name, path)| AgentReviewArtifact {
