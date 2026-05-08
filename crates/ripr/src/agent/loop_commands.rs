@@ -1,5 +1,7 @@
 use std::path::Path;
 
+pub(crate) const AGENT_LOOP_COMMAND_TEMPLATE_VERSION: &str = "0.1";
+
 pub(crate) const WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT: &str =
     "target/ripr/workflow/before.repo-exposure.json";
 pub(crate) const WORKFLOW_AFTER_SNAPSHOT_ARTIFACT: &str =

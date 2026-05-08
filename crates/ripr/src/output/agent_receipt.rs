@@ -7,7 +7,32 @@
 
 use serde_json::Value;
 
-pub(crate) const AGENT_RECEIPT_SCHEMA_VERSION: &str = "0.1";
+pub(crate) const AGENT_RECEIPT_SCHEMA_VERSION: &str = "0.3";
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AgentReceiptInputPaths {
+    pub(crate) before: String,
+    pub(crate) after: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AgentReceiptArtifactProvenance {
+    pub(crate) path: String,
+    pub(crate) sha256: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AgentReceiptProvenance {
+    pub(crate) ripr_version: String,
+    pub(crate) repo_root: String,
+    pub(crate) config_fingerprint: Option<String>,
+    pub(crate) command_template_version: String,
+    pub(crate) generated_at: String,
+    pub(crate) workflow_artifact: Option<AgentReceiptArtifactProvenance>,
+    pub(crate) before_artifact: AgentReceiptArtifactProvenance,
+    pub(crate) after_artifact: AgentReceiptArtifactProvenance,
+    pub(crate) verify_artifact: AgentReceiptArtifactProvenance,
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct AgentReceiptSeam {
@@ -22,22 +47,30 @@ struct AgentReceiptSeam {
     evidence_delta: Vec<String>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct AgentReceiptGuidance {
+    remaining_gap: &'static str,
+    next_recommendation: &'static str,
+    kind: &'static str,
+    summary: &'static str,
+    recommended_action: &'static str,
+    safe_to_merge: bool,
+}
+
 pub(crate) fn render_agent_receipt_json(
     agent_verify_json: &str,
     agent_verify_path: String,
     seam_id: &str,
     test_changed: Option<&str>,
     commands_run: &[String],
+    provenance: AgentReceiptProvenance,
 ) -> Result<String, String> {
     let verify: Value = serde_json::from_str(agent_verify_json)
         .map_err(|err| format!("failed to parse agent verify JSON: {err}"))?;
-    let inputs = verify
-        .get("inputs")
-        .ok_or_else(|| "agent verify JSON is missing `inputs`".to_string())?;
-    let before = required_string(inputs, "before", "agent verify inputs")?;
-    let after = required_string(inputs, "after", "agent verify inputs")?;
+    let input_paths = agent_receipt_input_paths_from_value(&verify)?;
     let seam = find_receipt_seam(&verify, seam_id)?;
-    let (remaining_gap, next_recommendation) = receipt_guidance(&seam.change);
+    let guidance = receipt_guidance(&seam.change);
+    let provenance = provenance_json(&provenance, &seam);
 
     let value = serde_json::json!({
         "schema_version": AGENT_RECEIPT_SCHEMA_VERSION,
@@ -45,9 +78,10 @@ pub(crate) fn render_agent_receipt_json(
         "status": "advisory",
         "inputs": {
             "agent_verify_json": agent_verify_path,
-            "before": before,
-            "after": after
+            "before": input_paths.before,
+            "after": input_paths.after
         },
+        "provenance": provenance,
         "seam": {
             "seam_id": seam.seam_id,
             "seam_kind": seam.seam_kind,
@@ -64,8 +98,14 @@ pub(crate) fn render_agent_receipt_json(
             "commands_run": commands_run
         },
         "summary": {
-            "remaining_gap": remaining_gap,
-            "next_recommendation": next_recommendation
+            "remaining_gap": guidance.remaining_gap,
+            "next_recommendation": guidance.next_recommendation,
+            "next_action": {
+                "kind": guidance.kind,
+                "summary": guidance.summary,
+                "recommended_action": guidance.recommended_action,
+                "safe_to_merge": guidance.safe_to_merge
+            }
         }
     });
     serde_json::to_string_pretty(&value)
@@ -74,6 +114,66 @@ pub(crate) fn render_agent_receipt_json(
             rendered
         })
         .map_err(|err| format!("failed to render agent receipt JSON: {err}"))
+}
+
+pub(crate) fn agent_receipt_input_paths(
+    agent_verify_json: &str,
+) -> Result<AgentReceiptInputPaths, String> {
+    let verify: Value = serde_json::from_str(agent_verify_json)
+        .map_err(|err| format!("failed to parse agent verify JSON: {err}"))?;
+    agent_receipt_input_paths_from_value(&verify)
+}
+
+fn agent_receipt_input_paths_from_value(verify: &Value) -> Result<AgentReceiptInputPaths, String> {
+    let inputs = verify
+        .get("inputs")
+        .ok_or_else(|| "agent verify JSON is missing `inputs`".to_string())?;
+    Ok(AgentReceiptInputPaths {
+        before: required_string(inputs, "before", "agent verify inputs")?,
+        after: required_string(inputs, "after", "agent verify inputs")?,
+    })
+}
+
+fn provenance_json(
+    provenance: &AgentReceiptProvenance,
+    seam: &AgentReceiptSeam,
+) -> serde_json::Value {
+    let (before_class, after_class) = receipt_class_pair(seam);
+    serde_json::json!({
+        "ripr_version": provenance.ripr_version.as_str(),
+        "repo_root": provenance.repo_root.as_str(),
+        "config_fingerprint": provenance.config_fingerprint.as_deref(),
+        "command_template_version": provenance.command_template_version.as_str(),
+        "generated_at": provenance.generated_at.as_str(),
+        "workflow_artifact": provenance.workflow_artifact.as_ref().map(artifact_provenance_json),
+        "before_artifact": artifact_provenance_json(&provenance.before_artifact),
+        "after_artifact": artifact_provenance_json(&provenance.after_artifact),
+        "verify_artifact": artifact_provenance_json(&provenance.verify_artifact),
+        "seam_id": seam.seam_id.as_str(),
+        "before_class": before_class,
+        "after_class": after_class,
+        "movement": seam.change.as_str(),
+        "limits": {
+            "static_artifact_relationship": true,
+            "runtime_mutation_execution": false,
+            "runtime_adequacy_claim": false
+        }
+    })
+}
+
+fn artifact_provenance_json(artifact: &AgentReceiptArtifactProvenance) -> serde_json::Value {
+    serde_json::json!({
+        "path": artifact.path.as_str(),
+        "sha256": artifact.sha256.as_str()
+    })
+}
+
+fn receipt_class_pair(seam: &AgentReceiptSeam) -> (Option<String>, Option<String>) {
+    match seam.change.as_str() {
+        "new" => (None, seam.grip_class.clone()),
+        "resolved" => (seam.grip_class.clone(), None),
+        _ => (seam.before.clone(), seam.after.clone()),
+    }
 }
 
 fn find_receipt_seam(verify: &Value, seam_id: &str) -> Result<AgentReceiptSeam, String> {
@@ -134,36 +234,64 @@ fn one_sided_receipt_seam(
     })
 }
 
-fn receipt_guidance(change: &str) -> (&'static str, &'static str) {
+fn receipt_guidance(change: &str) -> AgentReceiptGuidance {
     match change {
-        "improved" => (
-            "No remaining static gap is named by this receipt; inspect the current seam packet if review needs final assertion detail.",
-            "Keep the focused test and attach this receipt with the agent verify JSON.",
-        ),
-        "changed" => (
-            "Static evidence changed without a higher grip class; inspect the evidence delta and current seam packet.",
-            "Strengthen the discriminator named by the seam packet, then rerun agent verify.",
-        ),
-        "regressed" => (
-            "The after snapshot ranks this seam lower than before.",
-            "Revisit the targeted test or changed behavior before relying on this patch.",
-        ),
-        "unchanged" => (
-            "Static grip class did not move.",
-            "Add or strengthen the missing discriminator named by the seam packet, then rerun agent verify.",
-        ),
-        "new" => (
-            "A new static seam gap is present in the after snapshot.",
-            "Run agent brief or agent packet for this seam before merging the change.",
-        ),
-        "resolved" => (
-            "The seam is absent from the after snapshot; this may mean the behavior changed or the gap was resolved.",
-            "Confirm the seam disappeared for the intended reason, then keep the before/after artifacts with review evidence.",
-        ),
-        _ => (
-            "Static receipt guidance is unknown for this change bucket.",
-            "Inspect the agent verify JSON and current seam packet before relying on this patch.",
-        ),
+        "improved" => AgentReceiptGuidance {
+            remaining_gap: "No remaining static gap is named by this receipt; inspect the current seam packet if review needs final assertion detail.",
+            next_recommendation: "Keep the focused test and attach this receipt with the agent verify JSON.",
+            kind: "improved",
+            summary: "Static grip improved.",
+            recommended_action: "Keep the focused test and include this receipt in review.",
+            safe_to_merge: false,
+        },
+        "changed" => AgentReceiptGuidance {
+            remaining_gap: "Static evidence changed without a higher grip class; inspect the evidence delta and current seam packet.",
+            next_recommendation: "Strengthen the discriminator named by the seam packet, then rerun agent verify.",
+            kind: "changed",
+            summary: "Static evidence changed without a higher grip class.",
+            recommended_action: "Inspect the evidence delta and strengthen the discriminator named by the packet.",
+            safe_to_merge: false,
+        },
+        "regressed" => AgentReceiptGuidance {
+            remaining_gap: "The after snapshot ranks this seam lower than before.",
+            next_recommendation: "Revisit the targeted test or changed behavior before relying on this patch.",
+            kind: "regressed",
+            summary: "Static grip regressed.",
+            recommended_action: "Revisit the test or code change before merge.",
+            safe_to_merge: false,
+        },
+        "unchanged" => AgentReceiptGuidance {
+            remaining_gap: "Static grip class did not move.",
+            next_recommendation: "Add or strengthen the missing discriminator named by the seam packet, then rerun agent verify.",
+            kind: "unchanged",
+            summary: "Static grip did not improve.",
+            recommended_action: "Add the missing discriminator or stronger assertion named by the packet.",
+            safe_to_merge: false,
+        },
+        "new" => AgentReceiptGuidance {
+            remaining_gap: "A new static seam gap is present in the after snapshot.",
+            next_recommendation: "Run agent brief or agent packet for this seam before merging the change.",
+            kind: "new_gap",
+            summary: "A new static seam gap is present.",
+            recommended_action: "Generate a fresh packet or brief for this seam.",
+            safe_to_merge: false,
+        },
+        "resolved" => AgentReceiptGuidance {
+            remaining_gap: "The seam is absent from the after snapshot; this may mean the behavior changed or the gap was resolved.",
+            next_recommendation: "Confirm the seam disappeared for the intended reason, then keep the before/after artifacts with review evidence.",
+            kind: "resolved",
+            summary: "The seam disappeared from the after snapshot.",
+            recommended_action: "Confirm the seam disappeared intentionally before relying on this receipt.",
+            safe_to_merge: false,
+        },
+        _ => AgentReceiptGuidance {
+            remaining_gap: "Static receipt guidance is unknown for this change bucket.",
+            next_recommendation: "Inspect the agent verify JSON and current seam packet before relying on this patch.",
+            kind: "unknown",
+            summary: "Static receipt guidance is unknown for this movement bucket.",
+            recommended_action: "Inspect the agent verify JSON and current seam packet before relying on this patch.",
+            safe_to_merge: false,
+        },
     }
 }
 
@@ -219,11 +347,11 @@ mod tests {
   },
   "summary": {
     "improved": 1,
-    "changed": 0,
-    "regressed": 0,
+    "changed": 1,
+    "regressed": 1,
     "unchanged": 1,
     "new": 1,
-    "resolved": 0
+    "resolved": 1
   },
   "changed_seams": [
     {
@@ -235,6 +363,26 @@ mod tests {
       "after": "strongly_gripped",
       "change": "improved",
       "evidence_delta": ["missing discriminator no longer reported: threshold equality"]
+    },
+    {
+      "seam_id": "seam-d",
+      "seam_kind": "return_value",
+      "file": "src/report.rs",
+      "line": 21,
+      "before": "ungripped",
+      "after": "reachable_unrevealed",
+      "change": "changed",
+      "evidence_delta": ["new related test path"]
+    },
+    {
+      "seam_id": "seam-e",
+      "seam_kind": "field_value",
+      "file": "src/profile.rs",
+      "line": 7,
+      "before": "weakly_gripped",
+      "after": "ungripped",
+      "change": "regressed",
+      "evidence_delta": ["missing discriminator reappeared"]
     }
   ],
   "unchanged_seams": [
@@ -259,8 +407,69 @@ mod tests {
       "change": "new"
     }
   ],
-  "resolved_gaps": []
+  "resolved_gaps": [
+    {
+      "seam_id": "seam-f",
+      "seam_kind": "predicate_boundary",
+      "file": "src/flags.rs",
+      "line": 31,
+      "grip_class": "weakly_gripped",
+      "change": "resolved"
+    }
+  ]
 }"#
+    }
+
+    fn fixed_provenance() -> AgentReceiptProvenance {
+        AgentReceiptProvenance {
+            ripr_version: "0.4.0".to_string(),
+            repo_root: ".".to_string(),
+            config_fingerprint: Some("fnv1a64:4c94a2f6cfaa5c21".to_string()),
+            command_template_version: "0.1".to_string(),
+            generated_at: "unix_ms:1778179200000".to_string(),
+            workflow_artifact: None,
+            before_artifact: AgentReceiptArtifactProvenance {
+                path: "target/ripr/workflow/before.repo-exposure.json".to_string(),
+                sha256: "sha256:before".to_string(),
+            },
+            after_artifact: AgentReceiptArtifactProvenance {
+                path: "target/ripr/workflow/after.repo-exposure.json".to_string(),
+                sha256: "sha256:after".to_string(),
+            },
+            verify_artifact: AgentReceiptArtifactProvenance {
+                path: "target/ripr/workflow/agent-verify.json".to_string(),
+                sha256: "sha256:verify".to_string(),
+            },
+        }
+    }
+
+    fn render_receipt_value(seam_id: &str) -> Result<Value, String> {
+        let rendered = render_agent_receipt_json(
+            agent_verify_json(),
+            "target/ripr/workflow/agent-verify.json".to_string(),
+            seam_id,
+            None,
+            &[],
+            fixed_provenance(),
+        )?;
+        serde_json::from_str(&rendered).map_err(|err| format!("receipt JSON should parse: {err}"))
+    }
+
+    fn assert_next_action(
+        seam_id: &str,
+        kind: &str,
+        expected_summary: &str,
+        expected_action: &str,
+        safe_to_merge: bool,
+    ) -> Result<(), String> {
+        let value = render_receipt_value(seam_id)?;
+        let action = &value["summary"]["next_action"];
+
+        assert_eq!(action["kind"], kind);
+        assert_eq!(action["summary"], expected_summary);
+        assert_eq!(action["recommended_action"], expected_action);
+        assert_eq!(action["safe_to_merge"], safe_to_merge);
+        Ok(())
     }
 
     #[test]
@@ -271,15 +480,35 @@ mod tests {
             "seam-a",
             Some("tests::pricing_boundary"),
             &["cargo test pricing_boundary".to_string()],
+            fixed_provenance(),
         )?;
         let value: Value = serde_json::from_str(&rendered)
             .map_err(|err| format!("receipt JSON should parse: {err}"))?;
 
-        assert_eq!(value["schema_version"], "0.1");
+        assert_eq!(value["schema_version"], "0.3");
         assert_eq!(value["seam"]["seam_id"], "seam-a");
         assert_eq!(value["seam"]["before"], "weakly_gripped");
         assert_eq!(value["seam"]["after"], "strongly_gripped");
         assert_eq!(value["seam"]["change"], "improved");
+        assert_eq!(value["provenance"]["ripr_version"], "0.4.0");
+        assert_eq!(value["provenance"]["repo_root"], ".");
+        assert_eq!(
+            value["provenance"]["config_fingerprint"],
+            "fnv1a64:4c94a2f6cfaa5c21"
+        );
+        assert_eq!(value["provenance"]["command_template_version"], "0.1");
+        assert_eq!(value["provenance"]["generated_at"], "unix_ms:1778179200000");
+        assert_eq!(value["provenance"]["before_class"], "weakly_gripped");
+        assert_eq!(value["provenance"]["after_class"], "strongly_gripped");
+        assert_eq!(value["provenance"]["movement"], "improved");
+        assert_eq!(
+            value["provenance"]["before_artifact"]["sha256"],
+            "sha256:before"
+        );
+        assert_eq!(
+            value["provenance"]["limits"]["runtime_mutation_execution"],
+            false
+        );
         assert_eq!(value["test_changed"], "tests::pricing_boundary");
         assert_eq!(
             value["verification"]["commands_run"][0],
@@ -291,6 +520,8 @@ mod tests {
                 .unwrap_or_default()
                 .contains("attach this receipt")
         );
+        assert_eq!(value["summary"]["next_action"]["kind"], "improved");
+        assert_eq!(value["summary"]["next_action"]["safe_to_merge"], false);
         Ok(())
     }
 
@@ -302,6 +533,7 @@ mod tests {
             "seam-c",
             None,
             &[],
+            fixed_provenance(),
         )?;
         let value: Value = serde_json::from_str(&rendered)
             .map_err(|err| format!("receipt JSON should parse: {err}"))?;
@@ -309,7 +541,88 @@ mod tests {
         assert_eq!(value["seam"]["seam_id"], "seam-c");
         assert_eq!(value["seam"]["grip_class"], "ungripped");
         assert_eq!(value["seam"]["change"], "new");
+        assert_eq!(value["provenance"]["before_class"], Value::Null);
+        assert_eq!(value["provenance"]["after_class"], "ungripped");
         assert_eq!(value["test_changed"], Value::Null);
+        assert_eq!(value["summary"]["next_action"]["kind"], "new_gap");
+        Ok(())
+    }
+
+    #[test]
+    fn agent_receipt_guidance_covers_improved_state() -> Result<(), String> {
+        assert_next_action(
+            "seam-a",
+            "improved",
+            "Static grip improved.",
+            "Keep the focused test and include this receipt in review.",
+            false,
+        )
+    }
+
+    #[test]
+    fn agent_receipt_guidance_covers_changed_state() -> Result<(), String> {
+        assert_next_action(
+            "seam-d",
+            "changed",
+            "Static evidence changed without a higher grip class.",
+            "Inspect the evidence delta and strengthen the discriminator named by the packet.",
+            false,
+        )
+    }
+
+    #[test]
+    fn agent_receipt_guidance_covers_regressed_state() -> Result<(), String> {
+        assert_next_action(
+            "seam-e",
+            "regressed",
+            "Static grip regressed.",
+            "Revisit the test or code change before merge.",
+            false,
+        )
+    }
+
+    #[test]
+    fn agent_receipt_guidance_covers_unchanged_state() -> Result<(), String> {
+        assert_next_action(
+            "seam-b",
+            "unchanged",
+            "Static grip did not improve.",
+            "Add the missing discriminator or stronger assertion named by the packet.",
+            false,
+        )
+    }
+
+    #[test]
+    fn agent_receipt_guidance_covers_new_gap_state() -> Result<(), String> {
+        assert_next_action(
+            "seam-c",
+            "new_gap",
+            "A new static seam gap is present.",
+            "Generate a fresh packet or brief for this seam.",
+            false,
+        )
+    }
+
+    #[test]
+    fn agent_receipt_guidance_covers_resolved_state() -> Result<(), String> {
+        assert_next_action(
+            "seam-f",
+            "resolved",
+            "The seam disappeared from the after snapshot.",
+            "Confirm the seam disappeared intentionally before relying on this receipt.",
+            false,
+        )
+    }
+
+    #[test]
+    fn agent_receipt_input_paths_extracts_verify_snapshot_paths() -> Result<(), String> {
+        let paths = agent_receipt_input_paths(agent_verify_json())?;
+
+        assert_eq!(
+            paths.before,
+            "target/ripr/workflow/before.repo-exposure.json"
+        );
+        assert_eq!(paths.after, "target/ripr/workflow/after.repo-exposure.json");
         Ok(())
     }
 
@@ -322,6 +635,7 @@ mod tests {
                 "missing",
                 None,
                 &[],
+                fixed_provenance(),
             ),
             Err("agent receipt seam_id missing was not found in agent verify JSON".to_string())
         );
