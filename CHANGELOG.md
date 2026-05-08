@@ -146,6 +146,8 @@ are scoped or reviewed.
   and keep default generated workflows advisory.
 - Advanced Campaign 15 to `docs/calibrated-gate-policy` after optional
   generated CI gate wiring landed without changing default workflow blocking.
+- Clarified agent merge ownership and replaced the old campaign-field guard
+  with stale merge-boundary language detection.
 - Pinned RIPR-SPEC-0012 as the PR test guidance annotation contract and
   advanced Campaign 12 to `vscode/first-run-status` as the next ready UX item.
 - Advanced Campaign 12 to `vscode/action-discoverability` after pinning the

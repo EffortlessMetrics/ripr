@@ -10504,7 +10504,7 @@ fn goals(args: &[String]) -> Result<(), String> {
 }
 
 fn check_campaign() -> Result<(), String> {
-    let mut violations = deprecated_goal_field_violations()?;
+    let mut violations = stale_agent_boundary_language_violations()?;
     let manifest_path = Path::new(".ripr/goals/active.toml");
     if !manifest_path.exists() {
         violations.push(".ripr/goals/active.toml is missing".to_string());
@@ -10520,7 +10520,7 @@ fn check_campaign() -> Result<(), String> {
 fn goals_status() -> Result<(), String> {
     let manifest_path = Path::new(".ripr/goals/active.toml");
     let (manifest, parse_violations) = parse_campaign_manifest(manifest_path)?;
-    let mut violations = deprecated_goal_field_violations()?;
+    let mut violations = stale_agent_boundary_language_violations()?;
     violations.extend(parse_violations);
     validate_campaign_manifest(&manifest, &mut violations)?;
     let body = campaign_status_report_body(&manifest, &violations);
@@ -10539,7 +10539,7 @@ fn goals_status() -> Result<(), String> {
 fn goals_next() -> Result<(), String> {
     let manifest_path = Path::new(".ripr/goals/active.toml");
     let (manifest, parse_violations) = parse_campaign_manifest(manifest_path)?;
-    let mut violations = deprecated_goal_field_violations()?;
+    let mut violations = stale_agent_boundary_language_violations()?;
     violations.extend(parse_violations);
     validate_campaign_manifest(&manifest, &mut violations)?;
     let body = campaign_next_report_body(&manifest, &violations);
@@ -10575,53 +10575,59 @@ fn finish_campaign_report(violations: &[String]) -> Result<(), String> {
     )
 }
 
-fn deprecated_goal_field_violations() -> Result<Vec<String>, String> {
+fn stale_agent_boundary_language_violations() -> Result<Vec<String>, String> {
     let files = tracked_files()?;
-    deprecated_goal_field_violations_for_root(Path::new("."), &files)
+    stale_agent_boundary_language_violations_for_root(Path::new("."), &files)
 }
 
-fn deprecated_goal_field_violations_for_root(
+fn stale_agent_boundary_language_violations_for_root(
     root: &Path,
     files: &[String],
 ) -> Result<Vec<String>, String> {
     let mut entries = Vec::new();
     for path in files {
-        if !is_deprecated_goal_field_scan_target(path) {
+        if !is_stale_agent_boundary_scan_target(path) {
             continue;
         }
         let text = read_text_lossy(&root.join(path))?;
         entries.push((path.clone(), text));
     }
-    Ok(deprecated_goal_field_violations_for_entries(
+    Ok(stale_agent_boundary_language_violations_for_entries(
         entries
             .iter()
             .map(|(path, text)| (path.as_str(), text.as_str())),
     ))
 }
 
-fn deprecated_goal_field_violations_for_entries<'a>(
+fn stale_agent_boundary_language_violations_for_entries<'a>(
     entries: impl IntoIterator<Item = (&'a str, &'a str)>,
 ) -> Vec<String> {
-    let field = deprecated_goal_field_name();
+    let patterns = stale_agent_boundary_patterns();
     let mut violations = Vec::new();
     for (path, text) in entries {
-        if !is_deprecated_goal_field_scan_target(path) {
+        if !is_stale_agent_boundary_scan_target(path) {
             continue;
         }
-        if text.contains(&field) {
+        if patterns.iter().any(|pattern| text.contains(pattern)) {
             violations.push(format!(
-                "{path} contains deprecated campaign field `{field}`; use `stackable` and ordinary PR readiness instead"
+                "{path} contains stale merge-boundary language; agents should finish scoped review, repair, validation, merge, and post-merge verification when checks and review are clean"
             ));
         }
     }
     violations
 }
 
-fn deprecated_goal_field_name() -> String {
-    ["requires", "human", "merge"].join("_")
+fn stale_agent_boundary_patterns() -> Vec<String> {
+    vec![
+        ["requires", "human", "merge"].join("_"),
+        ["requires", "human", "merge"].join(" "),
+        ["cannot", "continue", "productively"].join(" "),
+        ["without", "crossing"].join(" "),
+        ["human", "only", "merge"].join("-"),
+    ]
 }
 
-fn is_deprecated_goal_field_scan_target(path: &str) -> bool {
+fn is_stale_agent_boundary_scan_target(path: &str) -> bool {
     (path.starts_with(".ripr/goals/") && path.ends_with(".toml"))
         || path == "AGENTS.md"
         || (path.starts_with("docs/") && (path.ends_with(".md") || path.ends_with(".toml")))
@@ -16631,8 +16637,7 @@ mod tests {
     use super::XtaskCommand;
     use super::dispatch;
     use super::run::{
-        TimedOutput, capture_output, capture_output_with_timeout, run, run_output,
-        run_output_optional, run_output_owned,
+        TimedOutput, capture_output, run, run_output, run_output_optional, run_output_owned,
     };
     use super::{
         BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, CheckReport,
@@ -16652,18 +16657,18 @@ mod tests {
         extract_workflow_run_blocks, first_line_difference, forbidden_panic_patterns, glob_matches,
         golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
         guarded_allow_attributes_in_text, install_hooks_in, is_bdd_test_name,
-        is_dependency_surface_candidate, is_deprecated_goal_field_scan_target, is_evidence_path,
-        is_generated_candidate, is_known_campaign_command, is_non_rust_programming_candidate,
-        is_policy_path, is_production_path, is_receipt_status, is_ripr_managed_hook,
-        is_snake_case_id, is_spec_id, json_escape, json_number_after, json_string_values_for_key,
-        known_commands, known_xtask_command, local_context_line_findings, local_markdown_target,
-        lsp_cockpit_report, lsp_cockpit_report_json, lsp_cockpit_report_markdown,
-        markdown_links_in_text, mutation_calibration_report_json,
-        mutation_calibration_report_markdown, next_checkpoints_from_capabilities,
-        non_rust_programming_retention_reason, normalize_fixture_human_output,
-        normalize_fixture_json_output, normalize_golden_text, panic_family_from_pattern,
-        parse_campaign_manifest, parse_file_policy_allowlist, parse_inline_array,
-        parse_mutation_calibration_args, parse_mutation_outcomes_json,
+        is_dependency_surface_candidate, is_evidence_path, is_generated_candidate,
+        is_known_campaign_command, is_non_rust_programming_candidate, is_policy_path,
+        is_production_path, is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id,
+        is_stale_agent_boundary_scan_target, json_escape, json_number_after,
+        json_string_values_for_key, known_commands, known_xtask_command,
+        local_context_line_findings, local_markdown_target, lsp_cockpit_report,
+        lsp_cockpit_report_json, lsp_cockpit_report_markdown, markdown_links_in_text,
+        mutation_calibration_report_json, mutation_calibration_report_markdown,
+        next_checkpoints_from_capabilities, non_rust_programming_retention_reason,
+        normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
+        panic_family_from_pattern, parse_campaign_manifest, parse_file_policy_allowlist,
+        parse_inline_array, parse_mutation_calibration_args, parse_mutation_outcomes_json,
         parse_no_panic_allowlist_toml, parse_no_panic_allowlist_toml_v2, parse_reason,
         parse_repo_exposure_static_seams, parse_sarif_policy_args, parse_sarif_policy_results,
         parse_static_language_allowlist, parse_string_value, parse_targeted_test_outcome_args,
@@ -16702,13 +16707,14 @@ mod tests {
         check_droid_security_scan_config, forbids_active_line, has_active_line, strip_yaml_comment,
     };
     use super::{
-        deprecated_goal_field_name, deprecated_goal_field_violations_for_entries,
-        deprecated_goal_field_violations_for_root,
+        stale_agent_boundary_language_violations_for_entries,
+        stale_agent_boundary_language_violations_for_root, stale_agent_boundary_patterns,
     };
     use serde_json::Value;
     use std::collections::{BTreeMap, BTreeSet};
     use std::fs;
     use std::path::{Path, PathBuf};
+    use std::process::ExitStatus;
     use std::sync::{Mutex, OnceLock};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -16729,6 +16735,18 @@ mod tests {
             fs::create_dir_all(parent).unwrap();
         }
         fs::write(path, text).unwrap();
+    }
+
+    #[cfg(unix)]
+    fn success_exit_status() -> ExitStatus {
+        use std::os::unix::process::ExitStatusExt;
+        ExitStatusExt::from_raw(0)
+    }
+
+    #[cfg(windows)]
+    fn success_exit_status() -> ExitStatus {
+        use std::os::windows::process::ExitStatusExt;
+        ExitStatusExt::from_raw(0)
     }
 
     #[test]
@@ -21510,35 +21528,36 @@ stackable = true
     }
 
     #[test]
-    fn deprecated_goal_field_guard_targets_goal_manifests_and_agent_docs() {
-        assert!(is_deprecated_goal_field_scan_target(
+    fn stale_agent_boundary_guard_targets_goal_manifests_and_agent_docs() {
+        assert!(is_stale_agent_boundary_scan_target(
             ".ripr/goals/active.toml"
         ));
-        assert!(is_deprecated_goal_field_scan_target(
+        assert!(is_stale_agent_boundary_scan_target(
             ".ripr/goals/modularization.toml"
         ));
-        assert!(is_deprecated_goal_field_scan_target("AGENTS.md"));
-        assert!(is_deprecated_goal_field_scan_target(
+        assert!(is_stale_agent_boundary_scan_target("AGENTS.md"));
+        assert!(is_stale_agent_boundary_scan_target(
             "docs/how-to/run-codex-goals.md"
         ));
-        assert!(is_deprecated_goal_field_scan_target(
+        assert!(is_stale_agent_boundary_scan_target(
             "docs/example-policy.toml"
         ));
 
-        assert!(!is_deprecated_goal_field_scan_target("README.md"));
-        assert!(!is_deprecated_goal_field_scan_target("xtask/src/main.rs"));
-        assert!(!is_deprecated_goal_field_scan_target(
+        assert!(!is_stale_agent_boundary_scan_target("README.md"));
+        assert!(!is_stale_agent_boundary_scan_target("xtask/src/main.rs"));
+        assert!(!is_stale_agent_boundary_scan_target(
             ".ripr/release/history.toml"
         ));
     }
 
     #[test]
-    fn deprecated_goal_field_guard_reports_deprecated_entries() {
-        let field = deprecated_goal_field_name();
-        assert_eq!(field, ["requires", "human", "merge"].join("_"));
-        let bad_text = format!("{field} = false");
+    fn stale_agent_boundary_guard_reports_stale_entries() {
+        let patterns = stale_agent_boundary_patterns();
+        assert!(patterns.contains(&["requires", "human", "merge"].join("_")));
+        assert!(patterns.contains(&["cannot", "continue", "productively"].join(" ")));
+        let bad_text = format!("{} = false", patterns[0]);
         let clean_text = "stackable = false";
-        let violations = deprecated_goal_field_violations_for_entries([
+        let violations = stale_agent_boundary_language_violations_for_entries([
             ("AGENTS.md", bad_text.as_str()),
             (".ripr/goals/active.toml", bad_text.as_str()),
             ("README.md", bad_text.as_str()),
@@ -21559,13 +21578,15 @@ stackable = true
     }
 
     #[test]
-    fn deprecated_goal_field_guard_reads_scoped_files_from_root()
+    fn stale_agent_boundary_guard_reads_scoped_files_from_root()
     -> Result<(), Box<dyn std::error::Error>> {
-        let root = temp_dir("deprecated-goal-field");
-        let field = deprecated_goal_field_name();
-        write(&root.join("AGENTS.md"), &format!("{field} = false"));
+        let root = temp_dir("stale-agent-boundary");
+        let Some(pattern) = stale_agent_boundary_patterns().into_iter().next() else {
+            return Err("missing boundary pattern".into());
+        };
+        write(&root.join("AGENTS.md"), &format!("{pattern} = false"));
         write(&root.join("docs/agent.md"), "stackable = false");
-        write(&root.join("README.md"), &format!("{field} = false"));
+        write(&root.join("README.md"), &format!("{pattern} = false"));
         write(&root.join(".ripr/goals/active.toml"), "stackable = false");
 
         let files = vec![
@@ -21574,7 +21595,7 @@ stackable = true
             "README.md".to_string(),
             ".ripr/goals/active.toml".to_string(),
         ];
-        let violations = deprecated_goal_field_violations_for_root(&root, &files)?;
+        let violations = stale_agent_boundary_language_violations_for_root(&root, &files)?;
         let _ = fs::remove_dir_all(root);
 
         assert_eq!(violations.len(), 1);
@@ -23475,14 +23496,13 @@ covered_by = ["cargo xtask check-file-policy"]
 
     #[test]
     fn repo_exposure_latency_run_from_output_maps_status_and_trace() -> Result<(), String> {
-        let args = vec!["--version".to_string()];
-        let output = capture_output_with_timeout(
-            "rustc",
-            &args,
-            &[],
-            Duration::from_secs(5),
-            "rustc version",
-        )?;
+        let output = TimedOutput {
+            status: Some(success_exit_status()),
+            stdout: "rustc 1.93.1\n".to_string(),
+            stderr: String::new(),
+            duration: Duration::from_millis(3),
+            timed_out: false,
+        };
         let pass_run = repo_exposure_latency_run_from_output("repo-exposure-json", output);
         assert_eq!(pass_run.status, "pass");
         assert_eq!(pass_run.format, "repo-exposure-json");
