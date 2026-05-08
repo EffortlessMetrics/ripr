@@ -699,6 +699,10 @@ tests = [
   "crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_input_paths_extracts_verify_snapshot_paths",
   "crates/ripr/src/agent/provenance.rs::tests::sha256_file_hashes_artifact_bytes",
   "crates/ripr/src/app/agent_review_summary.rs::tests::agent_review_summary_joins_status_receipt_cockpit_repo_and_lsp",
+  "crates/ripr/src/app/agent_review_summary.rs::tests::agent_llm_work_loop_review_summary_fixtures_pin_core_states",
+  "crates/ripr/src/app/agent_review_summary.rs::tests::agent_llm_work_loop_review_summary_fixture_pins_missing_artifact",
+  "crates/ripr/src/app/agent_review_summary.rs::tests::agent_llm_work_loop_review_summary_fixture_pins_stale_artifact",
+  "crates/ripr/src/app/agent_review_summary.rs::tests::agent_llm_work_loop_review_summary_fixtures_pin_path_arguments",
   "crates/ripr/src/app/agent_review_summary.rs::tests::agent_review_summary_reports_missing_receipt_with_next_command",
   "crates/ripr/src/app/agent_review_summary.rs::tests::agent_review_summary_markdown_names_review_focus_and_limits",
   "crates/ripr/src/cli/agent.rs::tests::agent_review_summary_parses_root_json_and_human_default",
@@ -710,7 +714,15 @@ tests = [
   "xtask/src/reports/operator.rs::tests::operator_cockpit_matches_editor_agent_loop_fixture"
 ]
 fixtures = [
-  "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json"
+  "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json",
+  "fixtures/boundary_gap/expected/llm-work-loop/happy/review-summary.json",
+  "fixtures/boundary_gap/expected/llm-work-loop/unchanged/review-summary.json",
+  "fixtures/boundary_gap/expected/llm-work-loop/regressed/review-summary.json",
+  "fixtures/boundary_gap/expected/llm-work-loop/missing-artifact/review-summary.json",
+  "fixtures/boundary_gap/expected/llm-work-loop/stale-artifact/review-summary.json",
+  "fixtures/boundary_gap/expected/llm-work-loop/configured-off/stderr.txt",
+  "fixtures/boundary_gap/expected/llm-work-loop/path-with-spaces/review-summary.json",
+  "fixtures/boundary_gap/expected/llm-work-loop/windows-separators/review-summary.json"
 ]
 code = [
   "crates/ripr/src/agent/loop_commands.rs",
@@ -732,7 +744,16 @@ outputs = [
   "docs/specs/RIPR-SPEC-0011-llm-work-loop.md",
   "docs/specs/README.md",
   "docs/OUTPUT_SCHEMA.md",
-  "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json"
+  "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json",
+  "fixtures/boundary_gap/expected/llm-work-loop/README.md",
+  "fixtures/boundary_gap/expected/llm-work-loop/happy/review-summary.json",
+  "fixtures/boundary_gap/expected/llm-work-loop/unchanged/review-summary.json",
+  "fixtures/boundary_gap/expected/llm-work-loop/regressed/review-summary.json",
+  "fixtures/boundary_gap/expected/llm-work-loop/missing-artifact/review-summary.json",
+  "fixtures/boundary_gap/expected/llm-work-loop/stale-artifact/review-summary.json",
+  "fixtures/boundary_gap/expected/llm-work-loop/configured-off/stderr.txt",
+  "fixtures/boundary_gap/expected/llm-work-loop/path-with-spaces/review-summary.json",
+  "fixtures/boundary_gap/expected/llm-work-loop/windows-separators/review-summary.json"
 ]
 metrics = [
   "agent_loop_status_available",
