@@ -678,7 +678,9 @@ Responsibilities:
 - parse the already-rendered `ripr agent verify` JSON;
 - select exactly one seam by `seam_id` from changed, unchanged, new, or
   resolved buckets;
-- render schema version `0.1`;
+- render the current agent receipt schema. Campaign 11 bumped the receipt to
+  `0.2` with provenance and `0.3` with structured next-action guidance while
+  preserving this selected-seam handoff shape;
 - record optional caller-supplied focused test and commands-run metadata;
 - preserve static language and avoid runtime mutation result vocabulary.
 

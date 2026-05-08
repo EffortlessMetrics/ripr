@@ -81,6 +81,33 @@ fn normalize_newlines(value: &str) -> String {
     value.replace("\r\n", "\n")
 }
 
+fn normalize_agent_receipt_fixture(text: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let mut value: serde_json::Value = serde_json::from_str(text)?;
+    if let Some(provenance) = value
+        .get_mut("provenance")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        provenance.insert(
+            "generated_at".to_string(),
+            serde_json::Value::String("<generated_at>".to_string()),
+        );
+        for artifact in ["before_artifact", "after_artifact", "verify_artifact"] {
+            if let Some(artifact) = provenance
+                .get_mut(artifact)
+                .and_then(serde_json::Value::as_object_mut)
+            {
+                artifact.insert(
+                    "sha256".to_string(),
+                    serde_json::Value::String("<sha256>".to_string()),
+                );
+            }
+        }
+    }
+    let mut rendered = serde_json::to_string_pretty(&value)?;
+    rendered.push('\n');
+    Ok(rendered)
+}
+
 fn json_string_field(text: &str, field: &str) -> Option<String> {
     let pattern = format!("\"{field}\": \"");
     let start = text.find(&pattern)? + pattern.len();
@@ -312,8 +339,8 @@ fn editor_agent_loop_fixture_outputs_match_expected() -> Result<(), Box<dyn std:
         std::fs::read_to_string(workspace_root().join(base).join("agent-receipt.json"))?;
     let actual_receipt = std::fs::read_to_string(&receipt_path)?;
     assert_eq!(
-        normalize_newlines(&actual_receipt),
-        normalize_newlines(&expected_receipt),
+        normalize_agent_receipt_fixture(&actual_receipt)?,
+        normalize_agent_receipt_fixture(&expected_receipt)?,
         "agent receipt fixture drifted"
     );
     std::fs::remove_dir_all(out_dir)?;
@@ -467,6 +494,16 @@ fn agent_verify_compares_before_after_repo_exposure_json() -> Result<(), Box<dyn
 fn agent_receipt_writes_one_seam_handoff_json() -> Result<(), Box<dyn std::error::Error>> {
     let root = unique_temp_workspace("agent-receipt");
     std::fs::create_dir_all(&root)?;
+    std::fs::write(root.join("ripr.toml"), "[analysis]\nmode = \"fast\"\n")?;
+    std::fs::create_dir_all(root.join("target/ripr/workflow"))?;
+    std::fs::write(
+        root.join("target/ripr/workflow/before.repo-exposure.json"),
+        r#"{"schema_version":"0.2","scope":"repo","seams":[]}"#,
+    )?;
+    std::fs::write(
+        root.join("target/ripr/workflow/after.repo-exposure.json"),
+        r#"{"schema_version":"0.2","scope":"repo","seams":[]}"#,
+    )?;
     let verify = root.join("agent-verify.json");
     let receipt = root.join("target/ripr/reports/agent-receipt.json");
     std::fs::write(
@@ -525,9 +562,25 @@ fn agent_receipt_writes_one_seam_handoff_json() -> Result<(), Box<dyn std::error
     assert_success(&output);
 
     let text = std::fs::read_to_string(&receipt)?;
-    assert!(text.contains(r#""schema_version": "0.1""#));
+    assert!(text.contains(r#""schema_version": "0.3""#));
     assert!(text.contains(r#""seam_id": "seam-a""#));
     assert!(text.contains(r#""change": "improved""#));
+    assert!(text.contains(r#""ripr_version": "0.4.0""#));
+    assert!(text.contains(r#""repo_root": "#));
+    assert!(text.contains(r#""config_fingerprint": "fnv1a64:"#));
+    assert!(text.contains(r#""generated_at": "unix_ms:"#));
+    assert!(text.contains(r#""command_template_version": "0.1""#));
+    assert!(text.contains(r#""before_artifact": {"#));
+    assert!(text.contains(r#""after_artifact": {"#));
+    assert!(text.contains(r#""verify_artifact": {"#));
+    assert!(text.contains(r#""sha256": "#));
+    assert!(text.contains(r#""before_class": "weakly_gripped""#));
+    assert!(text.contains(r#""after_class": "strongly_gripped""#));
+    assert!(text.contains(r#""movement": "improved""#));
+    assert!(text.contains(r#""runtime_mutation_execution": false"#));
+    assert!(text.contains(r#""next_action": {"#));
+    assert!(text.contains(r#""kind": "improved""#));
+    assert!(text.contains(r#""safe_to_merge": false"#));
     assert!(text.contains(r#""test_changed": "pricing_boundary""#));
     assert!(text.contains(r#""cargo test pricing_boundary""#));
     std::fs::remove_dir_all(root)?;
