@@ -28,6 +28,8 @@ are scoped or reviewed.
   reviewed gate baseline ledger by removing resolved entries while preserving
   malformed or ambiguous records for review and refusing to auto-adopt new
   current debt.
+- Extended framed LSP protocol smoke coverage through a real seam diagnostic,
+  hover, code actions, `ripr.collectEvidenceContext`, and shutdown.
 - Added `ripr evidence-health` and `cargo xtask evidence-health`, which write
   advisory Lane 1 analyzer-health JSON/Markdown reports summarizing grip
   classes, stage states, missing discriminators, observed value contexts,

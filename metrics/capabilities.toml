@@ -262,10 +262,11 @@ spec = "RIPR-SPEC-0003"
 evidence = [
   "CLI context command",
   "LSP ripr.collectContext compatibility path",
-  "LSP ripr.collectEvidenceContext schema 0.1 editor handoff packet for seam diagnostics with evidence path, missing discriminator, related test, suggested test, shared command templates, and static limits"
+  "LSP ripr.collectEvidenceContext schema 0.1 editor handoff packet for seam diagnostics with evidence path, missing discriminator, related test, suggested test, shared command templates, and static limits",
+  "framed LSP protocol smoke executes collectEvidenceContext against a published boundary-gap seam diagnostic"
 ]
 fixtures = []
-next = "test/lsp-protocol-smoke"
+next = "test/vscode-extension-smoke"
 metric = "packet includes missing discriminator and related tests"
 
 [[capability]]
@@ -276,10 +277,11 @@ spec = "RIPR-SPEC-0003"
 evidence = [
   "agent context spec",
   "agent seam packet schema 0.3",
-  "LSP ripr.collectEvidenceContext schema 0.1 editor handoff packet carrying suggested assertion/test shape plus packet, brief, after-snapshot, verify, and receipt commands from shared templates"
+  "LSP ripr.collectEvidenceContext schema 0.1 editor handoff packet carrying suggested assertion/test shape plus packet, brief, after-snapshot, verify, and receipt commands from shared templates",
+  "framed LSP protocol smoke executes collectEvidenceContext against a published boundary-gap seam diagnostic"
 ]
 fixtures = []
-next = "test/lsp-protocol-smoke"
+next = "test/vscode-extension-smoke"
 metric = "packet includes missing values and suggested assertions"
 
 [[capability]]
@@ -830,6 +832,7 @@ evidence = [
   "crates/ripr/src/lsp/hover.rs classified_seam_hover_response",
   "looks up ClassifiedSeam via data.seam_id",
   "renders Grip class plus RIPR evidence path plus observed values plus missing discriminator plus related test locations plus suggested test shape plus packet and brief handoff commands plus verify and receipt commands plus static limits plus per-kind next step",
+  "framed LSP protocol smoke drives a published boundary-gap seam diagnostic through hover",
   "prefers seam-bearing diagnostics on overlap (chatgpt-codex review fix)",
   "preserves pre-4B Finding hover fallback",
   "VS Code e2e keeps the extension surface active in a fixture Rust workspace",
@@ -839,7 +842,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "test/lsp-protocol-smoke"
+next = "test/vscode-extension-smoke"
 metric = "hover renders evidence path from ClassifiedSeam, never parses diagnostic message"
 
 [[capability]]
@@ -851,6 +854,7 @@ evidence = [
   "crates/ripr/src/lsp/actions.rs seam-aware code_action_response",
   "crates/ripr/src/lsp/backend.rs collectContext returns agent seam packets for seam_id",
   "crates/ripr/src/lsp/backend.rs collectEvidenceContext returns schema 0.1 editor handoff packets from ClassifiedSeam evidence",
+  "framed LSP protocol smoke drives a published boundary-gap seam diagnostic through codeAction and collectEvidenceContext",
   "editors/vscode/src/client.ts copySuggestedAssertion and openRelatedTest handlers",
   "diagnostics carrying seam_id surface intent-titled actions for inspecting the seam, writing the targeted test only when related-test or suggested-assertion context exists, copying agent handoff commands, verifying after the test, reviewing the receipt, opening the best related test only when a related-test location exists, and refreshing saved-workspace analysis",
   "copy suggested assertion uses agent seam packet v2 assertion shape when available",
@@ -865,7 +869,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "test/lsp-protocol-smoke"
+next = "test/vscode-extension-smoke"
 metric = "seam diagnostics expose only supported packet/assertion/test actions without automatic edits"
 
 [[capability]]

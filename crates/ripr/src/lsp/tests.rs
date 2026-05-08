@@ -404,17 +404,76 @@ fn framed_lsp_protocol_smoke_logs_successful_refresh_completion() -> Result<(), 
             );
         }
 
+        let seam_id = seam_diagnostic["data"]["seam_id"]
+            .as_str()
+            .ok_or_else(|| "expected seam diagnostic data.seam_id".to_string())?;
         write_lsp_message(
             &mut client_write,
             serde_json::json!({
                 "jsonrpc": "2.0",
                 "id": 5,
+                "method": "workspace/executeCommand",
+                "params": {
+                    "command": COLLECT_EVIDENCE_CONTEXT_COMMAND,
+                    "arguments": [{
+                        "seam_id": seam_id,
+                        "uri": text_uri,
+                        "line": 2
+                    }]
+                }
+            }),
+        )
+        .await?;
+        let context_packet = read_lsp_response(&mut client_read, 5).await?;
+        assert_eq!(
+            context_packet["result"]["schema_version"],
+            serde_json::Value::String("0.1".to_string())
+        );
+        assert_eq!(context_packet["result"]["seam_id"], seam_id);
+        assert_eq!(
+            context_packet["result"]["evidence_path"]["discriminate"],
+            "present"
+        );
+        assert_eq!(
+            context_packet["result"]["missing_discriminator"],
+            "discount_threshold (equality boundary)"
+        );
+        assert!(
+            context_packet["result"]["related_test"]
+                .as_str()
+                .is_some_and(|value| value.contains("tests/pricing.rs"))
+        );
+        assert!(
+            context_packet["result"]["agent_brief_command"]
+                .as_str()
+                .is_some_and(|value| value.starts_with("ripr agent brief --root . --seam-id "))
+        );
+        assert!(
+            context_packet["result"]["verify_command"]
+                .as_str()
+                .is_some_and(|value| value.contains("ripr agent verify --root ."))
+        );
+        assert!(
+            context_packet["result"]["receipt_command"]
+                .as_str()
+                .is_some_and(|value| value.contains("ripr agent receipt --root ."))
+        );
+        assert_eq!(
+            context_packet["result"]["limits_note"],
+            "Static evidence only; no runtime mutation execution."
+        );
+
+        write_lsp_message(
+            &mut client_write,
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 6,
                 "method": "shutdown",
                 "params": null
             }),
         )
         .await?;
-        let shutdown = read_lsp_response(&mut client_read, 5).await?;
+        let shutdown = read_lsp_response(&mut client_read, 6).await?;
         assert!(shutdown.get("error").is_none());
         write_lsp_message(
             &mut client_write,
