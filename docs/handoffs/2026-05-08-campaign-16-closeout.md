@@ -1,7 +1,7 @@
 # Handoff: Campaign 16 Closeout
 
 Date: 2026-05-08
-Branch / PR: `campaign-gate-adoption-ux-closeout` / pending
+Branch / PR: `campaign-gate-adoption-ux-closeout` / #583
 Latest merged PR: #582 `docs: add RIPR blocking readiness guide` (commit `8009385`)
 
 ## Current Work Item
@@ -41,6 +41,7 @@ semantics.
 
 - #571 `campaign: open gate adoption ux`
 - #573 `docs: add gate adoption examples`
+- #572 `docs: queue editor evidence ux lane`
 - #575 `docs: add gate waiver workflows`
 - #576 `docs: add gate baseline workflow`
 - #578 `ci: polish gate decision summary`
@@ -66,13 +67,10 @@ git diff --check
 
 ## Next Work Item
 
-Open Campaign 17, RIPR Zero Adoption, as a separate campaign. The first slice
-should define the baseline debt delta report before wiring new CI surfaces.
-
-The campaign should stay in Lane 4: PR summaries, CI projection, artifact
-layout, waiver/baseline visibility, and repair paths. It should not redefine
-analyzer semantics, gate policy semantics, LSP behavior, mutation execution, or
-default blocking.
+No ready work item remains in `.ripr/goals/active.toml` after this closeout.
+Editor Evidence UX remains queued, not active. Start it only with an explicit
+campaign activation PR or a clear parallel-lane decision; the first queued item
+is `campaign/editor-evidence-ux-audit`.
 
 ## What Not To Do
 
@@ -83,6 +81,5 @@ default blocking.
 - Do not run cargo-mutants or any mutation engine from adoption workflows.
 - Do not generate tests or edit source from PR/CI adoption surfaces.
 - Do not move recommendation ranking, analyzer semantics, or LSP/editor UX into
-  Lane 4 closeout work.
-- Do not open RIPR Zero Adoption by editing Campaign 16 in place; start it as a
-  new explicit campaign.
+  Campaign 16 maintenance.
+- Do not activate Editor Evidence UX silently.

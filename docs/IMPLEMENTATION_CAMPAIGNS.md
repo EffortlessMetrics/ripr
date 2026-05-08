@@ -1829,8 +1829,8 @@ Next:
 
 - Campaign 16 is complete. [Campaign 16
   closeout](handoffs/2026-05-08-campaign-16-closeout.md) records the gate
-  adoption PR chain, proof commands, and the boundary for the next PR/CI
-  adoption campaign.
+  adoption PR chain, proof commands, and the boundary that Editor Evidence UX
+  remains queued until an explicit activation PR or parallel-lane decision.
 
 ## Campaign 16: Gate Adoption UX
 
@@ -1953,17 +1953,17 @@ Closeout:
 
 Next:
 
-- Open Campaign 17, RIPR Zero Adoption, in a separate explicit campaign PR.
-  It should turn baselines into burn-down ledgers, surface PR-level debt
-  deltas, and route repair packets without changing analyzer semantics,
-  generated-test behavior, or default blocking.
+- Campaign 16 is closed. No ready work item remains in the active manifest.
+  Editor Evidence UX is queued as the next explicit campaign candidate, not
+  activated by this closeout.
 
 ## Future Campaign: Editor Evidence UX
 
 Campaign ID: `editor-evidence-ux`
 
-Status: queued, not active. Start this lane only after an explicit decision to
-promote editor work ahead of the next PR/CI adoption campaign.
+Status: queued, not active. Campaign 16, Gate Adoption UX, is complete. Start
+this lane only after an explicit campaign activation PR or after an explicit
+decision to run the editor lane in parallel.
 
 The saved-workspace LSP path already has alpha diagnostics, evidence hover,
 seam actions, related-test opening, context collection, agent-loop commands,
