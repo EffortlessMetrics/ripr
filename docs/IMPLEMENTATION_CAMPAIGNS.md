@@ -1483,7 +1483,7 @@ Blocking conditions:
 
 Campaign ID: `pr-review-guidance`
 
-Status: active
+Status: complete
 
 Campaigns 10 through 12 made the editor, CLI, agent loop, cockpit, generated
 CI artifacts, and first-hour docs converge on the same static evidence loop.
@@ -1493,7 +1493,7 @@ generated CI now runs that producer before the existing summary and annotation
 consumer steps. The exact placement and suppression cases are now
 fixture-pinned, and the dedicated PR guidance docs now explain the command, CI
 behavior, summary-only fallback, and inline-comment opt-in boundary. The next
-gap is Campaign 13 closeout.
+step is choosing the next product campaign explicitly.
 
 Objective:
 
@@ -1540,7 +1540,27 @@ Work items:
 | `ci/run-pr-guidance-report` | done | Updated generated GitHub workflows to run `ripr review-comments` before the existing advisory summary and check-annotation consumer steps, preserving non-blocking defaults. |
 | `fixtures/pr-guidance-cases` | done | Pinned PR guidance fixtures for exact changed seam line, owner-function changed line, same-file changed line, summary-only fallback, cap suppression, configured suppression, and nearby changed-test skip. |
 | `docs/pr-review-guidance` | done | Added [PR review guidance](PR_REVIEW_GUIDANCE.md) documenting `ripr review-comments`, generated CI check annotations, summary-only fallback, the inline-comment opt-in boundary, pinned fixture cases, and static-evidence limits. |
-| `campaign/pr-review-guidance-closeout` | ready | Close Campaign 13 only after PR review guidance is produced, consumed by generated CI, fixture-pinned, documented, and still advisory/non-blocking by default. |
+| `campaign/pr-review-guidance-closeout` | done | Closed Campaign 13 after PR guidance was produced, consumed by generated CI, fixture-pinned, documented, and kept advisory/non-blocking by default. |
+
+Closeout:
+
+- PR guidance now projects existing RIPR evidence into bounded PR surfaces:
+  `ripr review-comments` -> generated CI summary/check annotations -> fixture
+  matrix -> dedicated user docs.
+- The default workflow remains advisory and non-blocking. Inline PR review
+  comments are not posted by generated workflows and remain a custom explicit
+  opt-in boundary.
+- The guidance path keeps the normal evidence loop intact: changed seam ->
+  focused test intent -> agent brief command -> after snapshot -> agent verify
+  -> receipt or review summary.
+- No analyzer behavior, LSP feature expansion, source edits, generated tests,
+  runtime mutation execution, default CI blocking, public crate split, SARIF
+  schema change, or badge schema change shipped in this campaign.
+
+Next:
+
+- No Campaign 14 is open yet. Choose the next product campaign explicitly from
+  current user feedback and release needs before adding new behavior.
 
 Dependencies:
 

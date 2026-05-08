@@ -97,15 +97,14 @@ reviewer-oriented advisory summary before artifact download. The generated
 workflow smoke fixture pins the CI first screen, artifact packet, optional
 SARIF gates, badge output, and PR guidance annotation hook. Campaign 12
 closed after the first-hour docs routed users by VS Code, CI, CLI, and
-agent/reviewer path. Campaign 13 is active as PR Review Guidance:
+agent/reviewer path. Campaign 13 closed PR Review Guidance:
 `ripr review-comments` now writes the already-specified
-`target/ripr/review/comments.json` report, and generated CI now runs that
-producer before the existing non-blocking summary and changed-line
-check-annotation consumers. Guidance placement and suppression cases are now
-fixture-pinned, and [PR review guidance](PR_REVIEW_GUIDANCE.md) documents the
-command, CI behavior, summary-only fallback, inline-comment opt-in boundary,
-and static-evidence limits. The next control-plane gap is Campaign 13
-closeout.
+`target/ripr/review/comments.json` report, generated CI runs that producer
+before the existing non-blocking summary and changed-line check-annotation
+consumers, guidance placement and suppression cases are fixture-pinned, and
+[PR review guidance](PR_REVIEW_GUIDANCE.md) documents the command, CI behavior,
+summary-only fallback, inline-comment opt-in boundary, and static-evidence
+limits. No next product campaign is active yet.
 
 ## Strategic Sequence
 
@@ -148,6 +147,7 @@ quality rails
 -> editor-agent release readiness proof
 -> LLM work loop
 -> first-hour UX
+-> PR review guidance
 ```
 
 The analyzer path is:

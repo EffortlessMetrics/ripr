@@ -52,6 +52,8 @@ are scoped or reviewed.
 - Added `docs/PR_REVIEW_GUIDANCE.md` to document `ripr review-comments`,
   generated CI check annotations, summary-only fallback, pinned fixture cases,
   and the inline-comment opt-in boundary.
+- Added the Campaign 13 closeout handoff after PR guidance renderer, generated
+  CI consumption, placement fixtures, and user-facing docs aligned.
 - Added a generated GitHub workflow advisory summary that combines the pilot
   recommendation, agent review packet, artifact paths, SARIF and badge status,
   known limits, and PR guidance annotation counts before artifact
@@ -79,8 +81,10 @@ are scoped or reviewed.
 
 - Advanced Campaign 13, PR Review Guidance, after adding the read-only
   `ripr review-comments` producer and generated CI producer step;
-  `campaign/pr-review-guidance-closeout` is now the ready item after pinning
-  placement/suppression fixtures and documenting PR guidance.
+  placement/suppression fixtures and PR guidance docs completed the lane before
+  closeout.
+- Closed Campaign 13 after PR guidance became produced, consumed by generated
+  CI, fixture-pinned, documented, and still advisory/non-blocking by default.
 - Pinned RIPR-SPEC-0012 as the PR test guidance annotation contract and
   advanced Campaign 12 to `vscode/first-run-status` as the next ready UX item.
 - Advanced Campaign 12 to `vscode/action-discoverability` after pinning the
