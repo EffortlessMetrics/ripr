@@ -985,3 +985,33 @@ metrics = [
   "evidence_health_opaque_oracle_count",
   "evidence_health_calibration_matched_total",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0016"
+name = "baseline debt delta"
+spec = "docs/specs/RIPR-SPEC-0016-baseline-debt-delta.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0016-baseline-debt-delta.md",
+  "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/ROADMAP.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "metrics/capabilities.toml",
+  "CHANGELOG.md",
+]
+metrics = [
+  "baseline_debt_delta_entries",
+  "baseline_debt_delta_still_present",
+  "baseline_debt_delta_resolved",
+  "baseline_debt_delta_new_policy_eligible",
+  "baseline_debt_delta_acknowledged",
+  "baseline_debt_delta_suppressed",
+  "baseline_debt_delta_stale_entries",
+  "baseline_debt_delta_invalid_entries",
+  "baseline_debt_delta_missing_current_input",
+]
