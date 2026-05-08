@@ -78,20 +78,17 @@ Continue to another work item only when:
 - the next work item is independent, or
 - the campaign manifest marks it `stackable = true`
 
-Stop at human review boundaries when:
+Stop before continuing when:
 
 - the next work item depends on an unmerged PR
-- the manifest says `requires_human_merge = true` and the scoped PR has been
-  opened or updated
 - continuing would require a policy exception, schema decision, dependency
   decision, credential, release, or marketplace action
 
-`requires_human_merge = true` means "stop before merge." It does not mean "stop
-before commit," "stop before push," or "stop before opening a PR." The normal
-flow is:
+When the current lane instruction gives Codex ownership of review and merge,
+the normal flow is:
 
 ```text
-implement -> validate -> commit -> push -> open/update PR -> wait before merge
+implement -> validate -> commit -> push -> open/update PR -> repair review findings -> merge -> verify main
 ```
 
 ## Reports

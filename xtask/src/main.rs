@@ -18488,7 +18488,7 @@ id = "fixtures/first-two-goldens"
 status = "ready"
 branch = "fixtures/first-two-goldens"
 stackable = false
-requires_human_merge = true
+requires_human_merge = false
 acceptance = "fixtures pass"
 commands = [
   "cargo xtask fixtures",
