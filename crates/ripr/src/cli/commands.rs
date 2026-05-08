@@ -1133,6 +1133,9 @@ jobs:
             echo '### Gate decision'
             if [ -f target/ripr/reports/gate-decision.json ]; then
               gate_json=target/ripr/reports/gate-decision.json
+              markdown_inline() {
+                printf '%s' "$1" | tr '\r\n' '  ' | sed 's/`/\\`/g'
+              }
               gate_status="$(jq -r '.status // "unknown"' "$gate_json" 2>/dev/null || echo unknown)"
               gate_mode="$(jq -r '.mode // "unknown"' "$gate_json" 2>/dev/null || echo unknown)"
               blocking="$(jq -r '.summary.blocking // 0' "$gate_json" 2>/dev/null || echo 0)"
@@ -1150,17 +1153,34 @@ jobs:
               recommendation_effects="$(jq -r '([.decisions[]?.evidence.recommendation_calibration.confidence_effect | select(. != null)] | unique | if length == 0 then "none" else join(", ") end)' "$gate_json" 2>/dev/null || echo unknown)"
               mutation_effects="$(jq -r '([.decisions[]?.evidence.mutation_calibration.confidence_effect | select(. != null)] | unique | if length == 0 then "none" else join(", ") end)' "$gate_json" 2>/dev/null || echo unknown)"
               blocking_reason="$(jq -r '([.decisions[]? | select(.decision == "blocking") | .gate_reason] | first) // "none"' "$gate_json" 2>/dev/null || echo unknown)"
+              gate_status="$(markdown_inline "$gate_status")"
+              gate_mode="$(markdown_inline "$gate_mode")"
+              blocking="$(markdown_inline "$blocking")"
+              acknowledged="$(markdown_inline "$acknowledged")"
+              advisory="$(markdown_inline "$advisory")"
+              suppressed="$(markdown_inline "$suppressed")"
+              not_applicable="$(markdown_inline "$not_applicable")"
+              unknown_confidence="$(markdown_inline "$unknown_confidence")"
+              active_labels="$(markdown_inline "$active_labels")"
+              acknowledgement_labels="$(markdown_inline "$acknowledgement_labels")"
+              applied_waiver="$(markdown_inline "$applied_waiver")"
+              baseline_artifact="$(markdown_inline "$baseline_artifact")"
+              recommendation_calibration="$(markdown_inline "$recommendation_calibration")"
+              mutation_calibration="$(markdown_inline "$mutation_calibration")"
+              recommendation_effects="$(markdown_inline "$recommendation_effects")"
+              mutation_effects="$(markdown_inline "$mutation_effects")"
+              blocking_reason="$(markdown_inline "$blocking_reason")"
               echo '#### Gate decision at a glance'
               echo "- Mode: \`$gate_mode\`"
               echo "- Status: \`$gate_status\`"
-              echo "- Counts: blocking=$blocking, acknowledged=$acknowledged, advisory=$advisory, suppressed=$suppressed, not_applicable=$not_applicable, unknown_confidence=$unknown_confidence"
+              echo "- Counts: blocking=\`$blocking\`, acknowledged=\`$acknowledged\`, advisory=\`$advisory\`, suppressed=\`$suppressed\`, not_applicable=\`$not_applicable\`, unknown_confidence=\`$unknown_confidence\`"
               echo "- Active PR labels: \`$active_labels\`"
               echo "- Acknowledgement labels: \`$acknowledgement_labels\`"
               echo "- Applied waiver label: \`$applied_waiver\`"
               echo "- Baseline artifact: \`$baseline_artifact\`"
               echo "- Recommendation calibration: \`$recommendation_calibration\` (effects: $recommendation_effects)"
               echo "- Mutation calibration: \`$mutation_calibration\` (effects: $mutation_effects)"
-              echo "- Blocking reason: $blocking_reason"
+              echo "- Blocking reason: \`$blocking_reason\`"
               echo "- Gate artifacts: \`target/ripr/reports/gate-decision.json\`, \`target/ripr/reports/gate-decision.md\`"
               echo "- Related inputs: \`target/ripr/review/comments.json\`, \`target/ci/labels.json\`"
               echo
@@ -3744,6 +3764,7 @@ mod tests {
         assert!(workflow.contains("### Artifact packet"));
         assert!(workflow.contains("### Gate decision"));
         assert!(workflow.contains("#### Gate decision at a glance"));
+        assert!(workflow.contains("markdown_inline()"));
         assert!(workflow.contains("Active PR labels"));
         assert!(workflow.contains("Applied waiver label"));
         assert!(workflow.contains("Baseline artifact"));
@@ -3792,6 +3813,10 @@ mod tests {
         assert!(workflow.contains(".evidence.recommendation_calibration.confidence_effect"));
         assert!(workflow.contains(".evidence.mutation_calibration.confidence_effect"));
         assert!(workflow.contains(".gate_reason"));
+        assert!(workflow.contains("blocking=\"$(markdown_inline \"$blocking\")\""));
+        assert!(workflow.contains("Counts: blocking=\\`$blocking\\`"));
+        assert!(workflow.contains("sed 's/`/\\\\`/g'"));
+        assert!(workflow.contains("Blocking reason: \\`$blocking_reason\\`"));
         assert!(workflow.contains("RIPR_GATE_MODE"));
         assert!(workflow.contains("RIPR_GATE_BASELINE"));
         assert!(workflow.contains("ripr \"${gate_args[@]}\""));
@@ -3906,6 +3931,7 @@ mod tests {
         assert!(summary.contains("cat target/ripr/pilot/pilot-summary.md"));
         assert!(summary.contains("cat target/ripr/workflow/agent-review-summary.md"));
         assert!(summary.contains("#### Gate decision at a glance"));
+        assert!(summary.contains("markdown_inline()"));
         assert!(summary.contains("gate_status=\"$(jq -r '.status // \"unknown\"'"));
         assert!(summary.contains("gate_mode=\"$(jq -r '.mode // \"unknown\"'"));
         assert!(summary.contains(".summary.blocking // 0"));
@@ -3914,13 +3940,15 @@ mod tests {
         assert!(summary.contains(".summary.suppressed // 0"));
         assert!(summary.contains(".summary.not_applicable // 0"));
         assert!(summary.contains(".summary.unknown_confidence // 0"));
+        assert!(summary.contains("blocking=\"$(markdown_inline \"$blocking\")\""));
+        assert!(summary.contains("Counts: blocking=\\`$blocking\\`"));
         assert!(summary.contains("Active PR labels"));
         assert!(summary.contains("Acknowledgement labels"));
         assert!(summary.contains("Applied waiver label"));
         assert!(summary.contains("Baseline artifact"));
         assert!(summary.contains("Recommendation calibration"));
         assert!(summary.contains("Mutation calibration"));
-        assert!(summary.contains("Blocking reason"));
+        assert!(summary.contains("Blocking reason: \\`$blocking_reason\\`"));
         assert!(summary.contains("target/ripr/reports/gate-decision.json"));
         assert!(summary.contains("target/ci/labels.json"));
         assert!(summary.contains("cat target/ripr/reports/gate-decision.md"));
