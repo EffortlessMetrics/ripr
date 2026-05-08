@@ -26,7 +26,7 @@ end_state = [
 
 [[work_item]]
 id = "spec/baseline-debt-delta-report"
-status = "ready"
+status = "done"
 branch = "spec-baseline-debt-delta-report"
 stackable = false
 acceptance = "Define the baseline debt delta report contract for comparing current PR/CI evidence to reviewed baseline debt without changing analyzer identity, auto-adopting new debt, or making CI blocking by default"
@@ -43,7 +43,7 @@ commands = [
 
 [[work_item]]
 id = "baseline/create"
-status = "blocked"
+status = "ready"
 branch = "baseline-create"
 stackable = false
 blocked_by = ["spec/baseline-debt-delta-report"]

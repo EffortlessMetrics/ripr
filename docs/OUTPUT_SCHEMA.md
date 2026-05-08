@@ -1798,6 +1798,146 @@ must not hide acknowledged decisions. If the evaluator returns a blocking exit
 code, the Markdown still needs enough evidence for the next agent or reviewer
 to resolve the state.
 
+## Baseline Debt Delta Report
+
+RIPR-SPEC-0016 defines the baseline debt delta report. The report compares an
+explicit reviewed baseline ledger with current gate-decision evidence so teams
+can see existing, resolved, new, acknowledged, suppressed, stale, invalid, and
+missing-input behavioral-grip debt without making the report a gate.
+
+The future command is:
+
+```text
+ripr baseline diff \
+  --baseline .ripr/gate-baseline.json \
+  --current target/ripr/reports/gate-decision.json \
+  --out target/ripr/reports/baseline-debt-delta.json \
+  --out-md target/ripr/reports/baseline-debt-delta.md
+```
+
+The report writes:
+
+```text
+target/ripr/reports/baseline-debt-delta.json
+target/ripr/reports/baseline-debt-delta.md
+```
+
+This report is advisory movement evidence. `ripr gate evaluate` remains the
+pass/fail authority for configured gate modes. Generated CI may upload and
+summarize the delta report, but the report itself must not fail CI, rewrite a
+baseline, post comments, edit source, generate tests, rerun analysis, or run
+mutation testing.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "baseline_debt_delta",
+  "status": "advisory",
+  "root": ".",
+  "inputs": {
+    "baseline": ".ripr/gate-baseline.json",
+    "current_gate_decision": "target/ripr/reports/gate-decision.json",
+    "pr_guidance": "target/ripr/review/comments.json",
+    "agent_receipt": "target/ripr/reports/agent-receipt.json"
+  },
+  "baseline": {
+    "path": ".ripr/gate-baseline.json",
+    "schema_version": "0.1",
+    "entries": 47,
+    "valid": 46,
+    "stale": 1,
+    "invalid": 0
+  },
+  "delta": {
+    "still_present": 40,
+    "resolved": 7,
+    "new_policy_eligible": 2,
+    "acknowledged": 1,
+    "suppressed": 0,
+    "stale_baseline_entry": 1,
+    "invalid_baseline_entry": 0,
+    "missing_current_input": 0
+  },
+  "items": [
+    {
+      "bucket": "new_policy_eligible",
+      "identity": {
+        "seam_id": "67fc764ba37d77bd",
+        "source_id": "ripr-review-67fc764ba37d77bd",
+        "id": "ripr-gate-67fc764ba37d77bd",
+        "dedupe_key": "ripr:67fc764ba37d77bd:src/pricing.rs:88",
+        "matched_by": "seam_id"
+      },
+      "path": "src/pricing.rs",
+      "line": 88,
+      "static_class": "weakly_gripped",
+      "decision": "blocking",
+      "reason": "Current policy-eligible gap is not present in the reviewed baseline.",
+      "missing_discriminator": "amount == discount_threshold",
+      "suggested_test": {
+        "recommended_file": "tests/pricing.rs",
+        "assertion_shape": "Assert returned discount behavior directly."
+      },
+      "repair": {
+        "action": "add_focused_test_or_acknowledge",
+        "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json"
+      }
+    }
+  ],
+  "warnings": [],
+  "limits_note": "Advisory baseline debt movement over static RIPR gate evidence; pass/fail remains owned by ripr gate evaluate."
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `status` - `advisory`, `incomplete`, or `config_error`. The report does not
+  return `blocked`; blocking belongs to the gate evaluator.
+- `inputs.baseline` - explicit baseline ledger path. Missing or unreadable
+  required baseline input produces `missing_current_input` or `config_error`
+  with repair guidance.
+- `inputs.current_gate_decision` - current gate-decision JSON path.
+- `inputs.pr_guidance`, `inputs.agent_receipt`, and other optional inputs -
+  used only to enrich repair context when supplied.
+- `baseline.entries` - parsed baseline entry count.
+- `baseline.valid`, `baseline.stale`, and `baseline.invalid` - baseline record
+  health counts before current comparison.
+- `delta.still_present` - baseline identities present in current evidence.
+- `delta.resolved` - baseline identities absent from current evidence.
+- `delta.new_policy_eligible` - current policy-eligible identities absent from
+  the baseline.
+- `delta.acknowledged` - current visible findings acknowledged by label or
+  policy.
+- `delta.suppressed` - current findings hidden by suppression or configured-off
+  severity while remaining visible in the delta report.
+- `delta.stale_baseline_entry` - baseline records that parse but cannot join
+  cleanly because the identity is ambiguous, obsolete, or incompatible.
+- `delta.invalid_baseline_entry` - malformed baseline records or records
+  missing required identity fields.
+- `delta.missing_current_input` - records whose movement cannot be classified
+  because required current artifacts are missing or unreadable.
+- `items[].bucket` - one primary bucket from the `delta` object.
+- `items[].identity` - stable identity fields. Matching order is `seam_id`,
+  `source_id`, `id`, `dedupe_key`, then normalized path, line, and static
+  class fallback.
+- `items[].identity.matched_by` - the identity selector that joined baseline
+  and current records.
+- `items[].repair` - optional focused repair context copied from existing gate,
+  PR guidance, agent, or outcome artifacts.
+- `warnings[]` - malformed baseline entries, ambiguous matches, fallback
+  matches, missing optional inputs, or unsupported schema versions.
+- `limits_note` - advisory boundary text for generated CI summaries.
+
+Markdown should fit in a generated CI job summary. It should include the
+baseline path, status, bucket counts, top new policy-eligible gaps, top resolved
+baseline entries, warnings, and the advisory boundary. It must distinguish
+baseline debt from suppressions and acknowledged current findings from hidden
+success.
+
 ### Review Guidance Outcome Receipt
 
 Review guidance outcome receipts are optional repo-local inputs to the
