@@ -535,10 +535,10 @@ packet, verify, receipt, and reviewer-summary loop outside CI.
 ### PR Test Guidance Annotations
 
 RIPR-SPEC-0012 defines the pinned planning contract for a planned PR-facing
-projection of the same evidence packet. The default CI surface should be a GitHub job
-summary plus check
-annotations. Inline PR review comments should remain opt-in because they create
-durable review-thread noise when ranking or placement is wrong.
+projection of the same evidence packet. The default CI surface should be a
+GitHub job summary plus check annotations. Inline PR review comments should
+remain opt-in because they create durable review-thread noise when ranking or
+placement is wrong.
 
 The planned pure renderer is:
 
