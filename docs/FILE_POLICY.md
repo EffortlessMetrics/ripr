@@ -17,16 +17,11 @@ Non-Rust files are allowed when they belong to an approved surface:
 - assets
 - generated or lock files with a documented owner
 
-The allowlist lives in [non_rust_allowlist.txt](../policy/non_rust_allowlist.txt)
-(canonical, pipe-delimited, consumed by `cargo xtask check-file-policy`).
-
-A schema-bearing TOML mirror lives at
-[non-rust-allowlist.toml](../policy/non-rust-allowlist.toml). It adds
-`surface`, `classification`, and `covered_by` fields and tracks `expires`
-where appropriate. The TOML file is the migration target; once the
-`check-file-policy` checker is updated to read TOML, the txt file can be
-retired in a follow-up PR. Until then, **add new entries to both files**
-in the same PR.
+The canonical allowlist lives in
+[non-rust-allowlist.toml](../policy/non-rust-allowlist.toml).
+`cargo xtask check-file-policy` consumes this TOML directly, so each exception
+records its `surface`, `classification`, `covered_by` checks, owner, and reason
+in one Rust-read policy file.
 
 ## Adding A Non-Rust Programming File
 

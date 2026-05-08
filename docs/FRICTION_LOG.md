@@ -127,7 +127,7 @@ Each entry is a date-grouped bullet:
   code is correct; it means the prior CI did not run clippy with
   `-D warnings` in the path that landed on `main`.
 - **identical mechanical fix replicated across simultaneous PRs** —
-  `cargo xtask shape` re-sorted `policy/non_rust_allowlist.txt` (the
+  `cargo xtask shape` re-sorted the legacy `policy/non_rust_allowlist.txt` (the
   `codecov.yml` row from #197 landed out of order) on both
   `badge/repo-scope-artifacts` (PR #204) and `docs/deferred-decisions`
   (PR #205) because both run `xtask shape` as part of the implementation
