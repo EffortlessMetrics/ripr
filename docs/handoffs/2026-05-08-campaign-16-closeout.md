@@ -67,13 +67,19 @@ git diff --check
 
 ## Next Work Item
 
-Open Campaign 17, RIPR Zero Adoption, as a separate campaign. The first slice
-should define the baseline debt delta report before wiring new CI surfaces.
+No ready work item remains in `.ripr/goals/active.toml` from Campaign 16
+itself. Open Campaign 17, RIPR Zero Adoption, as a separate campaign. The first
+slice should define the baseline debt delta report before wiring new CI
+surfaces.
 
 The campaign should stay in Lane 4: PR summaries, CI projection, artifact
 layout, waiver/baseline visibility, and repair paths. It should not redefine
 analyzer semantics, gate policy semantics, LSP behavior, mutation execution, or
 default blocking.
+
+Editor Evidence UX remains queued as a separate Lane 3 option, not active.
+Start it only with an explicit campaign activation PR or a clear parallel-lane
+decision; the first queued item is `campaign/editor-evidence-ux-audit`.
 
 ## What Not To Do
 
