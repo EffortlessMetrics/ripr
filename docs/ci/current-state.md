@@ -57,7 +57,6 @@ as distinct from the target design in `docs/CI.md`.
 | VS Code e2e runs on every PR | PR 13 | Pays for Node+xvfb on unrelated Rust PRs. |
 | `ripr` self-dogfood is advisory but no LEM tracking | PR 14 | Cannot measure cost of self-verification. |
 | No soft budget guard | PR 15 | No warning when PRs exceed budget bands. |
-| `policy/no-panic-allowlist.toml` is shadow/sample only | PR 04 | Canonical checker still reads `.ripr/` path. |
 | `indexing_slicing` / `string_slice` are not active | PR 07 | Missing per-call receipts for parser/diff bounded indexing and slicing. |
 
 ## Policy files that exist but are not yet fully enforced
@@ -65,10 +64,14 @@ as distinct from the target design in `docs/CI.md`.
 - `policy/ci-budget.toml` — `policy_state = "advisory-ledger"`, `enforcement = "none"`.
 - `policy/ci-lane-whitelist.toml` — defined but not read by a running planner yet.
 - `policy/ci-risk-packs.toml` — defined but not read by a running planner yet.
-- `policy/no-panic-allowlist.toml` — schema 0.3 but `status = "shadow"`.
 
 None of these represent broken invariants. They are correct drafts waiting for
 the matching xtask implementation.
+
+## Compatibility mirrors
+
+- `.ripr/no-panic-allowlist.toml` — legacy schema 0.2 compatibility mirror;
+  the canonical checker reads `policy/no-panic-allowlist.toml`.
 
 ## MSRV state
 

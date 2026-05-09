@@ -44,9 +44,8 @@ See `docs/NO_PANIC_SEMANTIC_ALLOWLIST.md` for schema and selector design.
 The canonical allowlist is `policy/no-panic-allowlist.toml` (schema 0.3).
 
 `policy/no-panic-allowlist.toml` supersedes `.ripr/no-panic-allowlist.toml`
-(schema 0.2). The `.ripr/` file is retained for compatibility during the
-transition (PR 04 in the rollout plan) and will be retired or made a generated
-mirror once the checker is updated.
+(schema 0.2). The `.ripr/` file is retained as a compatibility mirror while
+older branches drain; new entries go only in `policy/no-panic-allowlist.toml`.
 
 ## Allowlist identity
 
@@ -112,5 +111,5 @@ Run this locally before pushing. It runs in CI as a required gate.
 3. The entry must have `id`, `path`, `family`, `classification`, `owner`,
    `explanation`, `expires`, and `[allow.selector]`.
 4. Run `cargo xtask check-no-panic-family` to verify the entry matches.
-5. Add the entry to `.ripr/no-panic-allowlist.toml` (schema 0.2) as well if the
-   canonical reader has not yet been updated to `policy/`.
+5. Do not add new entries to `.ripr/no-panic-allowlist.toml`; it is a legacy
+   compatibility mirror, not the canonical reader.

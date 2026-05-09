@@ -2939,12 +2939,18 @@ fn check_no_panic_family_impl() -> Result<(), String> {
         findings.extend(collect_panic_findings(root, &patterns)?);
     }
 
-    // Determine schema version
-    let allowlist_path = ".ripr/no-panic-allowlist.toml";
-    let has_v02 = if Path::new(allowlist_path).exists() {
+    // Prefer the governed schema 0.3 policy file. The legacy `.ripr/` file
+    // remains as a compatibility mirror while older branches drain.
+    let policy_allowlist_path = "policy/no-panic-allowlist.toml";
+    let legacy_allowlist_path = ".ripr/no-panic-allowlist.toml";
+    let allowlist_path = if Path::new(policy_allowlist_path).exists() {
+        policy_allowlist_path
+    } else {
+        legacy_allowlist_path
+    };
+    let has_semantic_allowlist = if Path::new(allowlist_path).exists() {
         let text = read_text_lossy(Path::new(allowlist_path))?;
-        text.lines()
-            .any(|line| line.trim() == "schema_version = \"0.2\"")
+        text.contains("schema_version = \"0.2\"") || text.contains("schema_version = \"0.3\"")
     } else {
         false
     };
@@ -2952,8 +2958,8 @@ fn check_no_panic_family_impl() -> Result<(), String> {
     let mut violations = Vec::new();
     let mut advisories = Vec::new();
 
-    if has_v02 {
-        // v0.2 mode: use semantic findings and versioned parser
+    if has_semantic_allowlist {
+        // Schema 0.2/0.3 mode: use semantic findings and versioned parser.
         let mut semantic_findings = Vec::new();
         for root in roots {
             if !root.exists() {
@@ -2998,8 +3004,8 @@ fn check_no_panic_family_impl() -> Result<(), String> {
                         }
                     }
                     PanicAllowEntryVersioned::V1(v1) => {
-                        // For v0.1 entries in v0.2 file, try to match by finding a semantic finding
-                        // that overlaps the v0.1 location
+                        // For v0.1 entries in a semantic file, try to match
+                        // by finding a semantic finding at that location.
                         if v1.path == finding.path
                             && v1.family == finding.family
                             && v1.line == finding.line
@@ -3048,7 +3054,7 @@ fn check_no_panic_family_impl() -> Result<(), String> {
                         });
                         if !matched {
                             violations.push(format!(
-                                "stale v0.2 allowlist entry: {} ({}) classification={:?} [{}] selector does not match any current finding",
+                                "stale semantic allowlist entry: {} ({}) classification={:?} [{}] selector does not match any current finding",
                                 v2.path, v2.family, v2.classification, v2.explanation
                             ));
                         }
@@ -3115,7 +3121,7 @@ fn check_no_panic_family_impl() -> Result<(), String> {
             ],
             rerun_command: "cargo xtask check-no-panic-family",
             exception_template: Some(
-                ".ripr/no-panic-allowlist.toml entry:\n[[allow]]\npath = \"path/to/file.rs\"\nline = 123\ncolumn = 17\nfamily = \"unwrap\"\nexplanation = \"Human-readable reason\"",
+                "policy/no-panic-allowlist.toml entry:\n[[allow]]\nid = \"panic-0000\"\npath = \"path/to/file.rs\"\nfamily = \"unwrap\"\nclassification = \"test_only\"\nowner = \"team/area\"\nexplanation = \"Human-readable reason\"\nexpires = \"2026-12-31\"\n\n[allow.selector]\nkind = \"method_call\"\ncontainer = \"test_name\"\ncallee = \"unwrap\"",
             ),
         },
         &violations,
@@ -16709,10 +16715,13 @@ struct PanicFamilyLastSeen {
 
 #[derive(Debug, Clone)]
 struct PanicAllowEntryV2 {
+    id: Option<String>,
     path: String,
     family: String,
     classification: Option<String>,
+    owner: Option<String>,
     explanation: String,
+    expires: Option<String>,
     selector: Option<PanicFamilySelector>,
     last_seen: Option<PanicFamilyLastSeen>,
 }
@@ -17262,14 +17271,18 @@ enum PanicAllowEntryVersioned {
 fn parse_no_panic_allowlist_toml_v2(path: &str) -> Result<Vec<PanicAllowEntryVersioned>, String> {
     let text = read_text_lossy(Path::new(path))?;
     let mut entries = Vec::new();
+    let mut schema_version = "0.1".to_string();
 
     // Accumulated fields for current entry
+    let mut entry_id: Option<String> = None;
     let mut entry_path = String::new();
     let mut entry_line: usize = 0;
     let mut entry_column: Option<usize> = None;
     let mut entry_family = String::new();
     let mut entry_classification: Option<String> = None;
+    let mut entry_owner: Option<String> = None;
     let mut entry_explanation = String::new();
+    let mut entry_expires: Option<String> = None;
     let mut selector_kind = String::new();
     let mut selector_container: Option<String> = None;
     let mut selector_callee: Option<String> = None;
@@ -17285,12 +17298,15 @@ fn parse_no_panic_allowlist_toml_v2(path: &str) -> Result<Vec<PanicAllowEntryVer
     let mut entry_start_line = 0;
 
     let flush_entry = |has_entry: bool,
+                       e_id: &Option<String>,
                        e_path: &str,
                        e_line: usize,
                        e_column: Option<usize>,
                        e_family: &str,
                        e_classification: &Option<String>,
+                       e_owner: &Option<String>,
                        e_explanation: &str,
+                       e_expires: &Option<String>,
                        s_kind: &str,
                        s_container: &Option<String>,
                        s_callee: &Option<String>,
@@ -17298,6 +17314,7 @@ fn parse_no_panic_allowlist_toml_v2(path: &str) -> Result<Vec<PanicAllowEntryVer
                        s_text_contains: &Option<String>,
                        ls_line: usize,
                        ls_column: Option<usize>,
+                       schema_version: &str,
                        path: &str,
                        start_line: usize|
      -> Result<Option<PanicAllowEntryVersioned>, String> {
@@ -17317,9 +17334,38 @@ fn parse_no_panic_allowlist_toml_v2(path: &str) -> Result<Vec<PanicAllowEntryVer
                 "{path}:{start_line} missing required field: explanation"
             ));
         }
+        if schema_version == "0.3" {
+            if e_id.as_ref().is_none_or(|value| value.trim().is_empty()) {
+                return Err(format!("{path}:{start_line} missing required field: id"));
+            }
+            if e_classification
+                .as_ref()
+                .is_none_or(|value| value.trim().is_empty())
+            {
+                return Err(format!(
+                    "{path}:{start_line} missing required field: classification"
+                ));
+            }
+            if e_owner.as_ref().is_none_or(|value| value.trim().is_empty()) {
+                return Err(format!("{path}:{start_line} missing required field: owner"));
+            }
+            if e_expires
+                .as_ref()
+                .is_none_or(|value| value.trim().is_empty())
+            {
+                return Err(format!(
+                    "{path}:{start_line} missing required field: expires"
+                ));
+            }
+            if s_kind.is_empty() {
+                return Err(format!(
+                    "{path}:{start_line} schema 0.3 entries require [allow.selector]"
+                ));
+            }
+        }
 
         if !s_kind.is_empty() {
-            // v0.2 entry with selector
+            // Semantic entry with selector.
             let selector = PanicFamilySelector {
                 kind: s_kind.to_string(),
                 container: s_container.clone(),
@@ -17336,14 +17382,17 @@ fn parse_no_panic_allowlist_toml_v2(path: &str) -> Result<Vec<PanicAllowEntryVer
                 None
             };
             let entry = PanicAllowEntryV2 {
+                id: e_id.clone(),
                 path: e_path.to_string(),
                 family: e_family.to_string(),
                 classification: e_classification.clone(),
+                owner: e_owner.clone(),
                 explanation: e_explanation.to_string(),
+                expires: e_expires.clone(),
                 selector: Some(selector),
                 last_seen,
             };
-            validate_panic_allow_entry_v2(&entry, path, start_line)?;
+            validate_panic_allow_entry_v2(&entry, path, start_line, schema_version)?;
             Ok(Some(PanicAllowEntryVersioned::V2(entry)))
         } else if e_line > 0 {
             // v0.1 entry with line number
@@ -17366,13 +17415,30 @@ fn parse_no_panic_allowlist_toml_v2(path: &str) -> Result<Vec<PanicAllowEntryVer
 
     for (line_num, line) in text.lines().enumerate() {
         let line_number = line_num + 1;
-        let trimmed = line.trim();
+        let trimmed = line.trim().trim_start_matches('\u{feff}');
 
         if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
         }
 
-        if trimmed == "schema_version = \"0.1\"" || trimmed == "schema_version = \"0.2\"" {
+        if let Some((key, value)) = parse_toml_key_value(trimmed)
+            && key == "schema_version"
+        {
+            schema_version = parse_string_value(value, path, line_number)?;
+            if schema_version != "0.1" && schema_version != "0.2" && schema_version != "0.3" {
+                return Err(format!(
+                    "{path}:{line_number} unsupported no-panic allowlist schema_version {schema_version:?}"
+                ));
+            }
+            continue;
+        }
+
+        if !has_entry_started
+            && matches!(
+                parse_toml_key_value(trimmed).map(|(key, _value)| key),
+                Some("policy" | "owner" | "status")
+            )
+        {
             continue;
         }
 
@@ -17394,12 +17460,15 @@ fn parse_no_panic_allowlist_toml_v2(path: &str) -> Result<Vec<PanicAllowEntryVer
             // Flush previous entry
             let result = flush_entry(
                 has_entry_started,
+                &entry_id,
                 &entry_path,
                 entry_line,
                 entry_column,
                 &entry_family,
                 &entry_classification,
+                &entry_owner,
                 &entry_explanation,
+                &entry_expires,
                 &selector_kind,
                 &selector_container,
                 &selector_callee,
@@ -17407,6 +17476,7 @@ fn parse_no_panic_allowlist_toml_v2(path: &str) -> Result<Vec<PanicAllowEntryVer
                 &selector_text_contains,
                 last_seen_line,
                 last_seen_column,
+                &schema_version,
                 path,
                 entry_start_line,
             )?;
@@ -17415,12 +17485,15 @@ fn parse_no_panic_allowlist_toml_v2(path: &str) -> Result<Vec<PanicAllowEntryVer
             }
 
             // Reset all fields for new entry
+            entry_id = None;
             entry_path = String::new();
             entry_line = 0;
             entry_column = None;
             entry_family = String::new();
             entry_classification = None;
+            entry_owner = None;
             entry_explanation = String::new();
+            entry_expires = None;
             selector_kind = String::new();
             selector_container = None;
             selector_callee = None;
@@ -17495,6 +17568,7 @@ fn parse_no_panic_allowlist_toml_v2(path: &str) -> Result<Vec<PanicAllowEntryVer
 
         // In [[allow]] section
         match key {
+            "id" => entry_id = Some(parse_string_value(value, path, line_number)?),
             "path" => entry_path = parse_string_value(value, path, line_number)?,
             "line" => entry_line = parse_usize_value(value, path, line_number)?,
             "column" => entry_column = Some(parse_usize_value(value, path, line_number)?),
@@ -17502,7 +17576,9 @@ fn parse_no_panic_allowlist_toml_v2(path: &str) -> Result<Vec<PanicAllowEntryVer
             "classification" => {
                 entry_classification = Some(parse_string_value(value, path, line_number)?)
             }
+            "owner" => entry_owner = Some(parse_string_value(value, path, line_number)?),
             "explanation" => entry_explanation = parse_string_value(value, path, line_number)?,
+            "expires" => entry_expires = Some(parse_string_value(value, path, line_number)?),
             _ => {
                 return Err(format!(
                     "{path}:{line_number} unknown field '{key}' in [[allow]] section"
@@ -17514,12 +17590,15 @@ fn parse_no_panic_allowlist_toml_v2(path: &str) -> Result<Vec<PanicAllowEntryVer
     // Flush final entry
     let result = flush_entry(
         has_entry_started,
+        &entry_id,
         &entry_path,
         entry_line,
         entry_column,
         &entry_family,
         &entry_classification,
+        &entry_owner,
         &entry_explanation,
+        &entry_expires,
         &selector_kind,
         &selector_container,
         &selector_callee,
@@ -17527,6 +17606,7 @@ fn parse_no_panic_allowlist_toml_v2(path: &str) -> Result<Vec<PanicAllowEntryVer
         &selector_text_contains,
         last_seen_line,
         last_seen_column,
+        &schema_version,
         path,
         entry_start_line,
     )?;
@@ -17541,6 +17621,7 @@ fn validate_panic_allow_entry_v2(
     entry: &PanicAllowEntryV2,
     path: &str,
     line_number: usize,
+    schema_version: &str,
 ) -> Result<(), String> {
     if entry.path.is_empty() {
         return Err(format!("{path}:{line_number} missing required field: path"));
@@ -17554,6 +17635,42 @@ fn validate_panic_allow_entry_v2(
         return Err(format!(
             "{path}:{line_number} missing required field: explanation"
         ));
+    }
+    if schema_version == "0.3" {
+        if entry
+            .id
+            .as_ref()
+            .is_none_or(|value| value.trim().is_empty())
+        {
+            return Err(format!("{path}:{line_number} missing required field: id"));
+        }
+        if entry
+            .classification
+            .as_ref()
+            .is_none_or(|value| value.trim().is_empty())
+        {
+            return Err(format!(
+                "{path}:{line_number} missing required field: classification"
+            ));
+        }
+        if entry
+            .owner
+            .as_ref()
+            .is_none_or(|value| value.trim().is_empty())
+        {
+            return Err(format!(
+                "{path}:{line_number} missing required field: owner"
+            ));
+        }
+        if entry
+            .expires
+            .as_ref()
+            .is_none_or(|value| value.trim().is_empty())
+        {
+            return Err(format!(
+                "{path}:{line_number} missing required field: expires"
+            ));
+        }
     }
     if let Some(ref selector) = entry.selector {
         if selector.kind.is_empty() {
@@ -17926,7 +18043,7 @@ fn check_droid_review_config_impl() -> Result<(), String> {
 #[expect(
     clippy::unwrap_used,
     clippy::expect_used,
-    reason = "xtask test code uses unwrap/expect for fail-fast assertion. Production paths are receipted via .ripr/no-panic-allowlist.toml; the test scope is governed by this single module-level expect."
+    reason = "xtask test code uses unwrap/expect for fail-fast assertion. Production paths are receipted via policy/no-panic-allowlist.toml; the test scope is governed by this single module-level expect."
 )]
 mod tests {
     use super::XtaskCommand;
@@ -19129,6 +19246,96 @@ column = 5
                     }
                 }
                 _ => return Err("expected V2 entry".to_string()),
+            }
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn v0_3_governed_entries_parse_with_semantic_selectors() -> Result<(), String> {
+        with_temp_cwd("v03_governed_entry", |root| {
+            let toml_content = r#"schema_version = "0.3"
+policy = "no-panic-allowlist"
+owner = "core/policy"
+status = "canonical"
+
+[[allow]]
+id = "panic-0001"
+path = "src/lib.rs"
+family = "unwrap"
+classification = "test_only"
+owner = "core/tests"
+explanation = "Test helper"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "my_fn"
+callee = "unwrap"
+
+[allow.last_seen]
+line = 10
+column = 5
+"#;
+            write(&root.join("allowlist.toml"), toml_content);
+            let allowlist_path = root.join("allowlist.toml");
+            let allowlist_path = allowlist_path.to_str().ok_or("non-UTF-8 allowlist path")?;
+            let entries = parse_no_panic_allowlist_toml_v2(allowlist_path)
+                .map_err(|err| format!("parse failed: {err}"))?;
+
+            match &entries[0] {
+                PanicAllowEntryVersioned::V2(entry) => {
+                    if entry.id.as_deref() != Some("panic-0001") {
+                        return Err(format!("unexpected id: {:?}", entry.id));
+                    }
+                    if entry.owner.as_deref() != Some("core/tests") {
+                        return Err(format!("unexpected owner: {:?}", entry.owner));
+                    }
+                    if entry.expires.as_deref() != Some("2026-12-31") {
+                        return Err(format!("unexpected expires: {:?}", entry.expires));
+                    }
+                    if entry.selector.is_none() {
+                        return Err("expected semantic selector".to_string());
+                    }
+                }
+                PanicAllowEntryVersioned::V1(_) => {
+                    return Err("schema 0.3 entry must parse as semantic V2".to_string());
+                }
+            }
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn v0_3_requires_governed_fields() -> Result<(), String> {
+        with_temp_cwd("v03_requires_owner", |root| {
+            let toml_content = r#"schema_version = "0.3"
+policy = "no-panic-allowlist"
+owner = "core/policy"
+status = "canonical"
+
+[[allow]]
+id = "panic-0001"
+path = "src/lib.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper"
+expires = "2026-12-31"
+
+[allow.selector]
+kind = "method_call"
+container = "my_fn"
+callee = "unwrap"
+"#;
+            write(&root.join("allowlist.toml"), toml_content);
+            let allowlist_path = root.join("allowlist.toml");
+            let allowlist_path = allowlist_path.to_str().ok_or("non-UTF-8 allowlist path")?;
+            let result = parse_no_panic_allowlist_toml_v2(allowlist_path);
+            let err = result
+                .err()
+                .ok_or("expected parse error for missing schema 0.3 owner")?;
+            if !err.contains("missing required field: owner") {
+                return Err(format!("unexpected error message: {err}"));
             }
             Ok(())
         })

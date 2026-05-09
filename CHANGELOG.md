@@ -427,6 +427,9 @@ are scoped or reviewed.
 - Promoted the clean Rust 1.94/1.95 planned Clippy lints into the active
   workspace lint policy and retained unsupported or config-dependent lints with
   explicit blockers.
+- Made `policy/no-panic-allowlist.toml` the canonical schema 0.3 no-panic
+  allowlist, with governed ids, owners, expiry dates, and checker support while
+  leaving `.ripr/no-panic-allowlist.toml` as a legacy compatibility mirror.
 - Advanced Campaign 13, PR Review Guidance, after adding the read-only
   `ripr review-comments` producer and generated CI producer step;
   placement/suppression fixtures and PR guidance docs completed the lane before

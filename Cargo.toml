@@ -22,14 +22,14 @@ unsafe_op_in_unsafe_fn = "deny"
 
 # Panic-safety policy: clippy is the fast IDE rail for panic-family code shapes;
 # `cargo xtask check-no-panic-family` is the authoritative semantic gate that
-# matches against `.ripr/no-panic-allowlist.toml` (path + family + selector).
+# matches against `policy/no-panic-allowlist.toml` (path + family + selector).
 # See docs/CLIPPY_POLICY.md.
 [workspace.lints.clippy]
 # Panic family (code-shape rail).
 # Every `unwrap_used` / `expect_used` call site is receipted with
 # `#[expect(clippy::unwrap_used, reason = "...")]` (or `expect_used`) on
 # the enclosing item, mirroring the entries in
-# `.ripr/no-panic-allowlist.toml`. The semantic checker remains the
+# `policy/no-panic-allowlist.toml`. The semantic checker remains the
 # authoritative gate; clippy is the local code-shape rail.
 dbg_macro = "deny"
 todo = "deny"

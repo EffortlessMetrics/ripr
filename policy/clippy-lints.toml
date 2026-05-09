@@ -9,7 +9,7 @@ msrv = "1.95"
 #
 # See docs/CLIPPY_POLICY.md for the dual-rail design (Clippy as the local
 # code-shape rail; `cargo xtask check-no-panic-family` as the authoritative
-# semantic rail with `.ripr/no-panic-allowlist.toml`).
+# semantic rail with `policy/no-panic-allowlist.toml`).
 
 [policy]
 panic_free_tests = true
@@ -48,7 +48,7 @@ level = "deny"
 [[active.panic_family]]
 name = "clippy::unwrap_used"
 level = "deny"
-note = "Receipted dual-rail with `#[expect(clippy::unwrap_used, reason = \"...\")]` mirrors per call site, paired with `.ripr/no-panic-allowlist.toml` entries. Production code paths are forbidden; test fixtures use module-level `#[expect]` blocks listed in `.ripr/allow-attributes.txt`."
+note = "Receipted dual-rail with `#[expect(clippy::unwrap_used, reason = \"...\")]` mirrors per call site, paired with `policy/no-panic-allowlist.toml` entries. Production code paths are forbidden; test fixtures use module-level `#[expect]` blocks listed in `.ripr/allow-attributes.txt`."
 
 [[active.panic_family]]
 name = "clippy::expect_used"

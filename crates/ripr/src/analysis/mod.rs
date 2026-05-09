@@ -118,7 +118,7 @@ pub(crate) fn owner_symbols_for_lines(
 #[cfg(test)]
 #[expect(
     clippy::unwrap_used,
-    reason = "Test fixture builders use unwrap on fs operations against fresh temp dirs; receipted via .ripr/no-panic-allowlist.toml entries for crates/ripr/src/analysis/mod.rs."
+    reason = "Test fixture builders use unwrap on fs operations against fresh temp dirs; receipted via policy/no-panic-allowlist.toml entries for crates/ripr/src/analysis/mod.rs."
 )]
 mod tests {
     use super::*;

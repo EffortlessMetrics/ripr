@@ -128,6 +128,9 @@ Completed receipts:
   remains planned until a protected-seam `clippy.toml` config lands;
   `manual_pop_if` remains planned because Rust 1.95.0 Clippy does not
   recognize it.
+- PR 04: `policy/no-panic-allowlist.toml` is now the canonical schema 0.3
+  allowlist read by `cargo xtask check-no-panic-family`; `.ripr/` remains a
+  legacy compatibility mirror while older branches drain.
 
 Natural stacks:
 
