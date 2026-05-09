@@ -51,6 +51,11 @@ are scoped or reviewed.
   bounded repair queues, and leaves gate policy, analyzer behavior, provider
   calls, mutation execution, generated tests, source edits, and default CI
   blocking unchanged.
+- Routed baseline and PR ledger identities through canonical gap identity:
+  baseline create, diff, and shrink-only update now preserve supplied
+  `canonical_gap_id` and match it before legacy selectors, while PR evidence
+  ledger waiver, suppression, receipt, and top repair route records carry the
+  same identity when supplied.
 - Opened Campaign 22, First Useful Action, with
   `spec/first-useful-action-report` as the first ready work item so existing
   editor, PR guidance, ledger, proof, receipt, optional gate, coverage/grip,

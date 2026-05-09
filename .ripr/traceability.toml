@@ -1008,16 +1008,19 @@ name = "baseline debt delta"
 spec = "docs/specs/RIPR-SPEC-0016-baseline-debt-delta.md"
 tests = [
   "crates/ripr/src/output/baseline.rs::tests::baseline_create_includes_visible_gate_decisions_and_skips_hidden_ones",
+  "crates/ripr/src/output/baseline.rs::tests::baseline_create_uses_canonical_gap_identity_when_supplied",
   "crates/ripr/src/output/baseline.rs::tests::baseline_create_uses_fallback_identity_when_direct_ids_are_missing",
   "crates/ripr/src/output/baseline.rs::tests::baseline_create_reports_malformed_entries_without_stopping",
   "crates/ripr/src/output/baseline.rs::tests::baseline_create_rejects_unsupported_schema_version",
   "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_reports_all_primary_buckets",
+  "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_matches_by_canonical_gap_id_across_line_movement",
   "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_matches_by_fallback_and_warns",
   "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_marks_ambiguous_fallback_as_stale",
   "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_reports_missing_current_input",
   "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_treats_non_object_review_metadata_as_absent",
   "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_matches_mixed_fixture_contract",
   "crates/ripr/src/output/baseline_update.rs::tests::baseline_update_removes_resolved_without_adopting_new_current_debt",
+  "crates/ripr/src/output/baseline_update.rs::tests::baseline_update_preserves_refactored_entry_matched_by_canonical_gap_id",
   "crates/ripr/src/output/baseline_update.rs::tests::baseline_update_preserves_ambiguous_and_fallback_matches",
   "crates/ripr/src/output/baseline_update.rs::tests::baseline_update_rejects_invalid_inputs",
   "crates/ripr/src/output/gate.rs::tests::gate_baseline_check_reads_baseline_ledger_entries",
@@ -1368,6 +1371,10 @@ tests = [
   "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_records_no_movement_reason",
   "crates/ripr/src/output/test_oracle_assistant_proof.rs::tests::test_oracle_assistant_proof_prefers_agent_packet_evidence_record",
   "crates/ripr/src/output/test_oracle_assistant_proof.rs::tests::test_oracle_assistant_proof_prefers_repo_exposure_evidence_record_movement",
+  "crates/ripr/src/output/baseline.rs::tests::baseline_create_uses_canonical_gap_identity_when_supplied",
+  "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_matches_by_canonical_gap_id_across_line_movement",
+  "crates/ripr/src/output/baseline_update.rs::tests::baseline_update_preserves_refactored_entry_matched_by_canonical_gap_id",
+  "crates/ripr/src/output/pr_evidence_ledger.rs::tests::pr_evidence_ledger_joins_primary_artifacts",
   "crates/ripr/src/output/render.rs::tests::render_dispatch_renders_repo_exposure_and_sarif_formats",
 ]
 fixtures = []
@@ -1378,6 +1385,10 @@ code = [
   "crates/ripr/src/output/ripr_zero_status.rs",
   "crates/ripr/src/output/outcome.rs",
   "crates/ripr/src/output/test_oracle_assistant_proof.rs",
+  "crates/ripr/src/output/baseline.rs",
+  "crates/ripr/src/output/baseline_delta.rs",
+  "crates/ripr/src/output/baseline_update.rs",
+  "crates/ripr/src/output/pr_evidence_ledger.rs",
   "crates/ripr/src/output/mod.rs",
 ]
 outputs = [

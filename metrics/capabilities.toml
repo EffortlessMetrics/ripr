@@ -560,11 +560,13 @@ evidence = [
   "crates/ripr/src/output/ripr_zero_status.rs prefers evidence_record repair context when supplied by baseline debt delta items and keeps legacy fields as fallback",
   "crates/ripr/src/output/outcome.rs prefers evidence_record before/after movement fields for ripr outcome and agent verify while preserving legacy repo-exposure fallback",
   "crates/ripr/src/output/test_oracle_assistant_proof.rs prefers evidence_record selected-seam, recommendation, static-limit, and movement fields while preserving legacy proof fallbacks",
+  "crates/ripr/src/output/baseline.rs, baseline_delta.rs, and baseline_update.rs carry canonical_gap_id when supplied directly, through identity.canonical_gap_id, or through evidence_record.canonical_gap_id, and match it before seam/source/id/dedupe/fallback selectors",
+  "crates/ripr/src/output/pr_evidence_ledger.rs carries canonical_gap_id through waiver, suppression, repair receipt, and top repair route records when supplied by source artifacts",
   "docs/OUTPUT_SCHEMA.md documents evidence_record schema 0.1 under repo-exposure schema 0.3",
-  "unit tests pin identity, grip class, evidence path, recommendation/actionability, calibration placeholder, static limitations, packet projection, RIPR Zero repair-route consumption, evidence-record movement consumption, and assistant-proof evidence-record consumption"
+  "unit tests pin identity, grip class, evidence path, recommendation/actionability, calibration placeholder, static limitations, packet projection, RIPR Zero repair-route consumption, evidence-record movement consumption, assistant-proof evidence-record consumption, and canonical gap identity routing"
 ]
 fixtures = []
-next = "output/baseline-ledger-canonical-gap-identity"
+next = "fixtures/evidence-record-contract"
 metric = "evidence_record_projected_seams, evidence_record_actionable_guidance, evidence_record_static_limitations"
 
 [[capability]]
@@ -743,12 +745,12 @@ status = "alpha"
 spec = "RIPR-SPEC-0016"
 evidence = [
   "docs/specs/RIPR-SPEC-0016-baseline-debt-delta.md defines the baseline debt delta contract",
-  "ripr baseline create writes .ripr/gate-baseline.json ledgers from existing gate-decision JSON without overwriting by default and includes additive owner/reason/created/review-after/source metadata",
-  "ripr baseline diff writes advisory baseline-debt-delta JSON and Markdown from a reviewed baseline and current gate-decision evidence while preserving present review metadata on baseline-derived items",
-  "ripr baseline update --remove-resolved shrink-only refreshes reviewed baselines without adopting new current debt and preserves entry metadata",
+  "ripr baseline create writes .ripr/gate-baseline.json ledgers from existing gate-decision JSON without overwriting by default and includes additive owner/reason/created/review-after/source metadata plus canonical_gap_id when supplied",
+  "ripr baseline diff writes advisory baseline-debt-delta JSON and Markdown from a reviewed baseline and current gate-decision evidence while preserving present review metadata on baseline-derived items and matching canonical_gap_id before legacy selectors",
+  "ripr baseline update --remove-resolved shrink-only refreshes reviewed baselines without adopting new current debt, preserving entry metadata and canonical_gap_id matches across line movement",
   "generated CI runs ripr baseline diff when RIPR_GATE_BASELINE and gate-decision.json are present, uploads baseline-debt-delta JSON/Markdown, and summarizes debt movement without making the report the pass/fail authority",
   "docs/BASELINE_LEDGER_WORKFLOW.md documents initial advisory adoption, reviewed baseline creation, baseline-check rollout, shrink-only refresh, new debt review, waiver versus baseline versus suppression boundaries, and the path toward RIPR 0",
-  "crates/ripr/src/output/baseline_delta.rs renders still-present, resolved, new policy-eligible, acknowledged, suppressed, stale, invalid, and missing-input buckets",
+  "crates/ripr/src/output/baseline_delta.rs renders still-present, resolved, new policy-eligible, acknowledged, suppressed, stale, invalid, and missing-input buckets with canonical_gap_id in identity records when supplied",
   "crates/ripr/src/output/baseline_update.rs preserves malformed or ambiguous entries while removing resolved reviewed debt",
   "fixtures/boundary_gap/expected/baseline-debt-delta/mixed pins checked JSON and Markdown output including metadata compatibility",
   "docs/OUTPUT_SCHEMA.md Gate Baseline Ledger, Gate Baseline Update, and Baseline Debt Delta Report sections define the ledger, update, and delta shapes",
@@ -784,7 +786,7 @@ spec = "RIPR-SPEC-0018"
 evidence = [
   "docs/specs/RIPR-SPEC-0018-pr-evidence-ledger.md defines the PR evidence ledger contract",
   "ripr pr-ledger record writes advisory pr-evidence-ledger JSON and Markdown from existing PR guidance, gate decision, baseline debt delta, RIPR Zero status, recommendation calibration, agent receipt, optional coverage, and optional history inputs",
-  "crates/ripr/src/output/pr_evidence_ledger.rs renders PR movement, visible waivers, suppressions, repair receipts, top repair route, coverage/grip frontier status, and history summaries without changing gate authority",
+  "crates/ripr/src/output/pr_evidence_ledger.rs renders PR movement, visible waivers, suppressions, repair receipts, top repair route, coverage/grip frontier status, and history summaries without changing gate authority, carrying canonical_gap_id when supplied",
   "crates/ripr/src/cli/commands.rs generated GitHub workflow runs pr-ledger record on pull requests when PR guidance exists, uploads pr-evidence-ledger JSON/Markdown with the normal artifact packet, and appends a PR movement summary while keeping gate decisions as the pass/fail authority",
   "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed pins checked JSON and Markdown output for a mixed acknowledged/suppressed/resolved/new-debt case",
   "docs/OUTPUT_SCHEMA.md documents the pr-evidence-ledger JSON/Markdown shape",

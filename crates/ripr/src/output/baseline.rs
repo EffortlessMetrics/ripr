@@ -34,6 +34,7 @@ struct BaselineEntry {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct BaselineIdentity {
+    canonical_gap_id: Option<String>,
     seam_id: Option<String>,
     source_id: Option<String>,
     id: Option<String>,
@@ -168,6 +169,7 @@ fn baseline_entry_from_decision(
     let line = value.pointer("/placement/line").and_then(Value::as_u64);
     let static_class = string_field(value.get("static_class"));
     let identity = BaselineIdentity {
+        canonical_gap_id: canonical_gap_id_from_value(value),
         seam_id: string_field(value.get("seam_id")),
         source_id: string_field(value.get("source_id")),
         id: string_field(value.get("id")),
@@ -219,7 +221,8 @@ fn fallback_identity(
 
 impl BaselineIdentity {
     fn has_stable_value(&self) -> bool {
-        self.seam_id.is_some()
+        self.canonical_gap_id.is_some()
+            || self.seam_id.is_some()
             || self.source_id.is_some()
             || self.id.is_some()
             || self.dedupe_key.is_some()
@@ -230,8 +233,9 @@ impl BaselineIdentity {
 fn entry_sort_key(entry: &BaselineEntry) -> String {
     entry
         .identity
-        .seam_id
+        .canonical_gap_id
         .as_deref()
+        .or(entry.identity.seam_id.as_deref())
         .or(entry.identity.source_id.as_deref())
         .or(entry.identity.id.as_deref())
         .or(entry.identity.dedupe_key.as_deref())
@@ -240,9 +244,16 @@ fn entry_sort_key(entry: &BaselineEntry) -> String {
         .to_string()
 }
 
+fn canonical_gap_id_from_value(value: &Value) -> Option<String> {
+    string_field(value.get("canonical_gap_id"))
+        .or_else(|| string_field(value.pointer("/identity/canonical_gap_id")))
+        .or_else(|| string_field(value.pointer("/evidence_record/canonical_gap_id")))
+}
+
 fn entry_json(entry: &BaselineEntry) -> Value {
     json!({
         "identity": {
+            "canonical_gap_id": entry.identity.canonical_gap_id,
             "seam_id": entry.identity.seam_id,
             "source_id": entry.identity.source_id,
             "id": entry.identity.id,
@@ -360,6 +371,36 @@ mod tests {
         assert!(rendered.contains("\"seam_id\": \"bbb\""));
         assert!(rendered.find("\"aaa\"") < rendered.find("\"bbb\""));
         assert!(!rendered.contains("hidden-source"));
+        Ok(())
+    }
+
+    #[test]
+    fn baseline_create_uses_canonical_gap_identity_when_supplied() -> Result<(), String> {
+        let json = r#"{
+          "schema_version": "0.1",
+          "mode": "visible-only",
+          "decisions": [
+            {
+              "decision": "advisory",
+              "id": "ripr-gate-old",
+              "seam_id": "old",
+              "source_id": "ripr-review-old",
+              "static_class": "weakly_gripped",
+              "placement": {"path": "src/old.rs", "line": 7},
+              "evidence_record": {
+                "canonical_gap_id": "pricing::discount::threshold_equality"
+              },
+              "evidence": {"missing_discriminator": "amount == threshold"}
+            }
+          ]
+        }"#;
+
+        let report =
+            baseline_create_report_from_gate_decision_json("gate.json", "unix_ms:1", json)?;
+        let rendered = render_baseline_create_json(&report)?;
+        assert!(
+            rendered.contains("\"canonical_gap_id\": \"pricing::discount::threshold_equality\"")
+        );
         Ok(())
     }
 

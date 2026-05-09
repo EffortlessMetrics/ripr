@@ -2065,6 +2065,7 @@ JSON shape:
   "entries": [
     {
       "identity": {
+        "canonical_gap_id": "pricing::discount::threshold_equality",
         "seam_id": "67fc764ba37d77bd",
         "source_id": "ripr-review-67fc764ba37d77bd",
         "id": "ripr-gate-67fc764ba37d77bd",
@@ -2235,12 +2236,13 @@ JSON shape:
     {
       "bucket": "new_policy_eligible",
       "identity": {
+        "canonical_gap_id": "pricing::discount::threshold_equality",
         "seam_id": "67fc764ba37d77bd",
         "source_id": "ripr-review-67fc764ba37d77bd",
         "id": "ripr-gate-67fc764ba37d77bd",
         "dedupe_key": null,
         "fallback": "src/pricing.rs:88:weakly_gripped",
-        "matched_by": "seam_id"
+        "matched_by": "canonical_gap_id"
       },
       "path": "src/pricing.rs",
       "line": 88,
@@ -2293,9 +2295,12 @@ Field contract:
 - `delta.missing_current_input` - records whose movement cannot be classified
   because required current artifacts are missing or unreadable.
 - `items[].bucket` - one primary bucket from the `delta` object.
-- `items[].identity` - stable identity fields. Matching order is `seam_id`,
-  `source_id`, `id`, `dedupe_key`, then normalized path, line, and static
-  class fallback.
+- `items[].identity` - stable identity fields. Matching order is
+  `canonical_gap_id`, `seam_id`, `source_id`, `id`, `dedupe_key`, then
+  normalized path, line, and static class fallback. `canonical_gap_id` may be
+  supplied directly, through `identity.canonical_gap_id`, or through
+  `evidence_record.canonical_gap_id`; when absent it remains `null` for
+  backward-compatible ledgers.
 - `items[].identity.matched_by` - the identity selector that joined baseline
   and current records.
 - `items[].repair` - focused repair context from the current gate decision and
@@ -2574,6 +2579,7 @@ JSON shape:
   "waivers": [
     {
       "label": "ripr-waive",
+      "canonical_gap_id": "pricing::discount::threshold_equality",
       "decision_id": "ripr-gate-67fc764ba37d77bd",
       "seam_id": "67fc764ba37d77bd",
       "age_prs": 1,
@@ -2584,6 +2590,7 @@ JSON shape:
   ],
   "suppressions": [
     {
+      "canonical_gap_id": "pricing::discount::threshold_equality",
       "decision_id": "ripr-gate-suppressed",
       "seam_id": "suppressed",
       "source": ".ripr/suppressions.toml",
@@ -2595,6 +2602,7 @@ JSON shape:
   "repair_receipts": [
     {
       "source": "agent_receipt",
+      "canonical_gap_id": "pricing::discount::threshold_equality",
       "seam_id": "67fc764ba37d77bd",
       "static_movement": {
         "state": "improved",
@@ -2619,6 +2627,7 @@ JSON shape:
   },
   "top_repair_route": {
     "source": "ripr_zero_status",
+    "canonical_gap_id": "pricing::discount::threshold_equality",
     "seam_id": "67fc764ba37d77bd",
     "path": "src/pricing.rs",
     "line": 88,
@@ -2653,13 +2662,17 @@ Field contract:
 - `gate.pass_fail_authority` - names `ripr gate evaluate` whenever a gate
   decision is present.
 - `waivers[]` - PR-time visible acknowledgement records. Waivers do not hide
-  findings and do not become suppressions.
+  findings and do not become suppressions. `waivers[].canonical_gap_id` is
+  copied from source artifacts when available and remains `null` otherwise.
 - `suppressions[]` - durable policy exceptions. Suppressions are not waivers
-  and are not baseline debt.
+  and are not baseline debt. `suppressions[].canonical_gap_id` is copied from
+  gate or baseline-delta evidence when available.
 - `repair_receipts[]` - supplied outcome or agent receipt evidence.
   `repair_receipts[].static_movement` uses the same object shape as review
   guidance outcome receipts, including `state`, `source`, and `artifact`; the
   ledger must not infer receipt success from a missing artifact.
+  `repair_receipts[].canonical_gap_id` is copied from receipts or
+  recommendation provenance when supplied.
 - `coverage_grip_frontier.status` - `available`, `not_available`, or
   `unsupported`.
 - `coverage_grip_frontier.*` - keeps coverage movement separate from RIPR
@@ -2667,7 +2680,8 @@ Field contract:
   adequacy.
 - `top_repair_route` - copied from existing PR guidance, RIPR Zero status, gate
   decision, agent packet, or receipt artifacts. Missing fields are `null` plus
-  warnings, not invented.
+  warnings, not invented. `top_repair_route.canonical_gap_id` is copied from
+  the selected source artifact when available.
 - `history.*` - present only when prior ledger history or previous ledger
   summary is supplied.
 - `warnings[]` - missing inputs, unavailable coverage, unsupported schemas,
