@@ -45,6 +45,12 @@ are scoped or reviewed.
   related test, assertion shape, verification command, and before/after classes
   now prefer supplied `evidence_record` fields while preserving legacy proof
   fallbacks and advisory boundaries.
+- Added `ripr assistant-loop health`, a read-only advisory producer that writes
+  `assistant-loop-health.{json,md}` from explicit proof artifacts, summarizes
+  proof completeness, missing inputs, static movement, recurring warnings, and
+  bounded repair queues, and leaves gate policy, analyzer behavior, provider
+  calls, mutation execution, generated tests, source edits, and default CI
+  blocking unchanged.
 - Opened Campaign 22, First Useful Action, with
   `spec/first-useful-action-report` as the first ready work item so existing
   editor, PR guidance, ledger, proof, receipt, optional gate, coverage/grip,
