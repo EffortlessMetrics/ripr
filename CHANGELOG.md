@@ -77,6 +77,10 @@ are scoped or reviewed.
   PR guidance, first useful action, assistant proof, assistant-loop health, PR
   ledger, baseline, gate, receipt, calibration, and coverage/grip artifacts can
   be composed into one advisory generated-CI first screen.
+- Added RIPR-SPEC-0023 for the planned PR review front-panel report, including
+  explicit input artifacts, bounded first-screen states, artifact groups,
+  generated-CI projection limits, advisory boundaries, and the next
+  fixture-first work item.
 - Opened Campaign 22, First Useful Action, with
   `spec/first-useful-action-report` as the first ready work item so existing
   editor, PR guidance, ledger, proof, receipt, optional gate, coverage/grip,

@@ -3353,6 +3353,233 @@ maintainers and coding agents read complete versus partial proof packets,
 missing-input repairs, unchanged movement, generated-CI summaries, and advisory
 limits.
 
+## PR Review Front Panel Report
+
+RIPR-SPEC-0023 defines the PR review front-panel report contract. The planned
+`ripr pr-review front-panel` producer reads explicit existing RIPR artifacts
+and writes advisory JSON and Markdown that summarize the PR's top test-oracle
+issue, policy state, baseline movement, repair route, receipt state, optional
+calibration, optional coverage/grip context, and artifact groups. The report is
+read-only and must not rerun hidden analysis, inspect source to infer missing
+fields, edit source, generate tests, call providers, run mutation testing,
+change recommendation ranking, change gate policy, publish inline comments, or
+change default CI blocking.
+
+Planned command shape:
+
+```text
+ripr pr-review front-panel \
+  --root . \
+  --pr-guidance target/ripr/review/comments.json \
+  --first-action target/ripr/reports/first-useful-action.json \
+  --assistant-proof target/ripr/reports/test-oracle-assistant-proof.json \
+  --assistant-health target/ripr/reports/assistant-loop-health.json \
+  --ledger target/ripr/reports/pr-evidence-ledger.json \
+  --baseline-delta target/ripr/reports/baseline-debt-delta.json \
+  --zero-status target/ripr/reports/ripr-zero-status.json \
+  --gate-decision target/ripr/reports/gate-decision.json \
+  --recommendation-calibration target/ripr/reports/recommendation-calibration.json \
+  --mutation-calibration target/ripr/reports/mutation-calibration.json \
+  --coverage-frontier target/ripr/reports/coverage-grip-frontier.json \
+  --receipt target/ripr/reports/agent-receipt.json \
+  --out target/ripr/reports/pr-review-front-panel.json \
+  --out-md target/ripr/reports/pr-review-front-panel.md
+```
+
+The report writes:
+
+```text
+target/ripr/reports/pr-review-front-panel.json
+target/ripr/reports/pr-review-front-panel.md
+```
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "pr_review_front_panel",
+  "status": "advisory",
+  "root": ".",
+  "generated_at": "2026-05-09T12:00:00Z",
+  "inputs": {
+    "pr_guidance": "target/ripr/review/comments.json",
+    "first_action": "target/ripr/reports/first-useful-action.json",
+    "assistant_proof": "target/ripr/reports/test-oracle-assistant-proof.json",
+    "assistant_health": "target/ripr/reports/assistant-loop-health.json",
+    "ledger": "target/ripr/reports/pr-evidence-ledger.json",
+    "baseline_delta": "target/ripr/reports/baseline-debt-delta.json",
+    "zero_status": "target/ripr/reports/ripr-zero-status.json",
+    "gate_decision": "target/ripr/reports/gate-decision.json",
+    "recommendation_calibration": "target/ripr/reports/recommendation-calibration.json",
+    "mutation_calibration": null,
+    "coverage_frontier": "target/ripr/reports/coverage-grip-frontier.json",
+    "receipt": "target/ripr/reports/agent-receipt.json"
+  },
+  "summary": {
+    "status": "advisory",
+    "headline": "Add equality-boundary discriminator test.",
+    "top_issue_state": "actionable",
+    "policy_state": "new_policy_eligible",
+    "placement": "changed_line",
+    "movement_state": "unknown",
+    "coverage_grip_state": "not_available",
+    "blocking_candidates": 0,
+    "acknowledged": 0,
+    "suppressed": 0,
+    "new_policy_eligible": 1,
+    "baseline_still_present": 42,
+    "baseline_resolved": 3
+  },
+  "top_issue": {
+    "source": "first_useful_action",
+    "source_artifact": "target/ripr/reports/first-useful-action.json",
+    "seam_id": "67fc764ba37d77bd",
+    "canonical_gap_id": "gap-67fc764ba37d77bd",
+    "path": "src/pricing.rs",
+    "line": 88,
+    "classification": "weakly_exposed",
+    "missing_discriminator": "amount == discount_threshold",
+    "related_test": "tests/pricing.rs::applies_discount_above_threshold",
+    "suggested_test": "Add an equality-boundary assertion.",
+    "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json",
+    "agent_command": "ripr agent start --root . --seam-id 67fc764ba37d77bd --out target/ripr/workflow",
+    "receipt": {
+      "artifact": "target/ripr/reports/agent-receipt.json",
+      "status": "present"
+    }
+  },
+  "movement": {
+    "state": "unknown",
+    "before_class": null,
+    "after_class": null,
+    "source_artifact": null
+  },
+  "debt_delta": {
+    "new_policy_eligible": 1,
+    "baseline_still_present": 42,
+    "baseline_resolved": 3,
+    "acknowledged": 0,
+    "waived": 0,
+    "suppressed": 0,
+    "blocking_candidates": 0
+  },
+  "policy": {
+    "mode": "visible-only",
+    "decision": "advisory",
+    "authority_artifact": "target/ripr/reports/gate-decision.json",
+    "acknowledgement_label": "ripr-waive"
+  },
+  "calibration": {
+    "recommendation": "unknown",
+    "mutation": "not_available",
+    "source_artifacts": [
+      "target/ripr/reports/recommendation-calibration.json"
+    ]
+  },
+  "coverage_grip": {
+    "state": "not_available",
+    "coverage_delta": null,
+    "grip_delta": null,
+    "source_artifact": "target/ripr/reports/coverage-grip-frontier.json"
+  },
+  "artifacts": [
+    {
+      "group": "start_here",
+      "label": "PR review front panel",
+      "path": "target/ripr/reports/pr-review-front-panel.md",
+      "available": true,
+      "required": true
+    },
+    {
+      "group": "repair",
+      "label": "Assistant proof",
+      "path": "target/ripr/reports/test-oracle-assistant-proof.md",
+      "available": true,
+      "required": false
+    },
+    {
+      "group": "policy",
+      "label": "Gate decision",
+      "path": "target/ripr/reports/gate-decision.md",
+      "available": true,
+      "required": false
+    }
+  ],
+  "warnings": [],
+  "limits": [
+    "Static RIPR evidence only.",
+    "Does not provide runtime confirmation.",
+    "Does not run mutation testing.",
+    "Does not call providers.",
+    "Does not edit source or generate tests.",
+    "Does not publish inline comments.",
+    "Does not change default CI blocking.",
+    "Gate evaluator remains pass/fail authority."
+  ]
+}
+```
+
+Field contract:
+
+- `schema_version` is `0.1` until the report shape changes.
+- `kind` is always `pr_review_front_panel`.
+- `status` is `advisory`, `pass`, `acknowledged`, `blocked`,
+  `config_error`, or `incomplete`.
+- `summary.top_issue_state` is `actionable`, `summary_only`,
+  `baseline_only`, `already_improved`, `unchanged_after_attempt`,
+  `no_actionable_seam`, `missing_required_input`, or `stale_input`.
+- `summary.policy_state` is `none`, `new_policy_eligible`, `baseline`,
+  `acknowledged`, `waived`, `suppressed`, `blocking`, or `config_error`.
+- `summary.placement` is `changed_line`, `summary_only`, or
+  `not_available`.
+- `summary.movement_state` is `improved`, `resolved`, `unchanged`,
+  `regressed`, `unknown`, or `not_available`.
+- `summary.coverage_grip_state` is `not_available`,
+  `flat_coverage_grip_improved`, `coverage_and_grip_improved`,
+  `coverage_improved_grip_unchanged`, `coverage_regressed`, or `unknown`.
+- `inputs.*` records explicit input paths. Missing optional paths are `null`;
+  missing recommended paths produce warnings or fallback states.
+- `summary.*` carries first-screen counts and states derived from supplied
+  artifacts. It must not be an opaque score.
+- `top_issue.*` is copied from existing RIPR artifacts. The front panel must
+  not mint seam identities, rerank recommendations with a model, or infer
+  missing source facts from code.
+- `movement.*` preserves before/after static movement when supplied. It is not
+  runtime mutation confirmation.
+- `debt_delta.*` carries PR-local movement from baseline, RIPR Zero, gate, or
+  ledger inputs when available.
+- `policy.authority_artifact` records the gate decision path when supplied.
+  Gate decision remains the only configured pass/fail authority.
+- `calibration.*` and `coverage_grip.*` are advisory context. They must not
+  become adequacy or blocking claims.
+- `artifacts[].group` is `start_here`, `repair`, `evidence`, `policy`,
+  `calibration`, or `generated_ci`.
+- `artifacts[]` groups known artifacts by reviewer use. Missing artifacts stay
+  visible with `available = false`.
+- `warnings[].kind` is one of `missing_required_input`,
+  `missing_optional_input`, `stale_input`, `malformed_input`,
+  `incompatible_schema`, `summary_only_guidance`, `missing_receipt`,
+  `missing_handoff`, `missing_gate_decision`, `missing_calibration`,
+  `static_limit`, `config_error`, or `other`.
+- `limits` preserves static-evidence, no-edit, no-generated-test,
+  no-provider-call, no-runtime-mutation-execution, no-inline-comment, and
+  advisory-default boundaries.
+
+Markdown should fit in a generated GitHub job summary. It should show status,
+top issue, missing discriminator, suggested focused test, related test,
+baseline and PR movement, policy state, repair commands, receipt state,
+artifact groups, and advisory limits. For fallback states, Markdown should put
+the safe next step before lower-priority detail. For example, missing required
+inputs should say to regenerate the missing PR guidance or first-useful-action
+artifact before acting on the panel.
+
+Generated CI may run the producer only when configured input artifacts exist,
+upload `pr-review-front-panel.{json,md}` with the normal report packet, and
+append the Markdown to the job summary. The projection is advisory:
+`ripr gate evaluate` remains the only configured pass/fail authority.
+
 ### Review Guidance Outcome Receipt
 
 Review guidance outcome receipts are optional repo-local inputs to the

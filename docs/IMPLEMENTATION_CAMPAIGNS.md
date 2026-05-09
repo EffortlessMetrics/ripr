@@ -2691,8 +2691,8 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `spec/pr-review-front-panel-report` | ready | Define the PR review front-panel JSON/Markdown contract, explicit inputs, first-screen fields, artifact grouping, advisory limits, and generated-CI projection boundaries before implementation. |
-| `fixtures/pr-review-front-panel-corpus` | blocked | Blocked on `spec/pr-review-front-panel-report`; pin advisory-only, actionable, summary-only, acknowledged, suppressed, baseline-resolved, blocked, missing-proof, and coverage-flat-grip-improved cases before adding the producer. |
+| `spec/pr-review-front-panel-report` | done | Added RIPR-SPEC-0023 plus OUTPUT_SCHEMA, traceability, capability, campaign, plan, roadmap, and changelog updates for the PR review front-panel JSON/Markdown contract, explicit inputs, first-screen fields, artifact grouping, advisory limits, and generated-CI projection boundaries. |
+| `fixtures/pr-review-front-panel-corpus` | ready | Pin advisory-only, actionable, summary-only, acknowledged, suppressed, baseline-resolved, blocked, missing-proof, and coverage-flat-grip-improved cases before adding the producer. |
 | `report/pr-review-front-panel` | blocked | Blocked on `fixtures/pr-review-front-panel-corpus`; add a read-only front-panel producer that emits advisory JSON/Markdown from explicit existing artifact paths without rerunning analysis or changing gate authority. |
 | `ci/pr-review-front-panel-summary` | blocked | Blocked on `report/pr-review-front-panel`; generated GitHub CI uploads and summarizes PR review front-panel JSON/Markdown only when input artifacts exist, while preserving advisory defaults and gate-decision pass/fail authority. |
 | `docs/pr-review-front-panel-workflow` | blocked | Blocked on `ci/pr-review-front-panel-summary`; document how reviewers, maintainers, developers, and coding agents read the PR review front panel, follow repair routes, inspect receipts, and interpret advisory limits. |
@@ -2702,6 +2702,7 @@ Work items:
 References:
 
 - [PR Review Front Panel proposal](PR_REVIEW_FRONT_PANEL_PROPOSAL.md)
+- [RIPR-SPEC-0023: PR Review Front Panel Report](specs/RIPR-SPEC-0023-pr-review-front-panel-report.md)
 - [First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md)
 - [Test-oracle assistant proof report](TEST_ORACLE_ASSISTANT_PROOF_REPORT.md)
 - [Assistant Loop Health workflow](ASSISTANT_LOOP_HEALTH_WORKFLOW.md)
@@ -2718,9 +2719,9 @@ Blocking conditions:
 
 Next:
 
-- Continue with `spec/pr-review-front-panel-report`. The proposal and campaign
-  tracker are in place; the next slice should define the report contract before
-  fixtures, producer, generated-CI projection, docs, dogfood receipts, or
+- Continue with `fixtures/pr-review-front-panel-corpus`. The report contract is
+  now defined by RIPR-SPEC-0023; the next slice should pin front-panel fixture
+  cases before producer, generated-CI projection, docs, dogfood receipts, or
   closeout work.
 
 ## Future Campaign: Editor Evidence UX
