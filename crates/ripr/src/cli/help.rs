@@ -14,6 +14,7 @@ Usage:
   ripr pr-ledger record --pr-number 123 --base SHA --head SHA [--gate target/ripr/reports/gate-decision.json] [--baseline-delta target/ripr/reports/baseline-debt-delta.json] [--zero-status target/ripr/reports/ripr-zero-status.json] [--out target/ripr/reports/pr-evidence-ledger.json]
   ripr coverage-grip frontier (--ledger target/ripr/reports/pr-evidence-ledger.json|--baseline-delta target/ripr/reports/baseline-debt-delta.json|--zero-status target/ripr/reports/ripr-zero-status.json) [--coverage target/ripr/reports/coverage-summary.json] [--out target/ripr/reports/coverage-grip-frontier.json]
   ripr assistant-loop proof --pr-guidance target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-brief.json --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --receipt target/ripr/reports/agent-receipt.json [--out target/ripr/reports/test-oracle-assistant-proof.json]
+  ripr first-action [--root .] [--pr-guidance target/ripr/review/comments.json] [--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json] [--ledger target/ripr/reports/pr-evidence-ledger.json] [--out target/ripr/reports/first-useful-action.json]
   ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
   ripr agent start --root . --seam-id ID [--out target/ripr/workflow]
   ripr agent brief --root . (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json
@@ -47,6 +48,7 @@ Quick start:
   ripr pr-ledger record --pr-number 123 --base origin/main --head HEAD --baseline-delta target/ripr/reports/baseline-debt-delta.json --zero-status target/ripr/reports/ripr-zero-status.json
   ripr coverage-grip frontier --ledger target/ripr/reports/pr-evidence-ledger.json --coverage target/ripr/reports/coverage-summary.json
   ripr assistant-loop proof --pr-guidance target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-brief.json --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --receipt target/ripr/reports/agent-receipt.json
+  ripr first-action --pr-guidance target/ripr/review/comments.json --assistant-proof target/ripr/reports/test-oracle-assistant-proof.json --ledger target/ripr/reports/pr-evidence-ledger.json
   ripr calibrate cargo-mutants --mutants-json target/mutants/outcomes.json --repo-exposure-json target/ripr/pilot/after.repo-exposure.json
   ripr agent start --root . --seam-id f3c9e4d21a0b7c88
   ripr agent brief --root . --diff change.diff --json
@@ -307,6 +309,28 @@ generate tests, call a provider, run mutation testing, change gate policy, or
 make CI blocking by default.
 "#;
 
+const FIRST_ACTION_HELP: &str = r#"Usage: ripr first-action [--root PATH] [--pr-guidance PATH] [--assistant-proof PATH] [--ledger PATH] [--baseline-delta PATH] [--receipt PATH] [--gate-decision PATH] [--coverage-frontier PATH] [--editor-context PATH] [--out PATH] [--out-md PATH]
+
+Options:
+  --root PATH                Workspace root label. Defaults to current directory.
+  --pr-guidance PATH         Optional PR guidance JSON from `ripr review-comments`.
+  --assistant-proof PATH     Optional proof JSON from `ripr assistant-loop proof`.
+  --ledger PATH              Optional PR evidence ledger JSON from `ripr pr-ledger record`.
+  --baseline-delta PATH      Optional baseline-debt-delta JSON from `ripr baseline diff`.
+  --receipt PATH             Optional agent receipt JSON from `ripr agent receipt`.
+  --gate-decision PATH       Optional gate-decision JSON from `ripr gate evaluate`.
+  --coverage-frontier PATH   Optional coverage/grip frontier JSON.
+  --editor-context PATH      Optional editor evidence context packet JSON.
+  --out PATH                 JSON output path. Defaults to target/ripr/reports/first-useful-action.json.
+  --out-md PATH              Markdown output path. Defaults to target/ripr/reports/first-useful-action.md.
+
+The first-action report is a read-only advisory router over explicit existing
+RIPR artifacts. It writes one next useful test action or one fallback reason
+for developers, reviewers, or coding agents. It does not rerun analysis, post
+comments, edit source, generate tests, call a provider, run mutation testing,
+invent policy, or make CI blocking by default.
+"#;
+
 const CALIBRATE_HELP: &str = r#"Usage: ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
 
 Options:
@@ -544,6 +568,10 @@ pub(super) fn print_assistant_loop_help() {
     println!("{ASSISTANT_LOOP_HELP}");
 }
 
+pub(super) fn print_first_action_help() {
+    println!("{FIRST_ACTION_HELP}");
+}
+
 pub(super) fn print_calibrate_help() {
     println!("{CALIBRATE_HELP}");
 }
@@ -602,9 +630,9 @@ mod tests {
         AGENT_BRIEF_HELP, AGENT_HELP, AGENT_PACKET_HELP, AGENT_RECEIPT_HELP,
         AGENT_REVIEW_SUMMARY_HELP, AGENT_START_HELP, AGENT_STATUS_HELP, AGENT_VERIFY_HELP,
         ASSISTANT_LOOP_HELP, BASELINE_HELP, CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP,
-        COVERAGE_GRIP_HELP, DOCTOR_HELP, EVIDENCE_HEALTH_HELP, EXPLAIN_HELP, GATE_HELP, HELP,
-        INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP, PR_LEDGER_HELP, REVIEW_COMMENTS_HELP,
-        ZERO_HELP,
+        COVERAGE_GRIP_HELP, DOCTOR_HELP, EVIDENCE_HEALTH_HELP, EXPLAIN_HELP, FIRST_ACTION_HELP,
+        GATE_HELP, HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP, PR_LEDGER_HELP,
+        REVIEW_COMMENTS_HELP, ZERO_HELP,
     };
 
     #[test]
@@ -622,6 +650,7 @@ mod tests {
         assert!(HELP.contains("ripr pr-ledger record"));
         assert!(HELP.contains("ripr coverage-grip frontier"));
         assert!(HELP.contains("ripr assistant-loop proof"));
+        assert!(HELP.contains("ripr first-action"));
         assert!(HELP.contains("ripr calibrate"));
         assert!(HELP.contains("ripr agent start"));
         assert!(HELP.contains("ripr agent brief"));
@@ -683,6 +712,9 @@ mod tests {
         assert!(ASSISTANT_LOOP_HELP.starts_with("Usage: ripr assistant-loop proof"));
         assert!(ASSISTANT_LOOP_HELP.contains("test-oracle-assistant-proof.json"));
         assert!(ASSISTANT_LOOP_HELP.contains("Campaign 20 artifacts"));
+        assert!(FIRST_ACTION_HELP.starts_with("Usage: ripr first-action"));
+        assert!(FIRST_ACTION_HELP.contains("first-useful-action.json"));
+        assert!(FIRST_ACTION_HELP.contains("read-only advisory router"));
         assert!(CALIBRATE_HELP.starts_with("Usage: ripr calibrate cargo-mutants"));
         assert!(CALIBRATE_HELP.contains("--mutants-json PATH"));
         assert!(AGENT_HELP.starts_with("Usage: ripr agent"));

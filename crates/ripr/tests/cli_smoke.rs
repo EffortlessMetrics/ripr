@@ -293,6 +293,64 @@ fn test_oracle_assistant_proof_cli_writes_canonical_report()
 }
 
 #[test]
+fn first_action_cli_writes_actionable_report() -> Result<(), Box<dyn std::error::Error>> {
+    let workspace = unique_temp_workspace("first-action");
+    std::fs::create_dir_all(&workspace)?;
+    let out = workspace.join("first-useful-action.json");
+    let out_md = workspace.join("first-useful-action.md");
+    let out_arg = out.display().to_string();
+    let out_md_arg = out_md.display().to_string();
+    let output = run_ripr_in_workspace(&[
+        "first-action",
+        "--root",
+        "fixtures/boundary_gap/input",
+        "--pr-guidance",
+        "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json",
+        "--assistant-proof",
+        "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/test-oracle-assistant-proof.json",
+        "--ledger",
+        "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-evidence-ledger.json",
+        "--out",
+        &out_arg,
+        "--out-md",
+        &out_md_arg,
+    ])?;
+    assert_success(&output);
+
+    let report: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&out)?)?;
+    assert_eq!(json_pointer_str(&report, "/kind")?, "first_useful_action");
+    assert_eq!(json_pointer_str(&report, "/status")?, "actionable");
+    assert_eq!(
+        json_pointer_str(&report, "/action_kind")?,
+        "write_focused_test"
+    );
+    assert_eq!(
+        json_pointer_str(&report, "/selected/seam_id")?,
+        "67fc764ba37d77bd"
+    );
+    assert_eq!(
+        json_pointer_str(&report, "/commands/verify")?,
+        "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+    );
+    assert_eq!(
+        json_pointer_str(&report, "/target/suggested_test_name")?,
+        "discounted_total_boundary_discriminator"
+    );
+    assert_eq!(
+        json_pointer_str(&report, "/inputs/assistant_proof")?,
+        "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/test-oracle-assistant-proof.json"
+    );
+
+    let markdown = std::fs::read_to_string(&out_md)?;
+    assert!(markdown.contains("# RIPR First Useful Action"));
+    assert!(markdown.contains("Status: actionable"));
+    assert!(markdown.contains("Action: write_focused_test"));
+    assert!(markdown.contains("Does not run mutation testing."));
+    std::fs::remove_dir_all(workspace)?;
+    Ok(())
+}
+
+#[test]
 fn agent_brief_diff_scope_omits_configured_off_seams() -> Result<(), Box<dyn std::error::Error>> {
     let (root, diff) = agent_brief_sample_workspace("agent-brief-config-off")?;
     std::fs::write(

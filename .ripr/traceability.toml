@@ -1267,6 +1267,11 @@ name = "first useful action report"
 spec = "docs/specs/RIPR-SPEC-0020-first-useful-action-report.md"
 tests = [
   "crates/ripr/tests/cli_smoke.rs::first_useful_action_corpus_pins_routing_cases",
+  "crates/ripr/src/output/first_useful_action.rs::first_useful_action_matches_actionable_fixture",
+  "crates/ripr/src/output/first_useful_action.rs::first_useful_action_matches_unchanged_after_attempt_fixture",
+  "crates/ripr/src/output/first_useful_action.rs::first_useful_action_reports_stale_editor_context_first",
+  "crates/ripr/src/output/first_useful_action.rs::first_useful_action_routes_missing_assistant_proof",
+  "crates/ripr/tests/cli_smoke.rs::first_action_cli_writes_actionable_report",
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/first-useful-action/README.md",
@@ -1292,7 +1297,15 @@ fixtures = [
   "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/first-useful-action.json",
   "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/first-useful-action.md",
 ]
-code = []
+code = [
+  "crates/ripr/src/output/first_useful_action.rs",
+  "crates/ripr/src/output/mod.rs",
+  "crates/ripr/src/cli/command.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/execute.rs",
+  "crates/ripr/src/cli/help.rs",
+  "crates/ripr/src/cli/parse.rs",
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0020-first-useful-action-report.md",
   "docs/specs/README.md",

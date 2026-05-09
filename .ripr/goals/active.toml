@@ -58,7 +58,7 @@ commands = [
 
 [[work_item]]
 id = "report/first-useful-action"
-status = "ready"
+status = "done"
 branch = "report-first-useful-action"
 stackable = false
 acceptance = "Add a read-only report producer that writes advisory first-useful-action JSON and Markdown from explicit existing artifact paths without rerunning hidden analysis"
@@ -73,8 +73,7 @@ commands = [
 
 [[work_item]]
 id = "ci/first-useful-action-summary"
-status = "blocked"
-blocked_by = ["report/first-useful-action"]
+status = "ready"
 branch = "ci-first-useful-action-summary"
 stackable = false
 acceptance = "Surface first-useful-action JSON/Markdown in generated GitHub CI as advisory summary and artifact content without changing default blocking"
@@ -88,8 +87,7 @@ commands = [
 
 [[work_item]]
 id = "lsp/first-useful-action-status"
-status = "blocked"
-blocked_by = ["report/first-useful-action"]
+status = "ready"
 branch = "lsp-first-useful-action-status"
 stackable = false
 acceptance = "Project an existing first-useful-action report through editor status and Show Status without adding diagnostics, CodeLens, inlay hints, unsaved-buffer analysis, source edits, or generated tests"

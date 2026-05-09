@@ -821,18 +821,21 @@ metric = "test_oracle_assistant_loop_reports, test_oracle_assistant_loop_verifie
 [[capability]]
 id = "first_useful_action_report"
 name = "First useful action report"
-status = "planned"
+status = "alpha"
 spec = "RIPR-SPEC-0020"
 evidence = [
   "docs/specs/RIPR-SPEC-0020-first-useful-action-report.md defines the first-useful-action report contract over existing editor, PR guidance, ledger, baseline, assistant proof, receipt, optional gate, optional coverage/grip, and staleness evidence",
-  "docs/OUTPUT_SCHEMA.md documents the planned first-useful-action JSON and Markdown shape, status vocabulary, action vocabulary, routing priorities, command fields, warnings, fallback states, and advisory limits",
-  "fixtures/boundary_gap/expected/first-useful-action pins actionable, stale, missing-required-artifact, baseline-only, acknowledged, waived, suppressed, no-actionable-seam, already-improved, and unchanged-after-attempt routing cases before the producer lands",
-  ".ripr/goals/active.toml and docs/IMPLEMENTATION_CAMPAIGNS.md keep implementation blocked behind report/first-useful-action"
+  "crates/ripr/src/output/first_useful_action.rs implements the read-only first-action router and renders first-useful-action JSON/Markdown without rerunning analysis",
+  "crates/ripr/src/cli/commands.rs exposes ripr first-action over explicit artifact paths and writes target/ripr/reports/first-useful-action.{json,md}",
+  "docs/OUTPUT_SCHEMA.md documents the implemented first-useful-action JSON and Markdown shape, status vocabulary, action vocabulary, routing priorities, command fields, warnings, fallback states, and advisory limits",
+  "fixtures/boundary_gap/expected/first-useful-action pins actionable, stale, missing-required-artifact, baseline-only, acknowledged, waived, suppressed, no-actionable-seam, already-improved, and unchanged-after-attempt routing cases",
+  "crates/ripr/src/output/first_useful_action.rs::first_useful_action_matches_actionable_fixture and ::first_useful_action_matches_unchanged_after_attempt_fixture validate producer output against the pinned corpus",
+  "crates/ripr/tests/cli_smoke.rs::first_action_cli_writes_actionable_report validates the public CLI writes actionable JSON/Markdown"
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/first-useful-action"
 ]
-next = "report/first-useful-action"
+next = "ci/first-useful-action-summary, lsp/first-useful-action-status"
 metric = "first_useful_action_reports, first_useful_action_actionable, first_useful_action_stale, first_useful_action_missing_required_artifact, first_useful_action_baseline_only, first_useful_action_acknowledged, first_useful_action_waived, first_useful_action_suppressed, first_useful_action_no_actionable_seam, first_useful_action_already_improved, first_useful_action_unchanged_after_attempt"
 
 [[capability]]
