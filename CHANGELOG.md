@@ -46,6 +46,9 @@ are scoped or reviewed.
   warnings, fallback, and advisory limits without running hidden analysis,
   adding diagnostics, editing source, generating tests, or changing gate
   authority.
+- Hardened the VS Code first-useful-action projection so reports from a
+  different workspace root are ignored and stale saved-workspace evidence stays
+  visible instead of being hidden behind the action report.
 - Added `docs/FIRST_USEFUL_ACTION_WORKFLOW.md`, documenting how developers,
   reviewers, and coding agents read first-action reports from GitHub or the
   editor, act on the selected action, verify static movement, emit receipts,
