@@ -8,9 +8,10 @@
 
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::seams::SeamGripClass;
+use crate::output::evidence_record::{evidence_record_for, evidence_record_json_value};
 use crate::output::json::escape as json_escape;
 
-pub(crate) const REPO_EXPOSURE_SCHEMA_VERSION: &str = "0.2";
+pub(crate) const REPO_EXPOSURE_SCHEMA_VERSION: &str = "0.3";
 
 /// Cap on related-tests rendered per seam in the JSON output. The
 /// existing `test_grip_evidence::find_related_tests` heuristic is
@@ -204,7 +205,11 @@ fn push_classified_json(out: &mut String, entry: &ClassifiedSeam) {
         }
         out.push_str("      ");
     }
-    out.push_str("]\n");
+    out.push_str("],\n");
+    let record = evidence_record_for(entry);
+    out.push_str("      \"evidence_record\": ");
+    out.push_str(&evidence_record_json_value(&record).to_string());
+    out.push('\n');
     out.push_str("    }");
 }
 
@@ -491,7 +496,7 @@ mod tests {
     fn json_carries_schema_version_scope_and_metrics() {
         let json = render_repo_exposure_json(&[weakly_gripped_classified()]);
         for needle in [
-            "\"schema_version\": \"0.2\"",
+            "\"schema_version\": \"0.3\"",
             "\"scope\": \"repo\"",
             "\"seams_total\": 1",
             "\"headline_eligible\": 1",
@@ -512,6 +517,12 @@ mod tests {
             "\"headline_eligible\": true",
             "\"reach\": \"yes\"",
             "\"discriminate\": \"yes\"",
+            "\"evidence_record\":",
+            "\"schema_version\":\"0.1\"",
+            "\"canonical_gap_id\":null",
+            "\"evidence_path\":",
+            "\"actionable_related_test_extension\"",
+            "\"agreement\":\"no_runtime_data\"",
             "below_threshold_has_no_discount",
             "exact_value",
             "discount_threshold (equality boundary)",

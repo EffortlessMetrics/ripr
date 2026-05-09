@@ -11,6 +11,11 @@ are scoped or reviewed.
 
 ### Added
 
+- Added RIPR-SPEC-0021 and the additive repo-exposure
+  `seams[].evidence_record` projection, giving Lane 1 a seam-native evidence
+  spine with identity, evidence path, observed values, missing discriminators,
+  related tests, recommendation/actionability, calibration placeholder, and
+  static limitations while preserving existing repo-exposure fields.
 - Opened Campaign 22, First Useful Action, with
   `spec/first-useful-action-report` as the first ready work item so existing
   editor, PR guidance, ledger, proof, receipt, optional gate, coverage/grip,
