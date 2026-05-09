@@ -2111,8 +2111,8 @@ Work items:
 | `baseline/metadata-v2` | done | Baseline create now writes additive owner/reason/created/review-after/source metadata, baseline diff reports preserved metadata on baseline-derived items, and shrink-only update preserves existing entry metadata without breaking Campaign 17 ledgers. |
 | `report/ripr-zero-status` | done | Added `ripr zero status`, a read-only JSON/Markdown status report that joins reviewed baseline, baseline debt delta, optional gate decision, PR guidance, and recommendation calibration evidence. |
 | `ci/ripr-zero-summary` | done | Generated CI now runs `ripr zero status` when `baseline-debt-delta.json` exists, uploads `ripr-zero-status.{json,md}`, and appends a RIPR Zero summary with visible unresolved debt, metadata health, top debt area, and repair route while leaving gate decisions as pass/fail authority. |
-| `docs/ripr-zero-reporting-workflow` | ready | Document how teams read RIPR Zero status, age and refresh baselines, route top repair packets, and interpret progress without treating RIPR 0 as perfect tests or 100 percent coverage. |
-| `campaign/ripr-zero-reporting-closeout` | blocked | Close Campaign 18 only after RIPR Zero status, baseline metadata, generated-CI reporting, and user workflow docs are in place while defaults stay advisory. |
+| `docs/ripr-zero-reporting-workflow` | done | Added `docs/RIPR_ZERO_REPORTING_WORKFLOW.md` so teams can read RIPR Zero status, age and refresh baselines, route repair packets, and interpret progress without treating RIPR 0 as perfect tests or 100 percent coverage. |
+| `campaign/ripr-zero-reporting-closeout` | ready | Close Campaign 18 only after RIPR Zero status, baseline metadata, generated-CI reporting, and user workflow docs are in place while defaults stay advisory. |
 
 Dependencies:
 
@@ -2158,10 +2158,9 @@ Blocking conditions:
 
 Next:
 
-- Start `docs/ripr-zero-reporting-workflow` to document how teams read RIPR
-  Zero status, age and refresh reviewed baselines, route top repair packets,
-  and interpret progress without treating RIPR 0 as perfect tests or 100
-  percent coverage.
+- Start `campaign/ripr-zero-reporting-closeout` to audit Campaign 18, record
+  the proof, and close the RIPR Zero reporting lane only if defaults remain
+  advisory and the status report stays separate from gate pass/fail authority.
 
 ## Future Campaign: Editor Evidence UX
 

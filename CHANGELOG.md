@@ -31,6 +31,10 @@ are scoped or reviewed.
   the workflow writes/uploads `ripr-zero-status.{json,md}` and appends a
   first-screen RIPR Zero summary without changing advisory defaults or gate
   pass/fail authority.
+- Added `docs/RIPR_ZERO_REPORTING_WORKFLOW.md`, a user workflow for reading
+  RIPR Zero status, aging and refreshing reviewed baselines, routing repair
+  packets, and interpreting movement without treating RIPR 0 as perfect tests
+  or 100 percent coverage.
 - Added `ripr baseline create --from <gate-decision.json> --out .ripr/gate-baseline.json`,
   which writes reviewed gate baseline ledgers from existing gate-decision
   evidence, skips suppressed or malformed decisions, supports `--dry-run`, and

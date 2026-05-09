@@ -39,6 +39,7 @@ Current how-to docs:
 - [Calibrated gate policy](CALIBRATED_GATE_POLICY.md)
 - [RIPR blocking readiness](BLOCKING_READINESS.md)
 - [Baseline ledger workflow](BASELINE_LEDGER_WORKFLOW.md)
+- [RIPR Zero reporting workflow](RIPR_ZERO_REPORTING_WORKFLOW.md)
 - [Release](RELEASE.md)
 - [Installation verification](INSTALLATION_VERIFICATION.md)
 - [Publishing](PUBLISHING.md)
@@ -70,6 +71,7 @@ Current reference docs:
 - [Calibrated gate policy](CALIBRATED_GATE_POLICY.md)
 - [RIPR blocking readiness](BLOCKING_READINESS.md)
 - [Baseline ledger workflow](BASELINE_LEDGER_WORKFLOW.md)
+- [RIPR Zero reporting workflow](RIPR_ZERO_REPORTING_WORKFLOW.md)
 - [Test taxonomy](TEST_TAXONOMY.md)
 - [Engineering rules](ENGINEERING.md)
 - [File policy](FILE_POLICY.md)
@@ -121,6 +123,7 @@ Current explanation docs:
 - [Calibrated gate policy](CALIBRATED_GATE_POLICY.md)
 - [RIPR blocking readiness](BLOCKING_READINESS.md)
 - [Baseline ledger workflow](BASELINE_LEDGER_WORKFLOW.md)
+- [RIPR Zero reporting workflow](RIPR_ZERO_REPORTING_WORKFLOW.md)
 
 ## README Rule
 

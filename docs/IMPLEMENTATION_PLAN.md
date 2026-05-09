@@ -32,7 +32,7 @@ through multiple work items in a campaign, but each work item should follow the
 | Calibrated Gate Policy (15) | Define optional calibrated gates over existing PR-time evidence without changing advisory defaults or blurring static/runtime evidence. | Complete: spec, evaluator, fixtures, generated CI opt-in wiring, evidence-preserving CI behavior, calibrated gate guide, and `campaign/calibrated-gate-closeout`. |
 | Gate Adoption UX (16) | Make optional calibrated gate adoption safe and obvious for real teams without changing advisory defaults. | Complete: generated-CI examples, waiver workflows, baseline guidance, CI gate summary polish, dogfood receipts, blocking-readiness guidance, and `campaign/gate-adoption-ux-closeout`. |
 | RIPR Zero Adoption (17) | Turn baselines into burn-down ledgers with create, diff, and shrink-only refresh commands while keeping generated CI advisory by default. | Complete: spec, baseline create, baseline diff, shrink-only update, generated CI baseline-delta artifacts, baseline ledger workflow guide, and `campaign/ripr-zero-adoption-closeout`. |
-| RIPR Zero Reporting (18) | Turn reviewed baselines and debt deltas into repo-level RIPR 0 status, stale-debt, trend, and repair-area reporting while preserving advisory defaults. | Active: `spec/ripr-zero-reporting-surface` is the first ready work item. |
+| RIPR Zero Reporting (18) | Turn reviewed baselines and debt deltas into repo-level RIPR 0 status, stale-debt, trend, and repair-area reporting while preserving advisory defaults. | Active: status reporting and user workflow docs are in place; closeout is next. |
 | Editor Evidence UX (future) | Make the saved-workspace LSP path feel like an editor-native test-intent cockpit from diagnostic to hover, related test, context packet, one test, verify, and receipt. | Complete as an explicit parallel Lane 3 closeout: contract audit, hover hardening, evidence-aware actions, context packet, protocol smoke, VS Code smoke, status/staleness, workflow docs, and closeout audit. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
@@ -111,11 +111,11 @@ refresh, new debt review, and the path toward RIPR 0. The
 the PR chain, prompt-to-artifact audit, proof commands, and next-work boundary.
 Campaign 18 is active as RIPR Zero Reporting. RIPR-SPEC-0017 now defines the
 repo-level status surface for baseline owner/reason/age metadata, stale
-warnings, trends, top debt areas, and repair routing. The next slice is
-baseline metadata preservation before the read-only RIPR Zero status report,
-generated-CI summary projection, and user workflow docs make progress toward
-RIPR 0 visible without changing analyzer identity, gate policy, or advisory
-defaults.
+warnings, trends, top debt areas, and repair routing. Baseline metadata
+preservation, the read-only RIPR Zero status report, generated-CI summary
+projection, and the user workflow docs are in place. The next slice is the
+Campaign 18 closeout audit, while progress toward RIPR 0 remains separate from
+analyzer identity, gate policy, and advisory defaults.
 Editor Evidence UX closed as a separate Lane 3 campaign; its contract audit is
 recorded in [Editor Evidence UX](EDITOR_EVIDENCE_UX.md), the user path is
 documented in the [editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md), and

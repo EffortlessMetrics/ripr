@@ -1110,6 +1110,7 @@ outputs = [
   "docs/specs/RIPR-SPEC-0017-ripr-zero-reporting.md",
   "docs/specs/README.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/RIPR_ZERO_REPORTING_WORKFLOW.md",
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",

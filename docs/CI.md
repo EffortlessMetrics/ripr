@@ -1153,7 +1153,9 @@ the job summary and feeds the RIPR Zero status summary, but `ripr gate
 evaluate` remains the only generated-workflow pass/fail authority. The RIPR
 Zero section reports visible unresolved debt, new policy-eligible debt,
 acknowledgements, suppressions, baseline metadata health, top debt area, top
-repair route, and trend availability as advisory progress evidence. The repo
+repair route, and trend availability as advisory progress evidence. Use
+[RIPR Zero reporting workflow](RIPR_ZERO_REPORTING_WORKFLOW.md) for how to read
+the status, refresh stale baseline metadata, and route repair packets. The repo
 badge files in that artifact are:
 
 - `target/ripr/reports/repo-ripr-badge.json`, the seam-native native badge
