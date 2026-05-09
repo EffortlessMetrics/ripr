@@ -14,6 +14,7 @@ Usage:
   ripr pr-ledger record --pr-number 123 --base SHA --head SHA [--gate target/ripr/reports/gate-decision.json] [--baseline-delta target/ripr/reports/baseline-debt-delta.json] [--zero-status target/ripr/reports/ripr-zero-status.json] [--out target/ripr/reports/pr-evidence-ledger.json]
   ripr coverage-grip frontier (--ledger target/ripr/reports/pr-evidence-ledger.json|--baseline-delta target/ripr/reports/baseline-debt-delta.json|--zero-status target/ripr/reports/ripr-zero-status.json) [--coverage target/ripr/reports/coverage-summary.json] [--out target/ripr/reports/coverage-grip-frontier.json]
   ripr assistant-loop proof --pr-guidance target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-brief.json --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --receipt target/ripr/reports/agent-receipt.json [--out target/ripr/reports/test-oracle-assistant-proof.json]
+  ripr assistant-loop health --proof target/ripr/reports/test-oracle-assistant-proof.json [--out target/ripr/reports/assistant-loop-health.json]
   ripr first-action [--root .] [--pr-guidance target/ripr/review/comments.json] [--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json] [--ledger target/ripr/reports/pr-evidence-ledger.json] [--out target/ripr/reports/first-useful-action.json]
   ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
   ripr agent start --root . --seam-id ID [--out target/ripr/workflow]
@@ -48,6 +49,7 @@ Quick start:
   ripr pr-ledger record --pr-number 123 --base origin/main --head HEAD --baseline-delta target/ripr/reports/baseline-debt-delta.json --zero-status target/ripr/reports/ripr-zero-status.json
   ripr coverage-grip frontier --ledger target/ripr/reports/pr-evidence-ledger.json --coverage target/ripr/reports/coverage-summary.json
   ripr assistant-loop proof --pr-guidance target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-brief.json --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --receipt target/ripr/reports/agent-receipt.json
+  ripr assistant-loop health --proof target/ripr/reports/test-oracle-assistant-proof.json
   ripr first-action --pr-guidance target/ripr/review/comments.json --assistant-proof target/ripr/reports/test-oracle-assistant-proof.json --ledger target/ripr/reports/pr-evidence-ledger.json
   ripr calibrate cargo-mutants --mutants-json target/mutants/outcomes.json --repo-exposure-json target/ripr/pilot/after.repo-exposure.json
   ripr agent start --root . --seam-id f3c9e4d21a0b7c88
@@ -285,7 +287,9 @@ does not treat coverage as adequacy, run mutation testing, change gate policy,
 or make CI blocking by default.
 "#;
 
-const ASSISTANT_LOOP_HELP: &str = r#"Usage: ripr assistant-loop proof [--pr-guidance PATH] [--agent-packet PATH] [--before PATH] [--after PATH] [--receipt PATH] [--ledger PATH] [--coverage-frontier PATH] [--gate-decision PATH] [--out PATH] [--out-md PATH]
+const ASSISTANT_LOOP_HELP: &str = r#"Usage:
+  ripr assistant-loop proof [--pr-guidance PATH] [--agent-packet PATH] [--before PATH] [--after PATH] [--receipt PATH] [--ledger PATH] [--coverage-frontier PATH] [--gate-decision PATH] [--out PATH] [--out-md PATH]
+  ripr assistant-loop health --proof PATH [--proof PATH ...] [--out PATH] [--out-md PATH]
 
 Proof options:
   --root PATH                 Workspace root label. Defaults to current directory.
@@ -305,6 +309,19 @@ Campaign 20 artifacts. It requires at least one supplied artifact input, joins
 PR guidance, agent handoff packets, before and after static evidence, receipts,
 and optional CI projection artifacts, and marks missing proof pieces as
 incomplete or unknown. It does not rerun analysis, post comments, edit source,
+generate tests, call a provider, run mutation testing, change gate policy, or
+make CI blocking by default.
+
+Health options:
+  --root PATH                 Workspace root label. Defaults to current directory.
+  --proof PATH                Explicit test-oracle assistant proof JSON. Repeatable.
+  --out PATH                  JSON output path. Defaults to target/ripr/reports/assistant-loop-health.json.
+  --out-md PATH               Markdown output path. Defaults to target/ripr/reports/assistant-loop-health.md.
+
+The assistant-loop health report is read-only advisory evidence over explicit
+test-oracle assistant proof JSON artifacts. It summarizes proof completeness,
+missing inputs, static movement, recurring warnings, and bounded repair queues.
+It does not rerun analysis, inspect source to infer missing data, edit source,
 generate tests, call a provider, run mutation testing, change gate policy, or
 make CI blocking by default.
 "#;
@@ -650,6 +667,7 @@ mod tests {
         assert!(HELP.contains("ripr pr-ledger record"));
         assert!(HELP.contains("ripr coverage-grip frontier"));
         assert!(HELP.contains("ripr assistant-loop proof"));
+        assert!(HELP.contains("ripr assistant-loop health"));
         assert!(HELP.contains("ripr first-action"));
         assert!(HELP.contains("ripr calibrate"));
         assert!(HELP.contains("ripr agent start"));
@@ -709,8 +727,11 @@ mod tests {
         assert!(COVERAGE_GRIP_HELP.starts_with("Usage: ripr coverage-grip frontier"));
         assert!(COVERAGE_GRIP_HELP.contains("coverage-grip-frontier.json"));
         assert!(COVERAGE_GRIP_HELP.contains("separate axes"));
-        assert!(ASSISTANT_LOOP_HELP.starts_with("Usage: ripr assistant-loop proof"));
+        assert!(ASSISTANT_LOOP_HELP.starts_with("Usage:"));
+        assert!(ASSISTANT_LOOP_HELP.contains("ripr assistant-loop proof"));
+        assert!(ASSISTANT_LOOP_HELP.contains("ripr assistant-loop health"));
         assert!(ASSISTANT_LOOP_HELP.contains("test-oracle-assistant-proof.json"));
+        assert!(ASSISTANT_LOOP_HELP.contains("assistant-loop-health.json"));
         assert!(ASSISTANT_LOOP_HELP.contains("Campaign 20 artifacts"));
         assert!(FIRST_ACTION_HELP.starts_with("Usage: ripr first-action"));
         assert!(FIRST_ACTION_HELP.contains("first-useful-action.json"));

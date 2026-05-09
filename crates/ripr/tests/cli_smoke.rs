@@ -81,6 +81,19 @@ fn normalize_newlines(value: &str) -> String {
     value.replace("\r\n", "\n")
 }
 
+fn normalize_generated_at(text: String) -> String {
+    text.lines()
+        .map(|line| {
+            if line.trim_start().starts_with("\"generated_at\":") {
+                "  \"generated_at\": \"2026-05-09T12:00:00Z\",".to_string()
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn normalize_agent_receipt_fixture(text: &str) -> Result<String, Box<dyn std::error::Error>> {
     let mut value: serde_json::Value = serde_json::from_str(text)?;
     if let Some(provenance) = value
@@ -287,6 +300,50 @@ fn test_oracle_assistant_proof_cli_writes_canonical_report()
         normalize_newlines(&actual_md),
         normalize_newlines(&expected_md),
         "assistant-loop proof Markdown fixture drifted"
+    );
+    std::fs::remove_dir_all(workspace)?;
+    Ok(())
+}
+
+#[test]
+fn assistant_loop_health_cli_writes_multi_proof_report() -> Result<(), Box<dyn std::error::Error>> {
+    let workspace = unique_temp_workspace("assistant-loop-health");
+    std::fs::create_dir_all(&workspace)?;
+    let out = workspace.join("assistant-loop-health.json");
+    let out_md = workspace.join("assistant-loop-health.md");
+    let out_arg = out.display().to_string();
+    let out_md_arg = out_md.display().to_string();
+    let output = run_ripr_in_workspace(&[
+        "assistant-loop",
+        "health",
+        "--proof",
+        "fixtures/boundary_gap/expected/assistant-loop-health/proofs/complete-improved-proof.json",
+        "--proof",
+        "fixtures/boundary_gap/expected/assistant-loop-health/proofs/unchanged-proof.json",
+        "--proof",
+        "fixtures/boundary_gap/expected/assistant-loop-health/proofs/missing-required-proof.json",
+        "--out",
+        &out_arg,
+        "--out-md",
+        &out_md_arg,
+    ])?;
+    assert_success(&output);
+
+    let fixture =
+        workspace_root().join("fixtures/boundary_gap/expected/assistant-loop-health/multi-proof");
+    let expected_json = std::fs::read_to_string(fixture.join("assistant-loop-health.json"))?;
+    let actual_json = std::fs::read_to_string(&out)?;
+    assert_eq!(
+        normalize_generated_at(normalize_newlines(actual_json.trim_end())),
+        normalize_newlines(expected_json.trim_end()),
+        "assistant-loop health JSON fixture drifted"
+    );
+    let expected_md = std::fs::read_to_string(fixture.join("assistant-loop-health.md"))?;
+    let actual_md = std::fs::read_to_string(&out_md)?;
+    assert_eq!(
+        normalize_newlines(&actual_md),
+        normalize_newlines(&expected_md),
+        "assistant-loop health Markdown fixture drifted"
     );
     std::fs::remove_dir_all(workspace)?;
     Ok(())

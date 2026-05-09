@@ -2619,8 +2619,8 @@ Work items:
 | --- | --- | --- |
 | `spec/assistant-loop-health-report` | done | Added RIPR-SPEC-0022 plus OUTPUT_SCHEMA, traceability, capability, campaign, plan, roadmap, and changelog updates for the assistant-loop-health report contract before implementation. |
 | `fixtures/assistant-loop-health-corpus` | done | Added `fixtures/boundary_gap/expected/assistant-loop-health/` with complete-improved, partial-missing-optional, missing-required-input, unchanged, regressed, warning-heavy, and multi-proof report fixtures plus representative proof inputs. |
-| `report/assistant-loop-health` | ready | Add the read-only CLI report producer over explicit proof inputs now that the spec and corpus are pinned. |
-| `ci/assistant-loop-health-artifacts` | blocked | Upload and summarize health artifacts only when proof artifacts exist after the producer lands. |
+| `report/assistant-loop-health` | done | Added the read-only `ripr assistant-loop health` producer over explicit proof inputs, with JSON/Markdown rendering and fixture-backed CLI coverage. |
+| `ci/assistant-loop-health-artifacts` | ready | Upload and summarize health artifacts only when proof artifacts exist after the producer lands. |
 | `docs/assistant-loop-health-workflow` | blocked | Explain proof report vs health report, repair routing, and advisory limits after the producer and CI projection exist. |
 | `campaign/assistant-loop-health-closeout` | blocked | Close after spec, fixtures, producer, CI projection, docs, and validation document the lane. |
 
@@ -2639,9 +2639,9 @@ Blocking conditions:
 
 Next:
 
-- Continue with `report/assistant-loop-health`. The report contract and fixture
-  corpus are pinned; the next slice should add the read-only producer over
-  explicit proof inputs before CI, docs, or closeout work.
+- Continue with `ci/assistant-loop-health-artifacts`. The report contract,
+  fixture corpus, and read-only producer are in place; the next slice should
+  surface the existing health report in generated CI as advisory artifacts.
 
 ## Future Campaign: Editor Evidence UX
 

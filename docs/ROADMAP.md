@@ -230,7 +230,9 @@ blocking. [RIPR-SPEC-0022](specs/RIPR-SPEC-0022-assistant-loop-health-report.md)
 defines the contract, and
 `fixtures/boundary_gap/expected/assistant-loop-health/` pins the complete,
 partial, missing-input, unchanged, regressed, warning-heavy, and multi-proof
-corpus; the next ready slice is `report/assistant-loop-health`.
+corpus; `ripr assistant-loop health` now writes the advisory report over
+explicit proof inputs, and the next ready slice is
+`ci/assistant-loop-health-artifacts`.
 
 ## Strategic Sequence
 

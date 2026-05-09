@@ -2,6 +2,7 @@ pub(crate) mod agent_brief;
 pub(crate) mod agent_receipt;
 pub(crate) mod agent_seam_packets;
 pub(crate) mod agent_workflow;
+pub(crate) mod assistant_loop_health;
 pub(crate) mod badge;
 pub(crate) mod baseline;
 pub(crate) mod baseline_delta;

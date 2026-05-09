@@ -150,8 +150,8 @@ The active campaign uses this PR stack:
 | --- | --- |
 | `spec/assistant-loop-health-report` | Done: RIPR-SPEC-0022 defines JSON/Markdown contract, inputs, statuses, buckets, warnings, repair queue, and advisory limits. |
 | `fixtures/assistant-loop-health-corpus` | Done: `fixtures/boundary_gap/expected/assistant-loop-health/` pins complete-improved, partial-missing-optional, missing-required-input, unchanged, regressed, warning-heavy, and multi-proof cases. |
-| `report/assistant-loop-health` | Next: add the read-only CLI report producer over explicit proof inputs. |
-| `ci/assistant-loop-health-artifacts` | Upload and summarize health artifacts only when proof artifacts exist. |
+| `report/assistant-loop-health` | Done: `ripr assistant-loop health` reads explicit proof inputs and writes advisory JSON/Markdown health reports. |
+| `ci/assistant-loop-health-artifacts` | Next: upload and summarize health artifacts only when proof artifacts exist. |
 | `docs/assistant-loop-health-workflow` | Explain proof report vs health report, repair routing, and advisory limits. |
 | `campaign/assistant-loop-health-closeout` | Close after spec, fixtures, producer, CI projection, docs, and validation prove the lane. |
 

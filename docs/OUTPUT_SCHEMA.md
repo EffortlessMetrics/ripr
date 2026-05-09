@@ -3122,8 +3122,8 @@ decisions.
 
 ## Assistant Loop Health Report
 
-RIPR-SPEC-0022 defines the assistant-loop-health report contract. The planned
-`ripr assistant-loop health` command reads one or more explicit
+RIPR-SPEC-0022 defines the assistant-loop-health report contract.
+`ripr assistant-loop health` reads one or more explicit
 `test-oracle-assistant-proof.json` paths and writes advisory JSON and Markdown
 that summarize proof completeness, missing inputs, static movement, warnings,
 and bounded repair queues. The report is read-only and must not rerun hidden
@@ -3155,7 +3155,7 @@ fixtures/boundary_gap/expected/assistant-loop-health/
 
 The corpus pins complete-improved, partial-missing-optional,
 missing-required-input, unchanged, regressed, warning-heavy, and multi-proof
-health reports plus representative proof inputs for future producer tests.
+health reports plus representative proof inputs for producer tests.
 
 JSON shape:
 

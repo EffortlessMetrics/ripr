@@ -156,6 +156,14 @@ struct AssistantLoopProofOptions {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+struct AssistantLoopHealthOptions {
+    root: String,
+    proofs: Vec<PathBuf>,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 struct FirstActionOptions {
     root: String,
     pr_guidance: Option<PathBuf>,
@@ -2236,14 +2244,15 @@ pub(super) fn assistant_loop(args: &[String]) -> Result<(), String> {
         return Ok(());
     }
     let Some((subcommand, rest)) = args.split_first() else {
-        return Err("assistant-loop requires subcommand `proof`".to_string());
+        return Err("assistant-loop requires subcommand `proof` or `health`".to_string());
     };
-    if subcommand != "proof" {
-        return Err(format!(
-            "unknown assistant-loop subcommand {subcommand:?}; expected `proof`"
-        ));
+    match subcommand.as_str() {
+        "proof" => assistant_loop_proof(rest),
+        "health" => assistant_loop_health(rest),
+        _ => Err(format!(
+            "unknown assistant-loop subcommand {subcommand:?}; expected `proof` or `health`"
+        )),
     }
-    assistant_loop_proof(rest)
 }
 
 pub(super) fn first_action(args: &[String]) -> Result<(), String> {
@@ -2626,6 +2635,40 @@ fn assistant_loop_proof(args: &[String]) -> Result<(), String> {
     write_text_file(&options.out_md, &rendered_md)?;
     println!("Wrote {}", options.out.display());
     println!("Wrote {}", options.out_md.display());
+    Ok(())
+}
+
+fn assistant_loop_health(args: &[String]) -> Result<(), String> {
+    let options = parse_assistant_loop_health_options(args)?;
+    let proofs = options
+        .proofs
+        .iter()
+        .map(|path| {
+            let source_artifact = output::assistant_loop_health::display_path(path);
+            let proof_json = read_optional_text_for_report("assistant proof", path);
+            output::assistant_loop_health::AssistantLoopHealthProofInput {
+                source_artifact,
+                proof_json,
+            }
+        })
+        .collect::<Vec<_>>();
+    let report = output::assistant_loop_health::build_assistant_loop_health_report(
+        output::assistant_loop_health::AssistantLoopHealthInput {
+            root: options.root,
+            generated_at: assistant_loop_health_generated_at()?,
+            proofs,
+        },
+    );
+    let rendered_json = output::assistant_loop_health::render_assistant_loop_health_json(&report)?;
+    let rendered_md = output::assistant_loop_health::render_assistant_loop_health_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    println!(
+        "Proofs: {}",
+        output::assistant_loop_health::assistant_loop_health_proof_count(&report)
+    );
     Ok(())
 }
 
@@ -3768,6 +3811,56 @@ fn parse_assistant_loop_proof_options(
     })
 }
 
+fn parse_assistant_loop_health_options(
+    args: &[String],
+) -> Result<AssistantLoopHealthOptions, String> {
+    let mut root = ".".to_string();
+    let mut proofs = Vec::new();
+    let mut out = PathBuf::from(output::assistant_loop_health::DEFAULT_ASSISTANT_LOOP_HEALTH_OUT);
+    let mut out_md =
+        PathBuf::from(output::assistant_loop_health::DEFAULT_ASSISTANT_LOOP_HEALTH_MD_OUT);
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = non_empty_string_arg(args, i, "--root", "assistant-loop health")?;
+            }
+            "--proof" => {
+                i += 1;
+                proofs.push(non_empty_path_arg(
+                    args,
+                    i,
+                    "--proof",
+                    "assistant-loop health",
+                )?);
+            }
+            "--out" => {
+                i += 1;
+                out = non_empty_path_arg(args, i, "--out", "assistant-loop health")?;
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = non_empty_path_arg(args, i, "--out-md", "assistant-loop health")?;
+            }
+            other => return Err(format!("unknown assistant-loop health argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    if proofs.is_empty() {
+        return Err("assistant-loop health requires at least one --proof path".to_string());
+    }
+
+    Ok(AssistantLoopHealthOptions {
+        root,
+        proofs,
+        out,
+        out_md,
+    })
+}
+
 fn parse_first_action_options(args: &[String]) -> Result<FirstActionOptions, String> {
     let mut root = ".".to_string();
     let mut pr_guidance = None;
@@ -3899,6 +3992,14 @@ fn baseline_created_at() -> Result<String, String> {
 }
 
 fn first_action_generated_at() -> Result<String, String> {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| format!("system clock before unix epoch: {err}"))?
+        .as_millis();
+    Ok(format!("unix_ms:{millis}"))
+}
+
+fn assistant_loop_health_generated_at() -> Result<String, String> {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|err| format!("system clock before unix epoch: {err}"))?
