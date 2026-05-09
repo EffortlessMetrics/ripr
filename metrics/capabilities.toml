@@ -767,7 +767,7 @@ evidence = [
 ]
 fixtures = []
 next = "report/pr-evidence-ledger"
-metric = "pr_evidence_ledger_records, pr_evidence_ledger_new_policy_eligible, pr_evidence_ledger_baseline_resolved, pr_evidence_ledger_acknowledged, pr_evidence_ledger_suppressed, pr_evidence_ledger_repair_receipts, pr_evidence_ledger_coverage_grip_frontier_available"
+metric = "pr_evidence_ledger_records, pr_evidence_ledger_new_policy_eligible, pr_evidence_ledger_baseline_still_present, pr_evidence_ledger_baseline_resolved, pr_evidence_ledger_acknowledged, pr_evidence_ledger_suppressed, pr_evidence_ledger_blocking_candidates, pr_evidence_ledger_repair_receipts, pr_evidence_ledger_waiver_age_max_days, pr_evidence_ledger_coverage_grip_frontier_available, pr_evidence_ledger_flat_coverage_grip_improved"
 
 [[capability]]
 id = "pilot_packet"

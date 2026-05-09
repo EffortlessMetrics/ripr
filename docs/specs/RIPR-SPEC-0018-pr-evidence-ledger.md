@@ -237,7 +237,11 @@ The JSON report uses schema version `0.1`:
     {
       "source": "agent_receipt",
       "seam_id": "67fc764ba37d77bd",
-      "static_movement": "improved",
+      "static_movement": {
+        "state": "improved",
+        "source": "agent_receipt",
+        "artifact": "target/ripr/reports/agent-receipt.json"
+      },
       "focused_test": "tests/pricing.rs::threshold_exact_boundary",
       "receipt": "target/ripr/reports/agent-receipt.json"
     }
@@ -292,7 +296,9 @@ Field contract:
   findings and do not become suppressions.
 - `suppressions[]` records durable policy exceptions. Suppressions are not
   waivers and are not baseline debt.
-- `repair_receipts[]` records supplied outcome or agent receipt evidence. It
+- `repair_receipts[]` records supplied outcome or agent receipt evidence.
+  `repair_receipts[].static_movement` uses the same object shape as review
+  guidance outcome receipts, including `state`, `source`, and `artifact`; it
   must not infer receipt success from a missing artifact.
 - `coverage_grip_frontier.status` is `available`, `not_available`, or
   `unsupported`.
