@@ -114,7 +114,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/ripr-zero-adoption-closeout"
-status = "ready"
+status = "done"
 branch = "campaign-ripr-zero-adoption-closeout"
 stackable = false
 blocked_by = [
