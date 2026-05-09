@@ -693,7 +693,124 @@ lands at `target/ripr/reports/repo-exposure.json` when generated via
           "value": "discount_threshold (equality boundary)",
           "reason": "observed values do not include the equality-boundary case for this predicate"
         }
-      ]
+      ],
+      "evidence_record": {
+        "schema_version": "0.1",
+        "seam_id": "f3c9e4d21a0b7c88",
+        "canonical_gap_id": null,
+        "owner": "src/pricing.rs::discounted_total",
+        "location": {
+          "file": "src/pricing.rs",
+          "line": 88
+        },
+        "seam_kind": "predicate_boundary",
+        "grip_class": "weakly_gripped",
+        "headline_eligible": true,
+        "evidence_path": {
+          "reach": {
+            "state": "yes",
+            "confidence": "medium",
+            "summary": "owner is reached"
+          },
+          "activate": {
+            "state": "yes",
+            "confidence": "medium",
+            "summary": "boundary values were observed"
+          },
+          "propagate": {
+            "state": "yes",
+            "confidence": "medium",
+            "summary": "changed value flows to return value"
+          },
+          "observe": {
+            "state": "yes",
+            "confidence": "medium",
+            "summary": "related test observes returned value"
+          },
+          "discriminate": {
+            "state": "weak",
+            "confidence": "medium",
+            "summary": "equality discriminator is missing"
+          }
+        },
+        "observed_values": [
+          {
+            "value": "50",
+            "line": 12,
+            "text": "discounted_total(50, 100)",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "discount_threshold (equality boundary)",
+            "reason": "observed values do not include the equality-boundary case for this predicate",
+            "flow_sink": null
+          }
+        ],
+        "related_tests_total": 47,
+        "related_tests": [
+          {
+            "name": "below_threshold_has_no_discount",
+            "file": "tests/pricing_tests.rs",
+            "line": 12,
+            "oracle_kind": "exact_value",
+            "oracle_strength": "strong",
+            "evidence_summary": "exact value assertion",
+            "relation_reason": "direct_owner_call",
+            "relation_confidence": "high"
+          }
+        ],
+        "recommendation": {
+          "action": "write_targeted_test",
+          "reason": "extend the nearest related test with the missing discriminator",
+          "recommended_test": {
+            "name": "discounted_total_boundary_discriminator",
+            "file": "tests/pricing_tests.rs",
+            "reason": "place the new targeted test next to the nearest strong related test"
+          },
+          "nearest_test_to_imitate": {
+            "name": "below_threshold_has_no_discount",
+            "file": "tests/pricing_tests.rs",
+            "line": 12,
+            "oracle_kind": "exact_value",
+            "oracle_strength": "strong",
+            "evidence_summary": "exact value assertion",
+            "relation_reason": "direct_owner_call",
+            "relation_confidence": "high"
+          },
+          "candidate_values": [
+            {
+              "value": "discount_threshold (equality boundary)",
+              "reason": "observed values do not include the equality-boundary case for this predicate"
+            }
+          ],
+          "assertion_shape": {
+            "kind": "exact_return_value",
+            "example": "assert_eq!(actual, expected)"
+          },
+          "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json"
+        },
+        "actionability": {
+          "class": "actionable_related_test_extension",
+          "reason": "extend the nearest related test with the missing discriminator",
+          "has_concrete_guidance": true,
+          "signals": {
+            "missing_discriminator": true,
+            "candidate_value": true,
+            "assertion_shape": true,
+            "related_test": true,
+            "recommended_test_target": true,
+            "verification_command": true
+          }
+        },
+        "calibration": {
+          "availability": "not_imported",
+          "confidence": "unknown",
+          "agreement": "no_runtime_data"
+        },
+        "static_limitations": []
+      }
     }
   ]
 }
@@ -705,7 +822,9 @@ Field contract:
   section, the renderer (`crates/ripr/src/output/repo_exposure.rs`), and
   any downstream consumers in lockstep. `0.1` → `0.2`: per-related-test
   entries gained `relation_reason` and `relation_confidence` fields
-  (`analysis/related-test-precision-v1`).
+  (`analysis/related-test-precision-v1`). `0.2` -> `0.3`: seams gained
+  the additive `evidence_record` projection (`RIPR-SPEC-0021`) while
+  preserving existing top-level seam fields.
 - `scope` — always `"repo"`.
 - `metrics` — totals plus a per-`SeamGripClass` count bucket. Keys mirror
   `SeamGripClass::as_str()`. The renderer emits all 11 buckets even when
@@ -744,6 +863,33 @@ Field contract:
 - `seams[].missing_discriminators` — per-rule hypothesis strings (e.g.,
   the equality-boundary case for predicate seams). Empty when no rule
   fires.
+- `seams[].evidence_record` - additive Lane 1 evidence spine for the seam.
+  It is schema versioned independently from repo exposure and currently uses
+  `schema_version: "0.1"`.
+- `seams[].evidence_record.canonical_gap_id` - nullable until canonical
+  behavioral gap identity is available. Line numbers remain locators, not
+  durable canonical identity.
+- `seams[].evidence_record.evidence_path` - typed reach, activate,
+  propagate, observe, and discriminate stages. Each stage carries `state`,
+  `confidence`, and `summary`.
+- `seams[].evidence_record.observed_values`,
+  `missing_discriminators`, and `related_tests` - structured copies of
+  existing seam evidence, including related-test relation fields. The
+  nested `related_tests` array is capped like the top-level array and keeps
+  `related_tests_total`.
+- `seams[].evidence_record.recommendation` - bounded test-intent guidance
+  derived from existing evidence: recommended test target, nearest test to
+  imitate, candidate values, assertion shape, and verification command when
+  the seam has concrete guidance.
+- `seams[].evidence_record.actionability` - advisory classification plus
+  boolean signals showing which pieces of guidance are present. It does not
+  change gate or baseline policy.
+- `seams[].evidence_record.calibration` - placeholder static/runtime
+  confidence context. `no_runtime_data` means no imported runtime
+  calibration was supplied; it does not imply runtime confirmation.
+- `seams[].evidence_record.static_limitations` - unknown or opaque static
+  evidence stages that should be treated as analyzer limitations rather than
+  focused-test instructions.
 
 The Markdown sibling (`repo-exposure.md`) prints a metrics table plus
 the top headline-eligible seams (capped at 50). Both formats are

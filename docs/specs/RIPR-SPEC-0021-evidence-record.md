@@ -1,0 +1,224 @@
+# RIPR-SPEC-0021: Evidence Record
+
+Status: proposed
+
+## Problem
+
+RIPR has several advisory consumers of seam evidence: repo exposure, RIPR Zero
+status, agent packets, before/after movement, PR ledgers, assistant proof
+reports, editor status, and gates. Those consumers should not reconstruct seam
+identity, missing discriminators, related tests, recommendation shape, static
+limitations, or calibration context independently.
+
+Lane 1 needs one seam-native evidence projection that downstream reports can
+consume without changing analyzer truth.
+
+## Product Contract
+
+The evidence record is an additive projection over existing static analyzer
+facts. It must not:
+
+- change seam classification;
+- create a gate decision;
+- mutate a baseline;
+- post comments;
+- edit source;
+- generate tests;
+- call a provider;
+- run mutation testing.
+
+The record preserves conservative static language. Runtime mutation data, when
+supplied by later calibration work, is confidence context only.
+
+## Behavior
+
+The canonical behavior is:
+
+```text
+ClassifiedSeam
+-> seam-native evidence_record
+-> additive repo-exposure JSON field
+-> downstream consumers can read one shared shape
+```
+
+The projection must copy existing analyzer facts without changing them. Unknown
+or opaque stages must be explicit static limitations. Missing runtime
+calibration must remain `no_runtime_data`.
+
+## Required Evidence
+
+The first implementation uses only existing static inputs:
+
+| Evidence | Source |
+| --- | --- |
+| Seam identity, owner, location, kind | `RepoSeam` |
+| Grip class and headline eligibility | `ClassifiedSeam` |
+| Reach, activate, propagate, observe, discriminate stages | `TestGripEvidence` |
+| Observed values | `ValueFact` |
+| Missing discriminators and flow sinks | `MissingDiscriminatorFact` |
+| Related tests and oracle strength | `RelatedTestGrip` |
+| Recommended test, candidate value, assertion shape | Existing agent seam packet helpers |
+
+The projection must not read hidden artifacts or rerun analysis.
+
+## Output Location
+
+Repo exposure JSON includes the record under each seam:
+
+```json
+{
+  "seams": [
+    {
+      "seam_id": "f3c9e4d21a0b7c88",
+      "evidence_record": {
+        "schema_version": "0.1"
+      }
+    }
+  ]
+}
+```
+
+Repo exposure keeps existing top-level seam fields for compatibility. The
+record is additive in repo exposure schema `0.3`.
+
+## Required Fields
+
+Each `seams[].evidence_record` must include:
+
+- `schema_version`: evidence record schema version, currently `"0.1"`.
+- `seam_id`: the seam identity copied from the containing seam.
+- `canonical_gap_id`: nullable until canonical behavioral gap identity exists.
+- `owner`: owner symbol copied from the seam.
+- `location.file` and `location.line`: source locator fields.
+- `seam_kind`: seam kind copied from the seam.
+- `grip_class`: seam grip class copied from current classification.
+- `headline_eligible`: current headline eligibility.
+- `evidence_path.reach`, `activate`, `propagate`, `observe`, and
+  `discriminate`: typed stage records with `state`, `confidence`, and
+  `summary`.
+- `observed_values`: structured observed activation values.
+- `missing_discriminators`: structured missing discriminator facts and optional
+  flow sink context.
+- `related_tests_total` and `related_tests`: ranked related-test evidence.
+- `recommendation`: bounded test-intent guidance derived from existing
+  evidence.
+- `actionability`: advisory actionability class and available guidance signals.
+- `calibration`: static/runtime confidence placeholder.
+- `static_limitations`: unknown or opaque static evidence stages.
+
+## Actionability Vocabulary
+
+`actionability.class` must be one of:
+
+- `actionable_focused_test`
+- `actionable_assertion_upgrade`
+- `actionable_related_test_extension`
+- `needs_human_design`
+- `static_limitation`
+- `not_policy_relevant`
+
+These classes are advisory and do not change policy, baselines, suppressions, or
+gate authority.
+
+## Calibration Placeholder
+
+Before static/runtime calibration labels are implemented, the record must carry:
+
+```json
+{
+  "calibration": {
+    "availability": "not_imported",
+    "confidence": "unknown",
+    "agreement": "no_runtime_data"
+  }
+}
+```
+
+`no_runtime_data` means no imported runtime calibration was supplied. It does
+not confirm or reject static evidence.
+
+## Backward Compatibility
+
+Consumers that already read repo exposure may continue to use existing fields:
+
+- `seam_id`
+- `kind`
+- `file`
+- `line`
+- `owner`
+- `expression`
+- `grip_class`
+- `headline_eligible`
+- `evidence`
+- `related_tests_total`
+- `related_tests`
+- `observed_values`
+- `missing_discriminators`
+
+The first implementation must not route RIPR Zero, movement, assistant proof,
+baseline, PR ledger, editor, or gate surfaces through the new record. Those are
+separate follow-up work items.
+
+## Acceptance Examples
+
+- `repo-exposure.json` includes `seams[].evidence_record`.
+- Existing repo exposure fields remain present.
+- Evidence record schema `0.1` is documented in `docs/OUTPUT_SCHEMA.md`.
+- Unit tests pin identity, grip class, evidence path, recommendation,
+  actionability, calibration placeholder, and static limitations.
+- No analyzer behavior changes.
+- No gate, policy, LSP, editor, first-useful-action, movement, assistant proof,
+  or baseline behavior changes.
+
+Additional examples:
+
+- A weakly gripped predicate boundary carries the missing equality
+  discriminator, candidate value, recommended assertion shape, and verify
+  command.
+- An activation-unknown seam carries `static_limitations[]` and does not claim
+  concrete focused-test guidance.
+- An opaque seam carries a classification-level static limitation.
+
+## Test Mapping
+
+| Behavior | Test |
+| --- | --- |
+| Record carries identity, evidence path, recommendation, actionability, and calibration placeholder | `evidence_record_carries_identity_path_guidance_and_calibration_placeholder` |
+| Unknown stages become static limitations | `evidence_record_names_static_limitations_from_unknown_stages` |
+| Opaque classification is static limitation work | `evidence_record_marks_opaque_seams_as_static_limitation_work` |
+| Repo exposure schema and metrics remain present | `json_carries_schema_version_scope_and_metrics` |
+| Repo exposure carries existing seam fields plus the new record | `json_carries_full_classified_record` |
+
+## Implementation Mapping
+
+| Surface | File |
+| --- | --- |
+| Evidence record projection | `crates/ripr/src/output/evidence_record.rs` |
+| Repo exposure JSON attachment | `crates/ripr/src/output/repo_exposure.rs` |
+| Output module registration | `crates/ripr/src/output/mod.rs` |
+| Schema reference | `docs/OUTPUT_SCHEMA.md` |
+| Capability tracking | `docs/CAPABILITY_MATRIX.md`, `metrics/capabilities.toml` |
+| Traceability | `.ripr/traceability.toml` |
+
+## Metrics
+
+The capability metric labels are:
+
+- `evidence_record_projected_seams`
+- `evidence_record_actionable_guidance`
+- `evidence_record_static_limitations`
+
+These are tracking labels for capability maturity. This PR does not add a
+runtime metric emitter.
+
+## Non-Goals
+
+- No analyzer behavior changes.
+- No gate or policy changes.
+- No LSP or editor changes.
+- No first-useful-action docs, dogfood, or closeout work.
+- No RIPR Zero routing changes.
+- No evidence movement routing changes.
+- No assistant proof routing changes.
+- No baseline or PR ledger routing changes.
+- No mutation execution.
