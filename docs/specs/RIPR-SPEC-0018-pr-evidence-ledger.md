@@ -215,6 +215,7 @@ The JSON report uses schema version `0.1`:
   "waivers": [
     {
       "label": "ripr-waive",
+      "canonical_gap_id": "pricing::discount::threshold_equality",
       "decision_id": "ripr-gate-67fc764ba37d77bd",
       "seam_id": "67fc764ba37d77bd",
       "age_prs": 1,
@@ -225,6 +226,7 @@ The JSON report uses schema version `0.1`:
   ],
   "suppressions": [
     {
+      "canonical_gap_id": "pricing::discount::threshold_equality",
       "decision_id": "ripr-gate-suppressed",
       "seam_id": "suppressed",
       "source": ".ripr/suppressions.toml",
@@ -236,6 +238,7 @@ The JSON report uses schema version `0.1`:
   "repair_receipts": [
     {
       "source": "agent_receipt",
+      "canonical_gap_id": "pricing::discount::threshold_equality",
       "seam_id": "67fc764ba37d77bd",
       "static_movement": {
         "state": "improved",
@@ -260,6 +263,7 @@ The JSON report uses schema version `0.1`:
   },
   "top_repair_route": {
     "source": "ripr_zero_status",
+    "canonical_gap_id": "pricing::discount::threshold_equality",
     "seam_id": "67fc764ba37d77bd",
     "path": "src/pricing.rs",
     "line": 88,
@@ -293,13 +297,17 @@ Field contract:
 - `gate.pass_fail_authority` must name `ripr gate evaluate` whenever a gate
   decision is present.
 - `waivers[]` records PR-time visible acknowledgements. Waivers do not hide
-  findings and do not become suppressions.
+  findings and do not become suppressions. `waivers[].canonical_gap_id` is
+  copied from source artifacts when available and remains `null` otherwise.
 - `suppressions[]` records durable policy exceptions. Suppressions are not
-  waivers and are not baseline debt.
+  waivers and are not baseline debt. `suppressions[].canonical_gap_id` is
+  copied from gate or baseline-delta evidence when available.
 - `repair_receipts[]` records supplied outcome or agent receipt evidence.
   `repair_receipts[].static_movement` uses the same object shape as review
   guidance outcome receipts, including `state`, `source`, and `artifact`; it
   must not infer receipt success from a missing artifact.
+  `repair_receipts[].canonical_gap_id` is copied from receipt or
+  recommendation provenance when supplied.
 - `coverage_grip_frontier.status` is `available`, `not_available`, or
   `unsupported`.
 - `coverage_grip_frontier.*` must keep coverage movement separate from RIPR
@@ -307,7 +315,8 @@ Field contract:
   adequacy.
 - `top_repair_route` is copied from existing PR guidance, RIPR Zero status,
   gate decision, agent packet, or receipt artifacts. Missing fields are `null`
-  plus warnings, not invented.
+  plus warnings, not invented. `top_repair_route.canonical_gap_id` is copied
+  from the selected source artifact when available.
 - `history.*` is present only when a prior ledger history or previous ledger
   summary is supplied.
 
@@ -417,9 +426,9 @@ The report must include:
 - waiver records with label, decision identity, age when known, and visibility;
 - suppression records with source, owner, reason when known, and visibility;
 - repair receipt records when outcome or agent receipt inputs exist;
-- top repair route with seam identity, file, line, missing discriminator,
-  suggested test, related test, verify command, and agent command when those
-  fields are available;
+- top repair route with canonical gap ID when supplied, seam identity, file,
+  line, missing discriminator, suggested test, related test, verify command,
+  and agent command when those fields are available;
 - coverage/grip frontier status and optional movement values;
 - history source and movement summary when history is supplied;
 - limits text that keeps the report advisory and names the gate evaluator as
@@ -438,6 +447,10 @@ keeps the finding visible as acknowledged.
 
 Given a suppressed finding, the ledger records it separately from waivers and
 baseline debt.
+
+Given source artifacts that supply `canonical_gap_id`, the ledger carries that
+identity through waiver records, suppression records, repair receipts, and the
+top repair route without changing the existing `seam_id` fields.
 
 Given an agent receipt showing static movement improved after one focused test,
 the ledger records a repair receipt and links the receipt path.

@@ -150,6 +150,7 @@ impl Bucket {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct Identity {
+    canonical_gap_id: Option<String>,
     seam_id: Option<String>,
     source_id: Option<String>,
     id: Option<String>,
@@ -160,7 +161,8 @@ struct Identity {
 
 impl Identity {
     fn has_stable_value(&self) -> bool {
-        self.seam_id.is_some()
+        self.canonical_gap_id.is_some()
+            || self.seam_id.is_some()
             || self.source_id.is_some()
             || self.id.is_some()
             || self.dedupe_key.is_some()
@@ -169,8 +171,9 @@ impl Identity {
 
     fn sort_key(&self) -> String {
         match self
-            .seam_id
+            .canonical_gap_id
             .as_deref()
+            .or(self.seam_id.as_deref())
             .or(self.source_id.as_deref())
             .or(self.id.as_deref())
             .or(self.dedupe_key.as_deref())
@@ -233,6 +236,7 @@ struct CurrentParse {
 
 #[derive(Clone, Debug)]
 struct CurrentIndexes {
+    canonical_gap_id: BTreeMap<String, Vec<usize>>,
     seam_id: BTreeMap<String, Vec<usize>>,
     source_id: BTreeMap<String, Vec<usize>>,
     id: BTreeMap<String, Vec<usize>>,
@@ -551,6 +555,7 @@ fn baseline_record_from_value(value: &Value) -> Option<BaselineRecord> {
         .or_else(|| value.pointer("/placement/line").and_then(Value::as_u64));
     let static_class = string_field(value.get("static_class"));
     let identity = Identity {
+        canonical_gap_id: canonical_gap_id_from_value(value),
         seam_id: string_field(identity_value.get("seam_id"))
             .or_else(|| string_field(value.get("seam_id"))),
         source_id: string_field(identity_value.get("source_id"))
@@ -582,6 +587,7 @@ fn current_decision_from_value(value: &Value) -> Option<CurrentDecision> {
     let line = value.pointer("/placement/line").and_then(Value::as_u64);
     let static_class = string_field(value.get("static_class"));
     let identity = Identity {
+        canonical_gap_id: canonical_gap_id_from_value(value),
         seam_id: string_field(value.get("seam_id")),
         source_id: string_field(value.get("source_id")),
         id: string_field(value.get("id")),
@@ -626,6 +632,7 @@ fn evidence_from_value(value: &Value) -> Evidence {
 
 fn build_current_indexes(decisions: &[CurrentDecision]) -> CurrentIndexes {
     let mut indexes = CurrentIndexes {
+        canonical_gap_id: BTreeMap::new(),
         seam_id: BTreeMap::new(),
         source_id: BTreeMap::new(),
         id: BTreeMap::new(),
@@ -633,6 +640,11 @@ fn build_current_indexes(decisions: &[CurrentDecision]) -> CurrentIndexes {
         fallback: BTreeMap::new(),
     };
     for (index, decision) in decisions.iter().enumerate() {
+        push_index(
+            &mut indexes.canonical_gap_id,
+            decision.identity.canonical_gap_id.as_ref(),
+            index,
+        );
         push_index(
             &mut indexes.seam_id,
             decision.identity.seam_id.as_ref(),
@@ -666,6 +678,11 @@ fn push_index(index: &mut BTreeMap<String, Vec<usize>>, key: Option<&String>, va
 
 fn match_current_decision(identity: &Identity, indexes: &CurrentIndexes) -> MatchResult {
     for (method, key, index) in [
+        (
+            "canonical_gap_id",
+            identity.canonical_gap_id.as_ref(),
+            &indexes.canonical_gap_id,
+        ),
         ("seam_id", identity.seam_id.as_ref(), &indexes.seam_id),
         ("source_id", identity.source_id.as_ref(), &indexes.source_id),
         ("id", identity.id.as_ref(), &indexes.id),
@@ -851,7 +868,7 @@ fn invalid_baseline_item(value: &Value) -> DeltaItem {
         static_class: string_field(value.get("static_class")),
         decision: string_field(value.get("decision")),
         reason:
-            "Baseline entry is missing seam_id, source_id, id, dedupe_key, and fallback identity."
+            "Baseline entry is missing canonical_gap_id, seam_id, source_id, id, dedupe_key, and fallback identity."
                 .to_string(),
         missing_discriminator: string_field(value.pointer("/evidence/missing_discriminator")),
         suggested_test: SuggestedTest {
@@ -996,6 +1013,7 @@ fn item_json(item: &DeltaItem) -> Value {
     json!({
         "bucket": item.bucket.as_str(),
         "identity": {
+            "canonical_gap_id": item.identity.canonical_gap_id,
             "seam_id": item.identity.seam_id,
             "source_id": item.identity.source_id,
             "id": item.identity.id,
@@ -1102,6 +1120,12 @@ fn fallback_identity(
         )),
         _ => None,
     }
+}
+
+fn canonical_gap_id_from_value(value: &Value) -> Option<String> {
+    string_field(value.get("canonical_gap_id"))
+        .or_else(|| string_field(value.pointer("/identity/canonical_gap_id")))
+        .or_else(|| string_field(value.pointer("/evidence_record/canonical_gap_id")))
 }
 
 fn string_field(value: Option<&Value>) -> Option<String> {
@@ -1256,6 +1280,53 @@ mod tests {
         assert!(rendered.contains("\"still_present\": 1"));
         assert!(rendered.contains("\"matched_by\": \"fallback\""));
         assert!(rendered.contains("matched current evidence by fallback"));
+        Ok(())
+    }
+
+    #[test]
+    fn baseline_delta_matches_by_canonical_gap_id_across_line_movement() -> Result<(), String> {
+        let baseline = r#"{
+          "schema_version": "0.1",
+          "entries": [
+            {
+              "identity": {
+                "canonical_gap_id": "pricing::discount::threshold_equality",
+                "seam_id": "old-seam"
+              },
+              "path": "src/pricing.rs",
+              "line": 10,
+              "static_class": "weakly_gripped"
+            }
+          ]
+        }"#;
+        let current = r#"{
+          "schema_version": "0.1",
+          "decisions": [
+            {
+              "decision": "advisory",
+              "seam_id": "new-seam-after-refactor",
+              "static_class": "weakly_gripped",
+              "placement": {"path": "src/pricing.rs", "line": 88},
+              "evidence_record": {
+                "canonical_gap_id": "pricing::discount::threshold_equality"
+              },
+              "evidence": {"missing_discriminator": "amount == threshold"}
+            }
+          ]
+        }"#;
+
+        let report = build_baseline_delta_report(BaselineDeltaInput {
+            root: ".".to_string(),
+            baseline_path: "baseline.json".to_string(),
+            current_gate_decision_path: "current.json".to_string(),
+            baseline_json: Ok(baseline.to_string()),
+            current_gate_decision_json: Ok(current.to_string()),
+        });
+        let rendered = render_baseline_delta_json(&report)?;
+        assert!(rendered.contains("\"still_present\": 1"));
+        assert!(rendered.contains("\"matched_by\": \"canonical_gap_id\""));
+        assert!(rendered.contains("\"seam_id\": \"new-seam-after-refactor\""));
+        assert!(!rendered.contains("\"resolved\": 1"));
         Ok(())
     }
 

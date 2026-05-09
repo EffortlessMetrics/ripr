@@ -182,6 +182,12 @@ shared record without changing analyzer behavior:
   discriminator, static limitations, related test, assertion shape,
   verification command, and before/after movement classes while preserving
   legacy fields as fallback.
+- Baseline ledgers and PR evidence ledgers carry `canonical_gap_id` when source
+  artifacts supply it directly, under `identity.canonical_gap_id`, or under
+  `evidence_record.canonical_gap_id`. Baseline diff and shrink-only update use
+  canonical gap identity before seam/source/id/dedupe/fallback matching, while
+  PR ledger records copy it into waiver, suppression, receipt, and top repair
+  route records.
 
 This routing must not invent commands, generate tests, change gate authority,
 or mutate baselines.
@@ -199,6 +205,10 @@ or mutate baselines.
 - Test-oracle assistant proof prefers `evidence_record` selected-seam,
   recommendation, static-limit, and movement fields while preserving legacy
   fallback fields and existing advisory proof boundaries.
+- Baseline create, diff, and shrink-only update preserve canonical behavioral
+  gap identity when supplied while preserving older ledgers that lack it.
+- PR evidence ledger copies canonical gap identity into identity-bearing
+  waiver, suppression, receipt, and top repair route records when supplied.
 - Evidence record schema `0.1` is documented in `docs/OUTPUT_SCHEMA.md`.
 - Unit tests pin identity, grip class, evidence path, recommendation,
   actionability, calibration placeholder, and static limitations.
@@ -230,6 +240,10 @@ Additional examples:
 | Targeted-test outcome names unchanged record movement reason | `targeted_test_outcome_records_no_movement_reason` |
 | Test-oracle assistant proof prefers agent packet evidence records | `test_oracle_assistant_proof_prefers_agent_packet_evidence_record` |
 | Test-oracle assistant proof prefers repo-exposure evidence records for movement | `test_oracle_assistant_proof_prefers_repo_exposure_evidence_record_movement` |
+| Baseline create copies supplied canonical gap identity | `baseline_create_uses_canonical_gap_identity_when_supplied` |
+| Baseline diff matches moved lines by canonical gap identity | `baseline_delta_matches_by_canonical_gap_id_across_line_movement` |
+| Baseline update preserves refactored entries matched by canonical gap identity | `baseline_update_preserves_refactored_entry_matched_by_canonical_gap_id` |
+| PR evidence ledger carries canonical gap identity through joined records | `pr_evidence_ledger_joins_primary_artifacts` |
 
 ## Implementation Mapping
 
@@ -241,6 +255,8 @@ Additional examples:
 | Targeted-test outcome movement | `crates/ripr/src/output/outcome.rs` |
 | RIPR Zero status repair route consumer | `crates/ripr/src/output/ripr_zero_status.rs` |
 | Test-oracle assistant proof consumer | `crates/ripr/src/output/test_oracle_assistant_proof.rs` |
+| Baseline ledger canonical identity consumer | `crates/ripr/src/output/baseline.rs`, `crates/ripr/src/output/baseline_delta.rs`, `crates/ripr/src/output/baseline_update.rs` |
+| PR evidence ledger canonical identity consumer | `crates/ripr/src/output/pr_evidence_ledger.rs` |
 | Output module registration | `crates/ripr/src/output/mod.rs` |
 | Schema reference | `docs/OUTPUT_SCHEMA.md` |
 | Capability tracking | `docs/CAPABILITY_MATRIX.md`, `metrics/capabilities.toml` |
@@ -264,6 +280,6 @@ runtime metric emitter.
 - No LSP or editor changes.
 - No first-useful-action docs, dogfood, or closeout work.
 - No RIPR Zero gate or baseline mutation changes.
-- No evidence movement routing changes.
-- No baseline or PR ledger routing changes.
+- No further evidence movement routing changes.
+- No baseline mutation or PR policy changes.
 - No mutation execution.

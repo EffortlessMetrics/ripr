@@ -28,6 +28,7 @@ pub(crate) struct BaselineUpdateReport {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct Identity {
+    canonical_gap_id: Option<String>,
     seam_id: Option<String>,
     source_id: Option<String>,
     id: Option<String>,
@@ -37,7 +38,8 @@ struct Identity {
 
 impl Identity {
     fn has_stable_value(&self) -> bool {
-        self.seam_id.is_some()
+        self.canonical_gap_id.is_some()
+            || self.seam_id.is_some()
             || self.source_id.is_some()
             || self.id.is_some()
             || self.dedupe_key.is_some()
@@ -46,8 +48,9 @@ impl Identity {
 
     fn sort_key(&self) -> String {
         match self
-            .seam_id
+            .canonical_gap_id
             .as_deref()
+            .or(self.seam_id.as_deref())
             .or(self.source_id.as_deref())
             .or(self.id.as_deref())
             .or(self.dedupe_key.as_deref())
@@ -66,6 +69,7 @@ struct CurrentRecord {
 
 #[derive(Clone, Debug)]
 struct CurrentIndexes {
+    canonical_gap_id: BTreeMap<String, Vec<usize>>,
     seam_id: BTreeMap<String, Vec<usize>>,
     source_id: BTreeMap<String, Vec<usize>>,
     id: BTreeMap<String, Vec<usize>>,
@@ -340,6 +344,7 @@ fn current_record_from_value(value: &Value) -> Option<CurrentRecord> {
     let line = value.pointer("/placement/line").and_then(Value::as_u64);
     let static_class = string_field(value.get("static_class"));
     let identity = Identity {
+        canonical_gap_id: canonical_gap_id_from_value(value),
         seam_id: string_field(value.get("seam_id")),
         source_id: string_field(value.get("source_id")),
         id: string_field(value.get("id")),
@@ -365,6 +370,7 @@ fn baseline_identity_from_value(value: &Value) -> Identity {
         .or_else(|| value.pointer("/placement/line").and_then(Value::as_u64));
     let static_class = string_field(value.get("static_class"));
     Identity {
+        canonical_gap_id: canonical_gap_id_from_value(value),
         seam_id: string_field(identity_value.get("seam_id"))
             .or_else(|| string_field(value.get("seam_id"))),
         source_id: string_field(identity_value.get("source_id"))
@@ -379,6 +385,7 @@ fn baseline_identity_from_value(value: &Value) -> Identity {
 
 fn build_current_indexes(records: &[CurrentRecord]) -> CurrentIndexes {
     let mut indexes = CurrentIndexes {
+        canonical_gap_id: BTreeMap::new(),
         seam_id: BTreeMap::new(),
         source_id: BTreeMap::new(),
         id: BTreeMap::new(),
@@ -386,6 +393,11 @@ fn build_current_indexes(records: &[CurrentRecord]) -> CurrentIndexes {
         fallback: BTreeMap::new(),
     };
     for (index, record) in records.iter().enumerate() {
+        push_index(
+            &mut indexes.canonical_gap_id,
+            record.identity.canonical_gap_id.as_ref(),
+            index,
+        );
         push_index(
             &mut indexes.seam_id,
             record.identity.seam_id.as_ref(),
@@ -419,6 +431,11 @@ fn push_index(index: &mut BTreeMap<String, Vec<usize>>, key: Option<&String>, va
 
 fn match_current_decision(identity: &Identity, indexes: &CurrentIndexes) -> MatchResult {
     for (method, key, index) in [
+        (
+            "canonical_gap_id",
+            identity.canonical_gap_id.as_ref(),
+            &indexes.canonical_gap_id,
+        ),
         ("seam_id", identity.seam_id.as_ref(), &indexes.seam_id),
         ("source_id", identity.source_id.as_ref(), &indexes.source_id),
         ("id", identity.id.as_ref(), &indexes.id),
@@ -459,6 +476,12 @@ fn fallback_identity(
         )),
         _ => None,
     }
+}
+
+fn canonical_gap_id_from_value(value: &Value) -> Option<String> {
+    string_field(value.get("canonical_gap_id"))
+        .or_else(|| string_field(value.pointer("/identity/canonical_gap_id")))
+        .or_else(|| string_field(value.pointer("/evidence_record/canonical_gap_id")))
 }
 
 fn string_field(value: Option<&Value>) -> Option<String> {
@@ -576,6 +599,54 @@ mod tests {
         assert!(rendered.contains("src/fallback.rs:7:weakly_gripped"));
         assert!(rendered.contains("fallback path/line/static_class"));
         assert!(rendered.contains("matched 2 current decisions by fallback"));
+        Ok(())
+    }
+
+    #[test]
+    fn baseline_update_preserves_refactored_entry_matched_by_canonical_gap_id() -> Result<(), String>
+    {
+        let baseline = r#"{
+          "schema_version": "0.1",
+          "kind": "gate_baseline",
+          "entries": [
+            {
+              "identity": {
+                "canonical_gap_id": "pricing::discount::threshold_equality",
+                "seam_id": "old-seam"
+              },
+              "path": "src/old.rs",
+              "line": 10,
+              "static_class": "weakly_gripped"
+            }
+          ]
+        }"#;
+        let current = r#"{
+          "schema_version": "0.1",
+          "decisions": [
+            {
+              "decision": "advisory",
+              "seam_id": "new-seam",
+              "static_class": "weakly_gripped",
+              "placement": {"path": "src/new.rs", "line": 88},
+              "evidence_record": {
+                "canonical_gap_id": "pricing::discount::threshold_equality"
+              }
+            }
+          ]
+        }"#;
+
+        let report = build_baseline_update_remove_resolved(BaselineUpdateInput {
+            baseline_path: "baseline.json".to_string(),
+            current_gate_decision_path: "current.json".to_string(),
+            baseline_json: baseline.to_string(),
+            current_gate_decision_json: current.to_string(),
+        })?;
+        let rendered = render_baseline_update_json(&report)?;
+        assert_eq!(baseline_update_removed_resolved_count(&report), 0);
+        assert!(
+            rendered.contains("\"canonical_gap_id\": \"pricing::discount::threshold_equality\"")
+        );
+        assert!(rendered.contains("\"seam_id\": \"old-seam\""));
         Ok(())
     }
 

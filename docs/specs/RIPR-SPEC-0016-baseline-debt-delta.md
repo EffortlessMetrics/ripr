@@ -112,6 +112,7 @@ ledger shape is expected to be:
   "entries": [
     {
       "identity": {
+        "canonical_gap_id": "pricing::discount::threshold_equality",
         "seam_id": "67fc764ba37d77bd",
         "source_id": "ripr-review-67fc764ba37d77bd",
         "id": "ripr-gate-67fc764ba37d77bd",
@@ -155,16 +156,20 @@ the entry.
 The report compares baseline records to current gate decisions using stable
 identity fields in this order:
 
-1. `seam_id` when present in both records;
-2. `source_id` when present in both records;
-3. gate decision `id` when present in both records;
-4. `dedupe_key` when present in both records;
-5. stable fallback made from normalized repo-relative path, line, and static
+1. `canonical_gap_id` when present in both records;
+2. `seam_id` when present in both records;
+3. `source_id` when present in both records;
+4. gate decision `id` when present in both records;
+5. `dedupe_key` when present in both records;
+6. stable fallback made from normalized repo-relative path, line, and static
    class.
 
-The fallback must be deterministic and documented in the JSON. It is less
-stable than `seam_id` and should produce a warning when it is the selected match
-method.
+`canonical_gap_id` is optional and additive. It may be supplied directly on the
+record, under `identity.canonical_gap_id`, or under
+`evidence_record.canonical_gap_id`; older ledgers without it remain valid. The
+fallback must be deterministic and documented in the JSON. It is less stable
+than semantic or seam identity and should produce a warning when it is the
+selected match method.
 
 If more than one current record matches one baseline identity, the report must
 mark the baseline entry `stale_baseline_entry` or `invalid_baseline_entry`
@@ -233,12 +238,13 @@ The JSON report uses schema version `0.1`:
     {
       "bucket": "new_policy_eligible",
       "identity": {
+        "canonical_gap_id": "pricing::discount::threshold_equality",
         "seam_id": "67fc764ba37d77bd",
         "source_id": "ripr-review-67fc764ba37d77bd",
         "id": "ripr-gate-67fc764ba37d77bd",
         "dedupe_key": null,
         "fallback": "src/pricing.rs:88:weakly_gripped",
-        "matched_by": "seam_id"
+        "matched_by": "canonical_gap_id"
       },
       "path": "src/pricing.rs",
       "line": 88,
@@ -332,8 +338,8 @@ The report must include:
 - baseline entry counts for parsed, valid, stale, and invalid records;
 - current decision counts for every delta bucket;
 - one primary bucket for every parsed baseline or current decision record;
-- identity fields used for comparison: `seam_id`, `source_id`, `id`,
-  `dedupe_key`, and deterministic fallback;
+- identity fields used for comparison: `canonical_gap_id`, `seam_id`,
+  `source_id`, `id`, `dedupe_key`, and deterministic fallback;
 - `matched_by` for every joined baseline/current pair;
 - repair-oriented warnings for fallback matches, ambiguous matches, invalid
   baseline records, missing required inputs, and unsupported schema versions;
@@ -349,6 +355,10 @@ The report must include:
 Given a baseline with one advisory weakly gripped seam and current evidence with
 the same `seam_id`, the report counts one `still_present` item and records
 `matched_by = "seam_id"`.
+
+Given a baseline with one advisory weakly gripped seam and current evidence that
+moved lines but carries the same `canonical_gap_id`, the report counts one
+`still_present` item and records `matched_by = "canonical_gap_id"`.
 
 Given a baseline with one reviewed seam that is absent from current evidence,
 the report counts one `resolved` item and does not add a new baseline record.
@@ -373,8 +383,8 @@ The implementation adds tests for:
 - CLI parsing for `ripr baseline diff`;
 - CLI parsing for `ripr baseline update --remove-resolved`;
 - baseline JSON parsing and invalid-entry reporting;
-- identity matching by `seam_id`, `source_id`, `id`, `dedupe_key`, and
-  fallback;
+- identity matching by `canonical_gap_id`, `seam_id`, `source_id`, `id`,
+  `dedupe_key`, and fallback;
 - ambiguous fallback matches becoming stale or invalid rather than arbitrary;
 - JSON and Markdown report shape;
 - shrink-only baseline update preserving malformed or ambiguous entries and
@@ -434,8 +444,8 @@ The report should feed these adoption metrics:
 The implementation should be pinned by:
 
 - output contract tests for JSON and Markdown shape;
-- baseline identity matching tests for `seam_id`, `source_id`, `id`,
-  `dedupe_key`, and fallback;
+- baseline identity matching tests for `canonical_gap_id`, `seam_id`,
+  `source_id`, `id`, `dedupe_key`, and fallback;
 - fixture cases for still-present, resolved, new policy-eligible,
   acknowledged, suppressed, stale, invalid, and missing-current-input buckets;
 - `cargo xtask check-output-contracts`;
