@@ -33,6 +33,10 @@ are scoped or reviewed.
   `gate-decision.json`, the workflow runs `ripr baseline diff`, uploads
   `baseline-debt-delta.{json,md}`, and summarizes debt movement without making
   the delta report the pass/fail authority.
+- Added `docs/BASELINE_LEDGER_WORKFLOW.md`, a command-by-command adoption guide
+  for reviewed baseline creation, baseline debt deltas, `baseline-check`,
+  shrink-only refresh, new debt review, waiver versus baseline versus
+  suppression boundaries, and the path toward RIPR 0.
 - Extended framed LSP protocol smoke coverage through a real seam diagnostic,
   hover, code actions, `ripr.collectEvidenceContext`, and shutdown.
 - Extended VS Code e2e smoke coverage so the real boundary-gap server path

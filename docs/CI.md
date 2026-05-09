@@ -1269,6 +1269,11 @@ punishing historical behavioral test debt on every pull request. A baseline is
 a checkpoint of visible existing findings. It is not a suppression file, not a
 waiver label, and not evidence that the finding is acceptable forever.
 
+The full command-by-command adoption workflow lives in
+[Baseline ledger workflow](BASELINE_LEDGER_WORKFLOW.md). This section keeps the
+generated-CI summary and repository-variable shape close to the workflow
+reference.
+
 The adoption model is:
 
 ```text

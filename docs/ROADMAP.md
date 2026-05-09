@@ -148,8 +148,10 @@ gate-decision evidence, `ripr baseline diff` can report baseline debt
 movement, and `ripr baseline update --remove-resolved` can shrink reviewed
 baselines without adopting new current debt. Generated CI now uploads and
 summarizes baseline debt delta artifacts when a baseline and gate decision are
-present, leaving the baseline ledger workflow docs as the next ready adoption
-slice.
+present. [Baseline ledger workflow](BASELINE_LEDGER_WORKFLOW.md) documents the
+user path from advisory adoption to reviewed baseline creation,
+`baseline-check`, shrink-only refresh, new debt review, and RIPR 0 under
+configured scope, leaving Campaign 17 closeout as the next ready slice.
 Editor Evidence UX remains queued as a separate Lane 3 campaign; its contract
 audit is recorded in [Editor Evidence UX](EDITOR_EVIDENCE_UX.md), and hover
 plus evidence-aware action hardening have landed as explicit parallel slices.

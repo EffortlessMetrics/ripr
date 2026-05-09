@@ -61,6 +61,10 @@ that changed the decision.
 Use `baseline-check` after the repository has reviewed current gate output and
 created a small checked-in baseline for historical debt.
 
+Use [Baseline ledger workflow](BASELINE_LEDGER_WORKFLOW.md) for the concrete
+`ripr baseline create`, `ripr baseline diff`, and shrink-only
+`ripr baseline update --remove-resolved` commands.
+
 Before enabling it:
 
 - generate a candidate baseline from reviewed `gate-decision.json` output;
@@ -68,7 +72,7 @@ Before enabling it:
 - commit the baseline path configured by `RIPR_GATE_BASELINE`;
 - run `visible-only` or `baseline-check` on the baseline PR;
 - confirm baseline hits remain visible and non-blocking;
-- confirm a new unbaselined candidate blocks in a controlled proof run.
+- confirm a new unbaselined candidate blocks in a controlled trial run.
 
 Refresh the baseline by shrinking it when focused tests remove old findings.
 Do not add new PR-time findings to the baseline just to make a run pass.
