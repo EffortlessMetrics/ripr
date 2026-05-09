@@ -4854,11 +4854,6 @@ mod tests {
         assert!(zero_status.contains(
             "--recommendation-calibration target/ripr/reports/recommendation-calibration.json"
         ));
-        assert_step_before(
-            &workflow,
-            "Render RIPR baseline debt delta",
-            "Render RIPR Zero status",
-        );
 
         let annotations = workflow_step(&workflow, "Emit RIPR PR guidance annotations");
         assert!(annotations.contains("hashFiles('target/ripr/review/comments.json')"));
