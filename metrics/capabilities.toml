@@ -819,6 +819,20 @@ next = "maintenance"
 metric = "test_oracle_assistant_loop_reports, test_oracle_assistant_loop_verified_receipts, test_oracle_assistant_loop_unknown_inputs, test_oracle_assistant_loop_summary_only, test_oracle_assistant_loop_static_improved, test_oracle_assistant_loop_static_resolved, test_oracle_assistant_loop_static_regressed"
 
 [[capability]]
+id = "first_useful_action_report"
+name = "First useful action report"
+status = "planned"
+spec = "RIPR-SPEC-0020"
+evidence = [
+  "docs/specs/RIPR-SPEC-0020-first-useful-action-report.md defines the first-useful-action report contract over existing editor, PR guidance, ledger, baseline, assistant proof, receipt, optional gate, optional coverage/grip, and staleness evidence",
+  "docs/OUTPUT_SCHEMA.md documents the planned first-useful-action JSON and Markdown shape, status vocabulary, action vocabulary, routing priorities, command fields, warnings, fallback states, and advisory limits",
+  ".ripr/goals/active.toml and docs/IMPLEMENTATION_CAMPAIGNS.md keep implementation blocked behind fixtures/first-useful-action-corpus"
+]
+fixtures = []
+next = "fixtures/first-useful-action-corpus"
+metric = "first_useful_action_reports, first_useful_action_actionable, first_useful_action_stale, first_useful_action_missing_required_artifact, first_useful_action_baseline_only, first_useful_action_acknowledged, first_useful_action_waived, first_useful_action_suppressed, first_useful_action_no_actionable_seam, first_useful_action_already_improved, first_useful_action_unchanged_after_attempt"
+
+[[capability]]
 id = "pilot_packet"
 name = "Pilot packet"
 status = "alpha"

@@ -36,7 +36,7 @@ through multiple work items in a campaign, but each work item should follow the
 | PR Evidence Ledger (19) | Turn per-PR RIPR evidence into an adoption ledger for movement history, waiver aging, baseline burn-down, repair receipts, and coverage/grip frontier signals while preserving advisory defaults. | Complete: spec, producer, generated-CI projection, coverage/grip frontier report, user workflow docs, and `campaign/pr-evidence-ledger-closeout`. |
 | Test-Oracle Assistant Proof (20) | Prove the full PR-time loop from changed Rust behavior to static evidence, PR/editor guidance, focused-test handoff, verification, receipt, and advisory CI/ledger projection. | Complete: spec, canonical fixture, dogfood receipt, user workflow docs, and `campaign/test-oracle-assistant-proof-closeout`. |
 | Test-Oracle Assistant Report Producer (21) | Turn the proved assistant loop into a public read-only JSON/Markdown report producer and optional advisory CI projection. | Complete: report producer, generated-CI projection, proof-report docs, and `campaign/test-oracle-assistant-report-closeout`. |
-| First Useful Action (22) | Compress existing editor, PR, ledger, proof, receipt, optional gate, coverage/grip, and staleness evidence into one advisory next test action. | Active: `spec/first-useful-action-report` is ready; corpus, producer, CI projection, editor status projection, workflow docs, dogfood receipts, and closeout are blocked behind the spec. |
+| First Useful Action (22) | Compress existing editor, PR, ledger, proof, receipt, optional gate, coverage/grip, and staleness evidence into one advisory next test action. | Active: RIPR-SPEC-0020 defines the report contract; `fixtures/first-useful-action-corpus` is ready, with producer, CI projection, editor status projection, workflow docs, dogfood receipts, and closeout blocked behind the corpus. |
 | Editor Evidence UX (future) | Make the saved-workspace LSP path feel like an editor-native test-intent cockpit from diagnostic to hover, related test, context packet, one test, verify, and receipt. | Complete as an explicit parallel Lane 3 closeout: contract audit, hover hardening, evidence-aware actions, context packet, protocol smoke, VS Code smoke, status/staleness, workflow docs, and closeout audit. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
@@ -159,8 +159,9 @@ report, warnings, static movement, optional CI projection, and limits. Campaign
 21 closed with
 `docs/handoffs/2026-05-09-campaign-21-closeout.md`. Campaign 22 is now open as
 First Useful Action. It compresses existing evidence into one advisory next
-test action; `spec/first-useful-action-report` is the first ready work item,
-and implementation remains blocked until that contract is pinned.
+test action; RIPR-SPEC-0020 now pins the report contract, and
+`fixtures/first-useful-action-corpus` is the next ready work item before
+implementation.
 
 ## PR 0: `planning-and-tracking-docs`
 

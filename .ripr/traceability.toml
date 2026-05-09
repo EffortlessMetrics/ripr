@@ -1260,3 +1260,36 @@ metrics = [
   "test_oracle_assistant_loop_static_resolved",
   "test_oracle_assistant_loop_static_regressed",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0020"
+name = "first useful action report"
+spec = "docs/specs/RIPR-SPEC-0020-first-useful-action-report.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0020-first-useful-action-report.md",
+  "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "metrics/capabilities.toml",
+  ".ripr/goals/active.toml",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/ROADMAP.md",
+  "CHANGELOG.md",
+]
+metrics = [
+  "first_useful_action_reports",
+  "first_useful_action_actionable",
+  "first_useful_action_stale",
+  "first_useful_action_missing_required_artifact",
+  "first_useful_action_baseline_only",
+  "first_useful_action_acknowledged",
+  "first_useful_action_waived",
+  "first_useful_action_suppressed",
+  "first_useful_action_no_actionable_seam",
+  "first_useful_action_already_improved",
+  "first_useful_action_unchanged_after_attempt",
+]

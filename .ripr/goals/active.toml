@@ -25,7 +25,7 @@ end_state = [
 
 [[work_item]]
 id = "spec/first-useful-action-report"
-status = "ready"
+status = "done"
 branch = "spec-first-useful-action-report"
 stackable = false
 acceptance = "Define the first-useful-action report contract, inputs, statuses, routing priorities, advisory limits, and schema before implementation"
@@ -43,8 +43,7 @@ commands = [
 
 [[work_item]]
 id = "fixtures/first-useful-action-corpus"
-status = "blocked"
-blocked_by = ["spec/first-useful-action-report"]
+status = "ready"
 branch = "fixtures-first-useful-action-corpus"
 stackable = false
 acceptance = "Add a deterministic corpus that pins first-action routing for actionable, stale, missing-artifact, baseline-only, waived, suppressed, unchanged, and no-actionable cases"
