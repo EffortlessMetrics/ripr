@@ -11,6 +11,10 @@ are scoped or reviewed.
 
 ### Added
 
+- Opened Campaign 18, RIPR Zero Reporting, with
+  `spec/ripr-zero-reporting-surface` as the first ready work item so reviewed
+  baselines and debt deltas can become repo-level RIPR 0 status, stale-debt,
+  trend, and top-repair-area reporting without changing advisory defaults.
 - Added `ripr baseline create --from <gate-decision.json> --out .ripr/gate-baseline.json`,
   which writes reviewed gate baseline ledgers from existing gate-decision
   evidence, skips suppressed or malformed decisions, supports `--dry-run`, and
