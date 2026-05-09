@@ -1246,6 +1246,17 @@ jobs:
           fi
           ripr "${proof_args[@]}"
 
+      - name: Render RIPR assistant loop health
+        if: always() && hashFiles('target/ripr/reports/test-oracle-assistant-proof.json') != ''
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          ripr assistant-loop health \
+            --root . \
+            --proof target/ripr/reports/test-oracle-assistant-proof.json \
+            --out target/ripr/reports/assistant-loop-health.json \
+            --out-md target/ripr/reports/assistant-loop-health.md
+
       - name: Render RIPR first useful action
         if: always()
         continue-on-error: true
@@ -1528,6 +1539,53 @@ jobs:
               fi
               if [ -f target/ripr/reports/test-oracle-assistant-proof.md ]; then
                 cat target/ripr/reports/test-oracle-assistant-proof.md
+              fi
+              echo
+            fi
+            if [ -f target/ripr/reports/assistant-loop-health.json ] || [ -f target/ripr/reports/assistant-loop-health.md ]; then
+              echo '### Assistant loop health'
+              if [ -f target/ripr/reports/assistant-loop-health.json ]; then
+                health_json=target/ripr/reports/assistant-loop-health.json
+                health_status="$(jq -r '.status // "unknown"' "$health_json" 2>/dev/null || echo unknown)"
+                health_proofs="$(jq -r '.summary.proofs // 0' "$health_json" 2>/dev/null || echo 0)"
+                health_complete="$(jq -r '.summary.complete // 0' "$health_json" 2>/dev/null || echo 0)"
+                health_partial="$(jq -r '.summary.partial // 0' "$health_json" 2>/dev/null || echo 0)"
+                health_missing_required="$(jq -r '.summary.missing_required_input // 0' "$health_json" 2>/dev/null || echo 0)"
+                health_missing_optional="$(jq -r '.summary.missing_optional_input // 0' "$health_json" 2>/dev/null || echo 0)"
+                health_improved="$(jq -r '.summary.improved // 0' "$health_json" 2>/dev/null || echo 0)"
+                health_unchanged="$(jq -r '.summary.unchanged // 0' "$health_json" 2>/dev/null || echo 0)"
+                health_regressed="$(jq -r '.summary.regressed // 0' "$health_json" 2>/dev/null || echo 0)"
+                health_unknown="$(jq -r '.summary.unknown_movement // 0' "$health_json" 2>/dev/null || echo 0)"
+                health_warnings="$(jq -r '.summary.warnings // 0' "$health_json" 2>/dev/null || echo 0)"
+                health_repairs="$(jq -r '.summary.repair_queue // 0' "$health_json" 2>/dev/null || echo 0)"
+                health_top_warning="$(jq -r '([.warning_summary[]? | "\(.kind)=\(.count)"] | if length == 0 then "none" else join(", ") end)' "$health_json" 2>/dev/null || echo unknown)"
+                health_top_repair="$(jq -r '([.repair_queue[]?.repair_kind] | first) // "none"' "$health_json" 2>/dev/null || echo unknown)"
+                health_status="$(markdown_inline "$health_status")"
+                health_proofs="$(markdown_inline "$health_proofs")"
+                health_complete="$(markdown_inline "$health_complete")"
+                health_partial="$(markdown_inline "$health_partial")"
+                health_missing_required="$(markdown_inline "$health_missing_required")"
+                health_missing_optional="$(markdown_inline "$health_missing_optional")"
+                health_improved="$(markdown_inline "$health_improved")"
+                health_unchanged="$(markdown_inline "$health_unchanged")"
+                health_regressed="$(markdown_inline "$health_regressed")"
+                health_unknown="$(markdown_inline "$health_unknown")"
+                health_warnings="$(markdown_inline "$health_warnings")"
+                health_repairs="$(markdown_inline "$health_repairs")"
+                health_top_warning="$(markdown_inline "$health_top_warning")"
+                health_top_repair="$(markdown_inline "$health_top_repair")"
+                echo '#### Assistant loop health at a glance'
+                echo "- Status: \`$health_status\`"
+                echo "- Proof packets: total=\`$health_proofs\`, complete=\`$health_complete\`, partial=\`$health_partial\`, missing_required=\`$health_missing_required\`, missing_optional=\`$health_missing_optional\`"
+                echo "- Evidence movement: improved=\`$health_improved\`, unchanged=\`$health_unchanged\`, regressed=\`$health_regressed\`, unknown=\`$health_unknown\`"
+                echo "- Warnings: total=\`$health_warnings\`, top=\`$health_top_warning\`"
+                echo "- Repair queue: total=\`$health_repairs\`, first=\`$health_top_repair\`"
+                echo "- Health artifacts: \`target/ripr/reports/assistant-loop-health.json\`, \`target/ripr/reports/assistant-loop-health.md\`"
+                echo "- Boundary: advisory static health over proof artifacts; gate evaluator remains pass/fail authority."
+                echo
+              fi
+              if [ -f target/ripr/reports/assistant-loop-health.md ]; then
+                cat target/ripr/reports/assistant-loop-health.md
               fi
               echo
             fi
@@ -4411,6 +4469,7 @@ mod tests {
                 "zero status",
                 "pr-ledger record",
                 "assistant-loop proof",
+                "assistant-loop health",
                 "first-action",
                 "ripr agent status",
                 "ripr agent review-summary",
@@ -4447,6 +4506,8 @@ mod tests {
                 "target/ripr/reports/pr-evidence-ledger.md",
                 "target/ripr/reports/test-oracle-assistant-proof.json",
                 "target/ripr/reports/test-oracle-assistant-proof.md",
+                "target/ripr/reports/assistant-loop-health.json",
+                "target/ripr/reports/assistant-loop-health.md",
                 "target/ripr/reports/first-useful-action.json",
                 "target/ripr/reports/first-useful-action.md",
                 "target/ripr/review/comments.json",
@@ -4469,6 +4530,8 @@ mod tests {
                 "#### PR movement at a glance",
                 "### Test-oracle assistant proof",
                 "#### Assistant proof at a glance",
+                "### Assistant loop health",
+                "#### Assistant loop health at a glance",
                 "### SARIF and badge status",
                 "### PR guidance annotations",
                 "### Known limits",
@@ -4485,6 +4548,7 @@ mod tests {
                 "Render RIPR Zero status",
                 "Render RIPR PR evidence ledger",
                 "Render RIPR test-oracle assistant proof",
+                "Render RIPR assistant loop health",
                 "Render RIPR first useful action",
                 "Render RIPR LLM work-loop summaries",
                 "Run RIPR PR guidance report",
@@ -6268,6 +6332,8 @@ mod tests {
         assert!(workflow.contains("target/ripr/reports/pr-evidence-ledger.md"));
         assert!(workflow.contains("target/ripr/reports/test-oracle-assistant-proof.json"));
         assert!(workflow.contains("target/ripr/reports/test-oracle-assistant-proof.md"));
+        assert!(workflow.contains("target/ripr/reports/assistant-loop-health.json"));
+        assert!(workflow.contains("target/ripr/reports/assistant-loop-health.md"));
         assert!(workflow.contains("target/ripr/reports/first-useful-action.json"));
         assert!(workflow.contains("target/ripr/reports/first-useful-action.md"));
         assert!(workflow.contains("target/ci/labels.json"));
@@ -6279,6 +6345,7 @@ mod tests {
         assert!(workflow.contains("name: Render RIPR baseline debt delta"));
         assert!(workflow.contains("name: Emit RIPR PR guidance annotations"));
         assert!(workflow.contains("name: Render RIPR test-oracle assistant proof"));
+        assert!(workflow.contains("name: Render RIPR assistant loop health"));
         assert!(workflow.contains("name: Render RIPR first useful action"));
         assert!(workflow.contains("escape_github_property()"));
         assert!(workflow.contains("annotation_path=\"$(escape_github_property \"$path\")\""));
@@ -6300,6 +6367,8 @@ mod tests {
         assert!(workflow.contains("#### PR movement at a glance"));
         assert!(workflow.contains("### Test-oracle assistant proof"));
         assert!(workflow.contains("#### Assistant proof at a glance"));
+        assert!(workflow.contains("### Assistant loop health"));
+        assert!(workflow.contains("#### Assistant loop health at a glance"));
         assert!(workflow.contains("markdown_inline()"));
         assert!(workflow.contains("Active PR labels"));
         assert!(workflow.contains("Applied waiver label"));
@@ -6475,6 +6544,11 @@ mod tests {
         assert_step_before(
             &workflow,
             "Render RIPR test-oracle assistant proof",
+            "Render RIPR assistant loop health",
+        );
+        assert_step_before(
+            &workflow,
+            "Render RIPR assistant loop health",
             "Render RIPR first useful action",
         );
         assert_step_before(
@@ -6612,6 +6686,21 @@ mod tests {
         assert!(assistant_proof.contains("--gate-decision target/ripr/reports/gate-decision.json"));
         assert!(assistant_proof.contains("ripr \"${proof_args[@]}\""));
 
+        let assistant_health = workflow_step(&workflow, "Render RIPR assistant loop health");
+        assert!(
+            assistant_health
+                .contains("hashFiles('target/ripr/reports/test-oracle-assistant-proof.json')")
+        );
+        assert!(assistant_health.contains("continue-on-error: true"));
+        assert!(assistant_health.contains("assistant-loop health"));
+        assert!(assistant_health.contains("--root ."));
+        assert!(
+            assistant_health
+                .contains("--proof target/ripr/reports/test-oracle-assistant-proof.json")
+        );
+        assert!(assistant_health.contains("--out target/ripr/reports/assistant-loop-health.json"));
+        assert!(assistant_health.contains("--out-md target/ripr/reports/assistant-loop-health.md"));
+
         let first_action = workflow_step(&workflow, "Render RIPR first useful action");
         assert!(first_action.contains("continue-on-error: true"));
         assert!(first_action.contains("first-action"));
@@ -6740,6 +6829,24 @@ mod tests {
         assert!(summary.contains(".ci_projection.gate_decision // \"not_supplied\""));
         assert!(summary.contains(".ci_projection.coverage_frontier // \"not_supplied\""));
         assert!(summary.contains("cat target/ripr/reports/test-oracle-assistant-proof.md"));
+        assert!(summary.contains("### Assistant loop health"));
+        assert!(summary.contains("#### Assistant loop health at a glance"));
+        assert!(summary.contains("target/ripr/reports/assistant-loop-health.json"));
+        assert!(summary.contains("target/ripr/reports/assistant-loop-health.md"));
+        assert!(summary.contains(".summary.proofs // 0"));
+        assert!(summary.contains(".summary.complete // 0"));
+        assert!(summary.contains(".summary.partial // 0"));
+        assert!(summary.contains(".summary.missing_required_input // 0"));
+        assert!(summary.contains(".summary.missing_optional_input // 0"));
+        assert!(summary.contains(".summary.improved // 0"));
+        assert!(summary.contains(".summary.unchanged // 0"));
+        assert!(summary.contains(".summary.regressed // 0"));
+        assert!(summary.contains(".summary.unknown_movement // 0"));
+        assert!(summary.contains(".summary.repair_queue // 0"));
+        assert!(summary.contains(".warning_summary[]?"));
+        assert!(summary.contains(".repair_queue[]?.repair_kind"));
+        assert!(summary.contains("cat target/ripr/reports/assistant-loop-health.md"));
+        assert!(summary.contains("advisory static health over proof artifacts"));
         assert!(summary.contains(".summary.comments // 0"));
         assert!(summary.contains(".summary.summary_only // 0"));
         assert!(summary.contains(".summary.suppressed // 0"));
