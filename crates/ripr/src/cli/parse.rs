@@ -88,6 +88,10 @@ mod tests {
             Ok(CliCommand::Gate(args(&["evaluate"])))
         );
         assert_eq!(
+            parse_args(args(&["ripr", "pr-ledger", "record"])),
+            Ok(CliCommand::PrLedger(args(&["record"])))
+        );
+        assert_eq!(
             parse_args(args(&["ripr", "calibrate", "cargo-mutants"])),
             Ok(CliCommand::Calibrate(args(&["cargo-mutants"])))
         );

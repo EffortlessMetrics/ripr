@@ -15,6 +15,7 @@ pub mod json;
 pub(crate) mod mutation_calibration;
 pub(crate) mod outcome;
 pub(crate) mod pilot;
+pub(crate) mod pr_evidence_ledger;
 pub(crate) mod render;
 pub(crate) mod repo_exposure;
 pub(crate) mod repo_seams;

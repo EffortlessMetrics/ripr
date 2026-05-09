@@ -19,6 +19,7 @@ pub(super) fn execute(command: CliCommand) -> Result<(), String> {
         CliCommand::Gate(args) => commands::gate(&args),
         CliCommand::Baseline(args) => commands::baseline(&args),
         CliCommand::Zero(args) => commands::zero(&args),
+        CliCommand::PrLedger(args) => commands::pr_ledger(&args),
         CliCommand::Calibrate(args) => commands::calibrate(&args),
         CliCommand::Agent(args) => commands::agent(&args),
         CliCommand::Check(args) => commands::check(&args),
@@ -84,6 +85,10 @@ mod tests {
         assert_eq!(
             execute(CliCommand::Zero(args(&["status", "--delta"]))),
             Err("missing value for --delta".to_string())
+        );
+        assert_eq!(
+            execute(CliCommand::PrLedger(args(&["record", "--pr-number"]))),
+            Err("missing value for --pr-number".to_string())
         );
         assert_eq!(
             execute(CliCommand::Calibrate(args(&[

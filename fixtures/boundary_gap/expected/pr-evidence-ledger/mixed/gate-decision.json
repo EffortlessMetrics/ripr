@@ -1,0 +1,46 @@
+{
+  "schema_version": "0.1",
+  "mode": "acknowledgeable",
+  "status": "acknowledged",
+  "summary": {
+    "blocking": 0,
+    "acknowledged": 1,
+    "suppressed": 1
+  },
+  "policy": {
+    "acknowledgement_labels": ["ripr-waive"]
+  },
+  "inputs": {
+    "labels": ["ripr-waive"]
+  },
+  "decisions": [
+    {
+      "id": "ripr-gate-ack",
+      "decision": "acknowledged",
+      "seam_id": "ack",
+      "source_id": "ripr-review-ack",
+      "gate_reason": "policy-eligible gap acknowledged by ripr-waive",
+      "policy": {
+        "acknowledgement_label": "ripr-waive"
+      },
+      "placement": {
+        "path": "src/ack.rs",
+        "line": 5
+      },
+      "evidence": {
+        "missing_discriminator": "ack == 5",
+        "assertion_shape": "assert_eq!(ack(), 5)",
+        "recommended_test": "tests/ack.rs::boundary"
+      }
+    },
+    {
+      "id": "ripr-gate-suppressed",
+      "decision": "suppressed",
+      "seam_id": "suppressed",
+      "gate_reason": "configured-hidden candidate preserved",
+      "evidence": {
+        "suppressed": true
+      }
+    }
+  ]
+}

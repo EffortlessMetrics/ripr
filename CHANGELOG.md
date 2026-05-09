@@ -20,6 +20,11 @@ are scoped or reviewed.
   behavioral grip movement, waiver aging, baseline burn-down, repair receipts,
   optional coverage/grip frontier signals, and advisory-only CI projection
   without changing analyzer identity, gate policy, or default blocking.
+- Added `ripr pr-ledger record`, a read-only advisory JSON/Markdown report that
+  joins existing PR guidance, gate decisions, baseline debt deltas, RIPR Zero
+  status, recommendation calibration, agent receipts, optional coverage, and
+  optional history into per-PR evidence ledger records without changing gate
+  authority or CI blocking defaults.
 - Opened Campaign 18, RIPR Zero Reporting, with
   `spec/ripr-zero-reporting-surface` as the first ready work item so reviewed
   baselines and debt deltas can become repo-level RIPR 0 status, stale-debt,

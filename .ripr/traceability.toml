@@ -1137,9 +1137,32 @@ metrics = [
 id = "RIPR-SPEC-0018"
 name = "PR evidence ledger"
 spec = "docs/specs/RIPR-SPEC-0018-pr-evidence-ledger.md"
-tests = []
-fixtures = []
-code = []
+tests = [
+  "crates/ripr/src/output/pr_evidence_ledger.rs::tests::pr_evidence_ledger_joins_primary_artifacts",
+  "crates/ripr/src/output/pr_evidence_ledger.rs::tests::pr_evidence_ledger_reports_incomplete_without_evidence",
+  "crates/ripr/src/output/pr_evidence_ledger.rs::tests::pr_evidence_ledger_matches_fixture_contract",
+  "crates/ripr/src/cli/commands.rs::tests::pr_evidence_ledger_parses_option_surface",
+  "crates/ripr/src/cli/commands.rs::tests::pr_evidence_ledger_requires_identity_and_evidence",
+  "crates/ripr/src/cli/commands.rs::tests::pr_evidence_ledger_writes_json_and_markdown_reports",
+]
+fixtures = [
+  "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/gate-decision.json",
+  "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/baseline-debt-delta.json",
+  "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/ripr-zero-status.json",
+  "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/comments.json",
+  "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/agent-receipt.json",
+  "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/history.jsonl",
+  "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/pr-evidence-ledger.json",
+  "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/pr-evidence-ledger.md",
+]
+code = [
+  "crates/ripr/src/output/pr_evidence_ledger.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/command.rs",
+  "crates/ripr/src/cli/execute.rs",
+  "crates/ripr/src/cli/help.rs",
+  "crates/ripr/src/cli/parse.rs",
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0018-pr-evidence-ledger.md",
   "docs/specs/README.md",

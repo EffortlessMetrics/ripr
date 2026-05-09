@@ -96,7 +96,7 @@ record. It should:
 
 ## Command Surface
 
-The planned command surface is:
+The command surface is:
 
 ```text
 ripr pr-ledger record \
