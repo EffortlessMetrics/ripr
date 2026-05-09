@@ -79,6 +79,9 @@ The extension owns normal first-run server provisioning. A separate
 `cargo install ripr` remains a fallback for offline, pinned, or controlled
 environments.
 
+For the complete saved-workspace loop from diagnostic to receipt, see
+[Editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md).
+
 ## Settings
 
 - `ripr.server.path`: explicit path to the `ripr` executable. Empty by default.

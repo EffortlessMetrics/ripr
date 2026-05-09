@@ -37,6 +37,9 @@ After opening a Rust/Cargo workspace:
 
 Unsaved-buffer overlays are not enabled by default.
 
+For the full editor loop from diagnostic to receipt, see
+[`docs/EDITOR_EVIDENCE_WORKFLOW.md`](../../docs/EDITOR_EVIDENCE_WORKFLOW.md).
+
 ## What ripr Does
 
 `ripr` scans Rust code for mutation-shaped static seams and reports whether

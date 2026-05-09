@@ -40,6 +40,7 @@ hints, semantic tokens, policy invention, or generated workflow changes.
 | Protocol proof | Framed LSP smoke covers server startup, saved-workspace refresh, a real seam diagnostic, hover, code actions, `ripr.collectEvidenceContext`, and shutdown. | Add live VS Code extension smoke for the installed editor path. |
 | Cockpit proof | `cargo xtask lsp-cockpit-report` reads committed LSP diagnostics/actions and VS Code command coverage; #569 made packet, brief, after-snapshot, verify, and receipt command actions explicit. | Keep cockpit as regression proof while behavior PRs pin the richer hover/action/status contracts. |
 | Status and staleness | The extension status bar and `ripr: Show Status` path name disabled config, missing workspace, server unavailable, queued, running, complete, no-actionable-seam, stale, and failed states. Dirty Rust buffers keep the editor in stale status until save or close, so a completed saved-workspace refresh is not presented as current unsaved evidence. | Document the end-to-end editor evidence workflow and close the queued lane. |
+| Workflow docs | `docs/EDITOR_EVIDENCE_WORKFLOW.md` gives the user-facing path from install and status through diagnostic, hover, related test, context packet, one focused test, after snapshot, verify, receipt, and refresh. | Close the queued lane once documentation and tracking agree. |
 
 ## Required Fields
 
@@ -95,8 +96,7 @@ Editor Evidence UX is intentionally conservative:
 
 Remaining queued behavior slices:
 
-1. `docs/editor-evidence-workflow`
-2. `campaign/editor-evidence-ux-closeout`
+1. `campaign/editor-evidence-ux-closeout`
 
 Hover hardening has landed as the first behavior slice: hover is the primary
 human explanation surface and now makes the next useful test action legible
@@ -119,6 +119,11 @@ Status and staleness have also landed: `ripr.enabled = false`, unresolved
 workspace, missing server, queued/running/complete/no-seam/failed refreshes,
 and dirty-buffer staleness are explicit status states. Saved-workspace
 completion no longer hides unsaved Rust changes behind a fresh-looking status.
+The user-facing workflow guide has landed in
+`docs/EDITOR_EVIDENCE_WORKFLOW.md`: it walks from install and status through
+diagnostic, hover, related-test context, bounded agent handoff, one focused
+test, after snapshot, verify, receipt, and refresh with explicit static
+evidence limits.
 
 ## Validation
 

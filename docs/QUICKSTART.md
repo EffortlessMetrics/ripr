@@ -70,7 +70,8 @@ ripr: Restart Server
 The editor analyzes the saved workspace. Unsaved-buffer overlays are not enabled
 by default. Save the file or refresh analysis before trusting a stale diagnostic.
 
-See [Editor extension](EDITOR_EXTENSION.md) and
+See [Editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md),
+[Editor extension](EDITOR_EXTENSION.md), and
 [Server provisioning](SERVER_PROVISIONING.md).
 
 ## CI First Hour

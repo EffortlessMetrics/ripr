@@ -267,7 +267,7 @@ evidence = [
   "VS Code e2e copies a live seam packet from the real server path"
 ]
 fixtures = []
-next = "docs/editor-evidence-workflow"
+next = "campaign/editor-evidence-ux-closeout"
 metric = "packet includes missing discriminator and related tests"
 
 [[capability]]
@@ -283,7 +283,7 @@ evidence = [
   "VS Code e2e copies live seam packet and verify command payloads from the real server path"
 ]
 fixtures = []
-next = "docs/editor-evidence-workflow"
+next = "campaign/editor-evidence-ux-closeout"
 metric = "packet includes missing values and suggested assertions"
 
 [[capability]]
@@ -317,7 +317,7 @@ evidence = [
   "docs/QUICKSTART.md routes the VS Code first hour through status, Problems diagnostics, hover evidence, and intent-titled seam actions"
 ]
 fixtures = []
-next = "docs/editor-evidence-workflow"
+next = "campaign/editor-evidence-ux-closeout"
 metric = "diagnostics carry finding/probe metadata, editor status names saved-workspace analysis state, and editor actions target the selected finding"
 
 [[capability]]
@@ -821,13 +821,14 @@ evidence = [
   "OUTPUT_SCHEMA.md LSP Seam Diagnostics section",
   "docs/EDITOR_EXTENSION.md documents the install path and saved-workspace default",
   "docs/EDITOR_EVIDENCE_UX.md records the editor evidence contract",
+  "docs/EDITOR_EVIDENCE_WORKFLOW.md documents the saved-workspace editor loop",
   "fixtures/boundary_gap/expected/lsp-diagnostics.json",
   "fixtures/boundary_gap/expected/editor-agent-loop/agent-packet.json"
 ]
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "docs/editor-evidence-workflow"
+next = "campaign/editor-evidence-ux-closeout"
 metric = "seam_id in diagnostic.data is the hover lookup key"
 
 [[capability]]
@@ -841,6 +842,7 @@ evidence = [
   "renders Grip class plus RIPR evidence path plus observed values plus missing discriminator plus related test locations plus suggested test shape plus packet and brief handoff commands plus verify and receipt commands plus static limits plus per-kind next step",
   "framed LSP protocol smoke drives a published boundary-gap seam diagnostic through hover",
   "VS Code e2e drives the real boundary-gap server path through a seam diagnostic and hover",
+  "docs/EDITOR_EVIDENCE_WORKFLOW.md documents hover as the first explanation step",
   "prefers seam-bearing diagnostics on overlap (chatgpt-codex review fix)",
   "preserves pre-4B Finding hover fallback",
   "fixtures/boundary_gap/expected/lsp-diagnostics.json",
@@ -849,7 +851,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "docs/editor-evidence-workflow"
+next = "campaign/editor-evidence-ux-closeout"
 metric = "hover renders evidence path from ClassifiedSeam, never parses diagnostic message"
 
 [[capability]]
@@ -868,6 +870,7 @@ evidence = [
   "copy suggested assertion uses agent seam packet v2 assertion shape when available",
   "stale seam diagnostics fail closed to refresh-only",
   "pre-4B Finding code actions remain available",
+  "docs/EDITOR_EVIDENCE_WORKFLOW.md documents the action-to-receipt workflow",
   "docs/TESTING.md documents VS Code e2e coverage for command registration, LSP-first seam context, targeted-test brief copying, suggested assertions, related-test opening, malformed argument handling, and restart behavior",
   "docs/QUICKSTART.md routes the VS Code first hour through intent-titled seam actions without changing command IDs or payloads",
   "fixtures/boundary_gap/expected/lsp-code-actions.json",
@@ -877,7 +880,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "docs/editor-evidence-workflow"
+next = "campaign/editor-evidence-ux-closeout"
 metric = "seam diagnostics expose only supported packet/assertion/test actions without automatic edits"
 
 [[capability]]
