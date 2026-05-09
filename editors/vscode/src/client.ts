@@ -32,6 +32,11 @@ export interface RiprTargetedTestBriefTarget {
 export interface RiprAgentLoopCommandTarget {
   command?: string;
   label?: string;
+  root?: string;
+  base?: string;
+  mode?: string;
+  seam_id?: string;
+  target_artifact?: string;
 }
 
 export interface RiprRelatedTestTarget {
@@ -362,7 +367,7 @@ export class RiprClientController {
   }
 
   async copyAgentLoopCommand(target?: RiprAgentLoopCommandTarget): Promise<void> {
-    const command = typeof target?.command === 'string' ? target.command.trim() : '';
+    const command = validatedAgentLoopCommand(target);
     if (!command) {
       this.runtime.showInformationMessage('No ripr agent loop command is available for this diagnostic.');
       return;
@@ -849,6 +854,120 @@ const FIRST_USEFUL_ACTION_AUDIENCES = new Set([
   'reviewer',
   'agent'
 ]);
+
+interface AgentLoopCommandContract {
+  targetArtifact: string;
+  startsWith: string;
+  includes: string[];
+  requiresSeamId: boolean;
+}
+
+const AGENT_LOOP_COMMAND_CONTRACTS: Record<string, AgentLoopCommandContract> = {
+  agent_packet: {
+    targetArtifact: 'target/ripr/agent/agent-packet.json',
+    startsWith: 'ripr agent packet --root . --seam-id ',
+    includes: [' --json > target/ripr/agent/agent-packet.json'],
+    requiresSeamId: true
+  },
+  agent_brief: {
+    targetArtifact: 'target/ripr/agent/agent-brief.json',
+    startsWith: 'ripr agent brief --root . --seam-id ',
+    includes: [' --json > target/ripr/agent/agent-brief.json'],
+    requiresSeamId: true
+  },
+  after_snapshot: {
+    targetArtifact: 'target/ripr/pilot/after.repo-exposure.json',
+    startsWith: 'ripr check --root .',
+    includes: [' --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json'],
+    requiresSeamId: false
+  },
+  agent_verify: {
+    targetArtifact: 'target/ripr/agent/agent-verify.json',
+    startsWith: 'ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json',
+    includes: [' > target/ripr/agent/agent-verify.json'],
+    requiresSeamId: false
+  },
+  agent_receipt: {
+    targetArtifact: 'target/ripr/agent/agent-receipt.json',
+    startsWith: 'ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id ',
+    includes: [' --json --out target/ripr/agent/agent-receipt.json'],
+    requiresSeamId: true
+  }
+};
+
+function validatedAgentLoopCommand(target?: RiprAgentLoopCommandTarget): string | undefined {
+  if (!target) {
+    return undefined;
+  }
+  const label = typeof target?.label === 'string' ? target.label : '';
+  const contract = AGENT_LOOP_COMMAND_CONTRACTS[label];
+  if (!contract) {
+    return undefined;
+  }
+  const command = typeof target?.command === 'string' ? target.command.trim() : '';
+  if (!command || hasUnsafeShellMetacharacter(command)) {
+    return undefined;
+  }
+  if (target.root !== '.') {
+    return undefined;
+  }
+  if (
+    typeof target.target_artifact !== 'string' ||
+    target.target_artifact !== contract.targetArtifact
+  ) {
+    return undefined;
+  }
+  if (contract.requiresSeamId && !boundedPayloadString(target.seam_id)) {
+    return undefined;
+  }
+  if (
+    contract.requiresSeamId &&
+    !command.includes(` --seam-id ${shellArgToken(target.seam_id)} `)
+  ) {
+    return undefined;
+  }
+  if (!command.startsWith(contract.startsWith)) {
+    return undefined;
+  }
+  if (!contract.includes.every((expected) => command.includes(expected))) {
+    return undefined;
+  }
+  if (label === 'after_snapshot' && !afterSnapshotModeMatches(target.mode, command)) {
+    return undefined;
+  }
+  if (
+    label === 'after_snapshot' &&
+    boundedPayloadString(target.base) &&
+    !command.includes(` --base ${shellArgToken(target.base)} `)
+  ) {
+    return undefined;
+  }
+  return command;
+}
+
+function afterSnapshotModeMatches(mode: unknown, command: string): boolean {
+  if (typeof mode !== 'string' || !['instant', 'draft', 'fast', 'deep', 'ready'].includes(mode)) {
+    return false;
+  }
+  return command.includes(` --mode ${mode} `);
+}
+
+function boundedPayloadString(value: unknown): boolean {
+  return typeof value === 'string' && value.length > 0 && value.length <= 256;
+}
+
+function hasUnsafeShellMetacharacter(command: string): boolean {
+  return /[\r\n\0`;&|\\]/.test(command);
+}
+
+function shellArgToken(value: unknown): string {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  return /^[A-Za-z0-9_./:-]+$/.test(value)
+    ? value
+    : `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
 
 function rootMatchesWorkspace(root: string | undefined, workspaceRoot: string): boolean {
   if (!root || root === '.') {

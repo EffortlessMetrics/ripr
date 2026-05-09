@@ -2,7 +2,8 @@ import * as assert from 'assert';
 import * as vscode from 'vscode';
 import {
   RiprClientController,
-  RiprClientRuntime
+  RiprClientRuntime,
+  RiprAgentLoopCommandTarget
 } from '../../src/client';
 
 suite('Extension Smoke', () => {
@@ -660,12 +661,49 @@ suite('Extension Smoke', () => {
   });
 
   test('copyAgentLoopCommand copies command text', async () => {
-    const command = 'ripr agent verify --root . --before before.json --after after.json --json';
     const context = createControllerTestContext({});
     try {
-      await context.controller.copyAgentLoopCommand({ command });
+      const seamId = '67fc764ba37d77bd';
+      const targets = [
+        agentLoopCommandTarget(
+          'agent_packet',
+          `ripr agent packet --root . --seam-id ${seamId} --json > target/ripr/agent/agent-packet.json`,
+          'target/ripr/agent/agent-packet.json',
+          { seamId }
+        ),
+        agentLoopCommandTarget(
+          'agent_brief',
+          `ripr agent brief --root . --seam-id ${seamId} --json > target/ripr/agent/agent-brief.json`,
+          'target/ripr/agent/agent-brief.json',
+          { seamId }
+        ),
+        agentLoopCommandTarget(
+          'after_snapshot',
+          'ripr check --root . --base "origin/main with space" --mode ready --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json',
+          'target/ripr/pilot/after.repo-exposure.json',
+          { base: 'origin/main with space', mode: 'ready' }
+        ),
+        agentLoopCommandTarget(
+          'agent_verify',
+          'ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > target/ripr/agent/agent-verify.json',
+          'target/ripr/agent/agent-verify.json'
+        ),
+        agentLoopCommandTarget(
+          'agent_receipt',
+          `ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id ${seamId} --json --out target/ripr/agent/agent-receipt.json`,
+          'target/ripr/agent/agent-receipt.json',
+          { seamId }
+        )
+      ];
 
-      assert.strictEqual(context.clipboardWrites[0], command);
+      for (const target of targets) {
+        await context.controller.copyAgentLoopCommand(target);
+      }
+
+      assert.deepStrictEqual(
+        context.clipboardWrites,
+        targets.map((target) => target.command)
+      );
     } finally {
       await context.dispose();
     }
@@ -683,6 +721,61 @@ suite('Extension Smoke', () => {
       command: ''
     });
     await vscode.commands.executeCommand('ripr.copyAgentReceiptCommand');
+  });
+
+  test('agent loop command handler rejects unsupported or unsafe payloads', async () => {
+    const context = createControllerTestContext({});
+    try {
+      const valid = agentLoopCommandTarget(
+        'agent_verify',
+        'ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > target/ripr/agent/agent-verify.json',
+        'target/ripr/agent/agent-verify.json'
+      );
+
+      await context.controller.copyAgentLoopCommand({
+        ...valid,
+        label: 'unknown'
+      });
+      await context.controller.copyAgentLoopCommand({
+        ...valid,
+        root: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+      });
+      await context.controller.copyAgentLoopCommand({
+        ...valid,
+        target_artifact: 'target/ripr/other.json'
+      });
+      await context.controller.copyAgentLoopCommand({
+        ...valid,
+        command: `${valid.command}; rm -rf target`
+      });
+      await context.controller.copyAgentLoopCommand(
+        agentLoopCommandTarget(
+          'agent_packet',
+          'ripr agent packet --root . --seam-id other-seam --json > target/ripr/agent/agent-packet.json',
+          'target/ripr/agent/agent-packet.json',
+          { seamId: '67fc764ba37d77bd' }
+        )
+      );
+      await context.controller.copyAgentLoopCommand(
+        agentLoopCommandTarget(
+          'agent_receipt',
+          'ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id 67fc764ba37d77bd --json --out target/ripr/agent/agent-receipt.json',
+          'target/ripr/agent/agent-receipt.json'
+        )
+      );
+      await context.controller.copyAgentLoopCommand(
+        agentLoopCommandTarget(
+          'after_snapshot',
+          'ripr check --root . --mode ready --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json',
+          'target/ripr/pilot/after.repo-exposure.json',
+          { base: 'origin/main with space', mode: 'ready' }
+        )
+      );
+
+      assert.deepStrictEqual(context.clipboardWrites, []);
+    } finally {
+      await context.dispose();
+    }
   });
 
   test('openRelatedTest opens the target uri and line', async () => {
@@ -717,6 +810,23 @@ interface ControllerTestOptions {
   firstActionJson?: string | null;
   workspaceRoot?: string | null;
   resolveFailure?: { message: string; detail: string };
+}
+
+function agentLoopCommandTarget(
+  label: string,
+  command: string,
+  targetArtifact: string,
+  options: { seamId?: string; base?: string; mode?: string } = {}
+): RiprAgentLoopCommandTarget {
+  return {
+    label,
+    command,
+    root: '.',
+    base: options.base ?? 'origin/main',
+    mode: options.mode ?? 'draft',
+    seam_id: options.seamId,
+    target_artifact: targetArtifact
+  };
 }
 
 function firstActionReport(overrides: Record<string, unknown>): string {
