@@ -43,13 +43,13 @@ commands = [
 
 [[work_item]]
 id = "fixtures/canonical-review-loop"
-status = "ready"
+status = "done"
 branch = "fixtures-canonical-review-loop"
 stackable = false
 blocked_by = [
   "spec/test-oracle-assistant-loop",
 ]
-acceptance = "Add a canonical fixture or replay corpus that pins the before recommendation, related-test context, suggested focused test, after-evidence movement, receipt, and ledger projection expectations for one changed-behavior case"
+acceptance = "Added a canonical boundary-gap replay corpus and regression test that pin the recommendation, related-test context, suggested focused test, before/after static movement, receipt, and ledger projection expectations for one changed-behavior case"
 commands = [
   "cargo test -p ripr test_oracle_assistant",
   "cargo xtask check-fixture-contracts",
@@ -60,7 +60,7 @@ commands = [
 
 [[work_item]]
 id = "dogfood/test-oracle-assistant-receipt"
-status = "blocked"
+status = "ready"
 branch = "dogfood-test-oracle-assistant-receipt"
 stackable = false
 blocked_by = [

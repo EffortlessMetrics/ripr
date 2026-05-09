@@ -115,6 +115,26 @@ fn json_string_field(text: &str, field: &str) -> Option<String> {
     Some(text[start..start + end].to_string())
 }
 
+fn json_pointer_str<'a>(
+    value: &'a serde_json::Value,
+    pointer: &str,
+) -> Result<&'a str, Box<dyn std::error::Error>> {
+    value
+        .pointer(pointer)
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| format!("expected string at JSON pointer `{pointer}`").into())
+}
+
+fn json_pointer_bool(
+    value: &serde_json::Value,
+    pointer: &str,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    value
+        .pointer(pointer)
+        .and_then(serde_json::Value::as_bool)
+        .ok_or_else(|| format!("expected bool at JSON pointer `{pointer}`").into())
+}
+
 fn agent_brief_sample_workspace(
     label: &str,
 ) -> Result<(PathBuf, PathBuf), Box<dyn std::error::Error>> {
@@ -344,6 +364,137 @@ fn editor_agent_loop_fixture_outputs_match_expected() -> Result<(), Box<dyn std:
         "agent receipt fixture drifted"
     );
     std::fs::remove_dir_all(out_dir)?;
+    Ok(())
+}
+
+#[test]
+fn test_oracle_assistant_canonical_review_loop_fixture_pins_expected_surfaces()
+-> Result<(), Box<dyn std::error::Error>> {
+    let base = "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical";
+    let fixture_dir = workspace_root().join(base);
+    let proof_path = fixture_dir.join("test-oracle-assistant-proof.json");
+    let proof_md_path = fixture_dir.join("test-oracle-assistant-proof.md");
+
+    let proof_text = std::fs::read_to_string(&proof_path)?;
+    let proof: serde_json::Value = serde_json::from_str(&proof_text)?;
+    let seam_id = json_pointer_str(&proof, "/seam/seam_id")?;
+    assert_eq!(seam_id, "67fc764ba37d77bd");
+    assert_eq!(
+        json_pointer_str(&proof, "/kind")?,
+        "test_oracle_assistant_loop"
+    );
+    assert_eq!(json_pointer_str(&proof, "/status")?, "advisory");
+    assert_eq!(
+        json_pointer_str(&proof, "/seam/grip_class")?,
+        "weakly_gripped"
+    );
+    assert_eq!(
+        json_pointer_str(&proof, "/seam/missing_discriminator")?,
+        "discount_threshold (equality boundary)"
+    );
+    assert_eq!(
+        json_pointer_str(&proof, "/recommendation/placement")?,
+        "changed_line"
+    );
+    assert!(
+        json_pointer_str(&proof, "/recommendation/suggested_test")?
+            .contains("amount == discount_threshold")
+    );
+    assert_eq!(
+        json_pointer_str(&proof, "/evidence_movement/state")?,
+        "unchanged"
+    );
+    assert!(json_pointer_bool(&proof, "/limits/advisory")?);
+    for pointer in [
+        "/limits/source_edits",
+        "/limits/generated_tests",
+        "/limits/external_service",
+        "/limits/runtime_mutation_execution",
+        "/limits/ci_blocking_default",
+    ] {
+        assert!(!json_pointer_bool(&proof, pointer)?);
+    }
+
+    for pointer in [
+        "/inputs/pr_guidance",
+        "/inputs/agent_packet",
+        "/inputs/before",
+        "/inputs/after",
+        "/inputs/receipt",
+        "/inputs/ledger",
+    ] {
+        let path = json_pointer_str(&proof, pointer)?;
+        assert!(
+            workspace_root().join(path).exists(),
+            "expected `{path}` from `{pointer}` to exist"
+        );
+    }
+    assert!(
+        proof
+            .pointer("/inputs/coverage_frontier")
+            .is_some_and(serde_json::Value::is_null)
+    );
+
+    let pr_guidance_path = workspace_root().join(json_pointer_str(&proof, "/inputs/pr_guidance")?);
+    let agent_packet_path =
+        workspace_root().join(json_pointer_str(&proof, "/inputs/agent_packet")?);
+    let receipt_path = workspace_root().join(json_pointer_str(&proof, "/inputs/receipt")?);
+    let ledger_path = workspace_root().join(json_pointer_str(&proof, "/inputs/ledger")?);
+
+    let pr_guidance: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(pr_guidance_path)?)?;
+    let agent_packet: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(agent_packet_path)?)?;
+    let receipt: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(receipt_path)?)?;
+    let ledger: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(ledger_path)?)?;
+
+    assert_eq!(
+        json_pointer_str(&pr_guidance, "/comments/0/seam_id")?,
+        seam_id
+    );
+    assert_eq!(
+        json_pointer_str(&agent_packet, "/top_seams/0/seam_id")?,
+        seam_id
+    );
+    assert_eq!(json_pointer_str(&receipt, "/provenance/seam_id")?, seam_id);
+    assert_eq!(
+        json_pointer_str(&ledger, "/top_repair_route/seam_id")?,
+        seam_id
+    );
+    assert_eq!(
+        json_pointer_str(&ledger, "/repair_receipts/0/seam_id")?,
+        seam_id
+    );
+    assert_eq!(
+        json_pointer_str(&proof, "/evidence_movement/state")?,
+        json_pointer_str(&receipt, "/provenance/movement")?
+    );
+    assert_eq!(
+        json_pointer_str(&ledger, "/repair_receipts/0/static_movement/state")?,
+        json_pointer_str(&proof, "/evidence_movement/state")?
+    );
+    assert_eq!(
+        json_pointer_str(&agent_packet, "/top_seams/0/recommended_test/file")?,
+        "tests/pricing.rs"
+    );
+    assert_eq!(
+        json_pointer_str(&agent_packet, "/top_seams/0/recommended_test/name")?,
+        "discounted_total_boundary_discriminator"
+    );
+    assert_eq!(
+        json_pointer_str(
+            &agent_packet,
+            "/top_seams/0/nearest_strong_test_to_imitate/name"
+        )?,
+        "below_threshold_has_no_discount"
+    );
+
+    let proof_md = std::fs::read_to_string(proof_md_path)?;
+    assert!(proof_md.contains("Status: advisory"));
+    assert!(proof_md.contains("Missing discriminator: discount_threshold (equality boundary)"));
+    assert!(proof_md.contains("After: weakly_gripped"));
+    assert!(proof_md.contains("State: unchanged"));
+    assert!(proof_md.contains("Gate: not configured"));
     Ok(())
 }
 

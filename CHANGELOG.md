@@ -22,6 +22,11 @@ are scoped or reviewed.
   guidance, focused-test handoff, after-evidence verification, receipt, and
   advisory PR/CI projection while leaving analyzer semantics, recommendation
   ranking, gate policy, editor behavior, and default CI behavior unchanged.
+- Added the canonical Campaign 20 replay corpus under
+  `fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/`,
+  pinning one boundary-gap seam across PR guidance, editor/agent handoff,
+  before/after static evidence, a receipt, and PR ledger projection without
+  adding analyzer, policy, editor, or CI behavior.
 - Opened Campaign 19, PR Evidence Ledger, with
   `spec/pr-evidence-ledger-surface` as the first ready work item so per-PR
   RIPR evidence can become an adoption ledger for movement history, waiver

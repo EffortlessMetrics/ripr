@@ -1206,8 +1206,16 @@ metrics = [
 id = "RIPR-SPEC-0019"
 name = "test-oracle assistant loop"
 spec = "docs/specs/RIPR-SPEC-0019-test-oracle-assistant-loop.md"
-tests = []
-fixtures = []
+tests = [
+  "crates/ripr/tests/cli_smoke.rs::test_oracle_assistant_canonical_review_loop_fixture_pins_expected_surfaces",
+]
+fixtures = [
+  "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/README.md",
+  "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json",
+  "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-evidence-ledger.json",
+  "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/test-oracle-assistant-proof.json",
+  "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/test-oracle-assistant-proof.md",
+]
 code = []
 outputs = [
   "docs/specs/RIPR-SPEC-0019-test-oracle-assistant-loop.md",

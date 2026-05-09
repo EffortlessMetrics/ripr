@@ -34,7 +34,7 @@ through multiple work items in a campaign, but each work item should follow the
 | RIPR Zero Adoption (17) | Turn baselines into burn-down ledgers with create, diff, and shrink-only refresh commands while keeping generated CI advisory by default. | Complete: spec, baseline create, baseline diff, shrink-only update, generated CI baseline-delta artifacts, baseline ledger workflow guide, and `campaign/ripr-zero-adoption-closeout`. |
 | RIPR Zero Reporting (18) | Turn reviewed baselines and debt deltas into repo-level RIPR 0 status, stale-debt, trend, and repair-area reporting while preserving advisory defaults. | Complete: spec, baseline metadata, status report, generated CI summary, user workflow docs, and `campaign/ripr-zero-reporting-closeout`. |
 | PR Evidence Ledger (19) | Turn per-PR RIPR evidence into an adoption ledger for movement history, waiver aging, baseline burn-down, repair receipts, and coverage/grip frontier signals while preserving advisory defaults. | Complete: spec, producer, generated-CI projection, coverage/grip frontier report, user workflow docs, and `campaign/pr-evidence-ledger-closeout`. |
-| Test-Oracle Assistant Proof (20) | Prove the full PR-time loop from changed Rust behavior to static evidence, PR/editor guidance, focused-test handoff, verification, receipt, and advisory CI/ledger projection. | Active: `spec/test-oracle-assistant-loop` is done; `fixtures/canonical-review-loop` is ready; dogfood receipt, user workflow docs, and closeout remain blocked behind the fixture. |
+| Test-Oracle Assistant Proof (20) | Prove the full PR-time loop from changed Rust behavior to static evidence, PR/editor guidance, focused-test handoff, verification, receipt, and advisory CI/ledger projection. | Active: `spec/test-oracle-assistant-loop` and `fixtures/canonical-review-loop` are done; `dogfood/test-oracle-assistant-receipt` is ready; user workflow docs and closeout remain blocked behind the dogfood receipt. |
 | Editor Evidence UX (future) | Make the saved-workspace LSP path feel like an editor-native test-intent cockpit from diagnostic to hover, related test, context packet, one test, verify, and receipt. | Complete as an explicit parallel Lane 3 closeout: contract audit, hover hardening, evidence-aware actions, context packet, protocol smoke, VS Code smoke, status/staleness, workflow docs, and closeout audit. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
@@ -137,7 +137,9 @@ behavioral grip movement separate; and
 end-to-end proof contract from changed Rust behavior through static evidence,
 PR/editor guidance, focused-test handoff, verification, receipt, and advisory
 CI/ledger projection without changing analyzer, policy, editor, or CI defaults.
-The next ready item is `fixtures/canonical-review-loop`.
+The canonical boundary-gap replay corpus now pins one seam across
+recommendation, handoff, receipt, and ledger projection. The next ready item is
+`dogfood/test-oracle-assistant-receipt`.
 
 ## PR 0: `planning-and-tracking-docs`
 

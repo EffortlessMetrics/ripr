@@ -185,7 +185,9 @@ open as Test-Oracle Assistant Proof. RIPR-SPEC-0019 now defines the full
 PR-time proof loop from changed Rust behavior through static evidence,
 PR/editor guidance, focused-test handoff, verification, receipt, and advisory
 CI/ledger projection without changing analyzer, policy, editor, or default CI
-behavior. The next ready item is `fixtures/canonical-review-loop`.
+behavior. The canonical replay corpus now pins one boundary-gap seam across
+recommendation, handoff, receipt, and ledger projection; the next ready item is
+`dogfood/test-oracle-assistant-receipt`.
 
 ## Strategic Sequence
 
