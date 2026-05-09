@@ -770,7 +770,7 @@ evidence = [
   "docs/PR_EVIDENCE_LEDGER_WORKFLOW.md explains how teams read ledger cards for waiver aging, baseline burn-down, repair receipts, coverage/grip frontier signals, and movement toward RIPR 0"
 ]
 fixtures = ["fixtures/boundary_gap/expected/pr-evidence-ledger/mixed"]
-next = "campaign/pr-evidence-ledger-closeout"
+next = "maintenance"
 metric = "pr_evidence_ledger_records, pr_evidence_ledger_new_policy_eligible, pr_evidence_ledger_baseline_still_present, pr_evidence_ledger_baseline_resolved, pr_evidence_ledger_acknowledged, pr_evidence_ledger_suppressed, pr_evidence_ledger_blocking_candidates, pr_evidence_ledger_repair_receipts, pr_evidence_ledger_waiver_age_max_days, pr_evidence_ledger_coverage_grip_frontier_available, pr_evidence_ledger_flat_coverage_grip_improved"
 
 [[capability]]
@@ -786,7 +786,7 @@ evidence = [
   "docs/PR_EVIDENCE_LEDGER_WORKFLOW.md explains how teams interpret coverage/grip frontier signals in PR review without treating coverage as adequacy"
 ]
 fixtures = []
-next = "campaign/pr-evidence-ledger-closeout"
+next = "maintenance"
 metric = "coverage_grip_frontier_reports, coverage_grip_frontier_available, coverage_grip_frontier_flat_coverage_grip_improved"
 
 [[capability]]

@@ -36,6 +36,9 @@ are scoped or reviewed.
   evidence ledgers for waiver aging, baseline burn-down, repair receipts,
   coverage/grip frontier signals, and movement toward RIPR 0 without learning
   internal report topology.
+- Closed Campaign 19, PR Evidence Ledger, after the spec, producer, generated
+  CI projection, coverage/grip frontier report, user workflow docs, and
+  closeout receipt landed while generated CI stayed advisory by default.
 - Opened Campaign 18, RIPR Zero Reporting, with
   `spec/ripr-zero-reporting-surface` as the first ready work item so reviewed
   baselines and debt deltas can become repo-level RIPR 0 status, stale-debt,
