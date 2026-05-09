@@ -800,6 +800,31 @@ jobs:
             --out target/ripr/reports/baseline-debt-delta.json \
             --out-md target/ripr/reports/baseline-debt-delta.md
 
+      - name: Render RIPR Zero status
+        if: always() && hashFiles('target/ripr/reports/baseline-debt-delta.json') != ''
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          zero_args=(
+            zero status
+            --delta target/ripr/reports/baseline-debt-delta.json
+            --out target/ripr/reports/ripr-zero-status.json
+            --out-md target/ripr/reports/ripr-zero-status.md
+          )
+          if [ -n "${RIPR_GATE_BASELINE:-}" ]; then
+            zero_args+=(--baseline "$RIPR_GATE_BASELINE")
+          fi
+          if [ -f target/ripr/reports/gate-decision.json ]; then
+            zero_args+=(--gate target/ripr/reports/gate-decision.json)
+          fi
+          if [ -f target/ripr/review/comments.json ]; then
+            zero_args+=(--pr-guidance target/ripr/review/comments.json)
+          fi
+          if [ -f target/ripr/reports/recommendation-calibration.json ]; then
+            zero_args+=(--recommendation-calibration target/ripr/reports/recommendation-calibration.json)
+          fi
+          ripr "${zero_args[@]}"
+
       - name: Render RIPR LLM work-loop summaries
         if: always()
         continue-on-error: true
@@ -990,6 +1015,59 @@ jobs:
               echo 'Baseline debt delta was not run. Set `RIPR_GATE_BASELINE` with an explicit gate mode to compare current evidence against reviewed baseline debt.'
             fi
             echo
+            echo '### RIPR Zero status'
+            if [ -f target/ripr/reports/ripr-zero-status.json ]; then
+              zero_json=target/ripr/reports/ripr-zero-status.json
+              zero_state="$(jq -r '.ripr_zero.state // "unknown"' "$zero_json" 2>/dev/null || echo unknown)"
+              visible_unresolved="$(jq -r '.ripr_zero.visible_unresolved // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_new_policy_eligible="$(jq -r '.ripr_zero.new_policy_eligible // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_blocking_candidates="$(jq -r '.ripr_zero.blocking_candidates // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_acknowledged="$(jq -r '.ripr_zero.acknowledged // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_suppressed="$(jq -r '.ripr_zero.suppressed // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_still_present="$(jq -r '.baseline.still_present // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_resolved="$(jq -r '.baseline.resolved // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_metadata_stale="$(jq -r '.baseline.metadata.stale // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_metadata_missing="$(jq -r '.baseline.metadata.missing_metadata // 0' "$zero_json" 2>/dev/null || echo 0)"
+              top_area="$(jq -r '(.top_debt_areas[0].area // "none")' "$zero_json" 2>/dev/null || echo unknown)"
+              top_route="$(jq -r '(.repair_routes[0] | if . == null then "none" else ((.path // "unknown") + (if .line then ":" + (.line|tostring) else "" end) + " " + (.missing_discriminator // "missing discriminator unavailable")) end)' "$zero_json" 2>/dev/null || echo unknown)"
+              trend_source="$(jq -r '.trend.source // "not_available"' "$zero_json" 2>/dev/null || echo unknown)"
+              zero_state="$(markdown_inline "$zero_state")"
+              visible_unresolved="$(markdown_inline "$visible_unresolved")"
+              zero_new_policy_eligible="$(markdown_inline "$zero_new_policy_eligible")"
+              zero_blocking_candidates="$(markdown_inline "$zero_blocking_candidates")"
+              zero_acknowledged="$(markdown_inline "$zero_acknowledged")"
+              zero_suppressed="$(markdown_inline "$zero_suppressed")"
+              zero_still_present="$(markdown_inline "$zero_still_present")"
+              zero_resolved="$(markdown_inline "$zero_resolved")"
+              zero_metadata_stale="$(markdown_inline "$zero_metadata_stale")"
+              zero_metadata_missing="$(markdown_inline "$zero_metadata_missing")"
+              top_area="$(markdown_inline "$top_area")"
+              top_route="$(markdown_inline "$top_route")"
+              trend_source="$(markdown_inline "$trend_source")"
+              echo '#### RIPR Zero at a glance'
+              echo "- State: \`$zero_state\`"
+              echo "- Visible unresolved: \`$visible_unresolved\`"
+              echo "- New policy-eligible: \`$zero_new_policy_eligible\`"
+              echo "- Blocking candidates: \`$zero_blocking_candidates\`"
+              echo "- Acknowledged: \`$zero_acknowledged\`"
+              echo "- Suppressed: \`$zero_suppressed\`"
+              echo "- Baseline still present: \`$zero_still_present\`"
+              echo "- Baseline resolved: \`$zero_resolved\`"
+              echo "- Baseline metadata: stale=\`$zero_metadata_stale\`, missing=\`$zero_metadata_missing\`"
+              echo "- Top debt area: \`$top_area\`"
+              echo "- Top repair route: \`$top_route\`"
+              echo "- Trend source: \`$trend_source\`"
+              echo "- RIPR Zero artifacts: \`target/ripr/reports/ripr-zero-status.json\`, \`target/ripr/reports/ripr-zero-status.md\`"
+              echo
+            fi
+            if [ -f target/ripr/reports/ripr-zero-status.md ]; then
+              cat target/ripr/reports/ripr-zero-status.md
+            elif [ -f target/ripr/reports/baseline-debt-delta.json ]; then
+              echo 'RIPR Zero status was not generated. Inspect `target/ripr/reports/baseline-debt-delta.json` and rerun `ripr zero status` locally.'
+            else
+              echo 'RIPR Zero status was not run. It requires `baseline-debt-delta.json`, which is produced only after an explicit gate mode and reviewed baseline are configured.'
+            fi
+            echo
             echo '### SARIF and badge status'
             if [ "${RIPR_UPLOAD_SARIF:-}" = "true" ]; then
               if [ -f target/ripr/reports/ripr-findings.sarif ]; then echo "- Diff SARIF: generated"; else echo "- Diff SARIF: missing or skipped"; fi
@@ -1063,14 +1141,20 @@ The generated workflow always uploads `target/ripr/pilot`,
 `target/ripr/review`, and `target/ci` as a `ripr-reports` artifact when files
 exist. When `RIPR_GATE_BASELINE` is set and gate evaluation writes
 `target/ripr/reports/gate-decision.json`, the workflow also runs
-`ripr baseline diff` and includes:
+`ripr baseline diff`, then `ripr zero status`, and includes:
 
 - `target/ripr/reports/baseline-debt-delta.json`;
-- `target/ripr/reports/baseline-debt-delta.md`.
+- `target/ripr/reports/baseline-debt-delta.md`;
+- `target/ripr/reports/ripr-zero-status.json`;
+- `target/ripr/reports/ripr-zero-status.md`.
 
 The baseline debt delta is advisory debt-movement evidence. It is summarized in
-the job summary, but `ripr gate evaluate` remains the only generated-workflow
-pass/fail authority. The repo badge files in that artifact are:
+the job summary and feeds the RIPR Zero status summary, but `ripr gate
+evaluate` remains the only generated-workflow pass/fail authority. The RIPR
+Zero section reports visible unresolved debt, new policy-eligible debt,
+acknowledgements, suppressions, baseline metadata health, top debt area, top
+repair route, and trend availability as advisory progress evidence. The repo
+badge files in that artifact are:
 
 - `target/ripr/reports/repo-ripr-badge.json`, the seam-native native badge
   payload;
@@ -1126,14 +1210,17 @@ For every configured gate mode, the generated workflow behavior is:
 3. run `ripr gate evaluate` only when `RIPR_GATE_MODE` is set;
 4. run `ripr baseline diff` only when `RIPR_GATE_BASELINE` is set and
    `gate-decision.json` exists;
-5. render the at-a-glance gate section from `gate-decision.json`;
-6. render the baseline debt movement section from
+5. run `ripr zero status` only when `baseline-debt-delta.json` exists;
+6. render the at-a-glance gate section from `gate-decision.json`;
+7. render the baseline debt movement section from
    `baseline-debt-delta.json` when present;
-7. append the detailed `gate-decision.md` and `baseline-debt-delta.md`
+8. render the RIPR Zero at-a-glance section from `ripr-zero-status.json` and
+   append `ripr-zero-status.md` when present;
+9. append the detailed `gate-decision.md` and `baseline-debt-delta.md`
    reports when present;
-8. upload gate and baseline delta artifacts with the normal `ripr-reports`
-   artifact packet;
-9. fail only when the explicit gate mode returns `blocked` or `config_error`.
+10. upload gate, baseline delta, and RIPR Zero artifacts with the normal
+   `ripr-reports` artifact packet;
+11. fail only when the explicit gate mode returns `blocked` or `config_error`.
 
 Acknowledgeable policy:
 
@@ -1161,6 +1248,10 @@ uploads `baseline-debt-delta.json` and `baseline-debt-delta.md` and summarizes
 still-present, resolved, new policy-eligible, acknowledged, suppressed, stale,
 invalid, and missing-input counts in the job summary. The delta report remains
 advisory movement evidence; `ripr gate evaluate` is still the pass/fail owner.
+When the baseline delta exists, generated CI also writes and uploads
+`ripr-zero-status.json` and `ripr-zero-status.md`, then summarizes RIPR 0 state,
+visible unresolved debt, metadata health, top debt area, and top repair route
+as advisory adoption progress.
 
 Calibrated gate:
 

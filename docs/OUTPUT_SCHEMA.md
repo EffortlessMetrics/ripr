@@ -2133,10 +2133,10 @@ target/ripr/reports/ripr-zero-status.md
 ```
 
 This report is advisory progress evidence. `ripr gate evaluate` remains the
-pass/fail authority for configured gate modes. Generated CI upload and summary
-wiring is a separate surface; the report itself must not fail CI, rewrite
-baselines, post comments, edit source, generate tests, rerun analysis, call an
-LLM, or run mutation testing.
+pass/fail authority for configured gate modes. Generated CI uploads and
+summarizes `ripr-zero-status.{json,md}` when `baseline-debt-delta.json` exists,
+but the report itself must not fail CI, rewrite baselines, post comments, edit
+source, generate tests, rerun analysis, call an LLM, or run mutation testing.
 
 JSON shape:
 

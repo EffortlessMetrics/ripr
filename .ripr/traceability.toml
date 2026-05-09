@@ -1090,6 +1090,7 @@ tests = [
   "crates/ripr/src/cli/commands.rs::tests::ripr_zero_status_parses_option_surface",
   "crates/ripr/src/cli/commands.rs::tests::ripr_zero_status_requires_inputs_and_rejects_unknown_args",
   "crates/ripr/src/cli/commands.rs::tests::ripr_zero_status_writes_json_and_markdown_reports",
+  "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_matches_smoke_fixture",
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/baseline-debt-delta/mixed/baseline.json",

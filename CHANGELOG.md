@@ -27,6 +27,10 @@ are scoped or reviewed.
   joins baseline debt deltas, reviewed baseline metadata, optional gate
   decisions, PR guidance, and recommendation calibration into repo-level RIPR
   Zero progress without changing gate authority or CI blocking defaults.
+- Added generated-CI RIPR Zero summary wiring: when baseline debt delta exists,
+  the workflow writes/uploads `ripr-zero-status.{json,md}` and appends a
+  first-screen RIPR Zero summary without changing advisory defaults or gate
+  pass/fail authority.
 - Added `ripr baseline create --from <gate-decision.json> --out .ripr/gate-baseline.json`,
   which writes reviewed gate baseline ledgers from existing gate-decision
   evidence, skips suppressed or malformed decisions, supports `--dry-run`, and
