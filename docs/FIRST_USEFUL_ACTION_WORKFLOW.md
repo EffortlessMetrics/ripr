@@ -206,6 +206,9 @@ repair or explain the decision.
   route to.
 - [Test-oracle assistant proof report](TEST_ORACLE_ASSISTANT_PROOF_REPORT.md)
   explains the proof artifact that can feed the first useful action.
+- [Assistant loop health workflow](ASSISTANT_LOOP_HEALTH_WORKFLOW.md) explains
+  how proof packets are summarized into completeness, movement, warning, and
+  repair queue health.
 - [PR evidence ledger workflow](PR_EVIDENCE_LEDGER_WORKFLOW.md) explains PR
   movement, waivers, baseline burn-down, repair receipts, and coverage/grip
   frontier signals.
