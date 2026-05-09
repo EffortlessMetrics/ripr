@@ -1043,6 +1043,7 @@ code = [
 outputs = [
   "docs/specs/RIPR-SPEC-0016-baseline-debt-delta.md",
   "docs/specs/README.md",
+  "docs/BASELINE_LEDGER_WORKFLOW.md",
   "docs/CI.md",
   "docs/OUTPUT_SCHEMA.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",

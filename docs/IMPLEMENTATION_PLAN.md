@@ -31,7 +31,7 @@ through multiple work items in a campaign, but each work item should follow the
 | Recommendation Calibration (14) | Measure whether top CI, LSP, and PR recommendations are clear, correctly placed, low-noise, and correlated with better static evidence after one focused test. | Complete: spec, corpus, receipts, report, guide, and `campaign/recommendation-calibration-closeout`. |
 | Calibrated Gate Policy (15) | Define optional calibrated gates over existing PR-time evidence without changing advisory defaults or blurring static/runtime evidence. | Complete: spec, evaluator, fixtures, generated CI opt-in wiring, evidence-preserving CI behavior, calibrated gate guide, and `campaign/calibrated-gate-closeout`. |
 | Gate Adoption UX (16) | Make optional calibrated gate adoption safe and obvious for real teams without changing advisory defaults. | Complete: generated-CI examples, waiver workflows, baseline guidance, CI gate summary polish, dogfood receipts, blocking-readiness guidance, and `campaign/gate-adoption-ux-closeout`. |
-| RIPR Zero Adoption (17) | Turn baselines into burn-down ledgers with create, diff, and shrink-only refresh commands while keeping generated CI advisory by default. | Active: `docs/baseline-ledger-workflow` is ready after generated CI learned to upload and summarize baseline debt delta artifacts. |
+| RIPR Zero Adoption (17) | Turn baselines into burn-down ledgers with create, diff, and shrink-only refresh commands while keeping generated CI advisory by default. | Active: `campaign/ripr-zero-adoption-closeout` is ready after the baseline ledger workflow guide made the adoption path executable for users. |
 | Editor Evidence UX (future) | Make the saved-workspace LSP path feel like an editor-native test-intent cockpit from diagnostic to hover, related test, context packet, one test, verify, and receipt. | Queued separately; contract audit, hover hardening, and evidence-aware action hardening are complete, with remaining behavior work gated on explicit activation or explicit parallel-lane decisions. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
@@ -104,7 +104,9 @@ diff` can report baseline debt movement, and `ripr baseline update
 --remove-resolved` can shrink reviewed baselines without adopting new current
 debt. Generated CI can now upload and summarize baseline debt delta artifacts
 when a baseline and gate decision are present; the baseline ledger workflow
-docs are the next ready adoption slice.
+guide now documents initial adoption, baseline-check rollout, shrink-only
+refresh, new debt review, and the path toward RIPR 0. Campaign closeout is the
+next ready slice.
 Editor Evidence UX remains
 queued as a separate Lane 3 campaign; its contract audit is recorded in
 [Editor Evidence UX](EDITOR_EVIDENCE_UX.md), and hover plus evidence-aware

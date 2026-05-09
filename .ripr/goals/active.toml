@@ -100,7 +100,7 @@ commands = [
 
 [[work_item]]
 id = "docs/baseline-ledger-workflow"
-status = "ready"
+status = "done"
 branch = "docs-baseline-ledger-workflow"
 stackable = false
 blocked_by = ["baseline/update-remove-resolved", "ci/baseline-debt-delta-artifacts"]
@@ -114,7 +114,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/ripr-zero-adoption-closeout"
-status = "blocked"
+status = "ready"
 branch = "campaign-ripr-zero-adoption-closeout"
 stackable = false
 blocked_by = [

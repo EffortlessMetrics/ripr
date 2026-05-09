@@ -322,7 +322,9 @@ Policy: RIPR-SPEC-0014 pins the optional gate contract, `ripr gate evaluate`
 writes the read-only decision report, generated CI can run it only when
 `RIPR_GATE_MODE` is explicitly configured, and
 [Calibrated gate policy](docs/CALIBRATED_GATE_POLICY.md) documents the
-operator workflow. The default generated workflow remains advisory.
+operator workflow. [Baseline ledger workflow](docs/BASELINE_LEDGER_WORKFLOW.md)
+shows how to create, diff, and shrink reviewed behavioral-grip debt baselines
+on the path toward RIPR 0. The default generated workflow remains advisory.
 
 Deeper capability state lives in [Capability matrix](docs/CAPABILITY_MATRIX.md)
 and [Metrics](docs/METRICS.md).
@@ -410,6 +412,7 @@ Start here:
 | Understand the model | [Static exposure model](docs/STATIC_EXPOSURE_MODEL.md) |
 | Understand JSON/context output | [Output schema](docs/OUTPUT_SCHEMA.md) |
 | Turn seam evidence into a test | [Targeted test workflow](docs/TARGETED_TEST_WORKFLOW.md) |
+| Adopt a baseline debt ledger | [Baseline ledger workflow](docs/BASELINE_LEDGER_WORKFLOW.md) |
 | Understand easy-start defaults | [Defaults-first adoption spec](docs/specs/RIPR-SPEC-0009-defaults-first-adoption.md) |
 | See current product direction | [Roadmap](docs/ROADMAP.md) |
 | See active campaigns | [Implementation campaigns](docs/IMPLEMENTATION_CAMPAIGNS.md) |
