@@ -318,6 +318,7 @@ fn first_action_cli_writes_actionable_report() -> Result<(), Box<dyn std::error:
     assert_success(&output);
 
     let report: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&out)?)?;
+    assert_eq!(json_pointer_str(&report, "/schema_version")?, "0.1");
     assert_eq!(json_pointer_str(&report, "/kind")?, "first_useful_action");
     assert_eq!(json_pointer_str(&report, "/status")?, "actionable");
     assert_eq!(
