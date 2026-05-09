@@ -1196,9 +1196,32 @@ JSON shape:
       "direction": "improved",
       "evidence_delta": [
         "grip class moved from weakly_gripped to strongly_gripped",
+        "discriminate evidence moved from missing to yes",
         "missing discriminator no longer reported: discount_threshold (equality boundary)",
         "stronger related oracle visible: weak -> strong"
-      ]
+      ],
+      "evidence_source": "evidence_record",
+      "reach_delta": null,
+      "activate_delta": null,
+      "propagate_delta": null,
+      "observe_delta": null,
+      "discriminate_delta": {
+        "before_state": "missing",
+        "after_state": "yes",
+        "before_confidence": "high",
+        "after_confidence": "high",
+        "before_summary": "equality boundary not asserted",
+        "after_summary": "equality boundary asserted"
+      },
+      "observed_values_added": ["discount_threshold"],
+      "observed_values_removed": [],
+      "missing_discriminators_resolved": [
+        "discount_threshold (equality boundary)"
+      ],
+      "missing_discriminators_reopened": [],
+      "oracle_strength_delta": "weak -> strong",
+      "related_test_delta": 1,
+      "no_movement_reason": null
     }
   ],
   "unchanged": [],
@@ -1222,11 +1245,28 @@ Field contract:
   after class ranked lower than the before class; `unchanged` means the class
   stayed the same; `new` and `removed` cover seam IDs present in only one input.
 - `moved[]` / `unchanged[]` / `regressed[]` — matched seams with before/after
-  grip classes, a direction string, and evidence-delta hints derived from
-  rendered repo-exposure fields.
+  grip classes, a direction string, and evidence-delta hints. When
+  `seams[].evidence_record` is present, the comparison prefers that shared
+  evidence spine; otherwise it falls back to legacy repo-exposure seam fields.
 - `evidence_delta[]` — advisory hints such as missing discriminators no longer
   reported, new observed values, or stronger related oracles. These hints are
   based on the rendered static artifact and do not claim runtime confirmation.
+- `evidence_source` — `evidence_record`, `legacy_fields`, or a mixed transition
+  label when before and after snapshots differ in available evidence source.
+- `reach_delta`, `activate_delta`, `propagate_delta`, `observe_delta`, and
+  `discriminate_delta` — `null` when the stage is unchanged or unavailable, or
+  an object with before/after state, confidence, and summary copied from the
+  evidence record.
+- `observed_values_added` / `observed_values_removed` — value-level activation
+  evidence movement derived from the evidence record when available.
+- `missing_discriminators_resolved` /
+  `missing_discriminators_reopened` — discriminator-level movement derived from
+  the evidence record when available.
+- `oracle_strength_delta` — `null` when unchanged, otherwise a compact
+  `before -> after` static oracle-strength movement label.
+- `related_test_delta` — count movement for related-test evidence.
+- `no_movement_reason` — explicit static reason for unchanged seams with no
+  rendered evidence movement.
 - `new[]` / `removed[]` — seam identity and grip class for seam IDs present in
   only one input.
 
@@ -1282,7 +1322,29 @@ JSON shape:
       "evidence_delta": [
         "grip class moved from weakly_gripped to strongly_gripped",
         "missing discriminator no longer reported: discount_threshold (equality boundary)"
-      ]
+      ],
+      "evidence_source": "evidence_record",
+      "reach_delta": null,
+      "activate_delta": null,
+      "propagate_delta": null,
+      "observe_delta": null,
+      "discriminate_delta": {
+        "before_state": "missing",
+        "after_state": "yes",
+        "before_confidence": "high",
+        "after_confidence": "high",
+        "before_summary": "equality boundary not asserted",
+        "after_summary": "equality boundary asserted"
+      },
+      "observed_values_added": ["discount_threshold"],
+      "observed_values_removed": [],
+      "missing_discriminators_resolved": [
+        "discount_threshold (equality boundary)"
+      ],
+      "missing_discriminators_reopened": [],
+      "oracle_strength_delta": "weak -> strong",
+      "related_test_delta": 1,
+      "no_movement_reason": null
     }
   ],
   "unchanged_seams": [],
@@ -1311,6 +1373,10 @@ Field contract:
 - `unchanged_seams[]` - matched seams whose class stayed the same. These can
   still carry `evidence_delta` hints when rendered evidence improved without
   changing class.
+- `changed_seams[]` / `unchanged_seams[]` carry the same additive
+  evidence-record movement fields as `ripr outcome`: stage deltas,
+  observed-value movement, missing-discriminator movement, oracle strength
+  movement, related-test count movement, and `no_movement_reason`.
 - `new_gaps[]` / `resolved_gaps[]` - seam identity and static class for seam IDs
   present in only one snapshot.
 

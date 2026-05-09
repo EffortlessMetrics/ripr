@@ -19,14 +19,30 @@
   "tool": "ripr",
   "unchanged_seams": [
     {
+      "activate_delta": null,
       "after": "weakly_gripped",
       "before": "weakly_gripped",
       "change": "unchanged",
+      "discriminate_delta": null,
       "evidence_delta": [
-        "new observed value: 100"
+        "new observed value: 100",
+        "related test count increased by 1"
       ],
+      "evidence_source": "legacy_fields",
       "file": "src/lib.rs",
       "line": 2,
+      "missing_discriminators_reopened": [],
+      "missing_discriminators_resolved": [],
+      "no_movement_reason": null,
+      "observe_delta": null,
+      "observed_values_added": [
+        "100"
+      ],
+      "observed_values_removed": [],
+      "oracle_strength_delta": null,
+      "propagate_delta": null,
+      "reach_delta": null,
+      "related_test_delta": 1,
       "seam_id": "67fc764ba37d77bd",
       "seam_kind": "predicate_boundary"
     }

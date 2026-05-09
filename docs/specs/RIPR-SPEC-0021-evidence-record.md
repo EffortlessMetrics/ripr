@@ -171,6 +171,11 @@ shared record without changing analyzer behavior:
   delta item supplies it. The route may copy the record's location, grip class,
   missing discriminator, related test, assertion shape, verification command,
   and static limitations. Legacy baseline-delta fields remain fallback.
+- Targeted-test outcome and agent verify compare before/after
+  `evidence_record` fields when present. Stage movement, observed-value
+  movement, missing-discriminator movement, oracle strength movement,
+  related-test movement, and no-movement reasons are emitted additively while
+  legacy repo-exposure fields remain fallback.
 
 This routing must not invent commands, generate tests, change gate authority,
 or mutate baselines.
@@ -183,6 +188,8 @@ or mutate baselines.
   top-level work-order fields.
 - RIPR Zero status repair routes prefer supplied `evidence_record` guidance and
   static limitations while preserving legacy fallback fields.
+- Targeted-test outcome and agent verify prefer `evidence_record` movement
+  fields while preserving legacy fallback fields and existing movement buckets.
 - Evidence record schema `0.1` is documented in `docs/OUTPUT_SCHEMA.md`.
 - Unit tests pin identity, grip class, evidence path, recommendation,
   actionability, calibration placeholder, and static limitations.
@@ -210,6 +217,8 @@ Additional examples:
 | Repo exposure carries existing seam fields plus the new record | `json_carries_full_classified_record` |
 | Agent seam packets carry the shared record while preserving legacy fields | `packet_carries_shared_evidence_record_projection` |
 | RIPR Zero status repair routes prefer supplied record guidance | `ripr_zero_status_prefers_evidence_record_repair_context` |
+| Targeted-test outcome prefers record-level before/after movement | `targeted_test_outcome_prefers_evidence_record_movement` |
+| Targeted-test outcome names unchanged record movement reason | `targeted_test_outcome_records_no_movement_reason` |
 
 ## Implementation Mapping
 
@@ -218,6 +227,7 @@ Additional examples:
 | Evidence record projection | `crates/ripr/src/output/evidence_record.rs` |
 | Repo exposure JSON attachment | `crates/ripr/src/output/repo_exposure.rs` |
 | Agent seam packet projection | `crates/ripr/src/output/agent_seam_packets.rs` |
+| Targeted-test outcome movement | `crates/ripr/src/output/outcome.rs` |
 | RIPR Zero status repair route consumer | `crates/ripr/src/output/ripr_zero_status.rs` |
 | Output module registration | `crates/ripr/src/output/mod.rs` |
 | Schema reference | `docs/OUTPUT_SCHEMA.md` |

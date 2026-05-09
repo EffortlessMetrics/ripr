@@ -35,6 +35,11 @@ are scoped or reviewed.
   complete-improved, partial-missing-optional, missing-required-input,
   unchanged, regressed, warning-heavy, and multi-proof report states before the
   producer implementation.
+- Routed targeted-test outcome and agent verify movement through the shared
+  evidence spine: before/after comparison now prefers `seams[].evidence_record`
+  stage, observed-value, missing-discriminator, oracle-strength, and
+  related-test movement while preserving legacy repo-exposure fallback fields
+  and existing advisory buckets.
 - Opened Campaign 22, First Useful Action, with
   `spec/first-useful-action-report` as the first ready work item so existing
   editor, PR guidance, ledger, proof, receipt, optional gate, coverage/grip,

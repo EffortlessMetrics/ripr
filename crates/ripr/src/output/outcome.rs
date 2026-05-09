@@ -25,6 +25,8 @@ const SEAM_GRIP_CLASS_ORDER: &[&str] = &[
     "suppressed",
 ];
 
+const EVIDENCE_STAGES: &[&str] = &["reach", "activate", "propagate", "observe", "discriminate"];
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct StaticSeamRecord {
     seam_id: String,
@@ -36,6 +38,26 @@ pub(crate) struct StaticSeamRecord {
     oracle_strength: String,
     observed_values: Vec<String>,
     missing_discriminators: Vec<String>,
+    evidence_source: String,
+    evidence_path: BTreeMap<String, StaticEvidenceStage>,
+    related_tests_total: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct StaticEvidenceStage {
+    state: String,
+    confidence: String,
+    summary: String,
+}
+
+struct TargetedOutcomeEvidenceDelta<'a> {
+    stage_deltas: [&'a Option<TargetedTestOutcomeStageDelta>; 5],
+    observed_values_added: &'a [String],
+    observed_values_removed: &'a [String],
+    missing_discriminators_resolved: &'a [String],
+    missing_discriminators_reopened: &'a [String],
+    oracle_strength_delta: Option<&'a str>,
+    related_test_delta: isize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -61,6 +83,29 @@ pub(crate) struct TargetedTestOutcomeMovement {
     after: String,
     direction: String,
     evidence_delta: Vec<String>,
+    evidence_source: String,
+    reach_delta: Option<TargetedTestOutcomeStageDelta>,
+    activate_delta: Option<TargetedTestOutcomeStageDelta>,
+    propagate_delta: Option<TargetedTestOutcomeStageDelta>,
+    observe_delta: Option<TargetedTestOutcomeStageDelta>,
+    discriminate_delta: Option<TargetedTestOutcomeStageDelta>,
+    observed_values_added: Vec<String>,
+    observed_values_removed: Vec<String>,
+    missing_discriminators_resolved: Vec<String>,
+    missing_discriminators_reopened: Vec<String>,
+    oracle_strength_delta: Option<String>,
+    related_test_delta: isize,
+    no_movement_reason: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct TargetedTestOutcomeStageDelta {
+    before_state: Option<String>,
+    after_state: Option<String>,
+    before_confidence: Option<String>,
+    after_confidence: Option<String>,
+    before_summary: Option<String>,
+    after_summary: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -188,8 +233,8 @@ pub(crate) fn render_targeted_test_outcome_md(report: &TargetedTestOutcomeReport
         out.push_str(&format!(
             "| {} | {} | {} |\n",
             class,
-            report.before_counts.get(class).copied().unwrap_or(0),
-            report.after_counts.get(class).copied().unwrap_or(0)
+            count_for_class(&report.before_counts, class),
+            count_for_class(&report.after_counts, class)
         ));
     }
 
@@ -208,6 +253,13 @@ pub(crate) fn display_path(path: &Path) -> String {
     normalize_report_path(&path.display().to_string())
 }
 
+fn count_for_class(counts: &BTreeMap<String, usize>, class: &str) -> usize {
+    match counts.get(class) {
+        Some(count) => *count,
+        None => 0,
+    }
+}
+
 fn parse_repo_exposure_static_seams(json: &str) -> Result<Vec<StaticSeamRecord>, String> {
     let value: Value = serde_json::from_str(json)
         .map_err(|err| format!("failed to parse repo exposure JSON: {err}"))?;
@@ -218,12 +270,33 @@ fn parse_repo_exposure_static_seams(json: &str) -> Result<Vec<StaticSeamRecord>,
 
     let mut records = Vec::new();
     for seam in seams {
-        let seam_id = required_json_string(seam, "seam_id")?;
-        let seam_kind = required_json_string(seam, "kind")?;
-        let file = normalize_report_path(&required_json_string(seam, "file")?);
-        let line = required_json_usize(seam, "line")?;
-        let seam_grip_class = required_json_string(seam, "grip_class")?;
-        let (oracle_kind, oracle_strength) = strongest_related_oracle(seam);
+        let evidence_record = seam
+            .get("evidence_record")
+            .filter(|value| value.is_object());
+        let location = evidence_record
+            .and_then(|record| record.get("location"))
+            .filter(|value| value.is_object());
+        let seam_id = optional_json_string(evidence_record, "seam_id")
+            .or_else(|| optional_json_string(Some(seam), "seam_id"))
+            .ok_or_else(|| "repo exposure seam is missing string field `seam_id`".to_string())?;
+        let seam_kind = optional_json_string(evidence_record, "seam_kind")
+            .or_else(|| optional_json_string(Some(seam), "kind"))
+            .ok_or_else(|| "repo exposure seam is missing string field `kind`".to_string())?;
+        let file = optional_json_string(location, "file")
+            .or_else(|| optional_json_string(Some(seam), "file"))
+            .map(|path| normalize_report_path(&path))
+            .ok_or_else(|| "repo exposure seam is missing string field `file`".to_string())?;
+        let line = optional_json_usize(location, "line")
+            .or_else(|| optional_json_usize(Some(seam), "line"))
+            .ok_or_else(|| "repo exposure seam is missing numeric field `line`".to_string())?;
+        let seam_grip_class = optional_json_string(evidence_record, "grip_class")
+            .or_else(|| optional_json_string(Some(seam), "grip_class"))
+            .ok_or_else(|| "repo exposure seam is missing string field `grip_class`".to_string())?;
+        let oracle_source = match evidence_record {
+            Some(record) if record.get("related_tests").is_some() => record,
+            _ => seam,
+        };
+        let (oracle_kind, oracle_strength) = strongest_related_oracle(oracle_source);
         records.push(StaticSeamRecord {
             seam_id,
             seam_kind,
@@ -232,8 +305,25 @@ fn parse_repo_exposure_static_seams(json: &str) -> Result<Vec<StaticSeamRecord>,
             seam_grip_class,
             oracle_kind,
             oracle_strength,
-            observed_values: string_array_field(seam, "observed_values"),
-            missing_discriminators: missing_discriminator_strings(seam),
+            observed_values: evidence_record_values_or_legacy(
+                evidence_record,
+                seam,
+                "observed_values",
+                observed_value_strings,
+            ),
+            missing_discriminators: evidence_record_values_or_legacy(
+                evidence_record,
+                seam,
+                "missing_discriminators",
+                missing_discriminator_strings,
+            ),
+            evidence_source: if evidence_record.is_some() {
+                "evidence_record".to_string()
+            } else {
+                "legacy_fields".to_string()
+            },
+            evidence_path: evidence_path_stages(evidence_record),
+            related_tests_total: related_tests_total(evidence_record, seam),
         });
     }
     Ok(records)
@@ -333,7 +423,43 @@ fn targeted_test_outcome_movement(
     } else {
         "changed"
     };
-    let evidence_delta = targeted_outcome_evidence_delta(before, after);
+    let evidence_source = movement_evidence_source(before, after);
+    let reach_delta = stage_delta(before, after, "reach");
+    let activate_delta = stage_delta(before, after, "activate");
+    let propagate_delta = stage_delta(before, after, "propagate");
+    let observe_delta = stage_delta(before, after, "observe");
+    let discriminate_delta = stage_delta(before, after, "discriminate");
+    let observed_values_added =
+        string_values_added(&before.observed_values, &after.observed_values);
+    let observed_values_removed =
+        string_values_removed(&before.observed_values, &after.observed_values);
+    let missing_discriminators_resolved = string_values_removed(
+        &before.missing_discriminators,
+        &after.missing_discriminators,
+    );
+    let missing_discriminators_reopened = string_values_added(
+        &before.missing_discriminators,
+        &after.missing_discriminators,
+    );
+    let oracle_strength_delta = oracle_strength_delta(before, after);
+    let related_test_delta = related_test_delta(before, after);
+    let delta_inputs = TargetedOutcomeEvidenceDelta {
+        stage_deltas: [
+            &reach_delta,
+            &activate_delta,
+            &propagate_delta,
+            &observe_delta,
+            &discriminate_delta,
+        ],
+        observed_values_added: &observed_values_added,
+        observed_values_removed: &observed_values_removed,
+        missing_discriminators_resolved: &missing_discriminators_resolved,
+        missing_discriminators_reopened: &missing_discriminators_reopened,
+        oracle_strength_delta: oracle_strength_delta.as_deref(),
+        related_test_delta,
+    };
+    let evidence_delta = targeted_outcome_evidence_delta(before, after, &delta_inputs);
+    let no_movement_reason = no_movement_reason(direction, &evidence_delta, &evidence_source);
     TargetedTestOutcomeMovement {
         seam_id: before.seam_id.clone(),
         seam_kind: before.seam_kind.clone(),
@@ -343,6 +469,19 @@ fn targeted_test_outcome_movement(
         after: after.seam_grip_class.clone(),
         direction: direction.to_string(),
         evidence_delta,
+        evidence_source,
+        reach_delta,
+        activate_delta,
+        propagate_delta,
+        observe_delta,
+        discriminate_delta,
+        observed_values_added,
+        observed_values_removed,
+        missing_discriminators_resolved,
+        missing_discriminators_reopened,
+        oracle_strength_delta,
+        related_test_delta,
+        no_movement_reason,
     }
 }
 
@@ -374,6 +513,7 @@ fn targeted_outcome_grip_rank(class: &str) -> u8 {
 fn targeted_outcome_evidence_delta(
     before: &StaticSeamRecord,
     after: &StaticSeamRecord,
+    delta: &TargetedOutcomeEvidenceDelta<'_>,
 ) -> Vec<String> {
     let mut deltas = Vec::new();
     if before.seam_grip_class != after.seam_grip_class {
@@ -383,53 +523,69 @@ fn targeted_outcome_evidence_delta(
         ));
     }
 
-    let before_missing = before
-        .missing_discriminators
-        .iter()
-        .collect::<BTreeSet<_>>();
-    let after_missing = after.missing_discriminators.iter().collect::<BTreeSet<_>>();
-    for value in before_missing.difference(&after_missing) {
+    for (stage, stage_delta) in EVIDENCE_STAGES.iter().zip(delta.stage_deltas.iter()) {
+        if let Some(stage_delta) = stage_delta {
+            deltas.push(format!(
+                "{} evidence moved from {} to {}",
+                stage,
+                optional_delta_value(stage_delta.before_state.as_deref()),
+                optional_delta_value(stage_delta.after_state.as_deref())
+            ));
+        }
+    }
+
+    for value in delta.missing_discriminators_resolved {
         deltas.push(format!(
             "missing discriminator no longer reported: {}",
             md_escape(value)
         ));
     }
-    for value in after_missing.difference(&before_missing) {
+    for value in delta.missing_discriminators_reopened {
         deltas.push(format!(
             "new missing discriminator reported: {}",
             md_escape(value)
         ));
     }
 
-    let before_values = before.observed_values.iter().collect::<BTreeSet<_>>();
-    let after_values = after.observed_values.iter().collect::<BTreeSet<_>>();
-    for value in after_values.difference(&before_values) {
+    for value in delta.observed_values_added {
         deltas.push(format!("new observed value: {}", md_escape(value)));
     }
-    for value in before_values.difference(&after_values) {
+    for value in delta.observed_values_removed {
         deltas.push(format!(
             "previous observed value absent: {}",
             md_escape(value)
         ));
     }
 
-    let before_oracle_rank = oracle_strength_rank(&before.oracle_strength);
-    let after_oracle_rank = oracle_strength_rank(&after.oracle_strength);
-    if after_oracle_rank > before_oracle_rank {
-        deltas.push(format!(
-            "stronger related oracle visible: {} -> {}",
-            before.oracle_strength, after.oracle_strength
-        ));
-    } else if after_oracle_rank < before_oracle_rank {
-        deltas.push(format!(
-            "related oracle strength decreased: {} -> {}",
-            before.oracle_strength, after.oracle_strength
-        ));
-    } else if before.oracle_kind != after.oracle_kind {
+    if let Some(oracle_delta) = delta.oracle_strength_delta {
+        if oracle_strength_rank(&after.oracle_strength)
+            > oracle_strength_rank(&before.oracle_strength)
+        {
+            deltas.push(format!("stronger related oracle visible: {oracle_delta}"));
+        } else {
+            deltas.push(format!("related oracle strength decreased: {oracle_delta}"));
+        }
+    }
+    if before.oracle_kind != after.oracle_kind && before.oracle_strength == after.oracle_strength {
         deltas.push(format!(
             "related oracle kind changed: {} -> {}",
             before.oracle_kind, after.oracle_kind
         ));
+    }
+    match delta.related_test_delta.cmp(&0) {
+        std::cmp::Ordering::Greater => {
+            deltas.push(format!(
+                "related test count increased by {}",
+                delta.related_test_delta
+            ));
+        }
+        std::cmp::Ordering::Less => {
+            deltas.push(format!(
+                "related test count decreased by {}",
+                delta.related_test_delta.abs()
+            ));
+        }
+        std::cmp::Ordering::Equal => {}
     }
 
     if deltas.is_empty() && before.seam_grip_class != after.seam_grip_class {
@@ -447,7 +603,20 @@ fn targeted_test_outcome_movement_json(movement: &TargetedTestOutcomeMovement) -
         "before": movement.before.as_str(),
         "after": movement.after.as_str(),
         "direction": movement.direction.as_str(),
-        "evidence_delta": movement.evidence_delta
+        "evidence_delta": movement.evidence_delta,
+        "evidence_source": movement.evidence_source.as_str(),
+        "reach_delta": movement.reach_delta.as_ref().map(stage_delta_json),
+        "activate_delta": movement.activate_delta.as_ref().map(stage_delta_json),
+        "propagate_delta": movement.propagate_delta.as_ref().map(stage_delta_json),
+        "observe_delta": movement.observe_delta.as_ref().map(stage_delta_json),
+        "discriminate_delta": movement.discriminate_delta.as_ref().map(stage_delta_json),
+        "observed_values_added": movement.observed_values_added,
+        "observed_values_removed": movement.observed_values_removed,
+        "missing_discriminators_resolved": movement.missing_discriminators_resolved,
+        "missing_discriminators_reopened": movement.missing_discriminators_reopened,
+        "oracle_strength_delta": movement.oracle_strength_delta.as_deref(),
+        "related_test_delta": movement.related_test_delta,
+        "no_movement_reason": movement.no_movement_reason.as_deref()
     })
 }
 
@@ -470,7 +639,20 @@ fn agent_verify_movement_json(movement: &TargetedTestOutcomeMovement) -> Value {
         "before": movement.before.as_str(),
         "after": movement.after.as_str(),
         "change": movement.direction.as_str(),
-        "evidence_delta": movement.evidence_delta
+        "evidence_delta": movement.evidence_delta,
+        "evidence_source": movement.evidence_source.as_str(),
+        "reach_delta": movement.reach_delta.as_ref().map(stage_delta_json),
+        "activate_delta": movement.activate_delta.as_ref().map(stage_delta_json),
+        "propagate_delta": movement.propagate_delta.as_ref().map(stage_delta_json),
+        "observe_delta": movement.observe_delta.as_ref().map(stage_delta_json),
+        "discriminate_delta": movement.discriminate_delta.as_ref().map(stage_delta_json),
+        "observed_values_added": movement.observed_values_added,
+        "observed_values_removed": movement.observed_values_removed,
+        "missing_discriminators_resolved": movement.missing_discriminators_resolved,
+        "missing_discriminators_reopened": movement.missing_discriminators_reopened,
+        "oracle_strength_delta": movement.oracle_strength_delta.as_deref(),
+        "related_test_delta": movement.related_test_delta,
+        "no_movement_reason": movement.no_movement_reason.as_deref()
     })
 }
 
@@ -508,6 +690,11 @@ fn push_targeted_outcome_movements_md(
         for delta in &movement.evidence_delta {
             out.push_str(&format!("  - {}\n", md_escape(delta)));
         }
+        if movement.evidence_delta.is_empty()
+            && let Some(reason) = &movement.no_movement_reason
+        {
+            out.push_str(&format!("  - no movement: {}\n", md_escape(reason)));
+        }
     }
 }
 
@@ -533,18 +720,12 @@ fn push_targeted_outcome_seams_md(
     }
 }
 
-fn required_json_string(value: &Value, key: &str) -> Result<String, String> {
-    value
-        .get(key)
-        .and_then(json_scalar_as_string)
-        .ok_or_else(|| format!("repo exposure seam is missing string field `{key}`"))
+fn optional_json_string(value: Option<&Value>, key: &str) -> Option<String> {
+    value?.get(key).and_then(json_scalar_as_string)
 }
 
-fn required_json_usize(value: &Value, key: &str) -> Result<usize, String> {
-    value
-        .get(key)
-        .and_then(json_scalar_as_usize)
-        .ok_or_else(|| format!("repo exposure seam is missing numeric field `{key}`"))
+fn optional_json_usize(value: Option<&Value>, key: &str) -> Option<usize> {
+    value?.get(key).and_then(json_scalar_as_usize)
 }
 
 fn strongest_related_oracle(seam: &Value) -> (String, String) {
@@ -557,7 +738,7 @@ fn strongest_related_oracle(seam: &Value) -> (String, String) {
             let strength = test
                 .get("oracle_strength")
                 .and_then(Value::as_str)
-                .unwrap_or("unknown");
+                .map_or("unknown", |strength| strength);
             let rank = oracle_strength_rank(strength);
             if rank > best_rank {
                 best_rank = rank;
@@ -565,7 +746,7 @@ fn strongest_related_oracle(seam: &Value) -> (String, String) {
                 best_kind = test
                     .get("oracle_kind")
                     .and_then(Value::as_str)
-                    .unwrap_or("unknown")
+                    .map_or("unknown", |kind| kind)
                     .to_string();
             }
         }
@@ -585,38 +766,189 @@ fn oracle_strength_rank(strength: &str) -> u8 {
     }
 }
 
-fn string_array_field(value: &Value, key: &str) -> Vec<String> {
-    value
-        .get(key)
-        .and_then(Value::as_array)
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(json_scalar_as_string)
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default()
+fn evidence_record_values_or_legacy(
+    evidence_record: Option<&Value>,
+    seam: &Value,
+    key: &str,
+    parser: fn(&Value) -> Vec<String>,
+) -> Vec<String> {
+    if let Some(record) = evidence_record.filter(|record| record.get(key).is_some()) {
+        parser(record)
+    } else {
+        parser(seam)
+    }
+}
+
+fn observed_value_strings(seam: &Value) -> Vec<String> {
+    match seam.get("observed_values").and_then(Value::as_array) {
+        Some(items) => items
+            .iter()
+            .filter_map(|item| {
+                json_scalar_as_string(item)
+                    .or_else(|| item.get("value").and_then(json_scalar_as_string))
+            })
+            .collect::<Vec<_>>(),
+        None => Vec::new(),
+    }
 }
 
 fn missing_discriminator_strings(seam: &Value) -> Vec<String> {
-    seam.get("missing_discriminators")
-        .and_then(Value::as_array)
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(|item| {
-                    if let Some(value) = json_scalar_as_string(item) {
-                        return Some(value);
-                    }
-                    let value = item.get("value").and_then(json_scalar_as_string)?;
-                    match item.get("reason").and_then(json_scalar_as_string) {
-                        Some(reason) if !reason.is_empty() => Some(format!("{value} ({reason})")),
-                        _ => Some(value),
-                    }
-                })
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default()
+    match seam.get("missing_discriminators").and_then(Value::as_array) {
+        Some(items) => items
+            .iter()
+            .filter_map(|item| {
+                if let Some(value) = json_scalar_as_string(item) {
+                    return Some(value);
+                }
+                let value = item.get("value").and_then(json_scalar_as_string)?;
+                match item.get("reason").and_then(json_scalar_as_string) {
+                    Some(reason) if !reason.is_empty() => Some(format!("{value} ({reason})")),
+                    _ => Some(value),
+                }
+            })
+            .collect::<Vec<_>>(),
+        None => Vec::new(),
+    }
+}
+
+fn related_tests_total(evidence_record: Option<&Value>, seam: &Value) -> usize {
+    let source = match evidence_record {
+        Some(record) if record.get("related_tests_total").is_some() => record,
+        _ => seam,
+    };
+    if let Some(total) = source
+        .get("related_tests_total")
+        .and_then(json_scalar_as_usize)
+    {
+        return total;
+    }
+    match source.get("related_tests").and_then(Value::as_array) {
+        Some(related_tests) => related_tests.len(),
+        None => 0,
+    }
+}
+
+fn evidence_path_stages(evidence_record: Option<&Value>) -> BTreeMap<String, StaticEvidenceStage> {
+    let mut stages = BTreeMap::new();
+    let Some(path) = evidence_record
+        .and_then(|record| record.get("evidence_path"))
+        .and_then(Value::as_object)
+    else {
+        return stages;
+    };
+    for stage in EVIDENCE_STAGES {
+        let Some(value) = path.get(*stage) else {
+            continue;
+        };
+        stages.insert(
+            (*stage).to_string(),
+            StaticEvidenceStage {
+                state: optional_json_string_or_empty(Some(value), "state"),
+                confidence: optional_json_string_or_empty(Some(value), "confidence"),
+                summary: optional_json_string_or_empty(Some(value), "summary"),
+            },
+        );
+    }
+    stages
+}
+
+fn optional_json_string_or_empty(value: Option<&Value>, key: &str) -> String {
+    let mut text = String::new();
+    if let Some(value) = optional_json_string(value, key) {
+        text = value;
+    }
+    text
+}
+
+fn movement_evidence_source(before: &StaticSeamRecord, after: &StaticSeamRecord) -> String {
+    if before.evidence_source == after.evidence_source {
+        before.evidence_source.clone()
+    } else {
+        format!("{} -> {}", before.evidence_source, after.evidence_source)
+    }
+}
+
+fn stage_delta(
+    before: &StaticSeamRecord,
+    after: &StaticSeamRecord,
+    stage: &str,
+) -> Option<TargetedTestOutcomeStageDelta> {
+    let before_stage = before.evidence_path.get(stage);
+    let after_stage = after.evidence_path.get(stage);
+    if before_stage == after_stage {
+        return None;
+    }
+    if before_stage.is_none() && after_stage.is_none() {
+        return None;
+    }
+    Some(TargetedTestOutcomeStageDelta {
+        before_state: before_stage.map(|stage| stage.state.clone()),
+        after_state: after_stage.map(|stage| stage.state.clone()),
+        before_confidence: before_stage.map(|stage| stage.confidence.clone()),
+        after_confidence: after_stage.map(|stage| stage.confidence.clone()),
+        before_summary: before_stage.map(|stage| stage.summary.clone()),
+        after_summary: after_stage.map(|stage| stage.summary.clone()),
+    })
+}
+
+fn stage_delta_json(delta: &TargetedTestOutcomeStageDelta) -> Value {
+    serde_json::json!({
+        "before_state": delta.before_state.as_deref(),
+        "after_state": delta.after_state.as_deref(),
+        "before_confidence": delta.before_confidence.as_deref(),
+        "after_confidence": delta.after_confidence.as_deref(),
+        "before_summary": delta.before_summary.as_deref(),
+        "after_summary": delta.after_summary.as_deref(),
+    })
+}
+
+fn string_values_added(before: &[String], after: &[String]) -> Vec<String> {
+    let before_values = before.iter().collect::<BTreeSet<_>>();
+    let after_values = after.iter().collect::<BTreeSet<_>>();
+    after_values
+        .difference(&before_values)
+        .map(|value| (*value).clone())
+        .collect()
+}
+
+fn string_values_removed(before: &[String], after: &[String]) -> Vec<String> {
+    let before_values = before.iter().collect::<BTreeSet<_>>();
+    let after_values = after.iter().collect::<BTreeSet<_>>();
+    before_values
+        .difference(&after_values)
+        .map(|value| (*value).clone())
+        .collect()
+}
+
+fn oracle_strength_delta(before: &StaticSeamRecord, after: &StaticSeamRecord) -> Option<String> {
+    (before.oracle_strength != after.oracle_strength)
+        .then(|| format!("{} -> {}", before.oracle_strength, after.oracle_strength))
+}
+
+fn related_test_delta(before: &StaticSeamRecord, after: &StaticSeamRecord) -> isize {
+    match (
+        isize::try_from(after.related_tests_total),
+        isize::try_from(before.related_tests_total),
+    ) {
+        (Ok(after_total), Ok(before_total)) => after_total - before_total,
+        _ => 0,
+    }
+}
+
+fn no_movement_reason(
+    direction: &str,
+    evidence_delta: &[String],
+    evidence_source: &str,
+) -> Option<String> {
+    (direction == "unchanged" && evidence_delta.is_empty())
+        .then(|| format!("grip class and {evidence_source} evidence were unchanged"))
+}
+
+fn optional_delta_value(value: Option<&str>) -> &str {
+    match value {
+        Some(text) if !text.is_empty() => text,
+        _ => "missing",
+    }
 }
 
 fn json_scalar_as_string(value: &Value) -> Option<String> {
@@ -640,10 +972,10 @@ fn json_scalar_as_usize(value: &Value) -> Option<usize> {
 
 fn normalize_report_path(path: &str) -> String {
     let normalized = path.replace('\\', "/");
-    normalized
-        .strip_prefix("./")
-        .unwrap_or(normalized.as_str())
-        .to_string()
+    match normalized.strip_prefix("./") {
+        Some(stripped) => stripped.to_string(),
+        None => normalized,
+    }
 }
 
 fn md_escape(value: &str) -> String {
@@ -840,6 +1172,152 @@ mod tests {
     }
 
     #[test]
+    fn targeted_test_outcome_prefers_evidence_record_movement() -> Result<(), String> {
+        let before = r#"{
+  "schema_version": "0.3",
+  "scope": "repo",
+  "seams": [
+    {
+      "seam_id": "seam-a",
+      "kind": "legacy_kind",
+      "file": "legacy.rs",
+      "line": 7,
+      "grip_class": "ungripped",
+      "related_tests": [],
+      "observed_values": ["legacy-only"],
+      "missing_discriminators": ["legacy missing"],
+      "evidence_record": {
+        "schema_version": "0.1",
+        "seam_id": "seam-a",
+        "location": {"file": ".\\src\\pricing.rs", "line": 42},
+        "seam_kind": "predicate_boundary",
+        "grip_class": "weakly_gripped",
+        "evidence_path": {
+          "reach": {"state": "yes", "confidence": "high", "summary": "owner reached"},
+          "activate": {"state": "yes", "confidence": "high", "summary": "above boundary covered"},
+          "propagate": {"state": "yes", "confidence": "medium", "summary": "return value flows"},
+          "observe": {"state": "weak", "confidence": "medium", "summary": "weak assertion"},
+          "discriminate": {"state": "missing", "confidence": "high", "summary": "equality not asserted"}
+        },
+        "observed_values": [{"value": "50", "line": 9, "text": "discounted_total(50)", "context": "function_argument"}],
+        "missing_discriminators": [{"value": "threshold equality", "reason": "not observed"}],
+        "related_tests_total": 1,
+        "related_tests": [{"oracle_kind": "exact_value", "oracle_strength": "weak"}]
+      }
+    }
+  ]
+}"#;
+        let after = r#"{
+  "schema_version": "0.3",
+  "scope": "repo",
+  "seams": [
+    {
+      "seam_id": "seam-a",
+      "kind": "legacy_kind",
+      "file": "legacy.rs",
+      "line": 7,
+      "grip_class": "ungripped",
+      "related_tests": [],
+      "observed_values": ["legacy-only"],
+      "missing_discriminators": ["legacy missing"],
+      "evidence_record": {
+        "schema_version": "0.1",
+        "seam_id": "seam-a",
+        "location": {"file": "src/pricing.rs", "line": 42},
+        "seam_kind": "predicate_boundary",
+        "grip_class": "strongly_gripped",
+        "evidence_path": {
+          "reach": {"state": "yes", "confidence": "high", "summary": "owner reached"},
+          "activate": {"state": "yes", "confidence": "high", "summary": "equality covered"},
+          "propagate": {"state": "yes", "confidence": "medium", "summary": "return value flows"},
+          "observe": {"state": "yes", "confidence": "high", "summary": "exact assertion"},
+          "discriminate": {"state": "yes", "confidence": "high", "summary": "equality asserted"}
+        },
+        "observed_values": [
+          {"value": "50", "line": 9, "text": "discounted_total(50)", "context": "function_argument"},
+          {"value": "100", "line": 10, "text": "discounted_total(100)", "context": "function_argument"}
+        ],
+        "missing_discriminators": [],
+        "related_tests_total": 2,
+        "related_tests": [{"oracle_kind": "exact_value", "oracle_strength": "strong"}]
+      }
+    }
+  ]
+}"#;
+        let report = targeted_test_outcome_report_from_json(
+            before,
+            after,
+            "before.json".to_string(),
+            "after.json".to_string(),
+        )?;
+
+        assert_eq!(report.moved.len(), 1);
+        let movement = &report.moved[0];
+        assert_eq!(movement.seam_kind, "predicate_boundary");
+        assert_eq!(movement.file, "src/pricing.rs");
+        assert_eq!(movement.line, 42);
+        assert_eq!(movement.before, "weakly_gripped");
+        assert_eq!(movement.after, "strongly_gripped");
+        assert_eq!(movement.evidence_source, "evidence_record");
+        assert_eq!(movement.observed_values_added, vec!["100".to_string()]);
+        assert_eq!(
+            movement.missing_discriminators_resolved,
+            vec!["threshold equality (not observed)".to_string()]
+        );
+        assert_eq!(
+            movement.oracle_strength_delta,
+            Some("weak -> strong".to_string())
+        );
+        assert_eq!(movement.related_test_delta, 1);
+        assert_eq!(
+            movement
+                .discriminate_delta
+                .as_ref()
+                .and_then(|delta| delta.before_state.as_deref()),
+            Some("missing")
+        );
+        assert_eq!(
+            movement
+                .discriminate_delta
+                .as_ref()
+                .and_then(|delta| delta.after_state.as_deref()),
+            Some("yes")
+        );
+
+        let json = render_targeted_test_outcome_json(&report)?;
+        let value: Value = serde_json::from_str(&json)
+            .map_err(|err| format!("targeted-test outcome JSON should parse: {err}"))?;
+        assert_eq!(value["moved"][0]["evidence_source"], "evidence_record");
+        assert_eq!(value["moved"][0]["observed_values_added"][0], "100");
+        assert_eq!(
+            value["moved"][0]["missing_discriminators_resolved"][0],
+            "threshold equality (not observed)"
+        );
+        assert_eq!(value["moved"][0]["oracle_strength_delta"], "weak -> strong");
+        assert_eq!(value["moved"][0]["related_test_delta"], 1);
+        assert_eq!(
+            value["moved"][0]["discriminate_delta"]["before_state"],
+            "missing"
+        );
+        assert_eq!(
+            value["moved"][0]["discriminate_delta"]["after_state"],
+            "yes"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn targeted_test_outcome_records_no_movement_reason() {
+        let seam = targeted_static_seam("same", "weakly_gripped");
+        let movement = targeted_test_outcome_movement(&seam, &seam);
+        assert_eq!(movement.direction, "unchanged");
+        assert_eq!(
+            movement.no_movement_reason.as_deref(),
+            Some("grip class and legacy_fields evidence were unchanged")
+        );
+    }
+
+    #[test]
     fn targeted_test_outcome_rejects_duplicate_seam_ids() {
         let seam = targeted_static_seam("same", "weakly_gripped");
         let result = build_targeted_test_outcome_report(
@@ -983,6 +1461,9 @@ mod tests {
             oracle_strength: "unknown".to_string(),
             observed_values: Vec::new(),
             missing_discriminators: Vec::new(),
+            evidence_source: "legacy_fields".to_string(),
+            evidence_path: BTreeMap::new(),
+            related_tests_total: 0,
         }
     }
 }
