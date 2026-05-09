@@ -16,6 +16,10 @@ are scoped or reviewed.
   RIPR evidence can become an adoption ledger for movement history, waiver
   aging, baseline burn-down, repair receipts, and coverage/grip frontier
   signals without changing advisory defaults.
+- Added RIPR-SPEC-0018, defining the PR evidence ledger contract for per-PR
+  behavioral grip movement, waiver aging, baseline burn-down, repair receipts,
+  optional coverage/grip frontier signals, and advisory-only CI projection
+  without changing analyzer identity, gate policy, or default blocking.
 - Opened Campaign 18, RIPR Zero Reporting, with
   `spec/ripr-zero-reporting-surface` as the first ready work item so reviewed
   baselines and debt deltas can become repo-level RIPR 0 status, stale-debt,

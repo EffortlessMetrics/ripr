@@ -24,10 +24,10 @@ end_state = [
 
 [[work_item]]
 id = "spec/pr-evidence-ledger-surface"
-status = "ready"
+status = "done"
 branch = "spec-pr-evidence-ledger-surface"
 stackable = false
-acceptance = "Define RIPR-SPEC-0018 as the PR evidence ledger contract for append-only per-PR movement, waiver aging, baseline burn-down, repair receipts, optional coverage/grip frontier signals, and advisory-only CI projection without analyzer identity rewrites or default blocking"
+acceptance = "Defined RIPR-SPEC-0018 as the PR evidence ledger contract for append-only per-PR movement, waiver aging, baseline burn-down, repair receipts, optional coverage/grip frontier signals, and advisory-only CI projection without analyzer identity rewrites or default blocking"
 commands = [
   "cargo xtask check-spec-format",
   "cargo xtask check-doc-index",
@@ -41,7 +41,7 @@ commands = [
 
 [[work_item]]
 id = "report/pr-evidence-ledger"
-status = "blocked"
+status = "ready"
 branch = "report-pr-evidence-ledger"
 stackable = false
 blocked_by = [
