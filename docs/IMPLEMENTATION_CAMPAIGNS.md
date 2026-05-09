@@ -1953,15 +1953,15 @@ Closeout:
 
 Next:
 
-- Campaign 17 is active as RIPR Zero Adoption. It should turn baselines into
-  burn-down ledgers with create, diff, and shrink-only refresh commands while
-  keeping generated CI advisory by default.
+- Campaign 17 closed RIPR Zero Adoption. It turned baselines into burn-down
+  ledgers with create, diff, and shrink-only refresh commands while keeping
+  generated CI advisory by default.
 
 ## Campaign 17: RIPR Zero Adoption
 
 Campaign ID: `ripr-zero-adoption`
 
-Status: active
+Status: complete
 
 Campaign 16 made optional gates adoptable. The next PR/CI product risk is
 movement: teams need to see whether a PR introduces new policy-eligible debt,
@@ -2010,7 +2010,7 @@ Work items:
 | `baseline/update-remove-resolved` | done | Added `ripr baseline update --remove-resolved` as a shrink-only refresh path that removes resolved baseline entries, preserves malformed or ambiguous entries for review, and refuses to auto-adopt new current debt. |
 | `ci/baseline-debt-delta-artifacts` | done | Generated CI now runs `ripr baseline diff` when `RIPR_GATE_BASELINE` and `gate-decision.json` are present, uploads the JSON/Markdown through `ripr-reports`, and summarizes baseline debt movement without making the delta report the pass/fail authority. |
 | `docs/baseline-ledger-workflow` | done | Added `docs/BASELINE_LEDGER_WORKFLOW.md` to document initial adoption, reviewed baseline creation, baseline-check rollout, shrink-only refresh, new debt review, waiver versus baseline versus suppression, and the path toward RIPR 0. |
-| `campaign/ripr-zero-adoption-closeout` | ready | Close Campaign 17 only after baseline delta, baseline create/diff/shrink-only update, CI artifacts, and baseline ledger docs are in place while defaults stay advisory. |
+| `campaign/ripr-zero-adoption-closeout` | done | Closed Campaign 17 after baseline delta, baseline create/diff/shrink-only update, CI artifacts, and baseline ledger docs were in place while defaults stayed advisory. The closeout audit is recorded in `docs/handoffs/2026-05-09-campaign-17-closeout.md`. |
 
 Dependencies:
 
@@ -2055,16 +2055,14 @@ Blocking conditions:
 
 Next:
 
-- `baseline/update-remove-resolved` is the next ready item. Add shrink-only
-  baseline refresh after the checked debt delta can show still-present,
-  resolved, new, acknowledged, suppressed, stale, invalid, and missing-input
-  identities.
+- No Campaign 17 work item remains ready. Open the next adoption, analyzer,
+  editor, or platform campaign explicitly instead of extending this closeout.
 
 ## Future Campaign: Editor Evidence UX
 
 Campaign ID: `editor-evidence-ux`
 
-Status: queued, not active. Campaign 17, RIPR Zero Adoption, is active. Start
+Status: queued, not active. Campaign 17, RIPR Zero Adoption, is complete. Start
 this lane only after an explicit campaign activation PR or after an explicit
 decision to run the editor lane in parallel.
 
@@ -2123,8 +2121,8 @@ Dependencies:
 - Campaign 12 supplies first-hour editor status and intent-titled action
   framing.
 - Campaign 13 supplies PR guidance without making RIPR a free-form reviewer.
-- Campaign 17 remains active unless this lane is explicitly promoted or run in
-  parallel.
+- Campaign 17 is complete; this lane still requires explicit activation or an
+  explicit parallel-lane decision.
 - `docs/EDITOR_EVIDENCE_UX.md` and the audit handoff define the contract that
   future behavior PRs should follow.
 
