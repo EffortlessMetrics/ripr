@@ -51,6 +51,8 @@ confirmation.
 ## Settings
 
 - `ripr.server.path`: explicit path to the `ripr` executable. Empty by default.
+- `ripr.enabled`: enables saved-workspace diagnostics, hovers, status, and code
+  actions. Defaults to `true`.
 - `ripr.server.args`: arguments used to start the language server. Defaults to
   `["lsp", "--stdio"]`.
 - `ripr.server.autoDownload`: download a matching server when needed. Defaults

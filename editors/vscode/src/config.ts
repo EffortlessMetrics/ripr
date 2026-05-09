@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 export type TraceSetting = 'off' | 'messages' | 'verbose';
 
 export interface RiprConfig {
+  enabled: boolean;
   serverPath: string;
   serverArgs: string[];
   autoDownload: boolean;
@@ -16,6 +17,7 @@ export interface RiprConfig {
 export function getConfig(): RiprConfig {
   const config = vscode.workspace.getConfiguration('ripr');
   return {
+    enabled: config.get<boolean>('enabled', true),
     serverPath: config.get<string>('server.path', ''),
     serverArgs: config.get<string[]>('server.args', ['lsp', '--stdio']),
     autoDownload: config.get<boolean>('server.autoDownload', true),

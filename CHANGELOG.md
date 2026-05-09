@@ -50,7 +50,10 @@ are scoped or reviewed.
   behavior.
 - Added a VS Code status bar item and `ripr: Show Status` command for first-run
   server resolution, workspace detection, saved-workspace analysis
-  running/complete/stale/failed, and no-actionable-seam states.
+  disabled, queued/running/complete/stale/failed, server-unavailable, and
+  no-actionable-seam states. Dirty Rust buffers now keep stale status visible
+  until save or close so saved-workspace evidence is not presented as current
+  for unsaved text.
 - Added `ripr agent start --root . --seam-id <id> --out target/ripr/workflow`
   to write a source-edit-free workflow packet with `workflow.json`,
   `commands.md`, and `agent-brief.json` for one selected seam. The packet

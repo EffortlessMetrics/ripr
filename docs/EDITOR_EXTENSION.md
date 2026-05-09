@@ -82,6 +82,9 @@ environments.
 ## Settings
 
 - `ripr.server.path`: explicit path to the `ripr` executable. Empty by default.
+- `ripr.enabled`: enables saved-workspace diagnostics, hovers, status, and code
+  actions. Defaults to `true`; set it to `false` for an explicit disabled
+  editor status without starting the language server.
 - `ripr.server.args`: arguments used to start the language server. Defaults to
   `["lsp", "--stdio"]`.
 - `ripr.server.autoDownload`: automatically download a matching server when
@@ -97,8 +100,30 @@ environments.
 - `ripr.trace.server`: language-server trace setting.
 
 The extension passes `ripr.check.mode` and `ripr.baseRef` to the language server
-as initialization options. Changing server, check, base-ref, or trace settings
-restarts the client so the next diagnostic refresh uses the new configuration.
+as initialization options. Changing enabled, server, check, base-ref, or trace
+settings restarts the client so the next diagnostic refresh uses the new
+configuration.
+
+## Status and Staleness
+
+The status bar item and `ripr: Show Status` command name the current
+saved-workspace state:
+
+- disabled by `ripr.enabled = false`
+- workspace unresolved
+- server unavailable
+- analysis queued
+- analysis running
+- analysis complete with diagnostics
+- no actionable seam diagnostics
+- stale because a Rust buffer has unsaved edits
+- analysis failed
+
+The LSP model remains saved-workspace only. When a Rust buffer is dirty, the
+extension keeps stale status visible even if a saved-workspace refresh
+completes, so diagnostics are not presented as fresh evidence for unsaved text.
+Saving or closing the Rust buffer clears the stale marker and queues the next
+saved-workspace refresh.
 
 ## Defaults-First Stance
 
