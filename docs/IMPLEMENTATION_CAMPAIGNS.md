@@ -2465,8 +2465,9 @@ Blocking conditions:
 
 Next:
 
-- Campaign 22, First Useful Action, is now the active campaign. Its first ready
-  item is `spec/first-useful-action-report`.
+- Campaign 22, First Useful Action, is now the active campaign. Its report
+  contract is pinned by RIPR-SPEC-0020 and the next ready item is
+  `fixtures/first-useful-action-corpus`.
 
 ## Campaign 22: First Useful Action
 
@@ -2513,8 +2514,8 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `spec/first-useful-action-report` | ready | Define the first-useful-action report contract, inputs, statuses, routing priorities, advisory limits, and schema before implementation. |
-| `fixtures/first-useful-action-corpus` | blocked | Add a deterministic corpus that pins first-action routing for actionable, stale, missing-artifact, baseline-only, waived, suppressed, unchanged, and no-actionable cases. |
+| `spec/first-useful-action-report` | done | Added RIPR-SPEC-0020 plus OUTPUT_SCHEMA, traceability, capability, campaign, plan, roadmap, and changelog updates for the first-useful-action report contract before implementation. |
+| `fixtures/first-useful-action-corpus` | ready | Add a deterministic corpus that pins first-action routing for actionable, stale, missing-artifact, baseline-only, waived, suppressed, unchanged, and no-actionable cases. |
 | `report/first-useful-action` | blocked | Add a read-only report producer that writes advisory first-useful-action JSON and Markdown from explicit existing artifact paths without rerunning hidden analysis. |
 | `ci/first-useful-action-summary` | blocked | Surface first-useful-action JSON/Markdown in generated GitHub CI as advisory summary and artifact content without changing default blocking. |
 | `lsp/first-useful-action-status` | blocked | Project an existing first-useful-action report through editor status and Show Status without adding diagnostics, CodeLens, inlay hints, unsaved-buffer analysis, source edits, or generated tests. |
@@ -2565,9 +2566,9 @@ Blocking conditions:
 
 Next:
 
-- Start with `spec/first-useful-action-report`. Do not add the producer,
-  fixtures, CI projection, editor projection, or docs before the report
-  contract is pinned.
+- Continue with `fixtures/first-useful-action-corpus`. Do not add the producer,
+  CI projection, editor projection, or docs before the routing corpus pins the
+  report statuses and fallback cases.
 
 ## Future Campaign: Assistant Loop Health
 

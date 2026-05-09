@@ -30,3 +30,4 @@ observable behavior.
 | [RIPR-SPEC-0017](RIPR-SPEC-0017-ripr-zero-reporting.md) | proposed | RIPR Zero reporting |
 | [RIPR-SPEC-0018](RIPR-SPEC-0018-pr-evidence-ledger.md) | proposed | PR evidence ledger |
 | [RIPR-SPEC-0019](RIPR-SPEC-0019-test-oracle-assistant-loop.md) | proposed | Test-oracle assistant loop |
+| [RIPR-SPEC-0020](RIPR-SPEC-0020-first-useful-action-report.md) | proposed | First useful action report |

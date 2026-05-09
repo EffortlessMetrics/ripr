@@ -2717,6 +2717,147 @@ See [Test-oracle assistant proof report](TEST_ORACLE_ASSISTANT_PROOF_REPORT.md)
 for how reviewers, maintainers, and coding agents should read the report,
 warnings, optional CI projection, and advisory limits.
 
+## First Useful Action Report
+
+RIPR-SPEC-0020 defines the first useful action report. `ripr first-action`
+will write an advisory JSON and Markdown report that compresses existing
+editor, PR guidance, ledger, baseline, assistant proof, receipt, optional gate,
+optional coverage/grip, and staleness evidence into one next test action or one
+fallback reason. The report is read-only and must not rerun hidden analysis,
+edit source, generate tests, call a provider, run mutation testing, invent
+policy, or change default CI blocking.
+
+Command shape:
+
+```text
+ripr first-action \
+  --root . \
+  --pr-guidance target/ripr/review/comments.json \
+  --assistant-proof target/ripr/reports/test-oracle-assistant-proof.json \
+  --ledger target/ripr/reports/pr-evidence-ledger.json \
+  --baseline-delta target/ripr/reports/baseline-debt-delta.json \
+  --receipt target/ripr/reports/agent-receipt.json \
+  --gate-decision target/ripr/reports/gate-decision.json \
+  --coverage-frontier target/ripr/reports/coverage-grip-frontier.json \
+  --editor-context target/ripr/workflow/evidence-context.json \
+  --out target/ripr/reports/first-useful-action.json \
+  --out-md target/ripr/reports/first-useful-action.md
+```
+
+The report writes:
+
+```text
+target/ripr/reports/first-useful-action.json
+target/ripr/reports/first-useful-action.md
+```
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "first_useful_action",
+  "status": "actionable",
+  "audience": "developer",
+  "action_kind": "write_focused_test",
+  "root": ".",
+  "generated_at": "2026-05-09T12:00:00Z",
+  "inputs": {
+    "pr_guidance": "target/ripr/review/comments.json",
+    "assistant_proof": "target/ripr/reports/test-oracle-assistant-proof.json",
+    "ledger": "target/ripr/reports/pr-evidence-ledger.json",
+    "baseline_delta": "target/ripr/reports/baseline-debt-delta.json",
+    "receipt": "target/ripr/reports/agent-receipt.json",
+    "gate_decision": "target/ripr/reports/gate-decision.json",
+    "coverage_frontier": "target/ripr/reports/coverage-grip-frontier.json",
+    "editor_context": "target/ripr/workflow/evidence-context.json"
+  },
+  "selected": {
+    "source": "assistant_proof",
+    "source_artifact": "target/ripr/reports/test-oracle-assistant-proof.json",
+    "seam_id": "67fc764ba37d77bd",
+    "seam_kind": "predicate_boundary",
+    "path": "src/pricing.rs",
+    "line": 88,
+    "classification": "weakly_exposed",
+    "missing_discriminator": "amount == discount_threshold"
+  },
+  "title": "Add equality-boundary discriminator test",
+  "why": "Changed predicate boundary is weakly exposed and lacks an equality-boundary discriminator.",
+  "why_first": [
+    "The seam is PR-local.",
+    "The assistant proof report links guidance, handoff, before/after evidence, and receipt inputs.",
+    "No waiver, acknowledgement, or suppression applies."
+  ],
+  "target": {
+    "file": "tests/pricing.rs",
+    "related_test": "below_threshold_has_no_discount",
+    "suggested_test_name": "discounted_total_boundary_discriminator",
+    "suggested_assertion": "Assert the exact returned discount at the equality boundary."
+  },
+  "commands": {
+    "context_packet": "ripr agent packet --root . --seam-id 67fc764ba37d77bd --json",
+    "after_snapshot": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json",
+    "verify": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json",
+    "receipt": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 67fc764ba37d77bd --json"
+  },
+  "evidence": {
+    "pr_guidance": "target/ripr/review/comments.json",
+    "assistant_proof": "target/ripr/reports/test-oracle-assistant-proof.json",
+    "receipt": "target/ripr/reports/agent-receipt.json",
+    "ledger": "target/ripr/reports/pr-evidence-ledger.json",
+    "static_movement": "unknown"
+  },
+  "fallback": null,
+  "warnings": [],
+  "limits": [
+    "Static evidence only.",
+    "Does not prove runtime adequacy.",
+    "Does not run mutation testing.",
+    "Does not edit source or generate tests.",
+    "Does not make CI blocking by default."
+  ]
+}
+```
+
+Field contract:
+
+- `schema_version` is `0.1` until the report shape changes.
+- `kind` is always `first_useful_action`.
+- `status` is one of `actionable`, `stale`,
+  `missing_required_artifact`, `baseline_only`, `acknowledged`, `waived`,
+  `suppressed`, `no_actionable_seam`, `already_improved`, or
+  `unchanged_after_attempt`.
+- `action_kind` is one of `write_focused_test`, `refresh_evidence`,
+  `generate_missing_artifact`, `acknowledge_baseline`, `inspect_proof_report`,
+  `revise_focused_test`, or `no_action`.
+- `audience` is `developer`, `reviewer`, or `agent`.
+- `inputs.*` records explicit input paths. Missing optional inputs are `null`;
+  missing or invalid supplied inputs produce warnings and an appropriate
+  fallback status.
+- `selected.*` is copied from existing RIPR artifacts. The report must not
+  mint a new seam identity or rerank findings with a provider.
+- `why_first` records deterministic routing reasons. It must not be an opaque
+  score.
+- `target.*` records the recommended test file, related test, suggested test
+  name, and assertion shape when supplied by existing artifacts.
+- `commands.*` records copyable commands from existing command templates or
+  supplied artifacts. Missing commands become `null` and warnings.
+- `evidence.*` records supporting artifact paths and static movement when
+  supplied. Static movement is not runtime mutation confirmation.
+- `fallback` records the reason for non-actionable statuses and the next safe
+  command when available.
+- `limits` preserves static-evidence, no-edit, no-generated-test,
+  no-provider-call, no-runtime-mutation-execution, and advisory-default
+  boundaries.
+
+Markdown should fit in a PR summary, generated CI job summary, or editor status
+detail. It should show status, audience, action kind, top action, deterministic
+why-first reasons, target file, related test, suggested test name, verification
+command, receipt command, supporting artifact paths, warnings, fallback reason
+when present, and static limits.
+
 ### Review Guidance Outcome Receipt
 
 Review guidance outcome receipts are optional repo-local inputs to the
