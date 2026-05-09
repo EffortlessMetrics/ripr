@@ -180,18 +180,21 @@ read-only JSON/Markdown producer, generated CI writes and summarizes
 coverage-grip frontier` reports coverage delta and RIPR movement as separate
 advisory axes. `docs/PR_EVIDENCE_LEDGER_WORKFLOW.md` documents how teams use
 ledger cards for waiver aging, baseline burn-down, repair receipts,
-coverage/grip frontier signals, and movement toward RIPR 0. Campaign 20 is now
-open as Test-Oracle Assistant Proof. RIPR-SPEC-0019 now defines the full
-PR-time proof loop from changed Rust behavior through static evidence,
-PR/editor guidance, focused-test handoff, verification, receipt, and advisory
-CI/ledger projection without changing analyzer, policy, editor, or default CI
-behavior. The canonical replay corpus now pins one boundary-gap seam across
-recommendation, handoff, receipt, and ledger projection. A repo-local dogfood
-receipt now traces seam `67fc764ba37d77bd` through PR guidance, editor/agent
-handoff, before/after evidence, receipt, PR ledger projection, and
-coverage/grip frontier availability. `docs/TEST_ORACLE_ASSISTANT_WORKFLOW.md`
-now explains the user-facing PR/editor-to-receipt workflow and static evidence
-limits; the next ready item is `campaign/test-oracle-assistant-proof-closeout`.
+coverage/grip frontier signals, and movement toward RIPR 0. Campaign 20 closed
+as Test-Oracle Assistant Proof. RIPR-SPEC-0019 defines the full PR-time proof
+loop from changed Rust behavior through static evidence, PR/editor guidance,
+focused-test handoff, verification, receipt, and advisory CI/ledger projection
+without changing analyzer, policy, editor, or default CI behavior. The
+canonical replay corpus pins one boundary-gap seam across recommendation,
+handoff, receipt, and ledger projection. A repo-local dogfood receipt traces
+seam `67fc764ba37d77bd` through PR guidance, editor/agent handoff,
+before/after evidence, receipt, PR ledger projection, and coverage/grip
+frontier availability. `docs/TEST_ORACLE_ASSISTANT_WORKFLOW.md` explains the
+user-facing PR/editor-to-receipt workflow and static evidence limits. The
+[Campaign 20 closeout](handoffs/2026-05-09-campaign-20-closeout.md) records
+the prompt-to-artifact audit and the boundary that future proof report
+producers, PR/CI polish, analyzer improvements, and editor UX work need an
+explicit follow-up campaign.
 
 ## Strategic Sequence
 

@@ -36,6 +36,9 @@ are scoped or reviewed.
   handoff, one focused test, after evidence, receipt, and advisory CI/ledger
   projection without source edits, generated tests, provider calls, mutation
   execution, or default CI blocking.
+- Closed Campaign 20 with `docs/handoffs/2026-05-09-campaign-20-closeout.md`,
+  recording the prompt-to-artifact audit, proof commands, and follow-up
+  boundaries for future proof report, PR/CI polish, analyzer, and editor work.
 - Opened Campaign 19, PR Evidence Ledger, with
   `spec/pr-evidence-ledger-surface` as the first ready work item so per-PR
   RIPR evidence can become an adoption ledger for movement history, waiver

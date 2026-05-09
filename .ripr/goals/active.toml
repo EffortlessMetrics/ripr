@@ -93,7 +93,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/test-oracle-assistant-proof-closeout"
-status = "ready"
+status = "done"
 branch = "campaign-test-oracle-assistant-proof-closeout"
 stackable = false
 blocked_by = [
@@ -102,7 +102,7 @@ blocked_by = [
   "dogfood/test-oracle-assistant-receipt",
   "docs/test-oracle-assistant-workflow",
 ]
-acceptance = "Close Campaign 20 only after the end-to-end assistant proof contract, canonical fixture, dogfood receipt, and user workflow docs demonstrate the full loop while defaults stay advisory"
+acceptance = "Closed Campaign 20 after the end-to-end assistant proof contract, canonical fixture, dogfood receipt, and user workflow docs demonstrated the full loop while defaults stay advisory"
 commands = [
   "cargo xtask check-spec-format",
   "cargo xtask check-doc-index",

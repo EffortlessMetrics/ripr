@@ -2280,7 +2280,7 @@ Ledger by inertia.
 
 Campaign ID: `test-oracle-assistant-proof`
 
-Status: active
+Status: complete
 
 Campaign 19 made per-PR adoption history visible. The next product risk is
 whether the already-built surfaces form one review loop instead of a collection
@@ -2331,7 +2331,7 @@ Work items:
 | `fixtures/canonical-review-loop` | done | Added the canonical boundary-gap replay corpus under `fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/` and a regression test that pins one seam across recommendation, related-test context, suggested focused test, before/after static movement, receipt, and PR ledger projection expectations. |
 | `dogfood/test-oracle-assistant-receipt` | done | Recorded a repo-local proof receipt that traces seam `67fc764ba37d77bd` through PR guidance, editor/agent packet surfaces, verification commands, after-evidence, receipt, PR evidence ledger, and coverage/grip frontier availability without changing source automatically. |
 | `docs/test-oracle-assistant-workflow` | done | Added `docs/TEST_ORACLE_ASSISTANT_WORKFLOW.md`, documenting the user workflow from PR recommendation or editor diagnostic to bounded handoff, one focused test, after evidence, receipt, and advisory CI/ledger projection while preserving static-evidence limits. |
-| `campaign/test-oracle-assistant-proof-closeout` | ready | Close Campaign 20 only after the end-to-end assistant proof contract, canonical fixture, dogfood receipt, and user workflow docs demonstrate the full loop while defaults stay advisory. |
+| `campaign/test-oracle-assistant-proof-closeout` | done | Closed Campaign 20 after the end-to-end assistant proof contract, canonical fixture, dogfood receipt, and user workflow docs demonstrated the full loop while defaults stay advisory. |
 
 Dependencies:
 
@@ -2376,7 +2376,8 @@ Blocking conditions:
 
 Next:
 
-- The ready work item is `campaign/test-oracle-assistant-proof-closeout`.
+- No ready work item remains in Campaign 20. Choose the next campaign
+  explicitly before opening another product lane.
 
 ## Future Campaign: Editor Evidence UX
 

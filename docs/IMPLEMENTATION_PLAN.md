@@ -34,7 +34,7 @@ through multiple work items in a campaign, but each work item should follow the
 | RIPR Zero Adoption (17) | Turn baselines into burn-down ledgers with create, diff, and shrink-only refresh commands while keeping generated CI advisory by default. | Complete: spec, baseline create, baseline diff, shrink-only update, generated CI baseline-delta artifacts, baseline ledger workflow guide, and `campaign/ripr-zero-adoption-closeout`. |
 | RIPR Zero Reporting (18) | Turn reviewed baselines and debt deltas into repo-level RIPR 0 status, stale-debt, trend, and repair-area reporting while preserving advisory defaults. | Complete: spec, baseline metadata, status report, generated CI summary, user workflow docs, and `campaign/ripr-zero-reporting-closeout`. |
 | PR Evidence Ledger (19) | Turn per-PR RIPR evidence into an adoption ledger for movement history, waiver aging, baseline burn-down, repair receipts, and coverage/grip frontier signals while preserving advisory defaults. | Complete: spec, producer, generated-CI projection, coverage/grip frontier report, user workflow docs, and `campaign/pr-evidence-ledger-closeout`. |
-| Test-Oracle Assistant Proof (20) | Prove the full PR-time loop from changed Rust behavior to static evidence, PR/editor guidance, focused-test handoff, verification, receipt, and advisory CI/ledger projection. | Active: `spec/test-oracle-assistant-loop`, `fixtures/canonical-review-loop`, `dogfood/test-oracle-assistant-receipt`, and `docs/test-oracle-assistant-workflow` are done; `campaign/test-oracle-assistant-proof-closeout` is ready. |
+| Test-Oracle Assistant Proof (20) | Prove the full PR-time loop from changed Rust behavior to static evidence, PR/editor guidance, focused-test handoff, verification, receipt, and advisory CI/ledger projection. | Complete: spec, canonical fixture, dogfood receipt, user workflow docs, and `campaign/test-oracle-assistant-proof-closeout`. |
 | Editor Evidence UX (future) | Make the saved-workspace LSP path feel like an editor-native test-intent cockpit from diagnostic to hover, related test, context packet, one test, verify, and receipt. | Complete as an explicit parallel Lane 3 closeout: contract audit, hover hardening, evidence-aware actions, context packet, protocol smoke, VS Code smoke, status/staleness, workflow docs, and closeout audit. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
@@ -133,18 +133,20 @@ ledger; generated CI uploads `pr-evidence-ledger.{json,md}` and appends the
 advisory PR movement card; `ripr coverage-grip frontier` keeps coverage and
 behavioral grip movement separate; and
 `docs/PR_EVIDENCE_LEDGER_WORKFLOW.md` explains the adoption workflow. Campaign
-20 is now open as Test-Oracle Assistant Proof. RIPR-SPEC-0019 defines the
+20 closed as Test-Oracle Assistant Proof. RIPR-SPEC-0019 defines the
 end-to-end proof contract from changed Rust behavior through static evidence,
 PR/editor guidance, focused-test handoff, verification, receipt, and advisory
 CI/ledger projection without changing analyzer, policy, editor, or CI defaults.
-The canonical boundary-gap replay corpus now pins one seam across
-recommendation, handoff, receipt, and ledger projection. A repo-local dogfood
-receipt now traces seam `67fc764ba37d77bd` through the PR guidance, editor/agent
-handoff, before/after evidence, receipt, PR ledger projection, and
-coverage/grip frontier availability. `docs/TEST_ORACLE_ASSISTANT_WORKFLOW.md`
-now explains the user-facing PR/editor-to-receipt workflow and the static
-evidence limits. The next ready item is
-`campaign/test-oracle-assistant-proof-closeout`.
+The canonical boundary-gap replay corpus pins one seam across recommendation,
+handoff, receipt, and ledger projection. The repo-local dogfood receipt traces
+seam `67fc764ba37d77bd` through PR guidance, editor/agent handoff,
+before/after evidence, receipt, PR ledger projection, and coverage/grip
+frontier availability. `docs/TEST_ORACLE_ASSISTANT_WORKFLOW.md` explains the
+user-facing PR/editor-to-receipt workflow and static evidence limits. The
+[Campaign 20 closeout](handoffs/2026-05-09-campaign-20-closeout.md) records
+the prompt-to-artifact audit, proof commands, and boundary that future proof
+report producers, PR/CI polish, analyzer improvements, and editor UX work
+should be opened as explicit follow-up campaigns.
 
 ## PR 0: `planning-and-tracking-docs`
 
