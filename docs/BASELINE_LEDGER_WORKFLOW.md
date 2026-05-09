@@ -271,5 +271,8 @@ are not the same as unresolved baseline debt.
 - [RIPR blocking readiness](BLOCKING_READINESS.md) explains when a repository
   is ready to move from advisory to acknowledgement, baseline-check, or
   calibrated blocking.
+- [RIPR Zero reporting workflow](RIPR_ZERO_REPORTING_WORKFLOW.md) explains how
+  to read `ripr-zero-status`, age baseline metadata, route repair packets, and
+  interpret movement toward RIPR 0.
 - [Output schema](OUTPUT_SCHEMA.md#baseline-debt-delta-report) defines the
   baseline ledger, update, and delta JSON/Markdown contracts.

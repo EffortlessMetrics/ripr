@@ -82,7 +82,7 @@ commands = [
 
 [[work_item]]
 id = "docs/ripr-zero-reporting-workflow"
-status = "ready"
+status = "done"
 branch = "docs-ripr-zero-reporting-workflow"
 stackable = false
 acceptance = "Document how teams read RIPR Zero status, age and refresh baselines, route top repair packets, and interpret progress without treating RIPR 0 as perfect tests or 100 percent coverage"
@@ -95,7 +95,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/ripr-zero-reporting-closeout"
-status = "blocked"
+status = "ready"
 branch = "campaign-ripr-zero-reporting-closeout"
 stackable = false
 blocked_by = [
