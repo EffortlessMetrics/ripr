@@ -181,11 +181,11 @@ coverage-grip frontier` reports coverage delta and RIPR movement as separate
 advisory axes. `docs/PR_EVIDENCE_LEDGER_WORKFLOW.md` documents how teams use
 ledger cards for waiver aging, baseline burn-down, repair receipts,
 coverage/grip frontier signals, and movement toward RIPR 0. Campaign 20 is now
-open as Test-Oracle Assistant Proof. Its first ready item is
-`spec/test-oracle-assistant-loop`, which defines the full PR-time proof loop
-from changed Rust behavior through static evidence, PR/editor guidance,
-focused-test handoff, verification, receipt, and advisory CI/ledger projection
-without changing analyzer, policy, editor, or default CI behavior.
+open as Test-Oracle Assistant Proof. RIPR-SPEC-0019 now defines the full
+PR-time proof loop from changed Rust behavior through static evidence,
+PR/editor guidance, focused-test handoff, verification, receipt, and advisory
+CI/ledger projection without changing analyzer, policy, editor, or default CI
+behavior. The next ready item is `fixtures/canonical-review-loop`.
 
 ## Strategic Sequence
 

@@ -790,6 +790,20 @@ next = "maintenance"
 metric = "coverage_grip_frontier_reports, coverage_grip_frontier_available, coverage_grip_frontier_flat_coverage_grip_improved"
 
 [[capability]]
+id = "test_oracle_assistant_loop"
+name = "Test-oracle assistant loop"
+status = "planned"
+spec = "RIPR-SPEC-0019"
+evidence = [
+  "docs/specs/RIPR-SPEC-0019-test-oracle-assistant-loop.md defines the end-to-end proof contract",
+  "docs/OUTPUT_SCHEMA.md documents the planned advisory test-oracle assistant proof report shape",
+  ".ripr/goals/active.toml tracks Campaign 20 with spec, canonical fixture, dogfood receipt, workflow docs, and closeout slices"
+]
+fixtures = []
+next = "fixtures/canonical-review-loop"
+metric = "test_oracle_assistant_loop_reports, test_oracle_assistant_loop_verified_receipts, test_oracle_assistant_loop_unknown_inputs, test_oracle_assistant_loop_summary_only, test_oracle_assistant_loop_static_improved, test_oracle_assistant_loop_static_resolved, test_oracle_assistant_loop_static_regressed"
+
+[[capability]]
 id = "pilot_packet"
 name = "Pilot packet"
 status = "alpha"

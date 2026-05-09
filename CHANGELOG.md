@@ -17,6 +17,11 @@ are scoped or reviewed.
   ledgers, and advisory CI projection can be exercised as one end-to-end
   test-oracle assistant loop without changing analyzer, policy, editor, or CI
   defaults.
+- Added RIPR-SPEC-0019, defining the end-to-end test-oracle assistant proof
+  contract from changed Rust behavior through static evidence, PR/editor
+  guidance, focused-test handoff, after-evidence verification, receipt, and
+  advisory PR/CI projection while leaving analyzer semantics, recommendation
+  ranking, gate policy, editor behavior, and default CI behavior unchanged.
 - Opened Campaign 19, PR Evidence Ledger, with
   `spec/pr-evidence-ledger-surface` as the first ready work item so per-PR
   RIPR evidence can become an adoption ledger for movement history, waiver

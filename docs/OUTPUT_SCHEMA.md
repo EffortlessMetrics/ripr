@@ -2579,6 +2579,132 @@ The report may use these coverage inputs when present:
 - `quadrants.uncovered_with_ripr_gap`;
 - `quadrants.uncovered_without_ripr_gap`.
 
+## Test-Oracle Assistant Loop
+
+RIPR-SPEC-0019 defines the end-to-end test-oracle assistant loop. A future
+producer may write an advisory proof report that joins existing PR guidance,
+editor or agent handoff packets, before/after static evidence, receipts, PR
+evidence ledgers, and optional coverage/grip frontier reports without changing
+analyzer identity, recommendation ranking, gate policy, editor behavior, or CI
+defaults.
+
+Planned command shape:
+
+```text
+ripr assistant-loop proof \
+  --pr-guidance target/ripr/review/comments.json \
+  --agent-packet target/ripr/workflow/agent-brief.json \
+  --before target/ripr/pilot/repo-exposure.json \
+  --after target/ripr/pilot/after.repo-exposure.json \
+  --receipt target/ripr/reports/agent-receipt.json \
+  --ledger target/ripr/reports/pr-evidence-ledger.json \
+  --coverage-frontier target/ripr/reports/coverage-grip-frontier.json \
+  --out target/ripr/reports/test-oracle-assistant-proof.json \
+  --out-md target/ripr/reports/test-oracle-assistant-proof.md
+```
+
+The planned report writes:
+
+```text
+target/ripr/reports/test-oracle-assistant-proof.json
+target/ripr/reports/test-oracle-assistant-proof.md
+```
+
+The report is advisory and read-only. It must not fail CI, post comments, edit
+source, generate tests, call an LLM provider, run mutation testing, or claim
+runtime confirmation from static evidence.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "test_oracle_assistant_loop",
+  "status": "advisory",
+  "root": ".",
+  "inputs": {
+    "pr_guidance": "target/ripr/review/comments.json",
+    "agent_packet": "target/ripr/workflow/agent-brief.json",
+    "before": "target/ripr/pilot/repo-exposure.json",
+    "after": "target/ripr/pilot/after.repo-exposure.json",
+    "receipt": "target/ripr/reports/agent-receipt.json",
+    "ledger": "target/ripr/reports/pr-evidence-ledger.json",
+    "coverage_frontier": "target/ripr/reports/coverage-grip-frontier.json"
+  },
+  "seam": {
+    "seam_id": "67fc764ba37d77bd",
+    "seam_kind": "predicate_boundary",
+    "path": "src/pricing.rs",
+    "line": 88,
+    "grip_class": "weakly_gripped",
+    "missing_discriminator": "amount == discount_threshold"
+  },
+  "recommendation": {
+    "source": "pr_guidance",
+    "placement": "changed_line",
+    "summary_only_reason": null,
+    "suggested_test": "Add an equality-boundary assertion.",
+    "related_test": "tests/pricing.rs::applies_discount_above_threshold",
+    "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json"
+  },
+  "handoff": {
+    "source": "agent_packet",
+    "artifact": "target/ripr/workflow/agent-brief.json",
+    "agent_command": "ripr agent start --root . --seam-id 67fc764ba37d77bd --out target/ripr/workflow",
+    "external_provider": false
+  },
+  "evidence_movement": {
+    "state": "improved",
+    "before_class": "weakly_gripped",
+    "after_class": "strongly_gripped",
+    "source": "agent_receipt",
+    "artifact": "target/ripr/reports/agent-receipt.json"
+  },
+  "ci_projection": {
+    "ledger": "target/ripr/reports/pr-evidence-ledger.json",
+    "coverage_frontier": "target/ripr/reports/coverage-grip-frontier.json",
+    "gate_decision": null,
+    "pass_fail_authority": "gate decision when explicitly configured"
+  },
+  "warnings": [],
+  "limits": {
+    "advisory": true,
+    "source_edits": false,
+    "generated_tests": false,
+    "external_service": false,
+    "runtime_mutation_execution": false,
+    "ci_blocking_default": false
+  }
+}
+```
+
+Field contract:
+
+- `status` is `advisory` for complete proof records and `incomplete` when the
+  selected seam or required before/after evidence is missing.
+- `inputs.*` records explicit input paths. Missing optional inputs are `null`
+  plus a warning.
+- `seam.*` is copied from existing RIPR evidence or guidance. The report must
+  not recompute analyzer identity.
+- `recommendation.placement` is `changed_line`, `summary_only`, or `unknown`.
+  Summary-only guidance must remain visible.
+- `handoff.external_provider` is always `false`; RIPR emits packets but does
+  not call a provider.
+- `evidence_movement.state` is `improved`, `resolved`, `unchanged`,
+  `regressed`, or `unknown`. It is static RIPR movement, not runtime mutation
+  confirmation.
+- `ci_projection.pass_fail_authority` keeps proof records separate from
+  optional gate decisions.
+- `limits.*` preserves the no-edit, no-generated-test, no-provider-call,
+  no-runtime-mutation-execution, and advisory-default boundaries.
+
+Markdown should fit in a PR summary, generated CI job summary, or dogfood
+receipt. It should show the selected seam, missing discriminator, suggested
+focused test, related test, verify command, before/after static movement,
+receipt path, ledger path, optional coverage/grip frontier path, and static
+limits.
+
 ### Review Guidance Outcome Receipt
 
 Review guidance outcome receipts are optional repo-local inputs to the
