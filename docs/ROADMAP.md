@@ -174,8 +174,9 @@ Campaign 19 is open as PR Evidence Ledger. It turns RIPR Zero progress from a
 current-status surface into an append-only PR adoption history: new
 policy-eligible gaps, baseline debt resolved, acknowledgements, suppressions,
 gate mode, repair receipts, and optional coverage/grip frontier signals. The
-campaign remains advisory by default and keeps gate decisions as the pass/fail
-authority.
+RIPR-SPEC-0018 now pins the contract; the next ready item is the read-only
+`report/pr-evidence-ledger` producer. The campaign remains advisory by default
+and keeps gate decisions as the pass/fail authority.
 
 ## Strategic Sequence
 

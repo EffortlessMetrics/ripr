@@ -2268,6 +2268,199 @@ metadata, the top repair route, warnings, and the advisory boundary. It must
 say that RIPR 0 is not perfect tests, 100 percent coverage, or runtime mutation
 adequacy.
 
+## PR Evidence Ledger
+
+RIPR-SPEC-0018 defines the PR evidence ledger. `ripr pr-ledger record` records
+per-PR behavioral grip movement from existing RIPR artifacts so teams can track
+new policy-eligible gaps, resolved baseline debt, visible acknowledgements,
+suppressions, repair receipts, and optional coverage/grip frontier signals
+without changing analyzer identity, gate policy, or advisory defaults.
+
+Command:
+
+```text
+ripr pr-ledger record \
+  --pr-number 123 \
+  --head <sha> \
+  --base <sha> \
+  --gate target/ripr/reports/gate-decision.json \
+  --baseline-delta target/ripr/reports/baseline-debt-delta.json \
+  --zero-status target/ripr/reports/ripr-zero-status.json \
+  --pr-guidance target/ripr/review/comments.json \
+  --recommendation-calibration target/ripr/reports/recommendation-calibration.json \
+  --agent-receipt target/ripr/reports/agent-receipt.json \
+  --coverage target/ripr/reports/coverage-summary.json \
+  --history .ripr/pr-evidence-ledger.jsonl \
+  --out target/ripr/reports/pr-evidence-ledger.json \
+  --out-md target/ripr/reports/pr-evidence-ledger.md
+```
+
+The report writes:
+
+```text
+target/ripr/reports/pr-evidence-ledger.json
+target/ripr/reports/pr-evidence-ledger.md
+```
+
+This report is advisory history. `ripr gate evaluate` remains the pass/fail
+authority for configured gate modes. Generated CI may upload and summarize
+`pr-evidence-ledger.{json,md}`, but the report itself must not fail CI, rewrite
+baselines, post comments, edit source, generate tests, rerun analysis, call an
+LLM, or run mutation testing.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "pr_evidence_ledger",
+  "status": "advisory",
+  "root": ".",
+  "generated_at": "2026-05-09T00:00:00Z",
+  "pr": {
+    "number": 123,
+    "base": "53ea9a205f569a5ca636ba0a7451c6aca8b5ad2e",
+    "head": "984d5222a058fbceecfb9b230baef65c47c52820",
+    "labels": ["ripr-waive"]
+  },
+  "inputs": {
+    "gate_decision": "target/ripr/reports/gate-decision.json",
+    "baseline_debt_delta": "target/ripr/reports/baseline-debt-delta.json",
+    "ripr_zero_status": "target/ripr/reports/ripr-zero-status.json",
+    "pr_guidance": "target/ripr/review/comments.json",
+    "recommendation_calibration": "target/ripr/reports/recommendation-calibration.json",
+    "agent_receipt": "target/ripr/reports/agent-receipt.json",
+    "coverage": "target/ripr/reports/coverage-summary.json",
+    "history": ".ripr/pr-evidence-ledger.jsonl"
+  },
+  "movement": {
+    "new_policy_eligible": 1,
+    "baseline_still_present": 40,
+    "baseline_resolved": 3,
+    "acknowledged": 1,
+    "suppressed": 0,
+    "blocking_candidates": 0,
+    "visible_unresolved": 41,
+    "ripr_zero_state": "not_yet"
+  },
+  "gate": {
+    "mode": "baseline-check",
+    "decision": "acknowledged",
+    "pass_fail_authority": "ripr gate evaluate",
+    "acknowledgement_label": "ripr-waive"
+  },
+  "waivers": [
+    {
+      "label": "ripr-waive",
+      "decision_id": "ripr-gate-67fc764ba37d77bd",
+      "seam_id": "67fc764ba37d77bd",
+      "age_prs": 1,
+      "age_days": 0,
+      "reason": "accepted for this PR",
+      "still_visible": true
+    }
+  ],
+  "suppressions": [
+    {
+      "decision_id": "ripr-gate-suppressed",
+      "seam_id": "suppressed",
+      "source": ".ripr/suppressions.toml",
+      "owner": "test-platform",
+      "reason": "accepted durable policy exception",
+      "still_visible": true
+    }
+  ],
+  "repair_receipts": [
+    {
+      "source": "agent_receipt",
+      "seam_id": "67fc764ba37d77bd",
+      "static_movement": {
+        "state": "improved",
+        "source": "agent_receipt",
+        "artifact": "target/ripr/reports/agent-receipt.json"
+      },
+      "focused_test": "tests/pricing.rs::threshold_exact_boundary",
+      "receipt": "target/ripr/reports/agent-receipt.json"
+    }
+  ],
+  "coverage_grip_frontier": {
+    "status": "available",
+    "coverage_delta_percent": 0.0,
+    "ripr_visible_unresolved_delta": -3,
+    "interpretation": "behavioral grip improved without line-coverage movement",
+    "quadrants": {
+      "covered_with_ripr_gap": 2,
+      "covered_without_ripr_gap": 12,
+      "uncovered_with_ripr_gap": 1,
+      "uncovered_without_ripr_gap": 0
+    }
+  },
+  "top_repair_route": {
+    "source": "ripr_zero_status",
+    "seam_id": "67fc764ba37d77bd",
+    "path": "src/pricing.rs",
+    "line": 88,
+    "missing_discriminator": "amount == discount_threshold",
+    "suggested_test": "Add an equality-boundary assertion.",
+    "related_test": "tests/pricing.rs::applies_discount_above_threshold",
+    "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json",
+    "agent_command": "ripr agent start --root . --seam-id 67fc764ba37d77bd --out target/ripr/workflow"
+  },
+  "history": {
+    "source": ".ripr/pr-evidence-ledger.jsonl",
+    "records": 42,
+    "waiver_age_max_days": 14,
+    "baseline_resolved_total": 45,
+    "new_policy_eligible_total": 3,
+    "trend": "improving"
+  },
+  "warnings": [
+    "coverage input is optional and does not determine pass/fail"
+  ],
+  "limits_note": "Read-only advisory PR evidence ledger over existing static RIPR artifacts; gate-decision remains the pass/fail authority."
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `status` - `advisory` for complete reports and `incomplete` when PR identity
+  or all evidence sources are missing.
+- `movement.*` - copied or derived from existing gate, baseline delta, and RIPR
+  Zero status artifacts. The ledger must not recompute analyzer semantics.
+- `gate.pass_fail_authority` - names `ripr gate evaluate` whenever a gate
+  decision is present.
+- `waivers[]` - PR-time visible acknowledgement records. Waivers do not hide
+  findings and do not become suppressions.
+- `suppressions[]` - durable policy exceptions. Suppressions are not waivers
+  and are not baseline debt.
+- `repair_receipts[]` - supplied outcome or agent receipt evidence.
+  `repair_receipts[].static_movement` uses the same object shape as review
+  guidance outcome receipts, including `state`, `source`, and `artifact`; the
+  ledger must not infer receipt success from a missing artifact.
+- `coverage_grip_frontier.status` - `available`, `not_available`, or
+  `unsupported`.
+- `coverage_grip_frontier.*` - keeps coverage movement separate from RIPR
+  evidence movement. Coverage movement is execution evidence, not test
+  adequacy.
+- `top_repair_route` - copied from existing PR guidance, RIPR Zero status, gate
+  decision, agent packet, or receipt artifacts. Missing fields are `null` plus
+  warnings, not invented.
+- `history.*` - present only when prior ledger history or previous ledger
+  summary is supplied.
+- `warnings[]` - missing inputs, unavailable coverage, unsupported schemas,
+  ambiguous identities, and trend gaps.
+- `limits_note` - advisory boundary text for generated CI summaries.
+
+Markdown should fit in a generated CI job summary. It should show new
+policy-eligible gaps, existing baseline gaps still present, baseline gaps
+resolved, acknowledged gaps, suppressed gaps, blocking candidates, visible
+unresolved gaps, the top focused test to add, receipt paths, coverage/grip
+frontier status, and the advisory boundary. It must say that the PR evidence
+ledger is advisory history and that gate decisions remain the pass/fail
+authority.
+
 ### Review Guidance Outcome Receipt
 
 Review guidance outcome receipts are optional repo-local inputs to the

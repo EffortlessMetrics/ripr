@@ -756,6 +756,20 @@ next = "maintenance"
 metric = "ripr_zero_status_reports, ripr_zero_visible_unresolved, ripr_zero_new_policy_eligible, ripr_zero_baseline_still_present, ripr_zero_baseline_resolved, ripr_zero_acknowledged, ripr_zero_suppressed, ripr_zero_stale_baseline_entries, ripr_zero_missing_metadata_entries, ripr_zero_top_repair_routes"
 
 [[capability]]
+id = "pr_evidence_ledger"
+name = "PR evidence ledger"
+status = "planned"
+spec = "RIPR-SPEC-0018"
+evidence = [
+  "docs/specs/RIPR-SPEC-0018-pr-evidence-ledger.md defines the PR evidence ledger contract",
+  "docs/OUTPUT_SCHEMA.md documents the planned pr-evidence-ledger JSON/Markdown shape",
+  "Campaign 19 manifest makes spec/pr-evidence-ledger-surface the first ready implementation item"
+]
+fixtures = []
+next = "report/pr-evidence-ledger"
+metric = "pr_evidence_ledger_records, pr_evidence_ledger_new_policy_eligible, pr_evidence_ledger_baseline_still_present, pr_evidence_ledger_baseline_resolved, pr_evidence_ledger_acknowledged, pr_evidence_ledger_suppressed, pr_evidence_ledger_blocking_candidates, pr_evidence_ledger_repair_receipts, pr_evidence_ledger_waiver_age_max_days, pr_evidence_ledger_coverage_grip_frontier_available, pr_evidence_ledger_flat_coverage_grip_improved"
+
+[[capability]]
 id = "pilot_packet"
 name = "Pilot packet"
 status = "alpha"
