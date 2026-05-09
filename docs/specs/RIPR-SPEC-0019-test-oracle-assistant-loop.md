@@ -146,6 +146,11 @@ target/ripr/reports/test-oracle-assistant-proof.md
 
 The report is advisory and read-only. It joins existing artifacts; it does not
 rerun analysis unless a caller explicitly ran the underlying commands first.
+When a supplied agent packet or matching repo-exposure seam carries
+`evidence_record`, the proof report treats that record as the preferred
+projection for seam identity, owner/location, missing discriminator, static
+limits, related test, assertion shape, and before/after static movement classes.
+Older artifact fields remain fallback.
 
 The command accepts explicit input paths rather than searching hidden state:
 
@@ -183,18 +188,23 @@ The JSON report uses schema version `0.1`:
   },
   "seam": {
     "seam_id": "67fc764ba37d77bd",
+    "canonical_gap_id": null,
+    "owner": "pricing::discounted_total",
     "seam_kind": "predicate_boundary",
     "path": "src/pricing.rs",
     "line": 88,
     "grip_class": "weakly_gripped",
-    "missing_discriminator": "amount == discount_threshold"
+    "missing_discriminator": "amount == discount_threshold",
+    "evidence_source": "evidence_record",
+    "static_limitations": []
   },
   "recommendation": {
-    "source": "pr_guidance",
+    "source": "evidence_record",
     "placement": "changed_line",
     "summary_only_reason": null,
     "suggested_test": "Add an equality-boundary assertion.",
     "related_test": "tests/pricing.rs::applies_discount_above_threshold",
+    "assertion_shape": "assert_eq!(discounted_total(100, 100), 90)",
     "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json"
   },
   "handoff": {
@@ -234,15 +244,26 @@ Field contract:
   selected seam or required before/after evidence is missing.
 - `inputs.*` records explicit paths. Missing optional inputs are `null`;
   missing or invalid supplied inputs produce a warning.
-- `seam.*` is copied from existing RIPR evidence or guidance. It must not be
-  recomputed with new identity semantics.
+- `seam.*` is copied from existing RIPR evidence or guidance. When an
+  `evidence_record` is present in the selected agent packet or matching
+  repo-exposure seam, `seam.evidence_source` is `evidence_record` and the proof
+  report prefers the record's identity, canonical gap ID, owner, location, grip
+  class, missing discriminator, and static limits. Otherwise it falls back to
+  legacy fields and marks `seam.evidence_source` as `legacy_fields`. It must
+  not recompute analyzer identity.
 - `recommendation.placement` is `changed_line`, `summary_only`, or `unknown`.
   Summary-only guidance must remain visible.
+- `recommendation.assertion_shape`, `recommendation.related_test`, and
+  `recommendation.verify_command` prefer `evidence_record.recommendation`
+  fields when available and otherwise use the legacy agent packet or PR
+  guidance fields.
 - `handoff.external_provider` is always `false`; RIPR emits packets but does
   not call a provider.
 - `evidence_movement.state` is `improved`, `resolved`, `unchanged`,
   `regressed`, or `unknown`. It is static RIPR movement, not runtime mutation
-  confirmation.
+  confirmation. Without a receipt, before/after class comparison prefers the
+  matching repo-exposure `evidence_record.grip_class` and falls back to legacy
+  seam `grip_class`.
 - `ci_projection.pass_fail_authority` must keep proof records separate from
   optional gate decisions.
 - `limits.*` must preserve the no-edit, no-generated-test, no-provider-call,
@@ -260,9 +281,11 @@ Status: advisory
 
 Top focused test:
 - Seam: src/pricing.rs:88
+- Owner: pricing::discounted_total
 - Missing discriminator: amount == discount_threshold
 - Suggested test: Add an equality-boundary assertion.
 - Related test: tests/pricing.rs::applies_discount_above_threshold
+- Assertion shape: assert_eq!(discounted_total(100, 100), 90)
 - Verify: ripr agent verify --root . --before ... --after ... --json
 
 Movement:
@@ -312,6 +335,9 @@ The implementation should add tests or fixtures for:
 - preserving changed-line and summary-only placement states;
 - copying related-test, suggested-test, missing-discriminator, verify-command,
   and agent-command fields from existing artifacts;
+- preferring `evidence_record` seam identity, static limits, related test,
+  assertion shape, and movement classes when present while preserving legacy
+  fallback;
 - reporting missing optional inputs as warnings or unknowns;
 - joining before and after static evidence by seam identity without changing
   analyzer identity semantics;

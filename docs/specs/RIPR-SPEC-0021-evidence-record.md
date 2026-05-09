@@ -176,6 +176,12 @@ shared record without changing analyzer behavior:
   movement, missing-discriminator movement, oracle strength movement,
   related-test movement, and no-movement reasons are emitted additively while
   legacy repo-exposure fields remain fallback.
+- Test-oracle assistant proof prefers `evidence_record` when the selected agent
+  packet or matching repo-exposure seam supplies it. The proof may copy the
+  record's seam identity, canonical gap ID, owner/location, grip class, missing
+  discriminator, static limitations, related test, assertion shape,
+  verification command, and before/after movement classes while preserving
+  legacy fields as fallback.
 
 This routing must not invent commands, generate tests, change gate authority,
 or mutate baselines.
@@ -190,6 +196,9 @@ or mutate baselines.
   static limitations while preserving legacy fallback fields.
 - Targeted-test outcome and agent verify prefer `evidence_record` movement
   fields while preserving legacy fallback fields and existing movement buckets.
+- Test-oracle assistant proof prefers `evidence_record` selected-seam,
+  recommendation, static-limit, and movement fields while preserving legacy
+  fallback fields and existing advisory proof boundaries.
 - Evidence record schema `0.1` is documented in `docs/OUTPUT_SCHEMA.md`.
 - Unit tests pin identity, grip class, evidence path, recommendation,
   actionability, calibration placeholder, and static limitations.
@@ -219,6 +228,8 @@ Additional examples:
 | RIPR Zero status repair routes prefer supplied record guidance | `ripr_zero_status_prefers_evidence_record_repair_context` |
 | Targeted-test outcome prefers record-level before/after movement | `targeted_test_outcome_prefers_evidence_record_movement` |
 | Targeted-test outcome names unchanged record movement reason | `targeted_test_outcome_records_no_movement_reason` |
+| Test-oracle assistant proof prefers agent packet evidence records | `test_oracle_assistant_proof_prefers_agent_packet_evidence_record` |
+| Test-oracle assistant proof prefers repo-exposure evidence records for movement | `test_oracle_assistant_proof_prefers_repo_exposure_evidence_record_movement` |
 
 ## Implementation Mapping
 
@@ -229,6 +240,7 @@ Additional examples:
 | Agent seam packet projection | `crates/ripr/src/output/agent_seam_packets.rs` |
 | Targeted-test outcome movement | `crates/ripr/src/output/outcome.rs` |
 | RIPR Zero status repair route consumer | `crates/ripr/src/output/ripr_zero_status.rs` |
+| Test-oracle assistant proof consumer | `crates/ripr/src/output/test_oracle_assistant_proof.rs` |
 | Output module registration | `crates/ripr/src/output/mod.rs` |
 | Schema reference | `docs/OUTPUT_SCHEMA.md` |
 | Capability tracking | `docs/CAPABILITY_MATRIX.md`, `metrics/capabilities.toml` |
@@ -253,6 +265,5 @@ runtime metric emitter.
 - No first-useful-action docs, dogfood, or closeout work.
 - No RIPR Zero gate or baseline mutation changes.
 - No evidence movement routing changes.
-- No assistant proof routing changes.
 - No baseline or PR ledger routing changes.
 - No mutation execution.

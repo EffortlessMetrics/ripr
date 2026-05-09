@@ -559,11 +559,12 @@ evidence = [
   "crates/ripr/src/output/agent_seam_packets.rs includes packets[].evidence_record while preserving existing packet work-order fields",
   "crates/ripr/src/output/ripr_zero_status.rs prefers evidence_record repair context when supplied by baseline debt delta items and keeps legacy fields as fallback",
   "crates/ripr/src/output/outcome.rs prefers evidence_record before/after movement fields for ripr outcome and agent verify while preserving legacy repo-exposure fallback",
+  "crates/ripr/src/output/test_oracle_assistant_proof.rs prefers evidence_record selected-seam, recommendation, static-limit, and movement fields while preserving legacy proof fallbacks",
   "docs/OUTPUT_SCHEMA.md documents evidence_record schema 0.1 under repo-exposure schema 0.3",
-  "unit tests pin identity, grip class, evidence path, recommendation/actionability, calibration placeholder, static limitations, packet projection, RIPR Zero repair-route consumption, and evidence-record movement consumption"
+  "unit tests pin identity, grip class, evidence path, recommendation/actionability, calibration placeholder, static limitations, packet projection, RIPR Zero repair-route consumption, evidence-record movement consumption, and assistant-proof evidence-record consumption"
 ]
 fixtures = []
-next = "output/assistant-proof-consumes-evidence-record"
+next = "output/baseline-ledger-canonical-gap-identity"
 metric = "evidence_record_projected_seams, evidence_record_actionable_guidance, evidence_record_static_limitations"
 
 [[capability]]
@@ -817,11 +818,13 @@ spec = "RIPR-SPEC-0019"
 evidence = [
   "docs/specs/RIPR-SPEC-0019-test-oracle-assistant-loop.md defines the end-to-end proof contract",
   "ripr assistant-loop proof writes advisory test-oracle-assistant-proof JSON and Markdown from explicit PR guidance, agent packet, before/after evidence, receipt, PR ledger, optional gate, and optional coverage/grip frontier inputs",
-  "crates/ripr/src/output/test_oracle_assistant_proof.rs preserves selected seam identity, missing discriminator, placement, handoff command, static movement, CI projection paths, warnings, and advisory limits without rerunning analysis",
+  "crates/ripr/src/output/test_oracle_assistant_proof.rs preserves selected seam identity, missing discriminator, placement, handoff command, static movement, CI projection paths, warnings, and advisory limits without rerunning analysis, preferring evidence_record projection fields when supplied",
   "crates/ripr/src/cli/commands.rs exposes assistant-loop proof and keeps supplied artifact inputs explicit",
   "docs/OUTPUT_SCHEMA.md documents the implemented advisory test-oracle assistant proof report shape",
   "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical pins the canonical replay corpus across PR guidance, agent handoff, before/after static evidence, receipt, and PR ledger projection",
   "crates/ripr/src/output/test_oracle_assistant_proof.rs::test_oracle_assistant_proof_matches_canonical_fixture validates the proof producer output against the canonical replay corpus",
+  "crates/ripr/src/output/test_oracle_assistant_proof.rs::test_oracle_assistant_proof_prefers_agent_packet_evidence_record validates agent-packet evidence_record precedence over conflicting legacy fields",
+  "crates/ripr/src/output/test_oracle_assistant_proof.rs::test_oracle_assistant_proof_prefers_repo_exposure_evidence_record_movement validates before/after movement class precedence from repo-exposure evidence_record fields",
   "crates/ripr/tests/cli_smoke.rs::test_oracle_assistant_proof_cli_writes_canonical_report validates the public CLI writes the canonical JSON and Markdown proof artifacts",
   "crates/ripr/tests/cli_smoke.rs::test_oracle_assistant_canonical_review_loop_fixture_pins_expected_surfaces validates the canonical replay corpus uses one seam identity across guidance, handoff, receipt, and ledger projection",
   "docs/handoffs/2026-05-09-test-oracle-assistant-receipt.md records the repo-local dogfood receipt across PR guidance, editor/agent handoff, verification commands, after evidence, receipt, PR ledger projection, and coverage/grip frontier availability",

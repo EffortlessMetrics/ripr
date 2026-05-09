@@ -1219,6 +1219,8 @@ tests = [
   "crates/ripr/src/output/test_oracle_assistant_proof.rs::test_oracle_assistant_proof_keeps_summary_only_guidance_visible",
   "crates/ripr/src/output/test_oracle_assistant_proof.rs::test_oracle_assistant_proof_handles_guidance_only_regression",
   "crates/ripr/src/output/test_oracle_assistant_proof.rs::test_oracle_assistant_proof_handles_unknown_movement_and_no_handoff",
+  "crates/ripr/src/output/test_oracle_assistant_proof.rs::test_oracle_assistant_proof_prefers_agent_packet_evidence_record",
+  "crates/ripr/src/output/test_oracle_assistant_proof.rs::test_oracle_assistant_proof_prefers_repo_exposure_evidence_record_movement",
   "crates/ripr/tests/cli_smoke.rs::test_oracle_assistant_proof_cli_writes_canonical_report",
   "crates/ripr/tests/cli_smoke.rs::test_oracle_assistant_canonical_review_loop_fixture_pins_expected_surfaces",
   "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_matches_smoke_fixture",
@@ -1364,6 +1366,8 @@ tests = [
   "crates/ripr/src/output/ripr_zero_status.rs::tests::ripr_zero_status_prefers_evidence_record_repair_context",
   "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_prefers_evidence_record_movement",
   "crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_records_no_movement_reason",
+  "crates/ripr/src/output/test_oracle_assistant_proof.rs::tests::test_oracle_assistant_proof_prefers_agent_packet_evidence_record",
+  "crates/ripr/src/output/test_oracle_assistant_proof.rs::tests::test_oracle_assistant_proof_prefers_repo_exposure_evidence_record_movement",
   "crates/ripr/src/output/render.rs::tests::render_dispatch_renders_repo_exposure_and_sarif_formats",
 ]
 fixtures = []
@@ -1373,6 +1377,7 @@ code = [
   "crates/ripr/src/output/agent_seam_packets.rs",
   "crates/ripr/src/output/ripr_zero_status.rs",
   "crates/ripr/src/output/outcome.rs",
+  "crates/ripr/src/output/test_oracle_assistant_proof.rs",
   "crates/ripr/src/output/mod.rs",
 ]
 outputs = [
