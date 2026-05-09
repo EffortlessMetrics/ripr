@@ -1012,6 +1012,7 @@ tests = [
   "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_matches_by_fallback_and_warns",
   "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_marks_ambiguous_fallback_as_stale",
   "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_reports_missing_current_input",
+  "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_treats_non_object_review_metadata_as_absent",
   "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_matches_mixed_fixture_contract",
   "crates/ripr/src/output/baseline_update.rs::tests::baseline_update_removes_resolved_without_adopting_new_current_debt",
   "crates/ripr/src/output/baseline_update.rs::tests::baseline_update_preserves_ambiguous_and_fallback_matches",
@@ -1078,9 +1079,21 @@ metrics = [
 id = "RIPR-SPEC-0017"
 name = "RIPR Zero reporting"
 spec = "docs/specs/RIPR-SPEC-0017-ripr-zero-reporting.md"
-tests = []
-fixtures = []
-code = []
+tests = [
+  "crates/ripr/src/output/baseline.rs::tests::baseline_create_includes_visible_gate_decisions_and_skips_hidden_ones",
+  "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_matches_mixed_fixture_contract",
+  "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_treats_non_object_review_metadata_as_absent",
+  "crates/ripr/src/output/baseline_update.rs::tests::baseline_update_removes_resolved_without_adopting_new_current_debt",
+]
+fixtures = [
+  "fixtures/boundary_gap/expected/baseline-debt-delta/mixed/baseline.json",
+  "fixtures/boundary_gap/expected/baseline-debt-delta/mixed/baseline-debt-delta.json",
+]
+code = [
+  "crates/ripr/src/output/baseline.rs",
+  "crates/ripr/src/output/baseline_delta.rs",
+  "crates/ripr/src/output/baseline_update.rs",
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0017-ripr-zero-reporting.md",
   "docs/specs/README.md",

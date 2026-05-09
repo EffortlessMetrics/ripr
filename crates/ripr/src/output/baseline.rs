@@ -29,6 +29,7 @@ struct BaselineEntry {
     source: Option<String>,
     gate_reason: Option<String>,
     evidence: BaselineEntryEvidence,
+    review: BaselineEntryReview,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -45,6 +46,16 @@ struct BaselineEntryEvidence {
     missing_discriminator: Option<String>,
     assertion_shape: Option<String>,
     recommended_test: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct BaselineEntryReview {
+    reviewed: bool,
+    owner: Option<String>,
+    reason: String,
+    created_at: Option<String>,
+    review_after: Option<String>,
+    source: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -84,7 +95,7 @@ pub(crate) fn baseline_create_report_from_gate_decision_json(
     for decision in decisions {
         match decision.get("decision").and_then(Value::as_str) {
             Some("advisory" | "acknowledged" | "blocking") => {
-                match baseline_entry_from_decision(decision) {
+                match baseline_entry_from_decision(decision, created_at, source_report) {
                     Some(entry) => entries.push(entry),
                     None => {
                         skipped.malformed += 1;
@@ -148,7 +159,11 @@ pub(crate) fn display_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
-fn baseline_entry_from_decision(value: &Value) -> Option<BaselineEntry> {
+fn baseline_entry_from_decision(
+    value: &Value,
+    created_at: &str,
+    source_report: &str,
+) -> Option<BaselineEntry> {
     let path = string_field(value.pointer("/placement/path"));
     let line = value.pointer("/placement/line").and_then(Value::as_u64);
     let static_class = string_field(value.get("static_class"));
@@ -176,6 +191,14 @@ fn baseline_entry_from_decision(value: &Value) -> Option<BaselineEntry> {
             missing_discriminator: string_field(value.pointer("/evidence/missing_discriminator")),
             assertion_shape: string_field(value.pointer("/evidence/assertion_shape")),
             recommended_test: string_field(value.pointer("/evidence/recommended_test")),
+        },
+        review: BaselineEntryReview {
+            reviewed: false,
+            owner: None,
+            reason: DEFAULT_REVIEW_REASON.to_string(),
+            created_at: Some(created_at.to_string()),
+            review_after: None,
+            source: Some(source_report.to_string()),
         },
     })
 }
@@ -239,8 +262,12 @@ fn entry_json(entry: &BaselineEntry) -> Value {
             "recommended_test": entry.evidence.recommended_test,
         },
         "review": {
-            "reviewed": false,
-            "reason": DEFAULT_REVIEW_REASON,
+            "reviewed": entry.review.reviewed,
+            "owner": entry.review.owner,
+            "reason": entry.review.reason,
+            "created_at": entry.review.created_at,
+            "review_after": entry.review.review_after,
+            "source": entry.review.source,
         }
     })
 }
@@ -327,6 +354,8 @@ mod tests {
         assert!(rendered.contains("\"created_at\": \"unix_ms:1\""));
         assert!(rendered.contains("\"entries\": 2"));
         assert!(rendered.contains("\"suppressed\": 1"));
+        assert!(rendered.contains("\"review_after\": null"));
+        assert!(rendered.contains("\"source\": \"target/ripr/reports/gate-decision.json\""));
         assert!(rendered.contains("\"seam_id\": \"aaa\""));
         assert!(rendered.contains("\"seam_id\": \"bbb\""));
         assert!(rendered.find("\"aaa\"") < rendered.find("\"bbb\""));

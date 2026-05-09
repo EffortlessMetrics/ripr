@@ -42,10 +42,10 @@ commands = [
 
 [[work_item]]
 id = "baseline/metadata-v2"
-status = "ready"
+status = "done"
 branch = "baseline-metadata-v2"
 stackable = false
-acceptance = "Extend baseline ledger handling so optional owner, reason, created_at, review_after, and source metadata can be preserved and reported without breaking existing Campaign 17 baseline files"
+acceptance = "Extended baseline create, diff, and shrink-only update handling so optional owner, reason, created_at, review_after, and source metadata are preserved and reported without breaking existing Campaign 17 baseline files"
 commands = [
   "cargo test -p ripr baseline",
   "cargo xtask check-output-contracts",
@@ -55,10 +55,9 @@ commands = [
 
 [[work_item]]
 id = "report/ripr-zero-status"
-status = "blocked"
+status = "ready"
 branch = "report-ripr-zero-status"
 stackable = false
-blocked_by = ["spec/ripr-zero-reporting-surface", "baseline/metadata-v2"]
 acceptance = "Add a read-only RIPR Zero status report that writes JSON/Markdown from reviewed baseline, baseline debt delta, gate decision, and optional recommendation evidence"
 commands = [
   "cargo test -p ripr ripr_zero",

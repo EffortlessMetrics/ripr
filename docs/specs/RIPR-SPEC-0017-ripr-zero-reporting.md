@@ -154,6 +154,12 @@ When metadata is absent, the report must keep the entry visible and mark the
 metadata state as `missing`, `partial`, or `unknown`. Missing metadata is a
 review signal, not a suppression and not a reason to drop the entry.
 
+Campaign 18 metadata support is intentionally additive: baseline create writes
+the full object for new ledgers, baseline diff reports any present metadata on
+baseline-derived delta items, and shrink-only update preserves existing entry
+objects while removing resolved debt. Older Campaign 17 ledgers with partial or
+absent review metadata remain valid inputs.
+
 Baseline review status values:
 
 - `current` - metadata exists and the review window has not expired.

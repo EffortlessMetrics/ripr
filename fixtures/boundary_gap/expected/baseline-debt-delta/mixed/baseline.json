@@ -38,8 +38,12 @@
         "recommended_test": "tests/same.rs::boundary"
       },
       "review": {
+        "owner": "test-platform",
         "reviewed": false,
-        "reason": "initial adoption baseline"
+        "reason": "initial adoption baseline",
+        "created_at": "2026-05-08T00:00:00Z",
+        "review_after": "2026-08-08T00:00:00Z",
+        "source": "target/ripr/reports/gate-decision.json"
       }
     },
     {

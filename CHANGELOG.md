@@ -19,6 +19,10 @@ are scoped or reviewed.
   repo-level status, baseline metadata health, stale warnings, trend summaries,
   top debt areas, and advisory repair routing without changing analyzer
   identity, gate policy, or default CI blocking.
+- Added additive baseline review metadata support: new baseline ledgers record
+  owner/reason/created/review-after/source fields, baseline delta reports
+  preserve that metadata on baseline-derived items, and shrink-only updates keep
+  existing metadata while remaining compatible with Campaign 17 baseline files.
 - Added `ripr baseline create --from <gate-decision.json> --out .ripr/gate-baseline.json`,
   which writes reviewed gate baseline ledgers from existing gate-decision
   evidence, skips suppressed or malformed decisions, supports `--dry-run`, and

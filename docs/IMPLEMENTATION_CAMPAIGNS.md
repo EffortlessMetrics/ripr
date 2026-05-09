@@ -2108,8 +2108,8 @@ Work items:
 | Work item | Status | Notes |
 | --- | --- | --- |
 | `spec/ripr-zero-reporting-surface` | done | Added RIPR-SPEC-0017 for repo-level RIPR Zero status, baseline metadata, stale warnings, trends, top debt areas, and advisory repair routing without analyzer identity rewrites or default CI blocking. |
-| `baseline/metadata-v2` | ready | Preserve optional owner, reason, created_at, review_after, and source metadata in baseline ledgers without breaking existing Campaign 17 baseline files. |
-| `report/ripr-zero-status` | blocked | Add a read-only JSON/Markdown status report that joins reviewed baseline, baseline debt delta, gate decision, and optional recommendation evidence. |
+| `baseline/metadata-v2` | done | Baseline create now writes additive owner/reason/created/review-after/source metadata, baseline diff reports preserved metadata on baseline-derived items, and shrink-only update preserves existing entry metadata without breaking Campaign 17 ledgers. |
+| `report/ripr-zero-status` | ready | Add a read-only JSON/Markdown status report that joins reviewed baseline, baseline debt delta, gate decision, and optional recommendation evidence. |
 | `ci/ripr-zero-summary` | blocked | Surface RIPR Zero status and top repair areas in generated CI summaries and artifacts while preserving advisory defaults. |
 | `docs/ripr-zero-reporting-workflow` | blocked | Document how teams read RIPR Zero status, age and refresh baselines, route top repair packets, and interpret progress without treating RIPR 0 as perfect tests or 100 percent coverage. |
 | `campaign/ripr-zero-reporting-closeout` | blocked | Close Campaign 18 only after RIPR Zero status, baseline metadata, generated-CI reporting, and user workflow docs are in place while defaults stay advisory. |
@@ -2158,8 +2158,9 @@ Blocking conditions:
 
 Next:
 
-- Start `baseline/metadata-v2` to preserve optional review metadata in baseline
-  ledgers before implementing the RIPR Zero status report.
+- Start `report/ripr-zero-status` to join reviewed baseline metadata, baseline
+  debt deltas, gate decisions, and optional recommendation evidence into a
+  read-only progress report.
 
 ## Future Campaign: Editor Evidence UX
 

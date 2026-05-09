@@ -70,6 +70,17 @@ struct DeltaItem {
     missing_discriminator: Option<String>,
     suggested_test: SuggestedTest,
     repair: Repair,
+    review: Option<ReviewMetadata>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct ReviewMetadata {
+    reviewed: Option<bool>,
+    owner: Option<String>,
+    reason: Option<String>,
+    created_at: Option<String>,
+    review_after: Option<String>,
+    source: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -179,6 +190,7 @@ struct BaselineRecord {
     static_class: Option<String>,
     decision: Option<String>,
     evidence: Evidence,
+    review: Option<ReviewMetadata>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -561,6 +573,7 @@ fn baseline_record_from_value(value: &Value) -> Option<BaselineRecord> {
         static_class,
         decision: string_field(value.get("decision")),
         evidence: evidence_from_value(value),
+        review: review_metadata_from_value(value.get("review")),
     })
 }
 
@@ -704,6 +717,7 @@ fn push_missing_input_items(
             missing_discriminator: None,
             suggested_test: SuggestedTest::default(),
             repair: repair("provide_required_input"),
+            review: None,
         });
     }
 }
@@ -734,6 +748,7 @@ fn matched_item(
             .or_else(|| baseline.evidence.missing_discriminator.clone()),
         suggested_test: suggested_test(&current.evidence, &baseline.evidence),
         repair: repair_for_bucket(bucket),
+        review: baseline.review.clone(),
     }
 }
 
@@ -760,6 +775,7 @@ fn unmatched_current_item(current: &CurrentDecision) -> DeltaItem {
         missing_discriminator: current.evidence.missing_discriminator.clone(),
         suggested_test: suggested_test(&current.evidence, &Evidence::default()),
         repair: repair_for_bucket(bucket),
+        review: None,
     }
 }
 
@@ -786,6 +802,7 @@ fn resolved_item(baseline: &BaselineRecord) -> DeltaItem {
         missing_discriminator: baseline.evidence.missing_discriminator.clone(),
         suggested_test: suggested_test(&baseline.evidence, &Evidence::default()),
         repair: repair("remove_resolved_from_baseline_when_reviewed"),
+        review: baseline.review.clone(),
     }
 }
 
@@ -801,6 +818,7 @@ fn stale_item(baseline: &BaselineRecord, reason: String) -> DeltaItem {
         missing_discriminator: baseline.evidence.missing_discriminator.clone(),
         suggested_test: suggested_test(&baseline.evidence, &Evidence::default()),
         repair: repair("inspect_or_refresh_baseline_entry"),
+        review: baseline.review.clone(),
     }
 }
 
@@ -816,6 +834,7 @@ fn missing_current_input_item(baseline: &BaselineRecord) -> DeltaItem {
         missing_discriminator: baseline.evidence.missing_discriminator.clone(),
         suggested_test: suggested_test(&baseline.evidence, &Evidence::default()),
         repair: repair("provide_current_gate_decision"),
+        review: baseline.review.clone(),
     }
 }
 
@@ -840,6 +859,7 @@ fn invalid_baseline_item(value: &Value) -> DeltaItem {
             assertion_shape: string_field(value.pointer("/evidence/assertion_shape")),
         },
         repair: repair("repair_or_remove_baseline_entry"),
+        review: review_metadata_from_value(value.get("review")),
     }
 }
 
@@ -997,7 +1017,37 @@ fn item_json(item: &DeltaItem) -> Value {
             "action": item.repair.action,
             "verify_command": item.repair.verify_command,
         },
+        "review": review_metadata_json(&item.review),
     })
+}
+
+fn review_metadata_from_value(value: Option<&Value>) -> Option<ReviewMetadata> {
+    let value = value?;
+    if !value.is_object() {
+        return None;
+    }
+    Some(ReviewMetadata {
+        reviewed: value.get("reviewed").and_then(Value::as_bool),
+        owner: string_field(value.get("owner")),
+        reason: string_field(value.get("reason")),
+        created_at: string_field(value.get("created_at")),
+        review_after: string_field(value.get("review_after")),
+        source: string_field(value.get("source")),
+    })
+}
+
+fn review_metadata_json(review: &Option<ReviewMetadata>) -> Value {
+    match review {
+        Some(review) => json!({
+            "reviewed": review.reviewed,
+            "owner": review.owner,
+            "reason": review.reason,
+            "created_at": review.created_at,
+            "review_after": review.review_after,
+            "source": review.source,
+        }),
+        None => Value::Null,
+    }
 }
 
 fn bucket_order() -> [Bucket; 8] {
@@ -1271,6 +1321,34 @@ mod tests {
         let rendered = render_baseline_delta_json(&report)?;
         assert!(rendered.contains("\"missing_current_input\": 1"));
         assert!(rendered.contains("required current gate-decision input missing.json is invalid"));
+        Ok(())
+    }
+
+    #[test]
+    fn baseline_delta_treats_non_object_review_metadata_as_absent() -> Result<(), String> {
+        let baseline = r#"{
+          "schema_version": "0.1",
+          "entries": [
+            {
+              "identity": {"seam_id": "legacy"},
+              "path": "src/legacy.rs",
+              "line": 7,
+              "review": "legacy-freeform-note"
+            }
+          ]
+        }"#;
+        let current = r#"{"schema_version": "0.1", "decisions": []}"#;
+
+        let report = build_baseline_delta_report(BaselineDeltaInput {
+            root: ".".to_string(),
+            baseline_path: "baseline.json".to_string(),
+            current_gate_decision_path: "current.json".to_string(),
+            baseline_json: Ok(baseline.to_string()),
+            current_gate_decision_json: Ok(current.to_string()),
+        });
+        let rendered = render_baseline_delta_json(&report)?;
+        assert!(rendered.contains("\"resolved\": 1"));
+        assert!(rendered.contains("\"review\": null"));
         Ok(())
     }
 
