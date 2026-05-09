@@ -69,6 +69,9 @@ are scoped or reviewed.
   health report, generated-CI summary use, complete/partial/missing states,
   static movement interpretation, repair routing, coding-agent handoff, and
   advisory limits for assistant-loop-health reports.
+- Closed Campaign 23, Assistant Loop Health, with a prompt-to-artifact audit,
+  validation plan, advisory boundary, and future-lane boundary in
+  `docs/handoffs/2026-05-09-campaign-23-closeout.md`.
 - Opened Campaign 22, First Useful Action, with
   `spec/first-useful-action-report` as the first ready work item so existing
   editor, PR guidance, ledger, proof, receipt, optional gate, coverage/grip,

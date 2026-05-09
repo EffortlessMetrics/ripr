@@ -2569,17 +2569,16 @@ Blocking conditions:
   adequacy
 - new public crates
 
-Next:
+Follow-up:
 
-- Campaign 23, Assistant Loop Health, is now the active campaign. It makes
-  assistant-directed test work measurable across existing proof artifacts, with
-  `spec/assistant-loop-health-report` as the first ready work item.
+- Campaign 23, Assistant Loop Health, is now closed. It made
+  assistant-directed test work measurable across existing proof artifacts.
 
 ## Campaign 23: Assistant Loop Health
 
 Campaign ID: `assistant-loop-health`
 
-Status: active
+Status: complete
 
 Campaign 21 made one assistant-directed test loop reviewable as
 `test-oracle-assistant-proof.{json,md}`. Campaign 22 settled the first-screen
@@ -2610,8 +2609,7 @@ End state:
 - a bounded repair queue routes maintainers or coding agents to rerun missing
   commands, regenerate stale inputs, inspect unchanged evidence, or attach
   receipts
-- generated CI may later upload and summarize the report as advisory evidence
-  only
+- generated CI uploads and summarizes the report as advisory evidence only
 
 Work items:
 
@@ -2622,7 +2620,7 @@ Work items:
 | `report/assistant-loop-health` | done | Added the read-only `ripr assistant-loop health` producer over explicit proof inputs, with JSON/Markdown rendering and fixture-backed CLI coverage. |
 | `ci/assistant-loop-health-artifacts` | done | Generated GitHub CI runs `ripr assistant-loop health` when `test-oracle-assistant-proof.json` exists, uploads `assistant-loop-health.{json,md}` with the normal report packet, and appends an advisory health summary. |
 | `docs/assistant-loop-health-workflow` | done | Added `docs/ASSISTANT_LOOP_HEALTH_WORKFLOW.md`, explaining proof report versus health report, generated-CI summary use, complete/partial/missing states, static movement interpretation, missing-input repair, agent handoff, and advisory limits. |
-| `campaign/assistant-loop-health-closeout` | ready | Close after spec, fixtures, producer, CI projection, docs, and validation document the lane. |
+| `campaign/assistant-loop-health-closeout` | done | Closed Campaign 23 with a prompt-to-artifact audit, PR chain, validation plan, advisory boundary, and future-lane boundary at `docs/handoffs/2026-05-09-campaign-23-closeout.md`. |
 
 References:
 
@@ -2637,12 +2635,13 @@ Blocking conditions:
   default-blocking changes
 - adequacy, correctness, or runtime mutation claims
 
-Next:
+Closeout:
 
-- Continue with `campaign/assistant-loop-health-closeout`. The report contract,
-  fixture corpus, read-only producer, generated-CI advisory projection, and
-  workflow docs are in place; the next slice should record the closeout audit
-  and future-lane boundary.
+- Campaign 23 is closed. The report contract, fixture corpus, read-only
+  producer, generated-CI advisory projection, workflow docs, and closeout audit
+  are in place. No ready Campaign 23 work item remains in
+  `.ripr/goals/active.toml`.
+- Choose the next campaign explicitly before opening another product lane.
 
 ## Future Campaign: Editor Evidence UX
 

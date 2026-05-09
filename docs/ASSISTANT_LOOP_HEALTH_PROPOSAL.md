@@ -5,9 +5,9 @@ Campaign 21 made one assistant-directed test loop reviewable with
 whether those proof packets are complete, useful, and moving static evidence
 over time.
 
-This proposal has been promoted into Campaign 23 after Campaign 22 closed First
-Useful Action. The machine-readable campaign is `.ripr/goals/active.toml`; this
-document remains the design brief for the campaign. The report contract is
+This proposal was promoted into Campaign 23 after Campaign 22 closed First
+Useful Action. Campaign 23 is now closed; this document remains the design
+brief for the delivered lane. The report contract is
 [RIPR-SPEC-0022](specs/RIPR-SPEC-0022-assistant-loop-health-report.md).
 
 ## Goal
@@ -144,7 +144,7 @@ tests automatically.
 
 ## Proposed Campaign Stack
 
-The active campaign uses this PR stack:
+Campaign 23 used this PR stack:
 
 | Work item | Purpose |
 | --- | --- |
@@ -153,7 +153,7 @@ The active campaign uses this PR stack:
 | `report/assistant-loop-health` | Done: `ripr assistant-loop health` reads explicit proof inputs and writes advisory JSON/Markdown health reports. |
 | `ci/assistant-loop-health-artifacts` | Done: generated GitHub CI runs the health producer when assistant proof exists, uploads `assistant-loop-health.{json,md}`, and appends an advisory health summary. |
 | `docs/assistant-loop-health-workflow` | Done: `docs/ASSISTANT_LOOP_HEALTH_WORKFLOW.md` explains proof report versus health report, generated-CI summary use, complete/partial/missing states, static movement interpretation, repair routing, agent handoff, and advisory limits. |
-| `campaign/assistant-loop-health-closeout` | Next: close after spec, fixtures, producer, CI projection, docs, and validation prove the lane. |
+| `campaign/assistant-loop-health-closeout` | Done: `docs/handoffs/2026-05-09-campaign-23-closeout.md` records the prompt-to-artifact audit, validation plan, advisory boundary, and future-lane boundary. |
 
 ## Non-goals
 

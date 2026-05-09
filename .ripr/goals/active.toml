@@ -101,7 +101,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/assistant-loop-health-closeout"
-status = "ready"
+status = "done"
 branch = "campaign-assistant-loop-health-closeout"
 stackable = false
 acceptance = "Close Campaign 23 after the spec, fixtures, producer, CI projection, docs, and validation show assistant-loop health is advisory, explicit-input-only, and bounded to existing proof artifacts"

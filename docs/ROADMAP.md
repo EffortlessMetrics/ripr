@@ -220,22 +220,23 @@ baseline-only, stale, missing-input, unchanged-after-attempt, and no-actionable
 routes. The [Campaign 22 closeout](handoffs/2026-05-09-campaign-22-closeout.md)
 records the prompt-to-artifact audit and next-lane boundary.
 
-[Assistant Loop Health](ASSISTANT_LOOP_HEALTH_PROPOSAL.md) is now open as
-Campaign 23 after First Useful Action. It summarizes proof completeness,
-missing inputs, static evidence movement, recurring warnings, and repair queues
-across one or more `test-oracle-assistant-proof` reports without changing
-analyzer behavior, ranking, gate semantics, editor behavior, mutation
-execution, provider calls, source files, generated tests, or default CI
-blocking. [RIPR-SPEC-0022](specs/RIPR-SPEC-0022-assistant-loop-health-report.md)
+[Assistant Loop Health](ASSISTANT_LOOP_HEALTH_PROPOSAL.md) closed as Campaign
+23 after First Useful Action. It summarizes proof completeness, missing inputs,
+static evidence movement, recurring warnings, and repair queues across one or
+more `test-oracle-assistant-proof` reports without changing analyzer behavior,
+ranking, gate semantics, editor behavior, mutation execution, provider calls,
+source files, generated tests, or default CI blocking.
+[RIPR-SPEC-0022](specs/RIPR-SPEC-0022-assistant-loop-health-report.md)
 defines the contract, and
 `fixtures/boundary_gap/expected/assistant-loop-health/` pins the complete,
 partial, missing-input, unchanged, regressed, warning-heavy, and multi-proof
-corpus; `ripr assistant-loop health` now writes the advisory report over
-explicit proof inputs; generated GitHub CI now uploads and summarizes
-assistant-loop-health artifacts when proof artifacts exist; the
+corpus; `ripr assistant-loop health` writes the advisory report over explicit
+proof inputs; generated GitHub CI uploads and summarizes assistant-loop-health
+artifacts when proof artifacts exist; the
 [assistant loop health workflow](ASSISTANT_LOOP_HEALTH_WORKFLOW.md) explains
-maintainer and agent use; and the next ready slice is
-`campaign/assistant-loop-health-closeout`.
+maintainer and agent use; and the
+[Campaign 23 closeout](handoffs/2026-05-09-campaign-23-closeout.md) records
+the final audit and future-lane boundary.
 
 ## Strategic Sequence
 
