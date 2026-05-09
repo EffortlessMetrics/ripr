@@ -66,7 +66,7 @@ When opening future Lane 3 PRs, list them here until they merge or close:
 These are Lane 3 candidates. Open them only when they are explicitly selected
 as editor/LSP work:
 
-1. `test(lsp): add first-action status edge fixtures`
+1. `test(vscode): add first-action status edge fixtures`
    - valid first-useful-action report;
    - wrong workspace root;
    - missing report;
@@ -74,8 +74,8 @@ as editor/LSP work:
    - unsupported `schema_version`;
    - missing required fields;
    - `actionable`, `no_actionable_seam`, `unchanged_after_attempt`,
-     `missing_required_artifact`, `waived`, `suppressed`, and `acknowledged`
-     statuses;
+     `missing_required_artifact`, `baseline_only`, `already_improved`,
+     `waived`, `suppressed`, and `acknowledged` statuses;
    - stale saved-workspace state.
 2. `test(vscode): harden saved-workspace e2e`
    - Show Status with valid first-useful-action state;

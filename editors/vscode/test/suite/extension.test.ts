@@ -260,6 +260,7 @@ suite('Extension Smoke', () => {
         tool: 'ripr',
         kind: 'first_useful_action',
         status: 'actionable',
+        audience: 'developer',
         action_kind: 'write_focused_test',
         title: 'Add equality-boundary discriminator test',
         selected: {
@@ -304,6 +305,7 @@ suite('Extension Smoke', () => {
         kind: 'first_useful_action',
         root: '/tmp/other-workspace',
         status: 'actionable',
+        audience: 'developer',
         action_kind: 'write_focused_test',
         title: 'Add equality-boundary discriminator test',
         selected: {
@@ -330,6 +332,7 @@ suite('Extension Smoke', () => {
         tool: 'ripr',
         kind: 'first_useful_action',
         status: 'actionable',
+        audience: 'developer',
         action_kind: 'write_focused_test',
         title: 'Add equality-boundary discriminator test',
         selected: {
@@ -351,6 +354,129 @@ suite('Extension Smoke', () => {
       assert.ok(!context.status.text.includes('first action'));
     } finally {
       await context.dispose();
+    }
+  });
+
+  test('first useful action report fails closed for unsupported or incomplete JSON', async () => {
+    const invalidReports: Array<{ name: string; firstActionJson?: string }> = [
+      { name: 'missing report' },
+      { name: 'invalid JSON', firstActionJson: '{' },
+      { name: 'wrong kind', firstActionJson: firstActionReport({ kind: 'pr_review_front_panel' }) },
+      { name: 'missing kind', firstActionJson: firstActionReport({ kind: undefined }) },
+      { name: 'unsupported schema', firstActionJson: firstActionReport({ schema_version: '9.9' }) },
+      { name: 'missing schema', firstActionJson: firstActionReport({ schema_version: undefined }) },
+      { name: 'missing status', firstActionJson: firstActionReport({ status: undefined }) },
+      { name: 'unknown status', firstActionJson: firstActionReport({ status: 'unknown_status' }) },
+      { name: 'missing action kind', firstActionJson: firstActionReport({ action_kind: undefined }) },
+      { name: 'unknown action kind', firstActionJson: firstActionReport({ action_kind: 'run_mutation' }) },
+      { name: 'missing audience', firstActionJson: firstActionReport({ audience: undefined }) },
+      { name: 'unknown audience', firstActionJson: firstActionReport({ audience: 'model' }) },
+      { name: 'missing title', firstActionJson: firstActionReport({ title: undefined }) },
+    ];
+
+    for (const report of invalidReports) {
+      const context = createControllerTestContext({
+        firstActionJson: report.firstActionJson
+      });
+      try {
+        await context.controller.start();
+
+        assert.ok(
+          context.status.text.includes('ripr: queued'),
+          `${report.name} should keep the normal queued status`
+        );
+        assert.ok(
+          !String(context.status.tooltip).includes('First useful action'),
+          `${report.name} should not project first useful action details`
+        );
+        await context.controller.showStatus();
+        assert.ok(
+          !context.infoMessages.at(-1)?.includes('First useful action:'),
+          `${report.name} should not include first useful action in Show Status`
+        );
+      } finally {
+        await context.dispose();
+      }
+    }
+  });
+
+  test('first useful action status projection covers fallback statuses', async () => {
+    const cases = [
+      {
+        status: 'stale',
+        actionKind: 'refresh_evidence',
+        icon: '$(warning)',
+        title: 'Refresh stale evidence before acting'
+      },
+      {
+        status: 'missing_required_artifact',
+        actionKind: 'generate_missing_artifact',
+        icon: '$(warning)',
+        title: 'Generate the missing first-action input'
+      },
+      {
+        status: 'unchanged_after_attempt',
+        actionKind: 'revise_focused_test',
+        icon: '$(warning)',
+        title: 'Revise the focused test'
+      },
+      {
+        status: 'baseline_only',
+        actionKind: 'acknowledge_baseline',
+        icon: '$(pass)',
+        title: 'Acknowledge baseline debt'
+      },
+      {
+        status: 'already_improved',
+        actionKind: 'no_action',
+        icon: '$(pass)',
+        title: 'Static evidence already improved'
+      },
+      {
+        status: 'no_actionable_seam',
+        actionKind: 'no_action',
+        icon: '$(pass)',
+        title: 'No actionable seam'
+      },
+      {
+        status: 'waived',
+        actionKind: 'no_action',
+        icon: '$(pass)',
+        title: 'Waived by existing review state'
+      },
+      {
+        status: 'suppressed',
+        actionKind: 'no_action',
+        icon: '$(pass)',
+        title: 'Suppressed by repo policy'
+      },
+      {
+        status: 'acknowledged',
+        actionKind: 'acknowledge_baseline',
+        icon: '$(pass)',
+        title: 'Acknowledged for this review'
+      },
+    ];
+
+    for (const entry of cases) {
+      const context = createControllerTestContext({
+        firstActionJson: firstActionReport({
+          status: entry.status,
+          action_kind: entry.actionKind,
+          title: entry.title
+        })
+      });
+      try {
+        await context.controller.start();
+
+        assert.ok(context.status.text.includes(entry.icon), `${entry.status} should use ${entry.icon}`);
+        assert.ok(context.status.text.includes('ripr: first action'));
+        assert.ok(String(context.status.tooltip).includes(`Status: ${entry.status}`));
+        assert.ok(String(context.status.tooltip).includes(`Action: ${entry.actionKind}`));
+        assert.ok(String(context.status.tooltip).includes(entry.title));
+      } finally {
+        await context.dispose();
+      }
     }
   });
 
@@ -591,6 +717,41 @@ interface ControllerTestOptions {
   firstActionJson?: string | null;
   workspaceRoot?: string | null;
   resolveFailure?: { message: string; detail: string };
+}
+
+function firstActionReport(overrides: Record<string, unknown>): string {
+  const report: Record<string, unknown> = {
+    schema_version: '0.1',
+    tool: 'ripr',
+    kind: 'first_useful_action',
+    root: '.',
+    status: 'actionable',
+    audience: 'developer',
+    action_kind: 'write_focused_test',
+    title: 'Add equality-boundary discriminator test',
+    selected: {
+      path: 'src/lib.rs',
+      line: 2,
+      missing_discriminator: 'discount_threshold equality boundary'
+    },
+    target: {
+      file: 'tests/pricing.rs',
+      related_test: 'tests/pricing.rs::below_threshold_has_no_discount'
+    },
+    commands: {
+      verify: 'ripr agent verify --root . --json',
+      receipt: 'ripr agent receipt --root . --json'
+    },
+    warnings: []
+  };
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value === undefined) {
+      delete report[key];
+    } else {
+      report[key] = value;
+    }
+  }
+  return JSON.stringify(report);
 }
 
 class FakeLanguageClient {

@@ -578,6 +578,7 @@ function statusText(kind: RiprStatusKind, firstAction?: FirstUsefulActionStatus)
     }
     if (
       firstAction.status === 'already_improved' ||
+      firstAction.status === 'baseline_only' ||
       firstAction.status === 'no_actionable_seam' ||
       firstAction.status === 'suppressed' ||
       firstAction.status === 'acknowledged' ||
@@ -780,7 +781,19 @@ function parseFirstUsefulAction(
     return undefined;
   }
   const report = parsed as Record<string, unknown>;
+  if (stringField(report, 'schema_version') !== '0.1') {
+    return undefined;
+  }
   if (stringField(report, 'kind') !== 'first_useful_action') {
+    return undefined;
+  }
+  const status = boundedStringField(report, 'status', FIRST_USEFUL_ACTION_STATUSES);
+  const actionKind = boundedStringField(report, 'action_kind', FIRST_USEFUL_ACTION_ACTIONS);
+  const title = stringField(report, 'title');
+  if (!status || !actionKind || !title) {
+    return undefined;
+  }
+  if (!boundedStringField(report, 'audience', FIRST_USEFUL_ACTION_AUDIENCES)) {
     return undefined;
   }
   if (!rootMatchesWorkspace(stringField(report, 'root'), workspaceRoot)) {
@@ -791,9 +804,9 @@ function parseFirstUsefulAction(
   const commands = objectField(report, 'commands');
   const fallback = objectField(report, 'fallback');
   return {
-    status: stringField(report, 'status') ?? 'unknown',
-    actionKind: stringField(report, 'action_kind') ?? 'unknown',
-    title: stringField(report, 'title') ?? 'Review RIPR first useful action',
+    status,
+    actionKind,
+    title,
     selectedLocation: selectedLocation(selected),
     missingDiscriminator: selected ? stringField(selected, 'missing_discriminator') : undefined,
     target: target ? stringField(target, 'file') : undefined,
@@ -807,6 +820,35 @@ function parseFirstUsefulAction(
     warningCount: arrayLength(report, 'warnings'),
   };
 }
+
+const FIRST_USEFUL_ACTION_STATUSES = new Set([
+  'actionable',
+  'stale',
+  'missing_required_artifact',
+  'baseline_only',
+  'acknowledged',
+  'waived',
+  'suppressed',
+  'no_actionable_seam',
+  'already_improved',
+  'unchanged_after_attempt'
+]);
+
+const FIRST_USEFUL_ACTION_ACTIONS = new Set([
+  'write_focused_test',
+  'refresh_evidence',
+  'generate_missing_artifact',
+  'acknowledge_baseline',
+  'inspect_proof_report',
+  'revise_focused_test',
+  'no_action'
+]);
+
+const FIRST_USEFUL_ACTION_AUDIENCES = new Set([
+  'developer',
+  'reviewer',
+  'agent'
+]);
 
 function rootMatchesWorkspace(root: string | undefined, workspaceRoot: string): boolean {
   if (!root || root === '.') {
@@ -840,6 +882,15 @@ function objectField(value: Record<string, unknown>, field: string): Record<stri
 function stringField(value: Record<string, unknown>, field: string): string | undefined {
   const child = value[field];
   return typeof child === 'string' && child.trim() !== '' ? child : undefined;
+}
+
+function boundedStringField(
+  value: Record<string, unknown>,
+  field: string,
+  allowed: Set<string>
+): string | undefined {
+  const child = stringField(value, field);
+  return child && allowed.has(child) ? child : undefined;
 }
 
 function numberFieldValue(value: Record<string, unknown>, field: string): number | undefined {
