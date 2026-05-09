@@ -523,11 +523,13 @@ For a CI-first user, the useful output is the artifact packet:
 - `target/ripr/agent/` - compatibility copies of packet, brief, verify, and
   receipt JSON for the top seam when one is available;
 - `target/ripr/reports/` - targeted-test outcome, SARIF files when enabled,
-  repo badge JSON, `agent-receipt.json`, and any repo-local cockpit output.
+  repo badge JSON, `agent-receipt.json`, `first-useful-action.{json,md}`, and
+  any repo-local cockpit output.
 - `target/ripr/review/` - PR test guidance JSON and Markdown when
   `ripr review-comments` runs on pull requests.
 
 The workflow also writes a `RIPR advisory summary` step summary. It includes
+the first useful action when existing inputs allow `ripr first-action` to run,
 the top recommendation, the agent review packet when present, artifact links,
 SARIF and badge status, known limits, and PR guidance annotation counts when
 `target/ripr/review/comments.json` exists. On pull requests, the generated
@@ -800,6 +802,106 @@ jobs:
             --out target/ripr/reports/baseline-debt-delta.json \
             --out-md target/ripr/reports/baseline-debt-delta.md
 
+      - name: Render RIPR Zero status
+        if: always() && hashFiles('target/ripr/reports/baseline-debt-delta.json') != ''
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          zero_args=(
+            zero status
+            --delta target/ripr/reports/baseline-debt-delta.json
+            --out target/ripr/reports/ripr-zero-status.json
+            --out-md target/ripr/reports/ripr-zero-status.md
+          )
+          if [ -n "${RIPR_GATE_BASELINE:-}" ]; then
+            zero_args+=(--baseline "$RIPR_GATE_BASELINE")
+          fi
+          if [ -f target/ripr/reports/gate-decision.json ]; then
+            zero_args+=(--gate target/ripr/reports/gate-decision.json)
+          fi
+          if [ -f target/ripr/review/comments.json ]; then
+            zero_args+=(--pr-guidance target/ripr/review/comments.json)
+          fi
+          if [ -f target/ripr/reports/recommendation-calibration.json ]; then
+            zero_args+=(--recommendation-calibration target/ripr/reports/recommendation-calibration.json)
+          fi
+          ripr "${zero_args[@]}"
+
+      - name: Render RIPR test-oracle assistant proof
+        if: always() && hashFiles('target/ripr/review/comments.json') != '' && hashFiles('target/ripr/workflow/agent-brief.json') != '' && hashFiles('target/ripr/workflow/before.repo-exposure.json') != '' && hashFiles('target/ripr/workflow/after.repo-exposure.json') != '' && hashFiles('target/ripr/reports/agent-receipt.json') != '' && hashFiles('target/ripr/reports/pr-evidence-ledger.json') != ''
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          proof_args=(
+            assistant-loop proof
+            --root .
+            --pr-guidance target/ripr/review/comments.json
+            --agent-packet target/ripr/workflow/agent-brief.json
+            --before target/ripr/workflow/before.repo-exposure.json
+            --after target/ripr/workflow/after.repo-exposure.json
+            --receipt target/ripr/reports/agent-receipt.json
+            --ledger target/ripr/reports/pr-evidence-ledger.json
+            --out target/ripr/reports/test-oracle-assistant-proof.json
+            --out-md target/ripr/reports/test-oracle-assistant-proof.md
+          )
+          if [ -f target/ripr/reports/coverage-grip-frontier.json ]; then
+            proof_args+=(--coverage-frontier target/ripr/reports/coverage-grip-frontier.json)
+          fi
+          if [ -f target/ripr/reports/gate-decision.json ]; then
+            proof_args+=(--gate-decision target/ripr/reports/gate-decision.json)
+          fi
+          ripr "${proof_args[@]}"
+
+      - name: Render RIPR first useful action
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          first_action_has_input=false
+          first_action_args=(
+            first-action
+            --root .
+            --out target/ripr/reports/first-useful-action.json
+            --out-md target/ripr/reports/first-useful-action.md
+          )
+          if [ -f target/ripr/review/comments.json ]; then
+            first_action_args+=(--pr-guidance target/ripr/review/comments.json)
+            first_action_has_input=true
+          fi
+          if [ -f target/ripr/reports/test-oracle-assistant-proof.json ]; then
+            first_action_args+=(--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json)
+            first_action_has_input=true
+          fi
+          if [ -f target/ripr/reports/pr-evidence-ledger.json ]; then
+            first_action_args+=(--ledger target/ripr/reports/pr-evidence-ledger.json)
+            first_action_has_input=true
+          fi
+          if [ -f target/ripr/reports/baseline-debt-delta.json ]; then
+            first_action_args+=(--baseline-delta target/ripr/reports/baseline-debt-delta.json)
+            first_action_has_input=true
+          fi
+          if [ -f target/ripr/reports/agent-receipt.json ]; then
+            first_action_args+=(--receipt target/ripr/reports/agent-receipt.json)
+            first_action_has_input=true
+          fi
+          if [ -f target/ripr/reports/gate-decision.json ]; then
+            first_action_args+=(--gate-decision target/ripr/reports/gate-decision.json)
+            first_action_has_input=true
+          fi
+          if [ -f target/ripr/reports/coverage-grip-frontier.json ]; then
+            first_action_args+=(--coverage-frontier target/ripr/reports/coverage-grip-frontier.json)
+            first_action_has_input=true
+          fi
+          if [ -f target/ripr/workflow/evidence-context.json ]; then
+            first_action_args+=(--editor-context target/ripr/workflow/evidence-context.json)
+            first_action_has_input=true
+          fi
+          if [ "$first_action_has_input" = true ]; then
+            ripr "${first_action_args[@]}"
+          else
+            echo 'No RIPR first-useful-action inputs were available.'
+          fi
+
       - name: Render RIPR LLM work-loop summaries
         if: always()
         continue-on-error: true
@@ -860,9 +962,59 @@ jobs:
         continue-on-error: true
         run: |
           {
+            markdown_inline() {
+              printf '%s' "$1" | tr '\r\n' '  ' | sed 's/`/\\`/g'
+            }
+
             echo '## RIPR advisory summary'
             echo
             echo "RIPR is advisory static evidence. It does not edit source, generate tests, or run mutation testing."
+            echo
+            echo '### First useful action'
+            if [ -f target/ripr/reports/first-useful-action.json ] || [ -f target/ripr/reports/first-useful-action.md ]; then
+              if [ -f target/ripr/reports/first-useful-action.json ]; then
+                action_json=target/ripr/reports/first-useful-action.json
+                action_status="$(jq -r '.status // "unknown"' "$action_json" 2>/dev/null || echo unknown)"
+                action_kind="$(jq -r '.action_kind // "unknown"' "$action_json" 2>/dev/null || echo unknown)"
+                action_title="$(jq -r '.title // "not_available"' "$action_json" 2>/dev/null || echo unknown)"
+                action_why="$(jq -r '.why // "not_available"' "$action_json" 2>/dev/null || echo unknown)"
+                action_seam="$(jq -r '.selected.seam_id // "not_available"' "$action_json" 2>/dev/null || echo unknown)"
+                action_target="$(jq -r '(.target.file // "not_available") + (if .target.related_test then " related_test=" + .target.related_test else "" end)' "$action_json" 2>/dev/null || echo unknown)"
+                action_verify="$(jq -r '.commands.verify // "not_available"' "$action_json" 2>/dev/null || echo unknown)"
+                action_receipt="$(jq -r '.commands.receipt // "not_available"' "$action_json" 2>/dev/null || echo unknown)"
+                action_fallback="$(jq -r '.fallback.kind // "none"' "$action_json" 2>/dev/null || echo unknown)"
+                action_warning_count="$(jq -r '(.warnings // [] | length)' "$action_json" 2>/dev/null || echo 0)"
+                action_status="$(markdown_inline "$action_status")"
+                action_kind="$(markdown_inline "$action_kind")"
+                action_title="$(markdown_inline "$action_title")"
+                action_why="$(markdown_inline "$action_why")"
+                action_seam="$(markdown_inline "$action_seam")"
+                action_target="$(markdown_inline "$action_target")"
+                action_verify="$(markdown_inline "$action_verify")"
+                action_receipt="$(markdown_inline "$action_receipt")"
+                action_fallback="$(markdown_inline "$action_fallback")"
+                action_warning_count="$(markdown_inline "$action_warning_count")"
+                echo '#### First action at a glance'
+                echo "- Status: \`$action_status\`"
+                echo "- Action: \`$action_kind\`"
+                echo "- Title: \`$action_title\`"
+                echo "- Why: \`$action_why\`"
+                echo "- Seam: \`$action_seam\`"
+                echo "- Target: \`$action_target\`"
+                echo "- Verify command: \`$action_verify\`"
+                echo "- Receipt command: \`$action_receipt\`"
+                echo "- Fallback: \`$action_fallback\`"
+                echo "- Warnings: \`$action_warning_count\`"
+                echo "- Action artifacts: \`target/ripr/reports/first-useful-action.json\`, \`target/ripr/reports/first-useful-action.md\`"
+                echo "- Boundary: static evidence only; no runtime mutation execution."
+                echo
+              fi
+              if [ -f target/ripr/reports/first-useful-action.md ]; then
+                cat target/ripr/reports/first-useful-action.md
+              fi
+            else
+              echo 'First useful action was not generated. It runs when existing PR guidance, assistant proof, ledger, baseline, receipt, gate, coverage/grip, or editor context artifacts are available.'
+            fi
             echo
             echo '### Top recommendation'
             if [ -f target/ripr/pilot/pilot-summary.md ]; then
@@ -890,12 +1042,51 @@ jobs:
               echo "- PR test guidance report: not generated yet"
             fi
             echo
+            if [ -f target/ripr/reports/test-oracle-assistant-proof.json ] || [ -f target/ripr/reports/test-oracle-assistant-proof.md ]; then
+              echo '### Test-oracle assistant proof'
+              if [ -f target/ripr/reports/test-oracle-assistant-proof.json ]; then
+                proof_json=target/ripr/reports/test-oracle-assistant-proof.json
+                proof_status="$(jq -r '.status // "unknown"' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_seam="$(jq -r '(.seam.path // "unknown") + (if .seam.line then ":" + (.seam.line|tostring) else "" end)' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_missing="$(jq -r '.seam.missing_discriminator // "not_available"' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_placement="$(jq -r '.recommendation.placement // "not_available"' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_movement="$(jq -r '.evidence_movement.state // "unknown"' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_receipt="$(jq -r '.evidence_movement.artifact // .inputs.receipt // "not_available"' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_gate="$(jq -r '.ci_projection.gate_decision // "not_supplied"' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_coverage="$(jq -r '.ci_projection.coverage_frontier // "not_supplied"' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_warning_count="$(jq -r '(.warnings // [] | length)' "$proof_json" 2>/dev/null || echo 0)"
+                proof_status="$(markdown_inline "$proof_status")"
+                proof_seam="$(markdown_inline "$proof_seam")"
+                proof_missing="$(markdown_inline "$proof_missing")"
+                proof_placement="$(markdown_inline "$proof_placement")"
+                proof_movement="$(markdown_inline "$proof_movement")"
+                proof_receipt="$(markdown_inline "$proof_receipt")"
+                proof_gate="$(markdown_inline "$proof_gate")"
+                proof_coverage="$(markdown_inline "$proof_coverage")"
+                proof_warning_count="$(markdown_inline "$proof_warning_count")"
+                echo '#### Assistant proof at a glance'
+                echo "- Status: \`$proof_status\`"
+                echo "- Seam: \`$proof_seam\`"
+                echo "- Missing discriminator: \`$proof_missing\`"
+                echo "- Placement: \`$proof_placement\`"
+                echo "- Static movement: \`$proof_movement\`"
+                echo "- Receipt: \`$proof_receipt\`"
+                echo "- Gate input: \`$proof_gate\`"
+                echo "- Coverage/grip frontier input: \`$proof_coverage\`"
+                echo "- Warnings: \`$proof_warning_count\`"
+                echo "- Proof artifacts: \`target/ripr/reports/test-oracle-assistant-proof.json\`, \`target/ripr/reports/test-oracle-assistant-proof.md\`"
+                echo "- Pass/fail authority remains \`ripr gate evaluate\` when an explicit gate mode is configured."
+                echo
+              fi
+              if [ -f target/ripr/reports/test-oracle-assistant-proof.md ]; then
+                cat target/ripr/reports/test-oracle-assistant-proof.md
+              fi
+              echo
+            fi
+            echo
             echo '### Gate decision'
             if [ -f target/ripr/reports/gate-decision.json ]; then
               gate_json=target/ripr/reports/gate-decision.json
-              markdown_inline() {
-                printf '%s' "$1" | tr '\r\n' '  ' | sed 's/`/\\`/g'
-              }
               gate_status="$(jq -r '.status // "unknown"' "$gate_json" 2>/dev/null || echo unknown)"
               gate_mode="$(jq -r '.mode // "unknown"' "$gate_json" 2>/dev/null || echo unknown)"
               blocking="$(jq -r '.summary.blocking // 0' "$gate_json" 2>/dev/null || echo 0)"
@@ -954,9 +1145,6 @@ jobs:
             echo '### Baseline debt delta'
             if [ -f target/ripr/reports/baseline-debt-delta.json ]; then
               delta_json=target/ripr/reports/baseline-debt-delta.json
-              baseline_markdown_inline() {
-                printf '%s' "$1" | tr '\r\n' '  ' | sed 's/`/\\`/g'
-              }
               baseline_path="$(jq -r '.baseline.path // .inputs.baseline // "unknown"' "$delta_json" 2>/dev/null || echo unknown)"
               still_present="$(jq -r '.delta.still_present // 0' "$delta_json" 2>/dev/null || echo 0)"
               resolved="$(jq -r '.delta.resolved // 0' "$delta_json" 2>/dev/null || echo 0)"
@@ -967,16 +1155,16 @@ jobs:
               invalid_baseline_entry="$(jq -r '.delta.invalid_baseline_entry // 0' "$delta_json" 2>/dev/null || echo 0)"
               missing_current_input="$(jq -r '.delta.missing_current_input // 0' "$delta_json" 2>/dev/null || echo 0)"
               limits_note="$(jq -r '.limits_note // "Advisory baseline debt movement; gate decision owns pass or fail."' "$delta_json" 2>/dev/null || echo unknown)"
-              baseline_path="$(baseline_markdown_inline "$baseline_path")"
-              still_present="$(baseline_markdown_inline "$still_present")"
-              resolved="$(baseline_markdown_inline "$resolved")"
-              new_policy_eligible="$(baseline_markdown_inline "$new_policy_eligible")"
-              acknowledged_delta="$(baseline_markdown_inline "$acknowledged_delta")"
-              suppressed_delta="$(baseline_markdown_inline "$suppressed_delta")"
-              stale_baseline_entry="$(baseline_markdown_inline "$stale_baseline_entry")"
-              invalid_baseline_entry="$(baseline_markdown_inline "$invalid_baseline_entry")"
-              missing_current_input="$(baseline_markdown_inline "$missing_current_input")"
-              limits_note="$(baseline_markdown_inline "$limits_note")"
+              baseline_path="$(markdown_inline "$baseline_path")"
+              still_present="$(markdown_inline "$still_present")"
+              resolved="$(markdown_inline "$resolved")"
+              new_policy_eligible="$(markdown_inline "$new_policy_eligible")"
+              acknowledged_delta="$(markdown_inline "$acknowledged_delta")"
+              suppressed_delta="$(markdown_inline "$suppressed_delta")"
+              stale_baseline_entry="$(markdown_inline "$stale_baseline_entry")"
+              invalid_baseline_entry="$(markdown_inline "$invalid_baseline_entry")"
+              missing_current_input="$(markdown_inline "$missing_current_input")"
+              limits_note="$(markdown_inline "$limits_note")"
               echo '#### Baseline debt movement'
               echo "- Baseline: \`$baseline_path\`"
               echo "- Counts: still_present=\`$still_present\`, resolved=\`$resolved\`, new_policy_eligible=\`$new_policy_eligible\`, acknowledged=\`$acknowledged_delta\`, suppressed=\`$suppressed_delta\`, stale=\`$stale_baseline_entry\`, invalid=\`$invalid_baseline_entry\`, missing_current_input=\`$missing_current_input\`"
@@ -986,8 +1174,63 @@ jobs:
             fi
             if [ -f target/ripr/reports/baseline-debt-delta.md ]; then
               cat target/ripr/reports/baseline-debt-delta.md
+            elif [ -n "${RIPR_GATE_BASELINE:-}" ]; then
+              echo 'Baseline debt delta was not generated. Check that `RIPR_GATE_MODE` produced `target/ripr/reports/gate-decision.json` and that `RIPR_GATE_BASELINE` points at a readable baseline.'
             else
-              echo 'Baseline debt delta was not generated. Set `RIPR_GATE_BASELINE` and run a gate mode so CI can compare checked-in debt against current gate evidence.'
+              echo 'Baseline debt delta was not run. Set `RIPR_GATE_BASELINE` with an explicit gate mode to compare current evidence against reviewed baseline debt.'
+            fi
+            echo
+            echo '### RIPR Zero status'
+            if [ -f target/ripr/reports/ripr-zero-status.json ]; then
+              zero_json=target/ripr/reports/ripr-zero-status.json
+              zero_state="$(jq -r '.ripr_zero.state // "unknown"' "$zero_json" 2>/dev/null || echo unknown)"
+              visible_unresolved="$(jq -r '.ripr_zero.visible_unresolved // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_new_policy_eligible="$(jq -r '.ripr_zero.new_policy_eligible // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_blocking_candidates="$(jq -r '.ripr_zero.blocking_candidates // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_acknowledged="$(jq -r '.ripr_zero.acknowledged // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_suppressed="$(jq -r '.ripr_zero.suppressed // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_still_present="$(jq -r '.baseline.still_present // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_resolved="$(jq -r '.baseline.resolved // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_metadata_stale="$(jq -r '.baseline.metadata.stale // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_metadata_missing="$(jq -r '.baseline.metadata.missing_metadata // 0' "$zero_json" 2>/dev/null || echo 0)"
+              top_area="$(jq -r '(.top_debt_areas[0].area // "none")' "$zero_json" 2>/dev/null || echo unknown)"
+              top_route="$(jq -r '(.repair_routes[0] | if . == null then "none" else ((.path // "unknown") + (if .line then ":" + (.line|tostring) else "" end) + " " + (.missing_discriminator // "missing discriminator unavailable")) end)' "$zero_json" 2>/dev/null || echo unknown)"
+              trend_source="$(jq -r '.trend.source // "not_available"' "$zero_json" 2>/dev/null || echo unknown)"
+              zero_state="$(markdown_inline "$zero_state")"
+              visible_unresolved="$(markdown_inline "$visible_unresolved")"
+              zero_new_policy_eligible="$(markdown_inline "$zero_new_policy_eligible")"
+              zero_blocking_candidates="$(markdown_inline "$zero_blocking_candidates")"
+              zero_acknowledged="$(markdown_inline "$zero_acknowledged")"
+              zero_suppressed="$(markdown_inline "$zero_suppressed")"
+              zero_still_present="$(markdown_inline "$zero_still_present")"
+              zero_resolved="$(markdown_inline "$zero_resolved")"
+              zero_metadata_stale="$(markdown_inline "$zero_metadata_stale")"
+              zero_metadata_missing="$(markdown_inline "$zero_metadata_missing")"
+              top_area="$(markdown_inline "$top_area")"
+              top_route="$(markdown_inline "$top_route")"
+              trend_source="$(markdown_inline "$trend_source")"
+              echo '#### RIPR Zero at a glance'
+              echo "- State: \`$zero_state\`"
+              echo "- Visible unresolved: \`$visible_unresolved\`"
+              echo "- New policy-eligible: \`$zero_new_policy_eligible\`"
+              echo "- Blocking candidates: \`$zero_blocking_candidates\`"
+              echo "- Acknowledged: \`$zero_acknowledged\`"
+              echo "- Suppressed: \`$zero_suppressed\`"
+              echo "- Baseline still present: \`$zero_still_present\`"
+              echo "- Baseline resolved: \`$zero_resolved\`"
+              echo "- Baseline metadata: stale=\`$zero_metadata_stale\`, missing=\`$zero_metadata_missing\`"
+              echo "- Top debt area: \`$top_area\`"
+              echo "- Top repair route: \`$top_route\`"
+              echo "- Trend source: \`$trend_source\`"
+              echo "- RIPR Zero artifacts: \`target/ripr/reports/ripr-zero-status.json\`, \`target/ripr/reports/ripr-zero-status.md\`"
+              echo
+            fi
+            if [ -f target/ripr/reports/ripr-zero-status.md ]; then
+              cat target/ripr/reports/ripr-zero-status.md
+            elif [ -f target/ripr/reports/baseline-debt-delta.json ]; then
+              echo 'RIPR Zero status was not generated. Inspect `target/ripr/reports/baseline-debt-delta.json` and rerun `ripr zero status` locally.'
+            else
+              echo 'RIPR Zero status was not run. It requires `baseline-debt-delta.json`, which is produced only after an explicit gate mode and reviewed baseline are configured.'
             fi
             echo
             echo '### SARIF and badge status'
@@ -1063,14 +1306,22 @@ The generated workflow always uploads `target/ripr/pilot`,
 `target/ripr/review`, and `target/ci` as a `ripr-reports` artifact when files
 exist. When `RIPR_GATE_BASELINE` is set and gate evaluation writes
 `target/ripr/reports/gate-decision.json`, the workflow also runs
-`ripr baseline diff` and includes:
+`ripr baseline diff`, then `ripr zero status`, and includes:
 
 - `target/ripr/reports/baseline-debt-delta.json`;
-- `target/ripr/reports/baseline-debt-delta.md`.
+- `target/ripr/reports/baseline-debt-delta.md`;
+- `target/ripr/reports/ripr-zero-status.json`;
+- `target/ripr/reports/ripr-zero-status.md`.
 
 The baseline debt delta is advisory debt-movement evidence. It is summarized in
-the job summary, but `ripr gate evaluate` remains the only generated-workflow
-pass/fail authority. The repo badge files in that artifact are:
+the job summary and feeds the RIPR Zero status summary, but `ripr gate
+evaluate` remains the only generated-workflow pass/fail authority. The RIPR
+Zero section reports visible unresolved debt, new policy-eligible debt,
+acknowledgements, suppressions, baseline metadata health, top debt area, top
+repair route, and trend availability as advisory progress evidence. Use
+[RIPR Zero reporting workflow](RIPR_ZERO_REPORTING_WORKFLOW.md) for how to read
+the status, refresh stale baseline metadata, and route repair packets. The repo
+badge files in that artifact are:
 
 - `target/ripr/reports/repo-ripr-badge.json`, the seam-native native badge
   payload;
@@ -1111,10 +1362,58 @@ RIPR_GATE_BASELINE=
 
 `visible-only` writes `target/ripr/reports/gate-decision.{json,md}` and appends
 an at-a-glance gate section plus the Markdown decision report to the job summary
-without making a RIPR finding block the PR. The first-screen summary names the
-mode, status, decision counts, active and acknowledgement labels, applied
-waiver label, baseline input, calibration inputs/effects, blocking reason, and
-gate artifact paths.
+without making a RIPR finding block the PR. If `RIPR_GATE_BASELINE` is also
+set and the gate decision exists, the workflow writes
+`target/ripr/reports/baseline-debt-delta.{json,md}` as a non-blocking debt
+movement report. The first-screen summary names the mode, status, decision
+counts, active and acknowledgement labels, applied waiver label, baseline
+input, calibration inputs/effects, blocking reason, baseline debt movement, and
+gate and delta artifact paths.
+
+On pull requests where `ripr review-comments` writes
+`target/ripr/review/comments.json`, generated CI also writes and uploads
+`target/ripr/reports/pr-evidence-ledger.json` and
+`target/ripr/reports/pr-evidence-ledger.md`. The ledger joins PR guidance,
+optional gate decision, baseline debt delta, RIPR Zero status, recommendation
+calibration, agent receipt, optional coverage summary, labels, and optional
+history into one advisory PR movement card. The job summary shows new
+policy-eligible gaps, baseline debt still present, baseline debt resolved,
+acknowledged and suppressed counts, blocking candidates, visible unresolved
+gaps, the top repair route, verify command, agent command, coverage/grip
+frontier status, and history trend when available. The ledger is evidence only;
+`ripr gate evaluate` remains the pass/fail authority for configured gate modes.
+See [PR evidence ledger workflow](PR_EVIDENCE_LEDGER_WORKFLOW.md) for how to
+read the ledger as waiver aging, baseline burn-down, repair receipts, and
+coverage/grip frontier evidence.
+See [Test-oracle assistant proof report](TEST_ORACLE_ASSISTANT_PROOF_REPORT.md)
+for how to read the proof report, warnings, static movement, optional CI
+projection, and advisory limits.
+
+When the full assistant-loop artifact chain is present, generated CI also
+writes and uploads `target/ripr/reports/test-oracle-assistant-proof.json` and
+`target/ripr/reports/test-oracle-assistant-proof.md`. This step is advisory and
+runs only after PR guidance, the editor/agent brief, before/after static
+evidence, the agent receipt, and the PR evidence ledger already exist. The job
+summary appends the proof report and an at-a-glance card with the selected seam,
+missing discriminator, placement state, static movement, receipt path, optional
+gate input, optional coverage/grip frontier input, and warning count. If the
+required inputs are absent, generated CI skips the proof projection instead of
+printing a placeholder or changing pass/fail behavior.
+
+Generated CI also projects the first useful action when at least one explicit
+input artifact is already present. It runs `ripr first-action --root .` with
+existing PR guidance, assistant proof, PR evidence ledger, baseline delta,
+agent receipt, gate decision, coverage/grip frontier, and editor context
+inputs when those files exist, then writes and uploads
+`target/ripr/reports/first-useful-action.json` and
+`target/ripr/reports/first-useful-action.md` with the normal report packet. The
+job summary appends the first action at a glance plus the Markdown report. If
+no inputs exist, the step logs that no first-useful-action inputs were
+available and leaves CI pass/fail behavior unchanged.
+
+See [First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md) for how
+developers, reviewers, and coding agents should read that summary, act on the
+selected action, verify static movement, and emit receipts.
 
 For every configured gate mode, the generated workflow behavior is:
 
@@ -1123,14 +1422,28 @@ For every configured gate mode, the generated workflow behavior is:
 3. run `ripr gate evaluate` only when `RIPR_GATE_MODE` is set;
 4. run `ripr baseline diff` only when `RIPR_GATE_BASELINE` is set and
    `gate-decision.json` exists;
-5. render the at-a-glance gate section from `gate-decision.json`;
-6. render the baseline debt movement section from
+5. run `ripr zero status` only when `baseline-debt-delta.json` exists;
+6. render the at-a-glance gate section from `gate-decision.json`;
+7. render the baseline debt movement section from
    `baseline-debt-delta.json` when present;
-7. append the detailed `gate-decision.md` and `baseline-debt-delta.md`
-   reports when present;
-8. upload gate and baseline delta artifacts with the normal `ripr-reports`
-   artifact packet;
-9. fail only when the explicit gate mode returns `blocked` or `config_error`.
+8. render the RIPR Zero at-a-glance section from `ripr-zero-status.json` and
+   append `ripr-zero-status.md` when present;
+9. run `ripr pr-ledger record` on pull requests when `comments.json` exists;
+10. render the PR movement section from `pr-evidence-ledger.json` and append
+   `pr-evidence-ledger.md` when present;
+11. run `ripr assistant-loop proof` only when the required assistant-loop
+   artifacts exist;
+12. render the assistant proof section from `test-oracle-assistant-proof.json`
+   and append `test-oracle-assistant-proof.md` when present;
+13. run `ripr first-action` when explicit first-action inputs exist;
+14. render the First Useful Action section from `first-useful-action.json` and
+   append `first-useful-action.md` when present;
+15. append the detailed `gate-decision.md`, `baseline-debt-delta.md`, and
+   `ripr-zero-status.md` reports when present;
+16. upload gate, baseline delta, RIPR Zero, PR evidence ledger,
+   test-oracle assistant proof, and first useful action artifacts with the
+   normal `ripr-reports` artifact packet;
+17. fail only when the explicit gate mode returns `blocked` or `config_error`.
 
 Acknowledgeable policy:
 
@@ -1152,7 +1465,16 @@ RIPR_GATE_BASELINE=.ripr/gate-baseline.json
 
 `baseline-check` is for repos with an explicit checked-in baseline. Use it only
 after reviewing the baseline file; missing baseline input is reported as a
-configuration problem instead of being treated as clean evidence.
+configuration problem instead of being treated as clean evidence. When the
+baseline is readable and the gate decision is produced, generated CI also
+uploads `baseline-debt-delta.json` and `baseline-debt-delta.md` and summarizes
+still-present, resolved, new policy-eligible, acknowledged, suppressed, stale,
+invalid, and missing-input counts in the job summary. The delta report remains
+advisory movement evidence; `ripr gate evaluate` is still the pass/fail owner.
+When the baseline delta exists, generated CI also writes and uploads
+`ripr-zero-status.json` and `ripr-zero-status.md`, then summarizes RIPR 0 state,
+visible unresolved debt, metadata health, top debt area, and top repair route
+as advisory adoption progress.
 
 Calibrated gate:
 

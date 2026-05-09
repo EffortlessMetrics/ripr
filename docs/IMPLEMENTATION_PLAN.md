@@ -32,7 +32,13 @@ through multiple work items in a campaign, but each work item should follow the
 | Calibrated Gate Policy (15) | Define optional calibrated gates over existing PR-time evidence without changing advisory defaults or blurring static/runtime evidence. | Complete: spec, evaluator, fixtures, generated CI opt-in wiring, evidence-preserving CI behavior, calibrated gate guide, and `campaign/calibrated-gate-closeout`. |
 | Gate Adoption UX (16) | Make optional calibrated gate adoption safe and obvious for real teams without changing advisory defaults. | Complete: generated-CI examples, waiver workflows, baseline guidance, CI gate summary polish, dogfood receipts, blocking-readiness guidance, and `campaign/gate-adoption-ux-closeout`. |
 | RIPR Zero Adoption (17) | Turn baselines into burn-down ledgers with create, diff, and shrink-only refresh commands while keeping generated CI advisory by default. | Complete: spec, baseline create, baseline diff, shrink-only update, generated CI baseline-delta artifacts, baseline ledger workflow guide, and `campaign/ripr-zero-adoption-closeout`. |
-| Editor Evidence UX (future) | Make the saved-workspace LSP path feel like an editor-native test-intent cockpit from diagnostic to hover, related test, context packet, one test, verify, and receipt. | Queued separately; contract audit, hover hardening, and evidence-aware action hardening are complete, with remaining behavior work gated on explicit activation or explicit parallel-lane decisions. |
+| RIPR Zero Reporting (18) | Turn reviewed baselines and debt deltas into repo-level RIPR 0 status, stale-debt, trend, and repair-area reporting while preserving advisory defaults. | Complete: spec, baseline metadata, status report, generated CI summary, user workflow docs, and `campaign/ripr-zero-reporting-closeout`. |
+| PR Evidence Ledger (19) | Turn per-PR RIPR evidence into an adoption ledger for movement history, waiver aging, baseline burn-down, repair receipts, and coverage/grip frontier signals while preserving advisory defaults. | Complete: spec, producer, generated-CI projection, coverage/grip frontier report, user workflow docs, and `campaign/pr-evidence-ledger-closeout`. |
+| Test-Oracle Assistant Proof (20) | Prove the full PR-time loop from changed Rust behavior to static evidence, PR/editor guidance, focused-test handoff, verification, receipt, and advisory CI/ledger projection. | Complete: spec, canonical fixture, dogfood receipt, user workflow docs, and `campaign/test-oracle-assistant-proof-closeout`. |
+| Test-Oracle Assistant Report Producer (21) | Turn the proved assistant loop into a public read-only JSON/Markdown report producer and optional advisory CI projection. | Complete: report producer, generated-CI projection, proof-report docs, and `campaign/test-oracle-assistant-report-closeout`. |
+| First Useful Action (22) | Compress existing editor, PR, ledger, proof, receipt, optional gate, coverage/grip, and staleness evidence into one advisory next test action. | Active: RIPR-SPEC-0020 defines the report contract, the routing corpus is pinned, `ripr first-action` writes the read-only advisory report, generated CI surfaces it as advisory summary/artifact content, VS Code status/Show Status project an existing report, and the workflow docs explain developer, reviewer, and agent use; dogfood receipts are the next ready slice, with closeout still blocked behind those receipts. |
+| Assistant Loop Health (future) | Summarize proof completeness, missing inputs, static evidence movement, recurring warnings, and next repair queues across one or more assistant proof reports. | Proposed in [Assistant Loop Health proposal](ASSISTANT_LOOP_HEALTH_PROPOSAL.md); should wait until First Useful Action settles the first-screen routing contract. |
+| Editor Evidence UX (future) | Make the saved-workspace LSP path feel like an editor-native test-intent cockpit from diagnostic to hover, related test, context packet, one test, verify, and receipt. | Complete as an explicit parallel Lane 3 closeout: contract audit, hover hardening, evidence-aware actions, context packet, protocol smoke, VS Code smoke, status/staleness, workflow docs, and closeout audit. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
 through 8 are complete. Campaign 6 closed after the internal module SRP chain
@@ -108,12 +114,65 @@ guide now documents initial adoption, baseline-check rollout, shrink-only
 refresh, new debt review, and the path toward RIPR 0. The
 [Campaign 17 closeout](handoffs/2026-05-09-campaign-17-closeout.md) records
 the PR chain, prompt-to-artifact audit, proof commands, and next-work boundary.
-Editor Evidence UX remains
-queued as a separate Lane 3 campaign; its contract audit is recorded in
-[Editor Evidence UX](EDITOR_EVIDENCE_UX.md), and hover plus evidence-aware
-action hardening have landed as explicit parallel slices. Further behavior work
-should start only after an explicit activation PR or explicit parallel-lane
-decision.
+Campaign 18 closed as RIPR Zero Reporting. RIPR-SPEC-0017 defines the
+repo-level status surface for baseline owner/reason/age metadata, stale
+warnings, trends, top debt areas, and repair routing. Baseline metadata
+preservation, the read-only RIPR Zero status report, generated-CI summary
+projection, and the user workflow docs are in place. The
+[Campaign 18 closeout](handoffs/2026-05-09-campaign-18-closeout.md) records
+the PR chain, proof commands, and boundary that progress toward RIPR 0 remains
+separate from analyzer identity, gate policy, and advisory defaults.
+Editor Evidence UX closed as a separate Lane 3 campaign; its contract audit is
+recorded in [Editor Evidence UX](EDITOR_EVIDENCE_UX.md), the user path is
+documented in the [editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md), and
+the [closeout handoff](handoffs/2026-05-09-editor-evidence-ux-closeout.md)
+records the prompt-to-artifact audit. Future editor work should be opened as a
+new explicit campaign.
+Campaign 19 closed as PR Evidence Ledger. It made append-only per-PR movement
+records, waiver aging, baseline burn-down, repair receipts, and optional
+coverage/grip frontier signals visible without changing advisory defaults.
+RIPR-SPEC-0018 pins the contract; `ripr pr-ledger record` writes the read-only
+ledger; generated CI uploads `pr-evidence-ledger.{json,md}` and appends the
+advisory PR movement card; `ripr coverage-grip frontier` keeps coverage and
+behavioral grip movement separate; and
+`docs/PR_EVIDENCE_LEDGER_WORKFLOW.md` explains the adoption workflow. Campaign
+20 closed as Test-Oracle Assistant Proof. RIPR-SPEC-0019 defines the
+end-to-end proof contract from changed Rust behavior through static evidence,
+PR/editor guidance, focused-test handoff, verification, receipt, and advisory
+CI/ledger projection without changing analyzer, policy, editor, or CI defaults.
+The canonical boundary-gap replay corpus pins one seam across recommendation,
+handoff, receipt, and ledger projection. The repo-local dogfood receipt traces
+seam `67fc764ba37d77bd` through PR guidance, editor/agent handoff,
+before/after evidence, receipt, PR ledger projection, and coverage/grip
+frontier availability. `docs/TEST_ORACLE_ASSISTANT_WORKFLOW.md` explains the
+user-facing PR/editor-to-receipt workflow and static evidence limits. The
+[Campaign 20 closeout](handoffs/2026-05-09-campaign-20-closeout.md) records
+the prompt-to-artifact audit, proof commands, and boundary that future proof
+report producers, PR/CI polish, analyzer improvements, and editor UX work
+should be opened as explicit follow-up campaigns. Campaign 21 closed as
+Test-Oracle Assistant Report Producer. `ripr assistant-loop proof` now produces
+advisory `test-oracle-assistant-proof.{json,md}` artifacts from explicit
+existing inputs without changing analyzer, ranking, gate, editor, provider,
+mutation, or default CI behavior. Generated GitHub CI now projects that report
+only when the required artifact chain already exists.
+`docs/TEST_ORACLE_ASSISTANT_PROOF_REPORT.md` now explains how to read the
+report, warnings, static movement, optional CI projection, and limits. Campaign
+21 closed with
+`docs/handoffs/2026-05-09-campaign-21-closeout.md`. Campaign 22 is now open as
+First Useful Action. It compresses existing evidence into one advisory next
+test action; RIPR-SPEC-0020 now pins the report contract, the routing corpus
+pins expected statuses and fallback outputs, `ripr first-action` now writes the
+read-only report from explicit artifacts, generated CI projects it as advisory
+summary/artifact content, and VS Code status projects existing reports without
+rerunning analysis. The first-action workflow docs now explain how developers,
+reviewers, and coding agents read the action, verify movement, emit receipts,
+and interpret fallback states. Dogfood receipts are the next ready work item.
+
+The proposed [Assistant Loop Health](ASSISTANT_LOOP_HEALTH_PROPOSAL.md) follow-up
+should not replace Campaign 22. It becomes useful after First Useful Action gives
+developers, reviewers, and coding agents one first-screen action; health can then
+measure whether assistant proof packets are complete, stuck, missing receipts,
+or moving static evidence over time.
 
 ## PR 0: `planning-and-tracking-docs`
 

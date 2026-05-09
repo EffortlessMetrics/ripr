@@ -493,7 +493,19 @@ mod tests {
             "skipped": {"suppressed": 0, "not_applicable": 0, "malformed": 1, "other": 0}
           },
           "entries": [
-            {"identity": {"seam_id": "same"}, "path": "src/same.rs", "line": 1, "static_class": "weakly_gripped"},
+            {
+              "identity": {"seam_id": "same"},
+              "path": "src/same.rs",
+              "line": 1,
+              "static_class": "weakly_gripped",
+              "review": {
+                "owner": "test-platform",
+                "reason": "known baseline debt",
+                "created_at": "2026-05-08T00:00:00Z",
+                "review_after": "2026-08-08T00:00:00Z",
+                "source": "target/ripr/reports/gate-decision.json"
+              }
+            },
             {"identity": {"seam_id": "gone"}, "path": "src/gone.rs", "line": 2, "static_class": "weakly_gripped"},
             {"identity": {}, "decision": "advisory"}
           ],
@@ -519,6 +531,9 @@ mod tests {
         assert_eq!(baseline_update_removed_resolved_count(&report), 1);
         assert_eq!(baseline_update_ignored_new_current_count(&report), 1);
         assert!(rendered.contains("\"seam_id\": \"same\""));
+        assert!(rendered.contains("\"owner\": \"test-platform\""));
+        assert!(rendered.contains("\"review_after\": \"2026-08-08T00:00:00Z\""));
+        assert!(rendered.contains("\"source\": \"target/ripr/reports/gate-decision.json\""));
         assert!(!rendered.contains("\"seam_id\": \"gone\""));
         assert!(!rendered.contains("\"seam_id\": \"new\""));
         assert!(rendered.contains("\"entries\": 2"));

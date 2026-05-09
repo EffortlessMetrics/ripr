@@ -10,6 +10,11 @@ Usage:
   ripr baseline create --from target/ripr/reports/gate-decision.json [--out .ripr/gate-baseline.json] [--dry-run] [--force]
   ripr baseline diff --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json [--out target/ripr/reports/baseline-debt-delta.json] [--out-md target/ripr/reports/baseline-debt-delta.md]
   ripr baseline update --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json --remove-resolved [--out .ripr/gate-baseline.json]
+  ripr zero status --delta target/ripr/reports/baseline-debt-delta.json [--baseline .ripr/gate-baseline.json] [--gate target/ripr/reports/gate-decision.json] [--out target/ripr/reports/ripr-zero-status.json] [--out-md target/ripr/reports/ripr-zero-status.md]
+  ripr pr-ledger record --pr-number 123 --base SHA --head SHA [--gate target/ripr/reports/gate-decision.json] [--baseline-delta target/ripr/reports/baseline-debt-delta.json] [--zero-status target/ripr/reports/ripr-zero-status.json] [--out target/ripr/reports/pr-evidence-ledger.json]
+  ripr coverage-grip frontier (--ledger target/ripr/reports/pr-evidence-ledger.json|--baseline-delta target/ripr/reports/baseline-debt-delta.json|--zero-status target/ripr/reports/ripr-zero-status.json) [--coverage target/ripr/reports/coverage-summary.json] [--out target/ripr/reports/coverage-grip-frontier.json]
+  ripr assistant-loop proof --pr-guidance target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-brief.json --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --receipt target/ripr/reports/agent-receipt.json [--out target/ripr/reports/test-oracle-assistant-proof.json]
+  ripr first-action [--root .] [--pr-guidance target/ripr/review/comments.json] [--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json] [--ledger target/ripr/reports/pr-evidence-ledger.json] [--out target/ripr/reports/first-useful-action.json]
   ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
   ripr agent start --root . --seam-id ID [--out target/ripr/workflow]
   ripr agent brief --root . (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json
@@ -39,6 +44,11 @@ Quick start:
   ripr baseline create --from target/ripr/reports/gate-decision.json --out .ripr/gate-baseline.json
   ripr baseline diff --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json
   ripr baseline update --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json --remove-resolved
+  ripr zero status --baseline .ripr/gate-baseline.json --delta target/ripr/reports/baseline-debt-delta.json --gate target/ripr/reports/gate-decision.json
+  ripr pr-ledger record --pr-number 123 --base origin/main --head HEAD --baseline-delta target/ripr/reports/baseline-debt-delta.json --zero-status target/ripr/reports/ripr-zero-status.json
+  ripr coverage-grip frontier --ledger target/ripr/reports/pr-evidence-ledger.json --coverage target/ripr/reports/coverage-summary.json
+  ripr assistant-loop proof --pr-guidance target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-brief.json --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --receipt target/ripr/reports/agent-receipt.json
+  ripr first-action --pr-guidance target/ripr/review/comments.json --assistant-proof target/ripr/reports/test-oracle-assistant-proof.json --ledger target/ripr/reports/pr-evidence-ledger.json
   ripr calibrate cargo-mutants --mutants-json target/mutants/outcomes.json --repo-exposure-json target/ripr/pilot/after.repo-exposure.json
   ripr agent start --root . --seam-id f3c9e4d21a0b7c88
   ripr agent brief --root . --diff change.diff --json
@@ -213,6 +223,112 @@ mode. `--remove-resolved` removes reviewed identities that are absent from the
 current gate-decision evidence, preserves malformed or ambiguous entries for
 manual review, and never adopts new current debt. Generated CI should not use
 this command to rewrite checked-in baselines automatically.
+"#;
+
+const ZERO_HELP: &str = r#"Usage: ripr zero status --delta PATH [--baseline PATH] [--gate PATH] [--pr-guidance PATH] [--recommendation-calibration PATH] [--out PATH] [--out-md PATH]
+
+Status options:
+  --baseline PATH                       Optional reviewed gate baseline ledger.
+  --delta PATH                          Required baseline-debt-delta JSON from `ripr baseline diff`.
+  --gate PATH                           Optional gate-decision JSON from `ripr gate evaluate`.
+  --pr-guidance PATH                    Optional PR guidance JSON from `ripr review-comments`.
+  --recommendation-calibration PATH     Optional recommendation calibration JSON.
+  --out PATH                            JSON output path. Defaults to target/ripr/reports/ripr-zero-status.json.
+  --out-md PATH                         Markdown output path. Defaults to target/ripr/reports/ripr-zero-status.md.
+
+The RIPR Zero status report is read-only advisory progress evidence over
+existing baselines, baseline debt deltas, gate decisions, PR guidance, and
+optional calibration artifacts. It reports visible unresolved debt, baseline
+movement, metadata health, top debt areas, and bounded repair routes. It does
+not run analysis, mutate baselines, edit source, generate tests, call an LLM,
+run mutation testing, change gate policy, or make CI blocking by default.
+"#;
+
+const PR_LEDGER_HELP: &str = r#"Usage: ripr pr-ledger record --pr-number VALUE --base REV --head REV [--gate PATH] [--baseline-delta PATH] [--zero-status PATH] [--pr-guidance PATH] [--recommendation-calibration PATH] [--agent-receipt PATH] [--coverage PATH] [--history PATH] [--out PATH] [--out-md PATH]
+
+Record options:
+  --pr-number VALUE                    Pull request number or local identifier.
+  --base REV                           Pull request base revision.
+  --head REV                           Pull request head revision.
+  --label LABEL                        Repeatable PR label to preserve in the record.
+  --gate PATH                          Optional gate-decision JSON from `ripr gate evaluate`.
+  --baseline-delta PATH                Optional baseline-debt-delta JSON from `ripr baseline diff`.
+  --zero-status PATH                   Optional RIPR Zero status JSON from `ripr zero status`.
+  --pr-guidance PATH                   Optional PR guidance JSON from `ripr review-comments`.
+  --recommendation-calibration PATH    Optional recommendation calibration JSON.
+  --agent-receipt PATH                 Optional agent receipt JSON.
+  --coverage PATH                      Optional coverage summary JSON.
+  --history PATH                       Optional previous PR evidence ledger JSONL history.
+  --out PATH                           JSON output path. Defaults to target/ripr/reports/pr-evidence-ledger.json.
+  --out-md PATH                        Markdown output path. Defaults to target/ripr/reports/pr-evidence-ledger.md.
+
+The PR evidence ledger is read-only advisory history over existing RIPR
+artifacts. It records PR-local movement, waiver visibility, suppressions,
+repair receipts, and optional coverage/grip frontier signals. It does not run
+analysis, mutate baselines, post comments, edit source, generate tests, call an
+LLM, run mutation testing, change gate policy, or make CI blocking by default.
+"#;
+
+const COVERAGE_GRIP_HELP: &str = r#"Usage: ripr coverage-grip frontier (--ledger PATH|--baseline-delta PATH|--zero-status PATH) [--coverage PATH] [--out PATH] [--out-md PATH]
+
+Frontier options:
+  --coverage PATH          Optional coverage summary JSON.
+  --ledger PATH            Optional PR evidence ledger JSON from `ripr pr-ledger record`.
+  --baseline-delta PATH    Optional baseline-debt-delta JSON from `ripr baseline diff`.
+  --zero-status PATH       Optional RIPR Zero status JSON from `ripr zero status`.
+  --out PATH               JSON output path. Defaults to target/ripr/reports/coverage-grip-frontier.json.
+  --out-md PATH            Markdown output path. Defaults to target/ripr/reports/coverage-grip-frontier.md.
+
+The coverage/grip frontier report is read-only advisory evidence. It keeps
+line execution coverage and RIPR behavioral grip movement as separate axes. It
+does not treat coverage as adequacy, run mutation testing, change gate policy,
+or make CI blocking by default.
+"#;
+
+const ASSISTANT_LOOP_HELP: &str = r#"Usage: ripr assistant-loop proof [--pr-guidance PATH] [--agent-packet PATH] [--before PATH] [--after PATH] [--receipt PATH] [--ledger PATH] [--coverage-frontier PATH] [--gate-decision PATH] [--out PATH] [--out-md PATH]
+
+Proof options:
+  --root PATH                 Workspace root label. Defaults to current directory.
+  --pr-guidance PATH          Optional PR guidance JSON from `ripr review-comments`.
+  --agent-packet PATH         Optional editor/agent handoff JSON from `ripr agent brief`.
+  --before PATH               Optional before repo-exposure JSON snapshot.
+  --after PATH                Optional after repo-exposure JSON snapshot.
+  --receipt PATH              Optional agent receipt JSON from `ripr agent receipt`.
+  --ledger PATH               Optional PR evidence ledger JSON from `ripr pr-ledger record`.
+  --coverage-frontier PATH    Optional coverage/grip frontier JSON.
+  --gate-decision PATH        Optional gate-decision JSON from `ripr gate evaluate`.
+  --out PATH                  JSON output path. Defaults to target/ripr/reports/test-oracle-assistant-proof.json.
+  --out-md PATH               Markdown output path. Defaults to target/ripr/reports/test-oracle-assistant-proof.md.
+
+The assistant-loop proof report is read-only advisory evidence over explicit
+Campaign 20 artifacts. It requires at least one supplied artifact input, joins
+PR guidance, agent handoff packets, before and after static evidence, receipts,
+and optional CI projection artifacts, and marks missing proof pieces as
+incomplete or unknown. It does not rerun analysis, post comments, edit source,
+generate tests, call a provider, run mutation testing, change gate policy, or
+make CI blocking by default.
+"#;
+
+const FIRST_ACTION_HELP: &str = r#"Usage: ripr first-action [--root PATH] [--pr-guidance PATH] [--assistant-proof PATH] [--ledger PATH] [--baseline-delta PATH] [--receipt PATH] [--gate-decision PATH] [--coverage-frontier PATH] [--editor-context PATH] [--out PATH] [--out-md PATH]
+
+Options:
+  --root PATH                Workspace root label. Defaults to current directory.
+  --pr-guidance PATH         Optional PR guidance JSON from `ripr review-comments`.
+  --assistant-proof PATH     Optional proof JSON from `ripr assistant-loop proof`.
+  --ledger PATH              Optional PR evidence ledger JSON from `ripr pr-ledger record`.
+  --baseline-delta PATH      Optional baseline-debt-delta JSON from `ripr baseline diff`.
+  --receipt PATH             Optional agent receipt JSON from `ripr agent receipt`.
+  --gate-decision PATH       Optional gate-decision JSON from `ripr gate evaluate`.
+  --coverage-frontier PATH   Optional coverage/grip frontier JSON.
+  --editor-context PATH      Optional editor evidence context packet JSON.
+  --out PATH                 JSON output path. Defaults to target/ripr/reports/first-useful-action.json.
+  --out-md PATH              Markdown output path. Defaults to target/ripr/reports/first-useful-action.md.
+
+The first-action report is a read-only advisory router over explicit existing
+RIPR artifacts. It writes one next useful test action or one fallback reason
+for developers, reviewers, or coding agents. It does not rerun analysis, post
+comments, edit source, generate tests, call a provider, run mutation testing,
+invent policy, or make CI blocking by default.
 "#;
 
 const CALIBRATE_HELP: &str = r#"Usage: ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
@@ -436,6 +552,26 @@ pub(super) fn print_baseline_help() {
     println!("{BASELINE_HELP}");
 }
 
+pub(super) fn print_zero_help() {
+    println!("{ZERO_HELP}");
+}
+
+pub(super) fn print_pr_ledger_help() {
+    println!("{PR_LEDGER_HELP}");
+}
+
+pub(super) fn print_coverage_grip_help() {
+    println!("{COVERAGE_GRIP_HELP}");
+}
+
+pub(super) fn print_assistant_loop_help() {
+    println!("{ASSISTANT_LOOP_HELP}");
+}
+
+pub(super) fn print_first_action_help() {
+    println!("{FIRST_ACTION_HELP}");
+}
+
 pub(super) fn print_calibrate_help() {
     println!("{CALIBRATE_HELP}");
 }
@@ -493,9 +629,10 @@ mod tests {
     use super::{
         AGENT_BRIEF_HELP, AGENT_HELP, AGENT_PACKET_HELP, AGENT_RECEIPT_HELP,
         AGENT_REVIEW_SUMMARY_HELP, AGENT_START_HELP, AGENT_STATUS_HELP, AGENT_VERIFY_HELP,
-        BASELINE_HELP, CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP, DOCTOR_HELP, EVIDENCE_HEALTH_HELP,
-        EXPLAIN_HELP, GATE_HELP, HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP,
-        REVIEW_COMMENTS_HELP,
+        ASSISTANT_LOOP_HELP, BASELINE_HELP, CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP,
+        COVERAGE_GRIP_HELP, DOCTOR_HELP, EVIDENCE_HEALTH_HELP, EXPLAIN_HELP, FIRST_ACTION_HELP,
+        GATE_HELP, HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP, PR_LEDGER_HELP,
+        REVIEW_COMMENTS_HELP, ZERO_HELP,
     };
 
     #[test]
@@ -509,6 +646,11 @@ mod tests {
         assert!(HELP.contains("ripr baseline create"));
         assert!(HELP.contains("ripr baseline diff"));
         assert!(HELP.contains("ripr baseline update"));
+        assert!(HELP.contains("ripr zero status"));
+        assert!(HELP.contains("ripr pr-ledger record"));
+        assert!(HELP.contains("ripr coverage-grip frontier"));
+        assert!(HELP.contains("ripr assistant-loop proof"));
+        assert!(HELP.contains("ripr first-action"));
         assert!(HELP.contains("ripr calibrate"));
         assert!(HELP.contains("ripr agent start"));
         assert!(HELP.contains("ripr agent brief"));
@@ -558,6 +700,21 @@ mod tests {
         assert!(BASELINE_HELP.contains(".ripr/gate-baseline.json"));
         assert!(BASELINE_HELP.contains("baseline-debt-delta.json"));
         assert!(BASELINE_HELP.contains("--remove-resolved"));
+        assert!(ZERO_HELP.starts_with("Usage: ripr zero status"));
+        assert!(ZERO_HELP.contains("baseline-debt-delta JSON"));
+        assert!(ZERO_HELP.contains("RIPR Zero status report"));
+        assert!(PR_LEDGER_HELP.starts_with("Usage: ripr pr-ledger record"));
+        assert!(PR_LEDGER_HELP.contains("pr-evidence-ledger.json"));
+        assert!(PR_LEDGER_HELP.contains("read-only advisory history"));
+        assert!(COVERAGE_GRIP_HELP.starts_with("Usage: ripr coverage-grip frontier"));
+        assert!(COVERAGE_GRIP_HELP.contains("coverage-grip-frontier.json"));
+        assert!(COVERAGE_GRIP_HELP.contains("separate axes"));
+        assert!(ASSISTANT_LOOP_HELP.starts_with("Usage: ripr assistant-loop proof"));
+        assert!(ASSISTANT_LOOP_HELP.contains("test-oracle-assistant-proof.json"));
+        assert!(ASSISTANT_LOOP_HELP.contains("Campaign 20 artifacts"));
+        assert!(FIRST_ACTION_HELP.starts_with("Usage: ripr first-action"));
+        assert!(FIRST_ACTION_HELP.contains("first-useful-action.json"));
+        assert!(FIRST_ACTION_HELP.contains("read-only advisory router"));
         assert!(CALIBRATE_HELP.starts_with("Usage: ripr calibrate cargo-mutants"));
         assert!(CALIBRATE_HELP.contains("--mutants-json PATH"));
         assert!(AGENT_HELP.starts_with("Usage: ripr agent"));

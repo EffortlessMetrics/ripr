@@ -1,0 +1,468 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "first_useful_action_corpus",
+  "status": "advisory",
+  "spec": "RIPR-SPEC-0020",
+  "fixture": "boundary_gap",
+  "limits_note": "Advisory first-action routing expectations only; no hidden analysis reruns, source edits, generated tests, provider calls, mutation execution, default CI blocking, or policy invention.",
+  "canonical_commands": {
+    "context_packet": "ripr agent packet --root fixtures/boundary_gap/input --seam-id 67fc764ba37d77bd --json",
+    "after_snapshot": "ripr check --root fixtures/boundary_gap/input --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json",
+    "verify": "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json",
+    "receipt": "ripr agent receipt --root fixtures/boundary_gap/input --verify-json target/ripr/workflow/agent-verify.json --seam-id 67fc764ba37d77bd --json",
+    "assistant_proof": "ripr assistant-loop proof --pr-guidance target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-brief.json --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --receipt target/ripr/reports/agent-receipt.json --ledger target/ripr/reports/pr-evidence-ledger.json --out target/ripr/reports/test-oracle-assistant-proof.json --out-md target/ripr/reports/test-oracle-assistant-proof.md",
+    "status": "ripr agent status --root fixtures/boundary_gap/input --json"
+  },
+  "cases": [
+    {
+      "id": "actionable_pr_local_boundary",
+      "scenario": "new PR-local weak seam",
+      "inputs": {
+        "pr_guidance": {
+          "state": "present",
+          "artifact": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json",
+          "placement": "changed_line"
+        },
+        "assistant_proof": {
+          "state": "present",
+          "artifact": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/test-oracle-assistant-proof.json"
+        },
+        "ledger": {
+          "state": "present",
+          "artifact": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-evidence-ledger.json",
+          "pr_local": true
+        },
+        "receipt": {
+          "state": "absent"
+        },
+        "staleness": {
+          "state": "fresh"
+        }
+      },
+      "expected": {
+        "status": "actionable",
+        "action_kind": "write_focused_test",
+        "audience": "developer",
+        "top_seam_id": "67fc764ba37d77bd",
+        "title": "Add equality-boundary discriminator test",
+        "why_first": [
+          "The seam is PR-local.",
+          "The assistant proof report links guidance, handoff, before/after evidence, and receipt inputs.",
+          "No waiver, acknowledgement, or suppression applies."
+        ],
+        "target": {
+          "file": "tests/pricing.rs",
+          "related_test": "tests/pricing.rs::below_threshold_has_no_discount",
+          "suggested_test_name": "discounted_total_boundary_discriminator"
+        },
+        "commands": {
+          "context_packet": "required",
+          "after_snapshot": "required",
+          "verify": "required",
+          "receipt": "required"
+        },
+        "fallback": null,
+        "limits": [
+          "Static evidence only.",
+          "Does not run mutation testing.",
+          "Does not edit source or generate tests."
+        ]
+      },
+      "reason": "A fresh PR-local boundary seam with guidance, handoff, and ledger evidence should become the top focused-test action."
+    },
+    {
+      "id": "stale_editor_evidence",
+      "scenario": "stale evidence",
+      "inputs": {
+        "editor_context": {
+          "state": "present",
+          "freshness": "stale",
+          "artifact": "target/ripr/workflow/evidence-context.json"
+        },
+        "pr_guidance": {
+          "state": "present",
+          "artifact": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json"
+        },
+        "staleness": {
+          "state": "stale",
+          "reason": "diagnostic generation is older than the latest saved workspace refresh"
+        }
+      },
+      "expected": {
+        "status": "stale",
+        "action_kind": "refresh_evidence",
+        "audience": "developer",
+        "top_seam_id": "67fc764ba37d77bd",
+        "title": "Refresh RIPR evidence before acting",
+        "why_first": [
+          "Stale evidence blocks first-action routing.",
+          "The report must not present stale seam evidence as current."
+        ],
+        "target": null,
+        "commands": {
+          "status": "required"
+        },
+        "fallback": {
+          "kind": "refresh_evidence",
+          "summary": "Refresh RIPR evidence before selecting a focused-test action."
+        },
+        "limits": [
+          "Static evidence only.",
+          "Does not rerun hidden analysis.",
+          "Does not edit source or generate tests."
+        ]
+      },
+      "reason": "Freshness checks outrank otherwise actionable recommendations."
+    },
+    {
+      "id": "missing_assistant_proof",
+      "scenario": "missing required artifact",
+      "inputs": {
+        "pr_guidance": {
+          "state": "present",
+          "artifact": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json"
+        },
+        "assistant_proof": {
+          "state": "missing",
+          "artifact": "target/ripr/reports/test-oracle-assistant-proof.json"
+        },
+        "ledger": {
+          "state": "present",
+          "artifact": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-evidence-ledger.json"
+        },
+        "staleness": {
+          "state": "fresh"
+        }
+      },
+      "expected": {
+        "status": "missing_required_artifact",
+        "action_kind": "generate_missing_artifact",
+        "audience": "agent",
+        "top_seam_id": null,
+        "title": "Generate assistant proof before routing",
+        "why_first": [
+          "Required joined proof input is missing.",
+          "The report must not infer proof state from a raw artifact chain."
+        ],
+        "target": null,
+        "commands": {
+          "assistant_proof": "required"
+        },
+        "fallback": {
+          "kind": "missing_required_artifact",
+          "missing": "target/ripr/reports/test-oracle-assistant-proof.json"
+        },
+        "limits": [
+          "Static evidence only.",
+          "Does not search hidden state.",
+          "Does not change CI blocking."
+        ]
+      },
+      "reason": "Missing required proof input should produce an explicit artifact-generation action rather than a speculative test request."
+    },
+    {
+      "id": "baseline_only_debt",
+      "scenario": "baseline-only seam",
+      "inputs": {
+        "baseline_delta": {
+          "state": "present",
+          "bucket": "still_present",
+          "pr_local": false
+        },
+        "ledger": {
+          "state": "present",
+          "new_policy_eligible": 0
+        },
+        "staleness": {
+          "state": "fresh"
+        }
+      },
+      "expected": {
+        "status": "baseline_only",
+        "action_kind": "acknowledge_baseline",
+        "audience": "reviewer",
+        "top_seam_id": "baseline-boundary-0001",
+        "title": "Leave existing baseline debt outside this PR action",
+        "why_first": [
+          "The visible debt is baseline-only.",
+          "No new PR-local actionable seam outranks it."
+        ],
+        "target": null,
+        "commands": {},
+        "fallback": {
+          "kind": "baseline_only",
+          "summary": "Track or acknowledge baseline debt separately from PR-local first action."
+        },
+        "limits": [
+          "Static evidence only.",
+          "Does not invent policy.",
+          "Does not make CI blocking by default."
+        ]
+      },
+      "reason": "Baseline-only debt should stay visible without becoming the first PR-local test request."
+    },
+    {
+      "id": "acknowledged_pr_gap",
+      "scenario": "acknowledged item",
+      "inputs": {
+        "ledger": {
+          "state": "present",
+          "acknowledged": true,
+          "artifact": "target/ripr/reports/pr-evidence-ledger.json"
+        },
+        "gate_decision": {
+          "state": "present",
+          "label": "ripr-waive",
+          "pass_fail_authority": "gate decision when explicitly configured"
+        },
+        "staleness": {
+          "state": "fresh"
+        }
+      },
+      "expected": {
+        "status": "acknowledged",
+        "action_kind": "inspect_proof_report",
+        "audience": "reviewer",
+        "top_seam_id": "acknowledged-boundary-0001",
+        "title": "Review acknowledged RIPR item",
+        "why_first": [
+          "The item has explicit acknowledgement.",
+          "Acknowledged evidence remains visible but should not outrank unsuppressed PR-local work."
+        ],
+        "target": null,
+        "commands": {},
+        "fallback": {
+          "kind": "acknowledged",
+          "summary": "Inspect the proof report or acknowledgement context instead of requesting a new focused test."
+        },
+        "limits": [
+          "Static evidence only.",
+          "Does not invent policy.",
+          "Does not edit source or generate tests."
+        ]
+      },
+      "reason": "Acknowledged items should remain reviewable without becoming an agent work order."
+    },
+    {
+      "id": "waived_pr_gap",
+      "scenario": "waived item",
+      "inputs": {
+        "ledger": {
+          "state": "present",
+          "waived": true
+        },
+        "gate_decision": {
+          "state": "present",
+          "waiver": "visible"
+        },
+        "staleness": {
+          "state": "fresh"
+        }
+      },
+      "expected": {
+        "status": "waived",
+        "action_kind": "no_action",
+        "audience": "reviewer",
+        "top_seam_id": "waived-boundary-0001",
+        "title": "No first action for waived RIPR item",
+        "why_first": [
+          "The item has an explicit waiver.",
+          "Waived evidence stays visible but does not create a focused-test action."
+        ],
+        "target": null,
+        "commands": {},
+        "fallback": {
+          "kind": "waived",
+          "summary": "No first action while the waiver is in force."
+        },
+        "limits": [
+          "Static evidence only.",
+          "Does not invent policy.",
+          "Does not change CI blocking."
+        ]
+      },
+      "reason": "Waived items should be represented honestly and should not ask an agent to act."
+    },
+    {
+      "id": "suppressed_configured_off",
+      "scenario": "suppressed item",
+      "inputs": {
+        "pr_guidance": {
+          "state": "present",
+          "artifact": "fixtures/boundary_gap/expected/pr-guidance/configured-off/comments.json",
+          "suppressed": true
+        },
+        "staleness": {
+          "state": "fresh"
+        }
+      },
+      "expected": {
+        "status": "suppressed",
+        "action_kind": "no_action",
+        "audience": "developer",
+        "top_seam_id": "67fc764ba37d77bd",
+        "title": "No first action for suppressed seam",
+        "why_first": [
+          "The seam is suppressed or configured off.",
+          "Suppression state must not be treated as improvement."
+        ],
+        "target": null,
+        "commands": {},
+        "fallback": {
+          "kind": "suppressed",
+          "summary": "Suppressed evidence remains visible for audit, but no focused-test action is emitted."
+        },
+        "limits": [
+          "Static evidence only.",
+          "Does not edit source or generate tests.",
+          "Does not change policy."
+        ]
+      },
+      "reason": "Suppressed or configured-off guidance should fail closed into no action."
+    },
+    {
+      "id": "no_actionable_seam_clean",
+      "scenario": "no actionable seam",
+      "inputs": {
+        "pr_guidance": {
+          "state": "present",
+          "comments": 0,
+          "summary_only": 0
+        },
+        "assistant_proof": {
+          "state": "absent"
+        },
+        "ledger": {
+          "state": "present",
+          "new_policy_eligible": 0,
+          "repair_receipts": 0
+        },
+        "staleness": {
+          "state": "fresh"
+        }
+      },
+      "expected": {
+        "status": "no_actionable_seam",
+        "action_kind": "no_action",
+        "audience": "developer",
+        "top_seam_id": null,
+        "title": "No actionable RIPR seam found",
+        "why_first": [
+          "Fresh inputs do not contain a PR-local actionable seam.",
+          "The report should return an explicit clean state instead of silence."
+        ],
+        "target": null,
+        "commands": {},
+        "fallback": {
+          "kind": "no_actionable_seam",
+          "summary": "No first useful test action is available from the supplied artifacts."
+        },
+        "limits": [
+          "Static evidence only.",
+          "Does not prove runtime adequacy.",
+          "Does not run mutation testing."
+        ]
+      },
+      "reason": "A clean state is still a reportable first-action outcome."
+    },
+    {
+      "id": "already_improved_receipt",
+      "scenario": "already-improved receipt state",
+      "inputs": {
+        "assistant_proof": {
+          "state": "present",
+          "evidence_movement": "improved"
+        },
+        "receipt": {
+          "state": "present",
+          "movement": "improved",
+          "artifact": "target/ripr/reports/agent-receipt.json"
+        },
+        "staleness": {
+          "state": "fresh"
+        }
+      },
+      "expected": {
+        "status": "already_improved",
+        "action_kind": "no_action",
+        "audience": "reviewer",
+        "top_seam_id": "67fc764ba37d77bd",
+        "title": "Static evidence already improved",
+        "why_first": [
+          "The supplied receipt records improved or resolved static movement.",
+          "No additional focused-test action should outrank the receipt."
+        ],
+        "target": {
+          "file": "tests/pricing.rs",
+          "related_test": "tests/pricing.rs::below_threshold_has_no_discount",
+          "suggested_test_name": "discounted_total_boundary_discriminator"
+        },
+        "commands": {
+          "receipt": "present"
+        },
+        "fallback": {
+          "kind": "already_improved",
+          "summary": "Include the receipt in review instead of requesting another test."
+        },
+        "limits": [
+          "Static evidence only.",
+          "Does not prove runtime adequacy.",
+          "Does not run mutation testing."
+        ]
+      },
+      "reason": "Improved or resolved receipt movement closes the first action into receipt review."
+    },
+    {
+      "id": "unchanged_after_attempt",
+      "scenario": "unchanged movement after focused test",
+      "inputs": {
+        "assistant_proof": {
+          "state": "present",
+          "artifact": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/test-oracle-assistant-proof.json",
+          "evidence_movement": "unchanged"
+        },
+        "receipt": {
+          "state": "present",
+          "movement": "unchanged",
+          "artifact": "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json"
+        },
+        "staleness": {
+          "state": "fresh"
+        }
+      },
+      "expected": {
+        "status": "unchanged_after_attempt",
+        "action_kind": "revise_focused_test",
+        "audience": "agent",
+        "top_seam_id": "67fc764ba37d77bd",
+        "title": "Revise the focused test for unchanged static movement",
+        "why_first": [
+          "The supplied receipt records unchanged static movement after a focused-test attempt.",
+          "The next safe action is to revise the test rather than request a new unrelated seam."
+        ],
+        "target": {
+          "file": "tests/pricing.rs",
+          "related_test": "tests/pricing.rs::below_threshold_has_no_discount",
+          "suggested_test_name": "discounted_total_boundary_discriminator"
+        },
+        "commands": {
+          "context_packet": "required",
+          "after_snapshot": "required",
+          "verify": "required",
+          "receipt": "required"
+        },
+        "fallback": {
+          "kind": "unchanged_after_attempt",
+          "summary": "Revise the focused test using the missing discriminator before moving to another seam."
+        },
+        "limits": [
+          "Static evidence only.",
+          "Does not edit source or generate tests.",
+          "Does not run mutation testing."
+        ]
+      },
+      "reason": "Unchanged movement should route back to the same bounded task instead of broadening the agent scope."
+    }
+  ]
+}

@@ -246,8 +246,50 @@ suite('Extension Smoke', () => {
         message: 'ripr analysis refresh failed after 3 ms: workspace analysis failed'
       });
       assert.ok(context.status.text.includes('ripr: failed'));
-      context.controller.showStatus();
+      await context.controller.showStatus();
       assert.ok(context.infoMessages.at(-1)?.includes('analysis refresh failed'));
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('status bar projects existing first useful action report', async () => {
+    const context = createControllerTestContext({
+      firstActionJson: JSON.stringify({
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'first_useful_action',
+        status: 'actionable',
+        action_kind: 'write_focused_test',
+        title: 'Add equality-boundary discriminator test',
+        selected: {
+          path: 'src/lib.rs',
+          line: 2,
+          missing_discriminator: 'discount_threshold equality boundary'
+        },
+        target: {
+          file: 'tests/pricing.rs',
+          related_test: 'tests/pricing.rs::below_threshold_has_no_discount'
+        },
+        commands: {
+          verify: 'ripr agent verify --root . --json',
+          receipt: 'ripr agent receipt --root . --json'
+        },
+        warnings: []
+      })
+    });
+    try {
+      await context.controller.start();
+
+      assert.ok(context.status.text.includes('ripr: first action'));
+      assert.ok(String(context.status.tooltip).includes('Add equality-boundary discriminator test'));
+      assert.ok(String(context.status.tooltip).includes('src/lib.rs:2'));
+      assert.ok(String(context.status.tooltip).includes('discount_threshold equality boundary'));
+      assert.ok(String(context.status.tooltip).includes('ripr agent verify --root . --json'));
+      assert.strictEqual(context.runRiprCalls.length, 0);
+
+      await context.controller.showStatus();
+      assert.ok(context.infoMessages.at(-1)?.includes('First useful action: Add equality-boundary discriminator test'));
     } finally {
       await context.dispose();
     }
@@ -324,7 +366,7 @@ suite('Extension Smoke', () => {
       context.controller.markWorkspaceStale(document);
       context.controller.markWorkspaceClosed(document);
       assert.ok(context.status.text.includes('ripr: queued'));
-      context.controller.showStatus();
+      await context.controller.showStatus();
       assert.ok(context.infoMessages.at(-1)?.includes('analysis is queued'));
     } finally {
       await context.dispose();
@@ -487,6 +529,7 @@ interface ControllerTestOptions {
   lspResult?: unknown;
   lspError?: Error;
   cliResult?: string;
+  firstActionJson?: string | null;
   workspaceRoot?: string | null;
   resolveFailure?: { message: string; detail: string };
 }
@@ -562,6 +605,7 @@ function createControllerTestContext(options: ControllerTestOptions) {
       detail: 'test ripr on PATH'
     }),
     createLanguageClient: () => client,
+    readFile: async () => options.firstActionJson ?? undefined,
     runRipr: async (command, args, cwd) => {
       runRiprCalls.push({ command, args, cwd });
       return options.cliResult ?? '{}';

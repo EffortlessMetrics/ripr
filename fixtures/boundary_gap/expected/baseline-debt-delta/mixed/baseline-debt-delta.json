@@ -43,6 +43,14 @@
         "action": "keep_visible_or_burn_down",
         "verify_command": null
       },
+      "review": {
+        "created_at": "2026-05-08T00:00:00Z",
+        "owner": "test-platform",
+        "reason": "initial adoption baseline",
+        "review_after": "2026-08-08T00:00:00Z",
+        "reviewed": false,
+        "source": "target/ripr/reports/gate-decision.json"
+      },
       "static_class": "weakly_gripped",
       "suggested_test": {
         "assertion_shape": "assert_eq!(same(), 1)",
@@ -67,6 +75,14 @@
       "repair": {
         "action": "remove_resolved_from_baseline_when_reviewed",
         "verify_command": null
+      },
+      "review": {
+        "created_at": null,
+        "owner": null,
+        "reason": "initial adoption baseline",
+        "review_after": null,
+        "reviewed": false,
+        "source": null
       },
       "static_class": "weakly_gripped",
       "suggested_test": {
@@ -93,6 +109,7 @@
         "action": "add_focused_test_or_acknowledge",
         "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json"
       },
+      "review": null,
       "static_class": "weakly_gripped",
       "suggested_test": {
         "assertion_shape": "assert_eq!(new(), 4)",
@@ -118,6 +135,7 @@
         "action": "review_acknowledgement",
         "verify_command": null
       },
+      "review": null,
       "static_class": "weakly_gripped",
       "suggested_test": {
         "assertion_shape": "assert_eq!(ack(), 5)",
@@ -143,6 +161,7 @@
         "action": "review_suppression_or_config",
         "verify_command": null
       },
+      "review": null,
       "static_class": "weakly_gripped",
       "suggested_test": {
         "assertion_shape": null,
@@ -167,6 +186,14 @@
       "repair": {
         "action": "repair_or_remove_baseline_entry",
         "verify_command": null
+      },
+      "review": {
+        "created_at": null,
+        "owner": null,
+        "reason": "initial adoption baseline",
+        "review_after": null,
+        "reviewed": false,
+        "source": null
       },
       "static_class": null,
       "suggested_test": {

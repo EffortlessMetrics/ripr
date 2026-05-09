@@ -88,6 +88,22 @@ mod tests {
             Ok(CliCommand::Gate(args(&["evaluate"])))
         );
         assert_eq!(
+            parse_args(args(&["ripr", "pr-ledger", "record"])),
+            Ok(CliCommand::PrLedger(args(&["record"])))
+        );
+        assert_eq!(
+            parse_args(args(&["ripr", "coverage-grip", "frontier"])),
+            Ok(CliCommand::CoverageGrip(args(&["frontier"])))
+        );
+        assert_eq!(
+            parse_args(args(&["ripr", "assistant-loop", "proof"])),
+            Ok(CliCommand::AssistantLoop(args(&["proof"])))
+        );
+        assert_eq!(
+            parse_args(args(&["ripr", "first-action", "--root", "."])),
+            Ok(CliCommand::FirstAction(args(&["--root", "."])))
+        );
+        assert_eq!(
             parse_args(args(&["ripr", "calibrate", "cargo-mutants"])),
             Ok(CliCommand::Calibrate(args(&["cargo-mutants"])))
         );

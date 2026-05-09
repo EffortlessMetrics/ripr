@@ -323,7 +323,9 @@ outputs = [
   "docs/BADGE_POLICY.md",
   "docs/AGENT_DISPATCH_WORKFLOW.md",
   "docs/EDITOR_EVIDENCE_UX.md",
+  "docs/EDITOR_EVIDENCE_WORKFLOW.md",
   "docs/handoffs/2026-05-08-editor-evidence-ux-audit.md",
+  "docs/handoffs/2026-05-09-editor-evidence-ux-closeout.md",
   "docs/CAPABILITY_MATRIX.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md"
@@ -802,7 +804,7 @@ tests = [
   "crates/ripr/src/cli/commands.rs::review_comments_rejects_empty_values_and_unknown_args",
   "crates/ripr/src/cli/commands.rs::review_comments_rejects_missing_root_before_loading_diff",
   "crates/ripr/src/cli/commands.rs::review_comments_returns_diff_loader_errors",
-  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture",
+  "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_matches_smoke_fixture",
   "crates/ripr/src/output/review_comments.rs::review_comments_pr_guidance_fixtures_pin_required_cases"
 ]
 fixtures = [
@@ -1010,6 +1012,7 @@ tests = [
   "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_matches_by_fallback_and_warns",
   "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_marks_ambiguous_fallback_as_stale",
   "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_reports_missing_current_input",
+  "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_treats_non_object_review_metadata_as_absent",
   "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_matches_mixed_fixture_contract",
   "crates/ripr/src/output/baseline_update.rs::tests::baseline_update_removes_resolved_without_adopting_new_current_debt",
   "crates/ripr/src/output/baseline_update.rs::tests::baseline_update_preserves_ambiguous_and_fallback_matches",
@@ -1070,4 +1073,269 @@ metrics = [
   "baseline_debt_delta_stale_entries",
   "baseline_debt_delta_invalid_entries",
   "baseline_debt_delta_missing_current_input",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0017"
+name = "RIPR Zero reporting"
+spec = "docs/specs/RIPR-SPEC-0017-ripr-zero-reporting.md"
+tests = [
+  "crates/ripr/src/output/baseline.rs::tests::baseline_create_includes_visible_gate_decisions_and_skips_hidden_ones",
+  "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_matches_mixed_fixture_contract",
+  "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_treats_non_object_review_metadata_as_absent",
+  "crates/ripr/src/output/baseline_update.rs::tests::baseline_update_removes_resolved_without_adopting_new_current_debt",
+  "crates/ripr/src/output/ripr_zero_status.rs::tests::ripr_zero_status_reports_not_yet_with_metadata_and_repair_route",
+  "crates/ripr/src/output/ripr_zero_status.rs::tests::ripr_zero_status_reports_achieved_when_no_visible_debt_remains",
+  "crates/ripr/src/output/ripr_zero_status.rs::tests::ripr_zero_status_reports_incomplete_when_delta_is_missing",
+  "crates/ripr/src/cli/commands.rs::tests::ripr_zero_status_parses_option_surface",
+  "crates/ripr/src/cli/commands.rs::tests::ripr_zero_status_requires_inputs_and_rejects_unknown_args",
+  "crates/ripr/src/cli/commands.rs::tests::ripr_zero_status_writes_json_and_markdown_reports",
+  "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_matches_smoke_fixture",
+]
+fixtures = [
+  "fixtures/boundary_gap/expected/baseline-debt-delta/mixed/baseline.json",
+  "fixtures/boundary_gap/expected/baseline-debt-delta/mixed/baseline-debt-delta.json",
+]
+code = [
+  "crates/ripr/src/output/baseline.rs",
+  "crates/ripr/src/output/baseline_delta.rs",
+  "crates/ripr/src/output/baseline_update.rs",
+  "crates/ripr/src/output/ripr_zero_status.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/command.rs",
+  "crates/ripr/src/cli/execute.rs",
+  "crates/ripr/src/cli/help.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0017-ripr-zero-reporting.md",
+  "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/RIPR_ZERO_REPORTING_WORKFLOW.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "metrics/capabilities.toml",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/ROADMAP.md",
+  "docs/handoffs/2026-05-09-campaign-18-closeout.md",
+  "docs/handoffs/README.md",
+  "CHANGELOG.md",
+]
+metrics = [
+  "ripr_zero_status_reports",
+  "ripr_zero_visible_unresolved",
+  "ripr_zero_new_policy_eligible",
+  "ripr_zero_baseline_still_present",
+  "ripr_zero_baseline_resolved",
+  "ripr_zero_acknowledged",
+  "ripr_zero_suppressed",
+  "ripr_zero_stale_baseline_entries",
+  "ripr_zero_missing_metadata_entries",
+  "ripr_zero_top_repair_routes",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0018"
+name = "PR evidence ledger"
+spec = "docs/specs/RIPR-SPEC-0018-pr-evidence-ledger.md"
+tests = [
+  "crates/ripr/src/output/pr_evidence_ledger.rs::tests::pr_evidence_ledger_joins_primary_artifacts",
+  "crates/ripr/src/output/pr_evidence_ledger.rs::tests::pr_evidence_ledger_reports_incomplete_without_evidence",
+  "crates/ripr/src/output/pr_evidence_ledger.rs::tests::pr_evidence_ledger_matches_fixture_contract",
+  "crates/ripr/src/cli/commands.rs::tests::pr_evidence_ledger_parses_option_surface",
+  "crates/ripr/src/cli/commands.rs::tests::pr_evidence_ledger_requires_identity_and_evidence",
+  "crates/ripr/src/cli/commands.rs::tests::pr_evidence_ledger_writes_json_and_markdown_reports",
+  "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_matches_smoke_fixture",
+  "crates/ripr/src/output/coverage_grip_frontier.rs::tests::coverage_grip_frontier_reports_flat_coverage_with_improved_grip",
+  "crates/ripr/src/output/coverage_grip_frontier.rs::tests::coverage_grip_frontier_keeps_missing_coverage_advisory",
+  "crates/ripr/src/output/coverage_grip_frontier.rs::tests::coverage_grip_frontier_reports_incomplete_without_ripr_movement",
+  "crates/ripr/src/output/coverage_grip_frontier.rs::tests::coverage_grip_frontier_warns_on_invalid_inputs",
+  "crates/ripr/src/cli/commands.rs::tests::coverage_grip_frontier_parses_option_surface",
+  "crates/ripr/src/cli/commands.rs::tests::coverage_grip_frontier_requires_movement_input",
+  "crates/ripr/src/cli/commands.rs::tests::coverage_grip_frontier_writes_json_and_markdown_reports",
+]
+fixtures = [
+  "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/gate-decision.json",
+  "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/baseline-debt-delta.json",
+  "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/ripr-zero-status.json",
+  "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/comments.json",
+  "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/agent-receipt.json",
+  "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/history.jsonl",
+  "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/pr-evidence-ledger.json",
+  "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/pr-evidence-ledger.md",
+]
+code = [
+  "crates/ripr/src/output/pr_evidence_ledger.rs",
+  "crates/ripr/src/output/coverage_grip_frontier.rs",
+  "crates/ripr/src/output/mod.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/command.rs",
+  "crates/ripr/src/cli/execute.rs",
+  "crates/ripr/src/cli/help.rs",
+  "crates/ripr/src/cli/parse.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0018-pr-evidence-ledger.md",
+  "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/CI.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "metrics/capabilities.toml",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/ROADMAP.md",
+  "docs/CI.md",
+  "README.md",
+  "CHANGELOG.md",
+]
+metrics = [
+  "pr_evidence_ledger_records",
+  "pr_evidence_ledger_new_policy_eligible",
+  "pr_evidence_ledger_baseline_still_present",
+  "pr_evidence_ledger_baseline_resolved",
+  "pr_evidence_ledger_acknowledged",
+  "pr_evidence_ledger_suppressed",
+  "pr_evidence_ledger_blocking_candidates",
+  "pr_evidence_ledger_repair_receipts",
+  "pr_evidence_ledger_waiver_age_max_days",
+  "pr_evidence_ledger_coverage_grip_frontier_available",
+  "pr_evidence_ledger_flat_coverage_grip_improved",
+  "coverage_grip_frontier_reports",
+  "coverage_grip_frontier_available",
+  "coverage_grip_frontier_flat_coverage_grip_improved",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0019"
+name = "test-oracle assistant loop"
+spec = "docs/specs/RIPR-SPEC-0019-test-oracle-assistant-loop.md"
+tests = [
+  "crates/ripr/src/output/test_oracle_assistant_proof.rs::test_oracle_assistant_proof_matches_canonical_fixture",
+  "crates/ripr/src/output/test_oracle_assistant_proof.rs::test_oracle_assistant_proof_reports_incomplete_without_selected_seam",
+  "crates/ripr/src/output/test_oracle_assistant_proof.rs::test_oracle_assistant_proof_warns_for_invalid_supplied_inputs",
+  "crates/ripr/src/output/test_oracle_assistant_proof.rs::test_oracle_assistant_proof_keeps_summary_only_guidance_visible",
+  "crates/ripr/src/output/test_oracle_assistant_proof.rs::test_oracle_assistant_proof_handles_guidance_only_regression",
+  "crates/ripr/src/output/test_oracle_assistant_proof.rs::test_oracle_assistant_proof_handles_unknown_movement_and_no_handoff",
+  "crates/ripr/tests/cli_smoke.rs::test_oracle_assistant_proof_cli_writes_canonical_report",
+  "crates/ripr/tests/cli_smoke.rs::test_oracle_assistant_canonical_review_loop_fixture_pins_expected_surfaces",
+  "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_matches_smoke_fixture",
+]
+fixtures = [
+  "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/README.md",
+  "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json",
+  "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-evidence-ledger.json",
+  "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/test-oracle-assistant-proof.json",
+  "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/test-oracle-assistant-proof.md",
+]
+code = [
+  "crates/ripr/src/output/test_oracle_assistant_proof.rs",
+  "crates/ripr/src/cli/command.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/execute.rs",
+  "crates/ripr/src/cli/help.rs",
+  "crates/ripr/src/cli/parse.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0019-test-oracle-assistant-loop.md",
+  "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/CI.md",
+  "docs/TEST_ORACLE_ASSISTANT_WORKFLOW.md",
+  "docs/TEST_ORACLE_ASSISTANT_PROOF_REPORT.md",
+  "docs/handoffs/2026-05-09-test-oracle-assistant-receipt.md",
+  "docs/handoffs/2026-05-09-campaign-20-closeout.md",
+  "docs/handoffs/2026-05-09-campaign-21-closeout.md",
+  "docs/handoffs/README.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "metrics/capabilities.toml",
+  ".ripr/goals/active.toml",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/ROADMAP.md",
+  "CHANGELOG.md",
+]
+metrics = [
+  "test_oracle_assistant_loop_reports",
+  "test_oracle_assistant_loop_verified_receipts",
+  "test_oracle_assistant_loop_unknown_inputs",
+  "test_oracle_assistant_loop_summary_only",
+  "test_oracle_assistant_loop_static_improved",
+  "test_oracle_assistant_loop_static_resolved",
+  "test_oracle_assistant_loop_static_regressed",
+]
+
+[[behavior]]
+id = "RIPR-SPEC-0020"
+name = "first useful action report"
+spec = "docs/specs/RIPR-SPEC-0020-first-useful-action-report.md"
+tests = [
+  "crates/ripr/tests/cli_smoke.rs::first_useful_action_corpus_pins_routing_cases",
+  "crates/ripr/src/output/first_useful_action.rs::first_useful_action_matches_actionable_fixture",
+  "crates/ripr/src/output/first_useful_action.rs::first_useful_action_matches_unchanged_after_attempt_fixture",
+  "crates/ripr/src/output/first_useful_action.rs::first_useful_action_reports_stale_editor_context_first",
+  "crates/ripr/src/output/first_useful_action.rs::first_useful_action_routes_missing_assistant_proof",
+  "crates/ripr/tests/cli_smoke.rs::first_action_cli_writes_actionable_report",
+  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_is_advisory",
+  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_uploads_reports_and_makes_sarif_optional",
+  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture",
+  "crates/ripr/tests/cli_smoke.rs::init_ci_github_writes_non_blocking_report_workflow",
+  "editors/vscode/test/suite/extension.test.ts::status bar projects existing first useful action report",
+]
+fixtures = [
+  "fixtures/boundary_gap/expected/first-useful-action/README.md",
+  "fixtures/boundary_gap/expected/first-useful-action/corpus.json",
+  "fixtures/boundary_gap/expected/first-useful-action/actionable/first-useful-action.json",
+  "fixtures/boundary_gap/expected/first-useful-action/actionable/first-useful-action.md",
+  "fixtures/boundary_gap/expected/first-useful-action/stale/first-useful-action.json",
+  "fixtures/boundary_gap/expected/first-useful-action/stale/first-useful-action.md",
+  "fixtures/boundary_gap/expected/first-useful-action/missing-required-artifact/first-useful-action.json",
+  "fixtures/boundary_gap/expected/first-useful-action/missing-required-artifact/first-useful-action.md",
+  "fixtures/boundary_gap/expected/first-useful-action/baseline-only/first-useful-action.json",
+  "fixtures/boundary_gap/expected/first-useful-action/baseline-only/first-useful-action.md",
+  "fixtures/boundary_gap/expected/first-useful-action/acknowledged/first-useful-action.json",
+  "fixtures/boundary_gap/expected/first-useful-action/acknowledged/first-useful-action.md",
+  "fixtures/boundary_gap/expected/first-useful-action/waived/first-useful-action.json",
+  "fixtures/boundary_gap/expected/first-useful-action/waived/first-useful-action.md",
+  "fixtures/boundary_gap/expected/first-useful-action/suppressed/first-useful-action.json",
+  "fixtures/boundary_gap/expected/first-useful-action/suppressed/first-useful-action.md",
+  "fixtures/boundary_gap/expected/first-useful-action/no-actionable-seam/first-useful-action.json",
+  "fixtures/boundary_gap/expected/first-useful-action/no-actionable-seam/first-useful-action.md",
+  "fixtures/boundary_gap/expected/first-useful-action/already-improved/first-useful-action.json",
+  "fixtures/boundary_gap/expected/first-useful-action/already-improved/first-useful-action.md",
+  "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/first-useful-action.json",
+  "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/first-useful-action.md",
+]
+code = [
+  "crates/ripr/src/output/first_useful_action.rs",
+  "crates/ripr/src/output/mod.rs",
+  "crates/ripr/src/cli/command.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/execute.rs",
+  "crates/ripr/src/cli/help.rs",
+  "crates/ripr/src/cli/parse.rs",
+  "editors/vscode/src/client.ts",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0020-first-useful-action-report.md",
+  "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "metrics/capabilities.toml",
+  ".ripr/goals/active.toml",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/ROADMAP.md",
+  "CHANGELOG.md",
+]
+metrics = [
+  "first_useful_action_reports",
+  "first_useful_action_actionable",
+  "first_useful_action_stale",
+  "first_useful_action_missing_required_artifact",
+  "first_useful_action_baseline_only",
+  "first_useful_action_acknowledged",
+  "first_useful_action_waived",
+  "first_useful_action_suppressed",
+  "first_useful_action_no_actionable_seam",
+  "first_useful_action_already_improved",
+  "first_useful_action_unchanged_after_attempt",
 ]

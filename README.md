@@ -287,6 +287,7 @@ Current capabilities:
 | Output | Human, JSON, context, and GitHub formats render evidence-first findings with stop reasons; `ripr pilot` writes a zero-config first-run packet; `ripr outcome` compares before/after repo exposure snapshots; repo exposure report and v2 agent seam packets render classified seam evidence; public `ripr` and `ripr+` Shields badges publish seam-native unresolved gap counts while diff badge artifacts remain finding-exposure based. | Output contract maintenance. |
 | LSP | Experimental `tower-lsp-server` sidecar with evidence-aware Finding diagnostics, related-test links, hovers, server-side context packets, seam-native diagnostics + hover, and seam code actions for copying packets/assertions and opening related tests. Saved-workspace diagnostics remain advisory; unsaved-buffer overlays are not default behavior. | Editor contract maintenance. |
 | Agent context | Compact context packet plus per-seam `write_targeted_test` and `inspect_static_limitation` packets carrying recommended test placement, nearest tests to imitate, candidate values, missing discriminators, patterns to imitate/avoid, and assertion templates. `ripr agent start --root . --seam-id <id> --out target/ripr/workflow` writes a source-edit-free workflow packet, `ripr agent status --root . --json` reports local LLM loop artifact state and the next command without rerunning analysis, `ripr agent receipt` emits provenance plus bounded next-action guidance, and `ripr agent review-summary --root .` joins existing loop artifacts into compact review Markdown or schema `0.1` JSON. | Agent loop maintenance. |
+| First useful action | `ripr first-action` writes advisory `first-useful-action.{json,md}` from explicit PR guidance, assistant proof, PR evidence ledger, baseline delta, receipt, optional gate, optional coverage/grip frontier, and editor context inputs without hidden analysis, source edits, generated tests, provider calls, mutation execution, or default CI blocking; generated CI now projects the report as advisory summary/artifact content. | `lsp/first-useful-action-status` |
 | Repository config | Repo-root `ripr.toml` can set analysis mode, oracle policy, severity mapping, suppressions path, report related-test caps, and LSP seam-diagnostic defaults. Explicit CLI flags and LSP initialization options still win. | Policy feedback after adoption. |
 | SARIF and CI policy | `ripr check --format sarif` emits diff-scoped Finding SARIF and `--format repo-sarif` emits repo seam SARIF with configured severity, suppression metadata, stable rule IDs, and stable fingerprints. `ripr init --ci github` generates a non-blocking GitHub Actions report workflow with pilot/report artifacts, repo badge JSON, and optional SARIF rendering/upload; `cargo xtask sarif-policy` compares current SARIF to a baseline only when explicitly requested. | Advisory policy feedback after adoption. |
 | Calibration | Advisory `ripr calibrate cargo-mutants` and repo-local `cargo xtask mutation-calibration` join imported cargo-mutants runtime data to static seam evidence by `seam_id` or unambiguous file/line; ambiguous file/line candidates stay unassigned. `fixtures/CALIBRATION_CORPUS.md` maps current fixtures to controlled calibration scenarios, `fixtures/EXAMPLE_CORPUS.md` links the checked boundary-gap calibration sample into the operator loop, and `fixtures/boundary_gap/calibration/runtime-fixtures-v1/` pins the main static/runtime agreement buckets. | Maintenance; runtime mutation language stays inside calibration/runtime reports. |
@@ -324,7 +325,13 @@ writes the read-only decision report, generated CI can run it only when
 [Calibrated gate policy](docs/CALIBRATED_GATE_POLICY.md) documents the
 operator workflow. [Baseline ledger workflow](docs/BASELINE_LEDGER_WORKFLOW.md)
 shows how to create, diff, and shrink reviewed behavioral-grip debt baselines
-on the path toward RIPR 0. The default generated workflow remains advisory.
+on the path toward RIPR 0. Campaigns 20 and 21 then made the test-oracle
+assistant proof loop and read-only proof report producer first-class advisory
+artifacts. Campaign 22 is active as First Useful Action: `ripr first-action`
+now writes the read-only advisory report, generated CI projects it as advisory
+summary/artifact content, and the next checkpoint is
+`lsp/first-useful-action-status`. The default generated workflow remains
+advisory.
 
 Deeper capability state lives in [Capability matrix](docs/CAPABILITY_MATRIX.md)
 and [Metrics](docs/METRICS.md).

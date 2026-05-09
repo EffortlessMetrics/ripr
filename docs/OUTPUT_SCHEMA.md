@@ -1660,11 +1660,14 @@ upload SARIF, mutate GitHub state, or hide acknowledged decisions.
 Generated CI runs this evaluator only when `RIPR_GATE_MODE` is explicitly set.
 The default generated workflow leaves `RIPR_GATE_MODE` empty, captures pull
 request labels to `target/ci/labels.json`, and uploads any gate-decision files
-with the regular RIPR artifact packet. When `gate-decision.json` exists, the
-job summary also renders an at-a-glance projection of mode, status, decision
-counts, labels, waiver, baseline, calibration, blocking reason, and artifact
-paths before appending the full Markdown decision report. `visible-only`
-remains advisory; blocking modes are opt-in.
+with the regular RIPR artifact packet. When `gate-decision.json` and
+`RIPR_GATE_BASELINE` are available, generated CI also runs
+`ripr baseline diff` as a non-blocking movement report and uploads
+`baseline-debt-delta.{json,md}` with the same artifact packet. The job summary
+renders an at-a-glance projection of mode, status, decision counts, labels,
+waiver, baseline, calibration, blocking reason, debt movement counts, and
+artifact paths before appending the full Markdown decision report.
+`visible-only` remains advisory; blocking modes are opt-in.
 
 See [Calibrated gate policy](CALIBRATED_GATE_POLICY.md) for the operating
 model, rollout path, waiver behavior, and static/runtime vocabulary boundary.
@@ -1870,7 +1873,11 @@ JSON shape:
       },
       "review": {
         "reviewed": false,
-        "reason": "initial adoption baseline"
+        "owner": null,
+        "reason": "initial adoption baseline",
+        "created_at": "unix_ms:1778277000000",
+        "review_after": null,
+        "source": "target/ripr/reports/gate-decision.json"
       }
     }
   ],
@@ -1882,6 +1889,13 @@ JSON shape:
 The gate evaluator accepts this `entries[]` ledger shape in addition to the
 older lightweight `decisions[]` baseline fixture shape, so newly created
 baselines can be used by `ripr gate evaluate --baseline`.
+
+The `entries[].review` object is additive review metadata for later RIPR Zero
+reporting. New ledgers include `owner`, `created_at`, `review_after`, and
+`source` fields alongside the original `reviewed` and `reason` fields. Older
+Campaign 17 ledgers that only contain `reviewed` and `reason`, or no entry
+review object at all, remain valid inputs for baseline diff and shrink-only
+update.
 
 ## Gate Baseline Update
 
@@ -2029,7 +2043,8 @@ JSON shape:
       "repair": {
         "action": "add_focused_test_or_acknowledge",
         "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json"
-      }
+      },
+      "review": null
     }
   ],
   "warnings": [],
@@ -2073,6 +2088,12 @@ Field contract:
   and current records.
 - `items[].repair` - focused repair context from the current gate decision and
   built-in baseline debt movement actions.
+- `items[].review` - optional reviewed baseline metadata copied from the
+  baseline ledger when the item is baseline-derived. It preserves
+  `reviewed`, `owner`, `reason`, `created_at`, `review_after`, and `source`
+  when present. Current-only items use `null`; older Campaign 17 entries with
+  only `reviewed` and `reason` remain valid and render missing metadata fields
+  as `null`.
 - `warnings[]` - malformed baseline entries, ambiguous matches, fallback
   matches, missing optional inputs, or unsupported schema versions.
 - `limits_note` - advisory boundary text for generated CI summaries.
@@ -2082,6 +2103,783 @@ baseline path, status, bucket counts, top new policy-eligible gaps, top resolved
 baseline entries, warnings, and the advisory boundary. It must distinguish
 baseline debt from suppressions and acknowledged current findings from hidden
 success.
+
+## RIPR Zero Status Report
+
+RIPR-SPEC-0017 defines the RIPR Zero status report. `ripr zero status` joins
+existing baseline ledgers, baseline debt deltas, gate decisions, PR guidance,
+and optional calibration or receipt artifacts so teams can see repo-level
+movement toward RIPR 0 without changing analyzer identity, gate policy, or
+advisory defaults.
+
+Command:
+
+```text
+ripr zero status \
+  --baseline .ripr/gate-baseline.json \
+  --delta target/ripr/reports/baseline-debt-delta.json \
+  --gate target/ripr/reports/gate-decision.json \
+  --pr-guidance target/ripr/review/comments.json \
+  --recommendation-calibration target/ripr/reports/recommendation-calibration.json \
+  --out target/ripr/reports/ripr-zero-status.json \
+  --out-md target/ripr/reports/ripr-zero-status.md
+```
+
+The report writes:
+
+```text
+target/ripr/reports/ripr-zero-status.json
+target/ripr/reports/ripr-zero-status.md
+```
+
+This report is advisory progress evidence. `ripr gate evaluate` remains the
+pass/fail authority for configured gate modes. Generated CI uploads and
+summarizes `ripr-zero-status.{json,md}` when `baseline-debt-delta.json` exists,
+but the report itself must not fail CI, rewrite baselines, post comments, edit
+source, generate tests, rerun analysis, call an LLM, or run mutation testing.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "ripr_zero_status",
+  "status": "advisory",
+  "root": ".",
+  "generated_at": "2026-05-08T00:00:00Z",
+  "inputs": {
+    "baseline": ".ripr/gate-baseline.json",
+    "baseline_debt_delta": "target/ripr/reports/baseline-debt-delta.json",
+    "gate_decision": "target/ripr/reports/gate-decision.json",
+    "pr_guidance": "target/ripr/review/comments.json",
+    "recommendation_calibration": null,
+    "previous_status": null
+  },
+  "ripr_zero": {
+    "state": "not_yet",
+    "visible_unresolved": 43,
+    "new_policy_eligible": 1,
+    "blocking_candidates": 0,
+    "acknowledged": 1,
+    "suppressed": 0,
+    "limits_note": "RIPR 0 means no visible unresolved behavioral test-grip gaps under configured scope and policy; it is not a coverage or runtime adequacy claim."
+  },
+  "baseline": {
+    "path": ".ripr/gate-baseline.json",
+    "entries": 47,
+    "still_present": 40,
+    "resolved": 7,
+    "age_days": 31,
+    "metadata": {
+      "current": 38,
+      "stale": 4,
+      "missing_metadata": 5,
+      "unknown": 0
+    }
+  },
+  "debt_delta": {
+    "still_present": 40,
+    "resolved": 7,
+    "new": 2,
+    "new_policy_eligible": 1,
+    "acknowledged": 1,
+    "suppressed": 0,
+    "stale": 4,
+    "invalid": 0,
+    "missing_input": 0
+  },
+  "trend": {
+    "source": "not_available",
+    "window": null,
+    "visible_unresolved_delta": null,
+    "resolved_delta": null,
+    "new_policy_eligible_delta": null
+  },
+  "top_debt_areas": [
+    {
+      "rank": 1,
+      "area": "src/pricing.rs",
+      "visible_unresolved": 8,
+      "new_policy_eligible": 1,
+      "stale_baseline_entries": 2,
+      "top_static_class": "weakly_gripped"
+    }
+  ],
+  "repair_routes": [
+    {
+      "rank": 1,
+      "source": "baseline_debt_delta",
+      "seam_id": "67fc764ba37d77bd",
+      "path": "src/pricing.rs",
+      "line": 88,
+      "missing_discriminator": "amount == discount_threshold",
+      "suggested_test": "Add an equality-boundary assertion.",
+      "related_test": "tests/pricing.rs::applies_discount_above_threshold",
+      "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json",
+      "agent_command": "ripr agent start --root . --seam-id 67fc764ba37d77bd --out target/ripr/workflow"
+    }
+  ],
+  "warnings": [
+    "5 baseline entries are missing review metadata"
+  ],
+  "limits_note": "Read-only advisory RIPR Zero status over existing static RIPR artifacts; gate-decision remains the pass/fail authority."
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `status` - `advisory` for complete reports and `incomplete` when required
+  inputs are missing or unsupported.
+- `ripr_zero.state` - one of `achieved`, `not_yet`, or `unknown`.
+- `ripr_zero.visible_unresolved` - visible unresolved behavioral test-grip gaps
+  under the supplied baseline and gate scope.
+- `ripr_zero.new_policy_eligible` - current policy-eligible gaps that are not
+  covered by the reviewed baseline.
+- `ripr_zero.blocking_candidates` - current gate candidates that would block
+  under the configured gate mode. The status report surfaces this count but does
+  not make the blocking decision.
+- `ripr_zero.acknowledged` - visible current findings acknowledged by label or
+  policy.
+- `ripr_zero.suppressed` - current findings hidden by suppression or
+  configured-off severity while remaining visible in the status report.
+- `baseline.metadata.current`, `stale`, `missing_metadata`, and `unknown` -
+  baseline review metadata health counts. Missing metadata must not hide the
+  entry.
+- `debt_delta.*` - baseline movement buckets copied from the baseline debt
+  delta report so summaries can show old debt, new debt, resolved debt,
+  acknowledgements, suppressions, stale entries, invalid entries, and missing
+  inputs without reinterpreting gate policy.
+- `trend.source` - `previous_status`, `ledger`, or `not_available`.
+- `top_debt_areas[]` - capped groups by stable repo-relative path or configured
+  area name. Grouping is a reporting surface, not an analyzer identity rewrite.
+- `repair_routes[]` - capped focused repair candidates copied from existing PR
+  guidance, gate decisions, baseline debt delta, agent packets, or receipts.
+  The report must not invent missing commands or generated tests.
+- `warnings[]` - stale baseline metadata, missing inputs, unsupported schemas,
+  ambiguous identities, and trend gaps.
+- `limits_note` - advisory boundary text for generated CI summaries.
+
+Markdown should fit in a generated CI job summary. It should show RIPR 0 state,
+visible unresolved gaps, existing baseline gaps still present, resolved baseline
+gaps, new policy-eligible gaps, acknowledged gaps, suppressed gaps, stale
+metadata, the top repair route, warnings, and the advisory boundary. It must
+say that RIPR 0 is not perfect tests, 100 percent coverage, or runtime mutation
+adequacy.
+
+## PR Evidence Ledger
+
+RIPR-SPEC-0018 defines the PR evidence ledger. `ripr pr-ledger record` records
+per-PR behavioral grip movement from existing RIPR artifacts so teams can track
+new policy-eligible gaps, resolved baseline debt, visible acknowledgements,
+suppressions, repair receipts, and optional coverage/grip frontier signals
+without changing analyzer identity, gate policy, or advisory defaults.
+
+Command:
+
+```text
+ripr pr-ledger record \
+  --pr-number 123 \
+  --head <sha> \
+  --base <sha> \
+  --gate target/ripr/reports/gate-decision.json \
+  --baseline-delta target/ripr/reports/baseline-debt-delta.json \
+  --zero-status target/ripr/reports/ripr-zero-status.json \
+  --pr-guidance target/ripr/review/comments.json \
+  --recommendation-calibration target/ripr/reports/recommendation-calibration.json \
+  --agent-receipt target/ripr/reports/agent-receipt.json \
+  --coverage target/ripr/reports/coverage-summary.json \
+  --history .ripr/pr-evidence-ledger.jsonl \
+  --out target/ripr/reports/pr-evidence-ledger.json \
+  --out-md target/ripr/reports/pr-evidence-ledger.md
+```
+
+The report writes:
+
+```text
+target/ripr/reports/pr-evidence-ledger.json
+target/ripr/reports/pr-evidence-ledger.md
+```
+
+This report is advisory history. `ripr gate evaluate` remains the pass/fail
+authority for configured gate modes. Generated GitHub CI runs
+`ripr pr-ledger record` on pull requests when `target/ripr/review/comments.json`
+exists, adds optional gate, baseline delta, RIPR Zero, recommendation
+calibration, agent receipt, coverage, label, and history inputs when present,
+uploads `pr-evidence-ledger.{json,md}` with the normal report packet, and
+appends a PR movement card to the job summary. The report itself must not fail
+CI, rewrite baselines, post comments, edit source, generate tests, rerun
+analysis, call an LLM, or run mutation testing.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "pr_evidence_ledger",
+  "status": "advisory",
+  "root": ".",
+  "generated_at": "2026-05-09T00:00:00Z",
+  "pr": {
+    "number": 123,
+    "base": "53ea9a205f569a5ca636ba0a7451c6aca8b5ad2e",
+    "head": "984d5222a058fbceecfb9b230baef65c47c52820",
+    "labels": ["ripr-waive"]
+  },
+  "inputs": {
+    "gate_decision": "target/ripr/reports/gate-decision.json",
+    "baseline_debt_delta": "target/ripr/reports/baseline-debt-delta.json",
+    "ripr_zero_status": "target/ripr/reports/ripr-zero-status.json",
+    "pr_guidance": "target/ripr/review/comments.json",
+    "recommendation_calibration": "target/ripr/reports/recommendation-calibration.json",
+    "agent_receipt": "target/ripr/reports/agent-receipt.json",
+    "coverage": "target/ripr/reports/coverage-summary.json",
+    "history": ".ripr/pr-evidence-ledger.jsonl"
+  },
+  "movement": {
+    "new_policy_eligible": 1,
+    "baseline_still_present": 40,
+    "baseline_resolved": 3,
+    "acknowledged": 1,
+    "suppressed": 0,
+    "blocking_candidates": 0,
+    "visible_unresolved": 41,
+    "ripr_zero_state": "not_yet"
+  },
+  "gate": {
+    "mode": "baseline-check",
+    "decision": "acknowledged",
+    "pass_fail_authority": "ripr gate evaluate",
+    "acknowledgement_label": "ripr-waive"
+  },
+  "waivers": [
+    {
+      "label": "ripr-waive",
+      "decision_id": "ripr-gate-67fc764ba37d77bd",
+      "seam_id": "67fc764ba37d77bd",
+      "age_prs": 1,
+      "age_days": 0,
+      "reason": "accepted for this PR",
+      "still_visible": true
+    }
+  ],
+  "suppressions": [
+    {
+      "decision_id": "ripr-gate-suppressed",
+      "seam_id": "suppressed",
+      "source": ".ripr/suppressions.toml",
+      "owner": "test-platform",
+      "reason": "accepted durable policy exception",
+      "still_visible": true
+    }
+  ],
+  "repair_receipts": [
+    {
+      "source": "agent_receipt",
+      "seam_id": "67fc764ba37d77bd",
+      "static_movement": {
+        "state": "improved",
+        "source": "agent_receipt",
+        "artifact": "target/ripr/reports/agent-receipt.json"
+      },
+      "focused_test": "tests/pricing.rs::threshold_exact_boundary",
+      "receipt": "target/ripr/reports/agent-receipt.json"
+    }
+  ],
+  "coverage_grip_frontier": {
+    "status": "available",
+    "coverage_delta_percent": 0.0,
+    "ripr_visible_unresolved_delta": -3,
+    "interpretation": "behavioral grip improved without line-coverage movement",
+    "quadrants": {
+      "covered_with_ripr_gap": 2,
+      "covered_without_ripr_gap": 12,
+      "uncovered_with_ripr_gap": 1,
+      "uncovered_without_ripr_gap": 0
+    }
+  },
+  "top_repair_route": {
+    "source": "ripr_zero_status",
+    "seam_id": "67fc764ba37d77bd",
+    "path": "src/pricing.rs",
+    "line": 88,
+    "missing_discriminator": "amount == discount_threshold",
+    "suggested_test": "Add an equality-boundary assertion.",
+    "related_test": "tests/pricing.rs::applies_discount_above_threshold",
+    "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json",
+    "agent_command": "ripr agent start --root . --seam-id 67fc764ba37d77bd --out target/ripr/workflow"
+  },
+  "history": {
+    "source": ".ripr/pr-evidence-ledger.jsonl",
+    "records": 42,
+    "waiver_age_max_days": 14,
+    "baseline_resolved_total": 45,
+    "new_policy_eligible_total": 3,
+    "trend": "improving"
+  },
+  "warnings": [
+    "coverage input is optional and does not determine pass/fail"
+  ],
+  "limits_note": "Read-only advisory PR evidence ledger over existing static RIPR artifacts; gate-decision remains the pass/fail authority."
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `status` - `advisory` for complete reports and `incomplete` when PR identity
+  or all evidence sources are missing.
+- `movement.*` - copied or derived from existing gate, baseline delta, and RIPR
+  Zero status artifacts. The ledger must not recompute analyzer semantics.
+- `gate.pass_fail_authority` - names `ripr gate evaluate` whenever a gate
+  decision is present.
+- `waivers[]` - PR-time visible acknowledgement records. Waivers do not hide
+  findings and do not become suppressions.
+- `suppressions[]` - durable policy exceptions. Suppressions are not waivers
+  and are not baseline debt.
+- `repair_receipts[]` - supplied outcome or agent receipt evidence.
+  `repair_receipts[].static_movement` uses the same object shape as review
+  guidance outcome receipts, including `state`, `source`, and `artifact`; the
+  ledger must not infer receipt success from a missing artifact.
+- `coverage_grip_frontier.status` - `available`, `not_available`, or
+  `unsupported`.
+- `coverage_grip_frontier.*` - keeps coverage movement separate from RIPR
+  evidence movement. Coverage movement is execution evidence, not test
+  adequacy.
+- `top_repair_route` - copied from existing PR guidance, RIPR Zero status, gate
+  decision, agent packet, or receipt artifacts. Missing fields are `null` plus
+  warnings, not invented.
+- `history.*` - present only when prior ledger history or previous ledger
+  summary is supplied.
+- `warnings[]` - missing inputs, unavailable coverage, unsupported schemas,
+  ambiguous identities, and trend gaps.
+- `limits_note` - advisory boundary text for generated CI summaries.
+
+Markdown should fit in a generated CI job summary. It should show new
+policy-eligible gaps, existing baseline gaps still present, baseline gaps
+resolved, acknowledged gaps, suppressed gaps, blocking candidates, visible
+unresolved gaps, the top focused test to add, receipt paths, coverage/grip
+frontier status, and the advisory boundary. It must say that the PR evidence
+ledger is advisory history and that gate decisions remain the pass/fail
+authority.
+
+See [PR evidence ledger workflow](PR_EVIDENCE_LEDGER_WORKFLOW.md) for how
+teams read ledger records as waiver aging, baseline burn-down, repair receipts,
+coverage/grip frontier signals, and movement toward RIPR 0.
+
+## Coverage / Grip Frontier Report
+
+`ripr coverage-grip frontier` writes an advisory report that keeps execution
+coverage movement and static RIPR behavioral grip movement as separate axes. It
+can consume a coverage summary plus any existing PR evidence ledger, baseline
+debt delta, or RIPR Zero status report.
+
+Command:
+
+```text
+ripr coverage-grip frontier \
+  --coverage target/ripr/reports/coverage-summary.json \
+  --ledger target/ripr/reports/pr-evidence-ledger.json \
+  --baseline-delta target/ripr/reports/baseline-debt-delta.json \
+  --zero-status target/ripr/reports/ripr-zero-status.json \
+  --out target/ripr/reports/coverage-grip-frontier.json \
+  --out-md target/ripr/reports/coverage-grip-frontier.md
+```
+
+The report writes:
+
+```text
+target/ripr/reports/coverage-grip-frontier.json
+target/ripr/reports/coverage-grip-frontier.md
+```
+
+Coverage is optional. Without coverage input, the report still preserves RIPR
+movement and marks the coverage axis `not_available`. The report must not
+treat coverage as test adequacy, run mutation testing, change gate policy, post
+comments, edit source, generate tests, call an LLM, or make CI blocking by
+default.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "coverage_grip_frontier",
+  "status": "advisory",
+  "root": ".",
+  "generated_at": "2026-05-09T00:00:00Z",
+  "inputs": {
+    "coverage": "target/ripr/reports/coverage-summary.json",
+    "pr_evidence_ledger": "target/ripr/reports/pr-evidence-ledger.json",
+    "baseline_debt_delta": "target/ripr/reports/baseline-debt-delta.json",
+    "ripr_zero_status": "target/ripr/reports/ripr-zero-status.json"
+  },
+  "coverage": {
+    "status": "available",
+    "delta_percent": "0.0",
+    "source": "target/ripr/reports/coverage-summary.json"
+  },
+  "ripr": {
+    "source": "pr_evidence_ledger",
+    "new_policy_eligible": 1,
+    "baseline_resolved": 3,
+    "baseline_still_present": 2,
+    "acknowledged": 1,
+    "suppressed": 0,
+    "blocking_candidates": 0,
+    "visible_unresolved": 4,
+    "visible_unresolved_delta": -3
+  },
+  "quadrants": {
+    "covered_with_ripr_gap": 4,
+    "covered_without_ripr_gap": 20,
+    "uncovered_with_ripr_gap": 2,
+    "uncovered_without_ripr_gap": 8
+  },
+  "interpretation": "behavioral grip improved without line-coverage movement",
+  "warnings": [],
+  "limits_note": "Coverage is execution evidence; RIPR is static behavioral grip evidence. This report is advisory and does not claim test adequacy or runtime mutation outcomes."
+}
+```
+
+Markdown shape:
+
+```md
+# RIPR Coverage / Grip Frontier
+
+Status: advisory
+
+Coverage axis:
+- Status: available
+- Delta percent: 0.0
+
+RIPR axis:
+- Source: pr_evidence_ledger
+- New policy-eligible gaps: 1
+- Baseline gaps resolved: 3
+- Visible unresolved gaps: 4
+- Visible unresolved delta: -3
+
+Interpretation:
+- behavioral grip improved without line-coverage movement
+```
+
+The report may use these coverage inputs when present:
+
+- `coverage_delta_percent`;
+- `coverage.delta_percent`;
+- `summary.coverage_delta_percent`;
+- `ripr_visible_unresolved_delta`;
+- `ripr.visible_unresolved_delta`;
+- `quadrants.covered_with_ripr_gap`;
+- `quadrants.covered_without_ripr_gap`;
+- `quadrants.uncovered_with_ripr_gap`;
+- `quadrants.uncovered_without_ripr_gap`.
+
+## Test-Oracle Assistant Loop
+
+RIPR-SPEC-0019 defines the end-to-end test-oracle assistant loop. `ripr
+assistant-loop proof` writes an advisory proof report that joins existing PR
+guidance, editor or agent handoff packets, before/after static evidence,
+receipts, PR evidence ledgers, and optional gate or coverage/grip frontier
+reports without changing analyzer identity, recommendation ranking, gate
+policy, editor behavior, or CI defaults.
+
+Command shape:
+
+```text
+ripr assistant-loop proof \
+  --pr-guidance target/ripr/review/comments.json \
+  --agent-packet target/ripr/workflow/agent-brief.json \
+  --before target/ripr/pilot/repo-exposure.json \
+  --after target/ripr/pilot/after.repo-exposure.json \
+  --receipt target/ripr/reports/agent-receipt.json \
+  --ledger target/ripr/reports/pr-evidence-ledger.json \
+  --coverage-frontier target/ripr/reports/coverage-grip-frontier.json \
+  --gate-decision target/ripr/reports/gate-decision.json \
+  --out target/ripr/reports/test-oracle-assistant-proof.json \
+  --out-md target/ripr/reports/test-oracle-assistant-proof.md
+```
+
+The report writes:
+
+```text
+target/ripr/reports/test-oracle-assistant-proof.json
+target/ripr/reports/test-oracle-assistant-proof.md
+```
+
+Generated GitHub CI writes the same artifacts when the required PR guidance,
+editor/agent brief, before/after static evidence, agent receipt, and PR
+evidence ledger inputs already exist. The generated workflow treats the report
+as advisory summary/artifact content only; it does not make the proof report a
+pass/fail authority, post comments, mutate the baseline, rerun hidden analysis,
+or print a placeholder when the required inputs are missing.
+
+The report is advisory and read-only. It must not fail CI, post comments, edit
+source, generate tests, call an LLM provider, run mutation testing, or claim
+runtime confirmation from static evidence.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "test_oracle_assistant_loop",
+  "status": "advisory",
+  "root": ".",
+  "inputs": {
+    "pr_guidance": "target/ripr/review/comments.json",
+    "agent_packet": "target/ripr/workflow/agent-brief.json",
+    "before": "target/ripr/pilot/repo-exposure.json",
+    "after": "target/ripr/pilot/after.repo-exposure.json",
+    "receipt": "target/ripr/reports/agent-receipt.json",
+    "ledger": "target/ripr/reports/pr-evidence-ledger.json",
+    "coverage_frontier": "target/ripr/reports/coverage-grip-frontier.json"
+  },
+  "seam": {
+    "seam_id": "67fc764ba37d77bd",
+    "seam_kind": "predicate_boundary",
+    "path": "src/pricing.rs",
+    "line": 88,
+    "grip_class": "weakly_gripped",
+    "missing_discriminator": "amount == discount_threshold"
+  },
+  "recommendation": {
+    "source": "pr_guidance",
+    "placement": "changed_line",
+    "summary_only_reason": null,
+    "suggested_test": "Add an equality-boundary assertion.",
+    "related_test": "tests/pricing.rs::applies_discount_above_threshold",
+    "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json"
+  },
+  "handoff": {
+    "source": "agent_packet",
+    "artifact": "target/ripr/workflow/agent-brief.json",
+    "agent_command": "ripr agent start --root . --seam-id 67fc764ba37d77bd --out target/ripr/workflow",
+    "external_provider": false
+  },
+  "evidence_movement": {
+    "state": "improved",
+    "before_class": "weakly_gripped",
+    "after_class": "strongly_gripped",
+    "source": "agent_receipt",
+    "artifact": "target/ripr/reports/agent-receipt.json"
+  },
+  "ci_projection": {
+    "ledger": "target/ripr/reports/pr-evidence-ledger.json",
+    "coverage_frontier": "target/ripr/reports/coverage-grip-frontier.json",
+    "gate_decision": null,
+    "pass_fail_authority": "gate decision when explicitly configured"
+  },
+  "warnings": [],
+  "limits": {
+    "advisory": true,
+    "source_edits": false,
+    "generated_tests": false,
+    "external_service": false,
+    "runtime_mutation_execution": false,
+    "ci_blocking_default": false
+  }
+}
+```
+
+Field contract:
+
+- `status` is `advisory` for complete proof records and `incomplete` when the
+  selected seam or required before/after evidence is missing.
+- `inputs.*` records explicit input paths. Missing optional inputs are `null`;
+  missing or invalid supplied inputs produce a warning.
+- `seam.*` is copied from existing RIPR evidence or guidance. The report must
+  not recompute analyzer identity.
+- `recommendation.placement` is `changed_line`, `summary_only`, or `unknown`.
+  Summary-only guidance must remain visible.
+- `handoff.external_provider` is always `false`; RIPR emits packets but does
+  not call a provider.
+- `evidence_movement.state` is `improved`, `resolved`, `unchanged`,
+  `regressed`, or `unknown`. It is static RIPR movement, not runtime mutation
+  confirmation.
+- `ci_projection.pass_fail_authority` keeps proof records separate from
+  optional gate decisions.
+- `limits.*` preserves the no-edit, no-generated-test, no-provider-call,
+  no-runtime-mutation-execution, and advisory-default boundaries.
+
+Markdown should fit in a PR summary, generated CI job summary, or dogfood
+receipt. It should show the selected seam, missing discriminator, suggested
+focused test, related test, verify command, before/after static movement,
+receipt path, ledger path, optional coverage/grip frontier path, and static
+limits.
+
+See [Test-oracle assistant proof report](TEST_ORACLE_ASSISTANT_PROOF_REPORT.md)
+for how reviewers, maintainers, and coding agents should read the report,
+warnings, optional CI projection, and advisory limits.
+
+## First Useful Action Report
+
+RIPR-SPEC-0020 defines the first useful action report. `ripr first-action`
+writes an advisory JSON and Markdown report that compresses existing
+editor, PR guidance, ledger, baseline, assistant proof, receipt, optional gate,
+optional coverage/grip, and staleness evidence into one next test action or one
+fallback reason. The report is read-only and must not rerun hidden analysis,
+edit source, generate tests, call a provider, run mutation testing, invent
+policy, or change default CI blocking.
+
+See [First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md) for how
+developers, reviewers, and coding agents read the report, act on the selected
+action, verify static movement, emit receipts, and interpret fallback states.
+
+The producer lives in `crates/ripr/src/output/first_useful_action.rs`; the
+fixture corpus under `fixtures/boundary_gap/expected/first-useful-action/`
+pins every bounded status plus expected JSON and Markdown routes.
+
+Command shape:
+
+```text
+ripr first-action \
+  --root . \
+  --pr-guidance target/ripr/review/comments.json \
+  --assistant-proof target/ripr/reports/test-oracle-assistant-proof.json \
+  --ledger target/ripr/reports/pr-evidence-ledger.json \
+  --baseline-delta target/ripr/reports/baseline-debt-delta.json \
+  --receipt target/ripr/reports/agent-receipt.json \
+  --gate-decision target/ripr/reports/gate-decision.json \
+  --coverage-frontier target/ripr/reports/coverage-grip-frontier.json \
+  --editor-context target/ripr/workflow/evidence-context.json \
+  --out target/ripr/reports/first-useful-action.json \
+  --out-md target/ripr/reports/first-useful-action.md
+```
+
+The report writes:
+
+```text
+target/ripr/reports/first-useful-action.json
+target/ripr/reports/first-useful-action.md
+```
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "first_useful_action",
+  "status": "actionable",
+  "audience": "developer",
+  "action_kind": "write_focused_test",
+  "root": ".",
+  "generated_at": "2026-05-09T12:00:00Z",
+  "inputs": {
+    "pr_guidance": "target/ripr/review/comments.json",
+    "assistant_proof": "target/ripr/reports/test-oracle-assistant-proof.json",
+    "ledger": "target/ripr/reports/pr-evidence-ledger.json",
+    "baseline_delta": "target/ripr/reports/baseline-debt-delta.json",
+    "receipt": "target/ripr/reports/agent-receipt.json",
+    "gate_decision": "target/ripr/reports/gate-decision.json",
+    "coverage_frontier": "target/ripr/reports/coverage-grip-frontier.json",
+    "editor_context": "target/ripr/workflow/evidence-context.json"
+  },
+  "selected": {
+    "source": "assistant_proof",
+    "source_artifact": "target/ripr/reports/test-oracle-assistant-proof.json",
+    "seam_id": "67fc764ba37d77bd",
+    "seam_kind": "predicate_boundary",
+    "path": "src/pricing.rs",
+    "line": 88,
+    "classification": "weakly_exposed",
+    "missing_discriminator": "amount == discount_threshold"
+  },
+  "title": "Add equality-boundary discriminator test",
+  "why": "Changed predicate boundary is weakly exposed and lacks an equality-boundary discriminator.",
+  "why_first": [
+    "The seam is PR-local.",
+    "The assistant proof report links guidance, handoff, before/after evidence, and receipt inputs.",
+    "No waiver, acknowledgement, or suppression applies."
+  ],
+  "target": {
+    "file": "tests/pricing.rs",
+    "related_test": "below_threshold_has_no_discount",
+    "suggested_test_name": "discounted_total_boundary_discriminator",
+    "suggested_assertion": "Assert the exact returned discount at the equality boundary."
+  },
+  "commands": {
+    "context_packet": "ripr agent packet --root . --seam-id 67fc764ba37d77bd --json",
+    "after_snapshot": "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json",
+    "verify": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json",
+    "receipt": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 67fc764ba37d77bd --json"
+  },
+  "evidence": {
+    "pr_guidance": "target/ripr/review/comments.json",
+    "assistant_proof": "target/ripr/reports/test-oracle-assistant-proof.json",
+    "receipt": "target/ripr/reports/agent-receipt.json",
+    "ledger": "target/ripr/reports/pr-evidence-ledger.json",
+    "static_movement": "unknown"
+  },
+  "fallback": null,
+  "warnings": [],
+  "limits": [
+    "Static evidence only.",
+    "Does not prove runtime adequacy.",
+    "Does not run mutation testing.",
+    "Does not edit source or generate tests.",
+    "Does not make CI blocking by default."
+  ]
+}
+```
+
+Field contract:
+
+- `schema_version` is `0.1` until the report shape changes.
+- `kind` is always `first_useful_action`.
+- `status` is one of `actionable`, `stale`,
+  `missing_required_artifact`, `baseline_only`, `acknowledged`, `waived`,
+  `suppressed`, `no_actionable_seam`, `already_improved`, or
+  `unchanged_after_attempt`.
+- `action_kind` is one of `write_focused_test`, `refresh_evidence`,
+  `generate_missing_artifact`, `acknowledge_baseline`, `inspect_proof_report`,
+  `revise_focused_test`, or `no_action`.
+- `audience` is `developer`, `reviewer`, or `agent`.
+- `inputs.*` records explicit input paths. Missing optional inputs are `null`;
+  missing or invalid supplied inputs produce warnings and an appropriate
+  fallback status.
+- `selected.*` is copied from existing RIPR artifacts. The report must not
+  mint a new seam identity or rerank findings with a provider.
+- `why_first` records deterministic routing reasons. It must not be an opaque
+  score.
+- `target.*` records the recommended test file, related test, suggested test
+  name, and assertion shape when supplied by existing artifacts.
+- `commands.*` records copyable commands from existing command templates or
+  supplied artifacts. Missing commands become `null` and warnings.
+- `evidence.*` records supporting artifact paths and static movement when
+  supplied. Static movement is not runtime mutation confirmation.
+- `fallback` records the reason for non-actionable statuses and the next safe
+  command when available.
+- `limits` preserves static-evidence, no-edit, no-generated-test,
+  no-provider-call, no-runtime-mutation-execution, and advisory-default
+  boundaries.
+
+Markdown should fit in a PR summary, generated CI job summary, or editor status
+detail. It should show status, audience, action kind, top action, deterministic
+why-first reasons, target file, related test, suggested test name, verification
+command, receipt command, supporting artifact paths, warnings, fallback reason
+when present, and static limits.
+
+Generated CI runs `ripr first-action` only when one or more explicit upstream
+RIPR artifacts already exist, uploads `first-useful-action.{json,md}` with the
+normal report packet, and appends a compact at-a-glance summary. The projection
+is advisory: `ripr gate evaluate` remains the only configured pass/fail
+authority, and the first-action report must not edit source, generate tests,
+call a provider, run mutation testing, rerun hidden analysis, or change default
+blocking.
+
+The VS Code extension may also read an existing
+`target/ripr/reports/first-useful-action.json` and project the selected action
+through the status bar and `ripr: Show Status`. That editor projection is not a
+schema producer: it does not run `ripr first-action`, add diagnostics, edit
+source, generate tests, call providers, run mutation testing, or make gate
+decisions.
 
 ### Review Guidance Outcome Receipt
 

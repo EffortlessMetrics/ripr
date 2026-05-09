@@ -67,7 +67,7 @@ The editor path should not require report-format knowledge:
 1. Install `EffortlessMetrics.ripr` from VS Code Marketplace or Open VSX.
 2. Open a Rust/Cargo workspace.
 3. Check the `ripr` status bar item for server, workspace, analysis, stale,
-   failed, or no-actionable-seam state.
+   failed, no-actionable-seam, or first-useful-action state.
 4. Let the saved-workspace analysis refresh or run `ripr: Restart Server`.
 5. Open the Problems panel and hover a RIPR diagnostic to inspect evidence.
 6. Use `Copy Targeted Test Brief`, the agent copy commands, or
@@ -78,6 +78,9 @@ The editor path should not require report-format knowledge:
 The extension owns normal first-run server provisioning. A separate
 `cargo install ripr` remains a fallback for offline, pinned, or controlled
 environments.
+
+For the complete saved-workspace loop from diagnostic to receipt, see
+[Editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md).
 
 ## Settings
 
@@ -118,6 +121,14 @@ saved-workspace state:
 - no actionable seam diagnostics
 - stale because a Rust buffer has unsaved edits
 - analysis failed
+
+When `target/ripr/reports/first-useful-action.json` already exists in the
+workspace, the status item and `ripr: Show Status` also project its top action,
+selected seam, missing discriminator, target, related test, verify command,
+receipt command, warnings, fallback, and static-evidence limits. The extension
+only reads that existing report. It does not run `ripr first-action`, add new
+diagnostics, edit source, generate tests, call providers, run mutation testing,
+or make gate decisions.
 
 The LSP model remains saved-workspace only. When a Rust buffer is dirty, the
 extension keeps stale status visible even if a saved-workspace refresh

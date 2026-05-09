@@ -3,6 +3,35 @@
 ## Pending
 
 Reason:
+RIPR-SPEC-0020: pin first-useful-action routing cases before the report producer exists
+
+Command:
+`cargo test -p ripr first_useful_action`
+
+Updated:
+- `expected/first-useful-action/README.md`
+- `expected/first-useful-action/corpus.json`
+- `expected/first-useful-action/*/first-useful-action.json`
+- `expected/first-useful-action/*/first-useful-action.md`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0019: pin canonical test-oracle assistant loop replay corpus across recommendation, handoff, receipt, and PR ledger projection
+
+Command:
+`cargo test -p ripr test_oracle_assistant`
+
+Updated:
+- `expected/test-oracle-assistant-loop/canonical/README.md`
+- `expected/test-oracle-assistant-loop/canonical/pr-guidance.json`
+- `expected/test-oracle-assistant-loop/canonical/pr-evidence-ledger.json`
+- `expected/test-oracle-assistant-loop/canonical/test-oracle-assistant-proof.json`
+- `expected/test-oracle-assistant-loop/canonical/test-oracle-assistant-proof.md`
+
+## Pending
+
+Reason:
 RIPR-SPEC-0001: baseline current predicate boundary fixture output
 
 Command:
