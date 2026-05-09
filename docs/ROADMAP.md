@@ -208,6 +208,14 @@ First Useful Action. Its product goal is to compress editor, PR, ledger, proof,
 receipt, optional gate, coverage/grip, and staleness evidence into one advisory
 next test action before adding another raw surface.
 
+[Assistant Loop Health](ASSISTANT_LOOP_HEALTH_PROPOSAL.md) is recorded as a
+future follow-up lane after First Useful Action. It should summarize proof
+completeness, missing inputs, static evidence movement, recurring warnings, and
+repair queues across one or more `test-oracle-assistant-proof` reports without
+changing analyzer behavior, ranking, gate semantics, editor behavior, mutation
+execution, provider calls, source files, generated tests, or default CI
+blocking.
+
 ## Strategic Sequence
 
 The load-bearing path is:

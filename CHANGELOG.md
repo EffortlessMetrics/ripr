@@ -16,6 +16,10 @@ are scoped or reviewed.
   editor, PR guidance, ledger, proof, receipt, optional gate, coverage/grip,
   and staleness evidence can be compressed into one advisory next test action
   before adding another raw artifact surface.
+- Documented Assistant Loop Health as a future follow-up lane after First
+  Useful Action, including the planned advisory `assistant-loop-health`
+  JSON/Markdown surface, health buckets, repair queue, PR stack, and non-goals
+  without replacing the active campaign manifest.
 - Opened Campaign 20, Test-Oracle Assistant Proof, with
   `spec/test-oracle-assistant-loop` as the first ready work item so the
   already-built PR guidance, editor/agent handoff, verification, receipts,
