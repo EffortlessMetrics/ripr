@@ -41,9 +41,14 @@ are scoped or reviewed.
   report artifact packet, and appends a compact advisory first-action summary
   without changing gate authority or default blocking.
 - VS Code status and `ripr: Show Status` now project an existing
-  workspace-matched `first-useful-action.json` report without adding
-  diagnostics, editor decorations, source edits, generated tests, or stale
-  evidence claims.
+  `target/ripr/reports/first-useful-action.json` report, including the selected
+  action, seam location, missing discriminator, verify/receipt commands,
+  warnings, fallback, and advisory limits without running hidden analysis,
+  adding diagnostics, editing source, generating tests, or changing gate
+  authority.
+- Hardened the VS Code first-useful-action projection so reports from a
+  different workspace root are ignored and stale saved-workspace evidence stays
+  visible instead of being hidden behind the action report.
 - Opened Campaign 20, Test-Oracle Assistant Proof, with
   `spec/test-oracle-assistant-loop` as the first ready work item so the
   already-built PR guidance, editor/agent handoff, verification, receipts,

@@ -67,7 +67,7 @@ The editor path should not require report-format knowledge:
 1. Install `EffortlessMetrics.ripr` from VS Code Marketplace or Open VSX.
 2. Open a Rust/Cargo workspace.
 3. Check the `ripr` status bar item for server, workspace, analysis, stale,
-   failed, or no-actionable-seam state.
+   failed, no-actionable-seam, or first-useful-action state.
 4. Let the saved-workspace analysis refresh or run `ripr: Restart Server`.
 5. Open the Problems panel and hover a RIPR diagnostic to inspect evidence.
 6. Use `Copy Targeted Test Brief`, the agent copy commands, or
@@ -122,18 +122,20 @@ saved-workspace state:
 - stale because a Rust buffer has unsaved edits
 - analysis failed
 
-When `target/ripr/reports/first-useful-action.json` exists for the current
-workspace, the status bar and `ripr: Show Status` can project the report's top
-action, seam, target file, and verify/receipt command availability. This is a
-read-only projection of an existing report; the extension does not generate the
-report, add diagnostics, edit source, generate tests, or treat stale editor
-evidence as fresh.
+When `target/ripr/reports/first-useful-action.json` already exists in the
+workspace, the status item and `ripr: Show Status` also project its top action,
+selected seam, missing discriminator, target, related test, verify command,
+receipt command, warnings, fallback, and static-evidence limits. The extension
+only reads that existing report, and ignores reports whose `root` does not match
+the open workspace. It does not run `ripr first-action`, add new diagnostics,
+edit source, generate tests, call providers, run mutation testing, or make gate
+decisions.
 
 The LSP model remains saved-workspace only. When a Rust buffer is dirty, the
-extension keeps stale status visible even if a saved-workspace refresh
-completes, so diagnostics are not presented as fresh evidence for unsaved text.
-Saving or closing the Rust buffer clears the stale marker and queues the next
-saved-workspace refresh.
+extension keeps stale status visible, including when a first-useful-action
+report is present, so diagnostics are not presented as fresh evidence for
+unsaved text. Saving or closing the Rust buffer clears the stale marker and
+queues the next saved-workspace refresh.
 
 ## Defaults-First Stance
 

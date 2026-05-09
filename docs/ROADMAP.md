@@ -209,10 +209,10 @@ receipt, optional gate, coverage/grip, and staleness evidence into one advisory
 next test action before adding another raw surface. RIPR-SPEC-0020 now defines
 that report contract, the routing corpus pins actionable and fallback cases,
 and `ripr first-action` now writes the read-only report from explicit
-artifacts. Generated CI now projects that report as advisory summary and
-artifact content, and VS Code status/Show Status can project an existing
-workspace-matched report without adding diagnostics or editor decorations. The
-first useful action workflow docs are the next ready slice.
+artifacts. Generated CI now surfaces that report as advisory summary and
+artifact content. VS Code status and `ripr: Show Status` now project an
+existing first-action report without rerunning analysis. The next ready slice
+documents the first-action workflow for developers, reviewers, and agents.
 
 [Assistant Loop Health](ASSISTANT_LOOP_HEALTH_PROPOSAL.md) is recorded as a
 future follow-up lane after First Useful Action. It should summarize proof

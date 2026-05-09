@@ -1278,8 +1278,9 @@ tests = [
   "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_uploads_reports_and_makes_sarif_optional",
   "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture",
   "crates/ripr/tests/cli_smoke.rs::init_ci_github_writes_non_blocking_report_workflow",
-  "editors/vscode/test/suite/extension.test.ts::status bar projects first useful action report when analysis is fresh",
+  "editors/vscode/test/suite/extension.test.ts::status bar projects existing first useful action report",
   "editors/vscode/test/suite/extension.test.ts::status bar ignores first useful action report for another workspace",
+  "editors/vscode/test/suite/extension.test.ts::first useful action report does not hide stale editor status",
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/first-useful-action/README.md",
@@ -1325,8 +1326,6 @@ outputs = [
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/ROADMAP.md",
-  "docs/EDITOR_EXTENSION.md",
-  "docs/TESTING.md",
   "CHANGELOG.md",
 ]
 metrics = [

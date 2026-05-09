@@ -104,7 +104,6 @@ commands = [
 [[work_item]]
 id = "docs/first-useful-action-workflow"
 status = "ready"
-blocked_by = ["lsp/first-useful-action-status"]
 branch = "docs-first-useful-action-workflow"
 stackable = false
 acceptance = "Document how developers, reviewers, and coding agents read the first useful action, act on it, verify movement, emit receipts, and interpret fallback states"
