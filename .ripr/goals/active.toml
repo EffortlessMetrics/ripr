@@ -43,7 +43,7 @@ commands = [
 
 [[work_item]]
 id = "fixtures/first-useful-action-corpus"
-status = "ready"
+status = "done"
 branch = "fixtures-first-useful-action-corpus"
 stackable = false
 acceptance = "Add a deterministic corpus that pins first-action routing for actionable, stale, missing-artifact, baseline-only, waived, suppressed, unchanged, and no-actionable cases"
@@ -58,8 +58,7 @@ commands = [
 
 [[work_item]]
 id = "report/first-useful-action"
-status = "blocked"
-blocked_by = ["spec/first-useful-action-report", "fixtures/first-useful-action-corpus"]
+status = "ready"
 branch = "report-first-useful-action"
 stackable = false
 acceptance = "Add a read-only report producer that writes advisory first-useful-action JSON and Markdown from explicit existing artifact paths without rerunning hidden analysis"

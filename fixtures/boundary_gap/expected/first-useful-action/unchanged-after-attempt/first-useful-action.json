@@ -1,0 +1,65 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "first_useful_action",
+  "status": "unchanged_after_attempt",
+  "audience": "agent",
+  "action_kind": "revise_focused_test",
+  "root": "fixtures/boundary_gap/input",
+  "generated_at": "2026-05-09T12:00:00Z",
+  "inputs": {
+    "pr_guidance": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json",
+    "assistant_proof": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/test-oracle-assistant-proof.json",
+    "ledger": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-evidence-ledger.json",
+    "baseline_delta": null,
+    "receipt": "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json",
+    "gate_decision": null,
+    "coverage_frontier": null,
+    "editor_context": null
+  },
+  "selected": {
+    "source": "receipt",
+    "source_artifact": "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json",
+    "seam_id": "67fc764ba37d77bd",
+    "seam_kind": "predicate_boundary",
+    "path": "src/lib.rs",
+    "line": 2,
+    "classification": "weakly_exposed",
+    "missing_discriminator": "discount_threshold (equality boundary)"
+  },
+  "title": "Revise the focused test for unchanged static movement",
+  "why": "The supplied receipt records unchanged static movement after a focused-test attempt.",
+  "why_first": [
+    "The supplied receipt records unchanged static movement after a focused-test attempt.",
+    "The next safe action is to revise the test rather than request a new unrelated seam."
+  ],
+  "target": {
+    "file": "tests/pricing.rs",
+    "related_test": "tests/pricing.rs::below_threshold_has_no_discount",
+    "suggested_test_name": "discounted_total_boundary_discriminator",
+    "suggested_assertion": "Assert the exact discounted_total output at amount == discount_threshold."
+  },
+  "commands": {
+    "context_packet": "ripr agent packet --root fixtures/boundary_gap/input --seam-id 67fc764ba37d77bd --json",
+    "after_snapshot": "ripr check --root fixtures/boundary_gap/input --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json",
+    "verify": "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json",
+    "receipt": "ripr agent receipt --root fixtures/boundary_gap/input --verify-json target/ripr/workflow/agent-verify.json --seam-id 67fc764ba37d77bd --json"
+  },
+  "evidence": {
+    "pr_guidance": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json",
+    "assistant_proof": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/test-oracle-assistant-proof.json",
+    "receipt": "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json",
+    "ledger": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-evidence-ledger.json",
+    "static_movement": "unchanged"
+  },
+  "fallback": {
+    "kind": "unchanged_after_attempt",
+    "summary": "Revise the focused test using the missing discriminator before moving to another seam."
+  },
+  "warnings": [],
+  "limits": [
+    "Static evidence only.",
+    "Does not edit source or generate tests.",
+    "Does not run mutation testing."
+  ]
+}

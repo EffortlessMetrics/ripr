@@ -24,6 +24,12 @@ are scoped or reviewed.
   Useful Action, including the planned advisory `assistant-loop-health`
   JSON/Markdown surface, health buckets, repair queue, PR stack, and non-goals
   without replacing the active campaign manifest.
+- Added the first-useful-action routing corpus under
+  `fixtures/boundary_gap/expected/first-useful-action/`, pinning actionable,
+  stale, missing-required-artifact, baseline-only, acknowledged, waived,
+  suppressed, no-actionable-seam, already-improved, and
+  unchanged-after-attempt JSON/Markdown expectations before adding the report
+  producer.
 - Opened Campaign 20, Test-Oracle Assistant Proof, with
   `spec/test-oracle-assistant-loop` as the first ready work item so the
   already-built PR guidance, editor/agent handoff, verification, receipts,

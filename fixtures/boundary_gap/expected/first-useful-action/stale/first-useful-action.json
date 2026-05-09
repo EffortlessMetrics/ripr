@@ -1,0 +1,63 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "first_useful_action",
+  "status": "stale",
+  "audience": "developer",
+  "action_kind": "refresh_evidence",
+  "root": "fixtures/boundary_gap/input",
+  "generated_at": "2026-05-09T12:00:00Z",
+  "inputs": {
+    "pr_guidance": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json",
+    "assistant_proof": null,
+    "ledger": null,
+    "baseline_delta": null,
+    "receipt": null,
+    "gate_decision": null,
+    "coverage_frontier": null,
+    "editor_context": "target/ripr/workflow/evidence-context.json"
+  },
+  "selected": {
+    "source": "editor_context",
+    "source_artifact": "target/ripr/workflow/evidence-context.json",
+    "seam_id": "67fc764ba37d77bd",
+    "seam_kind": "predicate_boundary",
+    "path": "src/lib.rs",
+    "line": 2,
+    "classification": "weakly_exposed",
+    "missing_discriminator": "discount_threshold (equality boundary)"
+  },
+  "title": "Refresh RIPR evidence before acting",
+  "why": "The best available seam evidence is stale.",
+  "why_first": [
+    "Stale evidence blocks first-action routing.",
+    "The report must not present stale seam evidence as current."
+  ],
+  "target": null,
+  "commands": {
+    "context_packet": null,
+    "after_snapshot": null,
+    "verify": null,
+    "receipt": null,
+    "status": "ripr agent status --root fixtures/boundary_gap/input --json"
+  },
+  "evidence": {
+    "pr_guidance": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json",
+    "assistant_proof": null,
+    "receipt": null,
+    "ledger": null,
+    "static_movement": "unknown"
+  },
+  "fallback": {
+    "kind": "refresh_evidence",
+    "summary": "Refresh RIPR evidence before selecting a focused-test action."
+  },
+  "warnings": [
+    "diagnostic generation is older than the latest saved workspace refresh"
+  ],
+  "limits": [
+    "Static evidence only.",
+    "Does not rerun hidden analysis.",
+    "Does not edit source or generate tests."
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "first_useful_action",
+  "status": "baseline_only",
+  "audience": "reviewer",
+  "action_kind": "acknowledge_baseline",
+  "root": "fixtures/boundary_gap/input",
+  "generated_at": "2026-05-09T12:00:00Z",
+  "inputs": {
+    "pr_guidance": null,
+    "assistant_proof": null,
+    "ledger": "target/ripr/reports/pr-evidence-ledger.json",
+    "baseline_delta": "target/ripr/reports/baseline-debt-delta.json",
+    "receipt": null,
+    "gate_decision": null,
+    "coverage_frontier": null,
+    "editor_context": null
+  },
+  "selected": {
+    "source": "baseline_delta",
+    "source_artifact": "target/ripr/reports/baseline-debt-delta.json",
+    "seam_id": "baseline-boundary-0001",
+    "seam_kind": "predicate_boundary",
+    "path": "src/lib.rs",
+    "line": 2,
+    "classification": "weakly_exposed",
+    "missing_discriminator": "discount_threshold (equality boundary)"
+  },
+  "title": "Leave existing baseline debt outside this PR action",
+  "why": "The visible debt is baseline-only and not PR-local first-action work.",
+  "why_first": [
+    "The visible debt is baseline-only.",
+    "No new PR-local actionable seam outranks it."
+  ],
+  "target": null,
+  "commands": {
+    "context_packet": null,
+    "after_snapshot": null,
+    "verify": null,
+    "receipt": null
+  },
+  "evidence": {
+    "pr_guidance": null,
+    "assistant_proof": null,
+    "receipt": null,
+    "ledger": "target/ripr/reports/pr-evidence-ledger.json",
+    "baseline_delta": "target/ripr/reports/baseline-debt-delta.json",
+    "static_movement": "unknown"
+  },
+  "fallback": {
+    "kind": "baseline_only",
+    "summary": "Track or acknowledge baseline debt separately from PR-local first action."
+  },
+  "warnings": [],
+  "limits": [
+    "Static evidence only.",
+    "Does not invent policy.",
+    "Does not make CI blocking by default."
+  ]
+}

@@ -1265,8 +1265,33 @@ metrics = [
 id = "RIPR-SPEC-0020"
 name = "first useful action report"
 spec = "docs/specs/RIPR-SPEC-0020-first-useful-action-report.md"
-tests = []
-fixtures = []
+tests = [
+  "crates/ripr/tests/cli_smoke.rs::first_useful_action_corpus_pins_routing_cases",
+]
+fixtures = [
+  "fixtures/boundary_gap/expected/first-useful-action/README.md",
+  "fixtures/boundary_gap/expected/first-useful-action/corpus.json",
+  "fixtures/boundary_gap/expected/first-useful-action/actionable/first-useful-action.json",
+  "fixtures/boundary_gap/expected/first-useful-action/actionable/first-useful-action.md",
+  "fixtures/boundary_gap/expected/first-useful-action/stale/first-useful-action.json",
+  "fixtures/boundary_gap/expected/first-useful-action/stale/first-useful-action.md",
+  "fixtures/boundary_gap/expected/first-useful-action/missing-required-artifact/first-useful-action.json",
+  "fixtures/boundary_gap/expected/first-useful-action/missing-required-artifact/first-useful-action.md",
+  "fixtures/boundary_gap/expected/first-useful-action/baseline-only/first-useful-action.json",
+  "fixtures/boundary_gap/expected/first-useful-action/baseline-only/first-useful-action.md",
+  "fixtures/boundary_gap/expected/first-useful-action/acknowledged/first-useful-action.json",
+  "fixtures/boundary_gap/expected/first-useful-action/acknowledged/first-useful-action.md",
+  "fixtures/boundary_gap/expected/first-useful-action/waived/first-useful-action.json",
+  "fixtures/boundary_gap/expected/first-useful-action/waived/first-useful-action.md",
+  "fixtures/boundary_gap/expected/first-useful-action/suppressed/first-useful-action.json",
+  "fixtures/boundary_gap/expected/first-useful-action/suppressed/first-useful-action.md",
+  "fixtures/boundary_gap/expected/first-useful-action/no-actionable-seam/first-useful-action.json",
+  "fixtures/boundary_gap/expected/first-useful-action/no-actionable-seam/first-useful-action.md",
+  "fixtures/boundary_gap/expected/first-useful-action/already-improved/first-useful-action.json",
+  "fixtures/boundary_gap/expected/first-useful-action/already-improved/first-useful-action.md",
+  "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/first-useful-action.json",
+  "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/first-useful-action.md",
+]
 code = []
 outputs = [
   "docs/specs/RIPR-SPEC-0020-first-useful-action-report.md",

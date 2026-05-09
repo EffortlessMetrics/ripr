@@ -207,8 +207,8 @@ report, warnings, static movement, optional CI projection, and limits. Campaign
 First Useful Action. Its product goal is to compress editor, PR, ledger, proof,
 receipt, optional gate, coverage/grip, and staleness evidence into one advisory
 next test action before adding another raw surface. RIPR-SPEC-0020 now defines
-that report contract; the next ready slice is the routing corpus that pins
-actionable and fallback cases before the producer is added.
+that report contract, the routing corpus pins actionable and fallback cases,
+and the next ready slice is the read-only report producer.
 
 [Assistant Loop Health](ASSISTANT_LOOP_HEALTH_PROPOSAL.md) is recorded as a
 future follow-up lane after First Useful Action. It should summarize proof
