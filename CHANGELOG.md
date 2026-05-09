@@ -15,6 +15,10 @@ are scoped or reviewed.
   `spec/ripr-zero-reporting-surface` as the first ready work item so reviewed
   baselines and debt deltas can become repo-level RIPR 0 status, stale-debt,
   trend, and top-repair-area reporting without changing advisory defaults.
+- Added RIPR-SPEC-0017, defining the RIPR Zero status report contract for
+  repo-level status, baseline metadata health, stale warnings, trend summaries,
+  top debt areas, and advisory repair routing without changing analyzer
+  identity, gate policy, or default CI blocking.
 - Added `ripr baseline create --from <gate-decision.json> --out .ripr/gate-baseline.json`,
   which writes reviewed gate baseline ledgers from existing gate-decision
   evidence, skips suppressed or malformed decisions, supports `--dry-run`, and

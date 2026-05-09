@@ -158,7 +158,8 @@ Campaign 18 is active as RIPR Zero Reporting. It will turn reviewed baselines,
 baseline debt deltas, gate decisions, and recommendation evidence into
 repo-level RIPR 0 status, baseline age and ownership, stale-debt warnings,
 trend summaries, and top repair areas while keeping generated CI advisory by
-default.
+default. RIPR-SPEC-0017 now pins that reporting contract; the next slice is
+baseline metadata preservation before the status report and CI projection.
 Editor Evidence UX closed as a separate Lane 3 campaign; its contract audit is
 recorded in [Editor Evidence UX](EDITOR_EVIDENCE_UX.md), the saved-workspace
 editor loop is documented in the

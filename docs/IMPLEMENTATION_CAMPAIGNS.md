@@ -2107,8 +2107,8 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `spec/ripr-zero-reporting-surface` | ready | Define the RIPR Zero reporting contract for repo-level status, baseline metadata, stale warnings, trends, top debt areas, and advisory repair routing without analyzer identity rewrites or default CI blocking. |
-| `baseline/metadata-v2` | blocked | Preserve optional owner, reason, created_at, review_after, and source metadata in baseline ledgers without breaking existing Campaign 17 baseline files. |
+| `spec/ripr-zero-reporting-surface` | done | Added RIPR-SPEC-0017 for repo-level RIPR Zero status, baseline metadata, stale warnings, trends, top debt areas, and advisory repair routing without analyzer identity rewrites or default CI blocking. |
+| `baseline/metadata-v2` | ready | Preserve optional owner, reason, created_at, review_after, and source metadata in baseline ledgers without breaking existing Campaign 17 baseline files. |
 | `report/ripr-zero-status` | blocked | Add a read-only JSON/Markdown status report that joins reviewed baseline, baseline debt delta, gate decision, and optional recommendation evidence. |
 | `ci/ripr-zero-summary` | blocked | Surface RIPR Zero status and top repair areas in generated CI summaries and artifacts while preserving advisory defaults. |
 | `docs/ripr-zero-reporting-workflow` | blocked | Document how teams read RIPR Zero status, age and refresh baselines, route top repair packets, and interpret progress without treating RIPR 0 as perfect tests or 100 percent coverage. |
@@ -2158,8 +2158,8 @@ Blocking conditions:
 
 Next:
 
-- Start `spec/ripr-zero-reporting-surface` to define the report contract before
-  changing baseline schemas, generated CI, or output artifacts.
+- Start `baseline/metadata-v2` to preserve optional review metadata in baseline
+  ledgers before implementing the RIPR Zero status report.
 
 ## Future Campaign: Editor Evidence UX
 
