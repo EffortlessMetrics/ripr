@@ -36,6 +36,10 @@ Each finding should carry:
 - related tests, if any
 - oracle evidence, if any
 - observed activation values, if statically visible
+- local flow sink family when the changed behavior reaches an observable
+  returned value, error variant, output field, match result, event/outbound
+  call, state write, persistence write, log message, configuration change, or
+  generic call effect
 - missing discriminator
 - recommended next step
 - stop reason for unknowns
@@ -100,6 +104,18 @@ Err(Error::InvalidCurrency)
 If a related test only checks `result.is_err()`, `ripr` should distinguish that
 from an exact variant assertion.
 
+Side-effect example:
+
+```rust
+events.publish(DiscountApplied { amount })
+```
+
+`ripr` should report the propagation sink as an event or outbound call rather
+than a generic call effect. Similar syntax-first labels should be available for
+state writes, persistence writes, log messages, and configuration changes. When
+the sink family is not statically obvious, `ripr` should keep the older
+`call_effect` fallback or report propagation as unknown with a stop reason.
+
 ## Test Mapping
 
 Fixture coverage:
@@ -108,6 +124,10 @@ Fixture coverage:
 - `fixtures/weak_error_oracle` (baseline)
 - `fixtures/smoke_assertion_only`
 - `fixtures/no_static_path`
+- unit coverage for local flow sink families: predicate-to-return,
+  predicate-to-error, match-arm result, output field, event/outbound call,
+  state write, persistence write, log message, configuration change, and
+  unknown propagation fallback
 
 ## Implementation Mapping
 
