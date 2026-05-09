@@ -266,6 +266,9 @@ when the current classifier did not promote the seam.
 - [Test-oracle assistant proof report](TEST_ORACLE_ASSISTANT_PROOF_REPORT.md)
   explains how reviewers, maintainers, and coding agents read
   `test-oracle-assistant-proof.{json,md}` without artifact archaeology.
+- [First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md) explains how
+  the PR, editor, proof, ledger, receipt, and gate artifacts collapse into one
+  advisory next action.
 - [LLM operator guide](LLM_OPERATOR_GUIDE.md) explains source-edit-free agent
   operation.
 - [RIPR-SPEC-0019](specs/RIPR-SPEC-0019-test-oracle-assistant-loop.md) defines

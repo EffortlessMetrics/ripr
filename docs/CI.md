@@ -1411,6 +1411,10 @@ job summary appends the first action at a glance plus the Markdown report. If
 no inputs exist, the step logs that no first-useful-action inputs were
 available and leaves CI pass/fail behavior unchanged.
 
+See [First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md) for how
+developers, reviewers, and coding agents should read that summary, act on the
+selected action, verify static movement, and emit receipts.
+
 For every configured gate mode, the generated workflow behavior is:
 
 1. capture active PR labels into `target/ci/labels.json`;
