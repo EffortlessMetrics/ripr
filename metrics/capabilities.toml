@@ -792,7 +792,7 @@ metric = "coverage_grip_frontier_reports, coverage_grip_frontier_available, cove
 [[capability]]
 id = "test_oracle_assistant_loop"
 name = "Test-oracle assistant loop"
-status = "planned"
+status = "alpha"
 spec = "RIPR-SPEC-0019"
 evidence = [
   "docs/specs/RIPR-SPEC-0019-test-oracle-assistant-loop.md defines the end-to-end proof contract",
@@ -801,12 +801,13 @@ evidence = [
   "crates/ripr/tests/cli_smoke.rs::test_oracle_assistant_canonical_review_loop_fixture_pins_expected_surfaces validates the canonical replay corpus uses one seam identity across guidance, handoff, receipt, and ledger projection",
   "docs/handoffs/2026-05-09-test-oracle-assistant-receipt.md records the repo-local dogfood receipt across PR guidance, editor/agent handoff, verification commands, after evidence, receipt, PR ledger projection, and coverage/grip frontier availability",
   "docs/TEST_ORACLE_ASSISTANT_WORKFLOW.md documents the PR/editor-to-handoff-to-receipt user workflow and static evidence limits",
+  "docs/handoffs/2026-05-09-campaign-20-closeout.md records the prompt-to-artifact audit and follow-up boundaries",
   ".ripr/goals/active.toml tracks Campaign 20 with spec, canonical fixture, dogfood receipt, workflow docs, and closeout slices"
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical"
 ]
-next = "campaign/test-oracle-assistant-proof-closeout"
+next = "maintenance"
 metric = "test_oracle_assistant_loop_reports, test_oracle_assistant_loop_verified_receipts, test_oracle_assistant_loop_unknown_inputs, test_oracle_assistant_loop_summary_only, test_oracle_assistant_loop_static_improved, test_oracle_assistant_loop_static_resolved, test_oracle_assistant_loop_static_regressed"
 
 [[capability]]
