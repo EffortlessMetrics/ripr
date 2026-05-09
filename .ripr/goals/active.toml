@@ -88,7 +88,7 @@ commands = [
 
 [[work_item]]
 id = "docs/assistant-loop-health-workflow"
-status = "ready"
+status = "done"
 branch = "docs-assistant-loop-health-workflow"
 stackable = false
 acceptance = "Document proof report versus health report, complete versus partial loops, missing-input repair, unchanged movement, generated-CI summary use, and advisory limits"
@@ -101,7 +101,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/assistant-loop-health-closeout"
-status = "blocked"
+status = "ready"
 blocked_by = [
   "spec/assistant-loop-health-report",
   "fixtures/assistant-loop-health-corpus",

@@ -455,7 +455,8 @@ Follow-up implementation belongs to Campaign 23:
 - `ci/assistant-loop-health-artifacts` uploads and summarizes health artifacts
   only when proof artifacts exist.
 - `docs/assistant-loop-health-workflow` explains proof report versus health
-  report, repair routing, and advisory limits.
+  report, complete and partial loops, missing-input repair, unchanged movement,
+  generated-CI summary use, and advisory limits.
 - `campaign/assistant-loop-health-closeout` records the prompt-to-artifact
   audit, validation, and non-goals.
 

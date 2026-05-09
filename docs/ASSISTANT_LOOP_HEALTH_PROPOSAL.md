@@ -152,8 +152,8 @@ The active campaign uses this PR stack:
 | `fixtures/assistant-loop-health-corpus` | Done: `fixtures/boundary_gap/expected/assistant-loop-health/` pins complete-improved, partial-missing-optional, missing-required-input, unchanged, regressed, warning-heavy, and multi-proof cases. |
 | `report/assistant-loop-health` | Done: `ripr assistant-loop health` reads explicit proof inputs and writes advisory JSON/Markdown health reports. |
 | `ci/assistant-loop-health-artifacts` | Done: generated GitHub CI runs the health producer when assistant proof exists, uploads `assistant-loop-health.{json,md}`, and appends an advisory health summary. |
-| `docs/assistant-loop-health-workflow` | Next: explain proof report vs health report, repair routing, generated-CI summary use, and advisory limits. |
-| `campaign/assistant-loop-health-closeout` | Close after spec, fixtures, producer, CI projection, docs, and validation prove the lane. |
+| `docs/assistant-loop-health-workflow` | Done: `docs/ASSISTANT_LOOP_HEALTH_WORKFLOW.md` explains proof report vs health report, repair routing, generated-CI summary use, unchanged movement, missing-input repair, and advisory limits. |
+| `campaign/assistant-loop-health-closeout` | Next: close after spec, fixtures, producer, CI projection, docs, and validation prove the lane. |
 
 ## Non-goals
 

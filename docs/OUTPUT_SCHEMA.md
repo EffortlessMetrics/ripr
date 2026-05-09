@@ -3337,6 +3337,10 @@ uploads `assistant-loop-health.{json,md}` with the normal report packet, and
 appends a compact summary. The projection is advisory: `ripr gate evaluate`
 remains the only configured pass/fail authority.
 
+See [Assistant loop health workflow](ASSISTANT_LOOP_HEALTH_WORKFLOW.md) for how
+reviewers, maintainers, and coding agents use complete, partial,
+missing-input, unchanged, regressed, warning-heavy, and repair-queue states.
+
 ### Review Guidance Outcome Receipt
 
 Review guidance outcome receipts are optional repo-local inputs to the
