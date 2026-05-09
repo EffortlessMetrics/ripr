@@ -378,7 +378,9 @@ The expected implementation surface is:
   refreshes;
 - `docs/OUTPUT_SCHEMA.md` for the public contract;
 - fixtures under `fixtures/boundary_gap/expected/baseline-debt-delta/`;
-- generated CI wiring only after the command and fixture contract are pinned.
+- generated CI wiring after the command and fixture contract are pinned, with
+  `ripr baseline diff` running only when `RIPR_GATE_BASELINE` is set and
+  `gate-decision.json` exists.
 
 ## Metrics
 
