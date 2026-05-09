@@ -1,0 +1,65 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "test_oracle_assistant_loop",
+  "status": "advisory",
+  "root": ".",
+  "inputs": {
+    "pr_guidance": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json",
+    "agent_packet": "fixtures/boundary_gap/expected/editor-agent-loop/agent-brief.json",
+    "before": "fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json",
+    "after": "fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json",
+    "receipt": "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json",
+    "ledger": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-evidence-ledger.json",
+    "coverage_frontier": null,
+    "gate_decision": "fixtures/boundary_gap/expected/gate-adoption/visible-only/gate-decision.json",
+    "first_useful_action": "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/first-useful-action.json"
+  },
+  "seam": {
+    "seam_id": "67fc764ba37d77bd",
+    "seam_kind": "predicate_boundary",
+    "path": "src/lib.rs",
+    "line": 2,
+    "grip_class": "weakly_gripped",
+    "missing_discriminator": "discount_threshold (equality boundary)"
+  },
+  "recommendation": {
+    "source": "editor_agent_brief",
+    "placement": "changed_line",
+    "summary_only_reason": null,
+    "suggested_test": "Add a focused test where amount == discount_threshold and assert the exact discounted_total output.",
+    "related_test": "tests/pricing.rs::below_threshold_has_no_discount",
+    "verify_command": "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+  },
+  "handoff": {
+    "source": "agent_packet",
+    "artifact": "fixtures/boundary_gap/expected/editor-agent-loop/agent-brief.json",
+    "agent_command": "ripr agent start --root fixtures/boundary_gap/input --seam-id 67fc764ba37d77bd --out target/ripr/workflow",
+    "external_provider": false
+  },
+  "evidence_movement": {
+    "state": "unchanged",
+    "before_class": "weakly_gripped",
+    "after_class": "weakly_gripped",
+    "source": "agent_receipt",
+    "artifact": "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json"
+  },
+  "ci_projection": {
+    "ledger": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-evidence-ledger.json",
+    "coverage_frontier": null,
+    "gate_decision": "fixtures/boundary_gap/expected/gate-adoption/visible-only/gate-decision.json",
+    "first_useful_action": "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/first-useful-action.json",
+    "pass_fail_authority": "gate decision when explicitly configured"
+  },
+  "warnings": [
+    "static movement remained unchanged after the focused attempt"
+  ],
+  "limits": {
+    "advisory": true,
+    "source_edits": false,
+    "generated_tests": false,
+    "external_service": false,
+    "runtime_mutation_execution": false,
+    "ci_blocking_default": false
+  }
+}

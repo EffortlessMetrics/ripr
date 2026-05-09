@@ -1,0 +1,110 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "assistant_loop_health",
+  "status": "advisory",
+  "root": ".",
+  "generated_at": "2026-05-09T12:00:00Z",
+  "inputs": {
+    "proofs": [
+      "fixtures/boundary_gap/expected/assistant-loop-health/proofs/partial-missing-optional-proof.json"
+    ]
+  },
+  "summary": {
+    "proofs": 1,
+    "complete": 0,
+    "partial": 1,
+    "missing_required_input": 0,
+    "missing_optional_input": 4,
+    "improved": 1,
+    "unchanged": 0,
+    "regressed": 0,
+    "unknown_movement": 0,
+    "warnings": 4,
+    "repair_queue": 0
+  },
+  "proofs": [
+    {
+      "id": "proof-67fc764ba37d77bd-partial-missing-optional",
+      "source_artifact": "fixtures/boundary_gap/expected/assistant-loop-health/proofs/partial-missing-optional-proof.json",
+      "proof_state": "partial",
+      "movement_state": "improved",
+      "seam": {
+        "seam_id": "67fc764ba37d77bd",
+        "seam_kind": "predicate_boundary",
+        "path": "src/lib.rs",
+        "line": 2,
+        "static_class": "weakly_gripped",
+        "missing_discriminator": "discount_threshold (equality boundary)"
+      },
+      "recommendation": {
+        "placement": "changed_line",
+        "related_test": "tests/pricing.rs::below_threshold_has_no_discount",
+        "suggested_test": "Add a focused test where amount == discount_threshold and assert the exact discounted_total output.",
+        "verify_command": "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+      },
+      "handoff": {
+        "artifact": "fixtures/boundary_gap/expected/editor-agent-loop/agent-brief.json",
+        "agent_command": "ripr agent start --root fixtures/boundary_gap/input --seam-id 67fc764ba37d77bd --out target/ripr/workflow"
+      },
+      "receipt": {
+        "artifact": "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json",
+        "status": "present"
+      },
+      "movement": {
+        "before_class": "weakly_gripped",
+        "after_class": "strongly_gripped",
+        "source": "agent_receipt",
+        "source_state": "improved"
+      },
+      "optional_context": {
+        "ledger": null,
+        "gate_decision": null,
+        "coverage_frontier": null,
+        "first_useful_action": null
+      },
+      "warnings": [
+        {
+          "kind": "missing_optional_input",
+          "message": "No PR ledger input was supplied.",
+          "source_artifact": null
+        },
+        {
+          "kind": "missing_optional_input",
+          "message": "No gate decision input was supplied.",
+          "source_artifact": null
+        },
+        {
+          "kind": "missing_optional_input",
+          "message": "No coverage frontier input was supplied.",
+          "source_artifact": null
+        },
+        {
+          "kind": "missing_optional_input",
+          "message": "No first useful action input was supplied.",
+          "source_artifact": null
+        }
+      ]
+    }
+  ],
+  "warning_summary": [
+    {
+      "kind": "missing_optional_input",
+      "count": 4,
+      "examples": [
+        "No PR ledger input was supplied.",
+        "No gate decision input was supplied."
+      ]
+    }
+  ],
+  "repair_queue": [],
+  "limits": [
+    "Static RIPR evidence only.",
+    "Does not provide runtime confirmation.",
+    "Does not run mutation testing.",
+    "Does not call providers.",
+    "Does not edit source or generate tests.",
+    "Does not change default CI blocking.",
+    "Gate evaluator remains pass/fail authority."
+  ]
+}

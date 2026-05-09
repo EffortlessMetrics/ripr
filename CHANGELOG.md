@@ -30,6 +30,11 @@ are scoped or reviewed.
   agent seam packets now include additive `packets[].evidence_record`, and
   RIPR Zero status repair routes prefer supplied `evidence_record` guidance
   while preserving legacy top-level fallback fields and advisory boundaries.
+- Added the assistant-loop-health fixture corpus under
+  `fixtures/boundary_gap/expected/assistant-loop-health/`, pinning
+  complete-improved, partial-missing-optional, missing-required-input,
+  unchanged, regressed, warning-heavy, and multi-proof report states before the
+  producer implementation.
 - Opened Campaign 22, First Useful Action, with
   `spec/first-useful-action-report` as the first ready work item so existing
   editor, PR guidance, ledger, proof, receipt, optional gate, coverage/grip,

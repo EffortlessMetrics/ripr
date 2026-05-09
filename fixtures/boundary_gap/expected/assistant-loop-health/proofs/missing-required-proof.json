@@ -1,0 +1,40 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "test_oracle_assistant_loop",
+  "status": "missing_required_input",
+  "root": ".",
+  "inputs": {
+    "pr_guidance": null,
+    "agent_packet": null,
+    "before": null,
+    "after": null,
+    "receipt": null,
+    "ledger": null,
+    "coverage_frontier": null,
+    "gate_decision": null,
+    "first_useful_action": null
+  },
+  "seam": null,
+  "recommendation": null,
+  "handoff": null,
+  "evidence_movement": null,
+  "ci_projection": {
+    "ledger": null,
+    "coverage_frontier": null,
+    "gate_decision": null,
+    "first_useful_action": null,
+    "pass_fail_authority": "gate decision when explicitly configured"
+  },
+  "warnings": [
+    "required proof input is missing selected seam and before/after movement context"
+  ],
+  "limits": {
+    "advisory": true,
+    "source_edits": false,
+    "generated_tests": false,
+    "external_service": false,
+    "runtime_mutation_execution": false,
+    "ci_blocking_default": false
+  }
+}
