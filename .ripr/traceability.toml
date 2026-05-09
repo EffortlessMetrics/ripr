@@ -1045,7 +1045,6 @@ outputs = [
   "docs/specs/README.md",
   "docs/CI.md",
   "docs/OUTPUT_SCHEMA.md",
-  "docs/CI.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/ROADMAP.md",
