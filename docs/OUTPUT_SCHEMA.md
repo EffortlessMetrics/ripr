@@ -2870,6 +2870,14 @@ authority, and the first-action report must not edit source, generate tests,
 call a provider, run mutation testing, rerun hidden analysis, or change default
 blocking.
 
+The VS Code status path may project an already-written
+`target/ripr/reports/first-useful-action.json` when the report root matches the
+current workspace. That projection is limited to status bar and `ripr: Show
+Status` text. It must not add diagnostics, CodeLens, inlay hints, unsaved-buffer
+analysis, source edits, generated tests, runtime mutation execution, provider
+calls, or runtime adequacy claims. If editor evidence is stale, the status
+projection must keep stale state visible before naming the report.
+
 ### Review Guidance Outcome Receipt
 
 Review guidance outcome receipts are optional repo-local inputs to the

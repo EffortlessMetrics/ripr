@@ -122,6 +122,13 @@ saved-workspace state:
 - stale because a Rust buffer has unsaved edits
 - analysis failed
 
+When `target/ripr/reports/first-useful-action.json` exists for the current
+workspace, the status bar and `ripr: Show Status` can project the report's top
+action, seam, target file, and verify/receipt command availability. This is a
+read-only projection of an existing report; the extension does not generate the
+report, add diagnostics, edit source, generate tests, or treat stale editor
+evidence as fresh.
+
 The LSP model remains saved-workspace only. When a Rust buffer is dirty, the
 extension keeps stale status visible even if a saved-workspace refresh
 completes, so diagnostics are not presented as fresh evidence for unsaved text.

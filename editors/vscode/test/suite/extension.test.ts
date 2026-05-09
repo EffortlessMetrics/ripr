@@ -1,4 +1,7 @@
 import * as assert from 'assert';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import * as vscode from 'vscode';
 import {
   RiprClientController,
@@ -250,6 +253,85 @@ suite('Extension Smoke', () => {
       assert.ok(context.infoMessages.at(-1)?.includes('analysis refresh failed'));
     } finally {
       await context.dispose();
+    }
+  });
+
+  test('status bar projects first useful action report when analysis is fresh', async () => {
+    const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ripr-first-action-'));
+    writeFirstUsefulActionReport(workspaceRoot, {
+      root: workspaceRoot,
+      status: 'actionable',
+      action_kind: 'write_focused_test',
+      title: 'Add equality-boundary discriminator test',
+      why: 'Changed predicate boundary is weakly exposed.',
+      selected: {
+        seam_id: '67fc764ba37d77bd'
+      },
+      target: {
+        file: 'tests/pricing.rs'
+      },
+      commands: {
+        verify: 'ripr agent verify --root . --before before.json --after after.json --json',
+        receipt: 'ripr agent receipt --root . --verify-json verify.json --json'
+      }
+    });
+    const context = createControllerTestContext({ workspaceRoot });
+    try {
+      await context.controller.start();
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=3, diagnostics=2, files=1, findings=1, seam_diagnostics=1, published_files=1, cleared_files=0'
+      });
+
+      assert.ok(context.status.text.includes('ripr: action available'));
+      assert.ok(String(context.status.tooltip).includes('Top action: Add equality-boundary discriminator test'));
+      assert.ok(String(context.status.tooltip).includes('Target: tests/pricing.rs'));
+      assert.ok(String(context.status.tooltip).includes('Verify command: available'));
+
+      context.controller.showStatus();
+      assert.ok(context.outputLines.includes('First useful action:'));
+      assert.ok(context.outputLines.includes('Top action: Add equality-boundary discriminator test'));
+      assert.ok(context.outputLines.includes('Report: target/ripr/reports/first-useful-action.json'));
+
+      const dirtyDocument = {
+        languageId: 'rust',
+        uri: vscode.Uri.file(path.join(workspaceRoot, 'src', 'lib.rs'))
+      } as vscode.TextDocument;
+      context.controller.markWorkspaceStale(dirtyDocument);
+      assert.ok(context.status.text.includes('ripr: stale'));
+      assert.ok(String(context.status.tooltip).includes('editor evidence is stale'));
+    } finally {
+      await context.dispose();
+      fs.rmSync(workspaceRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('status bar ignores first useful action report for another workspace', async () => {
+    const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ripr-first-action-'));
+    writeFirstUsefulActionReport(workspaceRoot, {
+      root: path.join(workspaceRoot, 'nested'),
+      status: 'actionable',
+      action_kind: 'write_focused_test',
+      title: 'Add equality-boundary discriminator test',
+      selected: {
+        seam_id: '67fc764ba37d77bd'
+      },
+      commands: {
+        verify: 'ripr agent verify --root . --before before.json --after after.json --json',
+        receipt: 'ripr agent receipt --root . --verify-json verify.json --json'
+      }
+    });
+    const context = createControllerTestContext({ workspaceRoot });
+    try {
+      await context.controller.start();
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=3, diagnostics=2, files=1, findings=1, seam_diagnostics=1, published_files=1, cleared_files=0'
+      });
+
+      assert.ok(context.status.text.includes('ripr: diagnostics'));
+      assert.ok(!String(context.status.tooltip).includes('First useful action'));
+    } finally {
+      await context.dispose();
+      fs.rmSync(workspaceRoot, { recursive: true, force: true });
     }
   });
 
@@ -533,7 +615,8 @@ class FakeLanguageClient {
 
 function createControllerTestContext(options: ControllerTestOptions) {
   const client = new FakeLanguageClient(options);
-  const output = fakeOutputChannel();
+  const outputLines: string[] = [];
+  const output = fakeOutputChannel(outputLines);
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
   const runRiprCalls: Array<{ command: string; args: string[]; cwd: string }> = [];
   const clipboardWrites: string[] = [];
@@ -592,6 +675,7 @@ function createControllerTestContext(options: ControllerTestOptions) {
     infoMessages,
     warningMessages,
     errorMessages,
+    outputLines,
     dispose: async () => {
       await controller.stop();
       output.dispose();
@@ -600,17 +684,36 @@ function createControllerTestContext(options: ControllerTestOptions) {
   };
 }
 
-function fakeOutputChannel(): vscode.OutputChannel {
+function fakeOutputChannel(outputLines: string[]): vscode.OutputChannel {
   return {
     name: 'ripr test',
-    append: () => {},
-    appendLine: () => {},
+    append: (value) => {
+      outputLines.push(value);
+    },
+    appendLine: (value) => {
+      outputLines.push(value);
+    },
     clear: () => {},
     show: () => {},
     hide: () => {},
     dispose: () => {},
     replace: () => {}
   } as vscode.OutputChannel;
+}
+
+function writeFirstUsefulActionReport(workspaceRoot: string, fields: Record<string, unknown>): void {
+  const reportDir = path.join(workspaceRoot, 'target', 'ripr', 'reports');
+  fs.mkdirSync(reportDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(reportDir, 'first-useful-action.json'),
+    JSON.stringify({
+      schema_version: '0.1',
+      tool: 'ripr',
+      kind: 'first_useful_action',
+      audience: 'developer',
+      ...fields
+    }, null, 2)
+  );
 }
 
 async function activateExtension(): Promise<void> {

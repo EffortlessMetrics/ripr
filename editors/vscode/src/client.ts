@@ -1,4 +1,5 @@
 import * as cp from 'child_process';
+import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import {
@@ -37,6 +38,18 @@ export interface RiprRelatedTestTarget {
   uri?: string;
   line?: number;
   test_name?: string;
+}
+
+interface FirstUsefulActionProjection {
+  reportPath: string;
+  status: string;
+  actionKind: string;
+  title: string;
+  why?: string;
+  seamId?: string;
+  targetFile?: string;
+  verifyCommandAvailable: boolean;
+  receiptCommandAvailable: boolean;
 }
 
 interface RiprLanguageClient {
@@ -86,6 +99,7 @@ export class RiprClientController {
   private server: ResolvedServer | undefined;
   private readonly notificationDisposables: vscode.Disposable[] = [];
   private readonly dirtyRustDocuments = new Set<string>();
+  private firstUsefulAction: FirstUsefulActionProjection | undefined;
   private status: RiprStatusState = {
     kind: 'stopped',
     summary: 'ripr server has not started.',
@@ -400,6 +414,10 @@ export class RiprClientController {
     if (this.status.detail) {
       this.output.appendLine(this.status.detail);
     }
+    this.firstUsefulAction = this.readFirstUsefulActionProjection();
+    for (const line of firstUsefulActionStatusLines(this.status.kind, this.firstUsefulAction)) {
+      this.output.appendLine(line);
+    }
     this.output.show();
     this.runtime.showInformationMessage(this.status.summary);
   }
@@ -455,13 +473,46 @@ export class RiprClientController {
 
   private updateStatus(status: RiprStatusState): void {
     this.status = status;
+    this.firstUsefulAction = this.readFirstUsefulActionProjection();
     if (!this.statusBar) {
       return;
     }
-    this.statusBar.text = statusText(status.kind);
-    this.statusBar.tooltip = status.detail ? `${status.summary}\n${status.detail}` : status.summary;
+    this.statusBar.text = statusText(status.kind, this.firstUsefulAction);
+    const detailLines = [
+      status.summary,
+      status.detail,
+      ...firstUsefulActionStatusLines(status.kind, this.firstUsefulAction)
+    ].filter((line): line is string => Boolean(line));
+    this.statusBar.tooltip = detailLines.join('\n');
     this.statusBar.command = 'ripr.showStatus';
     this.statusBar.show();
+  }
+
+  private readFirstUsefulActionProjection(): FirstUsefulActionProjection | undefined {
+    if (!this.workspaceRoot) {
+      return undefined;
+    }
+    const reportPath = path.join(
+      this.workspaceRoot,
+      'target',
+      'ripr',
+      'reports',
+      'first-useful-action.json'
+    );
+    let reportText: string;
+    try {
+      reportText = fs.readFileSync(reportPath, 'utf8');
+    } catch {
+      return undefined;
+    }
+
+    let report: unknown;
+    try {
+      report = JSON.parse(reportText);
+    } catch {
+      return undefined;
+    }
+    return firstUsefulActionProjectionFromReport(report, this.workspaceRoot, reportPath);
   }
 
   private async resolveServerForCommand(config: RiprConfig): Promise<ResolvedServer | undefined> {
@@ -514,7 +565,20 @@ interface RiprStatusState {
   detail?: string;
 }
 
-function statusText(kind: RiprStatusKind): string {
+function statusText(kind: RiprStatusKind, firstAction?: FirstUsefulActionProjection): string {
+  if (firstAction && canProjectFirstUsefulAction(kind)) {
+    switch (firstAction.status) {
+      case 'actionable':
+        return '$(lightbulb) ripr: action available';
+      case 'stale':
+        return '$(warning) ripr: refresh action';
+      case 'already_improved':
+      case 'no_actionable_seam':
+        return '$(pass) ripr: no action';
+      default:
+        return '$(info) ripr: first action';
+    }
+  }
   switch (kind) {
     case 'disabled':
       return '$(circle-slash) ripr: disabled';
@@ -544,6 +608,127 @@ function statusText(kind: RiprStatusKind): string {
     default:
       return 'ripr: stopped';
   }
+}
+
+function firstUsefulActionProjectionFromReport(
+  report: unknown,
+  workspaceRoot: string,
+  reportPath: string
+): FirstUsefulActionProjection | undefined {
+  const object = objectValue(report);
+  if (!object || stringField(object, 'kind') !== 'first_useful_action') {
+    return undefined;
+  }
+  if (!rootMatchesWorkspace(stringField(object, 'root'), workspaceRoot)) {
+    return undefined;
+  }
+  const status = stringField(object, 'status');
+  const actionKind = stringField(object, 'action_kind');
+  const title = stringField(object, 'title');
+  if (!status || !actionKind || !title) {
+    return undefined;
+  }
+  const selected = objectField(object, 'selected');
+  const target = objectField(object, 'target');
+  const commands = objectField(object, 'commands');
+  return {
+    reportPath: relativeWorkspacePath(workspaceRoot, reportPath),
+    status,
+    actionKind,
+    title,
+    why: stringField(object, 'why'),
+    seamId: selected ? stringField(selected, 'seam_id') : undefined,
+    targetFile: target ? stringField(target, 'file') : undefined,
+    verifyCommandAvailable: Boolean(commands && stringField(commands, 'verify')),
+    receiptCommandAvailable: Boolean(commands && stringField(commands, 'receipt')),
+  };
+}
+
+function firstUsefulActionStatusLines(
+  kind: RiprStatusKind,
+  firstAction?: FirstUsefulActionProjection
+): string[] {
+  if (!firstAction) {
+    return [];
+  }
+  if (!canProjectFirstUsefulAction(kind)) {
+    if (kind === 'stale') {
+      return [
+        'First useful action report: available, but editor evidence is stale.',
+        'Save or refresh the Rust workspace before acting on this report.',
+        `Report: ${firstAction.reportPath}`,
+      ];
+    }
+    return [
+      'First useful action report: available, but editor analysis is not ready.',
+      `Report: ${firstAction.reportPath}`,
+    ];
+  }
+
+  const lines = [
+    'First useful action:',
+    `Status: ${firstAction.status}`,
+    `Action: ${firstAction.actionKind}`,
+    `Top action: ${firstAction.title}`,
+  ];
+  if (firstAction.why) {
+    lines.push(`Why: ${firstAction.why}`);
+  }
+  if (firstAction.seamId) {
+    lines.push(`Seam: ${firstAction.seamId}`);
+  }
+  if (firstAction.targetFile) {
+    lines.push(`Target: ${firstAction.targetFile}`);
+  }
+  lines.push(`Verify command: ${firstAction.verifyCommandAvailable ? 'available' : 'not available'}`);
+  lines.push(`Receipt command: ${firstAction.receiptCommandAvailable ? 'available' : 'not available'}`);
+  lines.push(`Report: ${firstAction.reportPath}`);
+  return lines;
+}
+
+function canProjectFirstUsefulAction(kind: RiprStatusKind): boolean {
+  return kind === 'analysisReady' || kind === 'noActionableSeams' || kind === 'ready';
+}
+
+function rootMatchesWorkspace(root: string | undefined, workspaceRoot: string): boolean {
+  if (!root || root === '.') {
+    return true;
+  }
+  const resolvedRoot = path.isAbsolute(root)
+    ? path.resolve(root)
+    : path.resolve(workspaceRoot, root);
+  return normalizePath(resolvedRoot) === normalizePath(path.resolve(workspaceRoot));
+}
+
+function relativeWorkspacePath(workspaceRoot: string, filePath: string): string {
+  const relativePath = path.relative(workspaceRoot, filePath);
+  return relativePath && !relativePath.startsWith('..') && !path.isAbsolute(relativePath)
+    ? relativePath.replace(/\\/g, '/')
+    : filePath;
+}
+
+function normalizePath(value: string): string {
+  const normalized = path.normalize(value).replace(/\\/g, '/');
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+
+function objectField(value: Record<string, unknown>, field: string): Record<string, unknown> | undefined {
+  return objectValue(value[field]);
+}
+
+function stringField(value: Record<string, unknown>, field: string): string | undefined {
+  const fieldValue = value[field];
+  if (typeof fieldValue !== 'string') {
+    return undefined;
+  }
+  const trimmed = fieldValue.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function objectValue(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
 }
 
 function serverLogMessage(params: unknown): string | undefined {
