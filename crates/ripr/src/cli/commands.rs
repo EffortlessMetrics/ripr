@@ -1129,6 +1129,50 @@ jobs:
           fi
           ripr "${zero_args[@]}"
 
+      - name: Render RIPR PR evidence ledger
+        if: always() && github.event_name == 'pull_request' && hashFiles('target/ripr/review/comments.json') != ''
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          ledger_args=(
+            pr-ledger record
+            --pr-number "${{ github.event.pull_request.number }}"
+            --base "origin/${{ github.base_ref }}"
+            --head HEAD
+            --pr-guidance target/ripr/review/comments.json
+            --out target/ripr/reports/pr-evidence-ledger.json
+            --out-md target/ripr/reports/pr-evidence-ledger.md
+          )
+          if [ -f target/ripr/reports/gate-decision.json ]; then
+            ledger_args+=(--gate target/ripr/reports/gate-decision.json)
+          fi
+          if [ -f target/ripr/reports/baseline-debt-delta.json ]; then
+            ledger_args+=(--baseline-delta target/ripr/reports/baseline-debt-delta.json)
+          fi
+          if [ -f target/ripr/reports/ripr-zero-status.json ]; then
+            ledger_args+=(--zero-status target/ripr/reports/ripr-zero-status.json)
+          fi
+          if [ -f target/ripr/reports/recommendation-calibration.json ]; then
+            ledger_args+=(--recommendation-calibration target/ripr/reports/recommendation-calibration.json)
+          fi
+          if [ -f target/ripr/reports/agent-receipt.json ]; then
+            ledger_args+=(--agent-receipt target/ripr/reports/agent-receipt.json)
+          fi
+          if [ -f target/ripr/reports/coverage-summary.json ]; then
+            ledger_args+=(--coverage target/ripr/reports/coverage-summary.json)
+          fi
+          if [ -f .ripr/pr-evidence-ledger.jsonl ]; then
+            ledger_args+=(--history .ripr/pr-evidence-ledger.jsonl)
+          fi
+          if [ -f target/ci/labels.json ]; then
+            while IFS= read -r label; do
+              if [ -n "$label" ] && [ "$label" != "null" ]; then
+                ledger_args+=(--label "$label")
+              fi
+            done < <(jq -r '.labels[]? // empty' target/ci/labels.json 2>/dev/null || true)
+          fi
+          ripr "${ledger_args[@]}"
+
       - name: Render RIPR LLM work-loop summaries
         if: always()
         continue-on-error: true
@@ -1221,6 +1265,60 @@ jobs:
               echo '- PR test guidance report: `target/ripr/review/`'
             else
               echo "- PR test guidance report: not generated yet"
+            fi
+            echo
+            echo '### PR evidence ledger'
+            if [ -f target/ripr/reports/pr-evidence-ledger.json ]; then
+              ledger_json=target/ripr/reports/pr-evidence-ledger.json
+              ledger_status="$(jq -r '.status // "unknown"' "$ledger_json" 2>/dev/null || echo unknown)"
+              ledger_gate_mode="$(jq -r '.gate.mode // "not_evaluated"' "$ledger_json" 2>/dev/null || echo unknown)"
+              ledger_gate_decision="$(jq -r '.gate.decision // "not_evaluated"' "$ledger_json" 2>/dev/null || echo unknown)"
+              ledger_new_policy_eligible="$(jq -r '.movement.new_policy_eligible // 0' "$ledger_json" 2>/dev/null || echo 0)"
+              ledger_still_present="$(jq -r '.movement.baseline_still_present // 0' "$ledger_json" 2>/dev/null || echo 0)"
+              ledger_resolved="$(jq -r '.movement.baseline_resolved // 0' "$ledger_json" 2>/dev/null || echo 0)"
+              ledger_acknowledged="$(jq -r '.movement.acknowledged // 0' "$ledger_json" 2>/dev/null || echo 0)"
+              ledger_suppressed="$(jq -r '.movement.suppressed // 0' "$ledger_json" 2>/dev/null || echo 0)"
+              ledger_blocking="$(jq -r '.movement.blocking_candidates // 0' "$ledger_json" 2>/dev/null || echo 0)"
+              ledger_visible="$(jq -r '.movement.visible_unresolved // 0' "$ledger_json" 2>/dev/null || echo 0)"
+              ledger_coverage_status="$(jq -r '.coverage_grip_frontier.status // "not_available"' "$ledger_json" 2>/dev/null || echo unknown)"
+              ledger_trend="$(jq -r '.history.trend // "not_available"' "$ledger_json" 2>/dev/null || echo unknown)"
+              ledger_route="$(jq -r '(.top_repair_route | if . == null then "none" else ((.path // "unknown") + (if .line then ":" + (.line|tostring) else "" end) + " " + (.missing_discriminator // "missing discriminator unavailable")) end)' "$ledger_json" 2>/dev/null || echo unknown)"
+              ledger_verify="$(jq -r '.top_repair_route.verify_command // "not_available"' "$ledger_json" 2>/dev/null || echo unknown)"
+              ledger_agent="$(jq -r '.top_repair_route.agent_command // "not_available"' "$ledger_json" 2>/dev/null || echo unknown)"
+              ledger_status="$(markdown_inline "$ledger_status")"
+              ledger_gate_mode="$(markdown_inline "$ledger_gate_mode")"
+              ledger_gate_decision="$(markdown_inline "$ledger_gate_decision")"
+              ledger_new_policy_eligible="$(markdown_inline "$ledger_new_policy_eligible")"
+              ledger_still_present="$(markdown_inline "$ledger_still_present")"
+              ledger_resolved="$(markdown_inline "$ledger_resolved")"
+              ledger_acknowledged="$(markdown_inline "$ledger_acknowledged")"
+              ledger_suppressed="$(markdown_inline "$ledger_suppressed")"
+              ledger_blocking="$(markdown_inline "$ledger_blocking")"
+              ledger_visible="$(markdown_inline "$ledger_visible")"
+              ledger_coverage_status="$(markdown_inline "$ledger_coverage_status")"
+              ledger_trend="$(markdown_inline "$ledger_trend")"
+              ledger_route="$(markdown_inline "$ledger_route")"
+              ledger_verify="$(markdown_inline "$ledger_verify")"
+              ledger_agent="$(markdown_inline "$ledger_agent")"
+              echo '#### PR movement at a glance'
+              echo "- Status: \`$ledger_status\`"
+              echo "- Gate: mode=\`$ledger_gate_mode\`, decision=\`$ledger_gate_decision\`"
+              echo "- Counts: new_policy_eligible=\`$ledger_new_policy_eligible\`, baseline_still_present=\`$ledger_still_present\`, baseline_resolved=\`$ledger_resolved\`, acknowledged=\`$ledger_acknowledged\`, suppressed=\`$ledger_suppressed\`, blocking_candidates=\`$ledger_blocking\`, visible_unresolved=\`$ledger_visible\`"
+              echo "- Top repair route: \`$ledger_route\`"
+              echo "- Verify command: \`$ledger_verify\`"
+              echo "- Agent command: \`$ledger_agent\`"
+              echo "- Coverage/grip frontier: \`$ledger_coverage_status\`"
+              echo "- History trend: \`$ledger_trend\`"
+              echo "- Ledger artifacts: \`target/ripr/reports/pr-evidence-ledger.json\`, \`target/ripr/reports/pr-evidence-ledger.md\`"
+              echo "- Pass/fail authority remains \`ripr gate evaluate\` when an explicit gate mode is configured."
+              echo
+            fi
+            if [ -f target/ripr/reports/pr-evidence-ledger.md ]; then
+              cat target/ripr/reports/pr-evidence-ledger.md
+            elif [ -f target/ripr/review/comments.json ]; then
+              echo 'PR evidence ledger was not generated. Inspect `target/ripr/review/comments.json` and rerun `ripr pr-ledger record` locally.'
+            else
+              echo 'PR evidence ledger was not run. It requires pull-request guidance from `target/ripr/review/comments.json`.'
             fi
             echo
             echo '### Gate decision'
@@ -3392,6 +3490,7 @@ mod tests {
                 "gate evaluate",
                 "ripr baseline diff",
                 "zero status",
+                "pr-ledger record",
                 "ripr agent status",
                 "ripr agent review-summary",
                 "cargo xtask operator-cockpit",
@@ -3423,6 +3522,8 @@ mod tests {
                 "target/ripr/reports/baseline-debt-delta.md",
                 "target/ripr/reports/ripr-zero-status.json",
                 "target/ripr/reports/ripr-zero-status.md",
+                "target/ripr/reports/pr-evidence-ledger.json",
+                "target/ripr/reports/pr-evidence-ledger.md",
                 "target/ripr/review/comments.json",
                 "target/ci/labels.json",
             ],
@@ -3437,6 +3538,8 @@ mod tests {
                 "#### Baseline debt movement",
                 "### RIPR Zero status",
                 "#### RIPR Zero at a glance",
+                "### PR evidence ledger",
+                "#### PR movement at a glance",
                 "### SARIF and badge status",
                 "### PR guidance annotations",
                 "### Known limits",
@@ -3451,6 +3554,7 @@ mod tests {
                 "Render RIPR operator cockpit",
                 "Render RIPR baseline debt delta",
                 "Render RIPR Zero status",
+                "Render RIPR PR evidence ledger",
                 "Render RIPR LLM work-loop summaries",
                 "Run RIPR PR guidance report",
                 "Capture RIPR gate labels",
@@ -5070,6 +5174,10 @@ mod tests {
         assert!(workflow.contains("target/ripr/reports/gate-decision.md"));
         assert!(workflow.contains("target/ripr/reports/baseline-debt-delta.json"));
         assert!(workflow.contains("target/ripr/reports/baseline-debt-delta.md"));
+        assert!(workflow.contains("target/ripr/reports/ripr-zero-status.json"));
+        assert!(workflow.contains("target/ripr/reports/ripr-zero-status.md"));
+        assert!(workflow.contains("target/ripr/reports/pr-evidence-ledger.json"));
+        assert!(workflow.contains("target/ripr/reports/pr-evidence-ledger.md"));
         assert!(workflow.contains("target/ci/labels.json"));
         assert!(workflow.contains("target/ripr/review/comments.json"));
         assert!(workflow.contains("target/ripr/review"));
@@ -5090,6 +5198,10 @@ mod tests {
         assert!(workflow.contains("#### Gate decision at a glance"));
         assert!(workflow.contains("### Baseline debt delta"));
         assert!(workflow.contains("#### Baseline debt movement"));
+        assert!(workflow.contains("### RIPR Zero status"));
+        assert!(workflow.contains("#### RIPR Zero at a glance"));
+        assert!(workflow.contains("### PR evidence ledger"));
+        assert!(workflow.contains("#### PR movement at a glance"));
         assert!(workflow.contains("markdown_inline()"));
         assert!(workflow.contains("Active PR labels"));
         assert!(workflow.contains("Applied waiver label"));
@@ -5151,9 +5263,21 @@ mod tests {
         assert!(workflow.contains(".delta.invalid_baseline_entry // 0"));
         assert!(workflow.contains(".delta.missing_current_input // 0"));
         assert!(workflow.contains("Counts: still_present=\\`$still_present\\`"));
+        assert!(workflow.contains(".movement.new_policy_eligible // 0"));
+        assert!(workflow.contains(".movement.baseline_still_present // 0"));
+        assert!(workflow.contains(".movement.baseline_resolved // 0"));
+        assert!(workflow.contains(".movement.acknowledged // 0"));
+        assert!(workflow.contains(".movement.suppressed // 0"));
+        assert!(workflow.contains(".movement.blocking_candidates // 0"));
+        assert!(workflow.contains(".movement.visible_unresolved // 0"));
+        assert!(workflow.contains(".coverage_grip_frontier.status // \"not_available\""));
+        assert!(workflow.contains(".history.trend // \"not_available\""));
+        assert!(workflow.contains("Counts: new_policy_eligible=\\`$ledger_new_policy_eligible\\`"));
         assert!(workflow.contains("sed 's/`/\\\\`/g'"));
         assert!(workflow.contains("Blocking reason: \\`$blocking_reason\\`"));
         assert!(workflow.contains("Boundary: $limits_note"));
+        assert!(workflow.contains("Pass/fail authority remains \\`ripr gate evaluate\\`"));
+        assert!(workflow.contains("cat target/ripr/reports/pr-evidence-ledger.md"));
         assert!(workflow.contains("Set `RIPR_GATE_BASELINE`"));
         assert!(workflow.contains("RIPR_GATE_MODE"));
         assert!(workflow.contains("RIPR_GATE_BASELINE"));
@@ -5226,6 +5350,11 @@ mod tests {
         assert_step_before(
             &workflow,
             "Render RIPR Zero status",
+            "Render RIPR PR evidence ledger",
+        );
+        assert_step_before(
+            &workflow,
+            "Render RIPR PR evidence ledger",
             "Emit RIPR PR guidance annotations",
         );
         assert_step_before(
@@ -5293,6 +5422,29 @@ mod tests {
             "--recommendation-calibration target/ripr/reports/recommendation-calibration.json"
         ));
 
+        let pr_ledger = workflow_step(&workflow, "Render RIPR PR evidence ledger");
+        assert!(pr_ledger.contains("github.event_name == 'pull_request'"));
+        assert!(pr_ledger.contains("hashFiles('target/ripr/review/comments.json')"));
+        assert!(pr_ledger.contains("continue-on-error: true"));
+        assert!(pr_ledger.contains("pr-ledger record"));
+        assert!(pr_ledger.contains("--pr-number \"${{ github.event.pull_request.number }}\""));
+        assert!(pr_ledger.contains("--base \"origin/${{ github.base_ref }}\""));
+        assert!(pr_ledger.contains("--head HEAD"));
+        assert!(pr_ledger.contains("--pr-guidance target/ripr/review/comments.json"));
+        assert!(pr_ledger.contains("--gate target/ripr/reports/gate-decision.json"));
+        assert!(
+            pr_ledger.contains("--baseline-delta target/ripr/reports/baseline-debt-delta.json")
+        );
+        assert!(pr_ledger.contains("--zero-status target/ripr/reports/ripr-zero-status.json"));
+        assert!(pr_ledger.contains(
+            "--recommendation-calibration target/ripr/reports/recommendation-calibration.json"
+        ));
+        assert!(pr_ledger.contains("--agent-receipt target/ripr/reports/agent-receipt.json"));
+        assert!(pr_ledger.contains("--coverage target/ripr/reports/coverage-summary.json"));
+        assert!(pr_ledger.contains("--history .ripr/pr-evidence-ledger.jsonl"));
+        assert!(pr_ledger.contains("ledger_args+=(--label \"$label\")"));
+        assert!(pr_ledger.contains("ripr \"${ledger_args[@]}\""));
+
         let annotations = workflow_step(&workflow, "Emit RIPR PR guidance annotations");
         assert!(annotations.contains("hashFiles('target/ripr/review/comments.json')"));
         assert!(annotations.contains("escape_github_message()"));
@@ -5355,6 +5507,25 @@ mod tests {
         assert!(summary.contains("cat target/ripr/reports/ripr-zero-status.md"));
         assert!(summary.contains("RIPR Zero status was not run"));
         assert!(summary.contains("RIPR Zero status was not generated"));
+        assert!(summary.contains("### PR evidence ledger"));
+        assert!(summary.contains("#### PR movement at a glance"));
+        assert!(summary.contains("target/ripr/reports/pr-evidence-ledger.json"));
+        assert!(summary.contains("target/ripr/reports/pr-evidence-ledger.md"));
+        assert!(summary.contains(".movement.new_policy_eligible // 0"));
+        assert!(summary.contains(".movement.baseline_still_present // 0"));
+        assert!(summary.contains(".movement.baseline_resolved // 0"));
+        assert!(summary.contains(".movement.acknowledged // 0"));
+        assert!(summary.contains(".movement.suppressed // 0"));
+        assert!(summary.contains(".movement.blocking_candidates // 0"));
+        assert!(summary.contains(".movement.visible_unresolved // 0"));
+        assert!(summary.contains(".coverage_grip_frontier.status // \"not_available\""));
+        assert!(summary.contains(".history.trend // \"not_available\""));
+        assert!(summary.contains(".top_repair_route.verify_command // \"not_available\""));
+        assert!(summary.contains(".top_repair_route.agent_command // \"not_available\""));
+        assert!(summary.contains("Pass/fail authority remains \\`ripr gate evaluate\\`"));
+        assert!(summary.contains("cat target/ripr/reports/pr-evidence-ledger.md"));
+        assert!(summary.contains("PR evidence ledger was not generated"));
+        assert!(summary.contains("PR evidence ledger was not run"));
         assert!(summary.contains(".summary.comments // 0"));
         assert!(summary.contains(".summary.summary_only // 0"));
         assert!(summary.contains(".summary.suppressed // 0"));

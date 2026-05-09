@@ -57,7 +57,7 @@ commands = [
 
 [[work_item]]
 id = "ci/pr-evidence-ledger-summary"
-status = "ready"
+status = "done"
 branch = "ci-pr-evidence-ledger-summary"
 stackable = false
 blocked_by = [
@@ -74,7 +74,7 @@ commands = [
 
 [[work_item]]
 id = "report/coverage-grip-frontier"
-status = "blocked"
+status = "ready"
 branch = "report-coverage-grip-frontier"
 stackable = false
 blocked_by = [

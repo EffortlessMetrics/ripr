@@ -479,8 +479,10 @@ Expected follow-up surfaces:
 
 - `report/pr-evidence-ledger` writes `pr-evidence-ledger.json` and
   `pr-evidence-ledger.md` from existing artifacts.
-- `ci/pr-evidence-ledger-summary` uploads and summarizes the ledger in
-  generated CI while keeping advisory defaults and gate pass/fail authority.
+- `ci/pr-evidence-ledger-summary` runs `ripr pr-ledger record` in generated CI
+  on pull requests when PR guidance exists, uploads `pr-evidence-ledger.{json,md}`,
+  and appends a PR movement card while keeping advisory defaults and gate
+  pass/fail authority.
 - `report/coverage-grip-frontier` adds optional coverage/grip frontier fields
   from supplied coverage inputs without making coverage blocking.
 - `docs/pr-evidence-ledger-workflow` explains how teams read ledgers, waiver

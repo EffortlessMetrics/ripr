@@ -764,11 +764,12 @@ evidence = [
   "docs/specs/RIPR-SPEC-0018-pr-evidence-ledger.md defines the PR evidence ledger contract",
   "ripr pr-ledger record writes advisory pr-evidence-ledger JSON and Markdown from existing PR guidance, gate decision, baseline debt delta, RIPR Zero status, recommendation calibration, agent receipt, optional coverage, and optional history inputs",
   "crates/ripr/src/output/pr_evidence_ledger.rs renders PR movement, visible waivers, suppressions, repair receipts, top repair route, coverage/grip frontier status, and history summaries without changing gate authority",
+  "crates/ripr/src/cli/commands.rs generated GitHub workflow runs pr-ledger record on pull requests when PR guidance exists, uploads pr-evidence-ledger JSON/Markdown with the normal artifact packet, and appends a PR movement summary while keeping gate decisions as the pass/fail authority",
   "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed pins checked JSON and Markdown output for a mixed acknowledged/suppressed/resolved/new-debt case",
   "docs/OUTPUT_SCHEMA.md documents the pr-evidence-ledger JSON/Markdown shape"
 ]
 fixtures = ["fixtures/boundary_gap/expected/pr-evidence-ledger/mixed"]
-next = "ci/pr-evidence-ledger-summary"
+next = "report/coverage-grip-frontier"
 metric = "pr_evidence_ledger_records, pr_evidence_ledger_new_policy_eligible, pr_evidence_ledger_baseline_still_present, pr_evidence_ledger_baseline_resolved, pr_evidence_ledger_acknowledged, pr_evidence_ledger_suppressed, pr_evidence_ledger_blocking_candidates, pr_evidence_ledger_repair_receipts, pr_evidence_ledger_waiver_age_max_days, pr_evidence_ledger_coverage_grip_frontier_available, pr_evidence_ledger_flat_coverage_grip_improved"
 
 [[capability]]

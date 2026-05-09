@@ -1205,6 +1205,19 @@ counts, active and acknowledgement labels, applied waiver label, baseline
 input, calibration inputs/effects, blocking reason, baseline debt movement, and
 gate and delta artifact paths.
 
+On pull requests where `ripr review-comments` writes
+`target/ripr/review/comments.json`, generated CI also writes and uploads
+`target/ripr/reports/pr-evidence-ledger.json` and
+`target/ripr/reports/pr-evidence-ledger.md`. The ledger joins PR guidance,
+optional gate decision, baseline debt delta, RIPR Zero status, recommendation
+calibration, agent receipt, optional coverage summary, labels, and optional
+history into one advisory PR movement card. The job summary shows new
+policy-eligible gaps, baseline debt still present, baseline debt resolved,
+acknowledged and suppressed counts, blocking candidates, visible unresolved
+gaps, the top repair route, verify command, agent command, coverage/grip
+frontier status, and history trend when available. The ledger is evidence only;
+`ripr gate evaluate` remains the pass/fail authority for configured gate modes.
+
 For every configured gate mode, the generated workflow behavior is:
 
 1. capture active PR labels into `target/ci/labels.json`;
@@ -1218,11 +1231,14 @@ For every configured gate mode, the generated workflow behavior is:
    `baseline-debt-delta.json` when present;
 8. render the RIPR Zero at-a-glance section from `ripr-zero-status.json` and
    append `ripr-zero-status.md` when present;
-9. append the detailed `gate-decision.md` and `baseline-debt-delta.md`
-   reports when present;
-10. upload gate, baseline delta, and RIPR Zero artifacts with the normal
-   `ripr-reports` artifact packet;
-11. fail only when the explicit gate mode returns `blocked` or `config_error`.
+9. run `ripr pr-ledger record` on pull requests when `comments.json` exists;
+10. render the PR movement section from `pr-evidence-ledger.json` and append
+   `pr-evidence-ledger.md` when present;
+11. append the detailed `gate-decision.md`, `baseline-debt-delta.md`, and
+   `ripr-zero-status.md` reports when present;
+12. upload gate, baseline delta, RIPR Zero, and PR evidence ledger artifacts
+   with the normal `ripr-reports` artifact packet;
+13. fail only when the explicit gate mode returns `blocked` or `config_error`.
 
 Acknowledgeable policy:
 

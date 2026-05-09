@@ -25,6 +25,10 @@ are scoped or reviewed.
   status, recommendation calibration, agent receipts, optional coverage, and
   optional history into per-PR evidence ledger records without changing gate
   authority or CI blocking defaults.
+- Added generated GitHub CI projection for PR evidence ledgers: pull-request
+  runs now render and upload `pr-evidence-ledger.{json,md}` when PR guidance is
+  present, append a PR movement card to the job summary, and keep gate decisions
+  as the only pass/fail authority.
 - Opened Campaign 18, RIPR Zero Reporting, with
   `spec/ripr-zero-reporting-surface` as the first ready work item so reviewed
   baselines and debt deltas can become repo-level RIPR 0 status, stale-debt,

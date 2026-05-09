@@ -1144,6 +1144,7 @@ tests = [
   "crates/ripr/src/cli/commands.rs::tests::pr_evidence_ledger_parses_option_surface",
   "crates/ripr/src/cli/commands.rs::tests::pr_evidence_ledger_requires_identity_and_evidence",
   "crates/ripr/src/cli/commands.rs::tests::pr_evidence_ledger_writes_json_and_markdown_reports",
+  "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_matches_smoke_fixture",
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/gate-decision.json",
@@ -1167,6 +1168,7 @@ outputs = [
   "docs/specs/RIPR-SPEC-0018-pr-evidence-ledger.md",
   "docs/specs/README.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/CI.md",
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
