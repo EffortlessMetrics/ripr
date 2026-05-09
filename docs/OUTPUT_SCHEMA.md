@@ -2465,6 +2465,10 @@ frontier status, and the advisory boundary. It must say that the PR evidence
 ledger is advisory history and that gate decisions remain the pass/fail
 authority.
 
+See [PR evidence ledger workflow](PR_EVIDENCE_LEDGER_WORKFLOW.md) for how
+teams read ledger records as waiver aging, baseline burn-down, repair receipts,
+coverage/grip frontier signals, and movement toward RIPR 0.
+
 ## Coverage / Grip Frontier Report
 
 `ripr coverage-grip frontier` writes an advisory report that keeps execution

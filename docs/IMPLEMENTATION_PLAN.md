@@ -133,7 +133,10 @@ the ledger on pull requests, uploads `pr-evidence-ledger.{json,md}`, and appends
 the advisory PR movement card while keeping gate decisions as the pass/fail
 authority. `ripr coverage-grip frontier` now writes advisory JSON/Markdown that
 keeps execution coverage movement and RIPR behavioral grip movement visible as
-separate axes. The next ready item is `docs/pr-evidence-ledger-workflow`.
+separate axes. `docs/PR_EVIDENCE_LEDGER_WORKFLOW.md` now explains how teams
+read ledgers for waiver aging, baseline burn-down, repair receipts,
+coverage/grip frontier signals, and progress toward RIPR 0. The next ready
+item is `campaign/pr-evidence-ledger-closeout`.
 
 ## PR 0: `planning-and-tracking-docs`
 

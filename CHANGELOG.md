@@ -32,6 +32,10 @@ are scoped or reviewed.
 - Added `ripr coverage-grip frontier`, an advisory JSON/Markdown report that
   keeps coverage movement and RIPR behavioral grip movement visible as separate
   axes without treating coverage as test adequacy.
+- Added `docs/PR_EVIDENCE_LEDGER_WORKFLOW.md`, explaining how teams read PR
+  evidence ledgers for waiver aging, baseline burn-down, repair receipts,
+  coverage/grip frontier signals, and movement toward RIPR 0 without learning
+  internal report topology.
 - Opened Campaign 18, RIPR Zero Reporting, with
   `spec/ripr-zero-reporting-surface` as the first ready work item so reviewed
   baselines and debt deltas can become repo-level RIPR 0 status, stale-debt,
