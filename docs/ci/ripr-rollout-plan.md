@@ -123,6 +123,11 @@ Completed receipts:
 - PR 02: the declared workspace MSRV, pinned toolchain, `clippy.toml`, and
   `policy/clippy-lints.toml` now target Rust 1.95. PR 03 still owns planned
   Clippy lint promotion.
+- PR 03: clean Rust 1.94/1.95 planned lints are now active in
+  `[workspace.lints.clippy]` and `policy/clippy-lints.toml`. `disallowed_fields`
+  remains planned until a protected-seam `clippy.toml` config lands;
+  `manual_pop_if` remains planned because Rust 1.95.0 Clippy does not
+  recognize it.
 
 Natural stacks:
 

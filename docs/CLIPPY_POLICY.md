@@ -55,7 +55,8 @@ A panic-family call site is acceptable only if it satisfies **both rails**.
 
 The authoritative source is `[workspace.lints.*]` in Cargo.toml. A reviewable
 ledger lives in [`policy/clippy-lints.toml`](../policy/clippy-lints.toml),
-including planned 1.94 / 1.95 lint flips that are tracked but not yet active.
+including active 1.94 / 1.95 lint flips and deferred lints that remain planned
+with explicit blockers.
 
 Currently denied at the workspace level (selected highlights):
 
@@ -102,6 +103,11 @@ Currently denied at the workspace level (selected highlights):
   slice arithmetic where indices come from validated AST text ranges.
   The flip pairs the two lints together with per-site `#[expect]`
   receipts and is tracked in `policy/clippy-lints.toml` as planned.
+- Collection / ownership helpers: `clippy::same_length_and_capacity`,
+  `clippy::manual_ilog2`, `clippy::needless_type_cast`,
+  `clippy::decimal_bitwise_operands`, `clippy::manual_checked_ops`,
+  `clippy::manual_take`, `clippy::duration_suboptimal_units`,
+  `clippy::unnecessary_trailing_comma`.
 - API and trait correctness: `clippy::iter_not_returning_iterator`,
   `clippy::expl_impl_clone_on_copy`, `clippy::infallible_try_from`,
   `clippy::fallible_impl_from`, `clippy::error_impl_error`. Catches trait
@@ -195,20 +201,7 @@ follow-up PR.
 
 The current workspace MSRV is `1.95`.
 
-Planned lints that are available at MSRV 1.95 but remain deferred to PR 03
-(tracked in `policy/clippy-lints.toml`):
-
-| Lint | Level | Reason |
-| --- | --- | --- |
-| `clippy::disallowed_fields` | deny | Ban direct field access across protected seams. Requires `clippy.toml` config. |
-| `clippy::manual_checked_ops` | warn | Prefer checked arithmetic over manual guards. |
-| `clippy::manual_take` | warn | Use the standard ownership helper. |
-| `clippy::manual_pop_if` | warn | Use predicate-and-pop collection APIs. |
-| `clippy::duration_suboptimal_units` | warn | Make durations legible without unit conversion. |
-| `clippy::unnecessary_trailing_comma` | warn | Keep format macro calls clean. |
-
-Planned lints that became available at MSRV 1.94 and also remain deferred to
-PR 03:
+PR 03 promoted these lints after the MSRV 1.95 bump:
 
 | Lint | Level | Reason |
 | --- | --- | --- |
@@ -216,17 +209,23 @@ PR 03:
 | `clippy::manual_ilog2` | warn | Prefer the standard integer log helper. |
 | `clippy::needless_type_cast` | warn | Avoid stale numeric type drift. |
 | `clippy::decimal_bitwise_operands` | warn | Make bit masks visually inspectable. |
+| `clippy::manual_checked_ops` | warn | Prefer checked arithmetic over manual guards. |
+| `clippy::manual_take` | warn | Use the standard ownership helper. |
+| `clippy::duration_suboptimal_units` | warn | Make durations legible without unit conversion. |
+| `clippy::unnecessary_trailing_comma` | warn | Keep format macro calls clean. |
 
-Deferred lints targeted for activation after the MSRV bump and per-site review:
+Planned lints retained after PR 03:
 
 | Lint | Blocker |
 | --- | --- |
+| `clippy::disallowed_fields` | Requires a reviewed `clippy.toml` `disallowed-fields = [...]` protected-seam list; without that config the lint is a no-op. |
+| `clippy::manual_pop_if` | Rust 1.95.0 Clippy does not recognize this lint; promote after the pinned toolchain supports it. |
 | `clippy::indexing_slicing` | Requires per-call `#[expect]` receipts on parser/diff bounded indexing. |
 | `clippy::string_slice` | Pairs with `indexing_slicing`; requires per-call receipts on AST-bounded slicing. |
 
-The rollout PR stack is in `docs/ci/ripr-rollout-plan.md`. Promote lints from
-`[[planned]]` to `[[active]]` only in PR 03 after the MSRV bump has landed and
-the matching xtask check passes.
+The rollout PR stack is in `docs/ci/ripr-rollout-plan.md`. Future lint flips
+must move entries from `[[planned]]` to `[[active]]` only after the matching
+toolchain support, configuration, and xtask checks are present.
 
 ## See also
 

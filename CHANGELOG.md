@@ -418,6 +418,9 @@ are scoped or reviewed.
   `policy/clippy-lints.toml` MSRV ledger to Rust 1.95 after the compatibility
   audit passed; planned Clippy lint promotion remains deferred to the next
   rollout PR.
+- Promoted the clean Rust 1.94/1.95 planned Clippy lints into the active
+  workspace lint policy and retained unsupported or config-dependent lints with
+  explicit blockers.
 - Advanced Campaign 13, PR Review Guidance, after adding the read-only
   `ripr review-comments` producer and generated CI producer step;
   placement/suppression fixtures and PR guidance docs completed the lane before

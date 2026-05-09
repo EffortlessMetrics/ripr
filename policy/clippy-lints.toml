@@ -230,6 +230,47 @@ level = "deny"
 activate_when_msrv = "1.93"
 reason = "Requires per-call `#[expect]` receipts on AST-bounded text slicing; pairs with `indexing_slicing` flip."
 
+# Collection / ownership helpers enabled after the Rust 1.95 MSRV ratchet.
+[[active.collection_ownership]]
+name = "clippy::same_length_and_capacity"
+level = "deny"
+note = "Catch raw-parts reconstruction mistakes."
+
+[[active.collection_ownership]]
+name = "clippy::manual_ilog2"
+level = "warn"
+note = "Prefer the standard integer log helper."
+
+[[active.collection_ownership]]
+name = "clippy::needless_type_cast"
+level = "warn"
+note = "Avoid stale numeric type drift."
+
+[[active.collection_ownership]]
+name = "clippy::decimal_bitwise_operands"
+level = "warn"
+note = "Make bit masks visually inspectable."
+
+[[active.collection_ownership]]
+name = "clippy::manual_checked_ops"
+level = "warn"
+note = "Prefer checked arithmetic over manual divide-by-zero guards."
+
+[[active.collection_ownership]]
+name = "clippy::manual_take"
+level = "warn"
+note = "Use the standard ownership helper instead of a local reimplementation."
+
+[[active.collection_ownership]]
+name = "clippy::duration_suboptimal_units"
+level = "warn"
+note = "Make durations legible without mental unit conversion."
+
+[[active.collection_ownership]]
+name = "clippy::unnecessary_trailing_comma"
+level = "warn"
+note = "Keep format macro calls clean."
+
 # API and trait correctness. Catches Clone/Copy/From/Iterator/Error trait
 # mismatches that are silent bugs at runtime.
 [[active.api_correctness]]
@@ -319,61 +360,13 @@ note = "Belt-and-suspenders for `unsafe_code = \"forbid\"`: keeps unsafe operati
 # updated to verify the move.
 
 [[planned]]
-name = "clippy::same_length_and_capacity"
-level = "deny"
-activate_when_msrv = "1.94"
-reason = "Catch raw-parts reconstruction mistakes."
-
-[[planned]]
-name = "clippy::manual_ilog2"
-level = "warn"
-activate_when_msrv = "1.94"
-reason = "Prefer the standard integer log helper."
-
-[[planned]]
-name = "clippy::needless_type_cast"
-level = "warn"
-activate_when_msrv = "1.94"
-reason = "Avoid stale numeric type drift."
-
-[[planned]]
-name = "clippy::decimal_bitwise_operands"
-level = "warn"
-activate_when_msrv = "1.94"
-reason = "Make bit masks visually inspectable."
-
-[[planned]]
 name = "clippy::disallowed_fields"
 level = "deny"
 activate_when_msrv = "1.95"
-reason = "Ban direct field access across protected seams. Promotion requires landing a `clippy.toml` `disallowed-fields = [...]` list in the same PR — the lint is a no-op without that config."
-
-[[planned]]
-name = "clippy::manual_checked_ops"
-level = "warn"
-activate_when_msrv = "1.95"
-reason = "Prefer checked arithmetic over manual divide-by-zero guards."
-
-[[planned]]
-name = "clippy::manual_take"
-level = "warn"
-activate_when_msrv = "1.95"
-reason = "Use the standard ownership helper instead of a local reimplementation."
+reason = "Retained after PR 03 because promotion requires a reviewed `clippy.toml` `disallowed-fields = [...]` protected-seam list; the lint is a no-op without that config."
 
 [[planned]]
 name = "clippy::manual_pop_if"
 level = "warn"
 activate_when_msrv = "1.95"
-reason = "Use collection APIs that encode predicate-and-pop intent."
-
-[[planned]]
-name = "clippy::duration_suboptimal_units"
-level = "warn"
-activate_when_msrv = "1.95"
-reason = "Make durations legible without mental unit conversion."
-
-[[planned]]
-name = "clippy::unnecessary_trailing_comma"
-level = "warn"
-activate_when_msrv = "1.95"
-reason = "Keep format macro calls clean."
+reason = "Retained after PR 03 because Rust 1.95.0 Clippy does not recognize this lint; promote only after the pinned toolchain supports it."
