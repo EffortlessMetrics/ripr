@@ -1,0 +1,65 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "first_useful_action",
+  "status": "already_improved",
+  "audience": "reviewer",
+  "action_kind": "no_action",
+  "root": "fixtures/boundary_gap/input",
+  "generated_at": "2026-05-09T12:00:00Z",
+  "inputs": {
+    "pr_guidance": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json",
+    "assistant_proof": "target/ripr/reports/test-oracle-assistant-proof.json",
+    "ledger": "target/ripr/reports/pr-evidence-ledger.json",
+    "baseline_delta": null,
+    "receipt": "target/ripr/reports/agent-receipt.json",
+    "gate_decision": null,
+    "coverage_frontier": null,
+    "editor_context": null
+  },
+  "selected": {
+    "source": "receipt",
+    "source_artifact": "target/ripr/reports/agent-receipt.json",
+    "seam_id": "67fc764ba37d77bd",
+    "seam_kind": "predicate_boundary",
+    "path": "src/lib.rs",
+    "line": 2,
+    "classification": "weakly_exposed",
+    "missing_discriminator": "discount_threshold (equality boundary)"
+  },
+  "title": "Static evidence already improved",
+  "why": "The supplied receipt records improved or resolved static movement.",
+  "why_first": [
+    "The supplied receipt records improved or resolved static movement.",
+    "No additional focused-test action should outrank the receipt."
+  ],
+  "target": {
+    "file": "tests/pricing.rs",
+    "related_test": "tests/pricing.rs::below_threshold_has_no_discount",
+    "suggested_test_name": "discounted_total_boundary_discriminator",
+    "suggested_assertion": "Assert the exact discounted_total output at amount == discount_threshold."
+  },
+  "commands": {
+    "context_packet": null,
+    "after_snapshot": null,
+    "verify": null,
+    "receipt": "ripr agent receipt --root fixtures/boundary_gap/input --verify-json target/ripr/workflow/agent-verify.json --seam-id 67fc764ba37d77bd --json"
+  },
+  "evidence": {
+    "pr_guidance": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json",
+    "assistant_proof": "target/ripr/reports/test-oracle-assistant-proof.json",
+    "receipt": "target/ripr/reports/agent-receipt.json",
+    "ledger": "target/ripr/reports/pr-evidence-ledger.json",
+    "static_movement": "improved"
+  },
+  "fallback": {
+    "kind": "already_improved",
+    "summary": "Include the receipt in review instead of requesting another test."
+  },
+  "warnings": [],
+  "limits": [
+    "Static evidence only.",
+    "Does not prove runtime adequacy.",
+    "Does not run mutation testing."
+  ]
+}

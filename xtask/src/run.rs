@@ -325,14 +325,13 @@ mod tests {
 
     #[test]
     fn run_in_dir_reports_success_and_failure_with_cwd() -> Result<(), String> {
-        let cwd =
-            std::env::current_dir().map_err(|err| format!("failed to read current dir: {err}"))?;
-        let status = run_in_dir(Path::new("rustc"), &["--version"], &cwd)?;
+        let cwd = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let status = run_in_dir(Path::new("rustc"), &["--version"], cwd)?;
         if !status.success() {
             return Err("rustc --version should succeed".to_string());
         }
 
-        let Err(err) = run_in_dir(Path::new("rustc"), &["--ripr-invalid-test-flag"], &cwd) else {
+        let Err(err) = run_in_dir(Path::new("rustc"), &["--ripr-invalid-test-flag"], cwd) else {
             return Err("invalid rustc flag should fail".to_string());
         };
         if !err.contains("failed with") || !err.contains(&cwd.display().to_string()) {

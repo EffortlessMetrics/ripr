@@ -1,35 +1,34 @@
-id = "ripr-zero-adoption"
-title = "RIPR Zero Adoption"
+id = "first-useful-action"
+title = "First Useful Action"
 status = "active"
 
-# This is Campaign 17 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
-# Campaign 16 closed Gate Adoption UX after generated-CI examples, waiver
-# workflows, baseline guidance, summary polish, dogfood receipts, and
-# blocking-readiness docs made optional gates adoptable while generated CI
-# stayed advisory by default.
+# This is Campaign 22 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+# Campaign 21 closed the test-oracle assistant proof report producer. This
+# campaign compresses existing RIPR evidence into one advisory next action.
 
 objective = """
-Make RIPR 0 adoption concrete for PR/CI users: turn baselines into visible
-burn-down ledgers, create reviewed baseline checkpoints from gate decisions,
-diff current evidence against checked-in debt, support shrink-only refreshes,
-and keep every new policy mode explicit and advisory by default.
+Given existing RIPR artifacts, produce one advisory first-useful-action report
+that tells a developer, reviewer, or coding agent what to do next, why, where,
+how to verify, what receipt proves the result, and what limits remain without
+rerunning hidden analysis, editing source, generating tests, calling providers,
+running mutation testing, changing default CI blocking, or inventing policy.
 """
 
 end_state = [
-  "a baseline debt delta report compares current evidence against reviewed baseline debt without auto-adopting new findings",
-  "ripr baseline create writes reviewed baseline ledgers from existing gate-decision evidence without implying accepted-forever debt",
-  "ripr baseline diff reports still-present, resolved, new policy-eligible, acknowledged, suppressed, stale, invalid, and missing-input identities",
-  "ripr baseline update --remove-resolved supports shrink-only baseline refreshes and never auto-adopts new debt in CI",
-  "generated CI uploads baseline debt delta artifacts and summarizes debt movement while the gate evaluator remains responsible for pass or fail",
-  "RIPR Zero adoption docs explain initial baseline creation, baseline-check rollout, shrink-only refresh, new debt review, and waiver versus baseline versus suppression boundaries",
+  "`target/ripr/reports/first-useful-action.json` and `.md` summarize the highest-value next test action or the reason no action should be taken",
+  "routing is deterministic over explicit existing inputs such as PR guidance, PR evidence ledger, baseline debt delta, assistant proof, receipts, optional gate decisions, optional coverage/grip frontier, editor context, and status/staleness",
+  "fixtures pin actionable, stale, missing-artifact, baseline-only, acknowledged, waived, suppressed, already-improved, unchanged-after-attempt, and no-actionable-seam cases",
+  "generated CI surfaces the first useful action as advisory summary/artifact content without changing pass/fail authority",
+  "the editor may project the report in status or Show Status without new diagnostics, CodeLens, inlay hints, unsaved-buffer overlays, source edits, or generated tests",
+  "docs and dogfood receipts show how developers, reviewers, and agents use the action without treating static evidence as runtime proof",
 ]
 
 [[work_item]]
-id = "spec/baseline-debt-delta-report"
+id = "spec/first-useful-action-report"
 status = "done"
-branch = "spec-baseline-debt-delta-report"
+branch = "spec-first-useful-action-report"
 stackable = false
-acceptance = "Define the baseline debt delta report contract for comparing current PR/CI evidence to reviewed baseline debt without changing analyzer identity, auto-adopting new debt, or making CI blocking by default"
+acceptance = "Define the first-useful-action report contract, inputs, statuses, routing priorities, advisory limits, and schema before implementation"
 commands = [
   "cargo xtask check-spec-format",
   "cargo xtask check-doc-index",
@@ -37,59 +36,47 @@ commands = [
   "cargo xtask check-static-language",
   "cargo xtask check-traceability",
   "cargo xtask check-capabilities",
-  "cargo xtask check-output-contracts",
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "baseline/create"
+id = "fixtures/first-useful-action-corpus"
 status = "done"
-branch = "baseline-create"
+branch = "fixtures-first-useful-action-corpus"
 stackable = false
-blocked_by = ["spec/baseline-debt-delta-report"]
-acceptance = "Add ripr baseline create so users can produce stable reviewed .ripr/gate-baseline.json ledgers from existing gate-decision evidence without overwriting by default"
+acceptance = "Add a deterministic corpus that pins first-action routing for actionable, stale, missing-artifact, baseline-only, waived, suppressed, unchanged, and no-actionable cases"
 commands = [
-  "cargo test -p ripr baseline",
+  "cargo xtask fixtures",
+  "cargo xtask goldens check",
+  "cargo xtask check-fixture-contracts",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "baseline/diff"
+id = "report/first-useful-action"
 status = "done"
-branch = "baseline-diff"
+branch = "report-first-useful-action"
 stackable = false
-blocked_by = ["baseline/create"]
-acceptance = "Add ripr baseline diff to write baseline-debt-delta JSON/Markdown with still-present, resolved, new, acknowledged, suppressed, stale, invalid, and missing-input buckets"
+acceptance = "Add a read-only report producer that writes advisory first-useful-action JSON and Markdown from explicit existing artifact paths without rerunning hidden analysis"
 commands = [
-  "cargo test -p ripr baseline",
+  "cargo test -p ripr first_useful_action",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "baseline/update-remove-resolved"
+id = "ci/first-useful-action-summary"
 status = "done"
-branch = "baseline-update-remove-resolved"
+branch = "ci-first-useful-action-summary"
 stackable = false
-blocked_by = ["baseline/diff"]
-acceptance = "Add ripr baseline update --remove-resolved as a shrink-only refresh path that refuses to auto-adopt new debt by default"
-commands = [
-  "cargo test -p ripr baseline",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "ci/baseline-debt-delta-artifacts"
-status = "done"
-branch = "ci-baseline-debt-delta-artifacts"
-stackable = false
-blocked_by = ["baseline/update-remove-resolved"]
-acceptance = "Upload baseline debt delta JSON/Markdown from generated CI and summarize debt movement without making this report the pass/fail authority"
+acceptance = "Surface first-useful-action JSON/Markdown in generated GitHub CI as advisory summary and artifact content without changing default blocking"
 commands = [
   "cargo test -p ripr init_generated_github_workflow",
   "cargo xtask check-workflows",
@@ -99,12 +86,27 @@ commands = [
 ]
 
 [[work_item]]
-id = "docs/baseline-ledger-workflow"
+id = "lsp/first-useful-action-status"
 status = "done"
-branch = "docs-baseline-ledger-workflow"
+branch = "lsp-first-useful-action-status"
 stackable = false
-blocked_by = ["baseline/update-remove-resolved", "ci/baseline-debt-delta-artifacts"]
-acceptance = "Document initial adoption, reviewed baseline creation, baseline-check rollout, shrink-only refresh, new debt review, waiver versus baseline versus suppression, and the path toward RIPR 0"
+acceptance = "Project an existing first-useful-action report through editor status and Show Status without adding diagnostics, CodeLens, inlay hints, unsaved-buffer analysis, source edits, or generated tests"
+commands = [
+  "cargo test -p ripr lsp --lib",
+  "cargo test -p ripr lsp::tests --lib",
+  "npm --prefix editors/vscode run compile",
+  "npm --prefix editors/vscode run test:e2e",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "docs/first-useful-action-workflow"
+status = "ready"
+branch = "docs-first-useful-action-workflow"
+stackable = false
+acceptance = "Document how developers, reviewers, and coding agents read the first useful action, act on it, verify movement, emit receipts, and interpret fallback states"
 commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
@@ -113,21 +115,37 @@ commands = [
 ]
 
 [[work_item]]
-id = "campaign/ripr-zero-adoption-closeout"
-status = "done"
-branch = "campaign-ripr-zero-adoption-closeout"
+id = "dogfood/first-useful-action-receipts"
+status = "blocked"
+blocked_by = ["docs/first-useful-action-workflow"]
+branch = "dogfood-first-useful-action-receipts"
 stackable = false
-blocked_by = [
-  "spec/baseline-debt-delta-report",
-  "baseline/create",
-  "baseline/diff",
-  "baseline/update-remove-resolved",
-  "ci/baseline-debt-delta-artifacts",
-  "docs/baseline-ledger-workflow",
-]
-acceptance = "Close Campaign 17 only after baseline delta, baseline create/diff/shrink-only update, CI artifacts, and baseline ledger docs are in place while defaults stay advisory"
+acceptance = "Record repo-local first-useful-action receipts for actionable, baseline-only, stale or missing-input, unchanged-after-attempt, and no-actionable-seam cases"
 commands = [
-  "cargo xtask check-spec-format",
+  "cargo xtask dogfood",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "campaign/first-useful-action-closeout"
+status = "blocked"
+blocked_by = [
+  "spec/first-useful-action-report",
+  "fixtures/first-useful-action-corpus",
+  "report/first-useful-action",
+  "ci/first-useful-action-summary",
+  "lsp/first-useful-action-status",
+  "docs/first-useful-action-workflow",
+  "dogfood/first-useful-action-receipts",
+]
+branch = "campaign-first-useful-action-closeout"
+stackable = false
+acceptance = "Close Campaign 22 after schema, fixtures, producer, CI projection, editor projection, docs, and dogfood receipts prove one advisory next action without analyzer, policy, gate, model, mutation, or editor-surface sprawl"
+commands = [
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
   "cargo xtask check-static-language",

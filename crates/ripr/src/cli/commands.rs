@@ -101,6 +101,75 @@ struct BaselineUpdateOptions {
     remove_resolved: bool,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct RiprZeroStatusOptions {
+    baseline: Option<PathBuf>,
+    delta: PathBuf,
+    gate: Option<PathBuf>,
+    pr_guidance: Option<PathBuf>,
+    recommendation_calibration: Option<PathBuf>,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct PrEvidenceLedgerOptions {
+    pr_number: String,
+    base: String,
+    head: String,
+    labels: Vec<String>,
+    gate: Option<PathBuf>,
+    baseline_delta: Option<PathBuf>,
+    zero_status: Option<PathBuf>,
+    pr_guidance: Option<PathBuf>,
+    recommendation_calibration: Option<PathBuf>,
+    agent_receipt: Option<PathBuf>,
+    coverage: Option<PathBuf>,
+    history: Option<PathBuf>,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct CoverageGripFrontierOptions {
+    coverage: Option<PathBuf>,
+    ledger: Option<PathBuf>,
+    baseline_delta: Option<PathBuf>,
+    zero_status: Option<PathBuf>,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct AssistantLoopProofOptions {
+    root: String,
+    pr_guidance: Option<PathBuf>,
+    agent_packet: Option<PathBuf>,
+    before: Option<PathBuf>,
+    after: Option<PathBuf>,
+    receipt: Option<PathBuf>,
+    ledger: Option<PathBuf>,
+    coverage_frontier: Option<PathBuf>,
+    gate_decision: Option<PathBuf>,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct FirstActionOptions {
+    root: String,
+    pr_guidance: Option<PathBuf>,
+    assistant_proof: Option<PathBuf>,
+    ledger: Option<PathBuf>,
+    baseline_delta: Option<PathBuf>,
+    receipt: Option<PathBuf>,
+    gate_decision: Option<PathBuf>,
+    coverage_frontier: Option<PathBuf>,
+    editor_context: Option<PathBuf>,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum OutcomeFormat {
     Markdown,
@@ -1075,6 +1144,150 @@ jobs:
             --out target/ripr/reports/baseline-debt-delta.json \
             --out-md target/ripr/reports/baseline-debt-delta.md
 
+      - name: Render RIPR Zero status
+        if: always() && hashFiles('target/ripr/reports/baseline-debt-delta.json') != ''
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          zero_args=(
+            zero status
+            --delta target/ripr/reports/baseline-debt-delta.json
+            --out target/ripr/reports/ripr-zero-status.json
+            --out-md target/ripr/reports/ripr-zero-status.md
+          )
+          if [ -n "${RIPR_GATE_BASELINE:-}" ]; then
+            zero_args+=(--baseline "$RIPR_GATE_BASELINE")
+          fi
+          if [ -f target/ripr/reports/gate-decision.json ]; then
+            zero_args+=(--gate target/ripr/reports/gate-decision.json)
+          fi
+          if [ -f target/ripr/review/comments.json ]; then
+            zero_args+=(--pr-guidance target/ripr/review/comments.json)
+          fi
+          if [ -f target/ripr/reports/recommendation-calibration.json ]; then
+            zero_args+=(--recommendation-calibration target/ripr/reports/recommendation-calibration.json)
+          fi
+          ripr "${zero_args[@]}"
+
+      - name: Render RIPR PR evidence ledger
+        if: always() && github.event_name == 'pull_request' && hashFiles('target/ripr/review/comments.json') != ''
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          ledger_args=(
+            pr-ledger record
+            --pr-number "${{ github.event.pull_request.number }}"
+            --base "origin/${{ github.base_ref }}"
+            --head HEAD
+            --pr-guidance target/ripr/review/comments.json
+            --out target/ripr/reports/pr-evidence-ledger.json
+            --out-md target/ripr/reports/pr-evidence-ledger.md
+          )
+          if [ -f target/ripr/reports/gate-decision.json ]; then
+            ledger_args+=(--gate target/ripr/reports/gate-decision.json)
+          fi
+          if [ -f target/ripr/reports/baseline-debt-delta.json ]; then
+            ledger_args+=(--baseline-delta target/ripr/reports/baseline-debt-delta.json)
+          fi
+          if [ -f target/ripr/reports/ripr-zero-status.json ]; then
+            ledger_args+=(--zero-status target/ripr/reports/ripr-zero-status.json)
+          fi
+          if [ -f target/ripr/reports/recommendation-calibration.json ]; then
+            ledger_args+=(--recommendation-calibration target/ripr/reports/recommendation-calibration.json)
+          fi
+          if [ -f target/ripr/reports/agent-receipt.json ]; then
+            ledger_args+=(--agent-receipt target/ripr/reports/agent-receipt.json)
+          fi
+          if [ -f target/ripr/reports/coverage-summary.json ]; then
+            ledger_args+=(--coverage target/ripr/reports/coverage-summary.json)
+          fi
+          if [ -f .ripr/pr-evidence-ledger.jsonl ]; then
+            ledger_args+=(--history .ripr/pr-evidence-ledger.jsonl)
+          fi
+          if [ -f target/ci/labels.json ]; then
+            while IFS= read -r label; do
+              if [ -n "$label" ] && [ "$label" != "null" ]; then
+                ledger_args+=(--label "$label")
+              fi
+            done < <(jq -r '.labels[]? // empty' target/ci/labels.json 2>/dev/null || true)
+          fi
+          ripr "${ledger_args[@]}"
+
+      - name: Render RIPR test-oracle assistant proof
+        if: always() && hashFiles('target/ripr/review/comments.json') != '' && hashFiles('target/ripr/workflow/agent-brief.json') != '' && hashFiles('target/ripr/workflow/before.repo-exposure.json') != '' && hashFiles('target/ripr/workflow/after.repo-exposure.json') != '' && hashFiles('target/ripr/reports/agent-receipt.json') != '' && hashFiles('target/ripr/reports/pr-evidence-ledger.json') != ''
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          proof_args=(
+            assistant-loop proof
+            --root .
+            --pr-guidance target/ripr/review/comments.json
+            --agent-packet target/ripr/workflow/agent-brief.json
+            --before target/ripr/workflow/before.repo-exposure.json
+            --after target/ripr/workflow/after.repo-exposure.json
+            --receipt target/ripr/reports/agent-receipt.json
+            --ledger target/ripr/reports/pr-evidence-ledger.json
+            --out target/ripr/reports/test-oracle-assistant-proof.json
+            --out-md target/ripr/reports/test-oracle-assistant-proof.md
+          )
+          if [ -f target/ripr/reports/coverage-grip-frontier.json ]; then
+            proof_args+=(--coverage-frontier target/ripr/reports/coverage-grip-frontier.json)
+          fi
+          if [ -f target/ripr/reports/gate-decision.json ]; then
+            proof_args+=(--gate-decision target/ripr/reports/gate-decision.json)
+          fi
+          ripr "${proof_args[@]}"
+
+      - name: Render RIPR first useful action
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          first_action_has_input=false
+          first_action_args=(
+            first-action
+            --root .
+            --out target/ripr/reports/first-useful-action.json
+            --out-md target/ripr/reports/first-useful-action.md
+          )
+          if [ -f target/ripr/review/comments.json ]; then
+            first_action_args+=(--pr-guidance target/ripr/review/comments.json)
+            first_action_has_input=true
+          fi
+          if [ -f target/ripr/reports/test-oracle-assistant-proof.json ]; then
+            first_action_args+=(--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json)
+            first_action_has_input=true
+          fi
+          if [ -f target/ripr/reports/pr-evidence-ledger.json ]; then
+            first_action_args+=(--ledger target/ripr/reports/pr-evidence-ledger.json)
+            first_action_has_input=true
+          fi
+          if [ -f target/ripr/reports/baseline-debt-delta.json ]; then
+            first_action_args+=(--baseline-delta target/ripr/reports/baseline-debt-delta.json)
+            first_action_has_input=true
+          fi
+          if [ -f target/ripr/reports/agent-receipt.json ]; then
+            first_action_args+=(--receipt target/ripr/reports/agent-receipt.json)
+            first_action_has_input=true
+          fi
+          if [ -f target/ripr/reports/gate-decision.json ]; then
+            first_action_args+=(--gate-decision target/ripr/reports/gate-decision.json)
+            first_action_has_input=true
+          fi
+          if [ -f target/ripr/reports/coverage-grip-frontier.json ]; then
+            first_action_args+=(--coverage-frontier target/ripr/reports/coverage-grip-frontier.json)
+            first_action_has_input=true
+          fi
+          if [ -f target/ripr/workflow/evidence-context.json ]; then
+            first_action_args+=(--editor-context target/ripr/workflow/evidence-context.json)
+            first_action_has_input=true
+          fi
+          if [ "$first_action_has_input" = true ]; then
+            ripr "${first_action_args[@]}"
+          else
+            echo 'No RIPR first-useful-action inputs were available.'
+          fi
+
       - name: Render RIPR LLM work-loop summaries
         if: always()
         continue-on-error: true
@@ -1135,9 +1348,59 @@ jobs:
         continue-on-error: true
         run: |
           {
+            markdown_inline() {
+              printf '%s' "$1" | tr '\r\n' '  ' | sed 's/`/\\`/g'
+            }
+
             echo '## RIPR advisory summary'
             echo
             echo "RIPR is advisory static evidence. It does not edit source, generate tests, or run mutation testing."
+            echo
+            echo '### First useful action'
+            if [ -f target/ripr/reports/first-useful-action.json ] || [ -f target/ripr/reports/first-useful-action.md ]; then
+              if [ -f target/ripr/reports/first-useful-action.json ]; then
+                action_json=target/ripr/reports/first-useful-action.json
+                action_status="$(jq -r '.status // "unknown"' "$action_json" 2>/dev/null || echo unknown)"
+                action_kind="$(jq -r '.action_kind // "unknown"' "$action_json" 2>/dev/null || echo unknown)"
+                action_title="$(jq -r '.title // "not_available"' "$action_json" 2>/dev/null || echo unknown)"
+                action_why="$(jq -r '.why // "not_available"' "$action_json" 2>/dev/null || echo unknown)"
+                action_seam="$(jq -r '.selected.seam_id // "not_available"' "$action_json" 2>/dev/null || echo unknown)"
+                action_target="$(jq -r '(.target.file // "not_available") + (if .target.related_test then " related_test=" + .target.related_test else "" end)' "$action_json" 2>/dev/null || echo unknown)"
+                action_verify="$(jq -r '.commands.verify // "not_available"' "$action_json" 2>/dev/null || echo unknown)"
+                action_receipt="$(jq -r '.commands.receipt // "not_available"' "$action_json" 2>/dev/null || echo unknown)"
+                action_fallback="$(jq -r '.fallback.kind // "none"' "$action_json" 2>/dev/null || echo unknown)"
+                action_warning_count="$(jq -r '(.warnings // [] | length)' "$action_json" 2>/dev/null || echo 0)"
+                action_status="$(markdown_inline "$action_status")"
+                action_kind="$(markdown_inline "$action_kind")"
+                action_title="$(markdown_inline "$action_title")"
+                action_why="$(markdown_inline "$action_why")"
+                action_seam="$(markdown_inline "$action_seam")"
+                action_target="$(markdown_inline "$action_target")"
+                action_verify="$(markdown_inline "$action_verify")"
+                action_receipt="$(markdown_inline "$action_receipt")"
+                action_fallback="$(markdown_inline "$action_fallback")"
+                action_warning_count="$(markdown_inline "$action_warning_count")"
+                echo '#### First action at a glance'
+                echo "- Status: \`$action_status\`"
+                echo "- Action: \`$action_kind\`"
+                echo "- Title: \`$action_title\`"
+                echo "- Why: \`$action_why\`"
+                echo "- Seam: \`$action_seam\`"
+                echo "- Target: \`$action_target\`"
+                echo "- Verify command: \`$action_verify\`"
+                echo "- Receipt command: \`$action_receipt\`"
+                echo "- Fallback: \`$action_fallback\`"
+                echo "- Warnings: \`$action_warning_count\`"
+                echo "- Action artifacts: \`target/ripr/reports/first-useful-action.json\`, \`target/ripr/reports/first-useful-action.md\`"
+                echo "- Boundary: static evidence only; no runtime mutation execution."
+                echo
+              fi
+              if [ -f target/ripr/reports/first-useful-action.md ]; then
+                cat target/ripr/reports/first-useful-action.md
+              fi
+            else
+              echo 'First useful action was not generated. It runs when existing PR guidance, assistant proof, ledger, baseline, receipt, gate, coverage/grip, or editor context artifacts are available.'
+            fi
             echo
             echo '### Top recommendation'
             if [ -f target/ripr/pilot/pilot-summary.md ]; then
@@ -1165,12 +1428,104 @@ jobs:
               echo "- PR test guidance report: not generated yet"
             fi
             echo
+            echo '### PR evidence ledger'
+            if [ -f target/ripr/reports/pr-evidence-ledger.json ]; then
+              ledger_json=target/ripr/reports/pr-evidence-ledger.json
+              ledger_status="$(jq -r '.status // "unknown"' "$ledger_json" 2>/dev/null || echo unknown)"
+              ledger_gate_mode="$(jq -r '.gate.mode // "not_evaluated"' "$ledger_json" 2>/dev/null || echo unknown)"
+              ledger_gate_decision="$(jq -r '.gate.decision // "not_evaluated"' "$ledger_json" 2>/dev/null || echo unknown)"
+              ledger_new_policy_eligible="$(jq -r '.movement.new_policy_eligible // 0' "$ledger_json" 2>/dev/null || echo 0)"
+              ledger_still_present="$(jq -r '.movement.baseline_still_present // 0' "$ledger_json" 2>/dev/null || echo 0)"
+              ledger_resolved="$(jq -r '.movement.baseline_resolved // 0' "$ledger_json" 2>/dev/null || echo 0)"
+              ledger_acknowledged="$(jq -r '.movement.acknowledged // 0' "$ledger_json" 2>/dev/null || echo 0)"
+              ledger_suppressed="$(jq -r '.movement.suppressed // 0' "$ledger_json" 2>/dev/null || echo 0)"
+              ledger_blocking="$(jq -r '.movement.blocking_candidates // 0' "$ledger_json" 2>/dev/null || echo 0)"
+              ledger_visible="$(jq -r '.movement.visible_unresolved // 0' "$ledger_json" 2>/dev/null || echo 0)"
+              ledger_coverage_status="$(jq -r '.coverage_grip_frontier.status // "not_available"' "$ledger_json" 2>/dev/null || echo unknown)"
+              ledger_trend="$(jq -r '.history.trend // "not_available"' "$ledger_json" 2>/dev/null || echo unknown)"
+              ledger_route="$(jq -r '(.top_repair_route | if . == null then "none" else ((.path // "unknown") + (if .line then ":" + (.line|tostring) else "" end) + " " + (.missing_discriminator // "missing discriminator unavailable")) end)' "$ledger_json" 2>/dev/null || echo unknown)"
+              ledger_verify="$(jq -r '.top_repair_route.verify_command // "not_available"' "$ledger_json" 2>/dev/null || echo unknown)"
+              ledger_agent="$(jq -r '.top_repair_route.agent_command // "not_available"' "$ledger_json" 2>/dev/null || echo unknown)"
+              ledger_status="$(markdown_inline "$ledger_status")"
+              ledger_gate_mode="$(markdown_inline "$ledger_gate_mode")"
+              ledger_gate_decision="$(markdown_inline "$ledger_gate_decision")"
+              ledger_new_policy_eligible="$(markdown_inline "$ledger_new_policy_eligible")"
+              ledger_still_present="$(markdown_inline "$ledger_still_present")"
+              ledger_resolved="$(markdown_inline "$ledger_resolved")"
+              ledger_acknowledged="$(markdown_inline "$ledger_acknowledged")"
+              ledger_suppressed="$(markdown_inline "$ledger_suppressed")"
+              ledger_blocking="$(markdown_inline "$ledger_blocking")"
+              ledger_visible="$(markdown_inline "$ledger_visible")"
+              ledger_coverage_status="$(markdown_inline "$ledger_coverage_status")"
+              ledger_trend="$(markdown_inline "$ledger_trend")"
+              ledger_route="$(markdown_inline "$ledger_route")"
+              ledger_verify="$(markdown_inline "$ledger_verify")"
+              ledger_agent="$(markdown_inline "$ledger_agent")"
+              echo '#### PR movement at a glance'
+              echo "- Status: \`$ledger_status\`"
+              echo "- Gate: mode=\`$ledger_gate_mode\`, decision=\`$ledger_gate_decision\`"
+              echo "- Counts: new_policy_eligible=\`$ledger_new_policy_eligible\`, baseline_still_present=\`$ledger_still_present\`, baseline_resolved=\`$ledger_resolved\`, acknowledged=\`$ledger_acknowledged\`, suppressed=\`$ledger_suppressed\`, blocking_candidates=\`$ledger_blocking\`, visible_unresolved=\`$ledger_visible\`"
+              echo "- Top repair route: \`$ledger_route\`"
+              echo "- Verify command: \`$ledger_verify\`"
+              echo "- Agent command: \`$ledger_agent\`"
+              echo "- Coverage/grip frontier: \`$ledger_coverage_status\`"
+              echo "- History trend: \`$ledger_trend\`"
+              echo "- Ledger artifacts: \`target/ripr/reports/pr-evidence-ledger.json\`, \`target/ripr/reports/pr-evidence-ledger.md\`"
+              echo "- Pass/fail authority remains \`ripr gate evaluate\` when an explicit gate mode is configured."
+              echo
+            fi
+            if [ -f target/ripr/reports/pr-evidence-ledger.md ]; then
+              cat target/ripr/reports/pr-evidence-ledger.md
+            elif [ -f target/ripr/review/comments.json ]; then
+              echo 'PR evidence ledger was not generated. Inspect `target/ripr/review/comments.json` and rerun `ripr pr-ledger record` locally.'
+            else
+              echo 'PR evidence ledger was not run. It requires pull-request guidance from `target/ripr/review/comments.json`.'
+            fi
+            echo
+            if [ -f target/ripr/reports/test-oracle-assistant-proof.json ] || [ -f target/ripr/reports/test-oracle-assistant-proof.md ]; then
+              echo '### Test-oracle assistant proof'
+              if [ -f target/ripr/reports/test-oracle-assistant-proof.json ]; then
+                proof_json=target/ripr/reports/test-oracle-assistant-proof.json
+                proof_status="$(jq -r '.status // "unknown"' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_seam="$(jq -r '(.seam.path // "unknown") + (if .seam.line then ":" + (.seam.line|tostring) else "" end)' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_missing="$(jq -r '.seam.missing_discriminator // "not_available"' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_placement="$(jq -r '.recommendation.placement // "not_available"' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_movement="$(jq -r '.evidence_movement.state // "unknown"' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_receipt="$(jq -r '.evidence_movement.artifact // .inputs.receipt // "not_available"' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_gate="$(jq -r '.ci_projection.gate_decision // "not_supplied"' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_coverage="$(jq -r '.ci_projection.coverage_frontier // "not_supplied"' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_warning_count="$(jq -r '(.warnings // [] | length)' "$proof_json" 2>/dev/null || echo 0)"
+                proof_status="$(markdown_inline "$proof_status")"
+                proof_seam="$(markdown_inline "$proof_seam")"
+                proof_missing="$(markdown_inline "$proof_missing")"
+                proof_placement="$(markdown_inline "$proof_placement")"
+                proof_movement="$(markdown_inline "$proof_movement")"
+                proof_receipt="$(markdown_inline "$proof_receipt")"
+                proof_gate="$(markdown_inline "$proof_gate")"
+                proof_coverage="$(markdown_inline "$proof_coverage")"
+                proof_warning_count="$(markdown_inline "$proof_warning_count")"
+                echo '#### Assistant proof at a glance'
+                echo "- Status: \`$proof_status\`"
+                echo "- Seam: \`$proof_seam\`"
+                echo "- Missing discriminator: \`$proof_missing\`"
+                echo "- Placement: \`$proof_placement\`"
+                echo "- Static movement: \`$proof_movement\`"
+                echo "- Receipt: \`$proof_receipt\`"
+                echo "- Gate input: \`$proof_gate\`"
+                echo "- Coverage/grip frontier input: \`$proof_coverage\`"
+                echo "- Warnings: \`$proof_warning_count\`"
+                echo "- Proof artifacts: \`target/ripr/reports/test-oracle-assistant-proof.json\`, \`target/ripr/reports/test-oracle-assistant-proof.md\`"
+                echo "- Pass/fail authority remains \`ripr gate evaluate\` when an explicit gate mode is configured."
+                echo
+              fi
+              if [ -f target/ripr/reports/test-oracle-assistant-proof.md ]; then
+                cat target/ripr/reports/test-oracle-assistant-proof.md
+              fi
+              echo
+            fi
             echo '### Gate decision'
             if [ -f target/ripr/reports/gate-decision.json ]; then
               gate_json=target/ripr/reports/gate-decision.json
-              markdown_inline() {
-                printf '%s' "$1" | tr '\r\n' '  ' | sed 's/`/\\`/g'
-              }
               gate_status="$(jq -r '.status // "unknown"' "$gate_json" 2>/dev/null || echo unknown)"
               gate_mode="$(jq -r '.mode // "unknown"' "$gate_json" 2>/dev/null || echo unknown)"
               blocking="$(jq -r '.summary.blocking // 0' "$gate_json" 2>/dev/null || echo 0)"
@@ -1229,9 +1584,6 @@ jobs:
             echo '### Baseline debt delta'
             if [ -f target/ripr/reports/baseline-debt-delta.json ]; then
               delta_json=target/ripr/reports/baseline-debt-delta.json
-              baseline_markdown_inline() {
-                printf '%s' "$1" | tr '\r\n' '  ' | sed 's/`/\\`/g'
-              }
               baseline_path="$(jq -r '.baseline.path // .inputs.baseline // "unknown"' "$delta_json" 2>/dev/null || echo unknown)"
               still_present="$(jq -r '.delta.still_present // 0' "$delta_json" 2>/dev/null || echo 0)"
               resolved="$(jq -r '.delta.resolved // 0' "$delta_json" 2>/dev/null || echo 0)"
@@ -1242,16 +1594,16 @@ jobs:
               invalid_baseline_entry="$(jq -r '.delta.invalid_baseline_entry // 0' "$delta_json" 2>/dev/null || echo 0)"
               missing_current_input="$(jq -r '.delta.missing_current_input // 0' "$delta_json" 2>/dev/null || echo 0)"
               limits_note="$(jq -r '.limits_note // "Advisory baseline debt movement; gate decision owns pass or fail."' "$delta_json" 2>/dev/null || echo unknown)"
-              baseline_path="$(baseline_markdown_inline "$baseline_path")"
-              still_present="$(baseline_markdown_inline "$still_present")"
-              resolved="$(baseline_markdown_inline "$resolved")"
-              new_policy_eligible="$(baseline_markdown_inline "$new_policy_eligible")"
-              acknowledged_delta="$(baseline_markdown_inline "$acknowledged_delta")"
-              suppressed_delta="$(baseline_markdown_inline "$suppressed_delta")"
-              stale_baseline_entry="$(baseline_markdown_inline "$stale_baseline_entry")"
-              invalid_baseline_entry="$(baseline_markdown_inline "$invalid_baseline_entry")"
-              missing_current_input="$(baseline_markdown_inline "$missing_current_input")"
-              limits_note="$(baseline_markdown_inline "$limits_note")"
+              baseline_path="$(markdown_inline "$baseline_path")"
+              still_present="$(markdown_inline "$still_present")"
+              resolved="$(markdown_inline "$resolved")"
+              new_policy_eligible="$(markdown_inline "$new_policy_eligible")"
+              acknowledged_delta="$(markdown_inline "$acknowledged_delta")"
+              suppressed_delta="$(markdown_inline "$suppressed_delta")"
+              stale_baseline_entry="$(markdown_inline "$stale_baseline_entry")"
+              invalid_baseline_entry="$(markdown_inline "$invalid_baseline_entry")"
+              missing_current_input="$(markdown_inline "$missing_current_input")"
+              limits_note="$(markdown_inline "$limits_note")"
               echo '#### Baseline debt movement'
               echo "- Baseline: \`$baseline_path\`"
               echo "- Counts: still_present=\`$still_present\`, resolved=\`$resolved\`, new_policy_eligible=\`$new_policy_eligible\`, acknowledged=\`$acknowledged_delta\`, suppressed=\`$suppressed_delta\`, stale=\`$stale_baseline_entry\`, invalid=\`$invalid_baseline_entry\`, missing_current_input=\`$missing_current_input\`"
@@ -1261,8 +1613,63 @@ jobs:
             fi
             if [ -f target/ripr/reports/baseline-debt-delta.md ]; then
               cat target/ripr/reports/baseline-debt-delta.md
+            elif [ -n "${RIPR_GATE_BASELINE:-}" ]; then
+              echo 'Baseline debt delta was not generated. Check that `RIPR_GATE_MODE` produced `target/ripr/reports/gate-decision.json` and that `RIPR_GATE_BASELINE` points at a readable baseline.'
             else
-              echo 'Baseline debt delta was not generated. Set `RIPR_GATE_BASELINE` and run a gate mode so CI can compare checked-in debt against current gate evidence.'
+              echo 'Baseline debt delta was not run. Set `RIPR_GATE_BASELINE` with an explicit gate mode to compare current evidence against reviewed baseline debt.'
+            fi
+            echo
+            echo '### RIPR Zero status'
+            if [ -f target/ripr/reports/ripr-zero-status.json ]; then
+              zero_json=target/ripr/reports/ripr-zero-status.json
+              zero_state="$(jq -r '.ripr_zero.state // "unknown"' "$zero_json" 2>/dev/null || echo unknown)"
+              visible_unresolved="$(jq -r '.ripr_zero.visible_unresolved // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_new_policy_eligible="$(jq -r '.ripr_zero.new_policy_eligible // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_blocking_candidates="$(jq -r '.ripr_zero.blocking_candidates // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_acknowledged="$(jq -r '.ripr_zero.acknowledged // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_suppressed="$(jq -r '.ripr_zero.suppressed // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_still_present="$(jq -r '.baseline.still_present // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_resolved="$(jq -r '.baseline.resolved // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_metadata_stale="$(jq -r '.baseline.metadata.stale // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_metadata_missing="$(jq -r '.baseline.metadata.missing_metadata // 0' "$zero_json" 2>/dev/null || echo 0)"
+              top_area="$(jq -r '(.top_debt_areas[0].area // "none")' "$zero_json" 2>/dev/null || echo unknown)"
+              top_route="$(jq -r '(.repair_routes[0] | if . == null then "none" else ((.path // "unknown") + (if .line then ":" + (.line|tostring) else "" end) + " " + (.missing_discriminator // "missing discriminator unavailable")) end)' "$zero_json" 2>/dev/null || echo unknown)"
+              trend_source="$(jq -r '.trend.source // "not_available"' "$zero_json" 2>/dev/null || echo unknown)"
+              zero_state="$(markdown_inline "$zero_state")"
+              visible_unresolved="$(markdown_inline "$visible_unresolved")"
+              zero_new_policy_eligible="$(markdown_inline "$zero_new_policy_eligible")"
+              zero_blocking_candidates="$(markdown_inline "$zero_blocking_candidates")"
+              zero_acknowledged="$(markdown_inline "$zero_acknowledged")"
+              zero_suppressed="$(markdown_inline "$zero_suppressed")"
+              zero_still_present="$(markdown_inline "$zero_still_present")"
+              zero_resolved="$(markdown_inline "$zero_resolved")"
+              zero_metadata_stale="$(markdown_inline "$zero_metadata_stale")"
+              zero_metadata_missing="$(markdown_inline "$zero_metadata_missing")"
+              top_area="$(markdown_inline "$top_area")"
+              top_route="$(markdown_inline "$top_route")"
+              trend_source="$(markdown_inline "$trend_source")"
+              echo '#### RIPR Zero at a glance'
+              echo "- State: \`$zero_state\`"
+              echo "- Visible unresolved: \`$visible_unresolved\`"
+              echo "- New policy-eligible: \`$zero_new_policy_eligible\`"
+              echo "- Blocking candidates: \`$zero_blocking_candidates\`"
+              echo "- Acknowledged: \`$zero_acknowledged\`"
+              echo "- Suppressed: \`$zero_suppressed\`"
+              echo "- Baseline still present: \`$zero_still_present\`"
+              echo "- Baseline resolved: \`$zero_resolved\`"
+              echo "- Baseline metadata: stale=\`$zero_metadata_stale\`, missing=\`$zero_metadata_missing\`"
+              echo "- Top debt area: \`$top_area\`"
+              echo "- Top repair route: \`$top_route\`"
+              echo "- Trend source: \`$trend_source\`"
+              echo "- RIPR Zero artifacts: \`target/ripr/reports/ripr-zero-status.json\`, \`target/ripr/reports/ripr-zero-status.md\`"
+              echo
+            fi
+            if [ -f target/ripr/reports/ripr-zero-status.md ]; then
+              cat target/ripr/reports/ripr-zero-status.md
+            elif [ -f target/ripr/reports/baseline-debt-delta.json ]; then
+              echo 'RIPR Zero status was not generated. Inspect `target/ripr/reports/baseline-debt-delta.json` and rerun `ripr zero status` locally.'
+            else
+              echo 'RIPR Zero status was not run. It requires `baseline-debt-delta.json`, which is produced only after an explicit gate mode and reviewed baseline are configured.'
             fi
             echo
             echo '### SARIF and badge status'
@@ -1773,6 +2180,453 @@ pub(super) fn baseline(args: &[String]) -> Result<(), String> {
             "unknown baseline subcommand {subcommand:?}; expected `create`, `diff`, or `update`"
         )),
     }
+}
+
+pub(super) fn zero(args: &[String]) -> Result<(), String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        help::print_zero_help();
+        return Ok(());
+    }
+    let Some((subcommand, rest)) = args.split_first() else {
+        return Err("zero requires subcommand `status`".to_string());
+    };
+    if subcommand != "status" {
+        return Err(format!(
+            "unknown zero subcommand {subcommand:?}; expected `status`"
+        ));
+    }
+    ripr_zero_status(rest)
+}
+
+pub(super) fn pr_ledger(args: &[String]) -> Result<(), String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        help::print_pr_ledger_help();
+        return Ok(());
+    }
+    let Some((subcommand, rest)) = args.split_first() else {
+        return Err("pr-ledger requires subcommand `record`".to_string());
+    };
+    if subcommand != "record" {
+        return Err(format!(
+            "unknown pr-ledger subcommand {subcommand:?}; expected `record`"
+        ));
+    }
+    pr_evidence_ledger_record(rest)
+}
+
+pub(super) fn coverage_grip(args: &[String]) -> Result<(), String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        help::print_coverage_grip_help();
+        return Ok(());
+    }
+    let Some((subcommand, rest)) = args.split_first() else {
+        return Err("coverage-grip requires subcommand `frontier`".to_string());
+    };
+    if subcommand != "frontier" {
+        return Err(format!(
+            "unknown coverage-grip subcommand {subcommand:?}; expected `frontier`"
+        ));
+    }
+    coverage_grip_frontier(rest)
+}
+
+pub(super) fn assistant_loop(args: &[String]) -> Result<(), String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        help::print_assistant_loop_help();
+        return Ok(());
+    }
+    let Some((subcommand, rest)) = args.split_first() else {
+        return Err("assistant-loop requires subcommand `proof`".to_string());
+    };
+    if subcommand != "proof" {
+        return Err(format!(
+            "unknown assistant-loop subcommand {subcommand:?}; expected `proof`"
+        ));
+    }
+    assistant_loop_proof(rest)
+}
+
+pub(super) fn first_action(args: &[String]) -> Result<(), String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        help::print_first_action_help();
+        return Ok(());
+    }
+
+    let options = parse_first_action_options(args)?;
+    let pr_guidance_path = options
+        .pr_guidance
+        .as_ref()
+        .map(|path| output::first_useful_action::display_path(path));
+    let assistant_proof_path = options
+        .assistant_proof
+        .as_ref()
+        .map(|path| output::first_useful_action::display_path(path));
+    let ledger_path = options
+        .ledger
+        .as_ref()
+        .map(|path| output::first_useful_action::display_path(path));
+    let baseline_delta_path = options
+        .baseline_delta
+        .as_ref()
+        .map(|path| output::first_useful_action::display_path(path));
+    let receipt_path = options
+        .receipt
+        .as_ref()
+        .map(|path| output::first_useful_action::display_path(path));
+    let gate_decision_path = options
+        .gate_decision
+        .as_ref()
+        .map(|path| output::first_useful_action::display_path(path));
+    let coverage_frontier_path = options
+        .coverage_frontier
+        .as_ref()
+        .map(|path| output::first_useful_action::display_path(path));
+    let editor_context_path = options
+        .editor_context
+        .as_ref()
+        .map(|path| output::first_useful_action::display_path(path));
+    let input = output::first_useful_action::FirstUsefulActionInput {
+        root: options.root,
+        generated_at: first_action_generated_at()?,
+        pr_guidance_path,
+        assistant_proof_path,
+        ledger_path,
+        baseline_delta_path,
+        receipt_path,
+        gate_decision_path,
+        coverage_frontier_path,
+        editor_context_path,
+        pr_guidance_json: options
+            .pr_guidance
+            .as_ref()
+            .map(|path| read_optional_text_for_report("PR guidance", path)),
+        assistant_proof_json: options
+            .assistant_proof
+            .as_ref()
+            .map(|path| read_optional_text_for_report("assistant proof", path)),
+        ledger_json: options
+            .ledger
+            .as_ref()
+            .map(|path| read_optional_text_for_report("PR evidence ledger", path)),
+        baseline_delta_json: options
+            .baseline_delta
+            .as_ref()
+            .map(|path| read_optional_text_for_report("baseline debt delta", path)),
+        receipt_json: options
+            .receipt
+            .as_ref()
+            .map(|path| read_optional_text_for_report("receipt", path)),
+        gate_decision_json: options
+            .gate_decision
+            .as_ref()
+            .map(|path| read_optional_text_for_report("gate decision", path)),
+        coverage_frontier_json: options
+            .coverage_frontier
+            .as_ref()
+            .map(|path| read_optional_text_for_report("coverage/grip frontier", path)),
+        editor_context_json: options
+            .editor_context
+            .as_ref()
+            .map(|path| read_optional_text_for_report("editor context", path)),
+    };
+    let report = output::first_useful_action::build_first_useful_action_report(input);
+    let rendered_json = output::first_useful_action::render_first_useful_action_json(&report)?;
+    let rendered_md = output::first_useful_action::render_first_useful_action_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    Ok(())
+}
+
+fn ripr_zero_status(args: &[String]) -> Result<(), String> {
+    let options = parse_ripr_zero_status_options(args)?;
+    let baseline_path = options
+        .baseline
+        .as_ref()
+        .map(|path| output::ripr_zero_status::display_path(path));
+    let gate_path = options
+        .gate
+        .as_ref()
+        .map(|path| output::ripr_zero_status::display_path(path));
+    let pr_guidance_path = options
+        .pr_guidance
+        .as_ref()
+        .map(|path| output::ripr_zero_status::display_path(path));
+    let recommendation_calibration_path = options
+        .recommendation_calibration
+        .as_ref()
+        .map(|path| output::ripr_zero_status::display_path(path));
+    let input = output::ripr_zero_status::RiprZeroStatusInput {
+        root: ".".to_string(),
+        generated_at: baseline_created_at()?,
+        baseline_path,
+        delta_path: output::ripr_zero_status::display_path(&options.delta),
+        gate_path,
+        pr_guidance_path,
+        recommendation_calibration_path,
+        baseline_json: options
+            .baseline
+            .as_ref()
+            .map(|path| read_optional_text_for_report("baseline", path)),
+        delta_json: read_optional_text_for_report("baseline debt delta", &options.delta),
+        gate_json: options
+            .gate
+            .as_ref()
+            .map(|path| read_optional_text_for_report("gate decision", path)),
+        pr_guidance_json: options
+            .pr_guidance
+            .as_ref()
+            .map(|path| read_optional_text_for_report("PR guidance", path)),
+        recommendation_calibration_json: options
+            .recommendation_calibration
+            .as_ref()
+            .map(|path| read_optional_text_for_report("recommendation calibration", path)),
+    };
+    let report = output::ripr_zero_status::build_ripr_zero_status_report(input);
+    let rendered_json = output::ripr_zero_status::render_ripr_zero_status_json(&report)?;
+    let rendered_md = output::ripr_zero_status::render_ripr_zero_status_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    Ok(())
+}
+
+fn pr_evidence_ledger_record(args: &[String]) -> Result<(), String> {
+    let options = parse_pr_evidence_ledger_options(args)?;
+    let gate_path = options
+        .gate
+        .as_ref()
+        .map(|path| output::pr_evidence_ledger::display_path(path));
+    let baseline_delta_path = options
+        .baseline_delta
+        .as_ref()
+        .map(|path| output::pr_evidence_ledger::display_path(path));
+    let zero_status_path = options
+        .zero_status
+        .as_ref()
+        .map(|path| output::pr_evidence_ledger::display_path(path));
+    let pr_guidance_path = options
+        .pr_guidance
+        .as_ref()
+        .map(|path| output::pr_evidence_ledger::display_path(path));
+    let recommendation_calibration_path = options
+        .recommendation_calibration
+        .as_ref()
+        .map(|path| output::pr_evidence_ledger::display_path(path));
+    let agent_receipt_path = options
+        .agent_receipt
+        .as_ref()
+        .map(|path| output::pr_evidence_ledger::display_path(path));
+    let coverage_path = options
+        .coverage
+        .as_ref()
+        .map(|path| output::pr_evidence_ledger::display_path(path));
+    let history_path = options
+        .history
+        .as_ref()
+        .map(|path| output::pr_evidence_ledger::display_path(path));
+    let input = output::pr_evidence_ledger::PrEvidenceLedgerInput {
+        root: ".".to_string(),
+        generated_at: baseline_created_at()?,
+        pr_number: options.pr_number,
+        base: options.base,
+        head: options.head,
+        labels: options.labels,
+        gate_path,
+        baseline_delta_path,
+        zero_status_path,
+        pr_guidance_path,
+        recommendation_calibration_path,
+        agent_receipt_path,
+        coverage_path,
+        history_path,
+        gate_json: options
+            .gate
+            .as_ref()
+            .map(|path| read_optional_text_for_report("gate decision", path)),
+        baseline_delta_json: options
+            .baseline_delta
+            .as_ref()
+            .map(|path| read_optional_text_for_report("baseline debt delta", path)),
+        zero_status_json: options
+            .zero_status
+            .as_ref()
+            .map(|path| read_optional_text_for_report("RIPR Zero status", path)),
+        pr_guidance_json: options
+            .pr_guidance
+            .as_ref()
+            .map(|path| read_optional_text_for_report("PR guidance", path)),
+        recommendation_calibration_json: options
+            .recommendation_calibration
+            .as_ref()
+            .map(|path| read_optional_text_for_report("recommendation calibration", path)),
+        agent_receipt_json: options
+            .agent_receipt
+            .as_ref()
+            .map(|path| read_optional_text_for_report("agent receipt", path)),
+        coverage_json: options
+            .coverage
+            .as_ref()
+            .map(|path| read_optional_text_for_report("coverage", path)),
+        history_json: options
+            .history
+            .as_ref()
+            .map(|path| read_optional_text_for_report("history", path)),
+    };
+    let report = output::pr_evidence_ledger::build_pr_evidence_ledger_report(input);
+    let rendered_json = output::pr_evidence_ledger::render_pr_evidence_ledger_json(&report)?;
+    let rendered_md = output::pr_evidence_ledger::render_pr_evidence_ledger_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    Ok(())
+}
+
+fn coverage_grip_frontier(args: &[String]) -> Result<(), String> {
+    let options = parse_coverage_grip_frontier_options(args)?;
+    let coverage_path = options
+        .coverage
+        .as_ref()
+        .map(|path| output::coverage_grip_frontier::display_path(path));
+    let ledger_path = options
+        .ledger
+        .as_ref()
+        .map(|path| output::coverage_grip_frontier::display_path(path));
+    let baseline_delta_path = options
+        .baseline_delta
+        .as_ref()
+        .map(|path| output::coverage_grip_frontier::display_path(path));
+    let zero_status_path = options
+        .zero_status
+        .as_ref()
+        .map(|path| output::coverage_grip_frontier::display_path(path));
+    let input = output::coverage_grip_frontier::CoverageGripFrontierInput {
+        root: ".".to_string(),
+        generated_at: baseline_created_at()?,
+        coverage_path,
+        ledger_path,
+        baseline_delta_path,
+        zero_status_path,
+        coverage_json: options
+            .coverage
+            .as_ref()
+            .map(|path| read_optional_text_for_report("coverage", path)),
+        ledger_json: options
+            .ledger
+            .as_ref()
+            .map(|path| read_optional_text_for_report("PR evidence ledger", path)),
+        baseline_delta_json: options
+            .baseline_delta
+            .as_ref()
+            .map(|path| read_optional_text_for_report("baseline debt delta", path)),
+        zero_status_json: options
+            .zero_status
+            .as_ref()
+            .map(|path| read_optional_text_for_report("RIPR Zero status", path)),
+    };
+    let report = output::coverage_grip_frontier::build_coverage_grip_frontier_report(input);
+    let rendered_json =
+        output::coverage_grip_frontier::render_coverage_grip_frontier_json(&report)?;
+    let rendered_md =
+        output::coverage_grip_frontier::render_coverage_grip_frontier_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    Ok(())
+}
+
+fn assistant_loop_proof(args: &[String]) -> Result<(), String> {
+    let options = parse_assistant_loop_proof_options(args)?;
+    let pr_guidance_path = options
+        .pr_guidance
+        .as_ref()
+        .map(|path| output::test_oracle_assistant_proof::display_path(path));
+    let agent_packet_path = options
+        .agent_packet
+        .as_ref()
+        .map(|path| output::test_oracle_assistant_proof::display_path(path));
+    let before_path = options
+        .before
+        .as_ref()
+        .map(|path| output::test_oracle_assistant_proof::display_path(path));
+    let after_path = options
+        .after
+        .as_ref()
+        .map(|path| output::test_oracle_assistant_proof::display_path(path));
+    let receipt_path = options
+        .receipt
+        .as_ref()
+        .map(|path| output::test_oracle_assistant_proof::display_path(path));
+    let ledger_path = options
+        .ledger
+        .as_ref()
+        .map(|path| output::test_oracle_assistant_proof::display_path(path));
+    let coverage_frontier_path = options
+        .coverage_frontier
+        .as_ref()
+        .map(|path| output::test_oracle_assistant_proof::display_path(path));
+    let gate_decision_path = options
+        .gate_decision
+        .as_ref()
+        .map(|path| output::test_oracle_assistant_proof::display_path(path));
+    let input = output::test_oracle_assistant_proof::TestOracleAssistantProofInput {
+        root: options.root,
+        pr_guidance_path,
+        agent_packet_path,
+        before_path,
+        after_path,
+        receipt_path,
+        ledger_path,
+        coverage_frontier_path,
+        gate_decision_path,
+        pr_guidance_json: options
+            .pr_guidance
+            .as_ref()
+            .map(|path| read_optional_text_for_report("PR guidance", path)),
+        agent_packet_json: options
+            .agent_packet
+            .as_ref()
+            .map(|path| read_optional_text_for_report("agent packet", path)),
+        before_json: options
+            .before
+            .as_ref()
+            .map(|path| read_optional_text_for_report("before evidence", path)),
+        after_json: options
+            .after
+            .as_ref()
+            .map(|path| read_optional_text_for_report("after evidence", path)),
+        receipt_json: options
+            .receipt
+            .as_ref()
+            .map(|path| read_optional_text_for_report("receipt", path)),
+        ledger_json: options
+            .ledger
+            .as_ref()
+            .map(|path| read_optional_text_for_report("PR evidence ledger", path)),
+        coverage_frontier_json: options
+            .coverage_frontier
+            .as_ref()
+            .map(|path| read_optional_text_for_report("coverage/grip frontier", path)),
+        gate_decision_json: options
+            .gate_decision
+            .as_ref()
+            .map(|path| read_optional_text_for_report("gate decision", path)),
+    };
+    let report =
+        output::test_oracle_assistant_proof::build_test_oracle_assistant_proof_report(input);
+    let rendered_json =
+        output::test_oracle_assistant_proof::render_test_oracle_assistant_proof_json(&report)?;
+    let rendered_md =
+        output::test_oracle_assistant_proof::render_test_oracle_assistant_proof_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    Ok(())
 }
 
 fn baseline_create(args: &[String]) -> Result<(), String> {
@@ -2484,7 +3338,567 @@ fn parse_baseline_update_options(args: &[String]) -> Result<BaselineUpdateOption
     })
 }
 
+fn parse_ripr_zero_status_options(args: &[String]) -> Result<RiprZeroStatusOptions, String> {
+    let mut baseline = None;
+    let mut delta = None;
+    let mut gate = None;
+    let mut pr_guidance = None;
+    let mut recommendation_calibration = None;
+    let mut out = PathBuf::from(output::ripr_zero_status::DEFAULT_RIPR_ZERO_STATUS_OUT);
+    let mut out_md = PathBuf::from(output::ripr_zero_status::DEFAULT_RIPR_ZERO_STATUS_MD_OUT);
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--baseline" => {
+                i += 1;
+                baseline = Some(non_empty_path_arg(args, i, "--baseline", "zero status")?);
+            }
+            "--delta" => {
+                i += 1;
+                delta = Some(non_empty_path_arg(args, i, "--delta", "zero status")?);
+            }
+            "--gate" => {
+                i += 1;
+                gate = Some(non_empty_path_arg(args, i, "--gate", "zero status")?);
+            }
+            "--pr-guidance" => {
+                i += 1;
+                pr_guidance = Some(non_empty_path_arg(args, i, "--pr-guidance", "zero status")?);
+            }
+            "--recommendation-calibration" => {
+                i += 1;
+                recommendation_calibration = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--recommendation-calibration",
+                    "zero status",
+                )?);
+            }
+            "--out" => {
+                i += 1;
+                out = non_empty_path_arg(args, i, "--out", "zero status")?;
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = non_empty_path_arg(args, i, "--out-md", "zero status")?;
+            }
+            other => return Err(format!("unknown zero status argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    Ok(RiprZeroStatusOptions {
+        baseline,
+        delta: delta.ok_or_else(|| "zero status requires --delta <path>".to_string())?,
+        gate,
+        pr_guidance,
+        recommendation_calibration,
+        out,
+        out_md,
+    })
+}
+
+fn parse_pr_evidence_ledger_options(args: &[String]) -> Result<PrEvidenceLedgerOptions, String> {
+    let mut pr_number = None;
+    let mut base = None;
+    let mut head = None;
+    let mut labels = Vec::new();
+    let mut gate = None;
+    let mut baseline_delta = None;
+    let mut zero_status = None;
+    let mut pr_guidance = None;
+    let mut recommendation_calibration = None;
+    let mut agent_receipt = None;
+    let mut coverage = None;
+    let mut history = None;
+    let mut out = PathBuf::from(output::pr_evidence_ledger::DEFAULT_PR_EVIDENCE_LEDGER_OUT);
+    let mut out_md = PathBuf::from(output::pr_evidence_ledger::DEFAULT_PR_EVIDENCE_LEDGER_MD_OUT);
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--pr-number" => {
+                i += 1;
+                pr_number = Some(non_empty_string_arg(
+                    args,
+                    i,
+                    "--pr-number",
+                    "pr-ledger record",
+                )?);
+            }
+            "--base" => {
+                i += 1;
+                base = Some(non_empty_string_arg(args, i, "--base", "pr-ledger record")?);
+            }
+            "--head" => {
+                i += 1;
+                head = Some(non_empty_string_arg(args, i, "--head", "pr-ledger record")?);
+            }
+            "--label" => {
+                i += 1;
+                labels.push(non_empty_string_arg(
+                    args,
+                    i,
+                    "--label",
+                    "pr-ledger record",
+                )?);
+            }
+            "--gate" => {
+                i += 1;
+                gate = Some(non_empty_path_arg(args, i, "--gate", "pr-ledger record")?);
+            }
+            "--baseline-delta" => {
+                i += 1;
+                baseline_delta = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--baseline-delta",
+                    "pr-ledger record",
+                )?);
+            }
+            "--zero-status" => {
+                i += 1;
+                zero_status = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--zero-status",
+                    "pr-ledger record",
+                )?);
+            }
+            "--pr-guidance" => {
+                i += 1;
+                pr_guidance = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--pr-guidance",
+                    "pr-ledger record",
+                )?);
+            }
+            "--recommendation-calibration" => {
+                i += 1;
+                recommendation_calibration = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--recommendation-calibration",
+                    "pr-ledger record",
+                )?);
+            }
+            "--agent-receipt" => {
+                i += 1;
+                agent_receipt = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--agent-receipt",
+                    "pr-ledger record",
+                )?);
+            }
+            "--coverage" => {
+                i += 1;
+                coverage = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--coverage",
+                    "pr-ledger record",
+                )?);
+            }
+            "--history" => {
+                i += 1;
+                history = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--history",
+                    "pr-ledger record",
+                )?);
+            }
+            "--out" => {
+                i += 1;
+                out = non_empty_path_arg(args, i, "--out", "pr-ledger record")?;
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = non_empty_path_arg(args, i, "--out-md", "pr-ledger record")?;
+            }
+            other => return Err(format!("unknown pr-ledger record argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    if gate.is_none() && baseline_delta.is_none() && zero_status.is_none() && pr_guidance.is_none()
+    {
+        return Err(
+            "pr-ledger record requires at least one of --gate, --baseline-delta, --zero-status, or --pr-guidance"
+                .to_string(),
+        );
+    }
+
+    Ok(PrEvidenceLedgerOptions {
+        pr_number: pr_number
+            .ok_or_else(|| "pr-ledger record requires --pr-number <value>".to_string())?,
+        base: base.ok_or_else(|| "pr-ledger record requires --base <revision>".to_string())?,
+        head: head.ok_or_else(|| "pr-ledger record requires --head <revision>".to_string())?,
+        labels,
+        gate,
+        baseline_delta,
+        zero_status,
+        pr_guidance,
+        recommendation_calibration,
+        agent_receipt,
+        coverage,
+        history,
+        out,
+        out_md,
+    })
+}
+
+fn parse_coverage_grip_frontier_options(
+    args: &[String],
+) -> Result<CoverageGripFrontierOptions, String> {
+    let mut coverage = None;
+    let mut ledger = None;
+    let mut baseline_delta = None;
+    let mut zero_status = None;
+    let mut out = PathBuf::from(output::coverage_grip_frontier::DEFAULT_COVERAGE_GRIP_FRONTIER_OUT);
+    let mut out_md =
+        PathBuf::from(output::coverage_grip_frontier::DEFAULT_COVERAGE_GRIP_FRONTIER_MD_OUT);
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--coverage" => {
+                i += 1;
+                coverage = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--coverage",
+                    "coverage-grip frontier",
+                )?);
+            }
+            "--ledger" => {
+                i += 1;
+                ledger = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--ledger",
+                    "coverage-grip frontier",
+                )?);
+            }
+            "--baseline-delta" => {
+                i += 1;
+                baseline_delta = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--baseline-delta",
+                    "coverage-grip frontier",
+                )?);
+            }
+            "--zero-status" => {
+                i += 1;
+                zero_status = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--zero-status",
+                    "coverage-grip frontier",
+                )?);
+            }
+            "--out" => {
+                i += 1;
+                out = non_empty_path_arg(args, i, "--out", "coverage-grip frontier")?;
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = non_empty_path_arg(args, i, "--out-md", "coverage-grip frontier")?;
+            }
+            other => return Err(format!("unknown coverage-grip frontier argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    if ledger.is_none() && baseline_delta.is_none() && zero_status.is_none() {
+        return Err(
+            "coverage-grip frontier requires at least one of --ledger, --baseline-delta, or --zero-status"
+                .to_string(),
+        );
+    }
+
+    Ok(CoverageGripFrontierOptions {
+        coverage,
+        ledger,
+        baseline_delta,
+        zero_status,
+        out,
+        out_md,
+    })
+}
+
+fn parse_assistant_loop_proof_options(
+    args: &[String],
+) -> Result<AssistantLoopProofOptions, String> {
+    let mut root = ".".to_string();
+    let mut pr_guidance = None;
+    let mut agent_packet = None;
+    let mut before = None;
+    let mut after = None;
+    let mut receipt = None;
+    let mut ledger = None;
+    let mut coverage_frontier = None;
+    let mut gate_decision = None;
+    let mut out =
+        PathBuf::from(output::test_oracle_assistant_proof::DEFAULT_TEST_ORACLE_ASSISTANT_PROOF_OUT);
+    let mut out_md = PathBuf::from(
+        output::test_oracle_assistant_proof::DEFAULT_TEST_ORACLE_ASSISTANT_PROOF_MD_OUT,
+    );
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = non_empty_string_arg(args, i, "--root", "assistant-loop proof")?;
+            }
+            "--pr-guidance" => {
+                i += 1;
+                pr_guidance = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--pr-guidance",
+                    "assistant-loop proof",
+                )?);
+            }
+            "--agent-packet" => {
+                i += 1;
+                agent_packet = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--agent-packet",
+                    "assistant-loop proof",
+                )?);
+            }
+            "--before" => {
+                i += 1;
+                before = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--before",
+                    "assistant-loop proof",
+                )?);
+            }
+            "--after" => {
+                i += 1;
+                after = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--after",
+                    "assistant-loop proof",
+                )?);
+            }
+            "--receipt" => {
+                i += 1;
+                receipt = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--receipt",
+                    "assistant-loop proof",
+                )?);
+            }
+            "--ledger" => {
+                i += 1;
+                ledger = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--ledger",
+                    "assistant-loop proof",
+                )?);
+            }
+            "--coverage-frontier" => {
+                i += 1;
+                coverage_frontier = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--coverage-frontier",
+                    "assistant-loop proof",
+                )?);
+            }
+            "--gate-decision" => {
+                i += 1;
+                gate_decision = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--gate-decision",
+                    "assistant-loop proof",
+                )?);
+            }
+            "--out" => {
+                i += 1;
+                out = non_empty_path_arg(args, i, "--out", "assistant-loop proof")?;
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = non_empty_path_arg(args, i, "--out-md", "assistant-loop proof")?;
+            }
+            other => return Err(format!("unknown assistant-loop proof argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    if pr_guidance.is_none()
+        && agent_packet.is_none()
+        && before.is_none()
+        && after.is_none()
+        && receipt.is_none()
+        && ledger.is_none()
+    {
+        return Err(
+            "assistant-loop proof requires at least one explicit artifact input".to_string(),
+        );
+    }
+
+    Ok(AssistantLoopProofOptions {
+        root,
+        pr_guidance,
+        agent_packet,
+        before,
+        after,
+        receipt,
+        ledger,
+        coverage_frontier,
+        gate_decision,
+        out,
+        out_md,
+    })
+}
+
+fn parse_first_action_options(args: &[String]) -> Result<FirstActionOptions, String> {
+    let mut root = ".".to_string();
+    let mut pr_guidance = None;
+    let mut assistant_proof = None;
+    let mut ledger = None;
+    let mut baseline_delta = None;
+    let mut receipt = None;
+    let mut gate_decision = None;
+    let mut coverage_frontier = None;
+    let mut editor_context = None;
+    let mut out = PathBuf::from(output::first_useful_action::DEFAULT_FIRST_USEFUL_ACTION_OUT);
+    let mut out_md = PathBuf::from(output::first_useful_action::DEFAULT_FIRST_USEFUL_ACTION_MD_OUT);
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = non_empty_string_arg(args, i, "--root", "first-action")?;
+            }
+            "--pr-guidance" => {
+                i += 1;
+                pr_guidance = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--pr-guidance",
+                    "first-action",
+                )?);
+            }
+            "--assistant-proof" => {
+                i += 1;
+                assistant_proof = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--assistant-proof",
+                    "first-action",
+                )?);
+            }
+            "--ledger" => {
+                i += 1;
+                ledger = Some(non_empty_path_arg(args, i, "--ledger", "first-action")?);
+            }
+            "--baseline-delta" => {
+                i += 1;
+                baseline_delta = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--baseline-delta",
+                    "first-action",
+                )?);
+            }
+            "--receipt" => {
+                i += 1;
+                receipt = Some(non_empty_path_arg(args, i, "--receipt", "first-action")?);
+            }
+            "--gate-decision" => {
+                i += 1;
+                gate_decision = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--gate-decision",
+                    "first-action",
+                )?);
+            }
+            "--coverage-frontier" => {
+                i += 1;
+                coverage_frontier = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--coverage-frontier",
+                    "first-action",
+                )?);
+            }
+            "--editor-context" => {
+                i += 1;
+                editor_context = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--editor-context",
+                    "first-action",
+                )?);
+            }
+            "--out" => {
+                i += 1;
+                out = non_empty_path_arg(args, i, "--out", "first-action")?;
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = non_empty_path_arg(args, i, "--out-md", "first-action")?;
+            }
+            other => return Err(format!("unknown first-action argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    if pr_guidance.is_none()
+        && assistant_proof.is_none()
+        && ledger.is_none()
+        && baseline_delta.is_none()
+        && receipt.is_none()
+        && gate_decision.is_none()
+        && coverage_frontier.is_none()
+        && editor_context.is_none()
+    {
+        return Err("first-action requires at least one explicit artifact input".to_string());
+    }
+
+    Ok(FirstActionOptions {
+        root,
+        pr_guidance,
+        assistant_proof,
+        ledger,
+        baseline_delta,
+        receipt,
+        gate_decision,
+        coverage_frontier,
+        editor_context,
+        out,
+        out_md,
+    })
+}
+
 fn baseline_created_at() -> Result<String, String> {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| format!("system clock before unix epoch: {err}"))?
+        .as_millis();
+    Ok(format!("unix_ms:{millis}"))
+}
+
+fn first_action_generated_at() -> Result<String, String> {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|err| format!("system clock before unix epoch: {err}"))?
@@ -2893,6 +4307,10 @@ mod tests {
                 "ripr review-comments",
                 "gate evaluate",
                 "ripr baseline diff",
+                "zero status",
+                "pr-ledger record",
+                "assistant-loop proof",
+                "first-action",
                 "ripr agent status",
                 "ripr agent review-summary",
                 "cargo xtask operator-cockpit",
@@ -2922,11 +4340,21 @@ mod tests {
                 "target/ripr/reports/gate-decision.md",
                 "target/ripr/reports/baseline-debt-delta.json",
                 "target/ripr/reports/baseline-debt-delta.md",
+                "target/ripr/reports/ripr-zero-status.json",
+                "target/ripr/reports/ripr-zero-status.md",
+                "target/ripr/reports/pr-evidence-ledger.json",
+                "target/ripr/reports/pr-evidence-ledger.md",
+                "target/ripr/reports/test-oracle-assistant-proof.json",
+                "target/ripr/reports/test-oracle-assistant-proof.md",
+                "target/ripr/reports/first-useful-action.json",
+                "target/ripr/reports/first-useful-action.md",
                 "target/ripr/review/comments.json",
                 "target/ci/labels.json",
             ],
             summary_sections: &[
                 "## RIPR advisory summary",
+                "### First useful action",
+                "#### First action at a glance",
                 "### Top recommendation",
                 "### Agent review packet",
                 "### Artifact packet",
@@ -2934,6 +4362,12 @@ mod tests {
                 "#### Gate decision at a glance",
                 "### Baseline debt delta",
                 "#### Baseline debt movement",
+                "### RIPR Zero status",
+                "#### RIPR Zero at a glance",
+                "### PR evidence ledger",
+                "#### PR movement at a glance",
+                "### Test-oracle assistant proof",
+                "#### Assistant proof at a glance",
                 "### SARIF and badge status",
                 "### PR guidance annotations",
                 "### Known limits",
@@ -2947,6 +4381,10 @@ mod tests {
                 "Render RIPR repo badge artifacts",
                 "Render RIPR operator cockpit",
                 "Render RIPR baseline debt delta",
+                "Render RIPR Zero status",
+                "Render RIPR PR evidence ledger",
+                "Render RIPR test-oracle assistant proof",
+                "Render RIPR first useful action",
                 "Render RIPR LLM work-loop summaries",
                 "Run RIPR PR guidance report",
                 "Capture RIPR gate labels",
@@ -3578,6 +5016,238 @@ mod tests {
     }
 
     #[test]
+    fn ripr_zero_status_parses_option_surface() {
+        assert_eq!(
+            parse_ripr_zero_status_options(&args(&[
+                "--baseline",
+                ".ripr/gate-baseline.json",
+                "--delta",
+                "target/ripr/reports/baseline-debt-delta.json",
+                "--gate",
+                "target/ripr/reports/gate-decision.json",
+                "--pr-guidance",
+                "target/ripr/review/comments.json",
+                "--recommendation-calibration",
+                "target/ripr/reports/recommendation-calibration.json",
+                "--out",
+                "target/ripr/reports/ripr-zero-status.json",
+                "--out-md",
+                "target/ripr/reports/ripr-zero-status.md",
+            ])),
+            Ok(RiprZeroStatusOptions {
+                baseline: Some(PathBuf::from(".ripr/gate-baseline.json")),
+                delta: PathBuf::from("target/ripr/reports/baseline-debt-delta.json"),
+                gate: Some(PathBuf::from("target/ripr/reports/gate-decision.json")),
+                pr_guidance: Some(PathBuf::from("target/ripr/review/comments.json")),
+                recommendation_calibration: Some(PathBuf::from(
+                    "target/ripr/reports/recommendation-calibration.json",
+                )),
+                out: PathBuf::from("target/ripr/reports/ripr-zero-status.json"),
+                out_md: PathBuf::from("target/ripr/reports/ripr-zero-status.md"),
+            })
+        );
+    }
+
+    #[test]
+    fn ripr_zero_status_requires_inputs_and_rejects_unknown_args() {
+        assert_eq!(
+            zero(&args(&[])),
+            Err("zero requires subcommand `status`".to_string())
+        );
+        assert_eq!(
+            zero(&args(&["unknown"])),
+            Err("unknown zero subcommand \"unknown\"; expected `status`".to_string())
+        );
+        assert_eq!(
+            parse_ripr_zero_status_options(&args(&[])),
+            Err("zero status requires --delta <path>".to_string())
+        );
+        assert_eq!(
+            parse_ripr_zero_status_options(&args(&["--delta", ""])),
+            Err("zero status --delta requires a non-empty value".to_string())
+        );
+        assert_eq!(
+            parse_ripr_zero_status_options(&args(&["--bad"])),
+            Err("unknown zero status argument \"--bad\"".to_string())
+        );
+    }
+
+    #[test]
+    fn pr_evidence_ledger_parses_option_surface() {
+        assert_eq!(
+            parse_pr_evidence_ledger_options(&args(&[
+                "--pr-number",
+                "123",
+                "--base",
+                "base",
+                "--head",
+                "head",
+                "--label",
+                "ripr-waive",
+                "--gate",
+                "target/ripr/reports/gate-decision.json",
+                "--baseline-delta",
+                "target/ripr/reports/baseline-debt-delta.json",
+                "--zero-status",
+                "target/ripr/reports/ripr-zero-status.json",
+                "--pr-guidance",
+                "target/ripr/review/comments.json",
+                "--recommendation-calibration",
+                "target/ripr/reports/recommendation-calibration.json",
+                "--agent-receipt",
+                "target/ripr/reports/agent-receipt.json",
+                "--coverage",
+                "target/ripr/reports/coverage-summary.json",
+                "--history",
+                ".ripr/pr-evidence-ledger.jsonl",
+                "--out",
+                "target/ripr/reports/pr-evidence-ledger.json",
+                "--out-md",
+                "target/ripr/reports/pr-evidence-ledger.md",
+            ])),
+            Ok(PrEvidenceLedgerOptions {
+                pr_number: "123".to_string(),
+                base: "base".to_string(),
+                head: "head".to_string(),
+                labels: vec!["ripr-waive".to_string()],
+                gate: Some(PathBuf::from("target/ripr/reports/gate-decision.json")),
+                baseline_delta: Some(PathBuf::from(
+                    "target/ripr/reports/baseline-debt-delta.json"
+                )),
+                zero_status: Some(PathBuf::from("target/ripr/reports/ripr-zero-status.json")),
+                pr_guidance: Some(PathBuf::from("target/ripr/review/comments.json")),
+                recommendation_calibration: Some(PathBuf::from(
+                    "target/ripr/reports/recommendation-calibration.json"
+                )),
+                agent_receipt: Some(PathBuf::from("target/ripr/reports/agent-receipt.json")),
+                coverage: Some(PathBuf::from("target/ripr/reports/coverage-summary.json")),
+                history: Some(PathBuf::from(".ripr/pr-evidence-ledger.jsonl")),
+                out: PathBuf::from("target/ripr/reports/pr-evidence-ledger.json"),
+                out_md: PathBuf::from("target/ripr/reports/pr-evidence-ledger.md"),
+            })
+        );
+    }
+
+    #[test]
+    fn pr_evidence_ledger_requires_identity_and_evidence() {
+        assert_eq!(
+            pr_ledger(&args(&[])),
+            Err("pr-ledger requires subcommand `record`".to_string())
+        );
+        assert_eq!(
+            pr_ledger(&args(&["unknown"])),
+            Err("unknown pr-ledger subcommand \"unknown\"; expected `record`".to_string())
+        );
+        assert_eq!(
+            parse_pr_evidence_ledger_options(&args(&[
+                "--pr-number",
+                "123",
+                "--base",
+                "base",
+                "--head",
+                "head"
+            ])),
+            Err(
+                "pr-ledger record requires at least one of --gate, --baseline-delta, --zero-status, or --pr-guidance"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            parse_pr_evidence_ledger_options(&args(&[
+                "--base",
+                "base",
+                "--head",
+                "head",
+                "--gate",
+                "gate.json"
+            ])),
+            Err("pr-ledger record requires --pr-number <value>".to_string())
+        );
+        assert_eq!(
+            parse_pr_evidence_ledger_options(&args(&[
+                "--pr-number",
+                "",
+                "--base",
+                "base",
+                "--head",
+                "head",
+                "--gate",
+                "gate.json"
+            ])),
+            Err("pr-ledger record --pr-number requires a non-empty value".to_string())
+        );
+        assert_eq!(
+            parse_pr_evidence_ledger_options(&args(&["--bad"])),
+            Err("unknown pr-ledger record argument \"--bad\"".to_string())
+        );
+    }
+
+    #[test]
+    fn first_action_parses_option_surface() {
+        assert_eq!(
+            parse_first_action_options(&args(&[
+                "--root",
+                ".",
+                "--pr-guidance",
+                "target/ripr/review/comments.json",
+                "--assistant-proof",
+                "target/ripr/reports/test-oracle-assistant-proof.json",
+                "--ledger",
+                "target/ripr/reports/pr-evidence-ledger.json",
+                "--baseline-delta",
+                "target/ripr/reports/baseline-debt-delta.json",
+                "--receipt",
+                "target/ripr/reports/agent-receipt.json",
+                "--gate-decision",
+                "target/ripr/reports/gate-decision.json",
+                "--coverage-frontier",
+                "target/ripr/reports/coverage-grip-frontier.json",
+                "--editor-context",
+                "target/ripr/workflow/evidence-context.json",
+                "--out",
+                "target/ripr/reports/first-useful-action.json",
+                "--out-md",
+                "target/ripr/reports/first-useful-action.md",
+            ])),
+            Ok(FirstActionOptions {
+                root: ".".to_string(),
+                pr_guidance: Some(PathBuf::from("target/ripr/review/comments.json")),
+                assistant_proof: Some(PathBuf::from(
+                    "target/ripr/reports/test-oracle-assistant-proof.json",
+                )),
+                ledger: Some(PathBuf::from("target/ripr/reports/pr-evidence-ledger.json")),
+                baseline_delta: Some(PathBuf::from(
+                    "target/ripr/reports/baseline-debt-delta.json",
+                )),
+                receipt: Some(PathBuf::from("target/ripr/reports/agent-receipt.json")),
+                gate_decision: Some(PathBuf::from("target/ripr/reports/gate-decision.json")),
+                coverage_frontier: Some(PathBuf::from(
+                    "target/ripr/reports/coverage-grip-frontier.json",
+                )),
+                editor_context: Some(PathBuf::from("target/ripr/workflow/evidence-context.json")),
+                out: PathBuf::from("target/ripr/reports/first-useful-action.json"),
+                out_md: PathBuf::from("target/ripr/reports/first-useful-action.md"),
+            })
+        );
+    }
+
+    #[test]
+    fn first_action_requires_input_and_rejects_unknown_args() {
+        assert_eq!(
+            parse_first_action_options(&args(&[])),
+            Err("first-action requires at least one explicit artifact input".to_string())
+        );
+        assert_eq!(
+            parse_first_action_options(&args(&["--pr-guidance", ""])),
+            Err("first-action --pr-guidance requires a non-empty value".to_string())
+        );
+        assert_eq!(
+            parse_first_action_options(&args(&["--bad"])),
+            Err("unknown first-action argument \"--bad\"".to_string())
+        );
+    }
+
+    #[test]
     fn baseline_create_writes_baseline_without_overwriting_by_default() -> Result<(), String> {
         let dir = unique_command_test_dir("baseline-create");
         std::fs::create_dir_all(&dir).map_err(|err| format!("create baseline dir: {err}"))?;
@@ -3620,6 +5290,187 @@ mod tests {
         ]))?;
 
         std::fs::remove_dir_all(&dir).map_err(|err| format!("remove baseline dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_zero_status_writes_json_and_markdown_reports() -> Result<(), String> {
+        let dir = unique_command_test_dir("ripr-zero-status");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create zero status dir: {err}"))?;
+        let out = dir.join("ripr-zero-status.json");
+        let out_md = dir.join("ripr-zero-status.md");
+        let baseline = repo_root()
+            .join("fixtures/boundary_gap/expected/baseline-debt-delta/mixed/baseline.json");
+        let delta = repo_root().join(
+            "fixtures/boundary_gap/expected/baseline-debt-delta/mixed/baseline-debt-delta.json",
+        );
+
+        zero(&args(&[
+            "status",
+            "--baseline",
+            &baseline.display().to_string(),
+            "--delta",
+            &delta.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json_text =
+            std::fs::read_to_string(&out).map_err(|err| format!("read zero json: {err}"))?;
+        assert!(json_text.contains("\"kind\": \"ripr_zero_status\""));
+        assert!(json_text.contains("\"status\": \"advisory\""));
+        assert!(json_text.contains("\"baseline_debt_delta\""));
+
+        let markdown =
+            std::fs::read_to_string(&out_md).map_err(|err| format!("read zero md: {err}"))?;
+        assert!(markdown.starts_with("# RIPR Zero Status"));
+        assert!(markdown.contains("Visible unresolved gaps"));
+
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove zero status dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn pr_evidence_ledger_writes_json_and_markdown_reports() -> Result<(), String> {
+        let dir = unique_command_test_dir("pr-evidence-ledger");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create ledger dir: {err}"))?;
+        let out = dir.join("pr-evidence-ledger.json");
+        let out_md = dir.join("pr-evidence-ledger.md");
+        let fixture = repo_root().join("fixtures/boundary_gap/expected/pr-evidence-ledger/mixed");
+
+        pr_ledger(&args(&[
+            "record",
+            "--pr-number",
+            "123",
+            "--base",
+            "base",
+            "--head",
+            "head",
+            "--gate",
+            &fixture.join("gate-decision.json").display().to_string(),
+            "--baseline-delta",
+            &fixture
+                .join("baseline-debt-delta.json")
+                .display()
+                .to_string(),
+            "--zero-status",
+            &fixture.join("ripr-zero-status.json").display().to_string(),
+            "--pr-guidance",
+            &fixture.join("comments.json").display().to_string(),
+            "--agent-receipt",
+            &fixture.join("agent-receipt.json").display().to_string(),
+            "--history",
+            &fixture.join("history.jsonl").display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json_text =
+            std::fs::read_to_string(&out).map_err(|err| format!("read ledger json: {err}"))?;
+        assert!(json_text.contains("\"kind\": \"pr_evidence_ledger\""));
+        assert!(json_text.contains("\"baseline_resolved\": 3"));
+        let md_text =
+            std::fs::read_to_string(&out_md).map_err(|err| format!("read ledger md: {err}"))?;
+        assert!(md_text.contains("# RIPR PR Evidence Ledger"));
+        assert!(md_text.contains("Gate: acknowledgeable / acknowledged"));
+
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove ledger dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn coverage_grip_frontier_parses_option_surface() {
+        assert_eq!(
+            parse_coverage_grip_frontier_options(&args(&[
+                "--coverage",
+                "target/ripr/reports/coverage-summary.json",
+                "--ledger",
+                "target/ripr/reports/pr-evidence-ledger.json",
+                "--baseline-delta",
+                "target/ripr/reports/baseline-debt-delta.json",
+                "--zero-status",
+                "target/ripr/reports/ripr-zero-status.json",
+                "--out",
+                "target/ripr/reports/coverage-grip-frontier.json",
+                "--out-md",
+                "target/ripr/reports/coverage-grip-frontier.md",
+            ])),
+            Ok(CoverageGripFrontierOptions {
+                coverage: Some(PathBuf::from("target/ripr/reports/coverage-summary.json")),
+                ledger: Some(PathBuf::from("target/ripr/reports/pr-evidence-ledger.json")),
+                baseline_delta: Some(PathBuf::from(
+                    "target/ripr/reports/baseline-debt-delta.json"
+                )),
+                zero_status: Some(PathBuf::from("target/ripr/reports/ripr-zero-status.json")),
+                out: PathBuf::from("target/ripr/reports/coverage-grip-frontier.json"),
+                out_md: PathBuf::from("target/ripr/reports/coverage-grip-frontier.md"),
+            })
+        );
+    }
+
+    #[test]
+    fn coverage_grip_frontier_requires_movement_input() {
+        assert_eq!(
+            coverage_grip(&args(&[])),
+            Err("coverage-grip requires subcommand `frontier`".to_string())
+        );
+        assert_eq!(
+            coverage_grip(&args(&["unknown"])),
+            Err("unknown coverage-grip subcommand \"unknown\"; expected `frontier`".to_string())
+        );
+        assert_eq!(
+            parse_coverage_grip_frontier_options(&args(&["--coverage", "coverage.json"])),
+            Err(
+                "coverage-grip frontier requires at least one of --ledger, --baseline-delta, or --zero-status"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            parse_coverage_grip_frontier_options(&args(&["--bad"])),
+            Err("unknown coverage-grip frontier argument \"--bad\"".to_string())
+        );
+    }
+
+    #[test]
+    fn coverage_grip_frontier_writes_json_and_markdown_reports() -> Result<(), String> {
+        let dir = unique_command_test_dir("coverage-grip-frontier");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create frontier dir: {err}"))?;
+        let coverage = dir.join("coverage-summary.json");
+        let ledger = repo_root().join(
+            "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/pr-evidence-ledger.json",
+        );
+        let out = dir.join("coverage-grip-frontier.json");
+        let out_md = dir.join("coverage-grip-frontier.md");
+        std::fs::write(
+            &coverage,
+            r#"{"coverage_delta_percent":0.0,"ripr_visible_unresolved_delta":-3}"#,
+        )
+        .map_err(|err| format!("write coverage: {err}"))?;
+
+        coverage_grip(&args(&[
+            "frontier",
+            "--coverage",
+            &coverage.display().to_string(),
+            "--ledger",
+            &ledger.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let rendered =
+            std::fs::read_to_string(&out).map_err(|err| format!("read frontier JSON: {err}"))?;
+        let markdown = std::fs::read_to_string(&out_md)
+            .map_err(|err| format!("read frontier Markdown: {err}"))?;
+        assert!(rendered.contains(r#""kind": "coverage_grip_frontier""#));
+        assert!(rendered.contains("behavioral grip improved without line-coverage movement"));
+        assert!(markdown.contains("# RIPR Coverage / Grip Frontier"));
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove frontier dir: {err}"))?;
         Ok(())
     }
 
@@ -4310,6 +6161,14 @@ mod tests {
         assert!(workflow.contains("target/ripr/reports/gate-decision.md"));
         assert!(workflow.contains("target/ripr/reports/baseline-debt-delta.json"));
         assert!(workflow.contains("target/ripr/reports/baseline-debt-delta.md"));
+        assert!(workflow.contains("target/ripr/reports/ripr-zero-status.json"));
+        assert!(workflow.contains("target/ripr/reports/ripr-zero-status.md"));
+        assert!(workflow.contains("target/ripr/reports/pr-evidence-ledger.json"));
+        assert!(workflow.contains("target/ripr/reports/pr-evidence-ledger.md"));
+        assert!(workflow.contains("target/ripr/reports/test-oracle-assistant-proof.json"));
+        assert!(workflow.contains("target/ripr/reports/test-oracle-assistant-proof.md"));
+        assert!(workflow.contains("target/ripr/reports/first-useful-action.json"));
+        assert!(workflow.contains("target/ripr/reports/first-useful-action.md"));
         assert!(workflow.contains("target/ci/labels.json"));
         assert!(workflow.contains("target/ripr/review/comments.json"));
         assert!(workflow.contains("target/ripr/review"));
@@ -4318,20 +6177,29 @@ mod tests {
         assert!(workflow.contains("name: Evaluate RIPR gate decision"));
         assert!(workflow.contains("name: Render RIPR baseline debt delta"));
         assert!(workflow.contains("name: Emit RIPR PR guidance annotations"));
+        assert!(workflow.contains("name: Render RIPR test-oracle assistant proof"));
+        assert!(workflow.contains("name: Render RIPR first useful action"));
         assert!(workflow.contains("escape_github_property()"));
         assert!(workflow.contains("annotation_path=\"$(escape_github_property \"$path\")\""));
         assert!(workflow.contains("::warning file=$annotation_path,line=$annotation_line"));
         assert!(workflow.contains("title=$annotation_title"));
         assert!(workflow.contains("name: Add RIPR advisory summary"));
         assert!(workflow.contains("## RIPR advisory summary"));
+        assert!(workflow.contains("### First useful action"));
+        assert!(workflow.contains("#### First action at a glance"));
         assert!(workflow.contains("### Top recommendation"));
         assert!(workflow.contains("### Artifact packet"));
         assert!(workflow.contains("### Gate decision"));
         assert!(workflow.contains("#### Gate decision at a glance"));
         assert!(workflow.contains("### Baseline debt delta"));
         assert!(workflow.contains("#### Baseline debt movement"));
+        assert!(workflow.contains("### RIPR Zero status"));
+        assert!(workflow.contains("#### RIPR Zero at a glance"));
+        assert!(workflow.contains("### PR evidence ledger"));
+        assert!(workflow.contains("#### PR movement at a glance"));
+        assert!(workflow.contains("### Test-oracle assistant proof"));
+        assert!(workflow.contains("#### Assistant proof at a glance"));
         assert!(workflow.contains("markdown_inline()"));
-        assert!(workflow.contains("baseline_markdown_inline()"));
         assert!(workflow.contains("Active PR labels"));
         assert!(workflow.contains("Applied waiver label"));
         assert!(workflow.contains("Baseline artifact"));
@@ -4340,6 +6208,8 @@ mod tests {
         assert!(workflow.contains("Blocking reason"));
         assert!(workflow.contains("Gate artifacts"));
         assert!(workflow.contains("Baseline delta artifacts"));
+        assert!(workflow.contains("Proof artifacts"));
+        assert!(workflow.contains("Action artifacts"));
         assert!(workflow.contains("### SARIF and badge status"));
         assert!(workflow.contains("### PR guidance annotations"));
         assert!(workflow.contains("### Known limits"));
@@ -4392,13 +6262,40 @@ mod tests {
         assert!(workflow.contains(".delta.invalid_baseline_entry // 0"));
         assert!(workflow.contains(".delta.missing_current_input // 0"));
         assert!(workflow.contains("Counts: still_present=\\`$still_present\\`"));
+        assert!(workflow.contains(".movement.new_policy_eligible // 0"));
+        assert!(workflow.contains(".movement.baseline_still_present // 0"));
+        assert!(workflow.contains(".movement.baseline_resolved // 0"));
+        assert!(workflow.contains(".movement.acknowledged // 0"));
+        assert!(workflow.contains(".movement.suppressed // 0"));
+        assert!(workflow.contains(".movement.blocking_candidates // 0"));
+        assert!(workflow.contains(".movement.visible_unresolved // 0"));
+        assert!(workflow.contains(".coverage_grip_frontier.status // \"not_available\""));
+        assert!(workflow.contains(".history.trend // \"not_available\""));
+        assert!(workflow.contains("Counts: new_policy_eligible=\\`$ledger_new_policy_eligible\\`"));
         assert!(workflow.contains("sed 's/`/\\\\`/g'"));
         assert!(workflow.contains("Blocking reason: \\`$blocking_reason\\`"));
         assert!(workflow.contains("Boundary: $limits_note"));
+        assert!(workflow.contains("Pass/fail authority remains \\`ripr gate evaluate\\`"));
+        assert!(workflow.contains("cat target/ripr/reports/pr-evidence-ledger.md"));
         assert!(workflow.contains("Set `RIPR_GATE_BASELINE`"));
         assert!(workflow.contains("RIPR_GATE_MODE"));
         assert!(workflow.contains("RIPR_GATE_BASELINE"));
+        assert!(workflow.contains("assistant-loop proof"));
+        assert!(workflow.contains("first-action"));
+        assert!(workflow.contains("--pr-guidance target/ripr/review/comments.json"));
+        assert!(workflow.contains("--agent-packet target/ripr/workflow/agent-brief.json"));
+        assert!(workflow.contains("--before target/ripr/workflow/before.repo-exposure.json"));
+        assert!(workflow.contains("--after target/ripr/workflow/after.repo-exposure.json"));
+        assert!(workflow.contains("--receipt target/ripr/reports/agent-receipt.json"));
+        assert!(workflow.contains("--ledger target/ripr/reports/pr-evidence-ledger.json"));
+        assert!(
+            workflow
+                .contains("--coverage-frontier target/ripr/reports/coverage-grip-frontier.json")
+        );
+        assert!(workflow.contains("--gate-decision target/ripr/reports/gate-decision.json"));
         assert!(workflow.contains("ripr \"${gate_args[@]}\""));
+        assert!(workflow.contains("ripr \"${proof_args[@]}\""));
+        assert!(workflow.contains("ripr \"${first_action_args[@]}\""));
         assert!(workflow.contains("Set `RIPR_GATE_MODE`"));
         assert!(workflow.contains("No runtime mutation execution is performed"));
         assert!(workflow.contains("hashFiles('crates/ripr/Cargo.toml')"));
@@ -4462,6 +6359,31 @@ mod tests {
         assert_step_before(
             &workflow,
             "Render RIPR baseline debt delta",
+            "Render RIPR Zero status",
+        );
+        assert_step_before(
+            &workflow,
+            "Render RIPR Zero status",
+            "Render RIPR PR evidence ledger",
+        );
+        assert_step_before(
+            &workflow,
+            "Render RIPR PR evidence ledger",
+            "Render RIPR test-oracle assistant proof",
+        );
+        assert_step_before(
+            &workflow,
+            "Render RIPR test-oracle assistant proof",
+            "Render RIPR first useful action",
+        );
+        assert_step_before(
+            &workflow,
+            "Render RIPR first useful action",
+            "Render RIPR LLM work-loop summaries",
+        );
+        assert_step_before(
+            &workflow,
+            "Render RIPR PR evidence ledger",
             "Emit RIPR PR guidance annotations",
         );
         assert_step_before(
@@ -4515,6 +6437,107 @@ mod tests {
         assert!(baseline_delta.contains("--out target/ripr/reports/baseline-debt-delta.json"));
         assert!(baseline_delta.contains("--out-md target/ripr/reports/baseline-debt-delta.md"));
 
+        let zero_status = workflow_step(&workflow, "Render RIPR Zero status");
+        assert!(zero_status.contains("hashFiles('target/ripr/reports/baseline-debt-delta.json')"));
+        assert!(zero_status.contains("continue-on-error: true"));
+        assert!(zero_status.contains("zero status"));
+        assert!(zero_status.contains("--delta target/ripr/reports/baseline-debt-delta.json"));
+        assert!(zero_status.contains("--out target/ripr/reports/ripr-zero-status.json"));
+        assert!(zero_status.contains("--out-md target/ripr/reports/ripr-zero-status.md"));
+        assert!(zero_status.contains("--baseline \"$RIPR_GATE_BASELINE\""));
+        assert!(zero_status.contains("--gate target/ripr/reports/gate-decision.json"));
+        assert!(zero_status.contains("--pr-guidance target/ripr/review/comments.json"));
+        assert!(zero_status.contains(
+            "--recommendation-calibration target/ripr/reports/recommendation-calibration.json"
+        ));
+
+        let pr_ledger = workflow_step(&workflow, "Render RIPR PR evidence ledger");
+        assert!(pr_ledger.contains("github.event_name == 'pull_request'"));
+        assert!(pr_ledger.contains("hashFiles('target/ripr/review/comments.json')"));
+        assert!(pr_ledger.contains("continue-on-error: true"));
+        assert!(pr_ledger.contains("pr-ledger record"));
+        assert!(pr_ledger.contains("--pr-number \"${{ github.event.pull_request.number }}\""));
+        assert!(pr_ledger.contains("--base \"origin/${{ github.base_ref }}\""));
+        assert!(pr_ledger.contains("--head HEAD"));
+        assert!(pr_ledger.contains("--pr-guidance target/ripr/review/comments.json"));
+        assert!(pr_ledger.contains("--gate target/ripr/reports/gate-decision.json"));
+        assert!(
+            pr_ledger.contains("--baseline-delta target/ripr/reports/baseline-debt-delta.json")
+        );
+        assert!(pr_ledger.contains("--zero-status target/ripr/reports/ripr-zero-status.json"));
+        assert!(pr_ledger.contains(
+            "--recommendation-calibration target/ripr/reports/recommendation-calibration.json"
+        ));
+        assert!(pr_ledger.contains("--agent-receipt target/ripr/reports/agent-receipt.json"));
+        assert!(pr_ledger.contains("--coverage target/ripr/reports/coverage-summary.json"));
+        assert!(pr_ledger.contains("--history .ripr/pr-evidence-ledger.jsonl"));
+        assert!(pr_ledger.contains("ledger_args+=(--label \"$label\")"));
+        assert!(pr_ledger.contains("ripr \"${ledger_args[@]}\""));
+
+        let assistant_proof = workflow_step(&workflow, "Render RIPR test-oracle assistant proof");
+        assert!(assistant_proof.contains("hashFiles('target/ripr/review/comments.json')"));
+        assert!(assistant_proof.contains("hashFiles('target/ripr/workflow/agent-brief.json')"));
+        assert!(
+            assistant_proof.contains("hashFiles('target/ripr/workflow/before.repo-exposure.json')")
+        );
+        assert!(
+            assistant_proof.contains("hashFiles('target/ripr/workflow/after.repo-exposure.json')")
+        );
+        assert!(assistant_proof.contains("hashFiles('target/ripr/reports/agent-receipt.json')"));
+        assert!(
+            assistant_proof.contains("hashFiles('target/ripr/reports/pr-evidence-ledger.json')")
+        );
+        assert!(assistant_proof.contains("continue-on-error: true"));
+        assert!(assistant_proof.contains("assistant-loop proof"));
+        assert!(assistant_proof.contains("--root ."));
+        assert!(assistant_proof.contains("--pr-guidance target/ripr/review/comments.json"));
+        assert!(assistant_proof.contains("--agent-packet target/ripr/workflow/agent-brief.json"));
+        assert!(
+            assistant_proof.contains("--before target/ripr/workflow/before.repo-exposure.json")
+        );
+        assert!(assistant_proof.contains("--after target/ripr/workflow/after.repo-exposure.json"));
+        assert!(assistant_proof.contains("--receipt target/ripr/reports/agent-receipt.json"));
+        assert!(assistant_proof.contains("--ledger target/ripr/reports/pr-evidence-ledger.json"));
+        assert!(
+            assistant_proof.contains("--out target/ripr/reports/test-oracle-assistant-proof.json")
+        );
+        assert!(
+            assistant_proof.contains("--out-md target/ripr/reports/test-oracle-assistant-proof.md")
+        );
+        assert!(
+            assistant_proof
+                .contains("--coverage-frontier target/ripr/reports/coverage-grip-frontier.json")
+        );
+        assert!(assistant_proof.contains("--gate-decision target/ripr/reports/gate-decision.json"));
+        assert!(assistant_proof.contains("ripr \"${proof_args[@]}\""));
+
+        let first_action = workflow_step(&workflow, "Render RIPR first useful action");
+        assert!(first_action.contains("continue-on-error: true"));
+        assert!(first_action.contains("first-action"));
+        assert!(first_action.contains("--root ."));
+        assert!(first_action.contains("--pr-guidance target/ripr/review/comments.json"));
+        assert!(
+            first_action
+                .contains("--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json")
+        );
+        assert!(first_action.contains("--ledger target/ripr/reports/pr-evidence-ledger.json"));
+        assert!(
+            first_action.contains("--baseline-delta target/ripr/reports/baseline-debt-delta.json")
+        );
+        assert!(first_action.contains("--receipt target/ripr/reports/agent-receipt.json"));
+        assert!(first_action.contains("--gate-decision target/ripr/reports/gate-decision.json"));
+        assert!(
+            first_action
+                .contains("--coverage-frontier target/ripr/reports/coverage-grip-frontier.json")
+        );
+        assert!(
+            first_action.contains("--editor-context target/ripr/workflow/evidence-context.json")
+        );
+        assert!(first_action.contains("--out target/ripr/reports/first-useful-action.json"));
+        assert!(first_action.contains("--out-md target/ripr/reports/first-useful-action.md"));
+        assert!(first_action.contains("first_action_has_input=true"));
+        assert!(first_action.contains("ripr \"${first_action_args[@]}\""));
+
         let annotations = workflow_step(&workflow, "Emit RIPR PR guidance annotations");
         assert!(annotations.contains("hashFiles('target/ripr/review/comments.json')"));
         assert!(annotations.contains("escape_github_message()"));
@@ -4522,6 +6545,16 @@ mod tests {
         assert!(annotations.contains("::warning file=$annotation_path,line=$annotation_line"));
 
         let summary = workflow_step(&workflow, "Add RIPR advisory summary");
+        assert!(summary.contains("### First useful action"));
+        assert!(summary.contains("#### First action at a glance"));
+        assert!(summary.contains("target/ripr/reports/first-useful-action.json"));
+        assert!(summary.contains("target/ripr/reports/first-useful-action.md"));
+        assert!(summary.contains(".action_kind // \"unknown\""));
+        assert!(summary.contains(".commands.verify // \"not_available\""));
+        assert!(summary.contains(".commands.receipt // \"not_available\""));
+        assert!(summary.contains(".fallback.kind // \"none\""));
+        assert!(summary.contains("cat target/ripr/reports/first-useful-action.md"));
+        assert!(summary.contains("First useful action was not generated"));
         assert!(summary.contains("cat target/ripr/pilot/pilot-summary.md"));
         assert!(summary.contains("cat target/ripr/workflow/agent-review-summary.md"));
         assert!(summary.contains("#### Gate decision at a glance"));
@@ -4562,6 +6595,50 @@ mod tests {
         assert!(summary.contains(".delta.invalid_baseline_entry // 0"));
         assert!(summary.contains(".delta.missing_current_input // 0"));
         assert!(summary.contains("Set `RIPR_GATE_BASELINE`"));
+        assert!(summary.contains("Baseline debt delta was not run"));
+        assert!(summary.contains("Baseline debt delta was not generated"));
+        assert!(summary.contains("### RIPR Zero status"));
+        assert!(summary.contains("#### RIPR Zero at a glance"));
+        assert!(summary.contains("target/ripr/reports/ripr-zero-status.json"));
+        assert!(summary.contains("target/ripr/reports/ripr-zero-status.md"));
+        assert!(summary.contains(".ripr_zero.state // \"unknown\""));
+        assert!(summary.contains(".ripr_zero.visible_unresolved // 0"));
+        assert!(summary.contains(".ripr_zero.new_policy_eligible // 0"));
+        assert!(summary.contains(".ripr_zero.blocking_candidates // 0"));
+        assert!(summary.contains(".baseline.metadata.stale // 0"));
+        assert!(summary.contains(".top_debt_areas[0].area // \"none\""));
+        assert!(summary.contains("cat target/ripr/reports/ripr-zero-status.md"));
+        assert!(summary.contains("RIPR Zero status was not run"));
+        assert!(summary.contains("RIPR Zero status was not generated"));
+        assert!(summary.contains("### PR evidence ledger"));
+        assert!(summary.contains("#### PR movement at a glance"));
+        assert!(summary.contains("target/ripr/reports/pr-evidence-ledger.json"));
+        assert!(summary.contains("target/ripr/reports/pr-evidence-ledger.md"));
+        assert!(summary.contains(".movement.new_policy_eligible // 0"));
+        assert!(summary.contains(".movement.baseline_still_present // 0"));
+        assert!(summary.contains(".movement.baseline_resolved // 0"));
+        assert!(summary.contains(".movement.acknowledged // 0"));
+        assert!(summary.contains(".movement.suppressed // 0"));
+        assert!(summary.contains(".movement.blocking_candidates // 0"));
+        assert!(summary.contains(".movement.visible_unresolved // 0"));
+        assert!(summary.contains(".coverage_grip_frontier.status // \"not_available\""));
+        assert!(summary.contains(".history.trend // \"not_available\""));
+        assert!(summary.contains(".top_repair_route.verify_command // \"not_available\""));
+        assert!(summary.contains(".top_repair_route.agent_command // \"not_available\""));
+        assert!(summary.contains("Pass/fail authority remains \\`ripr gate evaluate\\`"));
+        assert!(summary.contains("cat target/ripr/reports/pr-evidence-ledger.md"));
+        assert!(summary.contains("PR evidence ledger was not generated"));
+        assert!(summary.contains("PR evidence ledger was not run"));
+        assert!(summary.contains("### Test-oracle assistant proof"));
+        assert!(summary.contains("#### Assistant proof at a glance"));
+        assert!(summary.contains("target/ripr/reports/test-oracle-assistant-proof.json"));
+        assert!(summary.contains("target/ripr/reports/test-oracle-assistant-proof.md"));
+        assert!(summary.contains(".seam.missing_discriminator // \"not_available\""));
+        assert!(summary.contains(".recommendation.placement // \"not_available\""));
+        assert!(summary.contains(".evidence_movement.state // \"unknown\""));
+        assert!(summary.contains(".ci_projection.gate_decision // \"not_supplied\""));
+        assert!(summary.contains(".ci_projection.coverage_frontier // \"not_supplied\""));
+        assert!(summary.contains("cat target/ripr/reports/test-oracle-assistant-proof.md"));
         assert!(summary.contains(".summary.comments // 0"));
         assert!(summary.contains(".summary.summary_only // 0"));
         assert!(summary.contains(".summary.suppressed // 0"));

@@ -1,0 +1,92 @@
+{
+  "coverage_grip_frontier": {
+    "coverage_delta_percent": null,
+    "interpretation": "coverage input not supplied; coverage and behavioral grip remain separate axes",
+    "quadrants": {
+      "covered_with_ripr_gap": 0,
+      "covered_without_ripr_gap": 0,
+      "uncovered_with_ripr_gap": 0,
+      "uncovered_without_ripr_gap": 0
+    },
+    "ripr_visible_unresolved_delta": null,
+    "status": "not_available"
+  },
+  "gate": {
+    "acknowledgement_label": null,
+    "decision": "not_configured",
+    "mode": null,
+    "pass_fail_authority": "gate decision when explicitly configured"
+  },
+  "generated_at": "fixture",
+  "history": {
+    "baseline_resolved_total": 0,
+    "new_policy_eligible_total": 0,
+    "records": 0,
+    "source": null,
+    "trend": "unknown",
+    "waiver_age_max_days": null
+  },
+  "inputs": {
+    "agent_receipt": "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json",
+    "baseline_debt_delta": null,
+    "coverage": null,
+    "gate_decision": null,
+    "history": null,
+    "pr_guidance": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json",
+    "recommendation_calibration": null,
+    "ripr_zero_status": null
+  },
+  "kind": "pr_evidence_ledger",
+  "limits_note": "Read-only advisory PR evidence ledger over existing static RIPR artifacts; gate-decision remains the pass/fail authority.",
+  "movement": {
+    "acknowledged": 0,
+    "baseline_resolved": 0,
+    "baseline_still_present": 0,
+    "blocking_candidates": 0,
+    "new_policy_eligible": 0,
+    "ripr_zero_state": "unknown",
+    "suppressed": 0,
+    "visible_unresolved": 1
+  },
+  "pr": {
+    "base": "base",
+    "head": "head",
+    "labels": [],
+    "number": null
+  },
+  "repair_receipts": [
+    {
+      "focused_test": "tests/pricing.rs::discounted_total_boundary_discriminator",
+      "receipt": "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json",
+      "seam_id": "67fc764ba37d77bd",
+      "source": "agent_receipt",
+      "static_movement": {
+        "artifact": "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json",
+        "source": "agent_receipt",
+        "state": "unchanged"
+      }
+    }
+  ],
+  "root": ".",
+  "schema_version": "0.1",
+  "status": "advisory",
+  "suppressions": [],
+  "tool": "ripr",
+  "top_repair_route": {
+    "agent_command": "ripr agent start --root fixtures/boundary_gap/input --seam-id 67fc764ba37d77bd --out target/ripr/workflow",
+    "line": 2,
+    "missing_discriminator": "discount_threshold (equality boundary)",
+    "path": "src/lib.rs",
+    "related_test": "tests/pricing.rs::below_threshold_has_no_discount",
+    "seam_id": "67fc764ba37d77bd",
+    "source": "pr_guidance",
+    "suggested_test": "assert_eq!(discounted_total(/* amount == discount_threshold */), /* expected total */)",
+    "verify_command": "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+  },
+  "waivers": [],
+  "warnings": [
+    "coverage input not supplied; coverage/grip frontier is not_available",
+    "gate decision not configured; this fixture is advisory evidence only"
+  ]
+}
+

@@ -18,6 +18,11 @@ pub(super) fn execute(command: CliCommand) -> Result<(), String> {
         CliCommand::ReviewComments(args) => commands::review_comments(&args),
         CliCommand::Gate(args) => commands::gate(&args),
         CliCommand::Baseline(args) => commands::baseline(&args),
+        CliCommand::Zero(args) => commands::zero(&args),
+        CliCommand::PrLedger(args) => commands::pr_ledger(&args),
+        CliCommand::CoverageGrip(args) => commands::coverage_grip(&args),
+        CliCommand::AssistantLoop(args) => commands::assistant_loop(&args),
+        CliCommand::FirstAction(args) => commands::first_action(&args),
         CliCommand::Calibrate(args) => commands::calibrate(&args),
         CliCommand::Agent(args) => commands::agent(&args),
         CliCommand::Check(args) => commands::check(&args),
@@ -79,6 +84,26 @@ mod tests {
         assert_eq!(
             execute(CliCommand::Baseline(args(&["create", "--from"]))),
             Err("missing value for --from".to_string())
+        );
+        assert_eq!(
+            execute(CliCommand::Zero(args(&["status", "--delta"]))),
+            Err("missing value for --delta".to_string())
+        );
+        assert_eq!(
+            execute(CliCommand::PrLedger(args(&["record", "--pr-number"]))),
+            Err("missing value for --pr-number".to_string())
+        );
+        assert_eq!(
+            execute(CliCommand::CoverageGrip(args(&["frontier", "--ledger"]))),
+            Err("missing value for --ledger".to_string())
+        );
+        assert_eq!(
+            execute(CliCommand::AssistantLoop(args(&["proof", "--pr-guidance"]))),
+            Err("missing value for --pr-guidance".to_string())
+        );
+        assert_eq!(
+            execute(CliCommand::FirstAction(args(&["--pr-guidance"]))),
+            Err("missing value for --pr-guidance".to_string())
         );
         assert_eq!(
             execute(CliCommand::Calibrate(args(&[

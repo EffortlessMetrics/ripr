@@ -1,0 +1,60 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "first_useful_action",
+  "status": "acknowledged",
+  "audience": "reviewer",
+  "action_kind": "inspect_proof_report",
+  "root": "fixtures/boundary_gap/input",
+  "generated_at": "2026-05-09T12:00:00Z",
+  "inputs": {
+    "pr_guidance": null,
+    "assistant_proof": "target/ripr/reports/test-oracle-assistant-proof.json",
+    "ledger": "target/ripr/reports/pr-evidence-ledger.json",
+    "baseline_delta": null,
+    "receipt": null,
+    "gate_decision": "target/ripr/reports/gate-decision.json",
+    "coverage_frontier": null,
+    "editor_context": null
+  },
+  "selected": {
+    "source": "ledger",
+    "source_artifact": "target/ripr/reports/pr-evidence-ledger.json",
+    "seam_id": "acknowledged-boundary-0001",
+    "seam_kind": "predicate_boundary",
+    "path": "src/lib.rs",
+    "line": 2,
+    "classification": "weakly_exposed",
+    "missing_discriminator": "discount_threshold (equality boundary)"
+  },
+  "title": "Review acknowledged RIPR item",
+  "why": "The item has explicit acknowledgement.",
+  "why_first": [
+    "The item has explicit acknowledgement.",
+    "Acknowledged evidence remains visible but should not outrank unsuppressed PR-local work."
+  ],
+  "target": null,
+  "commands": {
+    "context_packet": null,
+    "after_snapshot": null,
+    "verify": null,
+    "receipt": null
+  },
+  "evidence": {
+    "pr_guidance": null,
+    "assistant_proof": "target/ripr/reports/test-oracle-assistant-proof.json",
+    "receipt": null,
+    "ledger": "target/ripr/reports/pr-evidence-ledger.json",
+    "static_movement": "unknown"
+  },
+  "fallback": {
+    "kind": "acknowledged",
+    "summary": "Inspect the proof report or acknowledgement context instead of requesting a new focused test."
+  },
+  "warnings": [],
+  "limits": [
+    "Static evidence only.",
+    "Does not invent policy.",
+    "Does not edit source or generate tests."
+  ]
+}

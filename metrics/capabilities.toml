@@ -267,7 +267,7 @@ evidence = [
   "VS Code e2e copies a live seam packet from the real server path"
 ]
 fixtures = []
-next = "docs/editor-evidence-workflow"
+next = "maintenance"
 metric = "packet includes missing discriminator and related tests"
 
 [[capability]]
@@ -283,7 +283,7 @@ evidence = [
   "VS Code e2e copies live seam packet and verify command payloads from the real server path"
 ]
 fixtures = []
-next = "docs/editor-evidence-workflow"
+next = "maintenance"
 metric = "packet includes missing values and suggested assertions"
 
 [[capability]]
@@ -317,7 +317,7 @@ evidence = [
   "docs/QUICKSTART.md routes the VS Code first hour through status, Problems diagnostics, hover evidence, and intent-titled seam actions"
 ]
 fixtures = []
-next = "docs/editor-evidence-workflow"
+next = "maintenance"
 metric = "diagnostics carry finding/probe metadata, editor status names saved-workspace analysis state, and editor actions target the selected finding"
 
 [[capability]]
@@ -722,14 +722,14 @@ status = "alpha"
 spec = "RIPR-SPEC-0016"
 evidence = [
   "docs/specs/RIPR-SPEC-0016-baseline-debt-delta.md defines the baseline debt delta contract",
-  "ripr baseline create writes .ripr/gate-baseline.json ledgers from existing gate-decision JSON without overwriting by default",
-  "ripr baseline diff writes advisory baseline-debt-delta JSON and Markdown from a reviewed baseline and current gate-decision evidence",
-  "ripr baseline update --remove-resolved shrink-only refreshes reviewed baselines without adopting new current debt",
+  "ripr baseline create writes .ripr/gate-baseline.json ledgers from existing gate-decision JSON without overwriting by default and includes additive owner/reason/created/review-after/source metadata",
+  "ripr baseline diff writes advisory baseline-debt-delta JSON and Markdown from a reviewed baseline and current gate-decision evidence while preserving present review metadata on baseline-derived items",
+  "ripr baseline update --remove-resolved shrink-only refreshes reviewed baselines without adopting new current debt and preserves entry metadata",
   "generated CI runs ripr baseline diff when RIPR_GATE_BASELINE and gate-decision.json are present, uploads baseline-debt-delta JSON/Markdown, and summarizes debt movement without making the report the pass/fail authority",
   "docs/BASELINE_LEDGER_WORKFLOW.md documents initial advisory adoption, reviewed baseline creation, baseline-check rollout, shrink-only refresh, new debt review, waiver versus baseline versus suppression boundaries, and the path toward RIPR 0",
   "crates/ripr/src/output/baseline_delta.rs renders still-present, resolved, new policy-eligible, acknowledged, suppressed, stale, invalid, and missing-input buckets",
   "crates/ripr/src/output/baseline_update.rs preserves malformed or ambiguous entries while removing resolved reviewed debt",
-  "fixtures/boundary_gap/expected/baseline-debt-delta/mixed pins checked JSON and Markdown output",
+  "fixtures/boundary_gap/expected/baseline-debt-delta/mixed pins checked JSON and Markdown output including metadata compatibility",
   "docs/OUTPUT_SCHEMA.md Gate Baseline Ledger, Gate Baseline Update, and Baseline Debt Delta Report sections define the ledger, update, and delta shapes",
   "docs/handoffs/2026-05-09-campaign-17-closeout.md records the Campaign 17 audit and proof",
   "Campaign 17 keeps the report advisory and separates debt movement from gate pass/fail authority"
@@ -737,6 +737,110 @@ evidence = [
 fixtures = ["fixtures/boundary_gap/expected/baseline-debt-delta/mixed"]
 next = "maintenance"
 metric = "baseline_debt_delta_entries, baseline_debt_delta_still_present, baseline_debt_delta_resolved, baseline_debt_delta_new_policy_eligible, baseline_debt_delta_acknowledged, baseline_debt_delta_suppressed, baseline_debt_delta_stale_entries, baseline_debt_delta_invalid_entries, baseline_debt_delta_missing_current_input"
+
+[[capability]]
+id = "ripr_zero_status_report"
+name = "RIPR Zero status report"
+status = "alpha"
+spec = "RIPR-SPEC-0017"
+evidence = [
+  "ripr zero status --delta target/ripr/reports/baseline-debt-delta.json writes advisory ripr-zero-status JSON and Markdown over reviewed baselines, baseline debt deltas, optional gate decisions, PR guidance, and recommendation calibration without changing gate authority",
+  "crates/ripr/src/output/ripr_zero_status.rs renders RIPR 0 state, baseline metadata health, trend availability, top debt areas, and repair routes",
+  "crates/ripr/src/cli/commands.rs exposes the command, generated CI runs it when baseline-debt-delta.json exists, uploads ripr-zero-status JSON and Markdown, and appends an at-a-glance RIPR Zero summary while preserving advisory defaults and gate pass/fail authority",
+  "docs/RIPR_ZERO_REPORTING_WORKFLOW.md explains how teams read RIPR Zero status, age and refresh baseline metadata, route repair packets, and interpret movement without treating RIPR 0 as perfect tests or 100 percent coverage",
+  "docs/OUTPUT_SCHEMA.md documents the shape and advisory boundary",
+  "docs/handoffs/2026-05-09-campaign-18-closeout.md records the Campaign 18 audit and proof"
+]
+fixtures = ["fixtures/boundary_gap/expected/baseline-debt-delta/mixed"]
+next = "maintenance"
+metric = "ripr_zero_status_reports, ripr_zero_visible_unresolved, ripr_zero_new_policy_eligible, ripr_zero_baseline_still_present, ripr_zero_baseline_resolved, ripr_zero_acknowledged, ripr_zero_suppressed, ripr_zero_stale_baseline_entries, ripr_zero_missing_metadata_entries, ripr_zero_top_repair_routes"
+
+[[capability]]
+id = "pr_evidence_ledger"
+name = "PR evidence ledger"
+status = "alpha"
+spec = "RIPR-SPEC-0018"
+evidence = [
+  "docs/specs/RIPR-SPEC-0018-pr-evidence-ledger.md defines the PR evidence ledger contract",
+  "ripr pr-ledger record writes advisory pr-evidence-ledger JSON and Markdown from existing PR guidance, gate decision, baseline debt delta, RIPR Zero status, recommendation calibration, agent receipt, optional coverage, and optional history inputs",
+  "crates/ripr/src/output/pr_evidence_ledger.rs renders PR movement, visible waivers, suppressions, repair receipts, top repair route, coverage/grip frontier status, and history summaries without changing gate authority",
+  "crates/ripr/src/cli/commands.rs generated GitHub workflow runs pr-ledger record on pull requests when PR guidance exists, uploads pr-evidence-ledger JSON/Markdown with the normal artifact packet, and appends a PR movement summary while keeping gate decisions as the pass/fail authority",
+  "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed pins checked JSON and Markdown output for a mixed acknowledged/suppressed/resolved/new-debt case",
+  "docs/OUTPUT_SCHEMA.md documents the pr-evidence-ledger JSON/Markdown shape",
+  "docs/PR_EVIDENCE_LEDGER_WORKFLOW.md explains how teams read ledger cards for waiver aging, baseline burn-down, repair receipts, coverage/grip frontier signals, and movement toward RIPR 0"
+]
+fixtures = ["fixtures/boundary_gap/expected/pr-evidence-ledger/mixed"]
+next = "maintenance"
+metric = "pr_evidence_ledger_records, pr_evidence_ledger_new_policy_eligible, pr_evidence_ledger_baseline_still_present, pr_evidence_ledger_baseline_resolved, pr_evidence_ledger_acknowledged, pr_evidence_ledger_suppressed, pr_evidence_ledger_blocking_candidates, pr_evidence_ledger_repair_receipts, pr_evidence_ledger_waiver_age_max_days, pr_evidence_ledger_coverage_grip_frontier_available, pr_evidence_ledger_flat_coverage_grip_improved"
+
+[[capability]]
+id = "coverage_grip_frontier"
+name = "Coverage/grip frontier report"
+status = "alpha"
+spec = "RIPR-SPEC-0018"
+evidence = [
+  "ripr coverage-grip frontier writes advisory coverage-grip-frontier JSON and Markdown from optional coverage summary plus PR evidence ledger, baseline debt delta, or RIPR Zero status inputs",
+  "crates/ripr/src/output/coverage_grip_frontier.rs keeps coverage delta, RIPR movement, quadrants, interpretation, warnings, and advisory limits separate without treating coverage as adequacy",
+  "crates/ripr/src/cli/commands.rs exposes coverage-grip frontier and checks required RIPR movement input",
+  "docs/OUTPUT_SCHEMA.md documents the coverage-grip-frontier JSON/Markdown shape",
+  "docs/PR_EVIDENCE_LEDGER_WORKFLOW.md explains how teams interpret coverage/grip frontier signals in PR review without treating coverage as adequacy"
+]
+fixtures = []
+next = "maintenance"
+metric = "coverage_grip_frontier_reports, coverage_grip_frontier_available, coverage_grip_frontier_flat_coverage_grip_improved"
+
+[[capability]]
+id = "test_oracle_assistant_loop"
+name = "Test-oracle assistant loop"
+status = "alpha"
+spec = "RIPR-SPEC-0019"
+evidence = [
+  "docs/specs/RIPR-SPEC-0019-test-oracle-assistant-loop.md defines the end-to-end proof contract",
+  "ripr assistant-loop proof writes advisory test-oracle-assistant-proof JSON and Markdown from explicit PR guidance, agent packet, before/after evidence, receipt, PR ledger, optional gate, and optional coverage/grip frontier inputs",
+  "crates/ripr/src/output/test_oracle_assistant_proof.rs preserves selected seam identity, missing discriminator, placement, handoff command, static movement, CI projection paths, warnings, and advisory limits without rerunning analysis",
+  "crates/ripr/src/cli/commands.rs exposes assistant-loop proof and keeps supplied artifact inputs explicit",
+  "docs/OUTPUT_SCHEMA.md documents the implemented advisory test-oracle assistant proof report shape",
+  "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical pins the canonical replay corpus across PR guidance, agent handoff, before/after static evidence, receipt, and PR ledger projection",
+  "crates/ripr/src/output/test_oracle_assistant_proof.rs::test_oracle_assistant_proof_matches_canonical_fixture validates the proof producer output against the canonical replay corpus",
+  "crates/ripr/tests/cli_smoke.rs::test_oracle_assistant_proof_cli_writes_canonical_report validates the public CLI writes the canonical JSON and Markdown proof artifacts",
+  "crates/ripr/tests/cli_smoke.rs::test_oracle_assistant_canonical_review_loop_fixture_pins_expected_surfaces validates the canonical replay corpus uses one seam identity across guidance, handoff, receipt, and ledger projection",
+  "docs/handoffs/2026-05-09-test-oracle-assistant-receipt.md records the repo-local dogfood receipt across PR guidance, editor/agent handoff, verification commands, after evidence, receipt, PR ledger projection, and coverage/grip frontier availability",
+  "docs/TEST_ORACLE_ASSISTANT_WORKFLOW.md documents the PR/editor-to-handoff-to-receipt user workflow and static evidence limits",
+  "docs/handoffs/2026-05-09-campaign-20-closeout.md records the prompt-to-artifact audit and follow-up boundaries",
+  "generated GitHub CI runs ripr assistant-loop proof only when PR guidance, editor/agent brief, before/after evidence, agent receipt, and PR evidence ledger inputs already exist, uploads test-oracle-assistant-proof JSON/Markdown with the normal report packet, and appends the proof summary without changing advisory defaults",
+  "docs/TEST_ORACLE_ASSISTANT_PROOF_REPORT.md explains how reviewers, maintainers, and coding agents read test-oracle-assistant-proof JSON/Markdown, warnings, static movement, optional CI projection, and advisory limits without artifact archaeology",
+  "docs/handoffs/2026-05-09-campaign-21-closeout.md records the Campaign 21 audit, PR chain, verification commands, next-work boundary, and non-goals",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md records Campaign 21 complete after the report producer, generated-CI projection, docs, and closeout slices"
+]
+fixtures = [
+  "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical"
+]
+next = "maintenance"
+metric = "test_oracle_assistant_loop_reports, test_oracle_assistant_loop_verified_receipts, test_oracle_assistant_loop_unknown_inputs, test_oracle_assistant_loop_summary_only, test_oracle_assistant_loop_static_improved, test_oracle_assistant_loop_static_resolved, test_oracle_assistant_loop_static_regressed"
+
+[[capability]]
+id = "first_useful_action_report"
+name = "First useful action report"
+status = "alpha"
+spec = "RIPR-SPEC-0020"
+evidence = [
+  "docs/specs/RIPR-SPEC-0020-first-useful-action-report.md defines the first-useful-action report contract over existing editor, PR guidance, ledger, baseline, assistant proof, receipt, optional gate, optional coverage/grip, and staleness evidence",
+  "crates/ripr/src/output/first_useful_action.rs implements the read-only first-action router and renders first-useful-action JSON/Markdown without rerunning analysis",
+  "crates/ripr/src/cli/commands.rs exposes ripr first-action over explicit artifact paths and writes target/ripr/reports/first-useful-action.{json,md}",
+  "generated GitHub CI runs ripr first-action when explicit inputs are present, uploads target/ripr/reports/first-useful-action.{json,md} with the normal report packet, and appends the First Useful Action summary without changing pass/fail authority",
+  "docs/OUTPUT_SCHEMA.md documents the implemented first-useful-action JSON and Markdown shape, status vocabulary, action vocabulary, routing priorities, command fields, warnings, fallback states, and advisory limits",
+  "fixtures/boundary_gap/expected/first-useful-action pins actionable, stale, missing-required-artifact, baseline-only, acknowledged, waived, suppressed, no-actionable-seam, already-improved, and unchanged-after-attempt routing cases",
+  "crates/ripr/src/output/first_useful_action.rs::first_useful_action_matches_actionable_fixture and ::first_useful_action_matches_unchanged_after_attempt_fixture validate producer output against the pinned corpus",
+  "crates/ripr/tests/cli_smoke.rs::first_action_cli_writes_actionable_report validates the public CLI writes actionable JSON/Markdown",
+  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_uploads_reports_and_makes_sarif_optional and crates/ripr/tests/cli_smoke.rs::init_ci_github_writes_non_blocking_report_workflow validate generated CI projection",
+  "editors/vscode/src/client.ts projects an existing target/ripr/reports/first-useful-action.json report through status and Show Status without invoking ripr first-action or adding diagnostics",
+  "editors/vscode/test/suite/extension.test.ts::status bar projects existing first useful action report validates the editor projection and asserts it does not shell out to ripr"
+]
+fixtures = [
+  "fixtures/boundary_gap/expected/first-useful-action"
+]
+next = "docs/first-useful-action-workflow"
+metric = "first_useful_action_reports, first_useful_action_actionable, first_useful_action_stale, first_useful_action_missing_required_artifact, first_useful_action_baseline_only, first_useful_action_acknowledged, first_useful_action_waived, first_useful_action_suppressed, first_useful_action_no_actionable_seam, first_useful_action_already_improved, first_useful_action_unchanged_after_attempt"
 
 [[capability]]
 id = "pilot_packet"
@@ -821,13 +925,14 @@ evidence = [
   "OUTPUT_SCHEMA.md LSP Seam Diagnostics section",
   "docs/EDITOR_EXTENSION.md documents the install path and saved-workspace default",
   "docs/EDITOR_EVIDENCE_UX.md records the editor evidence contract",
+  "docs/EDITOR_EVIDENCE_WORKFLOW.md documents the saved-workspace editor loop",
   "fixtures/boundary_gap/expected/lsp-diagnostics.json",
   "fixtures/boundary_gap/expected/editor-agent-loop/agent-packet.json"
 ]
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "docs/editor-evidence-workflow"
+next = "maintenance"
 metric = "seam_id in diagnostic.data is the hover lookup key"
 
 [[capability]]
@@ -841,6 +946,7 @@ evidence = [
   "renders Grip class plus RIPR evidence path plus observed values plus missing discriminator plus related test locations plus suggested test shape plus packet and brief handoff commands plus verify and receipt commands plus static limits plus per-kind next step",
   "framed LSP protocol smoke drives a published boundary-gap seam diagnostic through hover",
   "VS Code e2e drives the real boundary-gap server path through a seam diagnostic and hover",
+  "docs/EDITOR_EVIDENCE_WORKFLOW.md documents hover as the first explanation step",
   "prefers seam-bearing diagnostics on overlap (chatgpt-codex review fix)",
   "preserves pre-4B Finding hover fallback",
   "fixtures/boundary_gap/expected/lsp-diagnostics.json",
@@ -849,7 +955,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "docs/editor-evidence-workflow"
+next = "maintenance"
 metric = "hover renders evidence path from ClassifiedSeam, never parses diagnostic message"
 
 [[capability]]
@@ -868,6 +974,7 @@ evidence = [
   "copy suggested assertion uses agent seam packet v2 assertion shape when available",
   "stale seam diagnostics fail closed to refresh-only",
   "pre-4B Finding code actions remain available",
+  "docs/EDITOR_EVIDENCE_WORKFLOW.md documents the action-to-receipt workflow",
   "docs/TESTING.md documents VS Code e2e coverage for command registration, LSP-first seam context, targeted-test brief copying, suggested assertions, related-test opening, malformed argument handling, and restart behavior",
   "docs/QUICKSTART.md routes the VS Code first hour through intent-titled seam actions without changing command IDs or payloads",
   "fixtures/boundary_gap/expected/lsp-code-actions.json",
@@ -877,7 +984,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "docs/editor-evidence-workflow"
+next = "maintenance"
 metric = "seam diagnostics expose only supported packet/assertion/test actions without automatic edits"
 
 [[capability]]
