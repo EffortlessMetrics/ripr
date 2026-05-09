@@ -223,13 +223,20 @@ Reserved `flow_sink` values:
 - `return_value`
 - `error_variant`
 - `struct_field`
+- `event_call`
+- `state_write`
+- `persistence`
+- `log_message`
+- `config_change`
 - `call_effect`
 - `match_arm`
 - `unknown`
 
-These labels are internal analysis terms in schema `0.1`. They are documented
-now so future evidence-first output can expose them without inventing new
-contract language.
+These labels are internal analysis terms in schema `0.1`. The side-effect
+families are additive refinements of the older generic `call_effect` sink:
+event or outbound calls, state writes, persistence writes, log messages, and
+configuration changes are named when syntax-first analysis can identify them,
+while `call_effect` remains the fallback for other observable calls.
 
 `state` values:
 

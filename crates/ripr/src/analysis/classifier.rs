@@ -628,7 +628,7 @@ mod tests {
     }
 
     #[test]
-    fn given_changed_side_effect_call_when_effect_method_is_called_then_flow_sink_is_call_effect() {
+    fn given_changed_side_effect_call_when_event_is_published_then_flow_sink_is_event_call() {
         let index = RustIndex {
             functions: vec![function("src/lib.rs", "score")],
             tests: vec![test(
@@ -655,7 +655,7 @@ mod tests {
         let finding = classify_probe(&probe, &index);
 
         assert_eq!(finding.flow_sinks.len(), 1);
-        assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::CallEffect);
+        assert_eq!(finding.flow_sinks[0].kind, FlowSinkKind::EventCall);
         assert_eq!(finding.flow_sinks[0].text, "events.publish(score)");
     }
 

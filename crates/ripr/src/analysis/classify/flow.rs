@@ -74,7 +74,7 @@ pub(in crate::analysis) fn local_flow_sinks(
                 )]
             } else {
                 vec![flow_sink(
-                    FlowSinkKind::CallEffect,
+                    effect_sink_kind(&probe.expression),
                     call_effect_text(&probe.expression),
                     probe.location.line,
                     owner.clone(),
@@ -302,6 +302,88 @@ fn flow_sink(
     }
 }
 
+fn effect_sink_kind(text: &str) -> FlowSinkKind {
+    let normalized = text.to_ascii_lowercase();
+    if looks_like_log_effect(&normalized) {
+        FlowSinkKind::LogMessage
+    } else if looks_like_config_effect(&normalized) {
+        FlowSinkKind::ConfigChange
+    } else if looks_like_persistence_effect(&normalized) {
+        FlowSinkKind::Persistence
+    } else if looks_like_event_call_effect(&normalized) {
+        FlowSinkKind::EventCall
+    } else if looks_like_state_write_effect(&normalized) {
+        FlowSinkKind::StateWrite
+    } else {
+        FlowSinkKind::CallEffect
+    }
+}
+
+fn looks_like_event_call_effect(text: &str) -> bool {
+    [
+        ".publish(",
+        ".emit(",
+        ".send(",
+        ".dispatch(",
+        ".notify(",
+        ".enqueue(",
+    ]
+    .iter()
+    .any(|needle| text.contains(needle))
+}
+
+fn looks_like_state_write_effect(text: &str) -> bool {
+    [
+        ".write(",
+        ".insert(",
+        ".push(",
+        ".remove(",
+        ".delete(",
+        ".increment(",
+        ".replace(",
+        ".clear(",
+        ".extend(",
+    ]
+    .iter()
+    .any(|needle| text.contains(needle))
+}
+
+fn looks_like_persistence_effect(text: &str) -> bool {
+    [".save(", ".persist(", ".store(", ".commit(", ".upsert("]
+        .iter()
+        .any(|needle| text.contains(needle))
+}
+
+fn looks_like_log_effect(text: &str) -> bool {
+    text.contains("log::")
+        || text.contains("tracing::")
+        || [
+            "println!(",
+            "eprintln!(",
+            "trace!(",
+            "debug!(",
+            "info!(",
+            "warn!(",
+            "error!(",
+        ]
+        .iter()
+        .any(|needle| text.contains(needle))
+}
+
+fn looks_like_config_effect(text: &str) -> bool {
+    text.contains("config.")
+        || text.contains("settings.")
+        || [
+            ".set_config(",
+            ".configure(",
+            ".set_option(",
+            ".set_default(",
+            ".set_var(",
+        ]
+        .iter()
+        .any(|needle| text.contains(needle))
+}
+
 fn result_error_text(text: &str) -> String {
     if let Some(variant) = exact_error_variant(text) {
         return format!("Result::Err({variant})");
@@ -494,7 +576,7 @@ mod tests {
             "return Err(AuthError::ExpiredToken);",
             2,
         );
-        let call_probe = probe(ProbeFamily::SideEffect, "metrics.increment();", 2);
+        let call_probe = probe(ProbeFamily::SideEffect, "adapter.flush();", 2);
 
         let error_sinks = local_flow_sinks(&error_probe, None);
         let call_sinks = local_flow_sinks(&call_probe, None);
@@ -502,7 +584,34 @@ mod tests {
         assert_eq!(error_sinks[0].kind, FlowSinkKind::ErrorVariant);
         assert_eq!(error_sinks[0].text, "Result::Err(AuthError::ExpiredToken)");
         assert_eq!(call_sinks[0].kind, FlowSinkKind::CallEffect);
-        assert_eq!(call_sinks[0].text, "metrics.increment()");
+        assert_eq!(call_sinks[0].text, "adapter.flush()");
+    }
+
+    #[test]
+    fn side_effect_flow_names_event_state_persistence_log_and_config_sinks() {
+        let cases = [
+            ("events.publish(score);", FlowSinkKind::EventCall),
+            ("cache.insert(key, value);", FlowSinkKind::StateWrite),
+            ("repository.save(invoice);", FlowSinkKind::Persistence),
+            ("log::info!(\"saved\");", FlowSinkKind::LogMessage),
+            (
+                "config.set_option(\"mode\", mode);",
+                FlowSinkKind::ConfigChange,
+            ),
+        ];
+
+        for (expression, expected_kind) in cases {
+            let probe = probe(ProbeFamily::SideEffect, expression, 2);
+            let sinks = local_flow_sinks(&probe, None);
+
+            assert_eq!(sinks.len(), 1, "{expression}");
+            assert_eq!(sinks[0].kind, expected_kind, "{expression}");
+            assert_eq!(
+                sinks[0].text,
+                expression.trim_end_matches(';'),
+                "{expression}"
+            );
+        }
     }
 
     #[test]

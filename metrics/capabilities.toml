@@ -417,7 +417,12 @@ evidence = [
   "FlowSinkFact attached to findings",
   "predicate branch to return-value flow tests",
   "error variant flow sink tests",
-  "side-effect call flow sink tests",
+  "side-effect event/outbound call flow sink tests",
+  "side-effect state write flow sink tests",
+  "side-effect persistence write flow sink tests",
+  "side-effect log message flow sink tests",
+  "side-effect config change flow sink tests",
+  "generic call effect fallback flow sink tests",
   "match-arm result flow sink tests",
   "binding to return-value flow tests",
   "propagation_unknown stop reason regression test",
@@ -428,7 +433,7 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "test-efficiency-duplicate-discriminator-v1"
+next = "analysis/activation-value-modeling-v2"
 metric = "flow sink identification rate"
 
 [[capability]]
