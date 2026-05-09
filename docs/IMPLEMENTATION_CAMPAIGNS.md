@@ -2210,8 +2210,8 @@ Work items:
 | Work item | Status | Notes |
 | --- | --- | --- |
 | `spec/pr-evidence-ledger-surface` | done | Added RIPR-SPEC-0018 as the PR evidence ledger contract for append-only per-PR movement, waiver aging, baseline burn-down, repair receipts, optional coverage/grip frontier signals, and advisory-only CI projection without analyzer identity rewrites or default blocking. |
-| `report/pr-evidence-ledger` | ready | Add a read-only PR evidence ledger report that writes JSON/Markdown from existing PR guidance, gate decision, baseline debt delta, RIPR Zero status, recommendation calibration, outcome receipt, and optional coverage inputs. |
-| `ci/pr-evidence-ledger-summary` | blocked | Surface PR evidence ledger movement in generated CI summaries and artifacts while preserving advisory defaults and leaving gate decisions as the pass/fail authority. |
+| `report/pr-evidence-ledger` | done | Added `ripr pr-ledger record`, a read-only JSON/Markdown report over existing PR guidance, gate decision, baseline debt delta, RIPR Zero status, recommendation calibration, agent receipt, optional coverage, and optional history inputs. |
+| `ci/pr-evidence-ledger-summary` | ready | Surface PR evidence ledger movement in generated CI summaries and artifacts while preserving advisory defaults and leaving gate decisions as the pass/fail authority. |
 | `report/coverage-grip-frontier` | blocked | Add optional coverage/grip frontier summaries so teams can see coverage delta and RIPR evidence movement as separate advisory axes without making coverage blocking or claiming runtime adequacy. |
 | `docs/pr-evidence-ledger-workflow` | blocked | Document how teams read PR evidence ledgers, use waiver aging and baseline burn-down, route repair receipts, interpret coverage/grip frontier signals, and track movement toward RIPR 0 without learning internal report topology. |
 | `campaign/pr-evidence-ledger-closeout` | blocked | Close Campaign 19 only after PR evidence ledgers, generated-CI projection, coverage/grip frontier summaries, and user workflow docs are in place while defaults stay advisory. |

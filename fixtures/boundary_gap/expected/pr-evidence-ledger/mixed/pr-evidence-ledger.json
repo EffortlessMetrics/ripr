@@ -1,0 +1,111 @@
+{
+  "coverage_grip_frontier": {
+    "coverage_delta_percent": null,
+    "interpretation": "coverage input not supplied; coverage and behavioral grip remain separate axes",
+    "quadrants": {
+      "covered_with_ripr_gap": 0,
+      "covered_without_ripr_gap": 0,
+      "uncovered_with_ripr_gap": 0,
+      "uncovered_without_ripr_gap": 0
+    },
+    "ripr_visible_unresolved_delta": null,
+    "status": "not_available"
+  },
+  "gate": {
+    "acknowledgement_label": "ripr-waive",
+    "decision": "acknowledged",
+    "mode": "acknowledgeable",
+    "pass_fail_authority": "ripr gate evaluate"
+  },
+  "generated_at": "unix_ms:1000",
+  "history": {
+    "baseline_resolved_total": 2,
+    "new_policy_eligible_total": 0,
+    "records": 1,
+    "source": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/history.jsonl",
+    "trend": "improving",
+    "waiver_age_max_days": 2
+  },
+  "inputs": {
+    "agent_receipt": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/agent-receipt.json",
+    "baseline_debt_delta": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/baseline-debt-delta.json",
+    "coverage": null,
+    "gate_decision": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/gate-decision.json",
+    "history": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/history.jsonl",
+    "pr_guidance": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/comments.json",
+    "recommendation_calibration": null,
+    "ripr_zero_status": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/ripr-zero-status.json"
+  },
+  "kind": "pr_evidence_ledger",
+  "limits_note": "Read-only advisory PR evidence ledger over existing static RIPR artifacts; gate-decision remains the pass/fail authority.",
+  "movement": {
+    "acknowledged": 1,
+    "baseline_resolved": 3,
+    "baseline_still_present": 2,
+    "blocking_candidates": 0,
+    "new_policy_eligible": 1,
+    "ripr_zero_state": "not_yet",
+    "suppressed": 1,
+    "visible_unresolved": 4
+  },
+  "pr": {
+    "base": "base",
+    "head": "head",
+    "labels": [
+      "ripr-waive"
+    ],
+    "number": 123
+  },
+  "repair_receipts": [
+    {
+      "focused_test": "tests/new.rs::boundary",
+      "receipt": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/agent-receipt.json",
+      "seam_id": "new",
+      "source": "agent_receipt",
+      "static_movement": {
+        "artifact": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/agent-receipt.json",
+        "source": "agent_receipt",
+        "state": "improved"
+      }
+    }
+  ],
+  "root": ".",
+  "schema_version": "0.1",
+  "status": "advisory",
+  "suppressions": [
+    {
+      "decision_id": "ripr-gate-suppressed",
+      "owner": null,
+      "reason": "configured-hidden candidate preserved",
+      "seam_id": "suppressed",
+      "source": "gate_decision",
+      "still_visible": true
+    }
+  ],
+  "tool": "ripr",
+  "top_repair_route": {
+    "agent_command": "ripr agent start --root . --seam-id new --out target/ripr/workflow",
+    "line": 4,
+    "missing_discriminator": "new == 4",
+    "path": "src/new.rs",
+    "related_test": "tests/new.rs::boundary",
+    "seam_id": "new",
+    "source": "ripr_zero_status",
+    "suggested_test": "assert_eq!(new(), 4)",
+    "verify_command": "ripr agent verify --json"
+  },
+  "waivers": [
+    {
+      "age_days": 2,
+      "age_prs": 2,
+      "decision_id": "ripr-gate-ack",
+      "label": "ripr-waive",
+      "reason": "policy-eligible gap acknowledged by ripr-waive",
+      "seam_id": "ack",
+      "still_visible": true
+    }
+  ],
+  "warnings": [
+    "coverage input not supplied; coverage/grip frontier is not_available"
+  ]
+}

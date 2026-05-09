@@ -11,6 +11,7 @@ Usage:
   ripr baseline diff --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json [--out target/ripr/reports/baseline-debt-delta.json] [--out-md target/ripr/reports/baseline-debt-delta.md]
   ripr baseline update --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json --remove-resolved [--out .ripr/gate-baseline.json]
   ripr zero status --delta target/ripr/reports/baseline-debt-delta.json [--baseline .ripr/gate-baseline.json] [--gate target/ripr/reports/gate-decision.json] [--out target/ripr/reports/ripr-zero-status.json] [--out-md target/ripr/reports/ripr-zero-status.md]
+  ripr pr-ledger record --pr-number 123 --base SHA --head SHA [--gate target/ripr/reports/gate-decision.json] [--baseline-delta target/ripr/reports/baseline-debt-delta.json] [--zero-status target/ripr/reports/ripr-zero-status.json] [--out target/ripr/reports/pr-evidence-ledger.json]
   ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
   ripr agent start --root . --seam-id ID [--out target/ripr/workflow]
   ripr agent brief --root . (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json
@@ -41,6 +42,7 @@ Quick start:
   ripr baseline diff --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json
   ripr baseline update --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json --remove-resolved
   ripr zero status --baseline .ripr/gate-baseline.json --delta target/ripr/reports/baseline-debt-delta.json --gate target/ripr/reports/gate-decision.json
+  ripr pr-ledger record --pr-number 123 --base origin/main --head HEAD --baseline-delta target/ripr/reports/baseline-debt-delta.json --zero-status target/ripr/reports/ripr-zero-status.json
   ripr calibrate cargo-mutants --mutants-json target/mutants/outcomes.json --repo-exposure-json target/ripr/pilot/after.repo-exposure.json
   ripr agent start --root . --seam-id f3c9e4d21a0b7c88
   ripr agent brief --root . --diff change.diff --json
@@ -234,6 +236,31 @@ optional calibration artifacts. It reports visible unresolved debt, baseline
 movement, metadata health, top debt areas, and bounded repair routes. It does
 not run analysis, mutate baselines, edit source, generate tests, call an LLM,
 run mutation testing, change gate policy, or make CI blocking by default.
+"#;
+
+const PR_LEDGER_HELP: &str = r#"Usage: ripr pr-ledger record --pr-number VALUE --base REV --head REV [--gate PATH] [--baseline-delta PATH] [--zero-status PATH] [--pr-guidance PATH] [--recommendation-calibration PATH] [--agent-receipt PATH] [--coverage PATH] [--history PATH] [--out PATH] [--out-md PATH]
+
+Record options:
+  --pr-number VALUE                    Pull request number or local identifier.
+  --base REV                           Pull request base revision.
+  --head REV                           Pull request head revision.
+  --label LABEL                        Repeatable PR label to preserve in the record.
+  --gate PATH                          Optional gate-decision JSON from `ripr gate evaluate`.
+  --baseline-delta PATH                Optional baseline-debt-delta JSON from `ripr baseline diff`.
+  --zero-status PATH                   Optional RIPR Zero status JSON from `ripr zero status`.
+  --pr-guidance PATH                   Optional PR guidance JSON from `ripr review-comments`.
+  --recommendation-calibration PATH    Optional recommendation calibration JSON.
+  --agent-receipt PATH                 Optional agent receipt JSON.
+  --coverage PATH                      Optional coverage summary JSON.
+  --history PATH                       Optional previous PR evidence ledger JSONL history.
+  --out PATH                           JSON output path. Defaults to target/ripr/reports/pr-evidence-ledger.json.
+  --out-md PATH                        Markdown output path. Defaults to target/ripr/reports/pr-evidence-ledger.md.
+
+The PR evidence ledger is read-only advisory history over existing RIPR
+artifacts. It records PR-local movement, waiver visibility, suppressions,
+repair receipts, and optional coverage/grip frontier signals. It does not run
+analysis, mutate baselines, post comments, edit source, generate tests, call an
+LLM, run mutation testing, change gate policy, or make CI blocking by default.
 "#;
 
 const CALIBRATE_HELP: &str = r#"Usage: ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
@@ -461,6 +488,10 @@ pub(super) fn print_zero_help() {
     println!("{ZERO_HELP}");
 }
 
+pub(super) fn print_pr_ledger_help() {
+    println!("{PR_LEDGER_HELP}");
+}
+
 pub(super) fn print_calibrate_help() {
     println!("{CALIBRATE_HELP}");
 }
@@ -520,7 +551,7 @@ mod tests {
         AGENT_REVIEW_SUMMARY_HELP, AGENT_START_HELP, AGENT_STATUS_HELP, AGENT_VERIFY_HELP,
         BASELINE_HELP, CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP, DOCTOR_HELP, EVIDENCE_HEALTH_HELP,
         EXPLAIN_HELP, GATE_HELP, HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP,
-        REVIEW_COMMENTS_HELP, ZERO_HELP,
+        PR_LEDGER_HELP, REVIEW_COMMENTS_HELP, ZERO_HELP,
     };
 
     #[test]
@@ -535,6 +566,7 @@ mod tests {
         assert!(HELP.contains("ripr baseline diff"));
         assert!(HELP.contains("ripr baseline update"));
         assert!(HELP.contains("ripr zero status"));
+        assert!(HELP.contains("ripr pr-ledger record"));
         assert!(HELP.contains("ripr calibrate"));
         assert!(HELP.contains("ripr agent start"));
         assert!(HELP.contains("ripr agent brief"));
@@ -587,6 +619,9 @@ mod tests {
         assert!(ZERO_HELP.starts_with("Usage: ripr zero status"));
         assert!(ZERO_HELP.contains("baseline-debt-delta JSON"));
         assert!(ZERO_HELP.contains("RIPR Zero status report"));
+        assert!(PR_LEDGER_HELP.starts_with("Usage: ripr pr-ledger record"));
+        assert!(PR_LEDGER_HELP.contains("pr-evidence-ledger.json"));
+        assert!(PR_LEDGER_HELP.contains("read-only advisory history"));
         assert!(CALIBRATE_HELP.starts_with("Usage: ripr calibrate cargo-mutants"));
         assert!(CALIBRATE_HELP.contains("--mutants-json PATH"));
         assert!(AGENT_HELP.starts_with("Usage: ripr agent"));

@@ -41,7 +41,7 @@ commands = [
 
 [[work_item]]
 id = "report/pr-evidence-ledger"
-status = "ready"
+status = "done"
 branch = "report-pr-evidence-ledger"
 stackable = false
 blocked_by = [
@@ -57,7 +57,7 @@ commands = [
 
 [[work_item]]
 id = "ci/pr-evidence-ledger-summary"
-status = "blocked"
+status = "ready"
 branch = "ci-pr-evidence-ledger-summary"
 stackable = false
 blocked_by = [
@@ -80,6 +80,7 @@ stackable = false
 blocked_by = [
   "spec/pr-evidence-ledger-surface",
   "report/pr-evidence-ledger",
+  "ci/pr-evidence-ledger-summary",
 ]
 acceptance = "Add optional coverage/grip frontier summaries so teams can see coverage delta and RIPR evidence movement as separate advisory axes without making coverage blocking or claiming runtime adequacy"
 commands = [

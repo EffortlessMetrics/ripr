@@ -112,6 +112,24 @@ struct RiprZeroStatusOptions {
     out_md: PathBuf,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct PrEvidenceLedgerOptions {
+    pr_number: String,
+    base: String,
+    head: String,
+    labels: Vec<String>,
+    gate: Option<PathBuf>,
+    baseline_delta: Option<PathBuf>,
+    zero_status: Option<PathBuf>,
+    pr_guidance: Option<PathBuf>,
+    recommendation_calibration: Option<PathBuf>,
+    agent_receipt: Option<PathBuf>,
+    coverage: Option<PathBuf>,
+    history: Option<PathBuf>,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum OutcomeFormat {
     Markdown,
@@ -1880,6 +1898,22 @@ pub(super) fn zero(args: &[String]) -> Result<(), String> {
     ripr_zero_status(rest)
 }
 
+pub(super) fn pr_ledger(args: &[String]) -> Result<(), String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        help::print_pr_ledger_help();
+        return Ok(());
+    }
+    let Some((subcommand, rest)) = args.split_first() else {
+        return Err("pr-ledger requires subcommand `record`".to_string());
+    };
+    if subcommand != "record" {
+        return Err(format!(
+            "unknown pr-ledger subcommand {subcommand:?}; expected `record`"
+        ));
+    }
+    pr_evidence_ledger_record(rest)
+}
+
 fn ripr_zero_status(args: &[String]) -> Result<(), String> {
     let options = parse_ripr_zero_status_options(args)?;
     let baseline_path = options
@@ -1927,6 +1961,98 @@ fn ripr_zero_status(args: &[String]) -> Result<(), String> {
     let report = output::ripr_zero_status::build_ripr_zero_status_report(input);
     let rendered_json = output::ripr_zero_status::render_ripr_zero_status_json(&report)?;
     let rendered_md = output::ripr_zero_status::render_ripr_zero_status_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    Ok(())
+}
+
+fn pr_evidence_ledger_record(args: &[String]) -> Result<(), String> {
+    let options = parse_pr_evidence_ledger_options(args)?;
+    let gate_path = options
+        .gate
+        .as_ref()
+        .map(|path| output::pr_evidence_ledger::display_path(path));
+    let baseline_delta_path = options
+        .baseline_delta
+        .as_ref()
+        .map(|path| output::pr_evidence_ledger::display_path(path));
+    let zero_status_path = options
+        .zero_status
+        .as_ref()
+        .map(|path| output::pr_evidence_ledger::display_path(path));
+    let pr_guidance_path = options
+        .pr_guidance
+        .as_ref()
+        .map(|path| output::pr_evidence_ledger::display_path(path));
+    let recommendation_calibration_path = options
+        .recommendation_calibration
+        .as_ref()
+        .map(|path| output::pr_evidence_ledger::display_path(path));
+    let agent_receipt_path = options
+        .agent_receipt
+        .as_ref()
+        .map(|path| output::pr_evidence_ledger::display_path(path));
+    let coverage_path = options
+        .coverage
+        .as_ref()
+        .map(|path| output::pr_evidence_ledger::display_path(path));
+    let history_path = options
+        .history
+        .as_ref()
+        .map(|path| output::pr_evidence_ledger::display_path(path));
+    let input = output::pr_evidence_ledger::PrEvidenceLedgerInput {
+        root: ".".to_string(),
+        generated_at: baseline_created_at()?,
+        pr_number: options.pr_number,
+        base: options.base,
+        head: options.head,
+        labels: options.labels,
+        gate_path,
+        baseline_delta_path,
+        zero_status_path,
+        pr_guidance_path,
+        recommendation_calibration_path,
+        agent_receipt_path,
+        coverage_path,
+        history_path,
+        gate_json: options
+            .gate
+            .as_ref()
+            .map(|path| read_optional_text_for_report("gate decision", path)),
+        baseline_delta_json: options
+            .baseline_delta
+            .as_ref()
+            .map(|path| read_optional_text_for_report("baseline debt delta", path)),
+        zero_status_json: options
+            .zero_status
+            .as_ref()
+            .map(|path| read_optional_text_for_report("RIPR Zero status", path)),
+        pr_guidance_json: options
+            .pr_guidance
+            .as_ref()
+            .map(|path| read_optional_text_for_report("PR guidance", path)),
+        recommendation_calibration_json: options
+            .recommendation_calibration
+            .as_ref()
+            .map(|path| read_optional_text_for_report("recommendation calibration", path)),
+        agent_receipt_json: options
+            .agent_receipt
+            .as_ref()
+            .map(|path| read_optional_text_for_report("agent receipt", path)),
+        coverage_json: options
+            .coverage
+            .as_ref()
+            .map(|path| read_optional_text_for_report("coverage", path)),
+        history_json: options
+            .history
+            .as_ref()
+            .map(|path| read_optional_text_for_report("history", path)),
+    };
+    let report = output::pr_evidence_ledger::build_pr_evidence_ledger_report(input);
+    let rendered_json = output::pr_evidence_ledger::render_pr_evidence_ledger_json(&report)?;
+    let rendered_md = output::pr_evidence_ledger::render_pr_evidence_ledger_markdown(&report);
     write_text_file(&options.out, &rendered_json)?;
     write_text_file(&options.out_md, &rendered_md)?;
     println!("Wrote {}", options.out.display());
@@ -2699,6 +2825,158 @@ fn parse_ripr_zero_status_options(args: &[String]) -> Result<RiprZeroStatusOptio
         gate,
         pr_guidance,
         recommendation_calibration,
+        out,
+        out_md,
+    })
+}
+
+fn parse_pr_evidence_ledger_options(args: &[String]) -> Result<PrEvidenceLedgerOptions, String> {
+    let mut pr_number = None;
+    let mut base = None;
+    let mut head = None;
+    let mut labels = Vec::new();
+    let mut gate = None;
+    let mut baseline_delta = None;
+    let mut zero_status = None;
+    let mut pr_guidance = None;
+    let mut recommendation_calibration = None;
+    let mut agent_receipt = None;
+    let mut coverage = None;
+    let mut history = None;
+    let mut out = PathBuf::from(output::pr_evidence_ledger::DEFAULT_PR_EVIDENCE_LEDGER_OUT);
+    let mut out_md = PathBuf::from(output::pr_evidence_ledger::DEFAULT_PR_EVIDENCE_LEDGER_MD_OUT);
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--pr-number" => {
+                i += 1;
+                pr_number = Some(non_empty_string_arg(
+                    args,
+                    i,
+                    "--pr-number",
+                    "pr-ledger record",
+                )?);
+            }
+            "--base" => {
+                i += 1;
+                base = Some(non_empty_string_arg(args, i, "--base", "pr-ledger record")?);
+            }
+            "--head" => {
+                i += 1;
+                head = Some(non_empty_string_arg(args, i, "--head", "pr-ledger record")?);
+            }
+            "--label" => {
+                i += 1;
+                labels.push(non_empty_string_arg(
+                    args,
+                    i,
+                    "--label",
+                    "pr-ledger record",
+                )?);
+            }
+            "--gate" => {
+                i += 1;
+                gate = Some(non_empty_path_arg(args, i, "--gate", "pr-ledger record")?);
+            }
+            "--baseline-delta" => {
+                i += 1;
+                baseline_delta = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--baseline-delta",
+                    "pr-ledger record",
+                )?);
+            }
+            "--zero-status" => {
+                i += 1;
+                zero_status = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--zero-status",
+                    "pr-ledger record",
+                )?);
+            }
+            "--pr-guidance" => {
+                i += 1;
+                pr_guidance = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--pr-guidance",
+                    "pr-ledger record",
+                )?);
+            }
+            "--recommendation-calibration" => {
+                i += 1;
+                recommendation_calibration = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--recommendation-calibration",
+                    "pr-ledger record",
+                )?);
+            }
+            "--agent-receipt" => {
+                i += 1;
+                agent_receipt = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--agent-receipt",
+                    "pr-ledger record",
+                )?);
+            }
+            "--coverage" => {
+                i += 1;
+                coverage = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--coverage",
+                    "pr-ledger record",
+                )?);
+            }
+            "--history" => {
+                i += 1;
+                history = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--history",
+                    "pr-ledger record",
+                )?);
+            }
+            "--out" => {
+                i += 1;
+                out = non_empty_path_arg(args, i, "--out", "pr-ledger record")?;
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = non_empty_path_arg(args, i, "--out-md", "pr-ledger record")?;
+            }
+            other => return Err(format!("unknown pr-ledger record argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    if gate.is_none() && baseline_delta.is_none() && zero_status.is_none() && pr_guidance.is_none()
+    {
+        return Err(
+            "pr-ledger record requires at least one of --gate, --baseline-delta, --zero-status, or --pr-guidance"
+                .to_string(),
+        );
+    }
+
+    Ok(PrEvidenceLedgerOptions {
+        pr_number: pr_number
+            .ok_or_else(|| "pr-ledger record requires --pr-number <value>".to_string())?,
+        base: base.ok_or_else(|| "pr-ledger record requires --base <revision>".to_string())?,
+        head: head.ok_or_else(|| "pr-ledger record requires --head <revision>".to_string())?,
+        labels,
+        gate,
+        baseline_delta,
+        zero_status,
+        pr_guidance,
+        recommendation_calibration,
+        agent_receipt,
+        coverage,
+        history,
         out,
         out_md,
     })
@@ -3861,6 +4139,116 @@ mod tests {
     }
 
     #[test]
+    fn pr_evidence_ledger_parses_option_surface() {
+        assert_eq!(
+            parse_pr_evidence_ledger_options(&args(&[
+                "--pr-number",
+                "123",
+                "--base",
+                "base",
+                "--head",
+                "head",
+                "--label",
+                "ripr-waive",
+                "--gate",
+                "target/ripr/reports/gate-decision.json",
+                "--baseline-delta",
+                "target/ripr/reports/baseline-debt-delta.json",
+                "--zero-status",
+                "target/ripr/reports/ripr-zero-status.json",
+                "--pr-guidance",
+                "target/ripr/review/comments.json",
+                "--recommendation-calibration",
+                "target/ripr/reports/recommendation-calibration.json",
+                "--agent-receipt",
+                "target/ripr/reports/agent-receipt.json",
+                "--coverage",
+                "target/ripr/reports/coverage-summary.json",
+                "--history",
+                ".ripr/pr-evidence-ledger.jsonl",
+                "--out",
+                "target/ripr/reports/pr-evidence-ledger.json",
+                "--out-md",
+                "target/ripr/reports/pr-evidence-ledger.md",
+            ])),
+            Ok(PrEvidenceLedgerOptions {
+                pr_number: "123".to_string(),
+                base: "base".to_string(),
+                head: "head".to_string(),
+                labels: vec!["ripr-waive".to_string()],
+                gate: Some(PathBuf::from("target/ripr/reports/gate-decision.json")),
+                baseline_delta: Some(PathBuf::from(
+                    "target/ripr/reports/baseline-debt-delta.json"
+                )),
+                zero_status: Some(PathBuf::from("target/ripr/reports/ripr-zero-status.json")),
+                pr_guidance: Some(PathBuf::from("target/ripr/review/comments.json")),
+                recommendation_calibration: Some(PathBuf::from(
+                    "target/ripr/reports/recommendation-calibration.json"
+                )),
+                agent_receipt: Some(PathBuf::from("target/ripr/reports/agent-receipt.json")),
+                coverage: Some(PathBuf::from("target/ripr/reports/coverage-summary.json")),
+                history: Some(PathBuf::from(".ripr/pr-evidence-ledger.jsonl")),
+                out: PathBuf::from("target/ripr/reports/pr-evidence-ledger.json"),
+                out_md: PathBuf::from("target/ripr/reports/pr-evidence-ledger.md"),
+            })
+        );
+    }
+
+    #[test]
+    fn pr_evidence_ledger_requires_identity_and_evidence() {
+        assert_eq!(
+            pr_ledger(&args(&[])),
+            Err("pr-ledger requires subcommand `record`".to_string())
+        );
+        assert_eq!(
+            pr_ledger(&args(&["unknown"])),
+            Err("unknown pr-ledger subcommand \"unknown\"; expected `record`".to_string())
+        );
+        assert_eq!(
+            parse_pr_evidence_ledger_options(&args(&[
+                "--pr-number",
+                "123",
+                "--base",
+                "base",
+                "--head",
+                "head"
+            ])),
+            Err(
+                "pr-ledger record requires at least one of --gate, --baseline-delta, --zero-status, or --pr-guidance"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            parse_pr_evidence_ledger_options(&args(&[
+                "--base",
+                "base",
+                "--head",
+                "head",
+                "--gate",
+                "gate.json"
+            ])),
+            Err("pr-ledger record requires --pr-number <value>".to_string())
+        );
+        assert_eq!(
+            parse_pr_evidence_ledger_options(&args(&[
+                "--pr-number",
+                "",
+                "--base",
+                "base",
+                "--head",
+                "head",
+                "--gate",
+                "gate.json"
+            ])),
+            Err("pr-ledger record --pr-number requires a non-empty value".to_string())
+        );
+        assert_eq!(
+            parse_pr_evidence_ledger_options(&args(&["--bad"])),
+            Err("unknown pr-ledger record argument \"--bad\"".to_string())
+        );
+    }
+
+    #[test]
     fn baseline_create_writes_baseline_without_overwriting_by_default() -> Result<(), String> {
         let dir = unique_command_test_dir("baseline-create");
         std::fs::create_dir_all(&dir).map_err(|err| format!("create baseline dir: {err}"))?;
@@ -3942,6 +4330,56 @@ mod tests {
         assert!(markdown.contains("Visible unresolved gaps"));
 
         std::fs::remove_dir_all(&dir).map_err(|err| format!("remove zero status dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn pr_evidence_ledger_writes_json_and_markdown_reports() -> Result<(), String> {
+        let dir = unique_command_test_dir("pr-evidence-ledger");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create ledger dir: {err}"))?;
+        let out = dir.join("pr-evidence-ledger.json");
+        let out_md = dir.join("pr-evidence-ledger.md");
+        let fixture = repo_root().join("fixtures/boundary_gap/expected/pr-evidence-ledger/mixed");
+
+        pr_ledger(&args(&[
+            "record",
+            "--pr-number",
+            "123",
+            "--base",
+            "base",
+            "--head",
+            "head",
+            "--gate",
+            &fixture.join("gate-decision.json").display().to_string(),
+            "--baseline-delta",
+            &fixture
+                .join("baseline-debt-delta.json")
+                .display()
+                .to_string(),
+            "--zero-status",
+            &fixture.join("ripr-zero-status.json").display().to_string(),
+            "--pr-guidance",
+            &fixture.join("comments.json").display().to_string(),
+            "--agent-receipt",
+            &fixture.join("agent-receipt.json").display().to_string(),
+            "--history",
+            &fixture.join("history.jsonl").display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json_text =
+            std::fs::read_to_string(&out).map_err(|err| format!("read ledger json: {err}"))?;
+        assert!(json_text.contains("\"kind\": \"pr_evidence_ledger\""));
+        assert!(json_text.contains("\"baseline_resolved\": 3"));
+        let md_text =
+            std::fs::read_to_string(&out_md).map_err(|err| format!("read ledger md: {err}"))?;
+        assert!(md_text.contains("# RIPR PR Evidence Ledger"));
+        assert!(md_text.contains("Gate: acknowledgeable / acknowledged"));
+
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove ledger dir: {err}"))?;
         Ok(())
     }
 
