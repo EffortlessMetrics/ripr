@@ -2111,7 +2111,7 @@ Work items:
 | `lsp/context-packet-command` | done | Added `ripr.collectEvidenceContext`, a schema `0.1` LSP execute-command packet with seam identity, evidence path, missing discriminator, related test, suggested test, shared agent-loop commands, and static limits without source edits, generated tests, provider coupling, broad analysis reruns, or runtime mutation execution. |
 | `test/lsp-protocol-smoke` | done | Extended framed LSP proof through initialize, saved-workspace refresh, a real boundary-gap seam diagnostic, hover, codeAction, `ripr.collectEvidenceContext`, and shutdown without relying on the VS Code client. |
 | `test/vscode-extension-smoke` | done | Extended the live VS Code e2e smoke so the real boundary-gap server path reaches a seam diagnostic, hover, code actions, copied seam packet and verify payloads, related-test opening, and restart callability without adding editor features. Bad-server-path status remains in the status/staleness slice. |
-| `lsp/editor-status-and-staleness` | blocked | Make server unavailable, workspace unresolved, config disabled, queued, running, complete, stale, failed, and no-actionable-seam states explicit. |
+| `lsp/editor-status-and-staleness` | done | Made disabled config, missing workspace, unavailable server, queued, running, complete, no-actionable-seam, stale, and failed states explicit in the VS Code status bar and Show Status path. Dirty Rust buffers keep stale status visible until save or close so saved-workspace completion does not look fresh for unsaved evidence. |
 | `docs/editor-evidence-workflow` | blocked | Document install, diagnostic, hover, related test, context packet, one-test, verify, receipt, and refresh workflow with limits. |
 | `campaign/editor-evidence-ux-closeout` | blocked | Close only after hover, actions, context packet, protocol proof, VS Code proof, status/staleness, and docs align without analyzer, policy, CI, or runtime-claim drift. |
 
@@ -2130,10 +2130,10 @@ Dependencies:
 
 Next when activated:
 
-- `lsp/editor-status-and-staleness` should be the next behavior-bearing item.
-  Keep it proof-only: make unavailable, unresolved, disabled, queued, running,
-  complete, stale, failed, and no-actionable-seam states explicit without
-  adding speculative editor surfaces.
+- `docs/editor-evidence-workflow` should be the next item. Keep it
+  documentation-only: show the install, diagnostic, hover, related test,
+  context packet, one focused test, verify, receipt, and refresh loop with
+  explicit static-evidence limits.
 
 Commands:
 

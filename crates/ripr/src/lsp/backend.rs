@@ -64,6 +64,7 @@ impl Backend {
         let Some(generation) = self.next_refresh_generation() else {
             return;
         };
+        self.log_refresh_queued(generation).await;
         let _refresh_guard = self.refresh_in_flight.lock().await;
         if !self.is_current_refresh_generation(generation) {
             return;
@@ -327,6 +328,15 @@ impl RefreshLogSummary {
 }
 
 impl Backend {
+    async fn log_refresh_queued(&self, generation: u64) {
+        self.client
+            .log_message(
+                MessageType::INFO,
+                format!("ripr analysis refresh queued: generation={generation}"),
+            )
+            .await;
+    }
+
     async fn log_refresh_started(&self, generation: u64) {
         self.client
             .log_message(

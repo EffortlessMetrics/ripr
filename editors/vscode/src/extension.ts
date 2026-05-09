@@ -63,8 +63,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         controller?.markWorkspaceStale(event.document);
       }
     }),
+    vscode.workspace.onDidSaveTextDocument((document) => {
+      controller?.markWorkspaceSaved(document);
+    }),
+    vscode.workspace.onDidCloseTextDocument((document) => {
+      controller?.markWorkspaceClosed(document);
+    }),
     vscode.workspace.onDidChangeConfiguration(async (event) => {
       if (
+        event.affectsConfiguration('ripr.enabled') ||
         event.affectsConfiguration('ripr.server') ||
         event.affectsConfiguration('ripr.check') ||
         event.affectsConfiguration('ripr.baseRef') ||

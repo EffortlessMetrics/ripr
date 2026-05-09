@@ -267,7 +267,7 @@ evidence = [
   "VS Code e2e copies a live seam packet from the real server path"
 ]
 fixtures = []
-next = "lsp/editor-status-and-staleness"
+next = "docs/editor-evidence-workflow"
 metric = "packet includes missing discriminator and related tests"
 
 [[capability]]
@@ -283,7 +283,7 @@ evidence = [
   "VS Code e2e copies live seam packet and verify command payloads from the real server path"
 ]
 fixtures = []
-next = "lsp/editor-status-and-staleness"
+next = "docs/editor-evidence-workflow"
 metric = "packet includes missing values and suggested assertions"
 
 [[capability]]
@@ -312,12 +312,12 @@ evidence = [
   "diagnostic-targeted context action",
   "diagnostic hover details",
   "serialized refresh generations",
-  "VS Code status bar and ripr: Show Status path for server resolution, workspace detection, analysis running/complete/stale/failed, and no-actionable-seam states",
+  "VS Code status bar and ripr: Show Status path for disabled config, server resolution, workspace detection, server unavailable, queued/running/complete/stale/failed refreshes, and no-actionable-seam states",
   "intent-titled diagnostic actions for inspect, write targeted test, agent handoff, verify after test, review receipt, and refresh analysis",
   "docs/QUICKSTART.md routes the VS Code first hour through status, Problems diagnostics, hover evidence, and intent-titled seam actions"
 ]
 fixtures = []
-next = "campaign/editor-evidence-ux-audit"
+next = "docs/editor-evidence-workflow"
 metric = "diagnostics carry finding/probe metadata, editor status names saved-workspace analysis state, and editor actions target the selected finding"
 
 [[capability]]
@@ -815,6 +815,8 @@ evidence = [
   "bounded saved-workspace seam diagnostics default on under RIPR-SPEC-0009",
   "VS Code ripr.check.mode defaults to draft so the extension does not override missing-config defaults with instant mode",
   "explicit seamDiagnostics: false override",
+  "VS Code status bar and Show Status name disabled config, missing workspace, server unavailable, queued, running, complete, no-actionable-seam, stale, and failed states",
+  "dirty Rust buffers keep stale status visible until save or close so saved-workspace completion is not shown as fresh unsaved evidence",
   "OUTPUT_SCHEMA.md LSP Seam Diagnostics section",
   "docs/EDITOR_EXTENSION.md documents the install path and saved-workspace default",
   "docs/EDITOR_EVIDENCE_UX.md records the editor evidence contract",
@@ -824,7 +826,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "lsp/evidence-hover-hardening"
+next = "docs/editor-evidence-workflow"
 metric = "seam_id in diagnostic.data is the hover lookup key"
 
 [[capability]]
@@ -846,7 +848,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "lsp/editor-status-and-staleness"
+next = "docs/editor-evidence-workflow"
 metric = "hover renders evidence path from ClassifiedSeam, never parses diagnostic message"
 
 [[capability]]
@@ -874,7 +876,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "lsp/editor-status-and-staleness"
+next = "docs/editor-evidence-workflow"
 metric = "seam diagnostics expose only supported packet/assertion/test actions without automatic edits"
 
 [[capability]]
