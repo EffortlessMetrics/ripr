@@ -3824,10 +3824,72 @@ fn validate_evidence_record_contract_record(
     require_json_array_at(record, "missing_discriminators", case_id, violations);
     require_json_usize_at(record, "related_tests_total", case_id, violations);
     require_json_array_at(record, "related_tests", case_id, violations);
+    validate_evidence_record_related_tests(case_id, record.get("related_tests"), violations);
     validate_evidence_record_recommendation(case_id, record.get("recommendation"), violations);
     validate_evidence_record_actionability(case_id, record.get("actionability"), violations);
     validate_evidence_record_calibration(case_id, record.get("calibration"), violations);
     require_json_array_at(record, "static_limitations", case_id, violations);
+}
+
+fn validate_evidence_record_related_tests(
+    case_id: &str,
+    related_tests: Option<&Value>,
+    violations: &mut Vec<String>,
+) {
+    let Some(Value::Array(tests)) = related_tests else {
+        return;
+    };
+    for (idx, test) in tests.iter().enumerate() {
+        validate_evidence_record_related_test(
+            case_id,
+            &format!("related_tests[{idx}]"),
+            test,
+            violations,
+        );
+    }
+}
+
+fn validate_evidence_record_related_test(
+    case_id: &str,
+    path: &str,
+    test: &Value,
+    violations: &mut Vec<String>,
+) {
+    let Value::Object(_) = test else {
+        violations.push(format!(
+            "evidence-record case {case_id} {path} must be an object"
+        ));
+        return;
+    };
+    for field in [
+        "name",
+        "file",
+        "oracle_kind",
+        "oracle_strength",
+        "evidence_summary",
+        "relation_reason",
+        "relation_confidence",
+    ] {
+        require_json_string_at(test, field, case_id, violations);
+    }
+    require_json_usize_at(test, "line", case_id, violations);
+    match test.get("oracle_semantics") {
+        Some(semantics @ Value::Object(_)) => {
+            require_json_string_at(semantics, "observes", case_id, violations);
+            require_json_string_at(semantics, "missing", case_id, violations);
+            if !matches!(
+                semantics.get("upgrade_suggestion"),
+                Some(Value::Null | Value::String(_))
+            ) {
+                violations.push(format!(
+                    "evidence-record case {case_id} {path}.oracle_semantics.upgrade_suggestion must be string or null"
+                ));
+            }
+        }
+        _ => violations.push(format!(
+            "evidence-record case {case_id} {path}.oracle_semantics must be an object"
+        )),
+    }
 }
 
 fn validate_evidence_record_recommendation(
@@ -3858,6 +3920,14 @@ fn validate_evidence_record_recommendation(
                 "evidence-record case {case_id} recommendation.{optional} must be present"
             ));
         }
+    }
+    if let Some(nearest @ Value::Object(_)) = recommendation.get("nearest_test_to_imitate") {
+        validate_evidence_record_related_test(
+            case_id,
+            "recommendation.nearest_test_to_imitate",
+            nearest,
+            violations,
+        );
     }
 }
 

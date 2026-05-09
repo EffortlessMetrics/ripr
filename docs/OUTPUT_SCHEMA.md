@@ -757,6 +757,11 @@ lands at `target/ripr/reports/repo-exposure.json` when generated via
             "oracle_kind": "exact_value",
             "oracle_strength": "strong",
             "evidence_summary": "exact value assertion",
+            "oracle_semantics": {
+              "observes": "the exact value or value pattern asserted by the test",
+              "missing": "no obvious value-shape discriminator gap under static scope",
+              "upgrade_suggestion": null
+            },
             "relation_reason": "direct_owner_call",
             "relation_confidence": "high"
           }
@@ -776,6 +781,11 @@ lands at `target/ripr/reports/repo-exposure.json` when generated via
             "oracle_kind": "exact_value",
             "oracle_strength": "strong",
             "evidence_summary": "exact value assertion",
+            "oracle_semantics": {
+              "observes": "the exact value or value pattern asserted by the test",
+              "missing": "no obvious value-shape discriminator gap under static scope",
+              "upgrade_suggestion": null
+            },
             "relation_reason": "direct_owner_call",
             "relation_confidence": "high"
           },
@@ -880,6 +890,11 @@ Field contract:
   existing seam evidence, including related-test relation fields. The
   nested `related_tests` array is capped like the top-level array and keeps
   `related_tests_total`.
+- `seams[].evidence_record.related_tests[].oracle_semantics` - structured
+  oracle-shape explanation with `observes`, `missing`, and nullable
+  `upgrade_suggestion`. Weak, broad, smoke-only, and unknown oracle shapes
+  name the behavior they observe, the discriminator they fail to observe, and
+  the assertion upgrade RIPR recommends for this seam kind.
 - `seams[].evidence_record.recommendation` - bounded test-intent guidance
   derived from existing evidence: recommended test target, nearest test to
   imitate, candidate values, assertion shape, and verification command when

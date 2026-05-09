@@ -65,6 +65,11 @@ are scoped or reviewed.
   full `related_tests_total` while ordering by relation confidence, relation
   reason, oracle strength, activation-value overlap, and stable file/name/line
   tie-breakers.
+- Stabilized oracle-semantics v3 by adding structured
+  `evidence_record.related_tests[].oracle_semantics` explanations that name what
+  an oracle observes, what discriminator remains missing, and which assertion
+  upgrade applies for broad, smoke-only, unknown, snapshot, and exact oracle
+  shapes.
 - Surfaced `assistant-loop-health.{json,md}` in generated GitHub CI when
   `test-oracle-assistant-proof.json` exists, uploads the reports with the
   normal `ripr-reports` packet, and appends a compact advisory health summary

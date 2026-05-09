@@ -100,6 +100,9 @@ Each `seams[].evidence_record` must include:
 - `missing_discriminators`: structured missing discriminator facts and optional
   flow sink context.
 - `related_tests_total` and `related_tests`: ranked related-test evidence.
+- `related_tests[].oracle_semantics`: structured `observes`, `missing`, and
+  nullable `upgrade_suggestion` strings explaining the related test's oracle
+  shape under the seam kind.
 - `recommendation`: bounded test-intent guidance derived from existing
   evidence.
 - `actionability`: advisory actionability class and available guidance signals.
@@ -176,6 +179,25 @@ or turn a weak relationship into a strong one. Activation overlap is a static
 tie-breaker from values RIPR already observes, for example a direct owner call
 whose predicate-boundary arguments are equal at the changed boundary.
 
+## Oracle Semantics
+
+Related-test oracle semantics are an evidence explanation, not a new
+classification. They make the existing `oracle_kind` and `oracle_strength`
+actionable by naming:
+
+- what the oracle observes;
+- what discriminator remains missing;
+- what assertion upgrade would improve the seam's behavioral grip, when an
+  upgrade is known.
+
+Broad error assertions such as `assert!(result.is_err())` observe that some
+error occurred, but they do not discriminate the exact error variant or payload.
+Smoke-only assertions such as unwrap/expect/ok-shape checks observe that the
+call completed or returned a broad shape, but they do not observe the output
+value, error variant, field, effect, or call discriminator. Exact-value
+assertions do not get an upgrade suggestion merely because they are exact in
+the supported static scope.
+
 ## Consumer Routing
 
 The first consumer slice routes two existing advisory surfaces through the
@@ -227,6 +249,9 @@ or mutate baselines.
 - PR evidence ledger copies canonical gap identity into identity-bearing
   waiver, suppression, receipt, and top repair route records when supplied.
 - Evidence record schema `0.1` is documented in `docs/OUTPUT_SCHEMA.md`.
+- Related tests include oracle semantics explaining what broad, smoke-only,
+  unknown, and exact oracle shapes observe and miss without changing their
+  oracle kind or strength.
 - `fixtures/boundary_gap/expected/evidence-record-contract/corpus.json` pins
   representative v0.1 records for the supported contract matrix.
 - Unit tests pin identity, grip class, evidence path, recommendation,
@@ -271,6 +296,10 @@ Additional examples:
 | Related-test ranking uses activation overlap before file ordering inside the same relation and oracle strength | `given_related_tests_with_same_relation_and_oracle_when_ranked_then_activation_overlap_precedes_file_order` |
 | Fixture contract corpus pins representative record shapes | `evidence_record_contract_fixture_corpus_is_valid` |
 | Fixture contract checker reports record-shape drift | `evidence_record_contract_fixture_guard_reports_missing_fields` |
+| Broad error oracle semantics explain the exact error discriminator gap | `oracle_semantics_explains_broad_error_gap_and_upgrade` |
+| Smoke-only oracle semantics explain the missing boundary discriminator | `oracle_semantics_explains_smoke_only_boundary_gap` |
+| Exact-value oracle semantics do not invent an upgrade suggestion | `oracle_semantics_keeps_exact_value_without_extra_upgrade` |
+| Evidence records carry oracle semantics on related tests | `evidence_record_carries_identity_path_guidance_and_calibration_placeholder` |
 
 ## Implementation Mapping
 
