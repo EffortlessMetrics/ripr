@@ -1217,6 +1217,9 @@ acknowledged and suppressed counts, blocking candidates, visible unresolved
 gaps, the top repair route, verify command, agent command, coverage/grip
 frontier status, and history trend when available. The ledger is evidence only;
 `ripr gate evaluate` remains the pass/fail authority for configured gate modes.
+See [PR evidence ledger workflow](PR_EVIDENCE_LEDGER_WORKFLOW.md) for how to
+read the ledger as waiver aging, baseline burn-down, repair receipts, and
+coverage/grip frontier evidence.
 
 For every configured gate mode, the generated workflow behavior is:
 

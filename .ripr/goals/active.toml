@@ -92,7 +92,7 @@ commands = [
 
 [[work_item]]
 id = "docs/pr-evidence-ledger-workflow"
-status = "ready"
+status = "done"
 branch = "docs-pr-evidence-ledger-workflow"
 stackable = false
 blocked_by = [
@@ -109,7 +109,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/pr-evidence-ledger-closeout"
-status = "blocked"
+status = "ready"
 branch = "campaign-pr-evidence-ledger-closeout"
 stackable = false
 blocked_by = [

@@ -488,8 +488,10 @@ Expected follow-up surfaces:
   read-only advisory JSON/Markdown report that keeps execution coverage and
   RIPR behavioral grip movement visible as separate axes without making
   coverage blocking.
-- `docs/pr-evidence-ledger-workflow` explains how teams read ledgers, waiver
-  aging, baseline burn-down, repair receipts, and progress toward RIPR 0.
+- `docs/pr-evidence-ledger-workflow` adds
+  `docs/PR_EVIDENCE_LEDGER_WORKFLOW.md`, explaining how teams read ledgers,
+  waiver aging, baseline burn-down, repair receipts, coverage/grip frontier
+  signals, and progress toward RIPR 0.
 
 ## Metrics
 

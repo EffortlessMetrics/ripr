@@ -766,10 +766,11 @@ evidence = [
   "crates/ripr/src/output/pr_evidence_ledger.rs renders PR movement, visible waivers, suppressions, repair receipts, top repair route, coverage/grip frontier status, and history summaries without changing gate authority",
   "crates/ripr/src/cli/commands.rs generated GitHub workflow runs pr-ledger record on pull requests when PR guidance exists, uploads pr-evidence-ledger JSON/Markdown with the normal artifact packet, and appends a PR movement summary while keeping gate decisions as the pass/fail authority",
   "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed pins checked JSON and Markdown output for a mixed acknowledged/suppressed/resolved/new-debt case",
-  "docs/OUTPUT_SCHEMA.md documents the pr-evidence-ledger JSON/Markdown shape"
+  "docs/OUTPUT_SCHEMA.md documents the pr-evidence-ledger JSON/Markdown shape",
+  "docs/PR_EVIDENCE_LEDGER_WORKFLOW.md explains how teams read ledger cards for waiver aging, baseline burn-down, repair receipts, coverage/grip frontier signals, and movement toward RIPR 0"
 ]
 fixtures = ["fixtures/boundary_gap/expected/pr-evidence-ledger/mixed"]
-next = "report/coverage-grip-frontier"
+next = "campaign/pr-evidence-ledger-closeout"
 metric = "pr_evidence_ledger_records, pr_evidence_ledger_new_policy_eligible, pr_evidence_ledger_baseline_still_present, pr_evidence_ledger_baseline_resolved, pr_evidence_ledger_acknowledged, pr_evidence_ledger_suppressed, pr_evidence_ledger_blocking_candidates, pr_evidence_ledger_repair_receipts, pr_evidence_ledger_waiver_age_max_days, pr_evidence_ledger_coverage_grip_frontier_available, pr_evidence_ledger_flat_coverage_grip_improved"
 
 [[capability]]
@@ -781,10 +782,11 @@ evidence = [
   "ripr coverage-grip frontier writes advisory coverage-grip-frontier JSON and Markdown from optional coverage summary plus PR evidence ledger, baseline debt delta, or RIPR Zero status inputs",
   "crates/ripr/src/output/coverage_grip_frontier.rs keeps coverage delta, RIPR movement, quadrants, interpretation, warnings, and advisory limits separate without treating coverage as adequacy",
   "crates/ripr/src/cli/commands.rs exposes coverage-grip frontier and checks required RIPR movement input",
-  "docs/OUTPUT_SCHEMA.md documents the coverage-grip-frontier JSON/Markdown shape"
+  "docs/OUTPUT_SCHEMA.md documents the coverage-grip-frontier JSON/Markdown shape",
+  "docs/PR_EVIDENCE_LEDGER_WORKFLOW.md explains how teams interpret coverage/grip frontier signals in PR review without treating coverage as adequacy"
 ]
 fixtures = []
-next = "docs/pr-evidence-ledger-workflow"
+next = "campaign/pr-evidence-ledger-closeout"
 metric = "coverage_grip_frontier_reports, coverage_grip_frontier_available, coverage_grip_frontier_flat_coverage_grip_improved"
 
 [[capability]]

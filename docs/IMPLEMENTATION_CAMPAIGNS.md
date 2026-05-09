@@ -2213,8 +2213,8 @@ Work items:
 | `report/pr-evidence-ledger` | done | Added `ripr pr-ledger record`, a read-only JSON/Markdown report over existing PR guidance, gate decision, baseline debt delta, RIPR Zero status, recommendation calibration, agent receipt, optional coverage, and optional history inputs. |
 | `ci/pr-evidence-ledger-summary` | done | Generated GitHub CI now runs `ripr pr-ledger record` on pull requests after PR guidance, optional gate, baseline delta, and RIPR Zero reports exist; uploads `pr-evidence-ledger.{json,md}` with the normal artifact packet; and appends a PR movement card while leaving gate decisions as the pass/fail authority. |
 | `report/coverage-grip-frontier` | done | Added `ripr coverage-grip frontier`, a read-only JSON/Markdown report that keeps coverage delta, RIPR movement, quadrants, interpretation, warnings, and advisory limits as separate axes without treating coverage as adequacy. |
-| `docs/pr-evidence-ledger-workflow` | ready | Document how teams read PR evidence ledgers, use waiver aging and baseline burn-down, route repair receipts, interpret coverage/grip frontier signals, and track movement toward RIPR 0 without learning internal report topology. |
-| `campaign/pr-evidence-ledger-closeout` | blocked | Close Campaign 19 only after PR evidence ledgers, generated-CI projection, coverage/grip frontier summaries, and user workflow docs are in place while defaults stay advisory. |
+| `docs/pr-evidence-ledger-workflow` | done | Added `docs/PR_EVIDENCE_LEDGER_WORKFLOW.md`, explaining how teams read PR evidence ledgers, use waiver aging and baseline burn-down, route repair receipts, interpret coverage/grip frontier signals, and track movement toward RIPR 0 without learning internal report topology. |
+| `campaign/pr-evidence-ledger-closeout` | ready | Close Campaign 19 only after PR evidence ledgers, generated-CI projection, coverage/grip frontier summaries, and user workflow docs are in place while defaults stay advisory. |
 
 Dependencies:
 

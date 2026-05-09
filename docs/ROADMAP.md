@@ -178,9 +178,11 @@ RIPR-SPEC-0018 now pins the contract, and `ripr pr-ledger record` writes the
 read-only JSON/Markdown producer. Generated-CI projection now writes and
 summarizes `pr-evidence-ledger.{json,md}` as advisory PR movement evidence.
 `ripr coverage-grip frontier` now reports coverage delta and RIPR movement as
-separate advisory axes. The next ready item is
-`docs/pr-evidence-ledger-workflow`. The campaign remains advisory by default
-and keeps gate decisions as the pass/fail authority.
+separate advisory axes. `docs/PR_EVIDENCE_LEDGER_WORKFLOW.md` now documents how
+teams use ledger cards for waiver aging, baseline burn-down, repair receipts,
+coverage/grip frontier signals, and movement toward RIPR 0. The next ready
+item is `campaign/pr-evidence-ledger-closeout`. The campaign remains advisory
+by default and keeps gate decisions as the pass/fail authority.
 
 ## Strategic Sequence
 

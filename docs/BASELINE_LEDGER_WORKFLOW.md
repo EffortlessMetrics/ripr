@@ -274,5 +274,8 @@ are not the same as unresolved baseline debt.
 - [RIPR Zero reporting workflow](RIPR_ZERO_REPORTING_WORKFLOW.md) explains how
   to read `ripr-zero-status`, age baseline metadata, route repair packets, and
   interpret movement toward RIPR 0.
+- [PR evidence ledger workflow](PR_EVIDENCE_LEDGER_WORKFLOW.md) explains how
+  individual PRs record baseline burn-down, waiver aging, repair receipts, and
+  optional coverage/grip frontier signals.
 - [Output schema](OUTPUT_SCHEMA.md#baseline-debt-delta-report) defines the
   baseline ledger, update, and delta JSON/Markdown contracts.

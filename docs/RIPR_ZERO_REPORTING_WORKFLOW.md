@@ -191,6 +191,9 @@ the summary and baseline metadata are reviewable.
 
 - [Baseline ledger workflow](BASELINE_LEDGER_WORKFLOW.md) explains baseline
   creation, diffing, `baseline-check`, and shrink-only refreshes.
+- [PR evidence ledger workflow](PR_EVIDENCE_LEDGER_WORKFLOW.md) explains how
+  per-PR ledger records track waiver aging, baseline burn-down, repair
+  receipts, and coverage/grip frontier signals.
 - [Calibrated gate policy](CALIBRATED_GATE_POLICY.md) defines gate modes and
   acknowledgement behavior.
 - [RIPR blocking readiness](BLOCKING_READINESS.md) explains when to stay
