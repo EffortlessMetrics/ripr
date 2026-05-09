@@ -55,6 +55,7 @@ the handoff covers (e.g. `2026-05-04-campaign-4a-closeout.md`).
 
 ## Current Handoffs
 
+- [Test-oracle assistant dogfood receipt](2026-05-09-test-oracle-assistant-receipt.md)
 - [Campaign 19 closeout](2026-05-09-campaign-19-closeout.md)
 - [Campaign 18 closeout](2026-05-09-campaign-18-closeout.md)
 - [Campaign 17 closeout](2026-05-09-campaign-17-closeout.md)

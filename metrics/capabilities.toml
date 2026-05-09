@@ -799,12 +799,13 @@ evidence = [
   "docs/OUTPUT_SCHEMA.md documents the planned advisory test-oracle assistant proof report shape",
   "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical pins the canonical replay corpus across PR guidance, agent handoff, before/after static evidence, receipt, and PR ledger projection",
   "crates/ripr/tests/cli_smoke.rs::test_oracle_assistant_canonical_review_loop_fixture_pins_expected_surfaces validates the canonical replay corpus uses one seam identity across guidance, handoff, receipt, and ledger projection",
+  "docs/handoffs/2026-05-09-test-oracle-assistant-receipt.md records the repo-local dogfood receipt across PR guidance, editor/agent handoff, verification commands, after evidence, receipt, PR ledger projection, and coverage/grip frontier availability",
   ".ripr/goals/active.toml tracks Campaign 20 with spec, canonical fixture, dogfood receipt, workflow docs, and closeout slices"
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical"
 ]
-next = "dogfood/test-oracle-assistant-receipt"
+next = "docs/test-oracle-assistant-workflow"
 metric = "test_oracle_assistant_loop_reports, test_oracle_assistant_loop_verified_receipts, test_oracle_assistant_loop_unknown_inputs, test_oracle_assistant_loop_summary_only, test_oracle_assistant_loop_static_improved, test_oracle_assistant_loop_static_resolved, test_oracle_assistant_loop_static_regressed"
 
 [[capability]]

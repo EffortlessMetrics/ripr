@@ -60,13 +60,13 @@ commands = [
 
 [[work_item]]
 id = "dogfood/test-oracle-assistant-receipt"
-status = "ready"
+status = "done"
 branch = "dogfood-test-oracle-assistant-receipt"
 stackable = false
 blocked_by = [
   "fixtures/canonical-review-loop",
 ]
-acceptance = "Record a repo-local proof receipt that traces one seam through PR guidance, editor/agent packet surfaces, verification commands, after-evidence, receipt, PR evidence ledger, and coverage/grip frontier availability without changing source automatically"
+acceptance = "Recorded a repo-local proof receipt that traces one seam through PR guidance, editor/agent packet surfaces, verification commands, after-evidence, receipt, PR evidence ledger, and coverage/grip frontier availability without changing source automatically"
 commands = [
   "cargo xtask dogfood",
   "cargo xtask test-oracle-report",
@@ -77,7 +77,7 @@ commands = [
 
 [[work_item]]
 id = "docs/test-oracle-assistant-workflow"
-status = "blocked"
+status = "ready"
 branch = "docs-test-oracle-assistant-workflow"
 stackable = false
 blocked_by = [
