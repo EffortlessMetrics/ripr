@@ -66,6 +66,10 @@ are scoped or reviewed.
   guide from install and status through diagnostic, hover, related test, context
   packet, one focused test, after snapshot, verify, receipt, and refresh with
   explicit static-evidence limits.
+- Closed Editor Evidence UX with a prompt-to-artifact audit covering seam
+  diagnostics, evidence hover, related-test actions, context packets, VS Code
+  smoke, status/staleness, workflow docs, and the no-source-edit/no-runtime
+  boundary.
 - Added `ripr agent start --root . --seam-id <id> --out target/ripr/workflow`
   to write a source-edit-free workflow packet with `workflow.json`,
   `commands.md`, and `agent-brief.json` for one selected seam. The packet
