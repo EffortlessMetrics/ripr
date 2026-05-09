@@ -1,0 +1,184 @@
+# Lane 3: Editor / LSP UX
+
+Lane 3 owns RIPR's editor and LSP projection surfaces. Its job is to make the
+saved-workspace evidence loop usable at the point of coding:
+
+```text
+diagnostic -> hover evidence -> related test or context
+-> packet or brief commands -> one focused test -> verify -> receipt -> refresh
+```
+
+Lane 3 follows its GitHub issue and PR tracker, this lane tracker, and the
+editor/LSP docs. It does not switch to another campaign merely because
+`.ripr/goals/active.toml` points elsewhere.
+
+## Scope
+
+Lane 3 owns these surfaces:
+
+- LSP diagnostics and `diagnostic.data` identity;
+- hover evidence rendering;
+- editor status and `ripr: Show Status`;
+- code actions;
+- bounded context packets;
+- related-test opening;
+- copyable packet, brief, after-snapshot, verify, receipt, and refresh commands;
+- VS Code extension behavior for server resolution, status, actions, and
+  command payloads;
+- `cargo xtask lsp-cockpit-report` regression evidence.
+
+Lane 3 consumes existing RIPR artifacts when they are already present. It does
+not create PR/CI reports, decide policy, or rerun hidden analysis in the editor.
+
+## Completed Surfaces
+
+The saved-workspace editor cockpit is closed and documented in
+[Editor Evidence UX](../EDITOR_EVIDENCE_UX.md),
+[Editor evidence workflow](../EDITOR_EVIDENCE_WORKFLOW.md), and the
+[Editor Evidence UX closeout](../handoffs/2026-05-09-editor-evidence-ux-closeout.md).
+
+Completed slices:
+
+- diagnostic identity through `diagnostic.data`;
+- evidence-rich hover;
+- evidence-aware code actions;
+- `ripr.collectEvidenceContext`;
+- framed LSP protocol smoke;
+- live VS Code editor evidence smoke;
+- status and staleness handling;
+- editor workflow docs;
+- first-useful-action status projection, including wrong-root and stale-state
+  handling.
+
+## Current Open PRs
+
+At tracker creation, there are no behavior-bearing Lane 3 PRs open. The tracker
+PR is documentation-only.
+
+When opening future Lane 3 PRs, list them here until they merge or close:
+
+| PR | Slice | State | Notes |
+| --- | --- | --- | --- |
+| none | - | - | - |
+
+## Next Slices
+
+These are Lane 3 candidates. Open them only when they are explicitly selected
+as editor/LSP work:
+
+1. `test(lsp): add first-action status edge fixtures`
+   - valid first-useful-action report;
+   - wrong workspace root;
+   - missing report;
+   - invalid JSON;
+   - unsupported `schema_version`;
+   - missing required fields;
+   - `actionable`, `no_actionable_seam`, `unchanged_after_attempt`,
+     `missing_required_artifact`, `waived`, `suppressed`, and `acknowledged`
+     statuses;
+   - stale saved-workspace state.
+2. `test(vscode): harden saved-workspace e2e`
+   - Show Status with valid first-useful-action state;
+   - wrong-root report ignored;
+   - bad or missing report handled without crashing;
+   - stale tooltip and refresh guidance visible;
+   - copy packet, brief, verify, and receipt commands registered.
+3. `lsp: harden command payload contracts`
+   - Windows path handling;
+   - workspace roots with spaces;
+   - stable artifact paths;
+   - root, base, mode, and seam ID propagation;
+   - no shell-unsafe command construction;
+   - no hidden editor-only state.
+4. `lsp: improve evidence hover rendering`
+   - grip class;
+   - missing discriminator or observation;
+   - related test and oracle strength;
+   - suggested assertion shape;
+   - first useful action title/status when available;
+   - verify and receipt availability;
+   - static-evidence limits.
+5. `fixtures: add editor LSP workflow fixture`
+   - canonical fixture for diagnostic, hover, code action, status, and refresh
+     guidance.
+6. `docs: document editor-first workflow`
+   - update user-facing editor docs when a later behavior change requires it.
+
+## Validation Gates
+
+Docs-only tracker changes should run:
+
+```bash
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-pr
+git diff --check
+```
+
+Behavior changes should add the relevant editor checks:
+
+```bash
+cargo test -p ripr lsp --lib
+cargo test -p ripr lsp::tests --lib
+cargo xtask lsp-cockpit-report
+npm --prefix editors/vscode run compile
+npm --prefix editors/vscode run test:e2e
+cargo xtask check-output-contracts
+cargo xtask check-static-language
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-pr
+git diff --check
+```
+
+## Cross-Lane Rules
+
+- `.ripr/goals/active.toml` is the active Codex Goals manifest, not the whole
+  product board.
+- Campaign 24 PR Review Front Panel is a PR/CI composition lane. It explicitly
+  excludes editor behavior changes.
+- Lane 3 may project existing first-action or front-panel artifacts in editor
+  status only when that work is selected as editor/LSP scope.
+- Lane 3 must not take PR/CI dogfood receipts, campaign closeouts, baseline
+  ledgers, gate policy, evidence schema, release, security, or platform work.
+- Cross-lane artifacts should be read-only inputs in the editor unless a later
+  editor campaign explicitly changes that contract.
+
+## Non-Goals
+
+Lane 3 does not own:
+
+- PR Review Front Panel producer, docs, dogfood, or closeout;
+- Campaign 22 or Campaign 24 end-to-end work;
+- analyzer behavior;
+- evidence-record schema design;
+- baseline ledger behavior;
+- policy or gate semantics;
+- generated CI behavior;
+- SARIF or badge output;
+- release, packaging, or security workflow mechanics;
+- source edits;
+- generated tests;
+- provider or model calls;
+- runtime mutation execution;
+- runtime adequacy claims.
+
+Deferred editor features remain out of scope until a new editor campaign opens:
+
+- unsaved-buffer overlays;
+- CodeLens;
+- inlay hints;
+- semantic tokens;
+- inline patch application;
+- automatic test generation;
+- automatic source edits;
+- policy or gate editing from the editor.
+
+## Operating Rule
+
+Before taking a Lane 3 task, confirm it touches editor or LSP projection. If it
+is about PR/CI summary composition, dogfood receipts, policy, evidence schema,
+or campaign closeout outside editor behavior, route it to the owning lane.
