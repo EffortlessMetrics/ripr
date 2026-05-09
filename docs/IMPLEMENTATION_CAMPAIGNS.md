@@ -2571,24 +2571,21 @@ Blocking conditions:
 
 Next:
 
-- No ready Campaign 22 work item remains. Choose the next campaign explicitly
-  before opening another product lane. Assistant Loop Health remains the likely
-  future follow-up, but it should be opened in a separate campaign PR rather
-  than folded into First Useful Action closeout.
+- Campaign 23, Assistant Loop Health, is now the active campaign. It makes
+  assistant-directed test work measurable across existing proof artifacts, with
+  `spec/assistant-loop-health-report` as the first ready work item.
 
-## Future Campaign: Assistant Loop Health
+## Campaign 23: Assistant Loop Health
 
 Campaign ID: `assistant-loop-health`
 
-Status: proposed future lane. Do not replace the completed Campaign 22 closeout
-state with this lane until the project explicitly chooses it.
+Status: active
 
 Campaign 21 made one assistant-directed test loop reviewable as
-`test-oracle-assistant-proof.{json,md}`. Campaign 22 has settled the first-screen
+`test-oracle-assistant-proof.{json,md}`. Campaign 22 settled the first-screen
 routing contract so users get one next action instead of another raw report.
-Assistant Loop Health can measure whether the proof packets are complete,
-stuck, missing receipts, or actually improving static evidence over time when
-that lane is explicitly opened.
+Assistant Loop Health now measures whether proof packets are complete, stuck,
+missing receipts, or actually improving static evidence over time.
 
 Objective:
 
@@ -2616,16 +2613,16 @@ End state:
 - generated CI may later upload and summarize the report as advisory evidence
   only
 
-Proposed work items:
+Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `spec/assistant-loop-health-report` | future | Define JSON/Markdown contract, explicit inputs, statuses, buckets, warnings, repair queue, and advisory limits. |
-| `fixtures/assistant-loop-health-corpus` | future | Pin complete, partial, missing-input, unchanged, regressed, warning-heavy, and multi-proof cases. |
-| `report/assistant-loop-health` | future | Add the read-only CLI report producer over explicit proof inputs. |
-| `ci/assistant-loop-health-artifacts` | future | Upload and summarize health artifacts only when proof artifacts exist. |
-| `docs/assistant-loop-health-workflow` | future | Explain proof report vs health report, repair routing, and advisory limits. |
-| `campaign/assistant-loop-health-closeout` | future | Close after spec, fixtures, producer, CI projection, docs, and validation prove the lane. |
+| `spec/assistant-loop-health-report` | ready | Define JSON/Markdown contract, explicit inputs, statuses, buckets, warnings, repair queue, advisory limits, and future multi-proof behavior. |
+| `fixtures/assistant-loop-health-corpus` | blocked | Pin complete, partial, missing-input, unchanged, regressed, warning-heavy, and multi-proof cases after the spec lands. |
+| `report/assistant-loop-health` | blocked | Add the read-only CLI report producer over explicit proof inputs after the spec and corpus land. |
+| `ci/assistant-loop-health-artifacts` | blocked | Upload and summarize health artifacts only when proof artifacts exist after the producer lands. |
+| `docs/assistant-loop-health-workflow` | blocked | Explain proof report vs health report, repair routing, and advisory limits after the producer and CI projection exist. |
+| `campaign/assistant-loop-health-closeout` | blocked | Close after spec, fixtures, producer, CI projection, docs, and validation document the lane. |
 
 References:
 
@@ -2634,11 +2631,16 @@ References:
 
 Blocking conditions:
 
-- active-campaign manifest changes before the project chooses this lane
 - analyzer behavior or recommendation ranking changes
 - gate policy, LSP/editor, provider, mutation, source-edit, generated-test, or
   default-blocking changes
 - adequacy, correctness, or runtime mutation claims
+
+Next:
+
+- Continue with `spec/assistant-loop-health-report`. The remaining work is to
+  define the report contract before fixtures, implementation, CI projection,
+  docs, or closeout.
 
 ## Future Campaign: Editor Evidence UX
 
