@@ -954,36 +954,36 @@ jobs:
             echo
             echo '### Baseline debt delta'
             if [ -f target/ripr/reports/baseline-debt-delta.json ]; then
-              baseline_delta_json=target/ripr/reports/baseline-debt-delta.json
-              baseline_entries="$(jq -r '.baseline.entries // 0' "$baseline_delta_json" 2>/dev/null || echo 0)"
-              still_present="$(jq -r '.delta.still_present // 0' "$baseline_delta_json" 2>/dev/null || echo 0)"
-              resolved="$(jq -r '.delta.resolved // 0' "$baseline_delta_json" 2>/dev/null || echo 0)"
-              new_policy_eligible="$(jq -r '.delta.new_policy_eligible // 0' "$baseline_delta_json" 2>/dev/null || echo 0)"
-              acknowledged_delta="$(jq -r '.delta.acknowledged // 0' "$baseline_delta_json" 2>/dev/null || echo 0)"
-              suppressed_delta="$(jq -r '.delta.suppressed // 0' "$baseline_delta_json" 2>/dev/null || echo 0)"
-              stale_baseline="$(jq -r '.delta.stale_baseline_entry // 0' "$baseline_delta_json" 2>/dev/null || echo 0)"
-              invalid_baseline="$(jq -r '.delta.invalid_baseline_entry // 0' "$baseline_delta_json" 2>/dev/null || echo 0)"
-              missing_current="$(jq -r '.delta.missing_current_input // 0' "$baseline_delta_json" 2>/dev/null || echo 0)"
-              baseline_entries="$(markdown_inline "$baseline_entries")"
+              delta_json=target/ripr/reports/baseline-debt-delta.json
+              baseline_path="$(jq -r '.baseline.path // .inputs.baseline // "unknown"' "$delta_json" 2>/dev/null || echo unknown)"
+              still_present="$(jq -r '.delta.still_present // 0' "$delta_json" 2>/dev/null || echo 0)"
+              resolved="$(jq -r '.delta.resolved // 0' "$delta_json" 2>/dev/null || echo 0)"
+              new_policy_eligible="$(jq -r '.delta.new_policy_eligible // 0' "$delta_json" 2>/dev/null || echo 0)"
+              acknowledged_delta="$(jq -r '.delta.acknowledged // 0' "$delta_json" 2>/dev/null || echo 0)"
+              suppressed_delta="$(jq -r '.delta.suppressed // 0' "$delta_json" 2>/dev/null || echo 0)"
+              stale_baseline_entry="$(jq -r '.delta.stale_baseline_entry // 0' "$delta_json" 2>/dev/null || echo 0)"
+              invalid_baseline_entry="$(jq -r '.delta.invalid_baseline_entry // 0' "$delta_json" 2>/dev/null || echo 0)"
+              missing_current_input="$(jq -r '.delta.missing_current_input // 0' "$delta_json" 2>/dev/null || echo 0)"
+              limits_note="$(jq -r '.limits_note // "Advisory baseline debt movement; gate decision owns pass or fail."' "$delta_json" 2>/dev/null || echo unknown)"
+              baseline_path="$(markdown_inline "$baseline_path")"
               still_present="$(markdown_inline "$still_present")"
               resolved="$(markdown_inline "$resolved")"
               new_policy_eligible="$(markdown_inline "$new_policy_eligible")"
               acknowledged_delta="$(markdown_inline "$acknowledged_delta")"
               suppressed_delta="$(markdown_inline "$suppressed_delta")"
-              stale_baseline="$(markdown_inline "$stale_baseline")"
-              invalid_baseline="$(markdown_inline "$invalid_baseline")"
-              missing_current="$(markdown_inline "$missing_current")"
-              echo '#### Debt movement at a glance'
-              echo "- Baseline entries: \`$baseline_entries\`"
-              echo "- Still present: \`$still_present\`"
-              echo "- Resolved since baseline: \`$resolved\`"
-              echo "- New policy-eligible gaps: \`$new_policy_eligible\`"
-              echo "- Acknowledged: \`$acknowledged_delta\`"
-              echo "- Suppressed: \`$suppressed_delta\`"
-              echo "- Stale baseline entries: \`$stale_baseline\`"
-              echo "- Invalid baseline entries: \`$invalid_baseline\`"
-              echo "- Missing current input: \`$missing_current\`"
-              echo "- Delta artifacts: \`target/ripr/reports/baseline-debt-delta.json\`, \`target/ripr/reports/baseline-debt-delta.md\`"
+              stale_baseline_entry="$(markdown_inline "$stale_baseline_entry")"
+              invalid_baseline_entry="$(markdown_inline "$invalid_baseline_entry")"
+              missing_current_input="$(markdown_inline "$missing_current_input")"
+              limits_note="$(markdown_inline "$limits_note")"
+              echo '#### Baseline debt movement'
+              echo "- Baseline: \`$baseline_path\`"
+              echo "- Counts: still_present=\`$still_present\`, resolved=\`$resolved\`, new_policy_eligible=\`$new_policy_eligible\`, acknowledged=\`$acknowledged_delta\`, suppressed=\`$suppressed_delta\`, stale=\`$stale_baseline_entry\`, invalid=\`$invalid_baseline_entry\`, missing_current_input=\`$missing_current_input\`"
+              echo "- Boundary: $limits_note"
+              echo "- Baseline delta artifacts: \`target/ripr/reports/baseline-debt-delta.json\`, \`target/ripr/reports/baseline-debt-delta.md\`"
+              echo
+            fi
+            if [ -f target/ripr/reports/baseline-debt-delta.md ]; then
+              cat target/ripr/reports/baseline-debt-delta.md
             elif [ -n "${RIPR_GATE_BASELINE:-}" ]; then
               echo 'Baseline debt delta was not generated. Check that `RIPR_GATE_MODE` produced `target/ripr/reports/gate-decision.json` and that `RIPR_GATE_BASELINE` points at a readable baseline.'
             else
@@ -1061,7 +1061,16 @@ adoption surface.
 The generated workflow always uploads `target/ripr/pilot`,
 `target/ripr/workflow`, `target/ripr/agent`, `target/ripr/reports`,
 `target/ripr/review`, and `target/ci` as a `ripr-reports` artifact when files
-exist. The repo badge files in that artifact are:
+exist. When `RIPR_GATE_BASELINE` is set and gate evaluation writes
+`target/ripr/reports/gate-decision.json`, the workflow also runs
+`ripr baseline diff` and includes:
+
+- `target/ripr/reports/baseline-debt-delta.json`;
+- `target/ripr/reports/baseline-debt-delta.md`.
+
+The baseline debt delta is advisory debt-movement evidence. It is summarized in
+the job summary, but `ripr gate evaluate` remains the only generated-workflow
+pass/fail authority. The repo badge files in that artifact are:
 
 - `target/ripr/reports/repo-ripr-badge.json`, the seam-native native badge
   payload;
@@ -1115,14 +1124,16 @@ For every configured gate mode, the generated workflow behavior is:
 1. capture active PR labels into `target/ci/labels.json`;
 2. render `target/ripr/review/comments.json` before gate evaluation;
 3. run `ripr gate evaluate` only when `RIPR_GATE_MODE` is set;
-4. run `ripr baseline diff` only when both `RIPR_GATE_BASELINE` and
-   `gate-decision.json` exist;
-5. render the at-a-glance gate and baseline-delta sections from generated
-   JSON;
-6. append the detailed `gate-decision.md` report;
-7. upload gate and baseline-delta artifacts with the normal `ripr-reports`
+4. run `ripr baseline diff` only when `RIPR_GATE_BASELINE` is set and
+   `gate-decision.json` exists;
+5. render the at-a-glance gate section from `gate-decision.json`;
+6. render the baseline debt movement section from
+   `baseline-debt-delta.json` when present;
+7. append the detailed `gate-decision.md` and `baseline-debt-delta.md`
+   reports when present;
+8. upload gate and baseline delta artifacts with the normal `ripr-reports`
    artifact packet;
-8. fail only when the explicit gate mode returns `blocked` or `config_error`.
+9. fail only when the explicit gate mode returns `blocked` or `config_error`.
 
 Acknowledgeable policy:
 
@@ -1349,7 +1360,10 @@ ripr baseline diff \
 The delta report is advisory. It shows still-present baseline debt, resolved
 entries, new policy-eligible findings, acknowledged findings, suppressed
 findings, stale baseline entries, invalid baseline entries, and missing current
-inputs. `ripr gate evaluate` remains the pass/fail authority.
+inputs. Generated CI writes the same
+`target/ripr/reports/baseline-debt-delta.{json,md}` artifacts automatically
+when `RIPR_GATE_BASELINE` is set and a gate decision exists. `ripr gate
+evaluate` remains the pass/fail authority.
 
 `ripr gate evaluate` indexes identities from the new `entries[].identity`
 ledger shape. For compatibility with existing fixtures and reviewed hand-built

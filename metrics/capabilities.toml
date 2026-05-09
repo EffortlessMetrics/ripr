@@ -723,7 +723,7 @@ evidence = [
   "ripr baseline create writes .ripr/gate-baseline.json ledgers from existing gate-decision JSON without overwriting by default",
   "ripr baseline diff writes advisory baseline-debt-delta JSON and Markdown from a reviewed baseline and current gate-decision evidence",
   "ripr baseline update --remove-resolved shrink-only refreshes reviewed baselines without adopting new current debt",
-  "generated CI runs non-blocking ripr baseline diff when RIPR_GATE_BASELINE and gate-decision.json exist, uploads baseline-debt-delta artifacts, and summarizes debt movement",
+  "generated CI runs ripr baseline diff when RIPR_GATE_BASELINE and gate-decision.json are present, uploads baseline-debt-delta JSON/Markdown, and summarizes debt movement without making the report the pass/fail authority",
   "crates/ripr/src/output/baseline_delta.rs renders still-present, resolved, new policy-eligible, acknowledged, suppressed, stale, invalid, and missing-input buckets",
   "crates/ripr/src/output/baseline_update.rs preserves malformed or ambiguous entries while removing resolved reviewed debt",
   "fixtures/boundary_gap/expected/baseline-debt-delta/mixed pins checked JSON and Markdown output",

@@ -146,9 +146,10 @@ Adoption: RIPR-SPEC-0016 now defines the baseline debt delta contract, `ripr
 baseline create` can write `.ripr/gate-baseline.json` ledgers from existing
 gate-decision evidence, `ripr baseline diff` can report baseline debt
 movement, and `ripr baseline update --remove-resolved` can shrink reviewed
-baselines without adopting new current debt. Generated CI now uploads advisory
-baseline debt-delta artifacts when a baseline and gate decision exist, with the
-gate evaluator still owning pass/fail behavior.
+baselines without adopting new current debt. Generated CI now uploads and
+summarizes baseline debt delta artifacts when a baseline and gate decision are
+present, leaving the baseline ledger workflow docs as the next ready adoption
+slice.
 Editor Evidence UX remains queued as a separate Lane 3 campaign; its contract
 audit is recorded in [Editor Evidence UX](EDITOR_EVIDENCE_UX.md), and hover
 plus evidence-aware action hardening have landed as explicit parallel slices.

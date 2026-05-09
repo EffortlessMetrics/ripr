@@ -1015,6 +1015,7 @@ tests = [
   "crates/ripr/src/cli/commands.rs::tests::baseline_update_parses_option_surface",
   "crates/ripr/src/cli/commands.rs::tests::baseline_update_requires_inputs_remove_resolved_and_rejects_unknown_args",
   "crates/ripr/src/cli/commands.rs::tests::baseline_create_writes_baseline_without_overwriting_by_default",
+  "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_is_advisory",
   "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_uploads_reports_and_makes_sarif_optional",
   "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_matches_smoke_fixture",
   "crates/ripr/tests/cli_smoke.rs::baseline_create_writes_reviewed_ledger_and_refuses_overwrite",
@@ -1041,6 +1042,7 @@ code = [
 outputs = [
   "docs/specs/RIPR-SPEC-0016-baseline-debt-delta.md",
   "docs/specs/README.md",
+  "docs/CI.md",
   "docs/OUTPUT_SCHEMA.md",
   "docs/CI.md",
   "docs/IMPLEMENTATION_CAMPAIGNS.md",

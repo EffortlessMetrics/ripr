@@ -2008,7 +2008,7 @@ Work items:
 | `baseline/create` | done | Added `ripr baseline create` so users can produce stable reviewed `.ripr/gate-baseline.json` ledgers from existing gate-decision evidence without overwriting by default. |
 | `baseline/diff` | done | Added `ripr baseline diff` to write baseline-debt-delta JSON/Markdown with still-present, resolved, new, acknowledged, suppressed, stale, invalid, and missing-input buckets. |
 | `baseline/update-remove-resolved` | done | Added `ripr baseline update --remove-resolved` as a shrink-only refresh path that removes resolved baseline entries, preserves malformed or ambiguous entries for review, and refuses to auto-adopt new current debt. |
-| `ci/baseline-debt-delta-artifacts` | done | Generated CI now runs non-blocking `ripr baseline diff` when an explicit baseline and gate decision exist, uploads baseline-debt-delta JSON/Markdown with the normal artifact packet, and summarizes debt movement while keeping `ripr gate evaluate` as the pass/fail owner. |
+| `ci/baseline-debt-delta-artifacts` | done | Generated CI now runs `ripr baseline diff` when `RIPR_GATE_BASELINE` and `gate-decision.json` are present, uploads the JSON/Markdown through `ripr-reports`, and summarizes baseline debt movement without making the delta report the pass/fail authority. |
 | `docs/baseline-ledger-workflow` | ready | Document initial adoption, reviewed baseline creation, baseline-check rollout, shrink-only refresh, new debt review, waiver versus baseline versus suppression, and the path toward RIPR 0. |
 | `campaign/ripr-zero-adoption-closeout` | blocked | Close Campaign 17 only after baseline delta, baseline create/diff/shrink-only update, CI artifacts, and baseline ledger docs are in place while defaults stay advisory. |
 

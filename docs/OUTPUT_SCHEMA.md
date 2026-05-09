@@ -1969,8 +1969,9 @@ target/ripr/reports/baseline-debt-delta.md
 ```
 
 This report is advisory movement evidence. `ripr gate evaluate` remains the
-pass/fail authority for configured gate modes. Generated CI may upload and
-summarize the delta report, but the report itself must not fail CI, rewrite a
+pass/fail authority for configured gate modes. Generated CI uploads and
+summarizes the delta report when `RIPR_GATE_BASELINE` is set and
+`gate-decision.json` exists, but the report itself must not fail CI, rewrite a
 baseline, post comments, edit source, generate tests, rerun analysis, or run
 mutation testing.
 
