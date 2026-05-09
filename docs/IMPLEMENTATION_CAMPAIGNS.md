@@ -2580,15 +2580,15 @@ Next:
 
 Campaign ID: `assistant-loop-health`
 
-Status: proposed future lane. Do not replace the active Campaign 22 manifest
-with this lane until the project explicitly chooses it.
+Status: proposed future lane. Do not replace the completed Campaign 22 closeout
+state with this lane until the project explicitly chooses it.
 
 Campaign 21 made one assistant-directed test loop reviewable as
-`test-oracle-assistant-proof.{json,md}`. Campaign 22 should first settle the
-first-screen routing contract so users get one next action instead of another
-raw report. After that, Assistant Loop Health can measure whether the proof
-packets are complete, stuck, missing receipts, or actually improving static
-evidence over time.
+`test-oracle-assistant-proof.{json,md}`. Campaign 22 has settled the first-screen
+routing contract so users get one next action instead of another raw report.
+Assistant Loop Health can measure whether the proof packets are complete,
+stuck, missing receipts, or actually improving static evidence over time when
+that lane is explicitly opened.
 
 Objective:
 
