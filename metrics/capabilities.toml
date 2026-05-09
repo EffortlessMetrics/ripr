@@ -802,12 +802,12 @@ evidence = [
   "docs/handoffs/2026-05-09-test-oracle-assistant-receipt.md records the repo-local dogfood receipt across PR guidance, editor/agent handoff, verification commands, after evidence, receipt, PR ledger projection, and coverage/grip frontier availability",
   "docs/TEST_ORACLE_ASSISTANT_WORKFLOW.md documents the PR/editor-to-handoff-to-receipt user workflow and static evidence limits",
   "docs/handoffs/2026-05-09-campaign-20-closeout.md records the prompt-to-artifact audit and follow-up boundaries",
-  ".ripr/goals/active.toml tracks Campaign 20 with spec, canonical fixture, dogfood receipt, workflow docs, and closeout slices"
+  ".ripr/goals/active.toml tracks Campaign 21 with report producer, generated-CI projection, docs, and closeout slices"
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical"
 ]
-next = "maintenance"
+next = "report/test-oracle-assistant-proof"
 metric = "test_oracle_assistant_loop_reports, test_oracle_assistant_loop_verified_receipts, test_oracle_assistant_loop_unknown_inputs, test_oracle_assistant_loop_summary_only, test_oracle_assistant_loop_static_improved, test_oracle_assistant_loop_static_resolved, test_oracle_assistant_loop_static_regressed"
 
 [[capability]]

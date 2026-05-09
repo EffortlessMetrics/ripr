@@ -1,89 +1,72 @@
-id = "test-oracle-assistant-proof"
-title = "Test-Oracle Assistant Proof"
+id = "test-oracle-assistant-report-producer"
+title = "Test-Oracle Assistant Report Producer"
 status = "active"
 
-# This is Campaign 20 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
-# Campaign 19 closed PR Evidence Ledger after PR movement history,
-# waiver aging, baseline burn-down, repair receipts, coverage/grip frontier
-# signals, generated-CI projection, and workflow docs landed while generated
-# CI stayed advisory.
+# This is Campaign 21 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+# Campaign 20 proved the assistant loop through a spec, canonical replay
+# fixture, dogfood receipt, and user workflow docs. This campaign turns that
+# proof into a public read-only report producer and optional PR/CI projection.
 
 objective = """
-Prove the full PR-time test-oracle assistant loop: changed Rust behavior flows
-through static evidence, PR/editor guidance, a bounded focused-test handoff,
-before/after verification, receipt, and advisory CI/ledger projection without
-changing analyzer semantics, recommendation ranking, gate policy, LSP behavior,
-or default CI blocking.
+Make the test-oracle assistant loop a concrete report surface: join existing
+PR guidance, editor/agent handoff, before/after static evidence, receipts, PR
+ledger, optional gate decisions, and optional coverage/grip frontier inputs
+into advisory `test-oracle-assistant-proof.{json,md}` artifacts without
+rerunning hidden analysis, editing source, generating tests, calling providers,
+running mutation testing, or changing default CI blocking.
 """
 
 end_state = [
-  "a spec defines the end-to-end proof contract from diff evidence through recommendation, handoff packet, focused-test repair, after-evidence, receipt, and advisory PR/CI projection",
-  "a canonical review-loop fixture pins one changed-behavior case across before evidence, top recommendation, related test, focused test shape, after evidence, receipt, and ledger projection expectations",
-  "a dogfood receipt proves the current repo can trace one seam through PR guidance, editor/agent packet surfaces, verification commands, receipts, and advisory CI artifacts without artifact archaeology",
-  "user docs explain the PR-time assistant workflow without requiring users to learn cockpit or internal report topology first",
-  "closeout records which parts of the loop are verified, which remain advisory, and which future work must not blur static evidence with runtime mutation confirmation",
+  "a public read-only command writes `target/ripr/reports/test-oracle-assistant-proof.json` and `.md` from explicit existing artifact paths",
+  "the report preserves selected seam identity, missing discriminator, placement state, handoff command, static before/after movement, receipt path, PR ledger path, optional gate path, optional coverage/grip frontier path, warnings, and static limits",
+  "fixtures and tests cover complete proof, summary-only guidance, missing optional inputs, missing required inputs, unchanged movement, and advisory limits",
+  "generated CI may surface the proof report only as advisory evidence when inputs exist; it must not become pass/fail authority",
+  "user docs explain when to read the proof report instead of raw artifact chains",
+  "closeout records what is implemented, what remains advisory, and which future work must stay outside analyzer, ranking, gate, editor, or mutation semantics",
 ]
 
 [[work_item]]
-id = "spec/test-oracle-assistant-loop"
-status = "done"
-branch = "spec-test-oracle-assistant-loop"
+id = "report/test-oracle-assistant-proof"
+status = "ready"
+branch = "report-test-oracle-assistant-proof"
 stackable = false
-acceptance = "Defined RIPR-SPEC-0019 as the end-to-end test-oracle assistant proof contract from changed Rust behavior through static evidence, PR/editor guidance, focused-test handoff, after-evidence verification, receipt, and advisory PR/CI projection without changing analyzer, policy, editor, or CI defaults"
+acceptance = "Implement a read-only `ripr assistant-loop proof` report producer that writes advisory JSON and Markdown from explicit Campaign 20 artifact inputs while preserving static vocabulary and advisory limits"
 commands = [
-  "cargo xtask check-spec-format",
-  "cargo xtask check-doc-index",
-  "cargo xtask markdown-links",
+  "cargo test -p ripr test_oracle_assistant",
+  "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-traceability",
   "cargo xtask check-capabilities",
-  "cargo xtask check-output-contracts",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "fixtures/canonical-review-loop"
-status = "done"
-branch = "fixtures-canonical-review-loop"
+id = "ci/test-oracle-assistant-proof-artifacts"
+status = "blocked"
+branch = "ci-test-oracle-assistant-proof-artifacts"
 stackable = false
 blocked_by = [
-  "spec/test-oracle-assistant-loop",
+  "report/test-oracle-assistant-proof",
 ]
-acceptance = "Added a canonical boundary-gap replay corpus and regression test that pin the recommendation, related-test context, suggested focused test, before/after static movement, receipt, and ledger projection expectations for one changed-behavior case"
+acceptance = "Surface `test-oracle-assistant-proof.{json,md}` in generated GitHub CI as advisory artifacts and summary content only when the required inputs exist, without changing default blocking"
 commands = [
-  "cargo test -p ripr test_oracle_assistant",
-  "cargo xtask check-fixture-contracts",
+  "cargo test -p ripr init_generated_github_workflow",
+  "cargo xtask check-workflows",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "dogfood/test-oracle-assistant-receipt"
-status = "done"
-branch = "dogfood-test-oracle-assistant-receipt"
+id = "docs/test-oracle-assistant-proof-report"
+status = "blocked"
+branch = "docs-test-oracle-assistant-proof-report"
 stackable = false
 blocked_by = [
-  "fixtures/canonical-review-loop",
+  "report/test-oracle-assistant-proof",
+  "ci/test-oracle-assistant-proof-artifacts",
 ]
-acceptance = "Recorded a repo-local proof receipt that traces one seam through PR guidance, editor/agent packet surfaces, verification commands, after-evidence, receipt, PR evidence ledger, and coverage/grip frontier availability without changing source automatically"
-commands = [
-  "cargo xtask dogfood",
-  "cargo xtask test-oracle-report",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "docs/test-oracle-assistant-workflow"
-status = "done"
-branch = "docs-test-oracle-assistant-workflow"
-stackable = false
-blocked_by = [
-  "dogfood/test-oracle-assistant-receipt",
-]
-acceptance = "Documented the user workflow from PR recommendation to editor/agent handoff, one focused test, verification, receipt, and advisory CI/ledger projection while preserving static-evidence limits"
+acceptance = "Document how reviewers, maintainers, and coding agents read the proof report, warnings, static movement, optional CI projection, and limits without artifact archaeology"
 commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
@@ -92,17 +75,16 @@ commands = [
 ]
 
 [[work_item]]
-id = "campaign/test-oracle-assistant-proof-closeout"
-status = "done"
-branch = "campaign-test-oracle-assistant-proof-closeout"
+id = "campaign/test-oracle-assistant-report-closeout"
+status = "blocked"
+branch = "campaign-test-oracle-assistant-report-closeout"
 stackable = false
 blocked_by = [
-  "spec/test-oracle-assistant-loop",
-  "fixtures/canonical-review-loop",
-  "dogfood/test-oracle-assistant-receipt",
-  "docs/test-oracle-assistant-workflow",
+  "report/test-oracle-assistant-proof",
+  "ci/test-oracle-assistant-proof-artifacts",
+  "docs/test-oracle-assistant-proof-report",
 ]
-acceptance = "Closed Campaign 20 after the end-to-end assistant proof contract, canonical fixture, dogfood receipt, and user workflow docs demonstrated the full loop while defaults stay advisory"
+acceptance = "Close Campaign 21 after the proof report producer, generated-CI advisory projection, docs, and validation demonstrate a first-class report surface without changing analyzer, gate, editor, or mutation behavior"
 commands = [
   "cargo xtask check-spec-format",
   "cargo xtask check-doc-index",

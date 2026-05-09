@@ -35,6 +35,7 @@ through multiple work items in a campaign, but each work item should follow the
 | RIPR Zero Reporting (18) | Turn reviewed baselines and debt deltas into repo-level RIPR 0 status, stale-debt, trend, and repair-area reporting while preserving advisory defaults. | Complete: spec, baseline metadata, status report, generated CI summary, user workflow docs, and `campaign/ripr-zero-reporting-closeout`. |
 | PR Evidence Ledger (19) | Turn per-PR RIPR evidence into an adoption ledger for movement history, waiver aging, baseline burn-down, repair receipts, and coverage/grip frontier signals while preserving advisory defaults. | Complete: spec, producer, generated-CI projection, coverage/grip frontier report, user workflow docs, and `campaign/pr-evidence-ledger-closeout`. |
 | Test-Oracle Assistant Proof (20) | Prove the full PR-time loop from changed Rust behavior to static evidence, PR/editor guidance, focused-test handoff, verification, receipt, and advisory CI/ledger projection. | Complete: spec, canonical fixture, dogfood receipt, user workflow docs, and `campaign/test-oracle-assistant-proof-closeout`. |
+| Test-Oracle Assistant Report Producer (21) | Turn the proved assistant loop into a public read-only JSON/Markdown report producer and optional advisory CI projection. | Active: `report/test-oracle-assistant-proof` is ready; generated-CI projection, docs, and closeout are blocked behind the producer. |
 | Editor Evidence UX (future) | Make the saved-workspace LSP path feel like an editor-native test-intent cockpit from diagnostic to hover, related test, context packet, one test, verify, and receipt. | Complete as an explicit parallel Lane 3 closeout: contract audit, hover hardening, evidence-aware actions, context packet, protocol smoke, VS Code smoke, status/staleness, workflow docs, and closeout audit. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
@@ -146,7 +147,12 @@ user-facing PR/editor-to-receipt workflow and static evidence limits. The
 [Campaign 20 closeout](handoffs/2026-05-09-campaign-20-closeout.md) records
 the prompt-to-artifact audit, proof commands, and boundary that future proof
 report producers, PR/CI polish, analyzer improvements, and editor UX work
-should be opened as explicit follow-up campaigns.
+should be opened as explicit follow-up campaigns. Campaign 21 is now open as
+Test-Oracle Assistant Report Producer, with `report/test-oracle-assistant-proof`
+as the first ready work item. It should produce advisory
+`test-oracle-assistant-proof.{json,md}` artifacts from explicit existing inputs
+without changing analyzer, ranking, gate, editor, provider, mutation, or
+default CI behavior.
 
 ## PR 0: `planning-and-tracking-docs`
 

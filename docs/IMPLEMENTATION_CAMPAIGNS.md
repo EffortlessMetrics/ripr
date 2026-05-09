@@ -2379,6 +2379,94 @@ Next:
 - No ready work item remains in Campaign 20. Choose the next campaign
   explicitly before opening another product lane.
 
+## Campaign 21: Test-Oracle Assistant Report Producer
+
+Campaign ID: `test-oracle-assistant-report-producer`
+
+Status: active
+
+Campaign 20 proved the assistant loop as a contract, fixture, dogfood receipt,
+and user workflow. The next product gap is that users still need a first-class
+read-only report producer instead of reading the artifact chain by hand.
+
+Objective:
+
+```text
+Make the test-oracle assistant loop a concrete report surface: join existing
+PR guidance, editor/agent handoff, before/after static evidence, receipts, PR
+ledger, optional gate decisions, and optional coverage/grip frontier inputs
+into advisory `test-oracle-assistant-proof.{json,md}` artifacts without
+rerunning hidden analysis, editing source, generating tests, calling providers,
+running mutation testing, or changing default CI blocking.
+```
+
+End state:
+
+- `ripr assistant-loop proof` writes JSON and Markdown from explicit existing
+  artifact paths
+- the report preserves selected seam identity, missing discriminator, placement
+  state, handoff command, static movement, receipt path, PR ledger path,
+  optional gate path, optional coverage/grip frontier path, warnings, and
+  static limits
+- fixtures and tests cover complete proof, summary-only guidance, missing
+  optional inputs, missing required inputs, unchanged movement, and advisory
+  limits
+- generated CI may surface the proof report only as advisory evidence when
+  inputs exist
+- user docs explain how to read the proof report without artifact archaeology
+- closeout records remaining advisory boundaries and future work exclusions
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `report/test-oracle-assistant-proof` | ready | Implement a read-only `ripr assistant-loop proof` report producer that writes advisory JSON and Markdown from explicit Campaign 20 artifact inputs while preserving static vocabulary and advisory limits. |
+| `ci/test-oracle-assistant-proof-artifacts` | blocked | Surface `test-oracle-assistant-proof.{json,md}` in generated GitHub CI as advisory artifacts and summary content only when the required inputs exist, without changing default blocking. |
+| `docs/test-oracle-assistant-proof-report` | blocked | Document how reviewers, maintainers, and coding agents read the proof report, warnings, static movement, optional CI projection, and limits without artifact archaeology. |
+| `campaign/test-oracle-assistant-report-closeout` | blocked | Close Campaign 21 after the proof report producer, generated-CI advisory projection, docs, and validation demonstrate a first-class report surface without changing analyzer, gate, editor, or mutation behavior. |
+
+Dependencies:
+
+- Campaign 20 supplies RIPR-SPEC-0019, the canonical replay corpus, dogfood
+  receipt, and user workflow docs.
+- Campaign 13 supplies bounded PR guidance and changed-line-safe annotation
+  placement.
+- Campaign 19 supplies PR evidence ledger and coverage/grip frontier inputs.
+- Agent loop artifacts supply existing handoff, verify, and receipt paths.
+- Optional gate decisions stay separate from proof report pass/fail authority.
+
+Commands:
+
+```bash
+cargo xtask check-campaign
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-capabilities
+cargo xtask check-output-contracts
+cargo xtask check-pr
+```
+
+Blocking conditions:
+
+- analyzer identity rewrites
+- recommendation ranking changes
+- gate policy semantic changes
+- default CI blocking
+- hidden reruns or implicit artifact discovery in the proof producer
+- making proof reports the pass/fail authority
+- runtime mutation vocabulary without imported runtime calibration
+- treating coverage movement as test adequacy
+- running cargo-mutants or any mutation engine from proof workflows
+- automatic source edits or generated tests
+- LSP/editor behavior changes in this campaign lane
+- new public crates
+
+Next:
+
+- The ready work item is `report/test-oracle-assistant-proof`.
+
 ## Future Campaign: Editor Evidence UX
 
 Campaign ID: `editor-evidence-ux`
