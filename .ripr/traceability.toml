@@ -1404,14 +1404,23 @@ fixtures = [
   "fixtures/boundary_gap/expected/assistant-loop-health/proofs/regressed-proof.json",
   "fixtures/boundary_gap/expected/assistant-loop-health/proofs/warning-heavy-proof.json",
   "fixtures/boundary_gap/expected/assistant-loop-health/complete-improved/assistant-loop-health.json",
+  "fixtures/boundary_gap/expected/assistant-loop-health/complete-improved/assistant-loop-health.md",
   "fixtures/boundary_gap/expected/assistant-loop-health/partial-missing-optional/assistant-loop-health.json",
+  "fixtures/boundary_gap/expected/assistant-loop-health/partial-missing-optional/assistant-loop-health.md",
   "fixtures/boundary_gap/expected/assistant-loop-health/missing-required-input/assistant-loop-health.json",
+  "fixtures/boundary_gap/expected/assistant-loop-health/missing-required-input/assistant-loop-health.md",
   "fixtures/boundary_gap/expected/assistant-loop-health/unchanged/assistant-loop-health.json",
+  "fixtures/boundary_gap/expected/assistant-loop-health/unchanged/assistant-loop-health.md",
   "fixtures/boundary_gap/expected/assistant-loop-health/regressed/assistant-loop-health.json",
+  "fixtures/boundary_gap/expected/assistant-loop-health/regressed/assistant-loop-health.md",
   "fixtures/boundary_gap/expected/assistant-loop-health/warning-heavy/assistant-loop-health.json",
+  "fixtures/boundary_gap/expected/assistant-loop-health/warning-heavy/assistant-loop-health.md",
   "fixtures/boundary_gap/expected/assistant-loop-health/multi-proof/assistant-loop-health.json",
+  "fixtures/boundary_gap/expected/assistant-loop-health/multi-proof/assistant-loop-health.md",
 ]
-code = []
+code = [
+  "xtask/src/main.rs",
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0022-assistant-loop-health-report.md",
   "docs/specs/README.md",
