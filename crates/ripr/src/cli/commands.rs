@@ -1086,6 +1086,31 @@ jobs:
             --out target/ripr/reports/baseline-debt-delta.json \
             --out-md target/ripr/reports/baseline-debt-delta.md
 
+      - name: Render RIPR Zero status
+        if: always() && hashFiles('target/ripr/reports/baseline-debt-delta.json') != ''
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          zero_args=(
+            zero status
+            --delta target/ripr/reports/baseline-debt-delta.json
+            --out target/ripr/reports/ripr-zero-status.json
+            --out-md target/ripr/reports/ripr-zero-status.md
+          )
+          if [ -n "${RIPR_GATE_BASELINE:-}" ]; then
+            zero_args+=(--baseline "$RIPR_GATE_BASELINE")
+          fi
+          if [ -f target/ripr/reports/gate-decision.json ]; then
+            zero_args+=(--gate target/ripr/reports/gate-decision.json)
+          fi
+          if [ -f target/ripr/review/comments.json ]; then
+            zero_args+=(--pr-guidance target/ripr/review/comments.json)
+          fi
+          if [ -f target/ripr/reports/recommendation-calibration.json ]; then
+            zero_args+=(--recommendation-calibration target/ripr/reports/recommendation-calibration.json)
+          fi
+          ripr "${zero_args[@]}"
+
       - name: Render RIPR LLM work-loop summaries
         if: always()
         continue-on-error: true
@@ -1274,6 +1299,59 @@ jobs:
               echo 'Baseline debt delta was not generated. Check that `RIPR_GATE_MODE` produced `target/ripr/reports/gate-decision.json` and that `RIPR_GATE_BASELINE` points at a readable baseline.'
             else
               echo 'Baseline debt delta was not run. Set `RIPR_GATE_BASELINE` with an explicit gate mode to compare current evidence against reviewed baseline debt.'
+            fi
+            echo
+            echo '### RIPR Zero status'
+            if [ -f target/ripr/reports/ripr-zero-status.json ]; then
+              zero_json=target/ripr/reports/ripr-zero-status.json
+              zero_state="$(jq -r '.ripr_zero.state // "unknown"' "$zero_json" 2>/dev/null || echo unknown)"
+              visible_unresolved="$(jq -r '.ripr_zero.visible_unresolved // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_new_policy_eligible="$(jq -r '.ripr_zero.new_policy_eligible // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_blocking_candidates="$(jq -r '.ripr_zero.blocking_candidates // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_acknowledged="$(jq -r '.ripr_zero.acknowledged // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_suppressed="$(jq -r '.ripr_zero.suppressed // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_still_present="$(jq -r '.baseline.still_present // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_resolved="$(jq -r '.baseline.resolved // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_metadata_stale="$(jq -r '.baseline.metadata.stale // 0' "$zero_json" 2>/dev/null || echo 0)"
+              zero_metadata_missing="$(jq -r '.baseline.metadata.missing_metadata // 0' "$zero_json" 2>/dev/null || echo 0)"
+              top_area="$(jq -r '(.top_debt_areas[0].area // "none")' "$zero_json" 2>/dev/null || echo unknown)"
+              top_route="$(jq -r '(.repair_routes[0] | if . == null then "none" else ((.path // "unknown") + (if .line then ":" + (.line|tostring) else "" end) + " " + (.missing_discriminator // "missing discriminator unavailable")) end)' "$zero_json" 2>/dev/null || echo unknown)"
+              trend_source="$(jq -r '.trend.source // "not_available"' "$zero_json" 2>/dev/null || echo unknown)"
+              zero_state="$(markdown_inline "$zero_state")"
+              visible_unresolved="$(markdown_inline "$visible_unresolved")"
+              zero_new_policy_eligible="$(markdown_inline "$zero_new_policy_eligible")"
+              zero_blocking_candidates="$(markdown_inline "$zero_blocking_candidates")"
+              zero_acknowledged="$(markdown_inline "$zero_acknowledged")"
+              zero_suppressed="$(markdown_inline "$zero_suppressed")"
+              zero_still_present="$(markdown_inline "$zero_still_present")"
+              zero_resolved="$(markdown_inline "$zero_resolved")"
+              zero_metadata_stale="$(markdown_inline "$zero_metadata_stale")"
+              zero_metadata_missing="$(markdown_inline "$zero_metadata_missing")"
+              top_area="$(markdown_inline "$top_area")"
+              top_route="$(markdown_inline "$top_route")"
+              trend_source="$(markdown_inline "$trend_source")"
+              echo '#### RIPR Zero at a glance'
+              echo "- State: \`$zero_state\`"
+              echo "- Visible unresolved: \`$visible_unresolved\`"
+              echo "- New policy-eligible: \`$zero_new_policy_eligible\`"
+              echo "- Blocking candidates: \`$zero_blocking_candidates\`"
+              echo "- Acknowledged: \`$zero_acknowledged\`"
+              echo "- Suppressed: \`$zero_suppressed\`"
+              echo "- Baseline still present: \`$zero_still_present\`"
+              echo "- Baseline resolved: \`$zero_resolved\`"
+              echo "- Baseline metadata: stale=\`$zero_metadata_stale\`, missing=\`$zero_metadata_missing\`"
+              echo "- Top debt area: \`$top_area\`"
+              echo "- Top repair route: \`$top_route\`"
+              echo "- Trend source: \`$trend_source\`"
+              echo "- RIPR Zero artifacts: \`target/ripr/reports/ripr-zero-status.json\`, \`target/ripr/reports/ripr-zero-status.md\`"
+              echo
+            fi
+            if [ -f target/ripr/reports/ripr-zero-status.md ]; then
+              cat target/ripr/reports/ripr-zero-status.md
+            elif [ -f target/ripr/reports/baseline-debt-delta.json ]; then
+              echo 'RIPR Zero status was not generated. Inspect `target/ripr/reports/baseline-debt-delta.json` and rerun `ripr zero status` locally.'
+            else
+              echo 'RIPR Zero status was not run. It requires `baseline-debt-delta.json`, which is produced only after an explicit gate mode and reviewed baseline are configured.'
             fi
             echo
             echo '### SARIF and badge status'
@@ -3035,6 +3113,7 @@ mod tests {
                 "ripr review-comments",
                 "gate evaluate",
                 "ripr baseline diff",
+                "zero status",
                 "ripr agent status",
                 "ripr agent review-summary",
                 "cargo xtask operator-cockpit",
@@ -3064,6 +3143,8 @@ mod tests {
                 "target/ripr/reports/gate-decision.md",
                 "target/ripr/reports/baseline-debt-delta.json",
                 "target/ripr/reports/baseline-debt-delta.md",
+                "target/ripr/reports/ripr-zero-status.json",
+                "target/ripr/reports/ripr-zero-status.md",
                 "target/ripr/review/comments.json",
                 "target/ci/labels.json",
             ],
@@ -3076,6 +3157,8 @@ mod tests {
                 "#### Gate decision at a glance",
                 "### Baseline debt delta",
                 "#### Baseline debt movement",
+                "### RIPR Zero status",
+                "#### RIPR Zero at a glance",
                 "### SARIF and badge status",
                 "### PR guidance annotations",
                 "### Known limits",
@@ -3089,6 +3172,7 @@ mod tests {
                 "Render RIPR repo badge artifacts",
                 "Render RIPR operator cockpit",
                 "Render RIPR baseline debt delta",
+                "Render RIPR Zero status",
                 "Render RIPR LLM work-loop summaries",
                 "Run RIPR PR guidance report",
                 "Capture RIPR gate labels",
@@ -4699,6 +4783,11 @@ mod tests {
         assert_step_before(
             &workflow,
             "Render RIPR baseline debt delta",
+            "Render RIPR Zero status",
+        );
+        assert_step_before(
+            &workflow,
+            "Render RIPR Zero status",
             "Emit RIPR PR guidance annotations",
         );
         assert_step_before(
@@ -4752,6 +4841,20 @@ mod tests {
         assert!(baseline_delta.contains("--out target/ripr/reports/baseline-debt-delta.json"));
         assert!(baseline_delta.contains("--out-md target/ripr/reports/baseline-debt-delta.md"));
 
+        let zero_status = workflow_step(&workflow, "Render RIPR Zero status");
+        assert!(zero_status.contains("hashFiles('target/ripr/reports/baseline-debt-delta.json')"));
+        assert!(zero_status.contains("continue-on-error: true"));
+        assert!(zero_status.contains("zero status"));
+        assert!(zero_status.contains("--delta target/ripr/reports/baseline-debt-delta.json"));
+        assert!(zero_status.contains("--out target/ripr/reports/ripr-zero-status.json"));
+        assert!(zero_status.contains("--out-md target/ripr/reports/ripr-zero-status.md"));
+        assert!(zero_status.contains("--baseline \"$RIPR_GATE_BASELINE\""));
+        assert!(zero_status.contains("--gate target/ripr/reports/gate-decision.json"));
+        assert!(zero_status.contains("--pr-guidance target/ripr/review/comments.json"));
+        assert!(zero_status.contains(
+            "--recommendation-calibration target/ripr/reports/recommendation-calibration.json"
+        ));
+
         let annotations = workflow_step(&workflow, "Emit RIPR PR guidance annotations");
         assert!(annotations.contains("hashFiles('target/ripr/review/comments.json')"));
         assert!(annotations.contains("escape_github_message()"));
@@ -4801,6 +4904,19 @@ mod tests {
         assert!(summary.contains("Set `RIPR_GATE_BASELINE`"));
         assert!(summary.contains("Baseline debt delta was not run"));
         assert!(summary.contains("Baseline debt delta was not generated"));
+        assert!(summary.contains("### RIPR Zero status"));
+        assert!(summary.contains("#### RIPR Zero at a glance"));
+        assert!(summary.contains("target/ripr/reports/ripr-zero-status.json"));
+        assert!(summary.contains("target/ripr/reports/ripr-zero-status.md"));
+        assert!(summary.contains(".ripr_zero.state // \"unknown\""));
+        assert!(summary.contains(".ripr_zero.visible_unresolved // 0"));
+        assert!(summary.contains(".ripr_zero.new_policy_eligible // 0"));
+        assert!(summary.contains(".ripr_zero.blocking_candidates // 0"));
+        assert!(summary.contains(".baseline.metadata.stale // 0"));
+        assert!(summary.contains(".top_debt_areas[0].area // \"none\""));
+        assert!(summary.contains("cat target/ripr/reports/ripr-zero-status.md"));
+        assert!(summary.contains("RIPR Zero status was not run"));
+        assert!(summary.contains("RIPR Zero status was not generated"));
         assert!(summary.contains(".summary.comments // 0"));
         assert!(summary.contains(".summary.summary_only // 0"));
         assert!(summary.contains(".summary.suppressed // 0"));

@@ -746,11 +746,11 @@ spec = "RIPR-SPEC-0017"
 evidence = [
   "ripr zero status --delta target/ripr/reports/baseline-debt-delta.json writes advisory ripr-zero-status JSON and Markdown over reviewed baselines, baseline debt deltas, optional gate decisions, PR guidance, and recommendation calibration without changing gate authority",
   "crates/ripr/src/output/ripr_zero_status.rs renders RIPR 0 state, baseline metadata health, trend availability, top debt areas, and repair routes",
-  "crates/ripr/src/cli/commands.rs exposes the command and tests the parser plus fixture-backed JSON/Markdown writes",
+  "crates/ripr/src/cli/commands.rs exposes the command, generated CI runs it when baseline-debt-delta.json exists, uploads ripr-zero-status JSON and Markdown, and appends an at-a-glance RIPR Zero summary while preserving advisory defaults and gate pass/fail authority",
   "docs/OUTPUT_SCHEMA.md documents the shape and advisory boundary"
 ]
 fixtures = ["fixtures/boundary_gap/expected/baseline-debt-delta/mixed"]
-next = "ci/ripr-zero-summary"
+next = "docs/ripr-zero-reporting-workflow"
 metric = "ripr_zero_status_reports, ripr_zero_visible_unresolved, ripr_zero_new_policy_eligible, ripr_zero_baseline_still_present, ripr_zero_baseline_resolved, ripr_zero_acknowledged, ripr_zero_suppressed, ripr_zero_stale_baseline_entries, ripr_zero_missing_metadata_entries, ripr_zero_top_repair_routes"
 
 [[capability]]

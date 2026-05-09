@@ -68,7 +68,7 @@ commands = [
 
 [[work_item]]
 id = "ci/ripr-zero-summary"
-status = "ready"
+status = "done"
 branch = "ci-ripr-zero-summary"
 stackable = false
 acceptance = "Surface RIPR Zero status and top repair areas in generated CI summaries and artifacts while preserving advisory defaults and leaving gate decisions as the pass/fail authority"
@@ -82,10 +82,9 @@ commands = [
 
 [[work_item]]
 id = "docs/ripr-zero-reporting-workflow"
-status = "blocked"
+status = "ready"
 branch = "docs-ripr-zero-reporting-workflow"
 stackable = false
-blocked_by = ["report/ripr-zero-status", "ci/ripr-zero-summary"]
 acceptance = "Document how teams read RIPR Zero status, age and refresh baselines, route top repair packets, and interpret progress without treating RIPR 0 as perfect tests or 100 percent coverage"
 commands = [
   "cargo xtask check-doc-index",
