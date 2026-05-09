@@ -40,6 +40,11 @@ are scoped or reviewed.
   stage, observed-value, missing-discriminator, oracle-strength, and
   related-test movement while preserving legacy repo-exposure fallback fields
   and existing advisory buckets.
+- Routed test-oracle assistant proof through the shared evidence spine:
+  selected seam identity, owner/location, missing discriminator, static limits,
+  related test, assertion shape, verification command, and before/after classes
+  now prefer supplied `evidence_record` fields while preserving legacy proof
+  fallbacks and advisory boundaries.
 - Opened Campaign 22, First Useful Action, with
   `spec/first-useful-action-report` as the first ready work item so existing
   editor, PR guidance, ledger, proof, receipt, optional gate, coverage/grip,

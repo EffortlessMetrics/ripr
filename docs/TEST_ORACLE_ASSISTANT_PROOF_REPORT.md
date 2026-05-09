@@ -86,7 +86,7 @@ Read the main Markdown sections this way:
 | Section | Meaning | Usual action |
 | --- | --- | --- |
 | `Status` | `advisory` means the joined record is complete enough to read; `incomplete` means required evidence is missing or not comparable. | Inspect warnings before using the report as a receipt. |
-| `Top focused test` | The selected seam, missing discriminator, suggested test, related test, and verify command copied from existing guidance or handoff artifacts. | Give this bounded task to a human or coding agent. |
+| `Top focused test` | The selected seam, owner, missing discriminator, suggested test, related test, assertion shape, and verify command copied from `evidence_record` when present, with legacy guidance or handoff fields as fallback. | Give this bounded task to a human or coding agent. |
 | `Movement` | Static before/after evidence for the selected seam. | Use it as review evidence, not runtime confirmation. |
 | `Projection` | PR ledger, coverage/grip frontier, and gate-decision paths when supplied. | Follow links for adoption, coverage, or gate context. |
 | `Warnings` | Missing, invalid, stale-looking, summary-only, or unsupported inputs. | Treat warnings as part of the receipt, not as noise. |
@@ -95,6 +95,9 @@ Read the main Markdown sections this way:
 ## Interpret Static Movement
 
 `evidence_movement.state` is static RIPR movement only.
+When before/after repo-exposure seams include `evidence_record`, movement class
+comparison uses `evidence_record.grip_class`; older `grip_class` fields remain
+fallback for legacy artifacts.
 
 | State | Meaning | Usual action |
 | --- | --- | --- |

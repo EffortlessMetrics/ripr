@@ -2805,6 +2805,12 @@ receipts, PR evidence ledgers, and optional gate or coverage/grip frontier
 reports without changing analyzer identity, recommendation ranking, gate
 policy, editor behavior, or CI defaults.
 
+When an input artifact supplies the shared Lane 1 `evidence_record`, the proof
+report prefers that record for selected seam identity, owner/location, grip
+class, missing discriminator, assertion shape, related test, static limits, and
+before/after movement classes. Legacy PR guidance, agent packet, receipt, and
+repo-exposure fields remain fallback for older artifacts.
+
 Command shape:
 
 ```text
@@ -2859,18 +2865,23 @@ JSON shape:
   },
   "seam": {
     "seam_id": "67fc764ba37d77bd",
+    "canonical_gap_id": null,
+    "owner": "pricing::discounted_total",
     "seam_kind": "predicate_boundary",
     "path": "src/pricing.rs",
     "line": 88,
     "grip_class": "weakly_gripped",
-    "missing_discriminator": "amount == discount_threshold"
+    "missing_discriminator": "amount == discount_threshold",
+    "evidence_source": "evidence_record",
+    "static_limitations": []
   },
   "recommendation": {
-    "source": "pr_guidance",
+    "source": "evidence_record",
     "placement": "changed_line",
     "summary_only_reason": null,
     "suggested_test": "Add an equality-boundary assertion.",
     "related_test": "tests/pricing.rs::applies_discount_above_threshold",
+    "assertion_shape": "assert_eq!(discounted_total(100, 100), 90)",
     "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json"
   },
   "handoff": {
@@ -2910,15 +2921,26 @@ Field contract:
   selected seam or required before/after evidence is missing.
 - `inputs.*` records explicit input paths. Missing optional inputs are `null`;
   missing or invalid supplied inputs produce a warning.
-- `seam.*` is copied from existing RIPR evidence or guidance. The report must
-  not recompute analyzer identity.
+- `seam.*` is copied from existing RIPR evidence or guidance. When
+  `evidence_record` is present in the agent packet or matching repo-exposure
+  seam, `seam.evidence_source` is `evidence_record`, and the proof prefers the
+  record's seam identity, canonical gap ID, owner, location, grip class,
+  missing discriminator, and static limits. Otherwise
+  `seam.evidence_source` is `legacy_fields`. The report must not recompute
+  analyzer identity.
 - `recommendation.placement` is `changed_line`, `summary_only`, or `unknown`.
   Summary-only guidance must remain visible.
+- `recommendation.assertion_shape`, `recommendation.related_test`, and
+  `recommendation.verify_command` prefer `evidence_record.recommendation`
+  fields when available and otherwise use the legacy agent packet or PR
+  guidance fields.
 - `handoff.external_provider` is always `false`; RIPR emits packets but does
   not call a provider.
 - `evidence_movement.state` is `improved`, `resolved`, `unchanged`,
   `regressed`, or `unknown`. It is static RIPR movement, not runtime mutation
-  confirmation.
+  confirmation. Without a receipt, before/after class comparison prefers the
+  matching repo-exposure `evidence_record.grip_class` and falls back to legacy
+  seam `grip_class`.
 - `ci_projection.pass_fail_authority` keeps proof records separate from
   optional gate decisions.
 - `limits.*` preserves the no-edit, no-generated-test, no-provider-call,
@@ -2927,8 +2949,8 @@ Field contract:
 Markdown should fit in a PR summary, generated CI job summary, or dogfood
 receipt. It should show the selected seam, missing discriminator, suggested
 focused test, related test, verify command, before/after static movement,
-receipt path, ledger path, optional coverage/grip frontier path, and static
-limits.
+receipt path, ledger path, optional coverage/grip frontier path, assertion
+shape, owner, and static limits.
 
 See [Test-oracle assistant proof report](TEST_ORACLE_ASSISTANT_PROOF_REPORT.md)
 for how reviewers, maintainers, and coding agents should read the report,
