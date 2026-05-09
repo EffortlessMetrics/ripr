@@ -2692,8 +2692,8 @@ Work items:
 | Work item | Status | Notes |
 | --- | --- | --- |
 | `spec/pr-review-front-panel-report` | done | Added RIPR-SPEC-0023 plus OUTPUT_SCHEMA, traceability, capability, campaign, plan, roadmap, and changelog updates for the PR review front-panel JSON/Markdown contract, explicit inputs, first-screen fields, artifact grouping, advisory limits, and generated-CI projection boundaries. |
-| `fixtures/pr-review-front-panel-corpus` | ready | Pin advisory-only, actionable, summary-only, acknowledged, suppressed, baseline-resolved, blocked, missing-proof, and coverage-flat-grip-improved cases before adding the producer. |
-| `report/pr-review-front-panel` | blocked | Blocked on `fixtures/pr-review-front-panel-corpus`; add a read-only front-panel producer that emits advisory JSON/Markdown from explicit existing artifact paths without rerunning analysis or changing gate authority. |
+| `fixtures/pr-review-front-panel-corpus` | done | Pinned advisory-only, actionable, summary-only, acknowledged, suppressed, baseline-resolved, blocked, missing-proof, and coverage-flat-grip-improved cases plus an xtask guard before adding the producer. |
+| `report/pr-review-front-panel` | ready | Add a read-only front-panel producer that emits advisory JSON/Markdown from explicit existing artifact paths without rerunning analysis or changing gate authority. |
 | `ci/pr-review-front-panel-summary` | blocked | Blocked on `report/pr-review-front-panel`; generated GitHub CI uploads and summarizes PR review front-panel JSON/Markdown only when input artifacts exist, while preserving advisory defaults and gate-decision pass/fail authority. |
 | `docs/pr-review-front-panel-workflow` | blocked | Blocked on `ci/pr-review-front-panel-summary`; document how reviewers, maintainers, developers, and coding agents read the PR review front panel, follow repair routes, inspect receipts, and interpret advisory limits. |
 | `dogfood/pr-review-front-panel-receipts` | blocked | Blocked on `docs/pr-review-front-panel-workflow`; record repo-local front-panel receipts for actionable, acknowledged, suppressed, baseline-resolved, blocked, missing-proof, no-actionable, and coverage-flat-grip-improved cases. |
@@ -2719,10 +2719,10 @@ Blocking conditions:
 
 Next:
 
-- Continue with `fixtures/pr-review-front-panel-corpus`. The report contract is
-  now defined by RIPR-SPEC-0023; the next slice should pin front-panel fixture
-  cases before producer, generated-CI projection, docs, dogfood receipts, or
-  closeout work.
+- Continue with `report/pr-review-front-panel`. The report contract and
+  fixture corpus are now in place; the next slice should add the read-only
+  producer before generated-CI projection, docs, dogfood receipts, or closeout
+  work.
 
 ## Future Campaign: Editor Evidence UX
 

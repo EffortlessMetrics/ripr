@@ -913,11 +913,23 @@ spec = "RIPR-SPEC-0023"
 evidence = [
   "docs/specs/RIPR-SPEC-0023-pr-review-front-panel-report.md defines the advisory PR review front-panel contract over explicit PR guidance, first-useful-action, assistant proof, assistant-loop health, PR evidence ledger, baseline delta, RIPR Zero, gate decision, receipt, calibration, and optional coverage/grip artifacts",
   "docs/OUTPUT_SCHEMA.md documents the planned pr-review-front-panel JSON and Markdown shape, bounded status vocabulary, top-issue states, policy states, movement buckets, coverage/grip states, artifact groups, warnings, generated-CI projection boundary, and advisory limits",
-  "docs/IMPLEMENTATION_CAMPAIGNS.md marks fixtures/pr-review-front-panel-corpus as the next ready implementation slice after this spec so the producer remains fixture-first"
+  "fixtures/boundary_gap/expected/pr-review-front-panel/ pins advisory-only, actionable, summary-only, acknowledged, suppressed, baseline-resolved, blocked, missing-proof, and coverage-flat-grip-improved report cases before producer implementation",
+  "xtask/src/main.rs validates the PR review front-panel fixture corpus through check-fixture-contracts so the future producer remains fixture-first",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md marks report/pr-review-front-panel as the next ready implementation slice after this corpus"
 ]
 fixtures = [
+  "fixtures/boundary_gap/expected/pr-review-front-panel/corpus.json",
+  "fixtures/boundary_gap/expected/pr-review-front-panel/advisory-only/pr-review-front-panel.json",
+  "fixtures/boundary_gap/expected/pr-review-front-panel/actionable/pr-review-front-panel.json",
+  "fixtures/boundary_gap/expected/pr-review-front-panel/summary-only/pr-review-front-panel.json",
+  "fixtures/boundary_gap/expected/pr-review-front-panel/acknowledged/pr-review-front-panel.json",
+  "fixtures/boundary_gap/expected/pr-review-front-panel/suppressed/pr-review-front-panel.json",
+  "fixtures/boundary_gap/expected/pr-review-front-panel/baseline-resolved/pr-review-front-panel.json",
+  "fixtures/boundary_gap/expected/pr-review-front-panel/blocked/pr-review-front-panel.json",
+  "fixtures/boundary_gap/expected/pr-review-front-panel/missing-proof/pr-review-front-panel.json",
+  "fixtures/boundary_gap/expected/pr-review-front-panel/coverage-flat-grip-improved/pr-review-front-panel.json",
 ]
-next = "fixtures/pr-review-front-panel-corpus"
+next = "report/pr-review-front-panel"
 metric = "pr_review_front_panel_reports, pr_review_front_panel_actionable, pr_review_front_panel_summary_only, pr_review_front_panel_no_actionable, pr_review_front_panel_acknowledged, pr_review_front_panel_waived, pr_review_front_panel_suppressed, pr_review_front_panel_blocked, pr_review_front_panel_config_error, pr_review_front_panel_baseline_still_present, pr_review_front_panel_baseline_resolved, pr_review_front_panel_new_policy_eligible, pr_review_front_panel_missing_required_input, pr_review_front_panel_flat_coverage_grip_improved, pr_review_front_panel_repair_routes, pr_review_front_panel_artifact_links"
 
 [[capability]]

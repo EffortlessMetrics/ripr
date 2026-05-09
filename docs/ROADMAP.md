@@ -243,11 +243,12 @@ Campaign 24 after Assistant Loop Health. RIPR-SPEC-0023 now defines the PR
 review front-panel report contract over existing PR guidance, first useful
 action, assistant proof, assistant-loop health, PR evidence ledger, baseline
 delta, gate decision, receipts, calibration, and optional coverage/grip frontier
-artifacts. The campaign keeps Lane 4's projection boundary: consume explicit
-artifacts, do not change analyzer behavior, recommendation ranking, gate
-semantics, editor behavior, mutation execution, provider calls, source files,
-generated tests, inline-comment defaults, or default CI blocking. The next ready
-slice is `fixtures/pr-review-front-panel-corpus`.
+artifacts, and the fixture corpus pins the first set of reviewer states before
+producer work. The campaign keeps Lane 4's projection boundary: consume
+explicit artifacts, do not change analyzer behavior, recommendation ranking,
+gate semantics, editor behavior, mutation execution, provider calls, source
+files, generated tests, inline-comment defaults, or default CI blocking. The
+next ready slice is `report/pr-review-front-panel`.
 
 ## Strategic Sequence
 

@@ -81,6 +81,10 @@ are scoped or reviewed.
   explicit input artifacts, bounded first-screen states, artifact groups,
   generated-CI projection limits, advisory boundaries, and the next
   fixture-first work item.
+- Added the PR review front-panel fixture corpus for advisory-only,
+  actionable, summary-only, acknowledged, suppressed, baseline-resolved,
+  blocked, missing-proof, and coverage-flat-grip-improved cases, with an xtask
+  guard to keep the producer fixture-first.
 - Opened Campaign 22, First Useful Action, with
   `spec/first-useful-action-report` as the first ready work item so existing
   editor, PR guidance, ledger, proof, receipt, optional gate, coverage/grip,
