@@ -789,6 +789,17 @@ jobs:
           fi
           ripr "${gate_args[@]}"
 
+      - name: Render RIPR baseline debt delta
+        if: always() && env.RIPR_GATE_BASELINE != '' && hashFiles('target/ripr/reports/gate-decision.json') != ''
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          ripr baseline diff \
+            --baseline "$RIPR_GATE_BASELINE" \
+            --current target/ripr/reports/gate-decision.json \
+            --out target/ripr/reports/baseline-debt-delta.json \
+            --out-md target/ripr/reports/baseline-debt-delta.md
+
       - name: Render RIPR LLM work-loop summaries
         if: always()
         continue-on-error: true
@@ -849,6 +860,10 @@ jobs:
         continue-on-error: true
         run: |
           {
+            markdown_inline() {
+              printf '%s' "$1" | tr '\r\n' '  ' | sed 's/`/\\`/g'
+            }
+
             echo '## RIPR advisory summary'
             echo
             echo "RIPR is advisory static evidence. It does not edit source, generate tests, or run mutation testing."
@@ -882,9 +897,6 @@ jobs:
             echo '### Gate decision'
             if [ -f target/ripr/reports/gate-decision.json ]; then
               gate_json=target/ripr/reports/gate-decision.json
-              markdown_inline() {
-                printf '%s' "$1" | tr '\r\n' '  ' | sed 's/`/\\`/g'
-              }
               gate_status="$(jq -r '.status // "unknown"' "$gate_json" 2>/dev/null || echo unknown)"
               gate_mode="$(jq -r '.mode // "unknown"' "$gate_json" 2>/dev/null || echo unknown)"
               blocking="$(jq -r '.summary.blocking // 0' "$gate_json" 2>/dev/null || echo 0)"
@@ -938,6 +950,44 @@ jobs:
               cat target/ripr/reports/gate-decision.md
             else
               echo 'Gate decision was not run. Set `RIPR_GATE_MODE` to `visible-only`, `acknowledgeable`, `baseline-check`, or `calibrated-gate` to opt in.'
+            fi
+            echo
+            echo '### Baseline debt delta'
+            if [ -f target/ripr/reports/baseline-debt-delta.json ]; then
+              baseline_delta_json=target/ripr/reports/baseline-debt-delta.json
+              baseline_entries="$(jq -r '.baseline.entries // 0' "$baseline_delta_json" 2>/dev/null || echo 0)"
+              still_present="$(jq -r '.delta.still_present // 0' "$baseline_delta_json" 2>/dev/null || echo 0)"
+              resolved="$(jq -r '.delta.resolved // 0' "$baseline_delta_json" 2>/dev/null || echo 0)"
+              new_policy_eligible="$(jq -r '.delta.new_policy_eligible // 0' "$baseline_delta_json" 2>/dev/null || echo 0)"
+              acknowledged_delta="$(jq -r '.delta.acknowledged // 0' "$baseline_delta_json" 2>/dev/null || echo 0)"
+              suppressed_delta="$(jq -r '.delta.suppressed // 0' "$baseline_delta_json" 2>/dev/null || echo 0)"
+              stale_baseline="$(jq -r '.delta.stale_baseline_entry // 0' "$baseline_delta_json" 2>/dev/null || echo 0)"
+              invalid_baseline="$(jq -r '.delta.invalid_baseline_entry // 0' "$baseline_delta_json" 2>/dev/null || echo 0)"
+              missing_current="$(jq -r '.delta.missing_current_input // 0' "$baseline_delta_json" 2>/dev/null || echo 0)"
+              baseline_entries="$(markdown_inline "$baseline_entries")"
+              still_present="$(markdown_inline "$still_present")"
+              resolved="$(markdown_inline "$resolved")"
+              new_policy_eligible="$(markdown_inline "$new_policy_eligible")"
+              acknowledged_delta="$(markdown_inline "$acknowledged_delta")"
+              suppressed_delta="$(markdown_inline "$suppressed_delta")"
+              stale_baseline="$(markdown_inline "$stale_baseline")"
+              invalid_baseline="$(markdown_inline "$invalid_baseline")"
+              missing_current="$(markdown_inline "$missing_current")"
+              echo '#### Debt movement at a glance'
+              echo "- Baseline entries: \`$baseline_entries\`"
+              echo "- Still present: \`$still_present\`"
+              echo "- Resolved since baseline: \`$resolved\`"
+              echo "- New policy-eligible gaps: \`$new_policy_eligible\`"
+              echo "- Acknowledged: \`$acknowledged_delta\`"
+              echo "- Suppressed: \`$suppressed_delta\`"
+              echo "- Stale baseline entries: \`$stale_baseline\`"
+              echo "- Invalid baseline entries: \`$invalid_baseline\`"
+              echo "- Missing current input: \`$missing_current\`"
+              echo "- Delta artifacts: \`target/ripr/reports/baseline-debt-delta.json\`, \`target/ripr/reports/baseline-debt-delta.md\`"
+            elif [ -n "${RIPR_GATE_BASELINE:-}" ]; then
+              echo 'Baseline debt delta was not generated. Check that `RIPR_GATE_MODE` produced `target/ripr/reports/gate-decision.json` and that `RIPR_GATE_BASELINE` points at a readable baseline.'
+            else
+              echo 'Baseline debt delta was not run. Set `RIPR_GATE_BASELINE` with an explicit gate mode to compare current evidence against reviewed baseline debt.'
             fi
             echo
             echo '### SARIF and badge status'
@@ -1052,20 +1102,27 @@ RIPR_GATE_BASELINE=
 
 `visible-only` writes `target/ripr/reports/gate-decision.{json,md}` and appends
 an at-a-glance gate section plus the Markdown decision report to the job summary
-without making a RIPR finding block the PR. The first-screen summary names the
-mode, status, decision counts, active and acknowledgement labels, applied
-waiver label, baseline input, calibration inputs/effects, blocking reason, and
-gate artifact paths.
+without making a RIPR finding block the PR. If `RIPR_GATE_BASELINE` is also
+set and the gate decision exists, the workflow writes
+`target/ripr/reports/baseline-debt-delta.{json,md}` as a non-blocking debt
+movement report. The first-screen summary names the mode, status, decision
+counts, active and acknowledgement labels, applied waiver label, baseline
+input, calibration inputs/effects, blocking reason, baseline debt movement, and
+gate and delta artifact paths.
 
 For every configured gate mode, the generated workflow behavior is:
 
 1. capture active PR labels into `target/ci/labels.json`;
 2. render `target/ripr/review/comments.json` before gate evaluation;
 3. run `ripr gate evaluate` only when `RIPR_GATE_MODE` is set;
-4. render the at-a-glance gate section from `gate-decision.json`;
-5. append the detailed `gate-decision.md` report;
-6. upload gate artifacts with the normal `ripr-reports` artifact packet;
-7. fail only when the explicit gate mode returns `blocked` or `config_error`.
+4. run `ripr baseline diff` only when both `RIPR_GATE_BASELINE` and
+   `gate-decision.json` exist;
+5. render the at-a-glance gate and baseline-delta sections from generated
+   JSON;
+6. append the detailed `gate-decision.md` report;
+7. upload gate and baseline-delta artifacts with the normal `ripr-reports`
+   artifact packet;
+8. fail only when the explicit gate mode returns `blocked` or `config_error`.
 
 Acknowledgeable policy:
 
@@ -1087,7 +1144,12 @@ RIPR_GATE_BASELINE=.ripr/gate-baseline.json
 
 `baseline-check` is for repos with an explicit checked-in baseline. Use it only
 after reviewing the baseline file; missing baseline input is reported as a
-configuration problem instead of being treated as clean evidence.
+configuration problem instead of being treated as clean evidence. When the
+baseline is readable and the gate decision is produced, generated CI also
+uploads `baseline-debt-delta.json` and `baseline-debt-delta.md` and summarizes
+still-present, resolved, new policy-eligible, acknowledged, suppressed, stale,
+invalid, and missing-input counts in the job summary. The delta report remains
+advisory movement evidence; `ripr gate evaluate` is still the pass/fail owner.
 
 Calibrated gate:
 

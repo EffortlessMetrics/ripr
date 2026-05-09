@@ -28,6 +28,10 @@ are scoped or reviewed.
   reviewed gate baseline ledger by removing resolved entries while preserving
   malformed or ambiguous records for review and refusing to auto-adopt new
   current debt.
+- Added generated CI projection for baseline debt deltas: when an explicit
+  `RIPR_GATE_BASELINE` and gate decision exist, the workflow runs non-blocking
+  `ripr baseline diff`, uploads the JSON/Markdown artifacts, and summarizes
+  debt movement without making the delta report the pass/fail owner.
 - Extended framed LSP protocol smoke coverage through a real seam diagnostic,
   hover, code actions, `ripr.collectEvidenceContext`, and shutdown.
 - Added `ripr evidence-health` and `cargo xtask evidence-health`, which write
