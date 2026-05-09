@@ -854,8 +854,11 @@ Field contract:
   `medium`; `fixture_owner_affinity` → `low`. Independent of
   `oracle_strength`: a `low` relation can still carry a strong oracle.
 - The `related_tests` array is **ranked** by
-  `(confidence, reason_priority, file, name, line)` so the
-  highest-confidence tests appear first. `related_tests_total` is
+  `(confidence, reason_priority, oracle_strength, activation_overlap, file,
+  name, line)` so the highest-confidence tests appear first, then the nearest
+  strong imitation target wins within otherwise equivalent relationships.
+  `activation_overlap` is a static tie-breaker from already observed call
+  values, such as a predicate-boundary equality call. `related_tests_total` is
   unaffected by ranking.
 - `seams[].observed_values` — literal scalar values seen in owner-call
   arguments across related tests. Bare identifiers and helper-derived

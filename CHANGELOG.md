@@ -61,6 +61,10 @@ are scoped or reviewed.
   field, whole-object, snapshot, side-effect, opaque static-limitation,
   canonical-gap, and calibration-placeholder cases, with xtask validation for
   required cases, required fields, and schema-version drift.
+- Stabilized related-test ranking v2 so capped related-test arrays preserve the
+  full `related_tests_total` while ordering by relation confidence, relation
+  reason, oracle strength, activation-value overlap, and stable file/name/line
+  tie-breakers.
 - Surfaced `assistant-loop-health.{json,md}` in generated GitHub CI when
   `test-oracle-assistant-proof.json` exists, uploads the reports with the
   normal `ripr-reports` packet, and appends a compact advisory health summary
