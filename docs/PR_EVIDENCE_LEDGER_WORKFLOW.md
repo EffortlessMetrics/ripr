@@ -278,6 +278,8 @@ promoting stricter gate modes.
   acknowledgement behavior.
 - [RIPR blocking readiness](BLOCKING_READINESS.md) explains when a repository
   is ready to move from advisory to stricter configured gates.
+- [First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md) explains how
+  ledger movement can feed one reviewer, developer, or agent next action.
 - [CI strategy](CI.md#generated-github-workflow) describes generated workflow
   projection into GitHub job summaries and artifacts.
 - [Output schema](OUTPUT_SCHEMA.md#pr-evidence-ledger) defines the

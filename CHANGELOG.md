@@ -49,6 +49,10 @@ are scoped or reviewed.
 - Hardened the VS Code first-useful-action projection so reports from a
   different workspace root are ignored and stale saved-workspace evidence stays
   visible instead of being hidden behind the action report.
+- Added `docs/FIRST_USEFUL_ACTION_WORKFLOW.md`, documenting how developers,
+  reviewers, and coding agents read first-action reports from GitHub or the
+  editor, act on the selected action, verify static movement, emit receipts,
+  and interpret fallback states without treating the report as gate authority.
 - Opened Campaign 20, Test-Oracle Assistant Proof, with
   `spec/test-oracle-assistant-loop` as the first ready work item so the
   already-built PR guidance, editor/agent handoff, verification, receipts,
