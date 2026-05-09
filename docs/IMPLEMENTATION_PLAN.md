@@ -37,7 +37,7 @@ through multiple work items in a campaign, but each work item should follow the
 | Test-Oracle Assistant Proof (20) | Prove the full PR-time loop from changed Rust behavior to static evidence, PR/editor guidance, focused-test handoff, verification, receipt, and advisory CI/ledger projection. | Complete: spec, canonical fixture, dogfood receipt, user workflow docs, and `campaign/test-oracle-assistant-proof-closeout`. |
 | Test-Oracle Assistant Report Producer (21) | Turn the proved assistant loop into a public read-only JSON/Markdown report producer and optional advisory CI projection. | Complete: report producer, generated-CI projection, proof-report docs, and `campaign/test-oracle-assistant-report-closeout`. |
 | First Useful Action (22) | Compress existing editor, PR, ledger, proof, receipt, optional gate, coverage/grip, and staleness evidence into one advisory next test action. | Complete: RIPR-SPEC-0020 defines the report contract, the routing corpus is pinned, `ripr first-action` writes the read-only advisory report, generated CI surfaces it as advisory summary/artifact content, VS Code status/Show Status project an existing report, workflow docs explain developer, reviewer, and agent use, dogfood receipts are checked, and `campaign/first-useful-action-closeout` records the final audit. |
-| Assistant Loop Health (23) | Summarize proof completeness, missing inputs, static evidence movement, recurring warnings, and next repair queues across one or more assistant proof reports. | Active: RIPR-SPEC-0022 defines the report contract; `fixtures/assistant-loop-health-corpus` is the next ready work item. |
+| Assistant Loop Health (23) | Summarize proof completeness, missing inputs, static evidence movement, recurring warnings, and next repair queues across one or more assistant proof reports. | Active: RIPR-SPEC-0022 defines the report contract, the assistant-loop-health fixture corpus is pinned, and `report/assistant-loop-health` is the next ready work item. |
 | Editor Evidence UX (future) | Make the saved-workspace LSP path feel like an editor-native test-intent cockpit from diagnostic to hover, related test, context packet, one test, verify, and receipt. | Complete as an explicit parallel Lane 3 closeout: contract audit, hover hardening, evidence-aware actions, context packet, protocol smoke, VS Code smoke, status/staleness, workflow docs, and closeout audit. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
@@ -176,8 +176,10 @@ health, analyzer, policy, or editor lanes need explicit follow-up campaigns.
 
 Campaign 23 is now open as Assistant Loop Health. It uses the
 [Assistant Loop Health proposal](ASSISTANT_LOOP_HEALTH_PROPOSAL.md) as its
-design brief, and [RIPR-SPEC-0022](specs/RIPR-SPEC-0022-assistant-loop-health-report.md)
-defines the report contract. The campaign measures whether assistant proof
+design brief, [RIPR-SPEC-0022](specs/RIPR-SPEC-0022-assistant-loop-health-report.md)
+defines the report contract, and the
+`fixtures/boundary_gap/expected/assistant-loop-health/` corpus pins the health
+states before producer work. The campaign measures whether assistant proof
 packets are complete, stuck, missing receipts, or moving static evidence over
 time, without changing analyzer behavior, ranking, gate semantics, LSP/editor
 behavior, mutation execution, provider calls, source files, generated tests, or

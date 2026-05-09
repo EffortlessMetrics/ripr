@@ -1,0 +1,69 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "test_oracle_assistant_loop",
+  "status": "advisory",
+  "root": ".",
+  "inputs": {
+    "pr_guidance": "fixtures/boundary_gap/expected/pr-guidance/summary-only/comments.json",
+    "agent_packet": "fixtures/boundary_gap/expected/editor-agent-loop/agent-brief.json",
+    "before": "fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json",
+    "after": null,
+    "receipt": null,
+    "ledger": null,
+    "coverage_frontier": null,
+    "gate_decision": "fixtures/boundary_gap/expected/gate-adoption/visible-only/gate-decision.json",
+    "first_useful_action": null
+  },
+  "seam": {
+    "seam_id": "67fc764ba37d77bd",
+    "seam_kind": "predicate_boundary",
+    "path": "src/lib.rs",
+    "line": 2,
+    "grip_class": "weakly_gripped",
+    "missing_discriminator": "discount_threshold (equality boundary)"
+  },
+  "recommendation": {
+    "source": "pr_guidance",
+    "placement": "summary_only",
+    "summary_only_reason": "line placement was not safe",
+    "suggested_test": "Inspect placement before adding the equality-boundary assertion.",
+    "related_test": "tests/pricing.rs::below_threshold_has_no_discount",
+    "verify_command": "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+  },
+  "handoff": {
+    "source": "agent_packet",
+    "artifact": "fixtures/boundary_gap/expected/editor-agent-loop/agent-brief.json",
+    "agent_command": "ripr agent start --root fixtures/boundary_gap/input --seam-id 67fc764ba37d77bd --out target/ripr/workflow",
+    "external_provider": false
+  },
+  "evidence_movement": {
+    "state": "unknown",
+    "before_class": "weakly_gripped",
+    "after_class": null,
+    "source": "missing_receipt",
+    "artifact": null
+  },
+  "ci_projection": {
+    "ledger": null,
+    "coverage_frontier": null,
+    "gate_decision": "fixtures/boundary_gap/expected/gate-adoption/visible-only/gate-decision.json",
+    "first_useful_action": null,
+    "pass_fail_authority": "gate decision when explicitly configured"
+  },
+  "warnings": [
+    "summary-only guidance needs placement review",
+    "after snapshot is stale or missing",
+    "agent receipt is missing",
+    "optional PR ledger input is missing",
+    "optional first useful action input is missing"
+  ],
+  "limits": {
+    "advisory": true,
+    "source_edits": false,
+    "generated_tests": false,
+    "external_service": false,
+    "runtime_mutation_execution": false,
+    "ci_blocking_default": false
+  }
+}

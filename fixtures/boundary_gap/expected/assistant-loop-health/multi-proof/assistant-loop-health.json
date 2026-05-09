@@ -1,0 +1,197 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "assistant_loop_health",
+  "status": "advisory",
+  "root": ".",
+  "generated_at": "2026-05-09T12:00:00Z",
+  "inputs": {
+    "proofs": [
+      "fixtures/boundary_gap/expected/assistant-loop-health/proofs/complete-improved-proof.json",
+      "fixtures/boundary_gap/expected/assistant-loop-health/proofs/unchanged-proof.json",
+      "fixtures/boundary_gap/expected/assistant-loop-health/proofs/missing-required-proof.json"
+    ]
+  },
+  "summary": {
+    "proofs": 3,
+    "complete": 2,
+    "partial": 0,
+    "missing_required_input": 1,
+    "missing_optional_input": 0,
+    "improved": 1,
+    "unchanged": 1,
+    "regressed": 0,
+    "unknown_movement": 1,
+    "warnings": 2,
+    "repair_queue": 2
+  },
+  "proofs": [
+    {
+      "id": "proof-67fc764ba37d77bd-complete-improved",
+      "source_artifact": "fixtures/boundary_gap/expected/assistant-loop-health/proofs/complete-improved-proof.json",
+      "proof_state": "complete",
+      "movement_state": "improved",
+      "seam": {
+        "seam_id": "67fc764ba37d77bd",
+        "seam_kind": "predicate_boundary",
+        "path": "src/lib.rs",
+        "line": 2,
+        "static_class": "weakly_gripped",
+        "missing_discriminator": "discount_threshold (equality boundary)"
+      },
+      "recommendation": {
+        "placement": "changed_line",
+        "related_test": "tests/pricing.rs::below_threshold_has_no_discount",
+        "suggested_test": "Add a focused test where amount == discount_threshold and assert the exact discounted_total output.",
+        "verify_command": "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+      },
+      "handoff": {
+        "artifact": "fixtures/boundary_gap/expected/editor-agent-loop/agent-brief.json",
+        "agent_command": "ripr agent start --root fixtures/boundary_gap/input --seam-id 67fc764ba37d77bd --out target/ripr/workflow"
+      },
+      "receipt": {
+        "artifact": "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json",
+        "status": "present"
+      },
+      "movement": {
+        "before_class": "weakly_gripped",
+        "after_class": "strongly_gripped",
+        "source": "agent_receipt",
+        "source_state": "resolved"
+      },
+      "optional_context": {
+        "ledger": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-evidence-ledger.json",
+        "gate_decision": "fixtures/boundary_gap/expected/gate-adoption/visible-only/gate-decision.json",
+        "coverage_frontier": null,
+        "first_useful_action": "fixtures/boundary_gap/expected/first-useful-action/already-improved/first-useful-action.json"
+      },
+      "warnings": []
+    },
+    {
+      "id": "proof-67fc764ba37d77bd-unchanged",
+      "source_artifact": "fixtures/boundary_gap/expected/assistant-loop-health/proofs/unchanged-proof.json",
+      "proof_state": "complete",
+      "movement_state": "unchanged",
+      "seam": {
+        "seam_id": "67fc764ba37d77bd",
+        "seam_kind": "predicate_boundary",
+        "path": "src/lib.rs",
+        "line": 2,
+        "static_class": "weakly_gripped",
+        "missing_discriminator": "discount_threshold (equality boundary)"
+      },
+      "recommendation": {
+        "placement": "changed_line",
+        "related_test": "tests/pricing.rs::below_threshold_has_no_discount",
+        "suggested_test": "Add a focused test where amount == discount_threshold and assert the exact discounted_total output.",
+        "verify_command": "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+      },
+      "handoff": {
+        "artifact": "fixtures/boundary_gap/expected/editor-agent-loop/agent-brief.json",
+        "agent_command": "ripr agent start --root fixtures/boundary_gap/input --seam-id 67fc764ba37d77bd --out target/ripr/workflow"
+      },
+      "receipt": {
+        "artifact": "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json",
+        "status": "present"
+      },
+      "movement": {
+        "before_class": "weakly_gripped",
+        "after_class": "weakly_gripped",
+        "source": "agent_receipt",
+        "source_state": "unchanged"
+      },
+      "optional_context": {
+        "ledger": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-evidence-ledger.json",
+        "gate_decision": "fixtures/boundary_gap/expected/gate-adoption/visible-only/gate-decision.json",
+        "coverage_frontier": null,
+        "first_useful_action": "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/first-useful-action.json"
+      },
+      "warnings": [
+        {
+          "kind": "unchanged_movement",
+          "message": "Static movement remained unchanged after the focused attempt.",
+          "source_artifact": "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json"
+        }
+      ]
+    },
+    {
+      "id": "proof-missing-required-input",
+      "source_artifact": "fixtures/boundary_gap/expected/assistant-loop-health/proofs/missing-required-proof.json",
+      "proof_state": "missing_required_input",
+      "movement_state": "unknown",
+      "seam": null,
+      "recommendation": null,
+      "handoff": null,
+      "receipt": {
+        "artifact": null,
+        "status": "missing"
+      },
+      "movement": {
+        "before_class": null,
+        "after_class": null,
+        "source": null,
+        "source_state": null
+      },
+      "optional_context": {
+        "ledger": null,
+        "gate_decision": null,
+        "coverage_frontier": null,
+        "first_useful_action": null
+      },
+      "warnings": [
+        {
+          "kind": "missing_required_input",
+          "message": "Proof input is missing selected seam and before/after movement context.",
+          "source_artifact": "fixtures/boundary_gap/expected/assistant-loop-health/proofs/missing-required-proof.json"
+        }
+      ]
+    }
+  ],
+  "warning_summary": [
+    {
+      "kind": "unchanged_movement",
+      "count": 1,
+      "examples": [
+        "Static movement remained unchanged after the focused attempt."
+      ]
+    },
+    {
+      "kind": "missing_required_input",
+      "count": 1,
+      "examples": [
+        "Proof input is missing selected seam and before/after movement context."
+      ]
+    }
+  ],
+  "repair_queue": [
+    {
+      "repair_kind": "inspect_unchanged_attempt",
+      "source_artifact": "fixtures/boundary_gap/expected/assistant-loop-health/proofs/unchanged-proof.json",
+      "seam_id": "67fc764ba37d77bd",
+      "path": "src/lib.rs",
+      "line": 2,
+      "reason": "Static evidence did not move after the focused attempt.",
+      "next_command": "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json",
+      "expected_result": "Inspect whether the focused test observes the missing equality boundary before rerunning receipt generation."
+    },
+    {
+      "repair_kind": "regenerate_proof",
+      "source_artifact": "fixtures/boundary_gap/expected/assistant-loop-health/proofs/missing-required-proof.json",
+      "seam_id": null,
+      "path": null,
+      "line": null,
+      "reason": "The supplied proof is missing required selected seam and movement evidence.",
+      "next_command": "ripr assistant-loop proof --out target/ripr/reports/test-oracle-assistant-proof.json --out-md target/ripr/reports/test-oracle-assistant-proof.md",
+      "expected_result": "Regenerate a proof packet with selected seam and before/after static movement context."
+    }
+  ],
+  "limits": [
+    "Static RIPR evidence only.",
+    "Does not provide runtime confirmation.",
+    "Does not run mutation testing.",
+    "Does not call providers.",
+    "Does not edit source or generate tests.",
+    "Does not change default CI blocking.",
+    "Gate evaluator remains pass/fail authority."
+  ]
+}

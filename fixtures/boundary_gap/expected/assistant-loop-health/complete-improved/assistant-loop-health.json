@@ -1,0 +1,80 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "assistant_loop_health",
+  "status": "advisory",
+  "root": ".",
+  "generated_at": "2026-05-09T12:00:00Z",
+  "inputs": {
+    "proofs": [
+      "fixtures/boundary_gap/expected/assistant-loop-health/proofs/complete-improved-proof.json"
+    ]
+  },
+  "summary": {
+    "proofs": 1,
+    "complete": 1,
+    "partial": 0,
+    "missing_required_input": 0,
+    "missing_optional_input": 0,
+    "improved": 1,
+    "unchanged": 0,
+    "regressed": 0,
+    "unknown_movement": 0,
+    "warnings": 0,
+    "repair_queue": 0
+  },
+  "proofs": [
+    {
+      "id": "proof-67fc764ba37d77bd-complete-improved",
+      "source_artifact": "fixtures/boundary_gap/expected/assistant-loop-health/proofs/complete-improved-proof.json",
+      "proof_state": "complete",
+      "movement_state": "improved",
+      "seam": {
+        "seam_id": "67fc764ba37d77bd",
+        "seam_kind": "predicate_boundary",
+        "path": "src/lib.rs",
+        "line": 2,
+        "static_class": "weakly_gripped",
+        "missing_discriminator": "discount_threshold (equality boundary)"
+      },
+      "recommendation": {
+        "placement": "changed_line",
+        "related_test": "tests/pricing.rs::below_threshold_has_no_discount",
+        "suggested_test": "Add a focused test where amount == discount_threshold and assert the exact discounted_total output.",
+        "verify_command": "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+      },
+      "handoff": {
+        "artifact": "fixtures/boundary_gap/expected/editor-agent-loop/agent-brief.json",
+        "agent_command": "ripr agent start --root fixtures/boundary_gap/input --seam-id 67fc764ba37d77bd --out target/ripr/workflow"
+      },
+      "receipt": {
+        "artifact": "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json",
+        "status": "present"
+      },
+      "movement": {
+        "before_class": "weakly_gripped",
+        "after_class": "strongly_gripped",
+        "source": "agent_receipt",
+        "source_state": "resolved"
+      },
+      "optional_context": {
+        "ledger": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-evidence-ledger.json",
+        "gate_decision": "fixtures/boundary_gap/expected/gate-adoption/visible-only/gate-decision.json",
+        "coverage_frontier": null,
+        "first_useful_action": "fixtures/boundary_gap/expected/first-useful-action/already-improved/first-useful-action.json"
+      },
+      "warnings": []
+    }
+  ],
+  "warning_summary": [],
+  "repair_queue": [],
+  "limits": [
+    "Static RIPR evidence only.",
+    "Does not provide runtime confirmation.",
+    "Does not run mutation testing.",
+    "Does not call providers.",
+    "Does not edit source or generate tests.",
+    "Does not change default CI blocking.",
+    "Gate evaluator remains pass/fail authority."
+  ]
+}

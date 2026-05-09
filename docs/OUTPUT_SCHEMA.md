@@ -3059,6 +3059,16 @@ target/ripr/reports/assistant-loop-health.json
 target/ripr/reports/assistant-loop-health.md
 ```
 
+Fixture corpus:
+
+```text
+fixtures/boundary_gap/expected/assistant-loop-health/
+```
+
+The corpus pins complete-improved, partial-missing-optional,
+missing-required-input, unchanged, regressed, warning-heavy, and multi-proof
+health reports plus representative proof inputs for future producer tests.
+
 JSON shape:
 
 ```json

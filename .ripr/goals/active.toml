@@ -44,7 +44,7 @@ commands = [
 
 [[work_item]]
 id = "fixtures/assistant-loop-health-corpus"
-status = "ready"
+status = "done"
 branch = "fixtures-assistant-loop-health-corpus"
 stackable = false
 acceptance = "Pin complete, partial, missing-required-input, missing-optional-input, unchanged, regressed, warning-heavy, and multi-proof health cases before adding the producer"
@@ -59,8 +59,7 @@ commands = [
 
 [[work_item]]
 id = "report/assistant-loop-health"
-status = "blocked"
-blocked_by = ["spec/assistant-loop-health-report", "fixtures/assistant-loop-health-corpus"]
+status = "ready"
 branch = "report-assistant-loop-health"
 stackable = false
 acceptance = "Add a read-only `ripr assistant-loop health` producer that emits advisory JSON/Markdown from explicit existing proof report paths without rerunning analysis"

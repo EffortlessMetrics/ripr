@@ -227,8 +227,10 @@ across one or more `test-oracle-assistant-proof` reports without changing
 analyzer behavior, ranking, gate semantics, editor behavior, mutation
 execution, provider calls, source files, generated tests, or default CI
 blocking. [RIPR-SPEC-0022](specs/RIPR-SPEC-0022-assistant-loop-health-report.md)
-defines the contract; the next ready slice is
-`fixtures/assistant-loop-health-corpus`.
+defines the contract, and
+`fixtures/boundary_gap/expected/assistant-loop-health/` pins the complete,
+partial, missing-input, unchanged, regressed, warning-heavy, and multi-proof
+corpus; the next ready slice is `report/assistant-loop-health`.
 
 ## Strategic Sequence
 

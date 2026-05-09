@@ -2618,8 +2618,8 @@ Work items:
 | Work item | Status | Notes |
 | --- | --- | --- |
 | `spec/assistant-loop-health-report` | done | Added RIPR-SPEC-0022 plus OUTPUT_SCHEMA, traceability, capability, campaign, plan, roadmap, and changelog updates for the assistant-loop-health report contract before implementation. |
-| `fixtures/assistant-loop-health-corpus` | ready | Pin complete, partial, missing-input, unchanged, regressed, warning-heavy, and multi-proof cases after the spec lands. |
-| `report/assistant-loop-health` | blocked | Add the read-only CLI report producer over explicit proof inputs after the spec and corpus land. |
+| `fixtures/assistant-loop-health-corpus` | done | Added `fixtures/boundary_gap/expected/assistant-loop-health/` with complete-improved, partial-missing-optional, missing-required-input, unchanged, regressed, warning-heavy, and multi-proof report fixtures plus representative proof inputs. |
+| `report/assistant-loop-health` | ready | Add the read-only CLI report producer over explicit proof inputs now that the spec and corpus are pinned. |
 | `ci/assistant-loop-health-artifacts` | blocked | Upload and summarize health artifacts only when proof artifacts exist after the producer lands. |
 | `docs/assistant-loop-health-workflow` | blocked | Explain proof report vs health report, repair routing, and advisory limits after the producer and CI projection exist. |
 | `campaign/assistant-loop-health-closeout` | blocked | Close after spec, fixtures, producer, CI projection, docs, and validation document the lane. |
@@ -2639,10 +2639,9 @@ Blocking conditions:
 
 Next:
 
-- Continue with `fixtures/assistant-loop-health-corpus`. The report contract is
-  defined; the next slice should pin complete, partial, missing-input,
-  unchanged, regressed, warning-heavy, and multi-proof cases before producer,
-  CI, docs, or closeout work.
+- Continue with `report/assistant-loop-health`. The report contract and fixture
+  corpus are pinned; the next slice should add the read-only producer over
+  explicit proof inputs before CI, docs, or closeout work.
 
 ## Future Campaign: Editor Evidence UX
 

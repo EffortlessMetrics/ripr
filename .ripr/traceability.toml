@@ -1390,7 +1390,22 @@ id = "RIPR-SPEC-0022"
 name = "assistant loop health report"
 spec = "docs/specs/RIPR-SPEC-0022-assistant-loop-health-report.md"
 tests = []
-fixtures = []
+fixtures = [
+  "fixtures/boundary_gap/expected/assistant-loop-health/corpus.json",
+  "fixtures/boundary_gap/expected/assistant-loop-health/proofs/complete-improved-proof.json",
+  "fixtures/boundary_gap/expected/assistant-loop-health/proofs/partial-missing-optional-proof.json",
+  "fixtures/boundary_gap/expected/assistant-loop-health/proofs/missing-required-proof.json",
+  "fixtures/boundary_gap/expected/assistant-loop-health/proofs/unchanged-proof.json",
+  "fixtures/boundary_gap/expected/assistant-loop-health/proofs/regressed-proof.json",
+  "fixtures/boundary_gap/expected/assistant-loop-health/proofs/warning-heavy-proof.json",
+  "fixtures/boundary_gap/expected/assistant-loop-health/complete-improved/assistant-loop-health.json",
+  "fixtures/boundary_gap/expected/assistant-loop-health/partial-missing-optional/assistant-loop-health.json",
+  "fixtures/boundary_gap/expected/assistant-loop-health/missing-required-input/assistant-loop-health.json",
+  "fixtures/boundary_gap/expected/assistant-loop-health/unchanged/assistant-loop-health.json",
+  "fixtures/boundary_gap/expected/assistant-loop-health/regressed/assistant-loop-health.json",
+  "fixtures/boundary_gap/expected/assistant-loop-health/warning-heavy/assistant-loop-health.json",
+  "fixtures/boundary_gap/expected/assistant-loop-health/multi-proof/assistant-loop-health.json",
+]
 code = []
 outputs = [
   "docs/specs/RIPR-SPEC-0022-assistant-loop-health-report.md",
@@ -1404,6 +1419,7 @@ outputs = [
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/ROADMAP.md",
+  "fixtures/boundary_gap/expected/assistant-loop-health/README.md",
   "CHANGELOG.md",
 ]
 metrics = [
