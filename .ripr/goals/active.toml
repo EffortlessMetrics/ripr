@@ -26,7 +26,7 @@ end_state = [
 
 [[work_item]]
 id = "spec/assistant-loop-health-report"
-status = "ready"
+status = "done"
 branch = "spec-assistant-loop-health-report"
 stackable = false
 acceptance = "Define the assistant-loop-health JSON/Markdown contract, explicit inputs, statuses, buckets, warnings, repair queue, advisory limits, and future multi-proof behavior before implementation"
@@ -44,8 +44,7 @@ commands = [
 
 [[work_item]]
 id = "fixtures/assistant-loop-health-corpus"
-status = "blocked"
-blocked_by = ["spec/assistant-loop-health-report"]
+status = "ready"
 branch = "fixtures-assistant-loop-health-corpus"
 stackable = false
 acceptance = "Pin complete, partial, missing-required-input, missing-optional-input, unchanged, regressed, warning-heavy, and multi-proof health cases before adding the producer"

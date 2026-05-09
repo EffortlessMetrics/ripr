@@ -32,3 +32,4 @@ observable behavior.
 | [RIPR-SPEC-0019](RIPR-SPEC-0019-test-oracle-assistant-loop.md) | proposed | Test-oracle assistant loop |
 | [RIPR-SPEC-0020](RIPR-SPEC-0020-first-useful-action-report.md) | proposed | First useful action report |
 | [RIPR-SPEC-0021](RIPR-SPEC-0021-evidence-record.md) | proposed | Evidence record |
+| [RIPR-SPEC-0022](RIPR-SPEC-0022-assistant-loop-health-report.md) | proposed | Assistant loop health report |
