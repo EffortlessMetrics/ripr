@@ -261,6 +261,7 @@ tests = [
   "crates/ripr/src/output/agent_seam_packets.rs::tests::predicate_boundary_fallback_emits_when_no_analyzer_hypothesis_fired",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::given_intentional_seam_when_packets_are_requested_then_no_packet_is_emitted",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::packet_v2_carries_recommended_test_candidate_values_assertion_shape_and_confidence",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::packet_carries_shared_evidence_record_projection",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::packet_v2_carries_patterns_to_imitate_and_avoid",
   "crates/ripr/src/output/agent_seam_packets.rs::tests::packet_v2_recommends_inferred_test_file_when_no_related_test_exists",
   "crates/ripr/src/lsp/diagnostics.rs::seam_diagnostic_tests::weakly_gripped_seam_emits_warning_with_stable_code",
@@ -1085,6 +1086,7 @@ tests = [
   "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_treats_non_object_review_metadata_as_absent",
   "crates/ripr/src/output/baseline_update.rs::tests::baseline_update_removes_resolved_without_adopting_new_current_debt",
   "crates/ripr/src/output/ripr_zero_status.rs::tests::ripr_zero_status_reports_not_yet_with_metadata_and_repair_route",
+  "crates/ripr/src/output/ripr_zero_status.rs::tests::ripr_zero_status_prefers_evidence_record_repair_context",
   "crates/ripr/src/output/ripr_zero_status.rs::tests::ripr_zero_status_reports_achieved_when_no_visible_debt_remains",
   "crates/ripr/src/output/ripr_zero_status.rs::tests::ripr_zero_status_reports_incomplete_when_delta_is_missing",
   "crates/ripr/src/cli/commands.rs::tests::ripr_zero_status_parses_option_surface",
@@ -1356,12 +1358,16 @@ tests = [
   "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_marks_opaque_seams_as_static_limitation_work",
   "crates/ripr/src/output/repo_exposure.rs::tests::json_carries_schema_version_scope_and_metrics",
   "crates/ripr/src/output/repo_exposure.rs::tests::json_carries_full_classified_record",
+  "crates/ripr/src/output/agent_seam_packets.rs::tests::packet_carries_shared_evidence_record_projection",
+  "crates/ripr/src/output/ripr_zero_status.rs::tests::ripr_zero_status_prefers_evidence_record_repair_context",
   "crates/ripr/src/output/render.rs::tests::render_dispatch_renders_repo_exposure_and_sarif_formats",
 ]
 fixtures = []
 code = [
   "crates/ripr/src/output/evidence_record.rs",
   "crates/ripr/src/output/repo_exposure.rs",
+  "crates/ripr/src/output/agent_seam_packets.rs",
+  "crates/ripr/src/output/ripr_zero_status.rs",
   "crates/ripr/src/output/mod.rs",
 ]
 outputs = [

@@ -155,20 +155,40 @@ Consumers that already read repo exposure may continue to use existing fields:
 - `observed_values`
 - `missing_discriminators`
 
-The first implementation must not route RIPR Zero, movement, assistant proof,
-baseline, PR ledger, editor, or gate surfaces through the new record. Those are
-separate follow-up work items.
+The first implementation did not route downstream surfaces through the new
+record. Follow-up consumer slices may read the record as an additive source of
+truth while preserving legacy fields as fallback.
+
+## Consumer Routing
+
+The first consumer slice routes two existing advisory surfaces through the
+shared record without changing analyzer behavior:
+
+- Agent seam packets carry `packets[].evidence_record` next to the existing
+  top-level work-order fields. The packet's legacy fields stay present so
+  coding agents and editor consumers do not need an immediate migration.
+- RIPR Zero status repair routes prefer `evidence_record` when a baseline debt
+  delta item supplies it. The route may copy the record's location, grip class,
+  missing discriminator, related test, assertion shape, verification command,
+  and static limitations. Legacy baseline-delta fields remain fallback.
+
+This routing must not invent commands, generate tests, change gate authority,
+or mutate baselines.
 
 ## Acceptance Examples
 
 - `repo-exposure.json` includes `seams[].evidence_record`.
 - Existing repo exposure fields remain present.
+- Agent seam packets include `evidence_record` while preserving existing
+  top-level work-order fields.
+- RIPR Zero status repair routes prefer supplied `evidence_record` guidance and
+  static limitations while preserving legacy fallback fields.
 - Evidence record schema `0.1` is documented in `docs/OUTPUT_SCHEMA.md`.
 - Unit tests pin identity, grip class, evidence path, recommendation,
   actionability, calibration placeholder, and static limitations.
 - No analyzer behavior changes.
 - No gate, policy, LSP, editor, first-useful-action, movement, assistant proof,
-  or baseline behavior changes.
+  or baseline mutation behavior changes.
 
 Additional examples:
 
@@ -188,6 +208,8 @@ Additional examples:
 | Opaque classification is static limitation work | `evidence_record_marks_opaque_seams_as_static_limitation_work` |
 | Repo exposure schema and metrics remain present | `json_carries_schema_version_scope_and_metrics` |
 | Repo exposure carries existing seam fields plus the new record | `json_carries_full_classified_record` |
+| Agent seam packets carry the shared record while preserving legacy fields | `packet_carries_shared_evidence_record_projection` |
+| RIPR Zero status repair routes prefer supplied record guidance | `ripr_zero_status_prefers_evidence_record_repair_context` |
 
 ## Implementation Mapping
 
@@ -195,6 +217,8 @@ Additional examples:
 | --- | --- |
 | Evidence record projection | `crates/ripr/src/output/evidence_record.rs` |
 | Repo exposure JSON attachment | `crates/ripr/src/output/repo_exposure.rs` |
+| Agent seam packet projection | `crates/ripr/src/output/agent_seam_packets.rs` |
+| RIPR Zero status repair route consumer | `crates/ripr/src/output/ripr_zero_status.rs` |
 | Output module registration | `crates/ripr/src/output/mod.rs` |
 | Schema reference | `docs/OUTPUT_SCHEMA.md` |
 | Capability tracking | `docs/CAPABILITY_MATRIX.md`, `metrics/capabilities.toml` |
@@ -217,7 +241,7 @@ runtime metric emitter.
 - No gate or policy changes.
 - No LSP or editor changes.
 - No first-useful-action docs, dogfood, or closeout work.
-- No RIPR Zero routing changes.
+- No RIPR Zero gate or baseline mutation changes.
 - No evidence movement routing changes.
 - No assistant proof routing changes.
 - No baseline or PR ledger routing changes.
