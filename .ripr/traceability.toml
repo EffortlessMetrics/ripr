@@ -1378,3 +1378,38 @@ metrics = [
   "evidence_record_actionable_guidance",
   "evidence_record_static_limitations",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0022"
+name = "assistant loop health report"
+spec = "docs/specs/RIPR-SPEC-0022-assistant-loop-health-report.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0022-assistant-loop-health-report.md",
+  "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "metrics/capabilities.toml",
+  ".ripr/goals/active.toml",
+  ".ripr/traceability.toml",
+  "docs/ASSISTANT_LOOP_HEALTH_PROPOSAL.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/ROADMAP.md",
+  "CHANGELOG.md",
+]
+metrics = [
+  "assistant_loop_health_reports",
+  "assistant_loop_health_complete",
+  "assistant_loop_health_partial",
+  "assistant_loop_health_missing_required_input",
+  "assistant_loop_health_missing_optional_input",
+  "assistant_loop_health_static_improved",
+  "assistant_loop_health_static_unchanged",
+  "assistant_loop_health_static_regressed",
+  "assistant_loop_health_unknown_movement",
+  "assistant_loop_health_repair_queue_items",
+  "assistant_loop_health_warnings",
+]

@@ -226,7 +226,9 @@ missing inputs, static evidence movement, recurring warnings, and repair queues
 across one or more `test-oracle-assistant-proof` reports without changing
 analyzer behavior, ranking, gate semantics, editor behavior, mutation
 execution, provider calls, source files, generated tests, or default CI
-blocking. The first ready slice is `spec/assistant-loop-health-report`.
+blocking. [RIPR-SPEC-0022](specs/RIPR-SPEC-0022-assistant-loop-health-report.md)
+defines the contract; the next ready slice is
+`fixtures/assistant-loop-health-corpus`.
 
 ## Strategic Sequence
 

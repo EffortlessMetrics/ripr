@@ -7,7 +7,8 @@ over time.
 
 This proposal has been promoted into Campaign 23 after Campaign 22 closed First
 Useful Action. The machine-readable campaign is `.ripr/goals/active.toml`; this
-document remains the design brief for the campaign.
+document remains the design brief for the campaign. The report contract is
+[RIPR-SPEC-0022](specs/RIPR-SPEC-0022-assistant-loop-health-report.md).
 
 ## Goal
 
@@ -147,8 +148,8 @@ The active campaign uses this PR stack:
 
 | Work item | Purpose |
 | --- | --- |
-| `spec/assistant-loop-health-report` | Define JSON/Markdown contract, inputs, statuses, buckets, warnings, repair queue, and advisory limits. |
-| `fixtures/assistant-loop-health-corpus` | Pin complete, partial, missing-input, unchanged, regressed, warning-heavy, and multi-proof cases. |
+| `spec/assistant-loop-health-report` | Done: RIPR-SPEC-0022 defines JSON/Markdown contract, inputs, statuses, buckets, warnings, repair queue, and advisory limits. |
+| `fixtures/assistant-loop-health-corpus` | Next: pin complete, partial, missing-input, unchanged, regressed, warning-heavy, and multi-proof cases. |
 | `report/assistant-loop-health` | Add the read-only CLI report producer over explicit proof inputs. |
 | `ci/assistant-loop-health-artifacts` | Upload and summarize health artifacts only when proof artifacts exist. |
 | `docs/assistant-loop-health-workflow` | Explain proof report vs health report, repair routing, and advisory limits. |

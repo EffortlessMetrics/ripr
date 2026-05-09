@@ -3027,6 +3027,174 @@ schema producer: it does not run `ripr first-action`, add diagnostics, edit
 source, generate tests, call providers, run mutation testing, or make gate
 decisions.
 
+## Assistant Loop Health Report
+
+RIPR-SPEC-0022 defines the assistant-loop-health report contract. The planned
+`ripr assistant-loop health` command reads one or more explicit
+`test-oracle-assistant-proof.json` paths and writes advisory JSON and Markdown
+that summarize proof completeness, missing inputs, static movement, warnings,
+and bounded repair queues. The report is read-only and must not rerun hidden
+analysis, inspect source to infer missing fields, edit source, generate tests,
+call providers, run mutation testing, change recommendation ranking, change gate
+policy, or change default CI blocking.
+
+Command shape:
+
+```text
+ripr assistant-loop health \
+  --proof target/ripr/reports/test-oracle-assistant-proof.json \
+  --out target/ripr/reports/assistant-loop-health.json \
+  --out-md target/ripr/reports/assistant-loop-health.md
+```
+
+The report writes:
+
+```text
+target/ripr/reports/assistant-loop-health.json
+target/ripr/reports/assistant-loop-health.md
+```
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "assistant_loop_health",
+  "status": "advisory",
+  "root": ".",
+  "generated_at": "2026-05-09T12:00:00Z",
+  "inputs": {
+    "proofs": [
+      "target/ripr/reports/test-oracle-assistant-proof.json"
+    ]
+  },
+  "summary": {
+    "proofs": 1,
+    "complete": 1,
+    "partial": 0,
+    "missing_required_input": 0,
+    "missing_optional_input": 1,
+    "improved": 1,
+    "unchanged": 0,
+    "regressed": 0,
+    "unknown_movement": 0,
+    "warnings": 1,
+    "repair_queue": 0
+  },
+  "proofs": [
+    {
+      "id": "proof-67fc764ba37d77bd",
+      "source_artifact": "target/ripr/reports/test-oracle-assistant-proof.json",
+      "proof_state": "complete",
+      "movement_state": "improved",
+      "seam": {
+        "seam_id": "67fc764ba37d77bd",
+        "seam_kind": "predicate_boundary",
+        "path": "src/pricing.rs",
+        "line": 88,
+        "static_class": "weakly_gripped",
+        "missing_discriminator": "amount == discount_threshold"
+      },
+      "recommendation": {
+        "placement": "changed_line",
+        "related_test": "tests/pricing.rs::applies_discount_above_threshold",
+        "suggested_test": "Add an equality-boundary assertion.",
+        "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json"
+      },
+      "handoff": {
+        "artifact": "target/ripr/workflow/agent-brief.json",
+        "agent_command": "ripr agent start --root . --seam-id 67fc764ba37d77bd --out target/ripr/workflow"
+      },
+      "receipt": {
+        "artifact": "target/ripr/reports/agent-receipt.json",
+        "status": "present"
+      },
+      "movement": {
+        "before_class": "weakly_gripped",
+        "after_class": "strongly_gripped",
+        "source": "agent_receipt"
+      },
+      "optional_context": {
+        "ledger": "target/ripr/reports/pr-evidence-ledger.json",
+        "gate_decision": null,
+        "coverage_frontier": "target/ripr/reports/coverage-grip-frontier.json",
+        "first_useful_action": "target/ripr/reports/first-useful-action.json"
+      },
+      "warnings": [
+        {
+          "kind": "missing_optional_input",
+          "message": "No gate decision input was supplied.",
+          "source_artifact": null
+        }
+      ]
+    }
+  ],
+  "warning_summary": [
+    {
+      "kind": "missing_optional_input",
+      "count": 1,
+      "examples": [
+        "No gate decision input was supplied."
+      ]
+    }
+  ],
+  "repair_queue": [],
+  "limits": [
+    "Static RIPR evidence only.",
+    "Does not provide runtime confirmation.",
+    "Does not run mutation testing.",
+    "Does not call providers.",
+    "Does not edit source or generate tests.",
+    "Does not change default CI blocking.",
+    "Gate evaluator remains pass/fail authority."
+  ]
+}
+```
+
+Field contract:
+
+- `schema_version` is `0.1` until the report shape changes.
+- `kind` is always `assistant_loop_health`.
+- `status` is `advisory` when at least one proof path was read and summarized,
+  or `incomplete` when no proof path could be read.
+- `inputs.proofs` records explicit proof paths in deterministic order.
+- `summary.*` counts proof states, movement buckets, warnings, and repair queue
+  entries. Counts are derived from report items; they are not an opaque score.
+- `proofs[].proof_state` is `complete`, `partial`, or
+  `missing_required_input`.
+- `proofs[].movement_state` is `improved`, `unchanged`, `regressed`, or
+  `unknown`. A source proof movement of `resolved` is counted as `improved`.
+- `proofs[].seam`, `recommendation`, `handoff`, `receipt`, and `movement`
+  fields are copied from existing proof artifacts when present. The health
+  report must not mint seam identities or rerank recommendations.
+- `optional_context.*` records optional artifact paths when the proof names
+  them. Missing optional paths are `null` and may also appear as warnings.
+- `warnings[].kind` is one of `missing_required_input`,
+  `missing_optional_input`, `stale_input`, `malformed_input`,
+  `incompatible_schema`, `summary_only_guidance`, `unchanged_movement`,
+  `regressed_movement`, `missing_receipt`, `missing_handoff`,
+  `unknown_movement`, `static_limit`, or `other`.
+- `repair_queue[].repair_kind` is one of `regenerate_proof`,
+  `regenerate_missing_artifact`, `rerun_verify_and_receipt`,
+  `refresh_before_after_evidence`, `inspect_unchanged_attempt`,
+  `inspect_regression`, `inspect_summary_only_guidance`, `attach_receipt`, or
+  `no_repair`.
+- `limits` preserves static-evidence, no-edit, no-generated-test,
+  no-provider-call, no-runtime-mutation-execution, and advisory-default
+  boundaries.
+
+Markdown should fit in a generated CI job summary or reviewer handoff. It
+should show status, complete/partial/missing proof counts, movement counts, top
+warning kinds, bounded repair queue entries, and advisory limits. If no proof
+input can be read, Markdown should show `Status: incomplete` and put the repair
+instruction before empty counts.
+
+Generated CI may later run `ripr assistant-loop health` only when proof
+artifacts exist, upload `assistant-loop-health.{json,md}` with the normal report
+packet, and append a compact summary. The projection is advisory:
+`ripr gate evaluate` remains the only configured pass/fail authority.
+
 ### Review Guidance Outcome Receipt
 
 Review guidance outcome receipts are optional repo-local inputs to the

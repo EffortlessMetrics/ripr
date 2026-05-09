@@ -22,6 +22,10 @@ are scoped or reviewed.
   static-movement, warning, and repair-queue surfaces without changing analyzer,
   ranking, gate, editor, provider, mutation, generated-test, source-edit, or
   default-blocking behavior.
+- Added RIPR-SPEC-0022 for the planned assistant-loop-health report, defining
+  explicit proof inputs, complete/partial/missing proof states, static movement
+  buckets, warning kinds, bounded repair queue entries, future multi-proof
+  behavior, and advisory limits before fixtures or implementation.
 - Opened Campaign 22, First Useful Action, with
   `spec/first-useful-action-report` as the first ready work item so existing
   editor, PR guidance, ledger, proof, receipt, optional gate, coverage/grip,

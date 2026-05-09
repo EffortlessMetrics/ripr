@@ -2617,8 +2617,8 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `spec/assistant-loop-health-report` | ready | Define JSON/Markdown contract, explicit inputs, statuses, buckets, warnings, repair queue, advisory limits, and future multi-proof behavior. |
-| `fixtures/assistant-loop-health-corpus` | blocked | Pin complete, partial, missing-input, unchanged, regressed, warning-heavy, and multi-proof cases after the spec lands. |
+| `spec/assistant-loop-health-report` | done | Added RIPR-SPEC-0022 plus OUTPUT_SCHEMA, traceability, capability, campaign, plan, roadmap, and changelog updates for the assistant-loop-health report contract before implementation. |
+| `fixtures/assistant-loop-health-corpus` | ready | Pin complete, partial, missing-input, unchanged, regressed, warning-heavy, and multi-proof cases after the spec lands. |
 | `report/assistant-loop-health` | blocked | Add the read-only CLI report producer over explicit proof inputs after the spec and corpus land. |
 | `ci/assistant-loop-health-artifacts` | blocked | Upload and summarize health artifacts only when proof artifacts exist after the producer lands. |
 | `docs/assistant-loop-health-workflow` | blocked | Explain proof report vs health report, repair routing, and advisory limits after the producer and CI projection exist. |
@@ -2627,6 +2627,7 @@ Work items:
 References:
 
 - [Assistant Loop Health proposal](ASSISTANT_LOOP_HEALTH_PROPOSAL.md)
+- [RIPR-SPEC-0022](specs/RIPR-SPEC-0022-assistant-loop-health-report.md)
 - [Test-oracle assistant proof report](TEST_ORACLE_ASSISTANT_PROOF_REPORT.md)
 
 Blocking conditions:
@@ -2638,9 +2639,10 @@ Blocking conditions:
 
 Next:
 
-- Continue with `spec/assistant-loop-health-report`. The remaining work is to
-  define the report contract before fixtures, implementation, CI projection,
-  docs, or closeout.
+- Continue with `fixtures/assistant-loop-health-corpus`. The report contract is
+  defined; the next slice should pin complete, partial, missing-input,
+  unchanged, regressed, warning-heavy, and multi-proof cases before producer,
+  CI, docs, or closeout work.
 
 ## Future Campaign: Editor Evidence UX
 
