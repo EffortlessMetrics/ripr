@@ -203,8 +203,16 @@ only when the required artifact chain already exists.
 `docs/TEST_ORACLE_ASSISTANT_PROOF_REPORT.md` now explains how to read the
 report, warnings, static movement, optional CI projection, and limits. Campaign
 21 closed with
-`docs/handoffs/2026-05-09-campaign-21-closeout.md`; choose the next campaign
-explicitly before opening another product lane.
+`docs/handoffs/2026-05-09-campaign-21-closeout.md`. Campaign 22 is now open as
+Assistant Loop Health. It should turn existing proof packets into an advisory
+operating dashboard for assistant-directed test work: proof completeness,
+missing required and optional inputs, static movement, recurring warnings, top
+affected files, and repair queues. The first ready slice is
+`spec/assistant-loop-health-report`; generated CI, fixtures, implementation,
+docs, and closeout should wait until that contract is pinned. Health reports
+must remain separate from proof reports, gate decisions, baseline debt
+movement, analyzer ranking, provider calls, mutation execution, generated
+tests, source edits, and default CI blocking.
 
 ## Strategic Sequence
 

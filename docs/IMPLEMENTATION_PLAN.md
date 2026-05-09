@@ -36,6 +36,7 @@ through multiple work items in a campaign, but each work item should follow the
 | PR Evidence Ledger (19) | Turn per-PR RIPR evidence into an adoption ledger for movement history, waiver aging, baseline burn-down, repair receipts, and coverage/grip frontier signals while preserving advisory defaults. | Complete: spec, producer, generated-CI projection, coverage/grip frontier report, user workflow docs, and `campaign/pr-evidence-ledger-closeout`. |
 | Test-Oracle Assistant Proof (20) | Prove the full PR-time loop from changed Rust behavior to static evidence, PR/editor guidance, focused-test handoff, verification, receipt, and advisory CI/ledger projection. | Complete: spec, canonical fixture, dogfood receipt, user workflow docs, and `campaign/test-oracle-assistant-proof-closeout`. |
 | Test-Oracle Assistant Report Producer (21) | Turn the proved assistant loop into a public read-only JSON/Markdown report producer and optional advisory CI projection. | Complete: report producer, generated-CI projection, proof-report docs, and `campaign/test-oracle-assistant-report-closeout`. |
+| Assistant Loop Health (22) | Make assistant-directed test work measurable over time from existing proof artifacts: completeness, missing inputs, static movement, repeated warnings, and next repair queues. | Active: `spec/assistant-loop-health-report` is ready; fixture corpus, report producer, generated-CI projection, workflow docs, and closeout are blocked behind the spec. |
 | Editor Evidence UX (future) | Make the saved-workspace LSP path feel like an editor-native test-intent cockpit from diagnostic to hover, related test, context packet, one test, verify, and receipt. | Complete as an explicit parallel Lane 3 closeout: contract audit, hover hardening, evidence-aware actions, context packet, protocol smoke, VS Code smoke, status/staleness, workflow docs, and closeout audit. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
@@ -156,8 +157,15 @@ only when the required artifact chain already exists.
 `docs/TEST_ORACLE_ASSISTANT_PROOF_REPORT.md` now explains how to read the
 report, warnings, static movement, optional CI projection, and limits. Campaign
 21 closed with
-`docs/handoffs/2026-05-09-campaign-21-closeout.md`; choose the next campaign
-explicitly before opening another product lane.
+`docs/handoffs/2026-05-09-campaign-21-closeout.md`. Campaign 22 is open as
+Assistant Loop Health. Its first ready slice is
+`spec/assistant-loop-health-report`, which should define an advisory
+repo-level health report over existing proof artifacts before fixtures,
+implementation, generated-CI projection, docs, or closeout proceed. The
+campaign must keep health as an operating dashboard: proof reports remain the
+per-loop receipt binder, gate decisions remain pass/fail authority, and no
+analyzer, ranking, gate, editor, provider, mutation, generated-test,
+source-edit, or default-blocking behavior changes belong in this lane.
 
 ## PR 0: `planning-and-tracking-docs`
 

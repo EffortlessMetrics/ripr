@@ -1,38 +1,70 @@
-id = "test-oracle-assistant-report-producer"
-title = "Test-Oracle Assistant Report Producer"
+id = "assistant-loop-health"
+title = "Assistant Loop Health"
 status = "active"
 
-# This is Campaign 21 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
-# Campaign 20 proved the assistant loop through a spec, canonical replay
-# fixture, dogfood receipt, and user workflow docs. This campaign turns that
-# proof into a public read-only report producer and optional PR/CI projection.
+# This is Campaign 22 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+# Campaign 21 made one assistant-directed test loop reviewable as a single
+# proof report. This campaign measures whether assistant loops are complete,
+# evidence-moving, and repairable across one or more proof packets.
 
 objective = """
-Make the test-oracle assistant loop a concrete report surface: join existing
-PR guidance, editor/agent handoff, before/after static evidence, receipts, PR
-ledger, optional gate decisions, and optional coverage/grip frontier inputs
-into advisory `test-oracle-assistant-proof.{json,md}` artifacts without
-rerunning hidden analysis, editing source, generating tests, calling providers,
-running mutation testing, or changing default CI blocking.
+Make assistant-directed test work measurable over time by summarizing proof
+completeness, missing inputs, static evidence movement, repeated warnings, and
+next repair queues from existing proof artifacts, without changing analyzer
+behavior, ranking, gate policy, editor behavior, mutation execution, provider
+calls, generated tests, source edits, or default CI blocking.
 """
 
 end_state = [
-  "a public read-only command writes `target/ripr/reports/test-oracle-assistant-proof.json` and `.md` from explicit existing artifact paths",
-  "the report preserves selected seam identity, missing discriminator, placement state, handoff command, static before/after movement, receipt path, PR ledger path, optional gate path, optional coverage/grip frontier path, warnings, and static limits",
-  "fixtures and tests cover complete proof, summary-only guidance, missing optional inputs, missing required inputs, unchanged movement, and advisory limits",
-  "generated CI may surface the proof report only as advisory evidence when inputs exist; it must not become pass/fail authority",
-  "user docs explain when to read the proof report instead of raw artifact chains",
-  "closeout records what is implemented, what remains advisory, and which future work must stay outside analyzer, ranking, gate, editor, or mutation semantics",
+  "a public read-only command writes `target/ripr/reports/assistant-loop-health.json` and `.md` from explicit existing `test-oracle-assistant-proof` artifacts",
+  "the report counts complete and partial proof packets, missing required inputs, missing optional inputs, static movement buckets, warning frequency, top affected files, and repair-queue items",
+  "fixtures pin complete, partial, missing-input, unchanged, regressed, summary-only, warning-heavy, and multi-proof repair-queue cases",
+  "generated CI may surface the health report only as advisory evidence when proof artifacts exist; it must not become pass/fail authority",
+  "user docs explain when to read the health report instead of a single proof report and how maintainers or external agents should route repair work",
+  "closeout records what is implemented, what remains advisory, and which future work must stay outside analyzer, ranking, gate, editor, provider, mutation, or generated-test semantics",
 ]
 
 [[work_item]]
-id = "report/test-oracle-assistant-proof"
-status = "done"
-branch = "report-test-oracle-assistant-proof"
+id = "spec/assistant-loop-health-report"
+status = "ready"
+branch = "spec-assistant-loop-health-report"
 stackable = false
-acceptance = "Implement a read-only `ripr assistant-loop proof` report producer that writes advisory JSON and Markdown from explicit Campaign 20 artifact inputs while preserving static vocabulary and advisory limits"
+acceptance = "Define the advisory assistant loop health report contract, including inputs, proof counts, completeness, evidence movement, warnings, missing inputs, top files, next repair queue, and limits"
 commands = [
-  "cargo test -p ripr test_oracle_assistant",
+  "cargo xtask check-spec-format",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "fixtures/assistant-loop-health-corpus"
+status = "blocked"
+branch = "fixtures-assistant-loop-health-corpus"
+stackable = false
+blocked_by = ["spec/assistant-loop-health-report"]
+acceptance = "Pin assistant loop health fixture cases before implementation so complete, partial, missing-input, unchanged, regressed, summary-only, warning-heavy, and multi-proof repair-queue behavior stays deterministic"
+commands = [
+  "cargo test -p ripr assistant_loop_health",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "report/assistant-loop-health"
+status = "blocked"
+branch = "report-assistant-loop-health"
+stackable = false
+blocked_by = ["fixtures/assistant-loop-health-corpus"]
+acceptance = "Implement `ripr assistant-loop health` as a read-only JSON/Markdown report producer over explicit existing proof artifacts without rerunning analysis or changing pass/fail behavior"
+commands = [
+  "cargo test -p ripr assistant_loop_health",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-traceability",
@@ -41,11 +73,12 @@ commands = [
 ]
 
 [[work_item]]
-id = "ci/test-oracle-assistant-proof-artifacts"
-status = "done"
-branch = "ci-test-oracle-assistant-proof-artifacts"
+id = "ci/assistant-loop-health-artifacts"
+status = "blocked"
+branch = "ci-assistant-loop-health-artifacts"
 stackable = false
-acceptance = "Surface `test-oracle-assistant-proof.{json,md}` in generated GitHub CI as advisory artifacts and summary content only when the required inputs exist, without changing default blocking"
+blocked_by = ["report/assistant-loop-health"]
+acceptance = "Surface `assistant-loop-health.{json,md}` in generated GitHub CI as advisory artifacts and summary content only when proof artifacts exist, without changing default blocking"
 commands = [
   "cargo test -p ripr init_generated_github_workflow",
   "cargo xtask check-workflows",
@@ -55,11 +88,12 @@ commands = [
 ]
 
 [[work_item]]
-id = "docs/test-oracle-assistant-proof-report"
-status = "done"
-branch = "docs-test-oracle-assistant-proof-report"
+id = "docs/assistant-loop-health-workflow"
+status = "blocked"
+branch = "docs-assistant-loop-health-workflow"
 stackable = false
-acceptance = "Document how reviewers, maintainers, and coding agents read the proof report, warnings, static movement, optional CI projection, and limits without artifact archaeology"
+blocked_by = ["ci/assistant-loop-health-artifacts"]
+acceptance = "Document how maintainers, reviewers, and external coding agents use assistant loop health to distinguish one-loop proof review from repo-level loop quality, missing-input repair, unchanged movement, warnings, and advisory limits"
 commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
@@ -68,11 +102,12 @@ commands = [
 ]
 
 [[work_item]]
-id = "campaign/test-oracle-assistant-report-closeout"
-status = "done"
-branch = "campaign-test-oracle-assistant-report-closeout"
+id = "campaign/assistant-loop-health-closeout"
+status = "blocked"
+branch = "campaign-assistant-loop-health-closeout"
 stackable = false
-acceptance = "Close Campaign 21 after the proof report producer, generated-CI advisory projection, docs, and validation demonstrate a first-class report surface without changing analyzer, gate, editor, or mutation behavior"
+blocked_by = ["docs/assistant-loop-health-workflow"]
+acceptance = "Close Campaign 22 after the spec, fixtures, report producer, generated-CI advisory projection, docs, and validation prove assistant loop health is measurable without changing analyzer, ranking, gate, editor, provider, mutation, generated-test, source-edit, or default-blocking behavior"
 commands = [
   "cargo xtask check-spec-format",
   "cargo xtask check-doc-index",

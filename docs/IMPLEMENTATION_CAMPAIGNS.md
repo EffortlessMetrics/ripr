@@ -2383,7 +2383,7 @@ Next:
 
 Campaign ID: `test-oracle-assistant-report-producer`
 
-Status: active
+Status: complete
 
 Campaign 20 proved the assistant loop as a contract, fixture, dogfood receipt,
 and user workflow. The next product gap is that users still need a first-class
@@ -2465,8 +2465,105 @@ Blocking conditions:
 
 Next:
 
-- No ready Campaign 21 work item remains. Choose the next campaign explicitly
-  before opening another product lane.
+- Campaign 22, Assistant Loop Health, is now the active campaign. It should
+  measure proof completeness, missing inputs, static movement, recurring
+  warnings, and repair queues from existing proof artifacts without extending
+  Campaign 21 in place.
+
+## Campaign 22: Assistant Loop Health
+
+Campaign ID: `assistant-loop-health`
+
+Status: active
+
+Campaign 21 made one assistant-directed test loop reviewable through
+`test-oracle-assistant-proof.{json,md}`. The next product gap is making those
+proof packets measurable over time so maintainers and external coding agents
+can tell whether the assistant loop is complete, evidence-moving, and
+repairable across a repo.
+
+Objective:
+
+```text
+Make assistant-directed test work measurable over time by summarizing proof
+completeness, missing inputs, static evidence movement, repeated warnings, and
+next repair queues from existing proof artifacts, without changing analyzer
+behavior, ranking, gate policy, editor behavior, mutation execution, provider
+calls, generated tests, source edits, or default CI blocking.
+```
+
+End state:
+
+- a public read-only `ripr assistant-loop health` command writes
+  `target/ripr/reports/assistant-loop-health.json` and `.md` from explicit
+  existing `test-oracle-assistant-proof` artifacts
+- the report counts complete and partial proof packets, missing required
+  inputs, missing optional inputs, static movement buckets, warning frequency,
+  top affected files, and repair-queue items
+- fixtures pin complete, partial, missing-input, unchanged, regressed,
+  summary-only, warning-heavy, and multi-proof repair-queue cases
+- generated CI may surface the health report only as advisory evidence when
+  proof artifacts exist; it must not become pass/fail authority
+- user docs explain when to read the health report instead of a single proof
+  report and how maintainers or external agents should route repair work
+- closeout records what is implemented, what remains advisory, and which future
+  work must stay outside analyzer, ranking, gate, editor, provider, mutation,
+  generated-test, source-edit, or default-blocking semantics
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `spec/assistant-loop-health-report` | ready | Define the advisory assistant loop health report contract, including inputs, proof counts, completeness, evidence movement, warnings, missing inputs, top files, next repair queue, and limits. |
+| `fixtures/assistant-loop-health-corpus` | blocked | Pin assistant loop health fixture cases before implementation so complete, partial, missing-input, unchanged, regressed, summary-only, warning-heavy, and multi-proof repair-queue behavior stays deterministic. |
+| `report/assistant-loop-health` | blocked | Implement `ripr assistant-loop health` as a read-only JSON/Markdown report producer over explicit existing proof artifacts without rerunning analysis or changing pass/fail behavior. |
+| `ci/assistant-loop-health-artifacts` | blocked | Surface `assistant-loop-health.{json,md}` in generated GitHub CI as advisory artifacts and summary content only when proof artifacts exist, without changing default blocking. |
+| `docs/assistant-loop-health-workflow` | blocked | Document how maintainers, reviewers, and external coding agents use assistant loop health to distinguish one-loop proof review from repo-level loop quality, missing-input repair, unchanged movement, warnings, and advisory limits. |
+| `campaign/assistant-loop-health-closeout` | blocked | Close Campaign 22 after the spec, fixtures, report producer, generated-CI advisory projection, docs, and validation prove assistant loop health is measurable without changing analyzer, ranking, gate, editor, provider, mutation, generated-test, source-edit, or default-blocking behavior. |
+
+Dependencies:
+
+- Campaign 20 supplies the end-to-end assistant loop proof contract, replay
+  corpus, dogfood receipt, and workflow docs.
+- Campaign 21 supplies the per-loop proof report that health consumes.
+- Campaign 19 supplies PR evidence ledger and coverage/grip frontier context
+  that proof reports may already bind.
+- Agent loop receipts remain the source of before/after static movement; this
+  campaign must not reinterpret static evidence as runtime adequacy.
+- Optional gate decisions stay separate from health report pass/fail authority.
+
+Commands:
+
+```bash
+cargo xtask check-campaign
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-traceability
+cargo xtask check-capabilities
+cargo xtask check-pr
+```
+
+Blocking conditions:
+
+- analyzer behavior changes
+- recommendation ranking changes
+- gate policy semantic changes
+- LSP/editor behavior changes
+- mutation execution or mutation adequacy claims
+- provider/API calls or model orchestration
+- automatic source edits or generated tests
+- default CI blocking
+- making health reports the pass/fail authority
+- opaque agent scoring or proof-of-correctness language
+- new public crates
+
+Next:
+
+- Start with `spec/assistant-loop-health-report`. Do not implement the report
+  or CI projection before the JSON/Markdown contract and advisory boundaries
+  are pinned.
 
 ## Future Campaign: Editor Evidence UX
 

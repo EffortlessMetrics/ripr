@@ -59,6 +59,12 @@ are scoped or reviewed.
 - Closed Campaign 21 with `docs/handoffs/2026-05-09-campaign-21-closeout.md`,
   recording the proof-report producer, generated-CI projection, user docs,
   validation, next-work boundary, and advisory non-goals.
+- Opened Campaign 22, Assistant Loop Health, with
+  `spec/assistant-loop-health-report` as the first ready work item so existing
+  `test-oracle-assistant-proof` artifacts can become an advisory operating
+  dashboard for proof completeness, missing inputs, static movement, repeated
+  warnings, and next repair queues without analyzer, ranking, gate, editor,
+  provider, mutation, generated-test, source-edit, or default-blocking changes.
 - Opened Campaign 19, PR Evidence Ledger, with
   `spec/pr-evidence-ledger-surface` as the first ready work item so per-PR
   RIPR evidence can become an adoption ledger for movement history, waiver
