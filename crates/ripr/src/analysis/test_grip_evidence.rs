@@ -57,6 +57,13 @@ pub(crate) struct RelatedTestGrip {
     pub(crate) relation_confidence: RelationConfidence,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct OracleSemantics {
+    pub(crate) observes: String,
+    pub(crate) missing: String,
+    pub(crate) upgrade_suggestion: Option<String>,
+}
+
 /// Precomputed per-test facts for repo seam evidence consumers. This
 /// avoids repeatedly tokenizing the same test assertions and import
 /// lines while classifying every seam in a workspace.
@@ -1481,6 +1488,100 @@ fn oracle_kind_matches_seam(seam: &RepoSeam, oracle: &OracleKind) -> bool {
     }
 }
 
+pub(crate) fn oracle_semantics_for(
+    kind: &OracleKind,
+    strength: &OracleStrength,
+    seam_kind: SeamKind,
+) -> OracleSemantics {
+    if matches!(strength, OracleStrength::None) {
+        return OracleSemantics {
+            observes: "no recognized test oracle".to_string(),
+            missing: "an observable discriminator for this seam".to_string(),
+            upgrade_suggestion: Some(upgrade_suggestion_for_seam(seam_kind).to_string()),
+        };
+    }
+
+    match kind {
+        OracleKind::ExactValue => OracleSemantics {
+            observes: "the exact value or value pattern asserted by the test".to_string(),
+            missing: "no obvious value-shape discriminator gap under static scope".to_string(),
+            upgrade_suggestion: None,
+        },
+        OracleKind::ExactErrorVariant => OracleSemantics {
+            observes: "the exact error variant".to_string(),
+            missing: "error payload details if the changed behavior depends on payload".to_string(),
+            upgrade_suggestion: Some(
+                "assert the payload inside the matched error variant when payload behavior changed"
+                    .to_string(),
+            ),
+        },
+        OracleKind::WholeObjectEquality => OracleSemantics {
+            observes: "whole output object equality".to_string(),
+            missing:
+                "field-specific intent only if the whole-object assertion is too broad to review"
+                    .to_string(),
+            upgrade_suggestion: None,
+        },
+        OracleKind::Snapshot => OracleSemantics {
+            observes: "a snapshot of rendered or debug output".to_string(),
+            missing: "a small explicit discriminator if the snapshot is too broad to review"
+                .to_string(),
+            upgrade_suggestion: Some(
+                "add an exact assertion for the changed field or value when the snapshot is broad"
+                    .to_string(),
+            ),
+        },
+        OracleKind::RelationalCheck => OracleSemantics {
+            observes: "a partial relationship or broad predicate about the result".to_string(),
+            missing: "the exact changed value or boundary discriminator".to_string(),
+            upgrade_suggestion: Some(upgrade_suggestion_for_seam(seam_kind).to_string()),
+        },
+        OracleKind::BroadError => OracleSemantics {
+            observes: "some error occurred".to_string(),
+            missing:
+                "the exact error variant or payload that would discriminate the changed behavior"
+                    .to_string(),
+            upgrade_suggestion: Some(upgrade_suggestion_for_seam(seam_kind).to_string()),
+        },
+        OracleKind::SmokeOnly => OracleSemantics {
+            observes: "the call completed or returned a broad ok/some/none shape".to_string(),
+            missing: "the output value, error variant, field, effect, or call discriminator"
+                .to_string(),
+            upgrade_suggestion: Some(upgrade_suggestion_for_seam(seam_kind).to_string()),
+        },
+        OracleKind::MockExpectation => OracleSemantics {
+            observes: "an expected call, event, state write, or persistence effect".to_string(),
+            missing:
+                "effect payload, count, order, or state details if those discriminate the behavior"
+                    .to_string(),
+            upgrade_suggestion: None,
+        },
+        OracleKind::Unknown => OracleSemantics {
+            observes: "no recognized concrete oracle shape".to_string(),
+            missing: "a discriminator assertion for the seam's observable behavior".to_string(),
+            upgrade_suggestion: Some(upgrade_suggestion_for_seam(seam_kind).to_string()),
+        },
+    }
+}
+
+fn upgrade_suggestion_for_seam(seam_kind: SeamKind) -> &'static str {
+    match seam_kind {
+        SeamKind::PredicateBoundary => {
+            "add an exact returned-value assertion at the missing boundary value"
+        }
+        SeamKind::ErrorVariant => "assert the exact error variant with matches! or assert_matches!",
+        SeamKind::ReturnValue => "add an exact returned-value assertion for the changed output",
+        SeamKind::FieldConstruction => {
+            "assert the specific output field that carries the changed behavior"
+        }
+        SeamKind::SideEffect => {
+            "assert the event, state write, persistence effect, or mock expectation payload"
+        }
+        SeamKind::MatchArm => "assert the exact enum or value produced by the changed match arm",
+        SeamKind::CallPresence => "assert the expected call happened with the relevant arguments",
+    }
+}
+
 fn related_test_grip(
     seam: &RepoSeam,
     test: &TestSummary,
@@ -1700,6 +1801,131 @@ mod tests {
             line,
             "ripr_repo_exposure_latency phase=evidence_for_seams_progress status=processed_500_of_12337 duration_ms=42"
         );
+    }
+
+    #[test]
+    fn oracle_semantics_explains_broad_error_gap_and_upgrade() {
+        let semantics = oracle_semantics_for(
+            &OracleKind::BroadError,
+            &OracleStrength::Weak,
+            SeamKind::ErrorVariant,
+        );
+
+        assert_eq!(semantics.observes, "some error occurred");
+        assert_eq!(
+            semantics.missing,
+            "the exact error variant or payload that would discriminate the changed behavior"
+        );
+        assert_eq!(
+            semantics.upgrade_suggestion.as_deref(),
+            Some("assert the exact error variant with matches! or assert_matches!")
+        );
+    }
+
+    #[test]
+    fn oracle_semantics_explains_smoke_only_boundary_gap() {
+        let semantics = oracle_semantics_for(
+            &OracleKind::SmokeOnly,
+            &OracleStrength::Smoke,
+            SeamKind::PredicateBoundary,
+        );
+
+        assert_eq!(
+            semantics.observes,
+            "the call completed or returned a broad ok/some/none shape"
+        );
+        assert_eq!(
+            semantics.missing,
+            "the output value, error variant, field, effect, or call discriminator"
+        );
+        assert_eq!(
+            semantics.upgrade_suggestion.as_deref(),
+            Some("add an exact returned-value assertion at the missing boundary value")
+        );
+    }
+
+    #[test]
+    fn oracle_semantics_keeps_exact_value_without_extra_upgrade() {
+        let semantics = oracle_semantics_for(
+            &OracleKind::ExactValue,
+            &OracleStrength::Strong,
+            SeamKind::ReturnValue,
+        );
+
+        assert_eq!(
+            semantics.observes,
+            "the exact value or value pattern asserted by the test"
+        );
+        assert_eq!(
+            semantics.missing,
+            "no obvious value-shape discriminator gap under static scope"
+        );
+        assert!(semantics.upgrade_suggestion.is_none());
+    }
+
+    #[test]
+    fn oracle_semantics_covers_supported_oracle_families() {
+        let cases = [
+            (
+                OracleKind::ExactErrorVariant,
+                OracleStrength::Strong,
+                SeamKind::ErrorVariant,
+                "the exact error variant",
+                Some(
+                    "assert the payload inside the matched error variant when payload behavior changed",
+                ),
+            ),
+            (
+                OracleKind::WholeObjectEquality,
+                OracleStrength::Strong,
+                SeamKind::ReturnValue,
+                "whole output object equality",
+                None,
+            ),
+            (
+                OracleKind::Snapshot,
+                OracleStrength::Medium,
+                SeamKind::ReturnValue,
+                "a snapshot of rendered or debug output",
+                Some(
+                    "add an exact assertion for the changed field or value when the snapshot is broad",
+                ),
+            ),
+            (
+                OracleKind::RelationalCheck,
+                OracleStrength::Weak,
+                SeamKind::MatchArm,
+                "a partial relationship or broad predicate about the result",
+                Some("assert the exact enum or value produced by the changed match arm"),
+            ),
+            (
+                OracleKind::MockExpectation,
+                OracleStrength::Medium,
+                SeamKind::SideEffect,
+                "an expected call, event, state write, or persistence effect",
+                None,
+            ),
+            (
+                OracleKind::Unknown,
+                OracleStrength::Unknown,
+                SeamKind::CallPresence,
+                "no recognized concrete oracle shape",
+                Some("assert the expected call happened with the relevant arguments"),
+            ),
+            (
+                OracleKind::Unknown,
+                OracleStrength::None,
+                SeamKind::FieldConstruction,
+                "no recognized test oracle",
+                Some("assert the specific output field that carries the changed behavior"),
+            ),
+        ];
+
+        for (kind, strength, seam_kind, observes, upgrade) in cases {
+            let semantics = oracle_semantics_for(&kind, &strength, seam_kind);
+            assert_eq!(semantics.observes, observes);
+            assert_eq!(semantics.upgrade_suggestion.as_deref(), upgrade);
+        }
     }
 
     #[test]

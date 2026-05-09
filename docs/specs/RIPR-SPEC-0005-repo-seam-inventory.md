@@ -148,6 +148,12 @@ name, and line. Relation confidence and reason decide whether a test is likely
 related; oracle strength and activation overlap only choose the best imitation
 target inside otherwise equivalent relationships.
 
+Related-test oracle semantics must explain what the oracle observes, what
+discriminator remains missing, and which assertion upgrade would improve the
+seam when the current shape is broad, smoke-only, or unknown. These semantics
+do not change `oracle_kind`, `oracle_strength`, relation confidence, or static
+classification; they make the existing oracle facts actionable.
+
 ## Non-Goals
 
 This spec does not require:
@@ -219,6 +225,9 @@ calls outrank weaker relationship signals, strong oracles outrank smoke-only
 oracles inside the same relation, activation-value overlap breaks remaining
 ties, comment/string-only mentions do not match, and stable file/name/line
 ordering remains deterministic.
+- `analysis/oracle-semantics-v3-stabilization`: tests that broad error,
+smoke-only, exact-value, and record-projected related-test oracles explain what
+they observe, what they miss, and when an assertion upgrade is available.
 - `analysis/repo-ripr-classification-v1`: tests for `SeamGripClass`
 classification rules and headline mapping.
 
