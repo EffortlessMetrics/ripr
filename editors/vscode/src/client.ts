@@ -49,6 +49,7 @@ interface RiprLanguageClient {
 
 export interface RiprClientRuntime {
   getConfig(): RiprConfig;
+  workspaceRoot(): string | undefined;
   resolveServer(
     context: vscode.ExtensionContext,
     config: RiprConfig,
@@ -60,23 +61,31 @@ export interface RiprClientRuntime {
   ): RiprLanguageClient;
   runRipr(command: string, args: string[], cwd: string): Promise<string>;
   writeClipboard(text: string): Promise<void>;
+  showInformationMessage(message: string): Thenable<string | undefined>;
+  showWarningMessage(message: string): Thenable<string | undefined>;
+  showErrorMessage(message: string, ...items: string[]): Thenable<string | undefined>;
 }
 
 const defaultRuntime: RiprClientRuntime = {
   getConfig,
+  workspaceRoot: firstWorkspaceFolder,
   resolveServer,
   createLanguageClient: (serverOptions, clientOptions) =>
     new LanguageClient('ripr', 'ripr', serverOptions, clientOptions),
   runRipr,
   writeClipboard: async (text) => {
     await vscode.env.clipboard.writeText(text);
-  }
+  },
+  showInformationMessage: (message) => vscode.window.showInformationMessage(message),
+  showWarningMessage: (message) => vscode.window.showWarningMessage(message),
+  showErrorMessage: (message, ...items) => vscode.window.showErrorMessage(message, ...items)
 };
 
 export class RiprClientController {
   private client: RiprLanguageClient | undefined;
   private server: ResolvedServer | undefined;
   private readonly notificationDisposables: vscode.Disposable[] = [];
+  private readonly dirtyRustDocuments = new Set<string>();
   private status: RiprStatusState = {
     kind: 'stopped',
     summary: 'ripr server has not started.',
@@ -98,7 +107,18 @@ export class RiprClientController {
       return;
     }
 
-    this.workspaceRoot = firstWorkspaceFolder();
+    const config = this.runtime.getConfig();
+    if (!config.enabled) {
+      this.updateStatus({
+        kind: 'disabled',
+        summary: 'ripr editor analysis is disabled by configuration.',
+        detail: 'Set ripr.enabled to true to start saved-workspace diagnostics.'
+      });
+      this.output.appendLine('ripr editor analysis is disabled by configuration.');
+      return;
+    }
+
+    this.workspaceRoot = this.runtime.workspaceRoot();
     if (!this.workspaceRoot) {
       this.updateStatus({
         kind: 'noWorkspace',
@@ -109,7 +129,6 @@ export class RiprClientController {
       return;
     }
 
-    const config = this.runtime.getConfig();
     this.updateStatus({
       kind: 'resolvingServer',
       summary: 'Resolving ripr server.',
@@ -164,9 +183,9 @@ export class RiprClientController {
     );
     await this.client.start();
     this.updateStatus({
-      kind: 'ready',
-      summary: 'ripr server is ready; waiting for saved-workspace analysis.',
-      detail: `Server: ${server.source} (${server.detail})\nWorkspace: ${this.workspaceRoot}`
+      kind: 'analysisQueued',
+      summary: 'ripr saved-workspace analysis is queued.',
+      detail: `Server: ${server.source} (${server.detail})\nWorkspace: ${this.workspaceRoot}\nOpen or save a Rust file to refresh diagnostics.`
     });
   }
 
@@ -179,6 +198,7 @@ export class RiprClientController {
     const client = this.client;
     this.client = undefined;
     this.server = undefined;
+    this.dirtyRustDocuments.clear();
     while (this.notificationDisposables.length > 0) {
       this.notificationDisposables.pop()?.dispose();
     }
@@ -193,9 +213,10 @@ export class RiprClientController {
   }
 
   markWorkspaceStale(document: vscode.TextDocument): void {
-    if (!this.client || document.languageId !== 'rust' || document.uri.scheme !== 'file') {
+    if (!this.client || !isRustFileDocument(document)) {
       return;
     }
+    this.dirtyRustDocuments.add(document.uri.toString());
     this.updateStatus({
       kind: 'stale',
       summary: 'ripr analysis is stale until the Rust file is saved.',
@@ -203,12 +224,40 @@ export class RiprClientController {
     });
   }
 
+  markWorkspaceSaved(document: vscode.TextDocument): void {
+    if (!this.client || !isRustFileDocument(document)) {
+      return;
+    }
+    this.dirtyRustDocuments.delete(document.uri.toString());
+    if (this.dirtyRustDocuments.size === 0 && this.status.kind === 'stale') {
+      this.updateStatus({
+        kind: 'analysisQueued',
+        summary: 'ripr saved-workspace analysis is queued after save.',
+        detail: `Saved changes: ${document.uri.fsPath}`
+      });
+    }
+  }
+
+  markWorkspaceClosed(document: vscode.TextDocument): void {
+    if (!isRustFileDocument(document)) {
+      return;
+    }
+    this.dirtyRustDocuments.delete(document.uri.toString());
+    if (this.client && this.dirtyRustDocuments.size === 0 && this.status.kind === 'stale') {
+      this.updateStatus({
+        kind: 'analysisQueued',
+        summary: 'ripr saved-workspace analysis is queued after close.',
+        detail: `Closed unsaved Rust buffer: ${document.uri.fsPath}`
+      });
+    }
+  }
+
   async copyContext(target?: RiprContextTarget): Promise<void> {
     const targetUri = uriFromTarget(target);
     const editor = vscode.window.activeTextEditor;
     const documentUri = targetUri ?? editor?.document.uri;
     if (!documentUri) {
-      vscode.window.showInformationMessage('Open a Rust file before copying ripr context.');
+      this.runtime.showInformationMessage('Open a Rust file before copying ripr context.');
       return;
     }
 
@@ -228,7 +277,7 @@ export class RiprClientController {
         });
         if (packet && typeof packet === 'object') {
           await this.runtime.writeClipboard(JSON.stringify(packet, null, 2));
-          vscode.window.showInformationMessage('Copied ripr context to clipboard.');
+          this.runtime.showInformationMessage('Copied ripr context to clipboard.');
           return;
         }
       } catch (error) {
@@ -239,7 +288,7 @@ export class RiprClientController {
 
     const workspaceFolder = vscode.workspace.getWorkspaceFolder(documentUri);
     if (!workspaceFolder) {
-      vscode.window.showInformationMessage('ripr context requires a workspace folder.');
+      this.runtime.showInformationMessage('ripr context requires a workspace folder.');
       return;
     }
 
@@ -266,66 +315,66 @@ export class RiprClientController {
     try {
       const context = await this.runtime.runRipr(server.command, args, workspaceFolder.uri.fsPath);
       await this.runtime.writeClipboard(context.trim());
-      vscode.window.showInformationMessage('Copied ripr context to clipboard.');
+      this.runtime.showInformationMessage('Copied ripr context to clipboard.');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr context failed: ${message}`);
-      vscode.window.showWarningMessage(`ripr context failed for ${selector}. See ripr output for details.`);
+      this.runtime.showWarningMessage(`ripr context failed for ${selector}. See ripr output for details.`);
     }
   }
 
   async copySuggestedAssertion(target?: RiprSuggestedAssertionTarget): Promise<void> {
     const assertion = typeof target?.assertion === 'string' ? target.assertion.trim() : '';
     if (!assertion) {
-      vscode.window.showInformationMessage('No ripr suggested assertion is available for this diagnostic.');
+      this.runtime.showInformationMessage('No ripr suggested assertion is available for this diagnostic.');
       return;
     }
     try {
       await this.runtime.writeClipboard(assertion);
-      vscode.window.showInformationMessage('Copied ripr suggested assertion to clipboard.');
+      this.runtime.showInformationMessage('Copied ripr suggested assertion to clipboard.');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copy suggested assertion failed: ${message}`);
-      vscode.window.showWarningMessage('ripr could not copy the suggested assertion. See ripr output for details.');
+      this.runtime.showWarningMessage('ripr could not copy the suggested assertion. See ripr output for details.');
     }
   }
 
   async copyTargetedTestBrief(target?: RiprTargetedTestBriefTarget): Promise<void> {
     const brief = typeof target?.brief === 'string' ? target.brief.trim() : '';
     if (!brief) {
-      vscode.window.showInformationMessage('No ripr targeted test brief is available for this diagnostic.');
+      this.runtime.showInformationMessage('No ripr targeted test brief is available for this diagnostic.');
       return;
     }
     try {
       await this.runtime.writeClipboard(brief);
-      vscode.window.showInformationMessage('Copied ripr targeted test brief to clipboard.');
+      this.runtime.showInformationMessage('Copied ripr targeted test brief to clipboard.');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copy targeted test brief failed: ${message}`);
-      vscode.window.showWarningMessage('ripr could not copy the targeted test brief. See ripr output for details.');
+      this.runtime.showWarningMessage('ripr could not copy the targeted test brief. See ripr output for details.');
     }
   }
 
   async copyAgentLoopCommand(target?: RiprAgentLoopCommandTarget): Promise<void> {
     const command = typeof target?.command === 'string' ? target.command.trim() : '';
     if (!command) {
-      vscode.window.showInformationMessage('No ripr agent loop command is available for this diagnostic.');
+      this.runtime.showInformationMessage('No ripr agent loop command is available for this diagnostic.');
       return;
     }
     try {
       await this.runtime.writeClipboard(command);
-      vscode.window.showInformationMessage('Copied ripr agent loop command to clipboard.');
+      this.runtime.showInformationMessage('Copied ripr agent loop command to clipboard.');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr copy agent loop command failed: ${message}`);
-      vscode.window.showWarningMessage('ripr could not copy the agent loop command. See ripr output for details.');
+      this.runtime.showWarningMessage('ripr could not copy the agent loop command. See ripr output for details.');
     }
   }
 
   async openRelatedTest(target?: RiprRelatedTestTarget): Promise<void> {
     const uri = uriFromTarget(target);
     if (!uri) {
-      vscode.window.showInformationMessage('No ripr related test location is available for this diagnostic.');
+      this.runtime.showInformationMessage('No ripr related test location is available for this diagnostic.');
       return;
     }
     try {
@@ -338,7 +387,7 @@ export class RiprClientController {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`ripr open related test failed: ${message}`);
-      vscode.window.showWarningMessage('ripr could not open the related test. See ripr output for details.');
+      this.runtime.showWarningMessage('ripr could not open the related test. See ripr output for details.');
     }
   }
 
@@ -352,12 +401,20 @@ export class RiprClientController {
       this.output.appendLine(this.status.detail);
     }
     this.output.show();
-    vscode.window.showInformationMessage(this.status.summary);
+    this.runtime.showInformationMessage(this.status.summary);
   }
 
   private handleServerLog(params: unknown): void {
     const message = serverLogMessage(params);
     if (!message) {
+      return;
+    }
+    if (message.startsWith('ripr analysis refresh queued')) {
+      this.updateStatus({
+        kind: 'analysisQueued',
+        summary: 'ripr saved-workspace analysis is queued.',
+        detail: message
+      });
       return;
     }
     if (message.startsWith('ripr analysis refresh started')) {
@@ -369,7 +426,7 @@ export class RiprClientController {
       return;
     }
     if (message.startsWith('ripr analysis refresh completed')) {
-      this.updateStatus(statusFromRefreshCompletedMessage(message));
+      this.updateStatus(this.statusAfterRefreshCompleted(message));
       return;
     }
     if (message.startsWith('ripr analysis refresh failed')) {
@@ -379,6 +436,21 @@ export class RiprClientController {
         detail: message
       });
     }
+  }
+
+  private statusAfterRefreshCompleted(message: string): RiprStatusState {
+    if (this.dirtyRustDocuments.size === 0) {
+      return statusFromRefreshCompletedMessage(message);
+    }
+    return {
+      kind: 'stale',
+      summary: 'ripr analysis completed, but unsaved Rust changes remain.',
+      detail: [
+        message,
+        'Current diagnostics describe the last saved workspace state.',
+        `Unsaved Rust files: ${Array.from(this.dirtyRustDocuments).join(', ')}`
+      ].join('\n')
+    };
   }
 
   private updateStatus(status: RiprStatusState): void {
@@ -405,7 +477,7 @@ export class RiprClientController {
   private async showMissingServerMessage(summary: string, detail: string): Promise<void> {
     this.output.appendLine(summary);
     this.output.appendLine(detail);
-    const selection = await vscode.window.showErrorMessage(
+    const selection = await this.runtime.showErrorMessage(
       'ripr server is not available. Enable automatic download, install with `cargo install ripr`, or set `ripr.server.path`.',
       'Open Settings',
       'Copy Install Command',
@@ -422,10 +494,12 @@ export class RiprClientController {
 }
 
 type RiprStatusKind =
+  | 'disabled'
   | 'noWorkspace'
   | 'resolvingServer'
   | 'serverUnavailable'
   | 'starting'
+  | 'analysisQueued'
   | 'ready'
   | 'analysisRunning'
   | 'analysisReady'
@@ -442,6 +516,8 @@ interface RiprStatusState {
 
 function statusText(kind: RiprStatusKind): string {
   switch (kind) {
+    case 'disabled':
+      return '$(circle-slash) ripr: disabled';
     case 'noWorkspace':
       return '$(folder) ripr: open workspace';
     case 'resolvingServer':
@@ -452,6 +528,8 @@ function statusText(kind: RiprStatusKind): string {
       return '$(sync~spin) ripr: starting';
     case 'ready':
       return '$(pass) ripr: ready';
+    case 'analysisQueued':
+      return '$(clock) ripr: queued';
     case 'analysisRunning':
       return '$(sync~spin) ripr: analyzing';
     case 'analysisReady':
@@ -530,6 +608,10 @@ function traceFromConfig(trace: RiprConfig['traceServer']): Trace {
 
 function firstWorkspaceFolder(): string | undefined {
   return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+}
+
+function isRustFileDocument(document: vscode.TextDocument): boolean {
+  return document.languageId === 'rust' && document.uri.scheme === 'file';
 }
 
 function runRipr(command: string, args: string[], cwd: string): Promise<string> {

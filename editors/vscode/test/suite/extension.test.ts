@@ -213,7 +213,14 @@ suite('Extension Smoke', () => {
     try {
       await context.controller.start();
 
-      assert.ok(context.status.text.includes('ripr: ready'));
+      assert.ok(context.status.text.includes('ripr: queued'));
+      assert.ok(String(context.status.tooltip).includes('saved-workspace analysis is queued'));
+
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh queued: generation=1'
+      });
+      assert.ok(context.status.text.includes('ripr: queued'));
+      assert.ok(String(context.status.tooltip).includes('generation=1'));
 
       context.client.emitNotification('window/logMessage', {
         message: 'ripr analysis refresh started: generation=1'
@@ -239,6 +246,53 @@ suite('Extension Smoke', () => {
         message: 'ripr analysis refresh failed after 3 ms: workspace analysis failed'
       });
       assert.ok(context.status.text.includes('ripr: failed'));
+      context.controller.showStatus();
+      assert.ok(context.infoMessages.at(-1)?.includes('analysis refresh failed'));
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('status bar reports disabled configuration without starting server', async () => {
+    const context = createControllerTestContext({ enabled: false });
+    try {
+      await context.controller.start();
+
+      assert.ok(context.status.text.includes('ripr: disabled'));
+      assert.ok(String(context.status.tooltip).includes('Set ripr.enabled to true'));
+      assert.strictEqual(context.client.startCalls, 0);
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('status bar reports missing workspace without starting server', async () => {
+    const context = createControllerTestContext({ workspaceRoot: null });
+    try {
+      await context.controller.start();
+
+      assert.ok(context.status.text.includes('ripr: open workspace'));
+      assert.ok(String(context.status.tooltip).includes('needs a workspace folder'));
+      assert.strictEqual(context.client.startCalls, 0);
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('status bar reports unavailable server without hanging on modal UI', async () => {
+    const context = createControllerTestContext({
+      resolveFailure: {
+        message: 'Configured ripr.server.path does not exist.',
+        detail: 'Missing configured ripr server path for this test.'
+      }
+    });
+    try {
+      await context.controller.start();
+
+      assert.ok(context.status.text.includes('ripr: server missing'));
+      assert.ok(String(context.status.tooltip).includes('Missing configured ripr server path'));
+      assert.strictEqual(context.errorMessages.length, 1);
+      assert.strictEqual(context.client.startCalls, 0);
     } finally {
       await context.dispose();
     }
@@ -253,6 +307,25 @@ suite('Extension Smoke', () => {
       context.controller.markWorkspaceStale(document);
 
       assert.ok(context.status.text.includes('ripr: stale'));
+      assert.ok(String(context.status.tooltip).includes(document.uri.fsPath));
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=4, diagnostics=2, files=1, findings=1, seam_diagnostics=1, published_files=1, cleared_files=0'
+      });
+      assert.ok(context.status.text.includes('ripr: stale'));
+      assert.ok(String(context.status.tooltip).includes('last saved workspace state'));
+
+      context.controller.markWorkspaceSaved(document);
+      assert.ok(context.status.text.includes('ripr: queued'));
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh completed in 42 ms: generation=5, diagnostics=2, files=1, findings=1, seam_diagnostics=1, published_files=1, cleared_files=0'
+      });
+      assert.ok(context.status.text.includes('ripr: diagnostics'));
+
+      context.controller.markWorkspaceStale(document);
+      context.controller.markWorkspaceClosed(document);
+      assert.ok(context.status.text.includes('ripr: queued'));
+      context.controller.showStatus();
+      assert.ok(context.infoMessages.at(-1)?.includes('analysis is queued'));
     } finally {
       await context.dispose();
     }
@@ -410,13 +483,17 @@ suite('Extension Smoke', () => {
 });
 
 interface ControllerTestOptions {
+  enabled?: boolean;
   lspResult?: unknown;
   lspError?: Error;
   cliResult?: string;
+  workspaceRoot?: string | null;
+  resolveFailure?: { message: string; detail: string };
 }
 
 class FakeLanguageClient {
   readonly requests: Array<{ method: string; params: unknown }> = [];
+  startCalls = 0;
   private readonly notificationHandlers = new Map<string, Array<(params: unknown) => void>>();
 
   constructor(private readonly options: ControllerTestOptions) {}
@@ -447,19 +524,28 @@ class FakeLanguageClient {
 
   setTrace(): void {}
 
-  async start(): Promise<void> {}
+  async start(): Promise<void> {
+    this.startCalls += 1;
+  }
 
   async stop(): Promise<void> {}
 }
 
 function createControllerTestContext(options: ControllerTestOptions) {
   const client = new FakeLanguageClient(options);
-  const output = vscode.window.createOutputChannel('ripr test');
+  const output = fakeOutputChannel();
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
   const runRiprCalls: Array<{ command: string; args: string[]; cwd: string }> = [];
   const clipboardWrites: string[] = [];
+  const infoMessages: string[] = [];
+  const warningMessages: string[] = [];
+  const errorMessages: string[] = [];
+  const configuredWorkspaceRoot = options.workspaceRoot === null
+    ? undefined
+    : options.workspaceRoot ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   const runtime: RiprClientRuntime = {
     getConfig: () => ({
+      enabled: options.enabled ?? true,
       serverPath: '',
       serverArgs: ['lsp', '--stdio'],
       autoDownload: false,
@@ -469,7 +555,8 @@ function createControllerTestContext(options: ControllerTestOptions) {
       baseRef: 'origin/main',
       traceServer: 'off'
     }),
-    resolveServer: async () => ({
+    workspaceRoot: () => configuredWorkspaceRoot,
+    resolveServer: async () => options.resolveFailure ?? ({
       command: 'ripr',
       source: 'path',
       detail: 'test ripr on PATH'
@@ -482,6 +569,18 @@ function createControllerTestContext(options: ControllerTestOptions) {
     writeClipboard: async (text) => {
       clipboardWrites.push(text);
     },
+    showInformationMessage: async (message) => {
+      infoMessages.push(message);
+      return undefined;
+    },
+    showWarningMessage: async (message) => {
+      warningMessages.push(message);
+      return undefined;
+    },
+    showErrorMessage: async (message) => {
+      errorMessages.push(message);
+      return undefined;
+    },
   };
   const controller = new RiprClientController({} as vscode.ExtensionContext, output, runtime, status);
   return {
@@ -490,12 +589,28 @@ function createControllerTestContext(options: ControllerTestOptions) {
     status,
     runRiprCalls,
     clipboardWrites,
+    infoMessages,
+    warningMessages,
+    errorMessages,
     dispose: async () => {
       await controller.stop();
       output.dispose();
       status.dispose();
     }
   };
+}
+
+function fakeOutputChannel(): vscode.OutputChannel {
+  return {
+    name: 'ripr test',
+    append: () => {},
+    appendLine: () => {},
+    clear: () => {},
+    show: () => {},
+    hide: () => {},
+    dispose: () => {},
+    replace: () => {}
+  } as vscode.OutputChannel;
 }
 
 async function activateExtension(): Promise<void> {

@@ -63,6 +63,11 @@
     "configuration": {
       "title": "ripr",
       "properties": {
+        "ripr.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable saved-workspace ripr diagnostics, hovers, status, and code actions."
+        },
         "ripr.server.path": {
           "type": "string",
           "default": "",

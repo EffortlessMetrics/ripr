@@ -119,6 +119,9 @@ The test suite:
 - verifies the live real-server boundary-gap path publishes a seam diagnostic,
   renders hover evidence, exposes seam actions, copies seam packet and verify
   command payloads, and opens the best related test
+- verifies explicit editor status states for disabled config, missing
+  workspace, unavailable server, queued/running/complete/no-seam/failed
+  refreshes, and stale dirty Rust buffers that stay stale until save or close
 - verifies `openRelatedTest` opens URI/line targets and ignores malformed
   arguments without throwing
 - verifies `restartServer` is callable even when server resolution fails
