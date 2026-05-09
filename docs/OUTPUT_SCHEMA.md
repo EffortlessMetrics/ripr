@@ -2581,14 +2581,14 @@ The report may use these coverage inputs when present:
 
 ## Test-Oracle Assistant Loop
 
-RIPR-SPEC-0019 defines the end-to-end test-oracle assistant loop. A future
-producer may write an advisory proof report that joins existing PR guidance,
-editor or agent handoff packets, before/after static evidence, receipts, PR
-evidence ledgers, and optional coverage/grip frontier reports without changing
-analyzer identity, recommendation ranking, gate policy, editor behavior, or CI
-defaults.
+RIPR-SPEC-0019 defines the end-to-end test-oracle assistant loop. `ripr
+assistant-loop proof` writes an advisory proof report that joins existing PR
+guidance, editor or agent handoff packets, before/after static evidence,
+receipts, PR evidence ledgers, and optional gate or coverage/grip frontier
+reports without changing analyzer identity, recommendation ranking, gate
+policy, editor behavior, or CI defaults.
 
-Planned command shape:
+Command shape:
 
 ```text
 ripr assistant-loop proof \
@@ -2599,11 +2599,12 @@ ripr assistant-loop proof \
   --receipt target/ripr/reports/agent-receipt.json \
   --ledger target/ripr/reports/pr-evidence-ledger.json \
   --coverage-frontier target/ripr/reports/coverage-grip-frontier.json \
+  --gate-decision target/ripr/reports/gate-decision.json \
   --out target/ripr/reports/test-oracle-assistant-proof.json \
   --out-md target/ripr/reports/test-oracle-assistant-proof.md
 ```
 
-The planned report writes:
+The report writes:
 
 ```text
 target/ripr/reports/test-oracle-assistant-proof.json
@@ -2683,8 +2684,8 @@ Field contract:
 
 - `status` is `advisory` for complete proof records and `incomplete` when the
   selected seam or required before/after evidence is missing.
-- `inputs.*` records explicit input paths. Missing optional inputs are `null`
-  plus a warning.
+- `inputs.*` records explicit input paths. Missing optional inputs are `null`;
+  missing or invalid supplied inputs produce a warning.
 - `seam.*` is copied from existing RIPR evidence or guidance. The report must
   not recompute analyzer identity.
 - `recommendation.placement` is `changed_line`, `summary_only`, or `unknown`.

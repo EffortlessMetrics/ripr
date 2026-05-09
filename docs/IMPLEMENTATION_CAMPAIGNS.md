@@ -2420,8 +2420,8 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `report/test-oracle-assistant-proof` | ready | Implement a read-only `ripr assistant-loop proof` report producer that writes advisory JSON and Markdown from explicit Campaign 20 artifact inputs while preserving static vocabulary and advisory limits. |
-| `ci/test-oracle-assistant-proof-artifacts` | blocked | Surface `test-oracle-assistant-proof.{json,md}` in generated GitHub CI as advisory artifacts and summary content only when the required inputs exist, without changing default blocking. |
+| `report/test-oracle-assistant-proof` | done | Implemented `ripr assistant-loop proof`, a read-only report producer that writes advisory JSON and Markdown from explicit Campaign 20 artifact inputs while preserving static vocabulary and advisory limits. |
+| `ci/test-oracle-assistant-proof-artifacts` | ready | Surface `test-oracle-assistant-proof.{json,md}` in generated GitHub CI as advisory artifacts and summary content only when the required inputs exist, without changing default blocking. |
 | `docs/test-oracle-assistant-proof-report` | blocked | Document how reviewers, maintainers, and coding agents read the proof report, warnings, static movement, optional CI projection, and limits without artifact archaeology. |
 | `campaign/test-oracle-assistant-report-closeout` | blocked | Close Campaign 21 after the proof report producer, generated-CI advisory projection, docs, and validation demonstrate a first-class report surface without changing analyzer, gate, editor, or mutation behavior. |
 
@@ -2465,7 +2465,7 @@ Blocking conditions:
 
 Next:
 
-- The ready work item is `report/test-oracle-assistant-proof`.
+- The ready work item is `ci/test-oracle-assistant-proof-artifacts`.
 
 ## Future Campaign: Editor Evidence UX
 

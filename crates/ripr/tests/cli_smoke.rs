@@ -242,6 +242,57 @@ fn agent_brief_diff_scope_outputs_json() -> Result<(), Box<dyn std::error::Error
 }
 
 #[test]
+fn test_oracle_assistant_proof_cli_writes_canonical_report()
+-> Result<(), Box<dyn std::error::Error>> {
+    let workspace = unique_temp_workspace("assistant-loop-proof");
+    std::fs::create_dir_all(&workspace)?;
+    let out = workspace.join("test-oracle-assistant-proof.json");
+    let out_md = workspace.join("test-oracle-assistant-proof.md");
+    let out_arg = out.display().to_string();
+    let out_md_arg = out_md.display().to_string();
+    let output = run_ripr_in_workspace(&[
+        "assistant-loop",
+        "proof",
+        "--pr-guidance",
+        "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json",
+        "--agent-packet",
+        "fixtures/boundary_gap/expected/editor-agent-loop/agent-brief.json",
+        "--before",
+        "fixtures/boundary_gap/calibration/before-targeted-test.repo-exposure.json",
+        "--after",
+        "fixtures/boundary_gap/calibration/after-targeted-test.repo-exposure.json",
+        "--receipt",
+        "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json",
+        "--ledger",
+        "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-evidence-ledger.json",
+        "--out",
+        &out_arg,
+        "--out-md",
+        &out_md_arg,
+    ])?;
+    assert_success(&output);
+
+    let fixture = workspace_root()
+        .join("fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical");
+    let expected_json = std::fs::read_to_string(fixture.join("test-oracle-assistant-proof.json"))?;
+    let actual_json = std::fs::read_to_string(&out)?;
+    assert_eq!(
+        normalize_newlines(actual_json.trim_end()),
+        normalize_newlines(expected_json.trim_end()),
+        "assistant-loop proof JSON fixture drifted"
+    );
+    let expected_md = std::fs::read_to_string(fixture.join("test-oracle-assistant-proof.md"))?;
+    let actual_md = std::fs::read_to_string(&out_md)?;
+    assert_eq!(
+        normalize_newlines(&actual_md),
+        normalize_newlines(&expected_md),
+        "assistant-loop proof Markdown fixture drifted"
+    );
+    std::fs::remove_dir_all(workspace)?;
+    Ok(())
+}
+
+#[test]
 fn agent_brief_diff_scope_omits_configured_off_seams() -> Result<(), Box<dyn std::error::Error>> {
     let (root, diff) = agent_brief_sample_workspace("agent-brief-config-off")?;
     std::fs::write(

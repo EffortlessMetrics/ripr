@@ -137,7 +137,7 @@ suppression, or runtime confirmation.
 
 ## Proof Report Contract
 
-A future producer may write:
+The public proof producer writes:
 
 ```text
 target/ripr/reports/test-oracle-assistant-proof.json
@@ -147,8 +147,7 @@ target/ripr/reports/test-oracle-assistant-proof.md
 The report is advisory and read-only. It joins existing artifacts; it does not
 rerun analysis unless a caller explicitly ran the underlying commands first.
 
-Command shape is intentionally deferred to the implementation PR, but it should
-accept explicit input paths rather than searching hidden state:
+The command accepts explicit input paths rather than searching hidden state:
 
 ```text
 ripr assistant-loop proof \
@@ -159,6 +158,7 @@ ripr assistant-loop proof \
   --receipt target/ripr/reports/agent-receipt.json \
   --ledger target/ripr/reports/pr-evidence-ledger.json \
   --coverage-frontier target/ripr/reports/coverage-grip-frontier.json \
+  --gate-decision target/ripr/reports/gate-decision.json \
   --out target/ripr/reports/test-oracle-assistant-proof.json \
   --out-md target/ripr/reports/test-oracle-assistant-proof.md
 ```
@@ -232,8 +232,8 @@ Field contract:
 
 - `status` is `advisory` for complete proof records and `incomplete` when the
   selected seam or required before/after evidence is missing.
-- `inputs.*` records explicit paths. Missing optional inputs are `null` plus a
-  warning.
+- `inputs.*` records explicit paths. Missing optional inputs are `null`;
+  missing or invalid supplied inputs produce a warning.
 - `seam.*` is copied from existing RIPR evidence or guidance. It must not be
   recomputed with new identity semantics.
 - `recommendation.placement` is `changed_line`, `summary_only`, or `unknown`.

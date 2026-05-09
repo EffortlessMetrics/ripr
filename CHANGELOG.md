@@ -43,6 +43,12 @@ are scoped or reviewed.
   `report/test-oracle-assistant-proof` as the first ready work item so the
   Campaign 20 proof loop can become advisory `test-oracle-assistant-proof`
   JSON/Markdown artifacts from explicit existing inputs.
+- Added `ripr assistant-loop proof`, a read-only advisory report producer that
+  writes `test-oracle-assistant-proof.{json,md}` from explicit PR guidance,
+  agent packet, before/after evidence, receipt, PR ledger, optional gate, and
+  optional coverage/grip frontier inputs without rerunning analysis, editing
+  source, generating tests, calling providers, running mutation testing, or
+  changing default CI blocking.
 - Opened Campaign 19, PR Evidence Ledger, with
   `spec/pr-evidence-ledger-surface` as the first ready work item so per-PR
   RIPR evidence can become an adoption ledger for movement history, waiver

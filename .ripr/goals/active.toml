@@ -27,7 +27,7 @@ end_state = [
 
 [[work_item]]
 id = "report/test-oracle-assistant-proof"
-status = "ready"
+status = "done"
 branch = "report-test-oracle-assistant-proof"
 stackable = false
 acceptance = "Implement a read-only `ripr assistant-loop proof` report producer that writes advisory JSON and Markdown from explicit Campaign 20 artifact inputs while preserving static vocabulary and advisory limits"
@@ -42,12 +42,9 @@ commands = [
 
 [[work_item]]
 id = "ci/test-oracle-assistant-proof-artifacts"
-status = "blocked"
+status = "ready"
 branch = "ci-test-oracle-assistant-proof-artifacts"
 stackable = false
-blocked_by = [
-  "report/test-oracle-assistant-proof",
-]
 acceptance = "Surface `test-oracle-assistant-proof.{json,md}` in generated GitHub CI as advisory artifacts and summary content only when the required inputs exist, without changing default blocking"
 commands = [
   "cargo test -p ripr init_generated_github_workflow",

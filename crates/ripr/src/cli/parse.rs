@@ -96,6 +96,10 @@ mod tests {
             Ok(CliCommand::CoverageGrip(args(&["frontier"])))
         );
         assert_eq!(
+            parse_args(args(&["ripr", "assistant-loop", "proof"])),
+            Ok(CliCommand::AssistantLoop(args(&["proof"])))
+        );
+        assert_eq!(
             parse_args(args(&["ripr", "calibrate", "cargo-mutants"])),
             Ok(CliCommand::Calibrate(args(&["cargo-mutants"])))
         );
