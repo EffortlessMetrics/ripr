@@ -1084,6 +1084,12 @@ tests = [
   "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_matches_mixed_fixture_contract",
   "crates/ripr/src/output/baseline_delta.rs::tests::baseline_delta_treats_non_object_review_metadata_as_absent",
   "crates/ripr/src/output/baseline_update.rs::tests::baseline_update_removes_resolved_without_adopting_new_current_debt",
+  "crates/ripr/src/output/ripr_zero_status.rs::tests::ripr_zero_status_reports_not_yet_with_metadata_and_repair_route",
+  "crates/ripr/src/output/ripr_zero_status.rs::tests::ripr_zero_status_reports_achieved_when_no_visible_debt_remains",
+  "crates/ripr/src/output/ripr_zero_status.rs::tests::ripr_zero_status_reports_incomplete_when_delta_is_missing",
+  "crates/ripr/src/cli/commands.rs::tests::ripr_zero_status_parses_option_surface",
+  "crates/ripr/src/cli/commands.rs::tests::ripr_zero_status_requires_inputs_and_rejects_unknown_args",
+  "crates/ripr/src/cli/commands.rs::tests::ripr_zero_status_writes_json_and_markdown_reports",
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/baseline-debt-delta/mixed/baseline.json",
@@ -1093,6 +1099,11 @@ code = [
   "crates/ripr/src/output/baseline.rs",
   "crates/ripr/src/output/baseline_delta.rs",
   "crates/ripr/src/output/baseline_update.rs",
+  "crates/ripr/src/output/ripr_zero_status.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/command.rs",
+  "crates/ripr/src/cli/execute.rs",
+  "crates/ripr/src/cli/help.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0017-ripr-zero-reporting.md",

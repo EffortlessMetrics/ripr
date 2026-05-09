@@ -2106,11 +2106,11 @@ success.
 
 ## RIPR Zero Status Report
 
-RIPR-SPEC-0017 defines the RIPR Zero status report. The report joins existing
-baseline ledgers, baseline debt deltas, gate decisions, PR guidance, and
-optional calibration or receipt artifacts so teams can see repo-level movement
-toward RIPR 0 without changing analyzer identity, gate policy, or advisory
-defaults.
+RIPR-SPEC-0017 defines the RIPR Zero status report. `ripr zero status` joins
+existing baseline ledgers, baseline debt deltas, gate decisions, PR guidance,
+and optional calibration or receipt artifacts so teams can see repo-level
+movement toward RIPR 0 without changing analyzer identity, gate policy, or
+advisory defaults.
 
 Command:
 
@@ -2133,10 +2133,10 @@ target/ripr/reports/ripr-zero-status.md
 ```
 
 This report is advisory progress evidence. `ripr gate evaluate` remains the
-pass/fail authority for configured gate modes. Generated CI may upload and
-summarize the report after the command exists, but the report itself must not
-fail CI, rewrite baselines, post comments, edit source, generate tests, rerun
-analysis, call an LLM, or run mutation testing.
+pass/fail authority for configured gate modes. Generated CI upload and summary
+wiring is a separate surface; the report itself must not fail CI, rewrite
+baselines, post comments, edit source, generate tests, rerun analysis, call an
+LLM, or run mutation testing.
 
 JSON shape:
 
