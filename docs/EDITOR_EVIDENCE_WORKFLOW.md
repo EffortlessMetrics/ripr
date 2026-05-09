@@ -187,5 +187,7 @@ The editor workflow deliberately stays narrow:
   for this workflow.
 
 For server configuration and command inventory, see
-[Editor extension](EDITOR_EXTENSION.md). For external agent operation, see
-[LLM operator guide](LLM_OPERATOR_GUIDE.md).
+[Editor extension](EDITOR_EXTENSION.md). For the read-only first-action report
+that can appear in status, see
+[First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md). For external
+agent operation, see [LLM operator guide](LLM_OPERATOR_GUIDE.md).

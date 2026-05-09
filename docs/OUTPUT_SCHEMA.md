@@ -2727,6 +2727,10 @@ fallback reason. The report is read-only and must not rerun hidden analysis,
 edit source, generate tests, call a provider, run mutation testing, invent
 policy, or change default CI blocking.
 
+See [First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md) for how
+developers, reviewers, and coding agents read the report, act on the selected
+action, verify static movement, emit receipts, and interpret fallback states.
+
 The producer lives in `crates/ripr/src/output/first_useful_action.rs`; the
 fixture corpus under `fixtures/boundary_gap/expected/first-useful-action/`
 pins every bounded status plus expected JSON and Markdown routes.

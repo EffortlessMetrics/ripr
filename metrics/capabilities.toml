@@ -829,6 +829,7 @@ evidence = [
   "crates/ripr/src/cli/commands.rs exposes ripr first-action over explicit artifact paths and writes target/ripr/reports/first-useful-action.{json,md}",
   "generated GitHub CI runs ripr first-action when explicit inputs are present, uploads target/ripr/reports/first-useful-action.{json,md} with the normal report packet, and appends the First Useful Action summary without changing pass/fail authority",
   "docs/OUTPUT_SCHEMA.md documents the implemented first-useful-action JSON and Markdown shape, status vocabulary, action vocabulary, routing priorities, command fields, warnings, fallback states, and advisory limits",
+  "docs/FIRST_USEFUL_ACTION_WORKFLOW.md documents GitHub and editor entry points, status meanings, developer/reviewer/agent actions, verification, receipts, fallback interpretation, and the advisory gate boundary",
   "fixtures/boundary_gap/expected/first-useful-action pins actionable, stale, missing-required-artifact, baseline-only, acknowledged, waived, suppressed, no-actionable-seam, already-improved, and unchanged-after-attempt routing cases",
   "crates/ripr/src/output/first_useful_action.rs::first_useful_action_matches_actionable_fixture and ::first_useful_action_matches_unchanged_after_attempt_fixture validate producer output against the pinned corpus",
   "crates/ripr/tests/cli_smoke.rs::first_action_cli_writes_actionable_report validates the public CLI writes actionable JSON/Markdown",
@@ -839,7 +840,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap/expected/first-useful-action"
 ]
-next = "docs/first-useful-action-workflow"
+next = "dogfood/first-useful-action-receipts"
 metric = "first_useful_action_reports, first_useful_action_actionable, first_useful_action_stale, first_useful_action_missing_required_artifact, first_useful_action_baseline_only, first_useful_action_acknowledged, first_useful_action_waived, first_useful_action_suppressed, first_useful_action_no_actionable_seam, first_useful_action_already_improved, first_useful_action_unchanged_after_attempt"
 
 [[capability]]
