@@ -76,7 +76,7 @@ the matching xtask implementation.
 - Current `rust-toolchain.toml` channel: `1.93.1`
 - Target: `1.95`
 - Rust 1.95 compatibility audit: pass on 2026-05-09; see
-  `docs/ci/msrv-1.95-audit.md`.
+  [Rust 1.95 compatibility audit](msrv-1.95-audit.md).
 - Planned lints waiting on MSRV bump: `disallowed_fields`, `manual_checked_ops`,
   `manual_take`, `manual_pop_if`, `duration_suboptimal_units`,
   `unnecessary_trailing_comma`, plus 1.94 lints `same_length_and_capacity`,
