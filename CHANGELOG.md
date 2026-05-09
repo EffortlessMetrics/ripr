@@ -11,6 +11,11 @@ are scoped or reviewed.
 
 ### Added
 
+- Opened Campaign 19, PR Evidence Ledger, with
+  `spec/pr-evidence-ledger-surface` as the first ready work item so per-PR
+  RIPR evidence can become an adoption ledger for movement history, waiver
+  aging, baseline burn-down, repair receipts, and coverage/grip frontier
+  signals without changing advisory defaults.
 - Opened Campaign 18, RIPR Zero Reporting, with
   `spec/ripr-zero-reporting-surface` as the first ready work item so reviewed
   baselines and debt deltas can become repo-level RIPR 0 status, stale-debt,

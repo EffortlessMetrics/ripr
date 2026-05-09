@@ -2161,6 +2161,105 @@ Next:
 - No ready work item remains in Campaign 18. Open the next product lane as a
   new explicit campaign rather than editing RIPR Zero Reporting in place.
 
+## Campaign 19: PR Evidence Ledger
+
+Campaign ID: `pr-evidence-ledger`
+
+Status: active
+
+Campaign 18 made RIPR Zero status visible for the current PR and current
+baseline state. The next adoption risk is history: teams need to know whether
+PRs are shrinking baseline debt, adding new policy-eligible gaps, accumulating
+waivers, preserving repair receipts, and improving behavioral grip even when
+line coverage does not move.
+
+Objective:
+
+```text
+Turn PR-time RIPR evidence into a durable adoption ledger: record per-PR
+behavioral grip movement, waiver and suppression visibility, baseline burn-down,
+repair receipts, and coverage/grip frontier signals without changing analyzer
+identity, gate policy, recommendation ranking, or advisory defaults.
+```
+
+Why it matters:
+
+RIPR Zero is not just a status page. Maintainers need an audit trail that
+explains whether each PR improved or worsened behavioral grip, which waivers
+are aging, which suppressions remain durable policy exceptions, whether
+baseline debt is shrinking, and whether focused tests improved static evidence
+without implying that coverage is adequacy.
+
+End state:
+
+- a PR evidence ledger spec defines append-only PR movement records for new
+  policy-eligible gaps, resolved baseline debt, acknowledgements, suppressions,
+  gate mode, repair receipts, and optional coverage/grip signals
+- a read-only PR evidence ledger report writes JSON/Markdown from existing gate
+  decisions, baseline debt deltas, RIPR Zero status, recommendation
+  calibration, outcome receipts, and optional coverage data
+- generated CI can upload and summarize the PR evidence ledger as advisory
+  history while leaving gate decisions as the pass/fail authority
+- coverage/grip frontier reporting makes execution coverage and behavioral grip
+  movement visible as separate axes without treating coverage as adequacy
+- user docs explain how teams use PR evidence ledgers for waiver aging,
+  baseline burn-down, repair routing, and movement toward RIPR 0
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `spec/pr-evidence-ledger-surface` | ready | Define RIPR-SPEC-0018 as the PR evidence ledger contract for append-only per-PR movement, waiver aging, baseline burn-down, repair receipts, optional coverage/grip frontier signals, and advisory-only CI projection without analyzer identity rewrites or default blocking. |
+| `report/pr-evidence-ledger` | blocked | Add a read-only PR evidence ledger report that writes JSON/Markdown from existing PR guidance, gate decision, baseline debt delta, RIPR Zero status, recommendation calibration, outcome receipt, and optional coverage inputs. |
+| `ci/pr-evidence-ledger-summary` | blocked | Surface PR evidence ledger movement in generated CI summaries and artifacts while preserving advisory defaults and leaving gate decisions as the pass/fail authority. |
+| `report/coverage-grip-frontier` | blocked | Add optional coverage/grip frontier summaries so teams can see coverage delta and RIPR evidence movement as separate advisory axes without making coverage blocking or claiming runtime adequacy. |
+| `docs/pr-evidence-ledger-workflow` | blocked | Document how teams read PR evidence ledgers, use waiver aging and baseline burn-down, route repair receipts, interpret coverage/grip frontier signals, and track movement toward RIPR 0 without learning internal report topology. |
+| `campaign/pr-evidence-ledger-closeout` | blocked | Close Campaign 19 only after PR evidence ledgers, generated-CI projection, coverage/grip frontier summaries, and user workflow docs are in place while defaults stay advisory. |
+
+Dependencies:
+
+- Campaign 18 supplies RIPR Zero status, baseline metadata health, trend
+  availability, top debt areas, repair routes, and generated-CI projection.
+- Campaign 17 supplies reviewed baselines and baseline debt delta reports.
+- Campaign 16 supplies visible waiver and baseline adoption workflows.
+- Campaign 15 supplies gate decisions. The ledger may record gate output; it
+  must not redefine gate policy or pass/fail authority.
+- Campaign 14 supplies recommendation calibration and outcome receipts. Missing
+  calibration remains explicit unknown evidence.
+- Coverage data is optional execution evidence. The campaign must not turn RIPR
+  into a coverage dashboard or treat coverage movement as adequacy.
+
+Commands:
+
+```bash
+cargo xtask check-campaign
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-capabilities
+cargo xtask check-pr
+```
+
+Blocking conditions:
+
+- analyzer identity rewrites inside Lane 4
+- recommendation ranking changes
+- gate policy semantic changes
+- default CI blocking
+- making the PR evidence ledger the pass/fail authority
+- baseline auto-adoption of new current debt
+- treating baselines, waivers, or suppressions as interchangeable
+- hiding acknowledged, suppressed, stale, invalid, or missing-input entries
+  from summaries
+- runtime mutation vocabulary in static ledger summaries unless imported
+  runtime calibration is explicitly cited
+- treating coverage movement as test adequacy
+- running cargo-mutants or any mutation engine from ledger workflows
+- automatic source edits or generated tests
+- LSP/editor behavior changes in this campaign lane
+- new public crates
+
 ## Future Campaign: Editor Evidence UX
 
 Campaign ID: `editor-evidence-ux`
