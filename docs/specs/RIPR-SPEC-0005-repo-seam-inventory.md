@@ -141,6 +141,13 @@ what test is missing and why:
 - discriminate evidence: does the oracle distinguish the changed behavior from
 the original?
 
+Related tests must keep `related_tests_total` as the full matched count while
+ranking the capped `related_tests` array deterministically by relation
+confidence, relation reason, oracle strength, activation-value overlap, file,
+name, and line. Relation confidence and reason decide whether a test is likely
+related; oracle strength and activation overlap only choose the best imitation
+target inside otherwise equivalent relationships.
+
 ## Non-Goals
 
 This spec does not require:
@@ -207,6 +214,11 @@ Tests for this spec will be added as the implementation work items land:
 against fixture repos.
 - `analysis/test-grip-evidence-v1`: tests that evidence attaches to the
 correct seam and cites the correct related tests.
+- `analysis/related-test-ranking-v2-stabilization`: tests that direct owner
+calls outrank weaker relationship signals, strong oracles outrank smoke-only
+oracles inside the same relation, activation-value overlap breaks remaining
+ties, comment/string-only mentions do not match, and stable file/name/line
+ordering remains deterministic.
 - `analysis/repo-ripr-classification-v1`: tests for `SeamGripClass`
 classification rules and headline mapping.
 
