@@ -206,7 +206,9 @@ report, warnings, static movement, optional CI projection, and limits. Campaign
 `docs/handoffs/2026-05-09-campaign-21-closeout.md`. Campaign 22 is now open as
 First Useful Action. Its product goal is to compress editor, PR, ledger, proof,
 receipt, optional gate, coverage/grip, and staleness evidence into one advisory
-next test action before adding another raw surface.
+next test action before adding another raw surface. RIPR-SPEC-0020 now defines
+that report contract; the next ready slice is the routing corpus that pins
+actionable and fallback cases before the producer is added.
 
 ## Strategic Sequence
 

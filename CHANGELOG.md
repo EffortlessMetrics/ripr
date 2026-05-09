@@ -16,6 +16,10 @@ are scoped or reviewed.
   editor, PR guidance, ledger, proof, receipt, optional gate, coverage/grip,
   and staleness evidence can be compressed into one advisory next test action
   before adding another raw artifact surface.
+- Added RIPR-SPEC-0020, defining the first-useful-action report contract,
+  bounded status and action vocabularies, deterministic routing priorities,
+  planned JSON/Markdown schema, traceability, and capability metrics before
+  adding the producer, fixtures, CI projection, or editor projection.
 - Opened Campaign 20, Test-Oracle Assistant Proof, with
   `spec/test-oracle-assistant-loop` as the first ready work item so the
   already-built PR guidance, editor/agent handoff, verification, receipts,
