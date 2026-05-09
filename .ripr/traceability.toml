@@ -1055,6 +1055,8 @@ outputs = [
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/ROADMAP.md",
   "docs/CAPABILITY_MATRIX.md",
+  "docs/handoffs/2026-05-09-campaign-17-closeout.md",
+  "docs/handoffs/README.md",
   "metrics/capabilities.toml",
   "CHANGELOG.md",
 ]

@@ -141,7 +141,7 @@ non-blocking generated CI defaults. [RIPR blocking
 readiness](BLOCKING_READINESS.md) explains when to stay advisory, require
 acknowledgement, use baseline-check, or enable calibrated blocking. The
 [Campaign 16 closeout](handoffs/2026-05-08-campaign-16-closeout.md) records
-the adoption proof and next-work boundary. Campaign 17 is active as RIPR Zero
+the adoption proof and next-work boundary. Campaign 17 closed RIPR Zero
 Adoption: RIPR-SPEC-0016 now defines the baseline debt delta contract, `ripr
 baseline create` can write `.ripr/gate-baseline.json` ledgers from existing
 gate-decision evidence, `ripr baseline diff` can report baseline debt
@@ -151,7 +151,9 @@ summarizes baseline debt delta artifacts when a baseline and gate decision are
 present. [Baseline ledger workflow](BASELINE_LEDGER_WORKFLOW.md) documents the
 user path from advisory adoption to reviewed baseline creation,
 `baseline-check`, shrink-only refresh, new debt review, and RIPR 0 under
-configured scope, leaving Campaign 17 closeout as the next ready slice.
+configured scope. The [Campaign 17
+closeout](handoffs/2026-05-09-campaign-17-closeout.md) records the PR chain,
+proof commands, and next-work boundary.
 Editor Evidence UX remains queued as a separate Lane 3 campaign; its contract
 audit is recorded in [Editor Evidence UX](EDITOR_EVIDENCE_UX.md), and hover
 plus evidence-aware action hardening have landed as explicit parallel slices.

@@ -37,6 +37,10 @@ are scoped or reviewed.
   for reviewed baseline creation, baseline debt deltas, `baseline-check`,
   shrink-only refresh, new debt review, waiver versus baseline versus
   suppression boundaries, and the path toward RIPR 0.
+- Closed Campaign 17, RIPR Zero Adoption, after the baseline debt delta spec,
+  baseline create/diff/update commands, generated CI delta artifacts, and
+  baseline ledger workflow docs made historical behavioral test debt governable
+  without changing advisory defaults.
 - Extended framed LSP protocol smoke coverage through a real seam diagnostic,
   hover, code actions, `ripr.collectEvidenceContext`, and shutdown.
 - Extended VS Code e2e smoke coverage so the real boundary-gap server path
