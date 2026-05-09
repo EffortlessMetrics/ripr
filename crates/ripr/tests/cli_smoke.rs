@@ -705,6 +705,53 @@ fn first_useful_action_corpus_pins_routing_cases() -> Result<(), Box<dyn std::er
 }
 
 #[test]
+fn first_action_cli_writes_advisory_report() -> Result<(), Box<dyn std::error::Error>> {
+    let workspace = unique_temp_workspace("first-action");
+    std::fs::create_dir_all(&workspace)?;
+    let out = workspace.join("first-useful-action.json");
+    let out_md = workspace.join("first-useful-action.md");
+    let out_arg = out.display().to_string();
+    let out_md_arg = out_md.display().to_string();
+    let output = run_ripr_in_workspace(&[
+        "first-action",
+        "--root",
+        "fixtures/boundary_gap/input",
+        "--pr-guidance",
+        "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json",
+        "--assistant-proof",
+        "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/test-oracle-assistant-proof.json",
+        "--ledger",
+        "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-evidence-ledger.json",
+        "--out",
+        &out_arg,
+        "--out-md",
+        &out_md_arg,
+    ])?;
+    assert_success(&output);
+    let report: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&out)?)?;
+    assert_eq!(json_pointer_str(&report, "/schema_version")?, "0.1");
+    assert_eq!(json_pointer_str(&report, "/kind")?, "first_useful_action");
+    assert_eq!(json_pointer_str(&report, "/status")?, "actionable");
+    assert_eq!(
+        json_pointer_str(&report, "/action_kind")?,
+        "write_focused_test"
+    );
+    assert_eq!(
+        json_pointer_str(&report, "/selected/seam_id")?,
+        "67fc764ba37d77bd"
+    );
+    assert_eq!(
+        json_pointer_str(&report, "/selected/classification")?,
+        "weakly_exposed"
+    );
+    let markdown = std::fs::read_to_string(out_md)?;
+    assert!(markdown.contains("# RIPR First Useful Action"));
+    assert!(markdown.contains("Status: actionable"));
+    assert!(markdown.contains("Action: write_focused_test"));
+    Ok(())
+}
+
+#[test]
 fn agent_start_writes_source_edit_free_workflow_packet() -> Result<(), Box<dyn std::error::Error>> {
     let seam_id = "67fc764ba37d77bd";
     let out_dir = unique_temp_workspace("agent-start");

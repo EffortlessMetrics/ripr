@@ -2720,16 +2720,18 @@ warnings, optional CI projection, and advisory limits.
 ## First Useful Action Report
 
 RIPR-SPEC-0020 defines the first useful action report. `ripr first-action`
-will write an advisory JSON and Markdown report that compresses existing
+writes an advisory JSON and Markdown report that compresses existing
 editor, PR guidance, ledger, baseline, assistant proof, receipt, optional gate,
 optional coverage/grip, and staleness evidence into one next test action or one
 fallback reason. The report is read-only and must not rerun hidden analysis,
 edit source, generate tests, call a provider, run mutation testing, invent
 policy, or change default CI blocking.
 
-The pre-producer fixture corpus lives under
+The fixture corpus lives under
 `fixtures/boundary_gap/expected/first-useful-action/` and pins every bounded
-status plus its expected JSON and Markdown route.
+status plus expected JSON and Markdown routes. The producer tests match the
+actionable, missing-required-artifact, and unchanged-after-attempt routes
+against those fixtures.
 
 Command shape:
 

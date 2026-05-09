@@ -155,6 +155,21 @@ struct AssistantLoopProofOptions {
     out_md: PathBuf,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct FirstActionOptions {
+    root: String,
+    pr_guidance: Option<PathBuf>,
+    assistant_proof: Option<PathBuf>,
+    ledger: Option<PathBuf>,
+    baseline_delta: Option<PathBuf>,
+    receipt: Option<PathBuf>,
+    gate_decision: Option<PathBuf>,
+    coverage_frontier: Option<PathBuf>,
+    editor_context: Option<PathBuf>,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum OutcomeFormat {
     Markdown,
@@ -2135,6 +2150,14 @@ pub(super) fn assistant_loop(args: &[String]) -> Result<(), String> {
     assistant_loop_proof(rest)
 }
 
+pub(super) fn first_action(args: &[String]) -> Result<(), String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        help::print_first_action_help();
+        return Ok(());
+    }
+    first_action_report(args)
+}
+
 fn ripr_zero_status(args: &[String]) -> Result<(), String> {
     let options = parse_ripr_zero_status_options(args)?;
     let baseline_path = options
@@ -2418,6 +2441,94 @@ fn assistant_loop_proof(args: &[String]) -> Result<(), String> {
         output::test_oracle_assistant_proof::render_test_oracle_assistant_proof_json(&report)?;
     let rendered_md =
         output::test_oracle_assistant_proof::render_test_oracle_assistant_proof_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    Ok(())
+}
+
+fn first_action_report(args: &[String]) -> Result<(), String> {
+    let options = parse_first_action_options(args)?;
+    let pr_guidance_path = options
+        .pr_guidance
+        .as_ref()
+        .map(|path| output::first_useful_action::display_path(path));
+    let assistant_proof_path = options
+        .assistant_proof
+        .as_ref()
+        .map(|path| output::first_useful_action::display_path(path));
+    let ledger_path = options
+        .ledger
+        .as_ref()
+        .map(|path| output::first_useful_action::display_path(path));
+    let baseline_delta_path = options
+        .baseline_delta
+        .as_ref()
+        .map(|path| output::first_useful_action::display_path(path));
+    let receipt_path = options
+        .receipt
+        .as_ref()
+        .map(|path| output::first_useful_action::display_path(path));
+    let gate_decision_path = options
+        .gate_decision
+        .as_ref()
+        .map(|path| output::first_useful_action::display_path(path));
+    let coverage_frontier_path = options
+        .coverage_frontier
+        .as_ref()
+        .map(|path| output::first_useful_action::display_path(path));
+    let editor_context_path = options
+        .editor_context
+        .as_ref()
+        .map(|path| output::first_useful_action::display_path(path));
+    let input = output::first_useful_action::FirstUsefulActionInput {
+        root: options.root,
+        generated_at: baseline_created_at()?,
+        pr_guidance_path,
+        assistant_proof_path,
+        ledger_path,
+        baseline_delta_path,
+        receipt_path,
+        gate_decision_path,
+        coverage_frontier_path,
+        editor_context_path,
+        pr_guidance_json: options
+            .pr_guidance
+            .as_ref()
+            .map(|path| read_optional_text_for_report("PR guidance", path)),
+        assistant_proof_json: options
+            .assistant_proof
+            .as_ref()
+            .map(|path| read_optional_text_for_report("assistant proof", path)),
+        ledger_json: options
+            .ledger
+            .as_ref()
+            .map(|path| read_optional_text_for_report("PR evidence ledger", path)),
+        baseline_delta_json: options
+            .baseline_delta
+            .as_ref()
+            .map(|path| read_optional_text_for_report("baseline debt delta", path)),
+        receipt_json: options
+            .receipt
+            .as_ref()
+            .map(|path| read_optional_text_for_report("receipt", path)),
+        gate_decision_json: options
+            .gate_decision
+            .as_ref()
+            .map(|path| read_optional_text_for_report("gate decision", path)),
+        coverage_frontier_json: options
+            .coverage_frontier
+            .as_ref()
+            .map(|path| read_optional_text_for_report("coverage/grip frontier", path)),
+        editor_context_json: options
+            .editor_context
+            .as_ref()
+            .map(|path| read_optional_text_for_report("editor context", path)),
+    };
+    let report = output::first_useful_action::build_first_useful_action_report(input);
+    let rendered_json = output::first_useful_action::render_first_useful_action_json(&report)?;
+    let rendered_md = output::first_useful_action::render_first_useful_action_markdown(&report);
     write_text_file(&options.out, &rendered_json)?;
     write_text_file(&options.out_md, &rendered_md)?;
     println!("Wrote {}", options.out.display());
@@ -3559,6 +3670,128 @@ fn parse_assistant_loop_proof_options(
         ledger,
         coverage_frontier,
         gate_decision,
+        out,
+        out_md,
+    })
+}
+
+fn parse_first_action_options(args: &[String]) -> Result<FirstActionOptions, String> {
+    let mut root = ".".to_string();
+    let mut pr_guidance = None;
+    let mut assistant_proof = None;
+    let mut ledger = None;
+    let mut baseline_delta = None;
+    let mut receipt = None;
+    let mut gate_decision = None;
+    let mut coverage_frontier = None;
+    let mut editor_context = None;
+    let mut out = PathBuf::from(output::first_useful_action::DEFAULT_FIRST_USEFUL_ACTION_OUT);
+    let mut out_md = PathBuf::from(output::first_useful_action::DEFAULT_FIRST_USEFUL_ACTION_MD_OUT);
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = non_empty_string_arg(args, i, "--root", "first-action")?;
+            }
+            "--pr-guidance" => {
+                i += 1;
+                pr_guidance = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--pr-guidance",
+                    "first-action",
+                )?);
+            }
+            "--assistant-proof" => {
+                i += 1;
+                assistant_proof = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--assistant-proof",
+                    "first-action",
+                )?);
+            }
+            "--ledger" => {
+                i += 1;
+                ledger = Some(non_empty_path_arg(args, i, "--ledger", "first-action")?);
+            }
+            "--baseline-delta" => {
+                i += 1;
+                baseline_delta = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--baseline-delta",
+                    "first-action",
+                )?);
+            }
+            "--receipt" => {
+                i += 1;
+                receipt = Some(non_empty_path_arg(args, i, "--receipt", "first-action")?);
+            }
+            "--gate-decision" => {
+                i += 1;
+                gate_decision = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--gate-decision",
+                    "first-action",
+                )?);
+            }
+            "--coverage-frontier" => {
+                i += 1;
+                coverage_frontier = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--coverage-frontier",
+                    "first-action",
+                )?);
+            }
+            "--editor-context" => {
+                i += 1;
+                editor_context = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--editor-context",
+                    "first-action",
+                )?);
+            }
+            "--out" => {
+                i += 1;
+                out = non_empty_path_arg(args, i, "--out", "first-action")?;
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = non_empty_path_arg(args, i, "--out-md", "first-action")?;
+            }
+            other => return Err(format!("unknown first-action argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    if pr_guidance.is_none()
+        && assistant_proof.is_none()
+        && ledger.is_none()
+        && baseline_delta.is_none()
+        && receipt.is_none()
+        && gate_decision.is_none()
+        && coverage_frontier.is_none()
+        && editor_context.is_none()
+    {
+        return Err("first-action requires at least one explicit artifact input".to_string());
+    }
+
+    Ok(FirstActionOptions {
+        root,
+        pr_guidance,
+        assistant_proof,
+        ledger,
+        baseline_delta,
+        receipt,
+        gate_decision,
+        coverage_frontier,
+        editor_context,
         out,
         out_md,
     })

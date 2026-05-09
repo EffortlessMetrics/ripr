@@ -30,6 +30,12 @@ are scoped or reviewed.
   suppressed, no-actionable-seam, already-improved, and
   unchanged-after-attempt JSON/Markdown expectations before adding the report
   producer.
+- Added `ripr first-action`, a read-only advisory report producer that writes
+  `target/ripr/reports/first-useful-action.{json,md}` from explicit existing
+  PR guidance, assistant proof, PR ledger, baseline delta, receipt, gate,
+  coverage/frontier, and editor-context artifact paths without hidden analysis
+  reruns, source edits, generated tests, provider calls, mutation execution, or
+  default CI blocking.
 - Opened Campaign 20, Test-Oracle Assistant Proof, with
   `spec/test-oracle-assistant-loop` as the first ready work item so the
   already-built PR guidance, editor/agent handoff, verification, receipts,

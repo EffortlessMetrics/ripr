@@ -208,7 +208,8 @@ First Useful Action. Its product goal is to compress editor, PR, ledger, proof,
 receipt, optional gate, coverage/grip, and staleness evidence into one advisory
 next test action before adding another raw surface. RIPR-SPEC-0020 now defines
 that report contract, the routing corpus pins actionable and fallback cases,
-and the next ready slice is the read-only report producer.
+and `ripr first-action` now produces the read-only advisory JSON/Markdown
+report. Generated-CI and editor status projections are the next slices.
 
 [Assistant Loop Health](ASSISTANT_LOOP_HEALTH_PROPOSAL.md) is recorded as a
 future follow-up lane after First Useful Action. It should summarize proof
