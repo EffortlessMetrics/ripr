@@ -31,6 +31,11 @@ are scoped or reviewed.
   seam through PR guidance, editor/agent handoff, verification commands,
   after-evidence, receipt, PR ledger projection, and coverage/grip frontier
   availability while preserving advisory static-evidence limits.
+- Added `docs/TEST_ORACLE_ASSISTANT_WORKFLOW.md`, documenting the Campaign 20
+  user path from PR recommendation or editor diagnostic through bounded
+  handoff, one focused test, after evidence, receipt, and advisory CI/ledger
+  projection without source edits, generated tests, provider calls, mutation
+  execution, or default CI blocking.
 - Opened Campaign 19, PR Evidence Ledger, with
   `spec/pr-evidence-ledger-surface` as the first ready work item so per-PR
   RIPR evidence can become an adoption ledger for movement history, waiver

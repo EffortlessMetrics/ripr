@@ -77,13 +77,13 @@ commands = [
 
 [[work_item]]
 id = "docs/test-oracle-assistant-workflow"
-status = "ready"
+status = "done"
 branch = "docs-test-oracle-assistant-workflow"
 stackable = false
 blocked_by = [
   "dogfood/test-oracle-assistant-receipt",
 ]
-acceptance = "Document the user workflow from PR recommendation to editor/agent handoff, one focused test, verification, receipt, and advisory CI/ledger projection while preserving static-evidence limits"
+acceptance = "Documented the user workflow from PR recommendation to editor/agent handoff, one focused test, verification, receipt, and advisory CI/ledger projection while preserving static-evidence limits"
 commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
@@ -93,7 +93,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/test-oracle-assistant-proof-closeout"
-status = "blocked"
+status = "ready"
 branch = "campaign-test-oracle-assistant-proof-closeout"
 stackable = false
 blocked_by = [
