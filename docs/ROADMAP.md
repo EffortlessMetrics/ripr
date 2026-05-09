@@ -194,7 +194,11 @@ user-facing PR/editor-to-receipt workflow and static evidence limits. The
 [Campaign 20 closeout](handoffs/2026-05-09-campaign-20-closeout.md) records
 the prompt-to-artifact audit and the boundary that future proof report
 producers, PR/CI polish, analyzer improvements, and editor UX work need an
-explicit follow-up campaign.
+explicit follow-up campaign. Campaign 21 is now open as Test-Oracle Assistant
+Report Producer, with `report/test-oracle-assistant-proof` ready to turn the
+proved loop into advisory `test-oracle-assistant-proof.{json,md}` artifacts
+from explicit existing inputs without changing analyzer, ranking, gate, editor,
+provider, mutation, or default CI behavior.
 
 ## Strategic Sequence
 

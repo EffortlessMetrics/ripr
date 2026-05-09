@@ -39,6 +39,10 @@ are scoped or reviewed.
 - Closed Campaign 20 with `docs/handoffs/2026-05-09-campaign-20-closeout.md`,
   recording the prompt-to-artifact audit, proof commands, and follow-up
   boundaries for future proof report, PR/CI polish, analyzer, and editor work.
+- Opened Campaign 21, Test-Oracle Assistant Report Producer, with
+  `report/test-oracle-assistant-proof` as the first ready work item so the
+  Campaign 20 proof loop can become advisory `test-oracle-assistant-proof`
+  JSON/Markdown artifacts from explicit existing inputs.
 - Opened Campaign 19, PR Evidence Ledger, with
   `spec/pr-evidence-ledger-surface` as the first ready work item so per-PR
   RIPR evidence can become an adoption ledger for movement history, waiver
