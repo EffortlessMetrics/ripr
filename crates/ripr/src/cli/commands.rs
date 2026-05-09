@@ -1064,6 +1064,17 @@ jobs:
           fi
           ripr "${gate_args[@]}"
 
+      - name: Render RIPR baseline debt delta
+        if: always() && env.RIPR_GATE_BASELINE != '' && hashFiles('target/ripr/reports/gate-decision.json') != ''
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          ripr baseline diff \
+            --baseline "$RIPR_GATE_BASELINE" \
+            --current target/ripr/reports/gate-decision.json \
+            --out target/ripr/reports/baseline-debt-delta.json \
+            --out-md target/ripr/reports/baseline-debt-delta.md
+
       - name: Render RIPR LLM work-loop summaries
         if: always()
         continue-on-error: true
@@ -1213,6 +1224,45 @@ jobs:
               cat target/ripr/reports/gate-decision.md
             else
               echo 'Gate decision was not run. Set `RIPR_GATE_MODE` to `visible-only`, `acknowledgeable`, `baseline-check`, or `calibrated-gate` to opt in.'
+            fi
+            echo
+            echo '### Baseline debt delta'
+            if [ -f target/ripr/reports/baseline-debt-delta.json ]; then
+              delta_json=target/ripr/reports/baseline-debt-delta.json
+              baseline_markdown_inline() {
+                printf '%s' "$1" | tr '\r\n' '  ' | sed 's/`/\\`/g'
+              }
+              baseline_path="$(jq -r '.baseline.path // .inputs.baseline // "unknown"' "$delta_json" 2>/dev/null || echo unknown)"
+              still_present="$(jq -r '.delta.still_present // 0' "$delta_json" 2>/dev/null || echo 0)"
+              resolved="$(jq -r '.delta.resolved // 0' "$delta_json" 2>/dev/null || echo 0)"
+              new_policy_eligible="$(jq -r '.delta.new_policy_eligible // 0' "$delta_json" 2>/dev/null || echo 0)"
+              acknowledged_delta="$(jq -r '.delta.acknowledged // 0' "$delta_json" 2>/dev/null || echo 0)"
+              suppressed_delta="$(jq -r '.delta.suppressed // 0' "$delta_json" 2>/dev/null || echo 0)"
+              stale_baseline_entry="$(jq -r '.delta.stale_baseline_entry // 0' "$delta_json" 2>/dev/null || echo 0)"
+              invalid_baseline_entry="$(jq -r '.delta.invalid_baseline_entry // 0' "$delta_json" 2>/dev/null || echo 0)"
+              missing_current_input="$(jq -r '.delta.missing_current_input // 0' "$delta_json" 2>/dev/null || echo 0)"
+              limits_note="$(jq -r '.limits_note // "Advisory baseline debt movement; gate decision owns pass or fail."' "$delta_json" 2>/dev/null || echo unknown)"
+              baseline_path="$(baseline_markdown_inline "$baseline_path")"
+              still_present="$(baseline_markdown_inline "$still_present")"
+              resolved="$(baseline_markdown_inline "$resolved")"
+              new_policy_eligible="$(baseline_markdown_inline "$new_policy_eligible")"
+              acknowledged_delta="$(baseline_markdown_inline "$acknowledged_delta")"
+              suppressed_delta="$(baseline_markdown_inline "$suppressed_delta")"
+              stale_baseline_entry="$(baseline_markdown_inline "$stale_baseline_entry")"
+              invalid_baseline_entry="$(baseline_markdown_inline "$invalid_baseline_entry")"
+              missing_current_input="$(baseline_markdown_inline "$missing_current_input")"
+              limits_note="$(baseline_markdown_inline "$limits_note")"
+              echo '#### Baseline debt movement'
+              echo "- Baseline: \`$baseline_path\`"
+              echo "- Counts: still_present=\`$still_present\`, resolved=\`$resolved\`, new_policy_eligible=\`$new_policy_eligible\`, acknowledged=\`$acknowledged_delta\`, suppressed=\`$suppressed_delta\`, stale=\`$stale_baseline_entry\`, invalid=\`$invalid_baseline_entry\`, missing_current_input=\`$missing_current_input\`"
+              echo "- Boundary: $limits_note"
+              echo "- Baseline delta artifacts: \`target/ripr/reports/baseline-debt-delta.json\`, \`target/ripr/reports/baseline-debt-delta.md\`"
+              echo
+            fi
+            if [ -f target/ripr/reports/baseline-debt-delta.md ]; then
+              cat target/ripr/reports/baseline-debt-delta.md
+            else
+              echo 'Baseline debt delta was not generated. Set `RIPR_GATE_BASELINE` and run a gate mode so CI can compare checked-in debt against current gate evidence.'
             fi
             echo
             echo '### SARIF and badge status'
@@ -2842,6 +2892,7 @@ mod tests {
                 "ripr outcome",
                 "ripr review-comments",
                 "gate evaluate",
+                "ripr baseline diff",
                 "ripr agent status",
                 "ripr agent review-summary",
                 "cargo xtask operator-cockpit",
@@ -2869,6 +2920,8 @@ mod tests {
                 "target/ripr/reports/repo-ripr-badge-shields.json",
                 "target/ripr/reports/gate-decision.json",
                 "target/ripr/reports/gate-decision.md",
+                "target/ripr/reports/baseline-debt-delta.json",
+                "target/ripr/reports/baseline-debt-delta.md",
                 "target/ripr/review/comments.json",
                 "target/ci/labels.json",
             ],
@@ -2879,6 +2932,8 @@ mod tests {
                 "### Artifact packet",
                 "### Gate decision",
                 "#### Gate decision at a glance",
+                "### Baseline debt delta",
+                "#### Baseline debt movement",
                 "### SARIF and badge status",
                 "### PR guidance annotations",
                 "### Known limits",
@@ -2891,6 +2946,7 @@ mod tests {
                 "Render RIPR repo seam SARIF",
                 "Render RIPR repo badge artifacts",
                 "Render RIPR operator cockpit",
+                "Render RIPR baseline debt delta",
                 "Render RIPR LLM work-loop summaries",
                 "Run RIPR PR guidance report",
                 "Capture RIPR gate labels",
@@ -4252,12 +4308,15 @@ mod tests {
         assert!(workflow.contains("target/ripr/reports/targeted-test-outcome.json"));
         assert!(workflow.contains("target/ripr/reports/gate-decision.json"));
         assert!(workflow.contains("target/ripr/reports/gate-decision.md"));
+        assert!(workflow.contains("target/ripr/reports/baseline-debt-delta.json"));
+        assert!(workflow.contains("target/ripr/reports/baseline-debt-delta.md"));
         assert!(workflow.contains("target/ci/labels.json"));
         assert!(workflow.contains("target/ripr/review/comments.json"));
         assert!(workflow.contains("target/ripr/review"));
         assert!(workflow.contains("target/ci"));
         assert!(workflow.contains("name: Capture RIPR gate labels"));
         assert!(workflow.contains("name: Evaluate RIPR gate decision"));
+        assert!(workflow.contains("name: Render RIPR baseline debt delta"));
         assert!(workflow.contains("name: Emit RIPR PR guidance annotations"));
         assert!(workflow.contains("escape_github_property()"));
         assert!(workflow.contains("annotation_path=\"$(escape_github_property \"$path\")\""));
@@ -4269,7 +4328,10 @@ mod tests {
         assert!(workflow.contains("### Artifact packet"));
         assert!(workflow.contains("### Gate decision"));
         assert!(workflow.contains("#### Gate decision at a glance"));
+        assert!(workflow.contains("### Baseline debt delta"));
+        assert!(workflow.contains("#### Baseline debt movement"));
         assert!(workflow.contains("markdown_inline()"));
+        assert!(workflow.contains("baseline_markdown_inline()"));
         assert!(workflow.contains("Active PR labels"));
         assert!(workflow.contains("Applied waiver label"));
         assert!(workflow.contains("Baseline artifact"));
@@ -4277,6 +4339,7 @@ mod tests {
         assert!(workflow.contains("Mutation calibration"));
         assert!(workflow.contains("Blocking reason"));
         assert!(workflow.contains("Gate artifacts"));
+        assert!(workflow.contains("Baseline delta artifacts"));
         assert!(workflow.contains("### SARIF and badge status"));
         assert!(workflow.contains("### PR guidance annotations"));
         assert!(workflow.contains("### Known limits"));
@@ -4320,8 +4383,19 @@ mod tests {
         assert!(workflow.contains(".gate_reason"));
         assert!(workflow.contains("blocking=\"$(markdown_inline \"$blocking\")\""));
         assert!(workflow.contains("Counts: blocking=\\`$blocking\\`"));
+        assert!(workflow.contains(".delta.still_present // 0"));
+        assert!(workflow.contains(".delta.resolved // 0"));
+        assert!(workflow.contains(".delta.new_policy_eligible // 0"));
+        assert!(workflow.contains(".delta.acknowledged // 0"));
+        assert!(workflow.contains(".delta.suppressed // 0"));
+        assert!(workflow.contains(".delta.stale_baseline_entry // 0"));
+        assert!(workflow.contains(".delta.invalid_baseline_entry // 0"));
+        assert!(workflow.contains(".delta.missing_current_input // 0"));
+        assert!(workflow.contains("Counts: still_present=\\`$still_present\\`"));
         assert!(workflow.contains("sed 's/`/\\\\`/g'"));
         assert!(workflow.contains("Blocking reason: \\`$blocking_reason\\`"));
+        assert!(workflow.contains("Boundary: $limits_note"));
+        assert!(workflow.contains("Set `RIPR_GATE_BASELINE`"));
         assert!(workflow.contains("RIPR_GATE_MODE"));
         assert!(workflow.contains("RIPR_GATE_BASELINE"));
         assert!(workflow.contains("ripr \"${gate_args[@]}\""));
@@ -4383,6 +4457,11 @@ mod tests {
         assert_step_before(
             &workflow,
             "Evaluate RIPR gate decision",
+            "Render RIPR baseline debt delta",
+        );
+        assert_step_before(
+            &workflow,
+            "Render RIPR baseline debt delta",
             "Emit RIPR PR guidance annotations",
         );
         assert_step_before(
@@ -4426,6 +4505,16 @@ mod tests {
         assert!(gate.contains("--baseline \"$RIPR_GATE_BASELINE\""));
         assert!(!gate.contains("continue-on-error: true"));
 
+        let baseline_delta = workflow_step(&workflow, "Render RIPR baseline debt delta");
+        assert!(baseline_delta.contains("always() && env.RIPR_GATE_BASELINE != ''"));
+        assert!(baseline_delta.contains("hashFiles('target/ripr/reports/gate-decision.json')"));
+        assert!(baseline_delta.contains("continue-on-error: true"));
+        assert!(baseline_delta.contains("ripr baseline diff"));
+        assert!(baseline_delta.contains("--baseline \"$RIPR_GATE_BASELINE\""));
+        assert!(baseline_delta.contains("--current target/ripr/reports/gate-decision.json"));
+        assert!(baseline_delta.contains("--out target/ripr/reports/baseline-debt-delta.json"));
+        assert!(baseline_delta.contains("--out-md target/ripr/reports/baseline-debt-delta.md"));
+
         let annotations = workflow_step(&workflow, "Emit RIPR PR guidance annotations");
         assert!(annotations.contains("hashFiles('target/ripr/review/comments.json')"));
         assert!(annotations.contains("escape_github_message()"));
@@ -4458,6 +4547,21 @@ mod tests {
         assert!(summary.contains("target/ci/labels.json"));
         assert!(summary.contains("cat target/ripr/reports/gate-decision.md"));
         assert!(summary.contains("Gate decision was not run"));
+        assert!(summary.contains("### Baseline debt delta"));
+        assert!(summary.contains("#### Baseline debt movement"));
+        assert!(summary.contains("target/ripr/reports/baseline-debt-delta.json"));
+        assert!(summary.contains("target/ripr/reports/baseline-debt-delta.md"));
+        assert!(summary.contains("cat target/ripr/reports/baseline-debt-delta.md"));
+        assert!(summary.contains(".baseline.path // .inputs.baseline // \"unknown\""));
+        assert!(summary.contains(".delta.still_present // 0"));
+        assert!(summary.contains(".delta.resolved // 0"));
+        assert!(summary.contains(".delta.new_policy_eligible // 0"));
+        assert!(summary.contains(".delta.acknowledged // 0"));
+        assert!(summary.contains(".delta.suppressed // 0"));
+        assert!(summary.contains(".delta.stale_baseline_entry // 0"));
+        assert!(summary.contains(".delta.invalid_baseline_entry // 0"));
+        assert!(summary.contains(".delta.missing_current_input // 0"));
+        assert!(summary.contains("Set `RIPR_GATE_BASELINE`"));
         assert!(summary.contains(".summary.comments // 0"));
         assert!(summary.contains(".summary.summary_only // 0"));
         assert!(summary.contains(".summary.suppressed // 0"));
