@@ -343,6 +343,11 @@ Given before and after repo-exposure snapshots,
 when a user runs ripr outcome --before before.json --after after.json,
 then ripr reports moved, unchanged, regressed, new, and removed seams without
 requiring cargo xtask.
+
+When the snapshots include `seams[].evidence_record`, outcome movement prefers
+that shared evidence spine for stage, observed-value, missing-discriminator,
+oracle-strength, and related-test deltas. Older snapshots without the record
+remain supported through legacy repo-exposure fields.
 ```
 
 ### Public install exposes the loop
@@ -420,6 +425,8 @@ Current tests and reports that support the contract:
 - `crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_report_buckets_seam_movement`
 - `crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_json_and_markdown_are_structured`
 - `crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_from_repo_exposure_json_parses_static_evidence`
+- `crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_prefers_evidence_record_movement`
+- `crates/ripr/src/output/outcome.rs::tests::targeted_test_outcome_records_no_movement_reason`
 - `crates/ripr/tests/cli_smoke.rs::outcome_prints_markdown_receipt_by_default`
 - `crates/ripr/tests/cli_smoke.rs::outcome_writes_json_receipt_when_requested`
 - `crates/ripr/src/output/mutation_calibration.rs::tests::mutation_calibration_summarizes_static_runtime_agreement`

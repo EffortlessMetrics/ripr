@@ -39,7 +39,8 @@
     "before": "weakly_gripped",
     "change": "unchanged",
     "evidence_delta": [
-      "new observed value: 100"
+      "new observed value: 100",
+      "related test count increased by 1"
     ],
     "file": "src/lib.rs",
     "grip_class": null,
