@@ -1302,6 +1302,17 @@ gate input, optional coverage/grip frontier input, and warning count. If the
 required inputs are absent, generated CI skips the proof projection instead of
 printing a placeholder or changing pass/fail behavior.
 
+Generated CI then runs `ripr first-action` over whichever explicit RIPR
+evidence artifacts exist and writes
+`target/ripr/reports/first-useful-action.json` and
+`target/ripr/reports/first-useful-action.md`. This projection is advisory: it
+does not rerun hidden analysis, edit source, generate tests, call providers, run
+mutation testing, or make the first-action report a pass/fail authority. The
+job summary shows the selected action, audience, source, seam, missing
+discriminator, target, static movement, verify or status command, receipt
+command, fallback state, warning count, and artifact paths when the report is
+present.
+
 For every configured gate mode, the generated workflow behavior is:
 
 1. capture active PR labels into `target/ci/labels.json`;
@@ -1322,12 +1333,16 @@ For every configured gate mode, the generated workflow behavior is:
    artifacts exist;
 12. render the assistant proof section from `test-oracle-assistant-proof.json`
    and append `test-oracle-assistant-proof.md` when present;
-13. append the detailed `gate-decision.md`, `baseline-debt-delta.md`, and
+13. run `ripr first-action` when any explicit first-action input artifact
+    exists;
+14. render the first useful action section from `first-useful-action.json` and
+    append `first-useful-action.md` when present;
+15. append the detailed `gate-decision.md`, `baseline-debt-delta.md`, and
    `ripr-zero-status.md` reports when present;
-14. upload gate, baseline delta, RIPR Zero, PR evidence ledger, and
-   test-oracle assistant proof artifacts with the normal `ripr-reports`
-   artifact packet;
-15. fail only when the explicit gate mode returns `blocked` or `config_error`.
+16. upload gate, baseline delta, RIPR Zero, PR evidence ledger,
+   test-oracle assistant proof, and first useful action artifacts with the
+   normal `ripr-reports` artifact packet;
+17. fail only when the explicit gate mode returns `blocked` or `config_error`.
 
 Acknowledgeable policy:
 
