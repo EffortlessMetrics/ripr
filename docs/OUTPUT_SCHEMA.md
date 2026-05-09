@@ -2363,7 +2363,8 @@ JSON shape:
       "suggested_test": "Add an equality-boundary assertion.",
       "related_test": "tests/pricing.rs::applies_discount_above_threshold",
       "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json",
-      "agent_command": "ripr agent start --root . --seam-id 67fc764ba37d77bd --out target/ripr/workflow"
+      "agent_command": "ripr agent start --root . --seam-id 67fc764ba37d77bd --out target/ripr/workflow",
+      "static_limitations": []
     }
   ],
   "warnings": [
@@ -2402,7 +2403,11 @@ Field contract:
   area name. Grouping is a reporting surface, not an analyzer identity rewrite.
 - `repair_routes[]` - capped focused repair candidates copied from existing PR
   guidance, gate decisions, baseline debt delta, agent packets, or receipts.
-  The report must not invent missing commands or generated tests.
+  When a baseline debt delta item supplies `evidence_record`, RIPR Zero status
+  prefers the record's location, grip class, missing discriminator, related
+  test, assertion shape, verification command, and static limitations while
+  preserving legacy top-level fields as fallback. The report must not invent
+  missing commands or generated tests.
 - `warnings[]` - stale baseline metadata, missing inputs, unsupported schemas,
   ambiguous identities, and trend gaps.
 - `limits_note` - advisory boundary text for generated CI summaries.
@@ -4041,6 +4046,114 @@ and seams whose configured severity is `off` return an actionable error.
         "assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)"
       ],
       "confidence": "high",
+      "evidence_record": {
+        "schema_version": "0.1",
+        "seam_id": "f3c9e4d21a0b7c88",
+        "canonical_gap_id": null,
+        "owner": "src/pricing.rs::discounted_total",
+        "location": {
+          "file": "src/pricing.rs",
+          "line": 88
+        },
+        "seam_kind": "predicate_boundary",
+        "grip_class": "weakly_gripped",
+        "headline_eligible": true,
+        "evidence_path": {
+          "reach": {
+            "state": "yes",
+            "confidence": "high",
+            "summary": "related test calls owner"
+          },
+          "activate": {
+            "state": "yes",
+            "confidence": "high",
+            "summary": "related test supplies boundary-adjacent values"
+          },
+          "propagate": {
+            "state": "yes",
+            "confidence": "medium",
+            "summary": "predicate flows to return value"
+          },
+          "observe": {
+            "state": "yes",
+            "confidence": "medium",
+            "summary": "related test asserts returned value"
+          },
+          "discriminate": {
+            "state": "weak",
+            "confidence": "high",
+            "summary": "equality boundary is not observed"
+          }
+        },
+        "observed_values": [
+          {
+            "value": "50",
+            "line": 12,
+            "text": "discounted_total(50, 100)",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "discount_threshold (equality boundary)",
+            "reason": "observed values do not include the equality-boundary case for this predicate",
+            "flow_sink": null
+          }
+        ],
+        "related_tests_total": 1,
+        "related_tests": [
+          {
+            "name": "below_threshold_has_no_discount",
+            "file": "tests/pricing.rs",
+            "line": 12,
+            "oracle_kind": "exact_value",
+            "oracle_strength": "strong",
+            "evidence_summary": "exact value assertion",
+            "relation_reason": "direct_owner_call",
+            "relation_confidence": "high"
+          }
+        ],
+        "recommendation": {
+          "action": "write_targeted_test",
+          "reason": "extend the nearest related test with the missing discriminator",
+          "recommended_test": {
+            "name": "discounted_total_boundary_discriminator",
+            "file": "tests/pricing.rs",
+            "reason": "place the new targeted test next to the nearest strong related test"
+          },
+          "nearest_test_to_imitate": null,
+          "candidate_values": [
+            {
+              "value": "discount_threshold (equality boundary)",
+              "reason": "observed values do not include the equality-boundary case for this predicate"
+            }
+          ],
+          "assertion_shape": {
+            "kind": "exact_return_value",
+            "example": "assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)"
+          },
+          "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json"
+        },
+        "actionability": {
+          "class": "actionable_related_test_extension",
+          "reason": "extend the nearest related test with the missing discriminator",
+          "has_concrete_guidance": true,
+          "signals": {
+            "missing_discriminator": true,
+            "candidate_value": true,
+            "assertion_shape": true,
+            "related_test": true,
+            "recommended_test_target": true,
+            "verification_command": true
+          }
+        },
+        "calibration": {
+          "availability": "not_imported",
+          "confidence": "unknown",
+          "agreement": "no_runtime_data"
+        },
+        "static_limitations": []
+      },
       "runtime_confirmation": "optional cargo-mutants confirmation; ripr reports static evidence only"
     }
   ]
@@ -4137,6 +4250,12 @@ Field contract:
 - `packets[].confidence` — `high`, `medium`, `low`, or `unknown`
   confidence in the packet recommendation. It is derived from related
   test ranking and visible missing-discriminator evidence.
+- `packets[].evidence_record` - additive Lane 1 evidence spine for the selected
+  seam, using the same schema version `0.1` documented under repo exposure.
+  Agent packets keep their existing top-level work-order fields for
+  compatibility, while this nested record gives downstream consumers the shared
+  identity, evidence path, recommendation, actionability, calibration
+  placeholder, and static limitations without reassembling them.
 - `packets[].runtime_confirmation` — boilerplate string reminding the
   agent that `ripr` is preflight static evidence and runtime
   mutation confirmation (e.g., `cargo-mutants`) is a separate

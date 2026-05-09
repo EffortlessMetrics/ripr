@@ -20,6 +20,7 @@
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::seams::{ExpectedSink, RequiredDiscriminator, SeamGripClass, SeamKind};
 use crate::analysis::test_grip_evidence::TestGripEvidence;
+use crate::output::evidence_record::{evidence_record_for, evidence_record_json_value};
 use crate::output::json::escape as json_escape;
 
 pub(crate) const AGENT_SEAM_PACKET_SCHEMA_VERSION: &str = "0.3";
@@ -457,6 +458,10 @@ fn push_packet_json(out: &mut String, entry: &ClassifiedSeam) {
         "      \"confidence\": \"{}\",\n",
         packet_confidence_for(entry)
     ));
+    let evidence_record = evidence_record_json_value(&evidence_record_for(entry));
+    out.push_str("      \"evidence_record\": ");
+    out.push_str(&evidence_record.to_string());
+    out.push_str(",\n");
     out.push_str(&format!(
         "      \"runtime_confirmation\": \"{}\"\n",
         json_escape(RUNTIME_CONFIRMATION_NOTE)
@@ -1265,6 +1270,53 @@ mod tests {
                 return Err(format!("missing v2 field {needle:?} in: {json}"));
             }
         }
+        Ok(())
+    }
+
+    #[test]
+    fn packet_carries_shared_evidence_record_projection() -> Result<(), String> {
+        let json = render_agent_seam_packets_json(&[weakly_gripped_classified()]);
+        let value = serde_json::from_str::<serde_json::Value>(&json)
+            .map_err(|err| format!("agent packet JSON should parse: {err}"))?;
+        let packet = value
+            .get("packets")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|packets| packets.first())
+            .ok_or_else(|| format!("missing packet in: {json}"))?;
+        let packet_seam_id = packet
+            .get("seam_id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| format!("missing packet seam_id in: {json}"))?;
+        let record = packet
+            .get("evidence_record")
+            .ok_or_else(|| format!("missing packet evidence_record in: {json}"))?;
+        assert_eq!(
+            record
+                .get("schema_version")
+                .and_then(serde_json::Value::as_str),
+            Some("0.1"),
+            "expected evidence_record schema 0.1 in: {json}"
+        );
+        assert_eq!(
+            record.get("seam_id").and_then(serde_json::Value::as_str),
+            Some(packet_seam_id),
+            "expected shared seam identity in: {json}"
+        );
+        assert_eq!(
+            record
+                .get("recommendation")
+                .and_then(|recommendation| recommendation.get("assertion_shape"))
+                .and_then(|shape| shape.get("kind"))
+                .and_then(serde_json::Value::as_str),
+            Some("exact_return_value"),
+            "expected record assertion shape in: {json}"
+        );
+        assert!(
+            json.contains(
+                "\"recommended_test\": {\"name\": \"discounted_total_boundary_discriminator\"",
+            ),
+            "top-level packet fields should remain present: {json}"
+        );
         Ok(())
     }
 

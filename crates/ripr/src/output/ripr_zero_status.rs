@@ -123,6 +123,7 @@ struct RepairRoute {
     related_test: Option<String>,
     verify_command: Option<String>,
     agent_command: Option<String>,
+    static_limitations: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -153,7 +154,21 @@ struct DeltaItem {
     missing_discriminator: Option<String>,
     suggested_test: SuggestedTest,
     repair: Repair,
+    evidence_record: Option<EvidenceRecordRepairContext>,
     review: Option<ReviewMetadata>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct EvidenceRecordRepairContext {
+    seam_id: Option<String>,
+    path: Option<String>,
+    line: Option<u64>,
+    static_class: Option<String>,
+    missing_discriminator: Option<String>,
+    suggested_test: Option<String>,
+    related_test: Option<String>,
+    verify_command: Option<String>,
+    static_limitations: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -379,6 +394,9 @@ pub(crate) fn render_ripr_zero_status_markdown(report: &RiprZeroStatusReport) ->
         }
         if let Some(agent) = route.agent_command.as_deref() {
             out.push_str(&format!("  Agent: {agent}\n"));
+        }
+        if let Some(limit) = route.static_limitations.first() {
+            out.push_str(&format!("  Static limit: {limit}\n"));
         }
     }
 
@@ -646,7 +664,90 @@ fn delta_item_from_value(value: &Value) -> DeltaItem {
         repair: Repair {
             verify_command: string_path(value, &["repair", "verify_command"]),
         },
+        evidence_record: evidence_record_repair_context_from_value(value.get("evidence_record")),
         review: review_metadata_from_value(value.get("review")),
+    }
+}
+
+fn evidence_record_repair_context_from_value(
+    value: Option<&Value>,
+) -> Option<EvidenceRecordRepairContext> {
+    let value = value?;
+    if !value.is_object() {
+        return None;
+    }
+    let recommendation = value.get("recommendation");
+    Some(EvidenceRecordRepairContext {
+        seam_id: string_field(value.get("seam_id")),
+        path: string_path(value, &["location", "file"]),
+        line: path_value(value, &["location", "line"]).and_then(Value::as_u64),
+        static_class: string_field(value.get("grip_class")),
+        missing_discriminator: first_string_array_object_field(
+            value.get("missing_discriminators"),
+            "value",
+        ),
+        suggested_test: recommendation
+            .and_then(|recommendation| string_path(recommendation, &["assertion_shape", "example"]))
+            .or_else(|| {
+                recommendation.and_then(|recommendation| {
+                    test_label_from_value(recommendation.get("recommended_test"))
+                })
+            }),
+        related_test: recommendation
+            .and_then(|recommendation| {
+                test_label_from_value(recommendation.get("nearest_test_to_imitate"))
+            })
+            .or_else(|| {
+                recommendation.and_then(|recommendation| {
+                    test_label_from_value(recommendation.get("recommended_test"))
+                })
+            }),
+        verify_command: recommendation
+            .and_then(|recommendation| string_field(recommendation.get("verify_command"))),
+        static_limitations: static_limitations_from_evidence_record(value),
+    })
+}
+
+fn first_string_array_object_field(value: Option<&Value>, field: &str) -> Option<String> {
+    value
+        .and_then(Value::as_array)
+        .and_then(|items| items.iter().find_map(|item| string_field(item.get(field))))
+}
+
+fn test_label_from_value(value: Option<&Value>) -> Option<String> {
+    let value = value?;
+    let name = string_field(value.get("name"));
+    let file = string_field(value.get("file"));
+    match (file, name) {
+        (Some(file), Some(name)) => Some(format!("{file}::{name}")),
+        (Some(file), None) => Some(file),
+        (None, Some(name)) => Some(name),
+        (None, None) => None,
+    }
+}
+
+fn static_limitations_from_evidence_record(value: &Value) -> Vec<String> {
+    value
+        .get("static_limitations")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(static_limitation_label)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
+fn static_limitation_label(value: &Value) -> Option<String> {
+    let reason = string_field(value.get("reason"))?;
+    let stage = string_field(value.get("stage"));
+    let state = string_field(value.get("state"));
+    match (stage, state) {
+        (Some(stage), Some(state)) => Some(format!("{stage}/{state}: {reason}")),
+        (Some(stage), None) => Some(format!("{stage}: {reason}")),
+        (None, Some(state)) => Some(format!("{state}: {reason}")),
+        (None, None) => Some(reason),
     }
 }
 
@@ -790,24 +891,50 @@ fn repair_routes(items: &[DeltaItem]) -> Vec<RepairRoute> {
         .into_iter()
         .take(5)
         .enumerate()
-        .map(|(index, item)| RepairRoute {
-            rank: index + 1,
-            source: "baseline_debt_delta".to_string(),
-            seam_id: item.identity.seam_id.clone(),
-            path: item.path.clone(),
-            line: item.line,
-            static_class: item.static_class.clone(),
-            missing_discriminator: item.missing_discriminator.clone(),
-            suggested_test: item
-                .suggested_test
-                .assertion_shape
+        .map(|(index, item)| {
+            let evidence = item.evidence_record.as_ref();
+            let seam_id = item
+                .identity
+                .seam_id
                 .clone()
-                .or_else(|| item.suggested_test.recommended_test.clone()),
-            related_test: item.suggested_test.recommended_test.clone(),
-            verify_command: item.repair.verify_command.clone(),
-            agent_command: item.identity.seam_id.as_ref().map(|seam_id| {
-                format!("ripr agent start --root . --seam-id {seam_id} --out target/ripr/workflow")
-            }),
+                .or_else(|| evidence.and_then(|record| record.seam_id.clone()));
+            RepairRoute {
+                rank: index + 1,
+                source: "baseline_debt_delta".to_string(),
+                seam_id: seam_id.clone(),
+                path: evidence
+                    .and_then(|record| record.path.clone())
+                    .or_else(|| item.path.clone()),
+                line: evidence.and_then(|record| record.line).or(item.line),
+                static_class: evidence
+                    .and_then(|record| record.static_class.clone())
+                    .or_else(|| item.static_class.clone()),
+                missing_discriminator: evidence
+                    .and_then(|record| record.missing_discriminator.clone())
+                    .or_else(|| item.missing_discriminator.clone()),
+                suggested_test: evidence
+                    .and_then(|record| record.suggested_test.clone())
+                    .or_else(|| {
+                        item.suggested_test
+                            .assertion_shape
+                            .clone()
+                            .or_else(|| item.suggested_test.recommended_test.clone())
+                    }),
+                related_test: evidence
+                    .and_then(|record| record.related_test.clone())
+                    .or_else(|| item.suggested_test.recommended_test.clone()),
+                verify_command: evidence
+                    .and_then(|record| record.verify_command.clone())
+                    .or_else(|| item.repair.verify_command.clone()),
+                agent_command: seam_id.as_ref().map(|seam_id| {
+                    format!(
+                        "ripr agent start --root . --seam-id {seam_id} --out target/ripr/workflow"
+                    )
+                }),
+                static_limitations: evidence
+                    .map(|record| record.static_limitations.clone())
+                    .unwrap_or_default(),
+            }
         })
         .collect()
 }
@@ -984,6 +1111,7 @@ fn repair_route_json(route: &RepairRoute) -> Value {
         "related_test": route.related_test,
         "verify_command": route.verify_command,
         "agent_command": route.agent_command,
+        "static_limitations": route.static_limitations,
     })
 }
 
@@ -1052,6 +1180,7 @@ mod tests {
         RiprZeroStatusInput, build_ripr_zero_status_report, render_ripr_zero_status_json,
         render_ripr_zero_status_markdown,
     };
+    use serde_json::Value;
 
     #[test]
     fn ripr_zero_status_reports_not_yet_with_metadata_and_repair_route() -> Result<(), String> {
@@ -1121,6 +1250,378 @@ mod tests {
         assert!(markdown.contains("RIPR 0: not_yet"));
         assert!(markdown.contains("Top repair route:"));
         assert!(markdown.contains("new == 4"));
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_zero_status_prefers_evidence_record_repair_context() -> Result<(), String> {
+        let delta = r#"{
+          "schema_version": "0.1",
+          "tool": "ripr",
+          "kind": "baseline_debt_delta",
+          "baseline": {"entries": 0},
+          "delta": {
+            "still_present": 0,
+            "resolved": 0,
+            "new_policy_eligible": 1,
+            "acknowledged": 0,
+            "suppressed": 0,
+            "stale_baseline_entry": 0,
+            "invalid_baseline_entry": 0,
+            "missing_current_input": 0
+          },
+          "items": [
+            {
+              "bucket": "new_policy_eligible",
+              "identity": {"seam_id": "legacy-seam"},
+              "path": "src/legacy.rs",
+              "line": 1,
+              "static_class": "legacy_class",
+              "missing_discriminator": "legacy discriminator",
+              "suggested_test": {
+                "assertion_shape": "legacy assertion",
+                "recommended_test": "tests/legacy.rs::legacy"
+              },
+              "repair": {"verify_command": "legacy verify"},
+              "evidence_record": {
+                "schema_version": "0.1",
+                "seam_id": "record-seam",
+                "canonical_gap_id": null,
+                "owner": "pricing::discounted_total",
+                "location": {"file": "src/pricing.rs", "line": 88},
+                "seam_kind": "predicate_boundary",
+                "grip_class": "weakly_gripped",
+                "headline_eligible": true,
+                "evidence_path": {},
+                "observed_values": [],
+                "missing_discriminators": [
+                  {"value": "amount == discount_threshold", "reason": "missing equality boundary"}
+                ],
+                "related_tests": [],
+                "recommendation": {
+                  "action": "write_targeted_test",
+                  "reason": "extend the nearest related test",
+                  "recommended_test": {
+                    "name": "discounted_total_boundary_discriminator",
+                    "file": "tests/pricing.rs",
+                    "reason": "nearest related test"
+                  },
+                  "nearest_test_to_imitate": {
+                    "name": "above_threshold_discount",
+                    "file": "tests/pricing.rs",
+                    "line": 12,
+                    "oracle_kind": "exact_value",
+                    "oracle_strength": "strong",
+                    "evidence_summary": "exact value assertion",
+                    "relation_reason": "direct_owner_call",
+                    "relation_confidence": "high"
+                  },
+                  "candidate_values": [],
+                  "assertion_shape": {
+                    "kind": "exact_return_value",
+                    "example": "assert_eq!(discounted_total(/* threshold */), expected)"
+                  },
+                  "verify_command": "ripr evidence-movement --before before.json --after after.json"
+                },
+                "actionability": {},
+                "calibration": {},
+                "static_limitations": [
+                  {"stage": "propagate", "state": "unknown", "reason": "call target unresolved"}
+                ]
+              }
+            }
+          ],
+          "warnings": []
+        }"#;
+
+        let report = build_ripr_zero_status_report(RiprZeroStatusInput {
+            root: ".".to_string(),
+            generated_at: "unix_ms:100000000".to_string(),
+            baseline_path: None,
+            delta_path: "target/ripr/reports/baseline-debt-delta.json".to_string(),
+            gate_path: None,
+            pr_guidance_path: None,
+            recommendation_calibration_path: None,
+            baseline_json: None,
+            delta_json: Ok(delta.to_string()),
+            gate_json: None,
+            pr_guidance_json: None,
+            recommendation_calibration_json: None,
+        });
+        let markdown = render_ripr_zero_status_markdown(&report);
+        let rendered = render_ripr_zero_status_json(&report)?;
+        let value = serde_json::from_str::<Value>(&rendered)
+            .map_err(|err| format!("RIPR Zero status JSON should parse: {err}"))?;
+        let route = value
+            .get("repair_routes")
+            .and_then(Value::as_array)
+            .and_then(|routes| routes.first())
+            .ok_or_else(|| format!("missing repair route in: {rendered}"))?;
+        assert_eq!(
+            route.get("path").and_then(Value::as_str),
+            Some("src/pricing.rs"),
+            "expected evidence_record path in: {rendered}"
+        );
+        assert_eq!(
+            route.get("static_class").and_then(Value::as_str),
+            Some("weakly_gripped"),
+            "expected evidence_record grip class in: {rendered}"
+        );
+        assert_eq!(
+            route.get("missing_discriminator").and_then(Value::as_str),
+            Some("amount == discount_threshold"),
+            "expected evidence_record missing discriminator in: {rendered}"
+        );
+        assert_eq!(
+            route.get("suggested_test").and_then(Value::as_str),
+            Some("assert_eq!(discounted_total(/* threshold */), expected)"),
+            "expected evidence_record assertion shape in: {rendered}"
+        );
+        assert_eq!(
+            route.get("related_test").and_then(Value::as_str),
+            Some("tests/pricing.rs::above_threshold_discount"),
+            "expected evidence_record related test in: {rendered}"
+        );
+        assert_eq!(
+            route.get("verify_command").and_then(Value::as_str),
+            Some("ripr evidence-movement --before before.json --after after.json"),
+            "expected evidence_record verify command in: {rendered}"
+        );
+        let limitation = route
+            .get("static_limitations")
+            .and_then(Value::as_array)
+            .and_then(|limits| limits.first())
+            .and_then(Value::as_str);
+        assert_eq!(
+            limitation,
+            Some("propagate/unknown: call target unresolved"),
+            "expected evidence_record static limitation in: {rendered}"
+        );
+        assert!(
+            markdown.contains("Static limit: propagate/unknown: call target unresolved"),
+            "expected markdown static limitation in: {markdown}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_record_context_handles_invalid_and_fallback_shapes() -> Result<(), String> {
+        assert!(
+            super::evidence_record_repair_context_from_value(None).is_none(),
+            "missing evidence_record should not produce repair context"
+        );
+        let invalid = serde_json::json!("not an object");
+        assert!(
+            super::evidence_record_repair_context_from_value(Some(&invalid)).is_none(),
+            "non-object evidence_record should not produce repair context"
+        );
+
+        let record = serde_json::json!({
+          "schema_version": "0.1",
+          "seam_id": "record-seam",
+          "canonical_gap_id": null,
+          "owner": "pricing::discounted_total",
+          "location": {"file": "src/pricing.rs"},
+          "seam_kind": "predicate_boundary",
+          "grip_class": "reachable_unrevealed",
+          "headline_eligible": true,
+          "evidence_path": {},
+          "observed_values": [],
+          "missing_discriminators": [
+            {"value": "amount == discount_threshold"}
+          ],
+          "related_tests": [],
+          "recommendation": {
+            "recommended_test": {
+              "file": "tests/pricing.rs",
+              "name": "discounted_total_boundary_discriminator"
+            },
+            "verify_command": "ripr evidence-movement --before before.json --after after.json"
+          },
+          "actionability": {},
+          "calibration": {},
+          "static_limitations": [
+            {"stage": "activate", "reason": "constant unresolved"},
+            {"state": "unknown", "reason": "state only"},
+            {"reason": "plain reason"},
+            {"stage": "observe"}
+          ]
+        });
+
+        let context = super::evidence_record_repair_context_from_value(Some(&record))
+            .ok_or_else(|| "expected valid evidence_record repair context".to_string())?;
+        assert!(
+            context.line.is_none(),
+            "line should be absent in partial context: {context:?}"
+        );
+        assert_eq!(
+            context.suggested_test.as_deref(),
+            Some("tests/pricing.rs::discounted_total_boundary_discriminator"),
+            "recommended_test should be assertion fallback: {context:?}"
+        );
+        assert_eq!(
+            context.related_test.as_deref(),
+            Some("tests/pricing.rs::discounted_total_boundary_discriminator"),
+            "recommended_test should be related-test fallback: {context:?}"
+        );
+        assert_eq!(
+            context.static_limitations,
+            [
+                "activate: constant unresolved",
+                "unknown: state only",
+                "plain reason",
+            ],
+            "unexpected static limitation labels: {context:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_record_test_labels_accept_partial_labels() -> Result<(), String> {
+        let file_only = serde_json::json!({"file": "tests/pricing.rs"});
+        let name_only = serde_json::json!({"name": "discounted_total_boundary"});
+        let empty = serde_json::json!({});
+        assert_eq!(
+            super::test_label_from_value(Some(&file_only)),
+            Some("tests/pricing.rs".to_string()),
+            "file-only test label should use file"
+        );
+        assert_eq!(
+            super::test_label_from_value(Some(&name_only)),
+            Some("discounted_total_boundary".to_string()),
+            "name-only test label should use name"
+        );
+        assert!(
+            super::test_label_from_value(Some(&empty)).is_none(),
+            "empty test label should not produce a label"
+        );
+        assert!(
+            super::test_label_from_value(None).is_none(),
+            "missing test label should not produce a label"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_zero_status_falls_back_to_legacy_fields_when_record_is_partial() -> Result<(), String> {
+        let delta = r#"{
+          "schema_version": "0.1",
+          "tool": "ripr",
+          "kind": "baseline_debt_delta",
+          "baseline": {"entries": 0},
+          "delta": {
+            "still_present": 0,
+            "resolved": 0,
+            "new_policy_eligible": 1,
+            "acknowledged": 0,
+            "suppressed": 0,
+            "stale_baseline_entry": 0,
+            "invalid_baseline_entry": 0,
+            "missing_current_input": 0
+          },
+          "items": [
+            {
+              "bucket": "new_policy_eligible",
+              "identity": {},
+              "path": "src/legacy.rs",
+              "line": 7,
+              "static_class": "legacy_class",
+              "missing_discriminator": "legacy discriminator",
+              "suggested_test": {
+                "assertion_shape": "legacy assertion",
+                "recommended_test": "tests/legacy.rs::legacy_case"
+              },
+              "repair": {"verify_command": "legacy verify"},
+              "evidence_record": {
+                "schema_version": "0.1",
+                "seam_id": "record-seam",
+                "canonical_gap_id": null,
+                "owner": "pricing::discounted_total",
+                "seam_kind": "predicate_boundary",
+                "headline_eligible": true,
+                "evidence_path": {},
+                "observed_values": [],
+                "missing_discriminators": [],
+                "related_tests": [],
+                "recommendation": {},
+                "actionability": {},
+                "calibration": {},
+                "static_limitations": []
+              }
+            }
+          ],
+          "warnings": []
+        }"#;
+
+        let report = build_ripr_zero_status_report(RiprZeroStatusInput {
+            root: ".".to_string(),
+            generated_at: "unix_ms:100000000".to_string(),
+            baseline_path: None,
+            delta_path: "target/ripr/reports/baseline-debt-delta.json".to_string(),
+            gate_path: None,
+            pr_guidance_path: None,
+            recommendation_calibration_path: None,
+            baseline_json: None,
+            delta_json: Ok(delta.to_string()),
+            gate_json: None,
+            pr_guidance_json: None,
+            recommendation_calibration_json: None,
+        });
+        let rendered = render_ripr_zero_status_json(&report)?;
+        let value = serde_json::from_str::<Value>(&rendered)
+            .map_err(|err| format!("RIPR Zero status JSON should parse: {err}"))?;
+        let route = value
+            .get("repair_routes")
+            .and_then(Value::as_array)
+            .and_then(|routes| routes.first())
+            .ok_or_else(|| format!("missing repair route in: {rendered}"))?;
+        assert_eq!(
+            route.get("seam_id").and_then(Value::as_str),
+            Some("record-seam"),
+            "expected record seam fallback in: {rendered}"
+        );
+        assert_eq!(
+            route.get("path").and_then(Value::as_str),
+            Some("src/legacy.rs"),
+            "expected legacy path fallback in: {rendered}"
+        );
+        assert_eq!(
+            route.get("line").and_then(Value::as_u64),
+            Some(7),
+            "expected legacy line fallback in: {rendered}"
+        );
+        assert_eq!(
+            route.get("static_class").and_then(Value::as_str),
+            Some("legacy_class"),
+            "expected legacy static class fallback in: {rendered}"
+        );
+        assert_eq!(
+            route.get("missing_discriminator").and_then(Value::as_str),
+            Some("legacy discriminator"),
+            "expected legacy missing discriminator fallback in: {rendered}"
+        );
+        assert_eq!(
+            route.get("suggested_test").and_then(Value::as_str),
+            Some("legacy assertion"),
+            "expected legacy assertion fallback in: {rendered}"
+        );
+        assert_eq!(
+            route.get("related_test").and_then(Value::as_str),
+            Some("tests/legacy.rs::legacy_case"),
+            "expected legacy related test fallback in: {rendered}"
+        );
+        assert_eq!(
+            route.get("verify_command").and_then(Value::as_str),
+            Some("legacy verify"),
+            "expected legacy verify fallback in: {rendered}"
+        );
+        assert!(
+            route
+                .get("agent_command")
+                .and_then(Value::as_str)
+                .is_some_and(|command| command.contains("--seam-id record-seam")),
+            "expected agent command to use record seam id in: {rendered}"
+        );
         Ok(())
     }
 
