@@ -4416,15 +4416,20 @@ target/ripr/dogfood/gate-adoption/<case>/gate-decision.json
 target/ripr/dogfood/gate-adoption/<case>/gate-decision.md
 fixtures/boundary_gap/expected/gate-adoption/<case>/gate-decision.json
 fixtures/boundary_gap/expected/gate-adoption/<case>/gate-decision.md
+fixtures/boundary_gap/expected/first-useful-action/<case>/first-useful-action.json
+fixtures/boundary_gap/expected/first-useful-action/<case>/first-useful-action.md
 ```
 
 The report is advisory. It runs `ripr check --mode fast` against stable fixture
 diffs and runs `ripr gate evaluate` against checked boundary-gap PR guidance
-and calibration evidence for the explicit gate adoption modes. It records
-`default_ci_blocking: false`; generated CI still leaves `RIPR_GATE_MODE` unset
-unless the repository configures it. The generated adoption receipts are
-compared with `fixtures/boundary_gap/expected/gate-adoption/`. The
-calibrated-gate dogfood case expects a non-zero evaluator exit only for the
+and calibration evidence for the explicit gate adoption modes. It also checks
+repo-local first useful action receipts for the documented first-action routes.
+It records `default_ci_blocking: false`; generated CI still leaves
+`RIPR_GATE_MODE` unset unless the repository configures it. The generated
+adoption receipts are compared with
+`fixtures/boundary_gap/expected/gate-adoption/`. The checked first-action
+receipts are read from `fixtures/boundary_gap/expected/first-useful-action/`.
+The calibrated-gate dogfood case expects a non-zero evaluator exit only for the
 explicit blocking mode and treats that as healthy when the written decision
 report has the expected `blocked` status and count.
 
@@ -4456,6 +4461,29 @@ JSON shape:
       "errors": []
     }
   ],
+  "first_useful_action": {
+    "default_ci_blocking": false,
+    "receipt_dir": "fixtures/boundary_gap/expected/first-useful-action",
+    "cases": [
+      {
+        "name": "actionable",
+        "expected_dir": "fixtures/boundary_gap/expected/first-useful-action/actionable",
+        "json_path": "fixtures/boundary_gap/expected/first-useful-action/actionable/first-useful-action.json",
+        "markdown_path": "fixtures/boundary_gap/expected/first-useful-action/actionable/first-useful-action.md",
+        "status": "actionable",
+        "action_kind": "write_focused_test",
+        "audience": "developer",
+        "selected": true,
+        "static_movement": "unknown",
+        "expected_status": "actionable",
+        "expected_action_kind": "write_focused_test",
+        "expected_audience": "developer",
+        "expected_selected": true,
+        "expected_static_movement": "unknown",
+        "errors": []
+      }
+    ]
+  },
   "gate_adoption": {
     "default_ci_blocking": false,
     "receipt_dir": "target/ripr/dogfood/gate-adoption",
@@ -4483,6 +4511,17 @@ JSON shape:
   }
 }
 ```
+
+The checked first-action receipt cases are:
+
+| Case | Expected status | Purpose |
+| --- | --- | --- |
+| `actionable` | `actionable` | Records the focused-test action for a PR-local weak seam. |
+| `baseline-only` | `baseline_only` | Keeps historical baseline debt visible without turning it into PR-local test work. |
+| `stale` | `stale` | Requires evidence refresh before selecting a focused action. |
+| `missing-required-artifact` | `missing_required_artifact` | Routes agents to generate the missing assistant proof input. |
+| `unchanged-after-attempt` | `unchanged_after_attempt` | Routes back to revising the focused test when static movement is unchanged. |
+| `no-actionable-seam` | `no_actionable_seam` | Records the clean advisory state instead of silence. |
 
 The checked adoption cases are:
 

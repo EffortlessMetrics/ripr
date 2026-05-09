@@ -166,7 +166,10 @@ read-only report from explicit artifacts, generated CI projects it as advisory
 summary/artifact content, and VS Code status projects existing reports without
 rerunning analysis. The first-action workflow docs now explain how developers,
 reviewers, and coding agents read the action, verify movement, emit receipts,
-and interpret fallback states. Dogfood receipts are the next ready work item.
+and interpret fallback states. `cargo xtask dogfood` now checks repo-local
+first-action receipts for actionable, baseline-only, stale,
+missing-required-artifact, unchanged-after-attempt, and no-actionable-seam
+routes, so Campaign 22 closeout is the next ready work item.
 
 The proposed [Assistant Loop Health](ASSISTANT_LOOP_HEALTH_PROPOSAL.md) follow-up
 should not replace Campaign 22. It becomes useful after First Useful Action gives

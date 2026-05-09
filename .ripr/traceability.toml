@@ -1251,6 +1251,7 @@ outputs = [
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/ROADMAP.md",
+  "docs/handoffs/2026-05-09-first-useful-action-receipts.md",
   "CHANGELOG.md",
 ]
 metrics = [
@@ -1279,6 +1280,7 @@ tests = [
   "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture",
   "crates/ripr/tests/cli_smoke.rs::init_ci_github_writes_non_blocking_report_workflow",
   "editors/vscode/test/suite/extension.test.ts::status bar projects existing first useful action report",
+  "xtask/src/main.rs::dogfood_first_action_scenarios_have_checked_receipts",
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/first-useful-action/README.md",
@@ -1313,6 +1315,7 @@ code = [
   "crates/ripr/src/cli/help.rs",
   "crates/ripr/src/cli/parse.rs",
   "editors/vscode/src/client.ts",
+  "xtask/src/main.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0020-first-useful-action-report.md",
