@@ -2096,7 +2096,7 @@ End state:
   work packet without coupling RIPR to an LLM provider
 - protocol-level and VS Code smoke tests prove the editor loop from server
   startup through diagnostics, hover, actions, copy payloads, related-test
-  opening, and restart/error paths
+  opening, and restart/status paths
 - status and staleness make stale, failed, disabled, or unavailable evidence
   visible rather than presenting it as fresh
 - user-facing docs describe the saved-workspace editor workflow and its limits
@@ -2110,7 +2110,7 @@ Work items:
 | `lsp/evidence-aware-actions` | done | Tightened action visibility so targeted-test briefs require related-test or suggested-assertion context, suggested assertions and related-test opening remain evidence-gated, stale seam diagnostics fail closed, and agent-loop commands stay available for stable seam diagnostics. |
 | `lsp/context-packet-command` | done | Added `ripr.collectEvidenceContext`, a schema `0.1` LSP execute-command packet with seam identity, evidence path, missing discriminator, related test, suggested test, shared agent-loop commands, and static limits without source edits, generated tests, provider coupling, broad analysis reruns, or runtime mutation execution. |
 | `test/lsp-protocol-smoke` | done | Extended framed LSP proof through initialize, saved-workspace refresh, a real boundary-gap seam diagnostic, hover, codeAction, `ripr.collectEvidenceContext`, and shutdown without relying on the VS Code client. |
-| `test/vscode-extension-smoke` | blocked | Prove extension activation, server resolution, fixture diagnostics, hover, actions, copy payloads, related-test opening, restart, and bad-server-path status. |
+| `test/vscode-extension-smoke` | done | Extended the live VS Code e2e smoke so the real boundary-gap server path reaches a seam diagnostic, hover, code actions, copied seam packet and verify payloads, related-test opening, and restart callability without adding editor features. Bad-server-path status remains in the status/staleness slice. |
 | `lsp/editor-status-and-staleness` | blocked | Make server unavailable, workspace unresolved, config disabled, queued, running, complete, stale, failed, and no-actionable-seam states explicit. |
 | `docs/editor-evidence-workflow` | blocked | Document install, diagnostic, hover, related test, context packet, one-test, verify, receipt, and refresh workflow with limits. |
 | `campaign/editor-evidence-ux-closeout` | blocked | Close only after hover, actions, context packet, protocol proof, VS Code proof, status/staleness, and docs align without analyzer, policy, CI, or runtime-claim drift. |
@@ -2130,10 +2130,10 @@ Dependencies:
 
 Next when activated:
 
-- `test/vscode-extension-smoke` should be the next behavior-bearing item. Keep
-  it proof-only: exercise extension activation, server resolution, fixture
-  diagnostics, hover, actions, copy payloads, related-test opening, restart,
-  and bad-server-path status without adding new editor features.
+- `lsp/editor-status-and-staleness` should be the next behavior-bearing item.
+  Keep it proof-only: make unavailable, unresolved, disabled, queued, running,
+  complete, stale, failed, and no-actionable-seam states explicit without
+  adding speculative editor surfaces.
 
 Commands:
 
