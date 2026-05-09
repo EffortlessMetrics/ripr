@@ -87,7 +87,7 @@ commands = [
 
 [[work_item]]
 id = "lsp/first-useful-action-status"
-status = "ready"
+status = "done"
 branch = "lsp-first-useful-action-status"
 stackable = false
 acceptance = "Project an existing first-useful-action report through editor status and Show Status without adding diagnostics, CodeLens, inlay hints, unsaved-buffer analysis, source edits, or generated tests"
@@ -103,8 +103,7 @@ commands = [
 
 [[work_item]]
 id = "docs/first-useful-action-workflow"
-status = "blocked"
-blocked_by = ["lsp/first-useful-action-status"]
+status = "ready"
 branch = "docs-first-useful-action-workflow"
 stackable = false
 acceptance = "Document how developers, reviewers, and coding agents read the first useful action, act on it, verify movement, emit receipts, and interpret fallback states"
@@ -118,7 +117,7 @@ commands = [
 [[work_item]]
 id = "dogfood/first-useful-action-receipts"
 status = "blocked"
-blocked_by = ["lsp/first-useful-action-status", "docs/first-useful-action-workflow"]
+blocked_by = ["docs/first-useful-action-workflow"]
 branch = "dogfood-first-useful-action-receipts"
 stackable = false
 acceptance = "Record repo-local first-useful-action receipts for actionable, baseline-only, stale or missing-input, unchanged-after-attempt, and no-actionable-seam cases"

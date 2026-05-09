@@ -2870,6 +2870,13 @@ authority, and the first-action report must not edit source, generate tests,
 call a provider, run mutation testing, rerun hidden analysis, or change default
 blocking.
 
+The VS Code extension may also read an existing
+`target/ripr/reports/first-useful-action.json` and project the selected action
+through the status bar and `ripr: Show Status`. That editor projection is not a
+schema producer: it does not run `ripr first-action`, add diagnostics, edit
+source, generate tests, call providers, run mutation testing, or make gate
+decisions.
+
 ### Review Guidance Outcome Receipt
 
 Review guidance outcome receipts are optional repo-local inputs to the
