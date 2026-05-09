@@ -24,6 +24,7 @@ Current how-to docs:
 - [Contributing](../CONTRIBUTING.md)
 - [Testing](TESTING.md)
 - [CI strategy](CI.md)
+- [MSRV 1.95 rollout plan](ci/ripr-rollout-plan.md)
 - [Security policy](../SECURITY.md)
 - [Repository settings](REPO_SETTINGS.md)
 - [Fix CI shape failures](how-to/fix-ci-shape-failures.md)
@@ -75,6 +76,11 @@ Current reference docs:
 - [Changelog policy](CHANGELOG_POLICY.md)
 - [Capability matrix](CAPABILITY_MATRIX.md)
 - [No-panic semantic allowlist](NO_PANIC_SEMANTIC_ALLOWLIST.md)
+- [No-panic policy](NO_PANIC_POLICY.md)
+- [Policy allowlists](POLICY_ALLOWLISTS.md)
+- [CI current state](ci/current-state.md)
+- [CI LEM budgeting](ci/lem-budgeting.md)
+- [CI labels](ci/labels.md)
 - [Droid rollout checklist](agent-context/droid-rollout.md)
 
 Planned reference docs:
@@ -119,6 +125,8 @@ Current explanation docs:
 - [Calibrated gate policy](CALIBRATED_GATE_POLICY.md)
 - [RIPR blocking readiness](BLOCKING_READINESS.md)
 - [Baseline ledger workflow](BASELINE_LEDGER_WORKFLOW.md)
+- [Verification economics policy](ci/cost-and-verification-policy.md)
+- [Verification ladder](ci/verification-ladder.md)
 
 ## README Rule
 
