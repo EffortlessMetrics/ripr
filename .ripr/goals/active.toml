@@ -25,10 +25,10 @@ end_state = [
 
 [[work_item]]
 id = "spec/ripr-zero-reporting-surface"
-status = "ready"
+status = "done"
 branch = "spec-ripr-zero-reporting-surface"
 stackable = false
-acceptance = "Define the RIPR Zero reporting contract for repo-level status, baseline metadata, stale warnings, trends, top debt areas, and advisory repair routing without analyzer identity rewrites or default CI blocking"
+acceptance = "Defined RIPR-SPEC-0017 as the RIPR Zero reporting contract for repo-level status, baseline metadata, stale warnings, trends, top debt areas, and advisory repair routing without analyzer identity rewrites or default CI blocking"
 commands = [
   "cargo xtask check-spec-format",
   "cargo xtask check-doc-index",
@@ -42,10 +42,9 @@ commands = [
 
 [[work_item]]
 id = "baseline/metadata-v2"
-status = "blocked"
+status = "ready"
 branch = "baseline-metadata-v2"
 stackable = false
-blocked_by = ["spec/ripr-zero-reporting-surface"]
 acceptance = "Extend baseline ledger handling so optional owner, reason, created_at, review_after, and source metadata can be preserved and reported without breaking existing Campaign 17 baseline files"
 commands = [
   "cargo test -p ripr baseline",

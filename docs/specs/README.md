@@ -27,3 +27,4 @@ observable behavior.
 | [RIPR-SPEC-0014](RIPR-SPEC-0014-calibrated-gate-policy.md) | proposed | Calibrated gate policy |
 | [RIPR-SPEC-0015](RIPR-SPEC-0015-evidence-health-baseline.md) | proposed | Evidence health baseline |
 | [RIPR-SPEC-0016](RIPR-SPEC-0016-baseline-debt-delta.md) | proposed | Baseline debt delta |
+| [RIPR-SPEC-0017](RIPR-SPEC-0017-ripr-zero-reporting.md) | proposed | RIPR Zero reporting |

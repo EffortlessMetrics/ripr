@@ -2086,6 +2086,170 @@ baseline entries, warnings, and the advisory boundary. It must distinguish
 baseline debt from suppressions and acknowledged current findings from hidden
 success.
 
+## RIPR Zero Status Report
+
+RIPR-SPEC-0017 defines the RIPR Zero status report. The report joins existing
+baseline ledgers, baseline debt deltas, gate decisions, PR guidance, and
+optional calibration or receipt artifacts so teams can see repo-level movement
+toward RIPR 0 without changing analyzer identity, gate policy, or advisory
+defaults.
+
+Command:
+
+```text
+ripr zero status \
+  --baseline .ripr/gate-baseline.json \
+  --delta target/ripr/reports/baseline-debt-delta.json \
+  --gate target/ripr/reports/gate-decision.json \
+  --pr-guidance target/ripr/review/comments.json \
+  --recommendation-calibration target/ripr/reports/recommendation-calibration.json \
+  --out target/ripr/reports/ripr-zero-status.json \
+  --out-md target/ripr/reports/ripr-zero-status.md
+```
+
+The report writes:
+
+```text
+target/ripr/reports/ripr-zero-status.json
+target/ripr/reports/ripr-zero-status.md
+```
+
+This report is advisory progress evidence. `ripr gate evaluate` remains the
+pass/fail authority for configured gate modes. Generated CI may upload and
+summarize the report after the command exists, but the report itself must not
+fail CI, rewrite baselines, post comments, edit source, generate tests, rerun
+analysis, call an LLM, or run mutation testing.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "ripr_zero_status",
+  "status": "advisory",
+  "root": ".",
+  "generated_at": "2026-05-08T00:00:00Z",
+  "inputs": {
+    "baseline": ".ripr/gate-baseline.json",
+    "baseline_debt_delta": "target/ripr/reports/baseline-debt-delta.json",
+    "gate_decision": "target/ripr/reports/gate-decision.json",
+    "pr_guidance": "target/ripr/review/comments.json",
+    "recommendation_calibration": null,
+    "previous_status": null
+  },
+  "ripr_zero": {
+    "state": "not_yet",
+    "visible_unresolved": 43,
+    "new_policy_eligible": 1,
+    "blocking_candidates": 0,
+    "acknowledged": 1,
+    "suppressed": 0,
+    "limits_note": "RIPR 0 means no visible unresolved behavioral test-grip gaps under configured scope and policy; it is not a coverage or runtime adequacy claim."
+  },
+  "baseline": {
+    "path": ".ripr/gate-baseline.json",
+    "entries": 47,
+    "still_present": 40,
+    "resolved": 7,
+    "age_days": 31,
+    "metadata": {
+      "current": 38,
+      "stale": 4,
+      "missing_metadata": 5,
+      "unknown": 0
+    }
+  },
+  "debt_delta": {
+    "still_present": 40,
+    "resolved": 7,
+    "new": 2,
+    "new_policy_eligible": 1,
+    "acknowledged": 1,
+    "suppressed": 0,
+    "stale": 4,
+    "invalid": 0,
+    "missing_input": 0
+  },
+  "trend": {
+    "source": "not_available",
+    "window": null,
+    "visible_unresolved_delta": null,
+    "resolved_delta": null,
+    "new_policy_eligible_delta": null
+  },
+  "top_debt_areas": [
+    {
+      "rank": 1,
+      "area": "src/pricing.rs",
+      "visible_unresolved": 8,
+      "new_policy_eligible": 1,
+      "stale_baseline_entries": 2,
+      "top_static_class": "weakly_gripped"
+    }
+  ],
+  "repair_routes": [
+    {
+      "rank": 1,
+      "source": "baseline_debt_delta",
+      "seam_id": "67fc764ba37d77bd",
+      "path": "src/pricing.rs",
+      "line": 88,
+      "missing_discriminator": "amount == discount_threshold",
+      "suggested_test": "Add an equality-boundary assertion.",
+      "related_test": "tests/pricing.rs::applies_discount_above_threshold",
+      "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json",
+      "agent_command": "ripr agent start --root . --seam-id 67fc764ba37d77bd --out target/ripr/workflow"
+    }
+  ],
+  "warnings": [
+    "5 baseline entries are missing review metadata"
+  ],
+  "limits_note": "Read-only advisory RIPR Zero status over existing static RIPR artifacts; gate-decision remains the pass/fail authority."
+}
+```
+
+Field contract:
+
+- `schema_version` - currently `"0.1"`.
+- `status` - `advisory` for complete reports and `incomplete` when required
+  inputs are missing or unsupported.
+- `ripr_zero.state` - one of `achieved`, `not_yet`, or `unknown`.
+- `ripr_zero.visible_unresolved` - visible unresolved behavioral test-grip gaps
+  under the supplied baseline and gate scope.
+- `ripr_zero.new_policy_eligible` - current policy-eligible gaps that are not
+  covered by the reviewed baseline.
+- `ripr_zero.blocking_candidates` - current gate candidates that would block
+  under the configured gate mode. The status report surfaces this count but does
+  not make the blocking decision.
+- `ripr_zero.acknowledged` - visible current findings acknowledged by label or
+  policy.
+- `ripr_zero.suppressed` - current findings hidden by suppression or
+  configured-off severity while remaining visible in the status report.
+- `baseline.metadata.current`, `stale`, `missing_metadata`, and `unknown` -
+  baseline review metadata health counts. Missing metadata must not hide the
+  entry.
+- `debt_delta.*` - baseline movement buckets copied from the baseline debt
+  delta report so summaries can show old debt, new debt, resolved debt,
+  acknowledgements, suppressions, stale entries, invalid entries, and missing
+  inputs without reinterpreting gate policy.
+- `trend.source` - `previous_status`, `ledger`, or `not_available`.
+- `top_debt_areas[]` - capped groups by stable repo-relative path or configured
+  area name. Grouping is a reporting surface, not an analyzer identity rewrite.
+- `repair_routes[]` - capped focused repair candidates copied from existing PR
+  guidance, gate decisions, baseline debt delta, agent packets, or receipts.
+  The report must not invent missing commands or generated tests.
+- `warnings[]` - stale baseline metadata, missing inputs, unsupported schemas,
+  ambiguous identities, and trend gaps.
+- `limits_note` - advisory boundary text for generated CI summaries.
+
+Markdown should fit in a generated CI job summary. It should show RIPR 0 state,
+visible unresolved gaps, existing baseline gaps still present, resolved baseline
+gaps, new policy-eligible gaps, acknowledged gaps, suppressed gaps, stale
+metadata, the top repair route, warnings, and the advisory boundary. It must
+say that RIPR 0 is not perfect tests, 100 percent coverage, or runtime mutation
+adequacy.
+
 ### Review Guidance Outcome Receipt
 
 Review guidance outcome receipts are optional repo-local inputs to the

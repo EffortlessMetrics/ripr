@@ -739,6 +739,19 @@ next = "maintenance"
 metric = "baseline_debt_delta_entries, baseline_debt_delta_still_present, baseline_debt_delta_resolved, baseline_debt_delta_new_policy_eligible, baseline_debt_delta_acknowledged, baseline_debt_delta_suppressed, baseline_debt_delta_stale_entries, baseline_debt_delta_invalid_entries, baseline_debt_delta_missing_current_input"
 
 [[capability]]
+id = "ripr_zero_status_report"
+name = "RIPR Zero status report"
+status = "planned"
+spec = "RIPR-SPEC-0017"
+evidence = [
+  "docs/specs/RIPR-SPEC-0017-ripr-zero-reporting.md defines the repo-level reporting contract over reviewed baselines, baseline debt deltas, gate decisions, PR guidance, and optional calibration or receipt artifacts",
+  "docs/OUTPUT_SCHEMA.md documents the planned ripr-zero-status JSON and Markdown shape with baseline metadata health, stale warnings, trends, top debt areas, and advisory repair routes"
+]
+fixtures = []
+next = "baseline/metadata-v2"
+metric = "ripr_zero_status_reports, ripr_zero_visible_unresolved, ripr_zero_new_policy_eligible, ripr_zero_baseline_still_present, ripr_zero_baseline_resolved, ripr_zero_acknowledged, ripr_zero_suppressed, ripr_zero_stale_baseline_entries, ripr_zero_missing_metadata_entries, ripr_zero_top_repair_routes"
+
+[[capability]]
 id = "pilot_packet"
 name = "Pilot packet"
 status = "alpha"

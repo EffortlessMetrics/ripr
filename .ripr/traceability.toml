@@ -1073,3 +1073,34 @@ metrics = [
   "baseline_debt_delta_invalid_entries",
   "baseline_debt_delta_missing_current_input",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0017"
+name = "RIPR Zero reporting"
+spec = "docs/specs/RIPR-SPEC-0017-ripr-zero-reporting.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0017-ripr-zero-reporting.md",
+  "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "metrics/capabilities.toml",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/ROADMAP.md",
+  "CHANGELOG.md",
+]
+metrics = [
+  "ripr_zero_status_reports",
+  "ripr_zero_visible_unresolved",
+  "ripr_zero_new_policy_eligible",
+  "ripr_zero_baseline_still_present",
+  "ripr_zero_baseline_resolved",
+  "ripr_zero_acknowledged",
+  "ripr_zero_suppressed",
+  "ripr_zero_stale_baseline_entries",
+  "ripr_zero_missing_metadata_entries",
+  "ripr_zero_top_repair_routes",
+]
