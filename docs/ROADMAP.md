@@ -155,11 +155,11 @@ configured scope. The [Campaign 17
 closeout](handoffs/2026-05-09-campaign-17-closeout.md) records the PR chain,
 proof commands, and next-work boundary.
 Editor Evidence UX remains queued as a separate Lane 3 campaign; its contract
-audit is recorded in [Editor Evidence UX](EDITOR_EVIDENCE_UX.md), and hover
-plus evidence-aware action hardening have landed as explicit parallel slices.
-Further behavior work
-should start only after an explicit activation PR or explicit parallel-lane
-decision.
+audit is recorded in [Editor Evidence UX](EDITOR_EVIDENCE_UX.md). Hover,
+evidence-aware actions, context packets, framed protocol proof, VS Code smoke,
+status/staleness, and the [editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md)
+have landed as explicit parallel slices. Closeout should start only after an
+explicit activation PR or explicit parallel-lane decision.
 
 ## Strategic Sequence
 

@@ -32,7 +32,7 @@ through multiple work items in a campaign, but each work item should follow the
 | Calibrated Gate Policy (15) | Define optional calibrated gates over existing PR-time evidence without changing advisory defaults or blurring static/runtime evidence. | Complete: spec, evaluator, fixtures, generated CI opt-in wiring, evidence-preserving CI behavior, calibrated gate guide, and `campaign/calibrated-gate-closeout`. |
 | Gate Adoption UX (16) | Make optional calibrated gate adoption safe and obvious for real teams without changing advisory defaults. | Complete: generated-CI examples, waiver workflows, baseline guidance, CI gate summary polish, dogfood receipts, blocking-readiness guidance, and `campaign/gate-adoption-ux-closeout`. |
 | RIPR Zero Adoption (17) | Turn baselines into burn-down ledgers with create, diff, and shrink-only refresh commands while keeping generated CI advisory by default. | Complete: spec, baseline create, baseline diff, shrink-only update, generated CI baseline-delta artifacts, baseline ledger workflow guide, and `campaign/ripr-zero-adoption-closeout`. |
-| Editor Evidence UX (future) | Make the saved-workspace LSP path feel like an editor-native test-intent cockpit from diagnostic to hover, related test, context packet, one test, verify, and receipt. | Queued separately; contract audit, hover hardening, and evidence-aware action hardening are complete, with remaining behavior work gated on explicit activation or explicit parallel-lane decisions. |
+| Editor Evidence UX (future) | Make the saved-workspace LSP path feel like an editor-native test-intent cockpit from diagnostic to hover, related test, context packet, one test, verify, and receipt. | Queued separately; contract audit, hover hardening, evidence-aware actions, context packet, protocol smoke, VS Code smoke, status/staleness, and workflow docs are complete, with closeout gated on explicit activation or explicit parallel-lane decisions. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
 through 8 are complete. Campaign 6 closed after the internal module SRP chain
@@ -110,10 +110,11 @@ refresh, new debt review, and the path toward RIPR 0. The
 the PR chain, prompt-to-artifact audit, proof commands, and next-work boundary.
 Editor Evidence UX remains
 queued as a separate Lane 3 campaign; its contract audit is recorded in
-[Editor Evidence UX](EDITOR_EVIDENCE_UX.md), and hover plus evidence-aware
-action hardening have landed as explicit parallel slices. Further behavior work
-should start only after an explicit activation PR or explicit parallel-lane
-decision.
+[Editor Evidence UX](EDITOR_EVIDENCE_UX.md). Hover, evidence-aware actions,
+context packets, framed protocol proof, VS Code smoke, status/staleness, and
+the [editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md) have landed as
+explicit parallel slices. Closeout should start only after an explicit
+activation PR or explicit parallel-lane decision.
 
 ## PR 0: `planning-and-tracking-docs`
 
