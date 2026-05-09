@@ -825,6 +825,31 @@ jobs:
           fi
           ripr "${zero_args[@]}"
 
+      - name: Render RIPR test-oracle assistant proof
+        if: always() && hashFiles('target/ripr/review/comments.json') != '' && hashFiles('target/ripr/workflow/agent-brief.json') != '' && hashFiles('target/ripr/workflow/before.repo-exposure.json') != '' && hashFiles('target/ripr/workflow/after.repo-exposure.json') != '' && hashFiles('target/ripr/reports/agent-receipt.json') != '' && hashFiles('target/ripr/reports/pr-evidence-ledger.json') != ''
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          proof_args=(
+            assistant-loop proof
+            --root .
+            --pr-guidance target/ripr/review/comments.json
+            --agent-packet target/ripr/workflow/agent-brief.json
+            --before target/ripr/workflow/before.repo-exposure.json
+            --after target/ripr/workflow/after.repo-exposure.json
+            --receipt target/ripr/reports/agent-receipt.json
+            --ledger target/ripr/reports/pr-evidence-ledger.json
+            --out target/ripr/reports/test-oracle-assistant-proof.json
+            --out-md target/ripr/reports/test-oracle-assistant-proof.md
+          )
+          if [ -f target/ripr/reports/coverage-grip-frontier.json ]; then
+            proof_args+=(--coverage-frontier target/ripr/reports/coverage-grip-frontier.json)
+          fi
+          if [ -f target/ripr/reports/gate-decision.json ]; then
+            proof_args+=(--gate-decision target/ripr/reports/gate-decision.json)
+          fi
+          ripr "${proof_args[@]}"
+
       - name: Render RIPR LLM work-loop summaries
         if: always()
         continue-on-error: true
@@ -917,6 +942,48 @@ jobs:
               echo '- PR test guidance report: `target/ripr/review/`'
             else
               echo "- PR test guidance report: not generated yet"
+            fi
+            echo
+            if [ -f target/ripr/reports/test-oracle-assistant-proof.json ] || [ -f target/ripr/reports/test-oracle-assistant-proof.md ]; then
+              echo '### Test-oracle assistant proof'
+              if [ -f target/ripr/reports/test-oracle-assistant-proof.json ]; then
+                proof_json=target/ripr/reports/test-oracle-assistant-proof.json
+                proof_status="$(jq -r '.status // "unknown"' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_seam="$(jq -r '(.seam.path // "unknown") + (if .seam.line then ":" + (.seam.line|tostring) else "" end)' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_missing="$(jq -r '.seam.missing_discriminator // "not_available"' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_placement="$(jq -r '.recommendation.placement // "not_available"' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_movement="$(jq -r '.evidence_movement.state // "unknown"' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_receipt="$(jq -r '.evidence_movement.artifact // .inputs.receipt // "not_available"' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_gate="$(jq -r '.ci_projection.gate_decision // "not_supplied"' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_coverage="$(jq -r '.ci_projection.coverage_frontier // "not_supplied"' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_warning_count="$(jq -r '(.warnings // [] | length)' "$proof_json" 2>/dev/null || echo 0)"
+                proof_status="$(markdown_inline "$proof_status")"
+                proof_seam="$(markdown_inline "$proof_seam")"
+                proof_missing="$(markdown_inline "$proof_missing")"
+                proof_placement="$(markdown_inline "$proof_placement")"
+                proof_movement="$(markdown_inline "$proof_movement")"
+                proof_receipt="$(markdown_inline "$proof_receipt")"
+                proof_gate="$(markdown_inline "$proof_gate")"
+                proof_coverage="$(markdown_inline "$proof_coverage")"
+                proof_warning_count="$(markdown_inline "$proof_warning_count")"
+                echo '#### Assistant proof at a glance'
+                echo "- Status: \`$proof_status\`"
+                echo "- Seam: \`$proof_seam\`"
+                echo "- Missing discriminator: \`$proof_missing\`"
+                echo "- Placement: \`$proof_placement\`"
+                echo "- Static movement: \`$proof_movement\`"
+                echo "- Receipt: \`$proof_receipt\`"
+                echo "- Gate input: \`$proof_gate\`"
+                echo "- Coverage/grip frontier input: \`$proof_coverage\`"
+                echo "- Warnings: \`$proof_warning_count\`"
+                echo "- Proof artifacts: \`target/ripr/reports/test-oracle-assistant-proof.json\`, \`target/ripr/reports/test-oracle-assistant-proof.md\`"
+                echo "- Pass/fail authority remains \`ripr gate evaluate\` when an explicit gate mode is configured."
+                echo
+              fi
+              if [ -f target/ripr/reports/test-oracle-assistant-proof.md ]; then
+                cat target/ripr/reports/test-oracle-assistant-proof.md
+              fi
+              echo
             fi
             echo
             echo '### Gate decision'
@@ -1221,6 +1288,17 @@ See [PR evidence ledger workflow](PR_EVIDENCE_LEDGER_WORKFLOW.md) for how to
 read the ledger as waiver aging, baseline burn-down, repair receipts, and
 coverage/grip frontier evidence.
 
+When the full assistant-loop artifact chain is present, generated CI also
+writes and uploads `target/ripr/reports/test-oracle-assistant-proof.json` and
+`target/ripr/reports/test-oracle-assistant-proof.md`. This step is advisory and
+runs only after PR guidance, the editor/agent brief, before/after static
+evidence, the agent receipt, and the PR evidence ledger already exist. The job
+summary appends the proof report and an at-a-glance card with the selected seam,
+missing discriminator, placement state, static movement, receipt path, optional
+gate input, optional coverage/grip frontier input, and warning count. If the
+required inputs are absent, generated CI skips the proof projection instead of
+printing a placeholder or changing pass/fail behavior.
+
 For every configured gate mode, the generated workflow behavior is:
 
 1. capture active PR labels into `target/ci/labels.json`;
@@ -1237,11 +1315,16 @@ For every configured gate mode, the generated workflow behavior is:
 9. run `ripr pr-ledger record` on pull requests when `comments.json` exists;
 10. render the PR movement section from `pr-evidence-ledger.json` and append
    `pr-evidence-ledger.md` when present;
-11. append the detailed `gate-decision.md`, `baseline-debt-delta.md`, and
+11. run `ripr assistant-loop proof` only when the required assistant-loop
+   artifacts exist;
+12. render the assistant proof section from `test-oracle-assistant-proof.json`
+   and append `test-oracle-assistant-proof.md` when present;
+13. append the detailed `gate-decision.md`, `baseline-debt-delta.md`, and
    `ripr-zero-status.md` reports when present;
-12. upload gate, baseline delta, RIPR Zero, and PR evidence ledger artifacts
-   with the normal `ripr-reports` artifact packet;
-13. fail only when the explicit gate mode returns `blocked` or `config_error`.
+14. upload gate, baseline delta, RIPR Zero, PR evidence ledger, and
+   test-oracle assistant proof artifacts with the normal `ripr-reports`
+   artifact packet;
+15. fail only when the explicit gate mode returns `blocked` or `config_error`.
 
 Acknowledgeable policy:
 

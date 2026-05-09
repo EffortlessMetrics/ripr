@@ -804,7 +804,7 @@ tests = [
   "crates/ripr/src/cli/commands.rs::review_comments_rejects_empty_values_and_unknown_args",
   "crates/ripr/src/cli/commands.rs::review_comments_rejects_missing_root_before_loading_diff",
   "crates/ripr/src/cli/commands.rs::review_comments_returns_diff_loader_errors",
-  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture",
+  "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_matches_smoke_fixture",
   "crates/ripr/src/output/review_comments.rs::review_comments_pr_guidance_fixtures_pin_required_cases"
 ]
 fixtures = [
@@ -1215,6 +1215,7 @@ tests = [
   "crates/ripr/src/output/test_oracle_assistant_proof.rs::test_oracle_assistant_proof_handles_unknown_movement_and_no_handoff",
   "crates/ripr/tests/cli_smoke.rs::test_oracle_assistant_proof_cli_writes_canonical_report",
   "crates/ripr/tests/cli_smoke.rs::test_oracle_assistant_canonical_review_loop_fixture_pins_expected_surfaces",
+  "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_matches_smoke_fixture",
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/README.md",
@@ -1235,6 +1236,7 @@ outputs = [
   "docs/specs/RIPR-SPEC-0019-test-oracle-assistant-loop.md",
   "docs/specs/README.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/CI.md",
   "docs/TEST_ORACLE_ASSISTANT_WORKFLOW.md",
   "docs/handoffs/2026-05-09-test-oracle-assistant-receipt.md",
   "docs/handoffs/2026-05-09-campaign-20-closeout.md",

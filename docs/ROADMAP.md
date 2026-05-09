@@ -198,8 +198,9 @@ explicit follow-up campaign. Campaign 21 is now open as Test-Oracle Assistant
 Report Producer, and `ripr assistant-loop proof` now turns the proved loop into
 advisory `test-oracle-assistant-proof.{json,md}` artifacts from explicit
 existing inputs without changing analyzer, ranking, gate, editor, provider,
-mutation, or default CI behavior. The next step is generated-CI advisory
-artifact projection for that proof report.
+mutation, or default CI behavior. Generated GitHub CI now projects that report
+only when the required artifact chain already exists. The next step is
+user-facing proof-report documentation.
 
 ## Strategic Sequence
 

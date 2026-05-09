@@ -2611,6 +2611,13 @@ target/ripr/reports/test-oracle-assistant-proof.json
 target/ripr/reports/test-oracle-assistant-proof.md
 ```
 
+Generated GitHub CI writes the same artifacts when the required PR guidance,
+editor/agent brief, before/after static evidence, agent receipt, and PR
+evidence ledger inputs already exist. The generated workflow treats the report
+as advisory summary/artifact content only; it does not make the proof report a
+pass/fail authority, post comments, mutate the baseline, rerun hidden analysis,
+or print a placeholder when the required inputs are missing.
+
 The report is advisory and read-only. It must not fail CI, post comments, edit
 source, generate tests, call an LLM provider, run mutation testing, or claim
 runtime confirmation from static evidence.
