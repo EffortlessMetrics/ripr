@@ -211,6 +211,9 @@ Before treating a proof report as a useful receipt, verify:
 - [First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md) explains how
   proof, ledger, receipt, gate, and editor context can collapse into one
   advisory next action.
+- [Assistant loop health workflow](ASSISTANT_LOOP_HEALTH_WORKFLOW.md) explains
+  how one or more proof packets become advisory completeness, movement,
+  warning, and repair-queue summaries.
 - [CI strategy](CI.md#generated-github-workflow) describes generated workflow
   projection into GitHub summaries and artifacts.
 - [Output schema](OUTPUT_SCHEMA.md#test-oracle-assistant-loop) defines the

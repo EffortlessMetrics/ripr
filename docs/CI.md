@@ -1467,6 +1467,10 @@ optional inputs, static movement, warning groups, and repair queue counts as
 advisory operating health over assistant-loop proof packets. It does not rerun
 analysis, grade an agent, or change pass/fail authority.
 
+See [Assistant loop health workflow](ASSISTANT_LOOP_HEALTH_WORKFLOW.md) for how
+maintainers and coding agents read completeness, missing inputs, unchanged
+movement, repair queue entries, and advisory limits.
+
 Generated CI also projects the first useful action when at least one explicit
 input artifact is already present. It runs `ripr first-action --root .` with
 existing PR guidance, assistant proof, PR evidence ledger, baseline delta,

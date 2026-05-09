@@ -2621,8 +2621,8 @@ Work items:
 | `fixtures/assistant-loop-health-corpus` | done | Added `fixtures/boundary_gap/expected/assistant-loop-health/` with complete-improved, partial-missing-optional, missing-required-input, unchanged, regressed, warning-heavy, and multi-proof report fixtures plus representative proof inputs. |
 | `report/assistant-loop-health` | done | Added the read-only `ripr assistant-loop health` producer over explicit proof inputs, with JSON/Markdown rendering and fixture-backed CLI coverage. |
 | `ci/assistant-loop-health-artifacts` | done | Generated GitHub CI runs `ripr assistant-loop health` when `test-oracle-assistant-proof.json` exists, uploads `assistant-loop-health.{json,md}` with the normal report packet, and appends an advisory health summary. |
-| `docs/assistant-loop-health-workflow` | ready | Explain proof report vs health report, repair routing, and advisory limits now that the producer and CI projection exist. |
-| `campaign/assistant-loop-health-closeout` | blocked | Close after spec, fixtures, producer, CI projection, docs, and validation document the lane. |
+| `docs/assistant-loop-health-workflow` | done | Added `docs/ASSISTANT_LOOP_HEALTH_WORKFLOW.md`, explaining proof report versus health report, generated-CI summary use, complete/partial/missing states, static movement interpretation, missing-input repair, agent handoff, and advisory limits. |
+| `campaign/assistant-loop-health-closeout` | ready | Close after spec, fixtures, producer, CI projection, docs, and validation document the lane. |
 
 References:
 
@@ -2639,10 +2639,10 @@ Blocking conditions:
 
 Next:
 
-- Continue with `docs/assistant-loop-health-workflow`. The report contract,
-  fixture corpus, read-only producer, and generated-CI advisory projection are
-  in place; the next slice should explain how maintainers and agents use the
-  health report.
+- Continue with `campaign/assistant-loop-health-closeout`. The report contract,
+  fixture corpus, read-only producer, generated-CI advisory projection, and
+  workflow docs are in place; the next slice should record the closeout audit
+  and future-lane boundary.
 
 ## Future Campaign: Editor Evidence UX
 
