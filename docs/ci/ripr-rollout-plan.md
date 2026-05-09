@@ -81,7 +81,7 @@ framing.
   with targeted fixes.
 - Merge lint policy changes only after `cargo xtask check-lint-policy` passes.
 - Merge no-panic canonicalization only after `cargo xtask check-no-panic-family`
-  and `cargo xtask no-panic propose` pass.
+  passes.
 - Merge test panic cleanup only if the allowlist count drops or every retained
   entry has owner/reason/expiry.
 - Merge CI workflow changes only after `cargo xtask check-workflows` passes.
