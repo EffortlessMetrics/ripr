@@ -1348,6 +1348,7 @@ mod tests {
             pr_guidance_json: None,
             recommendation_calibration_json: None,
         });
+        let markdown = render_ripr_zero_status_markdown(&report);
         let rendered = render_ripr_zero_status_json(&report)?;
         let value = serde_json::from_str::<Value>(&rendered)
             .map_err(|err| format!("RIPR Zero status JSON should parse: {err}"))?;
@@ -1356,64 +1357,64 @@ mod tests {
             .and_then(Value::as_array)
             .and_then(|routes| routes.first())
             .ok_or_else(|| format!("missing repair route in: {rendered}"))?;
-        if route.get("path").and_then(Value::as_str) != Some("src/pricing.rs") {
-            return Err(format!("expected evidence_record path in: {rendered}"));
-        }
-        if route.get("static_class").and_then(Value::as_str) != Some("weakly_gripped") {
-            return Err(format!(
-                "expected evidence_record grip class in: {rendered}"
-            ));
-        }
-        if route.get("missing_discriminator").and_then(Value::as_str)
-            != Some("amount == discount_threshold")
-        {
-            return Err(format!(
-                "expected evidence_record missing discriminator in: {rendered}"
-            ));
-        }
-        if route.get("suggested_test").and_then(Value::as_str)
-            != Some("assert_eq!(discounted_total(/* threshold */), expected)")
-        {
-            return Err(format!(
-                "expected evidence_record assertion shape in: {rendered}"
-            ));
-        }
-        if route.get("related_test").and_then(Value::as_str)
-            != Some("tests/pricing.rs::above_threshold_discount")
-        {
-            return Err(format!(
-                "expected evidence_record related test in: {rendered}"
-            ));
-        }
-        if route.get("verify_command").and_then(Value::as_str)
-            != Some("ripr evidence-movement --before before.json --after after.json")
-        {
-            return Err(format!(
-                "expected evidence_record verify command in: {rendered}"
-            ));
-        }
+        assert_eq!(
+            route.get("path").and_then(Value::as_str),
+            Some("src/pricing.rs"),
+            "expected evidence_record path in: {rendered}"
+        );
+        assert_eq!(
+            route.get("static_class").and_then(Value::as_str),
+            Some("weakly_gripped"),
+            "expected evidence_record grip class in: {rendered}"
+        );
+        assert_eq!(
+            route.get("missing_discriminator").and_then(Value::as_str),
+            Some("amount == discount_threshold"),
+            "expected evidence_record missing discriminator in: {rendered}"
+        );
+        assert_eq!(
+            route.get("suggested_test").and_then(Value::as_str),
+            Some("assert_eq!(discounted_total(/* threshold */), expected)"),
+            "expected evidence_record assertion shape in: {rendered}"
+        );
+        assert_eq!(
+            route.get("related_test").and_then(Value::as_str),
+            Some("tests/pricing.rs::above_threshold_discount"),
+            "expected evidence_record related test in: {rendered}"
+        );
+        assert_eq!(
+            route.get("verify_command").and_then(Value::as_str),
+            Some("ripr evidence-movement --before before.json --after after.json"),
+            "expected evidence_record verify command in: {rendered}"
+        );
         let limitation = route
             .get("static_limitations")
             .and_then(Value::as_array)
             .and_then(|limits| limits.first())
             .and_then(Value::as_str);
-        if limitation != Some("propagate/unknown: call target unresolved") {
-            return Err(format!(
-                "expected evidence_record static limitation in: {rendered}"
-            ));
-        }
+        assert_eq!(
+            limitation,
+            Some("propagate/unknown: call target unresolved"),
+            "expected evidence_record static limitation in: {rendered}"
+        );
+        assert!(
+            markdown.contains("Static limit: propagate/unknown: call target unresolved"),
+            "expected markdown static limitation in: {markdown}"
+        );
         Ok(())
     }
 
     #[test]
     fn evidence_record_context_handles_invalid_and_fallback_shapes() -> Result<(), String> {
-        if super::evidence_record_repair_context_from_value(None).is_some() {
-            return Err("missing evidence_record should not produce repair context".to_string());
-        }
+        assert!(
+            super::evidence_record_repair_context_from_value(None).is_none(),
+            "missing evidence_record should not produce repair context"
+        );
         let invalid = serde_json::json!("not an object");
-        if super::evidence_record_repair_context_from_value(Some(&invalid)).is_some() {
-            return Err("non-object evidence_record should not produce repair context".to_string());
-        }
+        assert!(
+            super::evidence_record_repair_context_from_value(Some(&invalid)).is_none(),
+            "non-object evidence_record should not produce repair context"
+        );
 
         let record = serde_json::json!({
           "schema_version": "0.1",
@@ -1449,34 +1450,29 @@ mod tests {
 
         let context = super::evidence_record_repair_context_from_value(Some(&record))
             .ok_or_else(|| "expected valid evidence_record repair context".to_string())?;
-        if context.line.is_some() {
-            return Err(format!(
-                "line should be absent in partial context: {context:?}"
-            ));
-        }
-        if context.suggested_test.as_deref()
-            != Some("tests/pricing.rs::discounted_total_boundary_discriminator")
-        {
-            return Err(format!(
-                "recommended_test should be assertion fallback: {context:?}"
-            ));
-        }
-        if context.related_test.as_deref()
-            != Some("tests/pricing.rs::discounted_total_boundary_discriminator")
-        {
-            return Err(format!(
-                "recommended_test should be related-test fallback: {context:?}"
-            ));
-        }
-        if context.static_limitations
-            != [
+        assert!(
+            context.line.is_none(),
+            "line should be absent in partial context: {context:?}"
+        );
+        assert_eq!(
+            context.suggested_test.as_deref(),
+            Some("tests/pricing.rs::discounted_total_boundary_discriminator"),
+            "recommended_test should be assertion fallback: {context:?}"
+        );
+        assert_eq!(
+            context.related_test.as_deref(),
+            Some("tests/pricing.rs::discounted_total_boundary_discriminator"),
+            "recommended_test should be related-test fallback: {context:?}"
+        );
+        assert_eq!(
+            context.static_limitations,
+            [
                 "activate: constant unresolved",
                 "unknown: state only",
                 "plain reason",
-            ]
-        {
-            return Err(format!("unexpected static limitation labels: {context:?}"));
-        }
+            ],
+            "unexpected static limitation labels: {context:?}"
+        );
         Ok(())
     }
 
@@ -1485,20 +1481,24 @@ mod tests {
         let file_only = serde_json::json!({"file": "tests/pricing.rs"});
         let name_only = serde_json::json!({"name": "discounted_total_boundary"});
         let empty = serde_json::json!({});
-        if super::test_label_from_value(Some(&file_only)) != Some("tests/pricing.rs".to_string()) {
-            return Err("file-only test label should use file".to_string());
-        }
-        if super::test_label_from_value(Some(&name_only))
-            != Some("discounted_total_boundary".to_string())
-        {
-            return Err("name-only test label should use name".to_string());
-        }
-        if super::test_label_from_value(Some(&empty)).is_some() {
-            return Err("empty test label should not produce a label".to_string());
-        }
-        if super::test_label_from_value(None).is_some() {
-            return Err("missing test label should not produce a label".to_string());
-        }
+        assert_eq!(
+            super::test_label_from_value(Some(&file_only)),
+            Some("tests/pricing.rs".to_string()),
+            "file-only test label should use file"
+        );
+        assert_eq!(
+            super::test_label_from_value(Some(&name_only)),
+            Some("discounted_total_boundary".to_string()),
+            "name-only test label should use name"
+        );
+        assert!(
+            super::test_label_from_value(Some(&empty)).is_none(),
+            "empty test label should not produce a label"
+        );
+        assert!(
+            super::test_label_from_value(None).is_none(),
+            "missing test label should not produce a label"
+        );
         Ok(())
     }
 
@@ -1575,48 +1575,53 @@ mod tests {
             .and_then(Value::as_array)
             .and_then(|routes| routes.first())
             .ok_or_else(|| format!("missing repair route in: {rendered}"))?;
-        if route.get("seam_id").and_then(Value::as_str) != Some("record-seam") {
-            return Err(format!("expected record seam fallback in: {rendered}"));
-        }
-        if route.get("path").and_then(Value::as_str) != Some("src/legacy.rs") {
-            return Err(format!("expected legacy path fallback in: {rendered}"));
-        }
-        if route.get("line").and_then(Value::as_u64) != Some(7) {
-            return Err(format!("expected legacy line fallback in: {rendered}"));
-        }
-        if route.get("static_class").and_then(Value::as_str) != Some("legacy_class") {
-            return Err(format!(
-                "expected legacy static class fallback in: {rendered}"
-            ));
-        }
-        if route.get("missing_discriminator").and_then(Value::as_str)
-            != Some("legacy discriminator")
-        {
-            return Err(format!(
-                "expected legacy missing discriminator fallback in: {rendered}"
-            ));
-        }
-        if route.get("suggested_test").and_then(Value::as_str) != Some("legacy assertion") {
-            return Err(format!("expected legacy assertion fallback in: {rendered}"));
-        }
-        if route.get("related_test").and_then(Value::as_str) != Some("tests/legacy.rs::legacy_case")
-        {
-            return Err(format!(
-                "expected legacy related test fallback in: {rendered}"
-            ));
-        }
-        if route.get("verify_command").and_then(Value::as_str) != Some("legacy verify") {
-            return Err(format!("expected legacy verify fallback in: {rendered}"));
-        }
-        if route
-            .get("agent_command")
-            .and_then(Value::as_str)
-            .is_none_or(|command| !command.contains("--seam-id record-seam"))
-        {
-            return Err(format!(
-                "expected agent command to use record seam id in: {rendered}"
-            ));
-        }
+        assert_eq!(
+            route.get("seam_id").and_then(Value::as_str),
+            Some("record-seam"),
+            "expected record seam fallback in: {rendered}"
+        );
+        assert_eq!(
+            route.get("path").and_then(Value::as_str),
+            Some("src/legacy.rs"),
+            "expected legacy path fallback in: {rendered}"
+        );
+        assert_eq!(
+            route.get("line").and_then(Value::as_u64),
+            Some(7),
+            "expected legacy line fallback in: {rendered}"
+        );
+        assert_eq!(
+            route.get("static_class").and_then(Value::as_str),
+            Some("legacy_class"),
+            "expected legacy static class fallback in: {rendered}"
+        );
+        assert_eq!(
+            route.get("missing_discriminator").and_then(Value::as_str),
+            Some("legacy discriminator"),
+            "expected legacy missing discriminator fallback in: {rendered}"
+        );
+        assert_eq!(
+            route.get("suggested_test").and_then(Value::as_str),
+            Some("legacy assertion"),
+            "expected legacy assertion fallback in: {rendered}"
+        );
+        assert_eq!(
+            route.get("related_test").and_then(Value::as_str),
+            Some("tests/legacy.rs::legacy_case"),
+            "expected legacy related test fallback in: {rendered}"
+        );
+        assert_eq!(
+            route.get("verify_command").and_then(Value::as_str),
+            Some("legacy verify"),
+            "expected legacy verify fallback in: {rendered}"
+        );
+        assert!(
+            route
+                .get("agent_command")
+                .and_then(Value::as_str)
+                .is_some_and(|command| command.contains("--seam-id record-seam")),
+            "expected agent command to use record seam id in: {rendered}"
+        );
         Ok(())
     }
 

@@ -1290,32 +1290,33 @@ mod tests {
         let record = packet
             .get("evidence_record")
             .ok_or_else(|| format!("missing packet evidence_record in: {json}"))?;
-        if record
-            .get("schema_version")
-            .and_then(serde_json::Value::as_str)
-            != Some("0.1")
-        {
-            return Err(format!("expected evidence_record schema 0.1 in: {json}"));
-        }
-        if record.get("seam_id").and_then(serde_json::Value::as_str) != Some(packet_seam_id) {
-            return Err(format!("expected shared seam identity in: {json}"));
-        }
-        if record
-            .get("recommendation")
-            .and_then(|recommendation| recommendation.get("assertion_shape"))
-            .and_then(|shape| shape.get("kind"))
-            .and_then(serde_json::Value::as_str)
-            != Some("exact_return_value")
-        {
-            return Err(format!("expected record assertion shape in: {json}"));
-        }
-        if !json.contains(
-            "\"recommended_test\": {\"name\": \"discounted_total_boundary_discriminator\"",
-        ) {
-            return Err(format!(
-                "top-level packet fields should remain present: {json}"
-            ));
-        }
+        assert_eq!(
+            record
+                .get("schema_version")
+                .and_then(serde_json::Value::as_str),
+            Some("0.1"),
+            "expected evidence_record schema 0.1 in: {json}"
+        );
+        assert_eq!(
+            record.get("seam_id").and_then(serde_json::Value::as_str),
+            Some(packet_seam_id),
+            "expected shared seam identity in: {json}"
+        );
+        assert_eq!(
+            record
+                .get("recommendation")
+                .and_then(|recommendation| recommendation.get("assertion_shape"))
+                .and_then(|shape| shape.get("kind"))
+                .and_then(serde_json::Value::as_str),
+            Some("exact_return_value"),
+            "expected record assertion shape in: {json}"
+        );
+        assert!(
+            json.contains(
+                "\"recommended_test\": {\"name\": \"discounted_total_boundary_discriminator\"",
+            ),
+            "top-level packet fields should remain present: {json}"
+        );
         Ok(())
     }
 
