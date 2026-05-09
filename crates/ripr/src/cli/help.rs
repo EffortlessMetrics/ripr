@@ -10,6 +10,7 @@ Usage:
   ripr baseline create --from target/ripr/reports/gate-decision.json [--out .ripr/gate-baseline.json] [--dry-run] [--force]
   ripr baseline diff --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json [--out target/ripr/reports/baseline-debt-delta.json] [--out-md target/ripr/reports/baseline-debt-delta.md]
   ripr baseline update --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json --remove-resolved [--out .ripr/gate-baseline.json]
+  ripr zero status --delta target/ripr/reports/baseline-debt-delta.json [--baseline .ripr/gate-baseline.json] [--gate target/ripr/reports/gate-decision.json] [--out target/ripr/reports/ripr-zero-status.json] [--out-md target/ripr/reports/ripr-zero-status.md]
   ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
   ripr agent start --root . --seam-id ID [--out target/ripr/workflow]
   ripr agent brief --root . (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json
@@ -39,6 +40,7 @@ Quick start:
   ripr baseline create --from target/ripr/reports/gate-decision.json --out .ripr/gate-baseline.json
   ripr baseline diff --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json
   ripr baseline update --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json --remove-resolved
+  ripr zero status --baseline .ripr/gate-baseline.json --delta target/ripr/reports/baseline-debt-delta.json --gate target/ripr/reports/gate-decision.json
   ripr calibrate cargo-mutants --mutants-json target/mutants/outcomes.json --repo-exposure-json target/ripr/pilot/after.repo-exposure.json
   ripr agent start --root . --seam-id f3c9e4d21a0b7c88
   ripr agent brief --root . --diff change.diff --json
@@ -213,6 +215,25 @@ mode. `--remove-resolved` removes reviewed identities that are absent from the
 current gate-decision evidence, preserves malformed or ambiguous entries for
 manual review, and never adopts new current debt. Generated CI should not use
 this command to rewrite checked-in baselines automatically.
+"#;
+
+const ZERO_HELP: &str = r#"Usage: ripr zero status --delta PATH [--baseline PATH] [--gate PATH] [--pr-guidance PATH] [--recommendation-calibration PATH] [--out PATH] [--out-md PATH]
+
+Status options:
+  --baseline PATH                       Optional reviewed gate baseline ledger.
+  --delta PATH                          Required baseline-debt-delta JSON from `ripr baseline diff`.
+  --gate PATH                           Optional gate-decision JSON from `ripr gate evaluate`.
+  --pr-guidance PATH                    Optional PR guidance JSON from `ripr review-comments`.
+  --recommendation-calibration PATH     Optional recommendation calibration JSON.
+  --out PATH                            JSON output path. Defaults to target/ripr/reports/ripr-zero-status.json.
+  --out-md PATH                         Markdown output path. Defaults to target/ripr/reports/ripr-zero-status.md.
+
+The RIPR Zero status report is read-only advisory progress evidence over
+existing baselines, baseline debt deltas, gate decisions, PR guidance, and
+optional calibration artifacts. It reports visible unresolved debt, baseline
+movement, metadata health, top debt areas, and bounded repair routes. It does
+not run analysis, mutate baselines, edit source, generate tests, call an LLM,
+run mutation testing, change gate policy, or make CI blocking by default.
 "#;
 
 const CALIBRATE_HELP: &str = r#"Usage: ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
@@ -436,6 +457,10 @@ pub(super) fn print_baseline_help() {
     println!("{BASELINE_HELP}");
 }
 
+pub(super) fn print_zero_help() {
+    println!("{ZERO_HELP}");
+}
+
 pub(super) fn print_calibrate_help() {
     println!("{CALIBRATE_HELP}");
 }
@@ -495,7 +520,7 @@ mod tests {
         AGENT_REVIEW_SUMMARY_HELP, AGENT_START_HELP, AGENT_STATUS_HELP, AGENT_VERIFY_HELP,
         BASELINE_HELP, CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP, DOCTOR_HELP, EVIDENCE_HEALTH_HELP,
         EXPLAIN_HELP, GATE_HELP, HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP,
-        REVIEW_COMMENTS_HELP,
+        REVIEW_COMMENTS_HELP, ZERO_HELP,
     };
 
     #[test]
@@ -509,6 +534,7 @@ mod tests {
         assert!(HELP.contains("ripr baseline create"));
         assert!(HELP.contains("ripr baseline diff"));
         assert!(HELP.contains("ripr baseline update"));
+        assert!(HELP.contains("ripr zero status"));
         assert!(HELP.contains("ripr calibrate"));
         assert!(HELP.contains("ripr agent start"));
         assert!(HELP.contains("ripr agent brief"));
@@ -558,6 +584,9 @@ mod tests {
         assert!(BASELINE_HELP.contains(".ripr/gate-baseline.json"));
         assert!(BASELINE_HELP.contains("baseline-debt-delta.json"));
         assert!(BASELINE_HELP.contains("--remove-resolved"));
+        assert!(ZERO_HELP.starts_with("Usage: ripr zero status"));
+        assert!(ZERO_HELP.contains("baseline-debt-delta JSON"));
+        assert!(ZERO_HELP.contains("RIPR Zero status report"));
         assert!(CALIBRATE_HELP.starts_with("Usage: ripr calibrate cargo-mutants"));
         assert!(CALIBRATE_HELP.contains("--mutants-json PATH"));
         assert!(AGENT_HELP.starts_with("Usage: ripr agent"));

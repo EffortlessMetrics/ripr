@@ -23,6 +23,10 @@ are scoped or reviewed.
   owner/reason/created/review-after/source fields, baseline delta reports
   preserve that metadata on baseline-derived items, and shrink-only updates keep
   existing metadata while remaining compatible with Campaign 17 baseline files.
+- Added `ripr zero status`, a read-only advisory JSON/Markdown report that
+  joins baseline debt deltas, reviewed baseline metadata, optional gate
+  decisions, PR guidance, and recommendation calibration into repo-level RIPR
+  Zero progress without changing gate authority or CI blocking defaults.
 - Added `ripr baseline create --from <gate-decision.json> --out .ripr/gate-baseline.json`,
   which writes reviewed gate baseline ledgers from existing gate-decision
   evidence, skips suppressed or malformed decisions, supports `--dry-run`, and

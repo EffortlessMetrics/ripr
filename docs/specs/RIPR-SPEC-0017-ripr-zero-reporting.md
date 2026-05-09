@@ -1,6 +1,6 @@
 # RIPR-SPEC-0017: RIPR Zero Reporting
 
-Status: proposed
+Status: accepted
 
 ## Problem
 
@@ -96,7 +96,7 @@ summary. It should:
 
 ## Command Surface
 
-The planned command surface is:
+The command surface is:
 
 ```text
 ripr zero status \

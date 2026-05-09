@@ -101,6 +101,17 @@ struct BaselineUpdateOptions {
     remove_resolved: bool,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct RiprZeroStatusOptions {
+    baseline: Option<PathBuf>,
+    delta: PathBuf,
+    gate: Option<PathBuf>,
+    pr_guidance: Option<PathBuf>,
+    recommendation_calibration: Option<PathBuf>,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum OutcomeFormat {
     Markdown,
@@ -1775,6 +1786,76 @@ pub(super) fn baseline(args: &[String]) -> Result<(), String> {
     }
 }
 
+pub(super) fn zero(args: &[String]) -> Result<(), String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        help::print_zero_help();
+        return Ok(());
+    }
+    let Some((subcommand, rest)) = args.split_first() else {
+        return Err("zero requires subcommand `status`".to_string());
+    };
+    if subcommand != "status" {
+        return Err(format!(
+            "unknown zero subcommand {subcommand:?}; expected `status`"
+        ));
+    }
+    ripr_zero_status(rest)
+}
+
+fn ripr_zero_status(args: &[String]) -> Result<(), String> {
+    let options = parse_ripr_zero_status_options(args)?;
+    let baseline_path = options
+        .baseline
+        .as_ref()
+        .map(|path| output::ripr_zero_status::display_path(path));
+    let gate_path = options
+        .gate
+        .as_ref()
+        .map(|path| output::ripr_zero_status::display_path(path));
+    let pr_guidance_path = options
+        .pr_guidance
+        .as_ref()
+        .map(|path| output::ripr_zero_status::display_path(path));
+    let recommendation_calibration_path = options
+        .recommendation_calibration
+        .as_ref()
+        .map(|path| output::ripr_zero_status::display_path(path));
+    let input = output::ripr_zero_status::RiprZeroStatusInput {
+        root: ".".to_string(),
+        generated_at: baseline_created_at()?,
+        baseline_path,
+        delta_path: output::ripr_zero_status::display_path(&options.delta),
+        gate_path,
+        pr_guidance_path,
+        recommendation_calibration_path,
+        baseline_json: options
+            .baseline
+            .as_ref()
+            .map(|path| read_optional_text_for_report("baseline", path)),
+        delta_json: read_optional_text_for_report("baseline debt delta", &options.delta),
+        gate_json: options
+            .gate
+            .as_ref()
+            .map(|path| read_optional_text_for_report("gate decision", path)),
+        pr_guidance_json: options
+            .pr_guidance
+            .as_ref()
+            .map(|path| read_optional_text_for_report("PR guidance", path)),
+        recommendation_calibration_json: options
+            .recommendation_calibration
+            .as_ref()
+            .map(|path| read_optional_text_for_report("recommendation calibration", path)),
+    };
+    let report = output::ripr_zero_status::build_ripr_zero_status_report(input);
+    let rendered_json = output::ripr_zero_status::render_ripr_zero_status_json(&report)?;
+    let rendered_md = output::ripr_zero_status::render_ripr_zero_status_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    Ok(())
+}
+
 fn baseline_create(args: &[String]) -> Result<(), String> {
     let options = parse_baseline_create_options(args)?;
     let gate_decision_json = std::fs::read_to_string(&options.from).map_err(|err| {
@@ -2481,6 +2562,67 @@ fn parse_baseline_update_options(args: &[String]) -> Result<BaselineUpdateOption
         current: current.ok_or_else(|| "baseline update requires --current <path>".to_string())?,
         out,
         remove_resolved,
+    })
+}
+
+fn parse_ripr_zero_status_options(args: &[String]) -> Result<RiprZeroStatusOptions, String> {
+    let mut baseline = None;
+    let mut delta = None;
+    let mut gate = None;
+    let mut pr_guidance = None;
+    let mut recommendation_calibration = None;
+    let mut out = PathBuf::from(output::ripr_zero_status::DEFAULT_RIPR_ZERO_STATUS_OUT);
+    let mut out_md = PathBuf::from(output::ripr_zero_status::DEFAULT_RIPR_ZERO_STATUS_MD_OUT);
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--baseline" => {
+                i += 1;
+                baseline = Some(non_empty_path_arg(args, i, "--baseline", "zero status")?);
+            }
+            "--delta" => {
+                i += 1;
+                delta = Some(non_empty_path_arg(args, i, "--delta", "zero status")?);
+            }
+            "--gate" => {
+                i += 1;
+                gate = Some(non_empty_path_arg(args, i, "--gate", "zero status")?);
+            }
+            "--pr-guidance" => {
+                i += 1;
+                pr_guidance = Some(non_empty_path_arg(args, i, "--pr-guidance", "zero status")?);
+            }
+            "--recommendation-calibration" => {
+                i += 1;
+                recommendation_calibration = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--recommendation-calibration",
+                    "zero status",
+                )?);
+            }
+            "--out" => {
+                i += 1;
+                out = non_empty_path_arg(args, i, "--out", "zero status")?;
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = non_empty_path_arg(args, i, "--out-md", "zero status")?;
+            }
+            other => return Err(format!("unknown zero status argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    Ok(RiprZeroStatusOptions {
+        baseline,
+        delta: delta.ok_or_else(|| "zero status requires --delta <path>".to_string())?,
+        gate,
+        pr_guidance,
+        recommendation_calibration,
+        out,
+        out_md,
     })
 }
 
@@ -3578,6 +3720,63 @@ mod tests {
     }
 
     #[test]
+    fn ripr_zero_status_parses_option_surface() {
+        assert_eq!(
+            parse_ripr_zero_status_options(&args(&[
+                "--baseline",
+                ".ripr/gate-baseline.json",
+                "--delta",
+                "target/ripr/reports/baseline-debt-delta.json",
+                "--gate",
+                "target/ripr/reports/gate-decision.json",
+                "--pr-guidance",
+                "target/ripr/review/comments.json",
+                "--recommendation-calibration",
+                "target/ripr/reports/recommendation-calibration.json",
+                "--out",
+                "target/ripr/reports/ripr-zero-status.json",
+                "--out-md",
+                "target/ripr/reports/ripr-zero-status.md",
+            ])),
+            Ok(RiprZeroStatusOptions {
+                baseline: Some(PathBuf::from(".ripr/gate-baseline.json")),
+                delta: PathBuf::from("target/ripr/reports/baseline-debt-delta.json"),
+                gate: Some(PathBuf::from("target/ripr/reports/gate-decision.json")),
+                pr_guidance: Some(PathBuf::from("target/ripr/review/comments.json")),
+                recommendation_calibration: Some(PathBuf::from(
+                    "target/ripr/reports/recommendation-calibration.json",
+                )),
+                out: PathBuf::from("target/ripr/reports/ripr-zero-status.json"),
+                out_md: PathBuf::from("target/ripr/reports/ripr-zero-status.md"),
+            })
+        );
+    }
+
+    #[test]
+    fn ripr_zero_status_requires_inputs_and_rejects_unknown_args() {
+        assert_eq!(
+            zero(&args(&[])),
+            Err("zero requires subcommand `status`".to_string())
+        );
+        assert_eq!(
+            zero(&args(&["unknown"])),
+            Err("unknown zero subcommand \"unknown\"; expected `status`".to_string())
+        );
+        assert_eq!(
+            parse_ripr_zero_status_options(&args(&[])),
+            Err("zero status requires --delta <path>".to_string())
+        );
+        assert_eq!(
+            parse_ripr_zero_status_options(&args(&["--delta", ""])),
+            Err("zero status --delta requires a non-empty value".to_string())
+        );
+        assert_eq!(
+            parse_ripr_zero_status_options(&args(&["--bad"])),
+            Err("unknown zero status argument \"--bad\"".to_string())
+        );
+    }
+
+    #[test]
     fn baseline_create_writes_baseline_without_overwriting_by_default() -> Result<(), String> {
         let dir = unique_command_test_dir("baseline-create");
         std::fs::create_dir_all(&dir).map_err(|err| format!("create baseline dir: {err}"))?;
@@ -3620,6 +3819,45 @@ mod tests {
         ]))?;
 
         std::fs::remove_dir_all(&dir).map_err(|err| format!("remove baseline dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_zero_status_writes_json_and_markdown_reports() -> Result<(), String> {
+        let dir = unique_command_test_dir("ripr-zero-status");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create zero status dir: {err}"))?;
+        let out = dir.join("ripr-zero-status.json");
+        let out_md = dir.join("ripr-zero-status.md");
+        let baseline = repo_root()
+            .join("fixtures/boundary_gap/expected/baseline-debt-delta/mixed/baseline.json");
+        let delta = repo_root().join(
+            "fixtures/boundary_gap/expected/baseline-debt-delta/mixed/baseline-debt-delta.json",
+        );
+
+        zero(&args(&[
+            "status",
+            "--baseline",
+            &baseline.display().to_string(),
+            "--delta",
+            &delta.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let json_text =
+            std::fs::read_to_string(&out).map_err(|err| format!("read zero json: {err}"))?;
+        assert!(json_text.contains("\"kind\": \"ripr_zero_status\""));
+        assert!(json_text.contains("\"status\": \"advisory\""));
+        assert!(json_text.contains("\"baseline_debt_delta\""));
+
+        let markdown =
+            std::fs::read_to_string(&out_md).map_err(|err| format!("read zero md: {err}"))?;
+        assert!(markdown.starts_with("# RIPR Zero Status"));
+        assert!(markdown.contains("Visible unresolved gaps"));
+
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove zero status dir: {err}"))?;
         Ok(())
     }
 

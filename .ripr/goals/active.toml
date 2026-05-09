@@ -55,7 +55,7 @@ commands = [
 
 [[work_item]]
 id = "report/ripr-zero-status"
-status = "ready"
+status = "done"
 branch = "report-ripr-zero-status"
 stackable = false
 acceptance = "Add a read-only RIPR Zero status report that writes JSON/Markdown from reviewed baseline, baseline debt delta, gate decision, and optional recommendation evidence"
@@ -68,10 +68,9 @@ commands = [
 
 [[work_item]]
 id = "ci/ripr-zero-summary"
-status = "blocked"
+status = "ready"
 branch = "ci-ripr-zero-summary"
 stackable = false
-blocked_by = ["report/ripr-zero-status"]
 acceptance = "Surface RIPR Zero status and top repair areas in generated CI summaries and artifacts while preserving advisory defaults and leaving gate decisions as the pass/fail authority"
 commands = [
   "cargo test -p ripr init_generated_github_workflow",
