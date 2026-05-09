@@ -36,6 +36,10 @@ are scoped or reviewed.
   coverage/grip frontier, and editor context inputs without hidden analysis,
   source edits, generated tests, provider calls, mutation execution, or default
   CI blocking.
+- Generated GitHub CI now renders `ripr first-action` when explicit report
+  inputs already exist, uploads `first-useful-action.{json,md}` with the normal
+  report artifact packet, and appends a compact advisory first-action summary
+  without changing gate authority or default blocking.
 - Opened Campaign 20, Test-Oracle Assistant Proof, with
   `spec/test-oracle-assistant-loop` as the first ready work item so the
   already-built PR guidance, editor/agent handoff, verification, receipts,

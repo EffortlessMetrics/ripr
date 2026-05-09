@@ -2862,6 +2862,14 @@ why-first reasons, target file, related test, suggested test name, verification
 command, receipt command, supporting artifact paths, warnings, fallback reason
 when present, and static limits.
 
+Generated CI runs `ripr first-action` only when one or more explicit upstream
+RIPR artifacts already exist, uploads `first-useful-action.{json,md}` with the
+normal report packet, and appends a compact at-a-glance summary. The projection
+is advisory: `ripr gate evaluate` remains the only configured pass/fail
+authority, and the first-action report must not edit source, generate tests,
+call a provider, run mutation testing, rerun hidden analysis, or change default
+blocking.
+
 ### Review Guidance Outcome Receipt
 
 Review guidance outcome receipts are optional repo-local inputs to the
