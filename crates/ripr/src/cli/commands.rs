@@ -1243,49 +1243,49 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p target/ripr/reports
+          first_action_has_input=false
           first_action_args=(
             first-action
             --root .
             --out target/ripr/reports/first-useful-action.json
             --out-md target/ripr/reports/first-useful-action.md
           )
-          have_first_action_input=0
           if [ -f target/ripr/review/comments.json ]; then
             first_action_args+=(--pr-guidance target/ripr/review/comments.json)
-            have_first_action_input=1
+            first_action_has_input=true
           fi
           if [ -f target/ripr/reports/test-oracle-assistant-proof.json ]; then
             first_action_args+=(--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json)
-            have_first_action_input=1
+            first_action_has_input=true
           fi
           if [ -f target/ripr/reports/pr-evidence-ledger.json ]; then
             first_action_args+=(--ledger target/ripr/reports/pr-evidence-ledger.json)
-            have_first_action_input=1
+            first_action_has_input=true
           fi
           if [ -f target/ripr/reports/baseline-debt-delta.json ]; then
             first_action_args+=(--baseline-delta target/ripr/reports/baseline-debt-delta.json)
-            have_first_action_input=1
+            first_action_has_input=true
           fi
           if [ -f target/ripr/reports/agent-receipt.json ]; then
             first_action_args+=(--receipt target/ripr/reports/agent-receipt.json)
-            have_first_action_input=1
+            first_action_has_input=true
           fi
           if [ -f target/ripr/reports/gate-decision.json ]; then
             first_action_args+=(--gate-decision target/ripr/reports/gate-decision.json)
-            have_first_action_input=1
+            first_action_has_input=true
           fi
           if [ -f target/ripr/reports/coverage-grip-frontier.json ]; then
             first_action_args+=(--coverage-frontier target/ripr/reports/coverage-grip-frontier.json)
-            have_first_action_input=1
+            first_action_has_input=true
           fi
           if [ -f target/ripr/workflow/evidence-context.json ]; then
             first_action_args+=(--editor-context target/ripr/workflow/evidence-context.json)
-            have_first_action_input=1
+            first_action_has_input=true
           fi
-          if [ "$have_first_action_input" = "1" ]; then
+          if [ "$first_action_has_input" = true ]; then
             ripr "${first_action_args[@]}"
           else
-            echo "RIPR first-action skipped: no explicit evidence artifacts found."
+            echo 'No RIPR first-useful-action inputs were available.'
           fi
 
       - name: Render RIPR LLM work-loop summaries
@@ -1355,6 +1355,52 @@ jobs:
             echo '## RIPR advisory summary'
             echo
             echo "RIPR is advisory static evidence. It does not edit source, generate tests, or run mutation testing."
+            echo
+            echo '### First useful action'
+            if [ -f target/ripr/reports/first-useful-action.json ] || [ -f target/ripr/reports/first-useful-action.md ]; then
+              if [ -f target/ripr/reports/first-useful-action.json ]; then
+                action_json=target/ripr/reports/first-useful-action.json
+                action_status="$(jq -r '.status // "unknown"' "$action_json" 2>/dev/null || echo unknown)"
+                action_kind="$(jq -r '.action_kind // "unknown"' "$action_json" 2>/dev/null || echo unknown)"
+                action_title="$(jq -r '.title // "not_available"' "$action_json" 2>/dev/null || echo unknown)"
+                action_why="$(jq -r '.why // "not_available"' "$action_json" 2>/dev/null || echo unknown)"
+                action_seam="$(jq -r '.selected.seam_id // "not_available"' "$action_json" 2>/dev/null || echo unknown)"
+                action_target="$(jq -r '(.target.file // "not_available") + (if .target.related_test then " related_test=" + .target.related_test else "" end)' "$action_json" 2>/dev/null || echo unknown)"
+                action_verify="$(jq -r '.commands.verify // "not_available"' "$action_json" 2>/dev/null || echo unknown)"
+                action_receipt="$(jq -r '.commands.receipt // "not_available"' "$action_json" 2>/dev/null || echo unknown)"
+                action_fallback="$(jq -r '.fallback.kind // "none"' "$action_json" 2>/dev/null || echo unknown)"
+                action_warning_count="$(jq -r '(.warnings // [] | length)' "$action_json" 2>/dev/null || echo 0)"
+                action_status="$(markdown_inline "$action_status")"
+                action_kind="$(markdown_inline "$action_kind")"
+                action_title="$(markdown_inline "$action_title")"
+                action_why="$(markdown_inline "$action_why")"
+                action_seam="$(markdown_inline "$action_seam")"
+                action_target="$(markdown_inline "$action_target")"
+                action_verify="$(markdown_inline "$action_verify")"
+                action_receipt="$(markdown_inline "$action_receipt")"
+                action_fallback="$(markdown_inline "$action_fallback")"
+                action_warning_count="$(markdown_inline "$action_warning_count")"
+                echo '#### First action at a glance'
+                echo "- Status: \`$action_status\`"
+                echo "- Action: \`$action_kind\`"
+                echo "- Title: \`$action_title\`"
+                echo "- Why: \`$action_why\`"
+                echo "- Seam: \`$action_seam\`"
+                echo "- Target: \`$action_target\`"
+                echo "- Verify command: \`$action_verify\`"
+                echo "- Receipt command: \`$action_receipt\`"
+                echo "- Fallback: \`$action_fallback\`"
+                echo "- Warnings: \`$action_warning_count\`"
+                echo "- Action artifacts: \`target/ripr/reports/first-useful-action.json\`, \`target/ripr/reports/first-useful-action.md\`"
+                echo "- Boundary: static evidence only; no runtime mutation execution."
+                echo
+              fi
+              if [ -f target/ripr/reports/first-useful-action.md ]; then
+                cat target/ripr/reports/first-useful-action.md
+              fi
+            else
+              echo 'First useful action was not generated. It runs when existing PR guidance, assistant proof, ledger, baseline, receipt, gate, coverage/grip, or editor context artifacts are available.'
+            fi
             echo
             echo '### Top recommendation'
             if [ -f target/ripr/pilot/pilot-summary.md ]; then
@@ -1475,62 +1521,6 @@ jobs:
               if [ -f target/ripr/reports/test-oracle-assistant-proof.md ]; then
                 cat target/ripr/reports/test-oracle-assistant-proof.md
               fi
-              echo
-            fi
-            if [ -f target/ripr/reports/first-useful-action.json ] || [ -f target/ripr/reports/first-useful-action.md ]; then
-              echo '### First useful action'
-              if [ -f target/ripr/reports/first-useful-action.json ]; then
-                first_action_json=target/ripr/reports/first-useful-action.json
-                first_status="$(jq -r '.status // "unknown"' "$first_action_json" 2>/dev/null || echo unknown)"
-                first_action="$(jq -r '.action_kind // "unknown"' "$first_action_json" 2>/dev/null || echo unknown)"
-                first_audience="$(jq -r '.audience // "unknown"' "$first_action_json" 2>/dev/null || echo unknown)"
-                first_title="$(jq -r '.title // "not_available"' "$first_action_json" 2>/dev/null || echo unknown)"
-                first_source="$(jq -r '.selected.source // "none"' "$first_action_json" 2>/dev/null || echo unknown)"
-                first_seam="$(jq -r '(.selected.path // "unknown") + (if .selected.line then ":" + (.selected.line|tostring) else "" end)' "$first_action_json" 2>/dev/null || echo unknown)"
-                first_missing="$(jq -r '.selected.missing_discriminator // "not_available"' "$first_action_json" 2>/dev/null || echo unknown)"
-                first_target="$(jq -r '(.target.file // "not_available") + (if .target.suggested_test_name then " " + .target.suggested_test_name else "" end)' "$first_action_json" 2>/dev/null || echo unknown)"
-                first_movement="$(jq -r '.evidence.static_movement // "unknown"' "$first_action_json" 2>/dev/null || echo unknown)"
-                first_verify="$(jq -r '.commands.verify // .commands.status // .commands.assistant_proof // "not_available"' "$first_action_json" 2>/dev/null || echo unknown)"
-                first_receipt="$(jq -r '.commands.receipt // "not_available"' "$first_action_json" 2>/dev/null || echo unknown)"
-                first_fallback="$(jq -r '.fallback.kind // "none"' "$first_action_json" 2>/dev/null || echo unknown)"
-                first_warnings="$(jq -r '(.warnings // [] | length)' "$first_action_json" 2>/dev/null || echo 0)"
-                first_status="$(markdown_inline "$first_status")"
-                first_action="$(markdown_inline "$first_action")"
-                first_audience="$(markdown_inline "$first_audience")"
-                first_title="$(markdown_inline "$first_title")"
-                first_source="$(markdown_inline "$first_source")"
-                first_seam="$(markdown_inline "$first_seam")"
-                first_missing="$(markdown_inline "$first_missing")"
-                first_target="$(markdown_inline "$first_target")"
-                first_movement="$(markdown_inline "$first_movement")"
-                first_verify="$(markdown_inline "$first_verify")"
-                first_receipt="$(markdown_inline "$first_receipt")"
-                first_fallback="$(markdown_inline "$first_fallback")"
-                first_warnings="$(markdown_inline "$first_warnings")"
-                echo '#### First action at a glance'
-                echo "- Status: \`$first_status\`"
-                echo "- Action: \`$first_action\` for \`$first_audience\`"
-                echo "- Next: \`$first_title\`"
-                echo "- Source: \`$first_source\`"
-                echo "- Seam: \`$first_seam\`"
-                echo "- Missing discriminator: \`$first_missing\`"
-                echo "- Target: \`$first_target\`"
-                echo "- Static movement: \`$first_movement\`"
-                echo "- Verify/status command: \`$first_verify\`"
-                echo "- Receipt command: \`$first_receipt\`"
-                echo "- Fallback: \`$first_fallback\`"
-                echo "- Warnings: \`$first_warnings\`"
-                echo "- First-action artifacts: \`target/ripr/reports/first-useful-action.json\`, \`target/ripr/reports/first-useful-action.md\`"
-                echo "- Pass/fail authority remains \`ripr gate evaluate\` when an explicit gate mode is configured."
-                echo
-              fi
-              if [ -f target/ripr/reports/first-useful-action.md ]; then
-                cat target/ripr/reports/first-useful-action.md
-              fi
-              echo
-            elif [ -f target/ripr/review/comments.json ] || [ -f target/ripr/reports/pr-evidence-ledger.json ]; then
-              echo '### First useful action'
-              echo 'First useful action was not generated. Inspect `target/ripr/review/comments.json` and `target/ripr/reports/pr-evidence-ledger.json`, then rerun `ripr first-action` locally.'
               echo
             fi
             echo '### Gate decision'
@@ -4320,6 +4310,7 @@ mod tests {
                 "zero status",
                 "pr-ledger record",
                 "assistant-loop proof",
+                "first-action",
                 "ripr agent status",
                 "ripr agent review-summary",
                 "cargo xtask operator-cockpit",
@@ -4362,6 +4353,8 @@ mod tests {
             ],
             summary_sections: &[
                 "## RIPR advisory summary",
+                "### First useful action",
+                "#### First action at a glance",
                 "### Top recommendation",
                 "### Agent review packet",
                 "### Artifact packet",
@@ -4375,8 +4368,6 @@ mod tests {
                 "#### PR movement at a glance",
                 "### Test-oracle assistant proof",
                 "#### Assistant proof at a glance",
-                "### First useful action",
-                "#### First action at a glance",
                 "### SARIF and badge status",
                 "### PR guidance annotations",
                 "### Known limits",
@@ -6194,6 +6185,8 @@ mod tests {
         assert!(workflow.contains("title=$annotation_title"));
         assert!(workflow.contains("name: Add RIPR advisory summary"));
         assert!(workflow.contains("## RIPR advisory summary"));
+        assert!(workflow.contains("### First useful action"));
+        assert!(workflow.contains("#### First action at a glance"));
         assert!(workflow.contains("### Top recommendation"));
         assert!(workflow.contains("### Artifact packet"));
         assert!(workflow.contains("### Gate decision"));
@@ -6206,8 +6199,6 @@ mod tests {
         assert!(workflow.contains("#### PR movement at a glance"));
         assert!(workflow.contains("### Test-oracle assistant proof"));
         assert!(workflow.contains("#### Assistant proof at a glance"));
-        assert!(workflow.contains("### First useful action"));
-        assert!(workflow.contains("#### First action at a glance"));
         assert!(workflow.contains("markdown_inline()"));
         assert!(workflow.contains("Active PR labels"));
         assert!(workflow.contains("Applied waiver label"));
@@ -6218,7 +6209,7 @@ mod tests {
         assert!(workflow.contains("Gate artifacts"));
         assert!(workflow.contains("Baseline delta artifacts"));
         assert!(workflow.contains("Proof artifacts"));
-        assert!(workflow.contains("First-action artifacts"));
+        assert!(workflow.contains("Action artifacts"));
         assert!(workflow.contains("### SARIF and badge status"));
         assert!(workflow.contains("### PR guidance annotations"));
         assert!(workflow.contains("### Known limits"));
@@ -6290,6 +6281,7 @@ mod tests {
         assert!(workflow.contains("RIPR_GATE_MODE"));
         assert!(workflow.contains("RIPR_GATE_BASELINE"));
         assert!(workflow.contains("assistant-loop proof"));
+        assert!(workflow.contains("first-action"));
         assert!(workflow.contains("--pr-guidance target/ripr/review/comments.json"));
         assert!(workflow.contains("--agent-packet target/ripr/workflow/agent-brief.json"));
         assert!(workflow.contains("--before target/ripr/workflow/before.repo-exposure.json"));
@@ -6303,6 +6295,7 @@ mod tests {
         assert!(workflow.contains("--gate-decision target/ripr/reports/gate-decision.json"));
         assert!(workflow.contains("ripr \"${gate_args[@]}\""));
         assert!(workflow.contains("ripr \"${proof_args[@]}\""));
+        assert!(workflow.contains("ripr \"${first_action_args[@]}\""));
         assert!(workflow.contains("Set `RIPR_GATE_MODE`"));
         assert!(workflow.contains("No runtime mutation execution is performed"));
         assert!(workflow.contains("hashFiles('crates/ripr/Cargo.toml')"));
@@ -6381,6 +6374,11 @@ mod tests {
         assert_step_before(
             &workflow,
             "Render RIPR test-oracle assistant proof",
+            "Render RIPR first useful action",
+        );
+        assert_step_before(
+            &workflow,
+            "Render RIPR first useful action",
             "Render RIPR LLM work-loop summaries",
         );
         assert_step_before(
@@ -6517,9 +6515,6 @@ mod tests {
         assert!(first_action.contains("continue-on-error: true"));
         assert!(first_action.contains("first-action"));
         assert!(first_action.contains("--root ."));
-        assert!(first_action.contains("--out target/ripr/reports/first-useful-action.json"));
-        assert!(first_action.contains("--out-md target/ripr/reports/first-useful-action.md"));
-        assert!(first_action.contains("have_first_action_input=0"));
         assert!(first_action.contains("--pr-guidance target/ripr/review/comments.json"));
         assert!(
             first_action
@@ -6538,8 +6533,10 @@ mod tests {
         assert!(
             first_action.contains("--editor-context target/ripr/workflow/evidence-context.json")
         );
+        assert!(first_action.contains("--out target/ripr/reports/first-useful-action.json"));
+        assert!(first_action.contains("--out-md target/ripr/reports/first-useful-action.md"));
+        assert!(first_action.contains("first_action_has_input=true"));
         assert!(first_action.contains("ripr \"${first_action_args[@]}\""));
-        assert!(first_action.contains("RIPR first-action skipped"));
 
         let annotations = workflow_step(&workflow, "Emit RIPR PR guidance annotations");
         assert!(annotations.contains("hashFiles('target/ripr/review/comments.json')"));
@@ -6548,6 +6545,16 @@ mod tests {
         assert!(annotations.contains("::warning file=$annotation_path,line=$annotation_line"));
 
         let summary = workflow_step(&workflow, "Add RIPR advisory summary");
+        assert!(summary.contains("### First useful action"));
+        assert!(summary.contains("#### First action at a glance"));
+        assert!(summary.contains("target/ripr/reports/first-useful-action.json"));
+        assert!(summary.contains("target/ripr/reports/first-useful-action.md"));
+        assert!(summary.contains(".action_kind // \"unknown\""));
+        assert!(summary.contains(".commands.verify // \"not_available\""));
+        assert!(summary.contains(".commands.receipt // \"not_available\""));
+        assert!(summary.contains(".fallback.kind // \"none\""));
+        assert!(summary.contains("cat target/ripr/reports/first-useful-action.md"));
+        assert!(summary.contains("First useful action was not generated"));
         assert!(summary.contains("cat target/ripr/pilot/pilot-summary.md"));
         assert!(summary.contains("cat target/ripr/workflow/agent-review-summary.md"));
         assert!(summary.contains("#### Gate decision at a glance"));
@@ -6632,21 +6639,6 @@ mod tests {
         assert!(summary.contains(".ci_projection.gate_decision // \"not_supplied\""));
         assert!(summary.contains(".ci_projection.coverage_frontier // \"not_supplied\""));
         assert!(summary.contains("cat target/ripr/reports/test-oracle-assistant-proof.md"));
-        assert!(summary.contains("### First useful action"));
-        assert!(summary.contains("#### First action at a glance"));
-        assert!(summary.contains("target/ripr/reports/first-useful-action.json"));
-        assert!(summary.contains("target/ripr/reports/first-useful-action.md"));
-        assert!(summary.contains(".action_kind // \"unknown\""));
-        assert!(summary.contains(".selected.source // \"none\""));
-        assert!(summary.contains(".selected.missing_discriminator // \"not_available\""));
-        assert!(summary.contains(".target.file // \"not_available\""));
-        assert!(summary.contains(".evidence.static_movement // \"unknown\""));
-        assert!(summary.contains(
-            ".commands.verify // .commands.status // .commands.assistant_proof // \"not_available\""
-        ));
-        assert!(summary.contains(".fallback.kind // \"none\""));
-        assert!(summary.contains("cat target/ripr/reports/first-useful-action.md"));
-        assert!(summary.contains("First useful action was not generated"));
         assert!(summary.contains(".summary.comments // 0"));
         assert!(summary.contains(".summary.summary_only // 0"));
         assert!(summary.contains(".summary.suppressed // 0"));

@@ -1183,6 +1183,8 @@ outputs = [
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/ROADMAP.md",
+  "docs/CI.md",
+  "README.md",
   "CHANGELOG.md",
 ]
 metrics = [
@@ -1272,7 +1274,10 @@ tests = [
   "crates/ripr/src/output/first_useful_action.rs::first_useful_action_reports_stale_editor_context_first",
   "crates/ripr/src/output/first_useful_action.rs::first_useful_action_routes_missing_assistant_proof",
   "crates/ripr/tests/cli_smoke.rs::first_action_cli_writes_actionable_report",
+  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_is_advisory",
+  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_uploads_reports_and_makes_sarif_optional",
   "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture",
+  "crates/ripr/tests/cli_smoke.rs::init_ci_github_writes_non_blocking_report_workflow",
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/first-useful-action/README.md",

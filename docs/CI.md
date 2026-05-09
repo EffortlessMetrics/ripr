@@ -523,11 +523,13 @@ For a CI-first user, the useful output is the artifact packet:
 - `target/ripr/agent/` - compatibility copies of packet, brief, verify, and
   receipt JSON for the top seam when one is available;
 - `target/ripr/reports/` - targeted-test outcome, SARIF files when enabled,
-  repo badge JSON, `agent-receipt.json`, and any repo-local cockpit output.
+  repo badge JSON, `agent-receipt.json`, `first-useful-action.{json,md}`, and
+  any repo-local cockpit output.
 - `target/ripr/review/` - PR test guidance JSON and Markdown when
   `ripr review-comments` runs on pull requests.
 
 The workflow also writes a `RIPR advisory summary` step summary. It includes
+the first useful action when existing inputs allow `ripr first-action` to run,
 the top recommendation, the agent review packet when present, artifact links,
 SARIF and badge status, known limits, and PR guidance annotation counts when
 `target/ripr/review/comments.json` exists. On pull requests, the generated
@@ -850,6 +852,56 @@ jobs:
           fi
           ripr "${proof_args[@]}"
 
+      - name: Render RIPR first useful action
+        if: always()
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          first_action_has_input=false
+          first_action_args=(
+            first-action
+            --root .
+            --out target/ripr/reports/first-useful-action.json
+            --out-md target/ripr/reports/first-useful-action.md
+          )
+          if [ -f target/ripr/review/comments.json ]; then
+            first_action_args+=(--pr-guidance target/ripr/review/comments.json)
+            first_action_has_input=true
+          fi
+          if [ -f target/ripr/reports/test-oracle-assistant-proof.json ]; then
+            first_action_args+=(--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json)
+            first_action_has_input=true
+          fi
+          if [ -f target/ripr/reports/pr-evidence-ledger.json ]; then
+            first_action_args+=(--ledger target/ripr/reports/pr-evidence-ledger.json)
+            first_action_has_input=true
+          fi
+          if [ -f target/ripr/reports/baseline-debt-delta.json ]; then
+            first_action_args+=(--baseline-delta target/ripr/reports/baseline-debt-delta.json)
+            first_action_has_input=true
+          fi
+          if [ -f target/ripr/reports/agent-receipt.json ]; then
+            first_action_args+=(--receipt target/ripr/reports/agent-receipt.json)
+            first_action_has_input=true
+          fi
+          if [ -f target/ripr/reports/gate-decision.json ]; then
+            first_action_args+=(--gate-decision target/ripr/reports/gate-decision.json)
+            first_action_has_input=true
+          fi
+          if [ -f target/ripr/reports/coverage-grip-frontier.json ]; then
+            first_action_args+=(--coverage-frontier target/ripr/reports/coverage-grip-frontier.json)
+            first_action_has_input=true
+          fi
+          if [ -f target/ripr/workflow/evidence-context.json ]; then
+            first_action_args+=(--editor-context target/ripr/workflow/evidence-context.json)
+            first_action_has_input=true
+          fi
+          if [ "$first_action_has_input" = true ]; then
+            ripr "${first_action_args[@]}"
+          else
+            echo 'No RIPR first-useful-action inputs were available.'
+          fi
+
       - name: Render RIPR LLM work-loop summaries
         if: always()
         continue-on-error: true
@@ -917,6 +969,52 @@ jobs:
             echo '## RIPR advisory summary'
             echo
             echo "RIPR is advisory static evidence. It does not edit source, generate tests, or run mutation testing."
+            echo
+            echo '### First useful action'
+            if [ -f target/ripr/reports/first-useful-action.json ] || [ -f target/ripr/reports/first-useful-action.md ]; then
+              if [ -f target/ripr/reports/first-useful-action.json ]; then
+                action_json=target/ripr/reports/first-useful-action.json
+                action_status="$(jq -r '.status // "unknown"' "$action_json" 2>/dev/null || echo unknown)"
+                action_kind="$(jq -r '.action_kind // "unknown"' "$action_json" 2>/dev/null || echo unknown)"
+                action_title="$(jq -r '.title // "not_available"' "$action_json" 2>/dev/null || echo unknown)"
+                action_why="$(jq -r '.why // "not_available"' "$action_json" 2>/dev/null || echo unknown)"
+                action_seam="$(jq -r '.selected.seam_id // "not_available"' "$action_json" 2>/dev/null || echo unknown)"
+                action_target="$(jq -r '(.target.file // "not_available") + (if .target.related_test then " related_test=" + .target.related_test else "" end)' "$action_json" 2>/dev/null || echo unknown)"
+                action_verify="$(jq -r '.commands.verify // "not_available"' "$action_json" 2>/dev/null || echo unknown)"
+                action_receipt="$(jq -r '.commands.receipt // "not_available"' "$action_json" 2>/dev/null || echo unknown)"
+                action_fallback="$(jq -r '.fallback.kind // "none"' "$action_json" 2>/dev/null || echo unknown)"
+                action_warning_count="$(jq -r '(.warnings // [] | length)' "$action_json" 2>/dev/null || echo 0)"
+                action_status="$(markdown_inline "$action_status")"
+                action_kind="$(markdown_inline "$action_kind")"
+                action_title="$(markdown_inline "$action_title")"
+                action_why="$(markdown_inline "$action_why")"
+                action_seam="$(markdown_inline "$action_seam")"
+                action_target="$(markdown_inline "$action_target")"
+                action_verify="$(markdown_inline "$action_verify")"
+                action_receipt="$(markdown_inline "$action_receipt")"
+                action_fallback="$(markdown_inline "$action_fallback")"
+                action_warning_count="$(markdown_inline "$action_warning_count")"
+                echo '#### First action at a glance'
+                echo "- Status: \`$action_status\`"
+                echo "- Action: \`$action_kind\`"
+                echo "- Title: \`$action_title\`"
+                echo "- Why: \`$action_why\`"
+                echo "- Seam: \`$action_seam\`"
+                echo "- Target: \`$action_target\`"
+                echo "- Verify command: \`$action_verify\`"
+                echo "- Receipt command: \`$action_receipt\`"
+                echo "- Fallback: \`$action_fallback\`"
+                echo "- Warnings: \`$action_warning_count\`"
+                echo "- Action artifacts: \`target/ripr/reports/first-useful-action.json\`, \`target/ripr/reports/first-useful-action.md\`"
+                echo "- Boundary: static evidence only; no runtime mutation execution."
+                echo
+              fi
+              if [ -f target/ripr/reports/first-useful-action.md ]; then
+                cat target/ripr/reports/first-useful-action.md
+              fi
+            else
+              echo 'First useful action was not generated. It runs when existing PR guidance, assistant proof, ledger, baseline, receipt, gate, coverage/grip, or editor context artifacts are available.'
+            fi
             echo
             echo '### Top recommendation'
             if [ -f target/ripr/pilot/pilot-summary.md ]; then
@@ -1302,16 +1400,16 @@ gate input, optional coverage/grip frontier input, and warning count. If the
 required inputs are absent, generated CI skips the proof projection instead of
 printing a placeholder or changing pass/fail behavior.
 
-Generated CI then runs `ripr first-action` over whichever explicit RIPR
-evidence artifacts exist and writes
+Generated CI also projects the first useful action when at least one explicit
+input artifact is already present. It runs `ripr first-action --root .` with
+existing PR guidance, assistant proof, PR evidence ledger, baseline delta,
+agent receipt, gate decision, coverage/grip frontier, and editor context
+inputs when those files exist, then writes and uploads
 `target/ripr/reports/first-useful-action.json` and
-`target/ripr/reports/first-useful-action.md`. This projection is advisory: it
-does not rerun hidden analysis, edit source, generate tests, call providers, run
-mutation testing, or make the first-action report a pass/fail authority. The
-job summary shows the selected action, audience, source, seam, missing
-discriminator, target, static movement, verify or status command, receipt
-command, fallback state, warning count, and artifact paths when the report is
-present.
+`target/ripr/reports/first-useful-action.md` with the normal report packet. The
+job summary appends the first action at a glance plus the Markdown report. If
+no inputs exist, the step logs that no first-useful-action inputs were
+available and leaves CI pass/fail behavior unchanged.
 
 For every configured gate mode, the generated workflow behavior is:
 
@@ -1333,10 +1431,9 @@ For every configured gate mode, the generated workflow behavior is:
    artifacts exist;
 12. render the assistant proof section from `test-oracle-assistant-proof.json`
    and append `test-oracle-assistant-proof.md` when present;
-13. run `ripr first-action` when any explicit first-action input artifact
-    exists;
-14. render the first useful action section from `first-useful-action.json` and
-    append `first-useful-action.md` when present;
+13. run `ripr first-action` when explicit first-action inputs exist;
+14. render the First Useful Action section from `first-useful-action.json` and
+   append `first-useful-action.md` when present;
 15. append the detailed `gate-decision.md`, `baseline-debt-delta.md`, and
    `ripr-zero-status.md` reports when present;
 16. upload gate, baseline delta, RIPR Zero, PR evidence ledger,
