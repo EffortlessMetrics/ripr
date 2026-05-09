@@ -47,10 +47,10 @@ commands = [
 
 [[work_item]]
 id = "fixtures/pr-review-front-panel-corpus"
-status = "ready"
+status = "done"
 branch = "fixtures-pr-review-front-panel-corpus"
 stackable = false
-acceptance = "Pin advisory-only, actionable, summary-only, acknowledged, suppressed, baseline-resolved, blocked, missing-proof, and coverage-flat-grip-improved front-panel cases before adding the producer"
+acceptance = "Pinned advisory-only, actionable, summary-only, acknowledged, suppressed, baseline-resolved, blocked, missing-proof, and coverage-flat-grip-improved front-panel cases before adding the producer"
 commands = [
   "cargo xtask fixtures",
   "cargo xtask goldens check",
@@ -62,12 +62,9 @@ commands = [
 
 [[work_item]]
 id = "report/pr-review-front-panel"
-status = "blocked"
+status = "ready"
 branch = "report-pr-review-front-panel"
 stackable = false
-blocked_by = [
-  "fixtures/pr-review-front-panel-corpus",
-]
 acceptance = "Add a read-only front-panel producer that emits advisory JSON/Markdown from explicit existing artifact paths without rerunning analysis or changing gate authority"
 commands = [
   "cargo test -p ripr pr_review_front_panel",

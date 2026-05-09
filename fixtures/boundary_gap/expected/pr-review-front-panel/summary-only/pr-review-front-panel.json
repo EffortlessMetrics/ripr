@@ -1,0 +1,122 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "pr_review_front_panel",
+  "status": "advisory",
+  "root": "fixtures/boundary_gap/input",
+  "generated_at": "2026-05-09T12:00:00Z",
+  "inputs": {
+    "pr_guidance": "target/ripr/review/comments.json",
+    "first_action": "fixtures/boundary_gap/expected/first-useful-action/actionable/first-useful-action.json",
+    "assistant_proof": null,
+    "assistant_health": null,
+    "ledger": null,
+    "baseline_delta": null,
+    "zero_status": null,
+    "gate_decision": null,
+    "recommendation_calibration": null,
+    "mutation_calibration": null,
+    "coverage_frontier": null,
+    "receipt": null
+  },
+  "summary": {
+    "status": "advisory",
+    "headline": "Show summary-only equality-boundary guidance.",
+    "top_issue_state": "summary_only",
+    "policy_state": "new_policy_eligible",
+    "placement": "summary_only",
+    "movement_state": "unknown",
+    "coverage_grip_state": "not_available",
+    "blocking_candidates": 0,
+    "acknowledged": 0,
+    "waived": 0,
+    "suppressed": 0,
+    "new_policy_eligible": 1,
+    "baseline_still_present": 0,
+    "baseline_resolved": 0,
+    "warnings": 1
+  },
+  "top_issue": {
+    "source": "pr_guidance",
+    "source_artifact": "target/ripr/review/comments.json",
+    "seam_id": "67fc764ba37d77bd",
+    "canonical_gap_id": null,
+    "path": "src/lib.rs",
+    "line": 2,
+    "classification": "weakly_exposed",
+    "missing_discriminator": "discount_threshold (equality boundary)",
+    "related_test": "tests/pricing.rs::below_threshold_has_no_discount",
+    "suggested_test": "Add a focused test where amount == discount_threshold and assert the exact discounted_total output.",
+    "verify_command": "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json",
+    "agent_command": "ripr agent start --root fixtures/boundary_gap/input --seam-id 67fc764ba37d77bd --out target/ripr/workflow",
+    "receipt": {
+      "artifact": null,
+      "status": "missing"
+    }
+  },
+  "movement": {
+    "state": "unknown",
+    "before_class": null,
+    "after_class": null,
+    "source_artifact": null
+  },
+  "debt_delta": {
+    "new_policy_eligible": 1,
+    "baseline_still_present": 0,
+    "baseline_resolved": 0,
+    "acknowledged": 0,
+    "waived": 0,
+    "suppressed": 0,
+    "blocking_candidates": 0
+  },
+  "policy": {
+    "mode": null,
+    "decision": "advisory",
+    "authority_artifact": null,
+    "acknowledgement_label": "ripr-waive"
+  },
+  "calibration": {
+    "recommendation": "unknown",
+    "mutation": "not_available",
+    "source_artifacts": []
+  },
+  "coverage_grip": {
+    "state": "not_available",
+    "coverage_delta": null,
+    "grip_delta": null,
+    "source_artifact": null
+  },
+  "artifacts": [
+    {
+      "group": "start_here",
+      "label": "PR review front panel",
+      "path": "fixtures/boundary_gap/expected/pr-review-front-panel/summary-only/pr-review-front-panel.md",
+      "available": true,
+      "required": true
+    },
+    {
+      "group": "evidence",
+      "label": "PR guidance summary",
+      "path": "target/ripr/review/comments.md",
+      "available": true,
+      "required": false
+    }
+  ],
+  "warnings": [
+    {
+      "kind": "summary_only_guidance",
+      "message": "Recommendation is visible in summary only because changed-line placement is unsafe.",
+      "source_artifact": "target/ripr/review/comments.json"
+    }
+  ],
+  "limits": [
+    "Static RIPR evidence only.",
+    "Does not provide runtime confirmation.",
+    "Does not run mutation testing.",
+    "Does not call providers.",
+    "Does not edit source or generate tests.",
+    "Does not publish inline comments.",
+    "Does not change default CI blocking.",
+    "Gate evaluator remains pass/fail authority."
+  ]
+}
