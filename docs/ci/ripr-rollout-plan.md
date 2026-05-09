@@ -114,6 +114,13 @@ framing.
 | 17 | ci(ripr): implement acknowledgeable soft gate | 14, 16 |
 | 18 | policy(test): add fallible assertion campaign | 08 (optional) |
 
+Completed receipts:
+
+- PR 00: #605 merged the docs/policy rollout anchor.
+- PR 01: `docs/ci/msrv-1.95-audit.md` records a passing Rust 1.95
+  compatibility audit for check, test, and Clippy. PR 02 may move the declared
+  MSRV; PR 03 still owns planned-lint promotion.
+
 Natural stacks:
 
 ```text

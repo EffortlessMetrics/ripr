@@ -67,6 +67,11 @@ are scoped or reviewed.
   first-useful-action prompt-to-artifact audit, validation plan, and boundary
   that future health, analyzer, policy, or editor lanes need explicit follow-up
   campaigns.
+- Added `docs/ci/msrv-1.95-audit.md`, recording that `ripr` passes
+  `cargo +1.95 check --workspace --all-targets`,
+  `cargo +1.95 test --workspace`, and
+  `cargo +1.95 clippy --workspace --all-targets -- -D warnings` before the
+  follow-up MSRV bump.
 - Opened Campaign 20, Test-Oracle Assistant Proof, with
   `spec/test-oracle-assistant-loop` as the first ready work item so the
   already-built PR guidance, editor/agent handoff, verification, receipts,
