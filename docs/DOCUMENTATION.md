@@ -85,10 +85,18 @@ Current reference docs:
 - [Test taxonomy](TEST_TAXONOMY.md)
 - [Engineering rules](ENGINEERING.md)
 - [File policy](FILE_POLICY.md)
+- [No-panic policy](NO_PANIC_POLICY.md)
+- [Policy allowlists](POLICY_ALLOWLISTS.md)
 - [Changelog policy](CHANGELOG_POLICY.md)
 - [Capability matrix](CAPABILITY_MATRIX.md)
 - [No-panic semantic allowlist](NO_PANIC_SEMANTIC_ALLOWLIST.md)
 - [Droid rollout checklist](agent-context/droid-rollout.md)
+- [CI verification ladder](ci/verification-ladder.md)
+- [CI current state](ci/current-state.md)
+- [CI LEM budgeting](ci/lem-budgeting.md)
+- [CI labels](ci/labels.md)
+- [CI cost and verification policy](ci/cost-and-verification-policy.md)
+- [MSRV 1.95 rollout plan](ci/ripr-rollout-plan.md)
 
 Planned reference docs:
 

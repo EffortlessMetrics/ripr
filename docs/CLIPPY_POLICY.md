@@ -191,6 +191,41 @@ Two companion ledgers track Clippy state alongside the active/planned table:
 These are advisory until the corresponding xtask ledger checks land in a
 follow-up PR.
 
+## MSRV 1.95 rollout
+
+The current workspace MSRV is `1.93`. The target platform is `1.95`.
+
+Planned lints that activate at MSRV 1.95 (tracked in `policy/clippy-lints.toml`):
+
+| Lint | Level | Reason |
+| --- | --- | --- |
+| `clippy::disallowed_fields` | deny | Ban direct field access across protected seams. Requires `clippy.toml` config. |
+| `clippy::manual_checked_ops` | warn | Prefer checked arithmetic over manual guards. |
+| `clippy::manual_take` | warn | Use the standard ownership helper. |
+| `clippy::manual_pop_if` | warn | Use predicate-and-pop collection APIs. |
+| `clippy::duration_suboptimal_units` | warn | Make durations legible without unit conversion. |
+| `clippy::unnecessary_trailing_comma` | warn | Keep format macro calls clean. |
+
+Planned lints that activate at MSRV 1.94 (also blocked on MSRV bump):
+
+| Lint | Level | Reason |
+| --- | --- | --- |
+| `clippy::same_length_and_capacity` | deny | Catch raw-parts reconstruction mistakes. |
+| `clippy::manual_ilog2` | warn | Prefer the standard integer log helper. |
+| `clippy::needless_type_cast` | warn | Avoid stale numeric type drift. |
+| `clippy::decimal_bitwise_operands` | warn | Make bit masks visually inspectable. |
+
+Deferred lints targeted for activation after the MSRV bump and per-site review:
+
+| Lint | Blocker |
+| --- | --- |
+| `clippy::indexing_slicing` | Requires per-call `#[expect]` receipts on parser/diff bounded indexing. |
+| `clippy::string_slice` | Pairs with `indexing_slicing`; requires per-call receipts on AST-bounded slicing. |
+
+The rollout PR stack is in `docs/ci/ripr-rollout-plan.md`. Promote lints from
+`[[planned]]` to `[[active]]` only after the MSRV bump (PR 02) and the
+matching xtask check pass (PR 03).
+
 ## See also
 
 - [`policy/clippy-lints.toml`](../policy/clippy-lints.toml) — declarative
@@ -201,6 +236,9 @@ follow-up PR.
   per-site suppressions.
 - [`docs/NO_PANIC_SEMANTIC_ALLOWLIST.md`](NO_PANIC_SEMANTIC_ALLOWLIST.md) —
   selector-based allowlist schema.
+- [`docs/NO_PANIC_POLICY.md`](NO_PANIC_POLICY.md) — no-panic policy overview.
 - [`docs/FILE_POLICY.md`](FILE_POLICY.md) — non-Rust file policy.
+- [`docs/POLICY_ALLOWLISTS.md`](POLICY_ALLOWLISTS.md) — all allowlists index.
+- [`docs/ci/ripr-rollout-plan.md`](ci/ripr-rollout-plan.md) — MSRV 1.95 rollout stack.
 - [`.ripr/no-panic-allowlist.toml`](../.ripr/no-panic-allowlist.toml) —
-  current entries.
+  current entries (schema 0.2, legacy; see `policy/no-panic-allowlist.toml` for schema 0.3).
