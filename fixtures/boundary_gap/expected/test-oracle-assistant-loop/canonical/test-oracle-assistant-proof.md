@@ -4,9 +4,11 @@ Status: advisory
 
 Top focused test:
 - Seam: src/lib.rs:2
+- Owner: src/lib.rs::discounted_total
 - Missing discriminator: discount_threshold (equality boundary)
 - Suggested test: Add a focused test where amount == discount_threshold and assert the exact discounted_total output.
 - Related test: tests/pricing.rs::below_threshold_has_no_discount
+- Assertion shape: assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)
 - Verify: ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json
 
 Movement:

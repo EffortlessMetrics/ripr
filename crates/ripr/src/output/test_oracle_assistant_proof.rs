@@ -58,11 +58,15 @@ struct ProofInputs {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 struct ProofSeam {
     seam_id: Option<String>,
+    canonical_gap_id: Option<String>,
+    owner: Option<String>,
     seam_kind: Option<String>,
     path: Option<String>,
     line: Option<u64>,
     grip_class: Option<String>,
     missing_discriminator: Option<String>,
+    evidence_source: String,
+    static_limitations: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -72,6 +76,7 @@ struct ProofRecommendation {
     summary_only_reason: Option<String>,
     suggested_test: Option<String>,
     related_test: Option<String>,
+    assertion_shape: Option<String>,
     verify_command: Option<String>,
 }
 
@@ -224,12 +229,16 @@ pub(crate) fn render_test_oracle_assistant_proof_markdown(
     out.push_str("Top focused test:\n");
     out.push_str(&format!("- Seam: {}\n", seam_headline(&report.seam)));
     out.push_str(&format!(
+        "- Owner: {}\n",
+        option_text(report.seam.owner.as_deref(), "unknown")
+    ));
+    out.push_str(&format!(
         "- Missing discriminator: {}\n",
         report
             .seam
             .missing_discriminator
             .as_deref()
-            .unwrap_or("unknown")
+            .map_or("unknown", |value| value)
     ));
     out.push_str(&format!(
         "- Suggested test: {}\n",
@@ -237,7 +246,7 @@ pub(crate) fn render_test_oracle_assistant_proof_markdown(
             .recommendation
             .suggested_test
             .as_deref()
-            .unwrap_or("unknown")
+            .map_or("unknown", |value| value)
     ));
     out.push_str(&format!(
         "- Related test: {}\n",
@@ -245,7 +254,15 @@ pub(crate) fn render_test_oracle_assistant_proof_markdown(
             .recommendation
             .related_test
             .as_deref()
-            .unwrap_or("unknown")
+            .map_or("unknown", |value| value)
+    ));
+    out.push_str(&format!(
+        "- Assertion shape: {}\n",
+        report
+            .recommendation
+            .assertion_shape
+            .as_deref()
+            .map_or("unknown", |value| value)
     ));
     out.push_str(&format!(
         "- Verify: {}\n\n",
@@ -253,7 +270,7 @@ pub(crate) fn render_test_oracle_assistant_proof_markdown(
             .recommendation
             .verify_command
             .as_deref()
-            .unwrap_or("unknown")
+            .map_or("unknown", |value| value)
     ));
 
     out.push_str("Movement:\n");
@@ -263,7 +280,7 @@ pub(crate) fn render_test_oracle_assistant_proof_markdown(
             .evidence_movement
             .before_class
             .as_deref()
-            .unwrap_or("unknown")
+            .map_or("unknown", |value| value)
     ));
     out.push_str(&format!(
         "- After: {}\n",
@@ -271,7 +288,7 @@ pub(crate) fn render_test_oracle_assistant_proof_markdown(
             .evidence_movement
             .after_class
             .as_deref()
-            .unwrap_or("unknown")
+            .map_or("unknown", |value| value)
     ));
     out.push_str(&format!("- State: {}\n", report.evidence_movement.state));
     out.push_str(&format!(
@@ -280,7 +297,7 @@ pub(crate) fn render_test_oracle_assistant_proof_markdown(
             .evidence_movement
             .artifact
             .as_deref()
-            .unwrap_or("not available")
+            .map_or("not available", |value| value)
     ));
 
     out.push_str("Projection:\n");
@@ -290,7 +307,7 @@ pub(crate) fn render_test_oracle_assistant_proof_markdown(
             .ci_projection
             .ledger
             .as_deref()
-            .unwrap_or("not available")
+            .map_or("not available", |value| value)
     ));
     out.push_str(&format!(
         "- Coverage/grip frontier: {}\n",
@@ -298,7 +315,7 @@ pub(crate) fn render_test_oracle_assistant_proof_markdown(
             .ci_projection
             .coverage_frontier
             .as_deref()
-            .unwrap_or("not available")
+            .map_or("not available", |value| value)
     ));
     out.push_str(&format!(
         "- Gate: {}\n",
@@ -306,8 +323,15 @@ pub(crate) fn render_test_oracle_assistant_proof_markdown(
             .ci_projection
             .gate_decision
             .as_deref()
-            .unwrap_or("not configured")
+            .map_or("not configured", |value| value)
     ));
+
+    if !report.seam.static_limitations.is_empty() {
+        out.push_str("\nStatic limits:\n");
+        for limitation in &report.seam.static_limitations {
+            out.push_str(&format!("- {limitation}\n"));
+        }
+    }
 
     if !report.warnings.is_empty() {
         out.push_str("\nWarnings:\n");
@@ -325,6 +349,13 @@ pub(crate) fn render_test_oracle_assistant_proof_markdown(
 
 pub(crate) fn display_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
+}
+
+fn option_text<'a>(value: Option<&'a str>, fallback: &'a str) -> &'a str {
+    match value {
+        Some(value) => value,
+        None => fallback,
+    }
 }
 
 fn parse_sources(input: &TestOracleAssistantProofInput) -> ParsedSources {
@@ -411,9 +442,11 @@ fn parse_optional_json(
 
 fn selected_seam(parsed: &ParsedSources) -> ProofSeam {
     let agent_seam = first_agent_seam(parsed.agent_packet.as_ref());
+    let agent_record = evidence_record_from_agent_seam(agent_seam);
     let guidance = first_guidance_item(parsed.pr_guidance.as_ref())
         .or_else(|| first_summary_only_item(parsed.pr_guidance.as_ref()));
     let seam_id = string_from_sources(&[
+        (agent_record, &["seam_id"]),
         (agent_seam, &["seam_id"]),
         (guidance, &["seam_id"]),
         (parsed.receipt.as_ref(), &["provenance", "seam_id"]),
@@ -425,9 +458,33 @@ fn selected_seam(parsed: &ParsedSources) -> ProofSeam {
     let after_seam = seam_id
         .as_deref()
         .and_then(|id| find_repo_exposure_seam(parsed.after.as_ref(), id));
+    let before_record = evidence_record_from_repo_seam(before_seam);
+    let after_record = evidence_record_from_repo_seam(after_seam);
+    let evidence_source =
+        if agent_record.is_some() || before_record.is_some() || after_record.is_some() {
+            "evidence_record"
+        } else {
+            "legacy_fields"
+        }
+        .to_string();
     ProofSeam {
         seam_id,
+        canonical_gap_id: string_from_sources(&[
+            (agent_record, &["canonical_gap_id"]),
+            (before_record, &["canonical_gap_id"]),
+            (after_record, &["canonical_gap_id"]),
+        ]),
+        owner: string_from_sources(&[
+            (agent_record, &["owner"]),
+            (before_record, &["owner"]),
+            (after_record, &["owner"]),
+            (agent_seam, &["owner"]),
+            (guidance, &["owner"]),
+        ]),
         seam_kind: string_from_sources(&[
+            (agent_record, &["seam_kind"]),
+            (before_record, &["seam_kind"]),
+            (after_record, &["seam_kind"]),
             (agent_seam, &["seam_kind"]),
             (guidance, &["kind"]),
             (guidance, &["seam", "kind"]),
@@ -436,6 +493,9 @@ fn selected_seam(parsed: &ParsedSources) -> ProofSeam {
             (parsed.receipt.as_ref(), &["seam", "seam_kind"]),
         ]),
         path: string_from_sources(&[
+            (agent_record, &["location", "file"]),
+            (before_record, &["location", "file"]),
+            (after_record, &["location", "file"]),
             (agent_seam, &["file"]),
             (guidance, &["placement", "path"]),
             (guidance, &["seam", "file"]),
@@ -444,6 +504,9 @@ fn selected_seam(parsed: &ParsedSources) -> ProofSeam {
             (parsed.receipt.as_ref(), &["seam", "file"]),
         ]),
         line: u64_from_sources(&[
+            (agent_record, &["location", "line"]),
+            (before_record, &["location", "line"]),
+            (after_record, &["location", "line"]),
             (agent_seam, &["line"]),
             (guidance, &["placement", "line"]),
             (guidance, &["seam", "line"]),
@@ -452,15 +515,28 @@ fn selected_seam(parsed: &ParsedSources) -> ProofSeam {
             (parsed.receipt.as_ref(), &["seam", "line"]),
         ]),
         grip_class: string_from_sources(&[
+            (agent_record, &["grip_class"]),
+            (before_record, &["grip_class"]),
+            (after_record, &["grip_class"]),
             (agent_seam, &["grip_class"]),
+            (agent_seam, &["current_grip"]),
             (guidance, &["grip_class"]),
             (before_seam, &["grip_class"]),
             (after_seam, &["grip_class"]),
         ]),
-        missing_discriminator: missing_discriminator(agent_seam)
+        missing_discriminator: missing_discriminator(agent_record)
+            .or_else(|| missing_discriminator(before_record))
+            .or_else(|| missing_discriminator(after_record))
+            .or_else(|| missing_discriminator(agent_seam))
             .or_else(|| guidance.and_then(|value| string_path(value, &["missing_discriminator"])))
             .or_else(|| missing_discriminator(before_seam))
             .or_else(|| missing_discriminator(after_seam)),
+        evidence_source,
+        static_limitations: static_limitations_from_records(&[
+            agent_record,
+            before_record,
+            after_record,
+        ]),
     }
 }
 
@@ -470,9 +546,12 @@ fn recommendation_from_sources(
     seam: &ProofSeam,
 ) -> ProofRecommendation {
     let agent_seam = first_agent_seam(parsed.agent_packet.as_ref());
+    let agent_record = evidence_record_from_agent_seam(agent_seam);
     let guidance = first_guidance_item(parsed.pr_guidance.as_ref());
     let summary_only = first_summary_only_item(parsed.pr_guidance.as_ref());
-    let source = if agent_seam.is_some() {
+    let source = if agent_record.is_some() {
+        "evidence_record"
+    } else if agent_seam.is_some() {
         "editor_agent_brief"
     } else if guidance.is_some() || summary_only.is_some() {
         "pr_guidance"
@@ -480,30 +559,60 @@ fn recommendation_from_sources(
         "unknown"
     }
     .to_string();
-    let placement = placement_from_guidance(guidance, summary_only);
+    let placement = {
+        let placement = placement_from_guidance(guidance, summary_only);
+        if placement == "unknown" && agent_record.is_some() {
+            "changed_line".to_string()
+        } else {
+            placement
+        }
+    };
     let summary_only_reason = summary_only
         .and_then(|value| string_path(value, &["summary_only_reason"]))
         .or_else(|| summary_only.and_then(|value| string_path(value, &["reason"])));
-    let suggested_test = agent_seam
-        .and_then(|value| suggested_test_sentence(value, seam))
+    let suggested_test = agent_record
+        .and_then(suggested_test_from_record)
+        .or_else(|| agent_seam.and_then(|value| suggested_test_sentence(value, seam)))
         .or_else(|| guidance.and_then(suggested_test_from_guidance))
         .or_else(|| summary_only.and_then(suggested_test_from_guidance));
-    let related_test = agent_seam
-        .and_then(related_test_from_agent)
+    let related_test = agent_record
+        .and_then(related_test_from_record)
+        .or_else(|| agent_seam.and_then(related_test_from_agent))
         .or_else(|| guidance.and_then(related_test_from_guidance))
         .or_else(|| summary_only.and_then(related_test_from_guidance));
+    let assertion_shape = agent_record
+        .and_then(assertion_shape_from_record)
+        .or_else(|| {
+            agent_seam.and_then(|value| string_path(value, &["assertion_shape", "example"]))
+        })
+        .or_else(|| {
+            guidance.and_then(|value| string_path(value, &["suggested_test", "assertion_shape"]))
+        })
+        .or_else(|| {
+            summary_only
+                .and_then(|value| string_path(value, &["suggested_test", "assertion_shape"]))
+        });
     let verify_command = string_from_sources(&[
+        (agent_record, &["recommendation", "verify_command"]),
         (agent_seam, &["verification", "verify_command"]),
         (guidance, &["llm_guidance", "verify_command"]),
         (summary_only, &["llm_guidance", "verify_command"]),
     ]);
     let verify_command = verify_command.or_else(|| {
         if input.before_path.is_some() && input.after_path.is_some() {
+            let before = input
+                .before_path
+                .as_deref()
+                .map_or("before.json", |path| path);
+            let after = input
+                .after_path
+                .as_deref()
+                .map_or("after.json", |path| path);
             Some(format!(
                 "ripr agent verify --root {} --before {} --after {} --json",
                 agent_root(parsed.agent_packet.as_ref(), input),
-                input.before_path.as_deref().unwrap_or("before.json"),
-                input.after_path.as_deref().unwrap_or("after.json")
+                before,
+                after
             ))
         } else {
             None
@@ -516,6 +625,7 @@ fn recommendation_from_sources(
         summary_only_reason,
         suggested_test,
         related_test,
+        assertion_shape,
         verify_command,
     }
 }
@@ -550,34 +660,50 @@ fn evidence_movement_from_sources(
     parsed: &ParsedSources,
     seam: &ProofSeam,
 ) -> ProofEvidenceMovement {
+    let before_seam = seam
+        .seam_id
+        .as_deref()
+        .and_then(|id| find_repo_exposure_seam(parsed.before.as_ref(), id));
+    let after_seam = seam
+        .seam_id
+        .as_deref()
+        .and_then(|id| find_repo_exposure_seam(parsed.after.as_ref(), id));
+    let before_record = evidence_record_from_repo_seam(before_seam);
+    let after_record = evidence_record_from_repo_seam(after_seam);
     let before_class = string_from_sources(&[
         (parsed.receipt.as_ref(), &["provenance", "before_class"]),
         (parsed.receipt.as_ref(), &["seam", "before"]),
     ])
     .or_else(|| {
-        seam.seam_id
-            .as_deref()
-            .and_then(|id| find_repo_exposure_seam(parsed.before.as_ref(), id))
-            .and_then(|value| string_path(value, &["grip_class"]))
+        string_from_sources(&[
+            (before_record, &["grip_class"]),
+            (before_seam, &["grip_class"]),
+        ])
     });
     let after_class = string_from_sources(&[
         (parsed.receipt.as_ref(), &["provenance", "after_class"]),
         (parsed.receipt.as_ref(), &["seam", "after"]),
     ])
     .or_else(|| {
-        seam.seam_id
-            .as_deref()
-            .and_then(|id| find_repo_exposure_seam(parsed.after.as_ref(), id))
-            .and_then(|value| string_path(value, &["grip_class"]))
+        string_from_sources(&[
+            (after_record, &["grip_class"]),
+            (after_seam, &["grip_class"]),
+        ])
     });
-    let state = string_from_sources(&[
+    let state = match string_from_sources(&[
         (parsed.receipt.as_ref(), &["provenance", "movement"]),
         (parsed.receipt.as_ref(), &["seam", "change"]),
     ])
     .or_else(|| movement_from_classes(before_class.as_deref(), after_class.as_deref()))
-    .unwrap_or_else(|| "unknown".to_string());
+    {
+        Some(state) => state,
+        None => "unknown".to_string(),
+    };
+    let has_record_movement = before_record.is_some() || after_record.is_some();
     let (source, artifact) = if input.receipt_path.is_some() {
         ("agent_receipt".to_string(), input.receipt_path.clone())
+    } else if has_record_movement {
+        ("evidence_record".to_string(), input.after_path.clone())
     } else if input.before_path.is_some() || input.after_path.is_some() {
         ("repo_exposure".to_string(), input.after_path.clone())
     } else {
@@ -604,10 +730,31 @@ fn loop_warnings(parsed: &ParsedSources, movement: &ProofEvidenceMovement) -> Ve
 }
 
 fn first_agent_seam(agent_packet: Option<&Value>) -> Option<&Value> {
+    let agent_packet = agent_packet?;
     agent_packet
-        .and_then(|value| value.get("top_seams"))
+        .get("top_seams")
         .and_then(Value::as_array)
         .and_then(|items| items.first())
+        .or_else(|| {
+            agent_packet
+                .get("packets")
+                .and_then(Value::as_array)
+                .and_then(|items| items.first())
+        })
+}
+
+fn evidence_record_from_agent_seam(agent_seam: Option<&Value>) -> Option<&Value> {
+    evidence_record_from_value(agent_seam)
+}
+
+fn evidence_record_from_repo_seam(repo_seam: Option<&Value>) -> Option<&Value> {
+    evidence_record_from_value(repo_seam)
+}
+
+fn evidence_record_from_value(value: Option<&Value>) -> Option<&Value> {
+    value
+        .and_then(|value| value.get("evidence_record"))
+        .filter(|value| value.is_object())
 }
 
 fn first_guidance_item(pr_guidance: Option<&Value>) -> Option<&Value> {
@@ -632,7 +779,10 @@ fn find_repo_exposure_seam<'a>(
         .and_then(|value| value.get("seams"))
         .and_then(Value::as_array)?
         .iter()
-        .find(|seam| string_path(seam, &["seam_id"]).as_deref() == Some(seam_id))
+        .find(|seam| {
+            string_path(seam, &["evidence_record", "seam_id"]).as_deref() == Some(seam_id)
+                || string_path(seam, &["seam_id"]).as_deref() == Some(seam_id)
+        })
 }
 
 fn placement_from_guidance(guidance: Option<&Value>, summary_only: Option<&Value>) -> String {
@@ -655,13 +805,20 @@ fn suggested_test_sentence(agent_seam: &Value, seam: &ProofSeam) -> Option<Strin
         .missing_discriminator
         .as_deref()
         .map(discriminator_subject)?;
-    let function = string_path(agent_seam, &["owner"])
+    let function = match string_path(agent_seam, &["owner"])
         .and_then(|owner| owner.rsplit("::").next().map(ToOwned::to_owned))
         .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| "changed behavior".to_string());
-    let subject = string_path(agent_seam, &["expression"])
+    {
+        Some(value) => value,
+        None => "changed behavior".to_string(),
+    };
+    let subject = match string_path(agent_seam, &["expression"])
+        .or_else(|| string_path(agent_seam, &["changed_expression"]))
         .and_then(|expression| comparison_left_side(&expression))
-        .unwrap_or_else(|| "the changed input".to_string());
+    {
+        Some(value) => value,
+        None => "the changed input".to_string(),
+    };
     Some(format!(
         "Add a focused test where {subject} == {discriminator} and assert the exact {function} output."
     ))
@@ -673,8 +830,46 @@ fn suggested_test_from_guidance(guidance: &Value) -> Option<String> {
         .or_else(|| string_path(guidance, &["suggested_test"]))
 }
 
+fn suggested_test_from_record(record: &Value) -> Option<String> {
+    let recommended = path_value(record, &["recommendation", "recommended_test"]);
+    let name = recommended.and_then(|value| string_path(value, &["name"]));
+    let file = recommended.and_then(|value| string_path(value, &["file"]));
+    let assertion = assertion_shape_from_record(record);
+    match (file, name, assertion) {
+        (Some(file), Some(name), Some(assertion)) => {
+            Some(format!("Add {file}::{name} with `{assertion}`."))
+        }
+        (Some(file), Some(name), None) => Some(format!("Add {file}::{name}.")),
+        (None, Some(name), Some(assertion)) => Some(format!("Add {name} with `{assertion}`.")),
+        (None, Some(name), None) => Some(format!("Add {name}.")),
+        (_file, None, Some(assertion)) => Some(format!("Add a focused test with `{assertion}`.")),
+        (_file, None, None) => string_path(record, &["recommendation", "reason"]),
+    }
+}
+
+fn assertion_shape_from_record(record: &Value) -> Option<String> {
+    string_path(record, &["recommendation", "assertion_shape", "example"])
+        .or_else(|| string_path(record, &["recommendation", "assertion_shape", "kind"]))
+}
+
 fn related_test_from_agent(agent_seam: &Value) -> Option<String> {
     let related = agent_seam.get("nearest_strong_test_to_imitate")?;
+    let name = string_path(related, &["name"])?;
+    let file = string_path(related, &["file"]);
+    Some(match file {
+        Some(file) => format!("{file}::{name}"),
+        None => name,
+    })
+}
+
+fn related_test_from_record(record: &Value) -> Option<String> {
+    let related =
+        path_value(record, &["recommendation", "nearest_test_to_imitate"]).or_else(|| {
+            record
+                .get("related_tests")
+                .and_then(Value::as_array)
+                .and_then(|items| items.first())
+        })?;
     let name = string_path(related, &["name"])?;
     let file = string_path(related, &["file"]);
     Some(match file {
@@ -726,15 +921,18 @@ fn before_after_has_new_observed_value(parsed: &ParsedSources) -> bool {
     };
     let before = find_repo_exposure_seam(parsed.before.as_ref(), &seam_id);
     let after = find_repo_exposure_seam(parsed.after.as_ref(), &seam_id);
-    let before_count = before
-        .and_then(|value| value.get("observed_values"))
-        .and_then(Value::as_array)
-        .map_or(0, Vec::len);
-    let after_count = after
-        .and_then(|value| value.get("observed_values"))
-        .and_then(Value::as_array)
-        .map_or(0, Vec::len);
+    let before_count = observed_value_count(before);
+    let after_count = observed_value_count(after);
     after_count > before_count
+}
+
+fn observed_value_count(seam: Option<&Value>) -> usize {
+    let record = evidence_record_from_repo_seam(seam);
+    record
+        .or(seam)
+        .and_then(|value| value.get("observed_values"))
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len)
 }
 
 fn missing_discriminator(value: Option<&Value>) -> Option<String> {
@@ -748,13 +946,47 @@ fn missing_discriminator(value: Option<&Value>) -> Option<String> {
     })
 }
 
+fn static_limitations_from_records(records: &[Option<&Value>]) -> Vec<String> {
+    let mut limitations = Vec::new();
+    for record in records.iter().flatten() {
+        let Some(items) = record.get("static_limitations").and_then(Value::as_array) else {
+            continue;
+        };
+        for item in items {
+            let limitation = static_limitation_label(item);
+            if !limitation.trim().is_empty() && !limitations.contains(&limitation) {
+                limitations.push(limitation);
+            }
+        }
+    }
+    limitations
+}
+
+fn static_limitation_label(item: &Value) -> String {
+    let stage = string_path(item, &["stage"]);
+    let state = string_path(item, &["state"]);
+    let reason = string_path(item, &["reason"]);
+    match (stage, state, reason) {
+        (Some(stage), Some(state), Some(reason)) => format!("{stage} {state}: {reason}"),
+        (Some(stage), None, Some(reason)) => format!("{stage}: {reason}"),
+        (None, Some(state), Some(reason)) => format!("{state}: {reason}"),
+        (Some(stage), Some(state), None) => format!("{stage} {state}"),
+        (Some(stage), None, None) => stage,
+        (None, Some(state), None) => state,
+        (None, None, Some(reason)) => reason,
+        (None, None, None) => String::new(),
+    }
+}
+
 fn discriminator_subject(value: &str) -> String {
-    value
+    match value
         .split(" (")
         .next()
         .filter(|part| !part.trim().is_empty())
-        .unwrap_or(value)
-        .to_string()
+    {
+        Some(part) => part.to_string(),
+        None => value.to_string(),
+    }
 }
 
 fn comparison_left_side(expression: &str) -> Option<String> {
@@ -770,9 +1002,10 @@ fn comparison_left_side(expression: &str) -> Option<String> {
 }
 
 fn agent_root(agent_packet: Option<&Value>, input: &TestOracleAssistantProofInput) -> String {
-    agent_packet
-        .and_then(|value| string_path(value, &["root"]))
-        .unwrap_or_else(|| input.root.clone())
+    match agent_packet.and_then(|value| string_path(value, &["root"])) {
+        Some(root) => root,
+        None => input.root.clone(),
+    }
 }
 
 fn seam_headline(seam: &ProofSeam) -> String {
@@ -1076,6 +1309,138 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn test_oracle_assistant_proof_prefers_agent_packet_evidence_record() -> Result<(), String> {
+        let agent_packet = r#"{
+          "root": "fixture-root",
+          "packets": [
+            {
+              "seam_id": "legacy-seam",
+              "seam_kind": "legacy_kind",
+              "file": "legacy.rs",
+              "line": 1,
+              "current_grip": "legacy_grip",
+              "missing_discriminators": [{"value": "legacy missing"}],
+              "evidence_record": {
+                "schema_version": "0.1",
+                "seam_id": "record-seam",
+                "canonical_gap_id": "canonical-record",
+                "owner": "pricing::discounted_total",
+                "location": {"file": "src/pricing.rs", "line": 42},
+                "seam_kind": "predicate_boundary",
+                "grip_class": "weakly_gripped",
+                "headline_eligible": true,
+                "missing_discriminators": [
+                  {"value": "record equality", "reason": "record reason"}
+                ],
+                "recommendation": {
+                  "recommended_test": {
+                    "file": "tests/pricing.rs",
+                    "name": "discounted_total_equality_boundary",
+                    "reason": "near related test"
+                  },
+                  "nearest_test_to_imitate": {
+                    "file": "tests/pricing.rs",
+                    "name": "above_threshold_discount"
+                  },
+                  "assertion_shape": {
+                    "kind": "exact_return_value",
+                    "example": "assert_eq!(discounted_total(100, 100), 90)"
+                  },
+                  "verify_command": "ripr agent verify --json",
+                  "reason": "extend the nearest related test"
+                },
+                "static_limitations": [
+                  {"stage": "propagate", "state": "unknown", "reason": "record limitation"}
+                ]
+              }
+            }
+          ]
+        }"#;
+        let report = build_test_oracle_assistant_proof_report(TestOracleAssistantProofInput {
+            root: ".".to_string(),
+            pr_guidance_path: None,
+            agent_packet_path: Some("agent-packet.json".to_string()),
+            before_path: None,
+            after_path: None,
+            receipt_path: None,
+            ledger_path: None,
+            coverage_frontier_path: None,
+            gate_decision_path: None,
+            pr_guidance_json: None,
+            agent_packet_json: Some(Ok(agent_packet.to_string())),
+            before_json: None,
+            after_json: None,
+            receipt_json: None,
+            ledger_json: None,
+            coverage_frontier_json: None,
+            gate_decision_json: None,
+        });
+
+        let rendered = render_test_oracle_assistant_proof_json(&report)?;
+        assert!(rendered.contains("\"seam_id\": \"record-seam\""));
+        assert!(rendered.contains("\"canonical_gap_id\": \"canonical-record\""));
+        assert!(rendered.contains("\"owner\": \"pricing::discounted_total\""));
+        assert!(rendered.contains("\"path\": \"src/pricing.rs\""));
+        assert!(rendered.contains("\"line\": 42"));
+        assert!(rendered.contains("\"missing_discriminator\": \"record equality\""));
+        assert!(rendered.contains("\"evidence_source\": \"evidence_record\""));
+        assert!(rendered.contains("propagate unknown: record limitation"));
+        assert!(rendered.contains("\"source\": \"evidence_record\""));
+        assert!(rendered.contains("tests/pricing.rs::above_threshold_discount"));
+        assert!(rendered.contains("assert_eq!(discounted_total(100, 100), 90)"));
+        assert!(rendered.contains("\"verify_command\": \"ripr agent verify --json\""));
+        assert!(!rendered.contains("legacy missing"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_oracle_assistant_proof_prefers_repo_exposure_evidence_record_movement()
+    -> Result<(), String> {
+        let guidance = r#"{
+          "comments": [
+            {
+              "seam_id": "record-seam",
+              "kind": "legacy_kind",
+              "missing_discriminator": "legacy missing",
+              "placement": {"path": "legacy.rs", "line": 1, "mode": "changed_line"}
+            }
+          ]
+        }"#;
+        let before = repo_exposure_with_record("record-seam", "weakly_gripped", "strongly_gripped");
+        let after = repo_exposure_with_record("record-seam", "strongly_gripped", "weakly_gripped");
+        let report = build_test_oracle_assistant_proof_report(TestOracleAssistantProofInput {
+            root: ".".to_string(),
+            pr_guidance_path: Some("comments.json".to_string()),
+            agent_packet_path: None,
+            before_path: Some("before.json".to_string()),
+            after_path: Some("after.json".to_string()),
+            receipt_path: None,
+            ledger_path: None,
+            coverage_frontier_path: None,
+            gate_decision_path: None,
+            pr_guidance_json: Some(Ok(guidance.to_string())),
+            agent_packet_json: None,
+            before_json: Some(Ok(before)),
+            after_json: Some(Ok(after)),
+            receipt_json: None,
+            ledger_json: None,
+            coverage_frontier_json: None,
+            gate_decision_json: None,
+        });
+
+        let rendered = render_test_oracle_assistant_proof_json(&report)?;
+        assert!(rendered.contains("\"seam_kind\": \"predicate_boundary\""));
+        assert!(rendered.contains("\"path\": \"src/record.rs\""));
+        assert!(rendered.contains("\"missing_discriminator\": \"record missing\""));
+        assert!(rendered.contains("\"before_class\": \"weakly_gripped\""));
+        assert!(rendered.contains("\"after_class\": \"strongly_gripped\""));
+        assert!(rendered.contains("\"state\": \"improved\""));
+        assert!(rendered.contains("\"source\": \"evidence_record\""));
+        assert!(!rendered.contains("\"before_class\": \"strongly_gripped\""));
+        Ok(())
+    }
+
     fn repo_root() -> Result<PathBuf, String> {
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         manifest_dir
@@ -1091,9 +1456,10 @@ mod tests {
     }
 
     fn fixture_path(repo_root: &Path, path: &Path) -> String {
-        path.strip_prefix(repo_root)
-            .map(display_path)
-            .unwrap_or_else(|_| display_path(path))
+        match path.strip_prefix(repo_root) {
+            Ok(path) => display_path(path),
+            Err(_err) => display_path(path),
+        }
     }
 
     fn repo_exposure(seam_id: &str, grip_class: &str, file: &str, line: u64) -> String {
@@ -1110,6 +1476,47 @@ mod tests {
       "grip_class": "{grip_class}",
       "missing_discriminators": [{{"value": "threshold equality"}}],
       "observed_values": ["1"]
+    }}
+  ]
+}}"#
+        )
+    }
+
+    fn repo_exposure_with_record(
+        seam_id: &str,
+        record_grip_class: &str,
+        legacy_grip_class: &str,
+    ) -> String {
+        format!(
+            r#"{{
+  "schema_version": "0.3",
+  "scope": "repo",
+  "seams": [
+    {{
+      "seam_id": "legacy-seam",
+      "kind": "legacy_kind",
+      "file": "legacy.rs",
+      "line": 1,
+      "grip_class": "{legacy_grip_class}",
+      "observed_values": ["legacy"],
+      "evidence_record": {{
+        "schema_version": "0.1",
+        "seam_id": "{seam_id}",
+        "owner": "record::owner",
+        "location": {{"file": "src/record.rs", "line": 42}},
+        "seam_kind": "predicate_boundary",
+        "grip_class": "{record_grip_class}",
+        "missing_discriminators": [
+          {{"value": "record missing", "reason": "record reason"}}
+        ],
+        "observed_values": [
+          {{"value": "100", "line": 42, "text": "record", "context": "function_argument"}}
+        ],
+        "recommendation": {{
+          "assertion_shape": {{"kind": "exact_return_value", "example": "assert_eq!(record(), 1)"}}
+        }},
+        "static_limitations": []
+      }}
     }}
   ]
 }}"#
