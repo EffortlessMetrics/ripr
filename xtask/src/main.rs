@@ -3590,6 +3590,7 @@ fn check_fixture_contracts() -> Result<(), String> {
     }
 
     let mut violations = Vec::new();
+    validate_evidence_record_contract_fixture_corpus(&mut violations)?;
     for entry in
         fs::read_dir(fixtures_dir).map_err(|err| format!("failed to read fixtures: {err}"))?
     {
@@ -3647,6 +3648,313 @@ fn check_fixture_contracts() -> Result<(), String> {
         },
         &violations,
     )
+}
+
+const EVIDENCE_RECORD_CONTRACT_CORPUS: &str =
+    "fixtures/boundary_gap/expected/evidence-record-contract/corpus.json";
+
+const EVIDENCE_RECORD_REQUIRED_CASES: &[&str] = &[
+    "predicate_boundary_missing_equality",
+    "exact_error_variant_gap",
+    "strong_exact_value_oracle",
+    "broad_is_err_oracle",
+    "field_output_assertion",
+    "whole_object_equality",
+    "snapshot_oracle",
+    "side_effect_observer",
+    "opaque_helper_static_limitation",
+    "baseline_known_canonical_gap_identity",
+    "calibration_placeholder_no_runtime_data",
+];
+
+fn validate_evidence_record_contract_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    validate_evidence_record_contract_fixture_corpus_at(
+        Path::new(EVIDENCE_RECORD_CONTRACT_CORPUS),
+        violations,
+    )
+}
+
+fn validate_evidence_record_contract_fixture_corpus_at(
+    path: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if !path.exists() {
+        violations.push(format!(
+            "evidence-record contract corpus is missing {}",
+            normalize_path(path)
+        ));
+        return Ok(());
+    }
+
+    let corpus = match read_json_value(path) {
+        Ok(value) => value,
+        Err(err) => {
+            violations.push(err);
+            return Ok(());
+        }
+    };
+    validate_evidence_record_contract_corpus_value(path, &corpus, violations);
+    Ok(())
+}
+
+fn validate_evidence_record_contract_corpus_value(
+    path: &Path,
+    corpus: &Value,
+    violations: &mut Vec<String>,
+) {
+    if json_string_field(corpus, "kind").as_deref() != Some("evidence_record_contract_corpus") {
+        violations.push(format!(
+            "{} kind must be evidence_record_contract_corpus",
+            normalize_path(path)
+        ));
+    }
+    if json_string_field(corpus, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "{} schema_version must be 0.1",
+            normalize_path(path)
+        ));
+    }
+    if json_string_field(corpus, "spec").as_deref() != Some("RIPR-SPEC-0021") {
+        violations.push(format!(
+            "{} spec must be RIPR-SPEC-0021",
+            normalize_path(path)
+        ));
+    }
+
+    let Some(cases) = corpus.get("cases").and_then(Value::as_array) else {
+        violations.push(format!("{} is missing cases array", normalize_path(path)));
+        return;
+    };
+
+    let mut seen = BTreeSet::new();
+    for case in cases {
+        let case_id = json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string());
+        if !seen.insert(case_id.clone()) {
+            violations.push(format!("evidence-record case {case_id} is duplicated"));
+        }
+        if json_string_field(case, "description").is_none() {
+            violations.push(format!(
+                "evidence-record case {case_id} is missing description"
+            ));
+        }
+        if json_string_field(case, "source").is_none() {
+            violations.push(format!("evidence-record case {case_id} is missing source"));
+        }
+        match case.get("record") {
+            Some(Value::Object(record)) => validate_evidence_record_contract_record(
+                &case_id,
+                &Value::Object(record.clone()),
+                violations,
+            ),
+            Some(_) => violations.push(format!(
+                "evidence-record case {case_id} record must be an object"
+            )),
+            None => violations.push(format!("evidence-record case {case_id} is missing record")),
+        }
+    }
+
+    for required in EVIDENCE_RECORD_REQUIRED_CASES {
+        if !seen.contains(*required) {
+            violations.push(format!("evidence-record corpus is missing case {required}"));
+        }
+    }
+}
+
+fn validate_evidence_record_contract_record(
+    case_id: &str,
+    record: &Value,
+    violations: &mut Vec<String>,
+) {
+    require_json_string_at(record, "schema_version", case_id, violations);
+    if json_string_field(record, "schema_version").as_deref() != Some("0.1") {
+        violations.push(format!(
+            "evidence-record case {case_id} record schema_version must be 0.1"
+        ));
+    }
+    for field in ["seam_id", "owner", "seam_kind", "grip_class"] {
+        require_json_string_at(record, field, case_id, violations);
+    }
+    if !matches!(
+        record.get("canonical_gap_id"),
+        Some(Value::Null | Value::String(_))
+    ) {
+        violations.push(format!(
+            "evidence-record case {case_id} canonical_gap_id must be string or null"
+        ));
+    }
+    if !matches!(record.get("headline_eligible"), Some(Value::Bool(_))) {
+        violations.push(format!(
+            "evidence-record case {case_id} headline_eligible must be boolean"
+        ));
+    }
+
+    match record.get("location") {
+        Some(location @ Value::Object(_)) => {
+            require_json_string_at(location, "file", case_id, violations);
+            require_json_usize_at(location, "line", case_id, violations);
+        }
+        _ => violations.push(format!(
+            "evidence-record case {case_id} location must be an object"
+        )),
+    }
+
+    match record.get("evidence_path") {
+        Some(path @ Value::Object(_)) => {
+            for stage in ["reach", "activate", "propagate", "observe", "discriminate"] {
+                match path.get(stage) {
+                    Some(stage_value @ Value::Object(_)) => {
+                        require_json_string_at(stage_value, "state", case_id, violations);
+                        require_json_string_at(stage_value, "confidence", case_id, violations);
+                        require_json_string_at(stage_value, "summary", case_id, violations);
+                    }
+                    _ => violations.push(format!(
+                        "evidence-record case {case_id} evidence_path.{stage} must be an object"
+                    )),
+                }
+            }
+        }
+        _ => violations.push(format!(
+            "evidence-record case {case_id} evidence_path must be an object"
+        )),
+    }
+
+    require_json_array_at(record, "observed_values", case_id, violations);
+    require_json_array_at(record, "missing_discriminators", case_id, violations);
+    require_json_usize_at(record, "related_tests_total", case_id, violations);
+    require_json_array_at(record, "related_tests", case_id, violations);
+    validate_evidence_record_recommendation(case_id, record.get("recommendation"), violations);
+    validate_evidence_record_actionability(case_id, record.get("actionability"), violations);
+    validate_evidence_record_calibration(case_id, record.get("calibration"), violations);
+    require_json_array_at(record, "static_limitations", case_id, violations);
+}
+
+fn validate_evidence_record_recommendation(
+    case_id: &str,
+    recommendation: Option<&Value>,
+    violations: &mut Vec<String>,
+) {
+    let Some(recommendation @ Value::Object(_)) = recommendation else {
+        violations.push(format!(
+            "evidence-record case {case_id} recommendation must be an object"
+        ));
+        return;
+    };
+    require_json_string_at(recommendation, "action", case_id, violations);
+    require_json_string_at(recommendation, "reason", case_id, violations);
+    require_json_array_at(recommendation, "candidate_values", case_id, violations);
+    for optional in [
+        "recommended_test",
+        "nearest_test_to_imitate",
+        "assertion_shape",
+        "verify_command",
+    ] {
+        if !matches!(
+            recommendation.get(optional),
+            Some(Value::Null | Value::Object(_) | Value::String(_))
+        ) {
+            violations.push(format!(
+                "evidence-record case {case_id} recommendation.{optional} must be present"
+            ));
+        }
+    }
+}
+
+fn validate_evidence_record_actionability(
+    case_id: &str,
+    actionability: Option<&Value>,
+    violations: &mut Vec<String>,
+) {
+    let Some(actionability @ Value::Object(_)) = actionability else {
+        violations.push(format!(
+            "evidence-record case {case_id} actionability must be an object"
+        ));
+        return;
+    };
+    let class = json_string_field(actionability, "class").unwrap_or_default();
+    if !matches!(
+        class.as_str(),
+        "actionable_focused_test"
+            | "actionable_assertion_upgrade"
+            | "actionable_related_test_extension"
+            | "needs_human_design"
+            | "static_limitation"
+            | "not_policy_relevant"
+    ) {
+        violations.push(format!(
+            "evidence-record case {case_id} actionability.class is unsupported: {class}"
+        ));
+    }
+    require_json_string_at(actionability, "reason", case_id, violations);
+    if !matches!(
+        actionability.get("has_concrete_guidance"),
+        Some(Value::Bool(_))
+    ) {
+        violations.push(format!(
+            "evidence-record case {case_id} actionability.has_concrete_guidance must be boolean"
+        ));
+    }
+    let Some(signals @ Value::Object(_)) = actionability.get("signals") else {
+        violations.push(format!(
+            "evidence-record case {case_id} actionability.signals must be an object"
+        ));
+        return;
+    };
+    for signal in [
+        "missing_discriminator",
+        "candidate_value",
+        "assertion_shape",
+        "related_test",
+        "recommended_test_target",
+        "verification_command",
+    ] {
+        if !matches!(signals.get(signal), Some(Value::Bool(_))) {
+            violations.push(format!(
+                "evidence-record case {case_id} actionability.signals.{signal} must be boolean"
+            ));
+        }
+    }
+}
+
+fn validate_evidence_record_calibration(
+    case_id: &str,
+    calibration: Option<&Value>,
+    violations: &mut Vec<String>,
+) {
+    let Some(calibration @ Value::Object(_)) = calibration else {
+        violations.push(format!(
+            "evidence-record case {case_id} calibration must be an object"
+        ));
+        return;
+    };
+    for field in ["availability", "confidence", "agreement"] {
+        require_json_string_at(calibration, field, case_id, violations);
+    }
+}
+
+fn require_json_string_at(value: &Value, field: &str, case_id: &str, violations: &mut Vec<String>) {
+    if json_string_field(value, field).is_none() {
+        violations.push(format!(
+            "evidence-record case {case_id} is missing string field {field}"
+        ));
+    }
+}
+
+fn require_json_usize_at(value: &Value, field: &str, case_id: &str, violations: &mut Vec<String>) {
+    if json_usize_field(value, field).is_none() {
+        violations.push(format!(
+            "evidence-record case {case_id} is missing numeric field {field}"
+        ));
+    }
+}
+
+fn require_json_array_at(value: &Value, field: &str, case_id: &str, violations: &mut Vec<String>) {
+    if !matches!(value.get(field), Some(Value::Array(_))) {
+        violations.push(format!(
+            "evidence-record case {case_id} is missing array field {field}"
+        ));
+    }
 }
 
 fn validate_assistant_loop_health_fixture_corpus(
@@ -11375,6 +11683,7 @@ fn check_output_contracts() -> Result<(), String> {
         domain.push('\n');
     }
     let app = read_text_lossy(Path::new("crates/ripr/src/app.rs"))?;
+    let evidence_record = read_text_lossy(Path::new("crates/ripr/src/output/evidence_record.rs"))?;
     let mut json_output = String::new();
     for path in [
         "crates/ripr/src/output/json/mod.rs",
@@ -11411,6 +11720,23 @@ fn check_output_contracts() -> Result<(), String> {
                     kind,
                     &mut violations,
                 );
+            }
+            "evidence_record_schema_version" => {
+                require_contract_value(
+                    "crates/ripr/src/output/evidence_record.rs",
+                    &evidence_record,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+                require_contract_value(
+                    "docs/OUTPUT_SCHEMA.md",
+                    &schema,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+                validate_evidence_record_contract_schema_version(value, &mut violations)?;
             }
             "context_version" => {
                 require_contract_value(
@@ -11468,6 +11794,49 @@ fn check_output_contracts() -> Result<(), String> {
         },
         &violations,
     )
+}
+
+fn validate_evidence_record_contract_schema_version(
+    expected_version: &str,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let path = Path::new(EVIDENCE_RECORD_CONTRACT_CORPUS);
+    if !path.exists() {
+        violations.push(format!(
+            "evidence-record schema contract is missing {}",
+            normalize_path(path)
+        ));
+        return Ok(());
+    }
+    let corpus = match read_json_value(path) {
+        Ok(value) => value,
+        Err(err) => {
+            violations.push(err);
+            return Ok(());
+        }
+    };
+    if json_string_field(&corpus, "schema_version").as_deref() != Some(expected_version) {
+        violations.push(format!(
+            "{} schema_version must match evidence_record_schema_version {expected_version}",
+            normalize_path(path)
+        ));
+    }
+    let Some(cases) = corpus.get("cases").and_then(Value::as_array) else {
+        violations.push(format!("{} is missing cases array", normalize_path(path)));
+        return Ok(());
+    };
+    for case in cases {
+        let case_id = json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string());
+        let Some(record) = case.get("record") else {
+            continue;
+        };
+        if json_string_field(record, "schema_version").as_deref() != Some(expected_version) {
+            violations.push(format!(
+                "evidence-record case {case_id} schema_version must match {expected_version}"
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn require_contract_value(
@@ -18327,6 +18696,82 @@ mod tests {
         assert!(report.contains("report is missing static evidence limit"));
         assert!(report.contains("Markdown must pin status advisory"));
         assert!(report.contains("Markdown repair queue must include repair_kind"));
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_record_contract_fixture_corpus_is_valid() -> Result<(), String> {
+        let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .ok_or_else(|| "xtask manifest must have workspace parent".to_string())?;
+        let corpus =
+            repo_root.join("fixtures/boundary_gap/expected/evidence-record-contract/corpus.json");
+        let mut violations = Vec::new();
+        super::validate_evidence_record_contract_fixture_corpus_at(&corpus, &mut violations)?;
+
+        assert_eq!(violations, Vec::<String>::new());
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_record_contract_fixture_guard_reports_missing_fields() -> Result<(), String> {
+        let root = temp_dir("evidence-record-contract-invalid");
+        let corpus = root.join("corpus.json");
+        write(
+            &corpus,
+            r#"{
+  "kind": "wrong",
+  "schema_version": "0.2",
+  "spec": "RIPR-SPEC-9999",
+  "cases": [
+    {
+      "id": "predicate_boundary_missing_equality",
+      "source": "fixture",
+      "record": {
+        "schema_version": "0.2",
+        "seam_id": "bad",
+        "canonical_gap_id": 12,
+        "owner": "owner",
+        "seam_kind": "predicate_boundary",
+        "grip_class": "weakly_gripped",
+        "headline_eligible": "yes",
+        "evidence_path": {
+          "reach": {"state": "yes"},
+          "activate": {},
+          "propagate": {},
+          "observe": {},
+          "discriminate": {}
+        },
+        "observed_values": [],
+        "missing_discriminators": [],
+        "related_tests": [],
+        "recommendation": {},
+        "actionability": {"class": "unsupported", "signals": {}},
+        "calibration": {},
+        "static_limitations": []
+      }
+    }
+  ]
+}
+"#,
+        );
+
+        let mut violations = Vec::new();
+        super::validate_evidence_record_contract_fixture_corpus_at(&corpus, &mut violations)?;
+        let report = violations.join("\n");
+
+        assert!(report.contains("kind must be evidence_record_contract_corpus"));
+        assert!(report.contains("schema_version must be 0.1"));
+        assert!(report.contains("spec must be RIPR-SPEC-0021"));
+        assert!(report.contains("record schema_version must be 0.1"));
+        assert!(report.contains("canonical_gap_id must be string or null"));
+        assert!(report.contains("headline_eligible must be boolean"));
+        assert!(report.contains("location must be an object"));
+        assert!(report.contains("is missing string field confidence"));
+        assert!(report.contains("recommendation"));
+        assert!(report.contains("actionability.class is unsupported"));
+        assert!(report.contains("calibration"));
+        assert!(report.contains("missing case exact_error_variant_gap"));
         Ok(())
     }
 

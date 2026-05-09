@@ -56,6 +56,11 @@ are scoped or reviewed.
   `canonical_gap_id` and match it before legacy selectors, while PR evidence
   ledger waiver, suppression, receipt, and top repair route records carry the
   same identity when supplied.
+- Added an evidence-record contract corpus that pins representative
+  `evidence_record` v0.1 shapes for predicate, error, exact-value, broad-error,
+  field, whole-object, snapshot, side-effect, opaque static-limitation,
+  canonical-gap, and calibration-placeholder cases, with xtask validation for
+  required cases, required fields, and schema-version drift.
 - Surfaced `assistant-loop-health.{json,md}` in generated GitHub CI when
   `test-oracle-assistant-proof.json` exists, uploads the reports with the
   normal `ripr-reports` packet, and appends a compact advisory health summary

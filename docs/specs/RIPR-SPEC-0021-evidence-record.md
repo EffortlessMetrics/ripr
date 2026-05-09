@@ -210,6 +210,8 @@ or mutate baselines.
 - PR evidence ledger copies canonical gap identity into identity-bearing
   waiver, suppression, receipt, and top repair route records when supplied.
 - Evidence record schema `0.1` is documented in `docs/OUTPUT_SCHEMA.md`.
+- `fixtures/boundary_gap/expected/evidence-record-contract/corpus.json` pins
+  representative v0.1 records for the supported contract matrix.
 - Unit tests pin identity, grip class, evidence path, recommendation,
   actionability, calibration placeholder, and static limitations.
 - No analyzer behavior changes.
@@ -224,6 +226,10 @@ Additional examples:
 - An activation-unknown seam carries `static_limitations[]` and does not claim
   concrete focused-test guidance.
 - An opaque seam carries a classification-level static limitation.
+- A supplied canonical gap identity remains a record field that baseline and PR
+  ledger consumers may carry without turning baseline state into analyzer truth.
+- Current v0.1 calibration records use `no_runtime_data`; runtime-supported
+  confidence labels are reserved for the later static/runtime calibration slice.
 
 ## Test Mapping
 
@@ -244,6 +250,8 @@ Additional examples:
 | Baseline diff matches moved lines by canonical gap identity | `baseline_delta_matches_by_canonical_gap_id_across_line_movement` |
 | Baseline update preserves refactored entries matched by canonical gap identity | `baseline_update_preserves_refactored_entry_matched_by_canonical_gap_id` |
 | PR evidence ledger carries canonical gap identity through joined records | `pr_evidence_ledger_joins_primary_artifacts` |
+| Fixture contract corpus pins representative record shapes | `evidence_record_contract_fixture_corpus_is_valid` |
+| Fixture contract checker reports record-shape drift | `evidence_record_contract_fixture_guard_reports_missing_fields` |
 
 ## Implementation Mapping
 
@@ -258,6 +266,7 @@ Additional examples:
 | Baseline ledger canonical identity consumer | `crates/ripr/src/output/baseline.rs`, `crates/ripr/src/output/baseline_delta.rs`, `crates/ripr/src/output/baseline_update.rs` |
 | PR evidence ledger canonical identity consumer | `crates/ripr/src/output/pr_evidence_ledger.rs` |
 | Output module registration | `crates/ripr/src/output/mod.rs` |
+| Evidence record fixture contract | `fixtures/boundary_gap/expected/evidence-record-contract/corpus.json`, `xtask/src/main.rs` |
 | Schema reference | `docs/OUTPUT_SCHEMA.md` |
 | Capability tracking | `docs/CAPABILITY_MATRIX.md`, `metrics/capabilities.toml` |
 | Traceability | `.ripr/traceability.toml` |

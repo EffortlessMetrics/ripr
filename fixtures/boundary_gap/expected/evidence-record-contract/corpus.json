@@ -1,0 +1,377 @@
+{
+  "kind": "evidence_record_contract_corpus",
+  "schema_version": "0.1",
+  "spec": "RIPR-SPEC-0021",
+  "cases": [
+    {
+      "id": "predicate_boundary_missing_equality",
+      "description": "Weakly gripped predicate boundary with a missing equality discriminator and concrete repair guidance.",
+      "source": "fixtures/boundary_gap",
+      "record": {
+        "schema_version": "0.1",
+        "seam_id": "contract-predicate-boundary",
+        "canonical_gap_id": null,
+        "owner": "src/pricing.rs::discounted_total",
+        "location": {"file": "src/pricing.rs", "line": 88},
+        "seam_kind": "predicate_boundary",
+        "grip_class": "weakly_gripped",
+        "headline_eligible": true,
+        "evidence_path": {
+          "reach": {"state": "yes", "confidence": "medium", "summary": "related tests call the owner"},
+          "activate": {"state": "yes", "confidence": "medium", "summary": "above and below threshold values are visible"},
+          "propagate": {"state": "yes", "confidence": "low", "summary": "changed predicate flows to a return value"},
+          "observe": {"state": "yes", "confidence": "medium", "summary": "related tests assert returned totals"},
+          "discriminate": {"state": "weak", "confidence": "medium", "summary": "equality boundary is not asserted"}
+        },
+        "observed_values": [
+          {"value": "50", "line": 12, "text": "assert_eq!(discounted_total(50, 100), 50);", "context": "function_argument"},
+          {"value": "10_000", "line": 18, "text": "assert_eq!(discounted_total(10_000, 100), 9_990);", "context": "function_argument"}
+        ],
+        "missing_discriminators": [
+          {
+            "value": "discount_threshold (equality boundary)",
+            "reason": "observed values do not include the equality-boundary case for this predicate",
+            "flow_sink": {"kind": "return_value", "text": "return discounted_total", "line": 88, "owner": null}
+          }
+        ],
+        "related_tests_total": 2,
+        "related_tests": [
+          {"name": "below_threshold_has_no_discount", "file": "tests/pricing.rs", "line": 10, "oracle_kind": "exact_value", "oracle_strength": "strong", "evidence_summary": "exact value assertion", "relation_reason": "direct_owner_call", "relation_confidence": "high"}
+        ],
+        "recommendation": {
+          "action": "write_targeted_test",
+          "reason": "extend the nearest related test with the missing discriminator",
+          "recommended_test": {"name": "discounted_total_boundary_discriminator", "file": "tests/pricing.rs", "reason": "place the new targeted test next to the nearest strong related test"},
+          "nearest_test_to_imitate": {"name": "below_threshold_has_no_discount", "file": "tests/pricing.rs", "line": 10, "oracle_kind": "exact_value", "oracle_strength": "strong", "evidence_summary": "exact value assertion", "relation_reason": "direct_owner_call", "relation_confidence": "high"},
+          "candidate_values": [{"value": "discount_threshold (equality boundary)", "reason": "observed values do not include the equality-boundary case for this predicate"}],
+          "assertion_shape": {"kind": "exact_return_value", "example": "assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)"},
+          "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json"
+        },
+        "actionability": {
+          "class": "actionable_related_test_extension",
+          "reason": "extend the nearest related test with the missing discriminator",
+          "has_concrete_guidance": true,
+          "signals": {"missing_discriminator": true, "candidate_value": true, "assertion_shape": true, "related_test": true, "recommended_test_target": true, "verification_command": true}
+        },
+        "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+        "static_limitations": []
+      }
+    },
+    {
+      "id": "exact_error_variant_gap",
+      "description": "Weak error-path evidence where the exact error variant is the missing discriminator.",
+      "source": "fixtures/weak_error_oracle",
+      "record": {
+        "schema_version": "0.1",
+        "seam_id": "contract-error-variant-gap",
+        "canonical_gap_id": null,
+        "owner": "src/auth.rs::authenticate",
+        "location": {"file": "src/auth.rs", "line": 24},
+        "seam_kind": "error_variant",
+        "grip_class": "weakly_gripped",
+        "headline_eligible": true,
+        "evidence_path": {
+          "reach": {"state": "yes", "confidence": "medium", "summary": "related test calls the owner"},
+          "activate": {"state": "yes", "confidence": "medium", "summary": "empty token input is visible"},
+          "propagate": {"state": "yes", "confidence": "medium", "summary": "changed error variant returns through Result"},
+          "observe": {"state": "weak", "confidence": "medium", "summary": "test observes that some error occurred"},
+          "discriminate": {"state": "weak", "confidence": "medium", "summary": "exact error variant is not asserted"}
+        },
+        "observed_values": [{"value": "\"\"", "line": 7, "text": "assert!(authenticate(\"\").is_err());", "context": "function_argument"}],
+        "missing_discriminators": [{"value": "AuthError::RevokedToken", "reason": "broad error assertion does not name the exact error variant", "flow_sink": {"kind": "error_variant", "text": "Err(AuthError::RevokedToken)", "line": 24, "owner": null}}],
+        "related_tests_total": 1,
+        "related_tests": [{"name": "empty_token_is_error", "file": "tests/auth.rs", "line": 7, "oracle_kind": "broad_error", "oracle_strength": "weak", "evidence_summary": "broad is_err assertion", "relation_reason": "direct_owner_call", "relation_confidence": "high"}],
+        "recommendation": {
+          "action": "write_targeted_test",
+          "reason": "upgrade the related broad error assertion to the exact variant",
+          "recommended_test": {"name": "empty_token_returns_revoked_token", "file": "tests/auth.rs", "reason": "place the exact variant assertion next to the broad error test"},
+          "nearest_test_to_imitate": {"name": "empty_token_is_error", "file": "tests/auth.rs", "line": 7, "oracle_kind": "broad_error", "oracle_strength": "weak", "evidence_summary": "broad is_err assertion", "relation_reason": "direct_owner_call", "relation_confidence": "high"},
+          "candidate_values": [{"value": "AuthError::RevokedToken", "reason": "exact error variant discriminator is missing"}],
+          "assertion_shape": {"kind": "exact_error_variant", "example": "assert!(matches!(authenticate(\"\"), Err(AuthError::RevokedToken)))"},
+          "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json"
+        },
+        "actionability": {
+          "class": "actionable_assertion_upgrade",
+          "reason": "upgrade the broad error assertion to an exact error variant",
+          "has_concrete_guidance": true,
+          "signals": {"missing_discriminator": true, "candidate_value": true, "assertion_shape": true, "related_test": true, "recommended_test_target": true, "verification_command": true}
+        },
+        "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+        "static_limitations": []
+      }
+    },
+    {
+      "id": "strong_exact_value_oracle",
+      "description": "Strong return-value evidence with no missing discriminator.",
+      "source": "fixtures/strong_boundary_oracle",
+      "record": {
+        "schema_version": "0.1",
+        "seam_id": "contract-strong-exact-value",
+        "canonical_gap_id": null,
+        "owner": "src/pricing.rs::bulk_discount",
+        "location": {"file": "src/pricing.rs", "line": 40},
+        "seam_kind": "predicate_boundary",
+        "grip_class": "strongly_gripped",
+        "headline_eligible": true,
+        "evidence_path": {
+          "reach": {"state": "yes", "confidence": "high", "summary": "related tests call the owner"},
+          "activate": {"state": "yes", "confidence": "high", "summary": "below, equality, and above values are visible"},
+          "propagate": {"state": "yes", "confidence": "medium", "summary": "changed predicate flows to return value"},
+          "observe": {"state": "yes", "confidence": "high", "summary": "related tests assert exact returned values"},
+          "discriminate": {"state": "yes", "confidence": "high", "summary": "exact values cover the boundary discriminator"}
+        },
+        "observed_values": [{"value": "10", "line": 42, "text": "assert_eq!(bulk_discount(10), 5);", "context": "function_argument"}],
+        "missing_discriminators": [],
+        "related_tests_total": 1,
+        "related_tests": [{"name": "bulk_discount_boundary", "file": "tests/pricing.rs", "line": 42, "oracle_kind": "exact_value", "oracle_strength": "strong", "evidence_summary": "exact value assertion", "relation_reason": "direct_owner_call", "relation_confidence": "high"}],
+        "recommendation": {"action": "none", "reason": "seam already has strong static grip evidence", "recommended_test": null, "nearest_test_to_imitate": null, "candidate_values": [], "assertion_shape": null, "verify_command": null},
+        "actionability": {"class": "not_policy_relevant", "reason": "seam is already gripped under current static policy", "has_concrete_guidance": false, "signals": {"missing_discriminator": false, "candidate_value": false, "assertion_shape": false, "related_test": true, "recommended_test_target": false, "verification_command": false}},
+        "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+        "static_limitations": []
+      }
+    },
+    {
+      "id": "broad_is_err_oracle",
+      "description": "Broad is_err observation remains weak because it does not discriminate the variant.",
+      "source": "fixtures/weak_error_oracle",
+      "record": {
+        "schema_version": "0.1",
+        "seam_id": "contract-broad-is-err",
+        "canonical_gap_id": null,
+        "owner": "src/auth.rs::authenticate",
+        "location": {"file": "src/auth.rs", "line": 26},
+        "seam_kind": "error_variant",
+        "grip_class": "weakly_gripped",
+        "headline_eligible": true,
+        "evidence_path": {
+          "reach": {"state": "yes", "confidence": "medium", "summary": "related test calls the owner"},
+          "activate": {"state": "yes", "confidence": "medium", "summary": "error path input is visible"},
+          "propagate": {"state": "yes", "confidence": "medium", "summary": "error value returns through Result"},
+          "observe": {"state": "weak", "confidence": "medium", "summary": "broad is_err observes only that an error occurred"},
+          "discriminate": {"state": "weak", "confidence": "medium", "summary": "variant discriminator is absent"}
+        },
+        "observed_values": [{"value": "\"\"", "line": 9, "text": "assert!(authenticate(\"\").is_err());", "context": "function_argument"}],
+        "missing_discriminators": [{"value": "exact error variant", "reason": "broad is_err does not distinguish variants", "flow_sink": null}],
+        "related_tests_total": 1,
+        "related_tests": [{"name": "empty_token_is_error", "file": "tests/auth.rs", "line": 9, "oracle_kind": "broad_error", "oracle_strength": "weak", "evidence_summary": "broad is_err assertion", "relation_reason": "direct_owner_call", "relation_confidence": "high"}],
+        "recommendation": {"action": "write_targeted_test", "reason": "replace broad error observation with exact variant discrimination", "recommended_test": {"name": "empty_token_returns_exact_variant", "file": "tests/auth.rs", "reason": "extend the existing error-path test"}, "nearest_test_to_imitate": {"name": "empty_token_is_error", "file": "tests/auth.rs", "line": 9, "oracle_kind": "broad_error", "oracle_strength": "weak", "evidence_summary": "broad is_err assertion", "relation_reason": "direct_owner_call", "relation_confidence": "high"}, "candidate_values": [{"value": "exact error variant", "reason": "the current assertion only observes some error"}], "assertion_shape": {"kind": "exact_error_variant", "example": "assert!(matches!(authenticate(\"\"), Err(AuthError::RevokedToken)))"}, "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json"},
+        "actionability": {"class": "actionable_assertion_upgrade", "reason": "broad error assertion can be upgraded", "has_concrete_guidance": true, "signals": {"missing_discriminator": true, "candidate_value": true, "assertion_shape": true, "related_test": true, "recommended_test_target": true, "verification_command": true}},
+        "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+        "static_limitations": []
+      }
+    },
+    {
+      "id": "field_output_assertion",
+      "description": "Field-construction seam observed through an exact field assertion.",
+      "source": "synthetic evidence_record v0.1 contract",
+      "record": {
+        "schema_version": "0.1",
+        "seam_id": "contract-field-assertion",
+        "canonical_gap_id": null,
+        "owner": "src/invoice.rs::build_invoice",
+        "location": {"file": "src/invoice.rs", "line": 31},
+        "seam_kind": "field_construction",
+        "grip_class": "strongly_gripped",
+        "headline_eligible": true,
+        "evidence_path": {
+          "reach": {"state": "yes", "confidence": "medium", "summary": "related test calls the constructor"},
+          "activate": {"state": "yes", "confidence": "medium", "summary": "field-producing input is visible"},
+          "propagate": {"state": "yes", "confidence": "medium", "summary": "changed assignment flows to output field"},
+          "observe": {"state": "yes", "confidence": "high", "summary": "test asserts the returned field"},
+          "discriminate": {"state": "yes", "confidence": "high", "summary": "field assertion names the changed output"}
+        },
+        "observed_values": [{"value": "invoice.total", "line": 14, "text": "assert_eq!(invoice.total, 42);", "context": "assertion_argument"}],
+        "missing_discriminators": [],
+        "related_tests_total": 1,
+        "related_tests": [{"name": "build_invoice_sets_total", "file": "tests/invoice.rs", "line": 14, "oracle_kind": "exact_value", "oracle_strength": "strong", "evidence_summary": "field assertion", "relation_reason": "direct_owner_call", "relation_confidence": "high"}],
+        "recommendation": {"action": "none", "reason": "field output is already directly asserted", "recommended_test": null, "nearest_test_to_imitate": null, "candidate_values": [], "assertion_shape": null, "verify_command": null},
+        "actionability": {"class": "not_policy_relevant", "reason": "field output is already gripped", "has_concrete_guidance": false, "signals": {"missing_discriminator": false, "candidate_value": false, "assertion_shape": false, "related_test": true, "recommended_test_target": false, "verification_command": false}},
+        "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+        "static_limitations": []
+      }
+    },
+    {
+      "id": "whole_object_equality",
+      "description": "Whole-object equality oracle over a returned struct.",
+      "source": "synthetic evidence_record v0.1 contract",
+      "record": {
+        "schema_version": "0.1",
+        "seam_id": "contract-whole-object",
+        "canonical_gap_id": null,
+        "owner": "src/invoice.rs::summarize_invoice",
+        "location": {"file": "src/invoice.rs", "line": 52},
+        "seam_kind": "return_value",
+        "grip_class": "strongly_gripped",
+        "headline_eligible": true,
+        "evidence_path": {
+          "reach": {"state": "yes", "confidence": "medium", "summary": "related test calls the owner"},
+          "activate": {"state": "yes", "confidence": "medium", "summary": "summary input is visible"},
+          "propagate": {"state": "yes", "confidence": "medium", "summary": "changed expression returns the whole object"},
+          "observe": {"state": "yes", "confidence": "high", "summary": "whole object equality observes all returned fields"},
+          "discriminate": {"state": "yes", "confidence": "high", "summary": "expected struct literal names the changed behavior"}
+        },
+        "observed_values": [{"value": "InvoiceSummary { total: 42 }", "line": 22, "text": "assert_eq!(summary, InvoiceSummary { total: 42 });", "context": "assertion_argument"}],
+        "missing_discriminators": [],
+        "related_tests_total": 1,
+        "related_tests": [{"name": "summary_matches_expected_object", "file": "tests/invoice.rs", "line": 22, "oracle_kind": "whole_object_equality", "oracle_strength": "strong", "evidence_summary": "whole-object equality", "relation_reason": "direct_owner_call", "relation_confidence": "high"}],
+        "recommendation": {"action": "none", "reason": "whole-object equality already observes the returned value", "recommended_test": null, "nearest_test_to_imitate": null, "candidate_values": [], "assertion_shape": null, "verify_command": null},
+        "actionability": {"class": "not_policy_relevant", "reason": "whole-object equality is already visible", "has_concrete_guidance": false, "signals": {"missing_discriminator": false, "candidate_value": false, "assertion_shape": false, "related_test": true, "recommended_test_target": false, "verification_command": false}},
+        "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+        "static_limitations": []
+      }
+    },
+    {
+      "id": "snapshot_oracle",
+      "description": "Snapshot oracle evidence remains visible with medium static confidence.",
+      "source": "fixtures/snapshot_oracle",
+      "record": {
+        "schema_version": "0.1",
+        "seam_id": "contract-snapshot-oracle",
+        "canonical_gap_id": null,
+        "owner": "src/render.rs::render_status",
+        "location": {"file": "src/render.rs", "line": 19},
+        "seam_kind": "return_value",
+        "grip_class": "weakly_gripped",
+        "headline_eligible": true,
+        "evidence_path": {
+          "reach": {"state": "yes", "confidence": "medium", "summary": "snapshot test calls the renderer"},
+          "activate": {"state": "yes", "confidence": "medium", "summary": "status code input is visible"},
+          "propagate": {"state": "yes", "confidence": "medium", "summary": "changed render branch returns text"},
+          "observe": {"state": "yes", "confidence": "medium", "summary": "snapshot assertion observes rendered output"},
+          "discriminate": {"state": "weak", "confidence": "medium", "summary": "snapshot breadth may hide exact discriminator intent"}
+        },
+        "observed_values": [{"value": "200", "line": 11, "text": "assert_snapshot!(render_status(200));", "context": "function_argument"}],
+        "missing_discriminators": [{"value": "exact status boundary", "reason": "snapshot oracle does not explicitly name the status boundary", "flow_sink": null}],
+        "related_tests_total": 1,
+        "related_tests": [{"name": "renders_success_snapshot", "file": "tests/render.rs", "line": 11, "oracle_kind": "snapshot", "oracle_strength": "medium", "evidence_summary": "snapshot oracle", "relation_reason": "direct_owner_call", "relation_confidence": "medium"}],
+        "recommendation": {"action": "write_targeted_test", "reason": "add an exact assertion for the boundary represented by the snapshot", "recommended_test": {"name": "render_status_boundary_exact", "file": "tests/render.rs", "reason": "place exact assertion near the snapshot"}, "nearest_test_to_imitate": {"name": "renders_success_snapshot", "file": "tests/render.rs", "line": 11, "oracle_kind": "snapshot", "oracle_strength": "medium", "evidence_summary": "snapshot oracle", "relation_reason": "direct_owner_call", "relation_confidence": "medium"}, "candidate_values": [{"value": "exact status boundary", "reason": "snapshot should be paired with a narrower discriminator"}], "assertion_shape": {"kind": "exact_return_value", "example": "assert_eq!(render_status(299), \"ok\")"}, "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json"},
+        "actionability": {"class": "actionable_related_test_extension", "reason": "snapshot can be extended with a focused exact assertion", "has_concrete_guidance": true, "signals": {"missing_discriminator": true, "candidate_value": true, "assertion_shape": true, "related_test": true, "recommended_test_target": true, "verification_command": true}},
+        "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+        "static_limitations": []
+      }
+    },
+    {
+      "id": "side_effect_observer",
+      "description": "Side-effect seam observed through a mock expectation style oracle.",
+      "source": "synthetic evidence_record v0.1 contract",
+      "record": {
+        "schema_version": "0.1",
+        "seam_id": "contract-side-effect",
+        "canonical_gap_id": null,
+        "owner": "src/events.rs::publish_discount",
+        "location": {"file": "src/events.rs", "line": 63},
+        "seam_kind": "side_effect",
+        "grip_class": "strongly_gripped",
+        "headline_eligible": true,
+        "evidence_path": {
+          "reach": {"state": "yes", "confidence": "medium", "summary": "related test calls the side-effect owner"},
+          "activate": {"state": "yes", "confidence": "medium", "summary": "event-producing input is visible"},
+          "propagate": {"state": "yes", "confidence": "medium", "summary": "changed call reaches an event sink"},
+          "observe": {"state": "yes", "confidence": "high", "summary": "mock expectation observes the emitted event"},
+          "discriminate": {"state": "yes", "confidence": "high", "summary": "expected event name is asserted"}
+        },
+        "observed_values": [{"value": "DiscountPublished", "line": 31, "text": "events.expect_published(Event::DiscountPublished);", "context": "assertion_argument"}],
+        "missing_discriminators": [],
+        "related_tests_total": 1,
+        "related_tests": [{"name": "publishes_discount_event", "file": "tests/events.rs", "line": 31, "oracle_kind": "mock_expectation", "oracle_strength": "strong", "evidence_summary": "mock expectation", "relation_reason": "direct_owner_call", "relation_confidence": "high"}],
+        "recommendation": {"action": "none", "reason": "side effect is already observed by a focused expectation", "recommended_test": null, "nearest_test_to_imitate": null, "candidate_values": [], "assertion_shape": null, "verify_command": null},
+        "actionability": {"class": "not_policy_relevant", "reason": "side-effect observer is already visible", "has_concrete_guidance": false, "signals": {"missing_discriminator": false, "candidate_value": false, "assertion_shape": false, "related_test": true, "recommended_test_target": false, "verification_command": false}},
+        "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+        "static_limitations": []
+      }
+    },
+    {
+      "id": "opaque_helper_static_limitation",
+      "description": "Opaque helper or builder path stays visible as a static limitation rather than a focused-test instruction.",
+      "source": "fixtures/opaque_fixture_builder",
+      "record": {
+        "schema_version": "0.1",
+        "seam_id": "contract-opaque-helper",
+        "canonical_gap_id": null,
+        "owner": "src/pricing.rs::discounted_total",
+        "location": {"file": "src/pricing.rs", "line": 73},
+        "seam_kind": "predicate_boundary",
+        "grip_class": "opaque",
+        "headline_eligible": true,
+        "evidence_path": {
+          "reach": {"state": "yes", "confidence": "medium", "summary": "related test calls the owner through a helper"},
+          "activate": {"state": "opaque", "confidence": "low", "summary": "builder hides the boundary value"},
+          "propagate": {"state": "yes", "confidence": "low", "summary": "changed predicate appears to flow to a return value"},
+          "observe": {"state": "yes", "confidence": "medium", "summary": "related assertion observes the result"},
+          "discriminate": {"state": "unknown", "confidence": "low", "summary": "hidden builder value prevents discriminator check"}
+        },
+        "observed_values": [],
+        "missing_discriminators": [{"value": "builder-supplied boundary value", "reason": "fixture builder hides the activation value", "flow_sink": null}],
+        "related_tests_total": 1,
+        "related_tests": [{"name": "builder_discount_case", "file": "tests/pricing.rs", "line": 12, "oracle_kind": "exact_value", "oracle_strength": "strong", "evidence_summary": "exact assertion over opaque builder value", "relation_reason": "direct_owner_call", "relation_confidence": "medium"}],
+        "recommendation": {"action": "inspect_static_limitation", "reason": "static evidence is opaque for this seam", "recommended_test": null, "nearest_test_to_imitate": null, "candidate_values": [], "assertion_shape": null, "verify_command": null},
+        "actionability": {"class": "static_limitation", "reason": "static evidence is opaque or unknown for this seam", "has_concrete_guidance": false, "signals": {"missing_discriminator": true, "candidate_value": false, "assertion_shape": false, "related_test": true, "recommended_test_target": false, "verification_command": false}},
+        "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+        "static_limitations": [
+          {"stage": "activate", "state": "opaque", "reason": "builder hides the boundary value"},
+          {"stage": "classification", "state": "opaque", "reason": "opaque seam classification requires analyzer work or documented limitation"}
+        ]
+      }
+    },
+    {
+      "id": "baseline_known_canonical_gap_identity",
+      "description": "Record shape supports a supplied canonical gap identity that baseline ledgers can carry.",
+      "source": "baseline delta canonical identity consumer",
+      "record": {
+        "schema_version": "0.1",
+        "seam_id": "contract-baseline-known",
+        "canonical_gap_id": "pricing::discounted_total::predicate_boundary::discount_threshold_equality",
+        "owner": "src/pricing.rs::discounted_total",
+        "location": {"file": "src/pricing.rs", "line": 88},
+        "seam_kind": "predicate_boundary",
+        "grip_class": "weakly_gripped",
+        "headline_eligible": true,
+        "evidence_path": {
+          "reach": {"state": "yes", "confidence": "medium", "summary": "baseline-known seam still has related tests"},
+          "activate": {"state": "yes", "confidence": "medium", "summary": "non-boundary values are visible"},
+          "propagate": {"state": "yes", "confidence": "low", "summary": "changed predicate flows to return value"},
+          "observe": {"state": "yes", "confidence": "medium", "summary": "related assertions observe returned total"},
+          "discriminate": {"state": "weak", "confidence": "medium", "summary": "canonical equality gap remains open"}
+        },
+        "observed_values": [{"value": "50", "line": 12, "text": "assert_eq!(discounted_total(50, 100), 50);", "context": "function_argument"}],
+        "missing_discriminators": [{"value": "discount_threshold (equality boundary)", "reason": "canonical baseline-known discriminator remains unresolved", "flow_sink": null}],
+        "related_tests_total": 1,
+        "related_tests": [{"name": "below_threshold_has_no_discount", "file": "tests/pricing.rs", "line": 12, "oracle_kind": "exact_value", "oracle_strength": "strong", "evidence_summary": "exact value assertion", "relation_reason": "direct_owner_call", "relation_confidence": "high"}],
+        "recommendation": {"action": "write_targeted_test", "reason": "baseline-known debt still has a focused repair route", "recommended_test": {"name": "discounted_total_boundary_discriminator", "file": "tests/pricing.rs", "reason": "use the canonical gap identity to keep the baseline ledger stable"}, "nearest_test_to_imitate": {"name": "below_threshold_has_no_discount", "file": "tests/pricing.rs", "line": 12, "oracle_kind": "exact_value", "oracle_strength": "strong", "evidence_summary": "exact value assertion", "relation_reason": "direct_owner_call", "relation_confidence": "high"}, "candidate_values": [{"value": "discount_threshold (equality boundary)", "reason": "canonical gap still lacks equality-boundary evidence"}], "assertion_shape": {"kind": "exact_return_value", "example": "assert_eq!(discounted_total(/* discount_threshold (equality boundary) */), /* expected */)"}, "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json"},
+        "actionability": {"class": "actionable_related_test_extension", "reason": "baseline-known debt still has concrete guidance", "has_concrete_guidance": true, "signals": {"missing_discriminator": true, "candidate_value": true, "assertion_shape": true, "related_test": true, "recommended_test_target": true, "verification_command": true}},
+        "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+        "static_limitations": []
+      }
+    },
+    {
+      "id": "calibration_placeholder_no_runtime_data",
+      "description": "Current v0.1 record carries explicit no-runtime-data calibration context without claiming runtime support.",
+      "source": "RIPR-SPEC-0021 calibration placeholder",
+      "record": {
+        "schema_version": "0.1",
+        "seam_id": "contract-calibration-placeholder",
+        "canonical_gap_id": null,
+        "owner": "src/pricing.rs::regional_discount",
+        "location": {"file": "src/pricing.rs", "line": 61},
+        "seam_kind": "predicate_boundary",
+        "grip_class": "ungripped",
+        "headline_eligible": true,
+        "evidence_path": {
+          "reach": {"state": "no", "confidence": "medium", "summary": "no related test reaches the owner"},
+          "activate": {"state": "no", "confidence": "medium", "summary": "branch value is not visible in tests"},
+          "propagate": {"state": "unknown", "confidence": "low", "summary": "propagation is unknown without a reaching test"},
+          "observe": {"state": "no", "confidence": "medium", "summary": "no assertion observes this owner"},
+          "discriminate": {"state": "no", "confidence": "medium", "summary": "no discriminator is visible"}
+        },
+        "observed_values": [],
+        "missing_discriminators": [{"value": "Region::West", "reason": "no related test activates this branch", "flow_sink": null}],
+        "related_tests_total": 0,
+        "related_tests": [],
+        "recommendation": {"action": "write_targeted_test", "reason": "add a focused test that reaches and observes this branch", "recommended_test": {"name": "regional_discount_west_branch", "file": "tests/pricing.rs", "reason": "create the first focused test for the ungripped branch"}, "nearest_test_to_imitate": null, "candidate_values": [{"value": "Region::West", "reason": "no related test activates this branch"}], "assertion_shape": {"kind": "exact_return_value", "example": "assert_eq!(regional_discount(Region::West), /* expected */)"}, "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json"},
+        "actionability": {"class": "actionable_focused_test", "reason": "ungripped seam has a concrete missing discriminator and target value", "has_concrete_guidance": true, "signals": {"missing_discriminator": true, "candidate_value": true, "assertion_shape": true, "related_test": false, "recommended_test_target": true, "verification_command": true}},
+        "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+        "static_limitations": [{"stage": "propagate", "state": "unknown", "reason": "propagation is unknown until a related test reaches the owner"}]
+      }
+    }
+  ]
+}
