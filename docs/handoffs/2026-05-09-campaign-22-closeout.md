@@ -1,8 +1,8 @@
 # Handoff: Campaign 22 Closeout
 
 Date: 2026-05-09
-Branch / PR: `campaign-first-useful-action-closeout` / pending at authoring
-Latest merged PR: #647 `dogfood: add first useful action receipts` (commit `4fdb65a`)
+Branch / PR: `campaign-first-useful-action-closeout` / #648
+Latest merged PR: #648 `campaign: close first useful action` (commit `31631f1`)
 
 ## Current Work Item
 
@@ -81,9 +81,8 @@ static evidence movement, recurring warnings, and bounded repair queues. That
 should be opened as a separate campaign rather than folded into First Useful
 Action closeout.
 
-Open PR #644, `lsp: harden first useful action status projection`, remains a
-separate dirty LSP follow-up branch and should be reconciled independently from
-Campaign 22 closeout.
+PR #644, `lsp: harden first useful action status projection`, merged as a
+separate LSP follow-up and remains outside Campaign 22 closeout scope.
 
 ## What Not To Do
 

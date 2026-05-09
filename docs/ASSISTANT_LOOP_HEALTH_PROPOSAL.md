@@ -5,7 +5,7 @@ Campaign 21 made one assistant-directed test loop reviewable with
 whether those proof packets are complete, useful, and moving static evidence
 over time.
 
-This is a future-lane proposal. It does not replace the active Campaign 22,
+This is a future-lane proposal. It does not replace the completed Campaign 22,
 First Useful Action, and it must not change `.ripr/goals/active.toml` until the
 project explicitly opens this lane.
 
