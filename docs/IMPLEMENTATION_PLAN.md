@@ -131,7 +131,9 @@ RIPR-SPEC-0018 now pins the contract, and `ripr pr-ledger record` writes the
 read-only JSON/Markdown ledger over existing artifacts. Generated CI now runs
 the ledger on pull requests, uploads `pr-evidence-ledger.{json,md}`, and appends
 the advisory PR movement card while keeping gate decisions as the pass/fail
-authority. The next ready item is `report/coverage-grip-frontier`.
+authority. `ripr coverage-grip frontier` now writes advisory JSON/Markdown that
+keeps execution coverage movement and RIPR behavioral grip movement visible as
+separate axes. The next ready item is `docs/pr-evidence-ledger-workflow`.
 
 ## PR 0: `planning-and-tracking-docs`
 

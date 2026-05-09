@@ -130,6 +130,16 @@ struct PrEvidenceLedgerOptions {
     out_md: PathBuf,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct CoverageGripFrontierOptions {
+    coverage: Option<PathBuf>,
+    ledger: Option<PathBuf>,
+    baseline_delta: Option<PathBuf>,
+    zero_status: Option<PathBuf>,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum OutcomeFormat {
     Markdown,
@@ -2012,6 +2022,22 @@ pub(super) fn pr_ledger(args: &[String]) -> Result<(), String> {
     pr_evidence_ledger_record(rest)
 }
 
+pub(super) fn coverage_grip(args: &[String]) -> Result<(), String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        help::print_coverage_grip_help();
+        return Ok(());
+    }
+    let Some((subcommand, rest)) = args.split_first() else {
+        return Err("coverage-grip requires subcommand `frontier`".to_string());
+    };
+    if subcommand != "frontier" {
+        return Err(format!(
+            "unknown coverage-grip subcommand {subcommand:?}; expected `frontier`"
+        ));
+    }
+    coverage_grip_frontier(rest)
+}
+
 fn ripr_zero_status(args: &[String]) -> Result<(), String> {
     let options = parse_ripr_zero_status_options(args)?;
     let baseline_path = options
@@ -2151,6 +2177,60 @@ fn pr_evidence_ledger_record(args: &[String]) -> Result<(), String> {
     let report = output::pr_evidence_ledger::build_pr_evidence_ledger_report(input);
     let rendered_json = output::pr_evidence_ledger::render_pr_evidence_ledger_json(&report)?;
     let rendered_md = output::pr_evidence_ledger::render_pr_evidence_ledger_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    Ok(())
+}
+
+fn coverage_grip_frontier(args: &[String]) -> Result<(), String> {
+    let options = parse_coverage_grip_frontier_options(args)?;
+    let coverage_path = options
+        .coverage
+        .as_ref()
+        .map(|path| output::coverage_grip_frontier::display_path(path));
+    let ledger_path = options
+        .ledger
+        .as_ref()
+        .map(|path| output::coverage_grip_frontier::display_path(path));
+    let baseline_delta_path = options
+        .baseline_delta
+        .as_ref()
+        .map(|path| output::coverage_grip_frontier::display_path(path));
+    let zero_status_path = options
+        .zero_status
+        .as_ref()
+        .map(|path| output::coverage_grip_frontier::display_path(path));
+    let input = output::coverage_grip_frontier::CoverageGripFrontierInput {
+        root: ".".to_string(),
+        generated_at: baseline_created_at()?,
+        coverage_path,
+        ledger_path,
+        baseline_delta_path,
+        zero_status_path,
+        coverage_json: options
+            .coverage
+            .as_ref()
+            .map(|path| read_optional_text_for_report("coverage", path)),
+        ledger_json: options
+            .ledger
+            .as_ref()
+            .map(|path| read_optional_text_for_report("PR evidence ledger", path)),
+        baseline_delta_json: options
+            .baseline_delta
+            .as_ref()
+            .map(|path| read_optional_text_for_report("baseline debt delta", path)),
+        zero_status_json: options
+            .zero_status
+            .as_ref()
+            .map(|path| read_optional_text_for_report("RIPR Zero status", path)),
+    };
+    let report = output::coverage_grip_frontier::build_coverage_grip_frontier_report(input);
+    let rendered_json =
+        output::coverage_grip_frontier::render_coverage_grip_frontier_json(&report)?;
+    let rendered_md =
+        output::coverage_grip_frontier::render_coverage_grip_frontier_markdown(&report);
     write_text_file(&options.out, &rendered_json)?;
     write_text_file(&options.out_md, &rendered_md)?;
     println!("Wrote {}", options.out.display());
@@ -3075,6 +3155,86 @@ fn parse_pr_evidence_ledger_options(args: &[String]) -> Result<PrEvidenceLedgerO
         agent_receipt,
         coverage,
         history,
+        out,
+        out_md,
+    })
+}
+
+fn parse_coverage_grip_frontier_options(
+    args: &[String],
+) -> Result<CoverageGripFrontierOptions, String> {
+    let mut coverage = None;
+    let mut ledger = None;
+    let mut baseline_delta = None;
+    let mut zero_status = None;
+    let mut out = PathBuf::from(output::coverage_grip_frontier::DEFAULT_COVERAGE_GRIP_FRONTIER_OUT);
+    let mut out_md =
+        PathBuf::from(output::coverage_grip_frontier::DEFAULT_COVERAGE_GRIP_FRONTIER_MD_OUT);
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--coverage" => {
+                i += 1;
+                coverage = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--coverage",
+                    "coverage-grip frontier",
+                )?);
+            }
+            "--ledger" => {
+                i += 1;
+                ledger = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--ledger",
+                    "coverage-grip frontier",
+                )?);
+            }
+            "--baseline-delta" => {
+                i += 1;
+                baseline_delta = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--baseline-delta",
+                    "coverage-grip frontier",
+                )?);
+            }
+            "--zero-status" => {
+                i += 1;
+                zero_status = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--zero-status",
+                    "coverage-grip frontier",
+                )?);
+            }
+            "--out" => {
+                i += 1;
+                out = non_empty_path_arg(args, i, "--out", "coverage-grip frontier")?;
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = non_empty_path_arg(args, i, "--out-md", "coverage-grip frontier")?;
+            }
+            other => return Err(format!("unknown coverage-grip frontier argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    if ledger.is_none() && baseline_delta.is_none() && zero_status.is_none() {
+        return Err(
+            "coverage-grip frontier requires at least one of --ledger, --baseline-delta, or --zero-status"
+                .to_string(),
+        );
+    }
+
+    Ok(CoverageGripFrontierOptions {
+        coverage,
+        ledger,
+        baseline_delta,
+        zero_status,
         out,
         out_md,
     })
@@ -4484,6 +4644,98 @@ mod tests {
         assert!(md_text.contains("Gate: acknowledgeable / acknowledged"));
 
         std::fs::remove_dir_all(&dir).map_err(|err| format!("remove ledger dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn coverage_grip_frontier_parses_option_surface() {
+        assert_eq!(
+            parse_coverage_grip_frontier_options(&args(&[
+                "--coverage",
+                "target/ripr/reports/coverage-summary.json",
+                "--ledger",
+                "target/ripr/reports/pr-evidence-ledger.json",
+                "--baseline-delta",
+                "target/ripr/reports/baseline-debt-delta.json",
+                "--zero-status",
+                "target/ripr/reports/ripr-zero-status.json",
+                "--out",
+                "target/ripr/reports/coverage-grip-frontier.json",
+                "--out-md",
+                "target/ripr/reports/coverage-grip-frontier.md",
+            ])),
+            Ok(CoverageGripFrontierOptions {
+                coverage: Some(PathBuf::from("target/ripr/reports/coverage-summary.json")),
+                ledger: Some(PathBuf::from("target/ripr/reports/pr-evidence-ledger.json")),
+                baseline_delta: Some(PathBuf::from(
+                    "target/ripr/reports/baseline-debt-delta.json"
+                )),
+                zero_status: Some(PathBuf::from("target/ripr/reports/ripr-zero-status.json")),
+                out: PathBuf::from("target/ripr/reports/coverage-grip-frontier.json"),
+                out_md: PathBuf::from("target/ripr/reports/coverage-grip-frontier.md"),
+            })
+        );
+    }
+
+    #[test]
+    fn coverage_grip_frontier_requires_movement_input() {
+        assert_eq!(
+            coverage_grip(&args(&[])),
+            Err("coverage-grip requires subcommand `frontier`".to_string())
+        );
+        assert_eq!(
+            coverage_grip(&args(&["unknown"])),
+            Err("unknown coverage-grip subcommand \"unknown\"; expected `frontier`".to_string())
+        );
+        assert_eq!(
+            parse_coverage_grip_frontier_options(&args(&["--coverage", "coverage.json"])),
+            Err(
+                "coverage-grip frontier requires at least one of --ledger, --baseline-delta, or --zero-status"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            parse_coverage_grip_frontier_options(&args(&["--bad"])),
+            Err("unknown coverage-grip frontier argument \"--bad\"".to_string())
+        );
+    }
+
+    #[test]
+    fn coverage_grip_frontier_writes_json_and_markdown_reports() -> Result<(), String> {
+        let dir = unique_command_test_dir("coverage-grip-frontier");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create frontier dir: {err}"))?;
+        let coverage = dir.join("coverage-summary.json");
+        let ledger = repo_root().join(
+            "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/pr-evidence-ledger.json",
+        );
+        let out = dir.join("coverage-grip-frontier.json");
+        let out_md = dir.join("coverage-grip-frontier.md");
+        std::fs::write(
+            &coverage,
+            r#"{"coverage_delta_percent":0.0,"ripr_visible_unresolved_delta":-3}"#,
+        )
+        .map_err(|err| format!("write coverage: {err}"))?;
+
+        coverage_grip(&args(&[
+            "frontier",
+            "--coverage",
+            &coverage.display().to_string(),
+            "--ledger",
+            &ledger.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+
+        let rendered =
+            std::fs::read_to_string(&out).map_err(|err| format!("read frontier JSON: {err}"))?;
+        let markdown = std::fs::read_to_string(&out_md)
+            .map_err(|err| format!("read frontier Markdown: {err}"))?;
+        assert!(rendered.contains(r#""kind": "coverage_grip_frontier""#));
+        assert!(rendered.contains("behavioral grip improved without line-coverage movement"));
+        assert!(markdown.contains("# RIPR Coverage / Grip Frontier"));
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove frontier dir: {err}"))?;
         Ok(())
     }
 

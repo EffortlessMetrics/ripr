@@ -29,6 +29,9 @@ are scoped or reviewed.
   runs now render and upload `pr-evidence-ledger.{json,md}` when PR guidance is
   present, append a PR movement card to the job summary, and keep gate decisions
   as the only pass/fail authority.
+- Added `ripr coverage-grip frontier`, an advisory JSON/Markdown report that
+  keeps coverage movement and RIPR behavioral grip movement visible as separate
+  axes without treating coverage as test adequacy.
 - Opened Campaign 18, RIPR Zero Reporting, with
   `spec/ripr-zero-reporting-surface` as the first ready work item so reviewed
   baselines and debt deltas can become repo-level RIPR 0 status, stale-debt,

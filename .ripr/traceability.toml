@@ -1145,6 +1145,13 @@ tests = [
   "crates/ripr/src/cli/commands.rs::tests::pr_evidence_ledger_requires_identity_and_evidence",
   "crates/ripr/src/cli/commands.rs::tests::pr_evidence_ledger_writes_json_and_markdown_reports",
   "crates/ripr/src/cli/commands.rs::tests::init_generated_github_workflow_matches_smoke_fixture",
+  "crates/ripr/src/output/coverage_grip_frontier.rs::tests::coverage_grip_frontier_reports_flat_coverage_with_improved_grip",
+  "crates/ripr/src/output/coverage_grip_frontier.rs::tests::coverage_grip_frontier_keeps_missing_coverage_advisory",
+  "crates/ripr/src/output/coverage_grip_frontier.rs::tests::coverage_grip_frontier_reports_incomplete_without_ripr_movement",
+  "crates/ripr/src/output/coverage_grip_frontier.rs::tests::coverage_grip_frontier_warns_on_invalid_inputs",
+  "crates/ripr/src/cli/commands.rs::tests::coverage_grip_frontier_parses_option_surface",
+  "crates/ripr/src/cli/commands.rs::tests::coverage_grip_frontier_requires_movement_input",
+  "crates/ripr/src/cli/commands.rs::tests::coverage_grip_frontier_writes_json_and_markdown_reports",
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/gate-decision.json",
@@ -1158,6 +1165,8 @@ fixtures = [
 ]
 code = [
   "crates/ripr/src/output/pr_evidence_ledger.rs",
+  "crates/ripr/src/output/coverage_grip_frontier.rs",
+  "crates/ripr/src/output/mod.rs",
   "crates/ripr/src/cli/commands.rs",
   "crates/ripr/src/cli/command.rs",
   "crates/ripr/src/cli/execute.rs",
@@ -1188,4 +1197,7 @@ metrics = [
   "pr_evidence_ledger_waiver_age_max_days",
   "pr_evidence_ledger_coverage_grip_frontier_available",
   "pr_evidence_ledger_flat_coverage_grip_improved",
+  "coverage_grip_frontier_reports",
+  "coverage_grip_frontier_available",
+  "coverage_grip_frontier_flat_coverage_grip_improved",
 ]
