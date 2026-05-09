@@ -59,7 +59,7 @@ commands = [
 
 [[work_item]]
 id = "report/assistant-loop-health"
-status = "ready"
+status = "done"
 branch = "report-assistant-loop-health"
 stackable = false
 acceptance = "Add a read-only `ripr assistant-loop health` producer that emits advisory JSON/Markdown from explicit existing proof report paths without rerunning analysis"
@@ -74,8 +74,7 @@ commands = [
 
 [[work_item]]
 id = "ci/assistant-loop-health-artifacts"
-status = "blocked"
-blocked_by = ["report/assistant-loop-health"]
+status = "ready"
 branch = "ci-assistant-loop-health-artifacts"
 stackable = false
 acceptance = "Generated GitHub CI uploads and summarizes assistant-loop-health JSON/Markdown only when proof artifacts exist, while keeping the report advisory and preserving gate evaluator pass/fail authority"

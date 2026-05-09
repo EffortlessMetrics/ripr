@@ -874,12 +874,14 @@ metric = "first_useful_action_reports, first_useful_action_actionable, first_use
 [[capability]]
 id = "assistant_loop_health_report"
 name = "Assistant loop health report"
-status = "planned"
+status = "alpha"
 spec = "RIPR-SPEC-0022"
 evidence = [
   "docs/specs/RIPR-SPEC-0022-assistant-loop-health-report.md defines the advisory assistant-loop-health report contract over explicit test-oracle-assistant-proof inputs",
-  "docs/OUTPUT_SCHEMA.md documents the planned assistant-loop-health JSON and Markdown shape, proof-state vocabulary, movement buckets, warning kinds, repair queue kinds, future multi-proof inputs, and advisory limits",
-  "fixtures/boundary_gap/expected/assistant-loop-health/ pins complete-improved, partial-missing-optional, missing-required-input, unchanged, regressed, warning-heavy, and multi-proof report cases plus representative proof inputs"
+  "docs/OUTPUT_SCHEMA.md documents the assistant-loop-health JSON and Markdown shape, proof-state vocabulary, movement buckets, warning kinds, repair queue kinds, future multi-proof inputs, and advisory limits",
+  "fixtures/boundary_gap/expected/assistant-loop-health/ pins complete-improved, partial-missing-optional, missing-required-input, unchanged, regressed, warning-heavy, and multi-proof report cases plus representative proof inputs",
+  "crates/ripr/src/output/assistant_loop_health.rs builds and renders the read-only assistant-loop-health report from explicit proof inputs",
+  "crates/ripr/tests/cli_smoke.rs::assistant_loop_health_cli_writes_multi_proof_report validates the public CLI against the multi-proof fixture"
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/assistant-loop-health/corpus.json",
@@ -891,7 +893,7 @@ fixtures = [
   "fixtures/boundary_gap/expected/assistant-loop-health/warning-heavy/assistant-loop-health.json",
   "fixtures/boundary_gap/expected/assistant-loop-health/multi-proof/assistant-loop-health.json",
 ]
-next = "report/assistant-loop-health"
+next = "ci/assistant-loop-health-artifacts"
 metric = "assistant_loop_health_reports, assistant_loop_health_complete, assistant_loop_health_partial, assistant_loop_health_missing_required_input, assistant_loop_health_missing_optional_input, assistant_loop_health_static_improved, assistant_loop_health_static_unchanged, assistant_loop_health_static_regressed, assistant_loop_health_unknown_movement, assistant_loop_health_repair_queue_items, assistant_loop_health_warnings"
 
 [[capability]]

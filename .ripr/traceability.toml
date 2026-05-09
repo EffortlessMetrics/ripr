@@ -1399,7 +1399,13 @@ metrics = [
 id = "RIPR-SPEC-0022"
 name = "assistant loop health report"
 spec = "docs/specs/RIPR-SPEC-0022-assistant-loop-health-report.md"
-tests = []
+tests = [
+  "crates/ripr/src/output/assistant_loop_health.rs::assistant_loop_health_matches_fixture_corpus",
+  "crates/ripr/src/output/assistant_loop_health.rs::assistant_loop_health_reports_unreadable_proof_as_incomplete",
+  "crates/ripr/src/output/assistant_loop_health.rs::assistant_loop_health_classifies_malformed_and_unsupported_proofs",
+  "crates/ripr/src/output/assistant_loop_health.rs::assistant_loop_health_keeps_receipt_fallback_and_warning_repairs_visible",
+  "crates/ripr/tests/cli_smoke.rs::assistant_loop_health_cli_writes_multi_proof_report",
+]
 fixtures = [
   "fixtures/boundary_gap/expected/assistant-loop-health/corpus.json",
   "fixtures/boundary_gap/expected/assistant-loop-health/proofs/complete-improved-proof.json",
@@ -1425,6 +1431,10 @@ fixtures = [
 ]
 code = [
   "xtask/src/main.rs",
+  "crates/ripr/src/output/assistant_loop_health.rs",
+  "crates/ripr/src/output/mod.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/help.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0022-assistant-loop-health-report.md",
