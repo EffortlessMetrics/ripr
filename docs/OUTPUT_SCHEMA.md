@@ -2713,6 +2713,10 @@ focused test, related test, verify command, before/after static movement,
 receipt path, ledger path, optional coverage/grip frontier path, and static
 limits.
 
+See [Test-oracle assistant proof report](TEST_ORACLE_ASSISTANT_PROOF_REPORT.md)
+for how reviewers, maintainers, and coding agents should read the report,
+warnings, optional CI projection, and advisory limits.
+
 ### Review Guidance Outcome Receipt
 
 Review guidance outcome receipts are optional repo-local inputs to the
