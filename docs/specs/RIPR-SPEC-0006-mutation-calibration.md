@@ -33,6 +33,8 @@ The report should:
   same normalized file and line;
 - report unmatched runtime mutants separately;
 - summarize static/runtime agreement in advisory buckets;
+- label imported static/runtime agreement as confidence context without changing
+  static classifications;
 - preserve samples of runtime gap signals without static gaps;
 - preserve samples of static gap seams without runtime gap signals;
 - keep static seam fields and runtime mutation fields separate;
@@ -59,12 +61,24 @@ Each matched calibration row should carry:
 - duration, when provided by the runtime data
 - test command, when provided by the runtime data
 - join method (`seam_id` or `file_line`)
+- confidence label, one of:
+  - `supports_static_gap`
+  - `contradicts_static_gap`
+  - `supports_static_clean`
+  - `contradicts_static_clean`
+  - `no_runtime_data`
 
 Ambiguous file/line matches should keep the runtime record and list all static
-candidate seams without assigning the runtime outcome to any single seam.
+candidate seams without assigning the runtime outcome to any single seam. These
+rows should carry `ambiguous_runtime_join` so consumers know not to raise
+confidence from that runtime record.
 
 Unmatched runtime mutants should preserve their location, mutation operator,
 runtime outcome, duration, and test command when available.
+
+Runtime gap signals that cannot be joined to a static seam should carry
+`runtime_only_signal`; they are calibration context only and must not create a
+static gap.
 
 The agreement summary should count:
 
@@ -137,6 +151,17 @@ then the report emits agreement counts, precision notes, static-only finding
 samples, and missed-runtime-signal samples without changing static seam classes.
 ```
 
+### Confidence labels stay advisory
+
+```text
+Given static gap seams, static-clean seams, runtime gap labels, runtime-clean
+labels, ambiguous file/line joins, unmatched runtime gap signals, and seams with
+no usable runtime signal,
+when ripr calibrate cargo-mutants runs,
+then matched/sample rows include static/runtime confidence labels and those
+labels do not change static seam classes or gate behavior.
+```
+
 ## Test Mapping
 
 Current tests:
@@ -205,5 +230,6 @@ advisory and does not make calibration a public library API.
 - `runtime_signal_without_static_gap`
 - `static_clean_and_runtime_clean`
 - `runtime_inconclusive`
+- static/runtime confidence labels
 - runtime outcome counts
 - join method counts

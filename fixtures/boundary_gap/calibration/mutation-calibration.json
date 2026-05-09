@@ -9,6 +9,7 @@
   "ambiguous_file_line_matches": [],
   "matches": [
     {
+      "confidence_label": "contradicts_static_gap",
       "join_method": "seam_id",
       "runtime": {
         "duration": "37ms",
@@ -64,6 +65,7 @@
   "scope": "repo",
   "static_only_findings": [
     {
+      "confidence_label": "contradicts_static_gap",
       "reason": "static gap seam matched runtime data without a runtime gap signal",
       "static": {
         "file": "src/lib.rs",
