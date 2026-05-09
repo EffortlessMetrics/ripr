@@ -2620,8 +2620,8 @@ Work items:
 | `spec/assistant-loop-health-report` | done | Added RIPR-SPEC-0022 plus OUTPUT_SCHEMA, traceability, capability, campaign, plan, roadmap, and changelog updates for the assistant-loop-health report contract before implementation. |
 | `fixtures/assistant-loop-health-corpus` | done | Added `fixtures/boundary_gap/expected/assistant-loop-health/` with complete-improved, partial-missing-optional, missing-required-input, unchanged, regressed, warning-heavy, and multi-proof report fixtures plus representative proof inputs. |
 | `report/assistant-loop-health` | done | Added the read-only `ripr assistant-loop health` producer over explicit proof inputs, with JSON/Markdown rendering and fixture-backed CLI coverage. |
-| `ci/assistant-loop-health-artifacts` | ready | Upload and summarize health artifacts only when proof artifacts exist after the producer lands. |
-| `docs/assistant-loop-health-workflow` | blocked | Explain proof report vs health report, repair routing, and advisory limits after the producer and CI projection exist. |
+| `ci/assistant-loop-health-artifacts` | done | Generated GitHub CI runs `ripr assistant-loop health` when `test-oracle-assistant-proof.json` exists, uploads `assistant-loop-health.{json,md}` with the normal report packet, and appends an advisory health summary. |
+| `docs/assistant-loop-health-workflow` | ready | Explain proof report vs health report, repair routing, and advisory limits now that the producer and CI projection exist. |
 | `campaign/assistant-loop-health-closeout` | blocked | Close after spec, fixtures, producer, CI projection, docs, and validation document the lane. |
 
 References:
@@ -2639,9 +2639,10 @@ Blocking conditions:
 
 Next:
 
-- Continue with `ci/assistant-loop-health-artifacts`. The report contract,
-  fixture corpus, and read-only producer are in place; the next slice should
-  surface the existing health report in generated CI as advisory artifacts.
+- Continue with `docs/assistant-loop-health-workflow`. The report contract,
+  fixture corpus, read-only producer, and generated-CI advisory projection are
+  in place; the next slice should explain how maintainers and agents use the
+  health report.
 
 ## Future Campaign: Editor Evidence UX
 

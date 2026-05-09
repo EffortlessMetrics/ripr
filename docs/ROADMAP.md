@@ -231,8 +231,9 @@ defines the contract, and
 `fixtures/boundary_gap/expected/assistant-loop-health/` pins the complete,
 partial, missing-input, unchanged, regressed, warning-heavy, and multi-proof
 corpus; `ripr assistant-loop health` now writes the advisory report over
-explicit proof inputs, and the next ready slice is
-`ci/assistant-loop-health-artifacts`.
+explicit proof inputs; generated GitHub CI now uploads and summarizes
+assistant-loop-health artifacts when proof artifacts exist; and the next ready
+slice is `docs/assistant-loop-health-workflow`.
 
 ## Strategic Sequence
 

@@ -1416,6 +1416,8 @@ tests = [
   "crates/ripr/src/output/assistant_loop_health.rs::assistant_loop_health_classifies_malformed_and_unsupported_proofs",
   "crates/ripr/src/output/assistant_loop_health.rs::assistant_loop_health_keeps_receipt_fallback_and_warning_repairs_visible",
   "crates/ripr/tests/cli_smoke.rs::assistant_loop_health_cli_writes_multi_proof_report",
+  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_is_advisory",
+  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture",
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/assistant-loop-health/corpus.json",
