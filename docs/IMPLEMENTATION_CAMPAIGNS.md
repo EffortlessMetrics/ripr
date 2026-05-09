@@ -2165,7 +2165,7 @@ Next:
 
 Campaign ID: `pr-evidence-ledger`
 
-Status: active
+Status: complete
 
 Campaign 18 made RIPR Zero status visible for the current PR and current
 baseline state. The next adoption risk is history: teams need to know whether
@@ -2275,6 +2275,108 @@ advisory defaults.
 No ready work item remains in `.ripr/goals/active.toml` after this closeout.
 Open the next product campaign explicitly rather than extending PR Evidence
 Ledger by inertia.
+
+## Campaign 20: Test-Oracle Assistant Proof
+
+Campaign ID: `test-oracle-assistant-proof`
+
+Status: active
+
+Campaign 19 made per-PR adoption history visible. The next product risk is
+whether the already-built surfaces form one review loop instead of a collection
+of reports: changed Rust behavior should lead to one visible recommendation,
+one bounded handoff packet, one focused test, one after-evidence check, one
+receipt, and one advisory PR/CI projection.
+
+Objective:
+
+```text
+Prove the full PR-time test-oracle assistant loop: changed Rust behavior flows
+through static evidence, PR/editor guidance, a bounded focused-test handoff,
+before/after verification, receipt, and advisory CI/ledger projection without
+changing analyzer semantics, recommendation ranking, gate policy, LSP behavior,
+or default CI blocking.
+```
+
+Why it matters:
+
+RIPR has the individual pieces needed for the product promise: PR guidance,
+editor evidence, agent packets, receipts, calibrated gates, baselines, RIPR
+Zero reports, ledgers, and coverage/grip frontier reports. Teams still need a
+checked first path that shows how those pieces fit together for one changed
+behavior without artifact archaeology or internal vocabulary.
+
+End state:
+
+- a spec defines the end-to-end proof contract from diff evidence through
+  recommendation, handoff packet, focused-test repair, after-evidence, receipt,
+  and advisory PR/CI projection
+- a canonical review-loop fixture pins one changed-behavior case across before
+  evidence, top recommendation, related test, focused test shape, after
+  evidence, receipt, and ledger projection expectations
+- a dogfood receipt proves the current repo can trace one seam through PR
+  guidance, editor/agent packet surfaces, verification commands, receipts, and
+  advisory CI artifacts without artifact archaeology
+- user docs explain the PR-time assistant workflow without requiring users to
+  learn cockpit or internal report topology first
+- closeout records which parts of the loop are verified, which remain advisory,
+  and which future work must not blur static evidence with runtime mutation
+  confirmation
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `spec/test-oracle-assistant-loop` | ready | Define the end-to-end test-oracle assistant proof contract from changed Rust behavior through static evidence, PR/editor guidance, focused-test handoff, after-evidence verification, receipt, and advisory PR/CI projection without changing analyzer, policy, editor, or CI defaults. |
+| `fixtures/canonical-review-loop` | blocked | Add a canonical fixture or replay corpus that pins the before recommendation, related-test context, suggested focused test, after-evidence movement, receipt, and ledger projection expectations for one changed-behavior case. |
+| `dogfood/test-oracle-assistant-receipt` | blocked | Record a repo-local proof receipt that traces one seam through PR guidance, editor/agent packet surfaces, verification commands, after-evidence, receipt, PR evidence ledger, and coverage/grip frontier availability without changing source automatically. |
+| `docs/test-oracle-assistant-workflow` | blocked | Document the user workflow from PR recommendation to editor/agent handoff, one focused test, verification, receipt, and advisory CI/ledger projection while preserving static-evidence limits. |
+| `campaign/test-oracle-assistant-proof-closeout` | blocked | Close Campaign 20 only after the end-to-end assistant proof contract, canonical fixture, dogfood receipt, and user workflow docs demonstrate the full loop while defaults stay advisory. |
+
+Dependencies:
+
+- Campaign 13 supplies bounded PR guidance and changed-line-safe annotation
+  placement.
+- Campaign 14 supplies recommendation calibration and outcome receipts.
+  Missing calibration remains explicit unknown evidence.
+- Campaign 15 supplies optional gate decisions. This campaign may display gate
+  output; it must not redefine gate policy or pass/fail authority.
+- Campaigns 17 and 18 supply baseline debt deltas and RIPR Zero status.
+- Campaign 19 supplies the PR evidence ledger and coverage/grip frontier.
+- Editor Evidence UX supplies the saved-workspace editor handoff surface.
+
+Commands:
+
+```bash
+cargo xtask check-campaign
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-capabilities
+cargo xtask check-output-contracts
+cargo xtask check-pr
+```
+
+Blocking conditions:
+
+- analyzer identity rewrites inside the proof campaign
+- recommendation ranking changes
+- gate policy semantic changes
+- default CI blocking
+- making any ledger or proof receipt the pass/fail authority
+- hiding acknowledged, suppressed, stale, invalid, or missing-input entries
+- runtime mutation vocabulary in static proof surfaces unless imported runtime
+  calibration is explicitly cited
+- treating coverage movement as test adequacy
+- running cargo-mutants or any mutation engine from proof workflows
+- automatic source edits or generated tests
+- LSP/editor behavior changes in this campaign lane
+- new public crates
+
+Next:
+
+- The ready work item is `spec/test-oracle-assistant-loop`.
 
 ## Future Campaign: Editor Evidence UX
 
