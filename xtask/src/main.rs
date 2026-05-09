@@ -18846,6 +18846,78 @@ mod tests {
     }
 
     #[test]
+    fn evidence_record_contract_fixture_guard_requires_oracle_semantics() -> Result<(), String> {
+        let root = temp_dir("evidence-record-contract-oracle-semantics-invalid");
+        let corpus = root.join("corpus.json");
+        write(
+            &corpus,
+            r#"{
+  "kind": "evidence_record_contract_corpus",
+  "schema_version": "0.1",
+  "spec": "RIPR-SPEC-0021",
+  "cases": [
+    {
+      "id": "predicate_boundary_missing_equality",
+      "description": "invalid oracle semantics shape",
+      "source": "fixture",
+      "record": {
+        "schema_version": "0.1",
+        "seam_id": "contract-predicate-boundary",
+        "canonical_gap_id": null,
+        "owner": "src/pricing.rs::discounted_total",
+        "location": {"file": "src/pricing.rs", "line": 88},
+        "seam_kind": "predicate_boundary",
+        "grip_class": "weakly_gripped",
+        "headline_eligible": true,
+        "evidence_path": {
+          "reach": {"state": "yes", "confidence": "medium", "summary": "related tests call the owner"},
+          "activate": {"state": "yes", "confidence": "medium", "summary": "boundary values are visible"},
+          "propagate": {"state": "yes", "confidence": "low", "summary": "predicate flows to return value"},
+          "observe": {"state": "yes", "confidence": "medium", "summary": "related tests assert returned totals"},
+          "discriminate": {"state": "weak", "confidence": "medium", "summary": "boundary is not asserted"}
+        },
+        "observed_values": [],
+        "missing_discriminators": [],
+        "related_tests_total": 1,
+        "related_tests": [
+          {"name": "below_threshold_has_no_discount", "file": "tests/pricing.rs", "line": 10, "oracle_kind": "exact_value", "oracle_strength": "strong", "evidence_summary": "exact value assertion", "relation_reason": "direct_owner_call", "relation_confidence": "high"}
+        ],
+        "recommendation": {
+          "action": "write_targeted_test",
+          "reason": "extend the nearest related test",
+          "recommended_test": null,
+          "nearest_test_to_imitate": {"name": "below_threshold_has_no_discount", "file": "tests/pricing.rs", "line": 10, "oracle_kind": "exact_value", "oracle_strength": "strong", "evidence_summary": "exact value assertion", "oracle_semantics": {"observes": "exact value", "missing": "none", "upgrade_suggestion": false}, "relation_reason": "direct_owner_call", "relation_confidence": "high"},
+          "candidate_values": [],
+          "assertion_shape": null,
+          "verify_command": null
+        },
+        "actionability": {
+          "class": "actionable_related_test_extension",
+          "reason": "extend related test",
+          "has_concrete_guidance": true,
+          "signals": {"missing_discriminator": false, "candidate_value": false, "assertion_shape": false, "related_test": true, "recommended_test_target": false, "verification_command": false}
+        },
+        "calibration": {"availability": "not_imported", "confidence": "unknown", "agreement": "no_runtime_data"},
+        "static_limitations": []
+      }
+    }
+  ]
+}
+"#,
+        );
+
+        let mut violations = Vec::new();
+        super::validate_evidence_record_contract_fixture_corpus_at(&corpus, &mut violations)?;
+        let report = violations.join("\n");
+
+        assert!(report.contains("related_tests[0].oracle_semantics must be an object"));
+        assert!(report.contains(
+            "recommendation.nearest_test_to_imitate.oracle_semantics.upgrade_suggestion must be string or null"
+        ));
+        Ok(())
+    }
+
+    #[test]
     fn release_server_assets_selects_versioned_archives() -> Result<(), String> {
         let root = temp_dir("release-server-assets");
         write(

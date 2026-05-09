@@ -1864,6 +1864,71 @@ mod tests {
     }
 
     #[test]
+    fn oracle_semantics_covers_supported_oracle_families() {
+        let cases = [
+            (
+                OracleKind::ExactErrorVariant,
+                OracleStrength::Strong,
+                SeamKind::ErrorVariant,
+                "the exact error variant",
+                Some(
+                    "assert the payload inside the matched error variant when payload behavior changed",
+                ),
+            ),
+            (
+                OracleKind::WholeObjectEquality,
+                OracleStrength::Strong,
+                SeamKind::ReturnValue,
+                "whole output object equality",
+                None,
+            ),
+            (
+                OracleKind::Snapshot,
+                OracleStrength::Medium,
+                SeamKind::ReturnValue,
+                "a snapshot of rendered or debug output",
+                Some(
+                    "add an exact assertion for the changed field or value when the snapshot is broad",
+                ),
+            ),
+            (
+                OracleKind::RelationalCheck,
+                OracleStrength::Weak,
+                SeamKind::MatchArm,
+                "a partial relationship or broad predicate about the result",
+                Some("assert the exact enum or value produced by the changed match arm"),
+            ),
+            (
+                OracleKind::MockExpectation,
+                OracleStrength::Medium,
+                SeamKind::SideEffect,
+                "an expected call, event, state write, or persistence effect",
+                None,
+            ),
+            (
+                OracleKind::Unknown,
+                OracleStrength::Unknown,
+                SeamKind::CallPresence,
+                "no recognized concrete oracle shape",
+                Some("assert the expected call happened with the relevant arguments"),
+            ),
+            (
+                OracleKind::Unknown,
+                OracleStrength::None,
+                SeamKind::FieldConstruction,
+                "no recognized test oracle",
+                Some("assert the specific output field that carries the changed behavior"),
+            ),
+        ];
+
+        for (kind, strength, seam_kind, observes, upgrade) in cases {
+            let semantics = oracle_semantics_for(&kind, &strength, seam_kind);
+            assert_eq!(semantics.observes, observes);
+            assert_eq!(semantics.upgrade_suggestion.as_deref(), upgrade);
+        }
+    }
+
+    #[test]
     fn given_boundary_seam_when_tests_skip_equal_value_then_evidence_reports_missing_boundary_discriminator()
     -> Result<(), String> {
         // Production predicate compares amount >= threshold.

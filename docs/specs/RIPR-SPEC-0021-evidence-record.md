@@ -296,9 +296,11 @@ Additional examples:
 | Related-test ranking uses activation overlap before file ordering inside the same relation and oracle strength | `given_related_tests_with_same_relation_and_oracle_when_ranked_then_activation_overlap_precedes_file_order` |
 | Fixture contract corpus pins representative record shapes | `evidence_record_contract_fixture_corpus_is_valid` |
 | Fixture contract checker reports record-shape drift | `evidence_record_contract_fixture_guard_reports_missing_fields` |
+| Fixture contract checker requires oracle semantics shape | `evidence_record_contract_fixture_guard_requires_oracle_semantics` |
 | Broad error oracle semantics explain the exact error discriminator gap | `oracle_semantics_explains_broad_error_gap_and_upgrade` |
 | Smoke-only oracle semantics explain the missing boundary discriminator | `oracle_semantics_explains_smoke_only_boundary_gap` |
 | Exact-value oracle semantics do not invent an upgrade suggestion | `oracle_semantics_keeps_exact_value_without_extra_upgrade` |
+| Oracle semantics cover the supported oracle families | `oracle_semantics_covers_supported_oracle_families` |
 | Evidence records carry oracle semantics on related tests | `evidence_record_carries_identity_path_guidance_and_calibration_placeholder` |
 
 ## Implementation Mapping
