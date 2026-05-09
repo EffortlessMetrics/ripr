@@ -43,6 +43,7 @@ Current how-to docs:
 - [PR evidence ledger workflow](PR_EVIDENCE_LEDGER_WORKFLOW.md)
 - [Test-oracle assistant workflow](TEST_ORACLE_ASSISTANT_WORKFLOW.md)
 - [Test-oracle assistant proof report](TEST_ORACLE_ASSISTANT_PROOF_REPORT.md)
+- [First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md)
 - [Assistant loop health proposal](ASSISTANT_LOOP_HEALTH_PROPOSAL.md)
 - [Release](RELEASE.md)
 - [Installation verification](INSTALLATION_VERIFICATION.md)
@@ -79,6 +80,7 @@ Current reference docs:
 - [PR evidence ledger workflow](PR_EVIDENCE_LEDGER_WORKFLOW.md)
 - [Test-oracle assistant workflow](TEST_ORACLE_ASSISTANT_WORKFLOW.md)
 - [Test-oracle assistant proof report](TEST_ORACLE_ASSISTANT_PROOF_REPORT.md)
+- [First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md)
 - [Assistant loop health proposal](ASSISTANT_LOOP_HEALTH_PROPOSAL.md)
 - [Test taxonomy](TEST_TAXONOMY.md)
 - [Engineering rules](ENGINEERING.md)
@@ -134,6 +136,7 @@ Current explanation docs:
 - [RIPR Zero reporting workflow](RIPR_ZERO_REPORTING_WORKFLOW.md)
 - [PR evidence ledger workflow](PR_EVIDENCE_LEDGER_WORKFLOW.md)
 - [Test-oracle assistant proof report](TEST_ORACLE_ASSISTANT_PROOF_REPORT.md)
+- [First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md)
 - [Assistant loop health proposal](ASSISTANT_LOOP_HEALTH_PROPOSAL.md)
 
 ## README Rule

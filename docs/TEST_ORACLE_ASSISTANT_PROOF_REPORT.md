@@ -205,6 +205,9 @@ Before treating a proof report as a useful receipt, verify:
 - [PR evidence ledger workflow](PR_EVIDENCE_LEDGER_WORKFLOW.md) explains how
   PR movement, waivers, baseline burn-down, repair receipts, and coverage/grip
   frontier data fit together.
+- [First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md) explains how
+  proof, ledger, receipt, gate, and editor context can collapse into one
+  advisory next action.
 - [CI strategy](CI.md#generated-github-workflow) describes generated workflow
   projection into GitHub summaries and artifacts.
 - [Output schema](OUTPUT_SCHEMA.md#test-oracle-assistant-loop) defines the
