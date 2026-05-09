@@ -54,6 +54,11 @@ are scoped or reviewed.
   actionable, baseline-only, stale, missing-required-artifact,
   unchanged-after-attempt, and no-actionable-seam routes while preserving
   advisory static-evidence limits and default non-blocking CI behavior.
+- Closed Campaign 22 with
+  `docs/handoffs/2026-05-09-campaign-22-closeout.md`, recording the
+  first-useful-action prompt-to-artifact audit, validation plan, and boundary
+  that future health, analyzer, policy, or editor lanes need explicit follow-up
+  campaigns.
 - Opened Campaign 20, Test-Oracle Assistant Proof, with
   `spec/test-oracle-assistant-loop` as the first ready work item so the
   already-built PR guidance, editor/agent handoff, verification, receipts,
