@@ -159,6 +159,23 @@ The first implementation did not route downstream surfaces through the new
 record. Follow-up consumer slices may read the record as an additive source of
 truth while preserving legacy fields as fallback.
 
+## Related-Test Ranking
+
+The record copies ranked related-test evidence from repo exposure. Ranking is
+deterministic and uses:
+
+1. relation confidence;
+2. relation reason priority;
+3. oracle strength;
+4. activation-value overlap;
+5. file, name, and line.
+
+The rank affects the capped `related_tests` array and the nearest related test
+to imitate. It must not change `related_tests_total`, mint a new seam identity,
+or turn a weak relationship into a strong one. Activation overlap is a static
+tie-breaker from values RIPR already observes, for example a direct owner call
+whose predicate-boundary arguments are equal at the changed boundary.
+
 ## Consumer Routing
 
 The first consumer slice routes two existing advisory surfaces through the
@@ -250,6 +267,8 @@ Additional examples:
 | Baseline diff matches moved lines by canonical gap identity | `baseline_delta_matches_by_canonical_gap_id_across_line_movement` |
 | Baseline update preserves refactored entries matched by canonical gap identity | `baseline_update_preserves_refactored_entry_matched_by_canonical_gap_id` |
 | PR evidence ledger carries canonical gap identity through joined records | `pr_evidence_ledger_joins_primary_artifacts` |
+| Related-test ranking prefers strong oracle imitation targets inside the same relation | `given_related_tests_with_same_relation_when_ranked_then_strong_oracle_precedes_smoke_oracle` |
+| Related-test ranking uses activation overlap before file ordering inside the same relation and oracle strength | `given_related_tests_with_same_relation_and_oracle_when_ranked_then_activation_overlap_precedes_file_order` |
 | Fixture contract corpus pins representative record shapes | `evidence_record_contract_fixture_corpus_is_valid` |
 | Fixture contract checker reports record-shape drift | `evidence_record_contract_fixture_guard_reports_missing_fields` |
 

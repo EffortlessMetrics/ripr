@@ -7,8 +7,9 @@
 //! (`analysis/repo-ripr-classification-v1`) consumes these records.
 //!
 //! Determinism: `evidence_for_seams` sorts by `seam_id`. Within each
-//! evidence record, `related_tests` are sorted by `(name, file)` and
-//! deduped.
+//! evidence record, `related_tests` are deduped and ranked by relation
+//! confidence, relation reason, oracle strength, activation overlap,
+//! then stable file/name/line tie-breakers.
 
 use super::rust_index::{
     self, FunctionSummary, OracleFact, RustIndex, TestSummary, extract_identifier_tokens,
@@ -20,6 +21,7 @@ use crate::domain::{
 };
 use serde::{Deserialize, Serialize};
 use std::cell::{OnceCell, RefCell};
+use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -321,7 +323,8 @@ fn evidence_for_seam_with_context(
     seam: &RepoSeam,
     context: &CompactGripContext<'_>,
 ) -> TestGripEvidence {
-    let related_with_reason = find_related_tests_with_context(seam, context);
+    let mut related_with_reason = find_related_tests_with_context(seam, context);
+    sort_related_tests_for_seam(seam, context, &mut related_with_reason);
     let related_indexed: Vec<&CompactTest<'_>> = related_with_reason
         .iter()
         .map(|(indexed, _reason)| *indexed)
@@ -337,28 +340,10 @@ fn evidence_for_seam_with_context(
     let observe = observe_evidence(&related);
     let discriminate = discriminate_evidence(seam, &related);
 
-    let mut related_tests: Vec<RelatedTestGrip> = related_with_reason
+    let related_tests: Vec<RelatedTestGrip> = related_with_reason
         .iter()
         .map(|(indexed, reason)| related_test_grip(seam, indexed.test, *reason))
         .collect();
-    // Ranked order: confidence (high first) → reason priority → file →
-    // name → line. Replaces the previous (name, file, line) sort. The
-    // dedup invariant is unchanged — `find_related_tests` already
-    // deduped by (name, file, start_line), so this is a stable ranking
-    // re-sort, not a uniqueness step.
-    related_tests.sort_by(|a, b| {
-        a.relation_confidence
-            .rank()
-            .cmp(&b.relation_confidence.rank())
-            .then(
-                a.relation_reason
-                    .priority()
-                    .cmp(&b.relation_reason.priority()),
-            )
-            .then(a.file.cmp(&b.file))
-            .then(a.test_name.cmp(&b.test_name))
-            .then(a.line.cmp(&b.line))
-    });
 
     TestGripEvidence {
         seam_id: seam.id().clone(),
@@ -611,21 +596,52 @@ fn find_related_tests_compact<'a>(
     context: &'a CompactGripContext<'_>,
 ) -> Vec<&'a CompactTest<'a>> {
     let mut related = find_related_tests_with_context(seam, context);
-    related.sort_by(|(indexed_a, reason_a), (indexed_b, reason_b)| {
-        reason_a
-            .confidence()
-            .rank()
-            .cmp(&reason_b.confidence().rank())
-            .then(reason_a.priority().cmp(&reason_b.priority()))
-            .then(indexed_a.test.file.cmp(&indexed_b.test.file))
-            .then(indexed_a.test.name.cmp(&indexed_b.test.name))
-            .then(indexed_a.test.start_line.cmp(&indexed_b.test.start_line))
-    });
+    sort_related_tests_for_seam(seam, context, &mut related);
     related
         .into_iter()
         .take(COMPACT_RELATED_TEST_LIMIT)
         .map(|(indexed, _reason)| indexed)
         .collect()
+}
+
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd)]
+struct RelatedTestRankKey {
+    relation_confidence: u8,
+    relation_reason: u8,
+    oracle_strength: Reverse<u8>,
+    activation_overlap: Reverse<usize>,
+    file: PathBuf,
+    test_name: String,
+    line: usize,
+}
+
+fn sort_related_tests_for_seam(
+    seam: &RepoSeam,
+    context: &CompactGripContext<'_>,
+    related: &mut [(&CompactTest<'_>, RelationReason)],
+) {
+    related.sort_by_cached_key(|entry| {
+        let (indexed, reason) = *entry;
+        related_test_rank_key(seam, context, indexed, reason)
+    });
+}
+
+fn related_test_rank_key(
+    seam: &RepoSeam,
+    context: &CompactGripContext<'_>,
+    indexed: &CompactTest<'_>,
+    reason: RelationReason,
+) -> RelatedTestRankKey {
+    let (_oracle_kind, oracle_strength) = best_oracle(indexed.test, seam);
+    RelatedTestRankKey {
+        relation_confidence: reason.confidence().rank(),
+        relation_reason: reason.priority(),
+        oracle_strength: Reverse(oracle_strength.rank()),
+        activation_overlap: Reverse(activation_overlap_score(seam, context, indexed)),
+        file: indexed.test.file.clone(),
+        test_name: indexed.test.name.clone(),
+        line: indexed.test.start_line,
+    }
 }
 
 fn fixture_names_for_owner_file(facts: &rust_index::FileFacts) -> BTreeSet<String> {
@@ -641,8 +657,12 @@ fn fixture_names_for_owner_file(facts: &rust_index::FileFacts) -> BTreeSet<Strin
 /// through `extract_identifier_tokens` so common short words and
 /// stop-tokens are already excluded.
 fn required_discriminator_tokens(seam: &RepoSeam) -> Vec<String> {
+    extract_identifier_tokens(required_discriminator_text(seam))
+}
+
+fn required_discriminator_text(seam: &RepoSeam) -> &str {
     use super::seams::RequiredDiscriminator;
-    let text = match seam.required_discriminator() {
+    match seam.required_discriminator() {
         RequiredDiscriminator::BoundaryValue { description }
         | RequiredDiscriminator::ReturnValue { description } => description.as_str(),
         RequiredDiscriminator::ErrorVariant { variant } => variant.as_str(),
@@ -650,8 +670,7 @@ fn required_discriminator_tokens(seam: &RepoSeam) -> Vec<String> {
         RequiredDiscriminator::Effect { sink } => sink.as_str(),
         RequiredDiscriminator::MatchArmTaken { arm } => arm.as_str(),
         RequiredDiscriminator::CallSite { target } => target.as_str(),
-    };
-    extract_identifier_tokens(text)
+    }
 }
 
 /// Token-aware: does any assertion text in `test` contain at least one
@@ -905,55 +924,9 @@ fn activate_evidence(
 
     if !owner_name.is_empty() {
         for indexed in related {
-            // Per-test resolution facts (let bindings, rstest cases,
-            // table rows, same-file consts) are built lazily and then
-            // reused across all owner calls in this test. Per
-            // `analysis/value-extraction-v2`.
-            let value_facts = indexed
-                .value_facts
-                .get_or_init(|| super::value_resolution::ValueEnvFacts::build(indexed.test, index));
-            let env = super::value_resolution::ValueEnv::new(seam, value_facts);
-            for call in &indexed.test.calls {
-                if call.name != owner_name {
-                    continue;
-                }
-                let Some(args) = call_arguments(&call.text, owner_name) else {
-                    continue;
-                };
-                for arg in args {
-                    let mut emitted = false;
-                    // Direct literal first (matches pre-v2 behavior).
-                    for value in scalar_values(&arg) {
-                        observed.push(ValueFact {
-                            line: call.line,
-                            text: call.text.clone(),
-                            value,
-                            context: ValueContext::FunctionArgument,
-                        });
-                        emitted = true;
-                    }
-                    if emitted {
-                        continue;
-                    }
-                    // value-extraction-v2: try to resolve the arg
-                    // through the priority chain (let / rstest case /
-                    // table row / same-file const / Some/Ok/Err).
-                    for (value, context) in env.resolve(&arg) {
-                        observed.push(ValueFact {
-                            line: call.line,
-                            text: call.text.clone(),
-                            value,
-                            context,
-                        });
-                    }
-                }
-            }
-            // Builder-method values (e.g.,
-            // `Quote::new().amount(100).threshold(100)`) - collected
-            // separately because they don't fit the per-arg shape.
-            // These only count when method names align with seam
-            // tokens; the env enforces that filter.
-            observed.extend(env.builder_facts());
+            observed.extend(observed_value_facts_for_test(
+                seam, indexed, index, owner_name,
+            ));
         }
     }
     sort_value_facts(&mut observed);
@@ -996,6 +969,206 @@ fn activate_evidence(
         },
     );
     (stage, observed, missing)
+}
+
+fn observed_value_facts_for_test(
+    seam: &RepoSeam,
+    indexed: &CompactTest<'_>,
+    index: &RustIndex,
+    owner_name: &str,
+) -> Vec<ValueFact> {
+    let mut observed: Vec<ValueFact> = Vec::new();
+    // Per-test resolution facts (let bindings, rstest cases, table
+    // rows, same-file consts) are built lazily and then reused across
+    // all owner calls in this test. Per `analysis/value-extraction-v2`.
+    let value_facts = indexed
+        .value_facts
+        .get_or_init(|| super::value_resolution::ValueEnvFacts::build(indexed.test, index));
+    let env = super::value_resolution::ValueEnv::new(seam, value_facts);
+    let observed_argument_indices = observed_argument_indices(seam, index, owner_name);
+    for call in &indexed.test.calls {
+        if call.name != owner_name {
+            continue;
+        }
+        let Some(args) = call_arguments(&call.text, owner_name) else {
+            continue;
+        };
+        for (arg_index, arg) in args.into_iter().enumerate() {
+            if let Some(indices) = &observed_argument_indices
+                && !indices.contains(&arg_index)
+            {
+                continue;
+            }
+            let mut emitted = false;
+            // Direct literal first (matches pre-v2 behavior).
+            for value in scalar_values(&arg) {
+                observed.push(ValueFact {
+                    line: call.line,
+                    text: call.text.clone(),
+                    value,
+                    context: ValueContext::FunctionArgument,
+                });
+                emitted = true;
+            }
+            if emitted {
+                continue;
+            }
+            // value-extraction-v2: try to resolve the arg through the
+            // priority chain (let / rstest case / table row /
+            // same-file const / Some/Ok/Err).
+            for (value, context) in env.resolve(&arg) {
+                observed.push(ValueFact {
+                    line: call.line,
+                    text: call.text.clone(),
+                    value,
+                    context,
+                });
+            }
+        }
+    }
+    // Builder-method values (e.g.,
+    // `Quote::new().amount(100).threshold(100)`) - collected
+    // separately because they don't fit the per-arg shape. These only
+    // count when method names align with seam tokens; the env enforces
+    // that filter.
+    observed.extend(env.builder_facts());
+    observed
+}
+
+fn observed_argument_indices(
+    seam: &RepoSeam,
+    index: &RustIndex,
+    owner_name: &str,
+) -> Option<Vec<usize>> {
+    if seam.kind() != SeamKind::PredicateBoundary {
+        return None;
+    }
+    let owner_fn = find_owner_function(seam, index)?;
+    if owner_fn.name != owner_name {
+        return None;
+    }
+    let (left, right) = comparison_operands(seam.expression())?;
+    let parameters = function_parameters(owner_fn);
+    if let Some(left_index) = parameters.iter().position(|param| param == &left) {
+        return Some(vec![left_index]);
+    }
+    parameters
+        .iter()
+        .position(|param| param == &right)
+        .map(|right_index| vec![right_index])
+}
+
+fn activation_overlap_score(
+    seam: &RepoSeam,
+    context: &CompactGripContext<'_>,
+    indexed: &CompactTest<'_>,
+) -> usize {
+    let Some(owner_fn) = find_owner_function(seam, context.index) else {
+        return 0;
+    };
+    let owner_name = owner_fn.name.as_str();
+    if owner_name.is_empty() {
+        return 0;
+    }
+
+    let mut score = boundary_equality_overlap_score(seam, indexed, context.index, owner_fn);
+    let required_text = required_discriminator_text(seam);
+    score += observed_value_facts_for_test(seam, indexed, context.index, owner_name)
+        .iter()
+        .filter(|fact| observed_value_matches_required_discriminator(&fact.value, required_text))
+        .count();
+    score
+}
+
+fn observed_value_matches_required_discriminator(value: &str, required_text: &str) -> bool {
+    let value = value.trim();
+    let required_text = required_text.trim();
+    !value.is_empty()
+        && !required_text.is_empty()
+        && (value == required_text
+            || value.contains(required_text)
+            || required_text.contains(value))
+}
+
+fn boundary_equality_overlap_score(
+    seam: &RepoSeam,
+    indexed: &CompactTest<'_>,
+    index: &RustIndex,
+    owner_fn: &FunctionSummary,
+) -> usize {
+    if seam.kind() != SeamKind::PredicateBoundary {
+        return 0;
+    }
+    let Some((left, right)) = comparison_operands(seam.expression()) else {
+        return 0;
+    };
+    let parameters = function_parameters(owner_fn);
+    let Some(left_index) = parameters.iter().position(|param| param == &left) else {
+        return 0;
+    };
+    let Some(right_index) = parameters.iter().position(|param| param == &right) else {
+        return 0;
+    };
+
+    let mut score = 0;
+    for call in &indexed.test.calls {
+        if call.name != owner_fn.name {
+            continue;
+        }
+        let Some(args) = call_arguments(&call.text, &owner_fn.name) else {
+            continue;
+        };
+        let Some(left_arg) = args.get(left_index) else {
+            continue;
+        };
+        let Some(right_arg) = args.get(right_index) else {
+            continue;
+        };
+        if arguments_overlap_at_boundary(seam, indexed, index, left_arg, right_arg) {
+            score += 1;
+        }
+    }
+    score
+}
+
+fn arguments_overlap_at_boundary(
+    seam: &RepoSeam,
+    indexed: &CompactTest<'_>,
+    index: &RustIndex,
+    left_arg: &str,
+    right_arg: &str,
+) -> bool {
+    if left_arg.trim() == right_arg.trim() && !left_arg.trim().is_empty() {
+        return true;
+    }
+    let left_values = resolved_argument_values(seam, indexed, index, left_arg);
+    let right_values = resolved_argument_values(seam, indexed, index, right_arg);
+    left_values.iter().any(|left| {
+        let left = comparable_value(left);
+        right_values
+            .iter()
+            .any(|right| left == comparable_value(right))
+    })
+}
+
+fn resolved_argument_values(
+    seam: &RepoSeam,
+    indexed: &CompactTest<'_>,
+    index: &RustIndex,
+    arg: &str,
+) -> Vec<String> {
+    let values = scalar_values(arg);
+    if !values.is_empty() {
+        return values;
+    }
+    let value_facts = indexed
+        .value_facts
+        .get_or_init(|| super::value_resolution::ValueEnvFacts::build(indexed.test, index));
+    let env = super::value_resolution::ValueEnv::new(seam, value_facts);
+    env.resolve(arg)
+        .into_iter()
+        .map(|(value, _context)| value)
+        .collect()
 }
 
 fn compact_activate_evidence(
@@ -1123,6 +1296,66 @@ fn boundary_rhs_token(expression: &str) -> String {
         }
     }
     String::new()
+}
+
+fn function_parameters(function: &FunctionSummary) -> Vec<String> {
+    let signature = function
+        .body
+        .lines()
+        .next()
+        .unwrap_or(function.body.as_str());
+    let Some(open) = signature.find('(') else {
+        return Vec::new();
+    };
+    let after_open = &signature[open + 1..];
+    let Some(close) = after_open.find(')') else {
+        return Vec::new();
+    };
+    split_top_level_commas(&after_open[..close])
+        .into_iter()
+        .filter_map(|argument| {
+            argument
+                .split_once(':')
+                .map(|(name, _type)| name.trim().to_string())
+        })
+        .filter(|name| !name.is_empty() && name != "self" && name != "&self" && name != "mut self")
+        .collect()
+}
+
+fn comparison_operands(expression: &str) -> Option<(String, String)> {
+    for operator in [">=", "<=", "==", "!=", ">", "<"] {
+        if let Some((left, right)) = expression.split_once(operator) {
+            let left = clean_operand(left);
+            let right = clean_operand(right);
+            if !left.is_empty() && !right.is_empty() {
+                return Some((left, right));
+            }
+        }
+    }
+    None
+}
+
+fn clean_operand(operand: &str) -> String {
+    let cleaned = operand
+        .trim()
+        .trim_start_matches("if ")
+        .trim_end_matches('{')
+        .trim_end_matches(';')
+        .trim();
+    cleaned
+        .split_once('{')
+        .map(|(before, _after)| before.trim())
+        .unwrap_or(cleaned)
+        .to_string()
+}
+
+fn comparable_value(value: &str) -> String {
+    value
+        .trim()
+        .trim_matches('"')
+        .chars()
+        .filter(|ch| *ch != '_')
+        .collect()
 }
 
 fn propagate_evidence(seam: &RepoSeam, related: &[&TestSummary]) -> StageEvidence {
@@ -1305,11 +1538,57 @@ fn best_oracle(test: &TestSummary, seam: &RepoSeam) -> (OracleKind, OracleStreng
 
 fn call_arguments(text: &str, callee: &str) -> Option<Vec<String>> {
     let needle = format!("{callee}(");
-    let start = text.find(&needle)?;
-    let after = &text[start + needle.len()..];
-    let close = after.rfind(')')?;
-    let inside = &after[..close];
-    Some(split_top_level_commas(inside))
+    let start = text.find(&needle)? + callee.len();
+    let inside = delimited_contents_at(text, start)?;
+    Some(split_top_level_commas(&inside))
+}
+
+fn delimited_contents_at(text: &str, start: usize) -> Option<String> {
+    let bytes = text.as_bytes();
+    let open = *bytes.get(start)?;
+    let close = match open {
+        b'(' => b')',
+        b'[' => b']',
+        b'{' => b'}',
+        _ => return None,
+    };
+    let open = char::from(open);
+    let close = char::from(close);
+    let mut depth = 0i32;
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut content_start = None;
+    for (offset, ch) in text[start..].char_indices() {
+        let idx = start + offset;
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match ch {
+            '"' => in_string = true,
+            c if c == open => {
+                depth += 1;
+                if depth == 1 {
+                    content_start = Some(idx + ch.len_utf8());
+                }
+            }
+            c if c == close => {
+                depth -= 1;
+                if depth == 0 {
+                    let content_start = content_start?;
+                    return text.get(content_start..idx).map(str::to_string);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 fn split_top_level_commas(input: &str) -> Vec<String> {
@@ -2208,6 +2487,86 @@ fn wrapper_mentions_owner_only_in_non_code() {
         Ok(())
     }
 
+    #[test]
+    fn given_related_tests_with_same_relation_when_ranked_then_strong_oracle_precedes_smoke_oracle()
+    -> Result<(), String> {
+        // Both tests are direct owner calls. The strong exact-value
+        // oracle lives in an alphabetically later file, so the v2
+        // ranking must use oracle strength before file/name tie-breaks.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> Result<i32, ()> \
+                        { if amount >= threshold { Ok(amount - 10) } else { Ok(amount) } }\n";
+        let smoke = (
+            "tests/a_smoke.rs",
+            "#[test] fn smoke_owner_call() { assert!(discounted_total(100, 100).is_ok()); }\n",
+        );
+        let strong = (
+            "tests/z_exact.rs",
+            "#[test] fn exact_owner_call() { assert_eq!(discounted_total(100, 100).unwrap(), 90); }\n",
+        );
+        let files: Vec<(PathBuf, &str)> = vec![
+            (PathBuf::from("src/pricing.rs"), prod_src),
+            (PathBuf::from(smoke.0), smoke.1),
+            (PathBuf::from(strong.0), strong.1),
+        ];
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pricing.rs")], &index);
+        let predicate = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::PredicateBoundary)
+            .ok_or_else(|| "predicate seam present".to_string())?;
+        let evidence = evidence_for_seam(predicate, &index);
+        let first = evidence
+            .related_tests
+            .first()
+            .ok_or_else(|| "at least one related test".to_string())?;
+
+        assert_eq!(first.test_name, "exact_owner_call");
+        assert_eq!(first.relation_reason, RelationReason::DirectOwnerCall);
+        assert_eq!(first.oracle_strength, OracleStrength::Strong);
+        Ok(())
+    }
+
+    #[test]
+    fn given_related_tests_with_same_relation_and_oracle_when_ranked_then_activation_overlap_precedes_file_order()
+    -> Result<(), String> {
+        // Both tests are direct owner calls with strong exact-value
+        // oracles. The equality-boundary call lives in an
+        // alphabetically later file; it should still be the nearest
+        // imitation target because its activation values overlap the
+        // predicate boundary.
+        let prod_src = "pub fn discounted_total(amount: i32, threshold: i32) -> i32 \
+                        { if amount >= threshold { amount - 10 } else { amount } }\n";
+        let above = (
+            "tests/a_above.rs",
+            "#[test] fn above_boundary() { let actual = discounted_total(101, 100); assert_eq!(actual, 91); }\n",
+        );
+        let equality = (
+            "tests/z_equal.rs",
+            "#[test] fn equality_boundary() { let actual = discounted_total(100, 100); assert_eq!(actual, 90); }\n",
+        );
+        let files: Vec<(PathBuf, &str)> = vec![
+            (PathBuf::from("src/pricing.rs"), prod_src),
+            (PathBuf::from(above.0), above.1),
+            (PathBuf::from(equality.0), equality.1),
+        ];
+        let index = index_from_files(&files)?;
+        let seams = inventory_seams_from_index(&[PathBuf::from("src/pricing.rs")], &index);
+        let predicate = seams
+            .iter()
+            .find(|s| s.kind() == SeamKind::PredicateBoundary)
+            .ok_or_else(|| "predicate seam present".to_string())?;
+        let evidence = evidence_for_seam(predicate, &index);
+        let first = evidence
+            .related_tests
+            .first()
+            .ok_or_else(|| "at least one related test".to_string())?;
+
+        assert_eq!(first.test_name, "equality_boundary");
+        assert_eq!(first.relation_reason, RelationReason::DirectOwnerCall);
+        assert_eq!(first.oracle_strength, OracleStrength::Strong);
+        Ok(())
+    }
+
     // -- import_path_affinity tightening (#310 review) ---------------
     //
     // The detector requires explicit `module::owner_name` qualified-
@@ -2756,6 +3115,26 @@ fn wrapper_mentions_owner_only_in_non_code() {
         assert!(
             values.iter().any(|v| v == "100"),
             "let-resolved 100 must appear in observed values; got {values:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn given_boundary_owner_call_when_threshold_is_parameter_then_observed_values_stay_on_input_operand()
+    -> Result<(), String> {
+        let prod_src = "pub fn discounted_total(amount: i32, discount_threshold: i32) -> i32 \
+                        { if amount >= discount_threshold { amount - 10 } else { amount } }\n";
+        let test = (
+            "tests/pricing_tests.rs",
+            "#[test] fn below_threshold() { \
+                 assert_eq!(discounted_total(50, 100), 50); \
+             }\n",
+        );
+        let values = observed_values_for(prod_src, &[test])?;
+        assert_eq!(
+            values,
+            vec!["50".to_string()],
+            "observed values should describe the tested input operand, not the boundary parameter"
         );
         Ok(())
     }
