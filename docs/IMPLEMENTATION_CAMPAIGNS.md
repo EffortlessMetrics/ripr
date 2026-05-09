@@ -2062,9 +2062,9 @@ Next:
 
 Campaign ID: `editor-evidence-ux`
 
-Status: queued, not active. Campaign 17, RIPR Zero Adoption, is complete. Start
-this lane only after an explicit campaign activation PR or after an explicit
-decision to run the editor lane in parallel.
+Status: complete as an explicit parallel Lane 3 closeout. Campaign 17, RIPR
+Zero Adoption, is complete; Editor Evidence UX closed without replacing that
+machine-readable campaign.
 
 The saved-workspace LSP path already has alpha diagnostics, evidence hover,
 seam actions, related-test opening, context collection, agent-loop commands,
@@ -2111,7 +2111,7 @@ Work items:
 | `test/vscode-extension-smoke` | done | Extended the live VS Code e2e smoke so the real boundary-gap server path reaches a seam diagnostic, hover, code actions, copied seam packet and verify payloads, related-test opening, and restart callability without adding editor features. Bad-server-path status remains in the status/staleness slice. |
 | `lsp/editor-status-and-staleness` | done | Made disabled config, missing workspace, unavailable server, queued, running, complete, no-actionable-seam, stale, and failed states explicit in the VS Code status bar and Show Status path. Dirty Rust buffers keep stale status visible until save or close so saved-workspace completion does not look fresh for unsaved evidence. |
 | `docs/editor-evidence-workflow` | done | Added `docs/EDITOR_EVIDENCE_WORKFLOW.md`, a user-facing saved-workspace editor path from install and status through diagnostic, hover, related test, context packet, one focused test, after snapshot, verify, receipt, and refresh with explicit static-evidence limits. |
-| `campaign/editor-evidence-ux-closeout` | ready | Close only after hover, actions, context packet, protocol proof, VS Code proof, status/staleness, and docs align without analyzer, policy, CI, or runtime-claim drift. |
+| `campaign/editor-evidence-ux-closeout` | done | Closed after hover, actions, context packet, protocol proof, VS Code proof, status/staleness, and docs aligned without analyzer, policy, CI, or runtime-claim drift; see the closeout handoff. |
 
 Dependencies:
 
@@ -2121,17 +2121,16 @@ Dependencies:
 - Campaign 12 supplies first-hour editor status and intent-titled action
   framing.
 - Campaign 13 supplies PR guidance without making RIPR a free-form reviewer.
-- Campaign 17 is complete; this lane still requires explicit activation or an
-  explicit parallel-lane decision.
+- Campaign 17 is complete; this lane closed as an explicit parallel Lane 3
+  decision.
 - `docs/EDITOR_EVIDENCE_UX.md` and the audit handoff define the contract that
   future behavior PRs should follow.
 
-Next when activated:
+Closeout:
 
-- `campaign/editor-evidence-ux-closeout` should close the queued lane after
-  validating that hover, actions, context packet, protocol proof, VS Code proof,
-  status/staleness, and workflow docs agree without analyzer, policy, CI, or
-  runtime-claim drift.
+- [Editor Evidence UX closeout](handoffs/2026-05-09-editor-evidence-ux-closeout.md)
+  records the prompt-to-artifact audit, PR chain, validation commands, and the
+  boundary that future editor work should be opened explicitly.
 
 Commands:
 

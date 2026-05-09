@@ -267,7 +267,7 @@ evidence = [
   "VS Code e2e copies a live seam packet from the real server path"
 ]
 fixtures = []
-next = "campaign/editor-evidence-ux-closeout"
+next = "maintenance"
 metric = "packet includes missing discriminator and related tests"
 
 [[capability]]
@@ -283,7 +283,7 @@ evidence = [
   "VS Code e2e copies live seam packet and verify command payloads from the real server path"
 ]
 fixtures = []
-next = "campaign/editor-evidence-ux-closeout"
+next = "maintenance"
 metric = "packet includes missing values and suggested assertions"
 
 [[capability]]
@@ -317,7 +317,7 @@ evidence = [
   "docs/QUICKSTART.md routes the VS Code first hour through status, Problems diagnostics, hover evidence, and intent-titled seam actions"
 ]
 fixtures = []
-next = "campaign/editor-evidence-ux-closeout"
+next = "maintenance"
 metric = "diagnostics carry finding/probe metadata, editor status names saved-workspace analysis state, and editor actions target the selected finding"
 
 [[capability]]
@@ -828,7 +828,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "campaign/editor-evidence-ux-closeout"
+next = "maintenance"
 metric = "seam_id in diagnostic.data is the hover lookup key"
 
 [[capability]]
@@ -851,7 +851,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "campaign/editor-evidence-ux-closeout"
+next = "maintenance"
 metric = "hover renders evidence path from ClassifiedSeam, never parses diagnostic message"
 
 [[capability]]
@@ -880,7 +880,7 @@ evidence = [
 fixtures = [
   "fixtures/boundary_gap"
 ]
-next = "campaign/editor-evidence-ux-closeout"
+next = "maintenance"
 metric = "seam diagnostics expose only supported packet/assertion/test actions without automatic edits"
 
 [[capability]]
