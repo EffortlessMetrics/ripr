@@ -105,6 +105,18 @@ out_of_bounds_indexing = "deny"
 # AST text ranges that are guaranteed valid. Flipping requires per-call
 # review and is tracked in policy/clippy-lints.toml.
 
+# Collection / ownership helpers introduced after the previous MSRV. These
+# lints catch quiet intent drift in buffer sizing, arithmetic guards, and
+# standard-library helper usage without changing analyzer semantics.
+same_length_and_capacity = "deny"
+manual_ilog2 = "warn"
+needless_type_cast = "warn"
+decimal_bitwise_operands = "warn"
+manual_checked_ops = "warn"
+manual_take = "warn"
+duration_suboptimal_units = "warn"
+unnecessary_trailing_comma = "warn"
+
 # API and trait correctness: types whose implementations don't match the
 # trait contract are quiet bugs. `iter_not_returning_iterator` catches
 # methods named `iter*` that don't actually return iterators;

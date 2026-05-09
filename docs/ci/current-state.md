@@ -58,7 +58,7 @@ as distinct from the target design in `docs/CI.md`.
 | `ripr` self-dogfood is advisory but no LEM tracking | PR 14 | Cannot measure cost of self-verification. |
 | No soft budget guard | PR 15 | No warning when PRs exceed budget bands. |
 | `policy/no-panic-allowlist.toml` is shadow/sample only | PR 04 | Canonical checker still reads `.ripr/` path. |
-| Planned 1.94/1.95 lints are not active | PR 03 | Missing AST/slicing rails and newer lint set. |
+| `indexing_slicing` / `string_slice` are not active | PR 07 | Missing per-call receipts for parser/diff bounded indexing and slicing. |
 
 ## Policy files that exist but are not yet fully enforced
 
@@ -77,7 +77,11 @@ the matching xtask implementation.
 - Target: `1.95`
 - Rust 1.95 compatibility audit: pass on 2026-05-09; see
   [Rust 1.95 compatibility audit](msrv-1.95-audit.md).
-- Planned lints waiting on PR 03: `disallowed_fields`, `manual_checked_ops`,
-  `manual_take`, `manual_pop_if`, `duration_suboptimal_units`,
-  `unnecessary_trailing_comma`, plus 1.94 lints `same_length_and_capacity`,
-  `manual_ilog2`, `needless_type_cast`, `decimal_bitwise_operands`.
+- PR 03 promoted clean Rust 1.94/1.95 lints:
+  `same_length_and_capacity`, `manual_ilog2`, `needless_type_cast`,
+  `decimal_bitwise_operands`, `manual_checked_ops`, `manual_take`,
+  `duration_suboptimal_units`, and `unnecessary_trailing_comma`.
+- Planned lints retained with explicit blockers:
+  `disallowed_fields` needs a reviewed `clippy.toml` protected-seam config,
+  `manual_pop_if` is not recognized by Rust 1.95.0 Clippy, and
+  `indexing_slicing` / `string_slice` need per-call receipts.
