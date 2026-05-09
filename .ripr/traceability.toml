@@ -1329,6 +1329,7 @@ outputs = [
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/ROADMAP.md",
+  "docs/handoffs/2026-05-09-campaign-22-closeout.md",
   "CHANGELOG.md",
 ]
 metrics = [

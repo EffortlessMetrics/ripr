@@ -57,6 +57,10 @@ are scoped or reviewed.
   actionable, baseline-only, stale, missing-required-artifact,
   unchanged-after-attempt, and no-actionable-seam routes while preserving
   advisory static-evidence limits and default non-blocking CI behavior.
+- Closed Campaign 22 after the first-action spec, routing corpus, read-only
+  producer, advisory CI projection, editor status projection, workflow docs,
+  dogfood receipts, and closeout audit proved one bounded next action without
+  analyzer, policy, gate, model, mutation, or editor-surface sprawl.
 - Opened Campaign 20, Test-Oracle Assistant Proof, with
   `spec/test-oracle-assistant-loop` as the first ready work item so the
   already-built PR guidance, editor/agent handoff, verification, receipts,

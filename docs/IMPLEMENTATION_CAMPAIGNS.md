@@ -2465,19 +2465,17 @@ Blocking conditions:
 
 Next:
 
-- Campaign 22, First Useful Action, is now the active campaign. Its report
-  contract, routing corpus, read-only producer, and generated CI projection are
-  pinned. The editor projection now surfaces existing first-action reports in
-  status and Show Status. The workflow guide now documents how developers,
-  reviewers, and coding agents use the first action. Checked dogfood receipts
-  now prove the documented first-action routes, and closeout is the next ready
-  item.
+- Campaign 22, First Useful Action, is closed. Its report contract, routing
+  corpus, read-only producer, generated CI projection, editor projection,
+  workflow guide, and checked dogfood receipts now compress existing evidence
+  into one advisory next action without changing analyzer, policy, gate, model,
+  mutation, or editor-surface behavior.
 
 ## Campaign 22: First Useful Action
 
 Campaign ID: `first-useful-action`
 
-Status: active
+Status: complete
 
 Campaign 21 made the test-oracle assistant proof loop a first-class advisory
 report. The next product risk is report sprawl: users should not need to know
@@ -2525,7 +2523,7 @@ Work items:
 | `lsp/first-useful-action-status` | done | VS Code status and `ripr: Show Status` now project an existing `target/ripr/reports/first-useful-action.json` report without invoking `ripr first-action`, adding diagnostics, CodeLens, inlay hints, unsaved-buffer analysis, source edits, or generated tests. |
 | `docs/first-useful-action-workflow` | done | Added `docs/FIRST_USEFUL_ACTION_WORKFLOW.md`, documenting GitHub and editor entry points, status meanings, developer/reviewer/agent actions, verification, receipts, fallback interpretation, and the advisory gate boundary. |
 | `dogfood/first-useful-action-receipts` | done | Extended `cargo xtask dogfood` with checked repo-local first-action receipts for actionable, baseline-only, stale, missing-required-artifact, unchanged-after-attempt, and no-actionable-seam cases while recording advisory limits. |
-| `campaign/first-useful-action-closeout` | ready | Close Campaign 22 after schema, fixtures, producer, CI projection, editor projection, docs, and dogfood receipts prove one advisory next action without analyzer, policy, gate, model, mutation, or editor-surface sprawl. |
+| `campaign/first-useful-action-closeout` | done | Closed Campaign 22 after schema, fixtures, producer, CI projection, editor projection, docs, and dogfood receipts proved one advisory next action without analyzer, policy, gate, model, mutation, or editor-surface sprawl. The closeout audit is recorded in `docs/handoffs/2026-05-09-campaign-22-closeout.md`. |
 
 Dependencies:
 
@@ -2570,9 +2568,8 @@ Blocking conditions:
 
 Next:
 
-- Continue with `campaign/first-useful-action-closeout`. The remaining work is
-  to record the final Campaign 22 closeout audit and preserve the next-lane
-  boundary.
+- No ready work item remains in Campaign 22. Choose the next campaign
+  explicitly before opening another product lane.
 
 ## Future Campaign: Assistant Loop Health
 

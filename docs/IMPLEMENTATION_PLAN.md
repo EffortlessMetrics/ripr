@@ -36,7 +36,7 @@ through multiple work items in a campaign, but each work item should follow the
 | PR Evidence Ledger (19) | Turn per-PR RIPR evidence into an adoption ledger for movement history, waiver aging, baseline burn-down, repair receipts, and coverage/grip frontier signals while preserving advisory defaults. | Complete: spec, producer, generated-CI projection, coverage/grip frontier report, user workflow docs, and `campaign/pr-evidence-ledger-closeout`. |
 | Test-Oracle Assistant Proof (20) | Prove the full PR-time loop from changed Rust behavior to static evidence, PR/editor guidance, focused-test handoff, verification, receipt, and advisory CI/ledger projection. | Complete: spec, canonical fixture, dogfood receipt, user workflow docs, and `campaign/test-oracle-assistant-proof-closeout`. |
 | Test-Oracle Assistant Report Producer (21) | Turn the proved assistant loop into a public read-only JSON/Markdown report producer and optional advisory CI projection. | Complete: report producer, generated-CI projection, proof-report docs, and `campaign/test-oracle-assistant-report-closeout`. |
-| First Useful Action (22) | Compress existing editor, PR, ledger, proof, receipt, optional gate, coverage/grip, and staleness evidence into one advisory next test action. | Active: RIPR-SPEC-0020 defines the report contract, the routing corpus is pinned, `ripr first-action` writes the read-only advisory report, generated CI surfaces it as advisory summary/artifact content, VS Code status/Show Status project an existing report, and the workflow docs explain developer, reviewer, and agent use; dogfood receipts are the next ready slice, with closeout still blocked behind those receipts. |
+| First Useful Action (22) | Compress existing editor, PR, ledger, proof, receipt, optional gate, coverage/grip, and staleness evidence into one advisory next test action. | Complete: RIPR-SPEC-0020 defines the report contract, the routing corpus is pinned, `ripr first-action` writes the read-only advisory report, generated CI surfaces it as advisory summary/artifact content, VS Code status/Show Status project an existing report, the workflow docs explain developer, reviewer, and agent use, dogfood receipts check the documented routes, and `campaign/first-useful-action-closeout` records the boundary. |
 | Assistant Loop Health (future) | Summarize proof completeness, missing inputs, static evidence movement, recurring warnings, and next repair queues across one or more assistant proof reports. | Proposed in [Assistant Loop Health proposal](ASSISTANT_LOOP_HEALTH_PROPOSAL.md); should wait until First Useful Action settles the first-screen routing contract. |
 | Editor Evidence UX (future) | Make the saved-workspace LSP path feel like an editor-native test-intent cockpit from diagnostic to hover, related test, context packet, one test, verify, and receipt. | Complete as an explicit parallel Lane 3 closeout: contract audit, hover hardening, evidence-aware actions, context packet, protocol smoke, VS Code smoke, status/staleness, workflow docs, and closeout audit. |
 
@@ -158,18 +158,19 @@ only when the required artifact chain already exists.
 `docs/TEST_ORACLE_ASSISTANT_PROOF_REPORT.md` now explains how to read the
 report, warnings, static movement, optional CI projection, and limits. Campaign
 21 closed with
-`docs/handoffs/2026-05-09-campaign-21-closeout.md`. Campaign 22 is now open as
+`docs/handoffs/2026-05-09-campaign-21-closeout.md`. Campaign 22 closed as
 First Useful Action. It compresses existing evidence into one advisory next
-test action; RIPR-SPEC-0020 now pins the report contract, the routing corpus
-pins expected statuses and fallback outputs, `ripr first-action` now writes the
+test action; RIPR-SPEC-0020 pins the report contract, the routing corpus pins
+expected statuses and fallback outputs, `ripr first-action` writes the
 read-only report from explicit artifacts, generated CI projects it as advisory
 summary/artifact content, and VS Code status projects existing reports without
-rerunning analysis. The first-action workflow docs now explain how developers,
+rerunning analysis. The first-action workflow docs explain how developers,
 reviewers, and coding agents read the action, verify movement, emit receipts,
-and interpret fallback states. `cargo xtask dogfood` now checks repo-local
+and interpret fallback states. `cargo xtask dogfood` checks repo-local
 first-action receipts for actionable, baseline-only, stale,
 missing-required-artifact, unchanged-after-attempt, and no-actionable-seam
-routes, so Campaign 22 closeout is the next ready work item.
+routes. The [Campaign 22 closeout](handoffs/2026-05-09-campaign-22-closeout.md)
+records the prompt-to-artifact audit and next-work boundary.
 
 The proposed [Assistant Loop Health](ASSISTANT_LOOP_HEALTH_PROPOSAL.md) follow-up
 should not replace Campaign 22. It becomes useful after First Useful Action gives

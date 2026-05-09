@@ -203,21 +203,22 @@ only when the required artifact chain already exists.
 `docs/TEST_ORACLE_ASSISTANT_PROOF_REPORT.md` now explains how to read the
 report, warnings, static movement, optional CI projection, and limits. Campaign
 21 closed with
-`docs/handoffs/2026-05-09-campaign-21-closeout.md`. Campaign 22 is now open as
-First Useful Action. Its product goal is to compress editor, PR, ledger, proof,
-receipt, optional gate, coverage/grip, and staleness evidence into one advisory
-next test action before adding another raw surface. RIPR-SPEC-0020 now defines
-that report contract, the routing corpus pins actionable and fallback cases,
-and `ripr first-action` now writes the read-only report from explicit
-artifacts. Generated CI now surfaces that report as advisory summary and
-artifact content. VS Code status and `ripr: Show Status` now project an
-existing first-action report without rerunning analysis. The
-[first useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md) now documents
-how developers, reviewers, and agents read the report, act on the action,
-verify movement, emit receipts, and interpret fallback states. `cargo xtask
-dogfood` now checks repo-local first-action receipts for the documented
+`docs/handoffs/2026-05-09-campaign-21-closeout.md`. Campaign 22 closed as
+First Useful Action: RIPR-SPEC-0020 defines the report contract over editor, PR,
+ledger, proof, receipt, optional gate, coverage/grip, and staleness evidence;
+the routing corpus pins actionable and fallback cases; `ripr first-action`
+writes the read-only report from explicit artifacts; generated CI surfaces that
+report as advisory summary and artifact content; VS Code status and
+`ripr: Show Status` project existing first-action reports without rerunning
+analysis; and [first useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md)
+documents how developers, reviewers, and agents read the report, act on the
+action, verify movement, emit receipts, and interpret fallback states. `cargo
+xtask dogfood` checks repo-local first-action receipts for the documented
 actionable, baseline-only, stale, missing-input, unchanged-after-attempt, and
-no-actionable routes. Campaign 22 closeout is the next ready slice.
+no-actionable routes. The [Campaign 22
+closeout](handoffs/2026-05-09-campaign-22-closeout.md) records the audit and
+keeps future product-compression, assistant-health, evidence-spine, and editor
+hardening lanes separate.
 
 [Assistant Loop Health](ASSISTANT_LOOP_HEALTH_PROPOSAL.md) is recorded as a
 future follow-up lane after First Useful Action. It should summarize proof

@@ -129,7 +129,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/first-useful-action-closeout"
-status = "ready"
+status = "done"
 branch = "campaign-first-useful-action-closeout"
 stackable = false
 acceptance = "Close Campaign 22 after schema, fixtures, producer, CI projection, editor projection, docs, and dogfood receipts prove one advisory next action without analyzer, policy, gate, model, mutation, or editor-surface sprawl"

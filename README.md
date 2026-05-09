@@ -327,12 +327,12 @@ operator workflow. [Baseline ledger workflow](docs/BASELINE_LEDGER_WORKFLOW.md)
 shows how to create, diff, and shrink reviewed behavioral-grip debt baselines
 on the path toward RIPR 0. Campaigns 20 and 21 then made the test-oracle
 assistant proof loop and read-only proof report producer first-class advisory
-artifacts. Campaign 22 is active as First Useful Action: `ripr first-action`
+artifacts. Campaign 22 is closed as First Useful Action: `ripr first-action`
 now writes the read-only advisory report, generated CI projects it as advisory
-summary/artifact content, and the VS Code status path can show an existing
-workspace-matched report without adding diagnostics or editor decorations. The
-next checkpoint is `docs/first-useful-action-workflow`. The default generated
-workflow remains advisory.
+summary/artifact content, the VS Code status path can show an existing
+workspace-matched report without adding diagnostics or editor decorations, and
+checked dogfood receipts prove the documented routing cases. The default
+generated workflow remains advisory.
 
 Deeper capability state lives in [Capability matrix](docs/CAPABILITY_MATRIX.md)
 and [Metrics](docs/METRICS.md).

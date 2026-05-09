@@ -42,8 +42,8 @@ Case directories:
 
 Each case pins the expected status, action kind, audience, selected seam,
 target, routing reason, fallback state, command expectations, and static
-limits. The future report producer should use this corpus before adding CI or
-editor projection.
+limits. The report producer, generated CI projection, editor status projection,
+and dogfood receipt checks all use this corpus as the regression contract.
 
 `cargo xtask dogfood` also treats the following cases as repo-local first-action
 receipts:
