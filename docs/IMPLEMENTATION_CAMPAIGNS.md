@@ -2055,8 +2055,111 @@ Blocking conditions:
 
 Next:
 
-- No Campaign 17 work item remains ready. Open the next adoption, analyzer,
-  editor, or platform campaign explicitly instead of extending this closeout.
+- Campaign 18 opened RIPR Zero Reporting. It turns the Campaign 17 baseline
+  ledger mechanics into repo-level progress, stale-baseline, trend, and repair
+  reporting while preserving advisory defaults.
+
+## Campaign 18: RIPR Zero Reporting
+
+Campaign ID: `ripr-zero-reporting`
+
+Status: active
+
+Campaign 17 made reviewed baselines executable. The next adoption risk is that
+teams can create a baseline and see one PR's movement, but they still lack a
+repo-level status surface that explains age, ownership, stale entries, debt
+trends, top repair areas, and progress toward RIPR 0.
+
+Objective:
+
+```text
+Make RIPR Zero progress visible as a reporting layer over reviewed baselines,
+baseline debt deltas, gate decisions, and recommendation evidence: show repo
+RIPR 0 status, baseline age and ownership, stale-debt warnings, trends, and top
+repair areas without changing analyzer identity, gate policy, or advisory
+defaults.
+```
+
+Why it matters:
+
+RIPR 0 should be an attainable operational target, not a one-time baseline
+file. Maintainers need to know whether known debt is aging, whether baseline
+entries have owners and reasons, whether debt is shrinking, which repair areas
+matter most, and whether CI is routing focused test work without turning RIPR
+into default-blocking gateware.
+
+End state:
+
+- a RIPR Zero reporting spec defines repo-level status, debt trends, baseline
+  metadata, stale warnings, top debt areas, and repair routing without claiming
+  perfect tests or coverage adequacy
+- baseline ledgers can carry reviewed owner/reason/created/review metadata
+  while preserving compatibility with existing Campaign 17 baseline files
+- a read-only RIPR Zero status report joins baseline ledgers, baseline debt
+  deltas, gate decisions, and recommendation evidence into JSON/Markdown
+  progress summaries
+- generated CI can surface RIPR Zero status and top repair areas as advisory
+  evidence without making the report the pass/fail authority
+- user docs explain how teams read RIPR Zero status, age and refresh
+  baselines, route repair packets, and interpret progress toward RIPR 0
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `spec/ripr-zero-reporting-surface` | ready | Define the RIPR Zero reporting contract for repo-level status, baseline metadata, stale warnings, trends, top debt areas, and advisory repair routing without analyzer identity rewrites or default CI blocking. |
+| `baseline/metadata-v2` | blocked | Preserve optional owner, reason, created_at, review_after, and source metadata in baseline ledgers without breaking existing Campaign 17 baseline files. |
+| `report/ripr-zero-status` | blocked | Add a read-only JSON/Markdown status report that joins reviewed baseline, baseline debt delta, gate decision, and optional recommendation evidence. |
+| `ci/ripr-zero-summary` | blocked | Surface RIPR Zero status and top repair areas in generated CI summaries and artifacts while preserving advisory defaults. |
+| `docs/ripr-zero-reporting-workflow` | blocked | Document how teams read RIPR Zero status, age and refresh baselines, route top repair packets, and interpret progress without treating RIPR 0 as perfect tests or 100 percent coverage. |
+| `campaign/ripr-zero-reporting-closeout` | blocked | Close Campaign 18 only after RIPR Zero status, baseline metadata, generated-CI reporting, and user workflow docs are in place while defaults stay advisory. |
+
+Dependencies:
+
+- Campaign 17 supplies reviewed baseline ledgers, debt delta reports,
+  shrink-only refreshes, generated-CI artifacts, and the baseline ledger
+  workflow.
+- Campaign 16 supplies gate adoption modes and visible acknowledgement
+  workflows. RIPR Zero reporting may summarize them; it must not redefine gate
+  policy.
+- Campaign 14 supplies recommendation calibration. Missing calibration remains
+  an explicit unknown, not confidence.
+- Campaign 13 supplies PR guidance and repair-oriented recommendations. RIPR
+  Zero reporting may route to those packets; it must not generate tests or
+  make LLM calls.
+
+Commands:
+
+```bash
+cargo xtask check-campaign
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-capabilities
+cargo xtask check-pr
+```
+
+Blocking conditions:
+
+- analyzer identity rewrites inside Lane 4
+- recommendation ranking changes
+- gate policy semantic changes
+- default CI blocking
+- baseline auto-adoption of new current debt
+- treating baselines as suppressions or accepted-forever debt
+- hiding acknowledged, suppressed, stale, invalid, or missing-input entries
+  from summaries
+- runtime mutation vocabulary in static RIPR Zero summaries
+- running cargo-mutants or any mutation engine from adoption workflows
+- automatic source edits or generated tests
+- LSP/editor behavior changes in this campaign lane
+- new public crates
+
+Next:
+
+- Start `spec/ripr-zero-reporting-surface` to define the report contract before
+  changing baseline schemas, generated CI, or output artifacts.
 
 ## Future Campaign: Editor Evidence UX
 

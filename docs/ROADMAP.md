@@ -154,7 +154,11 @@ user path from advisory adoption to reviewed baseline creation,
 configured scope. The [Campaign 17
 closeout](handoffs/2026-05-09-campaign-17-closeout.md) records the PR chain,
 proof commands, and next-work boundary.
-Editor Evidence UX remains queued as a separate Lane 3 campaign; its contract
+Campaign 18 is active as RIPR Zero Reporting. It will turn reviewed baselines,
+baseline debt deltas, gate decisions, and recommendation evidence into
+repo-level RIPR 0 status, baseline age and ownership, stale-debt warnings,
+trend summaries, and top repair areas while keeping generated CI advisory by
+default. Editor Evidence UX remains queued as a separate Lane 3 campaign; its contract
 audit is recorded in [Editor Evidence UX](EDITOR_EVIDENCE_UX.md). Hover,
 evidence-aware actions, context packets, framed protocol proof, VS Code smoke,
 status/staleness, and the [editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md)
@@ -207,6 +211,7 @@ quality rails
 -> calibrated gate policy
 -> gate adoption UX
 -> RIPR Zero adoption
+-> RIPR Zero reporting
 -> editor evidence UX
 ```
 

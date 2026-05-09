@@ -1,35 +1,34 @@
-id = "ripr-zero-adoption"
-title = "RIPR Zero Adoption"
+id = "ripr-zero-reporting"
+title = "RIPR Zero Reporting"
 status = "active"
 
-# This is Campaign 17 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
-# Campaign 16 closed Gate Adoption UX after generated-CI examples, waiver
-# workflows, baseline guidance, summary polish, dogfood receipts, and
-# blocking-readiness docs made optional gates adoptable while generated CI
-# stayed advisory by default.
+# This is Campaign 18 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+# Campaign 17 closed RIPR Zero Adoption after baselines became executable
+# reviewed debt ledgers with create, diff, shrink-only update, generated-CI
+# artifacts, and baseline-ledger docs while generated CI stayed advisory.
 
 objective = """
-Make RIPR 0 adoption concrete for PR/CI users: turn baselines into visible
-burn-down ledgers, create reviewed baseline checkpoints from gate decisions,
-diff current evidence against checked-in debt, support shrink-only refreshes,
-and keep every new policy mode explicit and advisory by default.
+Make RIPR Zero progress visible as a reporting layer over reviewed baselines,
+baseline debt deltas, gate decisions, and recommendation evidence: show repo
+RIPR 0 status, baseline age and ownership, stale-debt warnings, trends, and top
+repair areas without changing analyzer identity, gate policy, or advisory
+defaults.
 """
 
 end_state = [
-  "a baseline debt delta report compares current evidence against reviewed baseline debt without auto-adopting new findings",
-  "ripr baseline create writes reviewed baseline ledgers from existing gate-decision evidence without implying accepted-forever debt",
-  "ripr baseline diff reports still-present, resolved, new policy-eligible, acknowledged, suppressed, stale, invalid, and missing-input identities",
-  "ripr baseline update --remove-resolved supports shrink-only baseline refreshes and never auto-adopts new debt in CI",
-  "generated CI uploads baseline debt delta artifacts and summarizes debt movement while the gate evaluator remains responsible for pass or fail",
-  "RIPR Zero adoption docs explain initial baseline creation, baseline-check rollout, shrink-only refresh, new debt review, and waiver versus baseline versus suppression boundaries",
+  "a RIPR Zero reporting spec defines repo-level status, debt trends, baseline metadata, stale warnings, top debt areas, and repair routing without claiming perfect tests or coverage adequacy",
+  "baseline ledgers can carry reviewed owner/reason/created/review metadata while preserving compatibility with existing Campaign 17 baseline files",
+  "a read-only RIPR Zero status report joins baseline ledgers, baseline debt deltas, gate decisions, and recommendation evidence into JSON/Markdown progress summaries",
+  "generated CI can surface RIPR Zero status and top repair areas as advisory evidence without making the report the pass/fail authority",
+  "user docs explain how teams read RIPR Zero status, age and refresh baselines, route repair packets, and interpret progress toward RIPR 0",
 ]
 
 [[work_item]]
-id = "spec/baseline-debt-delta-report"
-status = "done"
-branch = "spec-baseline-debt-delta-report"
+id = "spec/ripr-zero-reporting-surface"
+status = "ready"
+branch = "spec-ripr-zero-reporting-surface"
 stackable = false
-acceptance = "Define the baseline debt delta report contract for comparing current PR/CI evidence to reviewed baseline debt without changing analyzer identity, auto-adopting new debt, or making CI blocking by default"
+acceptance = "Define the RIPR Zero reporting contract for repo-level status, baseline metadata, stale warnings, trends, top debt areas, and advisory repair routing without analyzer identity rewrites or default CI blocking"
 commands = [
   "cargo xtask check-spec-format",
   "cargo xtask check-doc-index",
@@ -42,12 +41,12 @@ commands = [
 ]
 
 [[work_item]]
-id = "baseline/create"
-status = "done"
-branch = "baseline-create"
+id = "baseline/metadata-v2"
+status = "blocked"
+branch = "baseline-metadata-v2"
 stackable = false
-blocked_by = ["spec/baseline-debt-delta-report"]
-acceptance = "Add ripr baseline create so users can produce stable reviewed .ripr/gate-baseline.json ledgers from existing gate-decision evidence without overwriting by default"
+blocked_by = ["spec/ripr-zero-reporting-surface"]
+acceptance = "Extend baseline ledger handling so optional owner, reason, created_at, review_after, and source metadata can be preserved and reported without breaking existing Campaign 17 baseline files"
 commands = [
   "cargo test -p ripr baseline",
   "cargo xtask check-output-contracts",
@@ -56,40 +55,26 @@ commands = [
 ]
 
 [[work_item]]
-id = "baseline/diff"
-status = "done"
-branch = "baseline-diff"
+id = "report/ripr-zero-status"
+status = "blocked"
+branch = "report-ripr-zero-status"
 stackable = false
-blocked_by = ["baseline/create"]
-acceptance = "Add ripr baseline diff to write baseline-debt-delta JSON/Markdown with still-present, resolved, new, acknowledged, suppressed, stale, invalid, and missing-input buckets"
+blocked_by = ["spec/ripr-zero-reporting-surface", "baseline/metadata-v2"]
+acceptance = "Add a read-only RIPR Zero status report that writes JSON/Markdown from reviewed baseline, baseline debt delta, gate decision, and optional recommendation evidence"
 commands = [
-  "cargo test -p ripr baseline",
+  "cargo test -p ripr ripr_zero",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "baseline/update-remove-resolved"
-status = "done"
-branch = "baseline-update-remove-resolved"
+id = "ci/ripr-zero-summary"
+status = "blocked"
+branch = "ci-ripr-zero-summary"
 stackable = false
-blocked_by = ["baseline/diff"]
-acceptance = "Add ripr baseline update --remove-resolved as a shrink-only refresh path that refuses to auto-adopt new debt by default"
-commands = [
-  "cargo test -p ripr baseline",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "ci/baseline-debt-delta-artifacts"
-status = "done"
-branch = "ci-baseline-debt-delta-artifacts"
-stackable = false
-blocked_by = ["baseline/update-remove-resolved"]
-acceptance = "Upload baseline debt delta JSON/Markdown from generated CI and summarize debt movement without making this report the pass/fail authority"
+blocked_by = ["report/ripr-zero-status"]
+acceptance = "Surface RIPR Zero status and top repair areas in generated CI summaries and artifacts while preserving advisory defaults and leaving gate decisions as the pass/fail authority"
 commands = [
   "cargo test -p ripr init_generated_github_workflow",
   "cargo xtask check-workflows",
@@ -99,12 +84,12 @@ commands = [
 ]
 
 [[work_item]]
-id = "docs/baseline-ledger-workflow"
-status = "done"
-branch = "docs-baseline-ledger-workflow"
+id = "docs/ripr-zero-reporting-workflow"
+status = "blocked"
+branch = "docs-ripr-zero-reporting-workflow"
 stackable = false
-blocked_by = ["baseline/update-remove-resolved", "ci/baseline-debt-delta-artifacts"]
-acceptance = "Document initial adoption, reviewed baseline creation, baseline-check rollout, shrink-only refresh, new debt review, waiver versus baseline versus suppression, and the path toward RIPR 0"
+blocked_by = ["report/ripr-zero-status", "ci/ripr-zero-summary"]
+acceptance = "Document how teams read RIPR Zero status, age and refresh baselines, route top repair packets, and interpret progress without treating RIPR 0 as perfect tests or 100 percent coverage"
 commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
@@ -113,19 +98,18 @@ commands = [
 ]
 
 [[work_item]]
-id = "campaign/ripr-zero-adoption-closeout"
-status = "done"
-branch = "campaign-ripr-zero-adoption-closeout"
+id = "campaign/ripr-zero-reporting-closeout"
+status = "blocked"
+branch = "campaign-ripr-zero-reporting-closeout"
 stackable = false
 blocked_by = [
-  "spec/baseline-debt-delta-report",
-  "baseline/create",
-  "baseline/diff",
-  "baseline/update-remove-resolved",
-  "ci/baseline-debt-delta-artifacts",
-  "docs/baseline-ledger-workflow",
+  "spec/ripr-zero-reporting-surface",
+  "baseline/metadata-v2",
+  "report/ripr-zero-status",
+  "ci/ripr-zero-summary",
+  "docs/ripr-zero-reporting-workflow",
 ]
-acceptance = "Close Campaign 17 only after baseline delta, baseline create/diff/shrink-only update, CI artifacts, and baseline ledger docs are in place while defaults stay advisory"
+acceptance = "Close Campaign 18 only after RIPR Zero status, baseline metadata, generated-CI reporting, and user workflow docs are in place while defaults stay advisory"
 commands = [
   "cargo xtask check-spec-format",
   "cargo xtask check-doc-index",
