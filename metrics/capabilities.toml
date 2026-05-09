@@ -855,12 +855,13 @@ evidence = [
   "editors/vscode/test/suite/extension.test.ts::status bar ignores first useful action report for another workspace validates report root matching",
   "editors/vscode/test/suite/extension.test.ts::first useful action report does not hide stale editor status validates stale saved-workspace status stays visible",
   "cargo xtask dogfood validates repo-local first-action receipts for actionable, baseline-only, stale, missing-required-artifact, unchanged-after-attempt, and no-actionable-seam cases while recording advisory limits",
-  "docs/handoffs/2026-05-09-first-useful-action-receipts.md records the checked dogfood receipt cases and validation result"
+  "docs/handoffs/2026-05-09-first-useful-action-receipts.md records the checked dogfood receipt cases and validation result",
+  "docs/handoffs/2026-05-09-campaign-22-closeout.md records the Campaign 22 closeout audit, validation plan, and future-lane boundary"
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/first-useful-action"
 ]
-next = "campaign/first-useful-action-closeout"
+next = "maintenance"
 metric = "first_useful_action_reports, first_useful_action_actionable, first_useful_action_stale, first_useful_action_missing_required_artifact, first_useful_action_baseline_only, first_useful_action_acknowledged, first_useful_action_waived, first_useful_action_suppressed, first_useful_action_no_actionable_seam, first_useful_action_already_improved, first_useful_action_unchanged_after_attempt"
 
 [[capability]]
