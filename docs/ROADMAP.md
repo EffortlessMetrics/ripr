@@ -175,8 +175,9 @@ current-status surface into an append-only PR adoption history: new
 policy-eligible gaps, baseline debt resolved, acknowledgements, suppressions,
 gate mode, repair receipts, and optional coverage/grip frontier signals. The
 RIPR-SPEC-0018 now pins the contract, and `ripr pr-ledger record` writes the
-read-only JSON/Markdown producer. The next ready item is generated-CI
-projection through `ci/pr-evidence-ledger-summary`. The campaign remains
+read-only JSON/Markdown producer. Generated-CI projection now writes and
+summarizes `pr-evidence-ledger.{json,md}` as advisory PR movement evidence.
+The next ready item is `report/coverage-grip-frontier`. The campaign remains
 advisory by default and keeps gate decisions as the pass/fail authority.
 
 ## Strategic Sequence

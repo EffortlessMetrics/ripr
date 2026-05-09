@@ -2303,10 +2303,14 @@ target/ripr/reports/pr-evidence-ledger.md
 ```
 
 This report is advisory history. `ripr gate evaluate` remains the pass/fail
-authority for configured gate modes. Generated CI may upload and summarize
-`pr-evidence-ledger.{json,md}`, but the report itself must not fail CI, rewrite
-baselines, post comments, edit source, generate tests, rerun analysis, call an
-LLM, or run mutation testing.
+authority for configured gate modes. Generated GitHub CI runs
+`ripr pr-ledger record` on pull requests when `target/ripr/review/comments.json`
+exists, adds optional gate, baseline delta, RIPR Zero, recommendation
+calibration, agent receipt, coverage, label, and history inputs when present,
+uploads `pr-evidence-ledger.{json,md}` with the normal report packet, and
+appends a PR movement card to the job summary. The report itself must not fail
+CI, rewrite baselines, post comments, edit source, generate tests, rerun
+analysis, call an LLM, or run mutation testing.
 
 JSON shape:
 

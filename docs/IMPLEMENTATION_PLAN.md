@@ -128,9 +128,10 @@ Campaign 19 is open as PR Evidence Ledger. It keeps the Lane 4 adoption focus
 on PR/CI review UX: append-only per-PR movement records, waiver aging, baseline
 burn-down, repair receipts, and optional coverage/grip frontier signals.
 RIPR-SPEC-0018 now pins the contract, and `ripr pr-ledger record` writes the
-read-only JSON/Markdown ledger over existing artifacts. The next ready item is
-`ci/pr-evidence-ledger-summary`, which will project that ledger into generated
-CI while keeping gate decisions as the pass/fail authority.
+read-only JSON/Markdown ledger over existing artifacts. Generated CI now runs
+the ledger on pull requests, uploads `pr-evidence-ledger.{json,md}`, and appends
+the advisory PR movement card while keeping gate decisions as the pass/fail
+authority. The next ready item is `report/coverage-grip-frontier`.
 
 ## PR 0: `planning-and-tracking-docs`
 
