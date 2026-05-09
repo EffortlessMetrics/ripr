@@ -56,6 +56,9 @@ are scoped or reviewed.
 - Added `docs/TEST_ORACLE_ASSISTANT_PROOF_REPORT.md`, a reader-facing guide for
   proof report status, warnings, static movement, optional CI projection,
   coding-agent handoff, and advisory limits.
+- Closed Campaign 21 with `docs/handoffs/2026-05-09-campaign-21-closeout.md`,
+  recording the proof-report producer, generated-CI projection, user docs,
+  validation, next-work boundary, and advisory non-goals.
 - Opened Campaign 19, PR Evidence Ledger, with
   `spec/pr-evidence-ledger-surface` as the first ready work item so per-PR
   RIPR evidence can become an adoption ledger for movement history, waiver

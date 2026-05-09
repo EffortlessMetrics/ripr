@@ -1241,6 +1241,7 @@ outputs = [
   "docs/TEST_ORACLE_ASSISTANT_PROOF_REPORT.md",
   "docs/handoffs/2026-05-09-test-oracle-assistant-receipt.md",
   "docs/handoffs/2026-05-09-campaign-20-closeout.md",
+  "docs/handoffs/2026-05-09-campaign-21-closeout.md",
   "docs/handoffs/README.md",
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",

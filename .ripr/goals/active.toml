@@ -69,7 +69,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/test-oracle-assistant-report-closeout"
-status = "ready"
+status = "done"
 branch = "campaign-test-oracle-assistant-report-closeout"
 stackable = false
 acceptance = "Close Campaign 21 after the proof report producer, generated-CI advisory projection, docs, and validation demonstrate a first-class report surface without changing analyzer, gate, editor, or mutation behavior"

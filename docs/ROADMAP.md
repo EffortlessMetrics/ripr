@@ -194,15 +194,17 @@ user-facing PR/editor-to-receipt workflow and static evidence limits. The
 [Campaign 20 closeout](handoffs/2026-05-09-campaign-20-closeout.md) records
 the prompt-to-artifact audit and the boundary that future proof report
 producers, PR/CI polish, analyzer improvements, and editor UX work need an
-explicit follow-up campaign. Campaign 21 is now open as Test-Oracle Assistant
+explicit follow-up campaign. Campaign 21 closed as Test-Oracle Assistant
 Report Producer, and `ripr assistant-loop proof` now turns the proved loop into
 advisory `test-oracle-assistant-proof.{json,md}` artifacts from explicit
 existing inputs without changing analyzer, ranking, gate, editor, provider,
 mutation, or default CI behavior. Generated GitHub CI now projects that report
 only when the required artifact chain already exists.
 `docs/TEST_ORACLE_ASSISTANT_PROOF_REPORT.md` now explains how to read the
-report, warnings, static movement, optional CI projection, and limits. The next
-step is Campaign 21 closeout.
+report, warnings, static movement, optional CI projection, and limits. Campaign
+21 closed with
+`docs/handoffs/2026-05-09-campaign-21-closeout.md`; choose the next campaign
+explicitly before opening another product lane.
 
 ## Strategic Sequence
 
