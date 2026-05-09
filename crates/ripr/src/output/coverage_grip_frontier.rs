@@ -326,11 +326,19 @@ fn coverage_axis(path: Option<&str>, coverage: Option<&Value>) -> CoverageAxis {
     let delta_percent = string_or_number_path(coverage, &["coverage_delta_percent"])
         .or_else(|| string_or_number_path(coverage, &["coverage", "delta_percent"]))
         .or_else(|| string_or_number_path(coverage, &["summary", "coverage_delta_percent"]));
-    let quadrants = coverage_quadrants(Some(coverage));
-    let has_quadrants = quadrants.covered_with_ripr_gap > 0
-        || quadrants.covered_without_ripr_gap > 0
-        || quadrants.uncovered_with_ripr_gap > 0
-        || quadrants.uncovered_without_ripr_gap > 0;
+    let has_quadrants = has_any_path(
+        coverage,
+        &[
+            &["quadrants", "covered_with_ripr_gap"],
+            &["covered_with_ripr_gap"],
+            &["quadrants", "covered_without_ripr_gap"],
+            &["covered_without_ripr_gap"],
+            &["quadrants", "uncovered_with_ripr_gap"],
+            &["uncovered_with_ripr_gap"],
+            &["quadrants", "uncovered_without_ripr_gap"],
+            &["uncovered_without_ripr_gap"],
+        ],
+    );
     let status = if delta_percent.is_some() || has_quadrants {
         "available"
     } else {
@@ -349,54 +357,53 @@ fn ripr_axis(
     zero_status: Option<&Value>,
     coverage: Option<&Value>,
 ) -> RiprAxis {
-    let source = if ledger.is_some() {
+    let source = if ledger.is_some_and(has_ledger_movement) {
         Some("pr_evidence_ledger".to_string())
-    } else if zero_status.is_some() {
+    } else if zero_status.is_some_and(has_zero_status_movement) {
         Some("ripr_zero_status".to_string())
-    } else if baseline_delta.is_some() {
+    } else if baseline_delta.is_some_and(has_baseline_delta_movement) {
         Some("baseline_debt_delta".to_string())
     } else {
         None
     };
-    let new_policy_eligible = ledger
-        .map(|value| usize_path(value, &["movement", "new_policy_eligible"]))
-        .or_else(|| {
-            zero_status.map(|value| usize_path(value, &["ripr_zero", "new_policy_eligible"]))
-        })
-        .or_else(|| {
-            baseline_delta.map(|value| usize_path(value, &["delta", "new_policy_eligible"]))
-        })
-        .unwrap_or(0);
-    let baseline_resolved = ledger
-        .map(|value| usize_path(value, &["movement", "baseline_resolved"]))
-        .or_else(|| zero_status.map(|value| usize_path(value, &["baseline", "resolved"])))
-        .or_else(|| baseline_delta.map(|value| usize_path(value, &["delta", "resolved"])))
-        .unwrap_or(0);
-    let baseline_still_present = ledger
-        .map(|value| usize_path(value, &["movement", "baseline_still_present"]))
-        .or_else(|| zero_status.map(|value| usize_path(value, &["baseline", "still_present"])))
-        .or_else(|| baseline_delta.map(|value| usize_path(value, &["delta", "still_present"])))
-        .unwrap_or(0);
-    let acknowledged = ledger
-        .map(|value| usize_path(value, &["movement", "acknowledged"]))
-        .or_else(|| baseline_delta.map(|value| usize_path(value, &["delta", "acknowledged"])))
-        .unwrap_or(0);
-    let suppressed = ledger
-        .map(|value| usize_path(value, &["movement", "suppressed"]))
-        .or_else(|| baseline_delta.map(|value| usize_path(value, &["delta", "suppressed"])))
-        .unwrap_or(0);
-    let blocking_candidates = ledger
-        .map(|value| usize_path(value, &["movement", "blocking_candidates"]))
-        .or_else(|| {
-            zero_status.map(|value| usize_path(value, &["ripr_zero", "blocking_candidates"]))
-        })
-        .unwrap_or(0);
-    let visible_unresolved = ledger
-        .map(|value| usize_path(value, &["movement", "visible_unresolved"]))
-        .or_else(|| {
-            zero_status.map(|value| usize_path(value, &["ripr_zero", "visible_unresolved"]))
-        })
-        .unwrap_or(baseline_still_present + new_policy_eligible + acknowledged);
+    let new_policy_eligible = usize_path_from_sources(&[
+        (ledger, &["movement", "new_policy_eligible"]),
+        (zero_status, &["ripr_zero", "new_policy_eligible"]),
+        (baseline_delta, &["delta", "new_policy_eligible"]),
+    ])
+    .unwrap_or(0);
+    let baseline_resolved = usize_path_from_sources(&[
+        (ledger, &["movement", "baseline_resolved"]),
+        (zero_status, &["baseline", "resolved"]),
+        (baseline_delta, &["delta", "resolved"]),
+    ])
+    .unwrap_or(0);
+    let baseline_still_present = usize_path_from_sources(&[
+        (ledger, &["movement", "baseline_still_present"]),
+        (zero_status, &["baseline", "still_present"]),
+        (baseline_delta, &["delta", "still_present"]),
+    ])
+    .unwrap_or(0);
+    let acknowledged = usize_path_from_sources(&[
+        (ledger, &["movement", "acknowledged"]),
+        (baseline_delta, &["delta", "acknowledged"]),
+    ])
+    .unwrap_or(0);
+    let suppressed = usize_path_from_sources(&[
+        (ledger, &["movement", "suppressed"]),
+        (baseline_delta, &["delta", "suppressed"]),
+    ])
+    .unwrap_or(0);
+    let blocking_candidates = usize_path_from_sources(&[
+        (ledger, &["movement", "blocking_candidates"]),
+        (zero_status, &["ripr_zero", "blocking_candidates"]),
+    ])
+    .unwrap_or(0);
+    let visible_unresolved = usize_path_from_sources(&[
+        (ledger, &["movement", "visible_unresolved"]),
+        (zero_status, &["ripr_zero", "visible_unresolved"]),
+    ])
+    .unwrap_or(baseline_still_present + new_policy_eligible + acknowledged);
     let visible_unresolved_delta = coverage
         .and_then(|value| i64_path(value, &["ripr_visible_unresolved_delta"]))
         .or_else(|| {
@@ -469,9 +476,7 @@ fn interpretation(coverage: &CoverageAxis, ripr: &RiprAxis) -> String {
         return "coverage input is present but unsupported; keep coverage and RIPR movement separate"
             .to_string();
     }
-    if coverage.delta_percent.as_deref() == Some("0")
-        || coverage.delta_percent.as_deref() == Some("0.0")
-    {
+    if coverage_delta_is_zero(coverage.delta_percent.as_deref()) {
         if ripr.baseline_resolved > 0 || ripr.visible_unresolved_delta.unwrap_or(0) < 0 {
             return "behavioral grip improved without line-coverage movement".to_string();
         }
@@ -504,22 +509,134 @@ fn string_or_number_path(value: &Value, path: &[&str]) -> Option<String> {
 }
 
 fn i64_path(value: &Value, path: &[&str]) -> Option<i64> {
-    path_value(value, path).and_then(Value::as_i64)
+    path_value(value, path).and_then(value_as_i64)
 }
 
-fn usize_path(value: &Value, path: &[&str]) -> usize {
-    path_value(value, path)
-        .and_then(Value::as_u64)
-        .and_then(|value| usize::try_from(value).ok())
-        .unwrap_or(0)
+fn usize_path(value: &Value, path: &[&str]) -> Option<usize> {
+    path_value(value, path).and_then(value_as_usize)
+}
+
+fn usize_path_from_sources(sources: &[(Option<&Value>, &[&str])]) -> Option<usize> {
+    sources
+        .iter()
+        .find_map(|(value, path)| value.and_then(|value| usize_path(value, path)))
 }
 
 fn usize_path_any(value: &Value, paths: &[&[&str]]) -> usize {
     paths
         .iter()
-        .map(|path| usize_path(value, path))
-        .find(|value| *value > 0)
+        .find_map(|path| usize_path(value, path))
         .unwrap_or(0)
+}
+
+fn value_as_i64(value: &Value) -> Option<i64> {
+    if let Some(number) = value.as_i64() {
+        return Some(number);
+    }
+    if let Some(number) = value.as_u64() {
+        return i64::try_from(number).ok();
+    }
+    if let Some(text) = value.as_str() {
+        return text
+            .trim()
+            .parse::<i64>()
+            .ok()
+            .or_else(|| i64_from_f64_text(text));
+    }
+    value.as_f64().and_then(i64_from_f64)
+}
+
+fn value_as_usize(value: &Value) -> Option<usize> {
+    if let Some(number) = value.as_u64() {
+        return usize::try_from(number).ok();
+    }
+    if let Some(number) = value.as_i64() {
+        return u64::try_from(number)
+            .ok()
+            .and_then(|number| usize::try_from(number).ok());
+    }
+    if let Some(text) = value.as_str() {
+        return text
+            .trim()
+            .parse::<u64>()
+            .ok()
+            .and_then(|number| usize::try_from(number).ok())
+            .or_else(|| usize_from_f64_text(text));
+    }
+    value.as_f64().and_then(usize_from_f64)
+}
+
+fn i64_from_f64_text(text: &str) -> Option<i64> {
+    text.trim().parse::<f64>().ok().and_then(i64_from_f64)
+}
+
+fn usize_from_f64_text(text: &str) -> Option<usize> {
+    text.trim().parse::<f64>().ok().and_then(usize_from_f64)
+}
+
+fn i64_from_f64(number: f64) -> Option<i64> {
+    if number.is_finite() && number.fract() == 0.0 {
+        return format!("{number:.0}").parse::<i64>().ok();
+    }
+    None
+}
+
+fn usize_from_f64(number: f64) -> Option<usize> {
+    if number.is_finite() && number.fract() == 0.0 && number >= 0.0 {
+        return format!("{number:.0}").parse::<usize>().ok();
+    }
+    None
+}
+
+fn coverage_delta_is_zero(delta_percent: Option<&str>) -> bool {
+    delta_percent
+        .and_then(|value| value.trim().parse::<f64>().ok())
+        .is_some_and(|value| value.is_finite() && value == 0.0)
+}
+
+fn has_any_path(value: &Value, paths: &[&[&str]]) -> bool {
+    paths.iter().any(|path| path_value(value, path).is_some())
+}
+
+fn has_ledger_movement(value: &Value) -> bool {
+    has_any_path(
+        value,
+        &[
+            &["movement", "new_policy_eligible"],
+            &["movement", "baseline_resolved"],
+            &["movement", "baseline_still_present"],
+            &["movement", "acknowledged"],
+            &["movement", "suppressed"],
+            &["movement", "blocking_candidates"],
+            &["movement", "visible_unresolved"],
+        ],
+    )
+}
+
+fn has_zero_status_movement(value: &Value) -> bool {
+    has_any_path(
+        value,
+        &[
+            &["ripr_zero", "new_policy_eligible"],
+            &["ripr_zero", "blocking_candidates"],
+            &["ripr_zero", "visible_unresolved"],
+            &["baseline", "resolved"],
+            &["baseline", "still_present"],
+        ],
+    )
+}
+
+fn has_baseline_delta_movement(value: &Value) -> bool {
+    has_any_path(
+        value,
+        &[
+            &["delta", "new_policy_eligible"],
+            &["delta", "resolved"],
+            &["delta", "still_present"],
+            &["delta", "acknowledged"],
+            &["delta", "suppressed"],
+        ],
+    )
 }
 
 #[cfg(test)]
@@ -643,6 +760,84 @@ mod tests {
         assert!(rendered.contains("read ledger failed"));
         assert!(rendered.contains("coverage input has no supported coverage/grip frontier fields"));
         assert!(rendered.contains(r#""source": "ripr_zero_status""#));
+        Ok(())
+    }
+
+    #[test]
+    fn coverage_grip_frontier_parses_string_encoded_numbers() -> Result<(), String> {
+        let coverage = r#"{
+          "coverage_delta_percent": "0.00",
+          "ripr_visible_unresolved_delta": "-2",
+          "quadrants": {
+            "covered_with_ripr_gap": "4",
+            "covered_without_ripr_gap": "20",
+            "uncovered_with_ripr_gap": "2.0",
+            "uncovered_without_ripr_gap": "8"
+          }
+        }"#;
+        let ledger = r#"{
+          "movement": {
+            "new_policy_eligible": "1",
+            "baseline_resolved": "2",
+            "baseline_still_present": "3",
+            "acknowledged": "0",
+            "suppressed": "0",
+            "blocking_candidates": "0",
+            "visible_unresolved": "4"
+          }
+        }"#;
+        let report = report_with(
+            Some(Ok(coverage.to_string())),
+            Some(Ok(ledger.to_string())),
+            None,
+            None,
+        );
+        let rendered = render_coverage_grip_frontier_json(&report)?;
+
+        assert!(rendered.contains(r#""baseline_resolved": 2"#));
+        assert!(rendered.contains(r#""uncovered_with_ripr_gap": 2"#));
+        assert!(rendered.contains(r#""visible_unresolved_delta": -2"#));
+        assert!(rendered.contains("behavioral grip improved without line-coverage movement"));
+        Ok(())
+    }
+
+    #[test]
+    fn coverage_grip_frontier_falls_back_when_preferred_source_lacks_metric() -> Result<(), String>
+    {
+        let ledger = r#"{"movement":{"new_policy_eligible":0}}"#;
+        let delta =
+            r#"{"delta":{"resolved":7,"still_present":11,"acknowledged":2,"suppressed":1}}"#;
+        let report = report_with(
+            None,
+            Some(Ok(ledger.to_string())),
+            Some(Ok(delta.to_string())),
+            None,
+        );
+        let rendered = render_coverage_grip_frontier_json(&report)?;
+
+        assert!(rendered.contains(r#""source": "pr_evidence_ledger""#));
+        assert!(rendered.contains(r#""new_policy_eligible": 0"#));
+        assert!(rendered.contains(r#""baseline_resolved": 7"#));
+        assert!(rendered.contains(r#""baseline_still_present": 11"#));
+        assert!(rendered.contains(r#""acknowledged": 2"#));
+        assert!(rendered.contains(r#""suppressed": 1"#));
+        Ok(())
+    }
+
+    #[test]
+    fn coverage_grip_frontier_skips_empty_preferred_sources() -> Result<(), String> {
+        let zero = r#"{"ripr_zero":{"visible_unresolved":5,"new_policy_eligible":1,"blocking_candidates":0},"baseline":{"resolved":2,"still_present":4}}"#;
+        let report = report_with(
+            None,
+            Some(Ok("{}".to_string())),
+            None,
+            Some(Ok(zero.to_string())),
+        );
+        let rendered = render_coverage_grip_frontier_json(&report)?;
+
+        assert!(rendered.contains(r#""source": "ripr_zero_status""#));
+        assert!(rendered.contains(r#""visible_unresolved": 5"#));
+        assert!(rendered.contains(r#""baseline_resolved": 2"#));
         Ok(())
     }
 }
