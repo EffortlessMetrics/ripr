@@ -1278,6 +1278,7 @@ tests = [
   "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_uploads_reports_and_makes_sarif_optional",
   "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture",
   "crates/ripr/tests/cli_smoke.rs::init_ci_github_writes_non_blocking_report_workflow",
+  "editors/vscode/test/suite/extension.test.ts::status bar projects existing first useful action report",
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/first-useful-action/README.md",
@@ -1311,6 +1312,7 @@ code = [
   "crates/ripr/src/cli/execute.rs",
   "crates/ripr/src/cli/help.rs",
   "crates/ripr/src/cli/parse.rs",
+  "editors/vscode/src/client.ts",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0020-first-useful-action-report.md",

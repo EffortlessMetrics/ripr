@@ -33,6 +33,14 @@ failed, and no actionable seam. If the status is stale, save or close the Rust
 buffer and refresh before treating diagnostics as current saved-workspace
 evidence.
 
+If `target/ripr/reports/first-useful-action.json` already exists, the same
+status surface includes the first useful action from that report: the selected
+seam, missing discriminator, target or related test, verify and receipt
+commands, warnings, fallback, and advisory limits. The editor projection is a
+read-only view over that artifact. It does not run hidden analysis, create a
+new report, edit source, generate tests, call providers, run mutation testing,
+or decide gate policy.
+
 ## 2. Read The Diagnostic
 
 Open the Problems panel or inspect the editor underline for RIPR diagnostics.
