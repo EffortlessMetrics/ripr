@@ -27,6 +27,10 @@ are scoped or reviewed.
   pinning one boundary-gap seam across PR guidance, editor/agent handoff,
   before/after static evidence, a receipt, and PR ledger projection without
   adding analyzer, policy, editor, or CI behavior.
+- Added the Campaign 20 dogfood receipt, tracing the canonical boundary-gap
+  seam through PR guidance, editor/agent handoff, verification commands,
+  after-evidence, receipt, PR ledger projection, and coverage/grip frontier
+  availability while preserving advisory static-evidence limits.
 - Opened Campaign 19, PR Evidence Ledger, with
   `spec/pr-evidence-ledger-surface` as the first ready work item so per-PR
   RIPR evidence can become an adoption ledger for movement history, waiver

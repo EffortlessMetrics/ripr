@@ -186,8 +186,11 @@ PR-time proof loop from changed Rust behavior through static evidence,
 PR/editor guidance, focused-test handoff, verification, receipt, and advisory
 CI/ledger projection without changing analyzer, policy, editor, or default CI
 behavior. The canonical replay corpus now pins one boundary-gap seam across
-recommendation, handoff, receipt, and ledger projection; the next ready item is
-`dogfood/test-oracle-assistant-receipt`.
+recommendation, handoff, receipt, and ledger projection. A repo-local dogfood
+receipt now traces seam `67fc764ba37d77bd` through PR guidance, editor/agent
+handoff, before/after evidence, receipt, PR ledger projection, and
+coverage/grip frontier availability; the next ready item is
+`docs/test-oracle-assistant-workflow`.
 
 ## Strategic Sequence
 

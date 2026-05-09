@@ -2329,8 +2329,8 @@ Work items:
 | --- | --- | --- |
 | `spec/test-oracle-assistant-loop` | done | Added RIPR-SPEC-0019 as the end-to-end test-oracle assistant proof contract from changed Rust behavior through static evidence, PR/editor guidance, focused-test handoff, after-evidence verification, receipt, and advisory PR/CI projection without changing analyzer, policy, editor, or CI defaults. |
 | `fixtures/canonical-review-loop` | done | Added the canonical boundary-gap replay corpus under `fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/` and a regression test that pins one seam across recommendation, related-test context, suggested focused test, before/after static movement, receipt, and PR ledger projection expectations. |
-| `dogfood/test-oracle-assistant-receipt` | ready | Record a repo-local proof receipt that traces one seam through PR guidance, editor/agent packet surfaces, verification commands, after-evidence, receipt, PR evidence ledger, and coverage/grip frontier availability without changing source automatically. |
-| `docs/test-oracle-assistant-workflow` | blocked | Document the user workflow from PR recommendation to editor/agent handoff, one focused test, verification, receipt, and advisory CI/ledger projection while preserving static-evidence limits. |
+| `dogfood/test-oracle-assistant-receipt` | done | Recorded a repo-local proof receipt that traces seam `67fc764ba37d77bd` through PR guidance, editor/agent packet surfaces, verification commands, after-evidence, receipt, PR evidence ledger, and coverage/grip frontier availability without changing source automatically. |
+| `docs/test-oracle-assistant-workflow` | ready | Document the user workflow from PR recommendation to editor/agent handoff, one focused test, verification, receipt, and advisory CI/ledger projection while preserving static-evidence limits. |
 | `campaign/test-oracle-assistant-proof-closeout` | blocked | Close Campaign 20 only after the end-to-end assistant proof contract, canonical fixture, dogfood receipt, and user workflow docs demonstrate the full loop while defaults stay advisory. |
 
 Dependencies:
@@ -2376,7 +2376,7 @@ Blocking conditions:
 
 Next:
 
-- The ready work item is `dogfood/test-oracle-assistant-receipt`.
+- The ready work item is `docs/test-oracle-assistant-workflow`.
 
 ## Future Campaign: Editor Evidence UX
 

@@ -989,6 +989,8 @@ outputs = [
   "metrics/capabilities.toml",
   "README.md",
   "CHANGELOG.md",
+  "docs/handoffs/2026-05-09-test-oracle-assistant-receipt.md",
+  "docs/handoffs/README.md",
 ]
 metrics = [
   "evidence_health_seams_total",
