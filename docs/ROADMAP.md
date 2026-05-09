@@ -189,8 +189,9 @@ behavior. The canonical replay corpus now pins one boundary-gap seam across
 recommendation, handoff, receipt, and ledger projection. A repo-local dogfood
 receipt now traces seam `67fc764ba37d77bd` through PR guidance, editor/agent
 handoff, before/after evidence, receipt, PR ledger projection, and
-coverage/grip frontier availability; the next ready item is
-`docs/test-oracle-assistant-workflow`.
+coverage/grip frontier availability. `docs/TEST_ORACLE_ASSISTANT_WORKFLOW.md`
+now explains the user-facing PR/editor-to-receipt workflow and static evidence
+limits; the next ready item is `campaign/test-oracle-assistant-proof-closeout`.
 
 ## Strategic Sequence
 

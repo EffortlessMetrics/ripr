@@ -989,8 +989,6 @@ outputs = [
   "metrics/capabilities.toml",
   "README.md",
   "CHANGELOG.md",
-  "docs/handoffs/2026-05-09-test-oracle-assistant-receipt.md",
-  "docs/handoffs/README.md",
 ]
 metrics = [
   "evidence_health_seams_total",
@@ -1223,6 +1221,9 @@ outputs = [
   "docs/specs/RIPR-SPEC-0019-test-oracle-assistant-loop.md",
   "docs/specs/README.md",
   "docs/OUTPUT_SCHEMA.md",
+  "docs/TEST_ORACLE_ASSISTANT_WORKFLOW.md",
+  "docs/handoffs/2026-05-09-test-oracle-assistant-receipt.md",
+  "docs/handoffs/README.md",
   "docs/CAPABILITY_MATRIX.md",
   "metrics/capabilities.toml",
   ".ripr/goals/active.toml",
