@@ -891,6 +891,17 @@ Field contract:
   evidence stages that should be treated as analyzer limitations rather than
   focused-test instructions.
 
+The fixture contract corpus at
+`fixtures/boundary_gap/expected/evidence-record-contract/corpus.json` pins
+representative `evidence_record` v0.1 records for predicate boundaries, exact
+error variants, strong exact-value evidence, broad error assertions, field and
+whole-object oracles, snapshot evidence, side-effect observers, opaque static
+limitations, supplied canonical gap identity, and the current
+`no_runtime_data` calibration placeholder. `cargo xtask check-fixture-contracts`
+validates the required case matrix and field shape; `cargo xtask
+check-output-contracts` validates the `evidence_record` schema version in code,
+docs, and the corpus.
+
 The Markdown sibling (`repo-exposure.md`) prints a metrics table plus
 the top headline-eligible seams (capped at 50). Both formats are
 generated together by `cargo xtask repo-exposure-report`.

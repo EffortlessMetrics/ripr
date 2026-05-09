@@ -56,6 +56,11 @@ are scoped or reviewed.
   `canonical_gap_id` and match it before legacy selectors, while PR evidence
   ledger waiver, suppression, receipt, and top repair route records carry the
   same identity when supplied.
+- Added an evidence-record contract corpus that pins representative
+  `evidence_record` v0.1 shapes for predicate, error, exact-value, broad-error,
+  field, whole-object, snapshot, side-effect, opaque static-limitation,
+  canonical-gap, and calibration-placeholder cases, with xtask validation for
+  required cases, required fields, and schema-version drift.
 - Opened Campaign 22, First Useful Action, with
   `spec/first-useful-action-report` as the first ready work item so existing
   editor, PR guidance, ledger, proof, receipt, optional gate, coverage/grip,

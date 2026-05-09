@@ -9,6 +9,7 @@ delta|control|Delta kind value.
 delta|effect|Delta kind value.
 delta|unknown|Delta kind value.
 delta|value|Delta kind value.
+evidence_record_schema_version|0.1|Current evidence_record schema version.
 exposure_class|exposed|Static classification value.
 exposure_class|infection_unknown|Static classification value.
 exposure_class|no_static_path|Static classification value.

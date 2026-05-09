@@ -1376,8 +1376,13 @@ tests = [
   "crates/ripr/src/output/baseline_update.rs::tests::baseline_update_preserves_refactored_entry_matched_by_canonical_gap_id",
   "crates/ripr/src/output/pr_evidence_ledger.rs::tests::pr_evidence_ledger_joins_primary_artifacts",
   "crates/ripr/src/output/render.rs::tests::render_dispatch_renders_repo_exposure_and_sarif_formats",
+  "xtask::tests::evidence_record_contract_fixture_corpus_is_valid",
+  "xtask::tests::evidence_record_contract_fixture_guard_reports_missing_fields",
 ]
-fixtures = []
+fixtures = [
+  "fixtures/boundary_gap/expected/evidence-record-contract/corpus.json",
+  "fixtures/boundary_gap/expected/evidence-record-contract/README.md",
+]
 code = [
   "crates/ripr/src/output/evidence_record.rs",
   "crates/ripr/src/output/repo_exposure.rs",
@@ -1390,6 +1395,7 @@ code = [
   "crates/ripr/src/output/baseline_update.rs",
   "crates/ripr/src/output/pr_evidence_ledger.rs",
   "crates/ripr/src/output/mod.rs",
+  "xtask/src/main.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0021-evidence-record.md",
