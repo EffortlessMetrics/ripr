@@ -124,7 +124,11 @@ ledger shape is expected to be:
       "decision": "advisory",
       "review": {
         "reviewed": false,
-        "reason": "initial adoption baseline"
+        "owner": null,
+        "reason": "initial adoption baseline",
+        "created_at": "2026-05-08T00:00:00Z",
+        "review_after": null,
+        "source": "target/ripr/reports/gate-decision.json"
       }
     }
   ]
@@ -134,10 +138,17 @@ ledger shape is expected to be:
 `ripr baseline create` writes this ledger shape from existing gate-decision
 JSON. It includes `advisory`, `acknowledged`, and `blocking` decisions; skips
 `suppressed`, configured-off, `not_applicable`, and malformed decisions; writes
-`reviewed = false` with an initial adoption review reason; refuses to overwrite
-without `--force`; and supports `--dry-run` for review without writing. The
-baseline is a historical-debt ledger and does not suppress or silence current
-findings by itself.
+`reviewed = false` with an initial adoption review reason plus optional owner,
+created, review-after, and source metadata fields; refuses to overwrite without
+`--force`; and supports `--dry-run` for review without writing. The baseline is
+a historical-debt ledger and does not suppress or silence current findings by
+itself.
+
+The review metadata object is additive. Campaign 17 baseline files that only
+contain `reviewed` and `reason`, or omit `review` entirely, remain valid. The
+diff report must preserve any present metadata into baseline-derived delta
+items and render missing metadata fields as unknown/null rather than rejecting
+the entry.
 
 ## Identity Matching
 
@@ -242,7 +253,8 @@ The JSON report uses schema version `0.1`:
       "repair": {
         "action": "add_focused_test_or_acknowledge",
         "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json"
-      }
+      },
+      "review": null
     }
   ],
   "warnings": [],
@@ -327,6 +339,9 @@ The report must include:
   baseline records, missing required inputs, and unsupported schema versions;
 - focused repair context when supplied by existing gate, PR guidance, agent, or
   outcome artifacts;
+- optional baseline review metadata on baseline-derived items, preserving
+  `reviewed`, `owner`, `reason`, `created_at`, `review_after`, and `source`
+  while keeping older partial metadata compatible;
 - an advisory limits note that names the gate evaluator as the pass/fail owner.
 
 ## Acceptance Examples
@@ -364,6 +379,10 @@ The implementation adds tests for:
 - JSON and Markdown report shape;
 - shrink-only baseline update preserving malformed or ambiguous entries and
   ignoring new current debt;
+- baseline create, diff, and shrink-only update preserving additive review
+  metadata without rejecting older Campaign 17 baseline files;
+- malformed or non-object legacy review metadata being treated as absent rather
+  than rejecting the baseline entry;
 - fixture cases for still-present, resolved, new policy-eligible,
   acknowledged, suppressed, stale, invalid, and missing-current-input buckets.
 

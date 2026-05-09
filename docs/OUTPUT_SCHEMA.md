@@ -1873,7 +1873,11 @@ JSON shape:
       },
       "review": {
         "reviewed": false,
-        "reason": "initial adoption baseline"
+        "owner": null,
+        "reason": "initial adoption baseline",
+        "created_at": "unix_ms:1778277000000",
+        "review_after": null,
+        "source": "target/ripr/reports/gate-decision.json"
       }
     }
   ],
@@ -1885,6 +1889,13 @@ JSON shape:
 The gate evaluator accepts this `entries[]` ledger shape in addition to the
 older lightweight `decisions[]` baseline fixture shape, so newly created
 baselines can be used by `ripr gate evaluate --baseline`.
+
+The `entries[].review` object is additive review metadata for later RIPR Zero
+reporting. New ledgers include `owner`, `created_at`, `review_after`, and
+`source` fields alongside the original `reviewed` and `reason` fields. Older
+Campaign 17 ledgers that only contain `reviewed` and `reason`, or no entry
+review object at all, remain valid inputs for baseline diff and shrink-only
+update.
 
 ## Gate Baseline Update
 
@@ -2032,7 +2043,8 @@ JSON shape:
       "repair": {
         "action": "add_focused_test_or_acknowledge",
         "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json"
-      }
+      },
+      "review": null
     }
   ],
   "warnings": [],
@@ -2076,6 +2088,12 @@ Field contract:
   and current records.
 - `items[].repair` - focused repair context from the current gate decision and
   built-in baseline debt movement actions.
+- `items[].review` - optional reviewed baseline metadata copied from the
+  baseline ledger when the item is baseline-derived. It preserves
+  `reviewed`, `owner`, `reason`, `created_at`, `review_after`, and `source`
+  when present. Current-only items use `null`; older Campaign 17 entries with
+  only `reviewed` and `reason` remain valid and render missing metadata fields
+  as `null`.
 - `warnings[]` - malformed baseline entries, ambiguous matches, fallback
   matches, missing optional inputs, or unsupported schema versions.
 - `limits_note` - advisory boundary text for generated CI summaries.
