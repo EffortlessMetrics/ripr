@@ -73,7 +73,7 @@ commands = [
 
 [[work_item]]
 id = "ci/first-useful-action-summary"
-status = "ready"
+status = "done"
 branch = "ci-first-useful-action-summary"
 stackable = false
 acceptance = "Surface first-useful-action JSON/Markdown in generated GitHub CI as advisory summary and artifact content without changing default blocking"

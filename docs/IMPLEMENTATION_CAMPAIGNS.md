@@ -2466,9 +2466,8 @@ Blocking conditions:
 Next:
 
 - Campaign 22, First Useful Action, is now the active campaign. Its report
-  contract, routing corpus, and read-only producer are pinned, and the next
-  ready items are `ci/first-useful-action-summary` and
-  `lsp/first-useful-action-status`.
+  contract, routing corpus, read-only producer, and generated-CI projection are
+  pinned, and the next ready item is `lsp/first-useful-action-status`.
 
 ## Campaign 22: First Useful Action
 
@@ -2518,7 +2517,7 @@ Work items:
 | `spec/first-useful-action-report` | done | Added RIPR-SPEC-0020 plus OUTPUT_SCHEMA, traceability, capability, campaign, plan, roadmap, and changelog updates for the first-useful-action report contract before implementation. |
 | `fixtures/first-useful-action-corpus` | done | Added `fixtures/boundary_gap/expected/first-useful-action/` with a routing index plus expected JSON/Markdown report outputs for actionable, stale, missing-required-artifact, baseline-only, acknowledged, waived, suppressed, no-actionable-seam, already-improved, and unchanged-after-attempt cases. |
 | `report/first-useful-action` | done | Added the read-only `ripr first-action` producer, JSON/Markdown renderers, explicit artifact input parsing, fixture-pinned routing tests, and CLI smoke coverage without rerunning hidden analysis. |
-| `ci/first-useful-action-summary` | ready | Surface first-useful-action JSON/Markdown in generated GitHub CI as advisory summary and artifact content without changing default blocking. |
+| `ci/first-useful-action-summary` | done | Generated CI now runs `ripr first-action` over explicit existing artifacts, uploads `first-useful-action.{json,md}` with `ripr-reports`, and appends a first-action summary card without changing gate authority or default blocking. |
 | `lsp/first-useful-action-status` | ready | Project an existing first-useful-action report through editor status and Show Status without adding diagnostics, CodeLens, inlay hints, unsaved-buffer analysis, source edits, or generated tests. |
 | `docs/first-useful-action-workflow` | blocked | Document how developers, reviewers, and coding agents read the first useful action, act on it, verify movement, emit receipts, and interpret fallback states. |
 | `dogfood/first-useful-action-receipts` | blocked | Record repo-local first-useful-action receipts for actionable, baseline-only, stale or missing-input, unchanged-after-attempt, and no-actionable-seam cases. |
@@ -2567,9 +2566,8 @@ Blocking conditions:
 
 Next:
 
-- Continue with `ci/first-useful-action-summary` and
-  `lsp/first-useful-action-status`. Keep docs, dogfood receipts, and closeout
-  blocked until the CI and editor projections consume the producer output.
+- Continue with `lsp/first-useful-action-status`. Keep docs, dogfood receipts,
+  and closeout blocked until the editor projection consumes the producer output.
 
 ## Future Campaign: Assistant Loop Health
 
