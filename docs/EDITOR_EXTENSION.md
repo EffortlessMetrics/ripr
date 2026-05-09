@@ -126,15 +126,16 @@ When `target/ripr/reports/first-useful-action.json` already exists in the
 workspace, the status item and `ripr: Show Status` also project its top action,
 selected seam, missing discriminator, target, related test, verify command,
 receipt command, warnings, fallback, and static-evidence limits. The extension
-only reads that existing report. It does not run `ripr first-action`, add new
-diagnostics, edit source, generate tests, call providers, run mutation testing,
-or make gate decisions.
+only reads that existing report, and ignores reports whose `root` does not match
+the open workspace. It does not run `ripr first-action`, add new diagnostics,
+edit source, generate tests, call providers, run mutation testing, or make gate
+decisions.
 
 The LSP model remains saved-workspace only. When a Rust buffer is dirty, the
-extension keeps stale status visible even if a saved-workspace refresh
-completes, so diagnostics are not presented as fresh evidence for unsaved text.
-Saving or closing the Rust buffer clears the stale marker and queues the next
-saved-workspace refresh.
+extension keeps stale status visible, including when a first-useful-action
+report is present, so diagnostics are not presented as fresh evidence for
+unsaved text. Saving or closing the Rust buffer clears the stale marker and
+queues the next saved-workspace refresh.
 
 ## Defaults-First Stance
 

@@ -834,8 +834,10 @@ evidence = [
   "crates/ripr/src/output/first_useful_action.rs::first_useful_action_matches_actionable_fixture and ::first_useful_action_matches_unchanged_after_attempt_fixture validate producer output against the pinned corpus",
   "crates/ripr/tests/cli_smoke.rs::first_action_cli_writes_actionable_report validates the public CLI writes actionable JSON/Markdown",
   "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_uploads_reports_and_makes_sarif_optional and crates/ripr/tests/cli_smoke.rs::init_ci_github_writes_non_blocking_report_workflow validate generated CI projection",
-  "editors/vscode/src/client.ts projects an existing target/ripr/reports/first-useful-action.json report through status and Show Status without invoking ripr first-action or adding diagnostics",
+  "editors/vscode/src/client.ts projects an existing workspace-matched target/ripr/reports/first-useful-action.json report through status and Show Status without invoking ripr first-action or adding diagnostics",
   "editors/vscode/test/suite/extension.test.ts::status bar projects existing first useful action report validates the editor projection and asserts it does not shell out to ripr",
+  "editors/vscode/test/suite/extension.test.ts::status bar ignores first useful action report for another workspace validates report root matching",
+  "editors/vscode/test/suite/extension.test.ts::first useful action report does not hide stale editor status validates stale saved-workspace status stays visible",
   "cargo xtask dogfood validates repo-local first-action receipts for actionable, baseline-only, stale, missing-required-artifact, unchanged-after-attempt, and no-actionable-seam cases while recording advisory limits",
   "docs/handoffs/2026-05-09-first-useful-action-receipts.md records the checked dogfood receipt cases and validation result",
   "docs/handoffs/2026-05-09-campaign-22-closeout.md records the Campaign 22 closeout audit, validation plan, and future-lane boundary"

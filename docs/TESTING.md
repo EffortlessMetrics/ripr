@@ -122,6 +122,9 @@ The test suite:
 - verifies explicit editor status states for disabled config, missing
   workspace, unavailable server, queued/running/complete/no-seam/failed
   refreshes, and stale dirty Rust buffers that stay stale until save or close
+- verifies an existing workspace-matched `first-useful-action.json` is projected
+  through status bar and `ripr: Show Status` without overriding stale evidence
+  or accepting reports for another workspace
 - verifies `openRelatedTest` opens URI/line targets and ignores malformed
   arguments without throwing
 - verifies `restartServer` is callable even when server resolution fails

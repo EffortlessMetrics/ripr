@@ -295,6 +295,65 @@ suite('Extension Smoke', () => {
     }
   });
 
+  test('status bar ignores first useful action report for another workspace', async () => {
+    const context = createControllerTestContext({
+      workspaceRoot: '/tmp/ripr-workspace',
+      firstActionJson: JSON.stringify({
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'first_useful_action',
+        root: '/tmp/other-workspace',
+        status: 'actionable',
+        action_kind: 'write_focused_test',
+        title: 'Add equality-boundary discriminator test',
+        selected: {
+          path: 'src/lib.rs',
+          line: 2
+        },
+        warnings: []
+      })
+    });
+    try {
+      await context.controller.start();
+
+      assert.ok(context.status.text.includes('ripr: queued'));
+      assert.ok(!String(context.status.tooltip).includes('First useful action'));
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('first useful action report does not hide stale editor status', async () => {
+    const context = createControllerTestContext({
+      firstActionJson: JSON.stringify({
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'first_useful_action',
+        status: 'actionable',
+        action_kind: 'write_focused_test',
+        title: 'Add equality-boundary discriminator test',
+        selected: {
+          path: 'src/lib.rs',
+          line: 2
+        },
+        warnings: []
+      })
+    });
+    try {
+      await context.controller.start();
+      assert.ok(context.status.text.includes('ripr: first action'));
+
+      const document = await vscode.workspace.openTextDocument(workspaceFileUri('src/lib.rs'));
+      context.controller.markWorkspaceStale(document);
+
+      assert.ok(context.status.text.includes('ripr: stale'));
+      assert.ok(String(context.status.tooltip).includes('editor evidence is stale'));
+      assert.ok(!context.status.text.includes('first action'));
+    } finally {
+      await context.dispose();
+    }
+  });
+
   test('status bar reports disabled configuration without starting server', async () => {
     const context = createControllerTestContext({ enabled: false });
     try {

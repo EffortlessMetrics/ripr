@@ -1280,6 +1280,8 @@ tests = [
   "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture",
   "crates/ripr/tests/cli_smoke.rs::init_ci_github_writes_non_blocking_report_workflow",
   "editors/vscode/test/suite/extension.test.ts::status bar projects existing first useful action report",
+  "editors/vscode/test/suite/extension.test.ts::status bar ignores first useful action report for another workspace",
+  "editors/vscode/test/suite/extension.test.ts::first useful action report does not hide stale editor status",
   "xtask/src/main.rs::dogfood_first_action_scenarios_have_checked_receipts",
 ]
 fixtures = [

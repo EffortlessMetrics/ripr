@@ -491,7 +491,9 @@ export class RiprClientController {
     const reportPath = firstUsefulActionReportPath(workspaceRoot);
     try {
       const report = await this.runtime.readFile(reportPath);
-      this.firstUsefulAction = report ? parseFirstUsefulAction(report) : undefined;
+      this.firstUsefulAction = report
+        ? parseFirstUsefulAction(report, workspaceRoot, reportPath)
+        : undefined;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.firstUsefulAction = undefined;
@@ -561,11 +563,12 @@ interface FirstUsefulActionStatus {
   verifyCommand?: string;
   receiptCommand?: string;
   fallback?: string;
+  reportPath: string;
   warningCount: number;
 }
 
 function statusText(kind: RiprStatusKind, firstAction?: FirstUsefulActionStatus): string {
-  if (firstAction) {
+  if (firstAction && canProjectFirstUsefulAction(kind)) {
     if (
       firstAction.status === 'stale' ||
       firstAction.status === 'missing_required_artifact' ||
@@ -616,7 +619,7 @@ function statusText(kind: RiprStatusKind, firstAction?: FirstUsefulActionStatus)
 }
 
 function statusSummary(status: RiprStatusState, firstAction?: FirstUsefulActionStatus): string {
-  if (!firstAction) {
+  if (!firstAction || !canProjectFirstUsefulAction(status.kind)) {
     return status.summary;
   }
   return `${status.summary} First useful action: ${firstAction.title}`;
@@ -627,8 +630,15 @@ function statusTooltip(status: RiprStatusState, firstAction?: FirstUsefulActionS
   if (status.detail) {
     lines.push(status.detail);
   }
-  if (firstAction) {
+  if (firstAction && canProjectFirstUsefulAction(status.kind)) {
     lines.push('', ...firstUsefulActionLines(firstAction));
+  } else if (firstAction && status.kind === 'stale') {
+    lines.push(
+      '',
+      'First useful action report: available, but editor evidence is stale.',
+      'Save or refresh the Rust workspace before acting on this report.',
+      `Report: ${firstAction.reportPath}`
+    );
   }
   return lines.join('\n');
 }
@@ -660,9 +670,19 @@ function firstUsefulActionLines(firstAction: FirstUsefulActionStatus): string[] 
   if (firstAction.fallback) {
     lines.push(`Fallback: ${firstAction.fallback}`);
   }
+  lines.push(`Report: ${firstAction.reportPath}`);
   lines.push(`Warnings: ${firstAction.warningCount}`);
   lines.push('Advisory static evidence only; gate evaluation remains the pass/fail authority.');
   return lines;
+}
+
+function canProjectFirstUsefulAction(kind: RiprStatusKind): boolean {
+  return kind === 'starting'
+    || kind === 'analysisQueued'
+    || kind === 'analysisRunning'
+    || kind === 'analysisReady'
+    || kind === 'noActionableSeams'
+    || kind === 'ready';
 }
 
 function serverLogMessage(params: unknown): string | undefined {
@@ -745,7 +765,11 @@ function isFileNotFound(error: unknown): boolean {
     && (error as { code?: unknown }).code === 'ENOENT';
 }
 
-function parseFirstUsefulAction(raw: string): FirstUsefulActionStatus | undefined {
+function parseFirstUsefulAction(
+  raw: string,
+  workspaceRoot: string,
+  reportPath: string
+): FirstUsefulActionStatus | undefined {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -757,6 +781,9 @@ function parseFirstUsefulAction(raw: string): FirstUsefulActionStatus | undefine
   }
   const report = parsed as Record<string, unknown>;
   if (stringField(report, 'kind') !== 'first_useful_action') {
+    return undefined;
+  }
+  if (!rootMatchesWorkspace(stringField(report, 'root'), workspaceRoot)) {
     return undefined;
   }
   const selected = objectField(report, 'selected');
@@ -776,8 +803,31 @@ function parseFirstUsefulAction(raw: string): FirstUsefulActionStatus | undefine
     fallback: fallback
       ? stringField(fallback, 'summary') ?? stringField(fallback, 'kind')
       : undefined,
+    reportPath: relativeWorkspacePath(workspaceRoot, reportPath),
     warningCount: arrayLength(report, 'warnings'),
   };
+}
+
+function rootMatchesWorkspace(root: string | undefined, workspaceRoot: string): boolean {
+  if (!root || root === '.') {
+    return true;
+  }
+  const resolvedRoot = path.isAbsolute(root)
+    ? path.resolve(root)
+    : path.resolve(workspaceRoot, root);
+  return normalizePath(resolvedRoot) === normalizePath(path.resolve(workspaceRoot));
+}
+
+function relativeWorkspacePath(workspaceRoot: string, filePath: string): string {
+  const relativePath = path.relative(workspaceRoot, filePath);
+  return relativePath && !relativePath.startsWith('..') && !path.isAbsolute(relativePath)
+    ? relativePath.replace(/\\/g, '/')
+    : filePath;
+}
+
+function normalizePath(value: string): string {
+  const normalized = path.normalize(value).replace(/\\/g, '/');
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
 
 function objectField(value: Record<string, unknown>, field: string): Record<string, unknown> | undefined {
