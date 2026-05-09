@@ -232,8 +232,10 @@ defines the contract, and
 partial, missing-input, unchanged, regressed, warning-heavy, and multi-proof
 corpus; `ripr assistant-loop health` now writes the advisory report over
 explicit proof inputs; generated GitHub CI now uploads and summarizes
-assistant-loop-health artifacts when proof artifacts exist; and the next ready
-slice is `docs/assistant-loop-health-workflow`.
+assistant-loop-health artifacts when proof artifacts exist; the
+[assistant loop health workflow](ASSISTANT_LOOP_HEALTH_WORKFLOW.md) explains
+maintainer and agent use; and the next ready slice is
+`campaign/assistant-loop-health-closeout`.
 
 ## Strategic Sequence
 

@@ -65,6 +65,10 @@ are scoped or reviewed.
   `test-oracle-assistant-proof.json` exists, uploads the reports with the
   normal `ripr-reports` packet, and appends a compact advisory health summary
   without changing pass/fail authority.
+- Added `docs/ASSISTANT_LOOP_HEALTH_WORKFLOW.md`, explaining proof report versus
+  health report, generated-CI summary use, complete/partial/missing states,
+  static movement interpretation, repair routing, coding-agent handoff, and
+  advisory limits for assistant-loop-health reports.
 - Opened Campaign 22, First Useful Action, with
   `spec/first-useful-action-report` as the first ready work item so existing
   editor, PR guidance, ledger, proof, receipt, optional gate, coverage/grip,
