@@ -31,7 +31,7 @@ through multiple work items in a campaign, but each work item should follow the
 | Recommendation Calibration (14) | Measure whether top CI, LSP, and PR recommendations are clear, correctly placed, low-noise, and correlated with better static evidence after one focused test. | Complete: spec, corpus, receipts, report, guide, and `campaign/recommendation-calibration-closeout`. |
 | Calibrated Gate Policy (15) | Define optional calibrated gates over existing PR-time evidence without changing advisory defaults or blurring static/runtime evidence. | Complete: spec, evaluator, fixtures, generated CI opt-in wiring, evidence-preserving CI behavior, calibrated gate guide, and `campaign/calibrated-gate-closeout`. |
 | Gate Adoption UX (16) | Make optional calibrated gate adoption safe and obvious for real teams without changing advisory defaults. | Complete: generated-CI examples, waiver workflows, baseline guidance, CI gate summary polish, dogfood receipts, blocking-readiness guidance, and `campaign/gate-adoption-ux-closeout`. |
-| RIPR Zero Adoption (17) | Turn baselines into burn-down ledgers with create, diff, and shrink-only refresh commands while keeping generated CI advisory by default. | Active: `campaign/ripr-zero-adoption-closeout` is ready after the baseline ledger workflow guide made the adoption path executable for users. |
+| RIPR Zero Adoption (17) | Turn baselines into burn-down ledgers with create, diff, and shrink-only refresh commands while keeping generated CI advisory by default. | Complete: spec, baseline create, baseline diff, shrink-only update, generated CI baseline-delta artifacts, baseline ledger workflow guide, and `campaign/ripr-zero-adoption-closeout`. |
 | Editor Evidence UX (future) | Make the saved-workspace LSP path feel like an editor-native test-intent cockpit from diagnostic to hover, related test, context packet, one test, verify, and receipt. | Queued separately; contract audit, hover hardening, and evidence-aware action hardening are complete, with remaining behavior work gated on explicit activation or explicit parallel-lane decisions. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
@@ -97,7 +97,7 @@ artifact paths; recorded checked repo-local gate adoption receipts through
 readiness](BLOCKING_READINESS.md) for deciding when to stay advisory, require
 acknowledgement, use baseline-check, or enable calibrated blocking. The
 [Campaign 16 closeout](handoffs/2026-05-08-campaign-16-closeout.md) records
-the PR chain and proof commands. Campaign 17 is now active as RIPR Zero
+the PR chain and proof commands. Campaign 17 closed RIPR Zero
 Adoption: RIPR-SPEC-0016 defines the baseline debt delta report contract,
 `ripr baseline create` can write reviewed baseline ledgers, `ripr baseline
 diff` can report baseline debt movement, and `ripr baseline update
@@ -105,8 +105,9 @@ diff` can report baseline debt movement, and `ripr baseline update
 debt. Generated CI can now upload and summarize baseline debt delta artifacts
 when a baseline and gate decision are present; the baseline ledger workflow
 guide now documents initial adoption, baseline-check rollout, shrink-only
-refresh, new debt review, and the path toward RIPR 0. Campaign closeout is the
-next ready slice.
+refresh, new debt review, and the path toward RIPR 0. The
+[Campaign 17 closeout](handoffs/2026-05-09-campaign-17-closeout.md) records
+the PR chain, prompt-to-artifact audit, proof commands, and next-work boundary.
 Editor Evidence UX remains
 queued as a separate Lane 3 campaign; its contract audit is recorded in
 [Editor Evidence UX](EDITOR_EVIDENCE_UX.md), and hover plus evidence-aware
