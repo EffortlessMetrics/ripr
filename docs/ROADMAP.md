@@ -220,13 +220,13 @@ baseline-only, stale, missing-input, unchanged-after-attempt, and no-actionable
 routes. The [Campaign 22 closeout](handoffs/2026-05-09-campaign-22-closeout.md)
 records the prompt-to-artifact audit and next-lane boundary.
 
-[Assistant Loop Health](ASSISTANT_LOOP_HEALTH_PROPOSAL.md) is recorded as a
-future follow-up lane after First Useful Action. It should summarize proof
-completeness, missing inputs, static evidence movement, recurring warnings, and
-repair queues across one or more `test-oracle-assistant-proof` reports without
-changing analyzer behavior, ranking, gate semantics, editor behavior, mutation
+[Assistant Loop Health](ASSISTANT_LOOP_HEALTH_PROPOSAL.md) is now open as
+Campaign 23 after First Useful Action. It summarizes proof completeness,
+missing inputs, static evidence movement, recurring warnings, and repair queues
+across one or more `test-oracle-assistant-proof` reports without changing
+analyzer behavior, ranking, gate semantics, editor behavior, mutation
 execution, provider calls, source files, generated tests, or default CI
-blocking.
+blocking. The first ready slice is `spec/assistant-loop-health-report`.
 
 ## Strategic Sequence
 

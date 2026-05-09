@@ -5,9 +5,9 @@ Campaign 21 made one assistant-directed test loop reviewable with
 whether those proof packets are complete, useful, and moving static evidence
 over time.
 
-This is a future-lane proposal. It does not replace the completed Campaign 22,
-First Useful Action, and it must not change `.ripr/goals/active.toml` until the
-project explicitly opens this lane.
+This proposal has been promoted into Campaign 23 after Campaign 22 closed First
+Useful Action. The machine-readable campaign is `.ripr/goals/active.toml`; this
+document remains the design brief for the campaign.
 
 ## Goal
 
@@ -143,7 +143,7 @@ tests automatically.
 
 ## Proposed Campaign Stack
 
-When this lane becomes active, use a PR stack like:
+The active campaign uses this PR stack:
 
 | Work item | Purpose |
 | --- | --- |
@@ -182,6 +182,6 @@ Are assistant-directed test loops complete, stuck, missing receipts, or moving
 static evidence over time?
 ```
 
-The health report should wait until the active First Useful Action campaign has
-settled the first-screen routing contract. That avoids adding another raw report
-before users have one clear next action.
+The health report waited until First Useful Action settled the first-screen
+routing contract. That avoids adding another raw report before users have one
+clear next action.

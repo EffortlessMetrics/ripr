@@ -1,34 +1,35 @@
-id = "first-useful-action"
-title = "First Useful Action"
+id = "assistant-loop-health"
+title = "Assistant Loop Health"
 status = "active"
 
-# This is Campaign 22 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
-# Campaign 21 closed the test-oracle assistant proof report producer. This
-# campaign compresses existing RIPR evidence into one advisory next action.
+# This is Campaign 23 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+# Campaign 22 closed First Useful Action. This campaign measures whether
+# assistant-directed test loops are complete, stuck, missing receipts, or moving
+# static evidence over time.
 
 objective = """
-Given existing RIPR artifacts, produce one advisory first-useful-action report
-that tells a developer, reviewer, or coding agent what to do next, why, where,
-how to verify, what receipt proves the result, and what limits remain without
-rerunning hidden analysis, editing source, generating tests, calling providers,
-running mutation testing, changing default CI blocking, or inventing policy.
+Summarize proof completeness, missing inputs, static evidence movement,
+recurring warnings, and next repair queues across one or more assistant proof
+reports without changing analyzer behavior, recommendation ranking, gate
+semantics, LSP/editor behavior, mutation execution, provider calls, source
+files, generated tests, or default CI blocking.
 """
 
 end_state = [
-  "`target/ripr/reports/first-useful-action.json` and `.md` summarize the highest-value next test action or the reason no action should be taken",
-  "routing is deterministic over explicit existing inputs such as PR guidance, PR evidence ledger, baseline debt delta, assistant proof, receipts, optional gate decisions, optional coverage/grip frontier, editor context, and status/staleness",
-  "fixtures pin actionable, stale, missing-artifact, baseline-only, acknowledged, waived, suppressed, already-improved, unchanged-after-attempt, and no-actionable-seam cases",
-  "generated CI surfaces the first useful action as advisory summary/artifact content without changing pass/fail authority",
-  "the editor may project the report in status or Show Status without new diagnostics, CodeLens, inlay hints, unsaved-buffer overlays, source edits, or generated tests",
-  "docs and dogfood receipts show how developers, reviewers, and agents use the action without treating static evidence as runtime proof",
+  "`target/ripr/reports/assistant-loop-health.json` and `.md` summarize assistant proof packet health from explicit existing proof inputs",
+  "the report counts complete, partial, missing-required, and missing-optional proof packets",
+  "the report summarizes static movement as improved, unchanged, regressed, or unknown using proof data only",
+  "recurring warnings and missing inputs are grouped without turning into an opaque score",
+  "a bounded repair queue routes maintainers or coding agents to rerun missing commands, regenerate stale inputs, inspect unchanged evidence, or attach receipts",
+  "generated CI may upload and summarize the report as advisory evidence only when proof artifacts exist",
 ]
 
 [[work_item]]
-id = "spec/first-useful-action-report"
-status = "done"
-branch = "spec-first-useful-action-report"
+id = "spec/assistant-loop-health-report"
+status = "ready"
+branch = "spec-assistant-loop-health-report"
 stackable = false
-acceptance = "Define the first-useful-action report contract, inputs, statuses, routing priorities, advisory limits, and schema before implementation"
+acceptance = "Define the assistant-loop-health JSON/Markdown contract, explicit inputs, statuses, buckets, warnings, repair queue, advisory limits, and future multi-proof behavior before implementation"
 commands = [
   "cargo xtask check-spec-format",
   "cargo xtask check-doc-index",
@@ -42,11 +43,12 @@ commands = [
 ]
 
 [[work_item]]
-id = "fixtures/first-useful-action-corpus"
-status = "done"
-branch = "fixtures-first-useful-action-corpus"
+id = "fixtures/assistant-loop-health-corpus"
+status = "blocked"
+blocked_by = ["spec/assistant-loop-health-report"]
+branch = "fixtures-assistant-loop-health-corpus"
 stackable = false
-acceptance = "Add a deterministic corpus that pins first-action routing for actionable, stale, missing-artifact, baseline-only, waived, suppressed, unchanged, and no-actionable cases"
+acceptance = "Pin complete, partial, missing-required-input, missing-optional-input, unchanged, regressed, warning-heavy, and multi-proof health cases before adding the producer"
 commands = [
   "cargo xtask fixtures",
   "cargo xtask goldens check",
@@ -57,13 +59,14 @@ commands = [
 ]
 
 [[work_item]]
-id = "report/first-useful-action"
-status = "done"
-branch = "report-first-useful-action"
+id = "report/assistant-loop-health"
+status = "blocked"
+blocked_by = ["spec/assistant-loop-health-report", "fixtures/assistant-loop-health-corpus"]
+branch = "report-assistant-loop-health"
 stackable = false
-acceptance = "Add a read-only report producer that writes advisory first-useful-action JSON and Markdown from explicit existing artifact paths without rerunning hidden analysis"
+acceptance = "Add a read-only `ripr assistant-loop health` producer that emits advisory JSON/Markdown from explicit existing proof report paths without rerunning analysis"
 commands = [
-  "cargo test -p ripr first_useful_action",
+  "cargo test -p ripr assistant_loop_health",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-traceability",
@@ -72,11 +75,12 @@ commands = [
 ]
 
 [[work_item]]
-id = "ci/first-useful-action-summary"
-status = "done"
-branch = "ci-first-useful-action-summary"
+id = "ci/assistant-loop-health-artifacts"
+status = "blocked"
+blocked_by = ["report/assistant-loop-health"]
+branch = "ci-assistant-loop-health-artifacts"
 stackable = false
-acceptance = "Surface first-useful-action JSON/Markdown in generated GitHub CI as advisory summary and artifact content without changing default blocking"
+acceptance = "Generated GitHub CI uploads and summarizes assistant-loop-health JSON/Markdown only when proof artifacts exist, while keeping the report advisory and preserving gate evaluator pass/fail authority"
 commands = [
   "cargo test -p ripr init_generated_github_workflow",
   "cargo xtask check-workflows",
@@ -86,27 +90,12 @@ commands = [
 ]
 
 [[work_item]]
-id = "lsp/first-useful-action-status"
-status = "done"
-branch = "lsp-first-useful-action-status"
+id = "docs/assistant-loop-health-workflow"
+status = "blocked"
+blocked_by = ["report/assistant-loop-health", "ci/assistant-loop-health-artifacts"]
+branch = "docs-assistant-loop-health-workflow"
 stackable = false
-acceptance = "Project an existing first-useful-action report through editor status and Show Status without adding diagnostics, CodeLens, inlay hints, unsaved-buffer analysis, source edits, or generated tests"
-commands = [
-  "cargo test -p ripr lsp --lib",
-  "cargo test -p ripr lsp::tests --lib",
-  "npm --prefix editors/vscode run compile",
-  "npm --prefix editors/vscode run test:e2e",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "docs/first-useful-action-workflow"
-status = "done"
-branch = "docs-first-useful-action-workflow"
-stackable = false
-acceptance = "Document how developers, reviewers, and coding agents read the first useful action, act on it, verify movement, emit receipts, and interpret fallback states"
+acceptance = "Document proof report versus health report, complete versus partial loops, missing-input repair, unchanged movement, generated-CI summary use, and advisory limits"
 commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
@@ -115,24 +104,18 @@ commands = [
 ]
 
 [[work_item]]
-id = "dogfood/first-useful-action-receipts"
-status = "done"
-branch = "dogfood-first-useful-action-receipts"
-stackable = false
-acceptance = "Record repo-local first-useful-action receipts for actionable, baseline-only, stale or missing-input, unchanged-after-attempt, and no-actionable-seam cases"
-commands = [
-  "cargo xtask dogfood",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
+id = "campaign/assistant-loop-health-closeout"
+status = "blocked"
+blocked_by = [
+  "spec/assistant-loop-health-report",
+  "fixtures/assistant-loop-health-corpus",
+  "report/assistant-loop-health",
+  "ci/assistant-loop-health-artifacts",
+  "docs/assistant-loop-health-workflow",
 ]
-
-[[work_item]]
-id = "campaign/first-useful-action-closeout"
-status = "done"
-branch = "campaign-first-useful-action-closeout"
+branch = "campaign-assistant-loop-health-closeout"
 stackable = false
-acceptance = "Close Campaign 22 after schema, fixtures, producer, CI projection, editor projection, docs, and dogfood receipts document one advisory next action without analyzer, policy, gate, model, mutation, or editor-surface sprawl"
+acceptance = "Close Campaign 23 after the spec, fixtures, producer, CI projection, docs, and validation show assistant-loop health is advisory, explicit-input-only, and bounded to existing proof artifacts"
 commands = [
   "cargo xtask check-campaign",
   "cargo xtask goals next",

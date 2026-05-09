@@ -16,6 +16,12 @@ are scoped or reviewed.
   spine with identity, evidence path, observed values, missing discriminators,
   related tests, recommendation/actionability, calibration placeholder, and
   static limitations while preserving existing repo-exposure fields.
+- Opened Campaign 23, Assistant Loop Health, with
+  `spec/assistant-loop-health-report` as the first ready work item so existing
+  assistant proof reports can be summarized into advisory health, missing-input,
+  static-movement, warning, and repair-queue surfaces without changing analyzer,
+  ranking, gate, editor, provider, mutation, generated-test, source-edit, or
+  default-blocking behavior.
 - Opened Campaign 22, First Useful Action, with
   `spec/first-useful-action-report` as the first ready work item so existing
   editor, PR guidance, ledger, proof, receipt, optional gate, coverage/grip,
@@ -25,10 +31,10 @@ are scoped or reviewed.
   bounded status and action vocabularies, deterministic routing priorities,
   planned JSON/Markdown schema, traceability, and capability metrics before
   adding the producer, fixtures, CI projection, or editor projection.
-- Documented Assistant Loop Health as a future follow-up lane after First
-  Useful Action, including the planned advisory `assistant-loop-health`
-  JSON/Markdown surface, health buckets, repair queue, PR stack, and non-goals
-  without replacing the active campaign manifest.
+- Added the Assistant Loop Health proposal, including the planned advisory
+  `assistant-loop-health` JSON/Markdown surface, health buckets, repair queue,
+  PR stack, and non-goals before promoting it into the active Campaign 23
+  manifest.
 - Added the first-useful-action routing corpus under
   `fixtures/boundary_gap/expected/first-useful-action/`, pinning actionable,
   stale, missing-required-artifact, baseline-only, acknowledged, waived,
