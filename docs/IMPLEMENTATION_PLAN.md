@@ -38,7 +38,7 @@ through multiple work items in a campaign, but each work item should follow the
 | Test-Oracle Assistant Report Producer (21) | Turn the proved assistant loop into a public read-only JSON/Markdown report producer and optional advisory CI projection. | Complete: report producer, generated-CI projection, proof-report docs, and `campaign/test-oracle-assistant-report-closeout`. |
 | First Useful Action (22) | Compress existing editor, PR, ledger, proof, receipt, optional gate, coverage/grip, and staleness evidence into one advisory next test action. | Complete: RIPR-SPEC-0020 defines the report contract, the routing corpus is pinned, `ripr first-action` writes the read-only advisory report, generated CI surfaces it as advisory summary/artifact content, VS Code status/Show Status project an existing report, workflow docs explain developer, reviewer, and agent use, dogfood receipts are checked, and `campaign/first-useful-action-closeout` records the final audit. |
 | Assistant Loop Health (23) | Summarize proof completeness, missing inputs, static evidence movement, recurring warnings, and next repair queues across one or more assistant proof reports. | Complete: RIPR-SPEC-0022 defines the report contract, the assistant-loop-health fixture corpus is pinned, `ripr assistant-loop health` writes advisory JSON/Markdown from explicit proof inputs, generated GitHub CI uploads and summarizes health artifacts when proof artifacts exist, `docs/ASSISTANT_LOOP_HEALTH_WORKFLOW.md` explains maintainer and agent use, and `campaign/assistant-loop-health-closeout` records the final audit. |
-| PR Review Front Panel (24) | Compose existing PR guidance, first useful action, assistant proof, assistant-loop health, PR evidence ledger, baseline delta, gate decision, receipts, calibration, and optional coverage/grip frontier artifacts into one advisory generated-CI first screen. | Active: RIPR-SPEC-0023 defines the PR review front-panel report contract, and `fixtures/pr-review-front-panel-corpus` is the next ready work item. |
+| PR Review Front Panel (24) | Compose existing PR guidance, first useful action, assistant proof, assistant-loop health, PR evidence ledger, baseline delta, gate decision, receipts, calibration, and optional coverage/grip frontier artifacts into one advisory generated-CI first screen. | Active: RIPR-SPEC-0023 defines the report contract, the front-panel fixture corpus is pinned, and `report/pr-review-front-panel` is the next ready work item. |
 | Editor Evidence UX (future) | Make the saved-workspace LSP path feel like an editor-native test-intent cockpit from diagnostic to hover, related test, context packet, one test, verify, and receipt. | Complete as an explicit parallel Lane 3 closeout: contract audit, hover hardening, evidence-aware actions, context packet, protocol smoke, VS Code smoke, status/staleness, workflow docs, and closeout audit. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
@@ -193,14 +193,17 @@ Campaign 24 is now open as PR Review Front Panel. It uses the
 [PR Review Front Panel proposal](PR_REVIEW_FRONT_PANEL_PROPOSAL.md) as its
 design brief, and
 [RIPR-SPEC-0023](specs/RIPR-SPEC-0023-pr-review-front-panel-report.md) now
-defines the report contract. The campaign composes existing PR guidance, first useful action,
+defines the report contract. The boundary-gap fixture corpus now pins the
+advisory-only, actionable, summary-only, acknowledged, suppressed,
+baseline-resolved, blocked, missing-proof, and coverage-flat-grip-improved
+routes. The campaign composes existing PR guidance, first useful action,
 assistant proof, assistant-loop health, PR evidence ledger, baseline delta,
 gate decision, receipts, calibration, and optional coverage/grip frontier
 artifacts into one advisory GitHub PR first screen without changing analyzer
 behavior, recommendation ranking, gate semantics, editor behavior, mutation
 execution, provider calls, source files, generated tests, inline-comment
 defaults, or default CI blocking. The next ready slice is
-`fixtures/pr-review-front-panel-corpus`.
+`report/pr-review-front-panel`.
 
 ## PR 0: `planning-and-tracking-docs`
 

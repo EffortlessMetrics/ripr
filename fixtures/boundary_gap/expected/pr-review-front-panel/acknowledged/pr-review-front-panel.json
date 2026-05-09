@@ -1,0 +1,123 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "pr_review_front_panel",
+  "status": "acknowledged",
+  "root": ".",
+  "generated_at": "2026-05-09T12:00:00Z",
+  "inputs": {
+    "pr_guidance": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/comments.json",
+    "first_action": null,
+    "assistant_proof": null,
+    "assistant_health": null,
+    "ledger": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/pr-evidence-ledger.json",
+    "baseline_delta": null,
+    "zero_status": null,
+    "gate_decision": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/gate-decision.json",
+    "recommendation_calibration": null,
+    "mutation_calibration": null,
+    "coverage_frontier": null,
+    "receipt": null
+  },
+  "summary": {
+    "status": "acknowledged",
+    "headline": "Policy-eligible gap acknowledged by ripr-waive.",
+    "top_issue_state": "actionable",
+    "policy_state": "waived",
+    "placement": "changed_line",
+    "movement_state": "unknown",
+    "coverage_grip_state": "not_available",
+    "blocking_candidates": 0,
+    "acknowledged": 1,
+    "waived": 1,
+    "suppressed": 0,
+    "new_policy_eligible": 0,
+    "baseline_still_present": 0,
+    "baseline_resolved": 0,
+    "warnings": 0
+  },
+  "top_issue": {
+    "source": "gate_decision",
+    "source_artifact": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/gate-decision.json",
+    "seam_id": "ack",
+    "canonical_gap_id": null,
+    "path": "src/ack.rs",
+    "line": 5,
+    "classification": "weakly_exposed",
+    "missing_discriminator": "ack == 5",
+    "related_test": "tests/ack.rs::boundary",
+    "suggested_test": "assert_eq!(ack(), 5)",
+    "verify_command": null,
+    "agent_command": "ripr agent start --root . --seam-id ack --out target/ripr/workflow",
+    "receipt": {
+      "artifact": null,
+      "status": "missing"
+    }
+  },
+  "movement": {
+    "state": "unknown",
+    "before_class": null,
+    "after_class": null,
+    "source_artifact": null
+  },
+  "debt_delta": {
+    "new_policy_eligible": 0,
+    "baseline_still_present": 0,
+    "baseline_resolved": 0,
+    "acknowledged": 1,
+    "waived": 1,
+    "suppressed": 0,
+    "blocking_candidates": 0
+  },
+  "policy": {
+    "mode": "acknowledgeable",
+    "decision": "acknowledged",
+    "authority_artifact": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/gate-decision.json",
+    "acknowledgement_label": "ripr-waive"
+  },
+  "calibration": {
+    "recommendation": "not_available",
+    "mutation": "not_available",
+    "source_artifacts": []
+  },
+  "coverage_grip": {
+    "state": "not_available",
+    "coverage_delta": null,
+    "grip_delta": null,
+    "source_artifact": null
+  },
+  "artifacts": [
+    {
+      "group": "start_here",
+      "label": "PR review front panel",
+      "path": "fixtures/boundary_gap/expected/pr-review-front-panel/acknowledged/pr-review-front-panel.md",
+      "available": true,
+      "required": true
+    },
+    {
+      "group": "policy",
+      "label": "Gate decision",
+      "path": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/gate-decision.json",
+      "available": true,
+      "required": false
+    },
+    {
+      "group": "evidence",
+      "label": "PR evidence ledger",
+      "path": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/pr-evidence-ledger.json",
+      "available": true,
+      "required": false
+    }
+  ],
+  "warnings": [],
+  "limits": [
+    "Static RIPR evidence only.",
+    "Does not provide runtime confirmation.",
+    "Does not run mutation testing.",
+    "Does not call providers.",
+    "Does not edit source or generate tests.",
+    "Does not publish inline comments.",
+    "Does not change default CI blocking.",
+    "Gate evaluator remains pass/fail authority."
+  ]
+}

@@ -1,0 +1,224 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "pr_review_front_panel_corpus",
+  "status": "advisory",
+  "spec": "RIPR-SPEC-0023",
+  "fixture": "boundary_gap",
+  "limits_note": "Advisory PR review front-panel fixture expectations only; no hidden analysis reruns, source edits, generated tests, provider calls, mutation execution, ranking changes, gate changes, LSP/editor changes, inline comments, or default CI blocking.",
+  "canonical_command": "ripr pr-review front-panel --pr-guidance target/ripr/review/comments.json --first-action target/ripr/reports/first-useful-action.json --assistant-proof target/ripr/reports/test-oracle-assistant-proof.json --assistant-health target/ripr/reports/assistant-loop-health.json --ledger target/ripr/reports/pr-evidence-ledger.json --baseline-delta target/ripr/reports/baseline-debt-delta.json --gate-decision target/ripr/reports/gate-decision.json --coverage-frontier target/ripr/reports/coverage-grip-frontier.json --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md",
+  "cases": [
+    {
+      "id": "advisory_only",
+      "scenario": "advisory-only PR with no actionable seam",
+      "inputs": {
+        "first_action": "fixtures/boundary_gap/expected/first-useful-action/no-actionable-seam/first-useful-action.json",
+        "gate_decision": null,
+        "ledger": null
+      },
+      "expected_report": "fixtures/boundary_gap/expected/pr-review-front-panel/advisory-only/pr-review-front-panel.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/pr-review-front-panel/advisory-only/pr-review-front-panel.md",
+      "expected": {
+        "status": "advisory",
+        "top_issue_state": "no_actionable_seam",
+        "policy_state": "none",
+        "placement": "not_available",
+        "movement_state": "not_available",
+        "coverage_grip_state": "not_available",
+        "new_policy_eligible": 0,
+        "baseline_resolved": 0,
+        "blocking_candidates": 0,
+        "warnings": 0
+      },
+      "reason": "Default generated CI should remain advisory and readable when there is no safe next action."
+    },
+    {
+      "id": "actionable",
+      "scenario": "changed-line actionable PR-local weak seam",
+      "inputs": {
+        "pr_guidance": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json",
+        "first_action": "fixtures/boundary_gap/expected/first-useful-action/actionable/first-useful-action.json",
+        "assistant_proof": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/test-oracle-assistant-proof.json",
+        "assistant_health": "fixtures/boundary_gap/expected/assistant-loop-health/complete-improved/assistant-loop-health.json",
+        "ledger": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-evidence-ledger.json"
+      },
+      "expected_report": "fixtures/boundary_gap/expected/pr-review-front-panel/actionable/pr-review-front-panel.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/pr-review-front-panel/actionable/pr-review-front-panel.md",
+      "expected": {
+        "status": "advisory",
+        "top_issue_state": "actionable",
+        "policy_state": "new_policy_eligible",
+        "placement": "changed_line",
+        "movement_state": "unknown",
+        "coverage_grip_state": "not_available",
+        "new_policy_eligible": 1,
+        "baseline_resolved": 0,
+        "blocking_candidates": 0,
+        "warnings": 0
+      },
+      "reason": "The front panel should show the top focused-test action first when a PR-local seam is line-placeable."
+    },
+    {
+      "id": "summary_only",
+      "scenario": "recommendation is useful but not safely line-placeable",
+      "inputs": {
+        "pr_guidance": "target/ripr/review/comments.json",
+        "first_action": "fixtures/boundary_gap/expected/first-useful-action/actionable/first-useful-action.json"
+      },
+      "expected_report": "fixtures/boundary_gap/expected/pr-review-front-panel/summary-only/pr-review-front-panel.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/pr-review-front-panel/summary-only/pr-review-front-panel.md",
+      "expected": {
+        "status": "advisory",
+        "top_issue_state": "summary_only",
+        "policy_state": "new_policy_eligible",
+        "placement": "summary_only",
+        "movement_state": "unknown",
+        "coverage_grip_state": "not_available",
+        "new_policy_eligible": 1,
+        "baseline_resolved": 0,
+        "blocking_candidates": 0,
+        "warnings": 1
+      },
+      "reason": "Unsafe placement should stay visible as summary-only guidance instead of producing a misleading inline annotation."
+    },
+    {
+      "id": "acknowledged",
+      "scenario": "policy-eligible candidate acknowledged by ripr-waive",
+      "inputs": {
+        "gate_decision": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/gate-decision.json",
+        "ledger": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/pr-evidence-ledger.json"
+      },
+      "expected_report": "fixtures/boundary_gap/expected/pr-review-front-panel/acknowledged/pr-review-front-panel.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/pr-review-front-panel/acknowledged/pr-review-front-panel.md",
+      "expected": {
+        "status": "acknowledged",
+        "top_issue_state": "actionable",
+        "policy_state": "waived",
+        "placement": "changed_line",
+        "movement_state": "unknown",
+        "coverage_grip_state": "not_available",
+        "new_policy_eligible": 0,
+        "baseline_resolved": 0,
+        "blocking_candidates": 0,
+        "warnings": 0
+      },
+      "reason": "Waivers should be visible acknowledgements, not hidden success."
+    },
+    {
+      "id": "suppressed",
+      "scenario": "durably suppressed candidate remains visible",
+      "inputs": {
+        "gate_decision": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/gate-decision.json",
+        "ledger": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/pr-evidence-ledger.json"
+      },
+      "expected_report": "fixtures/boundary_gap/expected/pr-review-front-panel/suppressed/pr-review-front-panel.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/pr-review-front-panel/suppressed/pr-review-front-panel.md",
+      "expected": {
+        "status": "advisory",
+        "top_issue_state": "baseline_only",
+        "policy_state": "suppressed",
+        "placement": "not_available",
+        "movement_state": "not_available",
+        "coverage_grip_state": "not_available",
+        "new_policy_eligible": 0,
+        "baseline_resolved": 0,
+        "blocking_candidates": 0,
+        "warnings": 0
+      },
+      "reason": "Suppressions are durable policy exceptions and must stay visible in PR review."
+    },
+    {
+      "id": "baseline_resolved",
+      "scenario": "PR resolved reviewed baseline debt",
+      "inputs": {
+        "baseline_delta": "fixtures/boundary_gap/expected/baseline-debt-delta/mixed/baseline-debt-delta.json",
+        "ledger": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/pr-evidence-ledger.json"
+      },
+      "expected_report": "fixtures/boundary_gap/expected/pr-review-front-panel/baseline-resolved/pr-review-front-panel.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/pr-review-front-panel/baseline-resolved/pr-review-front-panel.md",
+      "expected": {
+        "status": "advisory",
+        "top_issue_state": "already_improved",
+        "policy_state": "baseline",
+        "placement": "not_available",
+        "movement_state": "resolved",
+        "coverage_grip_state": "not_available",
+        "new_policy_eligible": 1,
+        "baseline_resolved": 3,
+        "blocking_candidates": 0,
+        "warnings": 0
+      },
+      "reason": "The front panel should show improvement and not only punish new debt."
+    },
+    {
+      "id": "blocked",
+      "scenario": "configured gate blocks a new policy-eligible gap",
+      "inputs": {
+        "gate_decision": "target/ripr/reports/gate-decision.json",
+        "first_action": "fixtures/boundary_gap/expected/first-useful-action/actionable/first-useful-action.json"
+      },
+      "expected_report": "fixtures/boundary_gap/expected/pr-review-front-panel/blocked/pr-review-front-panel.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/pr-review-front-panel/blocked/pr-review-front-panel.md",
+      "expected": {
+        "status": "blocked",
+        "top_issue_state": "actionable",
+        "policy_state": "blocking",
+        "placement": "changed_line",
+        "movement_state": "unknown",
+        "coverage_grip_state": "not_available",
+        "new_policy_eligible": 1,
+        "baseline_resolved": 0,
+        "blocking_candidates": 1,
+        "warnings": 0
+      },
+      "reason": "A blocked run should still route a repair action and point to gate-decision as pass/fail authority."
+    },
+    {
+      "id": "missing_proof",
+      "scenario": "required joined proof input is missing",
+      "inputs": {
+        "first_action": "fixtures/boundary_gap/expected/first-useful-action/missing-required-artifact/first-useful-action.json",
+        "assistant_proof": "target/ripr/reports/test-oracle-assistant-proof.json"
+      },
+      "expected_report": "fixtures/boundary_gap/expected/pr-review-front-panel/missing-proof/pr-review-front-panel.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/pr-review-front-panel/missing-proof/pr-review-front-panel.md",
+      "expected": {
+        "status": "incomplete",
+        "top_issue_state": "missing_required_input",
+        "policy_state": "none",
+        "placement": "not_available",
+        "movement_state": "unknown",
+        "coverage_grip_state": "not_available",
+        "new_policy_eligible": 0,
+        "baseline_resolved": 0,
+        "blocking_candidates": 0,
+        "warnings": 1
+      },
+      "reason": "Missing proof should tell users to regenerate an explicit artifact instead of inferring a front-panel story."
+    },
+    {
+      "id": "coverage_flat_grip_improved",
+      "scenario": "coverage is flat while static grip improves",
+      "inputs": {
+        "assistant_health": "fixtures/boundary_gap/expected/assistant-loop-health/complete-improved/assistant-loop-health.json",
+        "ledger": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/pr-evidence-ledger.json",
+        "coverage_frontier": "target/ripr/reports/coverage-grip-frontier.json"
+      },
+      "expected_report": "fixtures/boundary_gap/expected/pr-review-front-panel/coverage-flat-grip-improved/pr-review-front-panel.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/pr-review-front-panel/coverage-flat-grip-improved/pr-review-front-panel.md",
+      "expected": {
+        "status": "advisory",
+        "top_issue_state": "already_improved",
+        "policy_state": "none",
+        "placement": "changed_line",
+        "movement_state": "improved",
+        "coverage_grip_state": "flat_coverage_grip_improved",
+        "new_policy_eligible": 0,
+        "baseline_resolved": 3,
+        "blocking_candidates": 0,
+        "warnings": 0
+      },
+      "reason": "The front panel should teach that behavioral grip can improve even when line coverage does not move."
+    }
+  ]
+}
