@@ -58,7 +58,7 @@ as distinct from the target design in `docs/CI.md`.
 | `ripr` self-dogfood is advisory but no LEM tracking | PR 14 | Cannot measure cost of self-verification. |
 | No soft budget guard | PR 15 | No warning when PRs exceed budget bands. |
 | `policy/no-panic-allowlist.toml` is shadow/sample only | PR 04 | Canonical checker still reads `.ripr/` path. |
-| MSRV is 1.93, planned 1.95 lints are not active | PR 01–03 | Missing AST/slicing rails and newer lint set. |
+| Planned 1.94/1.95 lints are not active | PR 03 | Missing AST/slicing rails and newer lint set. |
 
 ## Policy files that exist but are not yet fully enforced
 
@@ -72,12 +72,12 @@ the matching xtask implementation.
 
 ## MSRV state
 
-- Current `workspace.package.rust-version`: `1.93`
-- Current `rust-toolchain.toml` channel: `1.93.1`
+- Current `workspace.package.rust-version`: `1.95`
+- Current `rust-toolchain.toml` channel: `1.95.0`
 - Target: `1.95`
 - Rust 1.95 compatibility audit: pass on 2026-05-09; see
   [Rust 1.95 compatibility audit](msrv-1.95-audit.md).
-- Planned lints waiting on MSRV bump: `disallowed_fields`, `manual_checked_ops`,
+- Planned lints waiting on PR 03: `disallowed_fields`, `manual_checked_ops`,
   `manual_take`, `manual_pop_if`, `duration_suboptimal_units`,
   `unnecessary_trailing_comma`, plus 1.94 lints `same_length_and_capacity`,
   `manual_ilog2`, `needless_type_cast`, `decimal_bitwise_operands`.

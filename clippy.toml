@@ -10,4 +10,4 @@
 # repo inherit the same panic-free / no-silent-failure bar as production
 # code; see `docs/CLIPPY_POLICY.md` and the `cargo xtask check-no-panic-family`
 # semantic rail.
-msrv = "1.93"
+msrv = "1.95"
