@@ -409,6 +409,10 @@ are scoped or reviewed.
 
 ### Changed
 
+- Moved the declared workspace MSRV, pinned toolchain, `clippy.toml`, and
+  `policy/clippy-lints.toml` MSRV ledger to Rust 1.95 after the compatibility
+  audit passed; planned Clippy lint promotion remains deferred to the next
+  rollout PR.
 - Advanced Campaign 13, PR Review Guidance, after adding the read-only
   `ripr review-comments` producer and generated CI producer step;
   placement/suppression fixtures and PR guidance docs completed the lane before

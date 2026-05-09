@@ -1,5 +1,5 @@
 schema_version = "0.1"
-msrv = "1.93"
+msrv = "1.95"
 
 # Declarative ledger of the Rust/Clippy lint policy enforced by ripr.
 #
@@ -18,7 +18,7 @@ suppression_style = "expect-or-allow-with-reason"
 blanket_categories = false
 unsafe = "forbid"
 
-# Active panic-family Clippy lints at MSRV 1.93. Code-shape rail only;
+# Active panic-family Clippy lints at MSRV 1.95. Code-shape rail only;
 # semantic enforcement (selector + allowlist) lives in
 # `cargo xtask check-no-panic-family`.
 [[active.panic_family]]

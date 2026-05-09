@@ -120,6 +120,9 @@ Completed receipts:
 - PR 01: `docs/ci/msrv-1.95-audit.md` records a passing Rust 1.95
   compatibility audit for check, test, and Clippy. PR 02 may move the declared
   MSRV; PR 03 still owns planned-lint promotion.
+- PR 02: the declared workspace MSRV, pinned toolchain, `clippy.toml`, and
+  `policy/clippy-lints.toml` now target Rust 1.95. PR 03 still owns planned
+  Clippy lint promotion.
 
 Natural stacks:
 

@@ -39,7 +39,7 @@ A panic-family call site is acceptable only if it satisfies **both rails**.
   [`clippy.toml`](../clippy.toml) deliberately does not enable
   `allow-unwrap-in-tests`, `allow-expect-in-tests`, `allow-panic-in-tests`,
   `allow-dbg-in-tests`, or `allow-indexing-slicing-in-tests`. The same file
-  pins `msrv = "1.93"` so newer Clippy releases — when run via `rustup` or
+  pins `msrv = "1.95"` so newer Clippy releases — when run via `rustup` or
   in an advisory CI lane on a more recent toolchain — do not suggest APIs
   that violate the workspace's declared minimum supported Rust version.
 - Every suppression carries a written reason. `clippy::allow_attributes_without_reason`
@@ -193,9 +193,10 @@ follow-up PR.
 
 ## MSRV 1.95 rollout
 
-The current workspace MSRV is `1.93`. The target platform is `1.95`.
+The current workspace MSRV is `1.95`.
 
-Planned lints that activate at MSRV 1.95 (tracked in `policy/clippy-lints.toml`):
+Planned lints that are available at MSRV 1.95 but remain deferred to PR 03
+(tracked in `policy/clippy-lints.toml`):
 
 | Lint | Level | Reason |
 | --- | --- | --- |
@@ -206,7 +207,8 @@ Planned lints that activate at MSRV 1.95 (tracked in `policy/clippy-lints.toml`)
 | `clippy::duration_suboptimal_units` | warn | Make durations legible without unit conversion. |
 | `clippy::unnecessary_trailing_comma` | warn | Keep format macro calls clean. |
 
-Planned lints that activate at MSRV 1.94 (also blocked on MSRV bump):
+Planned lints that became available at MSRV 1.94 and also remain deferred to
+PR 03:
 
 | Lint | Level | Reason |
 | --- | --- | --- |
@@ -223,8 +225,8 @@ Deferred lints targeted for activation after the MSRV bump and per-site review:
 | `clippy::string_slice` | Pairs with `indexing_slicing`; requires per-call receipts on AST-bounded slicing. |
 
 The rollout PR stack is in `docs/ci/ripr-rollout-plan.md`. Promote lints from
-`[[planned]]` to `[[active]]` only after the MSRV bump (PR 02) and the
-matching xtask check pass (PR 03).
+`[[planned]]` to `[[active]]` only in PR 03 after the MSRV bump has landed and
+the matching xtask check passes.
 
 ## See also
 
