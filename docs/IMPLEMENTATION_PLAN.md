@@ -148,11 +148,11 @@ user-facing PR/editor-to-receipt workflow and static evidence limits. The
 the prompt-to-artifact audit, proof commands, and boundary that future proof
 report producers, PR/CI polish, analyzer improvements, and editor UX work
 should be opened as explicit follow-up campaigns. Campaign 21 is now open as
-Test-Oracle Assistant Report Producer, with `report/test-oracle-assistant-proof`
-as the first ready work item. It should produce advisory
-`test-oracle-assistant-proof.{json,md}` artifacts from explicit existing inputs
-without changing analyzer, ranking, gate, editor, provider, mutation, or
-default CI behavior.
+Test-Oracle Assistant Report Producer. `ripr assistant-loop proof` now produces
+advisory `test-oracle-assistant-proof.{json,md}` artifacts from explicit
+existing inputs without changing analyzer, ranking, gate, editor, provider,
+mutation, or default CI behavior. The next Campaign 21 work is generated-CI
+advisory artifact projection for that proof report.
 
 ## PR 0: `planning-and-tracking-docs`
 

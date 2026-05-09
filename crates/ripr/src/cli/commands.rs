@@ -140,6 +140,21 @@ struct CoverageGripFrontierOptions {
     out_md: PathBuf,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct AssistantLoopProofOptions {
+    root: String,
+    pr_guidance: Option<PathBuf>,
+    agent_packet: Option<PathBuf>,
+    before: Option<PathBuf>,
+    after: Option<PathBuf>,
+    receipt: Option<PathBuf>,
+    ledger: Option<PathBuf>,
+    coverage_frontier: Option<PathBuf>,
+    gate_decision: Option<PathBuf>,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum OutcomeFormat {
     Markdown,
@@ -2038,6 +2053,22 @@ pub(super) fn coverage_grip(args: &[String]) -> Result<(), String> {
     coverage_grip_frontier(rest)
 }
 
+pub(super) fn assistant_loop(args: &[String]) -> Result<(), String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        help::print_assistant_loop_help();
+        return Ok(());
+    }
+    let Some((subcommand, rest)) = args.split_first() else {
+        return Err("assistant-loop requires subcommand `proof`".to_string());
+    };
+    if subcommand != "proof" {
+        return Err(format!(
+            "unknown assistant-loop subcommand {subcommand:?}; expected `proof`"
+        ));
+    }
+    assistant_loop_proof(rest)
+}
+
 fn ripr_zero_status(args: &[String]) -> Result<(), String> {
     let options = parse_ripr_zero_status_options(args)?;
     let baseline_path = options
@@ -2231,6 +2262,96 @@ fn coverage_grip_frontier(args: &[String]) -> Result<(), String> {
         output::coverage_grip_frontier::render_coverage_grip_frontier_json(&report)?;
     let rendered_md =
         output::coverage_grip_frontier::render_coverage_grip_frontier_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    Ok(())
+}
+
+fn assistant_loop_proof(args: &[String]) -> Result<(), String> {
+    let options = parse_assistant_loop_proof_options(args)?;
+    let pr_guidance_path = options
+        .pr_guidance
+        .as_ref()
+        .map(|path| output::test_oracle_assistant_proof::display_path(path));
+    let agent_packet_path = options
+        .agent_packet
+        .as_ref()
+        .map(|path| output::test_oracle_assistant_proof::display_path(path));
+    let before_path = options
+        .before
+        .as_ref()
+        .map(|path| output::test_oracle_assistant_proof::display_path(path));
+    let after_path = options
+        .after
+        .as_ref()
+        .map(|path| output::test_oracle_assistant_proof::display_path(path));
+    let receipt_path = options
+        .receipt
+        .as_ref()
+        .map(|path| output::test_oracle_assistant_proof::display_path(path));
+    let ledger_path = options
+        .ledger
+        .as_ref()
+        .map(|path| output::test_oracle_assistant_proof::display_path(path));
+    let coverage_frontier_path = options
+        .coverage_frontier
+        .as_ref()
+        .map(|path| output::test_oracle_assistant_proof::display_path(path));
+    let gate_decision_path = options
+        .gate_decision
+        .as_ref()
+        .map(|path| output::test_oracle_assistant_proof::display_path(path));
+    let input = output::test_oracle_assistant_proof::TestOracleAssistantProofInput {
+        root: options.root,
+        pr_guidance_path,
+        agent_packet_path,
+        before_path,
+        after_path,
+        receipt_path,
+        ledger_path,
+        coverage_frontier_path,
+        gate_decision_path,
+        pr_guidance_json: options
+            .pr_guidance
+            .as_ref()
+            .map(|path| read_optional_text_for_report("PR guidance", path)),
+        agent_packet_json: options
+            .agent_packet
+            .as_ref()
+            .map(|path| read_optional_text_for_report("agent packet", path)),
+        before_json: options
+            .before
+            .as_ref()
+            .map(|path| read_optional_text_for_report("before evidence", path)),
+        after_json: options
+            .after
+            .as_ref()
+            .map(|path| read_optional_text_for_report("after evidence", path)),
+        receipt_json: options
+            .receipt
+            .as_ref()
+            .map(|path| read_optional_text_for_report("receipt", path)),
+        ledger_json: options
+            .ledger
+            .as_ref()
+            .map(|path| read_optional_text_for_report("PR evidence ledger", path)),
+        coverage_frontier_json: options
+            .coverage_frontier
+            .as_ref()
+            .map(|path| read_optional_text_for_report("coverage/grip frontier", path)),
+        gate_decision_json: options
+            .gate_decision
+            .as_ref()
+            .map(|path| read_optional_text_for_report("gate decision", path)),
+    };
+    let report =
+        output::test_oracle_assistant_proof::build_test_oracle_assistant_proof_report(input);
+    let rendered_json =
+        output::test_oracle_assistant_proof::render_test_oracle_assistant_proof_json(&report)?;
+    let rendered_md =
+        output::test_oracle_assistant_proof::render_test_oracle_assistant_proof_markdown(&report);
     write_text_file(&options.out, &rendered_json)?;
     write_text_file(&options.out_md, &rendered_md)?;
     println!("Wrote {}", options.out.display());
@@ -3235,6 +3356,143 @@ fn parse_coverage_grip_frontier_options(
         ledger,
         baseline_delta,
         zero_status,
+        out,
+        out_md,
+    })
+}
+
+fn parse_assistant_loop_proof_options(
+    args: &[String],
+) -> Result<AssistantLoopProofOptions, String> {
+    let mut root = ".".to_string();
+    let mut pr_guidance = None;
+    let mut agent_packet = None;
+    let mut before = None;
+    let mut after = None;
+    let mut receipt = None;
+    let mut ledger = None;
+    let mut coverage_frontier = None;
+    let mut gate_decision = None;
+    let mut out =
+        PathBuf::from(output::test_oracle_assistant_proof::DEFAULT_TEST_ORACLE_ASSISTANT_PROOF_OUT);
+    let mut out_md = PathBuf::from(
+        output::test_oracle_assistant_proof::DEFAULT_TEST_ORACLE_ASSISTANT_PROOF_MD_OUT,
+    );
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = non_empty_string_arg(args, i, "--root", "assistant-loop proof")?;
+            }
+            "--pr-guidance" => {
+                i += 1;
+                pr_guidance = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--pr-guidance",
+                    "assistant-loop proof",
+                )?);
+            }
+            "--agent-packet" => {
+                i += 1;
+                agent_packet = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--agent-packet",
+                    "assistant-loop proof",
+                )?);
+            }
+            "--before" => {
+                i += 1;
+                before = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--before",
+                    "assistant-loop proof",
+                )?);
+            }
+            "--after" => {
+                i += 1;
+                after = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--after",
+                    "assistant-loop proof",
+                )?);
+            }
+            "--receipt" => {
+                i += 1;
+                receipt = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--receipt",
+                    "assistant-loop proof",
+                )?);
+            }
+            "--ledger" => {
+                i += 1;
+                ledger = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--ledger",
+                    "assistant-loop proof",
+                )?);
+            }
+            "--coverage-frontier" => {
+                i += 1;
+                coverage_frontier = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--coverage-frontier",
+                    "assistant-loop proof",
+                )?);
+            }
+            "--gate-decision" => {
+                i += 1;
+                gate_decision = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--gate-decision",
+                    "assistant-loop proof",
+                )?);
+            }
+            "--out" => {
+                i += 1;
+                out = non_empty_path_arg(args, i, "--out", "assistant-loop proof")?;
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = non_empty_path_arg(args, i, "--out-md", "assistant-loop proof")?;
+            }
+            other => return Err(format!("unknown assistant-loop proof argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    if pr_guidance.is_none()
+        && agent_packet.is_none()
+        && before.is_none()
+        && after.is_none()
+        && receipt.is_none()
+        && ledger.is_none()
+    {
+        return Err(
+            "assistant-loop proof requires at least one explicit artifact input".to_string(),
+        );
+    }
+
+    Ok(AssistantLoopProofOptions {
+        root,
+        pr_guidance,
+        agent_packet,
+        before,
+        after,
+        receipt,
+        ledger,
+        coverage_frontier,
+        gate_decision,
         out,
         out_md,
     })

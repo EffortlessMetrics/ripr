@@ -1207,6 +1207,13 @@ id = "RIPR-SPEC-0019"
 name = "test-oracle assistant loop"
 spec = "docs/specs/RIPR-SPEC-0019-test-oracle-assistant-loop.md"
 tests = [
+  "crates/ripr/src/output/test_oracle_assistant_proof.rs::test_oracle_assistant_proof_matches_canonical_fixture",
+  "crates/ripr/src/output/test_oracle_assistant_proof.rs::test_oracle_assistant_proof_reports_incomplete_without_selected_seam",
+  "crates/ripr/src/output/test_oracle_assistant_proof.rs::test_oracle_assistant_proof_warns_for_invalid_supplied_inputs",
+  "crates/ripr/src/output/test_oracle_assistant_proof.rs::test_oracle_assistant_proof_keeps_summary_only_guidance_visible",
+  "crates/ripr/src/output/test_oracle_assistant_proof.rs::test_oracle_assistant_proof_handles_guidance_only_regression",
+  "crates/ripr/src/output/test_oracle_assistant_proof.rs::test_oracle_assistant_proof_handles_unknown_movement_and_no_handoff",
+  "crates/ripr/tests/cli_smoke.rs::test_oracle_assistant_proof_cli_writes_canonical_report",
   "crates/ripr/tests/cli_smoke.rs::test_oracle_assistant_canonical_review_loop_fixture_pins_expected_surfaces",
 ]
 fixtures = [
@@ -1216,7 +1223,14 @@ fixtures = [
   "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/test-oracle-assistant-proof.json",
   "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/test-oracle-assistant-proof.md",
 ]
-code = []
+code = [
+  "crates/ripr/src/output/test_oracle_assistant_proof.rs",
+  "crates/ripr/src/cli/command.rs",
+  "crates/ripr/src/cli/commands.rs",
+  "crates/ripr/src/cli/execute.rs",
+  "crates/ripr/src/cli/help.rs",
+  "crates/ripr/src/cli/parse.rs",
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0019-test-oracle-assistant-loop.md",
   "docs/specs/README.md",
