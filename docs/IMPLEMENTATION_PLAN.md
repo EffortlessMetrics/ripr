@@ -136,7 +136,12 @@ keeps execution coverage movement and RIPR behavioral grip movement visible as
 separate axes. `docs/PR_EVIDENCE_LEDGER_WORKFLOW.md` now explains how teams
 read ledgers for waiver aging, baseline burn-down, repair receipts,
 coverage/grip frontier signals, and progress toward RIPR 0. The next ready
-item is `campaign/pr-evidence-ledger-closeout`.
+item was `campaign/pr-evidence-ledger-closeout`. Campaign 19 closed after that
+user workflow doc landed. The PR evidence ledger surface is now complete as an
+advisory Lane 4 adoption record: spec, producer, generated-CI projection,
+coverage/grip frontier report, and workflow docs are in place, and gate
+decisions remain the pass/fail authority. Choose the next campaign explicitly
+before adding another product lane.
 
 ## PR 0: `planning-and-tracking-docs`
 

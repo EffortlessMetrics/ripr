@@ -181,8 +181,12 @@ summarizes `pr-evidence-ledger.{json,md}` as advisory PR movement evidence.
 separate advisory axes. `docs/PR_EVIDENCE_LEDGER_WORKFLOW.md` now documents how
 teams use ledger cards for waiver aging, baseline burn-down, repair receipts,
 coverage/grip frontier signals, and movement toward RIPR 0. The next ready
-item is `campaign/pr-evidence-ledger-closeout`. The campaign remains advisory
-by default and keeps gate decisions as the pass/fail authority.
+item was `campaign/pr-evidence-ledger-closeout`. Campaign 19 is now closed:
+the PR evidence ledger surface has a spec, producer, generated-CI projection,
+coverage/grip frontier report, user workflow doc, and closeout receipt while
+remaining advisory by default and keeping gate decisions as the pass/fail
+authority. Choose the next campaign explicitly before adding another product
+lane.
 
 ## Strategic Sequence
 

@@ -2214,7 +2214,7 @@ Work items:
 | `ci/pr-evidence-ledger-summary` | done | Generated GitHub CI now runs `ripr pr-ledger record` on pull requests after PR guidance, optional gate, baseline delta, and RIPR Zero reports exist; uploads `pr-evidence-ledger.{json,md}` with the normal artifact packet; and appends a PR movement card while leaving gate decisions as the pass/fail authority. |
 | `report/coverage-grip-frontier` | done | Added `ripr coverage-grip frontier`, a read-only JSON/Markdown report that keeps coverage delta, RIPR movement, quadrants, interpretation, warnings, and advisory limits as separate axes without treating coverage as adequacy. |
 | `docs/pr-evidence-ledger-workflow` | done | Added `docs/PR_EVIDENCE_LEDGER_WORKFLOW.md`, explaining how teams read PR evidence ledgers, use waiver aging and baseline burn-down, route repair receipts, interpret coverage/grip frontier signals, and track movement toward RIPR 0 without learning internal report topology. |
-| `campaign/pr-evidence-ledger-closeout` | ready | Close Campaign 19 only after PR evidence ledgers, generated-CI projection, coverage/grip frontier summaries, and user workflow docs are in place while defaults stay advisory. |
+| `campaign/pr-evidence-ledger-closeout` | done | Closed Campaign 19 after PR evidence ledgers, generated-CI projection, coverage/grip frontier summaries, and user workflow docs landed while defaults stayed advisory and gate decisions remained the pass/fail authority. |
 
 Dependencies:
 
@@ -2259,6 +2259,22 @@ Blocking conditions:
 - automatic source edits or generated tests
 - LSP/editor behavior changes in this campaign lane
 - new public crates
+
+Closeout:
+
+Campaign 19 closed PR Evidence Ledger. It turned per-PR RIPR evidence into an
+adoption ledger for new policy-eligible gaps, resolved baseline debt,
+acknowledgements, suppressions, gate mode, repair receipts, waiver aging,
+optional history, and optional coverage/grip frontier signals. The campaign
+kept Lane 4's boundary: it consumed existing analyzer, gate, calibration,
+baseline, and receipt artifacts; it did not change analyzer identity,
+recommendation ranking, gate policy semantics, LSP/editor behavior, mutation
+execution, source editing, generated tests, public crate shape, or generated-CI
+advisory defaults.
+
+No ready work item remains in `.ripr/goals/active.toml` after this closeout.
+Open the next product campaign explicitly rather than extending PR Evidence
+Ledger by inertia.
 
 ## Future Campaign: Editor Evidence UX
 
