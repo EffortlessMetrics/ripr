@@ -154,14 +154,15 @@ user path from advisory adoption to reviewed baseline creation,
 configured scope. The [Campaign 17
 closeout](handoffs/2026-05-09-campaign-17-closeout.md) records the PR chain,
 proof commands, and next-work boundary.
-Campaign 18 is active as RIPR Zero Reporting. It will turn reviewed baselines,
+Campaign 18 closed as RIPR Zero Reporting. It turns reviewed baselines,
 baseline debt deltas, gate decisions, and recommendation evidence into
 repo-level RIPR 0 status, baseline age and ownership, stale-debt warnings,
 trend summaries, and top repair areas while keeping generated CI advisory by
 default. RIPR-SPEC-0017 now pins that reporting contract; baseline metadata,
 the status report, generated-CI projection, and the
 [RIPR Zero reporting workflow](RIPR_ZERO_REPORTING_WORKFLOW.md) are in place.
-The next slice is the Campaign 18 closeout audit.
+The [Campaign 18 closeout](handoffs/2026-05-09-campaign-18-closeout.md)
+records the PR chain, proof commands, and next-work boundary.
 Editor Evidence UX closed as a separate Lane 3 campaign; its contract audit is
 recorded in [Editor Evidence UX](EDITOR_EVIDENCE_UX.md), the saved-workspace
 editor loop is documented in the
