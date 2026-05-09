@@ -550,6 +550,161 @@ fn test_oracle_assistant_canonical_review_loop_fixture_pins_expected_surfaces()
 }
 
 #[test]
+fn first_useful_action_corpus_pins_routing_cases() -> Result<(), Box<dyn std::error::Error>> {
+    let base = "fixtures/boundary_gap/expected/first-useful-action";
+    let fixture_dir = workspace_root().join(base);
+    let corpus_path = fixture_dir.join("corpus.json");
+    let corpus: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(corpus_path)?)?;
+    assert_eq!(json_pointer_str(&corpus, "/schema_version")?, "0.1");
+    assert_eq!(
+        json_pointer_str(&corpus, "/kind")?,
+        "first_useful_action_corpus"
+    );
+    assert_eq!(json_pointer_str(&corpus, "/spec")?, "RIPR-SPEC-0020");
+
+    let cases = corpus
+        .pointer("/cases")
+        .and_then(serde_json::Value::as_array)
+        .ok_or("expected `/cases` array")?;
+    let expected = [
+        (
+            "actionable",
+            "actionable_pr_local_boundary",
+            "actionable",
+            "write_focused_test",
+        ),
+        (
+            "stale",
+            "stale_editor_evidence",
+            "stale",
+            "refresh_evidence",
+        ),
+        (
+            "missing-required-artifact",
+            "missing_assistant_proof",
+            "missing_required_artifact",
+            "generate_missing_artifact",
+        ),
+        (
+            "baseline-only",
+            "baseline_only_debt",
+            "baseline_only",
+            "acknowledge_baseline",
+        ),
+        (
+            "acknowledged",
+            "acknowledged_pr_gap",
+            "acknowledged",
+            "inspect_proof_report",
+        ),
+        ("waived", "waived_pr_gap", "waived", "no_action"),
+        (
+            "suppressed",
+            "suppressed_configured_off",
+            "suppressed",
+            "no_action",
+        ),
+        (
+            "no-actionable-seam",
+            "no_actionable_seam_clean",
+            "no_actionable_seam",
+            "no_action",
+        ),
+        (
+            "already-improved",
+            "already_improved_receipt",
+            "already_improved",
+            "no_action",
+        ),
+        (
+            "unchanged-after-attempt",
+            "unchanged_after_attempt",
+            "unchanged_after_attempt",
+            "revise_focused_test",
+        ),
+    ];
+    assert_eq!(cases.len(), expected.len());
+
+    for (case_dir, case_id, status, action_kind) in expected {
+        let Some(case) = cases
+            .iter()
+            .find(|case| case.get("id").and_then(serde_json::Value::as_str) == Some(case_id))
+        else {
+            return Err(format!("missing first useful action case `{case_id}`").into());
+        };
+        assert_eq!(json_pointer_str(case, "/expected/status")?, status);
+        assert_eq!(
+            json_pointer_str(case, "/expected/action_kind")?,
+            action_kind
+        );
+
+        let report_path = fixture_dir.join(case_dir).join("first-useful-action.json");
+        let markdown_path = fixture_dir.join(case_dir).join("first-useful-action.md");
+        let report: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(report_path)?)?;
+        assert_eq!(json_pointer_str(&report, "/schema_version")?, "0.1");
+        assert_eq!(json_pointer_str(&report, "/tool")?, "ripr");
+        assert_eq!(json_pointer_str(&report, "/kind")?, "first_useful_action");
+        assert_eq!(json_pointer_str(&report, "/status")?, status);
+        assert_eq!(json_pointer_str(&report, "/action_kind")?, action_kind);
+        assert_eq!(
+            json_pointer_str(&report, "/generated_at")?,
+            "2026-05-09T12:00:00Z"
+        );
+
+        let why_first = report
+            .pointer("/why_first")
+            .and_then(serde_json::Value::as_array)
+            .ok_or("expected why_first array")?;
+        assert!(
+            !why_first.is_empty(),
+            "`{case_id}` should explain why the route came first"
+        );
+
+        let limits = report
+            .pointer("/limits")
+            .and_then(serde_json::Value::as_array)
+            .ok_or("expected limits array")?;
+        assert!(
+            limits
+                .iter()
+                .any(|limit| limit.as_str() == Some("Static evidence only.")),
+            "`{case_id}` should preserve the static-evidence limit"
+        );
+
+        if case
+            .pointer("/expected/fallback")
+            .is_some_and(|v| !v.is_null())
+        {
+            assert!(
+                report.pointer("/fallback").is_some_and(|v| !v.is_null()),
+                "`{case_id}` should include a fallback report object"
+            );
+        }
+
+        if case_id == "missing_assistant_proof" {
+            assert!(
+                report
+                    .pointer("/inputs/assistant_proof")
+                    .is_some_and(serde_json::Value::is_null),
+                "`{case_id}` should not claim a missing assistant proof input is present"
+            );
+        }
+
+        let markdown = std::fs::read_to_string(markdown_path)?;
+        assert!(
+            markdown.contains(&format!("Status: {status}")),
+            "`{case_id}` Markdown should pin status `{status}`"
+        );
+        assert!(
+            markdown.contains(&format!("Action: {action_kind}")),
+            "`{case_id}` Markdown should pin action `{action_kind}`"
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn agent_start_writes_source_edit_free_workflow_packet() -> Result<(), Box<dyn std::error::Error>> {
     let seam_id = "67fc764ba37d77bd";
     let out_dir = unique_temp_workspace("agent-start");

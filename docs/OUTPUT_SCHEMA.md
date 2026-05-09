@@ -2727,6 +2727,10 @@ fallback reason. The report is read-only and must not rerun hidden analysis,
 edit source, generate tests, call a provider, run mutation testing, invent
 policy, or change default CI blocking.
 
+The pre-producer fixture corpus lives under
+`fixtures/boundary_gap/expected/first-useful-action/` and pins every bounded
+status plus its expected JSON and Markdown route.
+
 Command shape:
 
 ```text
