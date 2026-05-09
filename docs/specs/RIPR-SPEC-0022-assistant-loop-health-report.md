@@ -204,29 +204,29 @@ The JSON report uses schema version `0.1`:
   },
   "summary": {
     "proofs": 1,
-    "complete": 1,
-    "partial": 0,
+    "complete": 0,
+    "partial": 1,
     "missing_required_input": 0,
     "missing_optional_input": 1,
     "improved": 1,
     "unchanged": 0,
     "regressed": 0,
     "unknown_movement": 0,
-    "warnings": 1,
-    "repair_queue": 0
+    "warnings": 2,
+    "repair_queue": 1
   },
   "proofs": [
     {
       "id": "proof-67fc764ba37d77bd",
       "source_artifact": "target/ripr/reports/test-oracle-assistant-proof.json",
-      "proof_state": "complete",
+      "proof_state": "partial",
       "movement_state": "improved",
       "seam": {
         "seam_id": "67fc764ba37d77bd",
         "seam_kind": "predicate_boundary",
         "path": "src/pricing.rs",
         "line": 88,
-        "static_class": "weakly_gripped",
+        "grip_class": "weakly_gripped",
         "missing_discriminator": "amount == discount_threshold"
       },
       "recommendation": {
@@ -240,8 +240,8 @@ The JSON report uses schema version `0.1`:
         "agent_command": "ripr agent start --root . --seam-id 67fc764ba37d77bd --out target/ripr/workflow"
       },
       "receipt": {
-        "artifact": "target/ripr/reports/agent-receipt.json",
-        "status": "present"
+        "artifact": null,
+        "status": "missing"
       },
       "movement": {
         "before_class": "weakly_gripped",
@@ -259,6 +259,11 @@ The JSON report uses schema version `0.1`:
           "kind": "missing_optional_input",
           "message": "No gate decision input was supplied.",
           "source_artifact": null
+        },
+        {
+          "kind": "missing_receipt",
+          "message": "No receipt was supplied for the repair attempt.",
+          "source_artifact": "target/ripr/reports/test-oracle-assistant-proof.json"
         }
       ]
     }
@@ -270,9 +275,27 @@ The JSON report uses schema version `0.1`:
       "examples": [
         "No gate decision input was supplied."
       ]
+    },
+    {
+      "kind": "missing_receipt",
+      "count": 1,
+      "examples": [
+        "No receipt was supplied for the repair attempt."
+      ]
     }
   ],
-  "repair_queue": [],
+  "repair_queue": [
+    {
+      "repair_kind": "rerun_verify_and_receipt",
+      "source_artifact": "target/ripr/reports/test-oracle-assistant-proof.json",
+      "seam_id": "67fc764ba37d77bd",
+      "path": "src/pricing.rs",
+      "line": 88,
+      "reason": "Proof packet is missing an agent receipt.",
+      "next_command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 67fc764ba37d77bd --json",
+      "expected_result": "Attach a receipt so reviewers can inspect static before/after movement."
+    }
+  ],
   "limits": [
     "Static RIPR evidence only.",
     "Does not provide runtime confirmation.",
@@ -358,9 +381,10 @@ Top warnings:
 - unchanged_movement: 4
 
 Next repair queue:
-- src/pricing.rs:88 - unchanged movement; inspect whether the focused test
-  observes the missing discriminator.
-- src/auth.rs:42 - missing receipt; rerun verify and receipt.
+- `inspect_unchanged_attempt` - src/pricing.rs:88 - unchanged movement;
+  inspect whether the focused test observes the missing discriminator.
+- `rerun_verify_and_receipt` - src/auth.rs:42 - missing receipt; rerun
+  verify and receipt.
 
 Limits:
 - Static RIPR evidence only.
