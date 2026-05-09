@@ -239,15 +239,15 @@ maintainer and agent use; and the
 the final audit and future-lane boundary.
 
 [PR Review Front Panel](PR_REVIEW_FRONT_PANEL_PROPOSAL.md) is now open as
-Campaign 24 after Assistant Loop Health. It composes existing PR guidance,
-first useful action, assistant proof, assistant-loop health, PR evidence
-ledger, baseline delta, gate decision, receipts, calibration, and optional
-coverage/grip frontier artifacts into one advisory GitHub PR first screen. The
-campaign keeps Lane 4's projection boundary: consume explicit artifacts, do not
-change analyzer behavior, recommendation ranking, gate semantics, editor
-behavior, mutation execution, provider calls, source files, generated tests,
-inline-comment defaults, or default CI blocking. The first ready slice is
-`spec/pr-review-front-panel-report`.
+Campaign 24 after Assistant Loop Health. RIPR-SPEC-0023 now defines the PR
+review front-panel report contract over existing PR guidance, first useful
+action, assistant proof, assistant-loop health, PR evidence ledger, baseline
+delta, gate decision, receipts, calibration, and optional coverage/grip frontier
+artifacts. The campaign keeps Lane 4's projection boundary: consume explicit
+artifacts, do not change analyzer behavior, recommendation ranking, gate
+semantics, editor behavior, mutation execution, provider calls, source files,
+generated tests, inline-comment defaults, or default CI blocking. The next ready
+slice is `fixtures/pr-review-front-panel-corpus`.
 
 ## Strategic Sequence
 

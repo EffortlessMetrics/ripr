@@ -29,10 +29,10 @@ end_state = [
 
 [[work_item]]
 id = "spec/pr-review-front-panel-report"
-status = "ready"
+status = "done"
 branch = "spec-pr-review-front-panel-report"
 stackable = false
-acceptance = "Define the PR review front-panel JSON/Markdown contract, explicit inputs, first-screen fields, artifact grouping, advisory limits, and generated-CI projection boundaries before implementation"
+acceptance = "Defined RIPR-SPEC-0023, OUTPUT_SCHEMA, traceability, capability, campaign, plan, roadmap, and changelog surfaces for the PR review front-panel JSON/Markdown contract, explicit inputs, first-screen fields, artifact grouping, advisory limits, and generated-CI projection boundaries before implementation"
 commands = [
   "cargo xtask check-spec-format",
   "cargo xtask check-doc-index",
@@ -47,12 +47,9 @@ commands = [
 
 [[work_item]]
 id = "fixtures/pr-review-front-panel-corpus"
-status = "blocked"
+status = "ready"
 branch = "fixtures-pr-review-front-panel-corpus"
 stackable = false
-blocked_by = [
-  "spec/pr-review-front-panel-report",
-]
 acceptance = "Pin advisory-only, actionable, summary-only, acknowledged, suppressed, baseline-resolved, blocked, missing-proof, and coverage-flat-grip-improved front-panel cases before adding the producer"
 commands = [
   "cargo xtask fixtures",

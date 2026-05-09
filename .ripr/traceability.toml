@@ -1490,3 +1490,46 @@ metrics = [
   "assistant_loop_health_repair_queue_items",
   "assistant_loop_health_warnings",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0023"
+name = "PR review front panel report"
+spec = "docs/specs/RIPR-SPEC-0023-pr-review-front-panel-report.md"
+tests = [
+]
+fixtures = [
+]
+code = [
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0023-pr-review-front-panel-report.md",
+  "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "metrics/capabilities.toml",
+  ".ripr/goals/active.toml",
+  ".ripr/traceability.toml",
+  "docs/PR_REVIEW_FRONT_PANEL_PROPOSAL.md",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/ROADMAP.md",
+  "CHANGELOG.md",
+]
+metrics = [
+  "pr_review_front_panel_reports",
+  "pr_review_front_panel_actionable",
+  "pr_review_front_panel_summary_only",
+  "pr_review_front_panel_no_actionable",
+  "pr_review_front_panel_acknowledged",
+  "pr_review_front_panel_waived",
+  "pr_review_front_panel_suppressed",
+  "pr_review_front_panel_blocked",
+  "pr_review_front_panel_config_error",
+  "pr_review_front_panel_baseline_still_present",
+  "pr_review_front_panel_baseline_resolved",
+  "pr_review_front_panel_new_policy_eligible",
+  "pr_review_front_panel_missing_required_input",
+  "pr_review_front_panel_flat_coverage_grip_improved",
+  "pr_review_front_panel_repair_routes",
+  "pr_review_front_panel_artifact_links",
+]
