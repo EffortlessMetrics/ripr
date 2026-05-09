@@ -21,9 +21,9 @@ Top warnings:
 - missing_optional_input: 2
 
 Next repair queue:
-- src/lib.rs:2 - summary-only guidance; inspect placement before routing test work.
-- src/lib.rs:2 - stale after evidence; refresh before/after evidence.
-- src/lib.rs:2 - missing receipt; rerun verify and receipt.
+- `inspect_summary_only_guidance` - src/lib.rs:2 - summary-only guidance; inspect placement before routing test work.
+- `refresh_before_after_evidence` - src/lib.rs:2 - stale after evidence; refresh before/after evidence.
+- `attach_receipt` - src/lib.rs:2 - missing receipt; rerun verify and receipt.
 
 Limits:
 - Static RIPR evidence only.

@@ -3388,6 +3388,7 @@ fn check_workflows_impl() -> Result<(), String> {
             }
         }
     }
+    validate_assistant_loop_health_fixture_corpus(&mut violations)?;
 
     finish_policy_report(
         PolicyReportSpec {
@@ -3640,6 +3641,265 @@ fn check_fixture_contracts() -> Result<(), String> {
         },
         &violations,
     )
+}
+
+fn validate_assistant_loop_health_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let base = Path::new("fixtures/boundary_gap/expected/assistant-loop-health");
+    validate_assistant_loop_health_fixture_corpus_at(base, violations)
+}
+
+fn validate_assistant_loop_health_fixture_corpus_at(
+    base: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if !base.exists() {
+        return Ok(());
+    }
+
+    for required in ["README.md", "corpus.json"] {
+        let path = base.join(required);
+        if !path.exists() {
+            violations.push(format!(
+                "assistant-loop-health corpus is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+
+    let corpus_path = base.join("corpus.json");
+    if !corpus_path.exists() {
+        return Ok(());
+    }
+
+    let corpus = match read_json_value(&corpus_path) {
+        Ok(value) => value,
+        Err(err) => {
+            violations.push(err);
+            return Ok(());
+        }
+    };
+    if json_string_field(&corpus, "kind").as_deref() != Some("assistant_loop_health_corpus") {
+        violations.push(
+            "assistant-loop-health corpus kind must be assistant_loop_health_corpus".to_string(),
+        );
+    }
+    if json_string_field(&corpus, "spec").as_deref() != Some("RIPR-SPEC-0022") {
+        violations.push("assistant-loop-health corpus spec must be RIPR-SPEC-0022".to_string());
+    }
+
+    let cases = match corpus.get("cases").and_then(Value::as_array) {
+        Some(cases) => cases,
+        None => {
+            violations.push("assistant-loop-health corpus is missing cases array".to_string());
+            return Ok(());
+        }
+    };
+
+    let required_cases = [
+        "complete_improved",
+        "partial_missing_optional",
+        "missing_required_input",
+        "unchanged_after_attempt",
+        "regressed_after_attempt",
+        "warning_heavy",
+        "multi_proof",
+    ];
+    let mut seen_cases = BTreeSet::new();
+
+    for case in cases {
+        let case_id = json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string());
+        seen_cases.insert(case_id.clone());
+
+        let expected = match case.get("expected") {
+            Some(value) => value,
+            None => {
+                violations.push(format!(
+                    "assistant-loop-health case {case_id} is missing expected"
+                ));
+                continue;
+            }
+        };
+        let expected_status =
+            json_string_field(expected, "status").unwrap_or_else(|| "missing".to_string());
+
+        let report_path = match json_string_field(case, "expected_report") {
+            Some(path) => path,
+            None => {
+                violations.push(format!(
+                    "assistant-loop-health case {case_id} is missing expected_report"
+                ));
+                continue;
+            }
+        };
+        let markdown_path = match json_string_field(case, "expected_markdown") {
+            Some(path) => path,
+            None => {
+                violations.push(format!(
+                    "assistant-loop-health case {case_id} is missing expected_markdown"
+                ));
+                continue;
+            }
+        };
+
+        if let Some(proofs) = case.get("proofs").and_then(Value::as_array) {
+            if proofs.is_empty() {
+                violations.push(format!(
+                    "assistant-loop-health case {case_id} must name at least one proof input"
+                ));
+            }
+            for proof in proofs {
+                match proof.as_str() {
+                    Some(path) if Path::new(path).exists() => {}
+                    Some(path) => violations.push(format!(
+                        "assistant-loop-health case {case_id} proof input is missing {path}"
+                    )),
+                    None => violations.push(format!(
+                        "assistant-loop-health case {case_id} has a non-string proof path"
+                    )),
+                }
+            }
+        } else {
+            violations.push(format!(
+                "assistant-loop-health case {case_id} is missing proofs array"
+            ));
+        }
+
+        let report = match read_json_value(Path::new(&report_path)) {
+            Ok(value) => value,
+            Err(err) => {
+                violations.push(format!("assistant-loop-health case {case_id}: {err}"));
+                continue;
+            }
+        };
+        if json_string_field(&report, "kind").as_deref() != Some("assistant_loop_health") {
+            violations.push(format!(
+                "assistant-loop-health case {case_id} report kind must be assistant_loop_health"
+            ));
+        }
+        if json_string_field(&report, "status").as_deref() != Some(expected_status.as_str()) {
+            violations.push(format!(
+                "assistant-loop-health case {case_id} expected status {expected_status}"
+            ));
+        }
+        if serde_json::to_string(&report)
+            .map(|text| text.contains("\"static_class\""))
+            .unwrap_or(false)
+        {
+            violations.push(format!(
+                "assistant-loop-health case {case_id} report must use grip_class, not static_class"
+            ));
+        }
+        validate_assistant_loop_health_count(violations, &case_id, expected, &report, "proofs");
+        for key in [
+            "complete",
+            "partial",
+            "missing_required_input",
+            "missing_optional_input",
+            "improved",
+            "unchanged",
+            "regressed",
+            "unknown_movement",
+            "warnings",
+            "repair_queue",
+        ] {
+            validate_assistant_loop_health_count(violations, &case_id, expected, &report, key);
+        }
+        if json_usize_field(expected, "repair_queue").unwrap_or(0) > 0
+            && !report
+                .get("repair_queue")
+                .and_then(Value::as_array)
+                .is_some_and(|items| {
+                    items
+                        .iter()
+                        .all(|item| json_string_field(item, "repair_kind").is_some())
+                })
+        {
+            violations.push(format!(
+                "assistant-loop-health case {case_id} repair_queue entries must include repair_kind"
+            ));
+        }
+        if !report
+            .get("limits")
+            .and_then(Value::as_array)
+            .is_some_and(|limits| {
+                limits
+                    .iter()
+                    .any(|limit| limit.as_str() == Some("Static RIPR evidence only."))
+            })
+        {
+            violations.push(format!(
+                "assistant-loop-health case {case_id} report is missing static evidence limit"
+            ));
+        }
+
+        let markdown = match fs::read_to_string(&markdown_path) {
+            Ok(markdown) => markdown,
+            Err(err) => {
+                violations.push(format!(
+                    "assistant-loop-health case {case_id} Markdown missing {}: {err}",
+                    markdown_path
+                ));
+                continue;
+            }
+        };
+        if !markdown.contains(&format!("Status: {expected_status}")) {
+            violations.push(format!(
+                "assistant-loop-health case {case_id} Markdown must pin status {expected_status}"
+            ));
+        }
+        if json_usize_field(expected, "repair_queue").unwrap_or(0) > 0
+            && ![
+                "regenerate_proof",
+                "regenerate_missing_artifact",
+                "rerun_verify_and_receipt",
+                "refresh_before_after_evidence",
+                "inspect_unchanged_attempt",
+                "inspect_regression",
+                "inspect_summary_only_guidance",
+                "attach_receipt",
+                "no_repair",
+            ]
+            .iter()
+            .any(|repair_kind| markdown.contains(repair_kind))
+        {
+            violations.push(format!(
+                "assistant-loop-health case {case_id} Markdown repair queue must include repair_kind"
+            ));
+        }
+    }
+
+    for required in required_cases {
+        if !seen_cases.contains(required) {
+            violations.push(format!(
+                "assistant-loop-health corpus is missing required case {required}"
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_assistant_loop_health_count(
+    violations: &mut Vec<String>,
+    case_id: &str,
+    expected: &Value,
+    report: &Value,
+    key: &str,
+) {
+    let Some(expected_count) = json_usize_field(expected, key) else {
+        violations.push(format!(
+            "assistant-loop-health case {case_id} expected is missing {key}"
+        ));
+        return;
+    };
+    let actual_count = json_summary_count(report, key);
+    if actual_count != expected_count {
+        violations.push(format!(
+            "assistant-loop-health case {case_id} expected {key}={expected_count}, got {actual_count}"
+        ));
+    }
 }
 
 fn check_traceability() -> Result<(), String> {
@@ -17774,6 +18034,77 @@ mod tests {
         fs::write(path, text).unwrap();
     }
 
+    fn json_path(path: &Path) -> String {
+        json_escape(&path.display().to_string())
+    }
+
+    fn write_assistant_loop_health_corpus(
+        base: &Path,
+        report: &Path,
+        markdown: &Path,
+        proof: &Path,
+        expected_status: &str,
+        repair_queue: usize,
+    ) {
+        write(&base.join("README.md"), "# Assistant Loop Health Corpus\n");
+        write(proof, "{}\n");
+        let expected = format!(
+            r#"{{
+        "status": "{expected_status}",
+        "proofs": 1,
+        "complete": 1,
+        "partial": 0,
+        "missing_required_input": 0,
+        "missing_optional_input": 0,
+        "improved": 1,
+        "unchanged": 0,
+        "regressed": 0,
+        "unknown_movement": 0,
+        "warnings": 0,
+        "repair_queue": {repair_queue}
+      }}"#
+        );
+        let cases = [
+            "complete_improved",
+            "partial_missing_optional",
+            "missing_required_input",
+            "unchanged_after_attempt",
+            "regressed_after_attempt",
+            "warning_heavy",
+            "multi_proof",
+        ]
+        .into_iter()
+        .map(|id| {
+            format!(
+                r#"{{
+      "id": "{id}",
+      "proofs": ["{}"],
+      "expected_report": "{}",
+      "expected_markdown": "{}",
+      "expected": {expected}
+    }}"#,
+                json_path(proof),
+                json_path(report),
+                json_path(markdown)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",\n");
+        write(
+            &base.join("corpus.json"),
+            &format!(
+                r#"{{
+  "kind": "assistant_loop_health_corpus",
+  "spec": "RIPR-SPEC-0022",
+  "cases": [
+{cases}
+  ]
+}}
+"#
+            ),
+        );
+    }
+
     #[cfg(unix)]
     fn success_exit_status() -> ExitStatus {
         use std::os::unix::process::ExitStatusExt;
@@ -17784,6 +18115,102 @@ mod tests {
     fn success_exit_status() -> ExitStatus {
         use std::os::windows::process::ExitStatusExt;
         ExitStatusExt::from_raw(0)
+    }
+
+    #[test]
+    fn assistant_loop_health_fixture_corpus_guard_accepts_complete_contract() -> Result<(), String>
+    {
+        let root = temp_dir("assistant-loop-health-valid");
+        let base = root.join("assistant-loop-health");
+        let report = root.join("assistant-loop-health.json");
+        let markdown = root.join("assistant-loop-health.md");
+        let proof = root.join("proof.json");
+        write_assistant_loop_health_corpus(&base, &report, &markdown, &proof, "advisory", 0);
+        write(
+            &report,
+            r#"{
+  "kind": "assistant_loop_health",
+  "status": "advisory",
+  "summary": {
+    "proofs": 1,
+    "complete": 1,
+    "partial": 0,
+    "missing_required_input": 0,
+    "missing_optional_input": 0,
+    "improved": 1,
+    "unchanged": 0,
+    "regressed": 0,
+    "unknown_movement": 0,
+    "warnings": 0,
+    "repair_queue": 0
+  },
+  "repair_queue": [],
+  "limits": ["Static RIPR evidence only."]
+}
+"#,
+        );
+        write(
+            &markdown,
+            "# RIPR Assistant Loop Health\n\nStatus: advisory\n",
+        );
+
+        let mut violations = Vec::new();
+        super::validate_assistant_loop_health_fixture_corpus_at(&base, &mut violations)?;
+
+        assert_eq!(violations, Vec::<String>::new());
+        Ok(())
+    }
+
+    #[test]
+    fn assistant_loop_health_fixture_corpus_guard_reports_contract_drift() -> Result<(), String> {
+        let root = temp_dir("assistant-loop-health-invalid");
+        let base = root.join("assistant-loop-health");
+        let report = root.join("assistant-loop-health.json");
+        let markdown = root.join("assistant-loop-health.md");
+        let proof = root.join("proof.json");
+        write_assistant_loop_health_corpus(&base, &report, &markdown, &proof, "advisory", 1);
+        write(
+            &report,
+            r#"{
+  "kind": "wrong_kind",
+  "status": "blocked",
+  "summary": {
+    "proofs": 1,
+    "complete": 0,
+    "partial": 0,
+    "missing_required_input": 0,
+    "missing_optional_input": 0,
+    "improved": 0,
+    "unchanged": 0,
+    "regressed": 0,
+    "unknown_movement": 0,
+    "warnings": 0,
+    "repair_queue": 1
+  },
+  "proofs": [{"seam": {"static_class": "weakly_gripped"}}],
+  "repair_queue": [{"reason": "missing kind"}],
+  "limits": ["Does not run mutation testing."]
+}
+"#,
+        );
+        write(
+            &markdown,
+            "# RIPR Assistant Loop Health\n\nStatus: blocked\n\nNext repair queue:\n- inspect this\n",
+        );
+
+        let mut violations = Vec::new();
+        super::validate_assistant_loop_health_fixture_corpus_at(&base, &mut violations)?;
+        let report = violations.join("\n");
+
+        assert!(report.contains("report kind must be assistant_loop_health"));
+        assert!(report.contains("expected status advisory"));
+        assert!(report.contains("must use grip_class, not static_class"));
+        assert!(report.contains("expected complete=1, got 0"));
+        assert!(report.contains("repair_queue entries must include repair_kind"));
+        assert!(report.contains("report is missing static evidence limit"));
+        assert!(report.contains("Markdown must pin status advisory"));
+        assert!(report.contains("Markdown repair queue must include repair_kind"));
+        Ok(())
     }
 
     #[test]

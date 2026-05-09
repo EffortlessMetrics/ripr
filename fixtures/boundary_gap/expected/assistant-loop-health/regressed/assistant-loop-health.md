@@ -18,7 +18,7 @@ Top warnings:
 - regressed_movement: 1
 
 Next repair queue:
-- src/lib.rs:2 - regressed movement; inspect the changed test and receipt.
+- `inspect_regression` - src/lib.rs:2 - regressed movement; inspect the changed test and receipt.
 
 Limits:
 - Static RIPR evidence only.

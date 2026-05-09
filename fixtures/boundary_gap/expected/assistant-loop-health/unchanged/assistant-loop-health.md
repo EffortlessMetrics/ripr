@@ -18,7 +18,7 @@ Top warnings:
 - unchanged_movement: 1
 
 Next repair queue:
-- src/lib.rs:2 - unchanged movement; inspect whether the focused test observes the missing equality boundary.
+- `inspect_unchanged_attempt` - src/lib.rs:2 - unchanged movement; inspect whether the focused test observes the missing equality boundary.
 
 Limits:
 - Static RIPR evidence only.

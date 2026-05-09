@@ -36,7 +36,7 @@
         "seam_kind": "predicate_boundary",
         "path": "src/lib.rs",
         "line": 2,
-        "static_class": "weakly_gripped",
+        "grip_class": "weakly_gripped",
         "missing_discriminator": "discount_threshold (equality boundary)"
       },
       "recommendation": {
@@ -77,7 +77,7 @@
         "seam_kind": "predicate_boundary",
         "path": "src/lib.rs",
         "line": 2,
-        "static_class": "weakly_gripped",
+        "grip_class": "weakly_gripped",
         "missing_discriminator": "discount_threshold (equality boundary)"
       },
       "recommendation": {
