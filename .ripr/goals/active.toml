@@ -1,34 +1,33 @@
-id = "ripr-zero-reporting"
-title = "RIPR Zero Reporting"
+id = "pr-evidence-ledger"
+title = "PR Evidence Ledger"
 status = "active"
 
-# This is Campaign 18 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
-# Campaign 17 closed RIPR Zero Adoption after baselines became executable
-# reviewed debt ledgers with create, diff, shrink-only update, generated-CI
-# artifacts, and baseline-ledger docs while generated CI stayed advisory.
+# This is Campaign 19 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+# Campaign 18 closed RIPR Zero Reporting after repo-level status, baseline
+# metadata health, stale-debt warnings, trends, top repair areas, generated-CI
+# projection, and user workflow docs landed while generated CI stayed advisory.
 
 objective = """
-Make RIPR Zero progress visible as a reporting layer over reviewed baselines,
-baseline debt deltas, gate decisions, and recommendation evidence: show repo
-RIPR 0 status, baseline age and ownership, stale-debt warnings, trends, and top
-repair areas without changing analyzer identity, gate policy, or advisory
-defaults.
+Turn PR-time RIPR evidence into a durable adoption ledger: record per-PR
+behavioral grip movement, waiver and suppression visibility, baseline burn-down,
+repair receipts, and coverage/grip frontier signals without changing analyzer
+identity, gate policy, recommendation ranking, or advisory defaults.
 """
 
 end_state = [
-  "a RIPR Zero reporting spec defines repo-level status, debt trends, baseline metadata, stale warnings, top debt areas, and repair routing without claiming perfect tests or coverage adequacy",
-  "baseline ledgers can carry reviewed owner/reason/created/review metadata while preserving compatibility with existing Campaign 17 baseline files",
-  "a read-only RIPR Zero status report joins baseline ledgers, baseline debt deltas, gate decisions, and recommendation evidence into JSON/Markdown progress summaries",
-  "generated CI can surface RIPR Zero status and top repair areas as advisory evidence without making the report the pass/fail authority",
-  "user docs explain how teams read RIPR Zero status, age and refresh baselines, route repair packets, and interpret progress toward RIPR 0",
+  "a PR evidence ledger spec defines append-only PR movement records for new policy-eligible gaps, resolved baseline debt, acknowledgements, suppressions, gate mode, repair receipts, and optional coverage/grip signals",
+  "a read-only PR evidence ledger report writes JSON/Markdown from existing gate decisions, baseline debt deltas, RIPR Zero status, recommendation calibration, outcome receipts, and optional coverage data",
+  "generated CI can upload and summarize the PR evidence ledger as advisory history while leaving gate decisions as the pass/fail authority",
+  "coverage/grip frontier reporting makes execution coverage and behavioral grip movement visible as separate axes without treating coverage as adequacy",
+  "user docs explain how teams use PR evidence ledgers for waiver aging, baseline burn-down, repair routing, and movement toward RIPR 0",
 ]
 
 [[work_item]]
-id = "spec/ripr-zero-reporting-surface"
-status = "done"
-branch = "spec-ripr-zero-reporting-surface"
+id = "spec/pr-evidence-ledger-surface"
+status = "ready"
+branch = "spec-pr-evidence-ledger-surface"
 stackable = false
-acceptance = "Defined RIPR-SPEC-0017 as the RIPR Zero reporting contract for repo-level status, baseline metadata, stale warnings, trends, top debt areas, and advisory repair routing without analyzer identity rewrites or default CI blocking"
+acceptance = "Define RIPR-SPEC-0018 as the PR evidence ledger contract for append-only per-PR movement, waiver aging, baseline burn-down, repair receipts, optional coverage/grip frontier signals, and advisory-only CI projection without analyzer identity rewrites or default blocking"
 commands = [
   "cargo xtask check-spec-format",
   "cargo xtask check-doc-index",
@@ -41,37 +40,30 @@ commands = [
 ]
 
 [[work_item]]
-id = "baseline/metadata-v2"
-status = "done"
-branch = "baseline-metadata-v2"
+id = "report/pr-evidence-ledger"
+status = "blocked"
+branch = "report-pr-evidence-ledger"
 stackable = false
-acceptance = "Extended baseline create, diff, and shrink-only update handling so optional owner, reason, created_at, review_after, and source metadata are preserved and reported without breaking existing Campaign 17 baseline files"
+blocked_by = [
+  "spec/pr-evidence-ledger-surface",
+]
+acceptance = "Add a read-only PR evidence ledger report that writes JSON/Markdown from existing PR guidance, gate decision, baseline debt delta, RIPR Zero status, recommendation calibration, outcome receipt, and optional coverage inputs"
 commands = [
-  "cargo test -p ripr baseline",
+  "cargo test -p ripr pr_evidence_ledger",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "report/ripr-zero-status"
-status = "done"
-branch = "report-ripr-zero-status"
+id = "ci/pr-evidence-ledger-summary"
+status = "blocked"
+branch = "ci-pr-evidence-ledger-summary"
 stackable = false
-acceptance = "Add a read-only RIPR Zero status report that writes JSON/Markdown from reviewed baseline, baseline debt delta, gate decision, and optional recommendation evidence"
-commands = [
-  "cargo test -p ripr ripr_zero",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
+blocked_by = [
+  "report/pr-evidence-ledger",
 ]
-
-[[work_item]]
-id = "ci/ripr-zero-summary"
-status = "done"
-branch = "ci-ripr-zero-summary"
-stackable = false
-acceptance = "Surface RIPR Zero status and top repair areas in generated CI summaries and artifacts while preserving advisory defaults and leaving gate decisions as the pass/fail authority"
+acceptance = "Surface PR evidence ledger movement in generated CI summaries and artifacts while preserving advisory defaults and leaving gate decisions as the pass/fail authority"
 commands = [
   "cargo test -p ripr init_generated_github_workflow",
   "cargo xtask check-workflows",
@@ -81,11 +73,32 @@ commands = [
 ]
 
 [[work_item]]
-id = "docs/ripr-zero-reporting-workflow"
-status = "done"
-branch = "docs-ripr-zero-reporting-workflow"
+id = "report/coverage-grip-frontier"
+status = "blocked"
+branch = "report-coverage-grip-frontier"
 stackable = false
-acceptance = "Document how teams read RIPR Zero status, age and refresh baselines, route top repair packets, and interpret progress without treating RIPR 0 as perfect tests or 100 percent coverage"
+blocked_by = [
+  "spec/pr-evidence-ledger-surface",
+  "report/pr-evidence-ledger",
+]
+acceptance = "Add optional coverage/grip frontier summaries so teams can see coverage delta and RIPR evidence movement as separate advisory axes without making coverage blocking or claiming runtime adequacy"
+commands = [
+  "cargo test -p ripr coverage_grip",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "docs/pr-evidence-ledger-workflow"
+status = "blocked"
+branch = "docs-pr-evidence-ledger-workflow"
+stackable = false
+blocked_by = [
+  "ci/pr-evidence-ledger-summary",
+  "report/coverage-grip-frontier",
+]
+acceptance = "Document how teams read PR evidence ledgers, use waiver aging and baseline burn-down, route repair receipts, interpret coverage/grip frontier signals, and track movement toward RIPR 0 without learning internal report topology"
 commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
@@ -94,18 +107,18 @@ commands = [
 ]
 
 [[work_item]]
-id = "campaign/ripr-zero-reporting-closeout"
-status = "done"
-branch = "campaign-ripr-zero-reporting-closeout"
+id = "campaign/pr-evidence-ledger-closeout"
+status = "blocked"
+branch = "campaign-pr-evidence-ledger-closeout"
 stackable = false
 blocked_by = [
-  "spec/ripr-zero-reporting-surface",
-  "baseline/metadata-v2",
-  "report/ripr-zero-status",
-  "ci/ripr-zero-summary",
-  "docs/ripr-zero-reporting-workflow",
+  "spec/pr-evidence-ledger-surface",
+  "report/pr-evidence-ledger",
+  "ci/pr-evidence-ledger-summary",
+  "report/coverage-grip-frontier",
+  "docs/pr-evidence-ledger-workflow",
 ]
-acceptance = "Close Campaign 18 only after RIPR Zero status, baseline metadata, generated-CI reporting, and user workflow docs are in place while defaults stay advisory"
+acceptance = "Close Campaign 19 only after PR evidence ledgers, generated-CI projection, coverage/grip frontier summaries, and user workflow docs are in place while defaults stay advisory"
 commands = [
   "cargo xtask check-spec-format",
   "cargo xtask check-doc-index",

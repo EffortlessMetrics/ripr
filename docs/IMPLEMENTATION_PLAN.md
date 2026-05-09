@@ -33,6 +33,7 @@ through multiple work items in a campaign, but each work item should follow the
 | Gate Adoption UX (16) | Make optional calibrated gate adoption safe and obvious for real teams without changing advisory defaults. | Complete: generated-CI examples, waiver workflows, baseline guidance, CI gate summary polish, dogfood receipts, blocking-readiness guidance, and `campaign/gate-adoption-ux-closeout`. |
 | RIPR Zero Adoption (17) | Turn baselines into burn-down ledgers with create, diff, and shrink-only refresh commands while keeping generated CI advisory by default. | Complete: spec, baseline create, baseline diff, shrink-only update, generated CI baseline-delta artifacts, baseline ledger workflow guide, and `campaign/ripr-zero-adoption-closeout`. |
 | RIPR Zero Reporting (18) | Turn reviewed baselines and debt deltas into repo-level RIPR 0 status, stale-debt, trend, and repair-area reporting while preserving advisory defaults. | Complete: spec, baseline metadata, status report, generated CI summary, user workflow docs, and `campaign/ripr-zero-reporting-closeout`. |
+| PR Evidence Ledger (19) | Turn per-PR RIPR evidence into an adoption ledger for movement history, waiver aging, baseline burn-down, repair receipts, and coverage/grip frontier signals while preserving advisory defaults. | Active: `spec/pr-evidence-ledger-surface` is ready; report, generated-CI projection, coverage/grip frontier, workflow docs, and closeout are blocked behind the spec. |
 | Editor Evidence UX (future) | Make the saved-workspace LSP path feel like an editor-native test-intent cockpit from diagnostic to hover, related test, context packet, one test, verify, and receipt. | Complete as an explicit parallel Lane 3 closeout: contract audit, hover hardening, evidence-aware actions, context packet, protocol smoke, VS Code smoke, status/staleness, workflow docs, and closeout audit. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
@@ -123,6 +124,11 @@ documented in the [editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md), and
 the [closeout handoff](handoffs/2026-05-09-editor-evidence-ux-closeout.md)
 records the prompt-to-artifact audit. Future editor work should be opened as a
 new explicit campaign.
+Campaign 19 is open as PR Evidence Ledger. It keeps the Lane 4 adoption focus
+on PR/CI review UX: append-only per-PR movement records, waiver aging, baseline
+burn-down, repair receipts, and optional coverage/grip frontier signals. The
+first ready item is `spec/pr-evidence-ledger-surface`; implementation and CI
+projection remain blocked until the contract is pinned.
 
 ## PR 0: `planning-and-tracking-docs`
 

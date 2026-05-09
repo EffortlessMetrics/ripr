@@ -170,6 +170,12 @@ editor loop is documented in the
 [Editor Evidence UX closeout](handoffs/2026-05-09-editor-evidence-ux-closeout.md)
 records the prompt-to-artifact audit. Future editor work should be opened as a
 new explicit campaign.
+Campaign 19 is open as PR Evidence Ledger. It turns RIPR Zero progress from a
+current-status surface into an append-only PR adoption history: new
+policy-eligible gaps, baseline debt resolved, acknowledgements, suppressions,
+gate mode, repair receipts, and optional coverage/grip frontier signals. The
+campaign remains advisory by default and keeps gate decisions as the pass/fail
+authority.
 
 ## Strategic Sequence
 
@@ -219,6 +225,7 @@ quality rails
 -> RIPR Zero adoption
 -> RIPR Zero reporting
 -> editor evidence UX
+-> PR evidence ledger
 ```
 
 The analyzer path is:
