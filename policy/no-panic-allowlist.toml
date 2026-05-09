@@ -1,49 +1,19 @@
 schema_version = "0.3"
 policy = "no-panic-allowlist"
 owner = "core/policy"
-status = "shadow"
+status = "canonical"
 
-# Schema 0.3 mirror of `.ripr/no-panic-allowlist.toml` (schema 0.2).
-#
-# The canonical file consumed by `cargo xtask check-no-panic-family` remains
-# `.ripr/no-panic-allowlist.toml` until the checker is updated to read this
-# location in a follow-up PR. This file establishes the schema-0.3 contract:
-#
-#   id              stable identifier referenced in PR descriptions and ADRs
-#   path            file the entry applies to
-#   family          panic_macro | unwrap | expect | unreachable | todo | unimplemented
-#   classification  test_only | test_helper | release_only | bootstrap | ...
-#   owner           team / area responsible for keeping this entry valid
-#   explanation     why this entry is allowed despite the deny-by-default rule
-#   expires         date this entry must be re-justified
-#   selector        the SEMANTIC identifier (kind + container + callee +
-#                   optional receiver_fingerprint) — preserved verbatim from
-#                   schema 0.2; this is the important part
-#   last_seen       advisory line/column drift hint (informational)
-#
-# Three representative entries are mirrored here to demonstrate each shape:
-# a method_call selector without fingerprint (test_helper), a method_call
-# selector with a receiver_fingerprint (test_only — the strongest semantic
-# identity shape), and a CLI test helper using receiver_fingerprint
-# (test_only). The remaining 26 entries from `.ripr/no-panic-allowlist.toml`
-# will be migrated in the follow-up that updates the checker; doing all 29
-# in this PR would bundle a schema-introduction with a parser change.
-#
-# See:
-#   docs/NO_PANIC_SEMANTIC_ALLOWLIST.md
-#   docs/NO_PANIC_POLICY.md
-
-# ---------------------------------------------------------------------------
-# Sample: method_call selector (no fingerprint)
-# ---------------------------------------------------------------------------
+# Canonical schema 0.3 no-panic allowlist consumed by cargo xtask check-no-panic-family.
+# Entries preserve schema 0.2 semantic selectors and add governed ids, owners,
+# and expiry dates so exceptions are reviewable and burn-down ready.
 
 [[allow]]
 id = "panic-0001"
 path = "xtask/src/main.rs"
 family = "unwrap"
-classification = "test_helper"
+classification = "test_only"
+explanation = "Test harness: creates temporary directories for test isolation"
 owner = "test-infra"
-explanation = "Test harness creates temporary directories for test isolation."
 expires = "2026-07-01"
 
 [allow.selector]
@@ -51,17 +21,237 @@ kind = "method_call"
 container = "temp_dir"
 callee = "unwrap"
 
-# ---------------------------------------------------------------------------
-# Sample: method_call selector with receiver_fingerprint (strongest identity)
-# ---------------------------------------------------------------------------
-
 [[allow]]
 id = "panic-0002"
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test harness: writes test files to temporary directory"
+owner = "test-infra"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "write"
+callee = "unwrap"
+
+[[allow]]
+id = "panic-0003"
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test harness: saves current working directory before test"
+owner = "test-infra"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "with_temp_cwd"
+callee = "unwrap"
+
+[[allow]]
+id = "panic-0004"
+path = "xtask/src/main.rs"
+family = "expect"
+classification = "test_only"
+explanation = "Test harness: expects supported test intent kinds to parse successfully"
+owner = "test-infra"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "test_intent_kind_round_trips_supported_values"
+callee = "expect"
+
+[[allow]]
+id = "panic-0005"
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: TOML parser validation"
+owner = "test-infra"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "parse_no_panic_allowlist_toml_parses_valid_entries"
+callee = "unwrap"
+
+[[allow]]
+id = "panic-0006"
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: TOML parser validation"
+owner = "test-infra"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "parse_no_panic_allowlist_toml_requires_path"
+callee = "unwrap"
+
+[[allow]]
+id = "panic-0007"
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: TOML parser validation"
+owner = "test-infra"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "parse_no_panic_allowlist_toml_requires_line"
+callee = "unwrap"
+
+[[allow]]
+id = "panic-0008"
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: TOML parser validation"
+owner = "test-infra"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "parse_no_panic_allowlist_toml_requires_family"
+callee = "unwrap"
+
+[[allow]]
+id = "panic-0009"
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: TOML parser validation"
+owner = "test-infra"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "parse_no_panic_allowlist_toml_requires_explanation"
+callee = "unwrap"
+
+[[allow]]
+id = "panic-0010"
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: TOML parser validation"
+owner = "test-infra"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "parse_no_panic_allowlist_toml_rejects_unknown_fields"
+callee = "unwrap"
+
+[[allow]]
+id = "panic-0011"
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: TOML parser validation"
+owner = "test-infra"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "parse_no_panic_allowlist_toml_rejects_duplicate_locations"
+callee = "unwrap"
+
+[[allow]]
+id = "panic-0012"
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: panic findings collection validation"
+owner = "test-infra"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "collect_panic_findings_finds_exact_locations"
+callee = "unwrap"
+
+[[allow]]
+id = "panic-0013"
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: campaign manifest parsing validation"
+owner = "test-infra"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "campaign_manifest_parses_valid_file"
+callee = "unwrap"
+
+[[allow]]
+id = "panic-0014"
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: campaign manifest parsing validation"
+owner = "test-infra"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "campaign_manifest_reports_violations_for_invalid_file"
+callee = "unwrap"
+
+[[allow]]
+id = "panic-0015"
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: v0.2 allowlist parser validation"
+owner = "test-infra"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "v0_2_last_seen_drift_is_advisory_not_failure"
+callee = "unwrap"
+
+[[allow]]
+id = "panic-0016"
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: v0.1 backward compatibility validation"
+owner = "test-infra"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "v0_1_entries_still_match_by_line_and_column"
+callee = "unwrap"
+
+[[allow]]
+id = "panic-0017"
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: v0.2 missing fields validation"
+owner = "test-infra"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "v0_2_missing_selector_and_missing_coordinates_fails_clearly"
+callee = "unwrap"
+
+[[allow]]
+id = "panic-0018"
 path = "crates/ripr/src/analysis/mod.rs"
 family = "unwrap"
 classification = "test_only"
+explanation = "Test helper function for creating temporary directories"
 owner = "core/analysis"
-explanation = "Test helper creates temporary directories for analysis test fixtures."
 expires = "2026-07-01"
 
 [allow.selector]
@@ -74,17 +264,184 @@ receiver_fingerprint = "SystemTime::now() .duration_since(UNIX_EPOCH)"
 line = 171
 column = 21
 
-# ---------------------------------------------------------------------------
-# Sample: cli test helper with receiver_fingerprint
-# ---------------------------------------------------------------------------
+[[allow]]
+id = "panic-0019"
+path = "crates/ripr/src/analysis/mod.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for creating temporary directories"
+owner = "core/analysis"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "temp_dir"
+callee = "unwrap"
+receiver_fingerprint = "fs::create_dir_all(&dir)"
+
+[allow.last_seen]
+line = 176
+column = 9
 
 [[allow]]
-id = "panic-0003"
+id = "panic-0020"
+path = "crates/ripr/src/analysis/mod.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for creating temporary directories in test"
+owner = "core/analysis"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "analyzes_simple_predicate_gap"
+callee = "unwrap"
+receiver_fingerprint = "fs::create_dir_all(root.join(\"src\"))"
+
+[allow.last_seen]
+line = 183
+column = 9
+
+[[allow]]
+id = "panic-0021"
+path = "crates/ripr/src/analysis/mod.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for creating temporary directories in test"
+owner = "core/analysis"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "analyzes_simple_predicate_gap"
+callee = "unwrap"
+receiver_fingerprint = "fs::create_dir_all(root.join(\"tests\"))"
+
+[allow.last_seen]
+line = 184
+column = 9
+
+[[allow]]
+id = "panic-0022"
+path = "crates/ripr/src/analysis/mod.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for creating temporary directories in test"
+owner = "core/analysis"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "analyzes_simple_predicate_gap"
+callee = "unwrap"
+receiver_fingerprint = "fs::write( root.join(\"Cargo.toml\"), \"[package]\\nname='x'\\nversion='0.1.0'\\nedition='2024'\\n\", )"
+
+[allow.last_seen]
+line = 185
+column = 9
+
+[[allow]]
+id = "panic-0023"
+path = "crates/ripr/src/analysis/mod.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for writing test files"
+owner = "core/analysis"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "analyzes_simple_predicate_gap"
+callee = "unwrap"
+receiver_fingerprint = "fs::write( root.join(\"src/lib.rs\"), r#\" pub fn price(amount: i32, threshold: i32) -> i32 { if amount >= threshold { amount - 10 } else { amount } } \"#, )"
+
+[allow.last_seen]
+line = 190
+column = 9
+
+[[allow]]
+id = "panic-0024"
+path = "crates/ripr/src/analysis/mod.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for writing test files"
+owner = "core/analysis"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "analyzes_simple_predicate_gap"
+callee = "unwrap"
+receiver_fingerprint = "fs::write( root.join(\"tests/pricing.rs\"), r#\" #[test] fn premium_customer_gets_discount() { let total = x::price(10000, 100); assert!(total > 0); } \"#, )"
+
+[allow.last_seen]
+line = 199
+column = 9
+
+[[allow]]
+id = "panic-0025"
+path = "crates/ripr/src/analysis/mod.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for writing test files"
+owner = "core/analysis"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "analyzes_simple_predicate_gap"
+callee = "unwrap"
+receiver_fingerprint = "fs::write( root.join(\"diff.patch\"), r#\"diff --git a/src/lib.rs b/src/lib.rs index 0000000..1111111 100644 --- a/src/lib.rs +++ b/src/lib.rs @@ -1,3 +1,3 @@ pub fn price(amount: i32, threshold: i32) -> i32 { + if amount >= threshold { amount - 10 } else { amount } } \"#, )"
+
+[allow.last_seen]
+line = 210
+column = 9
+
+[[allow]]
+id = "panic-0026"
+path = "crates/ripr/src/analysis/mod.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for writing test files"
+owner = "core/analysis"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "analyzes_simple_predicate_gap"
+callee = "unwrap"
+receiver_fingerprint = "run_analysis(&AnalysisOptions { root: root.clone(), base: None, diff_file: Some(root.join(\"diff.patch\")), mode: AnalysisMode::Draft, include_unchanged_tests: true, })"
+
+[allow.last_seen]
+line = 223
+column = 19
+
+[[allow]]
+id = "panic-0027"
+path = "crates/ripr/src/analysis/mod.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for writing test files"
+owner = "core/analysis"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "analyzes_simple_predicate_gap"
+callee = "unwrap"
+receiver_fingerprint = "run_analysis(&AnalysisOptions { root: root.clone(), base: None, diff_file: Some(root.join(\"diff.patch\")), mode: AnalysisMode::Instant, include_unchanged_tests: true, })"
+
+[allow.last_seen]
+line = 239
+column = 23
+
+[[allow]]
+id = "panic-0028"
 path = "crates/ripr/tests/cli_smoke.rs"
 family = "unwrap"
 classification = "test_only"
+explanation = "Test helper function for running CLI tests"
 owner = "core/cli"
-explanation = "CLI smoke test runs the ripr binary and unwraps the captured output."
 expires = "2026-07-01"
 
 [allow.selector]
@@ -95,4 +452,23 @@ receiver_fingerprint = "Command::new(bin).args(args).output()"
 
 [allow.last_seen]
 line = 6
+column = 5
+
+[[allow]]
+id = "panic-0029"
+path = "crates/ripr/tests/cli_smoke.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test helper function for finding workspace root"
+owner = "core/cli"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "workspace_root"
+callee = "unwrap"
+receiver_fingerprint = "Path::new(env!(\"CARGO_MANIFEST_DIR\")) .parent() .and_then(Path::parent)"
+
+[allow.last_seen]
+line = 10
 column = 5

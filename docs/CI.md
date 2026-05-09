@@ -523,18 +523,19 @@ For a CI-first user, the useful output is the artifact packet:
 - `target/ripr/agent/` - compatibility copies of packet, brief, verify, and
   receipt JSON for the top seam when one is available;
 - `target/ripr/reports/` - targeted-test outcome, SARIF files when enabled,
-  repo badge JSON, `agent-receipt.json`, `first-useful-action.{json,md}`, and
-  any repo-local cockpit output.
+  repo badge JSON, `agent-receipt.json`, `assistant-loop-health.{json,md}`,
+  `first-useful-action.{json,md}`, and any repo-local cockpit output.
 - `target/ripr/review/` - PR test guidance JSON and Markdown when
   `ripr review-comments` runs on pull requests.
 
 The workflow also writes a `RIPR advisory summary` step summary. It includes
 the first useful action when existing inputs allow `ripr first-action` to run,
-the top recommendation, the agent review packet when present, artifact links,
-SARIF and badge status, known limits, and PR guidance annotation counts when
-`target/ripr/review/comments.json` exists. On pull requests, the generated
-workflow writes that report before emitting changed-line check annotations by
-default without posting inline review comments.
+assistant-loop health when proof artifacts exist, the top recommendation, the
+agent review packet when present, artifact links, SARIF and badge status, known
+limits, and PR guidance annotation counts when `target/ripr/review/comments.json`
+exists. On pull requests, the generated workflow writes that report before
+emitting changed-line check annotations by default without posting inline review
+comments.
 
 See [LLM operator guide](LLM_OPERATOR_GUIDE.md) for the same status, workflow
 packet, verify, receipt, and reviewer-summary loop outside CI. See
@@ -852,6 +853,17 @@ jobs:
           fi
           ripr "${proof_args[@]}"
 
+      - name: Render RIPR assistant loop health
+        if: always() && hashFiles('target/ripr/reports/test-oracle-assistant-proof.json') != ''
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          ripr assistant-loop health \
+            --root . \
+            --proof target/ripr/reports/test-oracle-assistant-proof.json \
+            --out target/ripr/reports/assistant-loop-health.json \
+            --out-md target/ripr/reports/assistant-loop-health.md
+
       - name: Render RIPR first useful action
         if: always()
         continue-on-error: true
@@ -1080,6 +1092,53 @@ jobs:
               fi
               if [ -f target/ripr/reports/test-oracle-assistant-proof.md ]; then
                 cat target/ripr/reports/test-oracle-assistant-proof.md
+              fi
+              echo
+            fi
+            if [ -f target/ripr/reports/assistant-loop-health.json ] || [ -f target/ripr/reports/assistant-loop-health.md ]; then
+              echo '### Assistant loop health'
+              if [ -f target/ripr/reports/assistant-loop-health.json ]; then
+                health_json=target/ripr/reports/assistant-loop-health.json
+                health_status="$(jq -r '.status // "unknown"' "$health_json" 2>/dev/null || echo unknown)"
+                health_proofs="$(jq -r '.summary.proofs // 0' "$health_json" 2>/dev/null || echo 0)"
+                health_complete="$(jq -r '.summary.complete // 0' "$health_json" 2>/dev/null || echo 0)"
+                health_partial="$(jq -r '.summary.partial // 0' "$health_json" 2>/dev/null || echo 0)"
+                health_missing_required="$(jq -r '.summary.missing_required_input // 0' "$health_json" 2>/dev/null || echo 0)"
+                health_missing_optional="$(jq -r '.summary.missing_optional_input // 0' "$health_json" 2>/dev/null || echo 0)"
+                health_improved="$(jq -r '.summary.improved // 0' "$health_json" 2>/dev/null || echo 0)"
+                health_unchanged="$(jq -r '.summary.unchanged // 0' "$health_json" 2>/dev/null || echo 0)"
+                health_regressed="$(jq -r '.summary.regressed // 0' "$health_json" 2>/dev/null || echo 0)"
+                health_unknown="$(jq -r '.summary.unknown_movement // 0' "$health_json" 2>/dev/null || echo 0)"
+                health_warnings="$(jq -r '.summary.warnings // 0' "$health_json" 2>/dev/null || echo 0)"
+                health_repairs="$(jq -r '.summary.repair_queue // 0' "$health_json" 2>/dev/null || echo 0)"
+                health_top_warning="$(jq -r '([.warning_summary[]? | "\(.kind)=\(.count)"] | if length == 0 then "none" else join(", ") end)' "$health_json" 2>/dev/null || echo unknown)"
+                health_top_repair="$(jq -r '([.repair_queue[]?.repair_kind] | first) // "none"' "$health_json" 2>/dev/null || echo unknown)"
+                health_status="$(markdown_inline "$health_status")"
+                health_proofs="$(markdown_inline "$health_proofs")"
+                health_complete="$(markdown_inline "$health_complete")"
+                health_partial="$(markdown_inline "$health_partial")"
+                health_missing_required="$(markdown_inline "$health_missing_required")"
+                health_missing_optional="$(markdown_inline "$health_missing_optional")"
+                health_improved="$(markdown_inline "$health_improved")"
+                health_unchanged="$(markdown_inline "$health_unchanged")"
+                health_regressed="$(markdown_inline "$health_regressed")"
+                health_unknown="$(markdown_inline "$health_unknown")"
+                health_warnings="$(markdown_inline "$health_warnings")"
+                health_repairs="$(markdown_inline "$health_repairs")"
+                health_top_warning="$(markdown_inline "$health_top_warning")"
+                health_top_repair="$(markdown_inline "$health_top_repair")"
+                echo '#### Assistant loop health at a glance'
+                echo "- Status: \`$health_status\`"
+                echo "- Proof packets: total=\`$health_proofs\`, complete=\`$health_complete\`, partial=\`$health_partial\`, missing_required=\`$health_missing_required\`, missing_optional=\`$health_missing_optional\`"
+                echo "- Evidence movement: improved=\`$health_improved\`, unchanged=\`$health_unchanged\`, regressed=\`$health_regressed\`, unknown=\`$health_unknown\`"
+                echo "- Warnings: total=\`$health_warnings\`, top=\`$health_top_warning\`"
+                echo "- Repair queue: total=\`$health_repairs\`, first=\`$health_top_repair\`"
+                echo "- Health artifacts: \`target/ripr/reports/assistant-loop-health.json\`, \`target/ripr/reports/assistant-loop-health.md\`"
+                echo "- Boundary: advisory static health over proof artifacts; gate evaluator remains pass/fail authority."
+                echo
+              fi
+              if [ -f target/ripr/reports/assistant-loop-health.md ]; then
+                cat target/ripr/reports/assistant-loop-health.md
               fi
               echo
             fi
@@ -1400,6 +1459,14 @@ gate input, optional coverage/grip frontier input, and warning count. If the
 required inputs are absent, generated CI skips the proof projection instead of
 printing a placeholder or changing pass/fail behavior.
 
+When the proof report exists, generated CI also writes and uploads
+`target/ripr/reports/assistant-loop-health.json` and
+`target/ripr/reports/assistant-loop-health.md`. This step reads the existing
+proof artifact only. It summarizes proof completeness, missing required and
+optional inputs, static movement, warning groups, and repair queue counts as
+advisory operating health over assistant-loop proof packets. It does not rerun
+analysis, grade an agent, or change pass/fail authority.
+
 Generated CI also projects the first useful action when at least one explicit
 input artifact is already present. It runs `ripr first-action --root .` with
 existing PR guidance, assistant proof, PR evidence ledger, baseline delta,
@@ -1435,15 +1502,19 @@ For every configured gate mode, the generated workflow behavior is:
    artifacts exist;
 12. render the assistant proof section from `test-oracle-assistant-proof.json`
    and append `test-oracle-assistant-proof.md` when present;
-13. run `ripr first-action` when explicit first-action inputs exist;
-14. render the First Useful Action section from `first-useful-action.json` and
+13. run `ripr assistant-loop health` when `test-oracle-assistant-proof.json`
+   exists;
+14. render the assistant-loop-health section from `assistant-loop-health.json`
+   and append `assistant-loop-health.md` when present;
+15. run `ripr first-action` when explicit first-action inputs exist;
+16. render the First Useful Action section from `first-useful-action.json` and
    append `first-useful-action.md` when present;
-15. append the detailed `gate-decision.md`, `baseline-debt-delta.md`, and
+17. append the detailed `gate-decision.md`, `baseline-debt-delta.md`, and
    `ripr-zero-status.md` reports when present;
-16. upload gate, baseline delta, RIPR Zero, PR evidence ledger,
-   test-oracle assistant proof, and first useful action artifacts with the
-   normal `ripr-reports` artifact packet;
-17. fail only when the explicit gate mode returns `blocked` or `config_error`.
+18. upload gate, baseline delta, RIPR Zero, PR evidence ledger,
+   test-oracle assistant proof, assistant-loop health, and first useful action
+   artifacts with the normal `ripr-reports` artifact packet;
+19. fail only when the explicit gate mode returns `blocked` or `config_error`.
 
 Acknowledgeable policy:
 

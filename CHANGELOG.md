@@ -61,6 +61,10 @@ are scoped or reviewed.
   field, whole-object, snapshot, side-effect, opaque static-limitation,
   canonical-gap, and calibration-placeholder cases, with xtask validation for
   required cases, required fields, and schema-version drift.
+- Surfaced `assistant-loop-health.{json,md}` in generated GitHub CI when
+  `test-oracle-assistant-proof.json` exists, uploads the reports with the
+  normal `ripr-reports` packet, and appends a compact advisory health summary
+  without changing pass/fail authority.
 - Opened Campaign 22, First Useful Action, with
   `spec/first-useful-action-report` as the first ready work item so existing
   editor, PR guidance, ledger, proof, receipt, optional gate, coverage/grip,
@@ -437,6 +441,9 @@ are scoped or reviewed.
 - Promoted the clean Rust 1.94/1.95 planned Clippy lints into the active
   workspace lint policy and retained unsupported or config-dependent lints with
   explicit blockers.
+- Made `policy/no-panic-allowlist.toml` the canonical schema 0.3 no-panic
+  allowlist, with governed ids, owners, expiry dates, and checker support while
+  leaving `.ripr/no-panic-allowlist.toml` as a legacy compatibility mirror.
 - Advanced Campaign 13, PR Review Guidance, after adding the read-only
   `ripr review-comments` producer and generated CI producer step;
   placement/suppression fixtures and PR guidance docs completed the lane before

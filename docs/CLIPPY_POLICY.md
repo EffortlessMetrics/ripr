@@ -14,7 +14,7 @@ Rail A — Clippy (code-shape, fast feedback)
 
 Rail B — Semantic checker (authoritative, identity-stable)
   `cargo xtask check-no-panic-family` parses the AST and matches each call
-  site against `.ripr/no-panic-allowlist.toml` using
+  site against `policy/no-panic-allowlist.toml` using
   `path + family + selector` identity. Line/column drift is advisory; the
   allowlist still matches when code moves.
   Schema and selectors: docs/NO_PANIC_SEMANTIC_ALLOWLIST.md.
@@ -129,7 +129,7 @@ Currently denied at the workspace level (selected highlights):
 rail. Every existing call site is receipted on **both** rails:
 
 - the semantic rail: a `[[allow]]` entry in
-  `.ripr/no-panic-allowlist.toml` with selector identity;
+  `policy/no-panic-allowlist.toml` with selector identity;
 - the clippy rail: a module-level `#[expect(clippy::unwrap_used, reason
   = "...")]` (or `expect_used`) attribute on the enclosing
   `#[cfg(test)]` block (or, for the `cli_smoke` integration test crate,
@@ -147,8 +147,9 @@ selector identity.
 
 If a call site genuinely needs a panic-family construct:
 
-1. Add a `[[allow]]` entry to `.ripr/no-panic-allowlist.toml` with
-   `path`, `family`, `classification`, `explanation`, and a stable selector.
+1. Add a `[[allow]]` entry to `policy/no-panic-allowlist.toml` with
+   `id`, `path`, `family`, `classification`, `owner`, `explanation`,
+   `expires`, and a stable selector.
    See [`docs/NO_PANIC_SEMANTIC_ALLOWLIST.md`](NO_PANIC_SEMANTIC_ALLOWLIST.md).
 2. If Clippy also fires (for example `clippy::panic`), add an
    `#[expect(clippy::<lint>, reason = "...")]` attribute on the enclosing
@@ -241,5 +242,7 @@ toolchain support, configuration, and xtask checks are present.
 - [`docs/FILE_POLICY.md`](FILE_POLICY.md) — non-Rust file policy.
 - [`docs/POLICY_ALLOWLISTS.md`](POLICY_ALLOWLISTS.md) — all allowlists index.
 - [`docs/ci/ripr-rollout-plan.md`](ci/ripr-rollout-plan.md) — MSRV 1.95 rollout stack.
+- [`policy/no-panic-allowlist.toml`](../policy/no-panic-allowlist.toml) —
+  canonical governed no-panic exceptions (schema 0.3).
 - [`.ripr/no-panic-allowlist.toml`](../.ripr/no-panic-allowlist.toml) —
-  current entries (schema 0.2, legacy; see `policy/no-panic-allowlist.toml` for schema 0.3).
+  legacy schema 0.2 compatibility mirror while older branches drain.

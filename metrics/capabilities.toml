@@ -887,7 +887,8 @@ evidence = [
   "docs/OUTPUT_SCHEMA.md documents the assistant-loop-health JSON and Markdown shape, proof-state vocabulary, movement buckets, warning kinds, repair queue kinds, future multi-proof inputs, and advisory limits",
   "fixtures/boundary_gap/expected/assistant-loop-health/ pins complete-improved, partial-missing-optional, missing-required-input, unchanged, regressed, warning-heavy, and multi-proof report cases plus representative proof inputs",
   "crates/ripr/src/output/assistant_loop_health.rs builds and renders the read-only assistant-loop-health report from explicit proof inputs",
-  "crates/ripr/tests/cli_smoke.rs::assistant_loop_health_cli_writes_multi_proof_report validates the public CLI against the multi-proof fixture"
+  "generated GitHub CI runs ripr assistant-loop health when test-oracle-assistant-proof.json exists, uploads assistant-loop-health JSON/Markdown with ripr-reports, and appends a compact advisory health summary",
+  "crates/ripr/tests/cli_smoke.rs::assistant_loop_health_cli_writes_multi_proof_report and generated workflow tests validate the public CLI and CI projection"
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/assistant-loop-health/corpus.json",
@@ -899,7 +900,7 @@ fixtures = [
   "fixtures/boundary_gap/expected/assistant-loop-health/warning-heavy/assistant-loop-health.json",
   "fixtures/boundary_gap/expected/assistant-loop-health/multi-proof/assistant-loop-health.json",
 ]
-next = "ci/assistant-loop-health-artifacts"
+next = "docs/assistant-loop-health-workflow"
 metric = "assistant_loop_health_reports, assistant_loop_health_complete, assistant_loop_health_partial, assistant_loop_health_missing_required_input, assistant_loop_health_missing_optional_input, assistant_loop_health_static_improved, assistant_loop_health_static_unchanged, assistant_loop_health_static_regressed, assistant_loop_health_unknown_movement, assistant_loop_health_repair_queue_items, assistant_loop_health_warnings"
 
 [[capability]]

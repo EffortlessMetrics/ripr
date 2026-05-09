@@ -3,39 +3,46 @@
 The `cargo xtask check-no-panic-family` gate rejects panic-family call sites
 (`unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!`, `unreachable!`)
 in production and test code unless each occurrence is listed in
-`.ripr/no-panic-allowlist.toml` with a human-reviewed explanation.
+`policy/no-panic-allowlist.toml` with a human-reviewed explanation.
 
-This document defines the v0.2 schema for that allowlist as implemented by
-#308 and #309.
+This document defines the canonical schema 0.3 allowlist. Schema 0.3 keeps the
+same semantic selector identity as schema 0.2 and adds governance fields.
 
 ## Identity
 
-A v0.2 allowlist entry is identified by **path + family + selector**, not by
+A schema 0.3 allowlist entry is identified by **path + family + selector**, not by
 line or column number. Line and column are recorded as advisory locator hints
 only (see [last_seen](#last_seen)).
 
-When a code change moves an allowed call to a different line, the v0.2 entry
+When a code change moves an allowed call to a different line, the schema 0.3 entry
 still matches because the selector describes the *structural* call site rather
 than its position in the file.
 
 ## Schema version
 
 ```toml
-schema_version = "0.2"
+schema_version = "0.3"
+policy = "no-panic-allowlist"
+owner = "core/policy"
+status = "canonical"
 ```
 
-The file must begin with `schema_version = "0.2"`. The checker uses this to
-activate the v0.2 parsing and matching path. Files without this header are
-parsed in v0.1 (line/column) mode.
+The canonical file is `policy/no-panic-allowlist.toml`. The checker uses
+`schema_version = "0.3"` to activate semantic selector matching and governance
+field validation. The legacy `.ripr/no-panic-allowlist.toml` schema 0.2 file is
+retained only as a compatibility mirror while older branches drain.
 
 ## Entry structure
 
 ```toml
 [[allow]]
+id = "panic-0001"
 path = "src/some_file.rs"
 family = "unwrap"
 classification = "test_only"
+owner = "core/tests"
 explanation = "Human-readable reason this call site is allowed"
+expires = "2026-12-31"
 
 [allow.selector]
 kind = "method_call"
@@ -53,14 +60,17 @@ column = 17
 |---|---|---|
 | `path` | `[[allow]]` | Repository-relative file path |
 | `family` | `[[allow]]` | Panic family: `unwrap`, `expect`, `panic_macro`, `todo`, `unimplemented`, `unreachable` |
+| `id` | `[[allow]]` | Stable identifier referenced in PRs and cleanup work |
+| `classification` | `[[allow]]` | Entry classification, such as `test_only` or `test_helper` |
+| `owner` | `[[allow]]` | Team or area responsible for the exception |
 | `explanation` | `[[allow]]` | Human-readable reason for the exception |
+| `expires` | `[[allow]]` | Date the entry must be re-justified |
 | `kind` | `[allow.selector]` | Selector kind (see below) |
 
 ### Optional fields
 
 | Field | Location | Description |
 |---|---|---|
-| `classification` | `[[allow]]` | Entry classification (e.g. `test_only`) |
 | `container` | `[allow.selector]` | Enclosing function or method name |
 | `callee` | `[allow.selector]` | Exact callee name |
 | `receiver_fingerprint` | `[allow.selector]` | Receiver type or expression fingerprint |
@@ -70,7 +80,7 @@ column = 17
 
 ## Selector kinds
 
-The v0.2 checker supports four selector kinds:
+The checker supports four selector kinds:
 
 - `method_call`
 - `macro_call`
@@ -79,8 +89,7 @@ The v0.2 checker supports four selector kinds:
 
 The active checked-in allowlist may use only a subset of these kinds at a given
 time. Migration tooling may also propose a subset first. That does not narrow
-the checker contract: supported v0.2 selector kinds are the four kinds listed
-above.
+the checker contract: supported selector kinds are the four kinds listed above.
 
 ### method_call
 
@@ -157,11 +166,14 @@ without causing build failures when code moves.
 ## v0.1 backward compatibility
 
 Entries without a `[allow.selector]` section are matched by path + line +
-column in v0.1 mode. This allows incremental migration: new entries use v0.2
-selectors, and existing v0.1 entries continue to work until they are converted.
+column in v0.1 mode. This legacy behavior exists so old fixtures can continue
+to prove migration behavior while canonical entries use schema 0.3 selectors.
 
 v0.1 entries tied to exact line numbers will fail when the code moves. Prefer
-migrating to v0.2 selectors for stable entries.
+migrating to semantic selectors for stable entries.
+
+The canonical schema 0.3 file does not permit new line/column-only entries.
+Compatibility behavior exists only for legacy files and tests.
 
 ## Migration proposals
 
@@ -178,21 +190,14 @@ against the actual call site before being committed to the allowlist.
 
 - **Do not** rely on `last_seen` for matching. It is a hint, not identity.
 
-## v0.3 schema (governed mirror)
+## Schema 0.3 governance
 
-`policy/no-panic-allowlist.toml` is a **schema 0.3 mirror** of
-`.ripr/no-panic-allowlist.toml` (canonical schema 0.2). The v0.3 schema adds:
+Schema 0.3 adds governed review fields to the semantic selector model:
 
 - `id` — stable identifier referenced in PR descriptions, ADRs, and follow-up
   cleanup work.
 - `owner` — team/area responsible for the entry.
 - `expires` — date the entry must be re-justified.
 
-The v0.3 selector model is byte-for-byte the same as v0.2: `path + family +
-selector` is the identity, and `last_seen` is advisory.
-
-The canonical file consumed by `cargo xtask check-no-panic-family` remains
-`.ripr/no-panic-allowlist.toml`. The mirror at `policy/no-panic-allowlist.toml`
-demonstrates the v0.3 schema with three representative entries; the full
-migration of the remaining 26 entries happens in the follow-up PR that updates
-the checker to read v0.3.
+The selector model is unchanged from schema 0.2: `path + family + selector` is
+the identity, and `last_seen` is advisory.

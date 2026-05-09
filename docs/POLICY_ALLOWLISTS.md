@@ -58,12 +58,12 @@ has a matching `policy/clippy-exceptions.toml` entry.
 ## No-panic allowlist transition
 
 `policy/no-panic-allowlist.toml` (schema 0.3) is the canonical allowlist for
-panic-family exceptions. `.ripr/no-panic-allowlist.toml` (schema 0.2) is the
-legacy file that the current checker reads. These will be unified in PR 04 of
-the rollout plan.
+panic-family exceptions and is read by `cargo xtask check-no-panic-family`.
+`.ripr/no-panic-allowlist.toml` (schema 0.2) is retained as a legacy
+compatibility mirror while older branches drain.
 
 See `docs/NO_PANIC_POLICY.md` for the full policy and `docs/NO_PANIC_SEMANTIC_ALLOWLIST.md`
-for the schema-0.2 selector reference.
+for the selector reference.
 
 ## Non-Rust file allowlist
 
