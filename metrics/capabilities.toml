@@ -834,12 +834,13 @@ evidence = [
   "crates/ripr/tests/cli_smoke.rs::first_action_cli_writes_actionable_report validates the public CLI writes actionable JSON/Markdown",
   "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_uploads_reports_and_makes_sarif_optional and crates/ripr/tests/cli_smoke.rs::init_ci_github_writes_non_blocking_report_workflow validate generated CI projection",
   "editors/vscode/src/client.ts projects an existing target/ripr/reports/first-useful-action.json report through status and Show Status without invoking ripr first-action or adding diagnostics",
-  "editors/vscode/test/suite/extension.test.ts::status bar projects existing first useful action report validates the editor projection and asserts it does not shell out to ripr"
+  "editors/vscode/test/suite/extension.test.ts::status bar projects existing first useful action report validates the editor projection and asserts it does not shell out to ripr",
+  "docs/FIRST_USEFUL_ACTION_WORKFLOW.md explains how developers, reviewers, and coding agents read first-useful-action reports, act on bounded statuses, verify static movement, emit receipts, use CI/editor projections, and preserve advisory limits"
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/first-useful-action"
 ]
-next = "docs/first-useful-action-workflow"
+next = "dogfood/first-useful-action-receipts"
 metric = "first_useful_action_reports, first_useful_action_actionable, first_useful_action_stale, first_useful_action_missing_required_artifact, first_useful_action_baseline_only, first_useful_action_acknowledged, first_useful_action_waived, first_useful_action_suppressed, first_useful_action_no_actionable_seam, first_useful_action_already_improved, first_useful_action_unchanged_after_attempt"
 
 [[capability]]

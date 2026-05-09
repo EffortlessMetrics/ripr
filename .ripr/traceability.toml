@@ -1251,6 +1251,7 @@ outputs = [
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/ROADMAP.md",
+  "docs/FIRST_USEFUL_ACTION_WORKFLOW.md",
   "CHANGELOG.md",
 ]
 metrics = [

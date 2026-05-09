@@ -211,8 +211,10 @@ that report contract, the routing corpus pins actionable and fallback cases,
 and `ripr first-action` now writes the read-only report from explicit
 artifacts. Generated CI now surfaces that report as advisory summary and
 artifact content. VS Code status and `ripr: Show Status` now project an
-existing first-action report without rerunning analysis. The next ready slice
-documents the first-action workflow for developers, reviewers, and agents.
+existing first-action report without rerunning analysis. The workflow guide now
+explains how developers, reviewers, and agents act on statuses, verify static
+movement, and return receipts. The next ready slice records repo-local
+first-action dogfood receipts.
 
 [Assistant Loop Health](ASSISTANT_LOOP_HEALTH_PROPOSAL.md) is recorded as a
 future follow-up lane after First Useful Action. It should summarize proof

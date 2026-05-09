@@ -2877,6 +2877,10 @@ schema producer: it does not run `ripr first-action`, add diagnostics, edit
 source, generate tests, call providers, run mutation testing, or make gate
 decisions.
 
+See [First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md) for how
+developers, reviewers, and coding agents should read the report, act on
+fallback states, verify static movement, and emit receipts.
+
 ### Review Guidance Outcome Receipt
 
 Review guidance outcome receipts are optional repo-local inputs to the

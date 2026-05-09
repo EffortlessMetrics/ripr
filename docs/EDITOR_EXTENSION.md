@@ -128,7 +128,9 @@ selected seam, missing discriminator, target, related test, verify command,
 receipt command, warnings, fallback, and static-evidence limits. The extension
 only reads that existing report. It does not run `ripr first-action`, add new
 diagnostics, edit source, generate tests, call providers, run mutation testing,
-or make gate decisions.
+or make gate decisions. See
+[First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md) for how to act
+on the status, verify static movement, and emit receipts.
 
 The LSP model remains saved-workspace only. When a Rust buffer is dirty, the
 extension keeps stale status visible even if a saved-workspace refresh

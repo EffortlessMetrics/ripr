@@ -1410,6 +1410,9 @@ inputs when those files exist, then writes and uploads
 job summary appends the first action at a glance plus the Markdown report. If
 no inputs exist, the step logs that no first-useful-action inputs were
 available and leaves CI pass/fail behavior unchanged.
+[First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md) explains how
+reviewers and coding agents should read the summary, act on the status, verify
+static movement, and return receipts.
 
 For every configured gate mode, the generated workflow behavior is:
 

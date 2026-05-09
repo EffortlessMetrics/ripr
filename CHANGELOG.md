@@ -46,6 +46,10 @@ are scoped or reviewed.
   warnings, fallback, and advisory limits without running hidden analysis,
   adding diagnostics, editing source, generating tests, or changing gate
   authority.
+- Added `docs/FIRST_USEFUL_ACTION_WORKFLOW.md`, documenting how developers,
+  reviewers, and coding agents read `first-useful-action.{json,md}`, act on
+  bounded statuses, verify static movement, emit receipts, use CI/editor
+  projections, and preserve advisory static-evidence limits.
 - Opened Campaign 20, Test-Oracle Assistant Proof, with
   `spec/test-oracle-assistant-loop` as the first ready work item so the
   already-built PR guidance, editor/agent handoff, verification, receipts,
