@@ -28,6 +28,7 @@
       "bucket": "still_present",
       "decision": "advisory",
       "identity": {
+        "canonical_gap_id": null,
         "dedupe_key": null,
         "fallback": "src/same.rs:1:weakly_gripped",
         "id": "ripr-gate-same",
@@ -61,6 +62,7 @@
       "bucket": "resolved",
       "decision": "advisory",
       "identity": {
+        "canonical_gap_id": null,
         "dedupe_key": null,
         "fallback": "src/gone.rs:2:weakly_gripped",
         "id": "ripr-gate-gone",
@@ -94,6 +96,7 @@
       "bucket": "new_policy_eligible",
       "decision": "blocking",
       "identity": {
+        "canonical_gap_id": null,
         "dedupe_key": null,
         "fallback": "src/new.rs:4:weakly_gripped",
         "id": "ripr-gate-new",
@@ -120,6 +123,7 @@
       "bucket": "acknowledged",
       "decision": "acknowledged",
       "identity": {
+        "canonical_gap_id": null,
         "dedupe_key": null,
         "fallback": "src/ack.rs:5:weakly_gripped",
         "id": "ripr-gate-ack",
@@ -146,6 +150,7 @@
       "bucket": "suppressed",
       "decision": "suppressed",
       "identity": {
+        "canonical_gap_id": null,
         "dedupe_key": null,
         "fallback": "src/suppressed.rs:6:weakly_gripped",
         "id": "ripr-gate-suppressed",
@@ -172,6 +177,7 @@
       "bucket": "invalid_baseline_entry",
       "decision": "advisory",
       "identity": {
+        "canonical_gap_id": null,
         "dedupe_key": null,
         "fallback": null,
         "id": null,
@@ -182,7 +188,7 @@
       "line": null,
       "missing_discriminator": null,
       "path": null,
-      "reason": "Baseline entry is missing seam_id, source_id, id, dedupe_key, and fallback identity.",
+      "reason": "Baseline entry is missing canonical_gap_id, seam_id, source_id, id, dedupe_key, and fallback identity.",
       "repair": {
         "action": "repair_or_remove_baseline_entry",
         "verify_command": null

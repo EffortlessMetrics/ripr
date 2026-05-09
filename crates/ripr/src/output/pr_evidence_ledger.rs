@@ -98,6 +98,7 @@ struct GateSummary {
 struct WaiverRecord {
     label: String,
     decision_id: Option<String>,
+    canonical_gap_id: Option<String>,
     seam_id: Option<String>,
     age_prs: usize,
     age_days: usize,
@@ -108,6 +109,7 @@ struct WaiverRecord {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct SuppressionRecord {
     decision_id: Option<String>,
+    canonical_gap_id: Option<String>,
     seam_id: Option<String>,
     source: Option<String>,
     owner: Option<String>,
@@ -118,6 +120,7 @@ struct SuppressionRecord {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct RepairReceipt {
     source: String,
+    canonical_gap_id: Option<String>,
     seam_id: Option<String>,
     static_movement: StaticMovement,
     focused_test: Option<String>,
@@ -151,6 +154,7 @@ struct CoverageQuadrants {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct RepairRoute {
     source: String,
+    canonical_gap_id: Option<String>,
     seam_id: Option<String>,
     path: Option<String>,
     line: Option<u64>,
@@ -730,6 +734,7 @@ fn waiver_records_from_gate(
             WaiverRecord {
                 label,
                 decision_id: string_path(decision, &["id"]),
+                canonical_gap_id: canonical_gap_id_from_value(decision),
                 seam_id,
                 age_prs: previous + 1,
                 age_days,
@@ -755,6 +760,7 @@ fn suppression_records_from_sources(
             if is_suppressed {
                 records.push(SuppressionRecord {
                     decision_id: string_path(decision, &["id"]),
+                    canonical_gap_id: canonical_gap_id_from_value(decision),
                     seam_id: string_path(decision, &["seam_id"]),
                     source: string_path(decision, &["policy", "suppression_source"])
                         .or_else(|| Some("gate_decision".to_string())),
@@ -773,6 +779,7 @@ fn suppression_records_from_sources(
             if string_path(item, &["bucket"]).as_deref() == Some("suppressed") {
                 records.push(SuppressionRecord {
                     decision_id: string_path(item, &["identity", "id"]),
+                    canonical_gap_id: canonical_gap_id_from_value(item),
                     seam_id: string_path(item, &["identity", "seam_id"]),
                     source: Some("baseline_debt_delta".to_string()),
                     owner: None,
@@ -799,6 +806,7 @@ fn repair_receipts_from_sources(
             .unwrap_or_else(|| "unknown".to_string());
         receipts.push(RepairReceipt {
             source: "agent_receipt".to_string(),
+            canonical_gap_id: canonical_gap_id_from_value(receipt),
             seam_id: string_path(receipt, &["provenance", "seam_id"])
                 .or_else(|| string_path(receipt, &["seam", "seam_id"]))
                 .or_else(|| string_path(receipt, &["guidance", "seam_id"])),
@@ -829,6 +837,7 @@ fn repair_receipts_from_sources(
         {
             receipts.push(RepairReceipt {
                 source: "recommendation_calibration".to_string(),
+                canonical_gap_id: canonical_gap_id_from_value(recommendation),
                 seam_id: string_path(recommendation, &["seam_id"]),
                 static_movement: StaticMovement {
                     state: string_path(recommendation, &["static_movement", "state"])
@@ -951,6 +960,7 @@ fn route_from_zero_status(value: &Value) -> Option<RepairRoute> {
     let route = array_path(value, &["repair_routes"]).first().copied()?;
     Some(RepairRoute {
         source: "ripr_zero_status".to_string(),
+        canonical_gap_id: canonical_gap_id_from_value(route),
         seam_id: string_path(route, &["seam_id"]),
         path: string_path(route, &["path"]),
         line: u64_path(route, &["line"]),
@@ -970,6 +980,7 @@ fn route_from_pr_guidance(value: &Value) -> Option<RepairRoute> {
     let seam_id = string_path(item, &["seam_id"]);
     Some(RepairRoute {
         source: "pr_guidance".to_string(),
+        canonical_gap_id: canonical_gap_id_from_value(item),
         seam_id: seam_id.clone(),
         path: string_path(item, &["placement", "path"])
             .or_else(|| string_path(item, &["seam", "file"])),
@@ -998,6 +1009,7 @@ fn route_from_gate(value: &Value) -> Option<RepairRoute> {
     let seam_id = string_path(item, &["seam_id"]);
     Some(RepairRoute {
         source: "gate_decision".to_string(),
+        canonical_gap_id: canonical_gap_id_from_value(item),
         seam_id: seam_id.clone(),
         path: string_path(item, &["placement", "path"]),
         line: u64_path(item, &["placement", "line"]),
@@ -1024,6 +1036,7 @@ fn route_from_baseline_delta(value: &Value) -> Option<RepairRoute> {
     let seam_id = string_path(item, &["identity", "seam_id"]);
     Some(RepairRoute {
         source: "baseline_debt_delta".to_string(),
+        canonical_gap_id: canonical_gap_id_from_value(item),
         seam_id: seam_id.clone(),
         path: string_path(item, &["path"]),
         line: u64_path(item, &["line"]),
@@ -1091,6 +1104,7 @@ fn waiver_json(record: &WaiverRecord) -> Value {
     json!({
         "label": record.label,
         "decision_id": record.decision_id,
+        "canonical_gap_id": record.canonical_gap_id,
         "seam_id": record.seam_id,
         "age_prs": record.age_prs,
         "age_days": record.age_days,
@@ -1102,6 +1116,7 @@ fn waiver_json(record: &WaiverRecord) -> Value {
 fn suppression_json(record: &SuppressionRecord) -> Value {
     json!({
         "decision_id": record.decision_id,
+        "canonical_gap_id": record.canonical_gap_id,
         "seam_id": record.seam_id,
         "source": record.source,
         "owner": record.owner,
@@ -1113,6 +1128,7 @@ fn suppression_json(record: &SuppressionRecord) -> Value {
 fn repair_receipt_json(record: &RepairReceipt) -> Value {
     json!({
         "source": record.source,
+        "canonical_gap_id": record.canonical_gap_id,
         "seam_id": record.seam_id,
         "static_movement": {
             "state": record.static_movement.state,
@@ -1142,6 +1158,7 @@ fn coverage_json(frontier: &CoverageGripFrontier) -> Value {
 fn repair_route_json(route: &RepairRoute) -> Value {
     json!({
         "source": route.source,
+        "canonical_gap_id": route.canonical_gap_id,
         "seam_id": route.seam_id,
         "path": route.path,
         "line": route.line,
@@ -1192,6 +1209,15 @@ fn array_path<'a>(value: &'a Value, path: &[&str]) -> Vec<&'a Value> {
 
 fn string_path(value: &Value, path: &[&str]) -> Option<String> {
     path_value(value, path).and_then(string_value)
+}
+
+fn canonical_gap_id_from_value(value: &Value) -> Option<String> {
+    string_path(value, &["canonical_gap_id"])
+        .or_else(|| string_path(value, &["identity", "canonical_gap_id"]))
+        .or_else(|| string_path(value, &["evidence_record", "canonical_gap_id"]))
+        .or_else(|| string_path(value, &["provenance", "canonical_gap_id"]))
+        .or_else(|| string_path(value, &["seam", "canonical_gap_id"]))
+        .or_else(|| string_path(value, &["guidance", "canonical_gap_id"]))
 }
 
 fn string_value(value: &Value) -> Option<String> {
@@ -1270,6 +1296,7 @@ mod tests {
               "decision": "acknowledged",
               "seam_id": "ack",
               "source_id": "ripr-review-ack",
+              "evidence_record": {"canonical_gap_id": "pricing::ack::boundary"},
               "gate_reason": "policy-eligible gap acknowledged by ripr-waive",
               "policy": {"acknowledgement_label": "ripr-waive"},
               "placement": {"path": "src/ack.rs", "line": 5},
@@ -1283,6 +1310,7 @@ mod tests {
               "id": "ripr-gate-suppressed",
               "decision": "suppressed",
               "seam_id": "suppressed",
+              "evidence_record": {"canonical_gap_id": "pricing::suppressed::boundary"},
               "gate_reason": "configured-hidden candidate preserved",
               "evidence": {"suppressed": true}
             }
@@ -1301,7 +1329,7 @@ mod tests {
           "items": [
             {
               "bucket": "new_policy_eligible",
-              "identity": {"seam_id": "new", "id": "ripr-gate-new"},
+              "identity": {"canonical_gap_id": "pricing::new::boundary", "seam_id": "new", "id": "ripr-gate-new"},
               "path": "src/new.rs",
               "line": 4,
               "missing_discriminator": "new == 4",
@@ -1318,6 +1346,7 @@ mod tests {
           "repair_routes": [
             {
               "source": "baseline_debt_delta",
+              "canonical_gap_id": "pricing::new::boundary",
               "seam_id": "new",
               "path": "src/new.rs",
               "line": 4,
@@ -1331,7 +1360,7 @@ mod tests {
         }"#;
         let agent_receipt = r#"{
           "schema_version": "0.3",
-          "provenance": {"seam_id": "new", "movement": "improved"},
+          "provenance": {"canonical_gap_id": "pricing::new::boundary", "seam_id": "new", "movement": "improved"},
           "test_changed": "tests/new.rs::boundary"
         }"#;
         let history = r#"{"movement":{"baseline_resolved":2,"new_policy_eligible":0},"waivers":[{"seam_id":"ack","age_days":2}]}"#;
@@ -1372,6 +1401,9 @@ mod tests {
         assert!(rendered.contains("\"state\": \"improved\""));
         assert!(rendered.contains("\"status\": \"not_available\""));
         assert!(rendered.contains("\"top_repair_route\""));
+        assert!(rendered.contains("\"canonical_gap_id\": \"pricing::ack::boundary\""));
+        assert!(rendered.contains("\"canonical_gap_id\": \"pricing::suppressed::boundary\""));
+        assert!(rendered.contains("\"canonical_gap_id\": \"pricing::new::boundary\""));
 
         let markdown = render_pr_evidence_ledger_markdown(&report);
         assert!(markdown.contains("# RIPR PR Evidence Ledger"));
