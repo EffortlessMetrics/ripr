@@ -11,6 +11,11 @@ are scoped or reviewed.
 
 ### Added
 
+- Opened Campaign 22, First Useful Action, with
+  `spec/first-useful-action-report` as the first ready work item so existing
+  editor, PR guidance, ledger, proof, receipt, optional gate, coverage/grip,
+  and staleness evidence can be compressed into one advisory next test action
+  before adding another raw artifact surface.
 - Opened Campaign 20, Test-Oracle Assistant Proof, with
   `spec/test-oracle-assistant-loop` as the first ready work item so the
   already-built PR guidance, editor/agent handoff, verification, receipts,
