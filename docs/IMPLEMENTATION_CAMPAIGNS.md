@@ -2570,6 +2570,70 @@ Next:
   CI projection, editor projection, or docs before the routing corpus pins the
   report statuses and fallback cases.
 
+## Future Campaign: Assistant Loop Health
+
+Campaign ID: `assistant-loop-health`
+
+Status: proposed future lane. Do not replace the active Campaign 22 manifest
+with this lane until the project explicitly chooses it.
+
+Campaign 21 made one assistant-directed test loop reviewable as
+`test-oracle-assistant-proof.{json,md}`. Campaign 22 should first settle the
+first-screen routing contract so users get one next action instead of another
+raw report. After that, Assistant Loop Health can measure whether the proof
+packets are complete, stuck, missing receipts, or actually improving static
+evidence over time.
+
+Objective:
+
+```text
+Summarize proof completeness, missing inputs, static evidence movement,
+recurring warnings, and next repair queues across one or more assistant proof
+reports without changing analyzer behavior, recommendation ranking, gate
+semantics, LSP/editor behavior, mutation execution, provider calls, source
+files, generated tests, or default CI blocking.
+```
+
+End state:
+
+- `target/ripr/reports/assistant-loop-health.json` and `.md` summarize
+  assistant proof packet health from explicit existing proof inputs
+- the report counts complete, partial, missing-required, and missing-optional
+  proof packets
+- the report summarizes static movement as improved, unchanged, regressed, or
+  unknown using proof data only
+- recurring warnings and missing inputs are grouped without turning into an
+  opaque score
+- a bounded repair queue routes maintainers or coding agents to rerun missing
+  commands, regenerate stale inputs, inspect unchanged evidence, or attach
+  receipts
+- generated CI may later upload and summarize the report as advisory evidence
+  only
+
+Proposed work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `spec/assistant-loop-health-report` | future | Define JSON/Markdown contract, explicit inputs, statuses, buckets, warnings, repair queue, and advisory limits. |
+| `fixtures/assistant-loop-health-corpus` | future | Pin complete, partial, missing-input, unchanged, regressed, warning-heavy, and multi-proof cases. |
+| `report/assistant-loop-health` | future | Add the read-only CLI report producer over explicit proof inputs. |
+| `ci/assistant-loop-health-artifacts` | future | Upload and summarize health artifacts only when proof artifacts exist. |
+| `docs/assistant-loop-health-workflow` | future | Explain proof report vs health report, repair routing, and advisory limits. |
+| `campaign/assistant-loop-health-closeout` | future | Close after spec, fixtures, producer, CI projection, docs, and validation prove the lane. |
+
+References:
+
+- [Assistant Loop Health proposal](ASSISTANT_LOOP_HEALTH_PROPOSAL.md)
+- [Test-oracle assistant proof report](TEST_ORACLE_ASSISTANT_PROOF_REPORT.md)
+
+Blocking conditions:
+
+- active-campaign manifest changes before the project chooses this lane
+- analyzer behavior or recommendation ranking changes
+- gate policy, LSP/editor, provider, mutation, source-edit, generated-test, or
+  default-blocking changes
+- adequacy, correctness, or runtime mutation claims
+
 ## Future Campaign: Editor Evidence UX
 
 Campaign ID: `editor-evidence-ux`

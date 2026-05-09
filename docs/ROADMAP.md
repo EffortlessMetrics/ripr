@@ -210,6 +210,14 @@ next test action before adding another raw surface. RIPR-SPEC-0020 now defines
 that report contract; the next ready slice is the routing corpus that pins
 actionable and fallback cases before the producer is added.
 
+[Assistant Loop Health](ASSISTANT_LOOP_HEALTH_PROPOSAL.md) is recorded as a
+future follow-up lane after First Useful Action. It should summarize proof
+completeness, missing inputs, static evidence movement, recurring warnings, and
+repair queues across one or more `test-oracle-assistant-proof` reports without
+changing analyzer behavior, ranking, gate semantics, editor behavior, mutation
+execution, provider calls, source files, generated tests, or default CI
+blocking.
+
 ## Strategic Sequence
 
 The load-bearing path is:
