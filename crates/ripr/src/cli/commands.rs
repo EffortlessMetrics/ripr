@@ -4562,6 +4562,7 @@ mod tests {
         assert!(summary.contains(".delta.missing_current_input // 0"));
         assert!(summary.contains("Set `RIPR_GATE_BASELINE`"));
         assert!(summary.contains("Baseline debt delta was not run"));
+        assert!(summary.contains("Baseline debt delta was not generated"));
         assert!(summary.contains(".summary.comments // 0"));
         assert!(summary.contains(".summary.summary_only // 0"));
         assert!(summary.contains(".summary.suppressed // 0"));
