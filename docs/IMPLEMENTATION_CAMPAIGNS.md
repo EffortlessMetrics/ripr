@@ -2327,8 +2327,8 @@ Work items:
 
 | Work item | Status | Notes |
 | --- | --- | --- |
-| `spec/test-oracle-assistant-loop` | ready | Define the end-to-end test-oracle assistant proof contract from changed Rust behavior through static evidence, PR/editor guidance, focused-test handoff, after-evidence verification, receipt, and advisory PR/CI projection without changing analyzer, policy, editor, or CI defaults. |
-| `fixtures/canonical-review-loop` | blocked | Add a canonical fixture or replay corpus that pins the before recommendation, related-test context, suggested focused test, after-evidence movement, receipt, and ledger projection expectations for one changed-behavior case. |
+| `spec/test-oracle-assistant-loop` | done | Added RIPR-SPEC-0019 as the end-to-end test-oracle assistant proof contract from changed Rust behavior through static evidence, PR/editor guidance, focused-test handoff, after-evidence verification, receipt, and advisory PR/CI projection without changing analyzer, policy, editor, or CI defaults. |
+| `fixtures/canonical-review-loop` | ready | Add a canonical fixture or replay corpus that pins the before recommendation, related-test context, suggested focused test, after-evidence movement, receipt, and ledger projection expectations for one changed-behavior case. |
 | `dogfood/test-oracle-assistant-receipt` | blocked | Record a repo-local proof receipt that traces one seam through PR guidance, editor/agent packet surfaces, verification commands, after-evidence, receipt, PR evidence ledger, and coverage/grip frontier availability without changing source automatically. |
 | `docs/test-oracle-assistant-workflow` | blocked | Document the user workflow from PR recommendation to editor/agent handoff, one focused test, verification, receipt, and advisory CI/ledger projection while preserving static-evidence limits. |
 | `campaign/test-oracle-assistant-proof-closeout` | blocked | Close Campaign 20 only after the end-to-end assistant proof contract, canonical fixture, dogfood receipt, and user workflow docs demonstrate the full loop while defaults stay advisory. |
@@ -2376,7 +2376,7 @@ Blocking conditions:
 
 Next:
 
-- The ready work item is `spec/test-oracle-assistant-loop`.
+- The ready work item is `fixtures/canonical-review-loop`.
 
 ## Future Campaign: Editor Evidence UX
 

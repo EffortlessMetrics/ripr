@@ -1201,3 +1201,32 @@ metrics = [
   "coverage_grip_frontier_available",
   "coverage_grip_frontier_flat_coverage_grip_improved",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0019"
+name = "test-oracle assistant loop"
+spec = "docs/specs/RIPR-SPEC-0019-test-oracle-assistant-loop.md"
+tests = []
+fixtures = []
+code = []
+outputs = [
+  "docs/specs/RIPR-SPEC-0019-test-oracle-assistant-loop.md",
+  "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "metrics/capabilities.toml",
+  ".ripr/goals/active.toml",
+  "docs/IMPLEMENTATION_CAMPAIGNS.md",
+  "docs/IMPLEMENTATION_PLAN.md",
+  "docs/ROADMAP.md",
+  "CHANGELOG.md",
+]
+metrics = [
+  "test_oracle_assistant_loop_reports",
+  "test_oracle_assistant_loop_verified_receipts",
+  "test_oracle_assistant_loop_unknown_inputs",
+  "test_oracle_assistant_loop_summary_only",
+  "test_oracle_assistant_loop_static_improved",
+  "test_oracle_assistant_loop_static_resolved",
+  "test_oracle_assistant_loop_static_regressed",
+]

@@ -26,10 +26,10 @@ end_state = [
 
 [[work_item]]
 id = "spec/test-oracle-assistant-loop"
-status = "ready"
+status = "done"
 branch = "spec-test-oracle-assistant-loop"
 stackable = false
-acceptance = "Define the end-to-end test-oracle assistant proof contract from changed Rust behavior through static evidence, PR/editor guidance, focused-test handoff, after-evidence verification, receipt, and advisory PR/CI projection without changing analyzer, policy, editor, or CI defaults"
+acceptance = "Defined RIPR-SPEC-0019 as the end-to-end test-oracle assistant proof contract from changed Rust behavior through static evidence, PR/editor guidance, focused-test handoff, after-evidence verification, receipt, and advisory PR/CI projection without changing analyzer, policy, editor, or CI defaults"
 commands = [
   "cargo xtask check-spec-format",
   "cargo xtask check-doc-index",
@@ -43,7 +43,7 @@ commands = [
 
 [[work_item]]
 id = "fixtures/canonical-review-loop"
-status = "blocked"
+status = "ready"
 branch = "fixtures-canonical-review-loop"
 stackable = false
 blocked_by = [
