@@ -203,8 +203,10 @@ only when the required artifact chain already exists.
 `docs/TEST_ORACLE_ASSISTANT_PROOF_REPORT.md` now explains how to read the
 report, warnings, static movement, optional CI projection, and limits. Campaign
 21 closed with
-`docs/handoffs/2026-05-09-campaign-21-closeout.md`; choose the next campaign
-explicitly before opening another product lane.
+`docs/handoffs/2026-05-09-campaign-21-closeout.md`. Campaign 22 is now open as
+First Useful Action. Its product goal is to compress editor, PR, ledger, proof,
+receipt, optional gate, coverage/grip, and staleness evidence into one advisory
+next test action before adding another raw surface.
 
 ## Strategic Sequence
 
@@ -255,6 +257,9 @@ quality rails
 -> RIPR Zero reporting
 -> editor evidence UX
 -> PR evidence ledger
+-> test-oracle assistant proof
+-> test-oracle assistant report producer
+-> first useful action
 ```
 
 The analyzer path is:

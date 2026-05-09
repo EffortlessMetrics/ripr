@@ -2383,7 +2383,7 @@ Next:
 
 Campaign ID: `test-oracle-assistant-report-producer`
 
-Status: active
+Status: complete
 
 Campaign 20 proved the assistant loop as a contract, fixture, dogfood receipt,
 and user workflow. The next product gap is that users still need a first-class
@@ -2465,8 +2465,109 @@ Blocking conditions:
 
 Next:
 
-- No ready Campaign 21 work item remains. Choose the next campaign explicitly
-  before opening another product lane.
+- Campaign 22, First Useful Action, is now the active campaign. Its first ready
+  item is `spec/first-useful-action-report`.
+
+## Campaign 22: First Useful Action
+
+Campaign ID: `first-useful-action`
+
+Status: active
+
+Campaign 21 made the test-oracle assistant proof loop a first-class advisory
+report. The next product risk is report sprawl: users should not need to know
+which artifact is authoritative before they know the next useful test action.
+This campaign compresses existing evidence into one advisory action for
+developers, reviewers, and coding agents.
+
+Objective:
+
+```text
+Given existing RIPR artifacts, produce one advisory first-useful-action report
+that tells a developer, reviewer, or coding agent what to do next, why, where,
+how to verify, what receipt proves the result, and what limits remain without
+rerunning hidden analysis, editing source, generating tests, calling providers,
+running mutation testing, changing default CI blocking, or inventing policy.
+```
+
+End state:
+
+- `target/ripr/reports/first-useful-action.json` and `.md` summarize the
+  highest-value next test action or the reason no action should be taken
+- routing is deterministic over explicit existing inputs such as PR guidance,
+  PR evidence ledger, baseline debt delta, assistant proof, receipts, optional
+  gate decisions, optional coverage/grip frontier, editor context, and
+  status/staleness
+- fixtures pin actionable, stale, missing-artifact, baseline-only,
+  acknowledged, waived, suppressed, already-improved, unchanged-after-attempt,
+  and no-actionable-seam cases
+- generated CI surfaces the first useful action as advisory summary/artifact
+  content without changing pass/fail authority
+- the editor may project the report in status or Show Status without new
+  diagnostics, CodeLens, inlay hints, unsaved-buffer overlays, source edits, or
+  generated tests
+- docs and dogfood receipts show how developers, reviewers, and agents use the
+  action without treating static evidence as runtime proof
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `spec/first-useful-action-report` | ready | Define the first-useful-action report contract, inputs, statuses, routing priorities, advisory limits, and schema before implementation. |
+| `fixtures/first-useful-action-corpus` | blocked | Add a deterministic corpus that pins first-action routing for actionable, stale, missing-artifact, baseline-only, waived, suppressed, unchanged, and no-actionable cases. |
+| `report/first-useful-action` | blocked | Add a read-only report producer that writes advisory first-useful-action JSON and Markdown from explicit existing artifact paths without rerunning hidden analysis. |
+| `ci/first-useful-action-summary` | blocked | Surface first-useful-action JSON/Markdown in generated GitHub CI as advisory summary and artifact content without changing default blocking. |
+| `lsp/first-useful-action-status` | blocked | Project an existing first-useful-action report through editor status and Show Status without adding diagnostics, CodeLens, inlay hints, unsaved-buffer analysis, source edits, or generated tests. |
+| `docs/first-useful-action-workflow` | blocked | Document how developers, reviewers, and coding agents read the first useful action, act on it, verify movement, emit receipts, and interpret fallback states. |
+| `dogfood/first-useful-action-receipts` | blocked | Record repo-local first-useful-action receipts for actionable, baseline-only, stale or missing-input, unchanged-after-attempt, and no-actionable-seam cases. |
+| `campaign/first-useful-action-closeout` | blocked | Close Campaign 22 after schema, fixtures, producer, CI projection, editor projection, docs, and dogfood receipts prove one advisory next action without analyzer, policy, gate, model, mutation, or editor-surface sprawl. |
+
+Dependencies:
+
+- Campaign 13 supplies PR guidance and bounded changed-line recommendation
+  placement.
+- Campaign 14 supplies calibration metrics and outcome receipt vocabulary.
+- Campaign 15 supplies optional gate decision artifacts without making gates
+  the first-action authority.
+- Campaigns 17 and 18 supply baseline debt delta and RIPR Zero status inputs.
+- Campaign 19 supplies PR evidence ledger and coverage/grip frontier inputs.
+- Campaigns 20 and 21 supply the assistant proof loop and proof report.
+- Editor Evidence UX supplies the saved-workspace editor context and projection
+  surface.
+
+Commands:
+
+```bash
+cargo xtask check-campaign
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-capabilities
+cargo xtask check-output-contracts
+cargo xtask check-pr
+```
+
+Blocking conditions:
+
+- analyzer behavior changes
+- recommendation ranking model or provider calls
+- source edits or generated tests
+- runtime mutation execution
+- default CI blocking
+- policy or gate semantic changes
+- hidden analysis reruns or implicit artifact discovery in the report producer
+- new diagnostics, CodeLens, inlay hints, unsaved-buffer overlays, or other
+  speculative editor surfaces
+- treating coverage, static movement, or first-action routing as runtime
+  adequacy
+- new public crates
+
+Next:
+
+- Start with `spec/first-useful-action-report`. Do not add the producer,
+  fixtures, CI projection, editor projection, or docs before the report
+  contract is pinned.
 
 ## Future Campaign: Editor Evidence UX
 

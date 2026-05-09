@@ -810,7 +810,7 @@ evidence = [
   "generated GitHub CI runs ripr assistant-loop proof only when PR guidance, editor/agent brief, before/after evidence, agent receipt, and PR evidence ledger inputs already exist, uploads test-oracle-assistant-proof JSON/Markdown with the normal report packet, and appends the proof summary without changing advisory defaults",
   "docs/TEST_ORACLE_ASSISTANT_PROOF_REPORT.md explains how reviewers, maintainers, and coding agents read test-oracle-assistant-proof JSON/Markdown, warnings, static movement, optional CI projection, and advisory limits without artifact archaeology",
   "docs/handoffs/2026-05-09-campaign-21-closeout.md records the Campaign 21 audit, PR chain, verification commands, next-work boundary, and non-goals",
-  ".ripr/goals/active.toml tracks Campaign 21 with report producer, generated-CI projection, docs, and closeout slices"
+  "docs/IMPLEMENTATION_CAMPAIGNS.md records Campaign 21 complete after the report producer, generated-CI projection, docs, and closeout slices"
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical"
