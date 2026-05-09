@@ -2063,7 +2063,7 @@ Next:
 
 Campaign ID: `ripr-zero-reporting`
 
-Status: active
+Status: complete
 
 Campaign 17 made reviewed baselines executable. The next adoption risk is that
 teams can create a baseline and see one PR's movement, but they still lack a
@@ -2112,7 +2112,7 @@ Work items:
 | `report/ripr-zero-status` | done | Added `ripr zero status`, a read-only JSON/Markdown status report that joins reviewed baseline, baseline debt delta, optional gate decision, PR guidance, and recommendation calibration evidence. |
 | `ci/ripr-zero-summary` | done | Generated CI now runs `ripr zero status` when `baseline-debt-delta.json` exists, uploads `ripr-zero-status.{json,md}`, and appends a RIPR Zero summary with visible unresolved debt, metadata health, top debt area, and repair route while leaving gate decisions as pass/fail authority. |
 | `docs/ripr-zero-reporting-workflow` | done | Added `docs/RIPR_ZERO_REPORTING_WORKFLOW.md` so teams can read RIPR Zero status, age and refresh baselines, route repair packets, and interpret progress without treating RIPR 0 as perfect tests or 100 percent coverage. |
-| `campaign/ripr-zero-reporting-closeout` | ready | Close Campaign 18 only after RIPR Zero status, baseline metadata, generated-CI reporting, and user workflow docs are in place while defaults stay advisory. |
+| `campaign/ripr-zero-reporting-closeout` | done | Closed Campaign 18 after RIPR Zero status, baseline metadata, generated-CI reporting, and user workflow docs were in place while defaults stayed advisory. The closeout audit is recorded in `docs/handoffs/2026-05-09-campaign-18-closeout.md`. |
 
 Dependencies:
 
@@ -2158,9 +2158,8 @@ Blocking conditions:
 
 Next:
 
-- Start `campaign/ripr-zero-reporting-closeout` to audit Campaign 18, record
-  the proof, and close the RIPR Zero reporting lane only if defaults remain
-  advisory and the status report stays separate from gate pass/fail authority.
+- No ready work item remains in Campaign 18. Open the next product lane as a
+  new explicit campaign rather than editing RIPR Zero Reporting in place.
 
 ## Future Campaign: Editor Evidence UX
 

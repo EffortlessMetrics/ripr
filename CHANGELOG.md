@@ -35,6 +35,9 @@ are scoped or reviewed.
   RIPR Zero status, aging and refreshing reviewed baselines, routing repair
   packets, and interpreting movement without treating RIPR 0 as perfect tests
   or 100 percent coverage.
+- Closed Campaign 18, RIPR Zero Reporting, after the reporting spec, baseline
+  metadata preservation, status report, generated-CI summary, and user workflow
+  docs made RIPR 0 progress visible without changing advisory defaults.
 - Added `ripr baseline create --from <gate-decision.json> --out .ripr/gate-baseline.json`,
   which writes reviewed gate baseline ledgers from existing gate-decision
   evidence, skips suppressed or malformed decisions, supports `--dry-run`, and

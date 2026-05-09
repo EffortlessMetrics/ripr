@@ -95,7 +95,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/ripr-zero-reporting-closeout"
-status = "ready"
+status = "done"
 branch = "campaign-ripr-zero-reporting-closeout"
 stackable = false
 blocked_by = [
