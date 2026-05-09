@@ -35,6 +35,9 @@ are scoped or reviewed.
   the delta report the pass/fail authority.
 - Extended framed LSP protocol smoke coverage through a real seam diagnostic,
   hover, code actions, `ripr.collectEvidenceContext`, and shutdown.
+- Extended VS Code e2e smoke coverage so the real boundary-gap server path
+  reaches a seam diagnostic, hover, seam actions, copied packet and verify
+  payloads, and related-test opening.
 - Added `ripr evidence-health` and `cargo xtask evidence-health`, which write
   advisory Lane 1 analyzer-health JSON/Markdown reports summarizing grip
   classes, stage states, missing discriminators, observed value contexts,
