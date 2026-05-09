@@ -12,5 +12,5 @@ crates/ripr/src/analysis/diff/mod.rs|allow(unused_imports)|1|ChangedLine is re-e
 crates/ripr/src/analysis/mod.rs|expect(clippy::unwrap_used)|1|Test module: fixture builders unwrap fs operations against fresh temp dirs.
 crates/ripr/src/analysis/pipeline.rs|expect(clippy::expect_used)|1|Test module: `.expect_err("why")` carries the intended file-system failure mode.
 crates/ripr/tests/cli_smoke.rs|expect(clippy::unwrap_used)|1|CLI smoke test: unwrap on Command::output() and CARGO_MANIFEST_DIR's parent chain is the canonical fail-fast pattern.
-xtask/src/main.rs|expect(clippy::expect_used)|1|xtask test module: production paths receipted via .ripr/no-panic-allowlist.toml; tests share one module-level expect.
-xtask/src/main.rs|expect(clippy::unwrap_used)|1|xtask test module: production paths receipted via .ripr/no-panic-allowlist.toml; tests share one module-level expect.
+xtask/src/main.rs|expect(clippy::expect_used)|1|xtask test module: production paths receipted via policy/no-panic-allowlist.toml; tests share one module-level expect.
+xtask/src/main.rs|expect(clippy::unwrap_used)|1|xtask test module: production paths receipted via policy/no-panic-allowlist.toml; tests share one module-level expect.
