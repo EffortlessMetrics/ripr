@@ -11,6 +11,12 @@ are scoped or reviewed.
 
 ### Added
 
+- Opened Campaign 20, Test-Oracle Assistant Proof, with
+  `spec/test-oracle-assistant-loop` as the first ready work item so the
+  already-built PR guidance, editor/agent handoff, verification, receipts,
+  ledgers, and advisory CI projection can be exercised as one end-to-end
+  test-oracle assistant loop without changing analyzer, policy, editor, or CI
+  defaults.
 - Opened Campaign 19, PR Evidence Ledger, with
   `spec/pr-evidence-ledger-surface` as the first ready work item so per-PR
   RIPR evidence can become an adoption ledger for movement history, waiver

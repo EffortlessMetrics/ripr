@@ -1,33 +1,35 @@
-id = "pr-evidence-ledger"
-title = "PR Evidence Ledger"
+id = "test-oracle-assistant-proof"
+title = "Test-Oracle Assistant Proof"
 status = "active"
 
-# This is Campaign 19 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
-# Campaign 18 closed RIPR Zero Reporting after repo-level status, baseline
-# metadata health, stale-debt warnings, trends, top repair areas, generated-CI
-# projection, and user workflow docs landed while generated CI stayed advisory.
+# This is Campaign 20 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+# Campaign 19 closed PR Evidence Ledger after PR movement history,
+# waiver aging, baseline burn-down, repair receipts, coverage/grip frontier
+# signals, generated-CI projection, and workflow docs landed while generated
+# CI stayed advisory.
 
 objective = """
-Turn PR-time RIPR evidence into a durable adoption ledger: record per-PR
-behavioral grip movement, waiver and suppression visibility, baseline burn-down,
-repair receipts, and coverage/grip frontier signals without changing analyzer
-identity, gate policy, recommendation ranking, or advisory defaults.
+Prove the full PR-time test-oracle assistant loop: changed Rust behavior flows
+through static evidence, PR/editor guidance, a bounded focused-test handoff,
+before/after verification, receipt, and advisory CI/ledger projection without
+changing analyzer semantics, recommendation ranking, gate policy, LSP behavior,
+or default CI blocking.
 """
 
 end_state = [
-  "a PR evidence ledger spec defines append-only PR movement records for new policy-eligible gaps, resolved baseline debt, acknowledgements, suppressions, gate mode, repair receipts, and optional coverage/grip signals",
-  "a read-only PR evidence ledger report writes JSON/Markdown from existing gate decisions, baseline debt deltas, RIPR Zero status, recommendation calibration, outcome receipts, and optional coverage data",
-  "generated CI can upload and summarize the PR evidence ledger as advisory history while leaving gate decisions as the pass/fail authority",
-  "coverage/grip frontier reporting makes execution coverage and behavioral grip movement visible as separate axes without treating coverage as adequacy",
-  "user docs explain how teams use PR evidence ledgers for waiver aging, baseline burn-down, repair routing, and movement toward RIPR 0",
+  "a spec defines the end-to-end proof contract from diff evidence through recommendation, handoff packet, focused-test repair, after-evidence, receipt, and advisory PR/CI projection",
+  "a canonical review-loop fixture pins one changed-behavior case across before evidence, top recommendation, related test, focused test shape, after evidence, receipt, and ledger projection expectations",
+  "a dogfood receipt proves the current repo can trace one seam through PR guidance, editor/agent packet surfaces, verification commands, receipts, and advisory CI artifacts without artifact archaeology",
+  "user docs explain the PR-time assistant workflow without requiring users to learn cockpit or internal report topology first",
+  "closeout records which parts of the loop are verified, which remain advisory, and which future work must not blur static evidence with runtime mutation confirmation",
 ]
 
 [[work_item]]
-id = "spec/pr-evidence-ledger-surface"
-status = "done"
-branch = "spec-pr-evidence-ledger-surface"
+id = "spec/test-oracle-assistant-loop"
+status = "ready"
+branch = "spec-test-oracle-assistant-loop"
 stackable = false
-acceptance = "Defined RIPR-SPEC-0018 as the PR evidence ledger contract for append-only per-PR movement, waiver aging, baseline burn-down, repair receipts, optional coverage/grip frontier signals, and advisory-only CI projection without analyzer identity rewrites or default blocking"
+acceptance = "Define the end-to-end test-oracle assistant proof contract from changed Rust behavior through static evidence, PR/editor guidance, focused-test handoff, after-evidence verification, receipt, and advisory PR/CI projection without changing analyzer, policy, editor, or CI defaults"
 commands = [
   "cargo xtask check-spec-format",
   "cargo xtask check-doc-index",
@@ -40,66 +42,48 @@ commands = [
 ]
 
 [[work_item]]
-id = "report/pr-evidence-ledger"
-status = "done"
-branch = "report-pr-evidence-ledger"
+id = "fixtures/canonical-review-loop"
+status = "blocked"
+branch = "fixtures-canonical-review-loop"
 stackable = false
 blocked_by = [
-  "spec/pr-evidence-ledger-surface",
+  "spec/test-oracle-assistant-loop",
 ]
-acceptance = "Add a read-only PR evidence ledger report that writes JSON/Markdown from existing PR guidance, gate decision, baseline debt delta, RIPR Zero status, recommendation calibration, outcome receipt, and optional coverage inputs"
+acceptance = "Add a canonical fixture or replay corpus that pins the before recommendation, related-test context, suggested focused test, after-evidence movement, receipt, and ledger projection expectations for one changed-behavior case"
 commands = [
-  "cargo test -p ripr pr_evidence_ledger",
+  "cargo test -p ripr test_oracle_assistant",
+  "cargo xtask check-fixture-contracts",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "ci/pr-evidence-ledger-summary"
-status = "done"
-branch = "ci-pr-evidence-ledger-summary"
+id = "dogfood/test-oracle-assistant-receipt"
+status = "blocked"
+branch = "dogfood-test-oracle-assistant-receipt"
 stackable = false
 blocked_by = [
-  "report/pr-evidence-ledger",
+  "fixtures/canonical-review-loop",
 ]
-acceptance = "Surface PR evidence ledger movement in generated CI summaries and artifacts while preserving advisory defaults and leaving gate decisions as the pass/fail authority"
+acceptance = "Record a repo-local proof receipt that traces one seam through PR guidance, editor/agent packet surfaces, verification commands, after-evidence, receipt, PR evidence ledger, and coverage/grip frontier availability without changing source automatically"
 commands = [
-  "cargo test -p ripr init_generated_github_workflow",
-  "cargo xtask check-workflows",
+  "cargo xtask dogfood",
+  "cargo xtask test-oracle-report",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-pr",
 ]
 
 [[work_item]]
-id = "report/coverage-grip-frontier"
-status = "done"
-branch = "report-coverage-grip-frontier"
+id = "docs/test-oracle-assistant-workflow"
+status = "blocked"
+branch = "docs-test-oracle-assistant-workflow"
 stackable = false
 blocked_by = [
-  "spec/pr-evidence-ledger-surface",
-  "report/pr-evidence-ledger",
-  "ci/pr-evidence-ledger-summary",
+  "dogfood/test-oracle-assistant-receipt",
 ]
-acceptance = "Add optional coverage/grip frontier summaries so teams can see coverage delta and RIPR evidence movement as separate advisory axes without making coverage blocking or claiming runtime adequacy"
-commands = [
-  "cargo test -p ripr coverage_grip",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "docs/pr-evidence-ledger-workflow"
-status = "done"
-branch = "docs-pr-evidence-ledger-workflow"
-stackable = false
-blocked_by = [
-  "ci/pr-evidence-ledger-summary",
-  "report/coverage-grip-frontier",
-]
-acceptance = "Document how teams read PR evidence ledgers, use waiver aging and baseline burn-down, route repair receipts, interpret coverage/grip frontier signals, and track movement toward RIPR 0 without learning internal report topology"
+acceptance = "Document the user workflow from PR recommendation to editor/agent handoff, one focused test, verification, receipt, and advisory CI/ledger projection while preserving static-evidence limits"
 commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
@@ -108,18 +92,17 @@ commands = [
 ]
 
 [[work_item]]
-id = "campaign/pr-evidence-ledger-closeout"
-status = "done"
-branch = "campaign-pr-evidence-ledger-closeout"
+id = "campaign/test-oracle-assistant-proof-closeout"
+status = "blocked"
+branch = "campaign-test-oracle-assistant-proof-closeout"
 stackable = false
 blocked_by = [
-  "spec/pr-evidence-ledger-surface",
-  "report/pr-evidence-ledger",
-  "ci/pr-evidence-ledger-summary",
-  "report/coverage-grip-frontier",
-  "docs/pr-evidence-ledger-workflow",
+  "spec/test-oracle-assistant-loop",
+  "fixtures/canonical-review-loop",
+  "dogfood/test-oracle-assistant-receipt",
+  "docs/test-oracle-assistant-workflow",
 ]
-acceptance = "Close Campaign 19 only after PR evidence ledgers, generated-CI projection, coverage/grip frontier summaries, and user workflow docs are in place while defaults stay advisory"
+acceptance = "Close Campaign 20 only after the end-to-end assistant proof contract, canonical fixture, dogfood receipt, and user workflow docs demonstrate the full loop while defaults stay advisory"
 commands = [
   "cargo xtask check-spec-format",
   "cargo xtask check-doc-index",

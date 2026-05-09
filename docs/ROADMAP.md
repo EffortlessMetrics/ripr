@@ -170,23 +170,22 @@ editor loop is documented in the
 [Editor Evidence UX closeout](handoffs/2026-05-09-editor-evidence-ux-closeout.md)
 records the prompt-to-artifact audit. Future editor work should be opened as a
 new explicit campaign.
-Campaign 19 is open as PR Evidence Ledger. It turns RIPR Zero progress from a
+Campaign 19 closed as PR Evidence Ledger. It turned RIPR Zero progress from a
 current-status surface into an append-only PR adoption history: new
 policy-eligible gaps, baseline debt resolved, acknowledgements, suppressions,
-gate mode, repair receipts, and optional coverage/grip frontier signals. The
-RIPR-SPEC-0018 now pins the contract, and `ripr pr-ledger record` writes the
-read-only JSON/Markdown producer. Generated-CI projection now writes and
-summarizes `pr-evidence-ledger.{json,md}` as advisory PR movement evidence.
-`ripr coverage-grip frontier` now reports coverage delta and RIPR movement as
-separate advisory axes. `docs/PR_EVIDENCE_LEDGER_WORKFLOW.md` now documents how
-teams use ledger cards for waiver aging, baseline burn-down, repair receipts,
-coverage/grip frontier signals, and movement toward RIPR 0. The next ready
-item was `campaign/pr-evidence-ledger-closeout`. Campaign 19 is now closed:
-the PR evidence ledger surface has a spec, producer, generated-CI projection,
-coverage/grip frontier report, user workflow doc, and closeout receipt while
-remaining advisory by default and keeping gate decisions as the pass/fail
-authority. Choose the next campaign explicitly before adding another product
-lane.
+gate mode, repair receipts, waiver aging, and optional coverage/grip frontier
+signals. RIPR-SPEC-0018 pins the contract, `ripr pr-ledger record` writes the
+read-only JSON/Markdown producer, generated CI writes and summarizes
+`pr-evidence-ledger.{json,md}` as advisory PR movement evidence, and `ripr
+coverage-grip frontier` reports coverage delta and RIPR movement as separate
+advisory axes. `docs/PR_EVIDENCE_LEDGER_WORKFLOW.md` documents how teams use
+ledger cards for waiver aging, baseline burn-down, repair receipts,
+coverage/grip frontier signals, and movement toward RIPR 0. Campaign 20 is now
+open as Test-Oracle Assistant Proof. Its first ready item is
+`spec/test-oracle-assistant-loop`, which defines the full PR-time proof loop
+from changed Rust behavior through static evidence, PR/editor guidance,
+focused-test handoff, verification, receipt, and advisory CI/ledger projection
+without changing analyzer, policy, editor, or default CI behavior.
 
 ## Strategic Sequence
 
