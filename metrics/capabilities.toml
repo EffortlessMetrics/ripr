@@ -534,7 +534,7 @@ status = "alpha"
 spec = "RIPR-SPEC-0005"
 evidence = [
   "crates/ripr/src/output/repo_exposure.rs",
-  "schema 0.3 with all 11 SeamGripClass metric buckets and related-test relation reason/confidence",
+  "schema 0.3 with all 11 SeamGripClass metric buckets, related-test relation reason/confidence, and additive seams[].evidence_record",
   "cargo xtask repo-exposure-report",
   "cargo xtask repo-exposure-latency-report writes bounded latency diagnostics without changing repo-exposure output schemas",
   "repo file-fact cache reuses parser/file facts under target/ripr/cache/repo-file-facts/0.1 without caching rendered outputs",
@@ -546,6 +546,22 @@ evidence = [
 fixtures = []
 next = "campaign/hot-sidecar-latency-closeout"
 metric = "per-class metric buckets stable across runs"
+
+[[capability]]
+id = "evidence_record"
+name = "Evidence record"
+status = "alpha"
+spec = "RIPR-SPEC-0021"
+evidence = [
+  "docs/specs/RIPR-SPEC-0021-evidence-record.md defines the additive seam-native evidence record contract",
+  "crates/ripr/src/output/evidence_record.rs projects existing ClassifiedSeam facts into identity, evidence path, observed values, missing discriminators, related tests, recommendation, actionability, calibration placeholder, and static limitations",
+  "crates/ripr/src/output/repo_exposure.rs attaches seams[].evidence_record while preserving existing repo-exposure seam fields",
+  "docs/OUTPUT_SCHEMA.md documents evidence_record schema 0.1 under repo-exposure schema 0.3",
+  "unit tests pin identity, grip class, evidence path, recommendation/actionability, calibration placeholder, and static limitations"
+]
+fixtures = []
+next = "output/zero-surfaces-consume-evidence-record"
+metric = "evidence_record_projected_seams, evidence_record_actionable_guidance, evidence_record_static_limitations"
 
 [[capability]]
 id = "evidence_health_report"

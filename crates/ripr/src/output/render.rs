@@ -252,7 +252,7 @@ mod tests {
         let sarif =
             render_check_with_config(&output, &OutputFormat::RepoSarif, &RiprConfig::default())?;
 
-        assert!(exposure_json.contains("\"schema_version\": \"0.2\""));
+        assert!(exposure_json.contains("\"schema_version\": \"0.3\""));
         assert!(exposure_json.contains("over_threshold"));
         assert!(exposure_md.contains("over_threshold"));
         assert!(sarif.contains("\"version\": \"2.1.0\""));

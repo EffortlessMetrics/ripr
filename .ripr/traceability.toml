@@ -1344,3 +1344,36 @@ metrics = [
   "first_useful_action_already_improved",
   "first_useful_action_unchanged_after_attempt",
 ]
+
+[[behavior]]
+id = "RIPR-SPEC-0021"
+name = "evidence record"
+spec = "docs/specs/RIPR-SPEC-0021-evidence-record.md"
+tests = [
+  "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_carries_identity_path_guidance_and_calibration_placeholder",
+  "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_names_static_limitations_from_unknown_stages",
+  "crates/ripr/src/output/evidence_record.rs::tests::evidence_record_marks_opaque_seams_as_static_limitation_work",
+  "crates/ripr/src/output/repo_exposure.rs::tests::json_carries_schema_version_scope_and_metrics",
+  "crates/ripr/src/output/repo_exposure.rs::tests::json_carries_full_classified_record",
+  "crates/ripr/src/output/render.rs::tests::render_dispatch_renders_repo_exposure_and_sarif_formats",
+]
+fixtures = []
+code = [
+  "crates/ripr/src/output/evidence_record.rs",
+  "crates/ripr/src/output/repo_exposure.rs",
+  "crates/ripr/src/output/mod.rs",
+]
+outputs = [
+  "docs/specs/RIPR-SPEC-0021-evidence-record.md",
+  "docs/specs/README.md",
+  "docs/OUTPUT_SCHEMA.md",
+  "docs/CAPABILITY_MATRIX.md",
+  "metrics/capabilities.toml",
+  ".ripr/traceability.toml",
+  "CHANGELOG.md",
+]
+metrics = [
+  "evidence_record_projected_seams",
+  "evidence_record_actionable_guidance",
+  "evidence_record_static_limitations",
+]
