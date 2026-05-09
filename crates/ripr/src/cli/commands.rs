@@ -1198,6 +1198,31 @@ jobs:
           fi
           ripr "${ledger_args[@]}"
 
+      - name: Render RIPR test-oracle assistant proof
+        if: always() && hashFiles('target/ripr/review/comments.json') != '' && hashFiles('target/ripr/workflow/agent-brief.json') != '' && hashFiles('target/ripr/workflow/before.repo-exposure.json') != '' && hashFiles('target/ripr/workflow/after.repo-exposure.json') != '' && hashFiles('target/ripr/reports/agent-receipt.json') != '' && hashFiles('target/ripr/reports/pr-evidence-ledger.json') != ''
+        continue-on-error: true
+        run: |
+          mkdir -p target/ripr/reports
+          proof_args=(
+            assistant-loop proof
+            --root .
+            --pr-guidance target/ripr/review/comments.json
+            --agent-packet target/ripr/workflow/agent-brief.json
+            --before target/ripr/workflow/before.repo-exposure.json
+            --after target/ripr/workflow/after.repo-exposure.json
+            --receipt target/ripr/reports/agent-receipt.json
+            --ledger target/ripr/reports/pr-evidence-ledger.json
+            --out target/ripr/reports/test-oracle-assistant-proof.json
+            --out-md target/ripr/reports/test-oracle-assistant-proof.md
+          )
+          if [ -f target/ripr/reports/coverage-grip-frontier.json ]; then
+            proof_args+=(--coverage-frontier target/ripr/reports/coverage-grip-frontier.json)
+          fi
+          if [ -f target/ripr/reports/gate-decision.json ]; then
+            proof_args+=(--gate-decision target/ripr/reports/gate-decision.json)
+          fi
+          ripr "${proof_args[@]}"
+
       - name: Render RIPR LLM work-loop summaries
         if: always()
         continue-on-error: true
@@ -1346,6 +1371,47 @@ jobs:
               echo 'PR evidence ledger was not run. It requires pull-request guidance from `target/ripr/review/comments.json`.'
             fi
             echo
+            if [ -f target/ripr/reports/test-oracle-assistant-proof.json ] || [ -f target/ripr/reports/test-oracle-assistant-proof.md ]; then
+              echo '### Test-oracle assistant proof'
+              if [ -f target/ripr/reports/test-oracle-assistant-proof.json ]; then
+                proof_json=target/ripr/reports/test-oracle-assistant-proof.json
+                proof_status="$(jq -r '.status // "unknown"' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_seam="$(jq -r '(.seam.path // "unknown") + (if .seam.line then ":" + (.seam.line|tostring) else "" end)' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_missing="$(jq -r '.seam.missing_discriminator // "not_available"' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_placement="$(jq -r '.recommendation.placement // "not_available"' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_movement="$(jq -r '.evidence_movement.state // "unknown"' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_receipt="$(jq -r '.evidence_movement.artifact // .inputs.receipt // "not_available"' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_gate="$(jq -r '.ci_projection.gate_decision // "not_supplied"' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_coverage="$(jq -r '.ci_projection.coverage_frontier // "not_supplied"' "$proof_json" 2>/dev/null || echo unknown)"
+                proof_warning_count="$(jq -r '(.warnings // [] | length)' "$proof_json" 2>/dev/null || echo 0)"
+                proof_status="$(markdown_inline "$proof_status")"
+                proof_seam="$(markdown_inline "$proof_seam")"
+                proof_missing="$(markdown_inline "$proof_missing")"
+                proof_placement="$(markdown_inline "$proof_placement")"
+                proof_movement="$(markdown_inline "$proof_movement")"
+                proof_receipt="$(markdown_inline "$proof_receipt")"
+                proof_gate="$(markdown_inline "$proof_gate")"
+                proof_coverage="$(markdown_inline "$proof_coverage")"
+                proof_warning_count="$(markdown_inline "$proof_warning_count")"
+                echo '#### Assistant proof at a glance'
+                echo "- Status: \`$proof_status\`"
+                echo "- Seam: \`$proof_seam\`"
+                echo "- Missing discriminator: \`$proof_missing\`"
+                echo "- Placement: \`$proof_placement\`"
+                echo "- Static movement: \`$proof_movement\`"
+                echo "- Receipt: \`$proof_receipt\`"
+                echo "- Gate input: \`$proof_gate\`"
+                echo "- Coverage/grip frontier input: \`$proof_coverage\`"
+                echo "- Warnings: \`$proof_warning_count\`"
+                echo "- Proof artifacts: \`target/ripr/reports/test-oracle-assistant-proof.json\`, \`target/ripr/reports/test-oracle-assistant-proof.md\`"
+                echo "- Pass/fail authority remains \`ripr gate evaluate\` when an explicit gate mode is configured."
+                echo
+              fi
+              if [ -f target/ripr/reports/test-oracle-assistant-proof.md ]; then
+                cat target/ripr/reports/test-oracle-assistant-proof.md
+              fi
+              echo
+            fi
             echo '### Gate decision'
             if [ -f target/ripr/reports/gate-decision.json ]; then
               gate_json=target/ripr/reports/gate-decision.json
@@ -3909,6 +3975,7 @@ mod tests {
                 "ripr baseline diff",
                 "zero status",
                 "pr-ledger record",
+                "assistant-loop proof",
                 "ripr agent status",
                 "ripr agent review-summary",
                 "cargo xtask operator-cockpit",
@@ -3942,6 +4009,8 @@ mod tests {
                 "target/ripr/reports/ripr-zero-status.md",
                 "target/ripr/reports/pr-evidence-ledger.json",
                 "target/ripr/reports/pr-evidence-ledger.md",
+                "target/ripr/reports/test-oracle-assistant-proof.json",
+                "target/ripr/reports/test-oracle-assistant-proof.md",
                 "target/ripr/review/comments.json",
                 "target/ci/labels.json",
             ],
@@ -3958,6 +4027,8 @@ mod tests {
                 "#### RIPR Zero at a glance",
                 "### PR evidence ledger",
                 "#### PR movement at a glance",
+                "### Test-oracle assistant proof",
+                "#### Assistant proof at a glance",
                 "### SARIF and badge status",
                 "### PR guidance annotations",
                 "### Known limits",
@@ -3973,6 +4044,7 @@ mod tests {
                 "Render RIPR baseline debt delta",
                 "Render RIPR Zero status",
                 "Render RIPR PR evidence ledger",
+                "Render RIPR test-oracle assistant proof",
                 "Render RIPR LLM work-loop summaries",
                 "Run RIPR PR guidance report",
                 "Capture RIPR gate labels",
@@ -5688,6 +5760,8 @@ mod tests {
         assert!(workflow.contains("target/ripr/reports/ripr-zero-status.md"));
         assert!(workflow.contains("target/ripr/reports/pr-evidence-ledger.json"));
         assert!(workflow.contains("target/ripr/reports/pr-evidence-ledger.md"));
+        assert!(workflow.contains("target/ripr/reports/test-oracle-assistant-proof.json"));
+        assert!(workflow.contains("target/ripr/reports/test-oracle-assistant-proof.md"));
         assert!(workflow.contains("target/ci/labels.json"));
         assert!(workflow.contains("target/ripr/review/comments.json"));
         assert!(workflow.contains("target/ripr/review"));
@@ -5696,6 +5770,7 @@ mod tests {
         assert!(workflow.contains("name: Evaluate RIPR gate decision"));
         assert!(workflow.contains("name: Render RIPR baseline debt delta"));
         assert!(workflow.contains("name: Emit RIPR PR guidance annotations"));
+        assert!(workflow.contains("name: Render RIPR test-oracle assistant proof"));
         assert!(workflow.contains("escape_github_property()"));
         assert!(workflow.contains("annotation_path=\"$(escape_github_property \"$path\")\""));
         assert!(workflow.contains("::warning file=$annotation_path,line=$annotation_line"));
@@ -5712,6 +5787,8 @@ mod tests {
         assert!(workflow.contains("#### RIPR Zero at a glance"));
         assert!(workflow.contains("### PR evidence ledger"));
         assert!(workflow.contains("#### PR movement at a glance"));
+        assert!(workflow.contains("### Test-oracle assistant proof"));
+        assert!(workflow.contains("#### Assistant proof at a glance"));
         assert!(workflow.contains("markdown_inline()"));
         assert!(workflow.contains("Active PR labels"));
         assert!(workflow.contains("Applied waiver label"));
@@ -5721,6 +5798,7 @@ mod tests {
         assert!(workflow.contains("Blocking reason"));
         assert!(workflow.contains("Gate artifacts"));
         assert!(workflow.contains("Baseline delta artifacts"));
+        assert!(workflow.contains("Proof artifacts"));
         assert!(workflow.contains("### SARIF and badge status"));
         assert!(workflow.contains("### PR guidance annotations"));
         assert!(workflow.contains("### Known limits"));
@@ -5791,7 +5869,20 @@ mod tests {
         assert!(workflow.contains("Set `RIPR_GATE_BASELINE`"));
         assert!(workflow.contains("RIPR_GATE_MODE"));
         assert!(workflow.contains("RIPR_GATE_BASELINE"));
+        assert!(workflow.contains("assistant-loop proof"));
+        assert!(workflow.contains("--pr-guidance target/ripr/review/comments.json"));
+        assert!(workflow.contains("--agent-packet target/ripr/workflow/agent-brief.json"));
+        assert!(workflow.contains("--before target/ripr/workflow/before.repo-exposure.json"));
+        assert!(workflow.contains("--after target/ripr/workflow/after.repo-exposure.json"));
+        assert!(workflow.contains("--receipt target/ripr/reports/agent-receipt.json"));
+        assert!(workflow.contains("--ledger target/ripr/reports/pr-evidence-ledger.json"));
+        assert!(
+            workflow
+                .contains("--coverage-frontier target/ripr/reports/coverage-grip-frontier.json")
+        );
+        assert!(workflow.contains("--gate-decision target/ripr/reports/gate-decision.json"));
         assert!(workflow.contains("ripr \"${gate_args[@]}\""));
+        assert!(workflow.contains("ripr \"${proof_args[@]}\""));
         assert!(workflow.contains("Set `RIPR_GATE_MODE`"));
         assert!(workflow.contains("No runtime mutation execution is performed"));
         assert!(workflow.contains("hashFiles('crates/ripr/Cargo.toml')"));
@@ -5861,6 +5952,16 @@ mod tests {
             &workflow,
             "Render RIPR Zero status",
             "Render RIPR PR evidence ledger",
+        );
+        assert_step_before(
+            &workflow,
+            "Render RIPR PR evidence ledger",
+            "Render RIPR test-oracle assistant proof",
+        );
+        assert_step_before(
+            &workflow,
+            "Render RIPR test-oracle assistant proof",
+            "Render RIPR LLM work-loop summaries",
         );
         assert_step_before(
             &workflow,
@@ -5955,6 +6056,43 @@ mod tests {
         assert!(pr_ledger.contains("ledger_args+=(--label \"$label\")"));
         assert!(pr_ledger.contains("ripr \"${ledger_args[@]}\""));
 
+        let assistant_proof = workflow_step(&workflow, "Render RIPR test-oracle assistant proof");
+        assert!(assistant_proof.contains("hashFiles('target/ripr/review/comments.json')"));
+        assert!(assistant_proof.contains("hashFiles('target/ripr/workflow/agent-brief.json')"));
+        assert!(
+            assistant_proof.contains("hashFiles('target/ripr/workflow/before.repo-exposure.json')")
+        );
+        assert!(
+            assistant_proof.contains("hashFiles('target/ripr/workflow/after.repo-exposure.json')")
+        );
+        assert!(assistant_proof.contains("hashFiles('target/ripr/reports/agent-receipt.json')"));
+        assert!(
+            assistant_proof.contains("hashFiles('target/ripr/reports/pr-evidence-ledger.json')")
+        );
+        assert!(assistant_proof.contains("continue-on-error: true"));
+        assert!(assistant_proof.contains("assistant-loop proof"));
+        assert!(assistant_proof.contains("--root ."));
+        assert!(assistant_proof.contains("--pr-guidance target/ripr/review/comments.json"));
+        assert!(assistant_proof.contains("--agent-packet target/ripr/workflow/agent-brief.json"));
+        assert!(
+            assistant_proof.contains("--before target/ripr/workflow/before.repo-exposure.json")
+        );
+        assert!(assistant_proof.contains("--after target/ripr/workflow/after.repo-exposure.json"));
+        assert!(assistant_proof.contains("--receipt target/ripr/reports/agent-receipt.json"));
+        assert!(assistant_proof.contains("--ledger target/ripr/reports/pr-evidence-ledger.json"));
+        assert!(
+            assistant_proof.contains("--out target/ripr/reports/test-oracle-assistant-proof.json")
+        );
+        assert!(
+            assistant_proof.contains("--out-md target/ripr/reports/test-oracle-assistant-proof.md")
+        );
+        assert!(
+            assistant_proof
+                .contains("--coverage-frontier target/ripr/reports/coverage-grip-frontier.json")
+        );
+        assert!(assistant_proof.contains("--gate-decision target/ripr/reports/gate-decision.json"));
+        assert!(assistant_proof.contains("ripr \"${proof_args[@]}\""));
+
         let annotations = workflow_step(&workflow, "Emit RIPR PR guidance annotations");
         assert!(annotations.contains("hashFiles('target/ripr/review/comments.json')"));
         assert!(annotations.contains("escape_github_message()"));
@@ -6036,6 +6174,16 @@ mod tests {
         assert!(summary.contains("cat target/ripr/reports/pr-evidence-ledger.md"));
         assert!(summary.contains("PR evidence ledger was not generated"));
         assert!(summary.contains("PR evidence ledger was not run"));
+        assert!(summary.contains("### Test-oracle assistant proof"));
+        assert!(summary.contains("#### Assistant proof at a glance"));
+        assert!(summary.contains("target/ripr/reports/test-oracle-assistant-proof.json"));
+        assert!(summary.contains("target/ripr/reports/test-oracle-assistant-proof.md"));
+        assert!(summary.contains(".seam.missing_discriminator // \"not_available\""));
+        assert!(summary.contains(".recommendation.placement // \"not_available\""));
+        assert!(summary.contains(".evidence_movement.state // \"unknown\""));
+        assert!(summary.contains(".ci_projection.gate_decision // \"not_supplied\""));
+        assert!(summary.contains(".ci_projection.coverage_frontier // \"not_supplied\""));
+        assert!(summary.contains("cat target/ripr/reports/test-oracle-assistant-proof.md"));
         assert!(summary.contains(".summary.comments // 0"));
         assert!(summary.contains(".summary.summary_only // 0"));
         assert!(summary.contains(".summary.suppressed // 0"));

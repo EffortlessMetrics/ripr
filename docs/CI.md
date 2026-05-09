@@ -1221,6 +1221,17 @@ See [PR evidence ledger workflow](PR_EVIDENCE_LEDGER_WORKFLOW.md) for how to
 read the ledger as waiver aging, baseline burn-down, repair receipts, and
 coverage/grip frontier evidence.
 
+When the full assistant-loop artifact chain is present, generated CI also
+writes and uploads `target/ripr/reports/test-oracle-assistant-proof.json` and
+`target/ripr/reports/test-oracle-assistant-proof.md`. This step is advisory and
+runs only after PR guidance, the editor/agent brief, before/after static
+evidence, the agent receipt, and the PR evidence ledger already exist. The job
+summary appends the proof report and an at-a-glance card with the selected seam,
+missing discriminator, placement state, static movement, receipt path, optional
+gate input, optional coverage/grip frontier input, and warning count. If the
+required inputs are absent, generated CI skips the proof projection instead of
+printing a placeholder or changing pass/fail behavior.
+
 For every configured gate mode, the generated workflow behavior is:
 
 1. capture active PR labels into `target/ci/labels.json`;
@@ -1237,11 +1248,16 @@ For every configured gate mode, the generated workflow behavior is:
 9. run `ripr pr-ledger record` on pull requests when `comments.json` exists;
 10. render the PR movement section from `pr-evidence-ledger.json` and append
    `pr-evidence-ledger.md` when present;
-11. append the detailed `gate-decision.md`, `baseline-debt-delta.md`, and
+11. run `ripr assistant-loop proof` only when the required assistant-loop
+   artifacts exist;
+12. render the assistant proof section from `test-oracle-assistant-proof.json`
+   and append `test-oracle-assistant-proof.md` when present;
+13. append the detailed `gate-decision.md`, `baseline-debt-delta.md`, and
    `ripr-zero-status.md` reports when present;
-12. upload gate, baseline delta, RIPR Zero, and PR evidence ledger artifacts
-   with the normal `ripr-reports` artifact packet;
-13. fail only when the explicit gate mode returns `blocked` or `config_error`.
+14. upload gate, baseline delta, RIPR Zero, PR evidence ledger, and
+   test-oracle assistant proof artifacts with the normal `ripr-reports`
+   artifact packet;
+15. fail only when the explicit gate mode returns `blocked` or `config_error`.
 
 Acknowledgeable policy:
 

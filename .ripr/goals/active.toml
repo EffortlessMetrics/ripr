@@ -42,7 +42,7 @@ commands = [
 
 [[work_item]]
 id = "ci/test-oracle-assistant-proof-artifacts"
-status = "ready"
+status = "done"
 branch = "ci-test-oracle-assistant-proof-artifacts"
 stackable = false
 acceptance = "Surface `test-oracle-assistant-proof.{json,md}` in generated GitHub CI as advisory artifacts and summary content only when the required inputs exist, without changing default blocking"
@@ -56,13 +56,9 @@ commands = [
 
 [[work_item]]
 id = "docs/test-oracle-assistant-proof-report"
-status = "blocked"
+status = "ready"
 branch = "docs-test-oracle-assistant-proof-report"
 stackable = false
-blocked_by = [
-  "report/test-oracle-assistant-proof",
-  "ci/test-oracle-assistant-proof-artifacts",
-]
 acceptance = "Document how reviewers, maintainers, and coding agents read the proof report, warnings, static movement, optional CI projection, and limits without artifact archaeology"
 commands = [
   "cargo xtask check-doc-index",

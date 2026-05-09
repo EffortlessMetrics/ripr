@@ -49,6 +49,10 @@ are scoped or reviewed.
   optional coverage/grip frontier inputs without rerunning analysis, editing
   source, generating tests, calling providers, running mutation testing, or
   changing default CI blocking.
+- Generated GitHub CI now surfaces `test-oracle-assistant-proof.{json,md}` as
+  advisory summary and artifact content only when the required PR guidance,
+  agent brief, before/after evidence, agent receipt, and PR evidence ledger
+  inputs already exist.
 - Opened Campaign 19, PR Evidence Ledger, with
   `spec/pr-evidence-ledger-surface` as the first ready work item so per-PR
   RIPR evidence can become an adoption ledger for movement history, waiver
