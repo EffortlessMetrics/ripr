@@ -56,6 +56,10 @@ are scoped or reviewed.
   `canonical_gap_id` and match it before legacy selectors, while PR evidence
   ledger waiver, suppression, receipt, and top repair route records carry the
   same identity when supplied.
+- Surfaced `assistant-loop-health.{json,md}` in generated GitHub CI when
+  `test-oracle-assistant-proof.json` exists, uploads the reports with the
+  normal `ripr-reports` packet, and appends a compact advisory health summary
+  without changing pass/fail authority.
 - Opened Campaign 22, First Useful Action, with
   `spec/first-useful-action-report` as the first ready work item so existing
   editor, PR guidance, ledger, proof, receipt, optional gate, coverage/grip,

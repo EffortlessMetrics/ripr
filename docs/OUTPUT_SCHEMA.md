@@ -3332,10 +3332,10 @@ advisory limits. For example, a repair row should begin with
 read, Markdown should show `Status: incomplete` and put the repair instruction
 before empty counts.
 
-Generated CI may later run `ripr assistant-loop health` only when proof
-artifacts exist, upload `assistant-loop-health.{json,md}` with the normal report
-packet, and append a compact summary. The projection is advisory:
-`ripr gate evaluate` remains the only configured pass/fail authority.
+Generated CI runs `ripr assistant-loop health` only when proof artifacts exist,
+uploads `assistant-loop-health.{json,md}` with the normal report packet, and
+appends a compact summary. The projection is advisory: `ripr gate evaluate`
+remains the only configured pass/fail authority.
 
 ### Review Guidance Outcome Receipt
 

@@ -74,7 +74,7 @@ commands = [
 
 [[work_item]]
 id = "ci/assistant-loop-health-artifacts"
-status = "ready"
+status = "done"
 branch = "ci-assistant-loop-health-artifacts"
 stackable = false
 acceptance = "Generated GitHub CI uploads and summarizes assistant-loop-health JSON/Markdown only when proof artifacts exist, while keeping the report advisory and preserving gate evaluator pass/fail authority"
@@ -88,8 +88,7 @@ commands = [
 
 [[work_item]]
 id = "docs/assistant-loop-health-workflow"
-status = "blocked"
-blocked_by = ["report/assistant-loop-health", "ci/assistant-loop-health-artifacts"]
+status = "ready"
 branch = "docs-assistant-loop-health-workflow"
 stackable = false
 acceptance = "Document proof report versus health report, complete versus partial loops, missing-input repair, unchanged movement, generated-CI summary use, and advisory limits"
