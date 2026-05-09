@@ -238,6 +238,17 @@ maintainer and agent use; and the
 [Campaign 23 closeout](handoffs/2026-05-09-campaign-23-closeout.md) records
 the final audit and future-lane boundary.
 
+[PR Review Front Panel](PR_REVIEW_FRONT_PANEL_PROPOSAL.md) is now open as
+Campaign 24 after Assistant Loop Health. It composes existing PR guidance,
+first useful action, assistant proof, assistant-loop health, PR evidence
+ledger, baseline delta, gate decision, receipts, calibration, and optional
+coverage/grip frontier artifacts into one advisory GitHub PR first screen. The
+campaign keeps Lane 4's projection boundary: consume explicit artifacts, do not
+change analyzer behavior, recommendation ranking, gate semantics, editor
+behavior, mutation execution, provider calls, source files, generated tests,
+inline-comment defaults, or default CI blocking. The first ready slice is
+`spec/pr-review-front-panel-report`.
+
 ## Strategic Sequence
 
 The load-bearing path is:

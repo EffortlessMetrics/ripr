@@ -1,35 +1,38 @@
-id = "assistant-loop-health"
-title = "Assistant Loop Health"
+id = "pr-review-front-panel"
+title = "PR Review Front Panel"
 status = "active"
 
-# This is Campaign 23 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
-# Campaign 22 closed First Useful Action. This campaign measures whether
-# assistant-directed test loops are complete, stuck, missing receipts, or moving
-# static evidence over time.
+# This is Campaign 24 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+# Campaign 23 closed Assistant Loop Health. This campaign makes the GitHub PR
+# and generated-CI first screen tell one advisory test-oracle review story from
+# explicit existing artifacts.
 
 objective = """
-Summarize proof completeness, missing inputs, static evidence movement,
-recurring warnings, and next repair queues across one or more assistant proof
-reports without changing analyzer behavior, recommendation ranking, gate
-semantics, LSP/editor behavior, mutation execution, provider calls, source
-files, generated tests, or default CI blocking.
+Compose existing PR guidance, first useful action, assistant proof,
+assistant-loop health, PR evidence ledger, baseline delta, gate decision,
+receipts, calibration, and optional coverage/grip frontier artifacts into one
+advisory PR review front panel that answers what matters, why, what to do next,
+how to verify it, what receipt exists, and what policy state applies without
+changing analyzer behavior, recommendation ranking, gate semantics, editor
+behavior, mutation execution, provider calls, source files, generated tests, or
+default CI blocking.
 """
 
 end_state = [
-  "`target/ripr/reports/assistant-loop-health.json` and `.md` summarize assistant proof packet health from explicit existing proof inputs",
-  "the report counts complete, partial, missing-required, and missing-optional proof packets",
-  "the report summarizes static movement as improved, unchanged, regressed, or unknown using proof data only",
-  "recurring warnings and missing inputs are grouped without turning into an opaque score",
-  "a bounded repair queue routes maintainers or coding agents to rerun missing commands, regenerate stale inputs, inspect unchanged evidence, or attach receipts",
-  "generated CI may upload and summarize the report as advisory evidence only when proof artifacts exist",
+  "`target/ripr/reports/pr-review-front-panel.json` and `.md` summarize the PR's test-oracle story from explicit existing inputs",
+  "the panel shows the selected top issue or explains why no safe action is available",
+  "the panel carries missing discriminator, related test, repair or agent handoff command, verify command, receipt path, and static movement when present",
+  "baseline, new policy-eligible, acknowledged, waived, suppressed, and gated states remain visible without becoming hidden success",
+  "optional coverage/grip and calibration inputs are surfaced as advisory context without adequacy claims",
+  "generated CI may upload and summarize the panel as advisory evidence only when source artifacts exist",
 ]
 
 [[work_item]]
-id = "spec/assistant-loop-health-report"
-status = "done"
-branch = "spec-assistant-loop-health-report"
+id = "spec/pr-review-front-panel-report"
+status = "ready"
+branch = "spec-pr-review-front-panel-report"
 stackable = false
-acceptance = "Define the assistant-loop-health JSON/Markdown contract, explicit inputs, statuses, buckets, warnings, repair queue, advisory limits, and future multi-proof behavior before implementation"
+acceptance = "Define the PR review front-panel JSON/Markdown contract, explicit inputs, first-screen fields, artifact grouping, advisory limits, and generated-CI projection boundaries before implementation"
 commands = [
   "cargo xtask check-spec-format",
   "cargo xtask check-doc-index",
@@ -43,11 +46,14 @@ commands = [
 ]
 
 [[work_item]]
-id = "fixtures/assistant-loop-health-corpus"
-status = "done"
-branch = "fixtures-assistant-loop-health-corpus"
+id = "fixtures/pr-review-front-panel-corpus"
+status = "blocked"
+branch = "fixtures-pr-review-front-panel-corpus"
 stackable = false
-acceptance = "Pin complete, partial, missing-required-input, missing-optional-input, unchanged, regressed, warning-heavy, and multi-proof health cases before adding the producer"
+blocked_by = [
+  "spec/pr-review-front-panel-report",
+]
+acceptance = "Pin advisory-only, actionable, summary-only, acknowledged, suppressed, baseline-resolved, blocked, missing-proof, and coverage-flat-grip-improved front-panel cases before adding the producer"
 commands = [
   "cargo xtask fixtures",
   "cargo xtask goldens check",
@@ -58,13 +64,16 @@ commands = [
 ]
 
 [[work_item]]
-id = "report/assistant-loop-health"
-status = "done"
-branch = "report-assistant-loop-health"
+id = "report/pr-review-front-panel"
+status = "blocked"
+branch = "report-pr-review-front-panel"
 stackable = false
-acceptance = "Add a read-only `ripr assistant-loop health` producer that emits advisory JSON/Markdown from explicit existing proof report paths without rerunning analysis"
+blocked_by = [
+  "fixtures/pr-review-front-panel-corpus",
+]
+acceptance = "Add a read-only front-panel producer that emits advisory JSON/Markdown from explicit existing artifact paths without rerunning analysis or changing gate authority"
 commands = [
-  "cargo test -p ripr assistant_loop_health",
+  "cargo test -p ripr pr_review_front_panel",
   "cargo xtask check-output-contracts",
   "cargo xtask check-static-language",
   "cargo xtask check-traceability",
@@ -73,11 +82,14 @@ commands = [
 ]
 
 [[work_item]]
-id = "ci/assistant-loop-health-artifacts"
-status = "done"
-branch = "ci-assistant-loop-health-artifacts"
+id = "ci/pr-review-front-panel-summary"
+status = "blocked"
+branch = "ci-pr-review-front-panel-summary"
 stackable = false
-acceptance = "Generated GitHub CI uploads and summarizes assistant-loop-health JSON/Markdown only when proof artifacts exist, while keeping the report advisory and preserving gate evaluator pass/fail authority"
+blocked_by = [
+  "report/pr-review-front-panel",
+]
+acceptance = "Generated GitHub CI uploads and summarizes PR review front-panel JSON/Markdown only when input artifacts exist, while preserving advisory defaults and gate-decision pass/fail authority"
 commands = [
   "cargo test -p ripr init_generated_github_workflow",
   "cargo xtask check-workflows",
@@ -87,11 +99,14 @@ commands = [
 ]
 
 [[work_item]]
-id = "docs/assistant-loop-health-workflow"
-status = "done"
-branch = "docs-assistant-loop-health-workflow"
+id = "docs/pr-review-front-panel-workflow"
+status = "blocked"
+branch = "docs-pr-review-front-panel-workflow"
 stackable = false
-acceptance = "Document proof report versus health report, complete versus partial loops, missing-input repair, unchanged movement, generated-CI summary use, and advisory limits"
+blocked_by = [
+  "ci/pr-review-front-panel-summary",
+]
+acceptance = "Document how reviewers, maintainers, developers, and coding agents read the PR review front panel, follow repair routes, inspect receipts, and interpret advisory limits"
 commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
@@ -100,11 +115,30 @@ commands = [
 ]
 
 [[work_item]]
-id = "campaign/assistant-loop-health-closeout"
-status = "done"
-branch = "campaign-assistant-loop-health-closeout"
+id = "dogfood/pr-review-front-panel-receipts"
+status = "blocked"
+branch = "dogfood-pr-review-front-panel-receipts"
 stackable = false
-acceptance = "Close Campaign 23 after the spec, fixtures, producer, CI projection, docs, and validation show assistant-loop health is advisory, explicit-input-only, and bounded to existing proof artifacts"
+blocked_by = [
+  "docs/pr-review-front-panel-workflow",
+]
+acceptance = "Record repo-local front-panel receipts for actionable, acknowledged, suppressed, baseline-resolved, blocked, missing-proof, no-actionable, and coverage-flat-grip-improved cases"
+commands = [
+  "cargo xtask dogfood",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "campaign/pr-review-front-panel-closeout"
+status = "blocked"
+branch = "campaign-pr-review-front-panel-closeout"
+stackable = false
+blocked_by = [
+  "dogfood/pr-review-front-panel-receipts",
+]
+acceptance = "Close Campaign 24 after the spec, fixtures, producer, generated-CI advisory projection, workflow docs, dogfood receipts, and validation show the front panel is advisory, explicit-input-only, and bounded to existing artifacts"
 commands = [
   "cargo xtask check-campaign",
   "cargo xtask goals next",

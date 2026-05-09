@@ -46,6 +46,7 @@ Current how-to docs:
 - [First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md)
 - [Assistant loop health workflow](ASSISTANT_LOOP_HEALTH_WORKFLOW.md)
 - [Assistant loop health proposal](ASSISTANT_LOOP_HEALTH_PROPOSAL.md)
+- [PR review front panel proposal](PR_REVIEW_FRONT_PANEL_PROPOSAL.md)
 - [Release](RELEASE.md)
 - [Installation verification](INSTALLATION_VERIFICATION.md)
 - [Publishing](PUBLISHING.md)
@@ -84,6 +85,7 @@ Current reference docs:
 - [First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md)
 - [Assistant loop health workflow](ASSISTANT_LOOP_HEALTH_WORKFLOW.md)
 - [Assistant loop health proposal](ASSISTANT_LOOP_HEALTH_PROPOSAL.md)
+- [PR review front panel proposal](PR_REVIEW_FRONT_PANEL_PROPOSAL.md)
 - [Test taxonomy](TEST_TAXONOMY.md)
 - [Engineering rules](ENGINEERING.md)
 - [File policy](FILE_POLICY.md)
@@ -150,6 +152,7 @@ Current explanation docs:
 - [First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md)
 - [Assistant loop health workflow](ASSISTANT_LOOP_HEALTH_WORKFLOW.md)
 - [Assistant loop health proposal](ASSISTANT_LOOP_HEALTH_PROPOSAL.md)
+- [PR review front panel proposal](PR_REVIEW_FRONT_PANEL_PROPOSAL.md)
 
 ## README Rule
 

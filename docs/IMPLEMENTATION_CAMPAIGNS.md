@@ -2641,7 +2641,87 @@ Closeout:
   producer, generated-CI advisory projection, workflow docs, and closeout audit
   are in place. No ready Campaign 23 work item remains in
   `.ripr/goals/active.toml`.
-- Choose the next campaign explicitly before opening another product lane.
+- Campaign 24, PR Review Front Panel, is now open as the next Lane 4 adoption
+  surface. It composes existing artifacts into one advisory generated-CI first
+  screen without changing analyzer, ranking, gate, editor, provider, mutation,
+  source-edit, generated-test, or default-blocking behavior.
+
+## Campaign 24: PR Review Front Panel
+
+Campaign ID: `pr-review-front-panel`
+
+Status: active
+
+Campaigns 13 through 23 built the PR guidance, calibration, optional gate,
+baseline, ledger, assistant proof, first useful action, and assistant-loop
+health surfaces. The next reviewer risk is report sprawl: the evidence exists,
+but the GitHub first screen still should compose it into one test-oracle review
+story.
+
+Objective:
+
+```text
+Compose existing PR guidance, first useful action, assistant proof,
+assistant-loop health, PR evidence ledger, baseline delta, gate decision,
+receipts, calibration, and optional coverage/grip frontier artifacts into one
+advisory PR review front panel that answers what matters, why, what to do next,
+how to verify it, what receipt exists, and what policy state applies without
+changing analyzer behavior, recommendation ranking, gate semantics, editor
+behavior, mutation execution, provider calls, source files, generated tests, or
+default CI blocking.
+```
+
+End state:
+
+- `target/ripr/reports/pr-review-front-panel.json` and `.md` summarize the PR's
+  test-oracle story from explicit existing inputs
+- the panel shows the selected top issue or explains why no safe action is
+  available
+- the panel carries missing discriminator, related test, repair or agent
+  handoff command, verify command, receipt path, and static movement when
+  present
+- baseline, new policy-eligible, acknowledged, waived, suppressed, and gated
+  states remain visible without becoming hidden success
+- optional coverage/grip and calibration inputs are surfaced as advisory
+  context without adequacy claims
+- generated CI uploads and summarizes the panel as advisory evidence only when
+  source artifacts exist
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `spec/pr-review-front-panel-report` | ready | Define the PR review front-panel JSON/Markdown contract, explicit inputs, first-screen fields, artifact grouping, advisory limits, and generated-CI projection boundaries before implementation. |
+| `fixtures/pr-review-front-panel-corpus` | blocked | Blocked on `spec/pr-review-front-panel-report`; pin advisory-only, actionable, summary-only, acknowledged, suppressed, baseline-resolved, blocked, missing-proof, and coverage-flat-grip-improved cases before adding the producer. |
+| `report/pr-review-front-panel` | blocked | Blocked on `fixtures/pr-review-front-panel-corpus`; add a read-only front-panel producer that emits advisory JSON/Markdown from explicit existing artifact paths without rerunning analysis or changing gate authority. |
+| `ci/pr-review-front-panel-summary` | blocked | Blocked on `report/pr-review-front-panel`; generated GitHub CI uploads and summarizes PR review front-panel JSON/Markdown only when input artifacts exist, while preserving advisory defaults and gate-decision pass/fail authority. |
+| `docs/pr-review-front-panel-workflow` | blocked | Blocked on `ci/pr-review-front-panel-summary`; document how reviewers, maintainers, developers, and coding agents read the PR review front panel, follow repair routes, inspect receipts, and interpret advisory limits. |
+| `dogfood/pr-review-front-panel-receipts` | blocked | Blocked on `docs/pr-review-front-panel-workflow`; record repo-local front-panel receipts for actionable, acknowledged, suppressed, baseline-resolved, blocked, missing-proof, no-actionable, and coverage-flat-grip-improved cases. |
+| `campaign/pr-review-front-panel-closeout` | blocked | Blocked on `dogfood/pr-review-front-panel-receipts`; close Campaign 24 after the spec, fixtures, producer, generated-CI advisory projection, workflow docs, dogfood receipts, and validation show the front panel is advisory, explicit-input-only, and bounded to existing artifacts. |
+
+References:
+
+- [PR Review Front Panel proposal](PR_REVIEW_FRONT_PANEL_PROPOSAL.md)
+- [First useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md)
+- [Test-oracle assistant proof report](TEST_ORACLE_ASSISTANT_PROOF_REPORT.md)
+- [Assistant Loop Health workflow](ASSISTANT_LOOP_HEALTH_WORKFLOW.md)
+- [PR evidence ledger workflow](PR_EVIDENCE_LEDGER_WORKFLOW.md)
+
+Blocking conditions:
+
+- analyzer behavior changes or recommendation ranking changes
+- gate policy, waiver, suppression, or baseline semantic changes
+- LSP/editor, provider, mutation, source-edit, generated-test, inline-comment,
+  or default-blocking changes
+- adequacy, correctness, or runtime mutation claims
+- hidden analysis reruns or source artifact discovery that changes semantics
+
+Next:
+
+- Continue with `spec/pr-review-front-panel-report`. The proposal and campaign
+  tracker are in place; the next slice should define the report contract before
+  fixtures, producer, generated-CI projection, docs, dogfood receipts, or
+  closeout work.
 
 ## Future Campaign: Editor Evidence UX
 
