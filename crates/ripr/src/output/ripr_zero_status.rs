@@ -1406,6 +1406,221 @@ mod tests {
     }
 
     #[test]
+    fn evidence_record_context_handles_invalid_and_fallback_shapes() -> Result<(), String> {
+        if super::evidence_record_repair_context_from_value(None).is_some() {
+            return Err("missing evidence_record should not produce repair context".to_string());
+        }
+        let invalid = serde_json::json!("not an object");
+        if super::evidence_record_repair_context_from_value(Some(&invalid)).is_some() {
+            return Err("non-object evidence_record should not produce repair context".to_string());
+        }
+
+        let record = serde_json::json!({
+          "schema_version": "0.1",
+          "seam_id": "record-seam",
+          "canonical_gap_id": null,
+          "owner": "pricing::discounted_total",
+          "location": {"file": "src/pricing.rs"},
+          "seam_kind": "predicate_boundary",
+          "grip_class": "reachable_unrevealed",
+          "headline_eligible": true,
+          "evidence_path": {},
+          "observed_values": [],
+          "missing_discriminators": [
+            {"value": "amount == discount_threshold"}
+          ],
+          "related_tests": [],
+          "recommendation": {
+            "recommended_test": {
+              "file": "tests/pricing.rs",
+              "name": "discounted_total_boundary_discriminator"
+            },
+            "verify_command": "ripr evidence-movement --before before.json --after after.json"
+          },
+          "actionability": {},
+          "calibration": {},
+          "static_limitations": [
+            {"stage": "activate", "reason": "constant unresolved"},
+            {"state": "unknown", "reason": "state only"},
+            {"reason": "plain reason"},
+            {"stage": "observe"}
+          ]
+        });
+
+        let context = super::evidence_record_repair_context_from_value(Some(&record))
+            .ok_or_else(|| "expected valid evidence_record repair context".to_string())?;
+        if context.line.is_some() {
+            return Err(format!(
+                "line should be absent in partial context: {context:?}"
+            ));
+        }
+        if context.suggested_test.as_deref()
+            != Some("tests/pricing.rs::discounted_total_boundary_discriminator")
+        {
+            return Err(format!(
+                "recommended_test should be assertion fallback: {context:?}"
+            ));
+        }
+        if context.related_test.as_deref()
+            != Some("tests/pricing.rs::discounted_total_boundary_discriminator")
+        {
+            return Err(format!(
+                "recommended_test should be related-test fallback: {context:?}"
+            ));
+        }
+        if context.static_limitations
+            != [
+                "activate: constant unresolved",
+                "unknown: state only",
+                "plain reason",
+            ]
+        {
+            return Err(format!("unexpected static limitation labels: {context:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn evidence_record_test_labels_accept_partial_labels() -> Result<(), String> {
+        let file_only = serde_json::json!({"file": "tests/pricing.rs"});
+        let name_only = serde_json::json!({"name": "discounted_total_boundary"});
+        let empty = serde_json::json!({});
+        if super::test_label_from_value(Some(&file_only)) != Some("tests/pricing.rs".to_string()) {
+            return Err("file-only test label should use file".to_string());
+        }
+        if super::test_label_from_value(Some(&name_only))
+            != Some("discounted_total_boundary".to_string())
+        {
+            return Err("name-only test label should use name".to_string());
+        }
+        if super::test_label_from_value(Some(&empty)).is_some() {
+            return Err("empty test label should not produce a label".to_string());
+        }
+        if super::test_label_from_value(None).is_some() {
+            return Err("missing test label should not produce a label".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_zero_status_falls_back_to_legacy_fields_when_record_is_partial() -> Result<(), String> {
+        let delta = r#"{
+          "schema_version": "0.1",
+          "tool": "ripr",
+          "kind": "baseline_debt_delta",
+          "baseline": {"entries": 0},
+          "delta": {
+            "still_present": 0,
+            "resolved": 0,
+            "new_policy_eligible": 1,
+            "acknowledged": 0,
+            "suppressed": 0,
+            "stale_baseline_entry": 0,
+            "invalid_baseline_entry": 0,
+            "missing_current_input": 0
+          },
+          "items": [
+            {
+              "bucket": "new_policy_eligible",
+              "identity": {},
+              "path": "src/legacy.rs",
+              "line": 7,
+              "static_class": "legacy_class",
+              "missing_discriminator": "legacy discriminator",
+              "suggested_test": {
+                "assertion_shape": "legacy assertion",
+                "recommended_test": "tests/legacy.rs::legacy_case"
+              },
+              "repair": {"verify_command": "legacy verify"},
+              "evidence_record": {
+                "schema_version": "0.1",
+                "seam_id": "record-seam",
+                "canonical_gap_id": null,
+                "owner": "pricing::discounted_total",
+                "seam_kind": "predicate_boundary",
+                "headline_eligible": true,
+                "evidence_path": {},
+                "observed_values": [],
+                "missing_discriminators": [],
+                "related_tests": [],
+                "recommendation": {},
+                "actionability": {},
+                "calibration": {},
+                "static_limitations": []
+              }
+            }
+          ],
+          "warnings": []
+        }"#;
+
+        let report = build_ripr_zero_status_report(RiprZeroStatusInput {
+            root: ".".to_string(),
+            generated_at: "unix_ms:100000000".to_string(),
+            baseline_path: None,
+            delta_path: "target/ripr/reports/baseline-debt-delta.json".to_string(),
+            gate_path: None,
+            pr_guidance_path: None,
+            recommendation_calibration_path: None,
+            baseline_json: None,
+            delta_json: Ok(delta.to_string()),
+            gate_json: None,
+            pr_guidance_json: None,
+            recommendation_calibration_json: None,
+        });
+        let rendered = render_ripr_zero_status_json(&report)?;
+        let value = serde_json::from_str::<Value>(&rendered)
+            .map_err(|err| format!("RIPR Zero status JSON should parse: {err}"))?;
+        let route = value
+            .get("repair_routes")
+            .and_then(Value::as_array)
+            .and_then(|routes| routes.first())
+            .ok_or_else(|| format!("missing repair route in: {rendered}"))?;
+        if route.get("seam_id").and_then(Value::as_str) != Some("record-seam") {
+            return Err(format!("expected record seam fallback in: {rendered}"));
+        }
+        if route.get("path").and_then(Value::as_str) != Some("src/legacy.rs") {
+            return Err(format!("expected legacy path fallback in: {rendered}"));
+        }
+        if route.get("line").and_then(Value::as_u64) != Some(7) {
+            return Err(format!("expected legacy line fallback in: {rendered}"));
+        }
+        if route.get("static_class").and_then(Value::as_str) != Some("legacy_class") {
+            return Err(format!(
+                "expected legacy static class fallback in: {rendered}"
+            ));
+        }
+        if route.get("missing_discriminator").and_then(Value::as_str)
+            != Some("legacy discriminator")
+        {
+            return Err(format!(
+                "expected legacy missing discriminator fallback in: {rendered}"
+            ));
+        }
+        if route.get("suggested_test").and_then(Value::as_str) != Some("legacy assertion") {
+            return Err(format!("expected legacy assertion fallback in: {rendered}"));
+        }
+        if route.get("related_test").and_then(Value::as_str) != Some("tests/legacy.rs::legacy_case")
+        {
+            return Err(format!(
+                "expected legacy related test fallback in: {rendered}"
+            ));
+        }
+        if route.get("verify_command").and_then(Value::as_str) != Some("legacy verify") {
+            return Err(format!("expected legacy verify fallback in: {rendered}"));
+        }
+        if route
+            .get("agent_command")
+            .and_then(Value::as_str)
+            .is_none_or(|command| !command.contains("--seam-id record-seam"))
+        {
+            return Err(format!(
+                "expected agent command to use record seam id in: {rendered}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
     fn ripr_zero_status_reports_achieved_when_no_visible_debt_remains() -> Result<(), String> {
         let delta = r#"{
           "schema_version": "0.1",
