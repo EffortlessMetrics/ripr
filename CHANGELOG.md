@@ -53,6 +53,10 @@ are scoped or reviewed.
   reviewers, and coding agents read first-action reports from GitHub or the
   editor, act on the selected action, verify static movement, emit receipts,
   and interpret fallback states without treating the report as gate authority.
+- Extended `cargo xtask dogfood` with checked first-useful-action receipts for
+  actionable, baseline-only, stale, missing-required-artifact,
+  unchanged-after-attempt, and no-actionable-seam routes while preserving
+  advisory static-evidence limits and default non-blocking CI behavior.
 - Opened Campaign 20, Test-Oracle Assistant Proof, with
   `spec/test-oracle-assistant-loop` as the first ready work item so the
   already-built PR guidance, editor/agent handoff, verification, receipts,

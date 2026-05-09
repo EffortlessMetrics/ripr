@@ -44,3 +44,18 @@ Each case pins the expected status, action kind, audience, selected seam,
 target, routing reason, fallback state, command expectations, and static
 limits. The future report producer should use this corpus before adding CI or
 editor projection.
+
+`cargo xtask dogfood` also treats the following cases as repo-local first-action
+receipts:
+
+- `actionable/`
+- `baseline-only/`
+- `stale/`
+- `missing-required-artifact/`
+- `unchanged-after-attempt/`
+- `no-actionable-seam/`
+
+Those dogfood checks prove that the documented first useful action routes stay
+reviewable from checked artifacts. They remain advisory and do not rerun hidden
+analysis, edit source, generate tests, call providers, run mutation testing,
+invent policy, or change CI blocking.

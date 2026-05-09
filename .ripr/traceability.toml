@@ -1251,6 +1251,7 @@ outputs = [
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/ROADMAP.md",
+  "docs/handoffs/2026-05-09-first-useful-action-receipts.md",
   "CHANGELOG.md",
 ]
 metrics = [
@@ -1281,6 +1282,7 @@ tests = [
   "editors/vscode/test/suite/extension.test.ts::status bar projects existing first useful action report",
   "editors/vscode/test/suite/extension.test.ts::status bar ignores first useful action report for another workspace",
   "editors/vscode/test/suite/extension.test.ts::first useful action report does not hide stale editor status",
+  "xtask/src/main.rs::dogfood_first_action_scenarios_have_checked_receipts",
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/first-useful-action/README.md",
@@ -1315,6 +1317,7 @@ code = [
   "crates/ripr/src/cli/help.rs",
   "crates/ripr/src/cli/parse.rs",
   "editors/vscode/src/client.ts",
+  "xtask/src/main.rs",
 ]
 outputs = [
   "docs/specs/RIPR-SPEC-0020-first-useful-action-report.md",

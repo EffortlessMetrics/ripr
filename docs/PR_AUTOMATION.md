@@ -114,7 +114,10 @@ and calibration evidence for `visible-only`, `acknowledgeable`,
 are compared against `fixtures/boundary_gap/expected/gate-adoption/` and
 written under `target/ripr/dogfood/gate-adoption/`; the dogfood report records
 that default generated CI still does not block unless `RIPR_GATE_MODE` is
-explicitly configured.
+explicitly configured. It also checks first useful action receipts from
+`fixtures/boundary_gap/expected/first-useful-action/` for actionable,
+baseline-only, stale, missing-required-artifact, unchanged-after-attempt, and
+no-actionable-seam routes.
 
 `lsp-cockpit-report` reads committed LSP fixture expectations plus the VS Code
 e2e smoke test file and writes `target/ripr/reports/lsp-cockpit.md` and
