@@ -6,8 +6,9 @@
 //! baselines, or change seam grip classifications.
 
 use crate::analysis::ClassifiedSeam;
-use crate::analysis::seams::SeamGripClass;
-use crate::domain::{OracleStrength, StageEvidence, StageState};
+use crate::analysis::seams::{SeamGripClass, SeamKind};
+use crate::analysis::test_grip_evidence::oracle_semantics_for;
+use crate::domain::{OracleKind, OracleStrength, StageEvidence, StageState};
 use crate::output::agent_seam_packets::{
     AssertionShape, CandidateValue, RecommendedTest, assertion_shape_for, candidate_values_for,
     missing_discriminator_records_for, nearest_strong_test_to_imitate, recommended_test_for,
@@ -92,8 +93,16 @@ pub(crate) struct EvidenceRecordRelatedTest {
     pub(crate) oracle_kind: String,
     pub(crate) oracle_strength: String,
     pub(crate) evidence_summary: String,
+    pub(crate) oracle_semantics: EvidenceRecordOracleSemantics,
     pub(crate) relation_reason: String,
     pub(crate) relation_confidence: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct EvidenceRecordOracleSemantics {
+    pub(crate) observes: String,
+    pub(crate) missing: String,
+    pub(crate) upgrade_suggestion: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -217,7 +226,7 @@ pub(crate) fn evidence_record_for(entry: &ClassifiedSeam) -> EvidenceRecord {
             .related_tests
             .iter()
             .take(MAX_RELATED_TESTS_PER_EVIDENCE_RECORD)
-            .map(related_test_record)
+            .map(|test| related_test_record(test, entry.seam.kind()))
             .collect(),
         recommendation,
         actionability,
@@ -408,7 +417,7 @@ fn recommendation_for(
     let verify_command = actionable.then(|| VERIFY_COMMAND.to_string());
     let nearest_test_to_imitate = nearest_strong_test_to_imitate(&entry.evidence)
         .or_else(|| entry.evidence.related_tests.first())
-        .map(related_test_record);
+        .map(|test| related_test_record(test, entry.seam.kind()));
 
     EvidenceRecordRecommendation {
         action: action.to_string(),
@@ -448,7 +457,9 @@ fn assertion_shape_record(shape: AssertionShape) -> EvidenceRecordAssertionShape
 
 fn related_test_record(
     test: &crate::analysis::test_grip_evidence::RelatedTestGrip,
+    seam_kind: SeamKind,
 ) -> EvidenceRecordRelatedTest {
+    let semantics = oracle_semantics_record(&test.oracle_kind, &test.oracle_strength, seam_kind);
     EvidenceRecordRelatedTest {
         name: test.test_name.clone(),
         file: display_path(&test.file),
@@ -456,8 +467,22 @@ fn related_test_record(
         oracle_kind: test.oracle_kind.as_str().to_string(),
         oracle_strength: test.oracle_strength.as_str().to_string(),
         evidence_summary: test.evidence_summary.clone(),
+        oracle_semantics: semantics,
         relation_reason: test.relation_reason.as_str().to_string(),
         relation_confidence: test.relation_confidence.as_str().to_string(),
+    }
+}
+
+fn oracle_semantics_record(
+    kind: &OracleKind,
+    strength: &OracleStrength,
+    seam_kind: SeamKind,
+) -> EvidenceRecordOracleSemantics {
+    let semantics = oracle_semantics_for(kind, strength, seam_kind);
+    EvidenceRecordOracleSemantics {
+        observes: semantics.observes,
+        missing: semantics.missing,
+        upgrade_suggestion: semantics.upgrade_suggestion,
     }
 }
 
@@ -542,8 +567,17 @@ fn related_test_json(test: &EvidenceRecordRelatedTest) -> Value {
         "oracle_kind": test.oracle_kind.as_str(),
         "oracle_strength": test.oracle_strength.as_str(),
         "evidence_summary": test.evidence_summary.as_str(),
+        "oracle_semantics": oracle_semantics_json(&test.oracle_semantics),
         "relation_reason": test.relation_reason.as_str(),
         "relation_confidence": test.relation_confidence.as_str(),
+    })
+}
+
+fn oracle_semantics_json(semantics: &EvidenceRecordOracleSemantics) -> Value {
+    json!({
+        "observes": semantics.observes.as_str(),
+        "missing": semantics.missing.as_str(),
+        "upgrade_suggestion": semantics.upgrade_suggestion.as_deref(),
     })
 }
 
@@ -713,6 +747,18 @@ mod tests {
         assert_eq!(
             json["related_tests"][0]["name"],
             "below_threshold_has_no_discount"
+        );
+        assert_eq!(
+            json["related_tests"][0]["oracle_semantics"]["observes"],
+            "some error occurred"
+        );
+        assert_eq!(
+            json["related_tests"][0]["oracle_semantics"]["missing"],
+            "the exact error variant or payload that would discriminate the changed behavior"
+        );
+        assert_eq!(
+            json["related_tests"][0]["oracle_semantics"]["upgrade_suggestion"],
+            "add an exact returned-value assertion at the missing boundary value"
         );
         assert_eq!(
             json["recommendation"]["assertion_shape"]["kind"],

@@ -69,7 +69,11 @@ fn has_effect_shape(text: &str) -> bool {
     [
         ".save(",
         ".publish(",
+        ".persist(",
         ".send(",
+        ".dispatch(",
+        ".notify(",
+        ".enqueue(",
         ".write(",
         ".insert(",
         ".push(",
@@ -77,8 +81,28 @@ fn has_effect_shape(text: &str) -> bool {
         ".delete(",
         ".emit(",
         ".increment(",
+        ".replace(",
+        ".clear(",
+        ".extend(",
+        ".store(",
+        ".commit(",
+        ".upsert(",
+        ".configure(",
+        ".set_option(",
+        ".set_default(",
+        ".set_var(",
+        "config.",
+        "settings.",
         "metrics.",
         "log::",
+        "tracing::",
+        "println!(",
+        "eprintln!(",
+        "trace!(",
+        "debug!(",
+        "info!(",
+        "warn!(",
+        "error!(",
     ]
     .iter()
     .any(|needle| lower.contains(needle))
@@ -129,5 +153,23 @@ mod tests {
         let families = classify_changed_line("let parsed = parse()?; ErrKind::Invalid");
 
         assert!(families.contains(&ProbeFamily::ErrorPath));
+    }
+
+    #[test]
+    fn classify_changed_line_detects_observable_effect_families() {
+        for text in [
+            "events.publish(invoice)",
+            "cache.insert(key, value)",
+            "repository.save(invoice)",
+            "log::info!(\"saved\")",
+            "config.set_option(\"mode\", mode)",
+        ] {
+            let families = classify_changed_line(text);
+
+            assert!(
+                families.contains(&ProbeFamily::SideEffect),
+                "{text} did not classify as side_effect"
+            );
+        }
     }
 }

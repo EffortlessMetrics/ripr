@@ -223,13 +223,20 @@ Reserved `flow_sink` values:
 - `return_value`
 - `error_variant`
 - `struct_field`
+- `event_call`
+- `state_write`
+- `persistence`
+- `log_message`
+- `config_change`
 - `call_effect`
 - `match_arm`
 - `unknown`
 
-These labels are internal analysis terms in schema `0.1`. They are documented
-now so future evidence-first output can expose them without inventing new
-contract language.
+These labels are internal analysis terms in schema `0.1`. The side-effect
+families are additive refinements of the older generic `call_effect` sink:
+event or outbound calls, state writes, persistence writes, log messages, and
+configuration changes are named when syntax-first analysis can identify them,
+while `call_effect` remains the fallback for other observable calls.
 
 `state` values:
 
@@ -757,6 +764,11 @@ lands at `target/ripr/reports/repo-exposure.json` when generated via
             "oracle_kind": "exact_value",
             "oracle_strength": "strong",
             "evidence_summary": "exact value assertion",
+            "oracle_semantics": {
+              "observes": "the exact value or value pattern asserted by the test",
+              "missing": "no obvious value-shape discriminator gap under static scope",
+              "upgrade_suggestion": null
+            },
             "relation_reason": "direct_owner_call",
             "relation_confidence": "high"
           }
@@ -776,6 +788,11 @@ lands at `target/ripr/reports/repo-exposure.json` when generated via
             "oracle_kind": "exact_value",
             "oracle_strength": "strong",
             "evidence_summary": "exact value assertion",
+            "oracle_semantics": {
+              "observes": "the exact value or value pattern asserted by the test",
+              "missing": "no obvious value-shape discriminator gap under static scope",
+              "upgrade_suggestion": null
+            },
             "relation_reason": "direct_owner_call",
             "relation_confidence": "high"
           },
@@ -880,6 +897,11 @@ Field contract:
   existing seam evidence, including related-test relation fields. The
   nested `related_tests` array is capped like the top-level array and keeps
   `related_tests_total`.
+- `seams[].evidence_record.related_tests[].oracle_semantics` - structured
+  oracle-shape explanation with `observes`, `missing`, and nullable
+  `upgrade_suggestion`. Weak, broad, smoke-only, and unknown oracle shapes
+  name the behavior they observe, the discriminator they fail to observe, and
+  the assertion upgrade RIPR recommends for this seam kind.
 - `seams[].evidence_record.recommendation` - bounded test-intent guidance
   derived from existing evidence: recommended test target, nearest test to
   imitate, candidate values, assertion shape, and verification command when
