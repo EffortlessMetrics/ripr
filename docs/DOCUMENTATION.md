@@ -97,6 +97,7 @@ Current reference docs:
 - [CI labels](ci/labels.md)
 - [CI cost and verification policy](ci/cost-and-verification-policy.md)
 - [MSRV 1.95 rollout plan](ci/ripr-rollout-plan.md)
+- [Rust 1.95 compatibility audit](ci/msrv-1.95-audit.md)
 
 Planned reference docs:
 
