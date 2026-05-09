@@ -3,6 +3,20 @@
 ## Pending
 
 Reason:
+RIPR-SPEC-0023: pin PR review front-panel cases before the report producer exists
+
+Command:
+`cargo test -p ripr pr_review_front_panel`
+
+Updated:
+- `expected/pr-review-front-panel/README.md`
+- `expected/pr-review-front-panel/corpus.json`
+- `expected/pr-review-front-panel/*/pr-review-front-panel.json`
+- `expected/pr-review-front-panel/*/pr-review-front-panel.md`
+
+## Pending
+
+Reason:
 RIPR-SPEC-0020: pin first-useful-action routing cases before the report producer exists
 
 Command:

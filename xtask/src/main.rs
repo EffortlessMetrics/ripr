@@ -3591,6 +3591,7 @@ fn check_fixture_contracts() -> Result<(), String> {
 
     let mut violations = Vec::new();
     validate_evidence_record_contract_fixture_corpus(&mut violations)?;
+    validate_pr_review_front_panel_fixture_corpus(&mut violations)?;
     for entry in
         fs::read_dir(fixtures_dir).map_err(|err| format!("failed to read fixtures: {err}"))?
     {
@@ -4212,6 +4213,276 @@ fn validate_assistant_loop_health_count(
     if actual_count != expected_count {
         violations.push(format!(
             "assistant-loop-health case {case_id} expected {key}={expected_count}, got {actual_count}"
+        ));
+    }
+}
+
+fn validate_pr_review_front_panel_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let base = Path::new("fixtures/boundary_gap/expected/pr-review-front-panel");
+    validate_pr_review_front_panel_fixture_corpus_at(base, violations)
+}
+
+fn validate_pr_review_front_panel_fixture_corpus_at(
+    base: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if !base.exists() {
+        violations.push(format!(
+            "pr-review-front-panel corpus is missing {}",
+            normalize_path(base)
+        ));
+        return Ok(());
+    }
+
+    for required in ["README.md", "corpus.json"] {
+        let path = base.join(required);
+        if !path.exists() {
+            violations.push(format!(
+                "pr-review-front-panel corpus is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+
+    let corpus_path = base.join("corpus.json");
+    if !corpus_path.exists() {
+        return Ok(());
+    }
+
+    let corpus = match read_json_value(&corpus_path) {
+        Ok(value) => value,
+        Err(err) => {
+            violations.push(err);
+            return Ok(());
+        }
+    };
+    if json_string_field(&corpus, "kind").as_deref() != Some("pr_review_front_panel_corpus") {
+        violations.push(
+            "pr-review-front-panel corpus kind must be pr_review_front_panel_corpus".to_string(),
+        );
+    }
+    if json_string_field(&corpus, "spec").as_deref() != Some("RIPR-SPEC-0023") {
+        violations.push("pr-review-front-panel corpus spec must be RIPR-SPEC-0023".to_string());
+    }
+
+    let cases = match corpus.get("cases").and_then(Value::as_array) {
+        Some(cases) => cases,
+        None => {
+            violations.push("pr-review-front-panel corpus is missing cases array".to_string());
+            return Ok(());
+        }
+    };
+
+    let required_cases = [
+        "advisory_only",
+        "actionable",
+        "summary_only",
+        "acknowledged",
+        "suppressed",
+        "baseline_resolved",
+        "blocked",
+        "missing_proof",
+        "coverage_flat_grip_improved",
+    ];
+    let mut seen_cases = BTreeSet::new();
+
+    for case in cases {
+        let case_id = json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string());
+        seen_cases.insert(case_id.clone());
+
+        let expected = match case.get("expected") {
+            Some(value) => value,
+            None => {
+                violations.push(format!(
+                    "pr-review-front-panel case {case_id} is missing expected"
+                ));
+                continue;
+            }
+        };
+        let expected_status =
+            json_string_field(expected, "status").unwrap_or_else(|| "missing".to_string());
+
+        let report_path = match json_string_field(case, "expected_report") {
+            Some(path) => path,
+            None => {
+                violations.push(format!(
+                    "pr-review-front-panel case {case_id} is missing expected_report"
+                ));
+                continue;
+            }
+        };
+        let markdown_path = match json_string_field(case, "expected_markdown") {
+            Some(path) => path,
+            None => {
+                violations.push(format!(
+                    "pr-review-front-panel case {case_id} is missing expected_markdown"
+                ));
+                continue;
+            }
+        };
+
+        let report = match read_json_value(Path::new(&report_path)) {
+            Ok(value) => value,
+            Err(err) => {
+                violations.push(format!("pr-review-front-panel case {case_id}: {err}"));
+                continue;
+            }
+        };
+        if json_string_field(&report, "kind").as_deref() != Some("pr_review_front_panel") {
+            violations.push(format!(
+                "pr-review-front-panel case {case_id} report kind must be pr_review_front_panel"
+            ));
+        }
+        if json_string_field(&report, "status").as_deref() != Some(expected_status.as_str()) {
+            violations.push(format!(
+                "pr-review-front-panel case {case_id} expected status {expected_status}"
+            ));
+        }
+
+        for key in [
+            "top_issue_state",
+            "policy_state",
+            "placement",
+            "movement_state",
+            "coverage_grip_state",
+        ] {
+            validate_pr_review_front_panel_summary_string(
+                violations, &case_id, expected, &report, key,
+            );
+        }
+        for key in [
+            "new_policy_eligible",
+            "baseline_resolved",
+            "blocking_candidates",
+            "warnings",
+        ] {
+            validate_pr_review_front_panel_summary_count(
+                violations, &case_id, expected, &report, key,
+            );
+        }
+
+        let artifact_groups_are_valid = report
+            .get("artifacts")
+            .and_then(Value::as_array)
+            .is_some_and(|items| {
+                !items.is_empty()
+                    && items.iter().all(|item| {
+                        matches!(
+                            json_string_field(item, "group").as_deref(),
+                            Some(
+                                "start_here"
+                                    | "repair"
+                                    | "evidence"
+                                    | "policy"
+                                    | "calibration"
+                                    | "generated_ci"
+                            )
+                        )
+                    })
+            });
+        if !artifact_groups_are_valid {
+            violations.push(format!(
+                "pr-review-front-panel case {case_id} artifacts must use known groups"
+            ));
+        }
+
+        if !report
+            .get("limits")
+            .and_then(Value::as_array)
+            .is_some_and(|limits| {
+                limits
+                    .iter()
+                    .any(|limit| limit.as_str() == Some("Static RIPR evidence only."))
+            })
+        {
+            violations.push(format!(
+                "pr-review-front-panel case {case_id} report is missing static evidence limit"
+            ));
+        }
+
+        let markdown = match fs::read_to_string(&markdown_path) {
+            Ok(markdown) => markdown,
+            Err(err) => {
+                violations.push(format!(
+                    "pr-review-front-panel case {case_id} Markdown missing {}: {err}",
+                    markdown_path
+                ));
+                continue;
+            }
+        };
+        if !markdown.contains("# RIPR PR Review") {
+            violations.push(format!(
+                "pr-review-front-panel case {case_id} Markdown must use the PR review heading"
+            ));
+        }
+        if !markdown.contains(&format!("Status: {expected_status}")) {
+            violations.push(format!(
+                "pr-review-front-panel case {case_id} Markdown must pin status {expected_status}"
+            ));
+        }
+        if json_usize_field(expected, "blocking_candidates").unwrap_or(0) > 0
+            && !markdown.contains("Gate authority:")
+        {
+            violations.push(format!(
+                "pr-review-front-panel case {case_id} blocked Markdown must name gate authority"
+            ));
+        }
+    }
+
+    for required in required_cases {
+        if !seen_cases.contains(required) {
+            violations.push(format!(
+                "pr-review-front-panel corpus is missing required case {required}"
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_pr_review_front_panel_summary_string(
+    violations: &mut Vec<String>,
+    case_id: &str,
+    expected: &Value,
+    report: &Value,
+    key: &str,
+) {
+    let Some(expected_value) = json_string_field(expected, key) else {
+        violations.push(format!(
+            "pr-review-front-panel case {case_id} expected is missing {key}"
+        ));
+        return;
+    };
+    let actual_value = report
+        .get("summary")
+        .and_then(|summary| json_string_field(summary, key))
+        .unwrap_or_else(|| "missing".to_string());
+    if actual_value != expected_value {
+        violations.push(format!(
+            "pr-review-front-panel case {case_id} expected {key}={expected_value}, got {actual_value}"
+        ));
+    }
+}
+
+fn validate_pr_review_front_panel_summary_count(
+    violations: &mut Vec<String>,
+    case_id: &str,
+    expected: &Value,
+    report: &Value,
+    key: &str,
+) {
+    let Some(expected_count) = json_usize_field(expected, key) else {
+        violations.push(format!(
+            "pr-review-front-panel case {case_id} expected is missing {key}"
+        ));
+        return;
+    };
+    let actual_count = json_summary_count(report, key);
+    if actual_count != expected_count {
+        violations.push(format!(
+            "pr-review-front-panel case {case_id} expected {key}={expected_count}, got {actual_count}"
         ));
     }
 }
@@ -18591,6 +18862,69 @@ mod tests {
         );
     }
 
+    fn write_pr_review_front_panel_corpus(
+        base: &Path,
+        report: &Path,
+        markdown: &Path,
+        expected_status: &str,
+        blocking_candidates: usize,
+    ) {
+        write(&base.join("README.md"), "# PR Review Front Panel Corpus\n");
+        let expected = format!(
+            r#"{{
+        "status": "{expected_status}",
+        "top_issue_state": "actionable",
+        "policy_state": "new_policy_eligible",
+        "placement": "changed_line",
+        "movement_state": "unknown",
+        "coverage_grip_state": "not_available",
+        "new_policy_eligible": 1,
+        "baseline_resolved": 0,
+        "blocking_candidates": {blocking_candidates},
+        "warnings": 0
+      }}"#
+        );
+        let cases = [
+            "advisory_only",
+            "actionable",
+            "summary_only",
+            "acknowledged",
+            "suppressed",
+            "baseline_resolved",
+            "blocked",
+            "missing_proof",
+            "coverage_flat_grip_improved",
+        ]
+        .into_iter()
+        .map(|id| {
+            format!(
+                r#"{{
+      "id": "{id}",
+      "expected_report": "{}",
+      "expected_markdown": "{}",
+      "expected": {expected}
+    }}"#,
+                json_path(report),
+                json_path(markdown)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",\n");
+        write(
+            &base.join("corpus.json"),
+            &format!(
+                r#"{{
+  "kind": "pr_review_front_panel_corpus",
+  "spec": "RIPR-SPEC-0023",
+  "cases": [
+{cases}
+  ]
+}}
+"#
+            ),
+        );
+    }
+
     #[cfg(unix)]
     fn success_exit_status() -> ExitStatus {
         use std::os::unix::process::ExitStatusExt;
@@ -18696,6 +19030,98 @@ mod tests {
         assert!(report.contains("report is missing static evidence limit"));
         assert!(report.contains("Markdown must pin status advisory"));
         assert!(report.contains("Markdown repair queue must include repair_kind"));
+        Ok(())
+    }
+
+    #[test]
+    fn pr_review_front_panel_fixture_corpus_guard_accepts_complete_contract() -> Result<(), String>
+    {
+        let root = temp_dir("pr-review-front-panel-valid");
+        let base = root.join("pr-review-front-panel");
+        let report = root.join("pr-review-front-panel.json");
+        let markdown = root.join("pr-review-front-panel.md");
+        write_pr_review_front_panel_corpus(&base, &report, &markdown, "advisory", 0);
+        write(
+            &report,
+            r#"{
+  "kind": "pr_review_front_panel",
+  "status": "advisory",
+  "summary": {
+    "top_issue_state": "actionable",
+    "policy_state": "new_policy_eligible",
+    "placement": "changed_line",
+    "movement_state": "unknown",
+    "coverage_grip_state": "not_available",
+    "new_policy_eligible": 1,
+    "baseline_resolved": 0,
+    "blocking_candidates": 0,
+    "warnings": 0
+  },
+  "artifacts": [
+    {"group": "start_here"}
+  ],
+  "limits": ["Static RIPR evidence only."]
+}
+"#,
+        );
+        write(&markdown, "# RIPR PR Review\n\nStatus: advisory\n");
+
+        let mut violations = Vec::new();
+        super::validate_pr_review_front_panel_fixture_corpus_at(&base, &mut violations)?;
+
+        assert_eq!(violations, Vec::<String>::new());
+        Ok(())
+    }
+
+    #[test]
+    fn pr_review_front_panel_fixture_corpus_guard_reports_contract_drift() -> Result<(), String> {
+        let root = temp_dir("pr-review-front-panel-invalid");
+        let base = root.join("pr-review-front-panel");
+        let report = root.join("pr-review-front-panel.json");
+        let markdown = root.join("pr-review-front-panel.md");
+        write_pr_review_front_panel_corpus(&base, &report, &markdown, "blocked", 1);
+        write(
+            &report,
+            r#"{
+  "kind": "wrong_kind",
+  "status": "advisory",
+  "summary": {
+    "top_issue_state": "missing",
+    "policy_state": "none",
+    "placement": "not_available",
+    "movement_state": "not_available",
+    "coverage_grip_state": "not_available",
+    "new_policy_eligible": 0,
+    "baseline_resolved": 0,
+    "blocking_candidates": 0,
+    "warnings": 0
+  },
+  "artifacts": [
+    {"group": "unknown"}
+  ],
+  "limits": ["Does not run mutation testing."]
+}
+"#,
+        );
+        write(&markdown, "# Wrong\n\nStatus: advisory\n");
+
+        let mut violations = Vec::new();
+        super::validate_pr_review_front_panel_fixture_corpus_at(&base, &mut violations)?;
+        let report = violations.join("\n");
+
+        assert!(report.contains("report kind must be pr_review_front_panel"));
+        assert!(report.contains("expected status blocked"));
+        assert!(report.contains("expected top_issue_state=actionable"));
+        assert!(report.contains("expected policy_state=new_policy_eligible"));
+        assert!(report.contains("expected placement=changed_line"));
+        assert!(report.contains("expected movement_state=unknown"));
+        assert!(report.contains("expected new_policy_eligible=1, got 0"));
+        assert!(report.contains("expected blocking_candidates=1, got 0"));
+        assert!(report.contains("artifacts must use known groups"));
+        assert!(report.contains("report is missing static evidence limit"));
+        assert!(report.contains("Markdown must use the PR review heading"));
+        assert!(report.contains("Markdown must pin status blocked"));
+        assert!(report.contains("blocked Markdown must name gate authority"));
         Ok(())
     }
 
