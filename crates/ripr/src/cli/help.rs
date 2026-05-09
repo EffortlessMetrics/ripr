@@ -12,6 +12,7 @@ Usage:
   ripr baseline update --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json --remove-resolved [--out .ripr/gate-baseline.json]
   ripr zero status --delta target/ripr/reports/baseline-debt-delta.json [--baseline .ripr/gate-baseline.json] [--gate target/ripr/reports/gate-decision.json] [--out target/ripr/reports/ripr-zero-status.json] [--out-md target/ripr/reports/ripr-zero-status.md]
   ripr pr-ledger record --pr-number 123 --base SHA --head SHA [--gate target/ripr/reports/gate-decision.json] [--baseline-delta target/ripr/reports/baseline-debt-delta.json] [--zero-status target/ripr/reports/ripr-zero-status.json] [--out target/ripr/reports/pr-evidence-ledger.json]
+  ripr coverage-grip frontier (--ledger target/ripr/reports/pr-evidence-ledger.json|--baseline-delta target/ripr/reports/baseline-debt-delta.json|--zero-status target/ripr/reports/ripr-zero-status.json) [--coverage target/ripr/reports/coverage-summary.json] [--out target/ripr/reports/coverage-grip-frontier.json]
   ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
   ripr agent start --root . --seam-id ID [--out target/ripr/workflow]
   ripr agent brief --root . (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json
@@ -43,6 +44,7 @@ Quick start:
   ripr baseline update --baseline .ripr/gate-baseline.json --current target/ripr/reports/gate-decision.json --remove-resolved
   ripr zero status --baseline .ripr/gate-baseline.json --delta target/ripr/reports/baseline-debt-delta.json --gate target/ripr/reports/gate-decision.json
   ripr pr-ledger record --pr-number 123 --base origin/main --head HEAD --baseline-delta target/ripr/reports/baseline-debt-delta.json --zero-status target/ripr/reports/ripr-zero-status.json
+  ripr coverage-grip frontier --ledger target/ripr/reports/pr-evidence-ledger.json --coverage target/ripr/reports/coverage-summary.json
   ripr calibrate cargo-mutants --mutants-json target/mutants/outcomes.json --repo-exposure-json target/ripr/pilot/after.repo-exposure.json
   ripr agent start --root . --seam-id f3c9e4d21a0b7c88
   ripr agent brief --root . --diff change.diff --json
@@ -261,6 +263,22 @@ artifacts. It records PR-local movement, waiver visibility, suppressions,
 repair receipts, and optional coverage/grip frontier signals. It does not run
 analysis, mutate baselines, post comments, edit source, generate tests, call an
 LLM, run mutation testing, change gate policy, or make CI blocking by default.
+"#;
+
+const COVERAGE_GRIP_HELP: &str = r#"Usage: ripr coverage-grip frontier (--ledger PATH|--baseline-delta PATH|--zero-status PATH) [--coverage PATH] [--out PATH] [--out-md PATH]
+
+Frontier options:
+  --coverage PATH          Optional coverage summary JSON.
+  --ledger PATH            Optional PR evidence ledger JSON from `ripr pr-ledger record`.
+  --baseline-delta PATH    Optional baseline-debt-delta JSON from `ripr baseline diff`.
+  --zero-status PATH       Optional RIPR Zero status JSON from `ripr zero status`.
+  --out PATH               JSON output path. Defaults to target/ripr/reports/coverage-grip-frontier.json.
+  --out-md PATH            Markdown output path. Defaults to target/ripr/reports/coverage-grip-frontier.md.
+
+The coverage/grip frontier report is read-only advisory evidence. It keeps
+line execution coverage and RIPR behavioral grip movement as separate axes. It
+does not treat coverage as adequacy, run mutation testing, change gate policy,
+or make CI blocking by default.
 "#;
 
 const CALIBRATE_HELP: &str = r#"Usage: ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
@@ -492,6 +510,10 @@ pub(super) fn print_pr_ledger_help() {
     println!("{PR_LEDGER_HELP}");
 }
 
+pub(super) fn print_coverage_grip_help() {
+    println!("{COVERAGE_GRIP_HELP}");
+}
+
 pub(super) fn print_calibrate_help() {
     println!("{CALIBRATE_HELP}");
 }
@@ -549,9 +571,9 @@ mod tests {
     use super::{
         AGENT_BRIEF_HELP, AGENT_HELP, AGENT_PACKET_HELP, AGENT_RECEIPT_HELP,
         AGENT_REVIEW_SUMMARY_HELP, AGENT_START_HELP, AGENT_STATUS_HELP, AGENT_VERIFY_HELP,
-        BASELINE_HELP, CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP, DOCTOR_HELP, EVIDENCE_HEALTH_HELP,
-        EXPLAIN_HELP, GATE_HELP, HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP,
-        PR_LEDGER_HELP, REVIEW_COMMENTS_HELP, ZERO_HELP,
+        BASELINE_HELP, CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP, COVERAGE_GRIP_HELP, DOCTOR_HELP,
+        EVIDENCE_HEALTH_HELP, EXPLAIN_HELP, GATE_HELP, HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP,
+        PILOT_HELP, PR_LEDGER_HELP, REVIEW_COMMENTS_HELP, ZERO_HELP,
     };
 
     #[test]
@@ -567,6 +589,7 @@ mod tests {
         assert!(HELP.contains("ripr baseline update"));
         assert!(HELP.contains("ripr zero status"));
         assert!(HELP.contains("ripr pr-ledger record"));
+        assert!(HELP.contains("ripr coverage-grip frontier"));
         assert!(HELP.contains("ripr calibrate"));
         assert!(HELP.contains("ripr agent start"));
         assert!(HELP.contains("ripr agent brief"));
@@ -622,6 +645,9 @@ mod tests {
         assert!(PR_LEDGER_HELP.starts_with("Usage: ripr pr-ledger record"));
         assert!(PR_LEDGER_HELP.contains("pr-evidence-ledger.json"));
         assert!(PR_LEDGER_HELP.contains("read-only advisory history"));
+        assert!(COVERAGE_GRIP_HELP.starts_with("Usage: ripr coverage-grip frontier"));
+        assert!(COVERAGE_GRIP_HELP.contains("coverage-grip-frontier.json"));
+        assert!(COVERAGE_GRIP_HELP.contains("separate axes"));
         assert!(CALIBRATE_HELP.starts_with("Usage: ripr calibrate cargo-mutants"));
         assert!(CALIBRATE_HELP.contains("--mutants-json PATH"));
         assert!(AGENT_HELP.starts_with("Usage: ripr agent"));

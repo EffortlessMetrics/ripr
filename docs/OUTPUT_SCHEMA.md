@@ -2465,6 +2465,116 @@ frontier status, and the advisory boundary. It must say that the PR evidence
 ledger is advisory history and that gate decisions remain the pass/fail
 authority.
 
+## Coverage / Grip Frontier Report
+
+`ripr coverage-grip frontier` writes an advisory report that keeps execution
+coverage movement and static RIPR behavioral grip movement as separate axes. It
+can consume a coverage summary plus any existing PR evidence ledger, baseline
+debt delta, or RIPR Zero status report.
+
+Command:
+
+```text
+ripr coverage-grip frontier \
+  --coverage target/ripr/reports/coverage-summary.json \
+  --ledger target/ripr/reports/pr-evidence-ledger.json \
+  --baseline-delta target/ripr/reports/baseline-debt-delta.json \
+  --zero-status target/ripr/reports/ripr-zero-status.json \
+  --out target/ripr/reports/coverage-grip-frontier.json \
+  --out-md target/ripr/reports/coverage-grip-frontier.md
+```
+
+The report writes:
+
+```text
+target/ripr/reports/coverage-grip-frontier.json
+target/ripr/reports/coverage-grip-frontier.md
+```
+
+Coverage is optional. Without coverage input, the report still preserves RIPR
+movement and marks the coverage axis `not_available`. The report must not
+treat coverage as test adequacy, run mutation testing, change gate policy, post
+comments, edit source, generate tests, call an LLM, or make CI blocking by
+default.
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "coverage_grip_frontier",
+  "status": "advisory",
+  "root": ".",
+  "generated_at": "2026-05-09T00:00:00Z",
+  "inputs": {
+    "coverage": "target/ripr/reports/coverage-summary.json",
+    "pr_evidence_ledger": "target/ripr/reports/pr-evidence-ledger.json",
+    "baseline_debt_delta": "target/ripr/reports/baseline-debt-delta.json",
+    "ripr_zero_status": "target/ripr/reports/ripr-zero-status.json"
+  },
+  "coverage": {
+    "status": "available",
+    "delta_percent": "0.0",
+    "source": "target/ripr/reports/coverage-summary.json"
+  },
+  "ripr": {
+    "source": "pr_evidence_ledger",
+    "new_policy_eligible": 1,
+    "baseline_resolved": 3,
+    "baseline_still_present": 2,
+    "acknowledged": 1,
+    "suppressed": 0,
+    "blocking_candidates": 0,
+    "visible_unresolved": 4,
+    "visible_unresolved_delta": -3
+  },
+  "quadrants": {
+    "covered_with_ripr_gap": 4,
+    "covered_without_ripr_gap": 20,
+    "uncovered_with_ripr_gap": 2,
+    "uncovered_without_ripr_gap": 8
+  },
+  "interpretation": "behavioral grip improved without line-coverage movement",
+  "warnings": [],
+  "limits_note": "Coverage is execution evidence; RIPR is static behavioral grip evidence. This report is advisory and does not claim test adequacy or runtime mutation outcomes."
+}
+```
+
+Markdown shape:
+
+```md
+# RIPR Coverage / Grip Frontier
+
+Status: advisory
+
+Coverage axis:
+- Status: available
+- Delta percent: 0.0
+
+RIPR axis:
+- Source: pr_evidence_ledger
+- New policy-eligible gaps: 1
+- Baseline gaps resolved: 3
+- Visible unresolved gaps: 4
+- Visible unresolved delta: -3
+
+Interpretation:
+- behavioral grip improved without line-coverage movement
+```
+
+The report may use these coverage inputs when present:
+
+- `coverage_delta_percent`;
+- `coverage.delta_percent`;
+- `summary.coverage_delta_percent`;
+- `ripr_visible_unresolved_delta`;
+- `ripr.visible_unresolved_delta`;
+- `quadrants.covered_with_ripr_gap`;
+- `quadrants.covered_without_ripr_gap`;
+- `quadrants.uncovered_with_ripr_gap`;
+- `quadrants.uncovered_without_ripr_gap`.
+
 ### Review Guidance Outcome Receipt
 
 Review guidance outcome receipts are optional repo-local inputs to the

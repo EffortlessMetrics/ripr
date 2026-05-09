@@ -466,6 +466,7 @@ The implementation adds tests for:
   fields;
 - coverage/grip frontier unavailable, available, flat-coverage/improved-grip,
   and coverage-regressed cases;
+- CLI parsing and JSON/Markdown rendering for `ripr coverage-grip frontier`;
 - history input producing waiver age, baseline burn-down, and trend summaries;
 - append-only history refusing to rewrite prior records when append mode is
   implemented;
@@ -483,8 +484,10 @@ Expected follow-up surfaces:
   on pull requests when PR guidance exists, uploads `pr-evidence-ledger.{json,md}`,
   and appends a PR movement card while keeping advisory defaults and gate
   pass/fail authority.
-- `report/coverage-grip-frontier` adds optional coverage/grip frontier fields
-  from supplied coverage inputs without making coverage blocking.
+- `report/coverage-grip-frontier` adds `ripr coverage-grip frontier`, a
+  read-only advisory JSON/Markdown report that keeps execution coverage and
+  RIPR behavioral grip movement visible as separate axes without making
+  coverage blocking.
 - `docs/pr-evidence-ledger-workflow` explains how teams read ledgers, waiver
   aging, baseline burn-down, repair receipts, and progress toward RIPR 0.
 

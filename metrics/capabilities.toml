@@ -773,6 +773,21 @@ next = "report/coverage-grip-frontier"
 metric = "pr_evidence_ledger_records, pr_evidence_ledger_new_policy_eligible, pr_evidence_ledger_baseline_still_present, pr_evidence_ledger_baseline_resolved, pr_evidence_ledger_acknowledged, pr_evidence_ledger_suppressed, pr_evidence_ledger_blocking_candidates, pr_evidence_ledger_repair_receipts, pr_evidence_ledger_waiver_age_max_days, pr_evidence_ledger_coverage_grip_frontier_available, pr_evidence_ledger_flat_coverage_grip_improved"
 
 [[capability]]
+id = "coverage_grip_frontier"
+name = "Coverage/grip frontier report"
+status = "alpha"
+spec = "RIPR-SPEC-0018"
+evidence = [
+  "ripr coverage-grip frontier writes advisory coverage-grip-frontier JSON and Markdown from optional coverage summary plus PR evidence ledger, baseline debt delta, or RIPR Zero status inputs",
+  "crates/ripr/src/output/coverage_grip_frontier.rs keeps coverage delta, RIPR movement, quadrants, interpretation, warnings, and advisory limits separate without treating coverage as adequacy",
+  "crates/ripr/src/cli/commands.rs exposes coverage-grip frontier and checks required RIPR movement input",
+  "docs/OUTPUT_SCHEMA.md documents the coverage-grip-frontier JSON/Markdown shape"
+]
+fixtures = []
+next = "docs/pr-evidence-ledger-workflow"
+metric = "coverage_grip_frontier_reports, coverage_grip_frontier_available, coverage_grip_frontier_flat_coverage_grip_improved"
+
+[[capability]]
 id = "pilot_packet"
 name = "Pilot packet"
 status = "alpha"

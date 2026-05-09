@@ -177,8 +177,10 @@ gate mode, repair receipts, and optional coverage/grip frontier signals. The
 RIPR-SPEC-0018 now pins the contract, and `ripr pr-ledger record` writes the
 read-only JSON/Markdown producer. Generated-CI projection now writes and
 summarizes `pr-evidence-ledger.{json,md}` as advisory PR movement evidence.
-The next ready item is `report/coverage-grip-frontier`. The campaign remains
-advisory by default and keeps gate decisions as the pass/fail authority.
+`ripr coverage-grip frontier` now reports coverage delta and RIPR movement as
+separate advisory axes. The next ready item is
+`docs/pr-evidence-ledger-workflow`. The campaign remains advisory by default
+and keeps gate decisions as the pass/fail authority.
 
 ## Strategic Sequence
 
