@@ -59,6 +59,12 @@ are scoped or reviewed.
 - Closed Campaign 21 with `docs/handoffs/2026-05-09-campaign-21-closeout.md`,
   recording the proof-report producer, generated-CI projection, user docs,
   validation, next-work boundary, and advisory non-goals.
+- Opened Campaign 22, PR Summary Front Panel, with
+  `ci/unified-pr-summary-card` as the first ready work item so generated
+  GitHub CI can become the reviewer-grade first screen over existing PR
+  guidance, assistant proof, gate, baseline, ledger, and coverage/grip
+  artifacts without changing analyzer, ranking, gate, editor, provider,
+  mutation, inline-comment, generated-test, or default CI behavior.
 - Opened Campaign 19, PR Evidence Ledger, with
   `spec/pr-evidence-ledger-surface` as the first ready work item so per-PR
   RIPR evidence can become an adoption ledger for movement history, waiver

@@ -203,8 +203,13 @@ only when the required artifact chain already exists.
 `docs/TEST_ORACLE_ASSISTANT_PROOF_REPORT.md` now explains how to read the
 report, warnings, static movement, optional CI projection, and limits. Campaign
 21 closed with
-`docs/handoffs/2026-05-09-campaign-21-closeout.md`; choose the next campaign
-explicitly before opening another product lane.
+`docs/handoffs/2026-05-09-campaign-21-closeout.md`.
+Campaign 22 is now open as PR Summary Front Panel, with
+`ci/unified-pr-summary-card` ready to make the generated GitHub job summary the
+reviewer-grade first screen over existing PR guidance, assistant proof, gate,
+baseline, ledger, and coverage/grip artifacts without changing analyzer,
+ranking, gate, editor, provider, mutation, inline-comment, generated-test, or
+default CI behavior.
 
 ## Strategic Sequence
 

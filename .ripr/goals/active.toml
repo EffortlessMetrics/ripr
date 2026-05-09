@@ -1,51 +1,36 @@
-id = "test-oracle-assistant-report-producer"
-title = "Test-Oracle Assistant Report Producer"
+id = "pr-summary-front-panel"
+title = "PR Summary Front Panel"
 status = "active"
 
-# This is Campaign 21 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
-# Campaign 20 proved the assistant loop through a spec, canonical replay
-# fixture, dogfood receipt, and user workflow docs. This campaign turns that
-# proof into a public read-only report producer and optional PR/CI projection.
+# This is Campaign 22 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+# Campaign 21 turned the proved assistant loop into a public read-only proof
+# report and optional generated-CI projection. This campaign makes the GitHub
+# job summary the reviewer-grade front panel over the existing report stack.
 
 objective = """
-Make the test-oracle assistant loop a concrete report surface: join existing
-PR guidance, editor/agent handoff, before/after static evidence, receipts, PR
-ledger, optional gate decisions, and optional coverage/grip frontier inputs
-into advisory `test-oracle-assistant-proof.{json,md}` artifacts without
-rerunning hidden analysis, editing source, generating tests, calling providers,
-running mutation testing, or changing default CI blocking.
+Make the generated GitHub job summary a reviewer-grade RIPR PR Review surface:
+join existing PR guidance, assistant proof, gate decision, baseline debt delta,
+RIPR Zero status, PR evidence ledger, coverage/grip frontier, and repair-route
+signals into one advisory first-screen summary without changing analyzer
+semantics, recommendation ranking, gate policy, editor behavior, inline comment
+posting, or default CI blocking.
 """
 
 end_state = [
-  "a public read-only command writes `target/ripr/reports/test-oracle-assistant-proof.json` and `.md` from explicit existing artifact paths",
-  "the report preserves selected seam identity, missing discriminator, placement state, handoff command, static before/after movement, receipt path, PR ledger path, optional gate path, optional coverage/grip frontier path, warnings, and static limits",
-  "fixtures and tests cover complete proof, summary-only guidance, missing optional inputs, missing required inputs, unchanged movement, and advisory limits",
-  "generated CI may surface the proof report only as advisory evidence when inputs exist; it must not become pass/fail authority",
-  "user docs explain when to read the proof report instead of raw artifact chains",
-  "closeout records what is implemented, what remains advisory, and which future work must stay outside analyzer, ranking, gate, editor, or mutation semantics",
+  "generated CI renders one RIPR PR Review summary card from existing artifacts before users need to inspect raw JSON or download the full artifact packet",
+  "the summary shows top issue, missing discriminator, suggested focused test, related test, proof and receipt availability, gate mode/status, baseline movement, PR ledger movement, coverage/grip movement, warnings, and next action when those inputs exist",
+  "the summary preserves advisory defaults and leaves `ripr gate evaluate` as the only explicit pass/fail authority when configured",
+  "fixtures or generated-workflow tests pin advisory-only, summary-only guidance, proof-present, proof-missing, acknowledged, blocked, baseline-resolved, coverage-flat/grip-improved, and config-error summary behavior",
+  "docs explain how reviewers, developers, maintainers, and coding agents should read the front panel before drilling into artifacts",
+  "closeout records what became first-screen PR/CI UX and which future work must stay outside analyzer, ranking, gate, editor, mutation, provider, generated-test, inline-comment, and default-blocking behavior",
 ]
 
 [[work_item]]
-id = "report/test-oracle-assistant-proof"
-status = "done"
-branch = "report-test-oracle-assistant-proof"
+id = "ci/unified-pr-summary-card"
+status = "ready"
+branch = "ci-unified-pr-summary-card"
 stackable = false
-acceptance = "Implement a read-only `ripr assistant-loop proof` report producer that writes advisory JSON and Markdown from explicit Campaign 20 artifact inputs while preserving static vocabulary and advisory limits"
-commands = [
-  "cargo test -p ripr test_oracle_assistant",
-  "cargo xtask check-output-contracts",
-  "cargo xtask check-static-language",
-  "cargo xtask check-traceability",
-  "cargo xtask check-capabilities",
-  "cargo xtask check-pr",
-]
-
-[[work_item]]
-id = "ci/test-oracle-assistant-proof-artifacts"
-status = "done"
-branch = "ci-test-oracle-assistant-proof-artifacts"
-stackable = false
-acceptance = "Surface `test-oracle-assistant-proof.{json,md}` in generated GitHub CI as advisory artifacts and summary content only when the required inputs exist, without changing default blocking"
+acceptance = "Render a unified RIPR PR Review summary card in generated GitHub CI from existing PR guidance, gate, baseline, RIPR Zero, PR ledger, assistant proof, and coverage/grip artifacts while preserving advisory defaults and gate-only pass/fail authority"
 commands = [
   "cargo test -p ripr init_generated_github_workflow",
   "cargo xtask check-workflows",
@@ -55,11 +40,32 @@ commands = [
 ]
 
 [[work_item]]
-id = "docs/test-oracle-assistant-proof-report"
-status = "done"
-branch = "docs-test-oracle-assistant-proof-report"
+id = "test/ci-pr-summary-front-panel-fixtures"
+status = "blocked"
+branch = "test-ci-pr-summary-front-panel-fixtures"
 stackable = false
-acceptance = "Document how reviewers, maintainers, and coding agents read the proof report, warnings, static movement, optional CI projection, and limits without artifact archaeology"
+blocked_by = [
+  "ci/unified-pr-summary-card",
+]
+acceptance = "Pin generated workflow or summary fixtures for advisory-only, summary-only guidance, assistant-proof present, assistant-proof missing, acknowledged, blocked, baseline-resolved, coverage-flat/grip-improved, and config-error PR summary states"
+commands = [
+  "cargo test -p ripr init_generated_github_workflow",
+  "cargo xtask check-workflows",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "docs/pr-summary-front-panel-workflow"
+status = "blocked"
+branch = "docs-pr-summary-front-panel-workflow"
+stackable = false
+blocked_by = [
+  "ci/unified-pr-summary-card",
+  "test/ci-pr-summary-front-panel-fixtures",
+]
+acceptance = "Document how reviewers, developers, maintainers, and coding agents read the RIPR PR Review front panel, follow repair routes, and drill into artifacts without treating the summary as a new pass/fail authority"
 commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
@@ -68,11 +74,16 @@ commands = [
 ]
 
 [[work_item]]
-id = "campaign/test-oracle-assistant-report-closeout"
-status = "done"
-branch = "campaign-test-oracle-assistant-report-closeout"
+id = "campaign/pr-summary-front-panel-closeout"
+status = "blocked"
+branch = "campaign-pr-summary-front-panel-closeout"
 stackable = false
-acceptance = "Close Campaign 21 after the proof report producer, generated-CI advisory projection, docs, and validation demonstrate a first-class report surface without changing analyzer, gate, editor, or mutation behavior"
+blocked_by = [
+  "ci/unified-pr-summary-card",
+  "test/ci-pr-summary-front-panel-fixtures",
+  "docs/pr-summary-front-panel-workflow",
+]
+acceptance = "Close Campaign 22 after the unified PR summary card, generated-workflow fixtures, docs, and validation demonstrate a first-screen PR/CI review surface without changing analyzer, gate, editor, mutation, provider, generated-test, inline-comment, or default-blocking behavior"
 commands = [
   "cargo xtask check-spec-format",
   "cargo xtask check-doc-index",

@@ -2468,6 +2468,108 @@ Next:
 - No ready Campaign 21 work item remains. Choose the next campaign explicitly
   before opening another product lane.
 
+## Campaign 22: PR Summary Front Panel
+
+Campaign ID: `pr-summary-front-panel`
+
+Status: active
+
+Campaign 21 made the assistant proof loop available as a read-only report and
+optional generated-CI projection. The next Lane 4 product risk is that the
+individual reports are present but the GitHub job summary still has to become
+the first screen reviewers can trust.
+
+Objective:
+
+```text
+Make the generated GitHub job summary a reviewer-grade RIPR PR Review surface:
+join existing PR guidance, assistant proof, gate decision, baseline debt delta,
+RIPR Zero status, PR evidence ledger, coverage/grip frontier, and repair-route
+signals into one advisory first-screen summary without changing analyzer
+semantics, recommendation ranking, gate policy, editor behavior, inline comment
+posting, or default CI blocking.
+```
+
+Why it matters:
+
+RIPR should feel PR-native: a reviewer should see the top behavioral test gap,
+whether it is old or new debt, whether it is acknowledged, suppressed,
+advisory, or blocking, what focused test would close it, whether a receipt
+already exists, and where the full packet lives without artifact archaeology.
+
+End state:
+
+- generated CI renders one RIPR PR Review summary card from existing artifacts
+  before users need to inspect raw JSON or download the full artifact packet
+- the summary shows top issue, missing discriminator, suggested focused test,
+  related test, proof and receipt availability, gate mode/status, baseline
+  movement, PR ledger movement, coverage/grip movement, warnings, and next
+  action when those inputs exist
+- the summary preserves advisory defaults and leaves `ripr gate evaluate` as
+  the only explicit pass/fail authority when configured
+- fixtures or generated-workflow tests pin advisory-only, summary-only
+  guidance, proof-present, proof-missing, acknowledged, blocked,
+  baseline-resolved, coverage-flat/grip-improved, and config-error summary
+  behavior
+- docs explain how reviewers, developers, maintainers, and coding agents read
+  the front panel before drilling into artifacts
+- closeout records what became first-screen PR/CI UX and which future work
+  must stay outside analyzer, ranking, gate, editor, mutation, provider,
+  generated-test, inline-comment, and default-blocking behavior
+
+Work items:
+
+| Work item | Status | Notes |
+| --- | --- | --- |
+| `ci/unified-pr-summary-card` | ready | Render a unified RIPR PR Review summary card in generated GitHub CI from existing PR guidance, gate, baseline, RIPR Zero, PR ledger, assistant proof, and coverage/grip artifacts while preserving advisory defaults and gate-only pass/fail authority. |
+| `test/ci-pr-summary-front-panel-fixtures` | blocked | Pin generated workflow or summary fixtures for advisory-only, summary-only guidance, assistant-proof present, assistant-proof missing, acknowledged, blocked, baseline-resolved, coverage-flat/grip-improved, and config-error PR summary states. |
+| `docs/pr-summary-front-panel-workflow` | blocked | Document how reviewers, developers, maintainers, and coding agents read the RIPR PR Review front panel, follow repair routes, and drill into artifacts without treating the summary as a new pass/fail authority. |
+| `campaign/pr-summary-front-panel-closeout` | blocked | Close Campaign 22 after the unified PR summary card, generated-workflow fixtures, docs, and validation demonstrate a first-screen PR/CI review surface without changing analyzer, gate, editor, mutation, provider, generated-test, inline-comment, or default-blocking behavior. |
+
+Dependencies:
+
+- Campaign 13 supplies PR guidance and changed-line-safe placement.
+- Campaign 15 supplies optional gate decisions; the front panel may summarize
+  gate output, but it must not redefine gate policy or pass/fail authority.
+- Campaigns 17 and 18 supply baseline debt delta and RIPR Zero status.
+- Campaign 19 supplies PR evidence ledger and coverage/grip frontier reports.
+- Campaign 21 supplies the assistant proof report and optional generated-CI
+  projection.
+
+Commands:
+
+```bash
+cargo xtask check-campaign
+cargo xtask goals next
+cargo xtask check-doc-index
+cargo xtask markdown-links
+cargo xtask check-static-language
+cargo xtask check-capabilities
+cargo xtask check-output-contracts
+cargo xtask check-pr
+```
+
+Blocking conditions:
+
+- analyzer identity rewrites
+- recommendation ranking changes
+- gate policy semantic changes
+- default CI blocking
+- making the unified summary the pass/fail authority
+- inline PR comment publishing
+- hidden analysis reruns or implicit source edits
+- generated tests
+- provider calls
+- runtime mutation execution or runtime mutation vocabulary without imported
+  calibration
+- treating coverage movement as test adequacy
+- LSP/editor behavior changes in this campaign lane
+- new public crates
+
+Next:
+
+- The ready work item is `ci/unified-pr-summary-card`.
+
 ## Future Campaign: Editor Evidence UX
 
 Campaign ID: `editor-evidence-ux`
