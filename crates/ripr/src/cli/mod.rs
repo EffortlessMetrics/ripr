@@ -69,5 +69,9 @@ mod tests {
             run(args(&["ripr", "agent", "brief", "--diff", "change.diff"])),
             Err("agent brief requires --json until human output is implemented".to_string())
         );
+        assert_eq!(
+            run(args(&["ripr", "first-action", "--assistant-proof"])),
+            Err("missing value for --assistant-proof".to_string())
+        );
     }
 }

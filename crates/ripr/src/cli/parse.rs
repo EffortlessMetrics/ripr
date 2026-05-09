@@ -100,6 +100,10 @@ mod tests {
             Ok(CliCommand::AssistantLoop(args(&["proof"])))
         );
         assert_eq!(
+            parse_args(args(&["ripr", "first-action", "--root", "."])),
+            Ok(CliCommand::FirstAction(args(&["--root", "."])))
+        );
+        assert_eq!(
             parse_args(args(&["ripr", "calibrate", "cargo-mutants"])),
             Ok(CliCommand::Calibrate(args(&["cargo-mutants"])))
         );

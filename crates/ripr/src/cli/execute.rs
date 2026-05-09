@@ -22,6 +22,7 @@ pub(super) fn execute(command: CliCommand) -> Result<(), String> {
         CliCommand::PrLedger(args) => commands::pr_ledger(&args),
         CliCommand::CoverageGrip(args) => commands::coverage_grip(&args),
         CliCommand::AssistantLoop(args) => commands::assistant_loop(&args),
+        CliCommand::FirstAction(args) => commands::first_action(&args),
         CliCommand::Calibrate(args) => commands::calibrate(&args),
         CliCommand::Agent(args) => commands::agent(&args),
         CliCommand::Check(args) => commands::check(&args),
@@ -98,6 +99,10 @@ mod tests {
         );
         assert_eq!(
             execute(CliCommand::AssistantLoop(args(&["proof", "--pr-guidance"]))),
+            Err("missing value for --pr-guidance".to_string())
+        );
+        assert_eq!(
+            execute(CliCommand::FirstAction(args(&["--pr-guidance"]))),
             Err("missing value for --pr-guidance".to_string())
         );
         assert_eq!(

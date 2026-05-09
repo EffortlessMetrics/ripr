@@ -36,7 +36,7 @@ through multiple work items in a campaign, but each work item should follow the
 | PR Evidence Ledger (19) | Turn per-PR RIPR evidence into an adoption ledger for movement history, waiver aging, baseline burn-down, repair receipts, and coverage/grip frontier signals while preserving advisory defaults. | Complete: spec, producer, generated-CI projection, coverage/grip frontier report, user workflow docs, and `campaign/pr-evidence-ledger-closeout`. |
 | Test-Oracle Assistant Proof (20) | Prove the full PR-time loop from changed Rust behavior to static evidence, PR/editor guidance, focused-test handoff, verification, receipt, and advisory CI/ledger projection. | Complete: spec, canonical fixture, dogfood receipt, user workflow docs, and `campaign/test-oracle-assistant-proof-closeout`. |
 | Test-Oracle Assistant Report Producer (21) | Turn the proved assistant loop into a public read-only JSON/Markdown report producer and optional advisory CI projection. | Complete: report producer, generated-CI projection, proof-report docs, and `campaign/test-oracle-assistant-report-closeout`. |
-| First Useful Action (22) | Compress existing editor, PR, ledger, proof, receipt, optional gate, coverage/grip, and staleness evidence into one advisory next test action. | Active: RIPR-SPEC-0020 defines the report contract and the routing corpus is pinned; `report/first-useful-action` is ready, with CI projection, editor status projection, workflow docs, dogfood receipts, and closeout blocked behind the producer. |
+| First Useful Action (22) | Compress existing editor, PR, ledger, proof, receipt, optional gate, coverage/grip, and staleness evidence into one advisory next test action. | Active: RIPR-SPEC-0020 defines the report contract, the routing corpus is pinned, and `ripr first-action` now writes the read-only advisory report; CI projection and editor status projection are ready, with workflow docs, dogfood receipts, and closeout still blocked behind those projections. |
 | Assistant Loop Health (future) | Summarize proof completeness, missing inputs, static evidence movement, recurring warnings, and next repair queues across one or more assistant proof reports. | Proposed in [Assistant Loop Health proposal](ASSISTANT_LOOP_HEALTH_PROPOSAL.md); should wait until First Useful Action settles the first-screen routing contract. |
 | Editor Evidence UX (future) | Make the saved-workspace LSP path feel like an editor-native test-intent cockpit from diagnostic to hover, related test, context packet, one test, verify, and receipt. | Complete as an explicit parallel Lane 3 closeout: contract audit, hover hardening, evidence-aware actions, context packet, protocol smoke, VS Code smoke, status/staleness, workflow docs, and closeout audit. |
 
@@ -161,8 +161,9 @@ report, warnings, static movement, optional CI projection, and limits. Campaign
 `docs/handoffs/2026-05-09-campaign-21-closeout.md`. Campaign 22 is now open as
 First Useful Action. It compresses existing evidence into one advisory next
 test action; RIPR-SPEC-0020 now pins the report contract, the routing corpus
-pins expected statuses and fallback outputs, and `report/first-useful-action`
-is the next ready work item.
+pins expected statuses and fallback outputs, and `ripr first-action` now writes
+the read-only report from explicit artifacts. CI summary projection and editor
+status projection are the next ready work items.
 
 The proposed [Assistant Loop Health](ASSISTANT_LOOP_HEALTH_PROPOSAL.md) follow-up
 should not replace Campaign 22. It becomes useful after First Useful Action gives
