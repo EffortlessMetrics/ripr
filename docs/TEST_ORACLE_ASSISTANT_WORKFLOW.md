@@ -263,6 +263,9 @@ when the current classifier did not promote the seam.
 - [PR evidence ledger workflow](PR_EVIDENCE_LEDGER_WORKFLOW.md) explains PR
   movement, waivers, baseline burn-down, repair receipts, and coverage/grip
   frontier signals.
+- [Test-oracle assistant proof report](TEST_ORACLE_ASSISTANT_PROOF_REPORT.md)
+  explains how reviewers, maintainers, and coding agents read
+  `test-oracle-assistant-proof.{json,md}` without artifact archaeology.
 - [LLM operator guide](LLM_OPERATOR_GUIDE.md) explains source-edit-free agent
   operation.
 - [RIPR-SPEC-0019](specs/RIPR-SPEC-0019-test-oracle-assistant-loop.md) defines

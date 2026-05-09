@@ -53,6 +53,9 @@ are scoped or reviewed.
   advisory summary and artifact content only when the required PR guidance,
   agent brief, before/after evidence, agent receipt, and PR evidence ledger
   inputs already exist.
+- Added `docs/TEST_ORACLE_ASSISTANT_PROOF_REPORT.md`, a reader-facing guide for
+  proof report status, warnings, static movement, optional CI projection,
+  coding-agent handoff, and advisory limits.
 - Opened Campaign 19, PR Evidence Ledger, with
   `spec/pr-evidence-ledger-surface` as the first ready work item so per-PR
   RIPR evidence can become an adoption ledger for movement history, waiver

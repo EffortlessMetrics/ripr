@@ -199,8 +199,10 @@ Report Producer, and `ripr assistant-loop proof` now turns the proved loop into
 advisory `test-oracle-assistant-proof.{json,md}` artifacts from explicit
 existing inputs without changing analyzer, ranking, gate, editor, provider,
 mutation, or default CI behavior. Generated GitHub CI now projects that report
-only when the required artifact chain already exists. The next step is
-user-facing proof-report documentation.
+only when the required artifact chain already exists.
+`docs/TEST_ORACLE_ASSISTANT_PROOF_REPORT.md` now explains how to read the
+report, warnings, static movement, optional CI projection, and limits. The next
+step is Campaign 21 closeout.
 
 ## Strategic Sequence
 

@@ -1287,6 +1287,9 @@ frontier status, and history trend when available. The ledger is evidence only;
 See [PR evidence ledger workflow](PR_EVIDENCE_LEDGER_WORKFLOW.md) for how to
 read the ledger as waiver aging, baseline burn-down, repair receipts, and
 coverage/grip frontier evidence.
+See [Test-oracle assistant proof report](TEST_ORACLE_ASSISTANT_PROOF_REPORT.md)
+for how to read the proof report, warnings, static movement, optional CI
+projection, and advisory limits.
 
 When the full assistant-loop artifact chain is present, generated CI also
 writes and uploads `target/ripr/reports/test-oracle-assistant-proof.json` and
