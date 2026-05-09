@@ -116,7 +116,7 @@ commands = [
 
 [[work_item]]
 id = "dogfood/first-useful-action-receipts"
-status = "ready"
+status = "done"
 branch = "dogfood-first-useful-action-receipts"
 stackable = false
 acceptance = "Record repo-local first-useful-action receipts for actionable, baseline-only, stale or missing-input, unchanged-after-attempt, and no-actionable-seam cases"
@@ -129,16 +129,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/first-useful-action-closeout"
-status = "blocked"
-blocked_by = [
-  "spec/first-useful-action-report",
-  "fixtures/first-useful-action-corpus",
-  "report/first-useful-action",
-  "ci/first-useful-action-summary",
-  "lsp/first-useful-action-status",
-  "docs/first-useful-action-workflow",
-  "dogfood/first-useful-action-receipts",
-]
+status = "ready"
 branch = "campaign-first-useful-action-closeout"
 stackable = false
 acceptance = "Close Campaign 22 after schema, fixtures, producer, CI projection, editor projection, docs, and dogfood receipts prove one advisory next action without analyzer, policy, gate, model, mutation, or editor-surface sprawl"

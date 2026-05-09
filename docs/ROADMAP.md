@@ -214,8 +214,10 @@ artifact content. VS Code status and `ripr: Show Status` now project an
 existing first-action report without rerunning analysis. The
 [first useful action workflow](FIRST_USEFUL_ACTION_WORKFLOW.md) now documents
 how developers, reviewers, and agents read the report, act on the action,
-verify movement, emit receipts, and interpret fallback states. The next ready
-slice records repo-local dogfood receipts for the documented routes.
+verify movement, emit receipts, and interpret fallback states. `cargo xtask
+dogfood` now checks repo-local first-action receipts for the documented
+actionable, baseline-only, stale, missing-input, unchanged-after-attempt, and
+no-actionable routes. Campaign 22 closeout is the next ready slice.
 
 [Assistant Loop Health](ASSISTANT_LOOP_HEALTH_PROPOSAL.md) is recorded as a
 future follow-up lane after First Useful Action. It should summarize proof
