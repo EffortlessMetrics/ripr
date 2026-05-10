@@ -19,8 +19,39 @@ first useful CLI, editor, or CI experience.
 
 ## Current Release Proof
 
-The `ripr 0.4.0` release was published and verified on May 7, 2026. The
-verified public loop covers zero-config `ripr pilot`, `ripr outcome`,
+The `ripr 0.5.0` release was published on 2026-05-10. The verified public
+loop covers zero-config `ripr pilot`, `ripr outcome`, `ripr agent verify`,
+`ripr agent receipt`, saved-workspace editor actions, operator cockpit
+status, and generated non-blocking CI artifacts.
+
+Verified on 2026-05-10:
+
+- GitHub Release `v0.5.0` with VSIX, server manifest, checksums, and all
+  supported server archives (Windows, Linux x86_64/aarch64, macOS
+  x86_64/aarch64);
+- VS Marketplace serving `EffortlessMetrics.ripr@0.5.0`;
+- Open VSX serving `EffortlessMetrics.ripr@0.5.0`.
+
+Pending after `cargo publish -p ripr` (manual maintainer step per
+[`docs/RELEASE.md`](RELEASE.md)):
+
+- crates.io serving `ripr 0.5.0`;
+- public `cargo install ripr --version 0.5.0 --locked`;
+- installed CLI smoke for `doctor`, `pilot`, `outcome`, `agent verify`, and
+  `agent receipt`;
+- Windows server archive checksum matching the manifest;
+- extracted Windows server smoke for `ripr --version`, `ripr lsp --version`,
+  `pilot`, `outcome`, `agent verify`, and `agent receipt`;
+- isolated VS Code install smoke from VS Marketplace and from the Open VSX
+  VSIX download.
+
+Update this section to a single Verified list once the crates.io publish
+and the install smoke complete.
+
+## Previous Release Proof
+
+The `ripr 0.4.0` release was published and verified on 2026-05-07. The
+verified public loop covered zero-config `ripr pilot`, `ripr outcome`,
 `ripr agent verify`, `ripr agent receipt`, saved-workspace editor actions,
 operator cockpit status, and generated non-blocking CI artifacts.
 
@@ -86,7 +117,7 @@ Use the version being verified so an older cached or latest crate cannot mask a
 release mistake:
 
 ```bash
-cargo install ripr --version 0.4.0 --locked --root target/ripr/install-smoke-cratesio --force
+cargo install ripr --version 0.5.0 --locked --root target/ripr/install-smoke-cratesio --force
 target/ripr/install-smoke-cratesio/bin/ripr --version
 target/ripr/install-smoke-cratesio/bin/ripr pilot \
   --root fixtures/boundary_gap/input \

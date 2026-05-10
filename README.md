@@ -15,7 +15,7 @@
 <!-- The public `ripr` and `ripr+` badges count unresolved repo-scoped seam-native exposure gaps under the configured policy — inbox-zero, not coverage. Diff-scoped badge artifacts remain legacy finding-exposure artifacts for PR summaries. This repo commits the Shields endpoint JSON under `badges/` and Shields fetches it from `raw.githubusercontent.com`; refresh with `cargo xtask update-badge-endpoints`. The ripr product contract is "ripr emits Shields-compatible JSON" — downstream users can self-host the JSON anywhere stable and are not expected to enable GitHub Pages. See [docs/BADGE_POLICY.md](docs/BADGE_POLICY.md) and `deferred/hosted-badge-service` in [docs/DEFERRED.md](docs/DEFERRED.md). -->
 
 
-<!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-07 after the 0.4.0 publish from the public listing; 0.5.0 publish refresh pending. Refresh from publisher metrics when updating this manual count. Do not use live VS Marketplace Shields routes. -->
+<!-- VS Marketplace install count is manually maintained. Last checked: 2026-05-07 after the 0.4.0 publish; 0.5.0 publish completed 2026-05-10 (VS Marketplace + Open VSX). Refresh the count and date from publisher metrics whenever you check; do not use live VS Marketplace Shields routes. -->
 
 `ripr` helps Rust developers and coding agents answer a draft-time testing
 question:
