@@ -3039,6 +3039,61 @@ fn check_no_panic_family_impl() -> Result<(), String> {
     )
 }
 
+fn check_no_panic_family_with_args(args: &[String]) -> Result<(), String> {
+    match args {
+        [] => check_no_panic_family(),
+        [flag] if flag == "--propose" => propose_no_panic_allowlist_impl(),
+        _ => Err(format!(
+            "unsupported check-no-panic-family argument(s): {}\nusage: cargo xtask check-no-panic-family [--propose]",
+            args.join(" ")
+        )),
+    }
+}
+
+fn propose_no_panic_allowlist_impl() -> Result<(), String> {
+    check_old_panic_allowlist_exists()?;
+
+    let roots = [
+        Path::new("crates/ripr/src"),
+        Path::new("crates/ripr/tests"),
+        Path::new("xtask/src"),
+    ];
+    let patterns = forbidden_panic_patterns();
+    let mut semantic_findings = Vec::new();
+    for root in roots {
+        if !root.exists() {
+            continue;
+        }
+        semantic_findings.extend(collect_semantic_panic_findings(root, &patterns)?);
+    }
+
+    let allowlist_path = if Path::new("policy/no-panic-allowlist.toml").exists() {
+        "policy/no-panic-allowlist.toml"
+    } else {
+        ".ripr/no-panic-allowlist.toml"
+    };
+    let versioned_entries = if Path::new(allowlist_path).exists() {
+        parse_no_panic_allowlist_toml_v2(allowlist_path)?
+    } else {
+        Vec::new()
+    };
+
+    let proposals = build_no_panic_allowlist_proposals(&semantic_findings, &versioned_entries);
+    write_report(
+        "no-panic-allowlist-proposals.md",
+        &render_no_panic_allowlist_proposals_markdown(&proposals),
+    )?;
+    write_report(
+        "no-panic-allowlist-proposals.toml",
+        &render_no_panic_allowlist_proposals_toml(&proposals),
+    )?;
+    println!(
+        "wrote {} no-panic allowlist proposal(s) to target/ripr/reports/no-panic-allowlist-proposals.md and target/ripr/reports/no-panic-allowlist-proposals.toml",
+        proposals.len()
+    );
+    Ok(())
+}
+
 fn check_allow_attributes_impl() -> Result<(), String> {
     let allowlist = read_count_allowlist(".ripr/allow-attributes.txt")?;
     let guarded = guarded_allow_attribute_lints();
@@ -17763,6 +17818,30 @@ struct NoPanicFamilyReport {
     violations: Vec<String>,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct NoPanicAllowlistProposal {
+    id: String,
+    current_finding: String,
+    path: String,
+    family: String,
+    kind: String,
+    container: Option<String>,
+    callee: Option<String>,
+    receiver_fingerprint: Option<String>,
+    text_contains: Option<String>,
+    confidence: String,
+    replaces_v1_entry: bool,
+    existing_entry: String,
+    old_coordinates: Option<String>,
+    last_seen_line: usize,
+    last_seen_column: Option<usize>,
+    classification: Option<String>,
+    owner: Option<String>,
+    explanation: String,
+    expires: Option<String>,
+    warnings: Vec<String>,
+}
+
 fn evaluate_semantic_no_panic_policy(
     findings: &[SemanticPanicFinding],
     entries: &[PanicAllowEntryVersioned],
@@ -17894,6 +17973,467 @@ fn evaluate_semantic_no_panic_policy(
     report.violations.sort();
     report.violations.dedup();
     report
+}
+
+fn build_no_panic_allowlist_proposals(
+    findings: &[SemanticPanicFinding],
+    entries: &[PanicAllowEntryVersioned],
+) -> Vec<NoPanicAllowlistProposal> {
+    let mut proposals = Vec::new();
+    let mut seen = BTreeSet::new();
+
+    for entry in entries {
+        match entry {
+            PanicAllowEntryVersioned::V1(v1) => {
+                let exact_matches = findings
+                    .iter()
+                    .filter(|finding| {
+                        v1.path == finding.path
+                            && v1.family == finding.family
+                            && v1.line == finding.line
+                            && (v1.column.is_none() || v1.column == finding.column)
+                    })
+                    .collect::<Vec<_>>();
+                let (candidate_findings, coordinates_drifted) = if exact_matches.is_empty() {
+                    (
+                        findings
+                            .iter()
+                            .filter(|finding| {
+                                v1.path == finding.path && v1.family == finding.family
+                            })
+                            .collect::<Vec<_>>(),
+                        true,
+                    )
+                } else {
+                    (exact_matches, false)
+                };
+
+                for finding in candidate_findings {
+                    let mut proposal = proposal_from_finding(
+                        finding,
+                        Some(entry),
+                        true,
+                        Some(format!("{}:{}", v1.line, v1.column.unwrap_or(0))),
+                        findings,
+                    );
+                    if coordinates_drifted {
+                        proposal.confidence = "review".to_string();
+                        proposal.warnings.push(
+                            "v0.1 coordinates did not match a current finding; candidate matched by path and family".to_string(),
+                        );
+                    }
+                    push_no_panic_allowlist_proposal(&mut proposals, &mut seen, proposal);
+                }
+            }
+            PanicAllowEntryVersioned::V2(_) => {
+                let matching_findings = findings
+                    .iter()
+                    .filter(|finding| panic_allow_entry_matches(entry, finding))
+                    .collect::<Vec<_>>();
+                for finding in matching_findings {
+                    push_no_panic_allowlist_proposal(
+                        &mut proposals,
+                        &mut seen,
+                        proposal_from_finding(finding, Some(entry), false, None, findings),
+                    );
+                }
+            }
+        }
+    }
+
+    proposals.sort_by(|left, right| {
+        left.path
+            .cmp(&right.path)
+            .then(left.last_seen_line.cmp(&right.last_seen_line))
+            .then(left.family.cmp(&right.family))
+            .then(left.id.cmp(&right.id))
+    });
+    proposals
+}
+
+fn push_no_panic_allowlist_proposal(
+    proposals: &mut Vec<NoPanicAllowlistProposal>,
+    seen: &mut BTreeSet<String>,
+    proposal: NoPanicAllowlistProposal,
+) {
+    let key = format!(
+        "{}:{}:{}:{}",
+        proposal.path,
+        proposal.family,
+        proposal.last_seen_line,
+        proposal.last_seen_column.unwrap_or(0)
+    );
+    if seen.insert(key) {
+        proposals.push(proposal);
+    }
+}
+
+fn proposal_from_finding(
+    finding: &SemanticPanicFinding,
+    entry: Option<&PanicAllowEntryVersioned>,
+    replaces_v1_entry: bool,
+    old_coordinates: Option<String>,
+    all_findings: &[SemanticPanicFinding],
+) -> NoPanicAllowlistProposal {
+    let mut warnings = no_panic_selector_proposal_warnings(finding);
+    let selector = selector_from_semantic_panic_finding(finding);
+    let selector_match_count = all_findings
+        .iter()
+        .filter(|candidate| {
+            candidate.path == finding.path
+                && candidate.family == finding.family
+                && semantic_selector_matches(&selector, candidate)
+        })
+        .count();
+    if selector_match_count != 1 {
+        warnings.push(format!(
+            "suggested selector matches {selector_match_count} current findings; review before adopting"
+        ));
+    }
+    if let Some(PanicAllowEntryVersioned::V2(existing)) = entry {
+        let existing_entry = PanicAllowEntryVersioned::V2(existing.clone());
+        let existing_match_count = all_findings
+            .iter()
+            .filter(|candidate| panic_allow_entry_matches(&existing_entry, candidate))
+            .count();
+        if existing_match_count > 1 {
+            warnings.push(format!(
+                "existing selector matches {existing_match_count} current findings"
+            ));
+        }
+        if existing.selector.as_ref().is_some_and(|existing_selector| {
+            existing_selector.receiver_fingerprint.is_none()
+                && selector.receiver_fingerprint.is_some()
+        }) {
+            warnings.push("proposal adds receiver_fingerprint to disambiguate".to_string());
+        }
+    }
+
+    let confidence = if warnings.is_empty() && selector_match_count == 1 {
+        "high"
+    } else {
+        "review"
+    }
+    .to_string();
+    let (existing_entry, classification, owner, explanation, expires) = match entry {
+        Some(PanicAllowEntryVersioned::V1(v1)) => (
+            panic_allow_entry_label(&PanicAllowEntryVersioned::V1(v1.clone())),
+            v1.classification.clone(),
+            None,
+            v1.explanation.clone(),
+            None,
+        ),
+        Some(PanicAllowEntryVersioned::V2(v2)) => (
+            panic_allow_entry_label(&PanicAllowEntryVersioned::V2(v2.clone())),
+            v2.classification.clone(),
+            v2.owner.clone(),
+            v2.explanation.clone(),
+            v2.expires.clone(),
+        ),
+        None => (
+            "new finding".to_string(),
+            None,
+            None,
+            "TODO: review why this panic-family call is allowed".to_string(),
+            None,
+        ),
+    };
+
+    NoPanicAllowlistProposal {
+        id: proposal_id_for_finding(finding),
+        current_finding: semantic_panic_finding_label(finding),
+        path: finding.path.clone(),
+        family: finding.family.clone(),
+        kind: selector.kind,
+        container: selector.container,
+        callee: selector.callee,
+        receiver_fingerprint: selector.receiver_fingerprint,
+        text_contains: selector.text_contains,
+        confidence,
+        replaces_v1_entry,
+        existing_entry,
+        old_coordinates,
+        last_seen_line: finding.line,
+        last_seen_column: finding.column,
+        classification,
+        owner,
+        explanation,
+        expires,
+        warnings,
+    }
+}
+
+fn selector_from_semantic_panic_finding(finding: &SemanticPanicFinding) -> PanicFamilySelector {
+    if finding.kind == "string_literal" {
+        return PanicFamilySelector {
+            kind: finding.kind.clone(),
+            container: None,
+            callee: None,
+            receiver_fingerprint: None,
+            text_contains: Some(finding.snippet_fingerprint.clone()),
+        };
+    }
+
+    PanicFamilySelector {
+        kind: finding.kind.clone(),
+        container: finding.container.clone(),
+        callee: finding.callee.clone(),
+        receiver_fingerprint: finding.receiver_fingerprint.clone(),
+        text_contains: None,
+    }
+}
+
+fn no_panic_selector_proposal_warnings(finding: &SemanticPanicFinding) -> Vec<String> {
+    let mut warnings = Vec::new();
+    if finding.kind == "string_literal" {
+        if finding.snippet_fingerprint.trim().is_empty() {
+            warnings.push("string_literal proposal has empty text fragment".to_string());
+        }
+        return warnings;
+    }
+
+    if finding
+        .container
+        .as_ref()
+        .is_none_or(|value| value.trim().is_empty())
+    {
+        warnings.push("finding has no stable container".to_string());
+    }
+    if finding
+        .container
+        .as_ref()
+        .is_some_and(|container| container.starts_with("closure_"))
+    {
+        warnings.push("finding uses unstable synthetic closure container".to_string());
+    }
+    if finding
+        .callee
+        .as_ref()
+        .is_none_or(|value| value.trim().is_empty())
+    {
+        warnings.push("finding has no exact callee".to_string());
+    }
+    warnings
+}
+
+fn proposal_id_for_finding(finding: &SemanticPanicFinding) -> String {
+    format!(
+        "proposal-{}-{}-{}",
+        no_panic_proposal_id_fragment(&finding.path),
+        finding.family,
+        finding.line
+    )
+}
+
+fn no_panic_proposal_id_fragment(value: &str) -> String {
+    let mut fragment = value
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>();
+    while fragment.contains("--") {
+        fragment = fragment.replace("--", "-");
+    }
+    fragment.trim_matches('-').to_string()
+}
+
+fn render_no_panic_allowlist_proposals_markdown(proposals: &[NoPanicAllowlistProposal]) -> String {
+    let mut body = String::new();
+    body.push_str("# No-Panic Allowlist Proposals\n\n");
+    body.push_str("Status: review-only\n\n");
+    body.push_str("These proposals are generated hints. They do not rewrite the canonical allowlist and must be reviewed before adoption.\n\n");
+    body.push_str(&format!("Candidates: {}\n\n", proposals.len()));
+    if proposals.is_empty() {
+        body.push_str("No matching allowlist entries need migration proposals.\n");
+        return body;
+    }
+
+    for proposal in proposals {
+        body.push_str(&format!("## {}\n\n", proposal.id));
+        body.push_str(&format!(
+            "- Current finding: `{}`\n",
+            proposal.current_finding
+        ));
+        body.push_str(&format!("- Confidence: `{}`\n", proposal.confidence));
+        body.push_str(&format!(
+            "- Replaces v0.1 entry: `{}`\n",
+            proposal.replaces_v1_entry
+        ));
+        body.push_str(&format!(
+            "- Existing entry: `{}`\n",
+            proposal.existing_entry
+        ));
+        body.push_str(&format!(
+            "- Old coordinates: `{}`\n",
+            proposal
+                .old_coordinates
+                .as_deref()
+                .unwrap_or("not applicable")
+        ));
+        body.push_str(&format!(
+            "- New `last_seen`: `{}:{}`\n",
+            proposal.last_seen_line,
+            proposal.last_seen_column.unwrap_or(0)
+        ));
+        body.push_str(&format!("- Reason: {}\n", proposal.explanation));
+        body.push_str("- Suggested selector:\n\n");
+        body.push_str("```toml\n");
+        body.push_str(&render_no_panic_selector_toml(proposal));
+        body.push_str("```\n\n");
+        if proposal.warnings.is_empty() {
+            body.push_str("- Warnings: none\n\n");
+        } else {
+            body.push_str("- Warnings:\n");
+            for warning in &proposal.warnings {
+                body.push_str(&format!("  - {warning}\n"));
+            }
+            body.push('\n');
+        }
+    }
+    body
+}
+
+fn render_no_panic_allowlist_proposals_toml(proposals: &[NoPanicAllowlistProposal]) -> String {
+    let mut body = String::new();
+    body.push_str("# Generated by `cargo xtask check-no-panic-family --propose`.\n");
+    body.push_str(
+        "# Review-only: do not commit without adding real ids, owners, expiries, and rationale.\n",
+    );
+    body.push_str("schema_version = \"0.3\"\n");
+    body.push_str("policy = \"no-panic-allowlist\"\n");
+    body.push_str("owner = \"core/policy\"\n");
+    body.push_str("status = \"proposal\"\n\n");
+    if proposals.is_empty() {
+        body.push_str("# No migration proposals.\n");
+        return body;
+    }
+
+    for proposal in proposals {
+        body.push_str(&format!("# Proposal: {}\n", proposal.id));
+        body.push_str(&format!(
+            "# Current finding: {}\n",
+            proposal.current_finding
+        ));
+        body.push_str(&format!("# Confidence: {}\n", proposal.confidence));
+        body.push_str(&format!(
+            "# Replaces v0.1 entry: {}\n",
+            proposal.replaces_v1_entry
+        ));
+        if let Some(old_coordinates) = &proposal.old_coordinates {
+            body.push_str(&format!("# Old coordinates: {old_coordinates}\n"));
+        }
+        if proposal.warnings.is_empty() {
+            body.push_str("# Warnings: none\n");
+        } else {
+            body.push_str("# Warnings:\n");
+            for warning in &proposal.warnings {
+                body.push_str(&format!("# - {warning}\n"));
+            }
+        }
+        body.push_str("[[allow]]\n");
+        body.push_str(&format!(
+            "id = \"{}\"\n",
+            no_panic_toml_string(
+                proposal
+                    .owner
+                    .as_deref()
+                    .map_or("TODO-review-id", |_| proposal.id.as_str())
+            )
+        ));
+        body.push_str(&format!(
+            "path = \"{}\"\n",
+            no_panic_toml_string(&proposal.path)
+        ));
+        body.push_str(&format!(
+            "family = \"{}\"\n",
+            no_panic_toml_string(&proposal.family)
+        ));
+        body.push_str(&format!(
+            "classification = \"{}\"\n",
+            no_panic_toml_string(
+                proposal
+                    .classification
+                    .as_deref()
+                    .unwrap_or("review_required")
+            )
+        ));
+        body.push_str(&format!(
+            "owner = \"{}\"\n",
+            no_panic_toml_string(proposal.owner.as_deref().unwrap_or("TODO-owner"))
+        ));
+        body.push_str(&format!(
+            "explanation = \"{}\"\n",
+            no_panic_toml_string(&proposal.explanation)
+        ));
+        body.push_str(&format!(
+            "expires = \"{}\"\n\n",
+            no_panic_toml_string(proposal.expires.as_deref().unwrap_or("TODO-expiry"))
+        ));
+        body.push_str(&render_no_panic_selector_toml(proposal));
+        body.push('\n');
+    }
+    body
+}
+
+fn render_no_panic_selector_toml(proposal: &NoPanicAllowlistProposal) -> String {
+    let mut body = String::new();
+    body.push_str("[allow.selector]\n");
+    body.push_str(&format!(
+        "kind = \"{}\"\n",
+        no_panic_toml_string(&proposal.kind)
+    ));
+    if let Some(container) = &proposal.container {
+        body.push_str(&format!(
+            "container = \"{}\"\n",
+            no_panic_toml_string(container)
+        ));
+    }
+    if let Some(callee) = &proposal.callee {
+        body.push_str(&format!("callee = \"{}\"\n", no_panic_toml_string(callee)));
+    }
+    if let Some(receiver_fingerprint) = &proposal.receiver_fingerprint {
+        body.push_str(&format!(
+            "receiver_fingerprint = \"{}\"\n",
+            no_panic_toml_string(receiver_fingerprint)
+        ));
+    }
+    if let Some(text_contains) = &proposal.text_contains {
+        body.push_str(&format!(
+            "text_contains = \"{}\"\n",
+            no_panic_toml_string(text_contains)
+        ));
+    }
+    body.push_str("\n[allow.last_seen]\n");
+    body.push_str(&format!("line = {}\n", proposal.last_seen_line));
+    if let Some(column) = proposal.last_seen_column {
+        body.push_str(&format!("column = {column}\n"));
+    }
+    body
+}
+
+fn no_panic_toml_string(value: &str) -> String {
+    let mut escaped = String::new();
+    for ch in value.chars() {
+        match ch {
+            '\u{08}' => escaped.push_str("\\b"),
+            '\t' => escaped.push_str("\\t"),
+            '\n' => escaped.push_str("\\n"),
+            '\u{0c}' => escaped.push_str("\\f"),
+            '\r' => escaped.push_str("\\r"),
+            '"' => escaped.push_str("\\\""),
+            '\\' => escaped.push_str("\\\\"),
+            ch if ch <= '\u{1f}' || ch == '\u{7f}' => {
+                escaped.push_str(&format!("\\u{:04X}", ch as u32));
+            }
+            ch => escaped.push(ch),
+        }
+    }
+    escaped
 }
 
 fn panic_allow_entry_matches(
@@ -19064,26 +19604,27 @@ mod tests {
         SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass,
         badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
         badge_artifacts_summary_markdown, build_lsp_cockpit_report,
-        build_repo_exposure_latency_report, build_targeted_test_outcome_report,
-        check_allow_attributes, check_droid_review_config, check_executable_files,
-        check_file_policy, check_local_context, check_network_policy, check_no_panic_family,
-        check_process_policy, check_static_language, check_workflows, ci_full_evidence_gates,
-        collect_panic_findings, collect_semantic_panic_findings, critic_findings,
-        dogfood_class_counts, dogfood_first_action_scenarios, dogfood_gate_adoption_scenarios,
-        dogfood_report_json, dogfood_report_markdown, evaluate_semantic_no_panic_policy,
-        extract_json_object_usize_map, extract_json_string, extract_json_warnings,
-        extract_workflow_run_blocks, first_line_difference, forbidden_panic_patterns, glob_matches,
-        golden_changes_without_blessing, golden_drift_semantics, guarded_allow_attribute_lints,
-        guarded_allow_attributes_in_text, install_hooks_in, is_bdd_test_name,
-        is_dependency_surface_candidate, is_evidence_path, is_generated_candidate,
-        is_known_campaign_command, is_non_rust_programming_candidate, is_policy_path,
-        is_production_path, is_receipt_status, is_ripr_managed_hook, is_snake_case_id, is_spec_id,
-        is_stale_agent_boundary_scan_target, json_escape, json_number_after,
-        json_string_values_for_key, json_summary_count, known_commands, known_xtask_command,
-        local_context_line_findings, local_markdown_target, lsp_cockpit_report,
-        lsp_cockpit_report_json, lsp_cockpit_report_markdown, markdown_links_in_text,
-        mutation_calibration_report_json, mutation_calibration_report_markdown,
-        next_checkpoints_from_capabilities, non_rust_programming_retention_reason,
+        build_no_panic_allowlist_proposals, build_repo_exposure_latency_report,
+        build_targeted_test_outcome_report, check_allow_attributes, check_droid_review_config,
+        check_executable_files, check_file_policy, check_local_context, check_network_policy,
+        check_no_panic_family, check_process_policy, check_static_language, check_workflows,
+        ci_full_evidence_gates, collect_panic_findings, collect_semantic_panic_findings,
+        critic_findings, dogfood_class_counts, dogfood_first_action_scenarios,
+        dogfood_gate_adoption_scenarios, dogfood_report_json, dogfood_report_markdown,
+        evaluate_semantic_no_panic_policy, extract_json_object_usize_map, extract_json_string,
+        extract_json_warnings, extract_workflow_run_blocks, first_line_difference,
+        forbidden_panic_patterns, glob_matches, golden_changes_without_blessing,
+        golden_drift_semantics, guarded_allow_attribute_lints, guarded_allow_attributes_in_text,
+        install_hooks_in, is_bdd_test_name, is_dependency_surface_candidate, is_evidence_path,
+        is_generated_candidate, is_known_campaign_command, is_non_rust_programming_candidate,
+        is_policy_path, is_production_path, is_receipt_status, is_ripr_managed_hook,
+        is_snake_case_id, is_spec_id, is_stale_agent_boundary_scan_target, json_escape,
+        json_number_after, json_string_values_for_key, json_summary_count, known_commands,
+        known_xtask_command, local_context_line_findings, local_markdown_target,
+        lsp_cockpit_report, lsp_cockpit_report_json, lsp_cockpit_report_markdown,
+        markdown_links_in_text, mutation_calibration_report_json,
+        mutation_calibration_report_markdown, next_checkpoints_from_capabilities,
+        no_panic_toml_string, non_rust_programming_retention_reason,
         normalize_fixture_human_output, normalize_fixture_json_output, normalize_golden_text,
         panic_family_from_pattern, parse_campaign_manifest, parse_file_policy_allowlist,
         parse_inline_array, parse_mutation_calibration_args, parse_mutation_outcomes_json,
@@ -19092,9 +19633,10 @@ mod tests {
         parse_static_language_allowlist, parse_string_value, parse_targeted_test_outcome_args,
         pr_shape_warnings, precommit_report_body, public_contract_rows,
         read_lsp_cockpit_json_value, read_mutation_input_json, receipt_json, receipt_specs,
-        receipt_status_from_reports, repo_badge_artifact_command_args, repo_badge_artifact_jobs,
-        repo_badge_artifacts_summary_markdown, repo_exposure_latency_json,
-        repo_exposure_latency_markdown, repo_exposure_latency_run,
+        receipt_status_from_reports, render_no_panic_allowlist_proposals_markdown,
+        render_no_panic_allowlist_proposals_toml, repo_badge_artifact_command_args,
+        repo_badge_artifact_jobs, repo_badge_artifacts_summary_markdown,
+        repo_exposure_latency_json, repo_exposure_latency_markdown, repo_exposure_latency_run,
         repo_exposure_latency_run_from_output, repo_exposure_latency_status,
         repo_exposure_latency_trace, repo_root, repo_seam_inventory_command_args_for_root,
         report_index_markdown, report_index_missing_expected, report_status_from_text,
@@ -19120,8 +19662,8 @@ mod tests {
     };
     use super::{MutationOutcomeRecord, StaticSeamRecord};
     use super::{
-        PanicAllowEntryV2, PanicAllowEntryVersioned, PanicFamilyLastSeen, PanicFamilySelector,
-        SemanticPanicFinding,
+        PanicAllowEntry, PanicAllowEntryV2, PanicAllowEntryVersioned, PanicFamilyLastSeen,
+        PanicFamilySelector, SemanticPanicFinding,
     };
     use super::{SarifMissingBaseline, build_sarif_policy_report};
     use super::{
@@ -20717,6 +21259,150 @@ column = 5
                 "expected duplicate identity violation, got {:?}",
                 report.violations
             ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn no_panic_proposals_convert_v0_1_entries_to_semantic_selectors() -> Result<(), String> {
+        let findings = vec![semantic_panic_finding(20, "my_fn", Some("left()"))];
+        let entries = vec![PanicAllowEntryVersioned::V1(PanicAllowEntry {
+            path: "src/lib.rs".to_string(),
+            line: 20,
+            column: Some(5),
+            family: "unwrap".to_string(),
+            classification: Some("test_only".to_string()),
+            explanation: "Legacy test helper".to_string(),
+        })];
+
+        let proposals = build_no_panic_allowlist_proposals(&findings, &entries);
+        if proposals.len() != 1 {
+            return Err(format!("expected one proposal, got {proposals:?}"));
+        }
+        let proposal = &proposals[0];
+        if !proposal.replaces_v1_entry {
+            return Err("expected proposal to replace a v0.1 entry".to_string());
+        }
+        if proposal.old_coordinates.as_deref() != Some("20:5") {
+            return Err(format!(
+                "unexpected old coordinates: {:?}",
+                proposal.old_coordinates
+            ));
+        }
+        if proposal.container.as_deref() != Some("my_fn")
+            || proposal.callee.as_deref() != Some("unwrap")
+            || proposal.receiver_fingerprint.as_deref() != Some("left()")
+        {
+            return Err(format!("unexpected selector proposal: {proposal:?}"));
+        }
+        let markdown = render_no_panic_allowlist_proposals_markdown(&proposals);
+        if !markdown.contains("Legacy test helper") || !markdown.contains("Replaces v0.1 entry") {
+            return Err(format!("unexpected markdown proposal: {markdown}"));
+        }
+        let toml = render_no_panic_allowlist_proposals_toml(&proposals);
+        if !toml.contains("receiver_fingerprint = \"left()\"")
+            || !toml.contains("status = \"proposal\"")
+        {
+            return Err(format!("unexpected TOML proposal: {toml}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn no_panic_proposals_keep_drifted_v0_1_entries_review_only() -> Result<(), String> {
+        let findings = vec![semantic_panic_finding(30, "my_fn", Some("left()"))];
+        let entries = vec![PanicAllowEntryVersioned::V1(PanicAllowEntry {
+            path: "src/lib.rs".to_string(),
+            line: 20,
+            column: Some(5),
+            family: "unwrap".to_string(),
+            classification: Some("test_only".to_string()),
+            explanation: "Legacy test helper".to_string(),
+        })];
+
+        let proposals = build_no_panic_allowlist_proposals(&findings, &entries);
+        if proposals.len() != 1 {
+            return Err(format!("expected one proposal, got {proposals:?}"));
+        }
+        let proposal = &proposals[0];
+        if proposal.confidence != "review" {
+            return Err(format!("expected review confidence, got {proposal:?}"));
+        }
+        if !proposal
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("v0.1 coordinates did not match a current finding"))
+        {
+            return Err(format!(
+                "expected drift warning on proposal, got {proposal:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn no_panic_proposals_include_single_match_semantic_entries() -> Result<(), String> {
+        let findings = vec![semantic_panic_finding(20, "my_fn", Some("left()"))];
+        let entries = vec![semantic_panic_entry(
+            "panic-0001",
+            "my_fn",
+            Some("left()"),
+            Some(20),
+        )];
+
+        let proposals = build_no_panic_allowlist_proposals(&findings, &entries);
+        if proposals.len() != 1 {
+            return Err(format!("expected one proposal, got {proposals:?}"));
+        }
+        let proposal = &proposals[0];
+        if proposal.replaces_v1_entry {
+            return Err(format!(
+                "semantic entry proposal should not replace v0.1 entry: {proposal:?}"
+            ));
+        }
+        if proposal.confidence != "high" || !proposal.warnings.is_empty() {
+            return Err(format!(
+                "single-match semantic proposal should be high confidence: {proposal:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn no_panic_proposals_split_ambiguous_semantic_selectors() -> Result<(), String> {
+        let findings = vec![
+            semantic_panic_finding(20, "my_fn", Some("left()")),
+            semantic_panic_finding(30, "my_fn", Some("right()")),
+        ];
+        let entries = vec![semantic_panic_entry("panic-0001", "my_fn", None, None)];
+
+        let proposals = build_no_panic_allowlist_proposals(&findings, &entries);
+        if proposals.len() != 2 {
+            return Err(format!("expected two proposals, got {proposals:?}"));
+        }
+        if !proposals.iter().all(|proposal| {
+            proposal
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("existing selector matches 2 current findings"))
+                && proposal.warnings.iter().any(|warning| {
+                    warning.contains("proposal adds receiver_fingerprint to disambiguate")
+                })
+        }) {
+            return Err(format!(
+                "expected ambiguity warnings on proposals, got {proposals:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn no_panic_toml_string_escapes_basic_string_control_characters() -> Result<(), String> {
+        let escaped = no_panic_toml_string(
+            "quote\" slash\\ back\u{08} tab\t line\n form\u{0c} cr\r del\u{7f}",
+        );
+        if escaped != "quote\\\" slash\\\\ back\\b tab\\t line\\n form\\f cr\\r del\\u007F" {
+            return Err(format!("unexpected TOML escaping: {escaped}"));
         }
         Ok(())
     }
@@ -26352,6 +27038,10 @@ jobs:
         assert_eq!(
             XtaskCommand::parse(["fixtures".to_string(), "boundary_gap".to_string()]),
             XtaskCommand::Fixtures(Some("boundary_gap".to_string()))
+        );
+        assert_eq!(
+            XtaskCommand::parse(["check-no-panic-family".to_string(), "--propose".to_string(),]),
+            XtaskCommand::CheckNoPanicFamily(vec!["--propose".to_string()])
         );
     }
 

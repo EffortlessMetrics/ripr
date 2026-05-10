@@ -122,6 +122,17 @@ cargo xtask check-no-panic-family
 
 Run this locally before pushing. It runs in CI as a required gate.
 
+To generate review-only migration hints for legacy line/column entries, current
+semantic entries, or ambiguous selectors, run:
+
+```bash
+cargo xtask check-no-panic-family --propose
+```
+
+This writes `target/ripr/reports/no-panic-allowlist-proposals.md` and
+`target/ripr/reports/no-panic-allowlist-proposals.toml`. The command does not
+rewrite policy files and its TOML output must be reviewed before adoption.
+
 ## Adding an exception
 
 1. Convert the call site to a fallible form if possible.

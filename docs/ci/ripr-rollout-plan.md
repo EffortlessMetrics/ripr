@@ -136,8 +136,9 @@ Completed receipts:
   reviewable by reporting allowed findings, advisory drift, stale entries,
   unallowed findings, and warnings, and by rejecting ambiguous or duplicate
   semantic selectors.
-- PR 04B / #324: add the review-only migration proposal command after drift
-  reporting is hardened. Do not auto-adopt proposed entries.
+- PR 04B / #324: add the review-only `cargo xtask check-no-panic-family
+  --propose` migration proposal command after drift reporting is hardened. Do
+  not auto-adopt proposed entries.
 
 Natural stacks:
 

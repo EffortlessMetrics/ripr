@@ -76,6 +76,8 @@ the matching xtask implementation.
   `last_seen` drift, stale entries, unallowed findings, and warnings. Ambiguous
   selector matches and duplicate semantic identities fail until selectors are
   made unique.
+- `cargo xtask check-no-panic-family --propose` writes review-only Markdown and
+  TOML migration proposals without rewriting the canonical allowlist.
 
 ## MSRV state
 

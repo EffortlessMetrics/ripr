@@ -5801,6 +5801,29 @@ Field contract:
   definitive or ambiguous runtime data in this import. Use
   `static_without_runtime_total` for the full count.
 
+## No-Panic Allowlist Proposal Reports
+
+`cargo xtask check-no-panic-family --propose` writes review-only migration
+artifacts:
+
+```text
+target/ripr/reports/no-panic-allowlist-proposals.md
+target/ripr/reports/no-panic-allowlist-proposals.toml
+```
+
+These reports are policy-maintenance aids, not product JSON contracts. They are
+generated from current panic-family findings and the canonical
+`policy/no-panic-allowlist.toml` ledger. They may propose semantic selectors
+for legacy line/column entries, current semantic entries, or narrower selectors
+for ambiguous entries, but they never rewrite the allowlist.
+
+The Markdown report records each candidate's current finding, confidence,
+whether it replaces a v0.1 entry, old coordinates when available, new
+`last_seen` values, preserved reason text, suggested selector, and review
+warnings. The TOML report uses schema `0.3` with `status = "proposal"` and is a
+copy aid only; reviewers must supply real ids, owners, expiries, and rationale
+before adopting any proposal.
+
 ## Stability Rules
 
 Output contract values are registered in `policy/output_contracts.txt`.

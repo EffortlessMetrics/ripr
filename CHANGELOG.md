@@ -137,6 +137,9 @@ are scoped or reviewed.
   structured allowed, advisory-drift, stale, unallowed, and warning sections,
   plus exact selector-cardinality checks for ambiguous or duplicate no-panic
   allowlist entries.
+- Added `cargo xtask check-no-panic-family --propose`, a review-only no-panic
+  allowlist migration helper that writes Markdown/TOML selector proposals
+  without rewriting policy files.
 - Opened Campaign 22, First Useful Action, with
   `spec/first-useful-action-report` as the first ready work item so existing
   editor, PR guidance, ledger, proof, receipt, optional gate, coverage/grip,
