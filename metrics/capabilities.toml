@@ -434,13 +434,13 @@ fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle"
 ]
-next = "analysis/activation-value-modeling-v2"
+next = "maintenance"
 metric = "flow sink identification rate"
 
 [[capability]]
 id = "activation_value_modeling"
 name = "Activation/value modeling"
-status = "alpha"
+status = "stable"
 spec = "RIPR-SPEC-0001"
 evidence = [
   "ValueContext domain contract labels",
@@ -453,14 +453,15 @@ evidence = [
   "snapshot_oracle fixture",
   "syntactic value resolution for let bindings, same-file constants, table rows, rstest cases, builder/fixture overrides, enum variants, and Option/Result constructors",
   "negative guards for comment/string shadows, cross-file constants, unresolved helpers, and unrelated builder methods",
-  "evidence-first activation output"
+  "evidence-first activation output",
+  "docs/lanes/LANE_1_EVIDENCE_SPINE.md documents stable syntax-first activation/value scope and keeps unsupported value sources as explicit limitations"
 ]
 fixtures = [
   "fixtures/boundary_gap",
   "fixtures/weak_error_oracle",
   "fixtures/snapshot_oracle"
 ]
-next = "test-efficiency-duplicate-discriminator-v1"
+next = "maintenance"
 metric = "detected and missing value facts"
 
 [[capability]]

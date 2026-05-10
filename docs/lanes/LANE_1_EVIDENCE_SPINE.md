@@ -79,6 +79,14 @@ These Lane 1 analysis slices are stable within documented syntax-first scope:
   persistence-write, log-message, configuration-change, and generic call-effect
   sinks. Unsupported or opaque propagation remains `propagation_unknown` with an
   explicit static limitation rather than a stronger claim.
+- Activation/value modeling records fixture-backed observed values and missing
+  discriminators for visible equality boundaries, exact error variants, direct
+  literal arguments, let bindings, same-file constants, table rows, rstest
+  cases, builder or fixture override methods, enum variants, and one-level
+  Option/Result constructor values. Cross-file constants, macro-heavy value
+  generation, opaque helper calls, and unrelated builder methods remain
+  unresolved or explicit static limitations rather than stronger activation
+  claims.
 
 ## Current Open PRs
 
@@ -96,15 +104,10 @@ When opening future Lane 1 PRs, list them here until they merge or close:
 These are Lane 1 candidates. Open them only when they are selected as evidence
 accuracy work:
 
-1. `analysis: promote activation value modeling where fixture-backed`
-   - audit equality boundaries, enum/Option/Result branches, table rows,
-     rstest cases, builder overrides, and same-file constants;
-   - keep cross-file constants, macro-heavy cases, and opaque helpers explicit
-     limitations.
-2. `calibration: promote covered static/runtime labels`
+1. `calibration: promote covered static/runtime labels`
    - promote only runtime-backed classes with fixture and calibration evidence;
    - do not run cargo-mutants or change static reports.
-3. `fixtures: expand evidence record contract`
+2. `fixtures: expand evidence record contract`
    - add cases only when a new evidence class or consumer requirement changes
      the v0.1 contract.
 
