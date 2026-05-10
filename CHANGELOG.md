@@ -112,6 +112,9 @@ are scoped or reviewed.
   explicit input artifacts exist, upload `pr-review-front-panel.{json,md}` with
   the report packet, and append the advisory PR review front panel to the job
   summary while preserving `ripr gate evaluate` as pass/fail authority.
+- Added `docs/PR_REVIEW_FRONT_PANEL_WORKFLOW.md`, documenting how reviewers,
+  developers, maintainers, and coding agents read the front panel, follow
+  repair routes, inspect receipts, and preserve the advisory gate boundary.
 - Opened Campaign 22, First Useful Action, with
   `spec/first-useful-action-report` as the first ready work item so existing
   editor, PR guidance, ledger, proof, receipt, optional gate, coverage/grip,

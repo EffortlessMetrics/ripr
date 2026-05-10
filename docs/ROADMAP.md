@@ -251,7 +251,10 @@ artifacts exist. The campaign keeps Lane 4's projection boundary: consume
 explicit artifacts, do not change analyzer behavior, recommendation ranking,
 gate semantics, editor behavior, mutation execution, provider calls, source
 files, generated tests, inline-comment defaults, or default CI blocking. The
-next ready slice is `docs/pr-review-front-panel-workflow`.
+[PR review front panel workflow](PR_REVIEW_FRONT_PANEL_WORKFLOW.md) now
+documents reviewer, maintainer, developer, and coding-agent use of the
+first-screen panel. The next ready slice is
+`dogfood/pr-review-front-panel-receipts`.
 
 ## Strategic Sequence
 

@@ -202,6 +202,9 @@ front-panel producer only when explicit input artifacts exist, uploads
 `pr-review-front-panel.{json,md}` with the normal report packet, and appends the
 front-panel Markdown and at-a-glance fields to the advisory job summary while
 leaving `ripr gate evaluate` as the only explicit pass/fail authority. The
+[PR review front panel workflow](PR_REVIEW_FRONT_PANEL_WORKFLOW.md) now
+documents how reviewers, maintainers, developers, and coding agents use the
+panel, repair routes, receipts, and advisory gate boundary. The
 campaign composes existing PR guidance, first useful action, assistant proof,
 assistant-loop health, PR evidence ledger, baseline delta, gate decision,
 receipts, calibration, and optional coverage/grip frontier artifacts into one
@@ -209,7 +212,7 @@ advisory GitHub PR first screen without changing analyzer behavior,
 recommendation ranking, gate semantics, editor behavior, mutation execution,
 provider calls, source files, generated tests, inline-comment defaults, or
 default CI blocking. The next ready slice is
-`docs/pr-review-front-panel-workflow`.
+`dogfood/pr-review-front-panel-receipts`.
 
 ## PR 0: `planning-and-tracking-docs`
 
