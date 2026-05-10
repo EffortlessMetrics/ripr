@@ -284,13 +284,14 @@ the final audit and future-lane boundary.
 open as Campaign 26 after Report Packet Index. The campaign should make
 optional durable PR comments safe by first producing a read-only publish plan
 from existing `ripr review-comments` artifacts, then posting only when an
-explicit workflow mode and safe permissions are configured. The boundary stays
-Lane 4: consume explicit artifacts, do not change analyzer behavior,
-recommendation ranking, gate semantics, editor behavior, mutation execution,
-provider calls, source files, generated tests, branch protection,
-`pull_request_target` defaults, inline-comment defaults, or default CI
-blocking. The first ready slice is
-`spec/pr-inline-comment-publisher-contract`.
+explicit workflow mode and safe permissions are configured.
+[RIPR-SPEC-0025](specs/RIPR-SPEC-0025-pr-inline-comment-publisher.md) now pins
+the publish-plan schema and permission boundary. The boundary stays Lane 4:
+consume explicit artifacts, do not change analyzer behavior, recommendation
+ranking, gate semantics, editor behavior, mutation execution, provider calls,
+source files, generated tests, branch protection, `pull_request_target`
+defaults, inline-comment defaults, or default CI blocking. The next ready slice
+is `fixtures/pr-inline-comment-publisher-corpus`.
 
 ## Strategic Sequence
 
