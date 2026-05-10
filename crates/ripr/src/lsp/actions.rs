@@ -138,8 +138,9 @@ fn push_seam_actions(
             context.seam,
             "after_snapshot",
             loop_commands::PILOT_AFTER_SNAPSHOT_ARTIFACT,
-            loop_commands::check_repo_exposure_command(
+            loop_commands::check_repo_exposure_command_with_base(
                 COMMAND_ROOT,
+                context.snapshot.base.as_deref(),
                 context.snapshot.mode.as_str(),
                 loop_commands::PILOT_AFTER_SNAPSHOT_ARTIFACT,
             ),
@@ -246,6 +247,7 @@ fn agent_loop_command_target(
         "label": label,
         "command": command,
         "root": COMMAND_ROOT,
+        "base": snapshot.base.as_deref(),
         "mode": snapshot.mode.as_str(),
         "seam_id": seam.seam.id().as_str(),
         "seam_kind": seam.seam.kind().as_str(),

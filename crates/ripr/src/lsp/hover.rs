@@ -299,6 +299,7 @@ fn push_editor_commands(
     snapshot: Option<&AnalysisSnapshot>,
 ) {
     let mode = snapshot.map_or("draft", |snapshot| snapshot.mode.as_str());
+    let base = snapshot.and_then(|snapshot| snapshot.base.as_deref());
     let seam_id = entry.seam.id().as_str();
     lines.push(String::new());
     lines.push("## Handoff, verify, and receipt commands".to_string());
@@ -320,8 +321,9 @@ fn push_editor_commands(
     ));
     lines.push(format!(
         "- after snapshot: `{}`",
-        loop_commands::check_repo_exposure_command(
+        loop_commands::check_repo_exposure_command_with_base(
             ".",
+            base,
             mode,
             loop_commands::PILOT_AFTER_SNAPSHOT_ARTIFACT,
         )

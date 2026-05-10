@@ -1400,6 +1400,7 @@ fn seam_code_actions_surface_packet_assertion_related_test_and_refresh() -> Resu
     assert_eq!(commands[2].0, "Agent handoff: copy packet command");
     assert_eq!(commands[2].2[0]["label"], "agent_packet");
     assert_eq!(commands[2].2[0]["root"], ".");
+    assert_eq!(commands[2].2[0]["base"], "origin/main");
     assert_eq!(commands[2].2[0]["mode"], "draft");
     assert_eq!(commands[2].2[0]["seam_id"], seam.seam.id().as_str());
     assert_eq!(commands[2].2[0]["seam_kind"], "predicate_boundary");
@@ -1432,7 +1433,7 @@ fn seam_code_actions_surface_packet_assertion_related_test_and_refresh() -> Resu
     );
     assert_eq!(
         commands[4].2[0]["command"],
-        "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json"
+        "ripr check --root . --base origin/main --mode draft --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json"
     );
     assert_eq!(commands[5].0, "Verify after test: copy verify command");
     assert_eq!(
@@ -1479,6 +1480,7 @@ fn agent_loop_command_payloads_stay_workspace_relative_for_platform_roots() -> R
         vec![diagnostic.clone()],
         Vec::new(),
     );
+    snapshot.base = Some("origin/main with space".to_string());
     snapshot.mode = Mode::Ready;
     snapshot.classified_seams = vec![seam.clone()];
     let actions = code_action_response(&code_action_params(vec![diagnostic])?, Some(&snapshot));
@@ -1507,7 +1509,7 @@ fn agent_loop_command_payloads_stay_workspace_relative_for_platform_roots() -> R
             COPY_AFTER_SNAPSHOT_COMMAND,
             "after_snapshot",
             "target/ripr/pilot/after.repo-exposure.json",
-            "ripr check --root . --mode ready --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json"
+            "ripr check --root . --base \"origin/main with space\" --mode ready --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json"
                 .to_string(),
         ),
         (
@@ -1536,6 +1538,7 @@ fn agent_loop_command_payloads_stay_workspace_relative_for_platform_roots() -> R
             .ok_or_else(|| format!("missing command payload for {command_id}"))?;
         assert_eq!(argument["label"], label);
         assert_eq!(argument["root"], ".");
+        assert_eq!(argument["base"], "origin/main with space");
         assert_eq!(argument["mode"], "ready");
         assert_eq!(argument["seam_id"], seam.seam.id().as_str());
         assert_eq!(argument["seam_file"], "src/pricing.rs");
@@ -3379,6 +3382,7 @@ fn execute_command_collect_evidence_context_returns_editor_packet_for_known_seam
 
         assert_eq!(packet["schema_version"], "0.1");
         assert_eq!(packet["tool"], "ripr");
+        assert_eq!(packet["base"], "origin/main");
         assert_eq!(packet["mode"], "draft");
         assert_eq!(packet["seam_id"], seam_id);
         assert_eq!(packet["file"], "src/pricing.rs");
@@ -3417,7 +3421,7 @@ fn execute_command_collect_evidence_context_returns_editor_packet_for_known_seam
         );
         assert_eq!(
             packet["after_snapshot_command"],
-            "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json"
+            "ripr check --root . --base origin/main --mode draft --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json"
         );
         assert_eq!(
             packet["verify_command"],

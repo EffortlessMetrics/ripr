@@ -527,6 +527,7 @@ fn evidence_context_packet(snapshot: &AnalysisSnapshot, entry: &ClassifiedSeam) 
         "schema_version": "0.1",
         "tool": "ripr",
         "root": ".",
+        "base": snapshot.base.as_deref(),
         "mode": snapshot.mode.as_str(),
         "seam_id": seam_id,
         "file": display_lsp_path(seam.file()),
@@ -590,8 +591,9 @@ fn evidence_context_packet(snapshot: &AnalysisSnapshot, entry: &ClassifiedSeam) 
             seam_id,
             loop_commands::EDITOR_AGENT_BRIEF_ARTIFACT,
         ),
-        "after_snapshot_command": loop_commands::check_repo_exposure_command(
+        "after_snapshot_command": loop_commands::check_repo_exposure_command_with_base(
             ".",
+            snapshot.base.as_deref(),
             snapshot.mode.as_str(),
             loop_commands::PILOT_AFTER_SNAPSHOT_ARTIFACT,
         ),
