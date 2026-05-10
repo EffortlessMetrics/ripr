@@ -17,11 +17,11 @@ Movement:
 Policy:
 - Decision: suppressed
 - Finding remains visible as a durable policy exception
-- Gate authority: fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/gate-decision.json
+- Gate authority: fixtures/boundary_gap/expected/pr-review-front-panel/suppressed/gate-decision.json
 
 Artifacts:
 - Start here: fixtures/boundary_gap/expected/pr-review-front-panel/suppressed/pr-review-front-panel.md
-- Policy: fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/gate-decision.json
+- Policy: fixtures/boundary_gap/expected/pr-review-front-panel/suppressed/gate-decision.json
 
 Limits:
 - Static RIPR evidence only.

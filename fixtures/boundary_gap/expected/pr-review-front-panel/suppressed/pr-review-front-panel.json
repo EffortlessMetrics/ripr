@@ -10,10 +10,10 @@
     "first_action": null,
     "assistant_proof": null,
     "assistant_health": null,
-    "ledger": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/pr-evidence-ledger.json",
+    "ledger": null,
     "baseline_delta": null,
     "zero_status": null,
-    "gate_decision": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/gate-decision.json",
+    "gate_decision": "fixtures/boundary_gap/expected/pr-review-front-panel/suppressed/gate-decision.json",
     "recommendation_calibration": null,
     "mutation_calibration": null,
     "coverage_frontier": null,
@@ -38,7 +38,7 @@
   },
   "top_issue": {
     "source": "gate_decision",
-    "source_artifact": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/gate-decision.json",
+    "source_artifact": "fixtures/boundary_gap/expected/pr-review-front-panel/suppressed/gate-decision.json",
     "seam_id": "suppressed",
     "canonical_gap_id": null,
     "path": "src/suppressed.rs",
@@ -72,7 +72,7 @@
   "policy": {
     "mode": "acknowledgeable",
     "decision": "advisory",
-    "authority_artifact": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/gate-decision.json",
+    "authority_artifact": "fixtures/boundary_gap/expected/pr-review-front-panel/suppressed/gate-decision.json",
     "acknowledgement_label": "ripr-waive"
   },
   "calibration": {
@@ -97,7 +97,7 @@
     {
       "group": "policy",
       "label": "Gate decision",
-      "path": "fixtures/boundary_gap/expected/pr-evidence-ledger/mixed/gate-decision.json",
+      "path": "fixtures/boundary_gap/expected/pr-review-front-panel/suppressed/gate-decision.json",
       "available": true,
       "required": false
     }

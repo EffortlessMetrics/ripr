@@ -18,7 +18,7 @@ Movement:
 Policy:
 - Mode: calibrated-gate
 - Decision: blocked
-- Gate authority: target/ripr/reports/gate-decision.md
+- Gate authority: fixtures/boundary_gap/expected/pr-review-front-panel/blocked/gate-decision.md
 - Acknowledgement label: ripr-waive
 
 Repair:
@@ -28,7 +28,7 @@ Repair:
 
 Artifacts:
 - Start here: fixtures/boundary_gap/expected/pr-review-front-panel/blocked/pr-review-front-panel.md
-- Policy: target/ripr/reports/gate-decision.md
+- Policy: fixtures/boundary_gap/expected/pr-review-front-panel/blocked/gate-decision.md
 - Repair: fixtures/boundary_gap/expected/first-useful-action/actionable/first-useful-action.md
 
 Limits:

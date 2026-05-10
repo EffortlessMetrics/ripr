@@ -131,6 +131,25 @@ struct PrEvidenceLedgerOptions {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+struct PrReviewFrontPanelOptions {
+    root: String,
+    pr_guidance: Option<PathBuf>,
+    first_action: Option<PathBuf>,
+    assistant_proof: Option<PathBuf>,
+    assistant_health: Option<PathBuf>,
+    ledger: Option<PathBuf>,
+    baseline_delta: Option<PathBuf>,
+    zero_status: Option<PathBuf>,
+    gate_decision: Option<PathBuf>,
+    recommendation_calibration: Option<PathBuf>,
+    mutation_calibration: Option<PathBuf>,
+    coverage_frontier: Option<PathBuf>,
+    receipt: Option<PathBuf>,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 struct CoverageGripFrontierOptions {
     coverage: Option<PathBuf>,
     ledger: Option<PathBuf>,
@@ -2280,6 +2299,22 @@ pub(super) fn pr_ledger(args: &[String]) -> Result<(), String> {
     pr_evidence_ledger_record(rest)
 }
 
+pub(super) fn pr_review(args: &[String]) -> Result<(), String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        help::print_pr_review_help();
+        return Ok(());
+    }
+    let Some((subcommand, rest)) = args.split_first() else {
+        return Err("pr-review requires subcommand `front-panel`".to_string());
+    };
+    if subcommand != "front-panel" {
+        return Err(format!(
+            "unknown pr-review subcommand {subcommand:?}; expected `front-panel`"
+        ));
+    }
+    pr_review_front_panel(rest)
+}
+
 pub(super) fn coverage_grip(args: &[String]) -> Result<(), String> {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         help::print_coverage_grip_help();
@@ -2545,6 +2580,131 @@ fn pr_evidence_ledger_record(args: &[String]) -> Result<(), String> {
     let report = output::pr_evidence_ledger::build_pr_evidence_ledger_report(input);
     let rendered_json = output::pr_evidence_ledger::render_pr_evidence_ledger_json(&report)?;
     let rendered_md = output::pr_evidence_ledger::render_pr_evidence_ledger_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    Ok(())
+}
+
+fn pr_review_front_panel(args: &[String]) -> Result<(), String> {
+    let options = parse_pr_review_front_panel_options(args)?;
+    let pr_guidance_path = options
+        .pr_guidance
+        .as_ref()
+        .map(|path| output::pr_review_front_panel::display_path(path));
+    let first_action_path = options
+        .first_action
+        .as_ref()
+        .map(|path| output::pr_review_front_panel::display_path(path));
+    let assistant_proof_path = options
+        .assistant_proof
+        .as_ref()
+        .map(|path| output::pr_review_front_panel::display_path(path));
+    let assistant_health_path = options
+        .assistant_health
+        .as_ref()
+        .map(|path| output::pr_review_front_panel::display_path(path));
+    let ledger_path = options
+        .ledger
+        .as_ref()
+        .map(|path| output::pr_review_front_panel::display_path(path));
+    let baseline_delta_path = options
+        .baseline_delta
+        .as_ref()
+        .map(|path| output::pr_review_front_panel::display_path(path));
+    let zero_status_path = options
+        .zero_status
+        .as_ref()
+        .map(|path| output::pr_review_front_panel::display_path(path));
+    let gate_decision_path = options
+        .gate_decision
+        .as_ref()
+        .map(|path| output::pr_review_front_panel::display_path(path));
+    let recommendation_calibration_path = options
+        .recommendation_calibration
+        .as_ref()
+        .map(|path| output::pr_review_front_panel::display_path(path));
+    let mutation_calibration_path = options
+        .mutation_calibration
+        .as_ref()
+        .map(|path| output::pr_review_front_panel::display_path(path));
+    let coverage_frontier_path = options
+        .coverage_frontier
+        .as_ref()
+        .map(|path| output::pr_review_front_panel::display_path(path));
+    let receipt_path = options
+        .receipt
+        .as_ref()
+        .map(|path| output::pr_review_front_panel::display_path(path));
+    let input = output::pr_review_front_panel::PrReviewFrontPanelInput {
+        root: options.root,
+        generated_at: pr_review_front_panel_generated_at()?,
+        out_md_path: output::pr_review_front_panel::display_path(&options.out_md),
+        pr_guidance_path,
+        first_action_path,
+        assistant_proof_path,
+        assistant_health_path,
+        ledger_path,
+        baseline_delta_path,
+        zero_status_path,
+        gate_decision_path,
+        recommendation_calibration_path,
+        mutation_calibration_path,
+        coverage_frontier_path,
+        receipt_path,
+        pr_guidance_json: options
+            .pr_guidance
+            .as_ref()
+            .map(|path| read_optional_text_for_report("PR guidance", path)),
+        first_action_json: options
+            .first_action
+            .as_ref()
+            .map(|path| read_optional_text_for_report("first useful action", path)),
+        assistant_proof_json: options
+            .assistant_proof
+            .as_ref()
+            .map(|path| read_optional_text_for_report("assistant proof", path)),
+        assistant_health_json: options
+            .assistant_health
+            .as_ref()
+            .map(|path| read_optional_text_for_report("assistant loop health", path)),
+        ledger_json: options
+            .ledger
+            .as_ref()
+            .map(|path| read_optional_text_for_report("PR evidence ledger", path)),
+        baseline_delta_json: options
+            .baseline_delta
+            .as_ref()
+            .map(|path| read_optional_text_for_report("baseline debt delta", path)),
+        zero_status_json: options
+            .zero_status
+            .as_ref()
+            .map(|path| read_optional_text_for_report("RIPR Zero status", path)),
+        gate_decision_json: options
+            .gate_decision
+            .as_ref()
+            .map(|path| read_optional_text_for_report("gate decision", path)),
+        recommendation_calibration_json: options
+            .recommendation_calibration
+            .as_ref()
+            .map(|path| read_optional_text_for_report("recommendation calibration", path)),
+        mutation_calibration_json: options
+            .mutation_calibration
+            .as_ref()
+            .map(|path| read_optional_text_for_report("mutation calibration", path)),
+        coverage_frontier_json: options
+            .coverage_frontier
+            .as_ref()
+            .map(|path| read_optional_text_for_report("coverage/grip frontier", path)),
+        receipt_json: options
+            .receipt
+            .as_ref()
+            .map(|path| read_optional_text_for_report("receipt", path)),
+    };
+    let report = output::pr_review_front_panel::build_pr_review_front_panel_report(input);
+    let rendered_json = output::pr_review_front_panel::render_pr_review_front_panel_json(&report)?;
+    let rendered_md = output::pr_review_front_panel::render_pr_review_front_panel_markdown(&report);
     write_text_file(&options.out, &rendered_json)?;
     write_text_file(&options.out_md, &rendered_md)?;
     println!("Wrote {}", options.out.display());
@@ -3652,6 +3812,191 @@ fn parse_pr_evidence_ledger_options(args: &[String]) -> Result<PrEvidenceLedgerO
     })
 }
 
+fn parse_pr_review_front_panel_options(
+    args: &[String],
+) -> Result<PrReviewFrontPanelOptions, String> {
+    let mut root = ".".to_string();
+    let mut pr_guidance = None;
+    let mut first_action = None;
+    let mut assistant_proof = None;
+    let mut assistant_health = None;
+    let mut ledger = None;
+    let mut baseline_delta = None;
+    let mut zero_status = None;
+    let mut gate_decision = None;
+    let mut recommendation_calibration = None;
+    let mut mutation_calibration = None;
+    let mut coverage_frontier = None;
+    let mut receipt = None;
+    let mut out = PathBuf::from(output::pr_review_front_panel::DEFAULT_PR_REVIEW_FRONT_PANEL_OUT);
+    let mut out_md =
+        PathBuf::from(output::pr_review_front_panel::DEFAULT_PR_REVIEW_FRONT_PANEL_MD_OUT);
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = non_empty_string_arg(args, i, "--root", "pr-review front-panel")?;
+            }
+            "--pr-guidance" => {
+                i += 1;
+                pr_guidance = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--pr-guidance",
+                    "pr-review front-panel",
+                )?);
+            }
+            "--first-action" => {
+                i += 1;
+                first_action = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--first-action",
+                    "pr-review front-panel",
+                )?);
+            }
+            "--assistant-proof" => {
+                i += 1;
+                assistant_proof = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--assistant-proof",
+                    "pr-review front-panel",
+                )?);
+            }
+            "--assistant-health" => {
+                i += 1;
+                assistant_health = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--assistant-health",
+                    "pr-review front-panel",
+                )?);
+            }
+            "--ledger" => {
+                i += 1;
+                ledger = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--ledger",
+                    "pr-review front-panel",
+                )?);
+            }
+            "--baseline-delta" => {
+                i += 1;
+                baseline_delta = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--baseline-delta",
+                    "pr-review front-panel",
+                )?);
+            }
+            "--zero-status" => {
+                i += 1;
+                zero_status = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--zero-status",
+                    "pr-review front-panel",
+                )?);
+            }
+            "--gate-decision" => {
+                i += 1;
+                gate_decision = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--gate-decision",
+                    "pr-review front-panel",
+                )?);
+            }
+            "--recommendation-calibration" => {
+                i += 1;
+                recommendation_calibration = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--recommendation-calibration",
+                    "pr-review front-panel",
+                )?);
+            }
+            "--mutation-calibration" => {
+                i += 1;
+                mutation_calibration = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--mutation-calibration",
+                    "pr-review front-panel",
+                )?);
+            }
+            "--coverage-frontier" => {
+                i += 1;
+                coverage_frontier = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--coverage-frontier",
+                    "pr-review front-panel",
+                )?);
+            }
+            "--receipt" => {
+                i += 1;
+                receipt = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--receipt",
+                    "pr-review front-panel",
+                )?);
+            }
+            "--out" => {
+                i += 1;
+                out = non_empty_path_arg(args, i, "--out", "pr-review front-panel")?;
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = non_empty_path_arg(args, i, "--out-md", "pr-review front-panel")?;
+            }
+            other => return Err(format!("unknown pr-review front-panel argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    if pr_guidance.is_none()
+        && first_action.is_none()
+        && assistant_proof.is_none()
+        && assistant_health.is_none()
+        && ledger.is_none()
+        && baseline_delta.is_none()
+        && zero_status.is_none()
+        && gate_decision.is_none()
+        && recommendation_calibration.is_none()
+        && mutation_calibration.is_none()
+        && coverage_frontier.is_none()
+        && receipt.is_none()
+    {
+        return Err(
+            "pr-review front-panel requires at least one explicit artifact input".to_string(),
+        );
+    }
+
+    Ok(PrReviewFrontPanelOptions {
+        root,
+        pr_guidance,
+        first_action,
+        assistant_proof,
+        assistant_health,
+        ledger,
+        baseline_delta,
+        zero_status,
+        gate_decision,
+        recommendation_calibration,
+        mutation_calibration,
+        coverage_frontier,
+        receipt,
+        out,
+        out_md,
+    })
+}
+
 fn parse_coverage_grip_frontier_options(
     args: &[String],
 ) -> Result<CoverageGripFrontierOptions, String> {
@@ -4050,6 +4395,14 @@ fn baseline_created_at() -> Result<String, String> {
 }
 
 fn first_action_generated_at() -> Result<String, String> {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| format!("system clock before unix epoch: {err}"))?
+        .as_millis();
+    Ok(format!("unix_ms:{millis}"))
+}
+
+fn pr_review_front_panel_generated_at() -> Result<String, String> {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|err| format!("system clock before unix epoch: {err}"))?
