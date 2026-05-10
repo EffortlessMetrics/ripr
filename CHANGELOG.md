@@ -85,6 +85,12 @@ are scoped or reviewed.
   distinguishes event or outbound calls, state writes, persistence writes, log
   messages, configuration changes, and generic call-effect fallback sinks while
   preserving advisory static evidence semantics.
+- Promoted activation/value modeling to stable within fixture-backed
+  syntax-first scope, covering visible equality boundaries, exact error
+  variants, direct literals, let bindings, same-file constants, table rows,
+  rstest cases, builder or fixture overrides, enum variants, and one-level
+  Option/Result constructor values while keeping unsupported value sources as
+  explicit limitations.
 - Surfaced `assistant-loop-health.{json,md}` in generated GitHub CI when
   `test-oracle-assistant-proof.json` exists, uploads the reports with the
   normal `ripr-reports` packet, and appends a compact advisory health summary
