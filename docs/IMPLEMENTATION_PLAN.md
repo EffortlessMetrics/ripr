@@ -40,6 +40,7 @@ through multiple work items in a campaign, but each work item should follow the
 | Assistant Loop Health (23) | Summarize proof completeness, missing inputs, static evidence movement, recurring warnings, and next repair queues across one or more assistant proof reports. | Complete: RIPR-SPEC-0022 defines the report contract, the assistant-loop-health fixture corpus is pinned, `ripr assistant-loop health` writes advisory JSON/Markdown from explicit proof inputs, generated GitHub CI uploads and summarizes health artifacts when proof artifacts exist, `docs/ASSISTANT_LOOP_HEALTH_WORKFLOW.md` explains maintainer and agent use, and `campaign/assistant-loop-health-closeout` records the final audit. |
 | PR Review Front Panel (24) | Compose existing PR guidance, first useful action, assistant proof, assistant-loop health, PR evidence ledger, baseline delta, gate decision, receipts, calibration, and optional coverage/grip frontier artifacts into one advisory generated-CI first screen. | Complete: report contract, fixture corpus, `ripr pr-review front-panel`, generated-CI projection, workflow docs, dogfood receipts, and closeout audit are in place. |
 | Report Packet Index (25) | Make the uploaded `ripr-reports` packet navigable as a reviewer-first index over explicit existing artifacts. | Complete: report contract, fixture corpus, `ripr reports index`, generated-CI projection, workflow docs, dogfood receipts, and closeout audit are in place. |
+| PR Inline Comment Publisher (26) | Make optional durable PR comments safe and explicit by planning, capping, deduplicating, and publishing only changed-line `review-comments` entries when configured. | Active: proposal and campaign tracker are in place, with `spec/pr-inline-comment-publisher-contract` as the first ready work item. |
 | Editor Evidence UX (future) | Make the saved-workspace LSP path feel like an editor-native test-intent cockpit from diagnostic to hover, related test, context packet, one test, verify, and receipt. | Complete as an explicit parallel Lane 3 closeout: contract audit, hover hardening, evidence-aware actions, context packet, protocol smoke, VS Code smoke, status/staleness, workflow docs, and closeout audit. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
@@ -243,6 +244,17 @@ missing-receipts, and coverage/grip-present cases. The
 [Campaign 25 closeout](handoffs/2026-05-10-campaign-25-closeout.md) records
 the PR chain, prompt-to-artifact audit, validation plan, advisory boundary, and
 future-lane boundary.
+
+Campaign 26 is now open as PR Inline Comment Publisher. It uses the
+[PR Inline Comment Publisher proposal](PR_INLINE_COMMENT_PUBLISHER_PROPOSAL.md)
+as its design brief. The campaign should make optional durable PR comments safe
+by adding a read-only publish plan over existing `ripr review-comments`
+artifacts before anything posts to GitHub. It must stay explicit opt-in and
+advisory: no analyzer behavior, recommendation ranking, gate semantics, editor
+behavior, mutation execution, provider calls, source edits, generated tests,
+branch-protection changes, hidden analysis reruns, `pull_request_target`
+defaults, or default CI blocking. The first ready slice is
+`spec/pr-inline-comment-publisher-contract`.
 
 ## PR 0: `planning-and-tracking-docs`
 

@@ -18,6 +18,10 @@ are scoped or reviewed.
 - Closed Campaign 25, Report Packet Index, with a prompt-to-artifact audit,
   validation plan, advisory boundary, and future-lane boundary in
   `docs/handoffs/2026-05-10-campaign-25-closeout.md`.
+- Opened Campaign 26, PR Inline Comment Publisher, with
+  `spec/pr-inline-comment-publisher-contract` as the first ready work item so
+  optional durable PR comments can be planned, capped, deduped, and kept
+  explicit opt-in before any GitHub posting behavior changes.
 - Added the report-packet index fixture corpus under
   `fixtures/boundary_gap/expected/report-packet-index/`, pinning complete,
   sparse advisory, missing-front-panel, blocked-gate, missing-proof,
