@@ -62,10 +62,10 @@ commands = [
 
 [[work_item]]
 id = "report/pr-review-front-panel"
-status = "ready"
+status = "done"
 branch = "report-pr-review-front-panel"
 stackable = false
-acceptance = "Add a read-only front-panel producer that emits advisory JSON/Markdown from explicit existing artifact paths without rerunning analysis or changing gate authority"
+acceptance = "Added a read-only `ripr pr-review front-panel` producer that emits advisory JSON/Markdown from explicit existing artifact paths without rerunning analysis or changing gate authority"
 commands = [
   "cargo test -p ripr pr_review_front_panel",
   "cargo xtask check-output-contracts",
@@ -77,12 +77,9 @@ commands = [
 
 [[work_item]]
 id = "ci/pr-review-front-panel-summary"
-status = "blocked"
+status = "ready"
 branch = "ci-pr-review-front-panel-summary"
 stackable = false
-blocked_by = [
-  "report/pr-review-front-panel",
-]
 acceptance = "Generated GitHub CI uploads and summarizes PR review front-panel JSON/Markdown only when input artifacts exist, while preserving advisory defaults and gate-decision pass/fail authority"
 commands = [
   "cargo test -p ripr init_generated_github_workflow",

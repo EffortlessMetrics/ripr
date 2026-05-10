@@ -27,7 +27,7 @@ Repair:
 Artifacts:
 - Start here: fixtures/boundary_gap/expected/pr-review-front-panel/coverage-flat-grip-improved/pr-review-front-panel.md
 - Repair: fixtures/boundary_gap/expected/assistant-loop-health/complete-improved/assistant-loop-health.md
-- Calibration: target/ripr/reports/coverage-grip-frontier.md
+- Calibration: fixtures/boundary_gap/expected/pr-review-front-panel/coverage-flat-grip-improved/coverage-grip-frontier.md
 
 Limits:
 - Static RIPR evidence only.

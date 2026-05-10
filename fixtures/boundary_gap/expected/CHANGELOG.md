@@ -3,7 +3,7 @@
 ## Pending
 
 Reason:
-RIPR-SPEC-0023: pin PR review front-panel cases before the report producer exists
+RIPR-SPEC-0023: update PR review front-panel cases for the read-only producer
 
 Command:
 `cargo test -p ripr pr_review_front_panel`

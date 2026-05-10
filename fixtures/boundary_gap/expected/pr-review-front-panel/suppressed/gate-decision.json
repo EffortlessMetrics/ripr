@@ -1,0 +1,31 @@
+{
+  "schema_version": "0.1",
+  "mode": "acknowledgeable",
+  "status": "advisory",
+  "summary": {
+    "blocking": 0,
+    "acknowledged": 0,
+    "suppressed": 1
+  },
+  "policy": {
+    "acknowledgement_labels": [
+      "ripr-waive"
+    ]
+  },
+  "decisions": [
+    {
+      "id": "ripr-gate-suppressed",
+      "decision": "suppressed",
+      "seam_id": "suppressed",
+      "gate_reason": "configured-hidden candidate preserved",
+      "placement": {
+        "path": "src/suppressed.rs",
+        "line": 6
+      },
+      "evidence": {
+        "missing_discriminator": "suppressed == 6",
+        "suppressed": true
+      }
+    }
+  ]
+}

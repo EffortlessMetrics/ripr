@@ -2693,8 +2693,8 @@ Work items:
 | --- | --- | --- |
 | `spec/pr-review-front-panel-report` | done | Added RIPR-SPEC-0023 plus OUTPUT_SCHEMA, traceability, capability, campaign, plan, roadmap, and changelog updates for the PR review front-panel JSON/Markdown contract, explicit inputs, first-screen fields, artifact grouping, advisory limits, and generated-CI projection boundaries. |
 | `fixtures/pr-review-front-panel-corpus` | done | Pinned advisory-only, actionable, summary-only, acknowledged, suppressed, baseline-resolved, blocked, missing-proof, and coverage-flat-grip-improved cases plus an xtask guard before adding the producer. |
-| `report/pr-review-front-panel` | ready | Add a read-only front-panel producer that emits advisory JSON/Markdown from explicit existing artifact paths without rerunning analysis or changing gate authority. |
-| `ci/pr-review-front-panel-summary` | blocked | Blocked on `report/pr-review-front-panel`; generated GitHub CI uploads and summarizes PR review front-panel JSON/Markdown only when input artifacts exist, while preserving advisory defaults and gate-decision pass/fail authority. |
+| `report/pr-review-front-panel` | done | Added `ripr pr-review front-panel`, a read-only producer that emits advisory JSON/Markdown from explicit existing artifact paths without rerunning analysis or changing gate authority. |
+| `ci/pr-review-front-panel-summary` | ready | Generated GitHub CI uploads and summarizes PR review front-panel JSON/Markdown only when input artifacts exist, while preserving advisory defaults and gate-decision pass/fail authority. |
 | `docs/pr-review-front-panel-workflow` | blocked | Blocked on `ci/pr-review-front-panel-summary`; document how reviewers, maintainers, developers, and coding agents read the PR review front panel, follow repair routes, inspect receipts, and interpret advisory limits. |
 | `dogfood/pr-review-front-panel-receipts` | blocked | Blocked on `docs/pr-review-front-panel-workflow`; record repo-local front-panel receipts for actionable, acknowledged, suppressed, baseline-resolved, blocked, missing-proof, no-actionable, and coverage-flat-grip-improved cases. |
 | `campaign/pr-review-front-panel-closeout` | blocked | Blocked on `dogfood/pr-review-front-panel-receipts`; close Campaign 24 after the spec, fixtures, producer, generated-CI advisory projection, workflow docs, dogfood receipts, and validation show the front panel is advisory, explicit-input-only, and bounded to existing artifacts. |
@@ -2719,10 +2719,10 @@ Blocking conditions:
 
 Next:
 
-- Continue with `report/pr-review-front-panel`. The report contract and
-  fixture corpus are now in place; the next slice should add the read-only
-  producer before generated-CI projection, docs, dogfood receipts, or closeout
-  work.
+- Continue with `ci/pr-review-front-panel-summary`. The report contract,
+  fixture corpus, and read-only producer are now in place; the next slice should
+  add generated-CI advisory projection before workflow docs, dogfood receipts,
+  or closeout work.
 
 ## Future Campaign: Editor Evidence UX
 

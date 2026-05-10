@@ -26,7 +26,7 @@ Policy:
 
 Artifacts:
 - Start here: fixtures/boundary_gap/expected/pr-review-front-panel/summary-only/pr-review-front-panel.md
-- Evidence: target/ripr/review/comments.md
+- Evidence: fixtures/boundary_gap/expected/pr-review-front-panel/summary-only/comments.md
 
 Limits:
 - Static RIPR evidence only.

@@ -16,7 +16,7 @@
     "gate_decision": null,
     "recommendation_calibration": null,
     "mutation_calibration": null,
-    "coverage_frontier": "target/ripr/reports/coverage-grip-frontier.json",
+    "coverage_frontier": "fixtures/boundary_gap/expected/pr-review-front-panel/coverage-flat-grip-improved/coverage-grip-frontier.json",
     "receipt": "fixtures/boundary_gap/expected/editor-agent-loop/agent-receipt.json"
   },
   "summary": {
@@ -84,7 +84,7 @@
     "state": "flat_coverage_grip_improved",
     "coverage_delta": 0.0,
     "grip_delta": -3,
-    "source_artifact": "target/ripr/reports/coverage-grip-frontier.json"
+    "source_artifact": "fixtures/boundary_gap/expected/pr-review-front-panel/coverage-flat-grip-improved/coverage-grip-frontier.json"
   },
   "artifacts": [
     {
@@ -104,7 +104,7 @@
     {
       "group": "calibration",
       "label": "Coverage/grip frontier",
-      "path": "target/ripr/reports/coverage-grip-frontier.md",
+      "path": "fixtures/boundary_gap/expected/pr-review-front-panel/coverage-flat-grip-improved/coverage-grip-frontier.md",
       "available": true,
       "required": false
     }
