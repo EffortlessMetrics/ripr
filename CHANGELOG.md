@@ -26,6 +26,10 @@ are scoped or reviewed.
   read-only publish-plan schema, comment modes, permission boundary,
   summary-only exclusion, cap and dedupe behavior, and generated-CI default-off
   posture before producer or workflow changes.
+- Added the PR inline comment publisher fixture corpus for publishable
+  changed-line comments, summary-only exclusion, cap overflow, dedupe/upsert,
+  stale-existing cleanup, fork or no-token blockers, and missing review-comments
+  input before the publish-plan producer changes.
 - Added the report-packet index fixture corpus under
   `fixtures/boundary_gap/expected/report-packet-index/`, pinning complete,
   sparse advisory, missing-front-panel, blocked-gate, missing-proof,

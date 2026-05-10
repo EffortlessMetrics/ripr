@@ -987,10 +987,14 @@ evidence = [
   "docs/specs/RIPR-SPEC-0025-pr-inline-comment-publisher.md defines the optional inline comment publisher contract, read-only publish-plan schema, explicit inputs, permission boundary, dedupe/upsert semantics, cap rules, summary-only exclusion, generated-CI default-off posture, and fixture-first implementation plan",
   "docs/OUTPUT_SCHEMA.md documents the planned pr_inline_comment_publish_plan JSON and Markdown shape, operation vocabulary, skip and blocked reasons, existing-comment metadata shape, and advisory/default-off boundary",
   "docs/PR_INLINE_COMMENT_PUBLISHER_PROPOSAL.md records Campaign 26's proposal and non-goals",
-  ".ripr/goals/active.toml tracks Campaign 26 with fixtures/pr-inline-comment-publisher-corpus as the next work item after the spec",
+  "fixtures/boundary_gap/expected/pr-inline-comment-publisher/ pins publishable changed-line, summary-only excluded, cap overflow, dedupe/upsert, stale-existing, fork or no-token, and missing-input publish-plan cases",
+  "xtask/src/main.rs validates the PR inline comment publisher fixture corpus through check-fixture-contracts",
+  ".ripr/goals/active.toml tracks Campaign 26 with report/pr-inline-comment-publish-plan as the next work item after the fixture corpus",
 ]
-fixtures = []
-next = "fixtures/pr-inline-comment-publisher-corpus"
+fixtures = [
+  "fixtures/boundary_gap/expected/pr-inline-comment-publisher"
+]
+next = "report/pr-inline-comment-publish-plan"
 metric = "pr_inline_comment_publish_plans, pr_inline_comment_publishable, pr_inline_comment_planned_create, pr_inline_comment_planned_update, pr_inline_comment_planned_keep, pr_inline_comment_planned_delete, pr_inline_comment_skipped, pr_inline_comment_blocked, pr_inline_comment_summary_only_skipped, pr_inline_comment_cap_reached, pr_inline_comment_dedupe_matches, pr_inline_comment_permission_blocked, pr_inline_comment_fork_blocked"
 
 [[capability]]

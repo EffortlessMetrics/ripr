@@ -1,0 +1,175 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "pr_inline_comment_publisher_corpus",
+  "status": "advisory",
+  "spec": "RIPR-SPEC-0025",
+  "fixture": "boundary_gap",
+  "limits_note": "Advisory PR inline comment publisher fixture expectations only; no hidden analysis reruns, source edits, generated tests, provider calls, mutation execution, ranking changes, gate changes, LSP/editor changes, pull_request_target default, default inline comments, or default CI blocking.",
+  "canonical_command": "ripr pr-comments plan --root . --pr-guidance target/ripr/review/comments.json --existing-comments target/ripr/review/existing-comments.json --mode plan --out target/ripr/review/comment-publish-plan.json --out-md target/ripr/review/comment-publish-plan.md",
+  "cases": [
+    {
+      "id": "publishable_changed_line",
+      "scenario": "plan mode with one changed-line comment eligible for create",
+      "inputs": {
+        "pr_guidance": "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
+        "mode": "plan",
+        "event_name": "pull_request",
+        "head_repo": "EffortlessMetrics/ripr",
+        "base_repo": "EffortlessMetrics/ripr"
+      },
+      "expected_report": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/publishable-changed-line/comment-publish-plan.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/publishable-changed-line/comment-publish-plan.md",
+      "expected": {
+        "status": "advisory",
+        "mode": "plan",
+        "publishable": 1,
+        "skipped": 0,
+        "blocked": 0,
+        "safe_to_publish": false,
+        "operations": ["create"],
+        "skip_reasons": [],
+        "blocked_reasons": []
+      },
+      "reason": "Plan mode should show exactly what would be created while posting nothing."
+    },
+    {
+      "id": "summary_only_excluded",
+      "scenario": "summary-only guidance remains visible but is never inline-publishable",
+      "inputs": {
+        "pr_guidance": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/summary-only-excluded/comments.json",
+        "mode": "plan"
+      },
+      "expected_report": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/summary-only-excluded/comment-publish-plan.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/summary-only-excluded/comment-publish-plan.md",
+      "expected": {
+        "status": "advisory",
+        "mode": "plan",
+        "publishable": 0,
+        "skipped": 1,
+        "blocked": 0,
+        "safe_to_publish": false,
+        "operations": [],
+        "skip_reasons": ["summary_only"],
+        "blocked_reasons": []
+      },
+      "reason": "Summary-only recommendations should stay in Markdown/artifacts instead of being forced onto a line."
+    },
+    {
+      "id": "cap_overflow",
+      "scenario": "more changed-line comments than the default cap",
+      "inputs": {
+        "pr_guidance": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/cap-overflow/comments.json",
+        "mode": "plan"
+      },
+      "expected_report": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/cap-overflow/comment-publish-plan.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/cap-overflow/comment-publish-plan.md",
+      "expected": {
+        "status": "advisory",
+        "mode": "plan",
+        "publishable": 3,
+        "skipped": 1,
+        "blocked": 0,
+        "safe_to_publish": false,
+        "operations": ["create"],
+        "skip_reasons": ["cap_reached"],
+        "blocked_reasons": []
+      },
+      "reason": "The default cap should keep durable review-thread noise bounded."
+    },
+    {
+      "id": "dedupe_upsert",
+      "scenario": "existing comments match planned dedupe keys",
+      "inputs": {
+        "pr_guidance": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/dedupe-upsert/comments.json",
+        "existing_comments": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/dedupe-upsert/existing-comments.json",
+        "mode": "plan"
+      },
+      "expected_report": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/dedupe-upsert/comment-publish-plan.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/dedupe-upsert/comment-publish-plan.md",
+      "expected": {
+        "status": "advisory",
+        "mode": "plan",
+        "publishable": 2,
+        "skipped": 0,
+        "blocked": 0,
+        "safe_to_publish": false,
+        "operations": ["update", "keep"],
+        "skip_reasons": [],
+        "blocked_reasons": []
+      },
+      "reason": "Dedupe keys should produce update or keep operations instead of duplicate comments."
+    },
+    {
+      "id": "stale_existing",
+      "scenario": "existing RIPR comment no longer has a matching publishable recommendation",
+      "inputs": {
+        "pr_guidance": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/stale-existing/comments.json",
+        "existing_comments": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/stale-existing/existing-comments.json",
+        "mode": "plan"
+      },
+      "expected_report": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/stale-existing/comment-publish-plan.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/stale-existing/comment-publish-plan.md",
+      "expected": {
+        "status": "advisory",
+        "mode": "plan",
+        "publishable": 0,
+        "skipped": 0,
+        "blocked": 0,
+        "safe_to_publish": false,
+        "operations": ["delete"],
+        "skip_reasons": [],
+        "blocked_reasons": []
+      },
+      "reason": "Stale prior RIPR comments should stay visible as planned cleanup instead of accumulating forever."
+    },
+    {
+      "id": "fork_or_no_token",
+      "scenario": "inline mode requested without safe same-repo token context",
+      "inputs": {
+        "pr_guidance": "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
+        "mode": "inline",
+        "event_name": "pull_request",
+        "head_repo": "contributor/ripr",
+        "base_repo": "EffortlessMetrics/ripr",
+        "token_available": false
+      },
+      "expected_report": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/fork-or-no-token/comment-publish-plan.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/fork-or-no-token/comment-publish-plan.md",
+      "expected": {
+        "status": "advisory",
+        "mode": "inline",
+        "publishable": 0,
+        "skipped": 0,
+        "blocked": 2,
+        "safe_to_publish": false,
+        "operations": [],
+        "skip_reasons": [],
+        "blocked_reasons": ["fork_untrusted", "missing_token"]
+      },
+      "reason": "Inline mode must no-op visibly when fork trust or token requirements are missing."
+    },
+    {
+      "id": "missing_input",
+      "scenario": "publish plan requested without review-comments input",
+      "inputs": {
+        "pr_guidance": null,
+        "mode": "plan"
+      },
+      "expected_report": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/missing-input/comment-publish-plan.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/missing-input/comment-publish-plan.md",
+      "expected": {
+        "status": "advisory",
+        "mode": "plan",
+        "publishable": 0,
+        "skipped": 0,
+        "blocked": 1,
+        "safe_to_publish": false,
+        "operations": [],
+        "skip_reasons": [],
+        "blocked_reasons": ["missing_pr_guidance"]
+      },
+      "reason": "Missing guidance input should produce a repairable no-op plan, not hidden success."
+    }
+  ]
+}

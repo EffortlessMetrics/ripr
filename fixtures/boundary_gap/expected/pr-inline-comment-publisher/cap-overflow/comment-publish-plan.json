@@ -1,0 +1,42 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "pr_inline_comment_publish_plan",
+  "status": "advisory",
+  "root": ".",
+  "generated_at": "2026-05-10T12:00:00Z",
+  "mode": "plan",
+  "inputs": {
+    "pr_guidance": "fixtures/boundary_gap/expected/pr-inline-comment-publisher/cap-overflow/comments.json",
+    "existing_comments": null
+  },
+  "limits": {
+    "max_inline_comments": 3,
+    "advisory": true,
+    "comments_default": "off"
+  },
+  "summary": {
+    "guidance_comments": 4,
+    "summary_only": 0,
+    "suppressed": 0,
+    "publishable": 3,
+    "planned_create": 3,
+    "planned_update": 0,
+    "planned_keep": 0,
+    "planned_delete": 0,
+    "skipped": 1,
+    "blocked": 0,
+    "safe_to_publish": false
+  },
+  "operations": [
+    {"operation": "create", "safe_to_publish": false, "dry_run": true, "source_collection": "comments", "source_id": "ripr-review-a", "dedupe_key": "ripr:a:src/pricing.rs:10", "placement": {"path": "src/pricing.rs", "line": 10, "side": "RIGHT", "mode": "exact_seam_line"}, "body": "RIPR advisory: first", "existing_comment_id": null, "skip_reason": null, "blocked_reason": null},
+    {"operation": "create", "safe_to_publish": false, "dry_run": true, "source_collection": "comments", "source_id": "ripr-review-b", "dedupe_key": "ripr:b:src/pricing.rs:20", "placement": {"path": "src/pricing.rs", "line": 20, "side": "RIGHT", "mode": "exact_seam_line"}, "body": "RIPR advisory: second", "existing_comment_id": null, "skip_reason": null, "blocked_reason": null},
+    {"operation": "create", "safe_to_publish": false, "dry_run": true, "source_collection": "comments", "source_id": "ripr-review-c", "dedupe_key": "ripr:c:src/pricing.rs:30", "placement": {"path": "src/pricing.rs", "line": 30, "side": "RIGHT", "mode": "exact_seam_line"}, "body": "RIPR advisory: third", "existing_comment_id": null, "skip_reason": null, "blocked_reason": null}
+  ],
+  "skipped": [
+    {"source_collection": "comments", "source_id": "ripr-review-d", "dedupe_key": "ripr:d:src/pricing.rs:40", "skip_reason": "cap_reached", "message": "Default inline comment cap reached."}
+  ],
+  "blocked": [],
+  "warnings": [],
+  "limits_note": "Advisory inline-comment publish plan only; default workflows do not post comments, summary-only guidance is never published inline, and gate decisions remain separate."
+}
