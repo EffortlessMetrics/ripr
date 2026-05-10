@@ -47,7 +47,9 @@ Current implementation status: `ripr pr-comments plan` writes the read-only
 input and optional existing-comment metadata. Generated CI keeps
 `RIPR_COMMENT_MODE=off` by default, emits the publish plan in opt-in modes, and
 publishes create/update operations only when `RIPR_COMMENT_MODE=inline` and the
-safe same-repository pull-request permission boundary is satisfied.
+safe same-repository pull-request permission boundary is satisfied. Campaign 26
+is closed by
+`docs/handoffs/2026-05-10-campaign-26-closeout.md`.
 
 ## Current Inputs
 
@@ -133,7 +135,7 @@ spec pins the default and permission behavior.
 4. `ci: add optional PR inline comment publisher` - done
 5. `docs: explain PR inline comment publisher workflow` - done
 6. `dogfood: add PR inline comment publisher receipts` - done
-7. `campaign: close PR inline comment publisher` - next
+7. `campaign: close PR inline comment publisher` - done
 
 ## Validation Baseline
 

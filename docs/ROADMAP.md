@@ -302,8 +302,8 @@ documents opt-in modes, publish-plan review, forks, permissions, noise controls,
 dedupe/upsert behavior, rollback, and the advisory gate boundary. `cargo xtask
 dogfood` now checks repo-local receipts for publishable, summary-only, capped,
 dedupe/upsert, stale-existing, fork or no-token, and missing-input publish plans
-without posting real comments. The next ready slice is
-`campaign/pr-inline-comment-publisher-closeout`.
+without posting real comments. Campaign 26 is closed by
+`docs/handoffs/2026-05-10-campaign-26-closeout.md`.
 
 ## Strategic Sequence
 
