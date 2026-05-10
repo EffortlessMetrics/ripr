@@ -409,6 +409,64 @@ fn first_action_cli_writes_actionable_report() -> Result<(), Box<dyn std::error:
 }
 
 #[test]
+fn report_packet_index_cli_writes_packet_index() -> Result<(), Box<dyn std::error::Error>> {
+    let workspace = unique_temp_workspace("report-packet-index");
+    let reports = workspace.join("target/ripr/reports");
+    let review = workspace.join("target/ripr/review");
+    std::fs::create_dir_all(&reports)?;
+    std::fs::create_dir_all(&review)?;
+    std::fs::write(
+        reports.join("pr-review-front-panel.md"),
+        "Status: blocked\n",
+    )?;
+    std::fs::write(
+        reports.join("pr-review-front-panel.json"),
+        r#"{"status":"blocked"}"#,
+    )?;
+    std::fs::write(reports.join("gate-decision.md"), "Status: blocked\n")?;
+    std::fs::write(
+        reports.join("gate-decision.json"),
+        r#"{"decision":"blocked"}"#,
+    )?;
+    std::fs::write(reports.join("first-useful-action.md"), "Status: pass\n")?;
+    std::fs::write(review.join("comments.md"), "comments\n")?;
+
+    let out = workspace.join("target/ripr/reports/index.json");
+    let out_md = workspace.join("target/ripr/reports/index.md");
+    let reports_arg = reports.display().to_string();
+    let review_arg = review.display().to_string();
+    let out_arg = out.display().to_string();
+    let out_md_arg = out_md.display().to_string();
+
+    let output = run_ripr(&[
+        "reports",
+        "index",
+        "--reports-dir",
+        &reports_arg,
+        "--review-dir",
+        &review_arg,
+        "--out",
+        &out_arg,
+        "--out-md",
+        &out_md_arg,
+    ]);
+    assert_success(&output);
+
+    let report: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&out)?)?;
+    assert_eq!(json_pointer_str(&report, "/schema_version")?, "0.1");
+    assert_eq!(json_pointer_str(&report, "/kind")?, "report_packet_index");
+    assert_eq!(json_pointer_str(&report, "/status")?, "fail");
+    assert_eq!(
+        json_pointer_str(&report, "/summary/gate_authority")?,
+        "target/ripr/reports/gate-decision.md"
+    );
+    assert!(std::fs::read_to_string(&out_md)?.contains("Gate authority:"));
+
+    std::fs::remove_dir_all(workspace)?;
+    Ok(())
+}
+
+#[test]
 fn agent_brief_diff_scope_omits_configured_off_seams() -> Result<(), Box<dyn std::error::Error>> {
     let (root, diff) = agent_brief_sample_workspace("agent-brief-config-off")?;
     std::fs::write(

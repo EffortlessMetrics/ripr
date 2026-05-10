@@ -17,6 +17,7 @@ Usage:
   ripr assistant-loop proof --pr-guidance target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-brief.json --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --receipt target/ripr/reports/agent-receipt.json [--out target/ripr/reports/test-oracle-assistant-proof.json]
   ripr assistant-loop health --proof target/ripr/reports/test-oracle-assistant-proof.json [--out target/ripr/reports/assistant-loop-health.json]
   ripr first-action [--root .] [--pr-guidance target/ripr/review/comments.json] [--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json] [--ledger target/ripr/reports/pr-evidence-ledger.json] [--out target/ripr/reports/first-useful-action.json]
+  ripr reports index [--reports-dir target/ripr/reports] [--review-dir target/ripr/review] [--out target/ripr/reports/index.json]
   ripr calibrate cargo-mutants --mutants-json PATH --repo-exposure-json PATH [--format md|json] [--out PATH]
   ripr agent start --root . --seam-id ID [--out target/ripr/workflow]
   ripr agent brief --root . (--diff PATH|--base REV|--files PATHS|--seam-id ID) --json
@@ -53,6 +54,7 @@ Quick start:
   ripr assistant-loop proof --pr-guidance target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-brief.json --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --receipt target/ripr/reports/agent-receipt.json
   ripr assistant-loop health --proof target/ripr/reports/test-oracle-assistant-proof.json
   ripr first-action --pr-guidance target/ripr/review/comments.json --assistant-proof target/ripr/reports/test-oracle-assistant-proof.json --ledger target/ripr/reports/pr-evidence-ledger.json
+  ripr reports index
   ripr calibrate cargo-mutants --mutants-json target/mutants/outcomes.json --repo-exposure-json target/ripr/pilot/after.repo-exposure.json
   ripr agent start --root . --seam-id f3c9e4d21a0b7c88
   ripr agent brief --root . --diff change.diff --json
@@ -298,6 +300,28 @@ state, movement, repair route, receipt state, calibration context, and artifact
 groups. It does not rerun analysis, edit source, generate tests, call a
 provider, run mutation testing, publish inline comments, or make CI blocking by
 default.
+"#;
+
+const REPORTS_HELP: &str = r#"Usage: ripr reports index [--root PATH] [--reports-dir PATH] [--review-dir PATH] [--receipts-dir PATH] [--workflow-dir PATH] [--agent-dir PATH] [--pilot-dir PATH] [--ci-dir PATH] [--out PATH] [--out-md PATH]
+
+Index options:
+  --root PATH           Workspace root label. Defaults to current directory.
+  --reports-dir PATH    Directory containing report artifacts. Defaults to target/ripr/reports.
+  --review-dir PATH     Directory containing PR guidance artifacts. Defaults to target/ripr/review.
+  --receipts-dir PATH   Directory containing receipt artifacts. Defaults to target/ripr/receipts.
+  --workflow-dir PATH   Directory containing workflow repair artifacts. Defaults to target/ripr/workflow.
+  --agent-dir PATH      Directory containing agent handoff artifacts. Defaults to target/ripr/agent.
+  --pilot-dir PATH      Directory containing pilot artifacts. Defaults to target/ripr/pilot.
+  --ci-dir PATH         Directory containing CI context artifacts. Defaults to target/ci.
+  --out PATH            JSON output path. Defaults to target/ripr/reports/index.json.
+  --out-md PATH         Markdown output path. Defaults to target/ripr/reports/index.md.
+
+The report-packet index is a read-only advisory map over explicit existing
+RIPR artifacts. It groups reports by reviewer use, names the start-here
+artifact, preserves gate-decision as the configured pass/fail authority,
+lists missing expected surfaces with regeneration commands when known, and
+does not rerun analysis, edit source, generate tests, call providers, run
+mutation testing, publish inline comments, or make CI blocking by default.
 "#;
 
 const COVERAGE_GRIP_HELP: &str = r#"Usage: ripr coverage-grip frontier (--ledger PATH|--baseline-delta PATH|--zero-status PATH) [--coverage PATH] [--out PATH] [--out-md PATH]
@@ -622,6 +646,10 @@ pub(super) fn print_first_action_help() {
     println!("{FIRST_ACTION_HELP}");
 }
 
+pub(super) fn print_reports_help() {
+    println!("{REPORTS_HELP}");
+}
+
 pub(super) fn print_calibrate_help() {
     println!("{CALIBRATE_HELP}");
 }
@@ -682,7 +710,7 @@ mod tests {
         ASSISTANT_LOOP_HELP, BASELINE_HELP, CALIBRATE_HELP, CHECK_HELP, CONTEXT_HELP,
         COVERAGE_GRIP_HELP, DOCTOR_HELP, EVIDENCE_HEALTH_HELP, EXPLAIN_HELP, FIRST_ACTION_HELP,
         GATE_HELP, HELP, INIT_HELP, LSP_HELP, OUTCOME_HELP, PILOT_HELP, PR_LEDGER_HELP,
-        PR_REVIEW_HELP, REVIEW_COMMENTS_HELP, ZERO_HELP,
+        PR_REVIEW_HELP, REPORTS_HELP, REVIEW_COMMENTS_HELP, ZERO_HELP,
     };
 
     #[test]
@@ -703,6 +731,7 @@ mod tests {
         assert!(HELP.contains("ripr assistant-loop proof"));
         assert!(HELP.contains("ripr assistant-loop health"));
         assert!(HELP.contains("ripr first-action"));
+        assert!(HELP.contains("ripr reports index"));
         assert!(HELP.contains("ripr calibrate"));
         assert!(HELP.contains("ripr agent start"));
         assert!(HELP.contains("ripr agent brief"));
@@ -773,6 +802,9 @@ mod tests {
         assert!(FIRST_ACTION_HELP.starts_with("Usage: ripr first-action"));
         assert!(FIRST_ACTION_HELP.contains("first-useful-action.json"));
         assert!(FIRST_ACTION_HELP.contains("read-only advisory router"));
+        assert!(REPORTS_HELP.starts_with("Usage: ripr reports index"));
+        assert!(REPORTS_HELP.contains("target/ripr/reports/index.json"));
+        assert!(REPORTS_HELP.contains("read-only advisory map"));
         assert!(CALIBRATE_HELP.starts_with("Usage: ripr calibrate cargo-mutants"));
         assert!(CALIBRATE_HELP.contains("--mutants-json PATH"));
         assert!(AGENT_HELP.starts_with("Usage: ripr agent"));

@@ -104,6 +104,10 @@ mod tests {
             Ok(CliCommand::FirstAction(args(&["--root", "."])))
         );
         assert_eq!(
+            parse_args(args(&["ripr", "reports", "index"])),
+            Ok(CliCommand::Reports(args(&["index"])))
+        );
+        assert_eq!(
             parse_args(args(&["ripr", "calibrate", "cargo-mutants"])),
             Ok(CliCommand::Calibrate(args(&["cargo-mutants"])))
         );

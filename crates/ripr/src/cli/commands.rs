@@ -150,6 +150,20 @@ struct PrReviewFrontPanelOptions {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+struct ReportPacketIndexOptions {
+    root: String,
+    reports_dir: PathBuf,
+    review_dir: PathBuf,
+    receipts_dir: PathBuf,
+    workflow_dir: PathBuf,
+    agent_dir: PathBuf,
+    pilot_dir: PathBuf,
+    ci_dir: PathBuf,
+    out: PathBuf,
+    out_md: PathBuf,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 struct CoverageGripFrontierOptions {
     coverage: Option<PathBuf>,
     ledger: Option<PathBuf>,
@@ -2588,6 +2602,45 @@ pub(super) fn first_action(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+pub(super) fn reports(args: &[String]) -> Result<(), String> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        help::print_reports_help();
+        return Ok(());
+    }
+    let Some((subcommand, rest)) = args.split_first() else {
+        return Err("reports requires subcommand `index`".to_string());
+    };
+    if subcommand != "index" {
+        return Err(format!(
+            "unknown reports subcommand {subcommand:?}; expected `index`"
+        ));
+    }
+    report_packet_index(rest)
+}
+
+fn report_packet_index(args: &[String]) -> Result<(), String> {
+    let options = parse_report_packet_index_options(args)?;
+    let input = output::report_packet_index::ReportPacketIndexInput {
+        root: options.root,
+        generated_at: report_packet_index_generated_at()?,
+        reports_dir: options.reports_dir,
+        review_dir: options.review_dir,
+        receipts_dir: options.receipts_dir,
+        workflow_dir: options.workflow_dir,
+        agent_dir: options.agent_dir,
+        pilot_dir: options.pilot_dir,
+        ci_dir: options.ci_dir,
+    };
+    let report = output::report_packet_index::build_report_packet_index_report(input);
+    let rendered_json = output::report_packet_index::render_report_packet_index_json(&report)?;
+    let rendered_md = output::report_packet_index::render_report_packet_index_markdown(&report);
+    write_text_file(&options.out, &rendered_json)?;
+    write_text_file(&options.out_md, &rendered_md)?;
+    println!("Wrote {}", options.out.display());
+    println!("Wrote {}", options.out_md.display());
+    Ok(())
+}
+
 fn ripr_zero_status(args: &[String]) -> Result<(), String> {
     let options = parse_ripr_zero_status_options(args)?;
     let baseline_path = options
@@ -4144,6 +4197,80 @@ fn parse_pr_review_front_panel_options(
     })
 }
 
+fn parse_report_packet_index_options(args: &[String]) -> Result<ReportPacketIndexOptions, String> {
+    let mut root = ".".to_string();
+    let mut reports_dir = PathBuf::from("target/ripr/reports");
+    let mut review_dir = PathBuf::from("target/ripr/review");
+    let mut receipts_dir = PathBuf::from("target/ripr/receipts");
+    let mut workflow_dir = PathBuf::from("target/ripr/workflow");
+    let mut agent_dir = PathBuf::from("target/ripr/agent");
+    let mut pilot_dir = PathBuf::from("target/ripr/pilot");
+    let mut ci_dir = PathBuf::from("target/ci");
+    let mut out = PathBuf::from(output::report_packet_index::DEFAULT_REPORT_PACKET_INDEX_OUT);
+    let mut out_md = PathBuf::from(output::report_packet_index::DEFAULT_REPORT_PACKET_INDEX_MD_OUT);
+
+    let mut i = 0usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--root" => {
+                i += 1;
+                root = non_empty_string_arg(args, i, "--root", "reports index")?;
+            }
+            "--reports-dir" => {
+                i += 1;
+                reports_dir = non_empty_path_arg(args, i, "--reports-dir", "reports index")?;
+            }
+            "--review-dir" => {
+                i += 1;
+                review_dir = non_empty_path_arg(args, i, "--review-dir", "reports index")?;
+            }
+            "--receipts-dir" => {
+                i += 1;
+                receipts_dir = non_empty_path_arg(args, i, "--receipts-dir", "reports index")?;
+            }
+            "--workflow-dir" => {
+                i += 1;
+                workflow_dir = non_empty_path_arg(args, i, "--workflow-dir", "reports index")?;
+            }
+            "--agent-dir" => {
+                i += 1;
+                agent_dir = non_empty_path_arg(args, i, "--agent-dir", "reports index")?;
+            }
+            "--pilot-dir" => {
+                i += 1;
+                pilot_dir = non_empty_path_arg(args, i, "--pilot-dir", "reports index")?;
+            }
+            "--ci-dir" => {
+                i += 1;
+                ci_dir = non_empty_path_arg(args, i, "--ci-dir", "reports index")?;
+            }
+            "--out" => {
+                i += 1;
+                out = non_empty_path_arg(args, i, "--out", "reports index")?;
+            }
+            "--out-md" => {
+                i += 1;
+                out_md = non_empty_path_arg(args, i, "--out-md", "reports index")?;
+            }
+            other => return Err(format!("unknown reports index argument {other:?}")),
+        }
+        i += 1;
+    }
+
+    Ok(ReportPacketIndexOptions {
+        root,
+        reports_dir,
+        review_dir,
+        receipts_dir,
+        workflow_dir,
+        agent_dir,
+        pilot_dir,
+        ci_dir,
+        out,
+        out_md,
+    })
+}
+
 fn parse_coverage_grip_frontier_options(
     args: &[String],
 ) -> Result<CoverageGripFrontierOptions, String> {
@@ -4550,6 +4677,14 @@ fn first_action_generated_at() -> Result<String, String> {
 }
 
 fn pr_review_front_panel_generated_at() -> Result<String, String> {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| format!("system clock before unix epoch: {err}"))?
+        .as_millis();
+    Ok(format!("unix_ms:{millis}"))
+}
+
+fn report_packet_index_generated_at() -> Result<String, String> {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|err| format!("system clock before unix epoch: {err}"))?

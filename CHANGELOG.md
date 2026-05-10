@@ -154,6 +154,10 @@ are scoped or reviewed.
 - Added RIPR-SPEC-0024 for the Report Packet Index contract and advanced
   Campaign 25 to the fixture-corpus slice so packet states are pinned before
   changing the index producer.
+- Added `ripr reports index`, a read-only advisory producer that writes
+  `target/ripr/reports/index.{json,md}` from explicit artifact directories,
+  grouping reviewer-first packet surfaces while preserving gate-decision
+  authority and avoiding hidden analysis reruns.
 - Strengthened `cargo xtask check-no-panic-family` drift reporting with
   structured allowed, advisory-drift, stale, unallowed, and warning sections,
   plus exact selector-cardinality checks for ambiguous or duplicate no-panic
