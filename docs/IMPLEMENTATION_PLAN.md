@@ -228,7 +228,9 @@ outputs. It must stay advisory and read-only: no analyzer behavior,
 recommendation ranking, gate semantics, editor behavior, mutation execution,
 provider calls, source edits, generated tests, inline-comment defaults, hidden
 analysis reruns, or default CI blocking. The first ready slice is
-`spec/report-packet-index-contract`.
+`fixtures/report-packet-index-corpus`, after the spec defined the JSON and
+Markdown contract in
+[RIPR-SPEC-0024: Report Packet Index](specs/RIPR-SPEC-0024-report-packet-index.md).
 
 ## PR 0: `planning-and-tracking-docs`
 

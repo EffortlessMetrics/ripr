@@ -31,6 +31,9 @@ packet map.
 Make `target/ripr/reports/index.{json,md}` the front door for the uploaded
 RIPR report packet.
 
+The stable behavior contract is
+[RIPR-SPEC-0024: Report Packet Index](specs/RIPR-SPEC-0024-report-packet-index.md).
+
 The index should be advisory and read-only. It should consume explicit existing
 artifacts and group them by reviewer use:
 

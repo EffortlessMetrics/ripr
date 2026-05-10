@@ -34,3 +34,4 @@ observable behavior.
 | [RIPR-SPEC-0021](RIPR-SPEC-0021-evidence-record.md) | proposed | Evidence record |
 | [RIPR-SPEC-0022](RIPR-SPEC-0022-assistant-loop-health-report.md) | proposed | Assistant loop health report |
 | [RIPR-SPEC-0023](RIPR-SPEC-0023-pr-review-front-panel-report.md) | proposed | PR review front panel report |
+| [RIPR-SPEC-0024](RIPR-SPEC-0024-report-packet-index.md) | proposed | Report packet index |

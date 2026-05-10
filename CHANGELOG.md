@@ -146,6 +146,9 @@ are scoped or reviewed.
   explicit existing artifacts without changing analyzer, gate, editor,
   provider, mutation, source-edit, generated-test, inline-comment, or
   default-blocking behavior.
+- Added RIPR-SPEC-0024 for the Report Packet Index contract and advanced
+  Campaign 25 to the fixture-corpus slice so packet states are pinned before
+  changing the index producer.
 - Strengthened `cargo xtask check-no-panic-family` drift reporting with
   structured allowed, advisory-drift, stale, unallowed, and warning sections,
   plus exact selector-cardinality checks for ambiguous or duplicate no-panic
