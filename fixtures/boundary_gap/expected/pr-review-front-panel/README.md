@@ -3,10 +3,10 @@
 These files pin the Campaign 24 PR review front-panel corpus for
 `RIPR-SPEC-0023`.
 
-They are static fixture artifacts. They do not implement
-`ripr pr-review front-panel`, rerun hidden analysis, edit source, generate
-tests, call providers, run mutation testing, change recommendation ranking,
-change gate policy, publish inline comments, or change CI blocking behavior.
+They are static fixture artifacts used by `ripr pr-review front-panel`. The
+producer does not rerun hidden analysis, edit source, generate tests, call
+providers, run mutation testing, change recommendation ranking, change gate
+policy, publish inline comments, or change CI blocking behavior.
 
 Files:
 
@@ -42,5 +42,5 @@ Case directories:
 
 Each case pins status, top-issue state, policy state, placement, movement,
 coverage/grip state, summary counts, artifact groups, warnings, and advisory
-limits. The later report producer and generated CI projection should use this
-corpus as the regression contract.
+limits. The producer and later generated CI projection should use this corpus as
+the regression contract.

@@ -89,6 +89,9 @@ are scoped or reviewed.
   actionable, summary-only, acknowledged, suppressed, baseline-resolved,
   blocked, missing-proof, and coverage-flat-grip-improved cases, with an xtask
   guard to keep the producer fixture-first.
+- Added `ripr pr-review front-panel`, a read-only advisory producer that writes
+  `pr-review-front-panel.{json,md}` from explicit existing RIPR artifacts
+  without rerunning analysis or changing gate authority.
 - Opened Campaign 22, First Useful Action, with
   `spec/first-useful-action-report` as the first ready work item so existing
   editor, PR guidance, ledger, proof, receipt, optional gate, coverage/grip,

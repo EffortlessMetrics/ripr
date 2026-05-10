@@ -6,7 +6,7 @@
   "root": "fixtures/boundary_gap/input",
   "generated_at": "2026-05-09T12:00:00Z",
   "inputs": {
-    "pr_guidance": "target/ripr/review/comments.json",
+    "pr_guidance": "fixtures/boundary_gap/expected/pr-review-front-panel/summary-only/comments.json",
     "first_action": "fixtures/boundary_gap/expected/first-useful-action/actionable/first-useful-action.json",
     "assistant_proof": null,
     "assistant_health": null,
@@ -38,7 +38,7 @@
   },
   "top_issue": {
     "source": "pr_guidance",
-    "source_artifact": "target/ripr/review/comments.json",
+    "source_artifact": "fixtures/boundary_gap/expected/pr-review-front-panel/summary-only/comments.json",
     "seam_id": "67fc764ba37d77bd",
     "canonical_gap_id": null,
     "path": "src/lib.rs",
@@ -97,7 +97,7 @@
     {
       "group": "evidence",
       "label": "PR guidance summary",
-      "path": "target/ripr/review/comments.md",
+      "path": "fixtures/boundary_gap/expected/pr-review-front-panel/summary-only/comments.md",
       "available": true,
       "required": false
     }
@@ -106,7 +106,7 @@
     {
       "kind": "summary_only_guidance",
       "message": "Recommendation is visible in summary only because changed-line placement is unsafe.",
-      "source_artifact": "target/ripr/review/comments.json"
+      "source_artifact": "fixtures/boundary_gap/expected/pr-review-front-panel/summary-only/comments.json"
     }
   ],
   "limits": [

@@ -1,0 +1,31 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "review_comments",
+  "status": "advisory",
+  "summary": {
+    "comments": 0,
+    "summary_only": 1,
+    "suppressed": 0
+  },
+  "comments": [],
+  "summary_only": [
+    {
+      "seam_id": "67fc764ba37d77bd",
+      "path": "src/lib.rs",
+      "line": 2,
+      "class": "weakly_exposed",
+      "missing_discriminator": "discount_threshold (equality boundary)",
+      "suggested_test": {
+        "recommended_file": "tests/pricing.rs",
+        "near_test": "tests/pricing.rs::below_threshold_has_no_discount",
+        "assertion_shape": "Add a focused test where amount == discount_threshold and assert the exact discounted_total output."
+      },
+      "reason": "changed-line placement is unsafe"
+    }
+  ],
+  "suppressed": [],
+  "warnings": [
+    "summary-only guidance because changed-line placement is unsafe"
+  ]
+}

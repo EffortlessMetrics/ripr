@@ -1,0 +1,30 @@
+{
+  "schema_version": "0.1",
+  "mode": "calibrated-gate",
+  "status": "blocked",
+  "summary": {
+    "blocking": 1,
+    "acknowledged": 0,
+    "suppressed": 0
+  },
+  "policy": {
+    "acknowledgement_labels": [
+      "ripr-waive"
+    ]
+  },
+  "decisions": [
+    {
+      "id": "ripr-gate-blocked",
+      "decision": "blocked",
+      "seam_id": "67fc764ba37d77bd",
+      "gate_reason": "configured gate blocked one new policy-eligible gap",
+      "placement": {
+        "path": "src/lib.rs",
+        "line": 2
+      },
+      "evidence": {
+        "missing_discriminator": "discount_threshold (equality boundary)"
+      }
+    }
+  ]
+}

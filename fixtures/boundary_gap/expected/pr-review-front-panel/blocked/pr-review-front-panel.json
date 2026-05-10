@@ -13,7 +13,7 @@
     "ledger": null,
     "baseline_delta": null,
     "zero_status": null,
-    "gate_decision": "target/ripr/reports/gate-decision.json",
+    "gate_decision": "fixtures/boundary_gap/expected/pr-review-front-panel/blocked/gate-decision.json",
     "recommendation_calibration": null,
     "mutation_calibration": null,
     "coverage_frontier": null,
@@ -72,7 +72,7 @@
   "policy": {
     "mode": "calibrated-gate",
     "decision": "blocked",
-    "authority_artifact": "target/ripr/reports/gate-decision.json",
+    "authority_artifact": "fixtures/boundary_gap/expected/pr-review-front-panel/blocked/gate-decision.json",
     "acknowledgement_label": "ripr-waive"
   },
   "calibration": {
@@ -97,7 +97,7 @@
     {
       "group": "policy",
       "label": "Gate decision",
-      "path": "target/ripr/reports/gate-decision.md",
+      "path": "fixtures/boundary_gap/expected/pr-review-front-panel/blocked/gate-decision.md",
       "available": true,
       "required": false
     },

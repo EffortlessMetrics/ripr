@@ -11,6 +11,7 @@ pub(super) enum CliCommand {
     Baseline(Vec<String>),
     Zero(Vec<String>),
     PrLedger(Vec<String>),
+    PrReview(Vec<String>),
     CoverageGrip(Vec<String>),
     AssistantLoop(Vec<String>),
     FirstAction(Vec<String>),
@@ -37,6 +38,7 @@ impl CliCommand {
             Some("baseline") => Ok(Self::Baseline(command_args)),
             Some("zero") => Ok(Self::Zero(command_args)),
             Some("pr-ledger") => Ok(Self::PrLedger(command_args)),
+            Some("pr-review") => Ok(Self::PrReview(command_args)),
             Some("coverage-grip") => Ok(Self::CoverageGrip(command_args)),
             Some("assistant-loop") => Ok(Self::AssistantLoop(command_args)),
             Some("first-action") => Ok(Self::FirstAction(command_args)),
@@ -83,6 +85,7 @@ mod tests {
             (Some("baseline"), CliCommand::Baseline(Vec::new())),
             (Some("zero"), CliCommand::Zero(Vec::new())),
             (Some("pr-ledger"), CliCommand::PrLedger(Vec::new())),
+            (Some("pr-review"), CliCommand::PrReview(Vec::new())),
             (Some("coverage-grip"), CliCommand::CoverageGrip(Vec::new())),
             (
                 Some("assistant-loop"),
