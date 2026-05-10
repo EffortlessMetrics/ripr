@@ -1538,6 +1538,7 @@ tests = [
   "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture",
   "crates/ripr/src/cli/execute.rs::execute_dispatches_subcommand_args_without_reparsing_argv",
   "crates/ripr/src/cli/help.rs::command_specific_help_usage_lines_are_stable",
+  "xtask/src/main.rs::dogfood_pr_review_front_panel_scenarios_have_checked_receipts",
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/pr-review-front-panel/corpus.json",
@@ -1590,6 +1591,7 @@ outputs = [
   "docs/ROADMAP.md",
   "fixtures/boundary_gap/expected/CHANGELOG.md",
   "fixtures/boundary_gap/expected/pr-review-front-panel/README.md",
+  "docs/handoffs/2026-05-10-campaign-24-closeout.md",
   "CHANGELOG.md",
 ]
 metrics = [

@@ -137,6 +137,9 @@ are scoped or reviewed.
   actionable, acknowledged, suppressed, baseline-resolved, blocked,
   missing-proof, no-actionable, and coverage-flat-grip-improved reviewer states
   without changing generated-CI blocking defaults.
+- Closed Campaign 24, PR Review Front Panel, with a prompt-to-artifact audit,
+  validation plan, advisory boundary, and future-lane boundary in
+  `docs/handoffs/2026-05-10-campaign-24-closeout.md`.
 - Strengthened `cargo xtask check-no-panic-family` drift reporting with
   structured allowed, advisory-drift, stale, unallowed, and warning sections,
   plus exact selector-cardinality checks for ambiguous or duplicate no-panic

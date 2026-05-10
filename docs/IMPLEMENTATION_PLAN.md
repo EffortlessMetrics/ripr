@@ -189,7 +189,7 @@ evidence over time, without changing analyzer behavior, ranking, gate
 semantics, LSP/editor behavior, mutation execution, provider calls, source
 files, generated tests, or default CI blocking.
 
-Campaign 24 is now open as PR Review Front Panel. It uses the
+Campaign 24 is now closed as PR Review Front Panel. It uses the
 [PR Review Front Panel proposal](PR_REVIEW_FRONT_PANEL_PROPOSAL.md) as its
 design brief, and
 [RIPR-SPEC-0023](specs/RIPR-SPEC-0023-pr-review-front-panel-report.md) now
@@ -214,8 +214,9 @@ receipts, calibration, and optional coverage/grip frontier artifacts into one
 advisory GitHub PR first screen without changing analyzer behavior,
 recommendation ranking, gate semantics, editor behavior, mutation execution,
 provider calls, source files, generated tests, inline-comment defaults, or
-default CI blocking. The next ready slice is
-`campaign/pr-review-front-panel-closeout`.
+default CI blocking. The
+[Campaign 24 closeout](handoffs/2026-05-10-campaign-24-closeout.md) records the
+PR chain, prompt-to-artifact audit, validation plan, and future-lane boundary.
 
 ## PR 0: `planning-and-tracking-docs`
 
