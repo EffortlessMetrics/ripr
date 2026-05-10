@@ -259,8 +259,8 @@ missing-proof, no-actionable, and coverage-flat-grip-improved states. The
 [Campaign 24 closeout](handoffs/2026-05-10-campaign-24-closeout.md) records the
 PR chain, validation plan, advisory boundary, and future-lane boundary.
 
-[Report Packet Index](REPORT_PACKET_INDEX_PROPOSAL.md) is now open as Campaign
-25 after PR Review Front Panel. The campaign should make
+[Report Packet Index](REPORT_PACKET_INDEX_PROPOSAL.md) closed as Campaign 25
+after PR Review Front Panel. The campaign made
 `target/ripr/reports/index.{json,md}` the reviewer front door for the uploaded
 `ripr-reports` packet, grouping existing reports, receipts, gates, calibration,
 SARIF, badges, and repair artifacts by reviewer use. The boundary stays Lane 4:
@@ -276,8 +276,9 @@ projects those artifacts when indexed inputs exist, and the
 reviewer, maintainer, developer, and coding-agent use of the grouped packet
 map. `cargo xtask dogfood` now validates checked report-packet index receipts
 for complete, sparse, missing-front-panel, blocked-gate, missing-proof,
-missing-receipts, and coverage/grip-present cases. The next ready slice is
-`campaign/report-packet-index-closeout`.
+missing-receipts, and coverage/grip-present cases. The
+[Campaign 25 closeout](handoffs/2026-05-10-campaign-25-closeout.md) records
+the final audit and future-lane boundary.
 
 ## Strategic Sequence
 

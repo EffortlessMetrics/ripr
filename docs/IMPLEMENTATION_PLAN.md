@@ -39,7 +39,7 @@ through multiple work items in a campaign, but each work item should follow the
 | First Useful Action (22) | Compress existing editor, PR, ledger, proof, receipt, optional gate, coverage/grip, and staleness evidence into one advisory next test action. | Complete: RIPR-SPEC-0020 defines the report contract, the routing corpus is pinned, `ripr first-action` writes the read-only advisory report, generated CI surfaces it as advisory summary/artifact content, VS Code status/Show Status project an existing report, workflow docs explain developer, reviewer, and agent use, dogfood receipts are checked, and `campaign/first-useful-action-closeout` records the final audit. |
 | Assistant Loop Health (23) | Summarize proof completeness, missing inputs, static evidence movement, recurring warnings, and next repair queues across one or more assistant proof reports. | Complete: RIPR-SPEC-0022 defines the report contract, the assistant-loop-health fixture corpus is pinned, `ripr assistant-loop health` writes advisory JSON/Markdown from explicit proof inputs, generated GitHub CI uploads and summarizes health artifacts when proof artifacts exist, `docs/ASSISTANT_LOOP_HEALTH_WORKFLOW.md` explains maintainer and agent use, and `campaign/assistant-loop-health-closeout` records the final audit. |
 | PR Review Front Panel (24) | Compose existing PR guidance, first useful action, assistant proof, assistant-loop health, PR evidence ledger, baseline delta, gate decision, receipts, calibration, and optional coverage/grip frontier artifacts into one advisory generated-CI first screen. | Complete: report contract, fixture corpus, `ripr pr-review front-panel`, generated-CI projection, workflow docs, dogfood receipts, and closeout audit are in place. |
-| Report Packet Index (25) | Make the uploaded `ripr-reports` packet navigable as a reviewer-first index over explicit existing artifacts. | Active: RIPR-SPEC-0024 defines the contract, the fixture corpus is pinned, `ripr reports index` writes the read-only index, generated CI uploads and summarizes it, and the workflow guide explains reviewer and agent use. |
+| Report Packet Index (25) | Make the uploaded `ripr-reports` packet navigable as a reviewer-first index over explicit existing artifacts. | Complete: report contract, fixture corpus, `ripr reports index`, generated-CI projection, workflow docs, dogfood receipts, and closeout audit are in place. |
 | Editor Evidence UX (future) | Make the saved-workspace LSP path feel like an editor-native test-intent cockpit from diagnostic to hover, related test, context packet, one test, verify, and receipt. | Complete as an explicit parallel Lane 3 closeout: contract audit, hover hardening, evidence-aware actions, context packet, protocol smoke, VS Code smoke, status/staleness, workflow docs, and closeout audit. |
 
 The active machine-readable campaign is `.ripr/goals/active.toml`. Campaigns 1
@@ -219,13 +219,13 @@ default CI blocking. The
 [Campaign 24 closeout](handoffs/2026-05-10-campaign-24-closeout.md) records the
 PR chain, prompt-to-artifact audit, validation plan, and future-lane boundary.
 
-Campaign 25 is now open as Report Packet Index. It uses the
+Campaign 25 closed as Report Packet Index. It used the
 [Report Packet Index proposal](REPORT_PACKET_INDEX_PROPOSAL.md) as its design
-brief. The campaign should make `target/ripr/reports/index.{json,md}` the
+brief. The campaign made `target/ripr/reports/index.{json,md}` the
 reviewer front door for the uploaded `ripr-reports` packet, grouping explicit
 existing artifacts by start-here, PR review story, repair or agent handoff,
 evidence, policy or gates, calibration, validation receipts, and SARIF or badge
-outputs. It must stay advisory and read-only: no analyzer behavior,
+outputs. It stayed advisory and read-only: no analyzer behavior,
 recommendation ranking, gate semantics, editor behavior, mutation execution,
 provider calls, source edits, generated tests, inline-comment defaults, hidden
 analysis reruns, or default CI blocking. The fixture corpus now pins complete,
@@ -239,8 +239,10 @@ the advisory packet-index summary without changing gate authority. The
 how reviewers, maintainers, developers, and coding agents use the index.
 `cargo xtask dogfood` now checks the repo-local report-packet index receipts
 for complete, sparse, missing-front-panel, blocked-gate, missing-proof,
-missing-receipts, and coverage/grip-present cases. The next ready slice is
-`campaign/report-packet-index-closeout`.
+missing-receipts, and coverage/grip-present cases. The
+[Campaign 25 closeout](handoffs/2026-05-10-campaign-25-closeout.md) records
+the PR chain, prompt-to-artifact audit, validation plan, advisory boundary, and
+future-lane boundary.
 
 ## PR 0: `planning-and-tracking-docs`
 

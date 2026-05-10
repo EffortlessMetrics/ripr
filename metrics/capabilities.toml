@@ -969,12 +969,13 @@ evidence = [
   "cargo xtask dogfood validates checked repo-local report-packet index receipts for complete, sparse advisory, missing-front-panel, blocked-gate, missing-proof, missing-receipts, and coverage/grip-present cases",
   "docs/handoffs/2026-05-10-report-packet-index-receipts.md records the checked dogfood receipt cases and validation result",
   "crates/ripr/tests/cli_smoke.rs::report_packet_index_cli_writes_packet_index validates the public CLI writes JSON and Markdown artifacts",
-  "docs/REPORT_PACKET_INDEX_PROPOSAL.md records Campaign 25's proposal and non-goals"
+  "docs/REPORT_PACKET_INDEX_PROPOSAL.md records Campaign 25's proposal and non-goals",
+  "docs/handoffs/2026-05-10-campaign-25-closeout.md records the Campaign 25 audit, PR chain, validation plan, advisory boundary, and future-lane boundary"
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/report-packet-index"
 ]
-next = "campaign/report-packet-index-closeout"
+next = "maintenance"
 metric = "report_packet_index_reports, report_packet_index_pass, report_packet_index_warn, report_packet_index_fail, report_packet_index_incomplete, report_packet_index_available_entries, report_packet_index_missing_expected, report_packet_index_start_here_available, report_packet_index_gate_authority_present, report_packet_index_repair_commands, report_packet_index_warning_entries"
 
 [[capability]]

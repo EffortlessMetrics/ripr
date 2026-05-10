@@ -120,7 +120,7 @@ commands = [
 
 [[work_item]]
 id = "campaign/report-packet-index-closeout"
-status = "ready"
+status = "done"
 branch = "campaign-report-packet-index-closeout"
 stackable = false
 acceptance = "Close Campaign 25 after the spec, fixtures, producer, generated-CI advisory projection, workflow docs, dogfood receipts, and validation show the report-packet index is advisory, explicit-input-only, and bounded to existing artifacts"
