@@ -67,8 +67,7 @@ Completed slices:
 
 ## Current Open PRs
 
-At tracker creation, there are no behavior-bearing Lane 3 PRs open. The tracker
-PR is documentation-only.
+There are no behavior-bearing Lane 3 PRs open.
 
 When opening future Lane 3 PRs, list them here until they merge or close:
 
@@ -78,13 +77,13 @@ When opening future Lane 3 PRs, list them here until they merge or close:
 
 ## Next Slices
 
-These are Lane 3 candidates. Open them only when they are explicitly selected
-as editor/LSP work:
+Lane 3 is in maintenance for the saved-workspace editor cockpit. Open a new
+slice only when it is explicitly selected as editor/LSP projection work.
+Likely future slices are incremental hardening, not campaign catch-up:
 
-1. `fixtures: add editor LSP workflow fixture`
-   - done on the current Lane 3 branch; remove this item when the PR merges.
-2. `docs: document editor-first workflow`
-   - update user-facing editor docs when a later behavior change requires it.
+1. status, command, hover, or fixture updates required by a selected editor
+   behavior change;
+2. user-facing editor docs updates when a later behavior change requires them.
 
 ## Validation Gates
 
