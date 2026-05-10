@@ -218,6 +218,18 @@ default CI blocking. The
 [Campaign 24 closeout](handoffs/2026-05-10-campaign-24-closeout.md) records the
 PR chain, prompt-to-artifact audit, validation plan, and future-lane boundary.
 
+Campaign 25 is now open as Report Packet Index. It uses the
+[Report Packet Index proposal](REPORT_PACKET_INDEX_PROPOSAL.md) as its design
+brief. The campaign should make `target/ripr/reports/index.{json,md}` the
+reviewer front door for the uploaded `ripr-reports` packet, grouping explicit
+existing artifacts by start-here, PR review story, repair or agent handoff,
+evidence, policy or gates, calibration, validation receipts, and SARIF or badge
+outputs. It must stay advisory and read-only: no analyzer behavior,
+recommendation ranking, gate semantics, editor behavior, mutation execution,
+provider calls, source edits, generated tests, inline-comment defaults, hidden
+analysis reruns, or default CI blocking. The first ready slice is
+`spec/report-packet-index-contract`.
+
 ## PR 0: `planning-and-tracking-docs`
 
 Purpose: put the plan, engineering rules, metrics, ADRs, specs, changelog, and

@@ -259,6 +259,16 @@ missing-proof, no-actionable, and coverage-flat-grip-improved states. The
 [Campaign 24 closeout](handoffs/2026-05-10-campaign-24-closeout.md) records the
 PR chain, validation plan, advisory boundary, and future-lane boundary.
 
+[Report Packet Index](REPORT_PACKET_INDEX_PROPOSAL.md) is now open as Campaign
+25 after PR Review Front Panel. The campaign should make
+`target/ripr/reports/index.{json,md}` the reviewer front door for the uploaded
+`ripr-reports` packet, grouping existing reports, receipts, gates, calibration,
+SARIF, badges, and repair artifacts by reviewer use. The boundary stays Lane 4:
+consume explicit artifacts, do not change analyzer behavior, recommendation
+ranking, gate semantics, editor behavior, mutation execution, provider calls,
+source files, generated tests, inline-comment defaults, or default CI blocking.
+The first ready slice is `spec/report-packet-index-contract`.
+
 ## Strategic Sequence
 
 The load-bearing path is:
