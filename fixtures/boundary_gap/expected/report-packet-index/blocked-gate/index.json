@@ -1,0 +1,116 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "report_packet_index",
+  "status": "fail",
+  "root": ".",
+  "generated_at": "2026-05-10T12:00:00Z",
+  "inputs": {
+    "reports_dir": "target/ripr/reports",
+    "review_dir": "target/ripr/review"
+  },
+  "summary": {
+    "entries": 4,
+    "available": 4,
+    "missing_expected": 0,
+    "warnings": 0,
+    "failures": 1,
+    "start_here": "target/ripr/reports/pr-review-front-panel.md",
+    "gate_authority": "target/ripr/reports/gate-decision.md",
+    "advisory": true
+  },
+  "groups": [
+    {
+      "group": "start_here",
+      "label": "Start here",
+      "summary": "Reviewer-first PR story.",
+      "entries": [
+        {
+          "id": "pr_review_front_panel",
+          "label": "PR review front panel",
+          "kind": "markdown",
+          "path": "target/ripr/reports/pr-review-front-panel.md",
+          "json_path": "target/ripr/reports/pr-review-front-panel.json",
+          "status": "blocked",
+          "available": true,
+          "required": true,
+          "authority": false,
+          "description": "First-screen PR review story reports a blocking candidate.",
+          "next_command": null
+        }
+      ]
+    },
+    {
+      "group": "pr_review_story",
+      "label": "PR review story",
+      "summary": "Actionable repair guidance.",
+      "entries": [
+        {
+          "id": "first_useful_action",
+          "label": "First useful action",
+          "kind": "markdown",
+          "path": "target/ripr/reports/first-useful-action.md",
+          "json_path": "target/ripr/reports/first-useful-action.json",
+          "status": "available",
+          "available": true,
+          "required": false,
+          "authority": false,
+          "description": "Focused test action for the blocking candidate.",
+          "next_command": null
+        }
+      ]
+    },
+    {
+      "group": "repair_agent_handoff",
+      "label": "Repair and agent handoff",
+      "summary": "Repair proof packet.",
+      "entries": [
+        {
+          "id": "assistant_proof",
+          "label": "Assistant proof",
+          "kind": "markdown",
+          "path": "target/ripr/reports/test-oracle-assistant-proof.md",
+          "json_path": "target/ripr/reports/test-oracle-assistant-proof.json",
+          "status": "available",
+          "available": true,
+          "required": false,
+          "authority": false,
+          "description": "Bounded repair proof packet.",
+          "next_command": null
+        }
+      ]
+    },
+    {
+      "group": "policy_gates",
+      "label": "Policy and gates",
+      "summary": "Configured pass/fail authority.",
+      "entries": [
+        {
+          "id": "gate_decision",
+          "label": "Gate decision",
+          "kind": "markdown",
+          "path": "target/ripr/reports/gate-decision.md",
+          "json_path": "target/ripr/reports/gate-decision.json",
+          "status": "blocked",
+          "available": true,
+          "required": false,
+          "authority": true,
+          "description": "Configured gate blocked this run.",
+          "next_command": null
+        }
+      ]
+    }
+  ],
+  "missing_expected": [],
+  "warnings": [],
+  "limits": [
+    "Advisory report-packet index only.",
+    "Does not rerun analysis.",
+    "Does not edit source or generate tests.",
+    "Does not call providers.",
+    "Does not run mutation testing.",
+    "Does not publish inline comments.",
+    "Does not change default CI blocking.",
+    "Gate decision remains pass/fail authority when configured."
+  ]
+}

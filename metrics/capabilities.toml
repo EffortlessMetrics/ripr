@@ -960,10 +960,14 @@ spec = "RIPR-SPEC-0024"
 evidence = [
   "docs/specs/RIPR-SPEC-0024-report-packet-index.md defines the planned report-packet index contract over explicit existing report, review, receipt, workflow, agent, pilot, and CI artifact directories",
   "docs/OUTPUT_SCHEMA.md documents the planned report-packet-index JSON and Markdown shape, group vocabulary, status vocabulary, missing-surface reasons, generated-CI projection boundary, and advisory limits",
+  "fixtures/boundary_gap/expected/report-packet-index/ pins complete, sparse advisory, missing-front-panel, blocked-gate, missing-proof, missing-receipt, and coverage/grip-present packet cases",
+  "xtask/src/main.rs validates the report-packet index fixture corpus through check-fixture-contracts",
   "docs/REPORT_PACKET_INDEX_PROPOSAL.md records Campaign 25's proposal and non-goals"
 ]
-fixtures = []
-next = "fixtures/report-packet-index-corpus"
+fixtures = [
+  "fixtures/boundary_gap/expected/report-packet-index"
+]
+next = "report/report-packet-index"
 metric = "report_packet_index_reports, report_packet_index_pass, report_packet_index_warn, report_packet_index_fail, report_packet_index_incomplete, report_packet_index_available_entries, report_packet_index_missing_expected, report_packet_index_start_here_available, report_packet_index_gate_authority_present, report_packet_index_repair_commands, report_packet_index_warning_entries"
 
 [[capability]]

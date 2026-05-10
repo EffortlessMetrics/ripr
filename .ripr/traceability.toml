@@ -1617,9 +1617,31 @@ metrics = [
 id = "RIPR-SPEC-0024"
 name = "report packet index"
 spec = "docs/specs/RIPR-SPEC-0024-report-packet-index.md"
-tests = []
-fixtures = []
-code = []
+tests = [
+  "xtask/src/main.rs::report_packet_index_fixture_corpus_guard_accepts_complete_contract",
+  "xtask/src/main.rs::report_packet_index_fixture_corpus_guard_reports_contract_drift",
+]
+fixtures = [
+  "fixtures/boundary_gap/expected/report-packet-index/README.md",
+  "fixtures/boundary_gap/expected/report-packet-index/corpus.json",
+  "fixtures/boundary_gap/expected/report-packet-index/complete-packet/index.json",
+  "fixtures/boundary_gap/expected/report-packet-index/complete-packet/index.md",
+  "fixtures/boundary_gap/expected/report-packet-index/sparse-advisory/index.json",
+  "fixtures/boundary_gap/expected/report-packet-index/sparse-advisory/index.md",
+  "fixtures/boundary_gap/expected/report-packet-index/missing-front-panel/index.json",
+  "fixtures/boundary_gap/expected/report-packet-index/missing-front-panel/index.md",
+  "fixtures/boundary_gap/expected/report-packet-index/blocked-gate/index.json",
+  "fixtures/boundary_gap/expected/report-packet-index/blocked-gate/index.md",
+  "fixtures/boundary_gap/expected/report-packet-index/missing-assistant-proof/index.json",
+  "fixtures/boundary_gap/expected/report-packet-index/missing-assistant-proof/index.md",
+  "fixtures/boundary_gap/expected/report-packet-index/missing-receipts/index.json",
+  "fixtures/boundary_gap/expected/report-packet-index/missing-receipts/index.md",
+  "fixtures/boundary_gap/expected/report-packet-index/coverage-grip-present/index.json",
+  "fixtures/boundary_gap/expected/report-packet-index/coverage-grip-present/index.md",
+]
+code = [
+  "xtask/src/main.rs",
+]
 outputs = [
   "docs/specs/RIPR-SPEC-0024-report-packet-index.md",
   "docs/specs/README.md",
@@ -1632,6 +1654,7 @@ outputs = [
   "docs/IMPLEMENTATION_CAMPAIGNS.md",
   "docs/IMPLEMENTATION_PLAN.md",
   "docs/ROADMAP.md",
+  "fixtures/boundary_gap/expected/CHANGELOG.md",
   "CHANGELOG.md",
 ]
 metrics = [

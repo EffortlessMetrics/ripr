@@ -1,0 +1,266 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "report_packet_index",
+  "status": "pass",
+  "root": ".",
+  "generated_at": "2026-05-10T12:00:00Z",
+  "inputs": {
+    "reports_dir": "target/ripr/reports",
+    "review_dir": "target/ripr/review",
+    "receipts_dir": "target/ripr/receipts",
+    "workflow_dir": "target/ripr/workflow",
+    "agent_dir": "target/ripr/agent",
+    "pilot_dir": "target/ripr/pilot",
+    "ci_dir": "target/ci"
+  },
+  "summary": {
+    "entries": 13,
+    "available": 13,
+    "missing_expected": 0,
+    "warnings": 0,
+    "failures": 0,
+    "start_here": "target/ripr/reports/pr-review-front-panel.md",
+    "gate_authority": "target/ripr/reports/gate-decision.md",
+    "advisory": true
+  },
+  "groups": [
+    {
+      "group": "start_here",
+      "label": "Start here",
+      "summary": "Reviewer-first PR story.",
+      "entries": [
+        {
+          "id": "pr_review_front_panel",
+          "label": "PR review front panel",
+          "kind": "markdown",
+          "path": "target/ripr/reports/pr-review-front-panel.md",
+          "json_path": "target/ripr/reports/pr-review-front-panel.json",
+          "status": "available",
+          "available": true,
+          "required": true,
+          "authority": false,
+          "description": "First-screen PR review story.",
+          "next_command": null
+        }
+      ]
+    },
+    {
+      "group": "pr_review_story",
+      "label": "PR review story",
+      "summary": "Guidance and first useful action.",
+      "entries": [
+        {
+          "id": "first_useful_action",
+          "label": "First useful action",
+          "kind": "markdown",
+          "path": "target/ripr/reports/first-useful-action.md",
+          "json_path": "target/ripr/reports/first-useful-action.json",
+          "status": "pass",
+          "available": true,
+          "required": false,
+          "authority": false,
+          "description": "One advisory next action.",
+          "next_command": null
+        },
+        {
+          "id": "review_comments",
+          "label": "Review guidance",
+          "kind": "markdown",
+          "path": "target/ripr/review/comments.md",
+          "json_path": "target/ripr/review/comments.json",
+          "status": "available",
+          "available": true,
+          "required": false,
+          "authority": false,
+          "description": "Bounded PR guidance comments.",
+          "next_command": null
+        }
+      ]
+    },
+    {
+      "group": "repair_agent_handoff",
+      "label": "Repair and agent handoff",
+      "summary": "Proof, health, and repair routing.",
+      "entries": [
+        {
+          "id": "assistant_proof",
+          "label": "Assistant proof",
+          "kind": "markdown",
+          "path": "target/ripr/reports/test-oracle-assistant-proof.md",
+          "json_path": "target/ripr/reports/test-oracle-assistant-proof.json",
+          "status": "pass",
+          "available": true,
+          "required": false,
+          "authority": false,
+          "description": "Joined proof over guidance, handoff, receipt, and movement.",
+          "next_command": null
+        },
+        {
+          "id": "assistant_loop_health",
+          "label": "Assistant loop health",
+          "kind": "markdown",
+          "path": "target/ripr/reports/assistant-loop-health.md",
+          "json_path": "target/ripr/reports/assistant-loop-health.json",
+          "status": "pass",
+          "available": true,
+          "required": false,
+          "authority": false,
+          "description": "Repair loop health over assistant proof inputs.",
+          "next_command": null
+        }
+      ]
+    },
+    {
+      "group": "evidence_movement",
+      "label": "Evidence movement",
+      "summary": "Debt delta and PR movement.",
+      "entries": [
+        {
+          "id": "pr_evidence_ledger",
+          "label": "PR evidence ledger",
+          "kind": "markdown",
+          "path": "target/ripr/reports/pr-evidence-ledger.md",
+          "json_path": "target/ripr/reports/pr-evidence-ledger.json",
+          "status": "available",
+          "available": true,
+          "required": false,
+          "authority": false,
+          "description": "PR-local movement and policy state ledger.",
+          "next_command": null
+        },
+        {
+          "id": "baseline_debt_delta",
+          "label": "Baseline debt delta",
+          "kind": "markdown",
+          "path": "target/ripr/reports/baseline-debt-delta.md",
+          "json_path": "target/ripr/reports/baseline-debt-delta.json",
+          "status": "available",
+          "available": true,
+          "required": false,
+          "authority": false,
+          "description": "Baseline still-present, resolved, and new debt.",
+          "next_command": null
+        }
+      ]
+    },
+    {
+      "group": "policy_gates",
+      "label": "Policy and gates",
+      "summary": "Configured pass/fail authority.",
+      "entries": [
+        {
+          "id": "gate_decision",
+          "label": "Gate decision",
+          "kind": "markdown",
+          "path": "target/ripr/reports/gate-decision.md",
+          "json_path": "target/ripr/reports/gate-decision.json",
+          "status": "pass",
+          "available": true,
+          "required": false,
+          "authority": true,
+          "description": "Configured gate pass/fail authority.",
+          "next_command": null
+        }
+      ]
+    },
+    {
+      "group": "calibration",
+      "label": "Calibration",
+      "summary": "Recommendation and coverage/grip context.",
+      "entries": [
+        {
+          "id": "recommendation_calibration",
+          "label": "Recommendation calibration",
+          "kind": "markdown",
+          "path": "target/ripr/reports/recommendation-calibration.md",
+          "json_path": "target/ripr/reports/recommendation-calibration.json",
+          "status": "available",
+          "available": true,
+          "required": false,
+          "authority": false,
+          "description": "Recommendation quality evidence.",
+          "next_command": null
+        },
+        {
+          "id": "coverage_grip_frontier",
+          "label": "Coverage/grip frontier",
+          "kind": "markdown",
+          "path": "target/ripr/reports/coverage-grip-frontier.md",
+          "json_path": "target/ripr/reports/coverage-grip-frontier.json",
+          "status": "available",
+          "available": true,
+          "required": false,
+          "authority": false,
+          "description": "Coverage and static grip comparison.",
+          "next_command": null
+        }
+      ]
+    },
+    {
+      "group": "validation_receipts",
+      "label": "Validation receipts",
+      "summary": "Receipts and local readiness reports.",
+      "entries": [
+        {
+          "id": "agent_receipt",
+          "label": "Agent receipt",
+          "kind": "json",
+          "path": "target/ripr/reports/agent-receipt.json",
+          "json_path": "target/ripr/reports/agent-receipt.json",
+          "status": "available",
+          "available": true,
+          "required": false,
+          "authority": false,
+          "description": "Focused repair receipt.",
+          "next_command": null
+        },
+        {
+          "id": "check_pr",
+          "label": "Check PR",
+          "kind": "markdown",
+          "path": "target/ripr/reports/check-pr.md",
+          "json_path": null,
+          "status": "pass",
+          "available": true,
+          "required": false,
+          "authority": false,
+          "description": "Local review-ready gate receipt.",
+          "next_command": null
+        }
+      ]
+    },
+    {
+      "group": "sarif_badges",
+      "label": "SARIF and badges",
+      "summary": "Code scanning and badge surfaces.",
+      "entries": [
+        {
+          "id": "sarif",
+          "label": "SARIF output",
+          "kind": "json",
+          "path": "target/ripr/reports/ripr.sarif.json",
+          "json_path": "target/ripr/reports/ripr.sarif.json",
+          "status": "available",
+          "available": true,
+          "required": false,
+          "authority": false,
+          "description": "Code scanning projection.",
+          "next_command": null
+        }
+      ]
+    }
+  ],
+  "missing_expected": [],
+  "warnings": [],
+  "limits": [
+    "Advisory report-packet index only.",
+    "Does not rerun analysis.",
+    "Does not edit source or generate tests.",
+    "Does not call providers.",
+    "Does not run mutation testing.",
+    "Does not publish inline comments.",
+    "Does not change default CI blocking.",
+    "Gate decision remains pass/fail authority when configured."
+  ]
+}

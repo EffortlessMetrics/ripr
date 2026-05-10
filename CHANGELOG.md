@@ -11,6 +11,11 @@ are scoped or reviewed.
 
 ### Added
 
+- Added the report-packet index fixture corpus under
+  `fixtures/boundary_gap/expected/report-packet-index/`, pinning complete,
+  sparse advisory, missing-front-panel, blocked-gate, missing-proof,
+  missing-receipt, and coverage/grip-present packet states plus an
+  `xtask check-fixture-contracts` guard before the producer changes.
 - Added `fixtures/editor_lsp_workflow` as the canonical Lane 3 editor/LSP
   workflow fixture, pinning the saved-workspace diagnostic, hover, code action,
   first-useful-action status, stale-refresh guidance, and LSP cockpit surfaces
