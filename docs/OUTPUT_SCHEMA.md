@@ -5277,17 +5277,22 @@ fixtures/boundary_gap/expected/gate-adoption/<case>/gate-decision.json
 fixtures/boundary_gap/expected/gate-adoption/<case>/gate-decision.md
 fixtures/boundary_gap/expected/first-useful-action/<case>/first-useful-action.json
 fixtures/boundary_gap/expected/first-useful-action/<case>/first-useful-action.md
+fixtures/boundary_gap/expected/pr-review-front-panel/<case>/pr-review-front-panel.json
+fixtures/boundary_gap/expected/pr-review-front-panel/<case>/pr-review-front-panel.md
 ```
 
 The report is advisory. It runs `ripr check --mode fast` against stable fixture
 diffs and runs `ripr gate evaluate` against checked boundary-gap PR guidance
 and calibration evidence for the explicit gate adoption modes. It also checks
 repo-local first useful action receipts for the documented first-action routes.
-It records `default_ci_blocking: false`; generated CI still leaves
-`RIPR_GATE_MODE` unset unless the repository configures it. The generated
+It checks repo-local PR review front-panel receipts for the documented Campaign
+24 reviewer routes. It records `default_ci_blocking: false`; generated CI still
+leaves `RIPR_GATE_MODE` unset unless the repository configures it. The generated
 adoption receipts are compared with
 `fixtures/boundary_gap/expected/gate-adoption/`. The checked first-action
 receipts are read from `fixtures/boundary_gap/expected/first-useful-action/`.
+The checked front-panel receipts are read from
+`fixtures/boundary_gap/expected/pr-review-front-panel/`.
 The calibrated-gate dogfood case expects a non-zero evaluator exit only for the
 explicit blocking mode and treats that as healthy when the written decision
 report has the expected `blocked` status and count.
@@ -5343,6 +5348,39 @@ JSON shape:
       }
     ]
   },
+  "pr_review_front_panel": {
+    "default_ci_blocking": false,
+    "receipt_dir": "fixtures/boundary_gap/expected/pr-review-front-panel",
+    "cases": [
+      {
+        "name": "actionable",
+        "json_path": "fixtures/boundary_gap/expected/pr-review-front-panel/actionable/pr-review-front-panel.json",
+        "markdown_path": "fixtures/boundary_gap/expected/pr-review-front-panel/actionable/pr-review-front-panel.md",
+        "status": "advisory",
+        "top_issue_state": "actionable",
+        "policy_state": "new_policy_eligible",
+        "placement": "changed_line",
+        "movement_state": "unknown",
+        "coverage_grip_state": "not_available",
+        "new_policy_eligible": 1,
+        "baseline_resolved": 0,
+        "blocking_candidates": 0,
+        "warnings": 0,
+        "expected_status": "advisory",
+        "expected_top_issue_state": "actionable",
+        "expected_policy_state": "new_policy_eligible",
+        "expected_placement": "changed_line",
+        "expected_movement_state": "unknown",
+        "expected_coverage_grip_state": "not_available",
+        "expected_new_policy_eligible": 1,
+        "expected_baseline_resolved": 0,
+        "expected_blocking_candidates": 0,
+        "expected_warnings": 0,
+        "reason": "The front panel should show the top focused-test action first when a PR-local seam is line-placeable.",
+        "errors": []
+      }
+    ]
+  },
   "gate_adoption": {
     "default_ci_blocking": false,
     "receipt_dir": "target/ripr/dogfood/gate-adoption",
@@ -5381,6 +5419,19 @@ The checked first-action receipt cases are:
 | `missing-required-artifact` | `missing_required_artifact` | Routes agents to generate the missing assistant proof input. |
 | `unchanged-after-attempt` | `unchanged_after_attempt` | Routes back to revising the focused test when static movement is unchanged. |
 | `no-actionable-seam` | `no_actionable_seam` | Records the clean advisory state instead of silence. |
+
+The checked PR review front-panel receipt cases are:
+
+| Case | Expected top issue state | Purpose |
+| --- | --- | --- |
+| `actionable` | `actionable` | Shows the focused-test repair route for a PR-local weak seam. |
+| `acknowledged` | `actionable` | Keeps `ripr-waive` visible as acknowledgement, not hidden success. |
+| `suppressed` | `baseline_only` | Keeps durable suppression policy visible in PR review. |
+| `baseline_resolved` | `already_improved` | Shows reviewed baseline debt resolved by the PR. |
+| `blocked` | `actionable` | Shows a configured gate block while preserving the repair route and gate authority. |
+| `missing_proof` | `missing_required_input` | Routes reviewers to regenerate the missing assistant proof artifact. |
+| `advisory_only` | `no_actionable_seam` | Records a no-action advisory state instead of silence. |
+| `coverage_flat_grip_improved` | `already_improved` | Shows static grip improvement while coverage stays flat. |
 
 The checked adoption cases are:
 

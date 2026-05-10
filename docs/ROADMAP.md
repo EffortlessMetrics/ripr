@@ -253,8 +253,10 @@ gate semantics, editor behavior, mutation execution, provider calls, source
 files, generated tests, inline-comment defaults, or default CI blocking. The
 [PR review front panel workflow](PR_REVIEW_FRONT_PANEL_WORKFLOW.md) now
 documents reviewer, maintainer, developer, and coding-agent use of the
-first-screen panel. The next ready slice is
-`dogfood/pr-review-front-panel-receipts`.
+first-screen panel. The dogfood report now validates checked front-panel
+receipts for actionable, acknowledged, suppressed, baseline-resolved, blocked,
+missing-proof, no-actionable, and coverage-flat-grip-improved states. The next
+ready slice is `campaign/pr-review-front-panel-closeout`.
 
 ## Strategic Sequence
 

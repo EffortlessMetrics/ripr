@@ -104,7 +104,7 @@ commands = [
 
 [[work_item]]
 id = "dogfood/pr-review-front-panel-receipts"
-status = "ready"
+status = "done"
 branch = "dogfood-pr-review-front-panel-receipts"
 stackable = false
 acceptance = "Record repo-local front-panel receipts for actionable, acknowledged, suppressed, baseline-resolved, blocked, missing-proof, no-actionable, and coverage-flat-grip-improved cases"
@@ -117,12 +117,9 @@ commands = [
 
 [[work_item]]
 id = "campaign/pr-review-front-panel-closeout"
-status = "blocked"
+status = "ready"
 branch = "campaign-pr-review-front-panel-closeout"
 stackable = false
-blocked_by = [
-  "dogfood/pr-review-front-panel-receipts",
-]
 acceptance = "Close Campaign 24 after the spec, fixtures, producer, generated-CI advisory projection, workflow docs, dogfood receipts, and validation show the front panel is advisory, explicit-input-only, and bounded to existing artifacts"
 commands = [
   "cargo xtask check-campaign",

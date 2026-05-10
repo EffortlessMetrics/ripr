@@ -386,6 +386,53 @@ struct DogfoodFirstActionRun {
     errors: Vec<String>,
 }
 
+#[derive(Debug)]
+struct DogfoodFrontPanelScenario {
+    name: String,
+    report_path: PathBuf,
+    markdown_path: PathBuf,
+    expected_status: String,
+    expected_top_issue_state: String,
+    expected_policy_state: String,
+    expected_placement: String,
+    expected_movement_state: String,
+    expected_coverage_grip_state: String,
+    expected_new_policy_eligible: usize,
+    expected_baseline_resolved: usize,
+    expected_blocking_candidates: usize,
+    expected_warnings: usize,
+    reason: String,
+}
+
+#[derive(Debug)]
+struct DogfoodFrontPanelRun {
+    name: String,
+    report_path: PathBuf,
+    markdown_path: PathBuf,
+    status: String,
+    top_issue_state: String,
+    policy_state: String,
+    placement: String,
+    movement_state: String,
+    coverage_grip_state: String,
+    new_policy_eligible: usize,
+    baseline_resolved: usize,
+    blocking_candidates: usize,
+    warnings: usize,
+    expected_status: String,
+    expected_top_issue_state: String,
+    expected_policy_state: String,
+    expected_placement: String,
+    expected_movement_state: String,
+    expected_coverage_grip_state: String,
+    expected_new_policy_eligible: usize,
+    expected_baseline_resolved: usize,
+    expected_blocking_candidates: usize,
+    expected_warnings: usize,
+    reason: String,
+    errors: Vec<String>,
+}
+
 #[derive(Clone, Debug)]
 struct ReportIndexEntry {
     file: String,
@@ -10452,13 +10499,17 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
         .into_iter()
         .map(|scenario| dogfood_first_action_run(&scenario))
         .collect::<Vec<_>>();
+    let front_panel_runs = dogfood_pr_review_front_panel_scenarios()
+        .into_iter()
+        .map(|scenario| dogfood_pr_review_front_panel_run(&scenario))
+        .collect::<Vec<_>>();
     write_report(
         "dogfood.md",
-        &dogfood_report_markdown(&runs, &gate_runs, &first_action_runs),
+        &dogfood_report_markdown(&runs, &gate_runs, &first_action_runs, &front_panel_runs),
     )?;
     write_report(
         "dogfood.json",
-        &dogfood_report_json(&runs, &gate_runs, &first_action_runs),
+        &dogfood_report_json(&runs, &gate_runs, &first_action_runs, &front_panel_runs),
     )
 }
 
@@ -11023,6 +11074,248 @@ fn dogfood_first_action_run(scenario: &DogfoodFirstActionScenario) -> DogfoodFir
     }
 }
 
+fn dogfood_pr_review_front_panel_scenarios() -> Vec<DogfoodFrontPanelScenario> {
+    let corpus_path = Path::new("fixtures/boundary_gap/expected/pr-review-front-panel/corpus.json");
+    let corpus = match read_json_value(corpus_path) {
+        Ok(value) => value,
+        Err(err) => {
+            return vec![DogfoodFrontPanelScenario {
+                name: "corpus".to_string(),
+                report_path: corpus_path.to_path_buf(),
+                markdown_path: corpus_path.to_path_buf(),
+                expected_status: "missing".to_string(),
+                expected_top_issue_state: "missing".to_string(),
+                expected_policy_state: "missing".to_string(),
+                expected_placement: "missing".to_string(),
+                expected_movement_state: "missing".to_string(),
+                expected_coverage_grip_state: "missing".to_string(),
+                expected_new_policy_eligible: 0,
+                expected_baseline_resolved: 0,
+                expected_blocking_candidates: 0,
+                expected_warnings: 0,
+                reason: err,
+            }];
+        }
+    };
+
+    let Some(cases) = corpus.get("cases").and_then(Value::as_array) else {
+        return vec![DogfoodFrontPanelScenario {
+            name: "corpus".to_string(),
+            report_path: corpus_path.to_path_buf(),
+            markdown_path: corpus_path.to_path_buf(),
+            expected_status: "missing".to_string(),
+            expected_top_issue_state: "missing".to_string(),
+            expected_policy_state: "missing".to_string(),
+            expected_placement: "missing".to_string(),
+            expected_movement_state: "missing".to_string(),
+            expected_coverage_grip_state: "missing".to_string(),
+            expected_new_policy_eligible: 0,
+            expected_baseline_resolved: 0,
+            expected_blocking_candidates: 0,
+            expected_warnings: 0,
+            reason: "front-panel corpus is missing cases array".to_string(),
+        }];
+    };
+
+    cases
+        .iter()
+        .map(|case| {
+            let expected = case.get("expected").unwrap_or(&Value::Null);
+            DogfoodFrontPanelScenario {
+                name: json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string()),
+                report_path: json_string_field(case, "expected_report")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| corpus_path.to_path_buf()),
+                markdown_path: json_string_field(case, "expected_markdown")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| corpus_path.to_path_buf()),
+                expected_status: json_string_field(expected, "status")
+                    .unwrap_or_else(|| "missing".to_string()),
+                expected_top_issue_state: json_string_field(expected, "top_issue_state")
+                    .unwrap_or_else(|| "missing".to_string()),
+                expected_policy_state: json_string_field(expected, "policy_state")
+                    .unwrap_or_else(|| "missing".to_string()),
+                expected_placement: json_string_field(expected, "placement")
+                    .unwrap_or_else(|| "missing".to_string()),
+                expected_movement_state: json_string_field(expected, "movement_state")
+                    .unwrap_or_else(|| "missing".to_string()),
+                expected_coverage_grip_state: json_string_field(expected, "coverage_grip_state")
+                    .unwrap_or_else(|| "missing".to_string()),
+                expected_new_policy_eligible: json_usize_field(expected, "new_policy_eligible")
+                    .unwrap_or(0),
+                expected_baseline_resolved: json_usize_field(expected, "baseline_resolved")
+                    .unwrap_or(0),
+                expected_blocking_candidates: json_usize_field(expected, "blocking_candidates")
+                    .unwrap_or(0),
+                expected_warnings: json_usize_field(expected, "warnings").unwrap_or(0),
+                reason: json_string_field(case, "reason").unwrap_or_else(|| {
+                    "front-panel corpus case did not document a reason".to_string()
+                }),
+            }
+        })
+        .collect()
+}
+
+fn dogfood_pr_review_front_panel_run(scenario: &DogfoodFrontPanelScenario) -> DogfoodFrontPanelRun {
+    let mut errors = Vec::new();
+    let mut status = "missing".to_string();
+    let mut top_issue_state = "missing".to_string();
+    let mut policy_state = "missing".to_string();
+    let mut placement = "missing".to_string();
+    let mut movement_state = "missing".to_string();
+    let mut coverage_grip_state = "missing".to_string();
+    let mut new_policy_eligible = 0usize;
+    let mut baseline_resolved = 0usize;
+    let mut blocking_candidates = 0usize;
+    let mut warnings = 0usize;
+
+    match read_json_value(&scenario.report_path) {
+        Ok(report) => {
+            if json_string_field(&report, "kind").as_deref() != Some("pr_review_front_panel") {
+                errors.push("report kind must be pr_review_front_panel".to_string());
+            }
+            status = json_string_field(&report, "status").unwrap_or_else(|| "missing".to_string());
+            if let Some(summary) = report.get("summary") {
+                top_issue_state = json_string_field(summary, "top_issue_state")
+                    .unwrap_or_else(|| "missing".to_string());
+                policy_state = json_string_field(summary, "policy_state")
+                    .unwrap_or_else(|| "missing".to_string());
+                placement = json_string_field(summary, "placement")
+                    .unwrap_or_else(|| "missing".to_string());
+                movement_state = json_string_field(summary, "movement_state")
+                    .unwrap_or_else(|| "missing".to_string());
+                coverage_grip_state = json_string_field(summary, "coverage_grip_state")
+                    .unwrap_or_else(|| "missing".to_string());
+                new_policy_eligible = json_usize_field(summary, "new_policy_eligible").unwrap_or(0);
+                baseline_resolved = json_usize_field(summary, "baseline_resolved").unwrap_or(0);
+                blocking_candidates = json_usize_field(summary, "blocking_candidates").unwrap_or(0);
+                warnings = json_usize_field(summary, "warnings").unwrap_or(0);
+            } else {
+                errors.push("report summary is missing".to_string());
+            }
+            if !report
+                .get("limits")
+                .and_then(Value::as_array)
+                .is_some_and(|limits| {
+                    limits
+                        .iter()
+                        .any(|limit| limit.as_str() == Some("Static RIPR evidence only."))
+                })
+            {
+                errors.push("report is missing static-evidence limit".to_string());
+            }
+        }
+        Err(err) => errors.push(err),
+    }
+
+    match fs::read_to_string(&scenario.markdown_path) {
+        Ok(markdown) => {
+            if !markdown.contains("# RIPR PR Review") {
+                errors.push("Markdown must use the PR review heading".to_string());
+            }
+            if !markdown.contains(&format!("Status: {}", scenario.expected_status)) {
+                errors.push(format!(
+                    "Markdown should pin status {}",
+                    scenario.expected_status
+                ));
+            }
+        }
+        Err(err) => errors.push(format!(
+            "failed to read front-panel Markdown {}: {err}",
+            normalize_path(&scenario.markdown_path)
+        )),
+    }
+
+    if status != scenario.expected_status {
+        errors.push(format!(
+            "expected status {}, got {}",
+            scenario.expected_status, status
+        ));
+    }
+    if top_issue_state != scenario.expected_top_issue_state {
+        errors.push(format!(
+            "expected top_issue_state {}, got {}",
+            scenario.expected_top_issue_state, top_issue_state
+        ));
+    }
+    if policy_state != scenario.expected_policy_state {
+        errors.push(format!(
+            "expected policy_state {}, got {}",
+            scenario.expected_policy_state, policy_state
+        ));
+    }
+    if placement != scenario.expected_placement {
+        errors.push(format!(
+            "expected placement {}, got {}",
+            scenario.expected_placement, placement
+        ));
+    }
+    if movement_state != scenario.expected_movement_state {
+        errors.push(format!(
+            "expected movement_state {}, got {}",
+            scenario.expected_movement_state, movement_state
+        ));
+    }
+    if coverage_grip_state != scenario.expected_coverage_grip_state {
+        errors.push(format!(
+            "expected coverage_grip_state {}, got {}",
+            scenario.expected_coverage_grip_state, coverage_grip_state
+        ));
+    }
+    if new_policy_eligible != scenario.expected_new_policy_eligible {
+        errors.push(format!(
+            "expected new_policy_eligible {}, got {}",
+            scenario.expected_new_policy_eligible, new_policy_eligible
+        ));
+    }
+    if baseline_resolved != scenario.expected_baseline_resolved {
+        errors.push(format!(
+            "expected baseline_resolved {}, got {}",
+            scenario.expected_baseline_resolved, baseline_resolved
+        ));
+    }
+    if blocking_candidates != scenario.expected_blocking_candidates {
+        errors.push(format!(
+            "expected blocking_candidates {}, got {}",
+            scenario.expected_blocking_candidates, blocking_candidates
+        ));
+    }
+    if warnings != scenario.expected_warnings {
+        errors.push(format!(
+            "expected warnings {}, got {}",
+            scenario.expected_warnings, warnings
+        ));
+    }
+
+    DogfoodFrontPanelRun {
+        name: scenario.name.clone(),
+        report_path: scenario.report_path.clone(),
+        markdown_path: scenario.markdown_path.clone(),
+        status,
+        top_issue_state,
+        policy_state,
+        placement,
+        movement_state,
+        coverage_grip_state,
+        new_policy_eligible,
+        baseline_resolved,
+        blocking_candidates,
+        warnings,
+        expected_status: scenario.expected_status.clone(),
+        expected_top_issue_state: scenario.expected_top_issue_state.clone(),
+        expected_policy_state: scenario.expected_policy_state.clone(),
+        expected_placement: scenario.expected_placement.clone(),
+        expected_movement_state: scenario.expected_movement_state.clone(),
+        expected_coverage_grip_state: scenario.expected_coverage_grip_state.clone(),
+        expected_new_policy_eligible: scenario.expected_new_policy_eligible,
+        expected_baseline_resolved: scenario.expected_baseline_resolved,
+        expected_blocking_candidates: scenario.expected_blocking_candidates,
+        expected_warnings: scenario.expected_warnings,
+        reason: scenario.reason.clone(),
+        errors,
+    }
+}
+
 fn compare_expected_text(
     actual_path: &Path,
     expected_path: &Path,
@@ -11109,10 +11402,12 @@ fn dogfood_report_status(
     runs: &[DogfoodRun],
     gate_runs: &[DogfoodGateRun],
     first_action_runs: &[DogfoodFirstActionRun],
+    front_panel_runs: &[DogfoodFrontPanelRun],
 ) -> &'static str {
     if runs.iter().any(|run| !run.errors.is_empty())
         || gate_runs.iter().any(|run| !run.errors.is_empty())
         || first_action_runs.iter().any(|run| !run.errors.is_empty())
+        || front_panel_runs.iter().any(|run| !run.errors.is_empty())
     {
         "warn"
     } else {
@@ -11124,10 +11419,11 @@ fn dogfood_report_markdown(
     runs: &[DogfoodRun],
     gate_runs: &[DogfoodGateRun],
     first_action_runs: &[DogfoodFirstActionRun],
+    front_panel_runs: &[DogfoodFrontPanelRun],
 ) -> String {
     let mut body = format!(
         "# ripr dogfood report\n\nStatus: {}\n\nMode: advisory\n\nThis report runs `ripr check --mode fast` against stable in-repo fixture diffs. It records current product output for review without making dogfood a blocking gate yet.\n\n## Summary\n\n",
-        dogfood_report_status(runs, gate_runs, first_action_runs)
+        dogfood_report_status(runs, gate_runs, first_action_runs, front_panel_runs)
     );
     for run in runs {
         body.push_str(&format!(
@@ -11235,6 +11531,108 @@ fn dogfood_report_markdown(
             body.push('\n');
         }
     }
+    body.push_str("## PR Review Front Panel Receipts\n\n");
+    body.push_str("These receipts validate checked `pr-review-front-panel.{json,md}` fixture outputs for the documented Campaign 24 reviewer routes. They are advisory projections over explicit existing artifacts; they do not rerun hidden analysis, edit source, generate tests, call providers, run mutation testing, invent policy, publish inline comments, or change CI blocking.\n\n");
+    body.push_str("- Default CI blocking: no\n");
+    body.push_str(
+        "- Receipt outputs: `fixtures/boundary_gap/expected/pr-review-front-panel/<case>/pr-review-front-panel.{json,md}`\n\n",
+    );
+    body.push_str("| Case | Status | Top issue | Policy | Placement | Movement | Coverage/grip | New | Resolved | Blocking | Warnings |\n");
+    body.push_str("| --- | --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: |\n");
+    for run in front_panel_runs {
+        body.push_str(&format!(
+            "| `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | `{}` | {} | {} | {} | {} |\n",
+            markdown_cell(&run.name),
+            markdown_cell(&run.status),
+            markdown_cell(&run.top_issue_state),
+            markdown_cell(&run.policy_state),
+            markdown_cell(&run.placement),
+            markdown_cell(&run.movement_state),
+            markdown_cell(&run.coverage_grip_state),
+            run.new_policy_eligible,
+            run.baseline_resolved,
+            run.blocking_candidates,
+            run.warnings
+        ));
+    }
+    body.push('\n');
+    for run in front_panel_runs {
+        body.push_str(&format!("### Front Panel `{}`\n\n", run.name));
+        body.push_str(&format!("- Status: `{}`\n", markdown_cell(&run.status)));
+        body.push_str(&format!(
+            "- Expected status: `{}`\n",
+            markdown_cell(&run.expected_status)
+        ));
+        body.push_str(&format!(
+            "- Top issue state: `{}`\n",
+            markdown_cell(&run.top_issue_state)
+        ));
+        body.push_str(&format!(
+            "- Expected top issue state: `{}`\n",
+            markdown_cell(&run.expected_top_issue_state)
+        ));
+        body.push_str(&format!(
+            "- Policy state: `{}`\n",
+            markdown_cell(&run.policy_state)
+        ));
+        body.push_str(&format!(
+            "- Expected policy state: `{}`\n",
+            markdown_cell(&run.expected_policy_state)
+        ));
+        body.push_str(&format!(
+            "- Placement: `{}`\n",
+            markdown_cell(&run.placement)
+        ));
+        body.push_str(&format!(
+            "- Expected placement: `{}`\n",
+            markdown_cell(&run.expected_placement)
+        ));
+        body.push_str(&format!(
+            "- Movement: `{}`\n",
+            markdown_cell(&run.movement_state)
+        ));
+        body.push_str(&format!(
+            "- Expected movement: `{}`\n",
+            markdown_cell(&run.expected_movement_state)
+        ));
+        body.push_str(&format!(
+            "- Coverage/grip: `{}`\n",
+            markdown_cell(&run.coverage_grip_state)
+        ));
+        body.push_str(&format!(
+            "- Expected coverage/grip: `{}`\n",
+            markdown_cell(&run.expected_coverage_grip_state)
+        ));
+        body.push_str(&format!(
+            "- Counts: new {}, resolved {}, blocking {}, warnings {}\n",
+            run.new_policy_eligible, run.baseline_resolved, run.blocking_candidates, run.warnings
+        ));
+        body.push_str(&format!(
+            "- Expected counts: new {}, resolved {}, blocking {}, warnings {}\n",
+            run.expected_new_policy_eligible,
+            run.expected_baseline_resolved,
+            run.expected_blocking_candidates,
+            run.expected_warnings
+        ));
+        body.push_str(&format!(
+            "- Receipt JSON: `{}`\n",
+            normalize_path(&run.report_path)
+        ));
+        body.push_str(&format!(
+            "- Receipt Markdown: `{}`\n",
+            normalize_path(&run.markdown_path)
+        ));
+        body.push_str(&format!("- Reason: {}\n", markdown_cell(&run.reason)));
+        if run.errors.is_empty() {
+            body.push_str("- Errors: none\n\n");
+        } else {
+            body.push_str("- Errors:\n");
+            for error in &run.errors {
+                body.push_str(&format!("  - `{}`\n", markdown_cell(error)));
+            }
+            body.push('\n');
+        }
+    }
     body.push_str("## Gate Adoption Receipts\n\n");
     body.push_str("These receipts run `ripr gate evaluate` against checked boundary-gap PR guidance and calibration evidence. They are repo-local dogfood for explicit gate modes; generated CI still leaves `RIPR_GATE_MODE` unset unless the repository configures it.\n\n");
     body.push_str("- Default CI blocking: no\n");
@@ -11309,10 +11707,11 @@ fn dogfood_report_json(
     runs: &[DogfoodRun],
     gate_runs: &[DogfoodGateRun],
     first_action_runs: &[DogfoodFirstActionRun],
+    front_panel_runs: &[DogfoodFrontPanelRun],
 ) -> String {
     let mut body = format!(
         "{{\n  \"schema_version\": \"0.1\",\n  \"status\": \"{}\",\n  \"advisory\": true,\n  \"runs\": [\n",
-        dogfood_report_status(runs, gate_runs, first_action_runs)
+        dogfood_report_status(runs, gate_runs, first_action_runs, front_panel_runs)
     );
     for (index, run) in runs.iter().enumerate() {
         if index > 0 {
@@ -11415,6 +11814,113 @@ fn dogfood_report_json(
         body.push_str(&format!(
             "        \"expected_static_movement\": \"{}\",\n",
             json_escape(&run.expected_static_movement)
+        ));
+        body.push_str("        \"errors\": [");
+        write_json_string_array(&mut body, &run.errors);
+        body.push_str("]\n      }");
+    }
+    body.push_str("\n    ]\n  },\n  \"pr_review_front_panel\": {\n");
+    body.push_str("    \"default_ci_blocking\": false,\n");
+    body.push_str(
+        "    \"receipt_dir\": \"fixtures/boundary_gap/expected/pr-review-front-panel\",\n    \"cases\": [\n",
+    );
+    for (index, run) in front_panel_runs.iter().enumerate() {
+        if index > 0 {
+            body.push_str(",\n");
+        }
+        body.push_str("      {\n");
+        body.push_str(&format!(
+            "        \"name\": \"{}\",\n",
+            json_escape(&run.name)
+        ));
+        body.push_str(&format!(
+            "        \"json_path\": \"{}\",\n",
+            json_escape(&normalize_path(&run.report_path))
+        ));
+        body.push_str(&format!(
+            "        \"markdown_path\": \"{}\",\n",
+            json_escape(&normalize_path(&run.markdown_path))
+        ));
+        body.push_str(&format!(
+            "        \"status\": \"{}\",\n",
+            json_escape(&run.status)
+        ));
+        body.push_str(&format!(
+            "        \"top_issue_state\": \"{}\",\n",
+            json_escape(&run.top_issue_state)
+        ));
+        body.push_str(&format!(
+            "        \"policy_state\": \"{}\",\n",
+            json_escape(&run.policy_state)
+        ));
+        body.push_str(&format!(
+            "        \"placement\": \"{}\",\n",
+            json_escape(&run.placement)
+        ));
+        body.push_str(&format!(
+            "        \"movement_state\": \"{}\",\n",
+            json_escape(&run.movement_state)
+        ));
+        body.push_str(&format!(
+            "        \"coverage_grip_state\": \"{}\",\n",
+            json_escape(&run.coverage_grip_state)
+        ));
+        body.push_str(&format!(
+            "        \"new_policy_eligible\": {},\n",
+            run.new_policy_eligible
+        ));
+        body.push_str(&format!(
+            "        \"baseline_resolved\": {},\n",
+            run.baseline_resolved
+        ));
+        body.push_str(&format!(
+            "        \"blocking_candidates\": {},\n",
+            run.blocking_candidates
+        ));
+        body.push_str(&format!("        \"warnings\": {},\n", run.warnings));
+        body.push_str(&format!(
+            "        \"expected_status\": \"{}\",\n",
+            json_escape(&run.expected_status)
+        ));
+        body.push_str(&format!(
+            "        \"expected_top_issue_state\": \"{}\",\n",
+            json_escape(&run.expected_top_issue_state)
+        ));
+        body.push_str(&format!(
+            "        \"expected_policy_state\": \"{}\",\n",
+            json_escape(&run.expected_policy_state)
+        ));
+        body.push_str(&format!(
+            "        \"expected_placement\": \"{}\",\n",
+            json_escape(&run.expected_placement)
+        ));
+        body.push_str(&format!(
+            "        \"expected_movement_state\": \"{}\",\n",
+            json_escape(&run.expected_movement_state)
+        ));
+        body.push_str(&format!(
+            "        \"expected_coverage_grip_state\": \"{}\",\n",
+            json_escape(&run.expected_coverage_grip_state)
+        ));
+        body.push_str(&format!(
+            "        \"expected_new_policy_eligible\": {},\n",
+            run.expected_new_policy_eligible
+        ));
+        body.push_str(&format!(
+            "        \"expected_baseline_resolved\": {},\n",
+            run.expected_baseline_resolved
+        ));
+        body.push_str(&format!(
+            "        \"expected_blocking_candidates\": {},\n",
+            run.expected_blocking_candidates
+        ));
+        body.push_str(&format!(
+            "        \"expected_warnings\": {},\n",
+            run.expected_warnings
+        ));
+        body.push_str(&format!(
+            "        \"reason\": \"{}\",\n",
+            json_escape(&run.reason)
         ));
         body.push_str("        \"errors\": [");
         write_json_string_array(&mut body, &run.errors);
@@ -19598,8 +20104,8 @@ mod tests {
     use super::{
         BadgeArtifactJob, BadgeNativeSlot, CampaignManifest, Capability, ChangedPath, CheckReport,
         CheckStatus, CheckViolation, CiFullEvidenceGate, CwdCommand, DogfoodFirstActionRun,
-        DogfoodGateRun, DogfoodRun, FixKind, LocalContextAllow, MarkdownLink, ReceiptRecord,
-        RepoExposureLatencyReport, RepoExposureLatencyRun, RepoExposureLatencyTrace,
+        DogfoodFrontPanelRun, DogfoodGateRun, DogfoodRun, FixKind, LocalContextAllow, MarkdownLink,
+        ReceiptRecord, RepoExposureLatencyReport, RepoExposureLatencyRun, RepoExposureLatencyTrace,
         ReportIndexCampaign, ReportIndexEntry, SarifPolicyMode, SarifPolicyResult,
         SarifPolicyThreshold, StaticLanguageAllowEntry, StaticLanguageMatcher, TestOracleClass,
         badge_artifact_command_args, badge_artifact_jobs, badge_artifact_native_slot,
@@ -19610,7 +20116,8 @@ mod tests {
         check_no_panic_family, check_process_policy, check_static_language, check_workflows,
         ci_full_evidence_gates, collect_panic_findings, collect_semantic_panic_findings,
         critic_findings, dogfood_class_counts, dogfood_first_action_scenarios,
-        dogfood_gate_adoption_scenarios, dogfood_report_json, dogfood_report_markdown,
+        dogfood_gate_adoption_scenarios, dogfood_pr_review_front_panel_run,
+        dogfood_pr_review_front_panel_scenarios, dogfood_report_json, dogfood_report_markdown,
         evaluate_semantic_no_panic_policy, extract_json_object_usize_map, extract_json_string,
         extract_json_warnings, extract_workflow_run_blocks, first_line_difference,
         forbidden_panic_patterns, glob_matches, golden_changes_without_blessing,
@@ -23529,13 +24036,48 @@ fn exact_owner_call_has_external_expected_value() {
             expected_static_movement: "unknown".to_string(),
             errors: Vec::new(),
         };
+        let front_panel_run = DogfoodFrontPanelRun {
+            name: "actionable".to_string(),
+            report_path: Path::new(
+                "fixtures/boundary_gap/expected/pr-review-front-panel/actionable/pr-review-front-panel.json",
+            )
+            .to_path_buf(),
+            markdown_path: Path::new(
+                "fixtures/boundary_gap/expected/pr-review-front-panel/actionable/pr-review-front-panel.md",
+            )
+            .to_path_buf(),
+            status: "advisory".to_string(),
+            top_issue_state: "actionable".to_string(),
+            policy_state: "new_policy_eligible".to_string(),
+            placement: "changed_line".to_string(),
+            movement_state: "unknown".to_string(),
+            coverage_grip_state: "not_available".to_string(),
+            new_policy_eligible: 1,
+            baseline_resolved: 0,
+            blocking_candidates: 0,
+            warnings: 0,
+            expected_status: "advisory".to_string(),
+            expected_top_issue_state: "actionable".to_string(),
+            expected_policy_state: "new_policy_eligible".to_string(),
+            expected_placement: "changed_line".to_string(),
+            expected_movement_state: "unknown".to_string(),
+            expected_coverage_grip_state: "not_available".to_string(),
+            expected_new_policy_eligible: 1,
+            expected_baseline_resolved: 0,
+            expected_blocking_candidates: 0,
+            expected_warnings: 0,
+            reason: "The front panel should show the top focused-test action first.".to_string(),
+            errors: Vec::new(),
+        };
 
-        let markdown = dogfood_report_markdown(&[run], &[gate_run], &[first_action_run]);
-        let json = dogfood_report_json(&[], &[], &[]);
+        let markdown =
+            dogfood_report_markdown(&[run], &[gate_run], &[first_action_run], &[front_panel_run]);
+        let json = dogfood_report_json(&[], &[], &[], &[]);
 
         assert!(markdown.contains("Mode: advisory"));
         assert!(markdown.contains("boundary_gap"));
         assert!(markdown.contains("First Useful Action Receipts"));
+        assert!(markdown.contains("PR Review Front Panel Receipts"));
         assert!(markdown.contains("Gate Adoption Receipts"));
         assert!(markdown.contains("Default CI blocking: no"));
         assert!(markdown.contains("actionable"));
@@ -23708,6 +24250,45 @@ fn exact_owner_call_has_external_expected_value() {
                     markdown.contains(&format!("Action: {}", scenario.expected_action_kind)),
                     "{} Markdown should pin action",
                     scenario.name
+                );
+            }
+
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn dogfood_pr_review_front_panel_scenarios_have_checked_receipts() -> Result<(), String> {
+        with_repo_cwd(|| {
+            let scenarios = dogfood_pr_review_front_panel_scenarios();
+            for required in [
+                ("actionable", "actionable"),
+                ("acknowledged", "actionable"),
+                ("suppressed", "baseline_only"),
+                ("baseline_resolved", "already_improved"),
+                ("blocked", "actionable"),
+                ("missing_proof", "missing_required_input"),
+                ("advisory_only", "no_actionable_seam"),
+                ("coverage_flat_grip_improved", "already_improved"),
+            ] {
+                assert!(
+                    scenarios.iter().any(|scenario| {
+                        scenario.name == required.0
+                            && scenario.expected_top_issue_state == required.1
+                    }),
+                    "{} front-panel receipt should be checked as {}",
+                    required.0,
+                    required.1
+                );
+            }
+
+            for scenario in scenarios {
+                let run = dogfood_pr_review_front_panel_run(&scenario);
+                assert!(
+                    run.errors.is_empty(),
+                    "{} front-panel receipt should validate: {:?}",
+                    run.name,
+                    run.errors
                 );
             }
 
