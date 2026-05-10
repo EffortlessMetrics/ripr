@@ -115,6 +115,10 @@ are scoped or reviewed.
 - Added `docs/PR_REVIEW_FRONT_PANEL_WORKFLOW.md`, documenting how reviewers,
   developers, maintainers, and coding agents read the front panel, follow
   repair routes, inspect receipts, and preserve the advisory gate boundary.
+- Strengthened `cargo xtask check-no-panic-family` drift reporting with
+  structured allowed, advisory-drift, stale, unallowed, and warning sections,
+  plus exact selector-cardinality checks for ambiguous or duplicate no-panic
+  allowlist entries.
 - Opened Campaign 22, First Useful Action, with
   `spec/first-useful-action-report` as the first ready work item so existing
   editor, PR guidance, ledger, proof, receipt, optional gate, coverage/grip,

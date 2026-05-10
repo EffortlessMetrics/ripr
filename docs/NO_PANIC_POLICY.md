@@ -37,6 +37,20 @@ against the canonical no-panic allowlist using `path + family + selector`
 identity. Line/column drift is advisory; the allowlist still matches when code
 moves.
 
+The checker reports the policy state in structured sections:
+
+- `Allowed findings` lists current panic-family call sites matched by reviewed
+  allowlist entries.
+- `Advisory drift` lists `last_seen` line or column movement without failing
+  the gate.
+- `Stale entries` lists allowlist entries that no longer match a current
+  finding and fails the gate.
+- `Unallowed findings` lists current call sites without an allowlist entry and
+  fails the gate.
+- `Warnings` lists invalid review conditions such as ambiguous selector matches
+  or duplicate semantic identities. These warnings fail until the selector is
+  made unique.
+
 See `docs/NO_PANIC_SEMANTIC_ALLOWLIST.md` for schema and selector design.
 
 ## Allowlist location
@@ -63,6 +77,11 @@ identity = path + line + column
 
 `last_seen` in the allowlist is advisory drift information only. Moving a call
 site to a different line does not invalidate the allowlist entry.
+
+Selectors must be specific enough to match exactly one current finding.
+`method_call`, `call`, and `macro_call` selectors require both `container` and
+`callee`; add `receiver_fingerprint` when the same container has multiple
+panic-family calls with the same callee.
 
 ## Exception criteria
 
@@ -113,3 +132,7 @@ Run this locally before pushing. It runs in CI as a required gate.
 4. Run `cargo xtask check-no-panic-family` to verify the entry matches.
 5. Do not add new entries to `.ripr/no-panic-allowlist.toml`; it is a legacy
    compatibility mirror, not the canonical reader.
+
+If the checker reports ambiguity, add the smallest selector field that makes the
+match unique. Prefer `receiver_fingerprint` for repeated method calls inside
+the same function.

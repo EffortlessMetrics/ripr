@@ -131,6 +131,13 @@ Completed receipts:
 - PR 04: `policy/no-panic-allowlist.toml` is now the canonical schema 0.3
   allowlist read by `cargo xtask check-no-panic-family`; `.ripr/` remains a
   legacy compatibility mirror while older branches drain.
+- PR 04A / #325: strengthen no-panic drift reporting and validation before
+  removing or receipting more test panic debt. This step keeps the checker
+  reviewable by reporting allowed findings, advisory drift, stale entries,
+  unallowed findings, and warnings, and by rejecting ambiguous or duplicate
+  semantic selectors.
+- PR 04B / #324: add the review-only migration proposal command after drift
+  reporting is hardened. Do not auto-adopt proposed entries.
 
 Natural stacks:
 

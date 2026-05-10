@@ -78,6 +78,13 @@ column = 17
 | `line` | `[allow.last_seen]` | Advisory: last known line number |
 | `column` | `[allow.last_seen]` | Advisory: last known column number |
 
+`container` and `callee` are optional in the TOML shape because
+`string_literal` selectors use `text_contains` instead. For `method_call`,
+`call`, and `macro_call` selectors, the checker requires both `container` and
+`callee`, then verifies that the selector matches exactly one current finding.
+Use `receiver_fingerprint` to disambiguate repeated calls in the same
+container.
+
 ## Selector kinds
 
 The checker supports four selector kinds:
@@ -113,6 +120,7 @@ Matches a macro invocation by exact callee name, such as `panic!(...)` or
 ```toml
 [allow.selector]
 kind = "macro_call"
+container = "build_error"
 callee = "panic!"
 ```
 
@@ -125,6 +133,7 @@ Matches a free-function or associated-function call by exact callee name.
 ```toml
 [allow.selector]
 kind = "call"
+container = "build_output_path"
 callee = "unwrap"
 ```
 
@@ -157,7 +166,7 @@ the entry identity.
 The checker emits a hint when `last_seen` drifts from the current location:
 
 ```text
-allowed by semantic selector; last_seen changed from line 42 to line 55 (src/file.rs:55:17)
+allowed by semantic selector; last_seen changed from 42:17 to src/file.rs:55:17 (panic-0001 ...)
 ```
 
 This helps reviewers locate the entry in the file during allowlist audits
@@ -185,10 +194,17 @@ against the actual call site before being committed to the allowlist.
 ## Anti-patterns
 
 - **Do not** use `closure_NNNNN` (byte-offset closures) as stable selector
-  anchors. Closure offsets are unstable across edits and will produce stale
-  entries.
+  anchors. Closure offsets are unstable across edits; the checker rejects
+  selectors with synthetic closure containers.
 
 - **Do not** rely on `last_seen` for matching. It is a hint, not identity.
+
+- **Do not** leave selectors ambiguous. If one entry matches multiple current
+  findings, the checker fails and asks for a narrower selector.
+
+- **Do not** duplicate semantic identities. Two entries with the same
+  `path + family + selector` fail even when they point at the same current
+  finding.
 
 ## Schema 0.3 governance
 

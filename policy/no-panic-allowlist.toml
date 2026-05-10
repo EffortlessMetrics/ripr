@@ -20,6 +20,7 @@ expires = "2026-07-01"
 kind = "method_call"
 container = "temp_dir"
 callee = "unwrap"
+receiver_fingerprint = "SystemTime::now() .duration_since(UNIX_EPOCH)"
 
 [[allow]]
 id = "panic-0002"
@@ -34,6 +35,7 @@ expires = "2026-07-01"
 kind = "method_call"
 container = "write"
 callee = "unwrap"
+receiver_fingerprint = "fs::create_dir_all(parent)"
 
 [[allow]]
 id = "panic-0003"
@@ -48,6 +50,7 @@ expires = "2026-07-01"
 kind = "method_call"
 container = "with_temp_cwd"
 callee = "unwrap"
+receiver_fingerprint = "CWD_LOCK.get_or_init(|| Mutex::new(())).lock()"
 
 [[allow]]
 id = "panic-0004"
@@ -76,6 +79,7 @@ expires = "2026-07-01"
 kind = "method_call"
 container = "parse_no_panic_allowlist_toml_parses_valid_entries"
 callee = "unwrap"
+receiver_fingerprint = "root.join(\"allowlist.toml\").to_str()"
 
 [[allow]]
 id = "panic-0006"
@@ -472,3 +476,93 @@ receiver_fingerprint = "Path::new(env!(\"CARGO_MANIFEST_DIR\")) .parent() .and_t
 [allow.last_seen]
 line = 10
 column = 5
+
+[[allow]]
+id = "panic-0030"
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test harness: creates temporary directories for test isolation"
+owner = "test-infra"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "temp_dir"
+callee = "unwrap"
+receiver_fingerprint = "fs::create_dir_all(&dir)"
+
+[[allow]]
+id = "panic-0031"
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test harness: writes test files to temporary directory"
+owner = "test-infra"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "write"
+callee = "unwrap"
+receiver_fingerprint = "fs::write(path, text)"
+
+[[allow]]
+id = "panic-0032"
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test harness: saves current working directory before test"
+owner = "test-infra"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "with_temp_cwd"
+callee = "unwrap"
+receiver_fingerprint = "std::env::current_dir()"
+
+[[allow]]
+id = "panic-0033"
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test harness: switches into a temporary working directory"
+owner = "test-infra"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "with_temp_cwd"
+callee = "unwrap"
+receiver_fingerprint = "std::env::set_current_dir(&root)"
+
+[[allow]]
+id = "panic-0034"
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test harness: restores the previous working directory"
+owner = "test-infra"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "with_temp_cwd"
+callee = "unwrap"
+receiver_fingerprint = "std::env::set_current_dir(old)"
+
+[[allow]]
+id = "panic-0035"
+path = "xtask/src/main.rs"
+family = "unwrap"
+classification = "test_only"
+explanation = "Test function: TOML parser validation"
+owner = "test-infra"
+expires = "2026-07-01"
+
+[allow.selector]
+kind = "method_call"
+container = "parse_no_panic_allowlist_toml_parses_valid_entries"
+callee = "unwrap"
+receiver_fingerprint = "result"
