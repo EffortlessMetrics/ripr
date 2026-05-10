@@ -3787,6 +3787,51 @@ fn validate_evidence_record_contract_record(
             "evidence-record case {case_id} canonical_gap_id must be string or null"
         ));
     }
+    let canonical_gap_group_size_valid = match record.get("canonical_gap_group_size") {
+        Some(Value::Null) => true,
+        Some(Value::Number(number)) => number.as_u64().is_some(),
+        _ => false,
+    };
+    if !canonical_gap_group_size_valid {
+        violations.push(format!(
+            "evidence-record case {case_id} canonical_gap_group_size must be number or null"
+        ));
+    }
+    if !matches!(
+        record.get("canonical_gap_reason"),
+        Some(Value::Null | Value::String(_))
+    ) {
+        violations.push(format!(
+            "evidence-record case {case_id} canonical_gap_reason must be string or null"
+        ));
+    }
+    match record.get("canonical_gap_id") {
+        Some(Value::Null) => {
+            if !matches!(record.get("canonical_gap_group_size"), Some(Value::Null)) {
+                violations.push(format!(
+                    "evidence-record case {case_id} canonical_gap_group_size must be null when canonical_gap_id is null"
+                ));
+            }
+            if !matches!(record.get("canonical_gap_reason"), Some(Value::Null)) {
+                violations.push(format!(
+                    "evidence-record case {case_id} canonical_gap_reason must be null when canonical_gap_id is null"
+                ));
+            }
+        }
+        Some(Value::String(_)) => {
+            if json_usize_field(record, "canonical_gap_group_size").is_none() {
+                violations.push(format!(
+                    "evidence-record case {case_id} canonical_gap_group_size must be numeric when canonical_gap_id is present"
+                ));
+            }
+            if json_string_field(record, "canonical_gap_reason").is_none() {
+                violations.push(format!(
+                    "evidence-record case {case_id} canonical_gap_reason must be string when canonical_gap_id is present"
+                ));
+            }
+        }
+        _ => {}
+    }
     if !matches!(record.get("headline_eligible"), Some(Value::Bool(_))) {
         violations.push(format!(
             "evidence-record case {case_id} headline_eligible must be boolean"
@@ -19322,6 +19367,8 @@ mod tests {
         assert!(report.contains("spec must be RIPR-SPEC-0021"));
         assert!(report.contains("record schema_version must be 0.1"));
         assert!(report.contains("canonical_gap_id must be string or null"));
+        assert!(report.contains("canonical_gap_group_size must be number or null"));
+        assert!(report.contains("canonical_gap_reason must be string or null"));
         assert!(report.contains("headline_eligible must be boolean"));
         assert!(report.contains("location must be an object"));
         assert!(report.contains("is missing string field confidence"));
@@ -19351,6 +19398,8 @@ mod tests {
         "schema_version": "0.1",
         "seam_id": "contract-predicate-boundary",
         "canonical_gap_id": null,
+        "canonical_gap_group_size": null,
+        "canonical_gap_reason": null,
         "owner": "src/pricing.rs::discounted_total",
         "location": {"file": "src/pricing.rs", "line": 88},
         "seam_kind": "predicate_boundary",

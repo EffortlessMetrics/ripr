@@ -1,3 +1,4 @@
+pub(crate) mod canonical_gap;
 mod classifier;
 mod classify;
 mod diff;
