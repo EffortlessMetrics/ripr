@@ -410,7 +410,7 @@ metric = "syntax facts generate current probe families"
 [[capability]]
 id = "local_delta_flow"
 name = "Local delta flow"
-status = "alpha"
+status = "stable"
 spec = "RIPR-SPEC-0001"
 evidence = [
   "FlowSinkKind domain contract labels",
@@ -427,7 +427,8 @@ evidence = [
   "binding to return-value flow tests",
   "propagation_unknown stop reason regression test",
   "missing discriminator facts tied to flow sinks",
-  "evidence-first flow sink output"
+  "evidence-first flow sink output",
+  "docs/lanes/LANE_1_EVIDENCE_SPINE.md documents the stable syntax-first local flow scope and keeps unsupported propagation as explicit static limitations"
 ]
 fixtures = [
   "fixtures/boundary_gap",

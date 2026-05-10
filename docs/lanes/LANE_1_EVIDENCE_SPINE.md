@@ -70,6 +70,16 @@ Completed slices:
   `canonical_gap_id`, group size, and grouping reason for headline-eligible
   gaps.
 
+## Stable Fixture-Backed Analysis Slices
+
+These Lane 1 analysis slices are stable within documented syntax-first scope:
+
+- Local delta flow identifies visible return-value, error-variant,
+  struct-field, match-arm, event/outbound-call, state-write,
+  persistence-write, log-message, configuration-change, and generic call-effect
+  sinks. Unsupported or opaque propagation remains `propagation_unknown` with an
+  explicit static limitation rather than a stronger claim.
+
 ## Current Open PRs
 
 At tracker creation, there are no open upstream Lane 1 PRs. Current open PRs
@@ -86,19 +96,15 @@ When opening future Lane 1 PRs, list them here until they merge or close:
 These are Lane 1 candidates. Open them only when they are selected as evidence
 accuracy work:
 
-1. `analysis: promote local delta flow where fixture-backed`
-   - audit supported sink families;
-   - keep unsupported propagation as explicit static limitations;
-   - do not add runtime mutation vocabulary.
-2. `analysis: promote activation value modeling where fixture-backed`
+1. `analysis: promote activation value modeling where fixture-backed`
    - audit equality boundaries, enum/Option/Result branches, table rows,
      rstest cases, builder overrides, and same-file constants;
    - keep cross-file constants, macro-heavy cases, and opaque helpers explicit
      limitations.
-3. `calibration: promote covered static/runtime labels`
+2. `calibration: promote covered static/runtime labels`
    - promote only runtime-backed classes with fixture and calibration evidence;
    - do not run cargo-mutants or change static reports.
-4. `fixtures: expand evidence record contract`
+3. `fixtures: expand evidence record contract`
    - add cases only when a new evidence class or consumer requirement changes
      the v0.1 contract.
 

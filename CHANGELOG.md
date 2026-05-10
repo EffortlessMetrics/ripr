@@ -488,6 +488,9 @@ are scoped or reviewed.
   documented v0.1 scope and added a dedicated Lane 1 evidence-spine tracker so
   future evidence work stays separate from active PR/CI, editor, policy, and
   release campaigns.
+- Promoted local delta flow to stable within its fixture-backed syntax-first
+  scope for visible return, error, field, match, and side-effect sink families
+  while keeping unsupported propagation as explicit static limitations.
 - Moved the declared workspace MSRV, pinned toolchain, `clippy.toml`, and
   `policy/clippy-lints.toml` MSRV ledger to Rust 1.95 after the compatibility
   audit passed; planned Clippy lint promotion remains deferred to the next
