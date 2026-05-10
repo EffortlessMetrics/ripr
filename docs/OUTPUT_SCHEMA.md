@@ -3624,6 +3624,174 @@ pass/fail authority. See
 reviewer, developer, maintainer, and coding-agent workflow over the generated
 panel.
 
+## Report Packet Index
+
+RIPR-SPEC-0024 defines the report packet index contract. The index is the
+reviewer front door for the uploaded `ripr-reports` packet. It groups explicit
+existing artifacts by reviewer use, identifies the recommended start-here
+artifact, preserves missing or warning surfaces, and names commands that
+regenerate missing expected artifacts when the command is known.
+
+The report is advisory and read-only. It does not rerun hidden analysis, inspect
+source to infer missing fields, edit source, generate tests, call providers, run
+mutation testing, change recommendation ranking, change gate policy, publish
+inline comments, or change default CI blocking. `gate-decision.{json,md}`
+remains the only configured pass/fail authority.
+
+Command shape:
+
+```text
+ripr reports index \
+  --root . \
+  --reports-dir target/ripr/reports \
+  --review-dir target/ripr/review \
+  --receipts-dir target/ripr/receipts \
+  --workflow-dir target/ripr/workflow \
+  --agent-dir target/ripr/agent \
+  --pilot-dir target/ripr/pilot \
+  --ci-dir target/ci \
+  --out target/ripr/reports/index.json \
+  --out-md target/ripr/reports/index.md
+```
+
+Repo-local automation may keep `cargo xtask reports index` as a wrapper, but
+generated GitHub CI should use the public `ripr` command once Campaign 25 adds
+the producer.
+
+The report writes:
+
+```text
+target/ripr/reports/index.json
+target/ripr/reports/index.md
+```
+
+JSON shape:
+
+```json
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "report_packet_index",
+  "status": "warn",
+  "root": ".",
+  "generated_at": "2026-05-10T12:00:00Z",
+  "inputs": {
+    "reports_dir": "target/ripr/reports",
+    "review_dir": "target/ripr/review",
+    "receipts_dir": "target/ripr/receipts",
+    "workflow_dir": "target/ripr/workflow",
+    "agent_dir": "target/ripr/agent",
+    "pilot_dir": "target/ripr/pilot",
+    "ci_dir": "target/ci"
+  },
+  "summary": {
+    "entries": 18,
+    "available": 14,
+    "missing_expected": 4,
+    "warnings": 3,
+    "failures": 0,
+    "start_here": "target/ripr/reports/pr-review-front-panel.md",
+    "gate_authority": "target/ripr/reports/gate-decision.md",
+    "advisory": true
+  },
+  "groups": [
+    {
+      "group": "start_here",
+      "label": "Start here",
+      "summary": "Reviewer-first PR story.",
+      "entries": [
+        {
+          "id": "pr_review_front_panel",
+          "label": "PR review front panel",
+          "kind": "markdown",
+          "path": "target/ripr/reports/pr-review-front-panel.md",
+          "json_path": "target/ripr/reports/pr-review-front-panel.json",
+          "status": "available",
+          "available": true,
+          "required": true,
+          "authority": false,
+          "description": "First-screen PR review story.",
+          "next_command": null
+        }
+      ]
+    }
+  ],
+  "missing_expected": [
+    {
+      "id": "assistant_loop_health",
+      "label": "Assistant loop health",
+      "group": "repair_agent_handoff",
+      "path": "target/ripr/reports/assistant-loop-health.md",
+      "required": false,
+      "reason": "input_not_available",
+      "next_command": "ripr assistant-loop health --proof target/ripr/reports/test-oracle-assistant-proof.json --out target/ripr/reports/assistant-loop-health.json --out-md target/ripr/reports/assistant-loop-health.md"
+    }
+  ],
+  "warnings": [
+    {
+      "kind": "missing_expected",
+      "message": "Assistant loop health was not generated because no proof input was present.",
+      "source_artifact": null
+    }
+  ],
+  "limits": [
+    "Advisory report-packet index only.",
+    "Does not rerun analysis.",
+    "Does not edit source or generate tests.",
+    "Does not call providers.",
+    "Does not run mutation testing.",
+    "Does not publish inline comments.",
+    "Does not change default CI blocking.",
+    "Gate decision remains pass/fail authority when configured."
+  ]
+}
+```
+
+Field contract:
+
+- `schema_version` is `0.1` until the report shape changes.
+- `kind` is always `report_packet_index`.
+- `status` is `pass`, `warn`, `fail`, or `incomplete`. This is packet-health
+  context only, not gate authority.
+- `inputs.*` records explicit directories and paths that the producer was
+  allowed to inspect.
+- `summary.start_here` names the first artifact to show reviewers. Prefer
+  `pr-review-front-panel.md` when available.
+- `summary.gate_authority` records `gate-decision.md` when supplied. The index
+  itself never becomes gate authority.
+- `groups[].group` is `start_here`, `pr_review_story`,
+  `repair_agent_handoff`, `evidence_movement`, `policy_gates`, `calibration`,
+  `validation_receipts`, `sarif_badges`, or `local_context`.
+- `groups[].entries[]` records artifact id, label, kind, path, optional JSON
+  sibling, status, availability, requiredness, authority, description, and
+  next command.
+- `entries[].status` is `available`, `missing`, `pass`, `warn`, `fail`,
+  `blocked`, `acknowledged`, `suppressed`, `stale`, `incomplete`,
+  `unreadable`, or `not_applicable`.
+- `missing_expected[].reason` is `not_generated`, `input_not_available`,
+  `configured_off`, `missing_required_input`, `stale_upstream`, or `unknown`.
+- `missing_expected[]` keeps absent expected surfaces visible with a bounded
+  reason and, when known, a command to regenerate the missing surface.
+- `warnings[]` carries malformed, stale, unreadable, missing-input, and
+  incomplete packet context without converting it to waiver, suppression,
+  improvement, runtime confirmation, or pass/fail authority.
+- `limits` preserves read-only, explicit-input, no-source-edit,
+  no-generated-test, no-provider-call, no-runtime-mutation-execution,
+  no-inline-comment, and advisory-default boundaries.
+
+Markdown should fit in a generated GitHub job summary and uploaded report
+packet. It should show status, start-here artifact, gate authority, packet
+summary counts, grouped artifact links, missing expected artifacts with next
+commands, and advisory limits. When no useful packet map can be rendered,
+Markdown should show `Status: incomplete` and put the regeneration instruction
+before empty groups.
+
+Generated GitHub CI may run the index producer after individual report
+producers and before artifact upload, upload `index.{json,md}` with the normal
+`ripr-reports` artifact, and append a compact index section to the job summary.
+The projection is advisory. Missing optional index entries must not fail CI
+unless the explicit gate decision already failed or reported `config_error`.
+
 ### Review Guidance Outcome Receipt
 
 Review guidance outcome receipts are optional repo-local inputs to the

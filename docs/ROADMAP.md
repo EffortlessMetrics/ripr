@@ -267,7 +267,9 @@ SARIF, badges, and repair artifacts by reviewer use. The boundary stays Lane 4:
 consume explicit artifacts, do not change analyzer behavior, recommendation
 ranking, gate semantics, editor behavior, mutation execution, provider calls,
 source files, generated tests, inline-comment defaults, or default CI blocking.
-The first ready slice is `spec/report-packet-index-contract`.
+The spec contract is now
+[RIPR-SPEC-0024: Report Packet Index](specs/RIPR-SPEC-0024-report-packet-index.md);
+the next ready slice is `fixtures/report-packet-index-corpus`.
 
 ## Strategic Sequence
 

@@ -31,7 +31,7 @@ end_state = [
 
 [[work_item]]
 id = "spec/report-packet-index-contract"
-status = "ready"
+status = "done"
 branch = "spec-report-packet-index-contract"
 stackable = false
 acceptance = "Define the report-packet index contract, explicit inputs, grouping model, missing-surface warnings, generated-CI projection boundary, advisory limits, and fixture-first implementation plan before changing the producer"
@@ -49,12 +49,9 @@ commands = [
 
 [[work_item]]
 id = "fixtures/report-packet-index-corpus"
-status = "blocked"
+status = "ready"
 branch = "fixtures-report-packet-index-corpus"
 stackable = false
-blocked_by = [
-  "spec/report-packet-index-contract",
-]
 acceptance = "Pin report-packet index cases for complete packet, sparse advisory packet, missing front panel, blocked gate, missing assistant proof, missing receipts, and coverage/grip-present packet before changing the producer"
 commands = [
   "cargo xtask fixtures",

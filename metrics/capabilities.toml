@@ -953,6 +953,20 @@ next = "maintenance"
 metric = "pr_review_front_panel_reports, pr_review_front_panel_actionable, pr_review_front_panel_summary_only, pr_review_front_panel_no_actionable, pr_review_front_panel_acknowledged, pr_review_front_panel_waived, pr_review_front_panel_suppressed, pr_review_front_panel_blocked, pr_review_front_panel_config_error, pr_review_front_panel_baseline_still_present, pr_review_front_panel_baseline_resolved, pr_review_front_panel_new_policy_eligible, pr_review_front_panel_missing_required_input, pr_review_front_panel_flat_coverage_grip_improved, pr_review_front_panel_repair_routes, pr_review_front_panel_artifact_links"
 
 [[capability]]
+id = "report_packet_index"
+name = "Report packet index"
+status = "planned"
+spec = "RIPR-SPEC-0024"
+evidence = [
+  "docs/specs/RIPR-SPEC-0024-report-packet-index.md defines the planned report-packet index contract over explicit existing report, review, receipt, workflow, agent, pilot, and CI artifact directories",
+  "docs/OUTPUT_SCHEMA.md documents the planned report-packet-index JSON and Markdown shape, group vocabulary, status vocabulary, missing-surface reasons, generated-CI projection boundary, and advisory limits",
+  "docs/REPORT_PACKET_INDEX_PROPOSAL.md records Campaign 25's proposal and non-goals"
+]
+fixtures = []
+next = "fixtures/report-packet-index-corpus"
+metric = "report_packet_index_reports, report_packet_index_pass, report_packet_index_warn, report_packet_index_fail, report_packet_index_incomplete, report_packet_index_available_entries, report_packet_index_missing_expected, report_packet_index_start_here_available, report_packet_index_gate_authority_present, report_packet_index_repair_commands, report_packet_index_warning_entries"
+
+[[capability]]
 id = "pilot_packet"
 name = "Pilot packet"
 status = "alpha"
