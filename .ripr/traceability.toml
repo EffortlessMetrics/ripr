@@ -387,6 +387,7 @@ code = [
 ]
 outputs = [
   "docs/OUTPUT_SCHEMA.md",
+  "docs/PR_REVIEW_FRONT_PANEL_WORKFLOW.md",
   "docs/CAPABILITY_MATRIX.md",
   "fixtures/CALIBRATION_CORPUS.md",
   "fixtures/boundary_gap/calibration/runtime-fixtures-v1/mutation-calibration.json",

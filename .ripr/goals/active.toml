@@ -91,10 +91,10 @@ commands = [
 
 [[work_item]]
 id = "docs/pr-review-front-panel-workflow"
-status = "ready"
+status = "done"
 branch = "docs-pr-review-front-panel-workflow"
 stackable = false
-acceptance = "Document how reviewers, maintainers, developers, and coding agents read the PR review front panel, follow repair routes, inspect receipts, and interpret advisory limits"
+acceptance = "Documented how reviewers, maintainers, developers, and coding agents read the PR review front panel, follow repair routes, inspect receipts, and interpret advisory limits"
 commands = [
   "cargo xtask check-doc-index",
   "cargo xtask markdown-links",
@@ -104,12 +104,9 @@ commands = [
 
 [[work_item]]
 id = "dogfood/pr-review-front-panel-receipts"
-status = "blocked"
+status = "ready"
 branch = "dogfood-pr-review-front-panel-receipts"
 stackable = false
-blocked_by = [
-  "docs/pr-review-front-panel-workflow",
-]
 acceptance = "Record repo-local front-panel receipts for actionable, acknowledged, suppressed, baseline-resolved, blocked, missing-proof, no-actionable, and coverage-flat-grip-improved cases"
 commands = [
   "cargo xtask dogfood",

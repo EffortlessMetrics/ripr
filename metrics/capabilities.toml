@@ -924,11 +924,11 @@ evidence = [
   "crates/ripr/src/output/pr_review_front_panel.rs builds and renders the read-only report from explicit existing inputs",
   "ripr pr-review front-panel writes advisory JSON and Markdown without hidden analysis, source edits, generated tests, provider calls, mutation execution, inline comments, or default CI blocking",
   "generated GitHub CI runs the front-panel producer only when explicit input artifacts exist, uploads pr-review-front-panel JSON and Markdown with the report packet, and appends a compact advisory PR review summary while preserving gate-decision pass/fail authority",
+  "docs/PR_REVIEW_FRONT_PANEL_WORKFLOW.md documents reviewer, maintainer, developer, and coding-agent use of the panel, repair routes, receipts, and advisory gate limits",
   "fixtures/boundary_gap/expected/pr-review-front-panel/ pins advisory-only, actionable, summary-only, acknowledged, suppressed, baseline-resolved, blocked, missing-proof, and coverage-flat-grip-improved report cases",
   "xtask/src/main.rs validates the PR review front-panel fixture corpus through check-fixture-contracts so producer expectations stay fixture-backed",
   "crates/ripr/src/output/pr_review_front_panel.rs::pr_review_front_panel_matches_fixture_corpus validates the producer against the corpus",
-  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture validates the generated-CI projection",
-  "docs/IMPLEMENTATION_CAMPAIGNS.md marks docs/pr-review-front-panel-workflow as the next ready implementation slice"
+  "crates/ripr/src/cli/commands.rs::init_generated_github_workflow_matches_smoke_fixture validates the generated-CI projection"
 ]
 fixtures = [
   "fixtures/boundary_gap/expected/pr-review-front-panel/corpus.json",
@@ -942,7 +942,7 @@ fixtures = [
   "fixtures/boundary_gap/expected/pr-review-front-panel/missing-proof/pr-review-front-panel.json",
   "fixtures/boundary_gap/expected/pr-review-front-panel/coverage-flat-grip-improved/pr-review-front-panel.json",
 ]
-next = "docs/pr-review-front-panel-workflow"
+next = "dogfood/pr-review-front-panel-receipts"
 metric = "pr_review_front_panel_reports, pr_review_front_panel_actionable, pr_review_front_panel_summary_only, pr_review_front_panel_no_actionable, pr_review_front_panel_acknowledged, pr_review_front_panel_waived, pr_review_front_panel_suppressed, pr_review_front_panel_blocked, pr_review_front_panel_config_error, pr_review_front_panel_baseline_still_present, pr_review_front_panel_baseline_resolved, pr_review_front_panel_new_policy_eligible, pr_review_front_panel_missing_required_input, pr_review_front_panel_flat_coverage_grip_improved, pr_review_front_panel_repair_routes, pr_review_front_panel_artifact_links"
 
 [[capability]]
